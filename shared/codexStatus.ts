@@ -173,11 +173,6 @@ export interface CodexUpdate {
   command: string | null
   // The server may run `command` (a known official command) from wherdr.
   runnable: boolean
-  // How Update runs it (null: copy only). `direct`: on the machine over SSH,
-  // or locally when its home is writable, while the agents keep running
-  // (then Restart to update). `terminal`: in the agent's own pane: Codex
-  // exits, the pane's shell runs the command, `codex resume` restarts it on
-  // the same conversation (wherdr in Docker, whose home is read-only).
   method: CodexUpdateMethod | null
   notes: string
   job?: CodexUpdateJob

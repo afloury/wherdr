@@ -1,6 +1,6 @@
 // server/utils/projectsTasks.ts with the launcher replaced by recorded output:
 // which commands run, one at a time per machine, how sparingly, in which
-// session, what a failure looks like, and nothing run from a container.
+// session and what a failure looks like.
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
@@ -10,7 +10,7 @@ import { localFs } from '../server/utils/fsx'
 
 const fixture = (name: string) => readFileSync(path.join(import.meta.dirname, 'recordings/herdr-projects-1.2.1', name), 'utf8')
 
-// A HOME with a board on disk, for the container read.
+// A HOME with a board on disk: the task files wherdr reads beside the CLI.
 const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-tasks-'))
 afterAll(() => rmSync(home, { recursive: true, force: true }))
 function taskFile(id: string, t: Record<string, unknown>) {
@@ -20,13 +20,7 @@ function taskFile(id: string, t: Record<string, unknown>) {
 }
 
 // The local machine, and a named session of it ("review"): one board.
-// `fault`: what the disk does wrong for the container read.
-let fault: '' | 'eacces' = ''
-const fs = { ...localFs, readdir: async (p: string) => {
-  if (fault === 'eacces') throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
-  return localFs.readdir(p)
-} }
-const machine = { key: '', label: 'devbox', local: true, status: 'online', home, session: 'default', exec: null, sock: () => null, fs, info: () => ({ key: '' }) }
+const machine = { key: '', label: 'devbox', local: true, status: 'online', home, session: 'default', exec: null, sock: () => null, fs: localFs, info: () => ({ key: '' }) }
 const remote = { ...machine, key: 'remote', label: 'workstation', local: false, info: () => ({ key: 'remote' }) }
 const session = { ...machine, key: 'abcd1234', session: 'review', info: () => ({ key: 'abcd1234', baseKey: '' }) }
 const info = { status: 'ready', version: '1.2.1', launcher: '/plugins/herdr-projects/bin/run.sh' }
@@ -44,7 +38,7 @@ vi.mock('../server/utils/state', () => ({
   findPane: (id: string) => panes.find(p => p.id === id) || null,
   getState: () => ({ panes }),
 }))
-vi.mock('../server/utils/env', () => ({ HERDR_BIN: 'herdr', HERDR_CHILD_ENV: {}, IN_CONTAINER: false, DATA_DIR: path.join(home, 'wherdr-data'), log: () => {} }))
+vi.mock('../server/utils/env', () => ({ HERDR_BIN: 'herdr', HERDR_CHILD_ENV: {}, DATA_DIR: path.join(home, 'wherdr-data'), log: () => {} }))
 // The agents installed on the machine (server/utils/agentAvailability.ts).
 let installed: string[] = ['claude', 'codex']
 vi.mock('../server/utils/agentAvailability', () => ({ installedAgentKinds: async () => installed }))
@@ -95,9 +89,7 @@ beforeEach(() => {
   infoFails = false
   info.status = 'ready'
   panes.length = 0
-  T.setInContainer(false)
   T.resetTasksCache()
-  fault = ''
   rmSync(path.join(home, '.herdr-projects'), { recursive: true, force: true })
   T.setRunner(async (_m, launcher, args) => {
     expect(launcher).toBe('/plugins/herdr-projects/bin/run.sh')
@@ -140,10 +132,9 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers()
   T.setRunner(null)
-  T.setInContainer(null)
 })
 
-type Board = { version: string, machines: { machine: string, status: string, tasks: { id: string, group: string }[], at?: number, error?: string, stale?: boolean, readOnly?: boolean }[] }
+type Board = { version: string, machines: { machine: string, status: string, tasks: { id: string, group: string }[], at?: number, error?: string, stale?: boolean }[] }
 const read = async (since?: string) => (await T.readTasksBoard(since)) as Board
 
 describe('the Board read', () => {
@@ -210,107 +201,7 @@ describe('a read that fails is said, with the last tasks dated and marked', () =
   })
 })
 
-describe('wherdr in a container: the board is read from its files, nothing runs', () => {
-  it('reads the task files, with the state herdr-projects would show, and runs no command', async () => {
-    T.setInContainer(true)
-    taskFile('acme/1', { title: 'Review me', stage: 'approval', app: 'claude', pr: 'https://github.com/o/r/pull/3', review: { meets: true, pass: true, findings: [] } })
-    taskFile('acme/2', { title: 'At work', stage: 'working', app: 'codex', link: { socket: '/h/.config/herdr/sessions/review/herdr.sock', pane: 'w2:p1' } })
-    taskFile('acme/3', { title: 'Archived', stage: 'done', archivedAt: 1 })
-    panes.push({ id: 'abcd1234~w2:p1', status: 'blocked' })
-    const r = await read()
-    expect(r.machines[0]).toMatchObject({ status: 'ready', readOnly: true })
-    expect(Object.fromEntries(r.machines[0]!.tasks.map(t => [t.id, t.group]))).toEqual({ 'acme/1': 'ready', 'acme/2': 'needs' })
-    expect(calls).toEqual([])
-    // The agent's pane, in the session its task names.
-    expect(await T.taskDetails('', 'acme/2')).toMatchObject({ id: 'acme/2', pane: 'abcd1234~w2:p1' })
-    expect(calls).toEqual([])
-  })
-
-  it('no board yet: no tasks, and nothing wrong', async () => {
-    T.setInContainer(true)
-    const r = await read()
-    expect(r.machines[0]).toMatchObject({ status: 'ready', tasks: [], readOnly: true })
-    expect(r.machines[0]!.error).toBeUndefined()
-  })
-
-  it('a folder it may not read: the error, and the last tasks kept, dated and marked', async () => {
-    T.setInContainer(true)
-    taskFile('acme/1', { title: 'Review me', stage: 'approval', app: 'claude' })
-    const good = await read()
-    later()
-    fault = 'eacces'
-    const r = await read()
-    expect(r.machines[0]).toMatchObject({ error: 'EACCES: permission denied', stale: true, at: good.machines[0]!.at })
-    expect(r.machines[0]!.tasks.map(t => t.id)).toEqual(['acme/1'])
-  })
-
-  it('a task file that is not JSON: said, the others read, its last row kept', async () => {
-    T.setInContainer(true)
-    taskFile('acme/1', { title: 'Review me', stage: 'approval', app: 'claude' })
-    taskFile('acme/2', { title: 'To do', stage: 'todo' })
-    await read()
-    later()
-    writeFileSync(path.join(home, '.herdr-projects/data/tasks/acme/2/task.json'), '{ broken')
-    taskFile('acme/1', { title: 'Review me', stage: 'done' })
-    const r = await read()
-    expect(r.machines[0]!.error).toMatch(/^Some tasks could not be read: acme\/2 \(/)
-    expect(Object.fromEntries(r.machines[0]!.tasks.map(t => [t.id, t.group]))).toEqual({ 'acme/1': 'done', 'acme/2': 'todo' })
-    // Its details say so too, rather than an empty task.
-    await expect(T.taskDetails('', 'acme/2')).rejects.toThrow()
-  })
-
-  it('a task file that is not JSON, before any good read: said, not an empty board', async () => {
-    T.setInContainer(true)
-    taskFile('acme/2', { title: 'To do', stage: 'todo' })
-    writeFileSync(path.join(home, '.herdr-projects/data/tasks/acme/2/task.json'), '{ broken')
-    const r = await read()
-    expect(r.machines[0]!.error).toMatch(/acme\/2/)
-  })
-
-  it('the same tasks read again are the same version: the poll gets { same: true }', async () => {
-    T.setInContainer(true)
-    taskFile('acme/1', { title: 'Review me', stage: 'approval', app: 'claude' })
-    const first = await read()
-    later(T.REUSE_MS + 2000)
-    expect(await T.readTasksBoard(first.version)).toEqual({ same: true, version: first.version })
-    taskFile('acme/1', { title: 'Review me', stage: 'done', app: 'claude' })
-    later(T.REUSE_MS + 2000)
-    expect(await T.readTasksBoard(first.version)).not.toHaveProperty('same')
-  })
-
-  it('a partial read marks only the rows it kept, each with its own read time', async () => {
-    T.setInContainer(true)
-    taskFile('acme/1', { title: 'Fine', stage: 'todo' })
-    taskFile('acme/2', { title: 'Will break', stage: 'todo' })
-    const first = await read()
-    const firstAt = first.machines[0]!.at
-    later()
-    writeFileSync(path.join(home, '.herdr-projects/data/tasks/acme/2/task.json'), '{ broken')
-    const r = await read()
-    const m = r.machines[0]! as Board['machines'][0] & { tasks: { id: string, stale?: boolean, readAt?: number }[] }
-    expect(m.stale).toBeFalsy()
-    expect(m.at).toBe(clock)
-    expect(m.tasks.find(t => t.id === 'acme/1')).not.toHaveProperty('stale')
-    expect(m.tasks.find(t => t.id === 'acme/2')).toMatchObject({ stale: true, readAt: firstAt })
-  })
-
-  it('archived tasks never push live ones out of the rows shown', async () => {
-    T.setInContainer(true)
-    for (let n = 1000; n < 1600; n++) taskFile(`acme/${n}`, { title: `Old ${n}`, stage: 'done', archivedAt: 1 })
-    for (const n of [1, 2, 3]) taskFile(`acme/${n}`, { title: `Live ${n}`, stage: 'todo' })
-    const r = await read()
-    expect(r.machines[0]!.tasks.map(t => t.id).sort()).toEqual(['acme/1', 'acme/2', 'acme/3'])
-  })
-
-  it('gives the tasks in the order of `list --json`: newest created first, whatever the repo', async () => {
-    T.setInContainer(true)
-    taskFile('acme/9', { title: 'Old', stage: 'done', created: 1000 })
-    taskFile('web/2', { title: 'Newest', stage: 'done', created: 3000 })
-    taskFile('acme/4', { title: 'Middle', stage: 'done', created: 2000 })
-    const r = await read()
-    expect(r.machines[0]!.tasks.map(t => t.id)).toEqual(['web/2', 'acme/4', 'acme/9'])
-  })
-
+describe('done tasks: when they were made', () => {
   it('a done task from `list --json` carries when it was made, read once from its file', async () => {
     listReply = { code: 0, stdout: JSON.stringify([
       { id: 'demo/9', state: 'done', title: 'Done late', stage: 'done' }, { id: 'demo/3', state: 'idle', title: 'To do', stage: 'todo' },
@@ -328,20 +219,6 @@ describe('wherdr in a container: the board is read from its files, nothing runs'
     const again = await read()
     expect(calls.filter(c => c[0] === 'list').length).toBe(2)
     expect(again.machines[0]!.tasks.find(t => t.id === 'demo/9')!.created).toBe(5000)
-  })
-
-  it('details name the program on the task, from `app` when that is all the file has', async () => {
-    T.setInContainer(true)
-    taskFile('acme/1', { title: 'Review me', stage: 'approval', app: 'claude' })
-    expect(await T.taskDetails('', 'acme/1')).toMatchObject({ agent: 'claude' })
-  })
-
-  it('refuses the actions, which belong to the host', async () => {
-    T.setInContainer(true)
-    await read()
-    await expect(T.tellCoordinator('', 'hello')).rejects.toThrow(/container/)
-    await expect(T.tellTask('', 'acme/2', 'hello')).rejects.toThrow(/container/)
-    expect(calls).toEqual([])
   })
 })
 
@@ -379,8 +256,6 @@ describe('actions on a task', () => {
     // Its file names the "other" session; w1:p1 there is not the w1:p1 of the default session.
     taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', link: { socket: '/h/.config/herdr/sessions/other/herdr.sock', pane: 'w1:p1' } })
     panes.push({ id: 'w1:p1', machine: '', agent: 'claude', cwd: '/elsewhere' })
-    expect((await T.taskDetails('', 'demo/1')).pane).toBeNull()
-    T.setInContainer(true)
     expect((await T.taskDetails('', 'demo/1')).pane).toBeNull()
   })
 
@@ -532,14 +407,6 @@ describe('archived tasks: their list, their sheet and Restore', () => {
     expect(r.machine).toBe('')
     expect(r.tasks.map(t => [t.id, t.archived])).toEqual([['demo/9', true], ['demo/8', true]])
     expect(calls).toEqual([['list', '--json', '--archived']])
-  })
-
-  it('from a container: the archived task files, nothing run', async () => {
-    T.setInContainer(true)
-    taskFile('acme/1', { title: 'Live', stage: 'done' })
-    taskFile('acme/2', { title: 'Away', stage: 'done', archivedAt: 1 })
-    expect((await T.archivedTasks('')).tasks.map(t => t.id)).toEqual(['acme/2'])
-    expect(calls).toEqual([])
   })
 
   it('details say archived from the task file', async () => {
@@ -783,12 +650,6 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     await expect(T.clearTaskAfter('', '../x')).rejects.toThrow('Invalid task')
   })
 
-  it('from a container: no command run, only the installed agents', async () => {
-    T.setInContainer(true)
-    expect(await T.taskStartOptions('', 'demo/5')).toEqual({ agent: null, agents: ['claude', 'codex'], slots: null })
-    expect(calls).toEqual([])
-  })
-
   it('a failed task: what failed (details) decides between Retry and Start, as 1.2.1 send_error does', async () => {
     await read()
     calls = []
@@ -907,11 +768,6 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
       ['coordinator', '--project=demo', '--json', 'status'], ['coordinator', '--project=web', '--json', 'status'],
     ])
     await expect(T.coordinatorPane('', { kind: 'project', repo: '--all' })).rejects.toThrow(/Invalid coordinator/)
-    // From a container: nothing asked, no pane.
-    calls = []
-    T.setInContainer(true)
-    expect(await T.coordinatorPane('', { kind: 'main' })).toEqual({ pane: null, state: 'unknown', error: '', name: '', queued: null })
-    expect(calls).toEqual([])
   })
 
   it('keeps queue counts when a coordinator has exited or its pane is missing', async () => {
@@ -937,17 +793,6 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     expect(calls).toEqual([['coordinator', '--', 'restart'], ['coordinator', '--machine', '--', 'restart'], ['coordinator', '--project=web', '--', 'restart']])
     calls = []
     await expect(T.restartCoordinator('', { kind: 'project', repo: '--all' })).rejects.toThrow(/Invalid coordinator/)
-    T.setInContainer(true)
-    await expect(T.restartCoordinator('', { kind: 'main' })).rejects.toThrow(/container/)
-    expect(calls).toEqual([])
-  })
-
-  it('from a container: none of them runs', async () => {
-    T.setInContainer(true)
-    await expect(T.addTask('', { title: 'x' })).rejects.toThrow(/container/)
-    await expect(T.taskCommand('', 'demo/5', 'delegate')).rejects.toThrow()
-    await expect(T.tellCoordinator('', 'x', { to: { kind: 'machine' } })).rejects.toThrow(/container/)
-    expect(calls).toEqual([])
   })
 })
 

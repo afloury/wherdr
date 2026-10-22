@@ -12,7 +12,7 @@ export type PanelTarget =
   | { machine: string, kind: 'coordinator', to: CoordinatorTarget, freshProject?: boolean }
 
 // `reachable`: its machine's board answers now (a message waits while it does not).
-const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, readOnly?: boolean, reachable?: boolean, refresh?: () => Promise<unknown> }>()
+const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, reachable?: boolean, refresh?: () => Promise<unknown> }>()
 const launchAgent = ref('__default')
 const launchModel = ref('')
 const launchEffort = ref('__default')
@@ -32,7 +32,7 @@ const loading = ref(false)
 const failed = ref('')
 // No pane, but herdr-projects passes a reply on (`tell`): the field shown instead.
 const tellOnly = ref(false)
-const canTell = (d: TaskDetails) => Boolean(props.task) && !props.readOnly && taskActions(props.task!, d).tell
+const canTell = (d: TaskDetails) => Boolean(props.task) && taskActions(props.task!, d).tell
 let seq = 0
 // `again`: the same task moved on (a closing note, a report): the agent stays shown.
 async function loadTask(again = false) {
@@ -96,7 +96,7 @@ const agentHint = computed(() => agentPane.value ? tl(`Herdr agent: ${statusLabe
 const taskPermissions = computed(() => props.task ? taskActions(props.task, details.value) : null)
 const canFix = computed(() => props.task && taskCanFix(props.task, details.value))
 const canAnyway = computed(() => props.task && taskCanApproveAnyway(props.task, details.value))
-const disabled = computed(() => Boolean(actionBusy.value || props.readOnly || offlineView.value || !props.reachable || props.task?.stale))
+const disabled = computed(() => Boolean(actionBusy.value || offlineView.value || !props.reachable || props.task?.stale))
 // Finish: a limit, no summary, or a row stuck at "Finishing" with its agent at rest.
 const finishKind = computed(() => (props.task ? finishCase(props.task) : null))
 const canFinish = computed(() => Boolean(props.task && taskPermissions.value?.finish && finishOffered(props.task, agentPane.value?.status ?? null)))
@@ -421,14 +421,13 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <UButton v-if="canAnyway" :disabled="disabled" @click="taskAction('anyway')">{{ tl('Approve anyway', 'Approuver quand même') }}</UButton>
         <UButton v-else-if="taskPermissions?.approve" :disabled="disabled" @click="taskAction('approve')">{{ tl('Approve', 'Approuver') }}</UButton>
       </div>
-      <p v-if="readOnly">{{ readOnlyWhy() }}</p>
-      <p v-else-if="!reachable">{{ tl('Machine unavailable', 'Machine indisponible') }}</p>
+      <p v-if="!reachable">{{ tl('Machine unavailable', 'Machine indisponible') }}</p>
       <p v-if="actionError" class="error">{{ actionError }}</p>
     </section>
 
     <div class="board-panel-body">
       <p v-if="target.kind === 'task' && settled && failed && selected === 'task'" class="board-note error">{{ failed }}</p>
-      <TaskSheet v-if="target.kind === 'task' && settled && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :read-only="readOnly" :refresh="refreshTask" @chat="choose('chat')" @coordinator="(machine, task) => emit('coordinator', machine, task)" @archived="archivedTask" @restored="restoredTask" />
+      <TaskSheet v-if="target.kind === 'task' && settled && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :refresh="refreshTask" @chat="choose('chat')" @coordinator="(machine, task) => emit('coordinator', machine, task)" @archived="archivedTask" @restored="restoredTask" />
       <AgentView v-else-if="paneId && (target.kind === 'coordinator' || selected === 'term' || conversation)" :key="paneId" :pane-id="paneId" cell active :embedded="target.kind === 'task'" @update:selected-mode="choose($event)" :selected-mode="target.kind === 'task' ? (selected === 'term' ? 'term' : 'chat') : undefined" />
       <p v-else-if="target.kind === 'task' && loading" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <p v-else-if="failed" class="board-note error board-panel-wait">{{ failed }}</p>
@@ -447,10 +446,9 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
           <UButton type="submit" color="primary" icon="i-lucide-send" :loading="telling" :disabled="!reply.trim() || offlineView || !reachable">{{ t('Send') }}</UButton>
         </form>
       </div>
-      <p v-else-if="target.kind === 'coordinator' && !coordLoaded && !readOnly" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
+      <p v-else-if="target.kind === 'coordinator' && !coordLoaded" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <div v-else-if="target.kind === 'coordinator'" class="board-panel-start">
-        <p v-if="readOnly" class="board-note">{{ tl('This coordinator has not started. wherdr runs in a container here: start it from Herdr on the host, or move wherdr to the native service to start it from here.', 'Ce coordinateur n’a pas démarré. wherdr tourne ici dans un conteneur : lance-le depuis Herdr sur l’hôte, ou passe wherdr en service natif pour le lancer d’ici.') }}</p>
-        <section v-else-if="coordPhase === 'failed'" class="board-panel-failed" role="alert" :aria-label="coordFailureTitle">
+        <section v-if="coordPhase === 'failed'" class="board-panel-failed" role="alert" :aria-label="coordFailureTitle">
           <h4><UIcon name="i-lucide-octagon-alert" />{{ coordFailureTitle }}</h4>
           <p class="board-panel-failed-what">{{ coordDeliveryFailed
             ? tl(`The message was not sent to ${coordName} on ${machineLabel}.`, `Le message destiné à ${coordName} n’a pas été envoyé sur ${machineLabel}.`)

@@ -18,8 +18,6 @@ describe('versions', () => {
 
 describe('update command', () => {
   it('follows the installation mode', () => {
-    expect(installMode('docker')).toBe('docker')
-    expect(installMode('docker-build')).toBe('docker-build')
     expect(installMode('npm')).toBe('npm')
     expect(installMode('brew')).toBe('brew')
     expect(installMode('npm-global')).toBe('npm-global')
@@ -27,8 +25,6 @@ describe('update command', () => {
     expect(installMode(undefined)).toBe('native')
     expect(installMode('autre')).toBe('native')
     const cmd = (m: Parameters<typeof updateCommand>[0]) => updateCommand(m, 'owner/wherdr')
-    expect(cmd('docker')).toBe('docker compose pull && docker compose up -d')
-    expect(cmd('docker-build')).toContain('docker-compose.build.yml up -d --build')
     expect(cmd('native')).toBe('git pull && npm ci && npm run build')
     expect(cmd('npm')).toBe('npx wherdr@latest')
     expect(cmd('brew')).toBe('brew upgrade wherdr && brew services restart wherdr')
@@ -37,7 +33,7 @@ describe('update command', () => {
   })
 
   it('offers the one-tap update only where wherdr can replace itself', () => {
-    expect(['plugin', 'npm-global', 'brew', 'npm', 'docker', 'docker-build', 'native'].filter(m => oneTapMode(installMode(m)))).toEqual(['plugin', 'npm-global', 'brew'])
+    expect(['plugin', 'npm-global', 'brew', 'npm', 'native'].filter(m => oneTapMode(installMode(m)))).toEqual(['plugin', 'npm-global', 'brew'])
   })
 })
 
@@ -48,10 +44,10 @@ function release(tag: string) {
 describe('release check', () => {
   it('reports a newer version', async () => {
     const fetch = release('v1.2.0')
-    const check = createUpdateChecker({ current: '1.1.0', env: { WHERDR_INSTALL: 'docker' }, fetch })
+    const check = createUpdateChecker({ current: '1.1.0', env: { WHERDR_INSTALL: 'native' }, fetch })
     const u = await check()
     expect(fetch).toHaveBeenCalledWith(RELEASES_URL)
-    expect(u).toEqual({ current: '1.1.0', latest: '1.2.0', url: 'https://example.test/releases/v1.2.0', checked: true, mode: 'docker', command: 'docker compose pull && docker compose up -d', oneTap: false })
+    expect(u).toEqual({ current: '1.1.0', latest: '1.2.0', url: 'https://example.test/releases/v1.2.0', checked: true, mode: 'native', command: 'git pull && npm ci && npm run build', oneTap: false })
   })
 
   it('says nothing when up to date or ahead', async () => {

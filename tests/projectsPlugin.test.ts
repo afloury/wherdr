@@ -3,7 +3,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { projectsPluginFromList } from '../server/utils/projectsPlugin'
 import {
-  NATIVE_MOVE_ANCHOR, PROJECTS_COMMAND, PROJECTS_INSTALL_ARGS, PROJECTS_LAUNCHER, PROJECTS_MIGRATION_GUIDE, PROJECTS_UPGRADE_COMMAND, WHERDR_DOWNGRADE_COMMANDS,
+  PROJECTS_COMMAND, PROJECTS_INSTALL_ARGS, PROJECTS_LAUNCHER, PROJECTS_MIGRATION_GUIDE, PROJECTS_UPGRADE_COMMAND, WHERDR_DOWNGRADE_COMMANDS,
   projectsLauncher, projectsStatus, versionAtLeast,
 } from '../shared/projectsPlugin'
 
@@ -85,25 +85,11 @@ describe('the migration guide the note names', () => {
     expect(existsSync(path.join(root, PROJECTS_MIGRATION_GUIDE))).toBe(true)
     expect(JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).files).toContain(PROJECTS_MIGRATION_GUIDE)
   })
-  it('has the move from Docker the Board of a container links to, and the README points to it', async () => {
+  it('keeps a migration for existing 1.x image installs', () => {
     const root = path.resolve(import.meta.dirname, '..')
     const guide = readFileSync(path.join(root, PROJECTS_MIGRATION_GUIDE), 'utf8')
-    // GitHub's anchor of "## Moving from Docker to the native service".
-    expect(guide).toMatch(/^## Moving from Docker to the native service$/m)
-    expect(NATIVE_MOVE_ANCHOR).toBe('moving-from-docker-to-the-native-service')
-    const { NATIVE_MOVE_URL, REPO } = await import('../server/utils/updates')
-    expect(NATIVE_MOVE_URL).toBe(`https://github.com/${REPO}/blob/main/${PROJECTS_MIGRATION_GUIDE}#${NATIVE_MOVE_ANCHOR}`)
-    // Backup, container removed, same data folder, the installer, and the way back.
-    for (const step of ['tar czf', 'docker compose down', '~/wherdr/data', 'curl -fsSL https://wherdr.dev/install | sh', '### Going back to Docker', 'docker compose up -d']) expect(guide).toContain(step)
-    const readme = readFileSync(path.join(root, 'README.md'), 'utf8')
-    expect(readme).toContain(`${PROJECTS_MIGRATION_GUIDE}#${NATIVE_MOVE_ANCHOR}`)
-    const installer = readFileSync(path.join(root, 'website/public/install'), 'utf8')
-    expect(installer).toContain(`docs/herdr-projects-1x.md#${NATIVE_MOVE_ANCHOR}`)
-  })
-})
-
-describe('commands for the host', () => {
-  it('name the launcher herdr-projects 1.x writes, since nothing is on the PATH', () => {
-    expect(PROJECTS_LAUNCHER).toBe('~/.herdr-projects/data/bin/herdr-projects')
+    expect(guide).toContain('Published 1.x images')
+    for (const step of ['back up', 'docker compose down', '~/wherdr/data', 'curl -fsSL https://wherdr.dev/install | sh']) expect(guide).toContain(step)
+    expect(readFileSync(path.join(root, 'README.md'), 'utf8')).toContain(`${PROJECTS_MIGRATION_GUIDE}#moving-from-docker-to-the-native-service`)
   })
 })

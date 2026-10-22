@@ -39,12 +39,10 @@ export default defineEventHandler(async (event) => {
   const html = hostRefusalIsHtml(path, headers.accept)
   switch (verdict) {
     case 'network': {
-      const why = !check.ok && (check.reason === 'funnel' || check.reason === 'docker') ? check.reason : undefined
+      const why = !check.ok && check.reason === 'funnel' ? check.reason : undefined
       if (html) return htmlRefusal(event, networkRefusedPage(why))
       const error = why === 'funnel'
         ? 'Tailscale Funnel exposes wherdr to the Internet: turn it off for wherdr\'s port'
-        : why === 'docker'
-          ? 'Docker publishes wherdr on every network interface: publish it on 127.0.0.1 only'
           : 'wherdr only answers this computer and your tailnet'
       return sendError(event, 403, { error, code: 'network', ...(why ? { why } : {}) })
     }

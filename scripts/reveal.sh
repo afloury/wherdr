@@ -1,8 +1,7 @@
 # The checks of "Reveal in Finder" / "Open" / "Open in editor", run on the machine
 # that has `open` (macOS). Called with $1 = reveal | open, $2 = absolute path.
 # Single source of truth: server/utils/reveal.ts embeds this file verbatim in its
-# REVEAL_SCRIPT (tests/reveal.test.ts pins them together); scripts/install-host-open.sh
-# copies it to the Mac for wherdr's "host open" key (scripts/wherdr-open.sh).
+# REVEAL_SCRIPT (tests/reveal.test.ts pins them together).
 # Exit codes: 3 missing, 4 outside home, 5 not macOS, 6 `open` failed, 7 runnable.
 p=$2
 [ -e "$p" ] || exit 3

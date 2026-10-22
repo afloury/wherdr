@@ -12,9 +12,9 @@ const sources = (read('../README.md') + read('../website/public/install')).repla
 const llms = read('../website/public/llms.txt')
 
 // Checks an agent runs to verify a step: not in the README, harmless, read-only.
-const CHECKS = ['curl -fsS http://127.0.0.1:7683', 'curl -fsS http://127.0.0.1:7683/manifest.webmanifest', 'curl -fsSL https://wherdr.dev/agent.md', 'docker compose ps', 'tailscale status', 'tailscale serve status', 'herdr plugin list', 'brew list wherdr', 'git --version', 'node --version']
+const CHECKS = ['curl -fsS http://127.0.0.1:7683', 'curl -fsS http://127.0.0.1:7683/manifest.webmanifest', 'curl -fsSL https://wherdr.dev/agent.md', 'tailscale status', 'tailscale serve status', 'herdr plugin list', 'brew list wherdr', 'git --version', 'node --version']
 // Placeholders and file paths the guide names, not commands.
-const PLAIN = /^(~\/[\w./-]+|\.env|plugin\.env|TASKS\.md|docker|url|herdr-projects (skill|doctor)|https:\/\/<machine>\.<tailnet>\.ts\.net:7683\/)$/
+const PLAIN = /^(~\/[\w./-]+|\.env|plugin\.env|TASKS\.md|url|herdr-projects (skill|doctor)|https:\/\/<machine>\.<tailnet>\.ts\.net:7683\/)$/
 // Quoted from wherdr's own output, checked against the code below.
 const OUTPUT = ['"reach":"ok"', '"pending"', 'First passkey: bootstrap token']
 

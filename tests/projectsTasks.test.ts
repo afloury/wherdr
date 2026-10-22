@@ -206,7 +206,7 @@ describe('small checks', () => {
   })
 })
 
-describe('a task read from its file (wherdr in a container)', () => {
+describe('a task read from its file', () => {
   it('follows the stages as herdr-projects 1.2.1 shows them', () => {
     const st = (t: Record<string, unknown>, pane: string | null = null) => stateFromTaskFile(t, pane)
     expect(st({ stage: 'todo' })).toEqual({ state: 'idle', kind: '' })

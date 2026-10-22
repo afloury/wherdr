@@ -17,7 +17,6 @@ const here = import.meta.client && location.protocol === 'https:' && !isLoopback
 const hereQr = here ? qrSvg(here) : null
 const busy = ref(false)
 const failure = ref<{ error: PhoneError, link?: string, detail?: string } | null>(null)
-const typed = ref('')
 let timer: ReturnType<typeof setTimeout> | null = null
 // Shared with the guide and the passkey card (usePhoneAddress.ts).
 watch(status, (s) => { if (s) phoneAddress.value = s })
@@ -25,7 +24,6 @@ watch(status, (s) => { if (s) phoneAddress.value = s })
 async function refresh() {
   try {
     status.value = await api<PhoneStatus>('/api/phone')
-    if (!typed.value) typed.value = status.value.url || status.value.suggested || ''
   } catch { /* shown again at the next check */ }
 }
 
@@ -112,13 +110,6 @@ async function unpublish() {
   if (yes) await act({ action: 'unpublish' })
 }
 
-async function copyCommand() {
-  try {
-    await navigator.clipboard.writeText(status.value?.command || '')
-    toast(tl('Command copied: paste it into a terminal on the computer that runs Docker.', 'Commande copiée : colle-la dans un terminal de l’ordinateur qui fait tourner Docker.'))
-  } catch { toast(t('Copy failed'), true) }
-}
-
 // Tailscale missing or disconnected: why it is needed, and three steps.
 const needsTailscale = computed(() => status.value?.mode === 'missing' || (status.value?.mode === 'native' && !status.value.connected))
 const DOWNLOADS: Record<string, string> = { darwin: 'https://tailscale.com/download/mac', win32: 'https://tailscale.com/download/windows', linux: 'https://tailscale.com/download/linux' }
@@ -158,9 +149,6 @@ const failureText = computed(() => {
     case 'https': return tl('HTTPS certificates are off on your tailnet. Turn on HTTPS in the Tailscale admin console (DNS page), then try again.', 'Les certificats HTTPS sont désactivés sur ton tailnet. Active HTTPS dans la console d’administration Tailscale (page DNS), puis réessaie.')
     case 'offline': return tl('Tailscale is not connected on this computer. Open the Tailscale app (or run tailscale up), then try again.', 'Tailscale n’est pas connecté sur cet ordinateur. Ouvre l’app Tailscale (ou lance tailscale up), puis réessaie.')
     case 'taken': return tl(`HTTPS port ${status.value?.port} of your tailnet already serves something else: wherdr leaves it alone.`, `Le port HTTPS ${status.value?.port} de ton tailnet sert déjà autre chose : wherdr n’y touche pas.`)
-    case 'address': return /^\s*http:/i.test(typed.value)
-      ? tl('Not HTTPS: the address must start with https:// (tailscale serve --https).', 'Pas en HTTPS : l’adresse doit commencer par https:// (tailscale serve --https).')
-      : tl('Paste the https://….ts.net address that tailscale serve printed.', 'Colle l’adresse https://….ts.net affichée par tailscale serve.')
     case 'failed': return tl('tailscale serve failed:', 'tailscale serve a échoué :')
     default: return ''
   }
@@ -196,11 +184,9 @@ const failureText = computed(() => {
     <template v-else>
       <ol :key="flash" class="phone-steps" :class="{ 'phone-flash': flash > 0 }">
         <!-- 1. Tailscale -->
-        <li :class="{ done: status.mode === 'docker' || status.connected }">
+        <li :class="{ done: status.connected }">
           <span class="phone-step-label">TAILSCALE</span>
           <p v-if="status.mode === 'missing'">{{ tl('Not installed on this computer.', 'Pas installé sur cet ordinateur.') }}</p>
-          <p v-else-if="status.mode === 'docker' && status.served">{{ tl('Connected.', 'Connecté.') }}</p>
-          <p v-else-if="status.mode === 'docker'">{{ tl('wherdr runs in Docker: run the command below on the computer, in a terminal.', 'wherdr tourne dans Docker : lance la commande ci-dessous sur l’ordinateur, dans un terminal.') }}</p>
           <p v-else-if="status.connected">{{ tl('Connected.', 'Connecté.') }}</p>
           <p v-else>{{ tl('Installed, but not connected on this computer.', 'Installé, mais pas connecté sur cet ordinateur.') }}</p>
         </li>
@@ -218,28 +204,6 @@ const failureText = computed(() => {
             <p v-if="!status.https && status.connected" class="phone-note">{{ tl('HTTPS certificates look off on your tailnet: turn them on first.', 'Les certificats HTTPS semblent désactivés sur ton tailnet : active-les d’abord.') }} <a class="phone-link" href="https://login.tailscale.com/admin/dns" target="_blank" rel="noopener noreferrer">{{ tl('Tailscale DNS settings', 'Réglages DNS Tailscale') }} <UIcon name="i-lucide-external-link" /></a></p>
           </template>
         </li>
-        <li v-else-if="status.mode === 'docker' && status.served" class="done">
-          <span class="phone-step-label">{{ tl('TAILNET', 'TAILNET') }}</span>
-          <p class="phone-url">{{ status.url }}</p>
-          <p v-if="!status.funnel">{{ tl('Published by tailscale serve: wherdr found it by itself.', 'Publiée par tailscale serve : wherdr l’a trouvée tout seul.') }}</p>
-        </li>
-        <li v-else-if="status.mode === 'docker'" :class="{ done: status.reach === 'ok' }">
-          <span class="phone-step-label">{{ tl('TAILNET', 'TAILNET') }}</span>
-          <div class="phone-command">
-            <code>{{ status.command }}</code>
-            <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-copy" @click="copyCommand">{{ tl('Copy', 'Copier') }}</UButton>
-          </div>
-          <p v-if="status.connected">{{ tl('wherdr then finds the address by itself, within a few seconds. Published another way? Paste its address:', 'wherdr trouve ensuite l’adresse tout seul, en quelques secondes. Publiée autrement ? Colle son adresse :') }}</p>
-          <p v-else>{{ tl('Then paste the address it prints:', 'Puis colle l’adresse qu’elle affiche :') }}</p>
-          <form class="phone-address" @submit.prevent="act({ action: 'address', url: typed })">
-            <UInput v-model="typed" placeholder="https://machine.tailnet.ts.net:7683/" size="md" class="phone-address-input" autocomplete="off" spellcheck="false" />
-            <UButton type="submit" size="md" color="neutral" variant="outline" :loading="busy">{{ tl('Check', 'Vérifier') }}</UButton>
-          </form>
-          <p v-if="shown" :key="`r${flash}`" class="phone-result" :class="shown.state" role="status">
-            <UIcon :name="RESULT_ICONS[shown.state]" /><span>{{ shown.text }}</span><time>{{ resultWhen }}</time>
-          </p>
-        </li>
-
         <!-- 3. Answers -->
         <li v-if="status.url" :class="{ done: status.reach === 'ok', wait: status.reach === 'pending', bad: status.reach === 'host' || status.reach === 'other' || status.reach === 'unreachable' }" aria-live="polite">
           <span class="phone-step-label">{{ tl('ANSWERS', 'RÉPOND') }}</span>

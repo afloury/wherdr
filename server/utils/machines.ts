@@ -30,7 +30,7 @@ import { parseSessionList, sessionKey, validSession } from '../../shared/session
 import { LOCAL, type MachineProfile, parseMachineList, parseStatusSocket, splitId } from '../../shared/ids'
 import {
   DATA_DIR, HERDR_BIN, HERDR_CHILD_ENV, HERDR_CLIENT_SOCK, HERDR_SESSION, HERDR_SOCK, HOME, HOST_LABEL, MACHINES_ENABLED, MACHINES_REFRESH_MS,
-  REMOTE_SESSION, REMOTE_UPLOAD_SUBDIR, RUNTIME_DIR, SELF_HOSTS, SESSION_ARGS, SSH_BIN, UPLOAD_TTL_MS, log, machineLabel,
+  REMOTE_SESSION, REMOTE_UPLOAD_SUBDIR, RUNTIME_DIR, SELF_HOSTS, SESSION_ARGS, SSH_BIN, UPLOAD_TTL_MS, log,
 } from './env'
 import { HerdrError, herdr, setSocketResolver } from './herdr'
 import { type ExecResult, type MachineFs, type ShellExec, boundedOutput, createShellFs, localFs, remoteCommand, shq } from './fsx'
@@ -47,20 +47,12 @@ function renamedLabel() {
   catch { return '' }
 }
 export const localMachineLabel = () => localMachine.label
-// The name Tailscale gives this machine (phone.ts reads it): shown instead of
-// the container's host name (machineLabel), unless the user renamed the machine.
 let tailnetLabel = ''
+// Tailnet aliases keep SSH profiles for this machine out of the remote list.
 export function adoptTailnetName(name: string | null | undefined) {
-  const label = machineLabel(name)
-  if (label === HOST_LABEL || label === tailnetLabel) return
-  tailnetLabel = label
-  if (renamedLabel() || localMachine.label === label) return
-  localMachine.label = label
-  for (const other of sessions.values()) if (!(other instanceof RemoteMachine)) other.label = label
-  log(`machine name: ${label} (from Tailscale)`)
-  changed()
+  const short = (name || '').split('.')[0]!.trim().slice(0, 40)
+  if (short) tailnetLabel = short
 }
-// Same names as `uname -s` (in Docker, the container's: Linux).
 export function localOs() {
   const p = os.platform()
   return p === 'darwin' ? 'Darwin' : p === 'linux' ? 'Linux' : p
@@ -136,8 +128,6 @@ export function localMachineId(): string {
   }
   return selfId
 }
-// Names of this machine (profiles to ignore): HOST_LABEL, host name, its
-// Tailscale name in a container, HERDR_WEB_SELF_HOSTS.
 export const selfNames = () => [HOST_LABEL, os.hostname(), tailnetLabel, ...SELF_HOSTS].filter(Boolean)
 
 export class SkipMachine extends Error {}

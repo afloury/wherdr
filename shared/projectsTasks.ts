@@ -119,11 +119,6 @@ export interface MachineTasks {
   at?: number
   error?: string
   stale?: boolean
-  // wherdr runs in a container: the board is read from its files, nothing is
-  // run there (its upkeep belongs to the host), so no action from here.
-  readOnly?: boolean
-  // With readOnly: the guide that moves wherdr to the native service.
-  moveUrl?: string
 }
 export interface TasksBoard { version: string, machines: MachineTasks[] }
 export type TasksReply = TasksBoard | { same: true, version: string }
@@ -160,8 +155,7 @@ export function parseRepoKey(text: string): string {
   return REPO_KEY_RE.test(key) ? key : ''
 }
 
-// From `data/repo-keys.json` (store/keys_given.rs), where a container reads the
-// board's files: every key a repo went by (`had`, key -> repo, in the order they
+// From `data/repo-keys.json` (store/keys_given.rs): every key a repo went by (`had`, key -> repo, in the order they
 // were recorded: the last is the latest) and the stand-ins (`standIn`, repo -> key).
 export function repoKeysFromFile(text: string): Record<string, string> {
   let v: unknown
@@ -707,12 +701,12 @@ export function taskNotice(title: string): { id: string, event: NotifyEvent } | 
 }
 
 // ---------------------------------------------------------------- read from the files
-// wherdr in a container reads the board's own files (`data/tasks/<repo>/<n>/task.json`)
-// instead of running herdr-projects there: no upkeep, nothing written. The row
-// follows 1.2.1's own rules (flow/state.rs `show`) from the task's stage; for an
-// agent at work, `paneStatus` is the status wherdr sees on its pane (Herdr's
-// own, as 1.x reads it). A close reading, not the program's: the CLI stays the
-// reference wherever it may run.
+// What the board's own files (`data/tasks/<repo>/<n>/task.json`) say where the
+// CLI's answer leaves something out (an archived task, an approval's blockers,
+// links between boards): read only, nothing written. The row follows 1.2.1's
+// own rules (flow/state.rs `show`) from the task's stage; for an agent at work,
+// `paneStatus` is the status wherdr sees on its pane (Herdr's own, as 1.x reads
+// it). A close reading, not the program's: the CLI stays the reference.
 type Raw = Record<string, unknown>
 const BLOCKED_STAGES: Record<string, string> = { approval: 'permission', plan: 'permission', pick: 'permission' }
 
