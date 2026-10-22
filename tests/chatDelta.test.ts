@@ -381,7 +381,9 @@ describe('incremental re-read of a Claude transcript', () => {
   it('reads fractions of a second from the remote stat when it has them', async () => {
     const { file } = setup(2)
     utimesSync(file, 1767225600.8, 1767225600.8)
-    expect((await remoteFs(false).stat(file)).mtimeMs).toBe(1767225600800)
+    // Filesystems may truncate utimes to microseconds (799.999 ms instead of 800).
+    // Keep the subsecond check without requiring an exact floating-point timestamp.
+    expect((await remoteFs(false).stat(file)).mtimeMs).toBeCloseTo(1767225600800, 1)
   })
 
   for (const whole of [false, true]) {
