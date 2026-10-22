@@ -1,5 +1,7 @@
 # Installation and updates
 
+**Upgrading to 2.0.0?** Read the [release notes](release-notes-2.0.0.md) for breaking changes and the 1.x migration checklist.
+
 [Documentation](README.md) · [Project](../README.md)
 
 ## Requirements

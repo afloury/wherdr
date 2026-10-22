@@ -1,5 +1,7 @@
 # wherdr
 
+**Upgrading to 2.0.0?** Read the [release notes](docs/release-notes-2.0.0.md) for breaking changes and the 1.x migration checklist.
+
 wherdr is an unofficial, self-hosted web client for [Herdr](https://herdr.dev).
 Start coding agents on your computer, follow their work and reply from your phone or browser.
 It uses the same Herdr session, with live conversations, real terminals and a herdr-projects Board.

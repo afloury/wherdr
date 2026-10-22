@@ -1,5 +1,7 @@
 # Documentation
 
+**Upgrading to 2.0.0?** Read the [release notes](release-notes-2.0.0.md) for breaking changes and the 1.x migration checklist.
+
 Read only the page relevant to your task. Start with [Installation and updates](installation.md) for setup,
 [Security](security.md) for remote access, or [Development and tests](development.md) for repository changes.
 

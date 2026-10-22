@@ -202,6 +202,20 @@ describe('workflow', () => {
     expect(wf.match(/"\$GITHUB_SHA"/g)).toHaveLength(2)
   })
 
+  it('skips all packaging and publication for the stable version without creating a tag', () => {
+    const script = wf.match(/      - name: Version[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      -)/)![1]!
+      .split('\n').map(line => line.replace(/^          /, '')).join('\n')
+    const home = workspace('2.0.0')
+    const output = path.join(home, 'workflow-output')
+    const result = spawnSync('bash', ['-e', '-c', script], {
+      cwd: home, encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: output },
+    })
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('rolling prerelease is disabled')
+    expect(existsSync(output)).toBe(false)
+    expect(wf.match(/if: steps.v.outputs.version != ''/g)).toHaveLength(4)
+  })
+
   it('leaves the stable release workflows on vX.Y.Z tags', () => {
     expect(readFileSync('.github/workflows/release.yml', 'utf8')).toContain("tags: ['v*']")
     expect(readFileSync('.github/workflows/npm.yml', 'utf8')).toMatch(/\^v\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+\$/)
