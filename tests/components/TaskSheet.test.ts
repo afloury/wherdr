@@ -11,6 +11,15 @@ mockNuxtImport('askConfirm', () => async () => true)
 // Each action's reply is held until the test lets it go.
 const held: Array<() => void> = []
 function hold() { return new Promise(resolve => { held.push(() => resolve({ ok: true, msg: 'done' })) }) }
+let questionBody: unknown
+let questionFails = false
+let questionHeld = false
+registerEndpoint('/api/tasks/question', { method: 'POST', handler: async (event) => {
+  questionBody = await readBody(event)
+  if (questionHeld) return hold()
+  if (questionFails) throw createError({ statusCode: 502, message: 'Coordinator unavailable' })
+  return { ok: true }
+} })
 registerEndpoint('/api/tasks/approve', { method: 'POST', handler: hold })
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
 // What the details say, and how many times they were read.
@@ -35,8 +44,8 @@ const task: TaskRow = {
 }
 
 interface SheetVm { busy: boolean, approve: () => Promise<void>, act: (a: string) => Promise<void> }
-async function sheet() {
-  const w = await mountSuspended(TaskSheet, { props: { task, machine: 'a', open: true, 'onUpdate:open': (v: boolean) => w.setProps({ open: v }) } })
+async function sheet(embedded = false) {
+  const w = await mountSuspended(TaskSheet, { props: { embedded, task, machine: 'a', open: true, 'onUpdate:open': (v: boolean) => w.setProps({ open: v }) } })
   await flushPromises()
   return { w, vm: w.vm as unknown as SheetVm }
 }
@@ -296,7 +305,7 @@ describe('the sheet\'s chat button (no message field)', () => {
       onChat: (m: string, t: TaskRow) => chats.push([m, t.id]),
     } })
     await vi.waitFor(() => expect(chatButton()?.disabled).toBe(false))
-    expect(buttons().map(b => b.textContent?.trim())).toEqual(['Open the chat', 'Stop'])
+    expect(buttons().map(b => b.textContent?.trim())).toEqual(['Ask the coordinator', 'Coordinator replies', 'Open the chat', 'Stop'])
     expect(document.querySelector('.task-sheet textarea, .task-sheet input, .task-sheet form')).toBeNull()
     chatButton()!.click()
     await flushPromises()
@@ -380,7 +389,7 @@ describe('Start: the agent it starts with', () => {
     expect(names()).toEqual(['claude (default)', 'codex', 'pi'])
     expect(chips().map(c => c.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false'])
     expect(document.querySelector('.task-start-from')?.textContent).toBe('Default from your settings for demo')
-    expect(startButton()!.textContent?.trim()).toBe('Start')
+    await vi.waitFor(() => expect(startButton()!.textContent?.trim()).toBe('Start'))
     done(w)
   })
 
@@ -407,7 +416,7 @@ describe('Start: the agent it starts with', () => {
     // Back to the default: nothing sent again.
     chips()[0]!.click()
     await flushPromises()
-    expect(startButton()!.textContent?.trim()).toBe('Start')
+    await vi.waitFor(() => expect(startButton()!.textContent?.trim()).toBe('Start'))
     done(w)
   })
 
@@ -692,4 +701,72 @@ describe('Queue and Start after…', () => {
     expect(button(/^Start$/)).toBeTruthy()
     expect(document.querySelector('.task-wait-clear')).toBeTruthy()
   })
+})
+
+describe('asking the coordinator from the task sheet', () => {
+  it('offers a separate question for a to-do task on another machine, then opens the coordinator', async () => {
+    const { w } = await sheet(true)
+    await w.setProps({ task: { ...task, stage: 'todo', state: 'idle', group: 'todo' }, machine: 'remote' })
+    await flushPromises()
+    const ask = w.findAll('button').find(b => b.text() === 'Ask the coordinator')!
+    await ask.trigger('click')
+    await w.get('textarea').setValue('What does it need?')
+    await w.get('form.task-question').trigger('submit')
+    await flushPromises()
+    expect(questionBody).toEqual({ machine: 'remote', id: 'demo/1', text: 'What does it need?' })
+    await vi.waitFor(() => expect(w.emitted('coordinator')?.[0]).toEqual(['remote', expect.objectContaining({ id: 'demo/1' })]))
+    expect(held).toHaveLength(0)
+    w.unmount()
+  })
+  it('keeps a failed question editable and clears it when switching tasks', async () => {
+    questionFails = true
+    const { w } = await sheet(true)
+    await w.findAll('button').find(b => b.text() === 'Ask the coordinator')!.trigger('click')
+    await w.get('textarea').setValue('Why?')
+    await w.get('form.task-question').trigger('submit')
+    await flushPromises()
+    await vi.waitFor(() => expect(w.get('textarea').attributes('disabled')).toBeUndefined())
+    expect(w.props('open')).toBe(true)
+    expect((w.get('textarea').element as HTMLTextAreaElement).value).toBe('Why?')
+    expect(w.emitted('coordinator')).toBeUndefined()
+    await w.setProps({ machine: 'another' })
+    await flushPromises()
+    expect(w.find('form.task-question').exists()).toBe(false)
+    questionFails = false
+    w.unmount()
+  })
+})
+
+it('hides coordinator questions on archived and read-only task sheets', async () => {
+  const { w } = await sheet(true)
+  await w.setProps({ readOnly: true })
+  expect(w.text()).not.toContain('Ask the coordinator')
+  await w.setProps({ readOnly: false, task: { ...task, archived: true } })
+  expect(w.text()).not.toContain('Ask the coordinator')
+  w.unmount()
+})
+
+it('a late question reply never opens the coordinator over another task', async () => {
+  questionHeld = true
+  const { w } = await sheet(true)
+  await w.findAll('button').find(b => b.text() === 'Ask the coordinator')!.trigger('click')
+  await w.get('textarea').setValue('What does it need?')
+  await w.get('form.task-question').trigger('submit')
+  await vi.waitFor(() => expect(held).toHaveLength(1))
+  await w.setProps({ machine: 'another' })
+  held.shift()!()
+  await flushPromises()
+  expect(w.emitted('coordinator')).toBeUndefined()
+  expect(w.props('open')).toBe(true)
+  questionHeld = false
+  w.unmount()
+})
+
+it('opens coordinator replies in one tap without sending a question', async () => {
+  const { w } = await sheet(true)
+  expect(w.find('form.task-question').exists()).toBe(false)
+  await w.findAll('button').find(b => b.text() === 'Coordinator replies')!.trigger('click')
+  expect(w.emitted('coordinator')?.[0]).toEqual(['a', expect.objectContaining({ id: 'demo/1' })])
+  expect(w.props('open')).toBe(false)
+  w.unmount()
 })

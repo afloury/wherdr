@@ -427,6 +427,8 @@ export function sortTasks(rows: TaskRow[]): TaskRow[] {
 }
 
 // Text sent with `tell`: one message, bounded. Empty: nothing to send.
+// Leave room for task context in a coordinator message.
+export const TASK_QUESTION_MAX = 7000
 export const TELL_MAX = 8000
 export function cleanTell(v: unknown): string {
   return typeof v === 'string' ? v.replace(/\r\n?/g, '\n').trim().slice(0, TELL_MAX) : ''
