@@ -131,6 +131,7 @@ export interface QueueEntry {
   held?: boolean
   failed?: boolean
   // Held (or failed) because the agent's input field was not empty.
+  inputText?: string
   busy?: boolean
   // Since when the agent has been ready with this message delivered.
   readySince?: number
@@ -289,6 +290,7 @@ export const publicEntry = (q: QueueEntry): QueuedMessage => ({
   ...((q.held || q.failed) && q.busy ? { reason: 'busy' as const } : q.failed && q.noInput ? { reason: 'no_input' as const }
     : q.failed && q.lost ? { reason: 'lost' as const } : q.failed && q.unseen ? { reason: 'unseen' as const }
       : q.held && !q.failed && q.turn ? { reason: 'turn' as const } : {}),
+  ...(q.busy && q.inputText ? { inputText: q.inputText } : {}),
   ...(q.back ? { back: true } : {}),
 })
 
