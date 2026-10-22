@@ -3,12 +3,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { bindFunction } from './stateFunction'
 import { HerdrError } from '../server/utils/herdr'
 import { inputBox, clearKeys } from '../server/utils/unqueue'
-import { INPUT_STATES, nextHeld, type QueueEntry } from '../server/utils/queued'
+import { INPUT_STATES, nextHeld, checkQueue, HOLD_TTL_MS, type QueueEntry } from '../server/utils/queued'
 import { BASH_EMPTY } from '../server/utils/guardedSend'
 
 const source = readFileSync(new URL('../server/utils/state.ts', import.meta.url), 'utf8').replace('export async function clearQueuedInput', 'async function clearQueuedInput')
 function setup(patch = {}, boxes = ['ns', '']) {
-  const q = { id: 'q', held: true, busy: true, inputText: 'ns' }
+  const q: QueueEntry = { id: 'q', text: 'hello', at: 0, held: true, busy: true, inputText: 'ns' }
   const keys = vi.fn(async () => {})
   const schedule = vi.fn()
   const clear = bindFunction(source, 'clearQueuedInput', {
@@ -25,7 +25,10 @@ describe('clear queued terminal input', () => {
     const t = setup()
     await t.clear()
     expect(t.keys).toHaveBeenCalledWith(clearKeys(1))
-    expect(t.q.busy).toBeUndefined()
+    expect(t.q.busy).toBe(true)
+    // Even an old hold must survive the poll between clearing and delivery.
+    expect(checkQueue([t.q], 'idle', HOLD_TTL_MS + 1)).toBe(false)
+    expect(t.q.failed).toBeUndefined()
     expect(t.schedule).toHaveBeenCalledOnce()
   })
   it.each([{ status: 'working' }, { status: 'blocked' }, { stopped: {} }, { menu: {} }, { prompt: {} }, { leaving: true }])('rejects an unavailable agent %j', async patch => {

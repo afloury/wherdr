@@ -540,7 +540,7 @@ async function typeHeld(p: Pane, q: QueueEntry): Promise<boolean> {
   try { await sendPrompt(p, q.text, { retry: Boolean(q.typedAt) }) }
   catch (e) {
     if ((e as GuardError).typed) q.typedAt = at
-    // Someone's text in the field: still held, until BUSY_TTL_MS.
+    // Someone's text in the field: held until the field becomes free.
     if (isBusyError(e)) {
       if ((e as HerdrError).code === 'input_busy' && !q.busy) { q.busy = true; setTimeout(poll, 50) }
       return false
@@ -684,7 +684,9 @@ export async function clearQueuedInput(paneId: string, id: string, expected: str
       await sleep(100)
       if (!['', BASH_EMPTY].includes((await d.box()) ?? 'missing')) throw new HerdrError('input_busy', 'The agent’s input contains text')
     }
-    delete q.busy
+    // Keep the busy hold until deliverHeld re-reads the empty field and
+    // immediately delivers it. Clearing must not expose an old message to
+    // the generic hold timeout on the next poll.
     delete q.inputText
   })
   setTimeout(poll, 50)
