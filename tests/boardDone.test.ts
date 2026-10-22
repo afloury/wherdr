@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BOARD_DONE_KEY, DONE_LATEST, boardCell, boardDoneShown, boardDoneStored, boardGroups, boardPhoneColumn } from '../app/utils/boardDone'
+import { BOARD_DONE_KEY, DONE_LATEST, boardCell, doneNewestFirst, boardDoneShown, boardDoneStored, boardGroups, boardPhoneColumn } from '../app/utils/boardDone'
 
 describe('Done on the Board', () => {
   it('is hidden by default: four columns, the work in progress', () => {
@@ -31,5 +31,20 @@ describe('Done on the Board', () => {
     expect(boardCell('done', done.slice(0, 3), false, DONE_LATEST)).toEqual({ cards: done.slice(0, 3), hidden: 0 })
     // Other groups are never cut.
     expect(boardCell('todo', done, false, DONE_LATEST)).toEqual({ cards: done, hidden: 0 })
+  })
+
+  it('with several machines, the latest done tasks of all of them come first, not the first machine\'s', () => {
+    // Each machine's list is newest first; the Board puts them one after the other.
+    const card = (machine: string, id: string, created?: number) => ({ machine, id, task: { created } })
+    const cards = [
+      card('a', 'a1', 300), card('a', 'a2', 200), card('a', 'a3', 100), card('a', 'a4', 50), card('a', 'a5', 40), card('a', 'a6', 30),
+      card('b', 'b1', 900), card('b', 'b2', 250), card('b', 'b3'),
+    ]
+    const sorted = doneNewestFirst(cards)
+    expect(sorted.map(c => c.id)).toEqual(['b1', 'a1', 'b2', 'a2', 'a3', 'a4', 'a5', 'a6', 'b3'])
+    expect(boardCell('done', sorted, false, DONE_LATEST).cards.map(c => c.id)).toEqual(['b1', 'a1', 'b2', 'a2', 'a3'])
+    // No time known anywhere: the order given stays.
+    const plain = [card('a', 'x'), card('b', 'y'), card('a', 'z')]
+    expect(doneNewestFirst(plain).map(c => c.id)).toEqual(['x', 'y', 'z'])
   })
 })

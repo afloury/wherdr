@@ -427,7 +427,7 @@ const doneBoard = [
     .map(([id, title]) => ({ id, state: 'done', title, msg: 'Merged', stage: 'done' })),
 ]
 
-test('Done is hidden by default; its toggle shows the latest five, newest first, and is kept on the device', async ({ page }, testInfo) => {
+test('Done is hidden by default; its toggle shows the latest five, newest first, and is kept on the device', { tag: '@chromium-desktop' }, async ({ page }, testInfo) => {
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(doneBoard))
   await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
   await page.goto('/#/board')
@@ -637,7 +637,7 @@ test('a push about a task opens it on the Board', async ({ page }) => {
 
 // Two machines, answered by the page itself (/api/tasks): the same task id on
 // both, a machine that stops answering, a board kept from an earlier visit.
-type Fake = { machine: string, status?: string, error?: string, stale?: boolean, readOnly?: boolean, tasks: { id: string, title: string }[] }
+type Fake = { machine: string, status?: string, error?: string, stale?: boolean, readOnly?: boolean, tasks: ({ id: string, title: string } & Record<string, unknown>)[] }
 const fakeRow = (id: string, title: string) => ({
   id, repo: id.split('/')[0], n: Number(id.split('/')[1]), state: 'blocked', kind: 'question', stage: 'asks', title, msg: '', app: 'claude',
   progress: null, eta: null, pr: '', review: null, reviewRound: 0, research: false, archived: false, queue: null, group: 'needs',
@@ -646,7 +646,7 @@ async function fakeBoard(page: import('@playwright/test').Page, get: () => Fake[
   let n = 0
   await page.route(url => new URL(url).pathname === '/api/tasks', async (route) => {
     if (delay) await new Promise(r => setTimeout(r, delay))
-    await route.fulfill({ json: { version: `v${++n}`, machines: get().map(m => ({ status: 'ready', version: '1.2.1', at: Date.now(), ...m, tasks: m.tasks.map(t => fakeRow(t.id, t.title)) })) } })
+    await route.fulfill({ json: { version: `v${++n}`, machines: get().map(m => ({ status: 'ready', version: '1.2.1', at: Date.now(), ...m, tasks: m.tasks.map(t => ({ ...fakeRow(t.id, t.title), ...t })) })) } })
   })
   await page.route(url => new URL(url).pathname === '/api/tasks/details', route => route.fulfill({
     json: { id: new URL(route.request().url()).searchParams.get('id'), title: '', stage: 'asks', msg: '', description: '', agent: 'claude', pr: '', branch: '', worktree: '', failure: '', failureStage: '', failureAuth: false, review: null, reviewRounds: 0, plan: '', research: false, pane: null },
@@ -670,6 +670,32 @@ test('a push opens its own machine\'s task, never the same id on another machine
   machines = [{ machine: 'ma', tasks: [{ id: 'demo/1', title: 'On machine A' }] }, machines[1]!]
   await page.locator('.board-filter').click()
   await expect(page.locator('.board-panel')).toContainText('On machine A', { timeout: 15000 })
+})
+
+test('Done across machines: the latest five of all of them, newest first; a link still opens a done task while Done is hidden', async ({ page }) => {
+  const done = (id: string, title: string, created: number) => ({ id, title, created, state: 'done', kind: '', stage: 'done', msg: 'Merged', group: 'done' })
+  // Machine A lists six done tasks, machine B its newest one and an old one.
+  await fakeBoard(page, () => [
+    { machine: 'ma', tasks: [60, 50, 40, 30, 20, 10].map((c, i) => done(`demo/${10 - i}`, `A done ${i + 1}`, c)) },
+    { machine: 'mb', tasks: [done('web/9', 'B newest', 100), done('web/2', 'B oldest', 5)] },
+  ])
+  // Hidden, yet a link to a done task opens it.
+  await page.goto('/#/board?machine=mb&task=web%2F9')
+  await expect(page.locator('.board-panel, [role="dialog"]').filter({ hasText: 'B newest' }).first()).toBeVisible({ timeout: 15000 })
+  // Back to the Board alone (the panel closes with a fresh page).
+  await page.goto('/#/board')
+  await page.reload()
+  await page.getByRole('button', { name: 'Global' }).click()
+  await expect(page.locator('.board-done-toggle')).toHaveAccessibleName('Show done tasks (8)', { timeout: 15000 })
+  await page.locator('.board-done-toggle').click()
+  const cards = page.locator('.board-col.done .task-card')
+  await expect(cards).toHaveCount(5)
+  await expect(cards.first()).toContainText('B newest')
+  await expect(cards.last()).toContainText('A done 4')
+  await expect(page.locator('.board-col.done')).not.toContainText('B oldest')
+  await page.locator('.board-col.done .board-more').click()
+  await expect(cards).toHaveCount(8)
+  await expect(cards.last()).toContainText('B oldest')
 })
 
 test('the machine filter lists the local machine, read-only or not, and shows only its tasks', async ({ page }, testInfo) => {

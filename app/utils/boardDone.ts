@@ -3,7 +3,7 @@
 // toggle ("Done · 9") shows it and hides it again; the choice is kept on the
 // device. Shown, it follows herdr-projects' rule: newest first, only the latest
 // few, then "N more" (herdr-projects docs/board.md, "The list: five groups").
-import { TASK_GROUPS, type TaskGroup } from '../../shared/projectsTasks'
+import { TASK_GROUPS, type TaskGroup, type TaskRow, newerFirst } from '../../shared/projectsTasks'
 
 // The device's choice: '1' shown, anything else (nothing stored) hidden.
 export const BOARD_DONE_KEY = 'boardDone'
@@ -26,3 +26,8 @@ export function boardCell<T>(group: TaskGroup, all: T[], showAll: boolean, lates
   const cards = group === 'done' && !showAll ? all.slice(0, latest) : all
   return { cards, hidden: all.length - cards.length }
 }
+
+// Done across machines: each machine's list is newest first, but the Board
+// puts them one after the other. Newest created first whatever the machine;
+// cards with no creation time keep their order, after the others.
+export const doneNewestFirst = <T extends { task: Pick<TaskRow, 'created'> }>(cards: T[]): T[] => [...cards].sort((a, b) => newerFirst(a.task, b.task))

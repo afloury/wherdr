@@ -127,7 +127,9 @@ const doneToggleLabel = computed(() => (showDone.value
   : tl(`Show done tasks (${doneCount.value})`, `Afficher les tâches faites (${doneCount.value})`)))
 const groups = computed(() => boardGroups(showDone.value))
 const columns = computed(() => groups.value.map((id) => {
-  const all = cards.value.filter(c => c.task.group === id)
+  const inGroup = cards.value.filter(c => c.task.group === id)
+  // Done: the latest few of every machine shown, not of the first one.
+  const all = id === 'done' ? doneNewestFirst(inGroup) : inGroup
   return { id, label: taskGroupLabel(id), total: all.length, ...boardCell(id, all, showAll.value, DONE_LATEST) }
 }))
 // As many columns as groups shown, of equal width.

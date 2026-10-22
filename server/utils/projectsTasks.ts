@@ -24,7 +24,7 @@ import { joinId } from '../../shared/ids'
 import {
   type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
   TASK_QUESTION_MAX, taskCanFix, taskCanApproveAnyway, failureIsStale, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
-  isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, repoKeysFromFile, rowFromTaskFile, taskActions,
+  isTaskId, parseRepoKey, parseTaskDetails, newerFirst, parseTaskList, repoKeysFromFile, rowFromTaskFile, taskActions,
   cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots,
 } from '../../shared/projectsTasks'
 import { HERDR_BIN, HERDR_CHILD_ENV, IN_CONTAINER, log } from './env'
@@ -197,12 +197,11 @@ async function listFromFiles(m: Machine, archived = false): Promise<{ tasks: Tas
     try { t = await readTaskFile(m, id) }
     catch (e) { failed.push(`${id} (${(e as Error).message})`); return null }
     const { pane } = linkedPane(m, t)
-    const row = t ? rowFromTaskFile(t, pane ? panes.find(p => p.id === pane)?.status ?? null : null) : null
-    return row ? { row, created: typeof t?.created === 'number' ? t.created : 0 } : null
+    return t ? rowFromTaskFile(t, pane ? panes.find(p => p.id === pane)?.status ?? null : null) : null
   }))
   // In the order of `list --json`: newest created first (stable: by number when unknown).
-  const kept = rows.filter((r): r is { row: TaskRow, created: number } => r !== null && r.row.archived === archived)
-  return { tasks: kept.sort((a, b) => b.created - a.created).map(r => r.row).slice(0, FILES_MAX), failed }
+  const kept = rows.filter((r): r is TaskRow => r !== null && r.archived === archived)
+  return { tasks: kept.sort(newerFirst).slice(0, FILES_MAX), failed }
 }
 
 // ---------------------------------------------------------------- the list
@@ -211,19 +210,43 @@ interface Cached { tasks: TaskRow[], at: number, readAt: number, error?: string,
 const lists = new Map<string, Cached>()
 const reading = new Map<string, Promise<Cached>>()
 
+// When each done task was made (per machine, id → ms): `list --json` does not
+// say, its file does, and it never changes. Read once, a few files at a time.
+const createdAt = new Map<string, Map<string, number | null>>()
+const CREATED_READS = 8
+async function withCreated(m: Machine, rows: TaskRow[]): Promise<TaskRow[]> {
+  const known = createdAt.get(m.key) ?? new Map<string, number | null>()
+  const todo = rows.filter(r => r.group === 'done' && r.created === undefined && !known.has(r.id))
+  for (let i = 0; i < todo.length; i += CREATED_READS) {
+    await Promise.all(todo.slice(i, i + CREATED_READS).map(async (r) => {
+      // A read that failed is tried again at the next read of the list.
+      const file = await readTaskFile(m, r.id).catch(() => undefined)
+      if (file !== undefined) known.set(r.id, typeof file?.created === 'number' ? file.created : null)
+    }))
+  }
+  // Only the tasks listed now are kept.
+  const listed = new Set(rows.map(r => r.id))
+  for (const id of known.keys()) if (!listed.has(id)) known.delete(id)
+  createdAt.set(m.key, known)
+  return rows.map((r) => {
+    const created = r.group === 'done' && r.created === undefined ? known.get(r.id) : null
+    return typeof created === 'number' ? { ...r, created } : r
+  })
+}
+
 // `at`: when this answer was given; `readAt`: when its tasks were read (kept on an error).
 function readList(m: Machine): Promise<Cached> {
   const now = reading.get(m.key)
   if (now) return now
   const started = Date.now()
-  const read = (readsFiles(m) ? listFromFiles(m) : command(m, ['list', '--json'], LIST_TIMEOUT_MS).then(async text => ({ tasks: await Promise.all(parseTaskList(text).map(async row => {
+  const read = (readsFiles(m) ? listFromFiles(m) : command(m, ['list', '--json'], LIST_TIMEOUT_MS).then(async text => ({ tasks: await withCreated(m, await Promise.all(parseTaskList(text).map(async row => {
     if (row.stage !== 'approval') return row
     // The CLI list omits these blockers. Read only their file flags, with no
     // extra upkeep commands, so Home, Board and panel use the same group.
     const file = await readTaskFile(m, row.id).catch(() => null)
     return file?.stage === 'approval' && rowFromTaskFile(file, null)?.approvalBlocked
       ? { ...row, approvalBlocked: true, group: 'needs' as const } : row
-  })), failed: [] as string[] })))
+  }))), failed: [] as string[] })))
     .then(({ tasks, failed }): Cached => {
       if (!failed.length) return { tasks, at: Date.now(), readAt: Date.now() }
       // Some tasks could not be read: the others are fresh, those keep their last row, and it is said.
@@ -393,7 +416,7 @@ function forget(m: Machine) { lists.delete(m.key) }
 // Tests start from an empty cache.
 // `keepKeys`: the repos' keys stay (a later list without asking them again).
 export function resetTasksCache(keepKeys = false) {
-  lists.clear(); reading.clear(); queues.clear()
+  lists.clear(); reading.clear(); queues.clear(); createdAt.clear()
   if (!keepKeys) { repoKeys.clear(); keysReading.clear() }
 }
 

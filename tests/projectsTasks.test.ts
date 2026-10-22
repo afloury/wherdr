@@ -164,6 +164,14 @@ describe('groups and actions', () => {
       { id: 'a/7', state: 'done', stage: 'done' }, { id: 'c/1', state: 'done', stage: 'done' },
     ]))
     expect(sortTasks(rows).map(r => r.id)).toEqual(['a/1', 'b/2', 'a/7', 'c/1'])
+    // With creation times (read from the task files): newest created first.
+    const timed = parseTaskList(JSON.stringify([
+      { id: 'b/2', state: 'done', stage: 'done', created: 100 }, { id: 'a/7', state: 'done', stage: 'done', created: 300 },
+      { id: 'c/1', state: 'done', stage: 'done', created: 200 }, { id: 'c/9', state: 'done', stage: 'done' },
+    ]))
+    expect(timed[1]!.created).toBe(300)
+    expect(sortTasks(timed).map(r => r.id)).toEqual(['a/7', 'c/1', 'b/2', 'c/9'])
+    expect(rowFromTaskFile({ id: 'a/1', stage: 'done', created: 42 }, null)!.created).toBe(42)
     // By repo: each repo's done rows keep that order too.
     expect(groupByRepo(rows).map(g => [g.repo, g.tasks.map(r => r.id)])).toEqual([['a', ['a/1', 'a/7']], ['b', ['b/2']], ['c', ['c/1']]])
   })
