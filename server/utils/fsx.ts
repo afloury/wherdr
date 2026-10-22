@@ -4,6 +4,7 @@
 // in POSIX sh + BSD (macOS) or GNU (Linux) stat.
 import fs from 'node:fs'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 
 const fsp = fs.promises
 
@@ -18,6 +19,9 @@ export interface MachineFs {
   readFile: (p: string) => Promise<string>
   // `len` bytes from `start` (fewer at the end of the file).
   read: (p: string, start: number, len: number, timeoutMs?: number) => Promise<Buffer>
+  // Checksum of the first `len` bytes, computed where the file is (a remote
+  // machine sends back a few bytes, not the file).
+  digest?: (p: string, len: number) => Promise<string>
 }
 
 // ---------------------------------------------------------------- disque local
@@ -35,6 +39,11 @@ export const localFs: MachineFs = {
       const { bytesRead } = await fh.read(buf, 0, len, start)
       return bytesRead < len ? buf.subarray(0, bytesRead) : buf
     } finally { await fh.close() }
+  },
+  async digest(p, len) {
+    const h = createHash('sha1')
+    if (len > 0) for await (const b of fs.createReadStream(p, { start: 0, end: len - 1 })) h.update(b as Buffer)
+    return h.digest('hex')
   },
 }
 
@@ -78,12 +87,16 @@ export const shq = (s: string) => `'${String(s).replace(/'/g, `'\\''`)}'`
 // every part quoted, so a path is never interpreted by either shell.
 export const remoteCommand = (script: string, args: string[] = []) => `sh -c ${shq(script)} sh ${args.map(shq).join(' ')}`.trimEnd()
 
-// BSD (macOS) or GNU `stat`: one "size mtime inode type" line per file, "x" if missing.
-export const STAT_SCRIPT = `if stat -f %z / >/dev/null 2>&1; then bsd=1; else bsd=; fi
+// BSD (macOS) or GNU `stat`: one "size mtime inode type" line per file, "x" if
+// missing. The mtime has its fraction of a second when `stat` can print it
+// (GNU %.9Y, BSD %Fm): a file rewritten at the same size within one second
+// then gets another mtime.
+export const STAT_SCRIPT = `if stat -f %z / >/dev/null 2>&1; then bsd=1; m=%m; stat -f %Fm / 2>/dev/null | grep -q '^[0-9]*[.][0-9]' && m=%Fm
+else bsd=; m=%Y; stat -c %.9Y / 2>/dev/null | grep -q '^[0-9]*[.][0-9]' && m=%.9Y; fi
 for f; do
   if [ ! -e "$f" ]; then echo x
-  elif [ -n "$bsd" ]; then stat -f '%z %m %i %HT' "$f" 2>/dev/null || echo x
-  else stat -c '%s %Y %i %F' "$f" 2>/dev/null || echo x; fi
+  elif [ -n "$bsd" ]; then stat -f "%z $m %i %HT" "$f" 2>/dev/null || echo x
+  else stat -c "%s $m %i %F" "$f" 2>/dev/null || echo x; fi
 done`
 
 // Reserved by our read scripts, independent of shell/utility diagnostics
@@ -93,10 +106,12 @@ const REQUIRE_PATH = `[ -e "$1" ] || exit ${MISSING_PATH_EXIT}\n`
 
 export function parseStatLine(line: string): FsStat | null {
   // The inode is optional: "size mtime type" from an older script still parses.
-  const m = /^(\d+) (\d+) (?:(\d+) )?(\D.*)$/.exec(String(line || '').trim())
+  const m = /^(\d+) (\d+(?:\.\d+)?) (?:(\d+) )?(\D.*)$/.exec(String(line || '').trim())
   if (!m) return null
   const type = m[4]!.toLowerCase()
-  const st: FsStat = { size: Number(m[1]), mtimeMs: Number(m[2]) * 1000, isFile: type.includes('regular'), isDir: type.includes('directory') }
+  // Fraction kept to the microsecond (whole seconds: a multiple of 1000).
+  const [sec, frac = ''] = m[2]!.split('.')
+  const st: FsStat = { size: Number(m[1]), mtimeMs: Number(sec) * 1000 + Number((frac + '000000').slice(0, 6)) / 1000, isFile: type.includes('regular'), isDir: type.includes('directory') }
   if (m[3]) st.ino = Number(m[3])
   return st
 }
@@ -161,6 +176,10 @@ export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number } = {}
       // Open before the pipeline so a failed open cannot be hidden by head's
       // successful exit (POSIX sh has no portable pipefail).
       return run(REQUIRE_PATH + 'exec 3< "$1" || exit $?\ntail -c +"$2" <&3 | head -c "$3"', [p, String(start + 1), String(len)], timeoutMs || 60000)
+    },
+    async digest(p, len) {
+      const out = await run(REQUIRE_PATH + 'exec 3< "$1" || exit $?\nhead -c "$2" <&3 | cksum', [p, String(Math.max(0, len))], 60000)
+      return out.toString('utf8').trim()
     },
   }
 }

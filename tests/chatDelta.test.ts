@@ -6,7 +6,7 @@ import { createChatDelta, splitToken } from '../server/utils/chatDelta'
 import { anchorOf, createTranscripts, headOf } from '../server/utils/transcripts'
 import { createTailLoader, nextTail, restartsTail, tailQuery } from '../app/utils/chatTail'
 import type { ChatItem } from '../shared/types'
-import { type MachineFs, type ShellExec, createShellFs, localFs } from '../server/utils/fsx'
+import { type FsStat, type MachineFs, type ShellExec, createShellFs, localFs } from '../server/utils/fsx'
 import { spawn } from 'node:child_process'
 import { renameSync } from 'node:fs'
 
@@ -359,17 +359,63 @@ describe('incremental re-read of a Claude transcript', () => {
     expect(r.rewritten).toBe(true)
   })
 
-  it('never says "unchanged" for a remote state read within its mtime second', async () => {
-    // Remote machine: the real stat script (whole seconds), local reads.
-    const sh: ShellExec = (script, args = []) => new Promise((resolve) => {
-      const child = spawn('sh', ['-c', script, 'sh', ...args])
-      const out: Buffer[] = []
-      child.stdout.on('data', (b: Buffer) => out.push(b))
-      child.on('close', code => resolve({ code, stdout: Buffer.concat(out), stderr: '' }))
-    })
+  // Remote machine: the real stat script and checksum, local reads. With
+  // `whole`, the stat has whole seconds only (no fractions on that machine).
+  const sh: ShellExec = (script, args = []) => new Promise((resolve) => {
+    const child = spawn('sh', ['-c', script, 'sh', ...args])
+    const out: Buffer[] = []
+    child.stdout.on('data', (b: Buffer) => out.push(b))
+    child.on('close', code => resolve({ code, stdout: Buffer.concat(out), stderr: '' }))
+  })
+  function remoteFs(whole: boolean): MachineFs {
     const remote = createShellFs(sh, { statTtlMs: 0 })
+    const floor = (st: FsStat) => (whole ? { ...st, mtimeMs: Math.floor(st.mtimeMs / 1000) * 1000 } : st)
+    return {
+      ...localFs,
+      stat: async p => floor(await remote.stat(p)),
+      statMany: async ps => (await remote.statMany(ps)).map(st => st && floor(st)),
+      digest: remote.digest,
+    }
+  }
+
+  it('reads fractions of a second from the remote stat when it has them', async () => {
+    const { file } = setup(2)
+    utimesSync(file, 1767225600.8, 1767225600.8)
+    expect((await remoteFs(false).stat(file)).mtimeMs).toBe(1767225600800)
+  })
+
+  for (const whole of [false, true]) {
+    it(`starts again after a same-second remote rewrite far above the cursor (${whole ? 'whole seconds' : 'fractions'})`, async () => {
+      let clock = 1_000_000
+      const { file, call, t, pane } = setup(6000, ` ${'x'.repeat(400)}`, { fs: remoteFs(whole), now: () => clock })
+      const second = 1767225600
+      utimesSync(file, second + 0.1, second + 0.1)
+      const load = await call('', null, 0)
+      const start = load.start!
+      const older = await t.chat(pane, { before: start })
+      expect(older.items!.some(i => i.text?.startsWith('Question 1 '))).toBe(true)
+      clock += 200
+      const first = await call(load.token!, start, load.items!.length)
+      // A loaded older message rewritten, same size and inode, same second.
+      const ino = statSync(file).ino
+      writeFileSync(file, readFileSync(file, 'utf8').replace('Question 1 ', 'Answered 1 '))
+      utimesSync(file, second + 0.8, second + 0.8)
+      expect(statSync(file).ino).toBe(ino)
+      clock += 300
+      const r = await call(first.token!, start, load.items!.length)
+      expect(r.rewritten).toBe(true)
+      expect(restartsTail({ file: first.file!, tailStart: start }, r)).toBe(true)
+      // And once settled, a client that did not restart is still told to.
+      clock += 2000
+      const late = await call(first.token!, start, load.items!.length)
+      expect(late.unchanged).toBeFalsy()
+      expect(late.rewritten).toBe(true)
+    })
+  }
+
+  it('never says "unchanged" for a remote state read within its mtime second', async () => {
     let clock = 1_000_000
-    const { file, call } = setup(6000, ` ${'x'.repeat(400)}`, { fs: { ...localFs, stat: remote.stat, statMany: remote.statMany }, now: () => clock })
+    const { file, call } = setup(6000, ` ${'x'.repeat(400)}`, { fs: remoteFs(true), now: () => clock })
     const second = 1767225600
     utimesSync(file, second + 0.1, second + 0.1)
     const load = await call('', null, 0)
@@ -415,8 +461,8 @@ describe('anchorOf', () => {
   })
 
   it('reads the state a token was read from', () => {
-    expect(headOf('a.jsonl:900:120:77-1700!/120.0123456789ab~3#0123456789abcdef')).toEqual({ file: 'a.jsonl', size: 900, from: 120, ino: 77, gen: '77-1700' })
-    expect(headOf('a.jsonl:900:null:1700')).toEqual({ file: 'a.jsonl', size: 900, from: null, ino: null, gen: '1700' })
+    expect(headOf('a.jsonl:900:120:77-1700!/120.0123456789ab~3#0123456789abcdef')).toEqual({ file: 'a.jsonl', size: 900, from: 120, ino: 77, gen: '77-1700', unsettled: true })
+    expect(headOf('a.jsonl:900:null:1700')).toEqual({ file: 'a.jsonl', size: 900, from: null, ino: null, gen: '1700', unsettled: false })
     expect(headOf('a.jsonl:900:120')).toBeNull() // token of an older server
   })
 })

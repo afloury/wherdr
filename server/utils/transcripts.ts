@@ -72,19 +72,23 @@ export function anchorOf(token: string | null | undefined): { start: number, has
 }
 // File generation for the token: another inode or another modification time
 // is another state, even at the same size.
-const genOf = (st: { mtimeMs: number, ino?: number }) => `${st.ino ? `${st.ino}-` : ''}${Math.floor(st.mtimeMs)}`
+// Modification time in microseconds.
+const genOf = (st: { mtimeMs: number, ino?: number }) => `${st.ino ? `${st.ino}-` : ''}${Math.round(st.mtimeMs * 1000)}`
 // State a client's token was read from: file, size, cursor, inode, mtime
 // (`!`: read before its mtime second was over, see SETTLE_MS).
-const HEAD = /^(.*):(\d+):(null|\d+):(?:(\d+)-)?(\d+)!?(?=[/~#]|$)/
-export function headOf(token: string | null | undefined): { file: string, size: number, from: number | null, ino: number | null, gen: string } | null {
+const HEAD = /^(.*):(\d+):(null|\d+):(?:(\d+)-)?(\d+)(!?)(?=[/~#]|$)/
+export function headOf(token: string | null | undefined): { file: string, size: number, from: number | null, ino: number | null, gen: string, unsettled: boolean } | null {
   const m = HEAD.exec(String(token || ''))
   if (!m) return null
-  return { file: m[1]!, size: Number(m[2]), from: m[3] === 'null' ? null : Number(m[3]), ino: m[4] ? Number(m[4]) : null, gen: `${m[4] ? `${m[4]}-` : ''}${m[5]}` }
+  return { file: m[1]!, size: Number(m[2]), from: m[3] === 'null' ? null : Number(m[3]), ino: m[4] ? Number(m[4]) : null, gen: `${m[4] ? `${m[4]}-` : ''}${m[5]}`, unsettled: m[6] === '!' }
 }
-// A remote stat gives whole seconds: a rewrite at the same size within the
-// second already read keeps the same generation. A state is only trusted
-// ("unchanged", parse cache) once read this long after it was first seen:
-// any write of that second happened before first sight + 1 s.
+// A stat that gives whole seconds only (a remote `stat` without fractions, a
+// coarse file system): a rewrite at the same size within the second already
+// read keeps the same generation. Such a state is only trusted ("unchanged",
+// parse cache) once read this long after it was first seen: any write of
+// that second happened before first sight + 1 s. Until then its token is
+// marked `!`, and the checksum of the file taken at first sight tells whether
+// what the client read is still there (see chat).
 const SETTLE_MS = 1500
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type HerdrCall = (method: string, params?: Record<string, unknown>, timeoutMs?: number) => Promise<any>
@@ -771,16 +775,37 @@ export function isMissing(e: unknown): boolean {
 }
 
 export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }: { home: string, herdr: HerdrCall, fs?: MachineFs, now?: () => number }) {
-  // File -> generation and when this server first saw it (see SETTLE_MS).
-  const genSeen = new Map<string, { gen: string, at: number }>()
-  function settledGen(file: string, st: { mtimeMs: number }, gen: string) {
-    if (Math.floor(st.mtimeMs) % 1000) return true // sub-second mtime: exact
+  // File -> state (size, generation) and when this server first saw it, for
+  // whole-second mtimes (see SETTLE_MS); `file|size|gen` -> checksum of the
+  // file at first sight (null: could not be taken).
+  const genSeen = new Map<string, { state: string, at: number }>()
+  const firstSums = new Map<string, Promise<string | null>>()
+  const sumKey = (file: string, size: number, gen: string) => `${file}|${size}|${gen}`
+  async function settledGen(file: string, st: { size: number, mtimeMs: number }, gen: string) {
+    if (Math.round(st.mtimeMs * 1000) % 1_000_000) return true // sub-second mtime: exact
+    const state = `${st.size}|${gen}`
     const seen = genSeen.get(file)
-    if (seen && seen.gen === gen) return now() - seen.at >= SETTLE_MS
+    if (seen && seen.state === state) return now() - seen.at >= SETTLE_MS
     genSeen.delete(file)
-    genSeen.set(file, { gen, at: now() })
+    genSeen.set(file, { state, at: now() })
     if (genSeen.size > 64) genSeen.delete(genSeen.keys().next().value!)
+    if (fs.digest) {
+      // Taken before the bottom is read: what any client reads of this
+      // state comes after it.
+      const sum = fs.digest(file, st.size).catch(() => null)
+      firstSums.set(sumKey(file, st.size, gen), sum)
+      if (firstSums.size > 64) firstSums.delete(firstSums.keys().next().value!)
+      await sum
+    }
     return false
+  }
+  // A client list read from a state not settled yet: is its part of the file
+  // (its first `size` bytes, appends only add after them) still the same?
+  async function stillThere(file: string, prev: { size: number, gen: string }) {
+    if (!fs.digest) return true // no checksum on this machine: cannot tell
+    const before = await firstSums.get(sumKey(file, prev.size, prev.gen))
+    if (!before) return false // forgotten (server restarted): start again to be safe
+    return await fs.digest(file, prev.size).catch(() => null) === before
   }
   const locCache = new Map<string, { at: number, loc: Loc | null, session?: string | null }>()
   const lastLoc = new Map<string, Loc>() // last file found, fallback if a lookup fails
@@ -1123,7 +1148,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     }
     const from = opts.from === undefined ? null : opts.from
     const gen = genOf(st)
-    const settled = settledGen(loc.file, st, gen)
+    const settled = await settledGen(loc.file, st, gen)
     // Token: file, size, cursor, generation (unchanged as long as these are,
     // once settled), then the anchor of the reply's start.
     const head = `${fileId}:${st.size}:${from}:${gen}`
@@ -1138,10 +1163,13 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     const at = anchorOf(sent)
     const prev = headOf(sent)
     const same = prev !== null && prev.file === fileId
+    // A list read before its state settled (whole-second mtimes): rewritten
+    // within that second if its part of the file changed since.
     const rewritten = from !== null && from > 0 && at !== null && at.start === from && (r.anchor !== at.hash
       || (same && prev.ino !== null && st.ino !== undefined && prev.ino !== st.ino)
       || (same && st.size < prev.size)
-      || (same && st.size === prev.size && prev.gen !== gen))
+      || (same && st.size === prev.size && prev.gen !== gen)
+      || (same && prev.unsettled && !await stillThere(loc.file, prev)))
     if (rewritten) r = await tail(loc.file, kind, st.size, gen, null, settled)
     const mark = `${head}${settled ? '' : '!'}`
     const token = r.anchor ? `${mark}/${r.start}.${r.anchor}` : mark
