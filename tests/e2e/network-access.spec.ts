@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 
 // The e2e server runs on 127.0.0.1: this computer, so it answers, and
 // Settings › Security says who else may reach it. The passkey is never required.

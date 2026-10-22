@@ -13,7 +13,7 @@ Herdr runs, as the same user, on `127.0.0.1:7683` only. Details: https://github.
    network. Other devices use `tailscale serve` only (private HTTPS inside the user's tailnet).
    Another private network: https://github.com/afloury/wherdr#other-private-networks.
 2. **Detect before you ask.** Never offer to install what is already there.
-3. **Ask before** installing anything (wherdr, Tailscale, Node.js, Docker) and before any `sudo`.
+3. **Ask before** installing anything (wherdr, Tailscale, Node.js) and before any `sudo`.
 4. Do not edit `~/.claude`, `~/.codex`, Herdr's config or wherdr's files (`plugin.env`, `.env`).
    Never run wherdr as root.
 5. Run every command on the machine where Herdr runs; if you are not on it, ask the user to
@@ -51,9 +51,6 @@ Another port: `WHERDR_PORT=7684` before `sh`.
 **Check:** `curl -fsS http://127.0.0.1:7683` returns HTML. If the install says lingering is off,
 give the user `sudo loginctl enable-linger $USER`.
 
-Docker only if the user asks (`WHERDR_MODE=docker`): its Board is read-only.
-**wherdr already in Docker**: ask, then https://github.com/afloury/wherdr#moving-from-docker-to-the-native-service.
-
 ## 3. Phone (Tailscale)
 
 1. Tailscale on this machine and on the phone, same account. In the Tailscale admin console
@@ -82,8 +79,7 @@ works on the address it was created on.**
 1. Open that address for the user, or give them the link.
 2. **Passkey lock** (optional, recommended if others share the tailnet): on that address,
    Settings › Security › **Enable passkey lock**. It asks for a bootstrap token: the last
-   `First passkey: bootstrap token` line of `~/wherdr/wherdr.log` (`wherdr logs` with Homebrew,
-   `docker compose logs` with Docker). Give the token to the user.
+   `First passkey: bootstrap token` line of `~/wherdr/wherdr.log` (`wherdr logs` with Homebrew). Give the token to the user.
 3. **On the phone**: open the address in Safari (Share › Add to Home Screen, then open wherdr
    from the Home Screen) or in Chrome on Android (menu › Install app), unlock it with the
    passkey if the lock is on, then Settings › **Enable notifications**.

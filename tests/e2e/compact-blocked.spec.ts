@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import { CHOICE_GUARD_MS } from '../../app/utils/compactCard'
-import { expect, test, type Page } from '@playwright/test'
-import { CLAUDE_ASK_PANE, CLAUDE_PANE, OMP_ASK_PANE, SPLIT_CHAT_PANE, fakeHerdr } from './scenario.mjs'
+import { expect, test, type Page } from './test'
+import { BASE_URL, CLAUDE_ASK_PANE, CLAUDE_PANE, OMP_ASK_PANE, SPLIT_CHAT_PANE, fakeHerdr } from './scenario.mjs'
 
 // Compact list (the default): the card of an agent waiting for an answer opens
 // on its question and the one-tap answers of the detailed card, and is one
@@ -173,8 +173,10 @@ test('a space with several panes says which pane asks, as the detailed card does
     await expect(card(page, OMP_ASK_PANE)).toHaveClass(/open/)
     await expect(card(page, OMP_ASK_PANE).locator('.card-where')).toHaveCount(0)
     // Normal mode keeps the same dense card and identifies the pane above its question.
-    await page.evaluate(() => localStorage.setItem('compactList', '0'))
+    // Kept on the server: changed there, as Settings does.
+    expect((await page.request.post(`${BASE_URL}/api/settings`, { headers: { Origin: BASE_URL }, data: { settings: { compactList: '0' } } })).ok()).toBe(true)
     await page.reload()
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('compactList'))).toBe('0')
     await expect(space).toHaveClass(/compact/)
     expect(await space.locator('.card-where .tabmap i').first().evaluate(el => el.classList.contains('cur'))).toBe(true)
   } finally { await ask(SPLIT_CHAT_PANE) }

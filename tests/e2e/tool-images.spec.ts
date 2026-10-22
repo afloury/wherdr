@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { OMP_IMAGE_PANE } from './scenario.mjs'
 
 test('an image an omp tool read shows under the folded console and opens in the viewer', async ({ page }) => {

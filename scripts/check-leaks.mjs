@@ -5,8 +5,7 @@
 //   --range <revs>     scans every commit of a revision range (`origin/main..HEAD`): the lines
 //                      each commit adds and its message, so a leak added then removed is caught
 //   --no-gitleaks      skips gitleaks (patterns only)
-// gitleaks runs from the `gitleaks` binary, otherwise from the `zricethezav/gitleaks` Docker image
-// (read-only mounts), otherwise it is skipped.
+// gitleaks runs from the `gitleaks` binary when installed, otherwise it is skipped.
 // In a linked worktree (`git worktree add`), .leak-patterns (ignored by git) often only
 // exists in the main checkout: we then fall back to that one.
 //
@@ -208,40 +207,20 @@ function exportIndex(root, staged) {
   return { dir, files }
 }
 
-const GITLEAKS_IMAGE = 'zricethezav/gitleaks'
-
-/**
- * gitleaks command line: the binary when installed, otherwise its Docker image with read-only
- * mounts at the same paths (a linked worktree's `.git` file points into the main repository).
- * `null` when neither is available.
- */
-function gitleaksCommand(mounts, args) {
-  if (!spawnSync('gitleaks', ['version'], { encoding: 'utf8' }).error) return ['gitleaks', args]
-  const docker = spawnSync('docker', ['image', 'inspect', GITLEAKS_IMAGE], { encoding: 'utf8' })
-  if (docker.error || docker.status !== 0) return null
-  const user = typeof process.getuid === 'function' ? ['--user', `${process.getuid()}:${process.getgid()}`] : []
-  return ['docker', [
-    'run', '--rm', '--network', 'none', ...user,
-    // Files belong to the host user: let git inside the container read them.
-    '-e', 'GIT_CONFIG_COUNT=1', '-e', 'GIT_CONFIG_KEY_0=safe.directory', '-e', 'GIT_CONFIG_VALUE_0=*',
-    ...[...new Set(mounts)].flatMap((m) => ['-v', `${m}:${m}:ro`]),
-    '-w', mounts[0], GITLEAKS_IMAGE, ...args,
-  ]]
-}
+/** Whether the `gitleaks` binary is installed. */
+const hasGitleaks = () => !spawnSync('gitleaks', ['version'], { encoding: 'utf8' }).error
 
 /** Runs gitleaks on a folder (`dir` mode) or on a commit range (`git` mode). */
 function runGitleaks({ dir, root, range }) {
-  const gitDir = range && path.resolve(root, git(['rev-parse', '--git-common-dir'], root).trim())
   // --verbose lists each finding (commit, file, line, rule); --redact hides the secret itself.
   const opts = ['--redact', '--verbose', '--no-banner', '--exit-code', '1']
   const args = range ? ['git', root, `--log-opts=${range}`, ...opts] : ['dir', dir, ...opts]
-  const cmd = gitleaksCommand(range ? [root, gitDir] : [dir], args)
-  if (!cmd) {
-    console.log(`gitleaks: not installed and no ${GITLEAKS_IMAGE} Docker image, skipped (https://github.com/gitleaks/gitleaks). Forbidden patterns still run.`)
+  if (!hasGitleaks()) {
+    console.log('gitleaks: not installed, skipped (https://github.com/gitleaks/gitleaks). Forbidden patterns still run.')
     return true
   }
-  const r = spawnSync(cmd[0], cmd[1], { stdio: 'inherit' })
-  if (r.status === 0) console.log(`gitleaks${cmd[0] === 'docker' ? ' (Docker)' : ''}: no secret found.`)
+  const r = spawnSync('gitleaks', args, { stdio: 'inherit' })
+  if (r.status === 0) console.log('gitleaks: no secret found.')
   else if (r.status !== 1) console.error(`gitleaks: failed to run (exit ${r.status ?? r.signal}).`)
   return r.status === 0
 }

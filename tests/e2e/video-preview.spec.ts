@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { FAKE_MOV, OMP_IMAGE_PANE, SAMPLE_MP4, SAMPLE_WEBM, fixture } from './scenario.mjs'
 
 const inline = (file: string) => `/api/files/download?pane=${encodeURIComponent(OMP_IMAGE_PANE)}&path=${encodeURIComponent(file)}&inline=1`

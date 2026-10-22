@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import fs from 'node:fs/promises'
 import { fakeHerdr, OMP_ASK_PANE } from './scenario.mjs'
 

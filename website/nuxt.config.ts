@@ -1,5 +1,5 @@
 // wherdr.dev — static site (`nuxt generate`), served by Cloudflare Workers
-// static assets (wrangler.jsonc) and, privately, by nginx (Dockerfile).
+// static assets (wrangler.jsonc).
 // Everything is bundled: fonts (@fontsource), icons, images. No request
 // leaves the page: no web fonts service, no CDN, no analytics.
 import { execFileSync } from 'node:child_process'
@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { DESCRIPTION as description, SHARE_IMAGE, SITEMAP_PAGES, TITLE as title, sitemapXml } from './app/utils/seo'
 
 // Date of the last commit that touched one of `sources` (paths inside website/).
-// Without Git history (the Docker build context), the build date.
+// Without Git history (an archive), the build date.
 function lastModified(cwd: string, sources: readonly string[]): string {
   try {
     const date = execFileSync('git', ['log', '-1', '--format=%cI', '--', ...sources], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()

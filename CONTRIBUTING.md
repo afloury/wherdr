@@ -125,9 +125,6 @@ herdr --session wherdr-dev server stop
 rm -rf ~/.config/herdr/sessions/wherdr-dev dev-data
 ```
 
-`docker-compose.test.yml` does the same with Docker (port 7684, data in `test-data/`, Herdr
-session `hwtest`, also used on remote machines through `HERDR_WEB_REMOTE_SESSION`).
-
 Do not test model changes with `/model <name>` or Enter in the `/model` menu of a real agent:
 both change the account's default model. wherdr itself only uses "this session" choices.
 
@@ -161,9 +158,9 @@ both change the account's default model. wherdr itself only uses "this session" 
 The repository is public, and so is every commit in its history: a private value committed and
 then removed is still published. `scripts/check-leaks.mjs` combines two checks:
 
-- **gitleaks** for tokens and keys: the `gitleaks` binary when installed, otherwise the
-  `zricethezav/gitleaks` Docker image when it has been pulled (`docker pull zricethezav/gitleaks`),
-  run with read-only mounts and no network; otherwise it is skipped with a message.
+- **gitleaks** for tokens and keys: the `gitleaks` binary when installed
+  ([install it](https://github.com/gitleaks/gitleaks#installing)); otherwise it is skipped with a
+  message.
 - **Your forbidden patterns** for what no generic tool knows: your user name, host names,
   e-mail addresses, tailnet, private IPs, project and client names. They live in `.leak-patterns`,
   which git ignores (format in `.leak-patterns.example`: one case-insensitive regex per line,

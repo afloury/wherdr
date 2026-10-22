@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { OMP_CHAT_PANE, SPLIT_CHAT_PANE, SPLIT_TAB } from './scenario.mjs'
 
 // The address changes while the app starts. The scripts asked for after the

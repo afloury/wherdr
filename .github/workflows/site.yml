@@ -77,7 +77,7 @@ jobs:
       run:
         working-directory: website
     steps:
-      # Only website/, like the Docker build context: the app's root
+      # Only website/, the app's root
       # tsconfig.json (extending an ungenerated .nuxt) breaks the site build.
       # Whole history, without the file contents it does not check out:
       # sitemap.xml dates each page by the last commit of its sources.

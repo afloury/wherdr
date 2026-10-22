@@ -3,6 +3,7 @@
 // talks to a network or runs a command; agents "answer" with scripted turns.
 import type { ChatItem, HerdrState, Pane, QueuedMessage } from '#shared/types'
 import { dividers, resizePreview } from '../../shared/layout'
+import { applySettingsPatch, cleanSettingsPatch, type SettingsMap } from '../../shared/settings'
 import * as S from './scenario'
 
 export const DEMO_REFUSAL = 'Demo — nothing runs here. Install wherdr to drive your own agents.'
@@ -36,6 +37,7 @@ export class DemoServer {
   private heldSeq = 0
   private nextWs = 5
   private seq = 10
+  private settings: SettingsMap = {}
   private interactive = new Map<string, { cursor: number, details: boolean }>()
 
   interactiveScreen(id: string): string | null {
@@ -350,6 +352,7 @@ export class DemoServer {
         case '/api/onboarding': return ok({ done: true })
         case '/api/quotas': return ok(S.quotas(now))
         case '/api/machine/order': return ok({ order: [] })
+        case '/api/settings': return ok({ settings: this.settings })
         case '/api/sessions': return ok({ sessions: [] })
         case '/api/worktrees': return ok({ worktrees: [] })
         case '/api/plugins/actions': return ok({ actions: [] })
@@ -393,6 +396,13 @@ export class DemoServer {
       return fail(404, DEMO_REFUSAL)
     }
     switch (path) {
+      // Settings stay in this page (nothing is stored outside the browser).
+      case '/api/settings': {
+        const patch = cleanSettingsPatch(body.settings)
+        if (!patch) return fail(400, 'Invalid settings', 'bad_settings')
+        this.settings = applySettingsPatch(this.settings, patch, body.migrate === true).next
+        return ok({ settings: this.settings })
+      }
       case '/api/space': {
         // A demo divider changes only the in-memory layout, never a real pane.
         if (body.op !== 'layout.ratio') return fail(403, DEMO_REFUSAL)

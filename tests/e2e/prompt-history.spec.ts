@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { OMP_CHAT_PANE as pane, OMP_IMAGE_PANE, fakeHerdr } from './scenario.mjs'
 
 test.afterEach(async () => {

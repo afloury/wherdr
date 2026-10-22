@@ -126,9 +126,9 @@ describe('task panel', () => {
     expect(w.find('#board-panel-tell').exists()).toBe(true)
     w.unmount()
   })
-  it('disables writes while unreachable or read-only and never offers fix for authentication', async () => {
+  it('disables writes while unreachable and never offers fix for authentication', async () => {
     failure = { stage: 'agent', title: 'Needs login', auth: true, agentCanFix: false }
-    const w = await panel({ reachable: false, readOnly: true })
+    const w = await panel({ reachable: false })
     expect(w.find('.task-needs').text()).not.toContain('Send the error to the agent')
     expect(w.findAll('.task-needs button').every(b => b.attributes('disabled') !== undefined)).toBe(true)
     expect(calls).toHaveLength(0)

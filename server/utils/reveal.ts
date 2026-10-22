@@ -7,16 +7,9 @@
 // never launches an application or a script. The path only ever travels as a
 // quoted positional argument ($2), never as shell text.
 //
-// wherdr in a Linux container on a Mac (Docker): `open` does not exist there
-// and the container reports Linux, so a local pane's script is run on the Mac
-// host through the SSH target of HERDR_WEB_HOST_OPEN_TARGET. The Mac side
-// still validates everything: the same checks (REVEAL_CHECKS) run there,
-// behind the forced command of a key that may only call them
-// (scripts/wherdr-open.sh, installed by scripts/install-host-open.sh).
 import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import { HerdrError } from './herdr'
-import { HOST_OPEN_KEY, HOST_OPEN_TARGET, HOST_OPEN_USER, IN_DOCKER, log } from './env'
+import { log } from './env'
 import { findPane } from './state'
 import { type Machine, getMachine } from './machines'
 import type { ExecResult } from './fsx'
@@ -72,35 +65,6 @@ export const revealArgs = (mode: RevealMode, absPath: string) => [mode, absPath]
 
 const isMac = (m: Machine) => m.os === 'Darwin'
 
-// The Mac host route: a local pane on a machine wherdr sees as Linux (wherdr
-// in Docker on macOS), with an SSH target configured. The container sends
-// `open <mode> <base64 path>`; the forced command on the Mac decodes the path
-// (base64: never shell syntax, spaces or quotes included) and runs the checks.
-export const hostOpenReady = () => Boolean(IN_DOCKER && HOST_OPEN_TARGET && existsSync(HOST_OPEN_KEY))
-
-function runHostOpen(mode: RevealMode, absPath: string): Promise<ExecResult> {
-  const { promise, resolve } = Promise.withResolvers<ExecResult>()
-  // The command travels as separate execFile arguments (never a shell line);
-  // base64 keeps the path opaque to the login shell on the Mac. Known hosts:
-  // the same pinned file as the macOS socket bridge, when it exists.
-  const known = '/data/macos/known_hosts'
-  const pin = existsSync(known) ? ['-o', `UserKnownHostsFile=${known}`, '-o', 'StrictHostKeyChecking=yes'] : ['-o', 'StrictHostKeyChecking=accept-new']
-  const cmd = `open ${mode} ${Buffer.from(absPath, 'utf8').toString('base64')}`
-  execFile('ssh', [
-    '-i', HOST_OPEN_KEY,
-    '-o', 'IdentitiesOnly=yes',
-    '-o', 'BatchMode=yes',
-    '-o', 'ConnectTimeout=5',
-    ...pin,
-    `${HOST_OPEN_USER || 'root'}@${HOST_OPEN_TARGET}`,
-    cmd,
-  ], { timeout: 15000, encoding: 'buffer', maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-    const raw = err ? (typeof err === 'object' && err !== null && 'code' in err ? err.code : undefined) : 0
-    resolve({ code: typeof raw === 'number' ? raw : err ? 1 : 0, stdout: stdout as Buffer, stderr: String(stderr || '') })
-  })
-  return promise
-}
-
 function runLocal(script: string, args: string[]): Promise<ExecResult> {
   const { promise, resolve } = Promise.withResolvers<ExecResult>()
   execFile('/bin/sh', ['-c', script, 'sh', ...args], { timeout: 15000, encoding: 'buffer' }, (err, stdout, stderr) => {
@@ -133,16 +97,13 @@ export async function revealPath(body: { pane_id?: unknown, path?: unknown, mode
   const m = getMachine(splitId(paneId).machine)
   if (!m) throw new HerdrError('bad_machine', 'unknown machine')
   if (!m.local && (m.status !== 'online' || !m.home)) throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
-  // A local pane on a machine that reports Linux: wherdr in a container. The
-  // Mac host route runs the same checks there; without it, refuse as before.
-  const viaHost = Boolean(m.local && !isMac(m) && hostOpenReady())
-  if (!isMac(m) && !viaHost) throw new HerdrError('not_mac', fmt('{machine} is not a Mac', { machine: m.label }))
+  if (!isMac(m)) throw new HerdrError('not_mac', fmt('{machine} is not a Mac', { machine: m.label }))
   const abs = resolveAgentPath(written, pane.cwd, m.home)
   if (!abs) throw new HerdrError('outside_home', 'Only files in your home folder can be shown')
   if (mode === 'open' && runnablePath(abs)) throw revealError(7, abs, m)
   const args = revealArgs(mode, abs)
-  const r = viaHost ? await runHostOpen(mode, abs) : m.local ? await runLocal(REVEAL_SCRIPT, args) : await m.exec!(REVEAL_SCRIPT, args, { timeoutMs: 15000 })
-  log(`reveal: ${mode} on ${m.label} for ${paneId}${viaHost ? ' (host open)' : ''}: ${r.code === 0 ? 'ok' : `refused (code ${r.code})`}`)
+  const r = m.local ? await runLocal(REVEAL_SCRIPT, args) : await m.exec!(REVEAL_SCRIPT, args, { timeoutMs: 15000 })
+  log(`reveal: ${mode} on ${m.label} for ${paneId}: ${r.code === 0 ? 'ok' : `refused (code ${r.code})`}`)
   if (r.code !== 0) throw revealError(r.code, abs, m, r.stderr)
   return { ok: true, mode, path: r.stdout.toString('utf8').trim() || abs, machine: m.label }
 }

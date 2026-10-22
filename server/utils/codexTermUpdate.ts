@@ -1,12 +1,3 @@
-// Codex update typed into the agent's own terminal (method `terminal` of
-// shared/codexStatus.ts), for a wherdr that cannot run it itself (Docker,
-// read-only home): the pane's shell runs on the agent's machine with the
-// user's rights. Sequence, independent of the server state (Herdr calls
-// injected, tests): quit Codex like a restart (`/exit`, restartSeq.ts), type
-// the known official command followed by an end marker at the shell prompt,
-// wait for the marker and its exit status, then `agent.start` with
-// `codex resume <id>` (same conversation, Herdr tracks the agent again).
-// On failure the pane stays at its shell, the command there to see.
 import crypto from 'node:crypto'
 import type { Pane } from '../../shared/types'
 import type { RestartPlan } from '../../shared/restart'

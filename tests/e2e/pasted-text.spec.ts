@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { CLAUDE_PANE, LONG_TYPED, OMP_CHAT_PANE, PASTED_LOG, TYPED_QUOTES } from './scenario.mjs'
 
 const shot = (page: Page, name: string, project: string) =>

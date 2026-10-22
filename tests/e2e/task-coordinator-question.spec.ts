@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import fs from 'node:fs/promises'
 
 // Fictional boards, including the same task id on two machines.

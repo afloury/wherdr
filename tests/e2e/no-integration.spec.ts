@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { CODEX_UPDATE_PANE, CODEX_UPDATE_SESSION, fakeHerdr } from './scenario.mjs'
 
 // A Codex at work whose session Herdr does not know (its integration is not

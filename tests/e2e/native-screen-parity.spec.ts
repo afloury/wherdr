@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { parseChoices, parseOmpPrompt } from '../../server/utils/choices'
 import { parseMenu } from '../../shared/menuScreen'
 import { parseWaitScreen } from '../../server/utils/waitScreen'

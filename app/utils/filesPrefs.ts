@@ -1,24 +1,13 @@
-// File browser: show the hidden files (name starting with a dot). Shown by
-// default; the choice is kept on the device.
-const KEY = 'wherdr.files.hidden'
+// File browser preferences, kept on the server so they follow the user across
+// devices (FilesView.vue, useSyncedSettings.ts).
 
-export function readShowHidden(): boolean {
-  try { return localStorage.getItem(KEY) !== '0' } catch { return true }
-}
-
-export function saveShowHidden(show: boolean) {
-  try { localStorage.setItem(KEY, show ? '1' : '0') } catch { /* stockage indisponible */ }
-}
+// Show the hidden files (name starting with a dot): shown by default.
+export const SHOW_HIDDEN_KEY = 'wherdr.files.hidden'
+export const readShowHidden = (raw: string | null): boolean => raw !== '0'
+export const writeShowHidden = (show: boolean) => (show ? '1' : '0')
 
 // A Markdown file: shown formatted ('rendered') or as its raw text with line
-// numbers ('source'). Formatted by default; the choice is kept on the device.
+// numbers ('source'). Formatted by default.
 export type MdView = 'rendered' | 'source'
-const MD_KEY = 'wherdr.files.md'
-
-export function readMdView(): MdView {
-  try { return localStorage.getItem(MD_KEY) === 'source' ? 'source' : 'rendered' } catch { return 'rendered' }
-}
-
-export function saveMdView(view: MdView) {
-  try { localStorage.setItem(MD_KEY, view) } catch { /* storage unavailable */ }
-}
+export const MD_VIEW_KEY = 'wherdr.files.md'
+export const readMdView = (raw: string | null): MdView => (raw === 'source' ? 'source' : 'rendered')

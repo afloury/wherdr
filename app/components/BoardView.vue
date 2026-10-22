@@ -21,8 +21,9 @@
 // A machine without herdr-projects 1.2.1+ says what to do instead
 // (ProjectsUpgradeNote).
 //
-// What is kept on this device only: the machine shown, the grouping, folded
-// headings, Done shown or not. Nothing about the projects themselves: that is herdr-projects'.
+// Kept on this device: the machine shown and the phone's column. Kept on the
+// server (they follow the user): the grouping, folded headings, Done shown or
+// not. Nothing about the projects themselves: that is herdr-projects'.
 import {
   type CoordinatorTarget, TASK_GROUPS, type TaskGroup, type TaskRow, groupCounts, sortTasks, taskKey,
 } from '#shared/projectsTasks'
@@ -47,11 +48,6 @@ const writeStore = (k: string, v: string) => { try { localStorage.setItem(k, v) 
 const ready = computed(() => (board.value?.machines || []).filter(m => m.status === 'ready'))
 // Machines whose last read failed, or whose tasks are an older read: said, with when.
 const troubles = computed(() => (board.value?.machines || []).filter(m => m.error || m.stale))
-// Read from the board's files (wherdr in a container): no action from here.
-const readOnly = (machine: string) => Boolean(board.value?.machines.find(m => m.machine === machine)?.readOnly)
-const writable = computed(() => ready.value.filter(m => !m.readOnly))
-// Only read-only boards: the top bar's actions show, off, saying why.
-const onlyReadOnly = computed(() => !writable.value.length && ready.value.some(m => m.readOnly))
 const machineLabel = (key: string) => boardMachineLabel(key, machineName(key), hostLabel.value || t('This machine'))
 const readAt = (at?: number) => (at ? new Date(at).toLocaleTimeString(language === 'fr' ? 'fr-FR' : 'en-US', { hour: '2-digit', minute: '2-digit' }) : '')
 // Machines Herdr answers on but where the Board cannot read herdr-projects.
@@ -73,7 +69,7 @@ const scopeMachines = computed<string[] | null>(() => boardScopeMachines(shownSc
 const inScope = (machine: string): boolean => scopeMachines.value === null || scopeMachines.value.includes(machine)
 // The machine named on each card: when the cards can come from several machines.
 const namesOnCards = computed(() => several.value && (scopeMachines.value === null || scopeMachines.value.length > 1))
-// The local machine, read-only or not, is in it too, under its own value.
+// The local machine is in it too, under its own value.
 const scopeItems = computed<SelectItem[]>(() => boardScopeItems(boards.value.map(m => m.machine), machineLabel, tl('All machines', 'Toutes les machines'),
   barGroups.value, tl('Groups', 'Groupes'), tl('Machines', 'Machines')))
 function pickScope(v: string) {
@@ -84,10 +80,11 @@ const shownBoards = computed(() => boards.value.filter(m => inScope(m.machine)))
 
 // `global` was stored as `status` before it was renamed.
 type Grouping = 'repo' | 'global'
-const grouping = ref<Grouping>(['global', 'status'].includes(readStore(GROUPING_KEY) || '') ? 'global' : 'repo')
+// Kept on the server, like Done and the folds below: they follow the user
+// across devices (useSyncedSettings.ts).
+const grouping = syncedRef<Grouping>(GROUPING_KEY, raw => (['global', 'status'].includes(raw || '') ? 'global' : 'repo'), g => g)
 function pickGrouping(g: Grouping) {
   grouping.value = g
-  writeStore(GROUPING_KEY, g)
 }
 
 interface Card { key: string, machine: string, task: TaskRow, stale: boolean, readAt?: number }
@@ -111,13 +108,12 @@ watch(board, (b) => {
 // A machine Herdr did not answer for keeps its last tasks, marked as older.
 const allCards = computed<Card[]>(() => boards.value.flatMap(m => sortTasks(m.tasks.filter(t => !t.archived && !archivedHere.value.has(`${m.machine}|${t.id}`))).map(task => cardOf(m, task))))
 const cards = computed(() => allCards.value.filter(c => inScope(c.machine)))
-// Done: hidden until asked for, on this device; shown, its latest few until "N more".
-const showDone = ref(boardDoneShown(readStore(BOARD_DONE_KEY)))
+// Done: hidden until asked for; shown, its latest few until "N more".
+const showDone = syncedRef(BOARD_DONE_KEY, boardDoneShown, boardDoneStored)
 const showAll = ref(false)
 const doneCount = computed(() => cards.value.filter(c => c.task.group === 'done').length)
 function toggleDone() {
   showDone.value = !showDone.value
-  writeStore(BOARD_DONE_KEY, boardDoneStored(showDone.value))
   if (!showDone.value) showAll.value = false
   // Phone: what was asked for comes into view.
   else if (!wide.value) selectColumn('done')
@@ -136,13 +132,18 @@ const columns = computed(() => groups.value.map((id) => {
 // As many columns as groups shown, of equal width.
 const gridStyle = computed(() => ({ '--board-cols': `repeat(${columns.value.length}, minmax(0, 1fr))` }))
 
-// Folded headings (`m:<machine>`, `r:<machine>|<repo>`), on this device.
-const folds = ref(new Set<string>((() => { try { return JSON.parse(readStore(FOLDS_KEY) || '[]') as string[] } catch { return [] } })()))
+// Folded headings (`m:<machine>`, `r:<machine>|<repo>`).
+const readFolds = (raw: string | null) => {
+  try {
+    const v: unknown = JSON.parse(raw || '[]')
+    return new Set<string>(Array.isArray(v) ? v.map(String) : [])
+  } catch { return new Set<string>() }
+}
+const folds = syncedRef(FOLDS_KEY, readFolds, v => JSON.stringify([...v].slice(-200)))
 function fold(key: string) {
   const next = new Set(folds.value)
   if (!next.delete(key)) next.add(key)
   folds.value = next
-  writeStore(FOLDS_KEY, JSON.stringify([...next].slice(-200)))
 }
 
 // What a heading holds, in a few words: what needs you first; done last, and quietly.
@@ -157,7 +158,6 @@ const machineGroups = computed(() => shownBoards.value.map((m) => {
   return {
     machine: m.machine,
     summary: summary(rows),
-    readOnly: Boolean(m.readOnly),
     repos: [...new Set([...rows.map(t => t.repo), ...(projectLinks.value.find(b => b.machine === m.machine)?.repos || []).map(r => r.repo)])].sort().map(repo => {
       const tasks = sortTasks(rows.filter(t => t.repo === repo))
       // The board's groups in each repo's lane, under the Board's columns.
@@ -423,19 +423,11 @@ function back() {
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Back')" @click="back" />
       <h2>{{ t('Board') }}</h2>
       <UButton
-        v-if="writable.length" icon="i-lucide-plus" color="primary" variant="outline" size="md" class="board-new" :disabled="offlineView"
+        v-if="ready.length" icon="i-lucide-plus" color="primary" variant="outline" size="md" class="board-new" :disabled="offlineView"
         :aria-label="tl('New task', 'Nouvelle tâche')" @click="newTask()"
       >
         <span class="board-new-label">{{ tl('New task', 'Nouvelle tâche') }}</span>
       </UButton>
-      <!-- wherdr in a container: the actions stay in view, off, and say why on hover. -->
-      <template v-else-if="onlyReadOnly">
-        <span class="ro-why" :title="readOnlyWhy()">
-          <UButton icon="i-lucide-plus" color="primary" variant="outline" size="md" class="board-new" disabled :aria-label="tl('New task', 'Nouvelle tâche')" :aria-description="readOnlyWhy()">
-            <span class="board-new-label">{{ tl('New task', 'Nouvelle tâche') }}</span>
-          </UButton>
-        </span>
-      </template>
       <CoordinatorHint v-if="coordMachines.length === 1" :text="coordHint(coordMachines[0]!.machine, { kind: 'main' })">
         <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord"
           :class="{ on: talking(coordMachines[0]!.machine, { kind: 'main' }) }" :disabled="Boolean(coordWhy(coordMachines[0]!.machine))"
@@ -454,14 +446,10 @@ function back() {
     <div v-if="error" class="notice board-notice">{{ error }}</div>
     <p v-else-if="!board && !offlineView" class="board-empty board-loading">{{ t('Loading…') }}</p>
 
-    <div v-if="noCoordinator || notes.length || disabled.length || troubles.length || ready.some(m => m.readOnly)" class="board-notes">
+    <div v-if="noCoordinator || notes.length || disabled.length || troubles.length" class="board-notes">
       <p v-if="noCoordinator" class="board-note" role="status">{{ tl('No Coordinator can be reached now. See each machine’s availability.', 'Aucun Coordinateur n’est joignable pour l’instant. Consulte la disponibilité de chaque machine.') }}</p>
       <p v-for="m in troubles" :key="`e-${m.machine}`" class="board-note error" role="alert">
         <b>{{ several ? machineLabel(m.machine) : tl('herdr-projects', 'herdr-projects') }}</b> · {{ m.error || tl('No answer yet', 'Pas encore de réponse') }}<template v-if="m.stale && m.at"> · {{ tl(`tasks as read at ${readAt(m.at)}`, `tâches lues à ${readAt(m.at)}`) }}</template>
-      </p>
-      <p v-for="m in ready.filter(x => x.readOnly)" :key="`r-${m.machine}`" class="board-note board-note-ro">
-        <b>{{ tl('Read-only Board', 'Board en lecture seule') }}</b> · {{ tl('wherdr runs in a container: the Board reads herdr-projects’ files and runs nothing here (its upkeep belongs to the host). Reply, approve, start, stop and the Coordinator: from Herdr on the host, or move wherdr to the native service, same port and data, to do them from here.', 'wherdr tourne dans un conteneur : le Board lit les fichiers de herdr-projects et n’y lance rien (son entretien revient à l’hôte). Répondre, approuver, lancer, arrêter et le Coordinateur : depuis Herdr sur l’hôte, ou passe wherdr en service natif, même port et mêmes données, pour les faire d’ici.') }}
-        <a v-if="m.moveUrl" :href="m.moveUrl" target="_blank" rel="noopener noreferrer">{{ tl('Move to the native service', 'Passer au service natif') }} <UIcon name="i-lucide-external-link" /></a>
       </p>
       <ProjectsUpgradeNote
         v-for="m in notes" :key="m.machine" :status="m.status as 'missing' | 'old'" :version="m.version || null"
@@ -570,12 +558,10 @@ function back() {
                         {{ coordLabel(mg.machine, { kind: 'project', repo: rg.repo }) }}
                       </UButton>
                     </CoordinatorHint>
-                    <span class="ro-why" :title="mg.readOnly ? readOnlyWhy() : undefined">
-                      <UButton
-                        icon="i-lucide-plus" color="neutral" variant="outline" size="sm" class="board-head-add" :disabled="mg.readOnly || offlineView"
-                        :aria-label="tl(`New task in ${rg.repo}`, `Nouvelle tâche dans ${rg.repo}`)" :aria-description="mg.readOnly ? readOnlyWhy() : undefined" @click="newTask(mg.machine, rg.repo)"
-                      />
-                    </span>
+                    <UButton
+                      icon="i-lucide-plus" color="neutral" variant="outline" size="sm" class="board-head-add" :disabled="offlineView"
+                      :aria-label="tl(`New task in ${rg.repo}`, `Nouvelle tâche dans ${rg.repo}`)" @click="newTask(mg.machine, rg.repo)"
+                    />
                   </div>
                 </div>
                 <!-- Its lane: one cell under each of the Board's columns. -->
@@ -618,13 +604,13 @@ function back() {
     </template>
     <BoardPanel
       v-if="panel" :key="panelKey" :target="panel" :task="panelTask"
-      :refresh="reload" :machine-label="machineLabel(panel.machine)" :read-only="readOnly(panel.machine)" :reachable="writable.some(m => m.machine === panel!.machine)"
+      :refresh="reload" :machine-label="machineLabel(panel.machine)" :reachable="ready.some(m => m.machine === panel!.machine)"
       @archived="onArchived" @restored="onRestored" @changed="reload" @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent" @coordinator="askCoordinator"
     />
     <TaskSheet
-      v-model:open="sheetOpen" :task="pickedTask" :machine="picked?.machine ?? ''" :read-only="readOnly(picked?.machine ?? '')"
+      v-model:open="sheetOpen" :task="pickedTask" :machine="picked?.machine ?? ''"
       :refresh="reload" @archived="onArchived" @restored="onRestored" @chat="chatWith" @coordinator="askCoordinator"
     />
-    <NewTaskSheet v-model:open="newOpen" :machines="writable.map(m => m.machine)" :repos="reposByMachine" :machine="newFor.machine" :repo="newFor.repo" @added="added" />
+    <NewTaskSheet v-model:open="newOpen" :machines="ready.map(m => m.machine)" :repos="reposByMachine" :machine="newFor.machine" :repo="newFor.repo" @added="added" />
   </section>
 </template>

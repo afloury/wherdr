@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { OMP_DECISIONS_PANE, OMP_TWO_TABLES_PANE } from './scenario.mjs'
 import { decision, decisions, expectDraft } from './refs'
 

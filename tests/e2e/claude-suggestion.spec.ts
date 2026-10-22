@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { CLAUDE_SUGGEST_ASK_PANE, CLAUDE_SUGGEST_PANE, SUGGEST_ASK, SUGGEST_PLAIN } from './scenario.mjs'
 
 // Claude Code's grayed-out suggestion in the empty field: Tab takes it on a computer,

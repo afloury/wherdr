@@ -1,8 +1,9 @@
 // Machine bar of the home list (utils/machineBar.ts): its settings and the
-// current choice, kept on the device like the other home screen settings. The
-// home list's machine order (server side, /api/machine/order) lives here too:
-// the bar and its settings list follow it for the machines they do not place.
+// current choice. The home list's machine order (server side,
+// /api/machine/order) lives here too: the bar and its settings list follow it
+// for the machines they do not place.
 import { sortMachines } from '#shared/machineOrder'
+import { flag, syncedRef } from './useSyncedSettings'
 import { BAR_ALL, groupedBarItems, barMachineSelection, barPick, readBarList, readBarPick, readMachineGroups } from '~/utils/machineBar'
 
 const store = {
@@ -10,18 +11,16 @@ const store = {
   set(k: string, v: string) { try { localStorage.setItem(k, v) } catch { /* storage unavailable */ } },
 }
 
-export const machineBarOn = ref(store.get('machineBar') !== '0')
-watch(machineBarOn, v => store.set('machineBar', v ? '1' : '0'))
-export const machineBarOrder = ref<string[]>(readBarList(store.get('machineBarOrder')))
-watch(machineBarOrder, v => store.set('machineBarOrder', JSON.stringify(v)))
-export const machineBarHidden = ref<string[]>(readBarList(store.get('machineBarHidden')))
-watch(machineBarHidden, v => store.set('machineBarHidden', JSON.stringify(v)))
+// The bar's settings and the groups follow the user across devices (kept on
+// the server, useSyncedSettings.ts); the item last tapped stays on the device.
+export const machineBarOn = syncedRef('machineBar', flag.read(true), flag.write)
+export const machineBarOrder = syncedRef<string[]>('machineBarOrder', readBarList, v => JSON.stringify(v), { deep: true })
+export const machineBarHidden = syncedRef<string[]>('machineBarHidden', readBarList, v => JSON.stringify(v), { deep: true })
 // The item last tapped (BAR_ALL, a group's ID, or a machine's base key).
 export const machineBarSaved = ref<string | null>(readBarPick(store.get('machineBarPick')))
 watch(machineBarSaved, v => store.set('machineBarPick', JSON.stringify(v)))
 
-export const machineGroups = ref(readMachineGroups(store.get('machineGroups')))
-watch(machineGroups, v => store.set('machineGroups', JSON.stringify(v)), { deep: true })
+export const machineGroups = syncedRef('machineGroups', readMachineGroups, v => JSON.stringify(v), { deep: true })
 
 // ------------------------------------------------------------ machine order
 export const machineOrder = ref<string[]>([])

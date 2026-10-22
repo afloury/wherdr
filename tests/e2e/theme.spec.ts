@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 
 test('empty storage lands on the wherdr Titanium theme', async ({ page }) => {
   await page.goto('/')
