@@ -721,6 +721,42 @@ body.short-bottom { --safe-bottom: 0px; }
 .machine-body .agent-group { margin-bottom: 20px; }
 .machine-body .agent-group:last-child { margin-bottom: 18px; }
 .machine-empty { margin: -2px 0 20px 24px; font: 400 12px/1.4 var(--mono); color: var(--dim); }
+/* State mode: online machines as a row of square chips at the top (each opens
+   the machine's menu), their own quotas under it, and offline or reconnecting
+   machines on one compact line at the bottom of the list. */
+.state-machines { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 18px; padding: 0; list-style: none; }
+.state-machine { min-width: 0; max-width: 100%; }
+.state-machine-chip, .state-away-item {
+  display: inline-flex; align-items: center; gap: 7px; max-width: 100%; min-height: 34px; padding: 0 8px 0 10px;
+  border: 1px solid var(--line); background: var(--bg-2); color: var(--text);
+  font: 600 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; white-space: nowrap;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.state-machine-chip:hover, .state-away-item:hover { background: var(--surface); border-color: var(--line-strong); }
+.state-machine-chip:focus-visible, .state-away-item:focus-visible { outline: 1px solid var(--accent); outline-offset: -3px; }
+.state-machine-dot { width: 6px; height: 6px; flex: none; background: var(--green); }
+.state-machine-name { min-width: 0; max-width: 18ch; overflow: hidden; text-overflow: ellipsis; }
+.state-machine-session { flex: none; color: var(--mauve); font: 500 10px/1 var(--mono); letter-spacing: .1em; text-transform: none; }
+.state-machine-claude { width: 13px; height: 13px; flex: none; color: var(--ochre); }
+.state-machine-more { width: 14px; height: 14px; flex: none; color: var(--dim); }
+.state-machine-quotas { margin: -6px 0 18px; }
+.state-machine-quotas-label { margin: 0 0 6px; font: 500 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.state-machine-quotas .quotas { margin: 0; }
+.machine-empty.state-empty { margin-left: 0; }
+.state-away {
+  display: flex; align-items: center; margin: 4px 0 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+}
+.state-away::-webkit-scrollbar { display: none; }
+.state-away-item { flex: none; gap: 6px; min-height: 36px; padding: 0 10px; border: 0; border-right: 1px solid var(--line); background: transparent; color: var(--muted); }
+.state-away-item:first-child { padding-left: 2px; }
+.state-away-item:last-child { border-right: 0; }
+.state-away-item:hover { border-color: var(--line); }
+.state-away-item .state-machine-dot { background: var(--rose); }
+.state-away-item.connecting .state-machine-dot { background: var(--ochre); animation: pulse 1.2s ease-in-out infinite; }
+.state-away-state { color: var(--rose); font-weight: 500; letter-spacing: .1em; }
+.state-away-item.connecting .state-away-state { color: var(--ochre); }
+.state-away-known { color: var(--text-3); font-weight: 700; letter-spacing: 0; }
 
 /* Card of an unreachable machine (agent view, etc.). */
 .card.stale { cursor: pointer; }
