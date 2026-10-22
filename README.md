@@ -1077,7 +1077,7 @@ native service (read at each start: `wherdr restart`, or **R** in the panel), `.
 | `TAILNET_REFRESH_MS` | `30000` | How often wherdr reads again what `tailscale serve` publishes for its port. |
 | `HERDR_WEB_ALLOWED_HOSTS` | *(empty)* | Additional hostnames or IP addresses allowed to open the app, comma-separated. |
 | `PASSKEY_USER` | `wherdr` | User name stored with the passkeys. |
-| `DATA_DIR` | `./data` | VAPID keys, push subscriptions, passkeys, recent folders. |
+| `DATA_DIR` | `./data` | VAPID keys, push subscriptions, passkeys, recent folders, and `settings.json`: the display settings that follow you across devices (theme, machine bar and groups, home list, Board and file browser preferences). Screen-dependent ones (content width, sidebar width, terminal size and rendering), the language, the last tab or filter and drafts stay in each browser. |
 | `HERDR_BIN` | `~/.local/bin/herdr`, else `herdr` in `PATH` | Herdr binary. |
 | `HERDR_WEB_SESSION` | *(default session)* | Named Herdr session to drive. Not `HERDR_SESSION`, which Herdr reads itself. |
 | `HERDR_PROJECTS_DATA_DIR` | `~/.herdr-projects/data` | herdr-projects' data folder, where wherdr reads the `PATH` it recorded ([Agent PATH](#agent-path)). |
