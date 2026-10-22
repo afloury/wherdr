@@ -4037,3 +4037,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .machine-group-name input { width: 100%; border: 1px solid var(--line); padding: 10px; background: var(--bg); color: var(--text); font-size: 16px; border-radius: 0; }
 .machine-group-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; }
 .machine-bar-group { flex-shrink: 0; width: 14px; height: 14px; }
+
+/* Origin badges keep long machine and project names within dense home rows. */
+.card.compact .card-origin { max-width: 72px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; letter-spacing: 0; }
+.state-group .card.compact { column-gap: 5px; }

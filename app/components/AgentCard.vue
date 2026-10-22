@@ -28,7 +28,7 @@ import { interactionWindowFor } from '~/utils/interactionWindow'
 // `board.lead`: a repo group's head row (ProjectGroup): one line, larger, the
 // repo's name, the wherdr mark on the accent for a coordinator (an initial
 // otherwise) and its state; no last message, only a question when it asks one.
-const props = defineProps<{ pane: Pane, row?: Row | null, board?: BoardCard | null }>()
+const props = defineProps<{ pane: Pane, row?: Row | null, board?: BoardCard | null, machineBadge?: string, projectBadge?: string }>()
 const space = computed(() => (props.row && props.row.kind === 'space' ? props.row : null))
 // Pane whose state the card shows.
 const statePane = computed(() => props.pane)
@@ -226,6 +226,8 @@ onUnmounted(list.unmount)
       <AgentAvatar :agent="pane.agent" :coordinator="board?.coordinator" :icon="board?.icon" />
       <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
       <span class="card-title" :title="board?.hint">{{ title }}</span>
+      <span v-if="machineBadge" class="card-tag card-origin" :title="machineBadge">{{ machineBadge }}</span>
+      <span v-if="projectBadge" class="card-tag card-origin" :title="projectBadge">{{ projectBadge }}</span>
       <span v-if="boardStats" class="home-task-stats">{{ boardStats }}</span>
       <span v-if="taskCard && board?.group" class="task-state" :class="board.group">{{ taskGroupLabel(board.group) }}</span>
       <span v-if="statePane.usageLimit && !taskCard" class="card-tag quota-limit" :title="stateTitle">{{ tl('Limit', 'Quota') }}</span>

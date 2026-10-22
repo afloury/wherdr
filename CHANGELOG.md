@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **Group the home list by state across online machines.** Settings › Appearance › Home screen › Group by offers Machine (the default) and State. State mode keeps machine and project badges, task details, compact/normal density and machine-bar group filters. Part of #46; offline machines and per-machine controls follow separately.
+
 - **Herdr 0.9.2+ machine diagnostics and terminal mouse:** a remote machine's Options menu checks native reachability and offers the interactive reconnect command plus a wherdr connection retry. Terminal clicks, taps and drags use structured mouse events; Shift + drag selects text. Older Herdr retains legacy input and SSH retries.
 
 - Task sheets offer **Ask the coordinator** before starting work, and in other active states. Questions name the task and go to its project coordinator on its owning machine; the coordinator chat opens after sending. Asking never delegates or changes the task. The separate Chat action still opens the task’s agent. Available in English and French.
