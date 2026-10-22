@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'vitest'
@@ -8,11 +8,12 @@ import { hasCommands } from './helpers/commands'
 
 const workflow = readFileSync('.github/workflows/release.yml', 'utf8')
 for (const job of ['package', 'publish-release']) {
-  it.skipIf(job === 'package' && !hasCommands('sha256sum'))(`${job} refuses missing drafts/notes and never generates release notes`, () => {
+  it.skipIf(!hasCommands('bash') || (job === 'package' && !hasCommands('sha256sum')))(`${job} refuses missing drafts/notes and never generates release notes`, () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-draft-'))
     try {
       const bin = path.join(home, 'bin')
       mkdirSync(bin)
+      cpSync('scripts', path.join(home, 'scripts'), { recursive: true })
       writeFileSync(path.join(home, 'wherdr-1.3.3.tgz'), 'archive')
       writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
 case "$*" in
@@ -20,7 +21,7 @@ case "$*" in
     [ "$DRAFT_EXISTS" = 1 ] || exit 1
     case "$*" in
       *'--json isDraft'*) echo "$IS_DRAFT" ;;
-      *'--json body'*) printf '%s' "$DRAFT_NOTES" | tr -d '[:space:]' ;;
+      *'--json body'*) printf '%s' "$DRAFT_NOTES" ;;
     esac ;;
   *) printf '%s\\n' "$*" >> "$HOME/mutations" ;;
 esac
@@ -34,10 +35,11 @@ esac
         { exists: '1', draft: 'false', notes: 'Reviewed notes', ok: false },
         { exists: '1', draft: 'true', notes: '', ok: false },
         { exists: '1', draft: 'true', notes: ' \n\t ', ok: false },
-        { exists: '1', draft: 'true', notes: '## Fixed\nReviewed changes', ok: true },
+        { exists: '1', draft: 'true', notes: 'See CHANGELOG.md', ok: false },
+        { exists: '1', draft: 'true', notes: '## Fixed\nDownloads now work correctly on supported Node versions. Temporary download links are released after the browser saves the file.\n\n[Full changelog](https://github.com/example/wherdr/blob/v1.3.3/CHANGELOG.md)', ok: true },
       ]) {
         rmSync(path.join(home, 'mutations'), { force: true })
-        const run = spawnSync('sh', ['-e', '-c', script], { cwd: home, encoding: 'utf8', env: {
+        const run = spawnSync('bash', ['-e', '-c', script], { cwd: home, encoding: 'utf8', env: {
           ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}`, GITHUB_REF_NAME: 'v1.3.3',
           GITHUB_REPOSITORY: 'example/wherdr', DRAFT_EXISTS: scenario.exists,
           IS_DRAFT: scenario.draft, DRAFT_NOTES: scenario.notes,
