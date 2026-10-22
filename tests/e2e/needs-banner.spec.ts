@@ -10,10 +10,10 @@ import { CLAUDE_ASK_PANE, SOCK_FILE, fakeHerdr } from './scenario.mjs'
 // title. All data is fictional.
 const PR = 'https://github.com/example/shop/pull/484'
 const QUESTION = `The checkout tests fail only on the old payment provider since ${PR} was merged. Keep the old provider behind a flag, or drop it and update the docs? (keep / drop)`
-const task = { id: 'demo/69', title: 'Retire the old payment provider', stage: 'asks', state: 'blocked', kind: 'question', app: 'claude', msg: QUESTION, pr: '' }
+const task = { id: 'shop/69', title: 'Retire the old payment provider', stage: 'asks', state: 'blocked', kind: 'question', app: 'claude', msg: QUESTION, pr: '' }
 
 const home = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8').trim()), 'home')
-const taskDir = path.join(home, '.herdr-projects/data/tasks/demo/69')
+const taskDir = path.join(home, '.herdr-projects/data/tasks/shop/69')
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-needs-'))
 fs.mkdirSync(path.join(root, 'bin'))
 const write = (row: Record<string, unknown>) => {
@@ -68,9 +68,14 @@ test.afterEach(async () => {
   fs.rmSync(taskDir, { recursive: true, force: true })
   fs.rmSync(transcript, { force: true })
 })
-test.afterAll(() => { fs.rmSync(root, { recursive: true, force: true }) })
+// The server reuses this board's list for REUSE_MS (5 s): the next spec
+// file must not see it.
+test.afterAll(async () => {
+  fs.rmSync(root, { recursive: true, force: true })
+  await new Promise(r => setTimeout(r, 5500))
+})
 
-const OPEN = '/#/board?machine=&task=demo%2F69'
+const OPEN = '/#/board?machine=&task=shop%2F69'
 // The server reuses a board's list for a few seconds (REUSE_MS): open the
 // task again until the row just written shows.
 async function shows(page: Page, text: string, where = '.task-needs-type') {
