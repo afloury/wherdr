@@ -39,7 +39,7 @@ export const INSTALL_OUTPUT: InstallLine[] = [
   { kind: 'dim', text: '  Herdr reloaded its config: no restart needed.', wait: 200 },
   { kind: 'ok', text: `Herdr plugin ${REPO.split('/').at(-2)}.wherdr installed`, wait: 900 },
   { kind: 'ok', text: `wherdr answers on http://localhost:${PORT}`, wait: 500 },
-  { kind: 'step', text: 'Starting wherdr at login', wait: 260 },
+  { kind: 'step', text: 'Configuring automatic startup', wait: 260 },
   { kind: 'say', text: `  A LaunchAgent (${HOME}/Library/LaunchAgents/dev.wherdr.plist): wherdr starts at login and restarts if it stops.`, wait: 200 },
   { kind: 'ok', text: 'Login service installed', wait: 1100 },
   { kind: 'blank', text: '', wait: 120 },

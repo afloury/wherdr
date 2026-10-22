@@ -5,7 +5,7 @@
 ## Docs
 
 - [Setup guide for agents](https://wherdr.dev/agent.md): what to detect before asking, the one install command, the phone over Tailscale, the passkey lock on the tailnet address, safety rules
-- [Installer](https://wherdr.dev/install): `curl -fsSL https://wherdr.dev/install | sh`, the recommended install on macOS and Linux: checks Herdr, offers Node.js 22 when it is missing (no sudo), installs the wherdr Herdr plugin with the verified GitHub release package, runs wherdr natively as the user and starts it at boot (systemd --user unit with lingering, or a LaunchAgent); headless servers get the address and phone steps. Updates: run it again
+- [Installer](https://wherdr.dev/install): `curl -fsSL https://wherdr.dev/install | sh`, the recommended install on macOS and Linux: checks Herdr, offers Node.js 22 when it is missing (no sudo), installs the wherdr Herdr plugin with the verified GitHub release package, runs wherdr natively as the user and starts it at login on macOS (LaunchAgent), or at boot on Linux when lingering is enabled (otherwise at login, with a systemd --user unit); the installer reports the actual startup policy; headless servers get the address and phone steps. Updates: run it again
 - [Herdr plugin](https://raw.githubusercontent.com/afloury/wherdr/main/herdr-plugin.toml): what the installer runs, `herdr plugin install afloury/wherdr` (Node.js 22, native)
 - npm (`npm install -g wherdr`, then `wherdr service install`) and Homebrew (`brew install afloury/tap/wherdr`): alternatives; npm can hold a new release for up to two days
 - [Documentation index](https://raw.githubusercontent.com/afloury/wherdr/main/docs/README.md): choose only the page relevant to the task

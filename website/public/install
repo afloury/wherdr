@@ -16,8 +16,8 @@
 #      which downloads the verified GitHub release package into ~/wherdr/app,
 #      starts it, opens its setup guide in your browser and adds a Herdr key
 #      for its panel;
-#   5. starts wherdr at login: a systemd --user unit with lingering on Linux
-#      (it keeps running after you log out), a LaunchAgent on macOS;
+#   5. configures automatic startup: at login on macOS (LaunchAgent); on Linux,
+#      at boot with lingering enabled, otherwise at login (systemd --user);
 #   6. on a server without a screen (or over SSH): prints the address and the
 #      phone steps instead of opening a browser.
 # It never uses sudo and never stops or replaces a wherdr started another way.
@@ -356,11 +356,26 @@ service_file() {
   fi
 }
 
-# Starts wherdr at login, through the plugin (wherdr service install, from
-# $DIR/app with the saved runtime and the user's PATH). Linux: a systemd --user
-# unit and lingering (logind allows it for one's own user without sudo), so
-# wherdr keeps running after logout; macOS: a LaunchAgent. A failure leaves
-# wherdr running with Herdr (the plugin's startup hook), and says so.
+# Reports the service's actual startup policy after installation. A failed or
+# unavailable loginctl query must never turn into a claim that boot startup works.
+service_startup() {
+  if [ "$OS" = "Darwin" ]; then
+    say "  A LaunchAgent ($(service_file)): wherdr starts at login and restarts if it stops."
+  else
+    say "  A systemd --user unit ($(service_file)):"
+    linger="$(loginctl show-user "$(id -un)" --property=Linger --value 2>/dev/null)" || linger=unknown
+    case "$linger" in
+      yes) say "  Lingering is enabled: wherdr starts at boot and keeps running after you log out." ;;
+      no) say "  Lingering is disabled: wherdr starts at login and stops after you log out." ;;
+      *) say "  Could not check lingering: startup at boot and running after logout are not confirmed."
+         say "  Check with: loginctl show-user \$(id -un) --property=Linger --value" ;;
+    esac
+    say "  The service restarts wherdr if it fails."
+  fi
+}
+
+# Installs through the plugin with the saved runtime and the user's PATH.
+# A failure leaves wherdr running with Herdr and says so.
 install_service() {
   if [ "${WHERDR_SERVICE:-on}" = "off" ]; then
     say "  Login service skipped (WHERDR_SERVICE=off): wherdr starts with Herdr."
@@ -369,15 +384,10 @@ install_service() {
   [ -n "$PLUGIN_ROOT" ] && [ -f "$PLUGIN_ROOT/scripts/herdr-plugin.sh" ] || return 0
   # Installed again on every run, an existing one too: it takes the PATH the
   # login shell gives now (agents installed since), and repairs a broken one.
-  if [ -f "$(service_file)" ]; then step "Updating the login service"; else step "Starting wherdr at login"; fi
-  if [ "$OS" = "Darwin" ]; then
-    say "  A LaunchAgent ($(service_file)): wherdr starts at login and restarts if it stops."
-  else
-    say "  A systemd --user unit ($(service_file)), and lingering (loginctl enable-linger):"
-    say "  wherdr starts with the machine, restarts if it stops and keeps running after you log out."
-  fi
+  if [ -f "$(service_file)" ]; then step "Updating the login service"; else step "Configuring automatic startup"; fi
   if out="$(WHERDR_DIR="$DIR" WHERDR_PORT="$PORT" sh "$PLUGIN_ROOT/scripts/herdr-plugin.sh" service install 2>&1)"; then
     printf '%s\n' "$out" | sed 's/^ */     /'
+    service_startup
     ok "Login service installed"
     return 0
   fi

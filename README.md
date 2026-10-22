@@ -17,7 +17,8 @@ curl -fsSL https://wherdr.dev/install | sh
 ```
 
 The installer checks prerequisites, offers Node.js 22 if needed, installs the Herdr plugin
-and starts wherdr as your user at **http://localhost:7683**. It also configures automatic startup.
+and starts wherdr as your user at **http://localhost:7683**. It also configures automatic
+startup: at login on macOS; at boot on Linux with lingering enabled, otherwise at login. The installer reports which case applies.
 Open that address, or press **prefix+i** in Herdr, to follow the setup guide: agents, phone access
 through Tailscale, optional passkey lock and notifications. See [first launch](docs/quick-start.md).
 

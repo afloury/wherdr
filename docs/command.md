@@ -12,7 +12,7 @@ built app: nothing is compiled on your machine. Try it with `npx wherdr` (or `bu
 
 ```sh
 npm install -g wherdr       # or: pnpm add -g wherdr, bun add -g wherdr
-wherdr service install      # starts at every login; prints the address
+wherdr service install      # configures automatic startup; prints the address
 wherdr phone                # phone state, the app's phone setup page, QR code once it answers
 ```
 
@@ -24,7 +24,7 @@ wherdr phone                # phone state, the app's phone setup page, QR code o
 | `wherdr logs` (`-f` to follow, `-n 100`) | The log, `~/wherdr/wherdr.log`. |
 | `wherdr open` | Opens wherdr in the browser: its tailnet address when published and answering, else `localhost`. |
 | `wherdr phone` | Whether your phone can reach wherdr (Tailscale, `tailscale serve`, the address answering), the `tailscale serve` command to publish it when it is not (wherdr then enables the address by itself), the link to **Settings › Phone**, and the QR code once the address answers. |
-| `wherdr service install` · `uninstall` | Start at login: a LaunchAgent on macOS (`~/Library/LaunchAgents/dev.wherdr.plist`), a `systemd --user` unit on Linux, with lingering turned on (`loginctl enable-linger`, without sudo; when your system refuses it, the command to run is printed) so it keeps running while you are logged out. The service gets your [PATH](installation.md#agent-path). The one command and key **A** of the plugin's panel run it too. |
+| `wherdr service install` · `uninstall` | Configure automatic startup: a LaunchAgent on macOS (`~/Library/LaunchAgents/dev.wherdr.plist`) starts at login; a `systemd --user` unit on Linux starts at boot with lingering enabled, otherwise at login. The command tries to enable lingering (`loginctl enable-linger`, without sudo; when your system refuses it, the command to run is printed) so it keeps running while you are logged out; without lingering it stops after logout. The service gets your [PATH](installation.md#agent-path). The one command and key **A** of the plugin's panel run it too. |
 | `wherdr doctor` | Checks Node/Bun, Herdr and its socket, the port, the service, the data folder and `APP_URL`. |
 
 Options: `--port` (default `7683`), `--host` (default `127.0.0.1`; loopback or this machine's

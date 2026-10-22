@@ -18,6 +18,7 @@ let more: Record<string, unknown> = {}
 const calls: unknown[] = []
 registerEndpoint('/api/tasks/details', () => ({ ...parseTaskDetails(JSON.stringify({ task: { id: 'demo/9', title: 'Improve search', stage, msg, description: 'Search by title' }, failure, summary: 'Search tested.' })), ...more, pane }))
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
+registerEndpoint('/api/tasks/tell', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 registerEndpoint('/api/tasks/approve', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 const row = () => parseTaskRow({ id: 'demo/9', title: 'Improve search', stage, state: 'error', app: 'claude' })!
 async function panel(extra = {}, agent: string | null = null, status: 'idle' | 'working' = 'idle') {
@@ -181,10 +182,74 @@ describe('task panel', () => {
     more = { failureStale: true }
     const task = { ...row(), stage, state: 'blocked', kind: 'question', msg: 'Rebase on v2 or close it?', group: 'needs' as const }
     const w = await panel({ task })
-    expect(w.find('.task-needs h3').text()).toBe('Needs you · Rebase on v2 or close it?')
+    expect(w.find('.task-needs-type').text()).toBe('Question')
+    expect(w.find('.task-needs-text').text()).toBe('Rebase on v2 or close it?')
     expect(w.find('.task-needs').text()).not.toContain('merges into another branch')
     expect(w.find('.task-needs').text()).not.toContain('Send the error to the agent')
     w.unmount()
+  })
+  // WHR-69: the banner's action follows the kind of wait.
+  describe('a wait its agent reported', () => {
+    const asks = (kind: string, text: string) => ({ ...row(), stage: 'asks', state: 'blocked', kind, msg: text, group: 'needs' as const })
+    const buttons = (w: Awaited<ReturnType<typeof panel>>) => w.findAll('.task-needs-actions button').map(b => b.text())
+    it('a question with no answers offered: Reply…, no terminal', async () => {
+      stage = 'asks'
+      const w = await panel({ task: asks('question', 'Should the old settings file be removed') })
+      expect(w.find('.task-needs').attributes('data-kind')).toBe('question')
+      expect(buttons(w)).toEqual(['Reply…'])
+      expect(w.find('.task-needs').text()).not.toContain('Open terminal')
+      w.unmount()
+    })
+    it('a question with answers: one tap sends one', async () => {
+      stage = 'asks'
+      const w = await panel({ task: asks('question', 'Which store? (Postgres / SQLite)') })
+      expect(buttons(w)).toEqual(['Postgres', 'SQLite'])
+      await w.findAll('.task-needs-choice')[1]!.trigger('click')
+      await vi.waitFor(() => expect(calls).toContainEqual({ machine: '', id: 'demo/9', text: 'SQLite' }))
+      w.unmount()
+    })
+    it('a permission: Allow and Refuse, Always allow when offered', async () => {
+      stage = 'asks'
+      const w = await panel({ task: asks('permission', 'Need your OK to delete the test data') })
+      expect(buttons(w)).toEqual(['Allow', 'Refuse'])
+      await w.find('.task-needs-allow').trigger('click')
+      await vi.waitFor(() => expect(calls).toContainEqual({ machine: '', id: 'demo/9', text: 'Allowed: go ahead.' }))
+      w.unmount()
+      const again = await panel({ task: asks('permission', 'Run npm publish? (yes / always / no)') })
+      expect(buttons(again)).toEqual(['Allow', 'Always allow', 'Refuse'])
+      again.unmount()
+    })
+    it('a sign-in keeps Open terminal', async () => {
+      stage = 'asks'
+      const w = await panel({ task: asks('auth', 'Need a GitHub login to open the PR') })
+      expect(w.find('.task-needs-type').text()).toBe('Sign-in')
+      expect(buttons(w)).toEqual(['Open terminal'])
+      w.unmount()
+    })
+    it('links are short and clickable', async () => {
+      stage = 'asks'
+      const w = await panel({ task: asks('question', 'Merge https://github.com/acme/app/pull/484 now?') })
+      const a = w.find('.task-needs-text a')
+      expect(a.text()).toBe('PR #484')
+      expect(a.attributes('href')).toBe('https://github.com/acme/app/pull/484')
+      expect(a.attributes('target')).toBe('_blank')
+      w.unmount()
+    })
+    it('machine unavailable: its answers cannot be sent', async () => {
+      stage = 'asks'
+      const w = await panel({ task: asks('permission', 'Need your OK to delete the test data'), reachable: false })
+      const allow = w.find('.task-needs-allow')
+      expect(allow.attributes('disabled')).toBeDefined()
+      await allow.trigger('click')
+      expect(calls).toHaveLength(0)
+      w.unmount()
+    })
+    it('a numbered offer to allow for good gets its button', async () => {
+      stage = 'asks'
+      const w = await panel({ task: asks('permission', 'Run the cleanup?\n1) Allow once\n2) Always allow\n3) Refuse') })
+      expect(buttons(w)).toEqual(['Allow', 'Always allow', 'Refuse'])
+      w.unmount()
+    })
   })
   it('a current failure keeps its title and its buttons', async () => {
     failure = { stage: 'pr', title: 'Could not open the pull request', detail: 'gh failed', agentCanFix: true, at: 1 }
