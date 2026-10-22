@@ -3,13 +3,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { hasCommands } from './helpers/commands'
 import type { Quotas } from '../shared/types'
 import { readClaude, mergeQuotas } from '../server/utils/quotas'
 import { localFs } from '../server/utils/fsx'
 import { claudeInstallCommand, claudeSetupOf, claudeSetupRows, claudeSuggestion, machineQuotaRows, quotaLeft, quotaRows, resetText } from '../app/utils/quotas'
 
 // The install command passes settings.json to python3 (missing from node:22-alpine).
-const hasPython = (() => { try { execFileSync('python3', ['-V'], { stdio: 'ignore' }); return true } catch { return false } })()
+const hasPython = hasCommands('python3')
 const five = (used: number) => ({ used, resetsAt: 2000, minutes: 300 })
 
 describe('quota split (top / machines)', () => {

@@ -76,7 +76,7 @@ registerEndpoint('/api/files/download', (event) => {
 
 describe('FilesView', () => {
   beforeEach(() => { localStorage.clear(); hold = null })
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
   it('walks into a folder, opens a file with line numbers, and goes back through the breadcrumb', async () => {
     const w = await mountSuspended(FilesView, { props: { paneId: 'w1:p1' } })
@@ -124,7 +124,9 @@ describe('FilesView', () => {
   it('downloads the file it shows', async () => {
     // Nuxt uses happy-dom's response Blob but keeps Node's URL API, which
     // rejects that Blob. Model the browser object URL boundary explicitly.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:files-view-download')
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
     const saved: { href: string, name: string }[] = []
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { saved.push({ href: this.href, name: this.download }) })
     const w = await mountSuspended(FilesView, { props: { paneId: 'w1:p1' } })
@@ -136,6 +138,9 @@ describe('FilesView', () => {
     expect(createObjectURL).toHaveBeenCalledTimes(1)
     expect(await (createObjectURL.mock.calls[0]![0] as Blob).text()).toBe('a,b\r\n1,2\r\n')
     expect(saved[0]!.href).toBe('blob:files-view-download')
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(60_000)
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:files-view-download')
     expect(downloads.at(-1)).toEqual({ pane: 'w1:p1', path: 'README.md' })
     expect(saved[0]).toMatchObject({ href: expect.stringMatching(/^blob:/), name: 'README.md' })
   })
@@ -143,7 +148,9 @@ describe('FilesView', () => {
   it('shows one file named in the conversation, with no folder around it, and downloads it', async () => {
     // Nuxt uses happy-dom's response Blob but keeps Node's URL API, which
     // rejects that Blob. Model the browser object URL boundary explicitly.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:files-view-download')
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
     const saved: { href: string, name: string }[] = []
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { saved.push({ href: this.href, name: this.download }) })
     const listed = asked.length
@@ -160,6 +167,9 @@ describe('FilesView', () => {
     expect(createObjectURL).toHaveBeenCalledTimes(1)
     expect(await (createObjectURL.mock.calls[0]![0] as Blob).text()).toBe('a,b\r\n1,2\r\n')
     expect(saved[0]!.href).toBe('blob:files-view-download')
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(60_000)
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:files-view-download')
     expect(downloads.at(-1)).toEqual({ pane: 'w1:p1', path: '/home/user/exports/report.csv', from: 'chat' })
     expect(saved[0]!.name).toBe('report.csv')
     // Refresh reads the same file again, still with no folder.
