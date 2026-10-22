@@ -33,7 +33,7 @@ describe('allowed hosts', () => {
     expect(hostRefusalIsHtml('/', '*/*')).toBe(false)
   })
   it('keeps the refusal page free of the instance’s hosts and addresses, and of scripts', () => {
-    for (const [install, host] of [['brew', 'nas.example.ts.net'], ['npm', 'nas.lan:7690'], ['docker', '<script>alert(1)</script>'], ['plugin', undefined], ['', '192.0.2.7']] as const) {
+    for (const [install, host] of [['brew', 'nas.example.ts.net'], ['npm', 'nas.lan:7690'], ['native', '<script>alert(1)</script>'], ['plugin', undefined], ['', '192.0.2.7']] as const) {
       const page = hostRefusedPage(install, host, '7690')
       expect(page).not.toMatch(/nas\.|192\.0|alert/)
       expect(page).toContain('This address isn\'t enabled yet.')
@@ -48,8 +48,8 @@ describe('allowed hosts', () => {
     expect(phoneFixCommand('npm', '')).toBe('npx wherdr phone')
     expect(phoneFixCommand('', '7683')).toBe('npx wherdr phone')
     // No `wherdr` command on the host there: the installer ends with the same check.
-    for (const install of ['docker', 'docker-build', 'plugin']) expect(phoneFixCommand(install, '7690')).toBe('curl -fsSL https://wherdr.dev/install | sh')
-    expect(hostRefusedPage('docker')).toContain('<pre><code>curl -fsSL https://wherdr.dev/install | sh</code></pre>')
+    expect(phoneFixCommand('plugin', '7690')).toBe('curl -fsSL https://wherdr.dev/install | sh')
+    expect(hostRefusedPage('plugin')).toContain('<pre><code>curl -fsSL https://wherdr.dev/install | sh</code></pre>')
   })
   it('names the port in the command when wherdr does not run on the default one', () => {
     // `wherdr phone` alone looks at port 7683.
@@ -68,7 +68,6 @@ describe('allowed hosts', () => {
     expect(lan.match(/HERDR_WEB_ALLOWED_HOSTS/g)).toHaveLength(2)
     expect(lan).toContain('~/wherdr/wherdr.env')
     expect(lan).toContain('npx wherdr phone')
-    expect(hostRefusedPage('docker', 'box.lan')).toContain('in the container\'s environment')
   })
   it('allows the hosts read from tailscale serve, next to the others', () => {
     const served = allowedHosts('', '', {}, ['host.example.ts.net'])

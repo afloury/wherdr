@@ -5,9 +5,7 @@
 import { listenVerdict, startNetworkWatch, stopNetworkWatch, trustedNetworks } from '../utils/network'
 
 export default defineNitroPlugin((nitroApp) => {
-  // Tailscale's peers and Funnel, and in Docker whether the port answers on
-  // the gateway: read now, then every few seconds. It also warns when Docker's
-  // publication is not declared (WHERDR_DOCKER_LOOPBACK_ONLY).
+  // Read Tailscale's peers and Funnel now, then periodically.
   void startNetworkWatch()
   nitroApp.hooks.hook('close', stopNetworkWatch)
   if (import.meta.dev) return

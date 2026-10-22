@@ -12,7 +12,7 @@ import { execFile, type ChildProcessWithoutNullStreams } from 'node:child_proces
 import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
-import { DATA_DIR, IN_DOCKER, PANE_RE, log } from './env'
+import { DATA_DIR, PANE_RE, log } from './env'
 import { herdr } from './herdr'
 import { getState, termSessions, type TermView } from './state'
 import { cleanTerminalMouse, hasTerminalMouse } from '../../shared/herdrFeatures'
@@ -48,8 +48,6 @@ function ttySize(pane: string, pid: number): Promise<string> {
   const machine = machineOfPane(pane)
   if (!machine) return Promise.resolve('')
   if (machine.exec) return machine.exec(TTY_SIZE_SCRIPT, [String(pid)], { timeoutMs: 4000 }).then(r => (r.code === 0 ? r.stdout.toString('utf8') : ''), () => '')
-  // In the container, the host's processes are out of reach.
-  if (IN_DOCKER) return Promise.resolve('')
   return new Promise(resolve => execFile('sh', ['-c', TTY_SIZE_SCRIPT, 'sh', String(pid)], { timeout: 2000 }, (err, stdout) => resolve(err ? '' : String(stdout))))
 }
 

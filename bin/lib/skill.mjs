@@ -1,4 +1,4 @@
-// The shell helper is also used without Node by the Docker / Herdr installer.
+// The shell helper is also used without Node by the Herdr installer.
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 

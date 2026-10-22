@@ -225,7 +225,7 @@ export async function stop(opts, { quiet = false } = {}) {
   }
   if (quiet) return false
   const other = await probe(ctx.port, ctx.host)
-  if (other) warn(`the wherdr on port ${ctx.port} was not started by \`wherdr start\` (Docker, plugin, a terminal…): left running.`)
+  if (other) warn(`the wherdr on port ${ctx.port} was not started by \`wherdr start\` (plugin, a terminal…): left running.`)
   else say('wherdr is not running.')
   return false
 }
@@ -255,7 +255,7 @@ export async function status(opts) {
   const hb = brew && brewStatusRows(brew)
   say(`${c.bold('wherdr')} ${VERSION}`)
   row('Address', answer === 'wherdr' ? `${c.green('●')} ${c.cyan(ctx.url)} answers` : answer ? `${c.yellow('●')} port ${ctx.port} is taken by another program` : `${c.dim('○')} port ${ctx.port} free: not running`)
-  row('Process', hb?.process ? hb.process : svc.running ? 'login service' : pid ? `pid ${pid} (wherdr start)` : answer === 'wherdr' ? 'started another way (Docker, plugin, a terminal…)' : 'none')
+  row('Process', hb?.process ? hb.process : svc.running ? 'login service' : pid ? `pid ${pid} (wherdr start)` : answer === 'wherdr' ? 'started another way (plugin, a terminal…)' : 'none')
   row('Service', hb ? hb.service : svc.installed ? `installed (${serviceFile()})${svc.running ? '' : ', not running'}` : 'not installed · wherdr service install')
   row('Data', ctx.env.DATA_DIR)
   row('Log', hb ? hb.log : ctx.files.log)

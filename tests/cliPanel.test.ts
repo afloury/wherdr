@@ -3,7 +3,7 @@
 // address, Tailscale's errors, and when the QR code shows.
 import { describe, expect, it } from 'vitest'
 import { keyCommand, render } from '../bin/lib/panel.mjs'
-import { healthReach, phoneAddress, serveError, servedAddresses, servedPorts, tailnetDomain, tailnetStatus, tailnetUrl, tailscaleBin } from '../bin/lib/tailnet.mjs'
+import { healthReach, phoneAddress, serveError, servedAddresses, servedPorts, tailnetStatus, tailscaleBin } from '../bin/lib/tailnet.mjs'
 
 const URL = 'https://box.example.ts.net:7683/'
 const state = (over: Record<string, unknown> = {}) => ({
@@ -82,20 +82,6 @@ describe('tailscale serve errors', () => {
     expect(serveError('Tailscale is stopped.')?.code).toBe('offline')
     expect(serveError('failed to connect to local tailscaled; it doesn\'t appear to be running')?.code).toBe('offline')
     expect(serveError('something new')).toBeNull()
-  })
-})
-
-describe('Docker: the address typed by hand', () => {
-  it('accepts tailnet HTTPS addresses only', () => {
-    expect(tailnetUrl(' https://Box.example.ts.net:7683/settings ')).toBe('https://box.example.ts.net:7683/')
-    expect(tailnetUrl('http://box.example.ts.net:7683/')).toBeNull()
-    expect(tailnetUrl('https://example.com/')).toBeNull()
-    expect(tailnetUrl('https://user:pw@box.example.ts.net/')).toBeNull()
-  })
-
-  it('finds the tailnet suffix in the search line copied from the host', () => {
-    expect(tailnetDomain('nameserver 192.168.1.1\nsearch home.lan example.ts.net\noptions ndots:1\n')).toBe('example.ts.net')
-    expect(tailnetDomain('nameserver 1.1.1.1\n')).toBeNull()
   })
 })
 

@@ -22,10 +22,9 @@ export const PROJECTS_UNINSTALL_COMMAND = 'herdr plugin uninstall herdr-projects
 export const PROJECTS_UPGRADE_COMMAND = `${PROJECTS_UNINSTALL_COMMAND} && ${PROJECTS_COMMAND}`
 // The other way: the last wherdr that reads herdr-projects 0.2.
 export const WHERDR_LAST_02 = '1.3.4'
-// npm; with Docker, the image tag in docker-compose.yml becomes 1.3.4, then this.
+// npm command for the last compatible version.
 export const WHERDR_DOWNGRADE_COMMANDS = [
   `npm install -g wherdr@${WHERDR_LAST_02}`,
-  'docker compose pull && docker compose up -d',
 ] as const
 // The command herdr-projects 1.x gives agents and hooks, written by any of its
 // runs (flow/send.rs `shim`): 1.2.1 does not put `herdr-projects` on the PATH
@@ -35,11 +34,6 @@ export const PROJECTS_LAUNCHER = '~/.herdr-projects/data/bin/herdr-projects'
 // The step-by-step guide: in wherdr's repository, and shipped in the npm package
 // (package.json `files`; tests/projectsPlugin.test.ts checks both).
 export const PROJECTS_MIGRATION_GUIDE = 'docs/herdr-projects-1x.md'
-// Its section that moves a wherdr in Docker to the native service, where the
-// Board can act. The server sends its address with a read-only board
-// (server/utils/updates.ts NATIVE_MOVE_URL), the Board's note links to it.
-export const NATIVE_MOVE_ANCHOR = 'moving-from-docker-to-the-native-service'
-
 export interface PluginCommand { command?: unknown }
 export interface RawProjectsPlugin {
   plugin_id?: string

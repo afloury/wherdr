@@ -6,7 +6,7 @@
 // npm-global: the package installed by `npm i -g wherdr` (<prefix>/lib/node_modules/wherdr).
 // brew: the same package, installed by the Homebrew formula (the project's tap).
 // plugin: the copy the Herdr plugin runs in native mode (~/wherdr/app).
-export type InstallMode = 'docker' | 'docker-build' | 'native' | 'npm' | 'npm-global' | 'brew' | 'plugin'
+export type InstallMode = 'native' | 'npm' | 'npm-global' | 'brew' | 'plugin'
 
 // One-tap update (bin/lib/updater.mjs): written by the updater to
 // ~/wherdr/update.json, read back by the server for the app.
@@ -50,15 +50,13 @@ export function compareVersions(a: string, b: string): number {
   return 0
 }
 
-const MODES: InstallMode[] = ['docker', 'docker-build', 'npm', 'npm-global', 'brew', 'plugin']
+const MODES: InstallMode[] = ['npm', 'npm-global', 'brew', 'plugin']
 export function installMode(env: string | undefined): InstallMode {
   return MODES.find(m => m === env) ?? 'native'
 }
 
 // `repo`: owner/name of the GitHub repository (the Herdr plugin installs from it).
 export function updateCommand(mode: InstallMode, repo: string): string {
-  if (mode === 'docker') return 'docker compose pull && docker compose up -d'
-  if (mode === 'docker-build') return 'git pull && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build'
   if (mode === 'npm') return 'npx wherdr@latest'
   if (mode === 'npm-global') return 'npm install -g wherdr@latest && wherdr restart'
   if (mode === 'brew') return 'brew upgrade wherdr && brew services restart wherdr'
@@ -66,8 +64,7 @@ export function updateCommand(mode: InstallMode, repo: string): string {
   return 'git pull && npm ci && npm run build'
 }
 
-// Modes the server can update and restart by itself. Not Docker: replacing
-// its own container needs the Docker socket (root on the host) inside it;
+// Modes the server can update and restart by itself;
 // not npx (a temporary folder: running `npx wherdr@latest` again is the
 // update); not a checkout (local changes, build of several minutes).
 export function oneTapMode(mode: InstallMode): boolean {

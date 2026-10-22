@@ -34,7 +34,7 @@ promise that wherdr "can replace the Herdr terminal client day to day".
 | New agent in a new space: the "New agent" sheet, which creates the space (`workspace.create`) | Mod+Alt+N | Computer, online | Yes (caught before the terminal) |
 | New tab in the current pane's space: the "Start in a new tab" sheet | Mod+Alt+T | Computer, online, a pane being viewed | Yes (caught before the terminal) |
 | Close the current pane, through the same confirmation as the menu | Mod+Alt+W | Computer, online, a pane being viewed | Yes (caught before the terminal) |
-| The current agent's folder in its default editor, on the agent's machine | Mod+Alt+O | Computer, a pane with a folder, on a Mac (`machineOs`) — or a local pane when wherdr runs in Docker on a Mac with the host-open route (`/api/config` `hostOpen`) | Yes (caught before the terminal) |
+| The current agent's folder in its default editor, on the agent's machine | Mod+Alt+O | Computer, a pane with a folder, on a Mac (`machineOs`) | Yes (caught before the terminal) |
 | Search this conversation; if search is already open, focus and select its field | Mod+F | Agent in conversation mode | No: the browser keeps its Find there |
 | Switch between conversation and terminal | Ctrl+`` ` `` on every platform, by position (`Backquote`; on macOS also `IntlBackslash`, the key left of 1 on ISO keyboards) | Agent with a conversation, or the active cell | Yes (xterm sends nothing for it) |
 | Stop the working agent, same as the Stop button | Esc | Conversation mode, Stop shown, empty field, no conversation search open | No (Esc goes to the program) |
@@ -185,17 +185,7 @@ The composer blurs itself on Esc. After a stop it gets the focus back.
   Monitor), Zen also Ctrl+Alt+E (Forward workspace) — the shortcut never reached wherdr. O is
   free in Firefox, Zen, Chromium and Safari (⌘O "Open File" needs no Alt). The agent menu gets
   an "Open in editor" entry, the help sheet a row.
-- **Q9.** wherdr in Docker on a Mac: the container is Linux with no `open`, so the folder
-  shortcut and Reveal/Open were dead there. `/api/reveal` gains an "open on the host" route:
-  with `HERDR_WEB_HOST_OPEN_TARGET` set, a local pane's checks run on the Mac over SSH, behind
-  a forced-command key (scripts/wherdr-open.sh, installed by scripts/install-host-open.sh).
-  Two macOS quirks shape it: (a) plain `open <folder>` gives the file manager, so a folder with
-  a configured editor app runs `open -a <editor>` (`~/.local/share/wherdr/editor`); (b) apps
-  can only be *launched* from the GUI session, and `open` from an SSH session starts nothing —
-  the wrapper hands the command to a per-user LaunchAgent (`dev.wherdr.open`, spool file +
-  kickstart) that lives in the GUI session and runs `open` there. The client gates on
-  `/api/config` `hostOpen` (`canOpenOnMachine`), not on the OS alone. Without the variable,
-  behaviour is unchanged.
+
 - **Q10.** herdr-projects keys, live only where the plugin is installed. Mod+Alt+P for the
   Project panel: VS Code's secondary side bar is ⌥⌘B, but Chrome on macOS binds ⌥⌘B to the
   Bookmark Manager; ⌥⌘P is unbound in Chrome, Firefox and Safari (Finder's path bar only)

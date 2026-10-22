@@ -244,7 +244,7 @@ test('without herdr-projects: install it, from 1.2.1', async ({ page }, testInfo
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
 })
 
-// Replies of the server the Board must show as they are: a failed read, a container.
+// Replies of the server the Board must show as they are: a failed read.
 const row = (id: string, o: Record<string, unknown> = {}) => ({
   id, repo: id.split('/')[0], n: Number(id.split('/')[1]), state: 'blocked', kind: 'permission', stage: 'approval', title: `Task ${id}`, msg: '',
   app: 'claude', progress: null, eta: null, pr: '', review: null, reviewRound: 0, research: false, archived: false, queue: null, group: 'ready', ...o,
@@ -268,52 +268,6 @@ test('Herdr not answering for a machine: said, not five empty columns', async ({
   await page.goto('/#/board')
   await expect(page.locator('.board-note.error')).toContainText('Herdr did not answer', { timeout: 15000 })
   await expect(page.locator('.board-col')).toHaveCount(0)
-})
-
-test('in a container: the tasks show, the actions are the host\'s', async ({ page }, testInfo) => {
-  await page.route('**/api/tasks*', route => route.fulfill(reply({ tasks: [row('demo/1'), row('demo/3', { state: 'working', stage: 'working', kind: '', group: 'working', app: 'codex' })], at: Date.now(), readOnly: true, moveUrl: 'https://example.com/guide#moving-from-docker-to-the-native-service' })))
-  await page.route('**/api/tasks/details*', route => route.fulfill({ json: { id: 'demo/1', title: 'Task demo/1', stage: 'approval', msg: '', description: 'From the file', agent: 'claude', pr: '', branch: '', worktree: '', failure: '', review: null, reviewRounds: 0, plan: '', research: false, pane: null } }))
-  await page.goto('/#/board')
-  await expect(page.locator('.board-notes')).toContainText('wherdr runs in a container', { timeout: 15000 })
-  // Task actions still explain their disabled state with a native title.
-  const why = /wherdr runs in a container here/
-  for (const button of [page.locator('.board-new'), page.locator('.board-head-add').first()]) {
-    await expect(button).toBeDisabled()
-    await expect(button.locator('xpath=ancestor::span[contains(@class, "ro-why")][1]')).toHaveAttribute('title', why)
-  }
-  // Coordinators explain both their role and the disabled state in the new hint.
-  await expect(page.locator('.board-top .board-coord')).toHaveText('Coordinator · devbox')
-  await expect(page.getByRole('status').filter({ hasText: 'No Coordinator can be reached' })).toBeVisible()
-  const hints = page.locator('.coordinator-hint')
-  await expect(hints).toHaveCount(3) // Main, machine setup, project.
-  for (const hint of await hints.all()) {
-    await expect(hint.getByRole('button')).toBeDisabled()
-    if (testInfo.project.name.includes('phone')) {
-      await hint.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 10, clientY: 10 })
-    } else {
-      await hint.hover()
-    }
-    const tooltip = page.locator('.coordinator-tooltip')
-    await expect(tooltip).toBeVisible()
-    await expect(tooltip).toContainText(why)
-    if (testInfo.project.name.includes('phone')) {
-      await hint.dispatchEvent('pointerup', { pointerType: 'touch' })
-      await hint.dispatchEvent('click')
-    }
-    await expect(page.locator('.board-panel')).toHaveCount(0)
-    await page.keyboard.press('Escape')
-    await expect(tooltip).toBeHidden()
-  }
-  await expect(page.locator('.board-notes a', { hasText: 'Move to the native service' })).toHaveAttribute('href', /moving-from-docker-to-the-native-service$/)
-  if (testInfo.project.name.includes('phone')) await page.locator('.board-seg').getByRole('button', { name: /^Ready to approve/ }).click()
-  await page.locator('.task-card', { hasText: 'Task demo/1' }).click()
-  await page.locator('.board-panel-sheet').click()
-  const sheet = page.getByRole('dialog')
-  await expect(sheet).toContainText('herdr-projects approve demo/1')
-  await expect(sheet.getByRole('button', { name: 'Approve', exact: true })).toBeDisabled()
-  await expect(sheet.locator('.ro-why', { hasText: 'Approve' })).toHaveAttribute('title', why)
-  await expect(sheet.getByRole('textbox')).toHaveCount(0)
-  await page.screenshot({ path: `.shots/board-1x-container-${testInfo.project.name}.png` })
 })
 
 // A board with a task for each action, in two repos.
@@ -637,7 +591,7 @@ test('a push about a task opens it on the Board', async ({ page }) => {
 
 // Two machines, answered by the page itself (/api/tasks): the same task id on
 // both, a machine that stops answering, a board kept from an earlier visit.
-type Fake = { machine: string, status?: string, error?: string, stale?: boolean, readOnly?: boolean, tasks: ({ id: string, title: string } & Record<string, unknown>)[] }
+type Fake = { machine: string, status?: string, error?: string, stale?: boolean, tasks: ({ id: string, title: string } & Record<string, unknown>)[] }
 const fakeRow = (id: string, title: string) => ({
   id, repo: id.split('/')[0], n: Number(id.split('/')[1]), state: 'blocked', kind: 'question', stage: 'asks', title, msg: '', app: 'claude',
   progress: null, eta: null, pr: '', review: null, reviewRound: 0, research: false, archived: false, queue: null, group: 'needs',
@@ -698,9 +652,9 @@ test('Done across machines: the latest five of all of them, newest first; a link
   await expect(cards.last()).toContainText('B oldest')
 })
 
-test('the machine filter lists the local machine, read-only or not, and shows only its tasks', async ({ page }, testInfo) => {
-  // The local machine (key '') read from its files, as in a container, and an SSH machine.
-  await fakeBoard(page, () => [{ machine: '', readOnly: true, tasks: [{ id: 'demo/1', title: 'On this machine' }] }, { machine: 'mb', tasks: [{ id: 'web/2', title: 'On machine B' }] }])
+test('the machine filter lists the local machine and shows only its tasks', async ({ page }, testInfo) => {
+  // The local machine (key '') and an SSH machine.
+  await fakeBoard(page, () => [{ machine: '', tasks: [{ id: 'demo/1', title: 'On this machine' }] }, { machine: 'mb', tasks: [{ id: 'web/2', title: 'On machine B' }] }])
   const selectErrors: string[] = []
   page.on('console', (m) => { if (m.type() === 'error' && /Select/i.test(m.text())) selectErrors.push(m.text()) })
   await page.goto('/#/board')
@@ -908,7 +862,7 @@ test('a coordinator herdr-projects could not start says why, and Try again start
 
 test('Coordinator choices keep unavailable hosts visible and explain the three roles', async ({ page }, testInfo) => {
   let machines: Fake[] = [
-    { machine: '', readOnly: true, tasks: [] },
+    { machine: '', stale: true, error: 'Local read failed', tasks: [] },
     { machine: 'ma', status: 'error', error: 'SSH unavailable', tasks: [] },
     { machine: 'mb', tasks: [{ id: 'web/1', title: 'Example work' }] },
   ]
@@ -926,7 +880,7 @@ test('Coordinator choices keep unavailable hosts visible and explain the three r
   const choices = page.getByRole('menuitem')
   await expect(choices).toHaveCount(3)
   await expect(choices.nth(0)).toContainText('Coordinator · devbox')
-  await expect(choices.nth(0)).toContainText('container')
+  await expect(choices.nth(0)).toContainText('Local read failed')
   await expect(choices.nth(0)).toBeDisabled()
   await expect(choices.nth(1)).toContainText('SSH unavailable')
   await expect(choices.nth(1)).toBeDisabled()

@@ -5,9 +5,8 @@ that reads herdr-projects 0.2 (its Project panel, `TASKS.md`, threads). This pag
 machine from 0.2 to 1.x, keeps a backup, and says how to go back. Do it on each machine that
 runs herdr-projects.
 
-wherdr 2.0 also runs **natively** by default, as a service of your user: in a Docker container
-the Board only reads herdr-projects. If wherdr runs in Docker, move it first:
-[Moving from Docker to the native service](#moving-from-docker-to-the-native-service), below.
+wherdr 2.0 runs only **natively**, as a service of your user. A wherdr 1.x running in Docker
+moves first: [Moving from Docker to the native service](#moving-from-docker-to-the-native-service), below.
 
 herdr-projects 1.x is a different program, not a newer 0.2: one work board of tasks, each
 handed to an agent in its own space, reviewed when it finishes and merged on your yes. Your
@@ -109,8 +108,8 @@ Installing a new version does not change a wherdr that is already running: resta
 - npm: `npm install -g wherdr@latest && wherdr restart` (npm may hold a new release for up to two
   days).
 - Homebrew: `brew upgrade wherdr && brew services restart wherdr`
-- Docker: do not pull 2.0 into the container, where the Board only reads herdr-projects: move to
-  the native service first ([Moving from Docker to the native service](#moving-from-docker-to-the-native-service)).
+- A 1.x Docker install: there is no 2.0 image; move to the native service first
+  ([Moving from Docker to the native service](#moving-from-docker-to-the-native-service)).
 
 Check the version wherdr now serves in **Settings › About**: 2.0 or later. Still 1.3.4 means the
 old process is still running: restart it.
@@ -270,83 +269,44 @@ If anything is missing, the backup from step 1 of the move has everything as it 
 
 ## Moving from Docker to the native service
 
-In a container, wherdr cannot run herdr-projects on its own machine: the Board only reads its
-files, and the Coordinator, reply, start, stop, retry, archive and approve are off there. The
-native service runs wherdr as your user, on the host, where all of them work. It keeps the
-same port (7683) and the same data: the passkeys (`auth.json`), the push keys and subscriptions,
-the phone address (`app-url.json`) and the other settings all live in wherdr's `data/` folder,
-and the address your devices open does not change, so passkeys and notifications keep working.
+wherdr 2.0 has no Docker image: it runs only natively, as your user, where the Board can act.
+Published 1.x images stay on GHCR as they are, for those who stay on 1.x. The
+native service keeps the same port (7683) and the same data (passkeys, push subscriptions, the
+phone address and the other settings all live in wherdr's `data/` folder), so the address your
+devices open, the passkeys and the notifications keep working.
 
 Run every command on the machine where wherdr runs, as the user who runs Herdr.
 
-### 1. Find the compose folder and back it up
+1. Find the compose folder and back up its files:
 
-```sh
-OLD="$(docker inspect wherdr --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}')"
-echo "$OLD"      # ~/wherdr with the installer, or the folder you cloned
-tar czf ~/wherdr-docker-backup-$(date +%F).tgz -C "$OLD" data .env docker-compose.yml
-```
+   ```sh
+   OLD="$(docker inspect wherdr --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}')"
+   tar czf ~/wherdr-docker-backup-$(date +%F).tgz -C "$OLD" data .env docker-compose.yml
+   ```
 
-Look at `"$OLD/.env"` and keep aside the settings you changed yourself, such as `APP_URL` (only
-for a private network other than Tailscale), `HOST_LABEL`, `WHERDR_TRUSTED_NETWORKS`,
-`WHERDR_UPDATE_CHECK` or `HERDR_WEB_*`. The native service reads them as `KEY=VALUE` lines in
-`~/wherdr/wherdr.env`. Leave out what only Docker needs: `HOST_HOME`, `PUID`, `PGID`, `PORT`
-(the installer's `WHERDR_PORT`), `WHERDR_IMAGE`, `WHERDR_DOCKER_LOOPBACK_ONLY`,
-`WHERDR_TASKS_FROM_FILES` and `HERDR_WEB_HOST_OPEN_*`.
+   In `"$OLD/.env"`, keep aside the settings you changed yourself (`APP_URL`, `HOST_LABEL`,
+   `WHERDR_TRUSTED_NETWORKS`, `WHERDR_UPDATE_CHECK`, `HERDR_WEB_*`). Leave out the container's
+   own (`HOST_HOME`, `PUID`, `PGID`, `WHERDR_IMAGE`, `WHERDR_DOCKER_LOOPBACK_ONLY`,
+   `WHERDR_TASKS_FROM_FILES`, `HERDR_WEB_HOST_OPEN_*`); `PORT` becomes the installer's `WHERDR_PORT`.
+2. Stop the container: `cd "$OLD" && docker compose down`. Its files and image stay, for the way back.
+3. Put the data where the native service reads it, `~/wherdr/data`. Nothing to do when `$OLD`
+   is `~/wherdr` (the installer's folder); otherwise copy it (refused when the target exists:
+   look at what it holds first):
 
-### 2. Stop and remove the container
+   ```sh
+   mkdir -p ~/wherdr && [ ! -e ~/wherdr/data ] && cp -a "$OLD/data" ~/wherdr/data
+   ```
 
-```sh
-cd "$OLD" && docker compose down
-```
+   Write the settings kept at step 1, one `KEY=VALUE` per line, in `~/wherdr/wherdr.env`.
+4. Install the native service: `curl -fsSL https://wherdr.dev/install | sh`. It installs the
+   Herdr plugin, offers Node.js 22 if it is missing, starts wherdr on port 7683 and installs its
+   login service (`systemd --user` with lingering on Linux, a LaunchAgent on macOS). A plugin
+   install left in Docker mode (`WHERDR_MODE=docker` in `~/wherdr/plugin.env`) switches to
+   native on its next update, and says so.
+5. Check: `curl -fsS http://127.0.0.1:7683/api/health` gives `"name":"wherdr"` and the version.
+   Open wherdr on the same address as before: it unlocks with the same passkey.
 
-The container goes; the `data/` folder, `.env`, `docker-compose.yml` and the image stay, for the
-way back. A Docker install made by the Herdr plugin (`WHERDR_MODE=docker` in
-`~/wherdr/plugin.env`) is moved the same way: the installer switches it to native.
-
-### 3. Put the data where the native service reads it
-
-The native service uses `~/wherdr/data`. When `$OLD` is `~/wherdr` (the installer's folder),
-there is nothing to do. Otherwise copy it, which keeps the old one for the way back:
-
-```sh
-mkdir -p ~/wherdr && [ ! -e ~/wherdr/data ] && cp -a "$OLD/data" ~/wherdr/data
-```
-
-(The copy is refused when `~/wherdr/data` already exists: look at what it holds first.) Then
-write the settings kept at step 1, one per line, in `~/wherdr/wherdr.env`.
-
-### 4. Install the native service
-
-```sh
-curl -fsSL https://wherdr.dev/install | sh
-```
-
-It installs the Herdr plugin with the GitHub release package, offers Node.js 22 if it is missing,
-starts wherdr on port 7683 and installs its login service (a `systemd --user` unit with lingering
-on Linux, so it keeps running after you log out; a LaunchAgent on macOS).
-
-### 5. Check
-
-```sh
-curl -fsS http://127.0.0.1:7683/api/health      # "name":"wherdr" and the version
-systemctl --user status wherdr                   # Linux (macOS: launchctl print gui/$(id -u)/dev.wherdr)
-```
-
-Open wherdr on the same address as before (`tailscale serve` already points to
-`127.0.0.1:7683`; nothing to change there): it unlocks with the same passkey, and the Board no
-longer says it is read-only. Once all is well, the image can go (keep it while you may still go
-back): `docker image rm "$(cd "$OLD" && docker compose config --images herdr-web)"`.
-
-### Going back to Docker
-
-1. Remove the login service and stop wherdr: in Herdr, open the wherdr panel (**prefix+i**),
-   press **A** (login service off), then **X** (stop).
-2. Keep the plugin from starting it again with Herdr: `herdr plugin list` shows its id
-   (`<owner>.wherdr`), then `herdr plugin disable <that id>` (`herdr plugin enable` undoes it).
-3. When the data was copied at step 3, bring back what changed since, such as a passkey added
-   after the move: `cp -a ~/wherdr/data/. "$OLD/data/"`.
-4. Start the container again: `cd "$OLD" && docker compose up -d`.
-
-If anything is missing, the backup of step 1 has the folder as it was:
-`tar xzf ~/wherdr-docker-backup-<date>.tgz -C "$OLD"` (with the container stopped).
+To go back to 1.x in Docker: in the wherdr panel (**prefix+i**) press **A** (login service off),
+then **X** (stop); `herdr plugin disable <owner>.wherdr`; copy back what changed since
+(`cp -a ~/wherdr/data/. "$OLD/data/"` when the data was copied); then
+`cd "$OLD" && docker compose up -d`. The backup of step 1 has the folder as it was.

@@ -1,7 +1,7 @@
 // App icons (/icons/*, /favicon.ico), served by the server and not as
 // static files: an installation can replace them without rebuilding
 // the image, by mounting its own icons in BRANDING_DIR (same layout:
-// icons/<name>.png, favicon.ico; see docker-compose.override.example.yml).
+// icons/<name>.png, favicon.ico; set BRANDING_DIR).
 // Otherwise, the repository's (server/assets/branding, bundled at build time).
 import fs from 'node:fs'
 import path from 'node:path'

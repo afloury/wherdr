@@ -101,6 +101,24 @@ describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, n
     expect(start.stdout).toContain('wherdr started')
   })
 
+  it('switches an existing Docker plugin install to native without running the old runtime', () => {
+    const dir = path.join(home, 'wherdr')
+    mkdirSync(path.join(dir, 'data'), { recursive: true })
+    writeFileSync(path.join(dir, 'plugin.env'), `WHERDR_MODE=docker\nWHERDR_PORT=${port}\n`)
+    writeFileSync(path.join(dir, 'data', 'settings.json'), '{"theme":"titanium"}')
+    writeFileSync(path.join(minbin, 'docker'), '#!/bin/sh\necho unexpected > "$HOME/docker-called"\nexit 1\n', { mode: 0o755 })
+    const build = run('build', rt)
+    expect(build.status, build.stderr).toBe(0)
+    expect(build.stdout).toContain('switching this plugin to the native service')
+    expect(build.stdout).toContain('Stop the old 1.x instance')
+    expect(readFileSync(path.join(dir, 'plugin.env'), 'utf8')).not.toContain('WHERDR_MODE')
+    expect(readFileSync(path.join(dir, 'data', 'settings.json'), 'utf8')).toBe('{"theme":"titanium"}')
+    expect(existsSync(path.join(home, 'docker-called'))).toBe(false)
+    expect(pidOf()).toMatch(/^\d+$/)
+    expect(run('stop').status).toBe(0)
+    expect(run('start').stdout).toContain('wherdr started')
+  })
+
   it('restarts the wherdr it runs on the new copy when installed again', () => {
     expect(run('build', rt).status).toBe(0)
     const first = pidOf()
