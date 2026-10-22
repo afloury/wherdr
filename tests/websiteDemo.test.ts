@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { INSTALL_OUTPUT } from '../website/app/utils/installDemo'
-import { scriptProblems } from '../website/app/utils/demoScript'
-import type { DemoScript } from '../website/app/utils/demoScript'
-import { ANSWER, HERO, actionsAt, agentState } from '../website/app/utils/heroDemo'
+import { listGroups, projectSummary, scriptProblems } from '../website/app/utils/demoScript'
+import type { DemoAgent, DemoScript } from '../website/app/utils/demoScript'
+import { ANSWER, HERO, SHOP, actionsAt, agentState } from '../website/app/utils/heroDemo'
 import { CATCHUP_MS, GLYPH_MS as SITE_GLYPH_MS, TRAIL_GLYPHS as SITE_TRAIL, trailGlyphs as siteGlyphs, typeDuration, typingFronts as siteFronts } from '../website/app/utils/typing'
 import { GLYPH_MS as APP_GLYPH_MS, TRAIL_GLYPHS as APP_TRAIL, trailGlyphs as appGlyphs, typingFronts as appFronts } from '../app/utils/typewriter'
 import { BOARD, BOARD_GROUPS, CONVERSATION, COUPONS, PHONE, boardAt } from '../website/app/utils/storyDemos'
@@ -87,5 +87,25 @@ describe('live demos', () => {
       const keys = BOARD_GROUPS.flatMap(g => boardAt(s)[g.id].map(c => c.key))
       expect(new Set(keys).size).toBe(keys.length)
     }
+  })
+})
+
+describe('compact agent list', () => {
+  const agent = (name: string, state: DemoAgent['state']): DemoAgent => ({ name, state, agent: 'claude', model: 'Opus 5.5', line: '' })
+
+  it('groups the other agents as the app does: your turn, working, ready (done and idle), no empty group', () => {
+    const groups = listGroups([agent('a', 'idle'), agent('b', 'working'), agent('c', 'done')])
+    expect(groups.map(g => [g.title, g.list.map(a => a.name)])).toEqual([['Working', ['b']], ['Ready', ['a', 'c']]])
+  })
+
+  it('sums up a project\'s tasks without zero counts', () => {
+    expect(projectSummary(SHOP.tasks).map(p => p.text)).toEqual(['2 tasks', '2 working'])
+    expect(projectSummary([agent('a', 'blocked'), agent('b', 'working'), agent('c', 'idle')]).map(p => p.text))
+      .toEqual(['3 tasks', '1 your turn', '1 working'])
+  })
+
+  it('every task of the demo project has a unique key and its progress', () => {
+    expect(new Set(SHOP.tasks.map(t => t.tag)).size).toBe(SHOP.tasks.length)
+    for (const t of SHOP.tasks) expect(t.stats).toMatch(/^\d+% \d+m$/)
   })
 })

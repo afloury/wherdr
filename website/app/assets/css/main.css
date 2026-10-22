@@ -253,7 +253,10 @@ code, kbd, pre { font-family: var(--mono); }
 .app-ui .avatar.codex .iconify { width: calc(var(--u) * 22); height: calc(var(--u) * 22); }
 .app-ui .avatar.omp { color: var(--omp); }
 
-/* Agent list: title row, counters, cards. */
+/* Agent list: title row, then the 2.0 compact list (the app's default,
+   `.list-compact` in its main.css): counters and quotas on thin strips,
+   projects (coordinator row, summary bar, tasks), state groups, one line per
+   agent that opens on its question while it waits. */
 .app-ui .home-brand { display: flex; align-items: center; gap: calc(var(--u) * 8); }
 .app-ui .home-logo { width: calc(var(--u) * 32); height: auto; color: var(--text); flex: none; margin-right: calc(var(--u) * 2); }
 .app-ui .home-title-row { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 12); min-width: 0; }
@@ -263,41 +266,94 @@ code, kbd, pre { font-family: var(--mono); }
 .app-ui .session-row span { display: inline-flex; align-items: center; gap: calc(var(--u) * 8); }
 .app-ui .session-row b { display: inline-flex; align-items: center; gap: calc(var(--u) * 6); font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--accent); }
 .app-ui .session-row .iconify { width: calc(var(--u) * 13); height: calc(var(--u) * 13); }
-.app-ui .stats { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); }
-.app-ui .stat { padding: calc(var(--u) * 12) calc(var(--u) * 12) calc(var(--u) * 11); min-width: 0; }
+.app-ui .home-list { display: flex; flex-direction: column; min-width: 0; }
+.app-ui .stats { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); margin-bottom: calc(var(--u) * 8); }
+.app-ui .stat { display: flex; align-items: center; gap: calc(var(--u) * 7); padding: calc(var(--u) * 6) calc(var(--u) * 9); min-width: 0; }
 .app-ui .stat + .stat { border-left: 1px solid var(--line); }
-.app-ui .stat b { display: block; font: 850 calc(var(--u) * 26) / 1 var(--display); letter-spacing: -.04em; color: var(--text); }
-.app-ui .stat span { display: flex; align-items: center; gap: calc(var(--u) * 6); margin-top: calc(var(--u) * 8); font: 500 calc(var(--u) * 9.5) / 1.2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-ui .stat b { font: 850 calc(var(--u) * 15) / 1 var(--display); letter-spacing: -.04em; color: var(--text); }
+.app-ui .stat span { display: flex; align-items: center; gap: calc(var(--u) * 6); min-width: 0; font: 500 calc(var(--u) * 8.5) / 1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .app-ui .stat span i { width: calc(var(--u) * 6); height: calc(var(--u) * 6); flex: none; }
 .app-ui .stat.blocked span i { background: var(--blocked); }
 .app-ui .stat.working span i { background: var(--working); }
 .app-ui .stat.done span i { background: var(--done); }
 .app-ui .stat.zero b { color: var(--dim); }
 .app-ui .stat.blocked:not(.zero) b { color: var(--rose); }
+.app-ui .quotas { margin-bottom: calc(var(--u) * 12); }
+.app-ui .quota-row { display: grid; grid-template-columns: calc(var(--u) * 34) 1fr 1fr; border: 1px solid var(--line); }
+.app-ui .quota-row + .quota-row { border-top: 0; }
+.app-ui .quota-who { display: grid; place-items: center; border-right: 1px solid var(--line); }
+.app-ui .quota-who .avatar { width: calc(var(--u) * 20); height: calc(var(--u) * 20); border: 0; background: none; }
+.app-ui .quota-who .avatar .iconify { width: calc(var(--u) * 13); height: calc(var(--u) * 13); }
+.app-ui .quota { min-width: 0; padding: calc(var(--u) * 5) calc(var(--u) * 9); }
+.app-ui .quota + .quota { border-left: 1px solid var(--line); }
+.app-ui .quota-top { display: flex; align-items: baseline; justify-content: space-between; gap: calc(var(--u) * 8); }
+.app-ui .quota-label { font: 500 calc(var(--u) * 9.5) / 1.2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.app-ui .quota-top b { font: 850 calc(var(--u) * 14) / 1 var(--display); letter-spacing: -.04em; color: var(--text); }
+.app-ui .quota-top b small { margin-left: 1px; font-size: calc(var(--u) * 11); color: var(--muted); }
+.app-ui .quota-bar { height: calc(var(--u) * 3); margin-top: calc(var(--u) * 4); background: var(--line); }
+.app-ui .quota-bar i { display: block; height: 100%; background: var(--teal); }
+.app-ui .agent-group { margin-top: calc(var(--u) * 8); }
+.app-ui .group-title { display: flex; align-items: center; gap: calc(var(--u) * 10); margin: 0 0 calc(var(--u) * 6); font: 500 calc(var(--u) * 9.5) / 1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--mauve); }
+.app-ui .group-title::before { content: ''; width: calc(var(--u) * 18); height: 1px; flex: none; background: currentColor; opacity: .6; }
+.app-ui .group-title .count { color: var(--dim); }
+.app-ui .agent-group.blocked .group-title { color: var(--rose); }
 .app-ui .card-list { display: flex; flex-direction: column; border: 1px solid var(--line); }
-.app-ui .card { position: relative; width: 100%; display: flex; flex-wrap: wrap; align-items: flex-start; gap: calc(var(--u) * 12); padding: calc(var(--u) * 14) calc(var(--u) * 14) calc(var(--u) * 14) calc(var(--u) * 16); background: var(--bg-2); transition: background .12s ease; }
+/* One line: logo, task key, title, progress, state square (38 pt on a phone, 30 px on a computer). */
+.app-ui .card { position: relative; display: flex; flex-wrap: nowrap; align-items: center; gap: calc(var(--u) * 8); min-height: calc(var(--u) * 38); padding: calc(var(--u) * 4) calc(var(--u) * 10) calc(var(--u) * 4) calc(var(--u) * 12); background: var(--bg-2); transition: background .2s ease; }
+.app-ui.desk .card { min-height: calc(var(--u) * 30); }
 .app-ui .card + .card { border-top: 1px solid var(--line-soft); }
 .app-ui .card::before { content: ''; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 2px; background: transparent; }
+.app-ui .card.blocked { background: color-mix(in srgb, var(--rose) 8%, var(--bg-2)); }
 .app-ui .card.blocked::before { background: var(--rose); }
 .app-ui .card.done::before { background: var(--done); }
+.app-ui .card .avatar { width: calc(var(--u) * 18); height: calc(var(--u) * 18); }
+.app-ui .card .avatar .iconify, .app-ui .card .avatar.codex .iconify { width: calc(var(--u) * 14); height: calc(var(--u) * 14); }
+.app-ui .card-title { flex: 1; min-width: 0; font: 500 calc(var(--u) * 13.5) / 1.25 var(--sans); letter-spacing: -.01em; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .app-ui .card.done .card-title { font-weight: 700; }
-.app-ui .card-main { flex: 1; min-width: 0; }
-.app-ui .card-title { font-weight: 600; font-size: calc(var(--u) * 15); line-height: 1.3; color: var(--text); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.app-ui .card-meta { display: flex; align-items: center; gap: calc(var(--u) * 8); margin-top: calc(var(--u) * 5); min-width: 0; overflow: hidden; }
-.app-ui .card-meta .pill { flex-shrink: 1; }
-.app-ui .card-tag { flex: none; padding: calc(var(--u) * 2) calc(var(--u) * 5); border: 1px solid var(--line); font: 500 calc(var(--u) * 9.5) / 1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
-.app-ui .card-where { display: block; min-width: 0; margin-top: calc(var(--u) * 4); font: 400 calc(var(--u) * 11.5) / 1.3 var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.app-ui .card-preview { flex: 0 0 calc(100% - var(--u) * 50); min-width: 0; margin: calc(var(--u) * -2) 0 0 calc(var(--u) * 50); font-size: calc(var(--u) * 13.5); line-height: 1.45; color: var(--text-3); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.app-ui .card.blocked .card-preview { color: var(--text); }
-.app-ui .card-choices { flex: 0 0 calc(100% - var(--u) * 50); min-width: 0; display: flex; flex-direction: column; gap: calc(var(--u) * 6); margin-left: calc(var(--u) * 50); }
-.app-ui .card-choices button { display: flex; align-items: center; gap: calc(var(--u) * 10); text-align: left; padding: calc(var(--u) * 8) calc(var(--u) * 10); font: 500 calc(var(--u) * 13.5) / 1.3 var(--sans); background: color-mix(in srgb, var(--rose) 6%, transparent); color: var(--text); border: 1px solid color-mix(in srgb, var(--rose) 35%, transparent); transition: background .15s; }
+.app-ui .card.blocked .card-title { color: var(--rose); }
+.app-ui .card-tag { flex: none; padding: calc(var(--u) * 1) calc(var(--u) * 4); border: 1px solid var(--line-soft); font: 500 calc(var(--u) * 8.5) / 1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.app-ui .home-task-stats { flex: none; font: 500 calc(var(--u) * 10.5) / 1 var(--mono); letter-spacing: .04em; color: var(--dim); white-space: nowrap; }
+.app-ui .card-state { flex: none; display: grid; place-items: center; width: calc(var(--u) * 10); height: calc(var(--u) * 10); color: var(--muted); }
+.app-ui .card-state i { width: calc(var(--u) * 7); height: calc(var(--u) * 7); background: currentColor; }
+.app-ui .card-state.working { color: var(--working); }
+.app-ui .card-state.working i { animation: pulse 1.3s ease-in-out infinite; }
+.app-ui .card-state.blocked { color: var(--blocked); }
+.app-ui .card-state.blocked i { width: calc(var(--u) * 8); height: calc(var(--u) * 8); animation: pulse .9s ease-in-out infinite; }
+.app-ui .card-state.done { color: var(--done); }
+.app-ui .card-state.idle { color: var(--idle); }
+.app-ui .card-state.idle i { background: transparent; box-shadow: inset 0 0 0 calc(var(--u) * 1.5) currentColor; }
+/* Open while it waits: its question, then the answers, under the line. */
+.app-ui .card.open { flex-wrap: wrap; }
+.app-ui .card-more { flex: 0 0 100%; min-width: 0; display: flex; flex-direction: column; gap: calc(var(--u) * 6); padding: calc(var(--u) * 6) 0 calc(var(--u) * 4) calc(var(--u) * 26); animation: demo-rise .2s ease-out both; }
+.app-ui .card-preview { font-size: calc(var(--u) * 12.5); line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
+.app-ui .card-choices { display: flex; flex-direction: column; gap: calc(var(--u) * 4); }
+.app-ui .card-choices button { display: flex; align-items: center; gap: calc(var(--u) * 10); min-height: calc(var(--u) * 38); text-align: left; padding: calc(var(--u) * 6) calc(var(--u) * 10); font: 500 calc(var(--u) * 13) / 1.3 var(--sans); background: color-mix(in srgb, var(--rose) 6%, transparent); color: var(--text); border: 1px solid color-mix(in srgb, var(--rose) 35%, transparent); transition: background .15s; }
+.app-ui.desk .card-choices button { min-height: 0; }
 .app-ui .card-choices button.hit { background: color-mix(in srgb, var(--rose) 22%, transparent); }
 .app-ui .card-choices .n { font: 600 calc(var(--u) * 11) / 1 var(--mono); color: var(--rose); flex: none; }
 .app-ui.desk .card.sel { background: var(--surface-2); }
 .app-ui.desk .card.sel::before { background: var(--mauve); }
 .app-ui.desk .card.sel.blocked::before { background: var(--rose); }
-.app-ui.desk .card-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: calc(var(--u) * 14.5); }
-.app-ui.desk .card-preview { font-size: calc(var(--u) * 13); }
+/* A project: its coordinator's row, the summary bar, its tasks on a rule. */
+.app-ui .card.home-lead { min-height: calc(var(--u) * 44); padding: calc(var(--u) * 5) calc(var(--u) * 10); }
+.app-ui.desk .card.home-lead { min-height: calc(var(--u) * 40); }
+.app-ui .lead-mark { display: grid; place-items: center; color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.app-ui .lead-mark .px-mark { width: calc(var(--u) * 14); height: auto; }
+.app-ui .card-title.lead-name { font: 750 calc(var(--u) * 14) / 1.2 var(--display); letter-spacing: -.02em; }
+.app-ui .card-tag.lead-coord-tag { padding: calc(var(--u) * 2) calc(var(--u) * 4); font-size: calc(var(--u) * 8); letter-spacing: .06em; color: var(--muted); border-color: var(--line); }
+.app-ui .home-lead .card-state { width: calc(var(--u) * 12); height: calc(var(--u) * 12); }
+.app-ui .home-lead .card-state i { width: calc(var(--u) * 9); height: calc(var(--u) * 9); }
+.app-ui .project-bar { display: flex; align-items: center; gap: calc(var(--u) * 6); min-height: calc(var(--u) * 34); padding-left: calc(var(--u) * 5); }
+.app-ui .project-head { flex: 1; min-width: 0; display: flex; align-items: center; gap: calc(var(--u) * 8); color: var(--muted); }
+.app-ui .project-chev { width: calc(var(--u) * 14); height: calc(var(--u) * 14); flex: none; color: var(--dim); }
+.app-ui .project-sum { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 calc(var(--u) * 10) / 1.2 var(--mono); letter-spacing: .02em; text-transform: uppercase; color: var(--muted); }
+.app-ui .project-sum-sep { margin: 0 .3em; color: var(--dim); }
+.app-ui .project-sum-blocked { color: var(--blocked); }
+.app-ui .project-sum-working { color: var(--working); }
+.app-ui .project-branch { flex: none; display: inline-flex; align-items: center; gap: calc(var(--u) * 4); font: 400 calc(var(--u) * 11) / 1.2 var(--mono); color: var(--dim); white-space: nowrap; }
+.app-ui .project-branch .iconify { width: calc(var(--u) * 11); height: calc(var(--u) * 11); }
+.app-ui .project-tree { position: relative; margin-left: calc(var(--u) * 24); }
+.app-ui .project-tree::before { content: ''; position: absolute; top: calc(var(--u) * -4); bottom: 0; left: calc(var(--u) * -12); width: 1px; background: var(--line); }
 
 /* Agent header: back, name, state line, actions; Conversation / Terminal tabs. */
 .app-ui .agent-top { flex: none; display: flex; align-items: center; gap: calc(var(--u) * 4); padding: calc(var(--u) * 6) calc(var(--u) * 8); border-bottom: 1px solid var(--line-soft); background: color-mix(in srgb, var(--bg) 94%, transparent); }
