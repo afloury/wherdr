@@ -27,13 +27,14 @@ const fs = { ...localFs, readdir: async (p: string) => {
   return localFs.readdir(p)
 } }
 const machine = { key: '', label: 'devbox', local: true, status: 'online', home, session: 'default', exec: null, sock: () => null, fs, info: () => ({ key: '' }) }
+const remote = { ...machine, key: 'remote', label: 'workstation', local: false, info: () => ({ key: 'remote' }) }
 const session = { ...machine, key: 'abcd1234', session: 'review', info: () => ({ key: 'abcd1234', baseKey: '' }) }
 const info = { status: 'ready', version: '1.2.1', launcher: '/plugins/herdr-projects/bin/run.sh' }
 let infoFails = false
 const infoAsked: boolean[] = []
 const panes: { id: string, machine?: string, agent?: string, cwd?: string, status?: string, name?: string }[] = []
 vi.mock('../server/utils/machines', () => ({ allMachines: () => [machine, session], baseMachines: () => [machine] }))
-vi.mock('../server/utils/actions', () => ({ machineFor: (k: unknown) => (k === session.key ? session : machine) }))
+vi.mock('../server/utils/actions', () => ({ machineFor: (k: unknown) => (k === session.key ? session : k === 'remote' ? remote : machine) }))
 vi.mock('../server/utils/projectsPlugin', () => ({ projectsPluginInfo: async (_m: unknown, fresh = false) => {
   infoAsked.push(fresh)
   if (infoFails) throw new Error('Herdr did not answer')
@@ -925,4 +926,39 @@ it('uses the saved merge blocker missing from the CLI list to group an approval'
   taskFile('demo/1', { stage: 'approval', mergeFailed: true, prFailure: { stage: 'pr', remoteKind: 'checks', title: 'Checks failed' } })
   const result = await read()
   expect(result.machines[0]!.tasks.find(t => t.id === 'demo/1')?.group).toBe('needs')
+})
+
+describe('questions about a task to its project coordinator', () => {
+  it('names the task, sends only a question and never delegates', async () => {
+    await T.askTaskCoordinator('', 'demo/1', 'What does it need?')
+    expect(calls.map(c => c[0])).toEqual(['details', 'coordinator'])
+    const sent = calls.at(-1)!
+    expect(sent.slice(0, 4)).toEqual(['coordinator', '--project=demo', '--', 'tell'])
+    expect(sent[4]).toContain('demo/1')
+    expect(sent[4]).toContain('do not start, delegate or change any task')
+    expect(sent[4]).toContain('What does it need?')
+    expect(sent).not.toContain('--delegate')
+  })
+  it('rejects invalid ids and empty questions before any command', async () => {
+    await expect(T.askTaskCoordinator('', '../other/1', 'why?')).rejects.toThrow(/Invalid task/)
+    await expect(T.askTaskCoordinator('', 'demo/1', '  ')).rejects.toThrow(/Nothing to send/)
+    expect(calls).toEqual([])
+  })
+  it('retains the end of the maximum question alongside context', async () => {
+    await T.askTaskCoordinator('', 'demo/1', 'x'.repeat(6995) + ' end!')
+    expect(calls.at(-1)![4]).toMatch(/ end!$/)
+  })
+})
+
+it('sends task questions through the owning remote machine launcher', async () => {
+  const owners: string[] = []
+  T.setRunner(async (m, _launcher, args) => {
+    owners.push(m.key)
+    calls.push(args)
+    return { code: 0, stderr: '', stdout: args[0] === 'details' ? fixture('details-approval.json') : 'sent' }
+  })
+  await T.askTaskCoordinator('remote', 'demo/1', 'What does this mean?')
+  expect(owners).toEqual(['remote', 'remote'])
+  expect(calls.at(-1)!.slice(0, 4)).toEqual(['coordinator', '--project=demo', '--', 'tell'])
+  expect(calls.at(-1)![4]).toContain('Fix login redirect')
 })

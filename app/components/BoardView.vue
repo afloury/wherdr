@@ -351,8 +351,11 @@ const panelTask = computed(() => {
 watch(board, (b) => {
   if (panel.value && b && !b.machines.some(m => m.machine === panel.value!.machine)) panel.value = null
 })
-// "Open the chat" in a task's sheet: its agent in the panel, where replying
-// happens (the sheet has closed).
+// The project's coordinator on the task's own machine.
+function askCoordinator(machine: string, task: TaskRow) {
+  talkTo(machine, { kind: 'project', repo: task.repo })
+}
+// The task agent conversation, separate from its project coordinator.
 function chatWith(machine: string, task: TaskRow) {
   panel.value = { machine, kind: 'task', id: task.id, chat: true }
   haptic()
@@ -572,11 +575,11 @@ function back() {
     <BoardPanel
       v-if="panel" :key="panelKey" :target="panel" :task="panelTask"
       :refresh="reload" :machine-label="machineLabel(panel.machine)" :read-only="readOnly(panel.machine)" :reachable="writable.some(m => m.machine === panel!.machine)"
-      @archived="onArchived" @restored="onRestored" @changed="reload" @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent"
+      @archived="onArchived" @restored="onRestored" @changed="reload" @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent" @coordinator="askCoordinator"
     />
     <TaskSheet
       v-model:open="sheetOpen" :task="pickedTask" :machine="picked?.machine ?? ''" :read-only="readOnly(picked?.machine ?? '')"
-      :refresh="reload" @archived="onArchived" @restored="onRestored" @chat="chatWith"
+      :refresh="reload" @archived="onArchived" @restored="onRestored" @chat="chatWith" @coordinator="askCoordinator"
     />
     <NewTaskSheet v-model:open="newOpen" :machines="writable.map(m => m.machine)" :repos="reposByMachine" :machine="newFor.machine" :repo="newFor.repo" @added="added" />
   </section>
