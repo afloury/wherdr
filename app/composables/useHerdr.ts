@@ -18,7 +18,7 @@ import { migrateContentWidth } from '~/utils/contentWidth'
 import { readQuotaDisplay } from '~/utils/quotas'
 import { readShowShells } from '~/utils/terminalVisibility'
 import { readHomeGrouping } from '~/utils/homeGrouping'
-import { readCompactList } from '~/utils/compactCard'
+import { COMPACT_LIST_KEY, LEGACY_COMPACT_LIST_KEY, readCompactList } from '~/utils/compactCard'
 import { paneFallback } from '~/utils/viewMode'
 import { menuAsSheet } from '~/utils/menuRoute'
 import { DEFAULT_QUOTE_MODE, QUOTE_MODE_KEY, migrateQuoteMode, type QuoteMode } from '~/utils/quoteTokens'
@@ -110,8 +110,12 @@ export const showQuotas = syncedRef('showQuotas', flag.read(true), flag.write)
 export const homeGrouping = syncedRef('homeGrouping', readHomeGrouping, v => v)
 
 // Compact list: one line per card (sidebar on a computer, home list on the phone).
-// Read before the first render, so the list never shows detailed first.
-export const compactList = syncedRef('compactList', readCompactList, flag.write)
+// Read before the first render, so the list never changes density after it.
+// Off by default; the 1.x value is dropped (see utils/compactCard.ts).
+export const compactList = syncedRef(COMPACT_LIST_KEY, readCompactList, flag.write)
+if (import.meta.client) {
+  try { localStorage.removeItem(LEGACY_COMPACT_LIST_KEY) } catch { /* storage unavailable */ }
+}
 export const autoReorderReady = syncedRef('autoReorderReady', flag.read(true), flag.write)
 // Sorting of Ready (see shared/spaces.ts sortReady).
 export const readySort = syncedRef<ReadySort>('readySort', raw => ((READY_SORTS as readonly string[]).includes(raw || '') ? raw as ReadySort : 'herdr'), v => v)

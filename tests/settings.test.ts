@@ -7,20 +7,20 @@ import { onSettingsChange, patchSettings, readSettings } from '../server/utils/s
 
 describe('settings patch', () => {
   it('keeps known keys with text or null, drops the rest', () => {
-    expect(cleanSettingsPatch({ theme: 'nord', compactList: null, token: 'x', fontSize: '14', showShells: 1 })).toEqual({ theme: 'nord', compactList: null })
+    expect(cleanSettingsPatch({ theme: 'nord', compactListV2: null, token: 'x', fontSize: '14', showShells: 1 })).toEqual({ theme: 'nord', compactListV2: null })
     expect(cleanSettingsPatch({ theme: 'x'.repeat(SETTING_MAX + 1) })).toBeNull()
     expect(cleanSettingsPatch([])).toBeNull()
     expect(cleanSettingsPatch('theme')).toBeNull()
   })
   it('reports only what changed; null forgets a key', () => {
-    const { next, changed } = applySettingsPatch({ theme: 'nord', compactList: '1' }, { theme: 'nord', compactList: null, homeGrouping: 'state' })
+    const { next, changed } = applySettingsPatch({ theme: 'nord', compactListV2: '1' }, { theme: 'nord', compactListV2: null, homeGrouping: 'state' })
     expect(next).toEqual({ theme: 'nord', homeGrouping: 'state' })
-    expect(changed).toEqual({ compactList: null, homeGrouping: 'state' })
+    expect(changed).toEqual({ compactListV2: null, homeGrouping: 'state' })
   })
   it('a migration never replaces a key the server already has', () => {
-    const { next, changed } = applySettingsPatch({ theme: 'nord' }, { theme: 'paper', compactList: '1' }, true)
-    expect(next).toEqual({ theme: 'nord', compactList: '1' })
-    expect(changed).toEqual({ compactList: '1' })
+    const { next, changed } = applySettingsPatch({ theme: 'nord' }, { theme: 'paper', compactListV2: '1' }, true)
+    expect(next).toEqual({ theme: 'nord', compactListV2: '1' })
+    expect(changed).toEqual({ compactListV2: '1' })
   })
 })
 
@@ -47,18 +47,25 @@ describe('settings file', () => {
   })
   it('keeps both of two simultaneous writes; the last one wins for the same key', async () => {
     await Promise.all([
-      patchSettings({ theme: 'nord', compactList: '1' }, { file }),
+      patchSettings({ theme: 'nord', compactListV2: '1' }, { file }),
       patchSettings({ homeGrouping: 'state', theme: 'paper' }, { file }),
     ])
-    expect(await readSettings(file)).toEqual({ theme: 'paper', compactList: '1', homeGrouping: 'state' })
+    expect(await readSettings(file)).toEqual({ theme: 'paper', compactListV2: '1', homeGrouping: 'state' })
   })
   it('tells the listeners what changed, and nothing for a no-op', async () => {
     const seen: unknown[] = []
     const off = onSettingsChange(c => seen.push(c))
     await patchSettings({ theme: 'nord' }, { file })
     await patchSettings({ theme: 'nord' }, { file })
-    await patchSettings({ theme: 'paper', compactList: '1' }, { file, onlyMissing: true })
+    await patchSettings({ theme: 'paper', compactListV2: '1' }, { file, onlyMissing: true })
     off()
-    expect(seen).toEqual([{ theme: 'nord' }, { compactList: '1' }])
+    expect(seen).toEqual([{ theme: 'nord' }, { compactListV2: '1' }])
+  })
+  it('drops the 1.x compact list left in the file (2.0 resets it to normal once)', async () => {
+    await fs.mkdir(path.dirname(file), { recursive: true })
+    await fs.writeFile(file, JSON.stringify({ v: 1, settings: { compactList: '1', theme: 'nord' } }))
+    expect(await readSettings(file)).toEqual({ theme: 'nord' })
+    await patchSettings({ compactListV2: '1' }, { file })
+    expect(JSON.parse(await fs.readFile(file, 'utf8')).settings).toEqual({ theme: 'nord', compactListV2: '1' })
   })
 })

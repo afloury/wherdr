@@ -29,7 +29,7 @@ for (const language of ['en', 'fr']) {
         if (localStorage.getItem('stateFixture')) return
         localStorage.setItem('stateFixture', '1')
         localStorage.setItem('herdrLanguage', language)
-        localStorage.setItem('compactList', compact ? '1' : '0')
+        localStorage.setItem('compactListV2', compact ? '1' : '0')
         localStorage.setItem('machineGroups', JSON.stringify([{ id: '*group:studio', name: 'Studio', machines: ['laptop'] }]))
       }, { language, compact })
       await page.goto('/')

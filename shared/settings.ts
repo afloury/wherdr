@@ -9,8 +9,9 @@ export const SYNCED_SETTINGS = [
   'theme', 'focusBorder', 'backdrop', 'backdropPackets',
   // Machine bar and groups
   'machineBar', 'machineBarOrder', 'machineBarHidden', 'machineGroups',
-  // Home list
-  'compactList', 'homeGrouping', 'collapsedMachines', 'collapsedRepos',
+  // Home list (compactListV2: 2.0's key, see app/utils/compactCard.ts; the
+  // 1.x `compactList` is no longer read)
+  'compactListV2', 'homeGrouping', 'collapsedMachines', 'collapsedRepos',
   'showShells', 'showCounters', 'showQuotas', 'quotaDisplay',
   'autoReorderReady', 'readySort', 'hiddenAgents',
   // Conversation

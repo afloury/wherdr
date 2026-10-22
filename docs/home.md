@@ -13,13 +13,14 @@
   a row of machine chips at the top opens each machine's menu (sessions, keep awake, board,
   Claude quota setup), and offline or reconnecting machines stay on one line at the bottom.
 - **Live agent list**, one line per Herdr space, grouped by state (your turn, working, ready).
-  The list is compact by default: agent, title, project badge and state. When an agent asks for
+  The list is normal by default; turn on Settings › Appearance › Home screen › **Compact list**
+  for one line per card (agent, title, project badge and state). When an agent asks for
   permission or asks a question, its card opens on the question and its options: **answer in one
-  tap** without opening it; the card is one line again once answered. Turn off Settings ›
-  Appearance › Home screen › **Compact list** for normal mode. Board tasks use one line in
+  tap** without opening it; the card is one line again once answered. Board tasks use one line in
   compact mode (agent, key, title, progress, duration, state and Your turn when needed); normal
   mode adds the current activity and relevant limit or review labels on a second line. Task
-  details stay in the task sheet. Existing compact/normal choices are preserved. Other agents
+  details stay in the task sheet. A compact list turned on in 1.x goes back to normal once, on
+  the first 2.0 load; turning it on again is kept. Other agents
   also use dense rows, with a last-answer preview in normal mode; waiting agents keep their
   questions and one-tap answers in both modes.
   With [herdr-projects](board.md#works-great-with-herdr-projects), the board's spaces follow Herdr's sidebar:
