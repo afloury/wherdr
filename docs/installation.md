@@ -53,9 +53,12 @@ The script ([read it first](https://wherdr.dev/install), source in
    downloads the GitHub release package of its version (checksum checked, no wait for npm),
    installs it in `~/wherdr/app`, starts it on `http://localhost:7683`, opens the setup guide in
    your browser (first install) and binds **prefix+i** to its panel;
-5. starts wherdr **at every boot**, with `wherdr service install`: a `systemd --user` unit on
-   Linux, with lingering (`loginctl enable-linger`, allowed for your own user without sudo on
-   most systems) so it keeps running after you log out; a LaunchAgent on macOS. The service gets
+5. configures automatic startup with `wherdr service install`: **at login on macOS** with a
+   LaunchAgent; **at boot on Linux when lingering is enabled**, otherwise **at login**, with a
+   `systemd --user` unit. It tries to enable lingering (`loginctl enable-linger`, allowed for
+   your own user without sudo on most systems), which also keeps wherdr running after logout.
+   Without lingering, wherdr stops after logout. The installer checks lingering after installation
+   and reports which case applies, or says when it cannot verify it. The service gets
    your login shell's `PATH`, so the agents you installed in `~/.local/bin`, `~/.bun/bin`,
    `~/.cargo/bin`, `~/.npm-global/bin` or Homebrew are found (see [Agent PATH](installation.md#agent-path)). Each
    run installs it again, with the `PATH` of now. If this step fails (no systemd), nothing of it

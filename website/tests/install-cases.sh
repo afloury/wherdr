@@ -67,8 +67,16 @@ case "$1" in
     # The unit takes the login shell's PATH of the moment.
     mkdir -p "$(dirname "$f")" && echo "PATH=$(cat /tmp/login-path 2>/dev/null)" > "$f"
     touch /tmp/up
-    echo "  ✓ lingering enabled (loginctl enable-linger)" ;;
+    if [ -f /tmp/linger-off ]; then echo "  ! lingering is off"
+    else echo "  ✓ lingering enabled (loginctl enable-linger)"; fi ;;
 esac
+EOF
+# loginctl: the service enabled lingering unless refused; querying can fail too.
+cat > /stubs/loginctl <<'EOF'
+#!/bin/sh
+[ "$*" = "show-user $(id -un) --property=Linger --value" ] || exit 1
+[ ! -f /tmp/linger-query-fails ] || exit 1
+if [ -f /tmp/linger-off ]; then echo no; else echo yes; fi
 EOF
 # ldd: glibc when /tmp/glibc exists, musl when /tmp/musl exists, else the system's.
 cat > /stubs/ldd <<'EOF'
@@ -107,7 +115,7 @@ reset() {
   rm -rf /home/alice/.claude /home/alice/wherdr /home/alice/.local /home/alice/.config /home/alice/.cache /home/alice/.herdr-projects \
     /tmp/curl.log /tmp/herdr.log /tmp/brew.log /tmp/up /tmp/pull-fails /tmp/herdr-version /tmp/darwin \
     /tmp/plugin-installed /tmp/build-fails /tmp/foreign /tmp/tailnet /stubs/brew \
-    /tmp/glibc /tmp/musl /tmp/bad-sum /tmp/service-fails /tmp/start-fails /tmp/login-path /tmp/nd /srv/SHASUMS256.txt /srv/node-v22*
+    /tmp/linger-off /tmp/linger-query-fails /tmp/glibc /tmp/musl /tmp/bad-sum /tmp/service-fails /tmp/start-fails /tmp/login-path /tmp/nd /srv/SHASUMS256.txt /srv/node-v22*
   [ -f /usr/local/bin/node.off ] && mv /usr/local/bin/node.off /usr/local/bin/node
   mkdir -p /home/alice/.local/bin && cp /opt/stub/herdr /home/alice/.local/bin/herdr && chown -R "$ME" /home/alice
 }
@@ -145,16 +153,22 @@ check "warns when the Herdr server is not running" 'has "herdr.sock" /tmp/out'
 check "Native install, with Node.js passed to the plugin" \
   'has "WHERDR_RUNTIME=/usr/local/bin/node" /tmp/herdr.log'
 check "installs the login service through the plugin, and says what it is" \
-  'has "plugin script: service install (WHERDR_DIR=/home/alice/wherdr)" /tmp/herdr.log && service_installed && has "systemd --user unit" /tmp/out && has "lingering" /tmp/out && has "Login service installed" /tmp/out'
+  'has "plugin script: service install (WHERDR_DIR=/home/alice/wherdr)" /tmp/herdr.log && service_installed && has "systemd --user unit" /tmp/out && has "Lingering is enabled" /tmp/out && has "starts at boot" /tmp/out && has "Login service installed" /tmp/out'
 echo /new/agent/bin > /tmp/login-path; rm -f /tmp/up
 run; check "second run: the service is installed again, with the PATH of now" \
   'has "Updating the login service" /tmp/out && [ "$(grep -c "service install" /tmp/herdr.log)" = 2 ] && has "PATH=/new/agent/bin" /home/alice/.config/systemd/user/wherdr.service'
+reset; touch /tmp/linger-off
+run; check "lingering refused: login only, no boot promise" \
+  'has "Lingering is disabled: wherdr starts at login and stops after you log out." /tmp/out && ! has "starts at boot" /tmp/out'
+reset; touch /tmp/linger-query-fails
+run; check "lingering query fails: startup policy is unconfirmed" \
+  'has "Could not check lingering" /tmp/out && ! has "starts at boot" /tmp/out && has "Login service installed" /tmp/out'
 reset
 run WHERDR_SERVICE=off; check "WHERDR_SERVICE=off: no login service" '! has "service install" /tmp/herdr.log && ! service_installed && has "WHERDR_SERVICE=off" /tmp/out'
 reset; touch /tmp/service-fails
 run && pass "a service failure keeps the install" || fail "a service failure keeps the install"
 check "service failure: wherdr is started again before saying it runs, the retry command is given" \
-  'has "plugin script: start" /tmp/herdr.log && [ -f /tmp/up ] && has "No login service" /tmp/out && has "herdr-plugin.sh service install" /tmp/out && has "wherdr is running" /tmp/out && ! service_installed'
+  'has "plugin script: start" /tmp/herdr.log && [ -f /tmp/up ] && has "No login service" /tmp/out && has "herdr-plugin.sh service install" /tmp/out && has "wherdr is running" /tmp/out && ! service_installed && ! has "starts at boot" /tmp/out && ! has "A systemd --user unit" /tmp/out'
 reset; touch /tmp/service-fails /tmp/start-fails
 run && fail "service failure, wherdr down: exits non-zero" || check "service failure and wherdr cannot start again: says so, never that it runs" \
   'has "does not answer on port 7683" /tmp/out && ! has "wherdr is running" /tmp/out'
@@ -217,7 +231,7 @@ reset; touch /tmp/darwin; no_node
 run && fail "macOS without Node.js nor Homebrew refused" || check "macOS without Node.js nor Homebrew: nodejs.org" 'has "nodejs.org" /tmp/out'
 reset; touch /tmp/darwin; no_node; make_node_dist darwin
 run WHERDR_YES=1; check "macOS without Node.js nor Homebrew, WHERDR_YES=1: the darwin build, then a LaunchAgent" \
-  'has "WHERDR_RUNTIME=/home/alice/wherdr/node/bin/node" /tmp/herdr.log && has "LaunchAgent" /tmp/out && [ -f /home/alice/Library/LaunchAgents/dev.wherdr.plist ]'
+  'has "WHERDR_RUNTIME=/home/alice/wherdr/node/bin/node" /tmp/herdr.log && has "LaunchAgent" /tmp/out && has "starts at login" /tmp/out && ! has "starts at boot" /tmp/out && [ -f /home/alice/Library/LaunchAgents/dev.wherdr.plist ]'
 
 # 6. wherdr already running: never replaced.
 reset; touch /tmp/up /tmp/plugin-installed
