@@ -8,8 +8,12 @@
 - [Installer](https://wherdr.dev/install): `curl -fsSL https://wherdr.dev/install | sh`, the recommended install on macOS and Linux: checks Herdr, offers Node.js 22 when it is missing (no sudo), installs the wherdr Herdr plugin with the verified GitHub release package, runs wherdr natively as the user and starts it at boot (systemd --user unit with lingering, or a LaunchAgent); headless servers get the address and phone steps. Updates: run it again
 - [Herdr plugin](https://raw.githubusercontent.com/afloury/wherdr/main/herdr-plugin.toml): what the installer runs, `herdr plugin install afloury/wherdr` (Node.js 22, native)
 - npm (`npm install -g wherdr`, then `wherdr service install`) and Homebrew (`brew install afloury/tap/wherdr`): alternatives; npm can hold a new release for up to two days
-- [README](https://raw.githubusercontent.com/afloury/wherdr/main/README.md): features, installation, configuration, troubleshooting
-- [Other private networks](https://github.com/afloury/wherdr#other-private-networks): phone access over Headscale, NetBird, ZeroTier, WireGuard or Cloudflare Tunnel + Access instead of Tailscale (HTTPS with a valid certificate, `APP_URL`)
+- [Documentation index](https://raw.githubusercontent.com/afloury/wherdr/main/docs/README.md): choose only the page relevant to the task
+- [Installation and updates](https://raw.githubusercontent.com/afloury/wherdr/main/docs/installation.md): prerequisites, installer, agent PATH and updates
+- [Configuration](https://raw.githubusercontent.com/afloury/wherdr/main/docs/configuration.md): environment variables and preferences
+- [Security](https://raw.githubusercontent.com/afloury/wherdr/main/docs/security.md): network restrictions and passkeys
+- [Troubleshooting](https://raw.githubusercontent.com/afloury/wherdr/main/docs/troubleshooting.md): common failures
+- [Other private networks](https://github.com/afloury/wherdr/blob/main/docs/networks.md#other-private-networks): phone access over Headscale, NetBird, ZeroTier, WireGuard or Cloudflare Tunnel + Access instead of Tailscale (HTTPS with a valid certificate, `APP_URL`)
 - [Security policy](https://raw.githubusercontent.com/afloury/wherdr/main/SECURITY.md): how to report a vulnerability
 
 ## Optional

@@ -281,7 +281,7 @@
   display: flex; flex-direction: column;
   background: var(--bg);
 }
-/* Page shortened from the bottom (iOS 26 bug, see README): it does not reach
+/* Page shortened from the bottom (iOS 26 bug, see docs/phone.md): it does not reach
    the home bar, no need to add the bottom safe area. */
 body.short-bottom { --safe-bottom: 0px; }
 
