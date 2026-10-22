@@ -111,4 +111,21 @@ export function parseStatusSocket(out: string): string | null {
 
 // Name of an agent launched from the app (normalized to lowercase).
 export const AGENT_NAME_RE = /^[a-z][a-z0-9_-]{0,31}$/
-export const AGENT_NAME_HINT = 'Name: lowercase letters, digits, - and _ (32 max), starting with a letter'
+export const AGENT_NAME_HINT = 'Name: use at least one letter or digit'
+
+// Letters NFKD does not split (sharp s, ae, oe, o slash, d bar, l slash, thorn).
+const LIGATURES: Record<string, string> = { '\u00df': 'ss', '\u00e6': 'ae', '\u0153': 'oe', '\u00f8': 'o', '\u0111': 'd', '\u0142': 'l', '\u00fe': 'th' }
+
+// Turns a typed name into a valid agent name instead of refusing it:
+// "Agent portal project" -> "agent-portal-project". Accents dropped,
+// other characters -> "-", repeated dashes merged, edge dashes removed,
+// a letter added before a leading digit, cut to 32. Empty when nothing
+// usable is left (only symbols).
+export function toAgentName(raw: unknown): string {
+  let s = String(raw ?? '').normalize('NFKD').replace(/\p{M}+/gu, '').toLowerCase()
+  s = s.replace(/[\u00df\u00e6\u0153\u00f8\u0111\u0142\u00fe]/g, c => LIGATURES[c]!)
+  s = s.replace(/[^a-z0-9_-]+/g, '-').replace(/-{2,}/g, '-').replace(/^[-_]+|[-_]+$/g, '')
+  if (!s) return ''
+  if (/^\d/.test(s)) s = `a-${s}`
+  return s.slice(0, 32).replace(/[-_]+$/, '')
+}
