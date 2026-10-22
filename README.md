@@ -328,6 +328,16 @@ Details in [Features](#features) and [Security](#security).
 - **Terminal key bar** (Esc, Enter, arrows, Shift+Tab, Ctrl+C…) and touch scrolling.
 - **Offline reading** of the last known state and of recently opened conversations.
 
+### On an iPad
+
+- **Computer layout in both orientations**: in portrait the agent list folds to a narrow column
+  and slides over the conversation; in landscape it stays docked. Buttons are 44 px, and the
+  layout does not change when the on-screen keyboard opens.
+- **Side by side by touch**: finger-sized pane buttons, grip and dividers; the active terminal
+  pane has the key bar; with the keyboard open the tab fits the visible area above it.
+- **Hardware keyboard**: Enter sends (Shift+Enter adds a line) once a key only a hardware
+  keyboard sends (arrows, Esc, a ⌘ chord) has been typed.
+
 ## How it works
 
 ```

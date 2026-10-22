@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **iPad, second pass:** opening the on-screen keyboard no longer changes the layout. An iPad mini in portrait used to switch to the phone layout, and in landscape the buttons shrank, because a touch tablet was detected by its window, which the keyboard shortens. It is now detected by its screen. With the keyboard open, a side-by-side tab fits the visible area, so the active pane's message field stays above the keyboard; windows such as New agent and the interactive terminal are centred in that area too. Side-by-side panes are easier to use with a finger: 44 px pane buttons, view selector, grip and tab chips, and dividers with a 24 px touch area and a visible notch. The active terminal pane now shows the terminal key bar (Esc, arrows, ^C…) on a touch screen, starting from the left so every key stays reachable in a narrow pane. Phones and computers are unchanged.
+
 - **Herdr 0.9.2+ machine diagnostics and terminal mouse:** a remote machine's Options menu checks native reachability and offers the interactive reconnect command plus a wherdr connection retry. Terminal clicks, taps and drags use structured mouse events; Shift + drag selects text. Older Herdr retains legacy input and SSH retries.
 
 - Task sheets offer **Ask the coordinator** before starting work, and in other active states. Questions name the task and go to its project coordinator on its owning machine; the coordinator chat opens after sending. Asking never delegates or changes the task. The separate Chat action still opens the task’s agent. Available in English and French.
