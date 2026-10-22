@@ -97,12 +97,48 @@ describe('checkSent', () => {
     expect(checkSent(queued, { agent: 'claude', claude: claude([{ text: 'queued probe four', ts: iso(T0 + 600) }]), now: T0 + 2 * QUEUED_TTL_MS })).toBe(false)
   })
 
+  it('never takes a message for another one that contains it, or that it contains', () => {
+    // Both pulled back, only the longer one queued again: the shorter one is lost.
+    const r = read([
+      op('enqueue', T0 + 600, 'review server'), op('enqueue', T0 + 900, 'review server and client'),
+      op('popAll', T0 + 5000, 'review server'), op('popAll', T0 + 5000, 'review server and client'),
+      op('enqueue', T0 + 6000, 'review server and client'),
+    ])
+    const short = sent({ text: 'review server' })
+    const long = sent({ id: 'm2', text: 'review server and client' })
+    const list = [short, long]
+    checkSent(list, { agent: 'claude', claude: r, now: T0 + 7000 })
+    expect(checkSent(list, { agent: 'claude', claude: r, now: T0 + 7001 + LOST_MS })).toBe(true)
+    expect(short).toMatchObject({ failed: true, lost: true })
+    expect(long.failed).toBeUndefined()
+    // A longer message pulled back says nothing of a short one inside it.
+    const ok = [sent({ text: 'ok' })]
+    const pulledLong = read([op('enqueue', T0 + 600, 'look at tests, ok'), op('popAll', T0 + 5000, 'look at tests, ok')])
+    checkSent(ok, { agent: 'claude', claude: pulledLong, now: T0 + 6000 })
+    expect(ok[0]!.popped).toBeUndefined()
+    expect(checkSent(ok, { agent: 'claude', claude: pulledLong, now: T0 + 6001 + LOST_MS })).toBe(false)
+    // Spaces and line breaks aside, the same text is the same message.
+    const lines = [sent({ text: 'first line\nsecond   line' })]
+    checkSent(lines, { agent: 'claude', claude: read([op('enqueue', T0 + 600, 'first line\nsecond   line'), op('popAll', T0 + 5000, 'first line\nsecond   line')]), now: T0 + 6000 })
+    expect(lines[0]!.popped).toBe(true)
+  })
+
+  it('a long message wherdr keeps cut is known by its start', () => {
+    const full = `${'word '.repeat(1000)}end`
+    const list = [sent({ text: full.slice(0, 4000) })]
+    checkSent(list, { agent: 'claude', claude: read([op('enqueue', T0 + 600, full), op('popAll', T0 + 5000, full)]), now: T0 + 6000 })
+    expect(list[0]!.popped).toBe(true)
+  })
+
   it('leaves held and failed messages alone, photos alone matched by their images', () => {
     const list = [sent({ held: true }), sent({ id: 'f', failed: true })]
     expect(checkSent(list, { agent: 'claude', claude: claude([], pulled), now: T0 + 2 * QUEUED_TTL_MS })).toBe(false)
     const photos = [sent({ text: '/home/user/.cache/herdr-web/uploads/a.jpg' })]
     checkSent(photos, { agent: 'claude', claude: claude([], [{ text: '', ts: iso(T0 + 1000), images: 1 }]), now: T0 + 2000 })
     expect(photos[0]!.popped).toBe(true)
+    const two = [sent({ text: '/home/user/.cache/herdr-web/uploads/a.jpg\n/home/user/.cache/herdr-web/uploads/b.jpg' })]
+    checkSent(two, { agent: 'claude', claude: claude([], [{ text: '', ts: iso(T0 + 1000), images: 1 }]), now: T0 + 2000 })
+    expect(two[0]!.popped).toBeUndefined()
   })
 })
 

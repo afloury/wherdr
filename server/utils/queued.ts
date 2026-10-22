@@ -1,8 +1,7 @@
 // Messages sent from the phone and shown as "queued": when
 // did the agent take them?
 import type { ChatItem, ClaudeQueueEntry, Pane, QueuedMessage } from '../../shared/types'
-import { isUploadLine, photosLanded, photosOnly } from '../../shared/queuedMatch'
-import { sameMsg } from './transcripts'
+import { isUploadLine, photosLanded, photosOnly, uploadNames } from '../../shared/queuedMatch'
 
 // A message sent that never shows in the conversation is reported as not
 // seen after this long (see checkSent), instead of waiting for ever.
@@ -238,9 +237,17 @@ export function checkSent(list: QueueEntry[], o: { agent: string | null | undefi
   let changed = false
   for (const q of list) {
     if (q.held || q.failed) { delete q.lostSince; delete q.popped; continue }
-    const text = q.text.split('\n').filter(l => !isUploadLine(l)).join('\n').trim()
+    // The same message, never one that merely contains it or starts like it
+    // ("review server" is not "review server and client"): its whole text,
+    // spaces aside, or, past QUEUED_TEXT_MAX (wherdr keeps the start only),
+    // an entry starting with it; photos alone, by their number.
+    const text = flat(q.text.split('\n').filter(l => !isUploadLine(l)).join('\n'))
+    const cut = q.text.length >= QUEUED_TEXT_MAX
+    const photos = uploadNames(q.text).length
     const after = (e: ClaudeQueueEntry) => !e.ts || Date.parse(e.ts) >= (q.typedAt ?? q.at) - LANDED_SLACK_MS
-    const isIt = (e: ClaudeQueueEntry) => after(e) && (text ? sameMsg(e.text, text) || sameMsg(text, e.text) : !e.text && (e.images || 0) > 0)
+    const isIt = (e: ClaudeQueueEntry) => after(e) && (text
+      ? (cut ? flat(e.text).startsWith(text) : flat(e.text) === text)
+      : !e.text && (e.images || 0) === photos)
     const c = o.agent === 'claude' ? o.claude : null
     const inQueue = Boolean(c && c.queue.some(isIt))
     if (inQueue) { delete q.popped; delete q.lostSince }
