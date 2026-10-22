@@ -300,6 +300,7 @@ const FR: Record<string, string> = {
   'Claude’s answer field could not be reached — check the current screen.': 'Impossible d’atteindre le champ de réponse de Claude — regarde l’écran à jour.',
   'Claude’s answer field could not be cleared — check the current screen.': 'Le champ de réponse de Claude ne se vide pas — regarde l’écran à jour.',
   'Claude’s answer field closed — answer not submitted, check the current screen.': 'Le champ de réponse de Claude s’est refermé — réponse non validée, regarde l’écran à jour.',
+  'Claude kept the answer in its field — answer not submitted, check the current screen.': 'Claude a gardé la réponse dans son champ — réponse non validée, regarde l’écran à jour.',
   // omp "Ask" box: free answer, question tabs
   'Your answer…': 'Ta réponse…', 'Questions': 'Questions',
   'Web Push is not configured': 'Web Push non configuré',
@@ -547,6 +548,8 @@ const FR: Record<string, string> = {
   'The menu is still open. Close it in the terminal.': 'Le menu est toujours ouvert. Fermez-le dans le terminal.',
   'Not sent — the agent’s input contains text': 'Non envoyé — le champ de l’agent contient du texte',
   'Not sent — the agent’s input field was not found on its screen': 'Non envoyé — champ de saisie de l’agent introuvable à l’écran',
+  'Not sent — it was taken out of the agent’s queue before being read': 'Non envoyé — retiré de la file de l’agent avant d’être lu',
+  'Not sent — still not in the conversation after an hour': 'Non envoyé — toujours absent de la conversation après une heure',
   'The agent’s input contains text': 'Le champ de l’agent contient du texte',
   'The agent’s input stays in shell mode (!)': 'Le champ de l’agent reste en mode shell (!)',
   'The message did not show in the agent’s input': 'Le message n’est pas apparu dans le champ de l’agent',
