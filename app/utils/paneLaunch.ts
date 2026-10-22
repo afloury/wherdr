@@ -2,7 +2,7 @@
 // confirmed. On clicking "Launch": the tab (typed name) or the split
 // of the pane (chosen direction, Herdr's default ratio), in the chosen folder,
 // then the agent or the terminal in the new pane. Pure (calls injected, tested).
-import { AGENT_NAME_HINT, AGENT_NAME_RE } from '../../shared/ids'
+import { AGENT_NAME_HINT, toAgentName } from '../../shared/ids'
 import { type SplitDirection, cleanLabel } from '../../shared/spaceActions'
 
 // Where the pane is born: a new tab of the space, or the split of a pane.
@@ -39,9 +39,11 @@ export function createPaneBody(place: NewPanePlace, cwd: string | null): Record<
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 export async function launchInNewPane(deps: NewPaneDeps, req: NewPaneRequest): Promise<NewPaneOutcome> {
-  // Predictable error (invalid agent name): reported before creating anything.
-  const name = String(req.agent.name || '').trim().toLowerCase()
-  if (name && !AGENT_NAME_RE.test(name)) return { stage: 'create', error: AGENT_NAME_HINT }
+  // Typed name converted to a valid one; nothing usable (only symbols):
+  // reported before creating anything.
+  const typed = String(req.agent.name || '').trim()
+  const name = toAgentName(typed)
+  if (typed && !name) return { stage: 'create', error: AGENT_NAME_HINT }
   let created: { tab_id?: string, pane_id?: string }
   try { created = await deps.space(createPaneBody(req.place, req.cwd)) }
   catch (e) { return { stage: 'create', error: message(e) } }
@@ -49,7 +51,7 @@ export async function launchInNewPane(deps: NewPaneDeps, req: NewPaneRequest): P
   const paneId = created.pane_id
   if (!paneId) return { stage: 'agent', tabId, error: 'Pane not found' }
   try {
-    const r = await deps.agents({ ...req.agent, pane_id: paneId, cwd: req.cwd, worktree: false })
+    const r = await deps.agents({ ...req.agent, name, pane_id: paneId, cwd: req.cwd, worktree: false })
     return { stage: 'done', tabId, paneId: r.pane_id || paneId }
   } catch (e) {
     return { stage: 'agent', tabId, paneId, error: message(e) }
