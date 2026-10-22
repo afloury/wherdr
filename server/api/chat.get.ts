@@ -26,6 +26,7 @@ export default defineApi(async (event) => {
   const r = await transcripts.chat(p, {
     since: mark ? (since.endsWith(mark) ? since.slice(0, -mark.length) : '') : since,
     from, // re-read from this byte (bottom of the conversation already shown)
+    anchor: sent, // join check above `from`, even for a list the server forgot
     before: num('before'), // older slice, ending at this byte
   })
   // Not found because Herdr's integration of this agent is missing: say so,
@@ -42,7 +43,7 @@ export default defineApi(async (event) => {
     // Bottom of the conversation: only what changed since the client's list
     // when the server still knows it (`n`: the number of items it holds).
     if (r.token && !r.older) {
-      const d = chatDelta.reply(p.id, r.token, r.items, sent, count, from !== null && r.start === from)
+      const d = chatDelta.reply(p.id, r.token, r.items, sent, count, from !== null && r.start === from && !r.rewritten)
       r.token = d.token
       r.items = d.items
       if (d.keep !== undefined) r.keep = d.keep
