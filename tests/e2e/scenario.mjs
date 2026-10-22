@@ -374,6 +374,8 @@ export function writeScenario(home) {
   write(path.join(home, '.claude/plugins/installed_plugins.json'), JSON.stringify({ version: 2, plugins: {
     'circleci@market': [{ scope: 'user', installPath: ciPlugin }],
   } }))
+  write(path.join(ciPlugin, '.claude-plugin/plugin.json'), JSON.stringify({ skills: ['./custom/deploy'] }))
+  write(path.join(ciPlugin, 'custom/deploy/SKILL.md'), '---\ndescription: Deploy the CI build\nargument-hint: <target>\n---\n')
   write(path.join(ciPlugin, 'skills/build/SKILL.md'), '---\nname: build\ndescription: Inspect the CI build\nargument-hint: <branch>\n---\n')
   write(path.join(ciPlugin, 'commands/config.md'), '---\ndescription: Validate CI configuration\n---\n')
   // In the .claude/ of a parent folder: Claude Code offers it in every project below.

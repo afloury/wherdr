@@ -65,6 +65,7 @@ test('Claude Code: plugin skills and commands keep their namespace when selected
   const menu = page.locator('.slash-menu')
   await expect(menu.locator('.slash-item', { hasText: '/circleci:build' })).toContainText('Inspect the CI build')
   await expect(menu.locator('.slash-item', { hasText: '/circleci:config' })).toBeVisible()
+  await expect(menu.locator('.slash-item', { hasText: '/circleci:deploy' })).toContainText('Deploy the CI build')
   await page.screenshot({ path: '.shots/slash-plugins-iphone13.png' })
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.screenshot({ path: '.shots/slash-plugins-1440.png' })

@@ -115,17 +115,37 @@ describe('"/" commands', () => {
         ],
       } })
       w('user-plugin/commands/wrong.md', 'Wrong installation')
-      json('project-plugin/.claude-plugin/plugin.json', { skills: ['./extra/'], commands: ['./actions/run.md', '../outside/'] })
+      json('project-plugin/.claude-plugin/plugin.json', { skills: ['./extra/', './custom/deploy', './custom/hidden'], commands: ['./actions/run.md', '../outside/'] })
       w('project-plugin/skills/base/SKILL.md', '---\nname: base\n---\n')
       w('project-plugin/extra/extra/SKILL.md', '---\nname: extra\n---\n')
+      w('project-plugin/custom/deploy/SKILL.md', '---\ndescription: Deploy the build\nargument-hint: <target>\n---\n')
+      w('project-plugin/custom/hidden/SKILL.md', '---\nuser-invocable: false\n---\n')
       w('project-plugin/actions/run.md', '---\ndescription: Run checks\nargument-hint: [target]\n---\n')
       w('project-plugin/commands/ignored.md', 'Manifest replaces the default commands directory')
       w('outside/escape.md', 'Outside the plugin')
       const result = await slashCommands({ key: `manifest-${ssh}`, fs: localFs, exec: ssh ? shExec : null, home, kind: 'claude', cwd })
-      expect(result.filter(c => c.name.startsWith('ci:')).map(c => c.name)).toEqual(['ci:base', 'ci:extra', 'ci:run'])
+      expect(result.filter(c => c.name.startsWith('ci:')).map(c => c.name)).toEqual(['ci:base', 'ci:deploy', 'ci:extra', 'ci:run'])
+      expect(result.find(c => c.name === 'ci:deploy')).toMatchObject({ desc: 'Deploy the build', hint: '<target>', source: 'skill' })
       expect(result.find(c => c.name === 'ci:run')).toMatchObject({ desc: 'Run checks', hint: '[target]' })
     })
   }
+
+  it('Claude plugin manifest: a skills path can name the plugin root, locally and over SSH', async () => {
+    for (const ssh of [false, true]) {
+      const home = mkdtempSync(path.join(tmpdir(), 'hw-slash-root-'))
+      const w = (f: string, text: string) => { mkdirSync(path.dirname(path.join(home, f)), { recursive: true }); writeFileSync(path.join(home, f), text) }
+      w('.claude/settings.json', JSON.stringify({ enabledPlugins: { 'ci@market': true } }))
+      w('.claude/plugins/installed_plugins.json', JSON.stringify({ version: 2, plugins: {
+        'ci@market': [{ scope: 'user', installPath: path.join(home, 'plugin') }],
+      } }))
+      w('plugin/.claude-plugin/plugin.json', JSON.stringify({ skills: ['.'] }))
+      w('plugin/SKILL.md', '---\nname: deploy\ndescription: Deploy from the plugin root\n---\n')
+      const result = await slashCommands({ key: `plugin-root-${ssh}`, fs: localFs, exec: ssh ? shExec : null, home, kind: 'claude', cwd: null })
+      expect(result.filter(c => c.name.startsWith('ci:'))).toEqual([
+        { name: 'ci:deploy', desc: 'Deploy from the plugin root', source: 'skill', hint: undefined },
+      ])
+    }
+  })
 
   it('SSH machine: a refused session is retried once; two refusals throw and are not cached', async () => {
     const home = mkdtempSync(path.join(tmpdir(), 'hw-slash-retry-'))

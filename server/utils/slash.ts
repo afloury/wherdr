@@ -63,8 +63,9 @@ async function read(fs: MachineFs, f: string) {
 // Where commands come from: `skills` = <dir>/<name>/SKILL.md up to two more
 // levels (skills/synced/<account>/<name>/); `commands` = <dir>/**.md, `depth`
 // subfolder levels giving "folder:command" names; `file` = one file;
-// `exists` = only whether the path exists (a `.git`).
-export interface SlashRoot { dir: string, kind: 'skills' | 'commands' | 'file' | 'exists', prefix?: string, depth?: number }
+// `exists` = only whether the path exists (a `.git`). `includeRoot` also
+// reads SKILL.md directly in a declared plugin skill directory.
+export interface SlashRoot { dir: string, kind: 'skills' | 'commands' | 'file' | 'exists', prefix?: string, depth?: number, includeRoot?: boolean }
 // A file found under a root: its path relative to it ('' for a `file`) and its start.
 export interface SlashFile { root: number, rel: string, text: string }
 // Files found, and the roots macOS refused to list.
@@ -91,7 +92,7 @@ async function collectLocal(fs: MachineFs, roots: SlashRoot[]): Promise<SlashFil
     const top = await lsRoot(fs, r.dir)
     if (top === 'denied') { denied.push(i); continue }
     if (r.kind === 'skills') {
-      const dirs: string[] = []
+      const dirs: string[] = r.includeRoot ? [''] : []
       for (const a of top) {
         dirs.push(a)
         for (const b of await ls(fs, path.join(r.dir, a))) {
@@ -134,8 +135,8 @@ while [ $# -ge 2 ]; do
   case $k in
     exists) if [ -e "$d" ]; then printf '\\036%s\\037\\037' "$i"; fi ;;
     file) if [ -f "$d" ]; then printf '\\036%s\\037\\037' "$i"; head -c ${META_HEAD} "$d"; fi ;;
-    skills|commands*)
-      if [ "$k" = skills ]; then lo=2; hi=4; name=SKILL.md; else lo=1; hi=$((\${k#commands} + 1)); name='*.md'; fi
+    skills|skills-root|commands*)
+      if [ "$k" = skills ] || [ "$k" = skills-root ]; then lo=2; [ "$k" = skills-root ] && lo=1; hi=4; name=SKILL.md; else lo=1; hi=$((\${k#commands} + 1)); name='*.md'; fi
       case $(LC_ALL=C ls -A "$d" 2>&1 >/dev/null) in
         *"not permitted"*) [ "$os" = Darwin ] && printf '\\036D\\037%s\\037' "$i" ;;
       esac
@@ -165,7 +166,7 @@ export function parseSlashFiles(out: string): SlashFiles {
 // One script run; a failed run (a session the connection refused…) is
 // retried once, then thrown: never mistaken for "no commands".
 async function collectRemote(exec: ShellExec, roots: SlashRoot[]): Promise<SlashFiles> {
-  const args = roots.flatMap(r => [r.kind === 'commands' ? `commands${r.depth ?? 2}` : r.kind, path.posix.normalize(r.dir).replace(/(.)\/+$/, '$1')])
+  const args = roots.flatMap(r => [r.kind === 'commands' ? `commands${r.depth ?? 2}` : r.kind === 'skills' && r.includeRoot ? 'skills-root' : r.kind, path.posix.normalize(r.dir).replace(/(.)\/+$/, '$1')])
   let last = ''
   for (let attempt = 0; attempt < 2; attempt++) {
     if (attempt) {
@@ -191,8 +192,8 @@ export function commandsOf(roots: SlashRoot[], files: SlashFile[]): SlashCommand
     const fm = frontmatter(f.text)
     const hint = fm['argument-hint'] || undefined
     if (r.kind === 'skills') {
-      if (parts.length < 2 || parts.length > 4 || parts.at(-1) !== 'SKILL.md' || fm['user-invocable'] === 'false') continue
-      out.push({ name: (r.prefix || '') + (fm.name || parts.at(-2)!), desc: fm.description || '', hint, source: 'skill' })
+      if (parts.length < (r.includeRoot ? 1 : 2) || parts.length > 4 || parts.at(-1) !== 'SKILL.md' || fm['user-invocable'] === 'false') continue
+      out.push({ name: (r.prefix || '') + (fm.name || parts.at(-2) || path.basename(r.dir)), desc: fm.description || '', hint, source: 'skill' })
     } else {
       const dirs = parts.slice(0, -1)
       if (!parts.at(-1)!.endsWith('.md') || dirs.length > (r.depth ?? 2) || dirs.some(d => d.includes('.'))) continue
@@ -332,8 +333,9 @@ async function claudePluginCommands(collect: (roots: SlashRoot[]) => Promise<Sla
       for (const rel of typeof value === 'string' ? [value] : Array.isArray(value) ? value : []) {
         if (typeof rel !== 'string') continue
         const dir = path.resolve(plugin.dir, rel)
-        if (!dir.startsWith(path.resolve(plugin.dir) + path.sep)) continue
-        roots.push({ dir, kind: kind === 'commands' && rel.endsWith('.md') ? 'file' : kind, prefix })
+        if (!(kind === 'skills' && dir === path.resolve(plugin.dir)) && !dir.startsWith(path.resolve(plugin.dir) + path.sep)) continue
+        // A declared skills path may be a collection or one skill directory.
+        roots.push({ dir, kind: kind === 'commands' && rel.endsWith('.md') ? 'file' : kind, prefix, includeRoot: kind === 'skills' })
       }
     }
     add(manifest.skills, 'skills')
