@@ -52,9 +52,9 @@ interface CodexRollout { file: string, id: string, ts: number, mtimeMs: number }
 const CODEX_BIRTH_BEFORE = 5000
 const CODEX_BIRTH_AFTER = 120000
 type Lines = string[] & { refs?: string[] }
-type Parsed = ChatItem[] & { queue?: ClaudeQueueEntry[] }
+type Parsed = ChatItem[] & { queue?: ClaudeQueueEntry[], popped?: ClaudeQueueEntry[] }
 // `anchor`: fingerprint of the bytes just above `start` (see anchorAt).
-interface TailResult { start: number, items: ChatItem[], queue: ClaudeQueueEntry[], anchor?: string }
+interface TailResult { start: number, items: ChatItem[], queue: ClaudeQueueEntry[], popped?: ClaudeQueueEntry[], anchor?: string }
 
 // Join check of a re-read from a cursor: the bytes just above it, hashed. A
 // transcript rewritten at the same size, or shortened but still longer than
@@ -229,6 +229,10 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
   // from the phone or the computer): enqueue, then dequeue (taken at the end of
   // the turn) or remove "absorbed_mid_turn" (taken during the turn).
   const queue: ClaudeQueueEntry[] = []
+  // Entries pulled back out of the queue into the input field (`popAll`: ↑ in
+  // the terminal, or wherdr's Cancel) and not queued again since: unless
+  // they are submitted again, Claude will not read them (see checkSent).
+  const popped: ClaudeQueueEntry[] = []
   let started: ClaudeQueueEntry | null = null
   // A user message appears: it leaves the queue, even without
   // dequeue; otherwise, the head of the queue may be this message, modified.
@@ -314,8 +318,12 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       const raw = unwrapPasted(String(d.content || ''))
       const text = stripImageTags(raw)
       const images = imageTagCount(raw)
-      if (d.operation === 'enqueue') queue.push({ text, ts: d.timestamp || null, ...(images ? { images } : {}) })
-      else {
+      if (d.operation === 'enqueue') {
+        queue.push({ text, ts: d.timestamp || null, ...(images ? { images } : {}) })
+        const p = popped.findIndex(q => q.text === text)
+        if (p >= 0) popped.splice(p, 1)
+      } else {
+        if (d.operation === 'popAll' && !isNoise(text)) popped.push({ text, ts: d.timestamp || null, ...(images ? { images } : {}) })
         const i = queue.findIndex(q => q.text === text)
         queue.splice(i >= 0 ? i : 0, 1)
         if (queue[0] !== started) started = null
@@ -456,6 +464,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
   }
   // Queued task notifications: not user messages.
   items.queue = queue.filter(q => !isNoise(q.text))
+  items.popped = popped
   return items
 }
 
@@ -1052,6 +1061,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     let start = end
     let items: ChatItem[] = []
     let queue: ClaudeQueueEntry[] | null = null
+    let popped: ClaudeQueueEntry[] | null = null
     while (start > 0 && end - start < MAX_READ_BYTES) {
       // Window widened as long as it contains no line start (a
       // multi-MB line: message with images), within the cap.
@@ -1068,11 +1078,12 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
       // call is in the previous window just loses its red mark).
       const parsed = parseLines(r.text, kind, r.start, home, ompTemplates.list, cwd)
       if (!queue) queue = parsed.queue || [] // the queue lives in the most recent window
+      if (!popped) popped = parsed.popped || []
       items = parsed.concat(items)
       start = r.start
       if (items.length >= PAGE_ITEMS) break
     }
-    return { start, items, queue: queue || [] }
+    return { start, items, queue: queue || [], popped: popped || [] }
   }
 
   // Bottom of the conversation: from `from` (already shown on the phone) or,
@@ -1097,7 +1108,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
       const items = parseLines(buf.subarray(off).toString('utf8'), kind, s0 + off, home, ompTemplates.list, kind === 'omp' ? await ompCwd(file) : '')
       // Start kept even when it moved to the next line: the client then sees a
       // stale anchor (or another start) and reloads from the bottom.
-      r = { start: from, items, queue: items.queue || [], anchor: off === from - s0 ? anchorHash(above) : '' }
+      r = { start: from, items, queue: items.queue || [], popped: items.popped || [], anchor: off === from - s0 ? anchorHash(above) : '' }
     } else {
       r = await readBackwards(file, size, kind)
       r.anchor = await anchorAt(file, r.start)
@@ -1173,7 +1184,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     if (rewritten) r = await tail(loc.file, kind, st.size, gen, null, settled)
     const mark = `${head}${settled ? '' : '!'}`
     const token = r.anchor ? `${mark}/${r.start}.${r.anchor}` : mark
-    return { ...base, token, items: r.items, start: r.start, queue: r.queue || [], ...(rewritten ? { rewritten: true } : {}) }
+    return { ...base, token, items: r.items, start: r.start, queue: r.queue || [], ...(r.popped?.length ? { popped: r.popped } : {}), ...(rewritten ? { rewritten: true } : {}) }
   }
 
   // Agent's last reply, for cards and notifications.

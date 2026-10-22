@@ -1,9 +1,14 @@
 // Messages sent from the phone and shown as "queued": when
 // did the agent take them?
-import type { ChatItem, Pane, QueuedMessage } from '../../shared/types'
-import { isUploadLine, photosLanded, photosOnly } from '../../shared/queuedMatch'
+import type { ChatItem, ClaudeQueueEntry, Pane, QueuedMessage } from '../../shared/types'
+import { isUploadLine, photosLanded, photosOnly, uploadNames } from '../../shared/queuedMatch'
 
+// A message sent that never shows in the conversation is reported as not
+// seen after this long (see checkSent), instead of waiting for ever.
 export const QUEUED_TTL_MS = 60 * 60 * 1000
+// A message reported as not sent is kept (across restarts too) until Retry,
+// Cancel or its text shows in the conversation, for at most this long.
+export const FAILED_TTL_MS = 24 * 60 * 60 * 1000
 // Sent photo ("<home>/.cache/herdr-web/uploads/<name>" line of a message).
 export { isUploadLine }
 const norm = (t: unknown) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase()
@@ -31,8 +36,7 @@ export function ompRunShown(agent: string | null | undefined, text: string, shel
 // sending, that contains the start of the text (Claude may group several
 // queued messages into a single turn). Text modified by the agent: when idle,
 // a user message written after sending followed by a reply is enough.
-export function queuedDone(q: { text: string, at: number, turnSeen?: boolean }, items: ChatItem[], idle: boolean, now: number, agent?: string | null): boolean {
-  if (now - q.at > QUEUED_TTL_MS) return true
+export function queuedDone(q: { text: string, at: number, turnSeen?: boolean }, items: ChatItem[], idle: boolean, _now: number, agent?: string | null): boolean {
   if (idle && q.turnSeen && isOmpRun(agent, q.text)) return true
   const users = items.filter(i => i.role === 'user' || i.role === 'cmd' || i.role === 'bash')
   // Photo paths become images in the transcript; photos alone are matched by
@@ -145,6 +149,14 @@ export interface QueueEntry {
   typedAt?: number
   // Held until the agent's turn ends: typing it during the turn failed.
   turn?: boolean
+  // Pulled back out of Claude's queue and not queued again (see checkSent),
+  // since `lostSince`.
+  popped?: boolean
+  lostSince?: number
+  // Failed because it left Claude's queue without reaching the conversation.
+  lost?: boolean
+  // Failed because it never showed in the conversation within QUEUED_TTL_MS.
+  unseen?: boolean
 }
 
 // Hold a new message instead of typing it now?
@@ -194,7 +206,64 @@ export function checkQueue(list: QueueEntry[], status: string | null | undefined
     }
     if (!ready) { delete q.readySince; continue }
     q.readySince ??= now
-    if (now - Math.max(q.readySince, q.at) > LOST_MS) { q.failed = true; changed = true }
+    if (now - Math.max(q.readySince, q.at) > LOST_MS) {
+      q.failed = true
+      // Known to be pulled back out of Claude's queue (see checkSent): said so.
+      if (q.popped) q.lost = true
+      delete q.popped
+      delete q.lostSince
+      changed = true
+    }
+  }
+  return changed
+}
+
+// Messages typed and taken by the agent's input field (not held, not failed)
+// that the conversation does not show yet (see queuedDone), against Claude's
+// own queue as its transcript records it. Updated in place; true when one
+// just failed. `claude`: null when Claude's transcript could not be read.
+// - Claude: the message was pulled back out of its queue into the input field
+//   (`popAll`: ↑ in the terminal…) and not queued again. Erased there, or
+//   left there while Claude works, it will not be read: after LOST_MS it is
+//   reported as not sent, instead of staying "queued" until the turn ends,
+//   however long. The tail read keeps only recent queue operations, so the
+//   fact is remembered (`popped`) until the message is queued again.
+// - Any agent: still not in the conversation after QUEUED_TTL_MS, and not in
+//   Claude's queue (a turn that long may still read it): not seen.
+// Either way it gets Retry / Cancel. Retry waits for the end of a turn and
+// first looks at the transcript again (see landed): a message the agent did
+// take is not typed twice.
+export function checkSent(list: QueueEntry[], o: { agent: string | null | undefined, claude: { queue: ClaudeQueueEntry[], popped: ClaudeQueueEntry[] } | null, now: number }): boolean {
+  let changed = false
+  for (const q of list) {
+    if (q.held || q.failed) { delete q.lostSince; delete q.popped; continue }
+    // The same message, never one that merely contains it or starts like it
+    // ("review server" is not "review server and client"): its whole text,
+    // spaces aside, or, past QUEUED_TEXT_MAX (wherdr keeps the start only),
+    // an entry starting with it; photos alone, by their number.
+    const text = flat(q.text.split('\n').filter(l => !isUploadLine(l)).join('\n'))
+    const cut = q.text.length >= QUEUED_TEXT_MAX
+    const photos = uploadNames(q.text).length
+    const after = (e: ClaudeQueueEntry) => !e.ts || Date.parse(e.ts) >= (q.typedAt ?? q.at) - LANDED_SLACK_MS
+    const isIt = (e: ClaudeQueueEntry) => after(e) && (text
+      ? (cut ? flat(e.text).startsWith(text) : flat(e.text) === text)
+      : !e.text && (e.images || 0) === photos)
+    const c = o.agent === 'claude' ? o.claude : null
+    const inQueue = Boolean(c && c.queue.some(isIt))
+    if (inQueue) { delete q.popped; delete q.lostSince }
+    else if (c && c.popped.some(isIt)) q.popped = true
+    if (!inQueue && o.now - q.at > QUEUED_TTL_MS) {
+      q.failed = true
+      q.unseen = true
+      changed = true
+    } else if (q.popped) {
+      q.lostSince ??= o.now
+      if (o.now - q.lostSince <= LOST_MS) continue
+      q.failed = true
+      q.lost = true
+      changed = true
+    }
+    if (q.failed) { delete q.lostSince; delete q.popped }
   }
   return changed
 }
@@ -218,21 +287,28 @@ export const publicEntry = (q: QueueEntry): QueuedMessage => ({
   ...(q.held && !q.failed ? { state: 'held' as const } : {}),
   ...(q.failed ? { state: 'failed' as const } : {}),
   ...((q.held || q.failed) && q.busy ? { reason: 'busy' as const } : q.failed && q.noInput ? { reason: 'no_input' as const }
-    : q.held && !q.failed && q.turn ? { reason: 'turn' as const } : {}),
+    : q.failed && q.lost ? { reason: 'lost' as const } : q.failed && q.unseen ? { reason: 'unseen' as const }
+      : q.held && !q.failed && q.turn ? { reason: 'turn' as const } : {}),
   ...(q.back ? { back: true } : {}),
 })
 
-// Records read back from data/queued.json at startup: well-formed, recent
-// ones only (a delivery interrupted by the restart is held again).
+// Records read back from data/queued.json at startup: well-formed ones (a
+// delivery interrupted by the restart is held again). A message older than
+// QUEUED_TTL_MS comes back as not sent (sent: not seen) rather than
+// vanishing; one older than FAILED_TTL_MS is dropped.
 export function loadQueued(raw: unknown, now: number): [string, QueueEntry[]][] {
   if (!raw || typeof raw !== 'object') return []
   const out: [string, QueueEntry[]][] = []
   for (const [pane, list] of Object.entries(raw as Record<string, unknown>)) {
     if (!Array.isArray(list)) continue
     const ok = list.filter((q): q is QueueEntry => Boolean(q) && typeof q.id === 'string' && typeof q.text === 'string' && typeof q.at === 'number'
-      && now - q.at < QUEUED_TTL_MS)
-      .map(q => ({ id: q.id, text: q.text, at: q.at, ...(q.held ? { held: true } : {}), ...(q.failed ? { failed: true } : {}), ...(q.busy ? { busy: true } : {}), ...(q.back ? { back: true } : {}),
-        ...(typeof q.typedAt === 'number' ? { typedAt: q.typedAt } : {}), ...(q.turn ? { turn: true } : {}) }))
+      && now - q.at < FAILED_TTL_MS)
+      .map((q) => {
+        const old = !q.failed && now - q.at >= QUEUED_TTL_MS
+        return { id: q.id, text: q.text, at: q.at, ...(q.held && !old ? { held: true } : {}), ...(q.failed || old ? { failed: true } : {}), ...(q.busy ? { busy: true } : {}), ...(q.back ? { back: true } : {}),
+          ...(typeof q.typedAt === 'number' ? { typedAt: q.typedAt } : {}), ...(q.turn && !old ? { turn: true } : {}),
+          ...(q.noInput ? { noInput: true } : {}), ...(q.lost ? { lost: true } : {}), ...(q.unseen || (old && !q.held) ? { unseen: true } : {}) }
+      })
     if (ok.length) out.push([pane, ok])
   }
   return out

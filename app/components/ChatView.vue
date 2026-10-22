@@ -942,6 +942,14 @@ async function menuLeft(action: 'close' | 'send') {
     menuLeftBusy.value = null
   }
 }
+// Why a message is marked not sent (see server/utils/queued.ts).
+function failedText(reason: QueuedMessage['reason'] | undefined) {
+  if (reason === 'busy') return t('Not sent — the agent’s input contains text')
+  if (reason === 'no_input') return t('Not sent — the agent’s input field was not found on its screen')
+  if (reason === 'lost') return t('Not sent — it was taken out of the agent’s queue before being read')
+  if (reason === 'unseen') return t('Not sent — still not in the conversation after an hour')
+  return t('Not sent')
+}
 const queuedWhy = computed(() => {
   const p = props.pane
   if (p.pendingPrompt) return tl(`will be sent when ${kindLabel(p.agent)} is ready`, `partira dès que ${kindLabel(p.agent)} sera prêt`)
@@ -1492,7 +1500,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               </template>
             </UChatMessage>
             <div v-if="q.state === 'failed'" class="queued-tag failed" role="alert">
-              <UIcon name="i-lucide-circle-alert" /><span>{{ q.reason === 'busy' ? t('Not sent — the agent’s input contains text') : q.reason === 'no_input' ? t('Not sent — the agent’s input field was not found on its screen') : t('Not sent') }}</span>
+              <UIcon name="i-lucide-circle-alert" /><span>{{ failedText(q.reason) }}</span>
               <button type="button" class="queued-cancel" :disabled="Boolean(retrying)" @click="retryQueued(q)">
                 <UIcon :name="retrying === q.id ? 'i-lucide-loader-circle' : 'i-lucide-rotate-cw'" :class="{ spin: retrying === q.id }" />{{ t('Retry') }}
               </button>

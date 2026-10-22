@@ -52,12 +52,13 @@ describe('server: record taken by the agent', () => {
   it('an older message with images does not count', () => {
     expect(queuedDone(q, [{ role: 'user', text: '', images: 1, ts: iso(T0 - 60000) }], false, T0 + 5000)).toBe(false)
   })
-  it('records read back after a restart: recent and well-formed only', () => {
+  it('records read back after a restart: well-formed only, an old one as not seen', () => {
     const raw = {
       'w1:p1': [{ id: 'a1', text: photos, at: T0, held: true }, { id: 'old', text: 'x', at: T0 - 2 * 3600 * 1000 }, { id: 5 }],
       'w1:p2': 'nope',
     }
-    expect(loadQueued(raw, T0 + 1000)).toEqual([['w1:p1', [{ id: 'a1', text: photos, at: T0, held: true }]]])
+    expect(loadQueued(raw, T0 + 1000)).toEqual([['w1:p1', [{ id: 'a1', text: photos, at: T0, held: true },
+      { id: 'old', text: 'x', at: T0 - 2 * 3600 * 1000, failed: true, unseen: true }]]])
     expect(loadQueued(null, T0)).toEqual([])
   })
 })

@@ -63,6 +63,7 @@ describe('envoi en attente de wherdr', () => {
   it('stays queued as long as nothing is written after sending', () => {
     const late = { ...q, text: 'autre chose', at: Date.parse('2026-09-26T09:30:00.000Z') }
     expect(queuedDone(late, items, true, late.at + 1000)).toBe(false)
-    expect(queuedDone(late, items, true, late.at + 2 * 3600e3)).toBe(true)
+    // Two hours later: still not taken (checkSent reports it as not seen).
+    expect(queuedDone(late, items, true, late.at + 2 * 3600e3)).toBe(false)
   })
 })
