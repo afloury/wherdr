@@ -156,7 +156,9 @@ Details in [Features](#features) and [Security](#security).
 - **Home grouping**: Settings › Appearance › Home screen › **Group by** chooses **Machine**
   (default, projects under their coordinator) or **State** (Needs you, Working, Ready merged
   across online machines). State mode adds machine and project badges to flat cards; the
-  machine bar and its groups filter both modes. Compact/normal applies to both.
+  machine bar and its groups filter both modes. Compact/normal applies to both. In State mode,
+  a row of machine chips at the top opens each machine's menu (sessions, keep awake, board,
+  Claude quota setup), and offline or reconnecting machines stay on one line at the bottom.
 - **Live agent list**, one line per Herdr space, grouped by state (your turn, working, ready).
   The list is compact by default: agent, title, project badge and state. When an agent asks for
   permission or asks a question, its card opens on the question and its options: **answer in one
