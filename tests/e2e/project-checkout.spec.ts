@@ -13,7 +13,7 @@ test('moved checkout belongs to its board project and its menu cannot rename the
   await page.route('**/api/tasks/links**', route => route.fulfill({ json: { version: 'checkout', machines: [{ machine: '', coordinators: [], repos: [{ repo: 'original-project', root: '/projects/new-folder', branch: 'main', behind: 0 }], tasks: [{ id: 'original-project/1', repo: 'original-project', n: 1, key: 'DEMO-1', title: 'Improve navigation', panes: [{ id: 'w1:p1', role: 'worker' }], workspace: 'w1', stage: 'working', progress: 40, msg: '', since: null }] }] } }))
   await page.goto('/')
   const project = page.locator('.project[data-repo="original-project"]')
-  await expect(project.locator('.project-lead .card-title')).toHaveText('original-project')
+  await expect(project.locator('.project-lead')).toHaveCount(0)
   await expect(page.locator('.card-title', { hasText: 'new-folder' })).toHaveCount(0)
   await project.getByRole('button', { name: 'Options: original-project', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Rename space', exact: true })).toHaveCount(0)
@@ -31,13 +31,14 @@ test('moved checkout belongs to its board project and its menu cannot rename the
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: `.shots/project-checkout-${width}.png` })
   }
-  // The head row's own context menu must not offer the ineffective rename either.
-  await project.locator('.project-lead .card').click({ button: 'right' })
+  // Long-press the summary bar on touch devices to open the same menu.
+  await project.locator('.project-head').dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 20, clientY: 20 })
   await expect(page.getByRole('dialog')).toBeVisible()
+  await project.locator('.project-head').dispatchEvent('pointerup', { pointerType: 'touch' })
   await expect(page.getByRole('button', { name: 'Rename space', exact: true })).toHaveCount(0)
   await page.keyboard.press('Escape')
   await page.reload()
-  await expect(project.locator('.project-lead .card-title')).toHaveText('original-project')
+  await expect(project.locator('.project-lead')).toHaveCount(0)
   await expect(page.locator('.card-title', { hasText: 'new-folder' })).toHaveCount(0)
 })
 
