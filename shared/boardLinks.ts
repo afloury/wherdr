@@ -52,6 +52,9 @@ export type CoordinatorLevel = 'top' | 'machine' | 'project'
 export interface LinkedCoordinator {
   level: CoordinatorLevel
   repo?: string // a project coordinator's
+  // Its folder under data/coordinator (one per Herdr session): with `level`
+  // and `repo`, it names the coordinator across restarts (its pane changes).
+  session?: string
   pane: string | null // app id
   workspace: string | null // app id
 }
@@ -144,16 +147,17 @@ const taskKeyOf = (id: string, key?: string) => { const n = id.split('/')[1] || 
 
 // A coordinator's `state.json`. `repo`: a project coordinator's (its file's
 // own `repo`, else its folder's name).
-export function coordinatorFromFile(level: CoordinatorLevel, s: unknown, sessionKey: SessionKey, folder = ''): LinkedCoordinator | null {
+export function coordinatorFromFile(level: CoordinatorLevel, s: unknown, sessionKey: SessionKey, folder = '', session?: string): LinkedCoordinator | null {
   const r = obj(s)
   if (!r) return null
   const key = sessionKey(r.socket)
   const pane = paneOf(key, r.pane)
   const workspace = spaceOf(key, r.space) || spaceOf(key, r.workspace)
   if (!pane && !workspace) return null
-  if (level !== 'project') return { level, pane, workspace }
+  const named = session === undefined ? {} : { session: session.slice(0, 80) }
+  if (level !== 'project') return { level, pane, workspace, ...named }
   const repo = str(r.repo, 80) || folder
-  return REPO_RE.test(repo) ? { level, repo, pane, workspace } : null
+  return REPO_RE.test(repo) ? { level, repo, pane, workspace, ...named } : null
 }
 
 // ---------------------------------------------------------------- grouping

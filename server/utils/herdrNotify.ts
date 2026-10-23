@@ -135,7 +135,7 @@ export async function onNotice(m: Machine, n: HerdrNotification) {
   }
   const event = noticeTask ? 'needs-you' : /^\[scheduled\]/i.test(n.title) ? 'scheduled' : 'message'
   if (!await notificationAllowed(event, getState(), pane, {
-    machine: m.info().baseKey ?? m.key, project: noticeTask?.id.split('/')[0], subagent: Boolean(noticeTask),
+    machine: m.info().baseKey ?? m.key, project: noticeTask?.id.split('/')[0], board: Boolean(noticeTask),
   })) return
   const on = multiMachine() ? `${m.label || (m.local ? 'local' : m.key)} · ` : ''
   // herdr-projects' `board.notify` (NOTIFY_COMMAND): the task's key, one

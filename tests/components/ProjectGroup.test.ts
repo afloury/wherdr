@@ -154,14 +154,13 @@ describe('a repo group on the home list', () => {
     w.unmount()
   })
 
-  it('neither a coordinator nor the repo\'s space: the same head row, only notifications in its menu', async () => {
+  it('neither a coordinator nor the repo\'s space: the same head row, nothing to open', async () => {
     const w = await mount(section({ coordinator: null }))
     const head = w.find('.project-lead .home-lead')
     expect(head.find('.card-title').text()).toBe('shop')
     expect(head.find('.lead-mark').text()).toBe('S')
     expect(head.attributes('role')).toBeUndefined()
-    // Only the notification rule is left in its "…" menu.
-    expect(w.find('.project-bar .space-menu').exists()).toBe(true)
+    expect(w.find('.project-bar .space-menu').exists()).toBe(false)
     expect(w.findAll('.project-tree .card')).toHaveLength(2)
     w.unmount()
   })

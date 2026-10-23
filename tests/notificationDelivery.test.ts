@@ -18,21 +18,30 @@ beforeEach(() => {
 
 describe('server notification gate', () => {
   it('reads the shared policy anew after a device changes it', async () => {
+    policy.default.events = []
     const source = { machine: '', conversation: 'w1:p1' }
     expect(await notificationAllowed('needs-you', { workspaces: [] }, undefined, source)).toBe(false)
-    policy.rules.push({ scope: 'conversation', machine: '', id: 'w1:p1', label: 'Example', mode: 'on', events: ['needs-you'], until: null })
+    policy.exceptions.push({ kind: 'conversation', machine: '', id: 'w1:p1', label: 'Example', events: ['needs-you'], subagents: false, until: null })
     expect(await notificationAllowed('needs-you', { workspaces: [] }, undefined, source)).toBe(true)
     expect(await notificationAllowed('finished', { workspaces: [] }, undefined, source)).toBe(false)
   })
-  it('uses board coordinators and denies linked helpers by default', async () => {
+  it('follows a coordinator exception by identity and keeps linked helpers silent by default', async () => {
+    policy.default.events = []
+    policy.exceptions.push({ kind: 'coordinator', machine: '', id: 'default/top/', label: 'Coordinator', events: ['finished'], subagents: false, until: null })
     deps.readBoardLinks.mockResolvedValue({ version: '1', machines: [{ machine: '',
-      coordinators: [{ pane: 'w1:p1', level: 'top' }], tasks: [{ panes: [{ id: 'w2:p1' }], repo: 'example' }],
+      coordinators: [{ pane: 'w1:p9', level: 'top', session: 'default' }], tasks: [{ panes: [{ id: 'w2:p1' }], repo: 'example' }],
     }] })
-    expect(await notificationAllowed('finished', { workspaces: [] }, { id: 'w1:p1', workspace: 'w1' })).toBe(true)
+    expect(await notificationAllowed('finished', { workspaces: [] }, { id: 'w1:p9', workspace: 'w1' })).toBe(true)
     expect(await notificationAllowed('finished', { workspaces: [] }, { id: 'w2:p1', workspace: 'w2' })).toBe(false)
   })
+  it('lets a board event through with sub-agents off, but not a task agent’s own message', async () => {
+    deps.readBoardLinks.mockResolvedValue({ version: '1', machines: [{ machine: '', coordinators: [], tasks: [{ panes: [{ id: 'w2:p1' }], repo: 'example' }] }] })
+    const p = { id: 'w2:p1', workspace: 'w2' }
+    expect(await notificationAllowed('needs-you', { workspaces: [] }, p, { machine: '', project: 'example', board: true })).toBe(true)
+    expect(await notificationAllowed('needs-you', { workspaces: [] }, p)).toBe(false)
+  })
   it('suppresses an enabled conversation for all recipients while another device views it', async () => {
-    policy.defaults = ['message']
+    policy.default.events = ['message']
     const source = { machine: '', conversation: 'w3:p1' }
     notificationPresence.heartbeat('desktop', source.conversation, true)
     expect(await notificationAllowed('message', { workspaces: [] }, undefined, source)).toBe(false)
@@ -40,10 +49,9 @@ describe('server notification gate', () => {
     notificationPresence.heartbeat('desktop', source.conversation, true, Date.now() - 30000)
     expect(await notificationAllowed('message', { workspaces: [] }, undefined, source)).toBe(true)
   })
-  it('applies machine mutes to unscoped custom and scheduled notices', async () => {
-    policy.defaults = ['message', 'scheduled']
-    policy.rules.push({ scope: 'machine', machine: '', id: '', label: 'Example', mode: 'muted', events: [], until: null })
+  it('applies the default to unscoped custom and scheduled notices', async () => {
+    policy.default.events = ['scheduled']
     expect(await notificationAllowed('message', { workspaces: [] }, undefined, { machine: '' })).toBe(false)
-    expect(await notificationAllowed('scheduled', { workspaces: [] }, undefined, { machine: '' })).toBe(false)
+    expect(await notificationAllowed('scheduled', { workspaces: [] }, undefined, { machine: '' })).toBe(true)
   })
 })
