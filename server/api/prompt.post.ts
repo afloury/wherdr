@@ -1,8 +1,16 @@
+import type { QueuedMessage } from '../../shared/types'
 import type { GuardError } from '../utils/guardedSend'
 import { closeTrailingMention } from '../../shared/attachments'
 import { isSlashCommand } from '../../shared/queuedMatch'
 
 export default defineApi(async (event, b) => {
+  if (typeof b.client_id === 'string' && /^w-[a-z0-9]{1,32}$/.test(b.client_id) && PANE_RE.test(b.pane_id || '')) {
+    return promptOnce(b.pane_id, b.client_id, String(b.text || ''), async () => await submitPrompt(event, b))
+  }
+  return submitPrompt(event, b)
+})
+
+const submitPrompt: Parameters<typeof defineApi<{ ok: boolean, queued?: QueuedMessage }>>[0] = async (event, b) => {
   if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
   // Attached text file last (`@<path>`): see closeTrailingMention.
   const text = closeTrailingMention(String(b.text || ''))
@@ -62,26 +70,16 @@ export default defineApi(async (event, b) => {
     // Claude's input field holds someone else's text (a draft typed in its
     // terminal…), never cleared: the message waits until it is free.
     const typed = (e as GuardError).typed ? typedAt : undefined
-    if (isBusyError(e) && !isSlashCommand(text)) {
+    if (isBusyError(e) && !(e as GuardError).typed && !isSlashCommand(text)) {
       const q = addQueued(b.pane_id, text, { held: true, busy: (e as HerdrError).code === 'input_busy', id, typedAt: typed, turn: inTurn(b.pane_id) })
       log(`prompt ${b.pane_id}: input field not free, message held`)
-      setTimeout(poll, 50)
-      return { ok: true, queued: q }
-    }
-    // Typed during a turn but not seen taken (a screen that lags): its text
-    // is out of the field again (see guardedSend.ts). It waits for the turn's
-    // end, "queued", and is typed again then, unless its transcript shows the
-    // agent took it late after all (see deliverHeld).
-    if (givenUp(e) && inTurn(b.pane_id) && !isSlashCommand(text)) {
-      const q = addQueued(b.pane_id, text, { held: true, turn: true, typedAt: typed, id })
-      log(`prompt ${b.pane_id}: ${(e as Error).message} during a turn, message held for the turn's end`)
       setTimeout(poll, 50)
       return { ok: true, queued: q }
     }
     // Typed but not confirmed as taken (see guardedSend.ts): kept, shown as
     // not sent with Retry / Cancel, never silently dropped. If the agent takes
     // it late after all, its transcript clears it (see reconcileQueued).
-    if (e instanceof HerdrError && ['not_shown', 'not_submitted', 'clear_failed', 'input_contended', 'bash_mode'].includes(e.code) && !isSlashCommand(text)) {
+    if (e instanceof HerdrError && ['not_shown', 'not_submitted', 'clear_failed', 'input_contended', 'bash_mode', 'no_input', 'input_busy'].includes(e.code) && !isSlashCommand(text)) {
       const q = addQueued(b.pane_id, text, { failed: true, id, typedAt: typed })
       log(`prompt ${b.pane_id}: ${e.message}, message kept as not sent`)
       setTimeout(poll, 50)
@@ -113,4 +111,4 @@ export default defineApi(async (event, b) => {
   const q = addQueued(b.pane_id, text, { id, typedAt })
   setTimeout(poll, 50)
   return { ok: true, queued: q }
-})
+}
