@@ -92,8 +92,11 @@ describe('the Sub-agents switch', () => {
   })
   it('a board event follows its project coordinator’s exception', () => {
     const s = settings(LEVEL_EVENTS.all, exception(SHOP, { events: [] }))
-    expect(notificationEvents(s, { machine: '', project: 'shop', board: true })).toEqual([])
-    expect(notificationEvents(s, { machine: '', project: 'other', board: true })).toEqual(LEVEL_EVENTS.all)
+    expect(notificationEvents(s, { machine: '', project: 'shop', board: true, session: 'default' })).toEqual([])
+    expect(notificationEvents(s, { machine: '', project: 'shop', board: true, session: 'other' })).toEqual(LEVEL_EVENTS.all)
+    expect(notificationEvents(s, { machine: '', project: 'other', board: true, session: 'default' })).toEqual(LEVEL_EVENTS.all)
+    // No pane or space linked: its session is unknown, so the default decides.
+    expect(notificationEvents(s, { machine: '', project: 'shop', board: true })).toEqual(LEVEL_EVENTS.all)
   })
 })
 

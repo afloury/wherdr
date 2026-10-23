@@ -63,7 +63,8 @@ to what it was), and **Follow the default** to remove the exception. On a task a
 the menu points to the Sub-agents switch instead.
 
 Board events (`herdr-projects` approvals and failures) follow the default even with
-Sub-agents off, or their project coordinator's exception. Custom `herdr notification
+Sub-agents off, or their project coordinator's exception in the task's own Herdr
+session (the default when that session is not known: a task with no pane or space linked). Custom `herdr notification
 show` notices with a pane follow that conversation; others follow the default. Scripts
 can mark a scheduled notice with a `[scheduled]` title prefix. New assistant messages
 are identified by their transcript position, so streaming updates do not ring

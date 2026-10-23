@@ -139,10 +139,14 @@ export function notificationException(settings: NotificationSettings, source: No
     || (e.kind === 'coordinator' && !task && source.coordinator !== undefined && e.id === source.coordinator)))
   if (own) return own
   if (!task) return undefined
+  // A board event whose task's session is unknown (no pane or space linked:
+  // the board's links leave it out) cannot be tied to a coordinator safely.
+  if (source.board && source.session === undefined) return undefined
   // A task belongs to its project's coordinator in its own session; else to
   // that session's main, then machine coordinator. The closest coordinator
   // with an exception decides: its Sub-agents switch off means the default.
-  // Board events follow the project coordinator's exception, switch or not.
+  // Board events follow the project coordinator's exception of their own
+  // session, switch or not, and the default when their session is unknown.
   const at = (level: string) => settings.exceptions.find(e => {
     if (!live(e) || e.kind !== 'coordinator') return false
     const k = parseCoordinatorKey(e.id)
