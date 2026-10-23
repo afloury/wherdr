@@ -1,0 +1,42 @@
+{
+  "task": {
+    "id": "demo/1",
+    "title": "Fix login page",
+    "stage": "failed",
+    "msg": "Could not start: no herdr server is running at /home/me/.config/herdr/herdr.sock; run `herdr` to start or attach it",
+    "description": "Fictional"
+  },
+  "failure": {
+    "stage": "start",
+    "title": "Could not start the agent",
+    "detail": "No herdr server is running at /home/me/.config/herdr/herdr.sock; run `herdr` to start or attach it.\n\nWhat herdr said: no herdr server is running at /home/me/.config/herdr/herdr.sock; run `herdr` to start or attach it\n\nThis is also written to /home/me/.herdr-projects/data/tasks/demo/1/runner.log.",
+    "agentCanFix": false,
+    "auth": false,
+    "next": "Fix what herdr reports, then delegate again (ctrl+s).",
+    "at": 1792729600000,
+    "sentAt": null
+  },
+  "review": null,
+  "reviews": [],
+  "agent": "claude",
+  "handovers": [],
+  "research": false,
+  "chat": false,
+  "report": null,
+  "plan": null,
+  "pr": null,
+  "worktree": null,
+  "branch": null,
+  "kept": null,
+  "inUse": null,
+  "limits": {
+    "time": {
+      "limit": "none"
+    },
+    "tokens": {
+      "limit": "none",
+      "used": 0,
+      "total": 0
+    }
+  }
+}

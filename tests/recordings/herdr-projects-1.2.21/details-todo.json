@@ -1,0 +1,54 @@
+{
+  "task": {
+    "id": "demo/2",
+    "title": "Second task",
+    "stage": "todo",
+    "msg": "",
+    "description": ""
+  },
+  "failure": null,
+  "review": null,
+  "reviews": [],
+  "agent": null,
+  "handovers": [],
+  "research": false,
+  "chat": false,
+  "report": null,
+  "plan": null,
+  "pr": null,
+  "worktree": null,
+  "branch": null,
+  "kept": null,
+  "inUse": null,
+  "limits": {
+    "time": {
+      "limit": "none"
+    },
+    "tokens": {
+      "limit": "none",
+      "used": 0,
+      "total": 0
+    }
+  },
+  "after": {
+    "waitsFor": [
+      "demo/1"
+    ],
+    "waiting": false,
+    "left": null,
+    "waitsForYou": null,
+    "notReachable": null,
+    "tasks": [
+      {
+        "id": "demo/1",
+        "title": "Fix login page",
+        "repo": "demo",
+        "done": false,
+        "stage": "failed",
+        "research": false
+      }
+    ],
+    "handedOver": null,
+    "early": false
+  }
+}

@@ -2324,6 +2324,8 @@ body.kb .composer { padding-bottom: 8px; }
 .projects-plugin-head span { text-align: right; color: var(--muted); font: 500 11px/1.4 var(--mono); }
 .projects-plugin-head .installed { color: var(--teal); }
 .projects-plugin-head .unsupported { color: var(--ochre); }
+.projects-plugin-head .behind { color: var(--ochre); }
+.projects-plugin-update { color: var(--text-2); }
 .projects-plugin-command { display: block; max-width: 100%; padding: 6px 8px; border: 1px solid var(--line); background: var(--code-bg); color: var(--text); font: 11.5px/1.5 var(--mono); overflow-wrap: break-word; user-select: all; }
 .projects-plugin-actions.tight { margin-top: 2px; }
 

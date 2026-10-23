@@ -27,6 +27,8 @@ case "$1" in
   list) if [ "$3" = --archived ]; then if [ -f '${root}/archived.json' ]; then cat '${root}/archived.json'; else echo '[]'; fi
     elif [ -f '${root}/list.json' ]; then cat '${root}/list.json'; else cat '${fixtures}/list.json'; fi ;;
   details) if [ -f '${root}/details.json' ]; then cat '${root}/details.json'; else case "$4" in demo/1) cat '${fixtures}/details-approval.json' ;; demo/2) cat '${fixtures}/details-asks.json' ;; demo/6) echo '${JSON.stringify(failedDetails)}' ;; *) cat '${fixtures}/details-working.json' ;; esac; fi ;;
+  # The program's own version: the tested release, unless the spec writes another.
+  version) if [ -f '${root}/version' ]; then cat '${root}/version'; else echo 'herdr-projects 1.2.21 (/opt/herdr-projects/bin/herdr-projects-linux-x86_64)'; fi ;;
   tell) echo "$3: sent" ;;
   approve) if [ -f '${root}/after-approve.json' ]; then mv '${root}/after-approve.json' '${root}/list.json'; fi; echo "$3: approved, merging" ;;
   coordinator) co="$2"; case "$co" in --machine|--project=*) ;; *) co=main ;; esac
@@ -68,7 +70,7 @@ const home = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8').trim()), 
 const taskDir = path.join(home, '.herdr-projects/data/tasks/demo/1')
 
 test.beforeEach(() => {
-  for (const f of [path.join(root, 'details.json'), calls, path.join(root, 'own-agent'), path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'after-approve.json'), path.join(root, 'web-coordinator'), path.join(root, 'refuse'), path.join(root, 'show.json'), told]) fs.rmSync(f, { recursive: true, force: true })
+  for (const f of [path.join(root, 'details.json'), calls, path.join(root, 'own-agent'), path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'after-approve.json'), path.join(root, 'web-coordinator'), path.join(root, 'refuse'), path.join(root, 'show.json'), path.join(root, 'version'), told]) fs.rmSync(f, { recursive: true, force: true })
   fs.mkdirSync(told)
 })
 test.afterEach(async () => { await fakeHerdr('e2e.plugins', { plugins: [] }) })
@@ -214,7 +216,7 @@ test('a 0.2 or a 1.x older than 1.2.1: the Board and Settings say what to do, an
     await expect(machine.locator('.projects-plugin-head')).toContainText(`Update needed · v${plugin.version}`, { timeout: 15000 })
     const note = machine.locator('.projects-upgrade')
     await expect(note).toContainText('Update herdr-projects to 1.2.1 or later, or downgrade wherdr to 1.3.4')
-    await expect(note).toContainText('herdr plugin uninstall herdr-projects && herdr plugin install eliasstravik/herdr-projects --ref v1.2.1 --yes')
+    await expect(note).toContainText('herdr plugin uninstall herdr-projects && herdr plugin install eliasstravik/herdr-projects --ref v1.2.21 --yes')
     await expect(note).toContainText('npm install -g wherdr@1.3.4')
     await expect(note).toContainText('docs/herdr-projects-1x.md')
     if (plugin.version === '0.2.34') {
@@ -232,17 +234,70 @@ test('a 0.2 or a 1.x older than 1.2.1: the Board and Settings say what to do, an
   expect(callLog()).toEqual([])
 })
 
-test('without herdr-projects: install it, from 1.2.1', async ({ page }, testInfo) => {
+test('without herdr-projects: install the tested release, 1.2.21', async ({ page }, testInfo) => {
   await page.route('**/api/plugins/projects?*', route => route.fulfill({ json: { status: 'missing', version: null, installable: true } }))
   await page.goto('/#/settings?section=plugins')
   const machine = page.locator('.projects-plugin-machine').first()
   await expect(machine.locator('.projects-plugin-head')).toContainText('Not installed', { timeout: 15000 })
-  await expect(machine.locator('.projects-upgrade')).toContainText('herdr plugin install eliasstravik/herdr-projects --ref v1.2.1 --yes')
+  await expect(machine.locator('.projects-upgrade')).toContainText('herdr plugin install eliasstravik/herdr-projects --ref v1.2.21 --yes')
   await machine.getByRole('button', { name: 'Install herdr-projects', exact: true }).click()
   const dialog = page.getByRole('dialog')
-  await expect(dialog).toContainText('Install herdr-projects 1.2.1')
+  await expect(dialog).toContainText('Install herdr-projects 1.2.21')
+  await expect(dialog).toContainText('release v1.2.21')
   await page.screenshot({ path: `.shots/projects-plugin-install-${testInfo.project.name}.png` })
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+})
+
+// The real reply of the server (its program version from the fake launcher),
+// on a machine whose Herdr folder wherdr may write to.
+const writableHerdr = (page: import('@playwright/test').Page) => page.route('**/api/plugins/projects?*', async (route) => {
+  const reply = await route.fetch()
+  await route.fulfill({ json: { ...(await reply.json()), installable: true } })
+})
+
+test('an older 1.x: Update to the tested release, from what the program itself says', async ({ page }, testInfo) => {
+  // Herdr's manifest says 1.2.1; the program was updated since (`herdr-projects update`).
+  await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+  fs.writeFileSync(path.join(root, 'version'), 'herdr-projects 1.2.16 (/opt/herdr-projects/bin/herdr-projects-linux-x86_64)\n')
+  const posted: unknown[] = []
+  await page.route('**/api/plugins/projects', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    posted.push(route.request().postDataJSON())
+    fs.rmSync(path.join(root, 'version'), { force: true })
+    await route.fulfill({ json: { output: 'Installed herdr-projects' } })
+  })
+  await writableHerdr(page)
+  await page.goto('/#/settings?section=plugins')
+  const machine = page.locator('.projects-plugin-machine').first()
+  await expect(machine.locator('.projects-plugin-head')).toContainText('Update available · v1.2.16', { timeout: 15000 })
+  // Only what 1.2.16 does not have yet.
+  await expect(machine.locator('.projects-plugin-update')).toHaveText('Tested with 1.2.21. Adds archiving a whole project, and fixes; your tasks and settings stay.')
+  await expect(machine.locator('.projects-upgrade')).toHaveCount(0)
+  await machine.locator('.projects-plugin-update').scrollIntoViewIfNeeded()
+  await page.screenshot({ path: `.shots/projects-plugin-update-${testInfo.project.name}.png` })
+  await machine.getByRole('button', { name: 'Update to 1.2.21', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('Update herdr-projects from 1.2.16 to 1.2.21')
+  await expect(dialog).toContainText('Your tasks and settings stay.')
+  await dialog.getByRole('button', { name: 'Update', exact: true }).click()
+  await expect.poll(() => posted).toEqual([{ machine: expect.any(String), update: true }])
+  // Then it reads 1.2.21: nothing more to offer.
+  await expect(machine.locator('.projects-plugin-head')).toContainText('Installed · v1.2.21')
+  await expect(machine.getByRole('button', { name: 'Update to 1.2.21' })).toHaveCount(0)
+  await expect(machine.locator('.projects-plugin-reload')).toContainText('prefix')
+  await expect(machine.locator('.projects-plugin-reload')).not.toContainText('first-run questions')
+})
+
+test('an older 1.x, in French: what the update adds', async ({ page }) => {
+  await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+  fs.writeFileSync(path.join(root, 'version'), 'herdr-projects 1.2.1 (/opt/herdr-projects/bin/herdr-projects-linux-x86_64)\n')
+  await page.addInitScript(() => localStorage.setItem('herdrLanguage', 'fr'))
+  await writableHerdr(page)
+  await page.goto('/#/settings?section=plugins')
+  const machine = page.locator('.projects-plugin-machine').first()
+  await expect(machine.locator('.projects-plugin-head')).toContainText('Mise à jour disponible · v1.2.1', { timeout: 15000 })
+  await expect(machine.locator('.projects-plugin-update')).toHaveText('Testé avec 1.2.21. Ajoute l’accès auto des agents, une page de réglages, les tâches conversation seule, l’archivage de tous les terminés d’un coup, l’autopilot, l’archivage d’un projet entier, et des corrections ; tes tâches et tes réglages restent.')
+  await expect(machine.getByRole('button', { name: 'Mettre à jour en 1.2.21', exact: true })).toBeVisible()
 })
 
 // Replies of the server the Board must show as they are: a failed read.

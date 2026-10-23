@@ -58,10 +58,10 @@ hundreds of megabytes. Keep it, and its `.path` file, until you are sure you wil
 it is the only full copy of Herdr's `config.toml` as it was (see
 [Going back](#going-back-to-02), step 5).
 
-## 2. Install herdr-projects 1.2.1
+## 2. Install herdr-projects 1.2.21
 
 ```sh
-herdr plugin uninstall herdr-projects && herdr plugin install eliasstravik/herdr-projects --ref v1.2.1 --yes
+herdr plugin uninstall herdr-projects && herdr plugin install eliasstravik/herdr-projects --ref v1.2.21 --yes
 ```
 
 Uninstalling removes only Herdr's copy of the plugin; your projects stay where they are.
@@ -114,7 +114,7 @@ Installing a new version does not change a wherdr that is already running: resta
 Check the version wherdr now serves in **Settings › About**: 2.0 or later. Still 1.3.4 means the
 old process is still running: restart it.
 
-Open **Settings › Plugins › herdr-projects**: each machine says **Installed · v1.2.1**. The
+Open **Settings › Plugins › herdr-projects**: each machine says **Installed · v1.2.21**. The
 **Board** (next to Settings) shows the tasks; write to the Coordinator in its box to add the
 work your 0.2 projects still had.
 

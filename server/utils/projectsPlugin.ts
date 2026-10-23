@@ -2,13 +2,16 @@ import { constants, promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { Machine } from './machines'
 import { HerdrError, herdrOn } from './herdr'
-import { PROJECTS_INSTALL_ARGS, type ProjectsStatus, type RawProjectsPlugin, cleanVersion, findProjectsPlugin, projectsLauncher, projectsStatus } from '../../shared/projectsPlugin'
+import { PROJECTS_INSTALL_ARGS, PROJECTS_TESTED, type ProjectsStatus, type RawProjectsPlugin, cleanVersion, findProjectsPlugin, projectsBehind, projectsLauncher, projectsStatus } from '../../shared/projectsPlugin'
 import { fmt } from '../../shared/message'
 
 export interface ProjectsPluginState {
   status: ProjectsStatus
   version: string | null
   installable: boolean
+  // The program's own version (`herdr-projects version`), only where wherdr
+  // runs it (ready); null when unknown. See parseProjectsVersion.
+  program?: string | null
 }
 
 export function projectsPluginFromList(plugins: RawProjectsPlugin[]): Omit<ProjectsPluginState, 'installable'> {
@@ -56,6 +59,22 @@ export async function projectsPluginState(m: Machine): Promise<ProjectsPluginSta
 export async function installProjectsPlugin(m: Machine): Promise<string> {
   if (m.status !== 'online') throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
   if ((await projectsPluginState(m)).status !== 'missing') throw new HerdrError('already_installed', 'herdr-projects is already installed')
+  return runInstall(m)
+}
+
+// A 1.x wherdr reads, older than PROJECTS_TESTED: the same install, over it.
+// Herdr replaces its copy of the plugin ("replaces: …"); the tasks and settings
+// in ~/.herdr-projects stay. `program`: its version as `herdr-projects version`
+// says (the manifest's can be older), so a newer program is never taken back.
+export async function updateProjectsPlugin(m: Machine, program: string | null): Promise<string> {
+  if (m.status !== 'online') throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
+  if ((await projectsPluginState(m)).status !== 'ready' || !projectsBehind(program)) {
+    throw new HerdrError('up_to_date', fmt('herdr-projects is already {version} or later', { version: PROJECTS_TESTED }))
+  }
+  return runInstall(m)
+}
+
+async function runInstall(m: Machine): Promise<string> {
   if (!(await canInstall(m))) throw new HerdrError('read_only', fmt('Herdr folder is read-only on {machine}', { machine: m.label }))
   const child = m.spawnHerdr([...PROJECTS_INSTALL_ARGS])
   return await new Promise<string>((resolve, reject) => {
