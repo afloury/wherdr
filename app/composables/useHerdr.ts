@@ -41,6 +41,9 @@ const ls = {
 
 export const herdrState = shallowRef<HerdrState>({ ok: false, workspaces: [], panes: [] })
 let fullState: HerdrState = herdrState.value
+// Every open session's state, as the server follows them (herdrState keeps
+// only the session each device shows): to find a pane in a session not shown.
+export const allSessionsState = shallowRef<HerdrState>(fullState)
 function loadSessionNames(): Record<string, string> {
   return readSessionSelection(ls.get('machineSessions'))
 }
@@ -498,6 +501,7 @@ export function connectEvents() {
         return
       }
       fullState = state
+      allSessionsState.value = fullState
       herdrState.value = selectSessions(state, machineSessions.value)
       restoreMachineSessions()
       lastStateAt = Date.now()
@@ -579,6 +583,7 @@ export function showLock() {
   locked.value = true
   herdrState.value = { ok: false, workspaces: [], panes: [] }
   fullState = herdrState.value
+  allSessionsState.value = fullState
   cachedAt.value = null
   setOfflineAccess(null)
   clearOffline()
@@ -623,6 +628,7 @@ export async function start({ resume = false } = {}) {
     const saved = await readOffline()
     if (saved.home && !eventsOpen.value) {
       fullState = saved.home.state
+      allSessionsState.value = fullState
       herdrState.value = selectSessions(fullState, machineSessions.value)
       cachedAt.value = saved.home.at
     }
