@@ -51,7 +51,7 @@ const failure = computed(() => (details.value && details.value.id === props.task
 // Archived: as its details (its file) or its row say, until Restore from here.
 const restored = ref(false)
 const archived = computed(() => Boolean(failure.value?.archived) || (Boolean(props.task?.archived) && !restored.value))
-const row = computed(() => (props.task ? { ...props.task, archived: archived.value } : null))
+const row = computed(() => (props.task ? { ...props.task, archived: archived.value, chat: failure.value?.chat ?? props.task.chat } : null))
 // Finish on a row stuck at "Finishing": not while its agent is still at work (1.x refuses).
 const paneStatus = computed(() => herdrState.value.panes.find(p => p.id === failure.value?.pane)?.status ?? null)
 const withFinish = (a: ReturnType<typeof taskActions>) => ({ ...a, finish: a.finish && Boolean(row.value) && finishOffered(row.value!, paneStatus.value) })
@@ -288,7 +288,7 @@ async function act(action: TaskCommand, after?: string[]) {
   if (action === 'stop' && !await askConfirm(
     tl(`Stop the agent of “${t.title}”? Its turn ends now; the task stays, and Retry or Start picks it up again.`, `Arrêter l’agent de « ${t.title} » ? Son tour s’arrête maintenant ; la tâche reste, Réessayer ou Lancer la reprend.`),
     tl('Stop the agent', 'Arrêter l’agent'))) return
-  if (action === 'finish' && !await askConfirm(finishQuestion(t.title), finishLabel(), 'primary')) return
+  if (action === 'finish' && !await askConfirm(finishQuestion(t.title, row.value?.chat), finishLabel(row.value?.chat), 'primary')) return
   if (!still(was)) return
   const g = gen
   busy.value = true
@@ -305,7 +305,7 @@ async function act(action: TaskCommand, after?: string[]) {
       emit('archived', machine, t)
       return
     }
-    toast(r.msg || ACTION_DONE[action]())
+    toast(r.msg || (action === 'finish' && row.value?.chat ? tl('Conversation ended', 'Conversation terminée') : ACTION_DONE[action]()))
     if (action === 'restore' && g === gen) restored.value = true
     if (action === 'restore') emit('restored', machine, t)
     await settle(g)
@@ -374,9 +374,11 @@ function chat() {
         <span class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
         <span v-if="archived" class="task-chip task-archived"><UIcon name="i-lucide-archive" />{{ tl('Archived', 'Archivée') }}</span>
         <span v-if="task.app" class="task-chip">{{ task.app }}</span>
-        <span v-if="task.research" class="task-chip">{{ tl('research', 'recherche') }}</span>
+        <span v-if="row?.chat" class="task-chip">{{ tl('Conversation', 'Conversation') }}</span>
+        <span v-else-if="task.research" class="task-chip">{{ tl('research', 'recherche') }}</span>
         <span v-if="multiMachine && machine !== undefined" class="task-chip">{{ machineName(machine) }}</span>
       </p>
+      <span v-if="embedded && row?.chat" class="task-chip">{{ tl('Conversation', 'Conversation') }}</span>
       <p v-if="embedded && task.group === 'working' && task.progress !== null" class="task-sheet-msg">{{ tl('Progress', 'Avancement') }} · {{ task.progress }}%<template v-if="task.eta !== null"> · {{ tl(`${task.eta} min left`, `${task.eta} min restantes`) }}</template></p>
       <p v-if="task.msg && !wait && queued === null" class="task-sheet-msg">{{ task.msg }}</p>
       <!-- Where a started task stands before an agent is on it: the queue, or what it waits for. -->
@@ -498,7 +500,7 @@ function chat() {
           {{ task.stage === 'plan' ? tl('Approve plan', 'Accepter le plan') : tl('Approve', 'Approuver') }}
         </UButton>
         <UButton v-if="actions.retry" color="primary" variant="outline" icon="i-lucide-rotate-ccw" :loading="running === 'retry'" :disabled="busy || offlineView" @click="act('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
-        <UButton v-if="actions.finish" color="primary" variant="outline" icon="i-lucide-flag" class="task-finish" :title="finishTitle()" :aria-description="finishTitle()" :loading="running === 'finish'" :disabled="busy || offlineView" @click="act('finish')">{{ finishLabel() }}</UButton>
+        <UButton v-if="actions.finish" color="primary" variant="outline" icon="i-lucide-flag" class="task-finish" :title="finishTitle(row?.chat)" :aria-description="finishTitle(row?.chat)" :loading="running === 'finish'" :disabled="busy || offlineView" @click="act('finish')">{{ finishLabel(row?.chat) }}</UButton>
         <UButton
           v-if="chatShown && !embedded" class="task-chat" color="neutral" variant="outline" icon="i-lucide-message-square"
           @click="chat"

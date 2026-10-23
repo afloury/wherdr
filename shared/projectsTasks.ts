@@ -31,6 +31,7 @@ export interface TaskRow {
   pr: string // the pull request URL, or ''
   review: TaskReview | null
   reviewRound: number
+  chat?: boolean // CLI `chat`: effective chat.only, distinct from a task-file chat exchange.
   research: boolean
   archived: boolean
   queue: number | null
@@ -85,6 +86,7 @@ export interface TaskDetails {
   review: TaskReview | null
   reviewRounds: number
   plan: string
+  chat?: boolean // CLI `chat`: effective chat.only, distinct from a task-file chat exchange.
   research: boolean
   // Put away (`archivedAt`): 1.2.1's `details` leaves it out, so the server
   // reads it from the task's file, as the closing note.
@@ -257,6 +259,7 @@ export function parseTaskRow(v: unknown): TaskRow | null {
     pr: cleanUrl(t.pr),
     review: parseReview(t.review),
     reviewRound: Math.max(0, Math.floor(num(t.reviewRound) ?? 0)),
+    chat: t.chat === true,
     research: t.research === true,
     archived: Boolean(t.archivedAt),
     queue: num(t.queue),
@@ -328,6 +331,7 @@ export function parseTaskDetails(text: string): TaskDetails {
     review: parseReview(d.review),
     reviewRounds: Array.isArray(d.reviews) ? d.reviews.length : 0,
     plan: plan ? str(plan.text, 8000) : '',
+    chat: d.chat === true,
     research: d.research === true,
     archived: Boolean(t.archivedAt ?? d.archivedAt),
     summary: str(d.summary ?? t.summary, 8000).trim(),
@@ -394,7 +398,7 @@ export type TaskFailure = Pick<TaskDetails, 'failureStage' | 'failureAuth'>
 const ACTIVE_STAGES = ['starting', 'setup', 'working', 'checking', 'pushing', 'reviewing', 'merging', 'queued', 'attempts']
 // A failure before any agent was on it: Start again, not Retry.
 const BEFORE_AGENT = ['start', 'setup', 'attempts']
-export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group' | 'archived' | 'app'> & { msg?: string }, f?: TaskFailure | null): TaskActions {
+export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group' | 'archived' | 'app'> & { msg?: string, chat?: boolean }, f?: TaskFailure | null): TaskActions {
   if (r.archived) return { ...NO_ACTIONS, restore: true }
   const live = r.group !== 'todo' && r.group !== 'done'
   const limitStop = r.stage === 'stopped' && r.state === 'blocked'
@@ -403,7 +407,7 @@ export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group
   const retryFailed = failed && Boolean(f) && !f!.failureAuth && (f!.failureStage === 'send' || (Boolean(f!.failureStage) && !BEFORE_AGENT.includes(f!.failureStage)))
   return {
     tell: live && Boolean(r.app) && !(failed && f && BEFORE_AGENT.includes(f.failureStage)),
-    approve: r.stage === 'approval' || (r.stage === 'plan' && r.state === 'blocked'),
+    approve: !r.chat && (r.stage === 'approval' || (r.stage === 'plan' && r.state === 'blocked')),
     delegate: r.group === 'todo' || (failed && Boolean(f) && BEFORE_AGENT.includes(f!.failureStage)),
     // Also an agent whose terminal is gone or that exited: still at work for 1.x.
     stop: r.group === 'working' || (r.group === 'needs' && r.state === 'blocked' && Boolean(r.app) && !limitStop && r.kind !== 'auth')
@@ -415,17 +419,18 @@ export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group
   }
 }
 
-// Why Finish is offered: a limit, no summary, or a finish the board missed.
-export type FinishCase = 'limit' | 'nosummary' | 'stuck'
+// Why Finish is offered: a waiting conversation, a limit, no summary, or a missed finish.
+export type FinishCase = 'conversation' | 'limit' | 'nosummary' | 'stuck'
 // 1.x shown/states.rs stuck_finishing: an agent task at stage "working" whose
 // row says "Finishing" (state.rs: its agent idle or done, its turn's end not
 // seen). 1.x refuses it while the agent is still at work.
-type FinishRow = Pick<TaskRow, 'state' | 'stage' | 'app' | 'archived'> & { msg?: string }
+type FinishRow = Pick<TaskRow, 'state' | 'stage' | 'app' | 'archived'> & { msg?: string, chat?: boolean }
 export function taskStuckFinishing(r: FinishRow): boolean {
   return !r.archived && Boolean(r.app) && r.stage === 'working' && r.state === 'working' && r.msg === 'Finishing'
 }
 export function finishCase(r: FinishRow): FinishCase | null {
   if (r.archived) return null
+  if (r.chat) return r.stage === 'asks' && r.state === 'blocked' ? 'conversation' : null
   if (r.stage === 'stopped' && r.state === 'blocked') return 'limit'
   if (r.stage === 'nosummary') return 'nosummary'
   return taskStuckFinishing(r) ? 'stuck' : null
@@ -755,6 +760,9 @@ export function stateFromTaskFile(t: Raw, paneStatus: string | null): { state: s
   return { state: 'working', kind: '' } // queued, starting, reviewing, checking, merging, attempts…
 }
 
+// A delegated run keeps its mode even if chat.only changes afterwards (CLI 1.2.16).
+const chatFromTaskFile = (o: Raw) => typeof o.chatRun === 'boolean' ? o.chatRun : obj(o.settings)?.['chat.only'] === true
+
 // One row of the board from a task file; null for what the board does not list
 // on its own (an attempt of a task done several times at once) or cannot read.
 export function rowFromTaskFile(t: unknown, paneStatus: string | null): TaskRow | null {
@@ -765,6 +773,7 @@ export function rowFromTaskFile(t: unknown, paneStatus: string | null): TaskRow 
   return parseTaskRow({
     id: o.id, identity: taskAgentIdentity(o), state, kind, mergeFailed: o.mergeFailed, syncBlocked: o.syncBlocked, prFailure: o.prFailure, prState: o.prState, stage: o.stage, title: o.title, msg: o.msg, app: o.app,
     pr: o.pr, review: review && !review.stale ? review : null, reviewRound: o.reviewRound,
+    chat: chatFromTaskFile(o),
     research: o.research === true, archivedAt: o.archivedAt, created: o.created,
     progress: obj(o.watch)?.progress,
   })
@@ -780,6 +789,7 @@ export function detailsFromTaskFile(t: unknown): TaskDetails | null {
     failure: o.failure ?? o.prFailure ?? null, limits: o.limits, review: o.review ?? null, reviews: [],
     // The program on it: `on` while one works, then `agent`, as `details` gives it; else the row's `app`.
     agent: o.on || o.agent || o.app || null,
+    chat: chatFromTaskFile(o),
     research: o.research === true, pr: o.pr ?? null, branch: o.branch ?? null, worktree: o.worktree ?? null, plan: null,
     after: o.after ? { waitsFor: o.after, left: o.stage === 'after' ? o.afterLeft : undefined, waiting: o.stage === 'after', waitsForYou: o.afterBlocked } : null,
   }))
@@ -791,14 +801,14 @@ export function taskCanFix(r: Pick<TaskRow, 'archived' | 'stage' | 'app'>, d: Ta
   return !r.archived && Boolean(r.app) && Boolean(d?.failureCanFix) && !d?.failureAuth && !d?.failureStale
     && !(d?.failureSent && r.stage === 'working') && r.stage !== 'merging'
 }
-export function taskCanApproveAnyway(r: Pick<TaskRow, 'archived' | 'stage' | 'research' | 'review'>, d: TaskDetails | null): boolean {
-  return !r.archived && !r.research && r.stage === 'approval'
+export function taskCanApproveAnyway(r: Pick<TaskRow, 'archived' | 'stage' | 'research' | 'review' | 'chat'>, d: TaskDetails | null): boolean {
+  return !r.archived && !r.chat && !r.research && r.stage === 'approval'
     && (r.review?.pass === false || (d?.failureRemoteKind === 'checks'))
 }
 // A review that failed, its task waiting for you: 1.x asks "merge anyway, or
 // send the review back" (`review <id>`), sending back first.
-export function taskCanSendReview(r: Pick<TaskRow, 'archived' | 'stage' | 'research' | 'review'>, d?: Pick<TaskDetails, 'review'> | null): boolean {
-  return !r.archived && !r.research && r.stage === 'approval' && (d?.review ?? r.review)?.pass === false
+export function taskCanSendReview(r: Pick<TaskRow, 'archived' | 'stage' | 'research' | 'review' | 'chat'>, d?: Pick<TaskDetails, 'review'> | null): boolean {
+  return !r.archived && !r.chat && !r.research && r.stage === 'approval' && (d?.review ?? r.review)?.pass === false
 }
 // What a sent-back review carries, worst first: its open findings (those there
 // before the task stay out), `shown` of them, and how many more.
