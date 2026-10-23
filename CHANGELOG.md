@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added and improved
 
+- **Task limits** (herdr-projects 1.2.16+): the Task tab shows a thin gauge per limit set, **Time 2 min 38 / 2 h** (this run) and **Tokens 3.4 M / 30 M** (the task), red from 90 %. A task stopped at a limit offers **Continue** (`retry`: the same limit once more, tokens keep adding up), **Raise the limit** (presets +1 h / ×2 / none for time, ×2 / +10 M / none for tokens; only `herdr-projects set limit.* --task`, after which herdr-projects resumes by itself, keeping what was used) and **Take it as it is** (`finish`). Durations and token counts are written one way everywhere (`2 h`, `45 min`, `3.4 M`, `500 k`).
+
 - **Moving from a 1.x Docker install** has its own guide, [docs/migrate-from-1.x-docker.md](docs/migrate-from-1.x-docker.md), written so an AI agent can run it: back up, stop the container, install the native service, check each step, and go back if needed. The installer, the plugin and the 2.0.0 release notes link to it.
 
 - **Install herdr-projects** now installs 1.2.21, the release wherdr was tested with, instead of 1.2.1 (which had no autopilot, chat-only tasks or settings page). A machine with an older 1.x shows **Update available** in Settings › Plugins, with what the update adds in one line, and **Update to 1.2.21** replaces Herdr's copy of the plugin; tasks and settings stay. wherdr still reads 1.2.1 and later.

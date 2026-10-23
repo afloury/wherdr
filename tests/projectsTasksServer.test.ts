@@ -472,6 +472,39 @@ describe('archived tasks: their list, their sheet and Restore', () => {
   })
 })
 
+describe('raising the limit that stopped a task', () => {
+  const board = JSON.stringify([
+    { id: 'demo/5', state: 'blocked', app: 'claude', title: 'At its limit', stage: 'stopped', msg: 'stopped at its 2h limit' },
+    { id: 'demo/3', state: 'working', app: 'codex', title: 'At work', stage: 'working' },
+  ])
+  beforeEach(() => { listReply = { code: 0, stdout: board, stderr: '' } })
+
+  it('runs set limit.<kind> <value> --task <id>, and no retry after it', async () => {
+    await read()
+    calls = []
+    await T.setTaskLimit('', 'demo/5', 'time', '3h')
+    await read()
+    await T.setTaskLimit('', 'demo/5', 'tokens', 'none')
+    expect(calls.filter(c => c[0] !== 'list')).toEqual([['set', '--task=demo/5', '--', 'limit.time', '3h'], ['set', '--task=demo/5', '--', 'limit.tokens', 'none']])
+  })
+  it('refuses a task not stopped at a limit, an unknown limit or a value herdr-projects would not take', async () => {
+    await read()
+    calls = []
+    await expect(T.setTaskLimit('', 'demo/3', 'time', '3h')).rejects.toThrow(/not stopped at a limit/)
+    await expect(T.setTaskLimit('', 'demo/5', 'worker.agent', 'codex')).rejects.toThrow(/Unknown limit/)
+    await expect(T.setTaskLimit('', 'demo/5', 'time', '--task=demo/3')).rejects.toThrow(/Invalid limit/)
+    await expect(T.setTaskLimit('', 'demo/5', 'time', '1h30m')).rejects.toThrow(/Invalid limit/)
+    expect(calls.filter(c => c[0] === 'set')).toEqual([])
+  })
+  it('passes herdr-projects\' refusal on as it is', async () => {
+    await read()
+    T.setRunner(async (_m, _l, args) => args[0] === 'set'
+      ? { code: 1, stdout: '', stderr: 'demo/5 is busy. Try again in a moment.\nmore' }
+      : { code: 0, stdout: board, stderr: '' })
+    await expect(T.setTaskLimit('', 'demo/5', 'time', '3h')).rejects.toThrow(/^demo\/5 is busy\. Try again in a moment\.$/)
+  })
+})
+
 describe('start, stop, retry, archive, add, and the three coordinators', () => {
   // A board with a task of each kind these act on.
   const board = JSON.stringify([

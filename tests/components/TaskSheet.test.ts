@@ -526,13 +526,13 @@ describe('Finish, and a failure the task moved on from', () => {
     Object.assign(shown, { stage: 'approval', failure: '', failureStage: '', failureStale: undefined, failureTitle: undefined, failureAt: undefined })
   })
 
-  it('a limit stop: Retry and Finish, what each does, and Finish sends finish', async () => {
+  it('a limit stop: Continue and Take it as it is, what each does, and the latter sends finish', async () => {
     sent = []
     registerEndpoint('/api/tasks/action', { method: 'POST', handler: async (e) => { sent.push(await readBody(e)); return { ok: true, msg: 'demo/1: taking the work as it is' } } })
     Object.assign(shown, { stage: 'stopped', failure: '', failureStage: '' })
     const w = await mountSuspended(TaskSheet, { props: { task: stopped, machine: 'a', open: true } })
-    await vi.waitFor(() => expect(buttons()).toEqual(expect.arrayContaining(['Retry', 'Finish'])))
-    expect(document.querySelector('.task-finish-why')?.textContent).toContain('the same limit again')
+    await vi.waitFor(() => expect(buttons()).toEqual(expect.arrayContaining(['Continue', 'Take it as it is'])))
+    expect(document.querySelector('.task-finish-why')?.textContent).toContain('the same limit once more; its tokens keep adding up')
     await (w.vm as unknown as SheetVm).act('finish')
     await flushPromises()
     expect(sent).toEqual([{ machine: 'a', id: 'demo/1', action: 'finish' }])

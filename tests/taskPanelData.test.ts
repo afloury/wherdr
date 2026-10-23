@@ -9,6 +9,16 @@ describe('task panel details', () => {
     expect(d).toMatchObject({ failureTitle: 'Setup failed', failureDetail: 'npm ci\nMissing lockfile', failureNext: 'Restore the lockfile, then retry.', failureCanFix: false,
       limits: { time: '2h', timeUsed: '3m', tokens: '1m', tokensUsed: 4200 } })
   })
+  // herdr-projects 1.2.16+ limits/shown.rs limits_detail.
+  it('reads a run’s time, the tokens counted against the limit and the stop', () => {
+    const d = parseTaskDetails(JSON.stringify({ task: { id: 'demo/9' }, limits: {
+      time: { limit: '2h', used: '2m38s', usedMs: 158000 }, tokens: { limit: '30m', used: 3400000, total: 5100000 },
+      stopped: { what: 'tokens', limit: '30m', used: 30100000, role: 'worker', line: 'stopped at 30m tokens' },
+    } }))
+    expect(d.limits).toEqual({ time: '2h', timeUsed: '2m38s', timeUsedMs: 158000, tokens: '30m', tokensUsed: 5100000, tokensCounted: 3400000, stopped: { what: 'tokens', limit: '30m', used: 30100000 } })
+    const old = parseTaskDetails(JSON.stringify({ task: { id: 'demo/9' }, limits: { time: { limit: 'none' }, tokens: { limit: 'none', total: 0 }, stopped: { what: 'other' } } }))
+    expect(old.limits).toMatchObject({ timeUsedMs: null, tokensCounted: 0, stopped: null })
+  })
 })
 
 describe('one board state vocabulary', () => {

@@ -72,7 +72,12 @@ export interface TaskDetails {
   // history, not where the task stands.
   failureAt?: number | null
   failureStale?: boolean
-  limits?: { time: string, timeUsed: string, tokens: string, tokensUsed: number | null }
+  // `details.limits` (1.2.16+ limits/shown.rs limits_detail): each limit as
+  // the board writes it (`2h`, `30m` tokens, `none`), the time this run has
+  // taken (only while one runs), the tokens counted against `limit.tokens`
+  // (`used`; `tokensUsed` is the task's whole count, `total`), and the stop
+  // when a limit stopped it (`what`, the limit then, what was used: ms or tokens).
+  limits?: TaskLimits
   // `preexisting`: there before the task (1.x gate.rs), not what it must fix.
   findings?: { severity: string, title: string, detail: string, preexisting?: boolean }[]
   failureStage: string
@@ -93,6 +98,16 @@ export interface TaskDetails {
   // its place in the queue for a free slot (1 gets the next one).
   after?: TaskWait | null
   queue?: number | null
+}
+
+export interface TaskLimits {
+  time: string
+  timeUsed: string
+  timeUsedMs: number | null
+  tokens: string
+  tokensUsed: number | null
+  tokensCounted: number | null
+  stopped: { what: 'time' | 'tokens', limit: string, used: number | null } | null
 }
 
 // The panes wherdr adds to `details`: its agent's, and its reviewer's while a
@@ -288,7 +303,13 @@ function parseTaskLimits(v: unknown): TaskDetails['limits'] {
   if (!limits) return undefined
   const time = obj(limits.time)
   const tokens = obj(limits.tokens)
-  return { time: str(time?.limit, 40), timeUsed: str(time?.used, 40), tokens: str(tokens?.limit, 40), tokensUsed: num(tokens?.total) ?? num(tokens?.used) }
+  const stop = obj(limits.stopped)
+  const what = stop?.what === 'time' || stop?.what === 'tokens' ? stop.what : null
+  return {
+    time: str(time?.limit, 40), timeUsed: str(time?.used, 40), timeUsedMs: num(time?.usedMs),
+    tokens: str(tokens?.limit, 40), tokensUsed: num(tokens?.total) ?? num(tokens?.used), tokensCounted: num(tokens?.used) ?? num(tokens?.total),
+    stopped: what ? { what, limit: str(stop?.limit, 40), used: num(stop?.used) } : null,
+  }
 }
 function parseFindings(v: unknown): NonNullable<TaskDetails['findings']> {
   const review = obj(v)
@@ -579,6 +600,10 @@ export function parseBoardAgents(stdout: string): number | null {
 // none (`unset`: its repo's or the user's default applies again).
 export function restoreAgentArgs(id: string, prev: string | null): string[] {
   return prev ? ['set', `--task=${id}`, '--', 'worker.agent', prev] : ['unset', `--task=${id}`, '--', 'worker.agent']
+}
+// Raise or lift a task's limit (1.2.16+): `set --task=<id> -- limit.<kind> <value>`.
+export function limitArgs(id: string, kind: 'time' | 'tokens', value: string): string[] {
+  return ['set', `--task=${id}`, '--', `limit.${kind}`, value]
 }
 // A run is over, so the agent picked for it can be taken back: the task is
 // back in the backlog, or done. (A task that waits for another, `after`, or
