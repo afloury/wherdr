@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultNotifications, type NotificationSettings } from '../shared/notificationRules'
+import { coordinatorFromFile, linksFromTaskFile, socketSession, tasksFromFiles } from '../shared/boardLinks'
 
 const deps = vi.hoisted(() => ({ readSettings: vi.fn(), readBoardLinks: vi.fn(), pushSend: vi.fn(), allowed: vi.fn(), findPane: vi.fn() }))
 vi.mock('../server/utils/settings', () => ({ readSettings: deps.readSettings }))
@@ -39,6 +40,28 @@ describe('server notification gate', () => {
     const p = { id: 'w2:p1', workspace: 'w2' }
     expect(await notificationAllowed('needs-you', { workspaces: [] }, p, { machine: '', project: 'example', board: true })).toBe(true)
     expect(await notificationAllowed('needs-you', { workspaces: [] }, p)).toBe(false)
+  })
+  it('keeps a project coordinator’s exception to the tasks of its own Herdr session, even one with no coordinator', async () => {
+    const name = (s: unknown) => socketSession(s, 'default')
+    const key = (s: unknown) => (s ? 'abcd' : '')
+    const task = (n: number, socket?: string) => linksFromTaskFile({ id: `shop/${n}`, link: { ...(socket ? { socket } : {}), pane: 'w2:p1' } }, key, name)!
+    const coordinators = [coordinatorFromFile('project', { pane: 'w1:p2' }, key, 'shop', 'default')!]
+    deps.readBoardLinks.mockResolvedValue({ version: '1', machines: [{ machine: '', coordinators,
+      tasks: tasksFromFiles([task(1), task(2, '/run/sessions/other/herdr.sock')], {}) }] })
+    const other = { id: 'abcd~w2:p1', workspace: 'abcd~w2' }
+    const mine = { id: 'w2:p1', workspace: 'w2' }
+    // Default muted, default/project/shop at all activity with its sub-agents.
+    policy.default.events = []
+    policy.exceptions.push({ kind: 'coordinator', machine: '', id: 'default/project/shop', label: 'shop', events: ['needs-you', 'finished', 'message', 'scheduled'], subagents: true, until: null })
+    expect(await notificationAllowed('needs-you', { workspaces: [] }, other)).toBe(false)
+    expect(await notificationAllowed('needs-you', { workspaces: [] }, other, { machine: '', project: 'shop', board: true, session: 'other' })).toBe(false)
+    expect(await notificationAllowed('needs-you', { workspaces: [] }, mine)).toBe(true)
+    // Default on with sub-agents, default/project/shop muted: the other session keeps the default.
+    policy.default = { events: ['needs-you'], subagents: true }
+    policy.exceptions[0]!.events = []
+    expect(await notificationAllowed('needs-you', { workspaces: [] }, other)).toBe(true)
+    expect(await notificationAllowed('needs-you', { workspaces: [] }, other, { machine: '', project: 'shop', board: true, session: 'other' })).toBe(true)
+    expect(await notificationAllowed('needs-you', { workspaces: [] }, mine)).toBe(false)
   })
   it('suppresses an enabled conversation for all recipients while another device views it', async () => {
     policy.default.events = ['message']

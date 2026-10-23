@@ -13,7 +13,7 @@ import path from 'node:path'
 import {
   type BoardLinks, type FileLinks, type LinkedCoordinator, type MachineLinks, type RepoInfo,
   parseRepoGit,
-  TASK_DIR_RE, coordinatorFromFile, linksFromTaskFile, tasksFromFiles,
+  TASK_DIR_RE, coordinatorFromFile, linksFromTaskFile, socketSession, tasksFromFiles,
 } from '../../shared/boardLinks'
 import { repoKeysFromFile } from '../../shared/projectsTasks'
 import type { FsStat } from './fsx'
@@ -78,7 +78,7 @@ async function readMachine(m: Machine, files: Map<string, Seen>): Promise<Machin
   const sessionKey = (socket: unknown) => sessionMachine(m, socket)
   const keysFile = read.get(keysPath)
   const keys = keysFile ? repoKeysFromFile(JSON.stringify(keysFile)) : {}
-  const links = taskPaths.map(p => linksFromTaskFile(read.get(p), sessionKey)).filter((x): x is FileLinks => x !== null && !x.archived)
+  const links = taskPaths.map(p => linksFromTaskFile(read.get(p), sessionKey, socket => socketSession(socket, m.session || 'default'))).filter((x): x is FileLinks => x !== null && !x.archived)
   const coordinators = coordPaths.map(c => coordinatorFromFile(c.level, read.get(c.p), sessionKey, c.folder, c.session)).filter((c): c is LinkedCoordinator => c !== null)
   const reposFile = read.get(path.posix.join(data, 'repos.json'))
   return { machine: m.key, tasks: tasksFromFiles(links, keys), coordinators, repos: await reposOf(m, reposFile) }

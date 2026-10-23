@@ -175,8 +175,9 @@ export function paneNotificationSource(pane: Pick<Pane, 'id' | 'workspace'>, sta
     const task = board.tasks.find(t => t.panes.some(p => p.id === pane.id) || (t.workspace !== null && t.workspace === pane.workspace))
     if (task) {
       // Each Herdr session has its own key prefix: its coordinators share the task's.
+      // The task file names its session; older links: its coordinators share the task's key prefix.
       const key = machineOf(pane.id)
-      const session = board.coordinators.find(c => c.session !== undefined && machineOf(c.pane ?? c.workspace) === key)?.session
+      const session = task.session ?? board.coordinators.find(c => c.session !== undefined && machineOf(c.pane ?? c.workspace) === key)?.session
       return { machine: board.machine, project: task.repo, conversation: pane.id, subagent: true, ...(session === undefined ? {} : { session }) }
     }
   }

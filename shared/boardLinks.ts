@@ -42,6 +42,9 @@ export interface LinkedTask {
   workspace: string | null
   stage: string
   group?: TaskGroup
+  // The Herdr session its link names (socketSession): which session's
+  // coordinators it belongs to.
+  session?: string
   // The board's report: progress (0-100), the line on what it does now, and
   // when the current agent's turn on it began (ms; the reviewer's while it reviews).
   progress: number | null
@@ -77,15 +80,23 @@ export const TASK_DIR_RE = /^\d{1,7}[a-e]?$/
 
 // The machine key of the session a socket names (null: one wherdr has not opened).
 export type SessionKey = (socket: unknown) => string | null
+// The Herdr session a socket names (`…/sessions/<name>/herdr.sock`, else
+// `default`); no socket: the board's own session `own`, as herdr-projects reads it.
+export function socketSession(socket: unknown, own: string): string {
+  if (typeof socket !== 'string' || !socket) return own
+  const parts = socket.split('/')
+  const n = parts.length
+  return n >= 3 && parts[n - 1] === 'herdr.sock' && parts[n - 3] === 'sessions' ? parts[n - 2]!.slice(0, 80) : 'default'
+}
 
 const paneOf = (key: string | null, v: unknown) => (key !== null && typeof v === 'string' && PANE_LOCAL_RE.test(v) ? joinId(key, v) : null)
 const spaceOf = (key: string | null, v: unknown) => (key !== null && typeof v === 'string' && SPACE_LOCAL_RE.test(v) ? joinId(key, v) : null)
 
 // What a `task.json` links to. An attempt (`attemptOf`) comes back as its
 // task's id with its pane as an attempt; the caller merges it into the task.
-export interface FileLinks extends Pick<LinkedTask, 'stage' | 'progress' | 'msg' | 'since' | 'review' | 'group' | 'identity'> { id: string, repo: string, n: number, title: string, attemptOf: string | null, letter: string, archived: boolean, panes: LinkedTask['panes'], workspace: string | null }
+export interface FileLinks extends Pick<LinkedTask, 'stage' | 'progress' | 'msg' | 'since' | 'review' | 'group' | 'identity' | 'session'> { id: string, repo: string, n: number, title: string, attemptOf: string | null, letter: string, archived: boolean, panes: LinkedTask['panes'], workspace: string | null }
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
-export function linksFromTaskFile(t: unknown, sessionKey: SessionKey): FileLinks | null {
+export function linksFromTaskFile(t: unknown, sessionKey: SessionKey, sessionName?: (socket: unknown) => string): FileLinks | null {
   const r = obj(t)
   if (!r) return null
   const id = str(r.id, 100)
@@ -119,6 +130,7 @@ export function linksFromTaskFile(t: unknown, sessionKey: SessionKey): FileLinks
     attemptOf: attemptOf || null, letter, archived: Boolean(r.archivedAt),
     panes, workspace: link?.ownsWorkspace === true ? spaceOf(key, link.workspace) : null,
     stage,
+    ...(link && sessionName ? { session: sessionName(link.socket) } : {}),
     identity: taskAgentIdentity(r),
     group: rowFromTaskFile(r, null)?.group,
     review: reviewer ? (r.comparing ? 'pick' : planOpen ? 'plan' : 'work') : null,
@@ -133,7 +145,7 @@ export function linksFromTaskFile(t: unknown, sessionKey: SessionKey): FileLinks
 export function tasksFromFiles(files: FileLinks[], keys: Record<string, string>): LinkedTask[] {
   const byId = new Map<string, LinkedTask>()
   const own = files.filter(f => !f.attemptOf)
-  const task = (f: FileLinks): LinkedTask => ({ id: f.id, repo: f.repo, n: f.n, key: taskKeyOf(f.id, keys[f.repo]), title: f.title, identity: f.identity, panes: [...f.panes], workspace: f.workspace, stage: f.stage, group: f.group, review: f.review, progress: f.progress, msg: f.msg, since: f.since })
+  const task = (f: FileLinks): LinkedTask => ({ id: f.id, repo: f.repo, n: f.n, key: taskKeyOf(f.id, keys[f.repo]), title: f.title, identity: f.identity, panes: [...f.panes], workspace: f.workspace, ...(f.session === undefined ? {} : { session: f.session }), stage: f.stage, group: f.group, review: f.review, progress: f.progress, msg: f.msg, since: f.since })
   for (const f of own) byId.set(f.id, task(f))
   for (const a of files.filter(f => f.attemptOf)) {
     const t = byId.get(a.id)

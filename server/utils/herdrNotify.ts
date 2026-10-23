@@ -122,12 +122,14 @@ export async function onNotice(m: Machine, n: HerdrNotification) {
   if (!forwardableNotice(n) || !dedupe.fresh(`${m.key}:${noticeKey(n)}`)) return
   let pane: Pick<Pane, 'id' | 'workspace'> | undefined = n.paneId ? findPane(joinId(m.key, n.paneId)) : undefined
   const noticeTask = taskNotice(n.title)
+  let session: string | undefined
   if (noticeTask) {
     const links = await readBoardLinks()
     const task = 'machines' in links ? links.machines.find(b => b.machine === boardMachine(m).key)?.tasks.find(t => t.id === noticeTask.id) : undefined
     // A board hook can run in a coordinator's terminal. Its notification
     // belongs to the task, never to that caller's coordinator conversation.
     const caller = pane
+    session = task?.session
     pane = task?.panes.some(p => p.id === caller?.id) ? caller : task?.panes.map(p => findPane(p.id)).find(p => p !== undefined)
   }
   if (!noticeTask && !pane && (n.paneId || n.workspaceId)) pane = {
@@ -135,7 +137,7 @@ export async function onNotice(m: Machine, n: HerdrNotification) {
   }
   const event = noticeTask ? 'needs-you' : /^\[scheduled\]/i.test(n.title) ? 'scheduled' : 'message'
   if (!await notificationAllowed(event, getState(), pane, {
-    machine: m.info().baseKey ?? m.key, project: noticeTask?.id.split('/')[0], board: Boolean(noticeTask),
+    machine: m.info().baseKey ?? m.key, project: noticeTask?.id.split('/')[0], board: Boolean(noticeTask), ...(session === undefined ? {} : { session }),
   })) return
   const on = multiMachine() ? `${m.label || (m.local ? 'local' : m.key)} · ` : ''
   // herdr-projects' `board.notify` (NOTIFY_COMMAND): the task's key, one

@@ -18,7 +18,7 @@ export async function notificationAllowed(event: NotificationEvent, state: Pick<
   // board event keeps its task's conversation (for visibility) but is not a
   // sub-agent's message: it follows the default or its project coordinator.
   const boardEvent = fallback?.board === true
-  const resolved = { ...source, project: source.project ?? fallback?.project, board: boardEvent,
+  const resolved = { ...source, project: source.project ?? fallback?.project, session: source.session ?? fallback?.session, board: boardEvent,
     subagent: !boardEvent && Boolean(source.subagent || fallback?.subagent), coordinator: boardEvent ? undefined : source.coordinator,
     machine: getMachine(source.machine)?.info().baseKey ?? source.machine }
   return notificationEvents(settings, resolved).includes(event)
