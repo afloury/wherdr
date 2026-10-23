@@ -1,3 +1,5 @@
+// @vitest-environment happy-dom
+// This composable needs Vue reactivity and module aliases, not a Nuxt app.
 // A send whose request never answers: "Not sent" after SEND_STUCK_MS, and
 // neither Retry nor the next sends of the conversation wait for it.
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -61,5 +63,28 @@ describe('outbox: a request that never answers', () => {
     await flush()
     expect(outboxFor(pane)[0]).toMatchObject({ text: 'late one' })
     expect(outboxFor(pane)[0]!.local).toBeUndefined()
+  })
+
+  it('releases the chain again when Retry also never answers', async () => {
+    vi.useFakeTimers()
+    const pane = 'w-retry-stuck:p1'
+    const first = outboxSend(undefined, pane, 'hello').catch(e => e)
+    await flush()
+    await vi.advanceTimersByTimeAsync(SEND_STUCK_MS)
+    expect(await first).toBeInstanceOf(SendStuckError)
+
+    const retry = outboxRetry(undefined, pane, outboxFor(pane)[0]!.id).catch(e => e)
+    await flush()
+    const next = outboxSend(undefined, pane, 'second')
+    await flush()
+    expect(calls.map(c => c.text)).toEqual(['hello', 'hello'])
+
+    await vi.advanceTimersByTimeAsync(SEND_STUCK_MS)
+    expect(await retry).toBeInstanceOf(SendStuckError)
+    expect(calls.map(c => c.text)).toEqual(['hello', 'hello', 'second'])
+    expect(outboxFor(pane).map(q => q.state)).toEqual(['failed', 'sending'])
+    calls[2]!.resolve(null)
+    expect(await next).toBeNull()
+    expect(outboxFor(pane)).toHaveLength(1)
   })
 })

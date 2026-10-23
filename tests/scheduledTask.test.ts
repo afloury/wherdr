@@ -80,6 +80,16 @@ describe('scheduled task in a Claude transcript', () => {
     expect(items.filter(i => i.role === 'scheduled')).toHaveLength(1)
   })
 
+  it('keeps the same words typed after a completed scheduled turn', () => {
+    const items = parse([
+      cron(ts(0)), enqueue(PROMPT, ts(7)), fire(ts(7)), metaPrompt(ts(7, 1)),
+      reply('OK', ts(7, 4)), turnEnd(ts(7, 5)), enqueue(PROMPT, ts(8)),
+    ])
+    expect(items.filter(i => i.role === 'scheduled')).toHaveLength(1)
+    expect(items.queue).toEqual([{ text: PROMPT, ts: ts(8) }])
+    expect(pendingQueue({ mine: [], claude: items.queue!, items, screen: null }).map(q => q.raw)).toEqual([PROMPT])
+  })
+
   it('a <scheduled-task> wrapper is the scheduled item, without its tags', () => {
     const items = parse([j({ type: 'user', message: { role: 'user', content: '<scheduled-task name="daily">Check the build</scheduled-task>' }, timestamp: ts(1) })])
     expect(items.map(i => `${i.role}:${i.text}`)).toEqual(['scheduled:Check the build'])
