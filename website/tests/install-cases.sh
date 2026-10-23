@@ -241,7 +241,7 @@ run WHERDR_YES=1; check "plugin wherdr running, WHERDR_YES=1: updates the plugin
   'has "herdr plugin install $REPO" /tmp/herdr.log && has "wherdr updated" /tmp/out && has "plugin script: service install" /tmp/herdr.log'
 reset; touch /tmp/up
 run; check "wherdr installed another way: nothing changed" 'has "installed another way" /tmp/out && [ ! -f /tmp/herdr.log ]'
-check "wherdr installed another way: the move from a 1.x Docker install is linked" 'has "moving-from-docker-to-the-native-service" /tmp/out'
+check "wherdr installed another way: the move from a 1.x Docker install is linked" 'has "migrate-from-1.x-docker.md" /tmp/out'
 reset; touch /tmp/up /tmp/foreign
 run && fail "port taken by another program refused" || check "port taken by another program: WHERDR_PORT hint" 'has "WHERDR_PORT=7684" /tmp/out'
 

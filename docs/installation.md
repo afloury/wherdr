@@ -116,7 +116,8 @@ and move to the first later.
 
 wherdr 2.0 runs only natively as your user. Published 1.x images remain on GHCR for users
 staying on 1.x. To keep your port, passkeys and settings when moving, follow the
-[1.x migration steps](herdr-projects-1x.md#moving-from-docker-to-the-native-service).
+[Docker migration guide](migrate-from-1.x-docker.md): verifiable steps, with a way back,
+that you can also hand to an AI agent ("read this file and migrate me").
 
 ## Updating
 

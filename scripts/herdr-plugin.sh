@@ -144,7 +144,7 @@ cmd_build() {
   if [ "$LEGACY_MODE" = docker ]; then
     tell "wherdr 2.0 removes Docker support: switching this plugin to the native service."
     tell "Stop the old 1.x instance before starting the native service; keep its data folder."
-    tell "Migration: https://github.com/$SOURCE/blob/main/docs/herdr-projects-1x.md#moving-from-docker-to-the-native-service"
+    tell "Migration: https://github.com/$SOURCE/blob/main/docs/migrate-from-1.x-docker.md"
   fi
   build_native
   # Written last: a failed build keeps no half-made choice. Rewritten on each

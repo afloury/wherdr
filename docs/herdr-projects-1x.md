@@ -6,7 +6,7 @@ machine from 0.2 to 1.x, keeps a backup, and says how to go back. Do it on each 
 runs herdr-projects.
 
 wherdr 2.0 runs only **natively**, as a service of your user. A wherdr 1.x running in Docker
-moves first: [Moving from Docker to the native service](#moving-from-docker-to-the-native-service), below.
+moves first: [Migrate a 1.x Docker install](migrate-from-1.x-docker.md).
 
 herdr-projects 1.x is a different program, not a newer 0.2: one work board of tasks, each
 handed to an agent in its own space, reviewed when it finishes and merged on your yes. Your
@@ -109,7 +109,7 @@ Installing a new version does not change a wherdr that is already running: resta
   days).
 - Homebrew: `brew upgrade wherdr && brew services restart wherdr`
 - A 1.x Docker install: there is no 2.0 image; move to the native service first
-  ([Moving from Docker to the native service](#moving-from-docker-to-the-native-service)).
+  ([Migrate a 1.x Docker install](migrate-from-1.x-docker.md)).
 
 Check the version wherdr now serves in **Settings › About**: 2.0 or later. Still 1.3.4 means the
 old process is still running: restart it.
@@ -270,43 +270,9 @@ If anything is missing, the backup from step 1 of the move has everything as it 
 ## Moving from Docker to the native service
 
 wherdr 2.0 has no Docker image: it runs only natively, as your user, where the Board can act.
-Published 1.x images stay on GHCR as they are, for those who stay on 1.x. The
-native service keeps the same port (7683) and the same data (passkeys, push subscriptions, the
-phone address and the other settings all live in wherdr's `data/` folder), so the address your
-devices open, the passkeys and the notifications keep working.
+Published 1.x images stay on GHCR as they are, for those who stay on 1.x. The native service
+keeps the same port and the same data folder, so passkeys, notifications and the address your
+devices open keep working.
 
-Run every command on the machine where wherdr runs, as the user who runs Herdr.
-
-1. Find the compose folder and back up its files:
-
-   ```sh
-   OLD="$(docker inspect wherdr --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}')"
-   tar czf ~/wherdr-docker-backup-$(date +%F).tgz -C "$OLD" data .env docker-compose.yml
-   ```
-
-   In `"$OLD/.env"`, keep aside the settings you changed yourself (`APP_URL`, `HOST_LABEL`,
-   `WHERDR_TRUSTED_NETWORKS`, `WHERDR_UPDATE_CHECK`, `HERDR_WEB_*`). Leave out the container's
-   own (`HOST_HOME`, `PUID`, `PGID`, `WHERDR_IMAGE`, `WHERDR_DOCKER_LOOPBACK_ONLY`,
-   `WHERDR_TASKS_FROM_FILES`, `HERDR_WEB_HOST_OPEN_*`); `PORT` becomes the installer's `WHERDR_PORT`.
-2. Stop the container: `cd "$OLD" && docker compose down`. Its files and image stay, for the way back.
-3. Put the data where the native service reads it, `~/wherdr/data`. Nothing to do when `$OLD`
-   is `~/wherdr` (the installer's folder); otherwise copy it (refused when the target exists:
-   look at what it holds first):
-
-   ```sh
-   mkdir -p ~/wherdr && [ ! -e ~/wherdr/data ] && cp -a "$OLD/data" ~/wherdr/data
-   ```
-
-   Write the settings kept at step 1, one `KEY=VALUE` per line, in `~/wherdr/wherdr.env`.
-4. Install the native service: `curl -fsSL https://wherdr.dev/install | sh`. It installs the
-   Herdr plugin, offers Node.js 22 if it is missing, starts wherdr on port 7683 and installs its
-   login service (`systemd --user` with lingering on Linux, a LaunchAgent on macOS). A plugin
-   install left in Docker mode (`WHERDR_MODE=docker` in `~/wherdr/plugin.env`) switches to
-   native on its next update, and says so.
-5. Check: `curl -fsS http://127.0.0.1:7683/api/health` gives `"name":"wherdr"` and the version.
-   Open wherdr on the same address as before: it unlocks with the same passkey.
-
-To go back to 1.x in Docker: in the wherdr panel (**prefix+i**) press **A** (login service off),
-then **X** (stop); `herdr plugin disable <owner>.wherdr`; copy back what changed since
-(`cp -a ~/wherdr/data/. "$OLD/data/"` when the data was copied); then
-`cd "$OLD" && docker compose up -d`. The backup of step 1 has the folder as it was.
+Follow [Migrate a 1.x Docker install](migrate-from-1.x-docker.md): back up, stop the container,
+install the native service, check, and go back if needed. It is written so an AI agent can run it.

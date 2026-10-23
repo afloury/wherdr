@@ -250,7 +250,7 @@ existing_wherdr() {
     say "  It was installed another way (npm, Homebrew, by hand): nothing changed."
     say "  Update it the same way: https://github.com/$REPO/blob/main/docs/installation.md#updating"
     say "  A wherdr 1.x Docker container? wherdr 2.0 runs natively only; move it:"
-    say "  https://github.com/$REPO/blob/main/docs/herdr-projects-1x.md#moving-from-docker-to-the-native-service"
+    say "  https://github.com/$REPO/blob/main/docs/migrate-from-1.x-docker.md"
     say "  Phone: ${C}wherdr phone${R} (or ${C}npx wherdr phone${R}) checks the address your phone opens."
   fi
   say ""

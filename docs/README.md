@@ -44,7 +44,7 @@ Also see [herdr-projects 1.x migration](herdr-projects-1x.md), [Releasing](RELEA
   [as a Herdr plugin](plugins.md#install-as-a-herdr-plugin) ·
   [the `wherdr` command (npm, Homebrew)](command.md#the-wherdr-command) ·
   [from source](development.md#from-source) ·
-  [moving from Docker to the native service](installation.md#moving-from-docker-to-the-native-service)
+  [moving from Docker to the native service](migrate-from-1.x-docker.md)
 - [Updating](installation.md#updating)
 - [Install it as an app](phone.md#install-it-as-an-app)
 - [Configuration](configuration.md#configuration)
