@@ -248,11 +248,11 @@ describe('the Board panel follows its coordinator', () => {
 
   for (const [to, name, starting] of [
     [{ kind: 'main' }, 'Coordinator', 'Sent. The Coordinator is starting: its conversation opens here.'],
-    [{ kind: 'machine' }, 'Local setup', 'Sent. The Local setup assistant is starting: its conversation opens here.'],
+    [{ kind: 'machine' }, 'Local coordinator', 'Sent. The Local coordinator is starting: its conversation opens here.'],
     [{ kind: 'project', repo: 'wherdr' }, 'wherdr coordinator', 'Sent. The wherdr coordinator is starting: its conversation opens here.'],
   ] as [To, string, string][]) {
     it(`names the ${name} once, in its heading and while it starts`, async () => {
-      // herdr-projects names the machine coordinator after its host.
+      // Named as on the Board button (the machine's wherdr name), whatever herdr-projects calls its host.
       status = { pane: null, state: 'none', name: to.kind === 'machine' ? 'devbox coordinator' : '' }
       setPanes([])
       const { w } = await panel(true, to)
