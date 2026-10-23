@@ -265,3 +265,31 @@ describe('a repo group on the home list', () => {
     w.unmount()
   })
 })
+
+describe('a task row on the home list says what it is doing', () => {
+  afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] }; compactList.value = true })
+  const rows = (stage: string, msg: string) => section({ members: [{ ...members[0]!, task: { ...members[0]!.task!, group: 'working', stage, msg } }] })
+
+  it('an agent running: progress, no badge', async () => {
+    const w = await mount(rows('working', 'Writing tests'))
+    const card = w.find('.project-tree .card')
+    expect(card.find('.task-activity').exists()).toBe(false)
+    expect(card.find('.home-task-stats').text()).toContain('40%')
+  })
+  it('waiting for GitHub checks: a CI badge, no progress', async () => {
+    const w = await mount(rows('merging', 'Waiting for GitHub checks · 1 of 2 passed'))
+    const card = w.find('.project-tree .card')
+    expect(card.find('.task-activity').text()).toBe('CI 1/2')
+    expect(card.classes()).toContain('activity-ci')
+    // The badge takes the place of its Working label.
+    expect(card.find('.task-state').exists()).toBe(false)
+    expect(card.find('.home-task-stats').text()).not.toContain('%')
+  })
+  it('queued: a QUEUED badge, the row dimmed, no progress', async () => {
+    const w = await mount(rows('after', 'queued after SHOP-7'))
+    const card = w.find('.project-tree .card')
+    expect(card.find('.task-activity').text()).toBe('Queued · SHOP-7')
+    expect(card.classes()).toContain('activity-queued')
+    expect(card.find('.home-task-stats').text()).not.toContain('%')
+  })
+})

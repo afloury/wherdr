@@ -9,6 +9,7 @@ import { visibleAgentKinds } from '~/utils/agentChoices'
 import { finishHint, finishLabel, finishOffered, finishQuestion, finishTitle } from '~/utils/taskFinish'
 import { blockChoices, blockKind, blockKindLabel, offersAlways, permissionReply, questionMessage } from '~/utils/blockNotice'
 import { reviewerWait } from '~/utils/reviewerWait'
+import { taskActivity } from '#shared/taskActivity'
 import { type PaneViewMode, allSessionsState, chooseMachineSession } from '~/composables/useHerdr'
 
 export type PanelTarget =
@@ -100,6 +101,9 @@ const identity = computed(() => {
   const saved = details.value?.identity || props.task?.identity
   return { agent: agentPane.value?.agent || saved?.agent || details.value?.agent || props.task?.app || '', reviewer: reviewing.value ? saved?.reviewer || reviewerAgent.value?.agent || '' : '', from: saved?.from || '' }
 })
+// Working: an agent running, or the board waiting for CI or for its turn (as its card says).
+const activity = computed(() => (props.target.kind === 'task' && props.task ? taskActivity(props.task) : null))
+const activityClass = computed(() => (activity.value && activity.value.kind !== 'running' ? `activity-${activity.value.kind}` : ''))
 const reviewing = computed(() => ['reviewing', 'reviewneeds'].includes(details.value?.stage || props.task?.stage || ''))
 const conversation = computed(() => Boolean(agentPane.value && hasChat(agentPane.value))
   && !(props.task?.stage === 'failed' && ['start', 'setup', 'attempts'].includes(details.value?.failureStage || '')))
@@ -565,7 +569,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       :aria-valuenow="panelWidth ?? Math.round(panelNow())" :aria-valuemin="PANEL_MIN" :aria-valuemax="PANEL_MAX"
       :title="t('Drag to resize · double-click: default width')"
       @pointerdown="onPanelGrab" @dblclick="resetPanelWidth" @keydown="onPanelWidthKey" />
-    <header class="board-panel-head">
+    <header class="board-panel-head" :class="activityClass">
       <UButton
         v-if="!desk" icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn board-panel-back"
         :aria-label="tl('Back to the Board', 'Retour au Board')" @click="emit('close')"
@@ -578,7 +582,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <p class="board-panel-name">
           <template v-if="target.kind === 'task'">
             <AgentAvatar :agent="identity.agent" :title="agentHint" />
-            <span class="task-key">{{ taskLabel }}</span><span class="board-panel-title" :title="details?.title || task?.title">{{ details?.title || task?.title }}</span><span v-if="task" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
+            <span class="task-key">{{ taskLabel }}</span><span class="board-panel-title" :title="details?.title || task?.title">{{ details?.title || task?.title }}</span><span v-if="task" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span><TaskActivityBadge :activity="activity" />
           </template>
           <template v-else>
             <UIcon name="i-lucide-message-square-text" class="board-panel-coord-icon" />

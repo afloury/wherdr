@@ -17,6 +17,7 @@
 // Pure functions, tested in tests/boardLinks.test.ts.
 import { rowFromTaskFile, taskAgentIdentity, type TaskAgentIdentity, type TaskGroup } from './projectsTasks'
 import type { Pane, Workspace } from './types'
+import type { TaskActivity } from './taskActivity'
 import { type RowGroup, type Row, leadPane, rowGroup } from './spaces'
 import { joinId, machineOf } from './ids'
 
@@ -458,10 +459,11 @@ export function tasksIn(spaces: string[], panes: Pick<Pane, 'id' | 'workspace'>[
 // `coordinator`: a coordinator's card (its role's icon, its last message).
 // `stage`: the task's stage beyond its state (`Under review · codex`); `tab`:
 // the tab its row opens, whatever tab was opened last (its reviewer's while a review runs).
+// `activity`: in Working, whether an agent runs or it waits for CI or its turn.
 // `lead`: the head row of a repo group, named after the repo (its project
 // coordinator's, or the repo's own space when it has no coordinator here).
 // `icon`, `hint`: a coordinator's own icon and what it is for (coordinatorKind).
-export interface BoardCard { identity?: TaskAgentIdentity, group?: TaskGroup, tag: string, name?: string, progress?: number | null, since?: number | null, msg?: string, stage?: string, tab?: string, onBoard?: () => void, coordinator?: boolean, lead?: boolean, icon?: string, hint?: string }
+export interface BoardCard { identity?: TaskAgentIdentity, group?: TaskGroup, activity?: TaskActivity | null, tag: string, name?: string, progress?: number | null, since?: number | null, msg?: string, stage?: string, tab?: string, onBoard?: () => void, coordinator?: boolean, lead?: boolean, icon?: string, hint?: string }
 
 // What a member's card says before its title: `WHR-2`, `WHR-2 · review`, `WHR-2 · A`.
 export function memberTag(m: Pick<Member, 'task' | 'role' | 'letter'>, review: string): string {

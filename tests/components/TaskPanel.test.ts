@@ -478,3 +478,27 @@ describe('task panel', () => {
     busy.unmount()
   })
 })
+
+describe('the task panel header says what a Working task is doing', () => {
+  const working = (s: string, m: string) => parseTaskRow({ id: 'demo/9', title: 'Improve search', stage: s, state: 'working', app: 'claude', msg: m })!
+  it('an agent running: no badge', async () => {
+    stage = 'working'
+    const w = await panel({ task: working('working', 'Writing tests') }, 'claude', 'working')
+    expect(w.find('.board-panel-name .task-activity').exists()).toBe(false)
+    w.unmount()
+  })
+  it('waiting for GitHub checks: CI 1/2, the header marked', async () => {
+    stage = 'merging'
+    const w = await panel({ task: working('merging', 'Waiting for GitHub checks · 1 of 2 passed') }, 'claude')
+    expect(w.find('.board-panel-name .task-activity').text()).toBe('CI 1/2')
+    expect(w.find('.board-panel-head').classes()).toContain('activity-ci')
+    w.unmount()
+  })
+  it('queued: QUEUED with what it waits for', async () => {
+    stage = 'after'
+    const w = await panel({ task: working('after', 'queued after DEMO-70') })
+    expect(w.find('.board-panel-name .task-activity').text()).toBe('Queued · DEMO-70')
+    expect(w.find('.board-panel-head').classes()).toContain('activity-queued')
+    w.unmount()
+  })
+})

@@ -1,5 +1,6 @@
 import { type BoardCard, type Member, type MemberStage, memberStage, memberTag } from '#shared/boardLinks'
 import { memberGroup } from '~/utils/projectSummary'
+import { taskActivity } from '#shared/taskActivity'
 
 function stageLabel(s: MemberStage): string {
   if (s.what === 'attempts') return tl(`${s.n} attempts`, `${s.n} essais`)
@@ -26,6 +27,7 @@ export function memberCard(m: Member): BoardCard | null {
       from: task.identity?.from || '',
     },
     group: memberGroup(m) || undefined,
+    activity: taskActivity({ group: memberGroup(m) || '', stage: task.stage, msg: task.msg }),
     tag: memberTag(m, t('review')),
     stage: stage && ['review', 'plan-review', 'pick'].includes(stage.what) ? stageLabel(stage) : undefined,
     // While a helper works, its tab (the row's pane's) opens, not the one opened last.
