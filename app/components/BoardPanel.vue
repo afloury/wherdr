@@ -4,6 +4,7 @@
 // (failureStale) is history in the Task tab, never its title or its buttons.
 // Coordinators keep their own startup/delivery lifecycle.
 import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskPanes, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskActions, taskCanFix, taskCanApproveAnyway, taskKey, type TaskCommand, finishCase } from '#shared/projectsTasks'
+import { PANEL_MIN, PANEL_MAX, clampPanelWidth, panelWidthCss, readPanelWidth, savePanelWidth } from '~/utils/sideWidth'
 import { visibleAgentKinds } from '~/utils/agentChoices'
 import { finishHint, finishLabel, finishOffered, finishQuestion, finishTitle } from '~/utils/taskFinish'
 import { blockChoices, blockKind, blockKindLabel, offersAlways, permissionReply, questionMessage } from '~/utils/blockNotice'
@@ -490,12 +491,70 @@ function onKey(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onKey))
 onUnmounted(() => window.removeEventListener('keydown', onKey))
 
+// Match the navigation divider, with drag direction reversed on the right.
+const panelWidth = ref<number | null>(null)
+const panelDrag = ref(false)
+let stopResize: (() => void) | undefined
+onMounted(() => { panelWidth.value = readPanelWidth() })
+watch(panelWidth, width => {
+  document.documentElement.style.setProperty('--board-panel-w', panelWidthCss(width))
+}, { immediate: import.meta.client })
+onUnmounted(() => {
+  stopResize?.()
+  document.documentElement.style.removeProperty('--board-panel-w')
+})
+function panelNow() { return panelEl.value?.getBoundingClientRect().width || PANEL_MIN }
+function setPanelWidth(width: number) {
+  const board = document.getElementById('board')
+  panelWidth.value = clampPanelWidth(width, window.innerWidth - (board?.getBoundingClientRect().left || 0))
+}
+function resetPanelWidth() { panelWidth.value = null; savePanelWidth(null) }
+function onPanelGrab(e: PointerEvent) {
+  if (e.button !== 0) return
+  e.preventDefault()
+  stopResize?.()
+  const handle = e.currentTarget as HTMLElement
+  const x0 = e.clientX
+  const w0 = panelNow()
+  handle.setPointerCapture(e.pointerId)
+  panelDrag.value = true
+  const move = (event: PointerEvent) => setPanelWidth(w0 + x0 - event.clientX)
+  const up = () => {
+    handle.removeEventListener('pointermove', move)
+    handle.removeEventListener('pointerup', up)
+    handle.removeEventListener('pointercancel', up)
+    handle.removeEventListener('lostpointercapture', up)
+    panelDrag.value = false
+    savePanelWidth(panelWidth.value)
+    stopResize = undefined
+  }
+  stopResize = up
+  handle.addEventListener('pointermove', move)
+  handle.addEventListener('pointerup', up)
+  handle.addEventListener('pointercancel', up)
+  handle.addEventListener('lostpointercapture', up)
+}
+function onPanelWidthKey(e: KeyboardEvent) {
+  if (e.key === 'Home' || e.key === 'Enter') { e.preventDefault(); return resetPanelWidth() }
+  const step = e.shiftKey ? 64 : 16
+  const delta = e.key === 'ArrowLeft' ? step : e.key === 'ArrowRight' ? -step : 0
+  if (!delta) return
+  e.preventDefault()
+  setPanelWidth(panelNow() + delta)
+  savePanelWidth(panelWidth.value)
+}
+
 // Keyboard open (iPhone): the panel fits the visible part, as the agent view does.
 const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeight.value}px`, top: `${vvTop.value}px` } : {}))
 </script>
 
 <template>
-  <aside ref="panelEl" class="board-panel" :class="{ desk, expanded: full }" :style="style" :data-kind="target.kind" :aria-label="tl('Conversation', 'Conversation')">
+  <aside ref="panelEl" class="board-panel" :class="{ desk, expanded: full, resizing: panelDrag }" :style="style" :data-kind="target.kind" :aria-label="tl('Conversation', 'Conversation')">
+    <div v-if="desk && !full" class="list-handle panel-handle" :class="{ dragging: panelDrag }"
+      role="separator" aria-orientation="vertical" tabindex="0" :aria-label="t('Ticket panel width')"
+      :aria-valuenow="panelWidth ?? Math.round(panelNow())" :aria-valuemin="PANEL_MIN" :aria-valuemax="PANEL_MAX"
+      :title="t('Drag to resize · double-click: default width')"
+      @pointerdown="onPanelGrab" @dblclick="resetPanelWidth" @keydown="onPanelWidthKey" />
     <header class="board-panel-head">
       <UButton
         v-if="!desk" icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn board-panel-back"

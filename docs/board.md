@@ -2,6 +2,11 @@
 
 [Documentation](README.md) · [Project](../README.md)
 
+On desktop, drag the ticket panel’s divider to adjust its width. It uses the same
+handle as the navigation list: arrow keys (Shift for a larger step), double-click,
+Home or Enter to restore the default width. The width is saved on this device;
+the Board keeps at least 280 px when space permits. Phone panels stay full screen.
+
 ## Works great with herdr-projects
 
 [herdr-projects](https://github.com/eliasstravik/herdr-projects) is a work board for Herdr: one
