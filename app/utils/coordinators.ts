@@ -2,14 +2,17 @@ import type { CoordinatorTarget, MachineTasks } from '../../shared/projectsTasks
 import type { CoordinatorLevel } from '../../shared/boardLinks'
 import { tl } from './i18n'
 
+// One name per coordinator, as herdr-projects names them: "Coordinator",
+// "<machine> coordinator", "<repo> coordinator". The Board, the home list,
+// the panel heading and the menus all say it this way.
 export function coordinatorLabel(to: CoordinatorTarget, machine: string): string {
   if (to.kind === 'project') return tl(`${to.repo} coordinator`, `Coordinateur · ${to.repo}`)
-  if (to.kind === 'machine') return tl(`${machine} setup`, `Configuration · ${machine}`)
-  return tl(`Coordinator · ${machine}`, `Coordinateur · ${machine}`)
+  if (to.kind === 'machine') return machine ? tl(`${machine} coordinator`, `Coordinateur · ${machine}`) : tl('Machine coordinator', 'Coordinateur de la machine')
+  return tl('Coordinator', 'Coordinateur')
 }
 
 export function coordinatorDescription(to: CoordinatorTarget): string {
-  if (to.kind === 'machine') return tl('This machine’s setup, folders and repos.', 'La configuration, les dossiers et les dépôts de cette machine.')
+  if (to.kind === 'machine') return tl('This machine as a whole: its repos and folders, its tasks and agents.', 'Cette machine dans son ensemble : ses dépôts et dossiers, ses tâches et ses agents.')
   if (to.kind === 'project') return tl('Plan and follow work in this repo.', 'Organiser et suivre le travail dans ce dépôt.')
   return tl('All work: every repo and machine it can reach.', 'Tout le travail : tous les dépôts et machines qu’il peut joindre.')
 }
@@ -26,13 +29,13 @@ export function coordinatorUnavailable(m: MachineTasks, offline = false): string
 
 // How the home list shows each kind of herdr-projects coordinator (it has
 // three: the board's Coordinator, the machine coordinator and one per repo).
-// Each has its own icon and label, so a glance tells which one it is:
+// Each has its own icon, and the same name as on the Board (coordinatorLabel):
 //  - `top`: the board's Coordinator (all work): the board's icon;
 //  - `machine`: the machine coordinator: the machine's own icon, as on its heading;
 //  - `project`: drawn by ProjectGroup (the wherdr mark and "Coordinator").
 export interface CoordinatorKind { icon: string, name: string, hint: string }
-export function coordinatorKind(level: CoordinatorLevel, local = true): CoordinatorKind {
-  if (level === 'top') return { icon: 'i-lucide-square-kanban', name: tl('Board coordinator', 'Coordinateur du board'), hint: coordinatorDescription({ kind: 'main' }) }
-  if (level === 'machine') return { icon: local ? 'i-lucide-server' : 'i-lucide-laptop', name: tl('Machine coordinator', 'Coordinateur de la machine'), hint: coordinatorDescription({ kind: 'machine' }) }
-  return { icon: 'i-lucide-message-square-text', name: tl('Project coordinator', 'Coordinateur du projet'), hint: coordinatorDescription({ kind: 'project', repo: '' }) }
+export function coordinatorKind(level: CoordinatorLevel, local = true, machine = '', repo = ''): CoordinatorKind {
+  const to: CoordinatorTarget = level === 'top' ? { kind: 'main' } : level === 'machine' ? { kind: 'machine' } : { kind: 'project', repo }
+  const icon = level === 'top' ? 'i-lucide-square-kanban' : level === 'machine' ? (local ? 'i-lucide-server' : 'i-lucide-laptop') : 'i-lucide-message-square-text'
+  return { icon, name: coordinatorLabel(to, machine), hint: coordinatorDescription(to) }
 }

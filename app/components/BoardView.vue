@@ -355,8 +355,9 @@ const coordWhy = (machine: string) => {
   return m ? coordinatorUnavailable(m, offlineView.value) : tl('Machine unavailable', 'Machine indisponible')
 }
 const coordHint = (machine: string, to: CoordinatorTarget) => [coordinatorDescription(to), coordWhy(machine)].filter(Boolean).join(' ')
+// Several hosts: the "Coordinator" button asks which machine's.
 const coordItems = computed(() => [coordMachines.value.map(m => ({
-  label: coordLabel(m.machine, { kind: 'main' }),
+  label: machineLabel(m.machine),
   description: coordHint(m.machine, { kind: 'main' }),
   disabled: Boolean(coordWhy(m.machine)),
   icon: 'i-lucide-server',
@@ -437,7 +438,7 @@ function back() {
       <UDropdownMenu v-else-if="coordMachines.length > 1" :items="coordItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown board-coord-menu', itemLabel: 'whitespace-normal', itemDescription: 'whitespace-normal' }">
         <CoordinatorHint :text="coordinatorDescription({ kind: 'main' })">
           <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord" trailing-icon="i-lucide-chevron-down">
-            {{ tl('Coordinator · all work', 'Coordinateur · tout le travail') }}
+            {{ coordinatorLabel({ kind: 'main' }, '') }}
           </UButton>
         </CoordinatorHint>
       </UDropdownMenu>

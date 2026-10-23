@@ -77,7 +77,7 @@ const branchTitle = computed(() => {
 // The head row: the coordinator, else the repo's own space, named after the repo.
 const leadRow = computed(() => g.value.coordinator || g.value.space)
 const leadCard = computed<BoardCard>(() => ({ tag: '', name: g.value.repo, coordinator: Boolean(g.value.coordinator), lead: true }))
-const leadLabel = computed(() => (g.value.coordinator ? tl(`${g.value.repo} coordinator`, `Coordinateur ${g.value.repo}`) : g.value.repo))
+const leadLabel = computed(() => (g.value.coordinator ? coordinatorLabel({ kind: 'project', repo: g.value.repo }, '') : g.value.repo))
 const initial = computed(() => (g.value.repo.trim()[0] || '?').toUpperCase())
 
 function openRemote() {
