@@ -4199,3 +4199,6 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .card.compact.task-row > .task-agent-mark { order: 8; flex-basis: calc(100% - 26px); margin-left: 26px; }
 .task-card .board-card-head { flex-wrap: wrap; }
 .board-panel[data-kind="task"] .board-panel-who > .task-agent-mark { order: 3; flex: 0 0 100%; }
+
+/* A quiet source stays identifiable without competing with its state. */
+.notification-muted { color: var(--muted); width: 12px; height: 12px; flex-shrink: 0; }

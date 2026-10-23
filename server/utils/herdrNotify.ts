@@ -1,3 +1,8 @@
+import type { Pane } from '../../shared/types'
+import { readBoardLinks } from './boardLinks'
+import { notificationAllowed } from './notificationRules'
+import { findPane, getState } from './state'
+import { joinId } from '../../shared/ids'
 // `herdr notification show` -> Web Push on the iPhone.
 //
 // Herdr only publishes these notifications to its shell clients (see
@@ -113,17 +118,34 @@ class NoticeListener {
 const listeners = new Map<Machine, NoticeListener>()
 const dedupe = new NoticeDeduper()
 
-async function onNotice(m: Machine, n: HerdrNotification) {
+export async function onNotice(m: Machine, n: HerdrNotification) {
   if (!forwardableNotice(n) || !dedupe.fresh(`${m.key}:${noticeKey(n)}`)) return
+  let pane: Pick<Pane, 'id' | 'workspace'> | undefined = n.paneId ? findPane(joinId(m.key, n.paneId)) : undefined
+  const noticeTask = taskNotice(n.title)
+  if (noticeTask) {
+    const links = await readBoardLinks()
+    const task = 'machines' in links ? links.machines.find(b => b.machine === boardMachine(m).key)?.tasks.find(t => t.id === noticeTask.id) : undefined
+    // A board hook can run in a coordinator's terminal. Its notification
+    // belongs to the task, never to that caller's coordinator conversation.
+    const caller = pane
+    pane = task?.panes.some(p => p.id === caller?.id) ? caller : task?.panes.map(p => findPane(p.id)).find(p => p !== undefined)
+  }
+  if (!noticeTask && !pane && (n.paneId || n.workspaceId)) pane = {
+    id: n.paneId ? joinId(m.key, n.paneId) : '', workspace: n.workspaceId ? joinId(m.key, n.workspaceId) : '',
+  }
+  const event = noticeTask ? 'needs-you' : /^\[scheduled\]/i.test(n.title) ? 'scheduled' : 'message'
+  if (!await notificationAllowed(event, getState(), pane, {
+    machine: m.info().baseKey ?? m.key, project: noticeTask?.id.split('/')[0], subagent: Boolean(noticeTask),
+  })) return
   const on = multiMachine() ? `${m.label || (m.local ? 'local' : m.key)} · ` : ''
   // herdr-projects' `board.notify` (NOTIFY_COMMAND): the task's key, one
   // notification per task, and a tap opens it on the Board.
-  const task = taskNotice(n.title)
+  const task = noticeTask
   const board = task ? boardMachine(m).key : ''
   const title = task ? `${on}${taskKey(task.id, repoKeyOf(board, task.id.split('/')[0]!))} · ${task.event}` : `${on}${n.title}`
   // One notification per title (per task for the Board's).
   const tag = `herdr-${crypto.createHash('sha1').update(task ? `task\n${board}\n${task.id}` : `${m.key}\n${n.title}`).digest('hex').slice(0, 12)}`
-  const url = task ? `/#/board?machine=${encodeURIComponent(board)}&task=${encodeURIComponent(task.id)}` : '/#/'
+  const url = task ? `/#/board?machine=${encodeURIComponent(board)}&task=${encodeURIComponent(task.id)}` : pane?.id ? `/#/a/${encodeURIComponent(pane.id)}` : '/#/'
   const sent = await pushSend(
     { title, body: n.body || '', tag, url },
     sub => subWatchesSession(sub, m.info().baseKey ?? m.key, m.session,

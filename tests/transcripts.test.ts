@@ -162,6 +162,22 @@ describe('createTranscripts', () => {
     expect(await t.preview(claude)).toBe('fini encore') // markdown and line breaks flattened
   })
 
+  it('keeps a stable notification identity across reads and changes it for a new reply', async () => {
+    const file = path.join(claudeDir, 'notice-example.jsonl')
+    const pane = { ...claude, id: 'w8:p1', agentSession: 'notice-example' }
+    const line = (text: string, timestamp: string) => JSON.stringify({ type: 'assistant', timestamp, message: { role: 'assistant', content: [{ type: 'text', text }] } }) + '\n'
+    writeFileSync(file, line('First answer', '2026-01-01T00:00:00Z'))
+    const first = await t.latestReply(pane)
+    expect(first?.text).toBe('First answer')
+    expect(await t.latestReply(pane)).toEqual(first)
+    writeFileSync(file, line('First answer, with more streamed text', '2026-01-01T00:00:00Z'))
+    expect((await t.latestReply(pane))?.key).toBe(first?.key)
+    writeFileSync(file, line('First answer', '2026-01-01T00:00:00Z') + line('Next answer', '2026-01-01T00:01:00Z'))
+    const next = await t.latestReply(pane)
+    expect(next?.text).toBe('Next answer')
+    expect(next?.key).not.toBe(first?.key)
+  })
+
   it('re-reads an image by its position', async () => {
     const r = await t.chat(claude, {})
     const it2 = r.items!.find(i => i.images)!

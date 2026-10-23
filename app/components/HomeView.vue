@@ -397,7 +397,7 @@ const connectionMachine = ref<MachineInfo | null>(null)
 const connectionInfo = computed(() => machines.value.find(m => m.key === connectionMachine.value?.key) ?? connectionMachine.value)
 const connectionOpen = computed({ get: () => !!connectionMachine.value, set: (v: boolean) => { if (!v) connectionMachine.value = null } })
 function machineMenuItems(m: MachineInfo): MenuItem[] {
-  const items: MenuItem[] = [{ label: t('Herdr sessions'), icon: 'i-lucide-layers', run: () => openSessions(m) }, { label: t('Rename'), icon: 'i-lucide-pencil', run: () => {
+  const items: MenuItem[] = [notificationMenuItem(machineNotificationTarget(baseKeyOf(m), m.label)), { label: t('Herdr sessions'), icon: 'i-lucide-layers', run: () => openSessions(m) }, { label: t('Rename'), icon: 'i-lucide-pencil', run: () => {
     renamingMachine.value = m
     machineLabel.value = m.label
   } }]
@@ -814,7 +814,7 @@ function resetListWidth() {
               <UIcon name="i-lucide-chevron-down" class="machine-chev" />
               <UIcon :name="s.m.local ? 'i-lucide-server' : 'i-lucide-laptop'" class="machine-icon" />
               <span class="machine-ident">
-                <span class="machine-name">{{ s.name }}<small v-if="s.m.session && s.m.session !== 'default'" class="machine-session">{{ s.m.session }}</small></span>
+                <span class="machine-name"><UIcon v-if="notificationsMuted(machineNotificationTarget(baseKeyOf(s.m), s.name))" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" />{{ s.name }}<small v-if="s.m.session && s.m.session !== 'default'" class="machine-session">{{ s.m.session }}</small></span>
                 <MachineLocalBadge v-if="s.m.local" />
               </span>
               <span v-if="awakeByMachine[s.m.key]?.active" class="machine-awake" :title="awakeLabel(awakeByMachine[s.m.key])"><UIcon name="i-lucide-sun" /><span>{{ awakeByMachine[s.m.key]?.until ? fmtTime(awakeByMachine[s.m.key]!.until!) : '∞' }}</span></span>
