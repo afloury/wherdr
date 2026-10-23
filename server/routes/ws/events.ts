@@ -1,3 +1,4 @@
+import { notificationPresence } from '../../utils/notificationRules'
 // WS /ws/events: the agents' state, pushed on every change. The app says
 // which agent is on screen: no notification for that one.
 export default defineWebSocketHandler({
@@ -17,7 +18,8 @@ export default defineWebSocketHandler({
     const c = eventClients.get(peer.id)
     if (c && m && m.type === 'viewing') {
       c.pane = PANE_RE.test(m.pane || '') ? m.pane : null
-      c.visible = Boolean(m.visible)
+      c.visible = m.visible === true
+      notificationPresence.heartbeat(peer.id, c.pane, c.visible)
     }
   },
   close(peer) {

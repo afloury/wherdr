@@ -1173,18 +1173,24 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   }
 
   // Agent's last reply, for cards and notifications.
-  async function preview(pane: TranscriptPane): Promise<string | null> {
+  // A stable message identity lets notifications distinguish a new reply
+  // from another poll (or more streamed text in the same reply).
+  async function latestReply(pane: TranscriptPane): Promise<{ key: string, text: string } | null> {
     try {
       const r = await chat(pane, {})
       if (!r.available || !r.items) return null
       for (let i = r.items.length - 1; i >= 0; i--) {
         const it = r.items[i]!
-        if (it.role === 'assistant') {
-          return it.text.replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180)
+        if (it.role === 'assistant' && it.text.trim()) {
+          const text = it.text.replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180)
+          return { key: `${it.ts || ''}:${it.ref?.split(':')[0] || i}`, text }
         }
       }
     } catch { /* no preview */ }
     return null
+  }
+  async function preview(pane: TranscriptPane): Promise<string | null> {
+    return (await latestReply(pane))?.text ?? null
   }
 
   // Image no. `index` of the message at `ref` ("start:length"): we re-read
@@ -1335,7 +1341,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     claudeAskCache.delete(paneId)
   }
 
-  return { chat, preview, image, forget, locate, model, observe, wasActive: activity.was, search, pendingTool, pendingAsk, pendingClaudeQuestions }
+  return { chat, preview, latestReply, image, forget, locate, model, observe, wasActive: activity.was, search, pendingTool, pendingAsk, pendingClaudeQuestions }
 }
 
 export type Transcripts = ReturnType<typeof createTranscripts>

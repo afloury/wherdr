@@ -1,3 +1,5 @@
+import type { NotificationEvent } from '../../shared/notificationRules'
+import { notificationAllowed } from './notificationRules'
 // Agent state: Herdr's `session.snapshot` reduced, enriched (on-screen
 // questions, previews, queued messages) and broadcast on every change.
 // Several machines: each machine is polled separately (a slow or
@@ -208,13 +210,20 @@ async function readChoices(p: Pane, rev: unknown, strict: boolean, watch = false
 
 // Preview (agent's last reply): refreshed in the background, without
 // delaying the state broadcast.
-const previews = new Map<string, { text: string | null, status: string | null, at: number }>()
+const previews = new Map<string, { text: string | null, key: string | null, session: string | null, status: string | null, at: number }>()
 const previewBusy = new Set<string>()
 function refreshPreview(p: Pane) {
   if (previewBusy.has(p.id)) return
   previewBusy.add(p.id)
-  transcripts.preview(p)
-    .then(text => previews.set(p.id, { text, status: p.status, at: Date.now() }))
+  trFor(p).latestReply(p)
+    .then(reply => {
+      const before = previews.get(p.id)
+      previews.set(p.id, { text: reply?.text ?? null, key: reply?.key ?? (before?.session === p.agentSession ? before.key : null), session: p.agentSession, status: p.status, at: Date.now() })
+      if (before && reply?.key && before.session === p.agentSession && before.key !== reply.key) {
+        const current = findPane(p.id)
+        if (current) notifyPane(current, 'message').catch(e => log('notification:', e.message))
+      }
+    })
     .catch(() => {})
     .finally(() => previewBusy.delete(p.id))
 }
@@ -1397,8 +1406,11 @@ export function isViewed(paneId: string) {
   return false
 }
 
-async function notifyPane(p: Pane) {
-  if (isViewed(p.id)) return
+async function notifyPane(p: Pane, event: NotificationEvent = p.status === 'blocked' ? 'needs-you' : 'finished') {
+  if (!await notificationAllowed(event, state, p)) return
+  // All activity should ring once for the final answer, through the settled
+  // state transition, rather than once for its text and once for its state.
+  if (event === 'message' && p.status !== 'working' && await notificationAllowed(p.status === 'blocked' ? 'needs-you' : 'finished', state, p)) return
   const ws = state.workspaces.find(w => w.id === p.workspace)
   const where = [ws && ws.label, notificationTitle(p.title)].filter(Boolean).join(' · ')
   let body: string
@@ -1413,12 +1425,15 @@ async function notifyPane(p: Pane) {
     const last = await transcripts.preview(p).catch(() => null)
     body = [last, where].filter(Boolean).join('\n') || p.id
   }
-  const { title, titleFr } = agentNotificationTitle(p.status === 'blocked' ? 'blocked' : 'done', `${on}${agentLabel(p.agent)}`)
+  const { title, titleFr } = event === 'message'
+    ? { title: `${on}${agentLabel(p.agent)} · New message`, titleFr: `${on}${agentLabel(p.agent)} · Nouveau message` }
+    : agentNotificationTitle(p.status === 'blocked' ? 'blocked' : 'done', `${on}${agentLabel(p.agent)}`)
   const badge = state.panes.filter(x => x.status === 'blocked' || x.status === 'done').length
   const source = machineOfPane(p.id)
   const baseKey = source?.info().baseKey ?? source?.key ?? ''
   const baseSession = getMachine(baseKey)?.session || 'default'
   const session = source?.session || baseSession
+  if (!await notificationAllowed(event, state, p)) return
   const sent = await pushSend({ title, titleFr, body, tag: `pane-${p.id}`, url: `/#/a/${encodeURIComponent(p.id)}`, badge },
     sub => subWatchesSession(sub, baseKey, session, baseSession))
   log(`notification ${p.id} ${p.status} "${title}" -> ${sent} device(s)`)

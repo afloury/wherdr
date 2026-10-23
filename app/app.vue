@@ -47,6 +47,10 @@ function blockFileDrop(e: DragEvent) {
 // Keyboard (computer): Escape closes the open window (handled by the modals).
 onMounted(() => {
   installViewport()
+  notificationHeartbeat = setInterval(sendViewing, 10000)
+  for (const event of ['pointerdown', 'keydown', 'wheel', 'touchstart']) window.addEventListener(event, noteNotificationActivity, { passive: true })
+  window.addEventListener('focus', noteNotificationActivity)
+  window.addEventListener('blur', sendViewing)
   document.addEventListener('visibilitychange', onVisibility)
   window.addEventListener('dragover', blockFileDrop)
   window.addEventListener('drop', blockFileDrop)
@@ -71,12 +75,17 @@ onMounted(() => {
     if (access?.enabled && !mayReadOffline({ enabled: true, expiresAt: access.expiresAt }) && !locked.value) start()
   }, 30000)
 })
+let notificationHeartbeat: ReturnType<typeof setInterval> | undefined
 let leaseTimer: ReturnType<typeof setInterval> | undefined
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibility)
   window.removeEventListener('dragover', blockFileDrop)
   window.removeEventListener('drop', blockFileDrop)
   clearInterval(leaseTimer)
+  clearInterval(notificationHeartbeat)
+  for (const event of ['pointerdown', 'keydown', 'wheel', 'touchstart']) window.removeEventListener(event, noteNotificationActivity)
+  window.removeEventListener('focus', noteNotificationActivity)
+  window.removeEventListener('blur', sendViewing)
 })
 </script>
 

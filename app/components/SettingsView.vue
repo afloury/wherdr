@@ -466,6 +466,7 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'notifications'" class="settings-section">
+          <NotificationRules />
           <div class="settings-group">
             <label class="settings-toggle quiet-toggle">
               <span><b><UIcon :name="quietOn ? 'i-lucide-bell-off' : 'i-lucide-bell'" />{{ tl('Do not disturb', 'Silence') }}</b><small>{{ tl('No push notifications while it is on.', 'Aucune notification push tant qu’il est actif.') }}</small></span>
