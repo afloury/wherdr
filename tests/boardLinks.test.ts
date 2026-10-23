@@ -77,6 +77,11 @@ describe('reading the board\'s files', () => {
     expect(tasksFromFiles([linksFromTaskFile({ id: 'app/6', link: null }, local)!], {})).toEqual([])
   })
 
+  it('carries worker takeover and review identity through Home grouping', () => {
+    const file = linksFromTaskFile({ id: 'app/4', agent: 'claude', on: 'codex/gpt', stage: 'reviewing', handovers: [{ role: 'worker', from: 'claude', to: 'codex/gpt' }], link: { pane: 'w2:p3', reviewer: { pane: 'w2:p4', kind: 'omp' } } }, local)!
+    expect(tasksFromFiles([file], {})[0]!.identity).toEqual({ agent: 'codex', reviewer: 'omp', from: 'claude' })
+  })
+
   it('coordinator state files', () => {
     expect(coordinatorFromFile('top', { socket: SOCK, pane: 'w1:p1', space: 'w1' }, local)).toEqual({ level: 'top', pane: 'w1:p1', workspace: 'w1' })
     expect(coordinatorFromFile('project', { socket: SOCK, pane: 'w1:p2' }, local, 'web')).toEqual({ level: 'project', repo: 'web', pane: 'w1:p2', workspace: null })

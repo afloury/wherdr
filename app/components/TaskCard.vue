@@ -15,7 +15,7 @@ const waitKind = computed(() => (props.task.group === 'needs' ? blockKind(props.
 // One line: its words with their links kept (LinkedText shortens them).
 const line = computed(() => (props.task.msg || '').replace(/\s+/g, ' ').trim())
 const pr = computed(() => props.task.pr || prLink(props.task.msg || ''))
-const meta = computed(() => [props.task.app, props.task.progress !== null && props.task.group === 'working' ? `${props.task.progress}%` : ''].filter(Boolean))
+const meta = computed(() => [props.task.progress !== null && props.task.group === 'working' ? `${props.task.progress}%` : ''].filter(Boolean))
 const staleTitle = computed(() => (props.stale
   ? (props.readAt ? tl(`As read at ${props.readAt}: see the note above`, `Lue à ${props.readAt} : voir la note plus haut`) : tl('An older read: see the note above', 'Lecture plus ancienne : voir la note plus haut'))
   : undefined))
@@ -25,6 +25,7 @@ const staleTitle = computed(() => (props.stale
   <div class="board-card task-card" :class="[task.group, { stale }]" :title="staleTitle" :data-task="task.id">
     <button type="button" class="task-card-open" :aria-label="`${taskKey(task.id, task.repoKey)} ${task.title}`" @click="$emit('open')" />
     <span class="board-card-head">
+      <TaskAgentMark :identity="task.identity || { agent: task.app, reviewer: '', from: '' }" primary />
       <span class="task-key">{{ taskKey(task.id, task.repoKey) }}</span>
       <span v-if="status" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
       <span v-if="machine" class="board-card-label">{{ machine }}</span>

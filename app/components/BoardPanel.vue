@@ -94,6 +94,11 @@ const taskOpen = ref(true)
 const actionBusy = ref(false)
 const actionError = ref('')
 const agentPane = computed(() => herdrState.value.panes.find(p => p.id === taskPane.value))
+const identity = computed(() => {
+  const saved = details.value?.identity || props.task?.identity
+  return { agent: agentPane.value?.agent || saved?.agent || details.value?.agent || props.task?.app || '', reviewer: reviewing.value ? saved?.reviewer || reviewerAgent.value?.agent || '' : '', from: saved?.from || '' }
+})
+const reviewing = computed(() => ['reviewing', 'reviewneeds'].includes(details.value?.stage || props.task?.stage || ''))
 const conversation = computed(() => Boolean(agentPane.value && hasChat(agentPane.value))
   && !(props.task?.stage === 'failed' && ['start', 'setup', 'attempts'].includes(details.value?.failureStage || '')))
 const agentHint = computed(() => agentPane.value ? tl(`Herdr agent: ${statusLabel(agentPane.value)}`, `Agent Herdr : ${statusLabel(agentPane.value)}`) : tl('Agent not running', 'Agent arrêté'))
@@ -195,7 +200,7 @@ const rvWait = computed(() => (reviewerAsks.value && details.value?.stage === 'r
   : null))
 // The session its pane is open in, when this device shows another one.
 const reviewerSession = computed(() => {
-  if (rvWait.value !== 'hidden') return null
+  if (!reviewing.value || reviewerPane.value || !allSessionsState.value.ok) return null
   const p = allSessionsState.value.panes.find(x => x.id === details.value?.reviewer?.pane)
   const m = p && allSessionsState.value.machines?.find(x => x.key === (p.machine || ''))
   return m ? { baseKey: m.baseKey ?? m.key, name: m.session || 'default' } : null
@@ -499,11 +504,11 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <div class="board-panel-who">
         <p class="board-panel-path">
           <span class="board-panel-machine"><UIcon name="i-lucide-server" />{{ machineLabel }}</span>
-          <span v-if="repo" class="board-panel-repo">{{ repo }}</span><span v-if="target.kind === 'task' && (task?.app || details?.agent)" :title="agentHint">· {{ task?.app || details?.agent }}</span>
+          <span v-if="repo" class="board-panel-repo">{{ repo }}</span><span v-if="target.kind === 'task' && identity.agent" :title="agentHint">· {{ identity.agent }}</span>
         </p>
         <p class="board-panel-name">
           <template v-if="target.kind === 'task'">
-            <AgentAvatar :agent="task?.app || details?.agent || null" :title="agentHint" />
+            <AgentAvatar :agent="identity.agent" :title="agentHint" />
             <span class="task-key">{{ taskLabel }}</span><span class="board-panel-title" :title="details?.title || task?.title">{{ details?.title || task?.title }}</span><span v-if="task" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
           </template>
           <template v-else>
@@ -511,6 +516,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
             <span class="board-panel-title">{{ coordName }}</span>
           </template>
         </p>
+        <TaskAgentMark v-if="target.kind === 'task'" :identity="identity" />
         <p v-if="target.kind === 'coordinator'" class="board-panel-purpose">{{ coordinatorDescription(target.to) }}</p>
       </div>
       <template v-if="target.kind === 'task'">
@@ -528,6 +534,11 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         {{ tabLabel(tab) }}<i v-if="tab === 'task' && newNote" class="task-new" aria-hidden="true" />
       </button>
     </nav>
+    <div v-if="target.kind === 'task' && reviewing && selected === 'chat'" class="task-review-context">
+      <span>{{ tl(`This is ${kindLabel(identity.agent)}’s conversation. The review runs separately.`, `Conversation de ${kindLabel(identity.agent)}. La relecture tourne séparément.`) }}</span>
+      <button v-if="reviewerAgent && !offlineView" type="button" @click="reviewerChoice = 'term'; choose('reviewer')">{{ tl('Open reviewer terminal', 'Ouvrir le terminal du relecteur') }}</button>
+      <button v-else-if="reviewerSession && !offlineView" type="button" @click="showReviewerSession">{{ tl('Switch to the reviewer session', 'Passer à la session du relecteur') }}</button>
+    </div>
     <section v-if="target.kind === 'task' && (needs || stuck)" class="task-needs" :class="{ 'task-needs-wait': waitKind }" :data-kind="waitKind || undefined" role="alert">
       <div v-if="waitKind" class="task-needs-line" :class="{ open: waitOpen }">
         <span class="task-needs-type">{{ blockKindLabel(waitKind) }}</span>
