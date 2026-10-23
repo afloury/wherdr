@@ -12,6 +12,8 @@ All notable changes to this project are documented here. The format follows
 
 - Switching machine or group tabs restores the last conversation for that selection on the device, with a coordinator fallback, while preserving unsent drafts. All and conversations already in the selection stay open.
 
+- **A failed review can be sent back to the agent** from the task's banner (`herdr-projects review`), its findings listed briefly; **Approve anyway** becomes the second choice. A reply sent while the reviewer waits now says it went to the reviewer.
+
 - **A machine's tab on the home list** no longer repeats its header: its Claude and Codex quotas sit together at the top, an offline machine says so there, and a right click or long press on the tab offers the machine's actions. A group's tab offers **Group settings**.
 
 ## [2.0.0] — 2026-10-23

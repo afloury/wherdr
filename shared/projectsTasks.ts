@@ -73,7 +73,8 @@ export interface TaskDetails {
   failureAt?: number | null
   failureStale?: boolean
   limits?: { time: string, timeUsed: string, tokens: string, tokensUsed: number | null }
-  findings?: { severity: string, title: string, detail: string }[]
+  // `preexisting`: there before the task (1.x gate.rs), not what it must fix.
+  findings?: { severity: string, title: string, detail: string, preexisting?: boolean }[]
   failureStage: string
   failureAuth: boolean
   // The agent's closing note (task.json `summary`: 1.2.1's `details` leaves
@@ -125,8 +126,9 @@ export interface TaskWait { waitsFor: string[], left: string[], waiting: boolean
 // What wherdr can do on a task: 1.x `tell`, `approve`, `delegate`, `stop`,
 // `retry`, `finish`, `archive`, `restore` (and its pane in Herdr).
 export interface TaskActions { tell: boolean, approve: boolean, delegate: boolean, stop: boolean, retry: boolean, finish: boolean, archive: boolean, restore: boolean }
-// The task commands that take nothing but the task's id.
-export const TASK_COMMANDS = ['delegate', 'stop', 'retry', 'finish', 'fix', 'archive', 'restore'] as const
+// The task commands that take nothing but the task's id. `review`: the
+// reviewer's findings back to the agent (taskCanSendReview).
+export const TASK_COMMANDS = ['delegate', 'stop', 'retry', 'finish', 'fix', 'review', 'archive', 'restore'] as const
 export type TaskCommand = typeof TASK_COMMANDS[number]
 export const isTaskCommand = (v: unknown): v is TaskCommand => TASK_COMMANDS.includes(v as TaskCommand)
 export const NO_ACTIONS: TaskActions = { tell: false, approve: false, delegate: false, stop: false, retry: false, finish: false, archive: false, restore: false }
@@ -293,7 +295,7 @@ function parseFindings(v: unknown): NonNullable<TaskDetails['findings']> {
   if (review?.stale === true || !Array.isArray(review?.findings)) return []
   return review.findings.slice(0, 200).map(v => {
     const f = obj(v)
-    return { severity: str(f?.severity, 20), title: str(f?.subject ?? f?.title, 400), detail: [str(f?.where, 200), str(f?.proof ?? f?.detail, 4000)].filter(Boolean).join(' — ') }
+    return { severity: str(f?.severity, 20), title: str(f?.subject ?? f?.title, 400), detail: [str(f?.where, 200), str(f?.proof ?? f?.detail, 4000)].filter(Boolean).join(' — '), ...(f?.preexisting === true ? { preexisting: true } : {}) }
   })
 }
 
@@ -792,4 +794,17 @@ export function taskCanFix(r: Pick<TaskRow, 'archived' | 'stage' | 'app'>, d: Ta
 export function taskCanApproveAnyway(r: Pick<TaskRow, 'archived' | 'stage' | 'research' | 'review'>, d: TaskDetails | null): boolean {
   return !r.archived && !r.research && r.stage === 'approval'
     && (r.review?.pass === false || (d?.failureRemoteKind === 'checks'))
+}
+// A review that failed, its task waiting for you: 1.x asks "merge anyway, or
+// send the review back" (`review <id>`), sending back first.
+export function taskCanSendReview(r: Pick<TaskRow, 'archived' | 'stage' | 'research' | 'review'>, d?: Pick<TaskDetails, 'review'> | null): boolean {
+  return !r.archived && !r.research && r.stage === 'approval' && (d?.review ?? r.review)?.pass === false
+}
+// What a sent-back review carries, worst first: its open findings (those there
+// before the task stay out), `shown` of them, and how many more.
+const severityRank = (s: string) => { const i = SEVERITIES.indexOf(s as typeof SEVERITIES[number]); return i < 0 ? 1 : i }
+export function reviewFindingsBrief(findings: TaskDetails['findings'], shown = 3): { list: NonNullable<TaskDetails['findings']>, more: number } {
+  const open = (findings || []).filter(f => !f.preexisting && f.title)
+    .map((f, i) => ({ f, i })).sort((a, b) => severityRank(a.f.severity) - severityRank(b.f.severity) || a.i - b.i).map(x => x.f)
+  return { list: open.slice(0, shown), more: Math.max(0, open.length - shown) }
 }

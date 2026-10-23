@@ -8,6 +8,8 @@ import { parseTaskDetails, parseTaskRow } from '#shared/projectsTasks'
 
 const decision = vi.hoisted(() => ({ yes: true }))
 mockNuxtImport('askConfirm', () => async () => decision.yes)
+const toasts = vi.hoisted(() => [] as string[])
+mockNuxtImport('toast', () => (msg: string) => { toasts.push(msg) })
 
 let failure: Record<string, unknown> = {}
 let pane: string | null = 'w1:p1'
@@ -15,8 +17,9 @@ let stage = 'failed'
 let msg = ''
 // What the server adds from the task's file (failureStale).
 let more: Record<string, unknown> = {}
+let review: unknown = null
 const calls: unknown[] = []
-registerEndpoint('/api/tasks/details', () => ({ ...parseTaskDetails(JSON.stringify({ task: { id: 'demo/9', title: 'Improve search', stage, msg, description: 'Search by title' }, failure, summary: 'Search tested.' })), ...more, pane }))
+registerEndpoint('/api/tasks/details', () => ({ ...parseTaskDetails(JSON.stringify({ task: { id: 'demo/9', title: 'Improve search', stage, msg, description: 'Search by title' }, failure, review, summary: 'Search tested.' })), ...more, pane }))
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 registerEndpoint('/api/tasks/tell', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 registerEndpoint('/api/sessions', { method: 'POST', handler: async event => { const body = await readBody(event); calls.push(body); return { session: { name: body.name, key: 'abcdef01', running: true } } } })
@@ -28,7 +31,7 @@ async function panel(extra = {}, agent: string | null = null, status: 'idle' | '
   await flushPromises()
   return w
 }
-afterEach(() => { failure = {}; pane = 'w1:p1'; stage = 'failed'; msg = ''; more = {}; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] }; allSessionsState.value = { ok: false, workspaces: [], panes: [] } })
+afterEach(() => { review = null; toasts.length = 0; failure = {}; pane = 'w1:p1'; stage = 'failed'; msg = ''; more = {}; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] }; allSessionsState.value = { ok: false, workspaces: [], panes: [] } })
 
 describe('task panel', () => {
   it('labels the worker conversation and opens the separate reviewer terminal', async () => {
@@ -174,6 +177,62 @@ describe('task panel', () => {
     decision.yes = true
     await approve.trigger('click'); await flushPromises()
     await vi.waitFor(() => expect(calls).toContainEqual({ machine: '', id: 'demo/9', anyway: true }))
+    w.unmount()
+  })
+  // WHR-85: 1.x asks "merge anyway, or send the review back"; sending back comes first.
+  it('sends a failed review back to its agent first, its findings shown', async () => {
+    stage = 'approval'
+    msg = 'Approve to merge? Review: Fail (1 critical, 3 minor)'
+    review = { meets: false, pass: false, findings: [
+      { severity: 'minor', subject: 'Label typo' }, { severity: 'critical', subject: 'Token in the log' },
+      { severity: 'minor', subject: 'Unused import' }, { severity: 'minor', subject: 'Long line' },
+      { severity: 'major', subject: 'Was there before', preexisting: true },
+    ] }
+    const task = { ...row(), group: 'needs' as const, state: 'blocked', kind: 'permission', msg, review: { pass: false, tally: '1 critical, 3 minor', by: 'codex' } }
+    const w = await panel({ task })
+    const buttons = () => w.findAll('.task-needs-actions button')
+    await vi.waitFor(() => expect(buttons().map(b => b.text())).toContain('Send the review back to the agent'))
+    const labels = buttons().map(b => b.text())
+    expect(labels.indexOf('Send the review back to the agent')).toBeLessThan(labels.indexOf('Approve anyway'))
+    expect(w.find('.task-needs-review').classes().join(' ')).toMatch(/primary/)
+    expect(w.find('.task-needs-anyway').classes().join(' ')).not.toMatch(/bg-primary/)
+    // Worst first, three at most, the one there before left out.
+    expect(w.findAll('.task-needs-findings li').map(li => li.text())).toEqual(['CriticalToken in the log', 'MinorLabel typo', 'MinorUnused import'])
+    expect(w.find('.task-needs-findings-more').text()).toBe('+1 more in Task')
+    expect(w.find('.task-needs').text()).not.toContain('Was there before')
+    await w.find('.task-needs-review').trigger('click')
+    await vi.waitFor(() => expect(calls).toContainEqual({ machine: '', id: 'demo/9', action: 'review' }))
+    w.unmount()
+  })
+  it('offers no sending back once the review passed', async () => {
+    stage = 'approval'
+    review = { meets: true, pass: true, findings: [{ severity: 'minor', subject: 'Label typo' }] }
+    const task = { ...row(), group: 'needs' as const, state: 'blocked', kind: 'permission', review: { pass: true, tally: '1 minor', by: 'codex' } }
+    const w = await panel({ task })
+    expect(w.find('.task-needs-review').exists()).toBe(false)
+    expect(w.find('.task-needs-findings').exists()).toBe(false)
+    w.unmount()
+  })
+  // In `reviewneeds`, 1.x `tell` reaches the reviewer (flow/talk.rs), not the worker.
+  it('says a reply went to the reviewer while the reviewer waits', async () => {
+    pane = null
+    stage = 'reviewneeds'
+    const task = { ...row(), stage: 'reviewneeds', state: 'blocked', kind: 'question', group: 'needs' as const }
+    const w = await panel({ task, target: { kind: 'task', machine: '', id: `demo/9-${Math.random()}` } })
+    await w.find('#board-panel-tell').setValue('Yes, go on')
+    await w.find('.board-panel-tell').trigger('submit')
+    await vi.waitFor(() => expect(toasts).toEqual(['Sent to the reviewer']))
+    expect(w.find('.board-panel-tell label').text()).toContain('reviewer')
+    w.unmount()
+  })
+  it('says a reply went to the task’s agent otherwise', async () => {
+    pane = null
+    stage = 'working'
+    const task = { ...row(), stage: 'working', state: 'working', group: 'working' as const }
+    const w = await panel({ task, target: { kind: 'task', machine: '', id: `demo/9-${Math.random()}` } })
+    await w.find('#board-panel-tell').setValue('Go on')
+    await w.find('.board-panel-tell').trigger('submit')
+    await vi.waitFor(() => expect(toasts).toEqual(['Sent to the task’s agent']))
     w.unmount()
   })
   it('shows a blocked question in the banner and no banner once done', async () => {
