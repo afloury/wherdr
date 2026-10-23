@@ -3934,6 +3934,18 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-card.ready { border-left: 2px solid var(--green); }
 .task-card.working { border-left: 2px solid var(--working); }
 .task-card.todo { border-left: 2px solid var(--line-strong); }
+/* A Working task with no agent running (shared/taskActivity.ts): "CI 1/2" while
+   the board waits for GitHub checks, "QUEUED · DEMO-3" while it waits its turn.
+   Its Working tag goes quiet; nothing on it reads as running. */
+.task-activity { flex: none; padding: 3px 6px; border: 1px dashed currentColor; font: 600 9.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+.task-activity[data-kind="ci"] { color: var(--blue); }
+.task-activity[data-kind="queued"] { color: var(--text-3); }
+.activity-ci .task-state.working, .activity-queued .task-state.working { color: var(--text-3); border-color: var(--line); }
+.activity-ci .task-agent-primary .avatar, .activity-ci .avatar, .activity-queued .avatar { opacity: .4; filter: grayscale(1); }
+.task-card.activity-ci { border-left-style: dashed; }
+.task-card.activity-queued { border-left: 2px dashed var(--line-strong); background: color-mix(in srgb, var(--surface) 55%, transparent); }
+.task-card.activity-queued > :not(.task-card-open) { opacity: .6; }
+.card.task-row.activity-queued > :not(.task-activity) { opacity: .6; }
 .task-key { font: 600 10.5px/1 var(--mono); letter-spacing: .08em; color: var(--text-3); }
 .task-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .task-chip { padding: 3px 5px; border: 1px solid var(--line); font: 500 9.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }

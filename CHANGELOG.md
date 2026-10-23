@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added and improved
 
+- **Working tasks say what they are doing.** On the Board card, the home list row and the task panel header, a task whose agent has finished and that waits for GitHub checks shows a **CI 1/2** badge with its agent logo dimmed and no progress; a task waiting behind another task or for a free slot shows **QUEUED · DEMO-3** / **QUEUED · Q#2**, dimmed, with no progress. A task with an agent at work looks as before.
+
 - **Moving from a 1.x Docker install** has its own guide, [docs/migrate-from-1.x-docker.md](docs/migrate-from-1.x-docker.md), written so an AI agent can run it: back up, stop the container, install the native service, check each step, and go back if needed. The installer, the plugin and the 2.0.0 release notes link to it.
 
 - **Install herdr-projects** now installs 1.2.21, the release wherdr was tested with, instead of 1.2.1 (which had no autopilot, chat-only tasks or settings page). A machine with an older 1.x shows **Update available** in Settings › Plugins, with what the update adds in one line, and **Update to 1.2.21** replaces Herdr's copy of the plugin; tasks and settings stay. wherdr still reads 1.2.1 and later.

@@ -17,6 +17,7 @@
 // Pure functions, tested in tests/boardLinks.test.ts.
 import { rowFromTaskFile, taskAgentIdentity, type TaskAgentIdentity, type TaskGroup } from './projectsTasks'
 import type { Pane, Workspace } from './types'
+import { type TaskActivity, taskActivity } from './taskActivity'
 import { type RowGroup, type Row, leadPane, rowGroup } from './spaces'
 import { joinId, machineOf } from './ids'
 
@@ -47,6 +48,9 @@ export interface LinkedTask {
   progress: number | null
   msg: string
   since: number | null
+  // In Working, whether an agent runs or it waits for CI or its turn, read from
+  // the task's own stage and message (a watcher kept after its review says nothing of it).
+  activity?: TaskActivity | null
 }
 export type CoordinatorLevel = 'top' | 'machine' | 'project'
 export interface LinkedCoordinator {
@@ -80,7 +84,7 @@ const spaceOf = (key: string | null, v: unknown) => (key !== null && typeof v ==
 
 // What a `task.json` links to. An attempt (`attemptOf`) comes back as its
 // task's id with its pane as an attempt; the caller merges it into the task.
-export interface FileLinks extends Pick<LinkedTask, 'stage' | 'progress' | 'msg' | 'since' | 'review' | 'group' | 'identity'> { id: string, repo: string, n: number, title: string, attemptOf: string | null, letter: string, archived: boolean, panes: LinkedTask['panes'], workspace: string | null }
+export interface FileLinks extends Pick<LinkedTask, 'stage' | 'progress' | 'msg' | 'since' | 'review' | 'group' | 'identity' | 'activity'> { id: string, repo: string, n: number, title: string, attemptOf: string | null, letter: string, archived: boolean, panes: LinkedTask['panes'], workspace: string | null }
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 export function linksFromTaskFile(t: unknown, sessionKey: SessionKey): FileLinks | null {
   const r = obj(t)
@@ -110,6 +114,13 @@ export function linksFromTaskFile(t: unknown, sessionKey: SessionKey): FileLinks
   const watch = obj(r.watch)
   const progress = num(watch?.progress)
   // When the turn on it began, as the board counts it (flow/state.rs began).
+  // The task's own line is the board's word on what happens now; a watcher's
+  // line (kept after a review: close_reviewer drops the link, not `watch`) only
+  // while an agent really runs on it.
+  const group = rowFromTaskFile(r, null)?.group
+  const ownMsg = str(r.msg, 400)
+  const activity = taskActivity({ group: group ?? '', stage, msg: ownMsg })
+  const running = !activity || activity.kind === 'running'
   const began = stage === 'reviewing' ? num(r.reviewAt) : Math.max(num(r.since) ?? 0, num(r.workAt) ?? 0) || null
   return {
     id: attemptOf || id, repo: m[1]!, n: Number(m[2]), title: str(r.title).replace(/\s+/g, ' ').trim(),
@@ -117,10 +128,11 @@ export function linksFromTaskFile(t: unknown, sessionKey: SessionKey): FileLinks
     panes, workspace: link?.ownsWorkspace === true ? spaceOf(key, link.workspace) : null,
     stage,
     identity: taskAgentIdentity(r),
-    group: rowFromTaskFile(r, null)?.group,
+    group,
+    activity,
     review: reviewer ? (r.comparing ? 'pick' : planOpen ? 'plan' : 'work') : null,
-    progress: progress === null ? null : Math.max(0, Math.min(100, Math.round(progress))),
-    msg: (str(watch?.msg, 400) || str(r.msg, 400)).replace(/\s+/g, ' ').trim(),
+    progress: progress === null || !running ? null : Math.max(0, Math.min(100, Math.round(progress))),
+    msg: ((running && str(watch?.msg, 400)) || ownMsg).replace(/\s+/g, ' ').trim(),
     since: began && began > 0 ? began : null,
   }
 }
@@ -130,7 +142,7 @@ export function linksFromTaskFile(t: unknown, sessionKey: SessionKey): FileLinks
 export function tasksFromFiles(files: FileLinks[], keys: Record<string, string>): LinkedTask[] {
   const byId = new Map<string, LinkedTask>()
   const own = files.filter(f => !f.attemptOf)
-  const task = (f: FileLinks): LinkedTask => ({ id: f.id, repo: f.repo, n: f.n, key: taskKeyOf(f.id, keys[f.repo]), title: f.title, identity: f.identity, panes: [...f.panes], workspace: f.workspace, stage: f.stage, group: f.group, review: f.review, progress: f.progress, msg: f.msg, since: f.since })
+  const task = (f: FileLinks): LinkedTask => ({ id: f.id, repo: f.repo, n: f.n, key: taskKeyOf(f.id, keys[f.repo]), title: f.title, identity: f.identity, panes: [...f.panes], workspace: f.workspace, stage: f.stage, group: f.group, activity: f.activity, review: f.review, progress: f.progress, msg: f.msg, since: f.since })
   for (const f of own) byId.set(f.id, task(f))
   for (const a of files.filter(f => f.attemptOf)) {
     const t = byId.get(a.id)
@@ -458,10 +470,11 @@ export function tasksIn(spaces: string[], panes: Pick<Pane, 'id' | 'workspace'>[
 // `coordinator`: a coordinator's card (its role's icon, its last message).
 // `stage`: the task's stage beyond its state (`Under review · codex`); `tab`:
 // the tab its row opens, whatever tab was opened last (its reviewer's while a review runs).
+// `activity`: in Working, whether an agent runs or it waits for CI or its turn.
 // `lead`: the head row of a repo group, named after the repo (its project
 // coordinator's, or the repo's own space when it has no coordinator here).
 // `icon`, `hint`: a coordinator's own icon and what it is for (coordinatorKind).
-export interface BoardCard { identity?: TaskAgentIdentity, group?: TaskGroup, tag: string, name?: string, progress?: number | null, since?: number | null, msg?: string, stage?: string, tab?: string, onBoard?: () => void, coordinator?: boolean, lead?: boolean, icon?: string, hint?: string }
+export interface BoardCard { identity?: TaskAgentIdentity, group?: TaskGroup, activity?: TaskActivity | null, tag: string, name?: string, progress?: number | null, since?: number | null, msg?: string, stage?: string, tab?: string, onBoard?: () => void, coordinator?: boolean, lead?: boolean, icon?: string, hint?: string }
 
 // What a member's card says before its title: `WHR-2`, `WHR-2 · review`, `WHR-2 · A`.
 export function memberTag(m: Pick<Member, 'task' | 'role' | 'letter'>, review: string): string {

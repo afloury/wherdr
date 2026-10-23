@@ -5,6 +5,8 @@ import {
   type MachineLinks, boardSections, coordinatorFromFile, countedPanes, elapsedLabel, linksFromTaskFile, memberStage, memberTag,
   parseRepoGit, shownPane, tasksFromFiles, tasksIn,
 } from '../shared/boardLinks'
+import { taskActivity } from '../shared/taskActivity'
+import { rowFromTaskFile } from '../shared/projectsTasks'
 
 // A Herdr session as herdr-projects 1.2.1 leaves it: the coordinators as tabs of
 // one space ("herdr-projects"), the repo's own space (a shell in the clone), the
@@ -356,5 +358,25 @@ describe('closing what holds a task', () => {
     expect(tasksClosing(planClose(st, 'workspace', 'w5'), 'workspace', [all])).toEqual([])
     expect(taskStopMessage([], (a: string) => a)).toBeNull()
     expect(taskStopMessage([{ key: 'APP-2', title: '' }], (a: string) => a)?.action).toBe('Close and stop the task')
+  })
+})
+
+// herdr-projects keeps a reviewer's `watch` after the review (close_reviewer
+// drops the link, not the watcher): the task's own stage and line still decide.
+describe('a watcher kept after its review', () => {
+  const file = { id: 'demo/9', stage: 'merging', msg: 'Waiting for GitHub checks · 1 of 2 passed', watch: { role: 'reviewer', msg: 'Reviewing the result', progress: 90 }, link: { socket: SOCK, pane: 'w1:p1' } }
+  it('the link waits for CI as the row does, with the task\'s line and no progress', () => {
+    const link = linksFromTaskFile(file, local)!
+    expect(link.activity).toEqual({ kind: 'ci', passed: 1, total: 2 })
+    expect(link.activity).toEqual(taskActivity(rowFromTaskFile(file, null)!))
+    expect(link.msg).toBe('Waiting for GitHub checks · 1 of 2 passed')
+    expect(link.progress).toBeNull()
+    expect(tasksFromFiles([link], {})[0]!.activity).toEqual({ kind: 'ci', passed: 1, total: 2 })
+  })
+  it('while an agent runs, the watcher\'s line and progress are kept', () => {
+    const link = linksFromTaskFile({ ...file, stage: 'reviewing', msg: 'Under review' }, local)!
+    expect(link.activity).toEqual({ kind: 'running' })
+    expect(link.msg).toBe('Reviewing the result')
+    expect(link.progress).toBe(90)
   })
 })
