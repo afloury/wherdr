@@ -1109,7 +1109,7 @@ for (const lang of ['en', 'fr']) {
 }
 
 // WHR-38: a review that failed the day before, then a run stopped at its limit.
-// The banner says the limit, not the old failure; Finish takes the work as it is.
+// The banner says the limit, not the old failure; Take it as it is (finish) takes the work as it is.
 for (const lang of ['en', 'fr']) {
   test(`a stale failure is history; Finish on a limit stop (${lang})`, async ({ page }, testInfo) => {
     await page.addInitScript(l => localStorage.setItem('herdrLanguage', l), lang)
@@ -1131,18 +1131,19 @@ for (const lang of ['en', 'fr']) {
     await expect(banner.locator('h3')).toHaveText(`${lang === 'fr' ? 'À toi' : 'Needs you'} · Stopped at its 2h limit`)
     await expect(banner).not.toContainText('Review failed')
     await expect(banner.getByRole('button', { name: lang === 'fr' ? 'Envoyer l’erreur à l’agent' : 'Send the error to the agent' })).toHaveCount(0)
-    await expect(banner.locator('.task-finish-why')).toContainText(lang === 'fr' ? 'même limite' : 'same limit again')
+    await expect(banner.locator('.task-finish-why')).toContainText(lang === 'fr' ? 'même limite une fois de plus' : 'same limit once more')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: `.shots/task-finish-${lang}-${testInfo.project.name}.png` })
     // The old failure stays in the Task tab, as history.
     await page.locator('.board-panel-tabs').getByRole('button', { name: lang === 'fr' ? 'Tâche' : 'Task', exact: true }).click()
     await expect(page.locator('.board-panel .task-sheet-earlier')).toContainText('Review failed')
     await page.screenshot({ path: `.shots/task-finish-${lang}-earlier-${testInfo.project.name}.png` })
-    await banner.getByRole('button', { name: lang === 'fr' ? 'Terminer' : 'Finish', exact: true }).click()
+    const asIs = lang === 'fr' ? 'Prendre telle quelle' : 'Take it as it is'
+    await banner.getByRole('button', { name: asIs, exact: true }).click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toContainText('merge.by itself')
     await page.screenshot({ path: `.shots/task-finish-${lang}-confirm-${testInfo.project.name}.png` })
-    await dialog.getByRole('button', { name: lang === 'fr' ? 'Terminer' : 'Finish', exact: true }).click()
+    await dialog.getByRole('button', { name: asIs, exact: true }).click()
     await expect.poll(callLog).toContain('finish -- demo/11')
     fs.rmSync(dir, { recursive: true, force: true })
   })
