@@ -10,7 +10,7 @@ import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { queueReason, canClearQueued } from '~/utils/queuedReason'
 import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
-import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
+import { QUEUE_STALE_MS, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
 import { createTailLoader, nextTail, restartsTail, tailQuery } from '~/utils/chatTail'
@@ -326,6 +326,7 @@ type Block =
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
   | { k: 'system', key: string, text: string }
   | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean }
+  | { k: 'scheduled', key: string, text: string, time: string | null, at: string | null }
   | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean }
   | { k: 'ompRun', key: string, tool: ChatItem & { omp: OmpToolView } }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
@@ -409,13 +410,13 @@ const blocks = computed<Block[]>(() => {
       if (day !== lastDay) {
         if (it.role !== 'tool') {
           flush()
-          if (it.role === 'user') closeTurn()
+          if (it.role === 'user' || it.role === 'scheduled') closeTurn()
         }
         if (lastDay) out.push({ k: 'day', key: `d:${day}`, label: dayLabel(it.ts) })
         lastDay = day
       }
     }
-    if (it.role === 'user' || it.role === 'cmd' || it.role === 'bash') {
+    if (it.role === 'user' || it.role === 'cmd' || it.role === 'bash' || it.role === 'scheduled') {
       flush()
       closeTurn()
       needWho = true
@@ -467,6 +468,9 @@ const blocks = computed<Block[]>(() => {
       const e = it.err || ''
       const lines = (o ? o.split('\n').length : 0) + (e ? e.split('\n').length : 0)
       out.push({ k: 'shell', key: `s:${it.ts}:${it.text.slice(0, 40)}`, bash: it.role === 'bash', text: it.text, out: o, err: e, lines, long: lines > SHELL_LINES || o.length + e.length > 1500 })
+    } else if (it.role === 'scheduled') {
+      // Sent by Claude Code itself: folded, never a bubble of the user.
+      out.push({ k: 'scheduled', key, text: it.text, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null })
     } else if (it.role === 'notice') {
       const [label, icon] = NOTICE[it.name || ''] || [it.name || 'Note', 'i-lucide-info']
       out.push({ k: 'notice', key, label: t(label), icon, html: md(it.text), long: it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 })
@@ -856,13 +860,27 @@ const shellDuration = computed(() => {
   const s = Math.max(0, Math.round((nowTick.value - since) / 1000))
   return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`
 })
+// Claude at rest, with no question, menu or dialog on its screen, empties its
+// own queue at once: after QUEUE_STALE_MS, entries still listed are stale.
+const restingNow = computed(() => {
+  const p = props.pane
+  return p.agent === 'claude' && ['idle', 'done'].includes(p.status || '') && !p.stopped && !p.prompt && !p.menu && !p.screen && !p.menuLeftOpen && !p.pendingPrompt
+})
+const resting = ref(false)
+let restTimer: ReturnType<typeof setTimeout> | undefined
+watch(restingNow, (v) => {
+  clearTimeout(restTimer)
+  resting.value = false
+  if (v) restTimer = setTimeout(() => { resting.value = true }, QUEUE_STALE_MS)
+}, { immediate: true })
+onUnmounted(() => clearTimeout(restTimer))
 const queuedList = computed(() => {
   const p = props.pane
   // A record the server gives back is on its way to the message field (see utils/givenBack.ts).
   const mine = withOutbox(readOnly.value ? [] : (p.queued || []).filter(q => !q.back), props.localQueued)
   const memory = rememberSent(p.id, mine)
   const replies = blocks.value.filter(b => b.k === 'assistant')
-  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory }).map((q) => {
+  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, resting: resting.value }).map((q) => {
     const lines = q.raw.split('\n')
     const text = lines.filter(l => !isUploadLine(l) && !isAttachmentLine(l)).join('\n').trim()
     const parsed = parseReply(text)
@@ -1375,6 +1393,16 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <OmpTool :tool="b.tool" run />
               </div>
               <div v-else-if="b.k === 'system'" class="msg-system"><span>{{ b.text }}</span></div>
+              <div v-else-if="b.k === 'scheduled'" class="msg-scheduled" :class="{ open: isOpen(b.key) }" :data-hit-key="b.key">
+                <button type="button" class="msg-scheduled-head" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
+                  <UIcon name="i-lucide-clock" class="msg-scheduled-icon" />
+                  <span class="msg-scheduled-label">{{ t('Scheduled task') }}</span>
+                  <span v-if="!isOpen(b.key)" class="msg-scheduled-peek">{{ b.text }}</span>
+                  <time v-if="b.time" class="msg-scheduled-time" :title="b.at || undefined">{{ b.time }}</time>
+                  <UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="msg-scheduled-chev" />
+                </button>
+                <p v-if="isOpen(b.key)" class="msg-scheduled-body">{{ b.text }}</p>
+              </div>
               <div v-else-if="b.k === 'notice'" class="msg-notice" :class="{ long: b.long, open: isOpen(b.key) }">
                 <div class="msg-notice-head"><UIcon :name="b.icon" /><span>{{ b.label }}</span></div>
                 <ChatMarkdown class="msg-notice-body md" :html="b.html" :typing="null" />

@@ -38,6 +38,14 @@ export function failLocal(list: OutboxItem[], id: string): OutboxItem[] {
   return list.map(q => (q.id === id ? { id: q.id, text: q.text, at: q.at, state: 'failed', local: true } : q))
 }
 
+// A send whose request has not answered after this long is shown "Not sent"
+// with Retry / Cancel, never "sending…" for ever. Should the server answer
+// later, its record still replaces the bubble (see settle, prune).
+export const SEND_STUCK_MS = 2 * 60 * 1000
+export function giveUpSending(list: OutboxItem[], id: string): OutboxItem[] {
+  return list.some(q => q.id === id && q.state === 'sending') ? failLocal(list, id) : list
+}
+
 // Retry of a message the server never got: sending again, same bubble.
 export function resend(list: OutboxItem[], id: string): OutboxItem[] {
   return list.map(q => (q.id === id ? { id: q.id, text: q.text, at: q.at, state: 'sending' } : q))
