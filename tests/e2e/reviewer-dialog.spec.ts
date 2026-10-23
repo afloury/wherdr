@@ -125,3 +125,45 @@ test('an agent\'s own dialog keeps its buttons', async ({ page }) => {
   await expect(page.locator('.board-panel .task-needs-reviewer')).toHaveCount(0)
   await expect(page.locator('.board-panel-tabs').getByRole('button', { name: 'Reviewer' })).toHaveCount(0)
 })
+
+// Review finding: the reviewer's pane open in a session this device does not
+// show (two sessions of one machine, "default" shown) is not a closed pane.
+test('a reviewer in a session this device does not show: switch to it, then answer', async ({ page }, testInfo) => {
+  const HIDDEN = `abcdef01~${OMP_APPROVAL_PANE}`
+  await expect.poll(async () => (await (await page.request.get('/api/state')).json()).ok).toBe(true)
+  const base = await (await page.request.get('/api/state')).json()
+  const inReview = (w: string) => w === OMP_APPROVAL_PANE.split(':')[0]
+  const state = { ...base,
+    machines: [{ key: '', label: 'devbox', local: true, status: 'online', error: null, session: 'default' }, { key: 'abcdef01', baseKey: '', label: 'devbox', local: true, status: 'online', error: null, session: 'review' }],
+    workspaces: base.workspaces.map((w: { id: string }) => inReview(w.id) ? { ...w, id: `abcdef01~${w.id}`, machine: 'abcdef01' } : { ...w, machine: '' }),
+    tabs: base.tabs.map((t: { id: string, workspace: string }) => inReview(t.workspace) ? { ...t, id: `abcdef01~${t.id}`, workspace: `abcdef01~${t.workspace}`, machine: 'abcdef01' } : { ...t, machine: '' }),
+    panes: base.panes.map((p: { id: string, workspace: string, tab: string }) => inReview(p.workspace) ? { ...p, id: HIDDEN, workspace: `abcdef01~${p.workspace}`, tab: `abcdef01~${p.tab}`, machine: 'abcdef01', status: 'blocked' } : { ...p, machine: '' }),
+  }
+  await page.routeWebSocket('**/ws/events', ws => ws.send(JSON.stringify(state)))
+  await page.route('**/api/tasks/details**', async (route) => {
+    const r = await route.fetch()
+    await route.fulfill({ response: r, json: { ...await r.json(), reviewer: { pane: HIDDEN } } })
+  })
+  let asked: unknown = null
+  await page.route('**/api/sessions', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    asked = route.request().postDataJSON()
+    await route.fulfill({ json: { session: { name: 'review', key: 'abcdef01', running: true } } })
+  })
+  await page.addInitScript(() => localStorage.setItem('machineSessions', JSON.stringify({ '': 'default' })))
+  await page.goto(OPEN)
+  const banner = page.locator('.board-panel .task-needs')
+  await expect(banner.locator('.task-needs-reviewer')).toHaveAttribute('data-wait', 'hidden')
+  await expect(banner.locator('.task-needs-reviewer')).toHaveText('The reviewer runs in the session “review”, which this device does not show. Switch to it to answer.')
+  await expect(banner.locator('.task-needs-actions button')).toHaveText(['Switch to that session'])
+  await page.screenshot({ path: `.shots/reviewer-hidden-${testInfo.project.name}.png` })
+  await desktopShot(page, '.shots/reviewer-hidden-desktop.png')
+
+  await banner.getByRole('button', { name: 'Switch to that session' }).click()
+  expect(asked).toEqual({ machine: '', name: 'review' })
+  await expect(page.locator('.board-panel-tabs').getByRole('button', { name: 'Reviewer', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  // Its pane is shown now, waiting on its dialog (its conversation is served
+  // by a session this test only fakes in the browser).
+  await expect(page.locator('.board-panel-reviewer-who')).toHaveText('Reviewer · Your turn')
+  await expect(page.locator('.board-panel .task-needs-reviewer')).toHaveCount(0)
+})

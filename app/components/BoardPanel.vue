@@ -8,7 +8,7 @@ import { visibleAgentKinds } from '~/utils/agentChoices'
 import { finishHint, finishLabel, finishOffered, finishQuestion, finishTitle } from '~/utils/taskFinish'
 import { blockChoices, blockKind, blockKindLabel, offersAlways, permissionReply, questionMessage } from '~/utils/blockNotice'
 import { reviewerWait } from '~/utils/reviewerWait'
-import type { PaneViewMode } from '~/composables/useHerdr'
+import { type PaneViewMode, allSessionsState, chooseMachineSession } from '~/composables/useHerdr'
 
 export type PanelTarget =
   | { machine: string, kind: 'task', id: string, chat?: boolean }
@@ -191,12 +191,34 @@ const reviewerAgent = computed(() => herdrState.value.panes.find(p => p.id === r
 const reviewerHint = computed(() => reviewerAgent.value ? tl(`Reviewer: ${statusLabel(reviewerAgent.value)}`, `Relecteur : ${statusLabel(reviewerAgent.value)}`) : tl('Reviewer', 'Relecteur'))
 // Only once its details say so too: until then, nothing said of its pane.
 const rvWait = computed(() => (reviewerAsks.value && details.value?.stage === 'reviewneeds'
-  ? reviewerWait({ stage: 'reviewneeds', reviewer: details.value.reviewer, panes: herdrState.value.panes, live: herdrState.value.ok && props.reachable !== false })
+  ? reviewerWait({ stage: 'reviewneeds', reviewer: details.value.reviewer, panes: herdrState.value.panes, everywhere: allSessionsState.value.panes, live: herdrState.value.ok && props.reachable !== false })
   : null))
+// The session its pane is open in, when this device shows another one.
+const reviewerSession = computed(() => {
+  if (rvWait.value !== 'hidden') return null
+  const p = allSessionsState.value.panes.find(x => x.id === details.value?.reviewer?.pane)
+  const m = p && allSessionsState.value.machines?.find(x => x.key === (p.machine || ''))
+  return m ? { baseKey: m.baseKey ?? m.key, name: m.session || 'default' } : null
+})
+const switching = ref(false)
+// Shown on this device instead: its pane, then its dialog, are there.
+async function showReviewerSession() {
+  const s = reviewerSession.value
+  if (!s || switching.value) return
+  switching.value = true
+  try {
+    await chooseMachineSession(s.baseKey, s.name)
+    choose('reviewer', true)
+  } catch (e) { toast((e as Error).message, true) }
+  finally { switching.value = false }
+}
 const rvWords = computed(() => {
   switch (rvWait.value) {
     case 'quiet': return tl('The reviewer shows no dialog now: the board moves on by itself in a few seconds.', 'Le relecteur n’affiche plus de dialogue : le tableau reprend tout seul dans quelques secondes.')
     case 'gone': return tl('The reviewer’s pane is closed: no dialog is left to answer. If the task stays here, stop it from the Task tab.', 'Le pane du relecteur est fermé : plus aucun dialogue à répondre. Si la tâche reste bloquée ici, arrête-la depuis l’onglet Tâche.')
+    case 'hidden': return reviewerSession.value
+      ? tl(`The reviewer runs in the session “${reviewerSession.value.name}”, which this device does not show. Switch to it to answer.`, `Le relecteur tourne dans la session « ${reviewerSession.value.name} », que cet appareil n’affiche pas. Passe sur cette session pour répondre.`)
+      : tl('The reviewer runs in a session this device does not show.', 'Le relecteur tourne dans une session que cet appareil n’affiche pas.')
     case 'away': return tl(`wherdr cannot reach the reviewer’s pane. Answer it on ${props.machineLabel}, in the task’s space: its Reviewer tab.`, `wherdr ne peut pas joindre le pane du relecteur. Réponds-y sur ${props.machineLabel}, dans l’espace de la tâche : son onglet Reviewer.`)
     default: return ''
   }
@@ -537,6 +559,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <UButton v-if="answerable && !choices.length && !permissionTaps" class="task-needs-reply" icon="i-lucide-corner-down-left" :disabled="offlineView" @click="replyHere">{{ tl('Reply…', 'Répondre…') }}</UButton>
         <template v-if="reviewerAsks">
           <UButton v-if="(rvWait === 'open' || rvWait === 'quiet') && selected !== 'reviewer'" class="task-needs-reviewer-open" :color="rvWait === 'open' ? 'primary' : undefined" :disabled="offlineView" @click="choose('reviewer')">{{ tl('Open the reviewer', 'Ouvrir le relecteur') }}</UButton>
+          <UButton v-else-if="rvWait === 'hidden' && reviewerSession" class="task-needs-reviewer-session" color="primary" :loading="switching" :disabled="offlineView" @click="showReviewerSession">{{ tl('Switch to that session', 'Passer à cette session') }}</UButton>
           <UButton v-else-if="(rvWait === 'gone' || rvWait === 'away') && selected !== 'task'" class="task-needs-task" @click="choose('task')">{{ tl('Task actions', 'Actions de la tâche') }}</UButton>
         </template>
         <template v-else-if="!answerable">

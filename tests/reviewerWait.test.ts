@@ -24,6 +24,10 @@ describe('a reviewer that needs you', () => {
   it('its pane is closed: nothing to answer', () => {
     expect(seen(null)).toBe('gone')
   })
+  it('its pane is open in a session this device does not show: not closed', () => {
+    expect(seen(null, { everywhere: [{ id: 'w1:p1' }, { id: 'w1:p4' }] })).toBe('hidden')
+    expect(seen(null, { everywhere: [{ id: 'w1:p1' }] })).toBe('gone')
+  })
   it('wherdr cannot reach it: never the agent\'s pane instead', () => {
     expect(seen('blocked', { reviewer: { pane: null } })).toBe('away')
     expect(seen('blocked', { reviewer: null })).toBe('away')

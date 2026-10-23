@@ -3,7 +3,7 @@ import { flushPromises } from '@vue/test-utils'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import BoardPanel from '~/components/BoardPanel.vue'
-import { herdrState } from '~/composables/useHerdr'
+import { allSessionsState, herdrState } from '~/composables/useHerdr'
 import { parseTaskDetails, parseTaskRow } from '#shared/projectsTasks'
 
 const decision = vi.hoisted(() => ({ yes: true }))
@@ -19,6 +19,7 @@ const calls: unknown[] = []
 registerEndpoint('/api/tasks/details', () => ({ ...parseTaskDetails(JSON.stringify({ task: { id: 'demo/9', title: 'Improve search', stage, msg, description: 'Search by title' }, failure, summary: 'Search tested.' })), ...more, pane }))
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 registerEndpoint('/api/tasks/tell', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
+registerEndpoint('/api/sessions', { method: 'POST', handler: async event => { const body = await readBody(event); calls.push(body); return { session: { name: body.name, key: 'abcdef01', running: true } } } })
 registerEndpoint('/api/tasks/approve', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 const row = () => parseTaskRow({ id: 'demo/9', title: 'Improve search', stage, state: 'error', app: 'claude' })!
 async function panel(extra = {}, agent: string | null = null, status: 'idle' | 'working' = 'idle') {
@@ -27,7 +28,7 @@ async function panel(extra = {}, agent: string | null = null, status: 'idle' | '
   await flushPromises()
   return w
 }
-afterEach(() => { failure = {}; pane = 'w1:p1'; stage = 'failed'; msg = ''; more = {}; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] } })
+afterEach(() => { failure = {}; pane = 'w1:p1'; stage = 'failed'; msg = ''; more = {}; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] }; allSessionsState.value = { ok: false, workspaces: [], panes: [] } })
 
 describe('task panel', () => {
   it('explains setup failure instead of opening a bare shell', async () => {
@@ -250,6 +251,26 @@ describe('task panel', () => {
       expect(q.find('.task-needs-reviewer').attributes('data-wait')).toBe('quiet')
       expect(buttons(q)).toEqual(['Open the reviewer'])
       q.unmount()
+    })
+    // Review finding: a reviewer in an open session this device does not show is not a closed pane.
+    it('a reviewer in a session this device does not show: names it and offers to switch to it', async () => {
+      stage = 'reviewneeds'; msg = REVIEW_MSG
+      more = { reviewer: { pane: 'abcdef01~w5:p1' } }
+      const w = await panel({ task: reviewTask(), target: { kind: 'task', machine: '', id: 'demo/9-hidden' } }, 'claude')
+      const agent = herdrState.value.panes[0]!
+      allSessionsState.value = {
+        ok: true, workspaces: [],
+        machines: [{ key: '', label: 'devbox', local: true, status: 'online', error: null }, { key: 'abcdef01', baseKey: '', session: 'review', label: 'devbox', local: true, status: 'online', error: null }],
+        panes: [agent, { ...agent, id: 'abcdef01~w5:p1', machine: 'abcdef01', status: 'blocked' }],
+      }
+      await flushPromises()
+      expect(w.find('.task-needs-reviewer').attributes('data-wait')).toBe('hidden')
+      expect(w.find('.task-needs-reviewer').text()).toBe('The reviewer runs in the session “review”, which this device does not show. Switch to it to answer.')
+      expect(w.find('.task-needs').text()).not.toContain('closed')
+      expect(buttons(w)).toEqual(['Switch to that session'])
+      await w.find('.task-needs-reviewer-session').trigger('click')
+      await vi.waitFor(() => expect(calls).toContainEqual({ machine: '', name: 'review' }))
+      w.unmount()
     })
     it('an agent\'s own dialog keeps Open terminal and Answer in the conversation', async () => {
       stage = 'working'
