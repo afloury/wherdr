@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { checkReleaseNotes } from './check-release-notes.mjs'
 
 export function prereleaseSummary(changelog, repo, sha) {
-  const unreleased = changelog.split(/^## \[Unreleased\][^\n]*\n/m)[1]?.split(/^## /m)[0]
+  const unreleased = changelog.split(/^## (?:\[Unreleased\]|\d+\.\d+\.\d+ \(unreleased\))[^\n]*\n/m)[1]?.split(/^## /m)[0]
   const entries = unreleased?.match(/^- .*(?:\n(?!\s*$|[-#]).+)*/gm)?.slice(0, 3)
   if (!entries?.length) throw new Error('Add user-facing Unreleased entries to CHANGELOG.md before packaging a prerelease')
   const notes = `## Update\n\n${entries.join('\n\n')}\n\n[Full changelog](https://github.com/${repo}/blob/${sha}/CHANGELOG.md)\n`
