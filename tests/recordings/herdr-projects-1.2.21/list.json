@@ -1,0 +1,17 @@
+[
+  {
+    "id": "demo/2",
+    "state": "idle",
+    "title": "Second task",
+    "msg": "",
+    "stage": "todo"
+  },
+  {
+    "id": "demo/1",
+    "state": "error",
+    "app": "claude",
+    "title": "Fix login page",
+    "msg": "Could not start: no herdr server is running at /home/me/.config/herdr/herdr.sock; run `herdr` to start or attach it",
+    "stage": "failed"
+  }
+]

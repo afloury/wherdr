@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added and improved
 
+- **Install herdr-projects** now installs 1.2.21, the release wherdr was tested with, instead of 1.2.1 (which had no autopilot, chat-only tasks or settings page). A machine with an older 1.x shows **Update available** in Settings › Plugins, with what the update adds in one line, and **Update to 1.2.21** replaces Herdr's copy of the plugin; tasks and settings stay. wherdr still reads 1.2.1 and later.
+
 - Task logos consistently identify the worker on Home, Board cards and conversation headers. Reviews show a separate reviewer mark and explain whose conversation is open, with access to the reviewer terminal or session. Worker fallbacks show the current agent and who it took over from.
 
 - Switching machine or group tabs restores the last conversation for that selection on the device, with a coordinator fallback, while preserving unsent drafts. All and conversations already in the selection stay open.
