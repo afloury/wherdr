@@ -1,5 +1,9 @@
 # wherdr 2.0.0
 
+> **Upgrading from 1.x? Back up first and read the Update section below.**
+> wherdr 2.0 has no Docker image: on a 1.x Docker install, the suggested `docker compose pull`
+> keeps 1.3.4. Follow the [Docker migration guide](https://github.com/afloury/wherdr/blob/main/docs/migrate-from-1.x-docker.md) instead.
+
 ## New
 
 The new Board works with herdr-projects 1.2.1 or later across your machines: create,
@@ -42,8 +46,9 @@ and Claude quota snapshots keep the account and observation together.
    wherdr 2.0.0 requires herdr-projects **1.2.1 or later** for the Board. The old Project
    panel, TASKS.md, threads, inbox and routines integration are removed. Stay on
    wherdr **1.3.4** if you still need herdr-projects 0.2.
-2. **Docker is removed.** Move to the [native service](https://github.com/afloury/wherdr/blob/v2.0.0/docs/herdr-projects-1x.md#moving-from-docker-to-the-native-service),
-   keeping your port and data. The plugin switches its old Docker mode to native on
+2. **Docker is removed.** Move to the native service with the
+   [Docker migration guide](https://github.com/afloury/wherdr/blob/main/docs/migrate-from-1.x-docker.md), keeping your port and data. You can hand that
+   guide to an AI agent: it lists checkable steps and the way back. The plugin switches its old Docker mode to native on
    update and points to that guide. Existing 1.x images remain on GHCR for 1.x users.
 3. Once 2.0.0 is published, update the native Herdr plugin with **U** in its panel or
    rerun the installer. For npm, run `npm install -g wherdr@2.0.0 && wherdr restart`;
