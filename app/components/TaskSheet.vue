@@ -474,6 +474,7 @@ function chat() {
         <h4>{{ tl('Description', 'Description') }}</h4>
         <p class="task-sheet-text">{{ details.description }}</p>
       </section>
+      <TaskSettings v-if="!embedded" :machine="machine" :id="task.id" :active="open" :reachable="reachable" />
       <section v-if="details?.plan" class="task-sheet-block">
         <h4>{{ tl('Plan', 'Plan') }}</h4>
         <p class="task-sheet-text">{{ details.plan }}</p>

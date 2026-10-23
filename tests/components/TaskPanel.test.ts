@@ -18,6 +18,8 @@ let msg = ''
 // What the server adds from the task's file (failureStale).
 let more: Record<string, unknown> = {}
 let review: unknown = null
+let settingsReads = 0
+registerEndpoint('/api/tasks/settings', () => { settingsReads++; return { settings: [], problems: [] } })
 const calls: unknown[] = []
 registerEndpoint('/api/tasks/details', () => ({ ...parseTaskDetails(JSON.stringify({ task: { id: 'demo/9', title: 'Improve search', stage, msg, description: 'Search by title' }, failure, review, summary: 'Search tested.' })), ...more, pane }))
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
@@ -31,7 +33,7 @@ async function panel(extra = {}, agent: string | null = null, status: 'idle' | '
   await flushPromises()
   return w
 }
-afterEach(() => { review = null; toasts.length = 0; failure = {}; pane = 'w1:p1'; stage = 'failed'; msg = ''; more = {}; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] }; allSessionsState.value = { ok: false, workspaces: [], panes: [] } })
+afterEach(() => { settingsReads = 0; review = null; toasts.length = 0; failure = {}; pane = 'w1:p1'; stage = 'failed'; msg = ''; more = {}; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] }; allSessionsState.value = { ok: false, workspaces: [], panes: [] } })
 
 describe('task panel', () => {
   it('labels the worker conversation and opens the separate reviewer terminal', async () => {
@@ -95,7 +97,7 @@ describe('task panel', () => {
     const w = await panel()
     expect(w.emitted('noAgent')).toBeUndefined()
     // Nothing to talk to: straight to Task, the other tabs hidden.
-    expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Task'])
+    expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Task', 'Settings'])
     expect(w.find('.task-content').text()).toContain('Search by title')
     expect(w.find('.task-new').exists()).toBe(false)
     expect(w.find('.task-setup').exists()).toBe(false)
@@ -107,14 +109,14 @@ describe('task panel', () => {
     stage = 'todo'
     const todo = { ...row(), stage: 'todo', state: 'idle', app: '', group: 'todo' as const }
     const w = await panel({ task: todo, target: { kind: 'task', machine: '', id: `demo/9-${Math.random()}` } }, 'claude')
-    expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Task'])
+    expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Task', 'Settings'])
     expect(w.find('.task-content').exists()).toBe(true)
     expect(w.text()).not.toContain('No agent conversation yet')
     // Its agent starts: Conversation is back and shown.
     pane = 'w1:p1'
     stage = 'working'
     await w.setProps({ task: { ...todo, stage: 'working', state: 'working', app: 'claude', group: 'working' } })
-    await vi.waitFor(() => expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Terminal', 'Task']))
+    await vi.waitFor(() => expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Terminal', 'Task', 'Settings']))
     expect(w.find('.embedded-agent').text()).toBe('chat')
     w.unmount()
   })
@@ -140,7 +142,7 @@ describe('task panel', () => {
     expect(again.find('.embedded-agent').text()).toBe('term')
     pane = null
     await again.setProps({ task: { ...task, msg: 'stopped' } })
-    await vi.waitFor(() => expect(again.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Task']))
+    await vi.waitFor(() => expect(again.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Task', 'Settings']))
     // Its reply field (tell) is the default view again, not the terminal.
     expect(again.find('#board-panel-tell').exists()).toBe(true)
     again.unmount()
@@ -154,7 +156,7 @@ describe('task panel', () => {
     stage = 'working'
     const task = { ...row(), stage: 'working', state: 'working', group: 'working' as const }
     const w = await panel({ task, target: { kind: 'task', machine: '', id: `demo/9-${Math.random()}` } })
-    expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Task'])
+    expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Task', 'Settings'])
     expect(w.find('#board-panel-tell').exists()).toBe(true)
     w.unmount()
   })
@@ -296,7 +298,7 @@ describe('task panel', () => {
       expect(buttons(w)).toEqual(['Open the reviewer'])
       expect(w.find('.task-needs').text()).not.toContain('Answer in the conversation')
       expect(w.find('.task-needs').text()).not.toContain('Open terminal')
-      expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Terminal', 'Reviewer', 'Task'])
+      expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Terminal', 'Reviewer', 'Task', 'Settings'])
       await w.find('.task-needs-reviewer-open').trigger('click')
       await flushPromises()
       // Its pane, in its conversation (where the dialog shows as choices).
@@ -477,4 +479,23 @@ describe('task panel', () => {
     expect(busy.find('.task-needs').exists()).toBe(false)
     busy.unmount()
   })
+})
+
+
+it('keeps settings loaded through board row refreshes and tab switches', async () => {
+  const w = await panel({ target: { kind: 'task', machine: '', id: 'demo/settings-cache' } }, 'claude')
+  expect(settingsReads).toBe(0)
+  const tab = (name: string) => w.findAll('.board-panel-tabs button').find(button => button.text() === name)!
+  await tab('Settings').trigger('click')
+  await vi.waitFor(() => expect(w.find('.task-settings').text()).toContain('No settings returned'))
+  expect(settingsReads).toBe(1)
+  expect(w.find('.embedded-agent').exists()).toBe(false)
+  await w.setProps({ task: { ...row(), msg: 'Board refreshed' } })
+  await flushPromises()
+  expect(settingsReads).toBe(1)
+  await tab('Task').trigger('click')
+  await tab('Settings').trigger('click')
+  await flushPromises()
+  expect(settingsReads).toBe(1)
+  w.unmount()
 })
