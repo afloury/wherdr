@@ -82,6 +82,13 @@ type HerdrCall = (method: string, params?: Record<string, unknown>, timeoutMs?: 
 type Json = any
 
 const clip = (s: string, n = MAX_TEXT) => (s.length > n ? s.slice(0, n) + '…' : s)
+// Keep notification identities server-side. Absolute line offsets survive a
+// moving tail window; lengths and text can change while a reply streams.
+const replyKeys = new WeakMap<ChatItem, string>()
+function replyItem(item: ChatItem, ref: string | undefined, block = 0): ChatItem {
+  if (ref) replyKeys.set(item, `${item.ts || ''}:${ref.split(':')[0]}:${block}`)
+  return item
+}
 const firstLine = (s: unknown) => String(s || '').split('\n').find(l => l.trim()) || ''
 
 // "Technical" messages injected into the thread (system reminders, outputs of
@@ -427,10 +434,10 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
         noteSaid(d)
       }
     } else if (Array.isArray(content)) {
-      for (const part of content) {
+      for (const [block, part] of content.entries()) {
         const reply = assistantText(part)
         if (reply) {
-          items.push({ role: 'assistant', text: clip(reply), ts })
+          items.push(replyItem({ role: 'assistant', text: clip(reply), ts }, ref, block))
         } else if (part.type === 'tool_use') {
           const t: ChatItem = { role: 'tool', name: part.name, text: clip(toolSummary(part.name, part.input, home), 300), ts }
           tools.set(part.id, t)
@@ -500,7 +507,10 @@ export function parseCodex(lines: Lines): Parsed {
         } else if ((part.type === 'input_text' || part.type === 'output_text') && part.text && !isNoise(part.text)) text += (text ? '\n' : '') + part.text
         else if (part.type === 'input_image') images++
       }
-      if (text.trim() || images) items.push({ role: p.role, text: clip(text.trim()), images, ref: images ? ref : undefined, ts })
+      if (text.trim() || images) {
+        const item: ChatItem = { role: p.role, text: clip(text.trim()), images, ref: images ? ref : undefined, ts }
+        items.push(p.role === 'assistant' ? replyItem(item, ref) : item)
+      }
     } else if (p.type === 'custom_tool_call' || p.type === 'function_call' || p.type === 'local_shell_call') {
       let summary: unknown = ''
       if (p.type === 'custom_tool_call') summary = codexCommand(p.input)
@@ -614,13 +624,13 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
       const images = parts.filter(p => p && p.type === 'image').length
       if (text || images) items.push({ role: 'user', text: clip(text), images, ref: images ? ref : undefined, ts })
     } else if (m.role === 'assistant') {
-      for (const part of Array.isArray(m.content) ? m.content : []) {
+      for (const [block, part] of (Array.isArray(m.content) ? m.content : []).entries()) {
         if (!part) continue
         if (part.type === 'thinking' && typeof part.thinking === 'string' && part.thinking.trim()) {
           const ms = ts && priorTs ? Math.max(0, Date.parse(ts) - Date.parse(priorTs)) : undefined
           items.push({ role: 'thinking', text: clip(part.thinking), ts, ms: Number.isFinite(ms) ? ms : undefined })
         } else if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
-          items.push({ role: 'assistant', text: clip(part.text), ts })
+          items.push(replyItem({ role: 'assistant', text: clip(part.text), ts }, ref, block))
         } else if (part.type === 'toolCall') {
           const name = String(part.name || '').trim()
           const t: ChatItem = { role: 'tool', name: OMP_TOOLS[name] || name, text: clip(ompToolSummary(part.arguments, home), 300), ts, omp: ompToolCall(name, part.arguments, cwd, home) }
@@ -1183,7 +1193,8 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
         const it = r.items[i]!
         if (it.role === 'assistant' && it.text.trim()) {
           const text = it.text.replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180)
-          return { key: `${it.ts || ''}:${it.ref?.split(':')[0] || i}`, text }
+          const key = replyKeys.get(it)
+          if (key) return { key, text }
         }
       }
     } catch { /* no preview */ }
