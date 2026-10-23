@@ -33,6 +33,12 @@ export function machineQuotaRows(q: Quotas | null, key: string, hidden: readonly
   return rows
 }
 
+// A machine bar tab showing one machine: the shared rows and that machine's
+// own rows together, Claude first, then Codex.
+export function tabQuotaRows(top: readonly QuotaRow[], machine: readonly QuotaRow[]): QuotaRow[] {
+  return (['claude', 'codex'] as const).flatMap(agent => [...top, ...machine].filter(r => r.agent === agent))
+}
+
 // Claude quota status line of a machine (key '' = local), as the server read it.
 export function claudeSetupOf(q: Quotas | null, key: string): ClaudeSetup | null {
   return q?.claudeSetup?.find(s => s.key === key) || null

@@ -32,7 +32,10 @@
 - **New agent**: pick an installed agent (or a plain terminal), a folder, optionally a separate
   Git **worktree** and branch, resume the last conversation, and queue a first message.
 - **Machine bar**: at the top of the list, “All”, then each machine with its state and count; a
-  tap shows one machine alone. Settings › Appearance › Home screen › **Machine bar** orders its
+  tap shows one machine alone, without its header: its Claude and Codex quotas sit together at
+  the top, and an offline or reconnecting machine says so there. Right click (long press on a
+  phone) a machine's tab for its actions, those of its **…** menu; on a group's tab, for **Group
+  settings**. Settings › Appearance › Home screen › **Machine bar** orders its
   items, takes some off it or hides it (saved on the server). A machine's **…** menu opens the
   Board filtered on it (**Open the board**). In **Groups**, create a named selection of machines,
   check its members and drag their handles to set their order. Groups appear after All by default,
