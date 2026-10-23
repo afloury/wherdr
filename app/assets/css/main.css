@@ -3811,7 +3811,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 /* The side panel: one agent to talk to (a task's, a coordinator), in the agent
    view's side-by-side cell. Beside the Board on a computer, full screen on a phone. */
 :root { --board-panel-w: clamp(320px, clamp(400px, 44vw, 720px), calc(100vw - var(--side) - 280px)); }
-@media (min-width: 900px) {
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px), (min-width: 700px) and (min-device-width: 700px) and (min-device-height: 700px) and (pointer: coarse) {
   .board-panel .panel-handle { left: auto; right: var(--board-panel-w); }
   body:has(.board-panel.resizing) { cursor: col-resize; user-select: none; }
   body:has(.board-panel.resizing) iframe, body:has(.board-panel.resizing) .xterm { pointer-events: none; }
