@@ -60,7 +60,9 @@ for (const language of ['en', 'fr']) {
       await expect(waiting.locator('.card-more')).toHaveCount(0)
       const review = page.locator('.project-tree .card', { hasText: 'DEMO-10' })
       await expect(review.locator('.home-task-stage')).toHaveCount(compact ? 0 : 1)
-      if (!compact) await expect(review.locator('.home-task-stage')).toHaveText(language === 'fr' ? 'En relecture · codex' : 'Under review · codex')
+      // The stage stays short; the reviewer has its own mark beside it.
+      if (!compact) await expect(review.locator('.home-task-stage')).toHaveText(language === 'fr' ? 'En relecture' : 'Under review')
+      await expect(review.locator('.task-agent-reviewer')).toHaveAttribute('aria-label', language === 'fr' ? 'Relu par Codex' : 'Reviewed by Codex')
       const title = card.locator('.card-title')
       expect(await title.evaluate(el => el.scrollWidth >= el.clientWidth)).toBe(true)
       expect(await card.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
