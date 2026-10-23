@@ -45,6 +45,9 @@ async function openTabMenu(page: Page, label: string, phone: boolean) {
   await tab.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: box.x + 10, clientY: box.y + 10 })
   await page.waitForTimeout(600)
   await tab.dispatchEvent('pointerup', { pointerType: 'touch' })
+  // The long-press guard ignores synthetic clicks for 800 ms. Let it expire
+  // before the next independent tab selection; screenshots are not a timer.
+  await page.waitForTimeout(850)
 }
 const menu = (page: Page, phone: boolean) => (phone ? page.getByRole('dialog') : page.getByRole('menu'))
 
@@ -71,6 +74,7 @@ test('a machine tab: no header, quotas together, actions on the tab', { tag: ['@
 
   // The local machine (key '') too.
   await page.locator('[data-bar-id=""]').click()
+  await expect(page.locator('[data-bar-id=""]')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('section.machine')).toHaveCount(1)
   await expect(page.locator('section.machine .machine-row')).toHaveCount(0)
   const local = await page.locator('.scroll > .quotas .quota-who').evaluateAll(els => els.map(e => e.getAttribute('title')))
