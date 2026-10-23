@@ -52,9 +52,23 @@ describe('scheduled task in a Claude transcript', () => {
     expect(items.queue).toEqual([])
   })
 
-  it('a task waiting to fire (agent busy) is not shown as the user\'s queued message', () => {
-    const items = parse([human('go', ts(0)), cron(ts(0, 5)), enqueue(PROMPT, ts(7)), enqueue('typed on the computer', ts(7, 2))])
+  it('a task fired while the agent works is not the user\'s queued message', () => {
+    const items = parse([human('go', ts(0)), cron(ts(0, 5)), enqueue(PROMPT, ts(7)), fire(ts(7)), enqueue('typed on the computer', ts(7, 2))])
     expect(items.queue!.map(q => q.text)).toEqual(['typed on the computer'])
+  })
+
+  it('its fire line written before its enqueue line: not queued either', () => {
+    const items = parse([fire(ts(7)), enqueue(PROMPT, ts(7)), metaPrompt(ts(7, 1)), reply('OK', ts(7, 4))])
+    expect(items.queue).toEqual([])
+    expect(items.map(i => i.role)).toEqual(['scheduled', 'assistant'])
+  })
+
+  it('the same words typed by the user stay queued: only the task\'s own lines make it a task', () => {
+    const cronRun = j({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_2', name: 'CronCreate', input: { cron: '*/5 * * * *', prompt: 'Run the tests' } }] }, timestamp: ts(0) })
+    expect(parse([cronRun, enqueue('Run the tests', ts(1))]).queue!.map(q => q.text)).toEqual(['Run the tests'])
+    // Typed again while the task's prompt is queued: one entry leaves, the typed one stays.
+    const both = parse([enqueue(PROMPT, ts(5)), fire(ts(7)), enqueue(PROMPT, ts(7))])
+    expect(both.queue!.map(q => q.ts)).toEqual([ts(5)])
   })
 
   it('a prompt taken during a turn (queued_command not from a human) is the scheduled item', () => {
@@ -82,10 +96,13 @@ describe('Claude queue entries shown as pending', () => {
   const entry = (text: string, t = ts(7)): ClaudeQueueEntry => ({ text, ts: t })
 
   it('an entry whose text the conversation already shows after it is not pending', () => {
-    const items: ChatItem[] = [{ role: 'scheduled', text: PROMPT, ts: ts(7, 1) }, { role: 'assistant', text: 'OK', ts: ts(7, 4) }]
-    expect(pendingQueue({ mine: [], claude: [entry(PROMPT)], items, screen: null })).toEqual([])
     const typed: ChatItem[] = [{ role: 'user', text: 'typed on the computer', ts: ts(7, 1) }]
     expect(pendingQueue({ mine: [], claude: [entry('typed on the computer')], items: typed, screen: null })).toEqual([])
+  })
+
+  it('a scheduled task with the same words does not hide a typed entry', () => {
+    const items: ChatItem[] = [{ role: 'scheduled', text: 'Run the tests', ts: ts(7, 1) }]
+    expect(pendingQueue({ mine: [], claude: [entry('Run the tests')], items, screen: null }).map(q => q.raw)).toEqual(['Run the tests'])
   })
 
   it('the same text said earlier does not hide a new entry', () => {

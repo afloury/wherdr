@@ -85,9 +85,10 @@ export function pendingQueue(o: {
   const minePhases = queuedPhases(list.map(q => q.text), o.screen)
   let ownPhotos = list.filter((q, i) => photosOnly(q.text) && !q.state && minePhases[i] === 'queued').length
   const memPhotos = (o.memory || []).filter(m => photosOnly(m.text) && !mine.some(q => q.id === m.id))
-  // A Claude entry whose text the conversation already shows, from its time
-  // on (as a message, or a scheduled task's prompt): taken, not waiting.
-  const landed = (q: ClaudeQueueEntry) => o.items.some(i => (i.role === 'user' || i.role === 'scheduled')
+  // A Claude entry whose text the conversation already shows as a message,
+  // from its time on: taken, not waiting. (A scheduled task's prompt leaves
+  // the queue on the server, by its own lines: the same words typed are not it.)
+  const landed = (q: ClaudeQueueEntry) => o.items.some(i => i.role === 'user'
     && (!q.ts || !i.ts || Date.parse(i.ts) >= Date.parse(q.ts) - 2000) && holds(i.text, q.text))
   for (const q of o.claude) {
     if (o.resting) break
