@@ -342,9 +342,10 @@ const dropHint = computed(() => pane.value?.agent === 'claude'
   : t('Images, text and code files'))
 
 // Agent menu: sheet on the phone, dropdown menu on a computer.
+useNotificationClock()
 const agentMenu = computed<MenuItem[]>(() => {
   const p = pane.value
-  const items: MenuItem[] = []
+  const items: MenuItem[] = p ? [notificationMenuItem(conversationNotificationTarget(p))] : []
   if (canAttachTerminal.value) items.push({ label: t('Attach a file…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
   if (p) items.push({ label: t('View changes'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
   if (p) items.push({ label: t('Browse files'), icon: 'i-lucide-folder-tree', run: () => { filesOpen.value = true } })
@@ -545,7 +546,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
           :aria-label="t('Back')" @click="goBack"
         />
         <div class="agent-head">
-          <div class="agent-title">{{ headTitle }}</div>
+          <div class="agent-title">{{ headTitle }} <UIcon v-if="pane && notificationsMuted(conversationNotificationTarget(pane), pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
           <div class="agent-meta">
             <StatusPill :pane="pane" kind />
             <span v-if="subtitle" class="agent-subtitle">{{ subtitle }}</span>

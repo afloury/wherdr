@@ -528,9 +528,19 @@ export function retryEvents() {
   connectEvents()
 }
 
-// Tells the server which agent is on screen: it does not notify for that one.
+// Visible, focused and recently used: renew a 30-second server lease.
+let notificationActivityAt = Date.now()
+let notificationLastSentAt = 0
+let notificationLastVisible = false
+export function noteNotificationActivity() {
+  notificationActivityAt = Date.now()
+  if (!notificationLastVisible || notificationActivityAt - notificationLastSentAt >= 1000) sendViewing()
+}
 export function sendViewing() {
-  if (evWs && evWs.readyState === 1) evWs.send(JSON.stringify({ type: 'viewing', pane: curPane.value, visible: pageVisible.value }))
+  notificationLastSentAt = Date.now()
+  const visible = pageVisible.value && document.hasFocus() && Date.now() - notificationActivityAt < 120_000
+  notificationLastVisible = visible
+  if (evWs && evWs.readyState === 1) evWs.send(JSON.stringify({ type: 'viewing', pane: curPane.value, visible }))
 }
 watch(curPane, sendViewing)
 

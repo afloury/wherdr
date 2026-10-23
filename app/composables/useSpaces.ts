@@ -260,12 +260,13 @@ export function paneWorkspaceItems(p: Pane, project = false): MenuItem[] {
     'workspace.rename': { label: t('Rename space'), icon: 'i-lucide-pencil', run: () => renameWorkspace(ws.id) },
     'workspace.close': { label: t('Close space'), icon: 'i-lucide-trash-2', danger: true, run: () => closeWorkspace(ws.id) },
   }
-  return [{ kind: 'group', label: tl(`Space “${ws.label}”`, `Espace « ${ws.label} »`) }, ...entries.filter(e => !project || e !== 'workspace.rename').map(e => item[e])]
+  return [notificationMenuItem(conversationNotificationTarget(p)), { kind: 'group', label: tl(`Space “${ws.label}”`, `Espace « ${ws.label} »`) }, ...entries.filter(e => !project || e !== 'workspace.rename').map(e => item[e])]
 }
 
 // Full menu of a plan pane: rename, split, move, close.
 export function paneItems(p: Pane): MenuItem[] {
   return [
+    notificationMenuItem(conversationNotificationTarget(p)),
     { label: t('Rename pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } },
     ...paneSpaceItems(p),
     { kind: 'separator' },
