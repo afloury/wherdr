@@ -35,7 +35,9 @@
   (grayed-out in the empty field), `Tab` takes it on a computer and **Use**, inside the field on
   its right, on a phone: the field gets the text, to edit or send. A prompt Claude Code sends itself
   (a `CronCreate` scheduled task, a `/loop` wakeup) shows in its place as a folded **Scheduled task**
-  with a clock, never as your message nor as a queued one. A long pasted text (log, output) becomes
+  with a clock, never as your message nor as a queued one. Background completion notifications
+  appear the same way as **Background task** and leave the pending queue. Separate task firings
+  remain separate events even with identical prompts and no reply between them. A long pasted text (log, output) becomes
   a "Pasted text · N lines" card, sent to the agent as it is and shown the same way in the
   conversation, where it opens in full with Copy; long typed messages fold with Show more.
   The draft (text, quotes, attachments) is kept per agent, across reloads: when Herdr closes a
