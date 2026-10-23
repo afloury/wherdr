@@ -9,13 +9,22 @@ function stageLabel(s: MemberStage): string {
     'pick': tl('Comparing attempts', 'Comparaison des essais'),
     'planning': tl('Planning', 'Plan en cours'),
   }[s.what]
-  return s.by ? `${what} · ${s.by}` : what
+  return what
 }
 export function memberCard(m: Member): BoardCard | null {
   if (!m.task) return null
   const task = m.task
   const stage = memberStage(m)
+  const worker = task.panes.find(p => p.role === 'worker')
+  const workerPane = m.row.kind === 'space'
+    ? m.row.panes.find(p => p.id === worker?.id)
+    : m.role === 'worker' && !m.focus ? m.row.lead : null
   return {
+    identity: m.role === 'attempt' ? { agent: m.row.lead.agent || '', reviewer: '', from: '' } : {
+      agent: task.identity?.agent || worker?.kind || workerPane?.agent || '',
+      reviewer: task.identity?.reviewer || (m.focus?.role === 'reviewer' ? m.focus.kind : ''),
+      from: task.identity?.from || '',
+    },
     group: memberGroup(m) || undefined,
     tag: memberTag(m, t('review')),
     stage: stage && ['review', 'plan-review', 'pick'].includes(stage.what) ? stageLabel(stage) : undefined,

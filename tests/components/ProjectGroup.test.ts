@@ -219,14 +219,35 @@ describe('a repo group on the home list', () => {
     expect(cards).toHaveLength(1)
     const card = cards[0]!
     expect(card.find('.home-task-tag').text()).toBe('SHOP-7')
-    expect(card.find('.home-task-stage').text()).toBe('Under review · codex')
+    expect(card.find('.home-task-stage').text()).toBe('Under review')
     expect(card.find('.home-task-line').text()).toContain('Reading the diff')
-    // The reviewer's state and program.
+    // Activity follows the reviewer; the main logo stays with the worker.
     expect(card.classes()).toContain('working')
-    expect(card.find('.avatar').classes().join(' ')).toContain('codex')
+    expect(card.find(':scope > .avatar').classes()).toContain('claude')
+    expect(card.find('.task-agent-reviewer .avatar').classes()).toContain('codex')
     navigate.mockClear()
     await card.trigger('click')
     expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: '', task: 'shop/7' } })
+    w.unmount()
+  })
+
+  it('shows the current worker and who it took over from', async () => {
+    const worker = pane('w8:p1', { agent: 'codex', status: 'working' })
+    const current = { ...task(8, worker), identity: { agent: 'codex', reviewer: '', from: 'claude' } }
+    const w = await mount(section({ members: [{ row: row(worker), task: current, role: 'worker' }] }))
+    const card = w.find('.project-tree .card')
+    expect(card.find(':scope > .avatar').classes()).toContain('codex')
+    expect(card.find('.task-agent-from').text()).toContain('Took over from')
+    expect(card.find('.task-agent-from .avatar').classes()).toContain('claude')
+    expect(card.find('.task-agent-reviewer').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('keeps each parallel attempt’s own agent logo', async () => {
+    const attempt = pane('w8:p1', { agent: 'codex', status: 'working' })
+    const parent = { ...task(8, attempt), identity: { agent: 'claude', reviewer: '', from: '' }, panes: [{ id: attempt.id, role: 'attempt' as const, letter: 'B' }] }
+    const w = await mount(section({ members: [{ row: row(attempt), task: parent, role: 'attempt', letter: 'B' }] }))
+    expect(w.find('.project-tree .card > .avatar').classes()).toContain('codex')
     w.unmount()
   })
 

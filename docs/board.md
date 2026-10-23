@@ -77,6 +77,12 @@ What the Board shows and does:
   not started yet takes a first message (`coordinator tell`), which starts it. One that
   herdr-projects could not start (an agent not installed there…) says why, with **Try again**
   (`coordinator restart`) once it is fixed: the message still waiting then goes in.
+- **Task identity** stays with the worker on the home list, Board card and conversation header.
+  During a review, **Reviewed by** names the reviewer beside its own small logo. The conversation
+  explains that it belongs to the worker and the review runs separately; **Open reviewer terminal**
+  opens the reviewer's terminal when reachable, or a session switch is offered when it runs in
+  another open session. After a worker fallback, the main logo names the current worker and
+  **Took over from** names the previous one from the recorded handover.
 - **The agent list** groups the board's spaces under their repo, as Herdr's sidebar does: each
   machine's Coordinator and machine coordinator first, each with its own icon and label (**Board
   coordinator** with the board's icon, **Machine coordinator** with the machine's), then per repo a head row, its project

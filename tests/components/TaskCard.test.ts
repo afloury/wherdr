@@ -29,7 +29,7 @@ describe('TaskCard', () => {
     expect(pr.attributes('href')).toBe('https://github.com/acme/app/pull/484')
     expect(pr.attributes('target')).toBe('_blank')
     // The tags below no longer repeat it.
-    expect(w.find('.task-chips').text()).not.toContain('#484')
+    expect(w.findAll('.task-chips').map(c => c.text()).join(' ')).not.toContain('#484')
   })
   it('opens the task from its button, not from its pull request link', async () => {
     const w = await mountSuspended(TaskCard, { props: { task: row({ state: 'working', kind: '', stage: 'working', msg: 'Writing tests' }) } })
@@ -37,4 +37,12 @@ describe('TaskCard', () => {
     await w.find('.task-card-open').trigger('click')
     expect(w.emitted('open')).toHaveLength(1)
   })
+})
+
+it('keeps the worker logo with separate reviewer and takeover marks', async () => {
+  const w = await mountSuspended(TaskCard, { props: { task: { ...row({ stage: 'reviewing', app: 'claude' }), identity: { agent: 'codex', reviewer: 'claude', from: 'omp' } } } })
+  expect(w.find('.task-agent-primary .avatar').classes()).toContain('codex')
+  expect(w.find('.task-agent-reviewer').text()).toContain('Reviewed by')
+  expect(w.find('.task-agent-reviewer .avatar').classes()).toContain('claude')
+  expect(w.find('.task-agent-from').text()).toContain('Took over from')
 })

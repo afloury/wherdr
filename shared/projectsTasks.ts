@@ -24,6 +24,7 @@ export interface TaskRow {
   stage: string
   title: string
   msg: string
+  identity?: TaskAgentIdentity
   app: string // the agent program on it (claude, codex, …)
   progress: number | null
   eta: number | null
@@ -53,6 +54,7 @@ export interface TaskDetails {
   msg: string
   description: string
   agent: string
+  identity?: TaskAgentIdentity
   pr: string
   branch: string
   worktree: string
@@ -98,6 +100,21 @@ export interface TaskDetails {
 export interface TaskReviewer { pane: string | null }
 export const REVIEW_STAGES: readonly string[] = ['reviewing', 'reviewneeds']
 export type TaskPanes = { pane: string | null, reviewer?: TaskReviewer | null }
+
+// Identity stays with the worker, even when `app` names the active helper.
+export interface TaskAgentIdentity { agent: string, reviewer: string, from: string }
+export function taskAgentIdentity(value: unknown): TaskAgentIdentity {
+  const r = obj(value)
+  const program = (v: unknown) => str(v, 160).split('/')[0] || ''
+  const current = str(r?.on, 160) || str(r?.agent, 160) || str(r?.app, 160)
+  const handovers = Array.isArray(r?.handovers) ? r.handovers : []
+  const last = [...handovers].reverse().map(obj).find(h => h?.role === 'worker')
+  return {
+    agent: program(current),
+    reviewer: REVIEW_STAGES.includes(str(r?.stage, 30)) ? program(obj(obj(r?.link)?.reviewer)?.kind) : '',
+    from: last && last.to === current ? program(last.from) : '',
+  }
+}
 
 // A task's wait (1.x `details` `after`): the tasks it waits for (`waitsFor`,
 // ids, `machine:repo/n` for another machine's), those not done yet (`left`),
@@ -232,6 +249,7 @@ export function parseTaskRow(v: unknown): TaskRow | null {
     id: t.id, repo, n: Number(n),
     state: str(t.state, 20), kind: str(t.kind, 20), stage: str(t.stage, 30),
     title: str(t.title, 300), msg: str(t.msg, 1000), app: str(t.app, 40),
+    ...(obj(t.identity) ? { identity: { agent: str(obj(t.identity)?.agent, 40), reviewer: str(obj(t.identity)?.reviewer, 40), from: str(obj(t.identity)?.from, 40) } } : {}),
     progress: progress === null ? null : Math.max(0, Math.min(100, Math.round(progress))),
     eta: num(t.eta),
     pr: cleanUrl(t.pr),
@@ -743,7 +761,7 @@ export function rowFromTaskFile(t: unknown, paneStatus: string | null): TaskRow 
   const { state, kind } = stateFromTaskFile(o, paneStatus)
   const review = obj(o.review)
   return parseTaskRow({
-    id: o.id, state, kind, mergeFailed: o.mergeFailed, syncBlocked: o.syncBlocked, prFailure: o.prFailure, prState: o.prState, stage: o.stage, title: o.title, msg: o.msg, app: o.app,
+    id: o.id, identity: taskAgentIdentity(o), state, kind, mergeFailed: o.mergeFailed, syncBlocked: o.syncBlocked, prFailure: o.prFailure, prState: o.prState, stage: o.stage, title: o.title, msg: o.msg, app: o.app,
     pr: o.pr, review: review && !review.stale ? review : null, reviewRound: o.reviewRound,
     research: o.research === true, archivedAt: o.archivedAt, created: o.created,
     progress: obj(o.watch)?.progress,

@@ -31,6 +31,34 @@ async function panel(extra = {}, agent: string | null = null, status: 'idle' | '
 afterEach(() => { failure = {}; pane = 'w1:p1'; stage = 'failed'; msg = ''; more = {}; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] }; allSessionsState.value = { ok: false, workspaces: [], panes: [] } })
 
 describe('task panel', () => {
+  it('labels the worker conversation and opens the separate reviewer terminal', async () => {
+    stage = 'reviewing'
+    more = { identity: { agent: 'claude', reviewer: 'codex', from: '' }, reviewer: { pane: 'w1:p4' } }
+    const w = await panel({}, 'claude')
+    herdrState.value = { ...herdrState.value, panes: [...herdrState.value.panes, { ...herdrState.value.panes[0]!, id: 'w1:p4', agent: 'codex', status: 'working' }] }
+    await flushPromises()
+    expect(w.find('.board-panel-name > .avatar').classes()).toContain('claude')
+    expect(w.find('.task-agent-reviewer .avatar').classes()).toContain('codex')
+    expect(w.find('.task-review-context').text()).toContain('Claude’s conversation. The review runs separately.')
+    await w.find('.task-review-context button').trigger('click')
+    expect(w.find('.embedded-agent').text()).toBe('term')
+    w.unmount()
+  })
+  it('offers the reviewer session during an ongoing review elsewhere', async () => {
+    stage = 'reviewing'
+    more = { identity: { agent: 'claude', reviewer: 'codex', from: '' }, reviewer: { pane: 'abcdef01~w5:p1' } }
+    // Details can move on before the cached Board row does.
+    const w = await panel({ task: { ...row(), stage: 'working' } }, 'claude')
+    allSessionsState.value = {
+      ok: true, workspaces: [],
+      panes: [{ ...herdrState.value.panes[0]!, id: 'abcdef01~w5:p1', machine: 'abcdef01', agent: 'codex' }],
+      machines: [{ key: 'abcdef01', baseKey: '', session: 'review', label: 'devbox', local: true, status: 'online', error: null }],
+    }
+    await flushPromises()
+    expect(w.find('.task-review-context button').text()).toBe('Switch to the reviewer session')
+    expect(w.find('.board-panel-name > .avatar').classes()).toContain('claude')
+    w.unmount()
+  })
   it('explains setup failure instead of opening a bare shell', async () => {
     failure = { stage: 'setup', title: 'Setup failed', detail: 'npm ci\nLockfile missing', next: 'Restore the lockfile.', agentCanFix: false }
     const w = await panel()

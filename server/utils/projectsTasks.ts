@@ -18,7 +18,7 @@ import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
-  type MachineTasks, type TaskDetails, type TaskPanes, type TaskReviewer, REVIEW_STAGES, type TaskRow, type TasksBoard,
+  taskAgentIdentity, type MachineTasks, type TaskDetails, type TaskPanes, type TaskReviewer, REVIEW_STAGES, type TaskRow, type TasksBoard,
   TASK_QUESTION_MAX, taskCanFix, taskCanApproveAnyway, failureIsStale, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
   cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots,
@@ -189,10 +189,10 @@ function readList(m: Machine): Promise<Cached> {
   if (now) return now
   const started = Date.now()
   const read = command(m, ['list', '--json'], LIST_TIMEOUT_MS).then(async (text): Promise<Cached> => ({ tasks: await withCreated(m, await Promise.all(parseTaskList(text).map(async row => {
-    if (row.stage !== 'approval') return row
-    // The CLI list omits these blockers. Read only their file flags, with no
-    // extra upkeep commands, so Home, Board and panel use the same group.
+    // The CLI list omits worker identity, handovers and approval blockers.
+    // Read the file without extra upkeep commands, as Home and the panel do.
     const file = await readTaskFile(m, row.id).catch(() => null)
+    if (file) row = { ...row, identity: taskAgentIdentity(file) }
     return file?.stage === 'approval' && rowFromTaskFile(file, null)?.approvalBlocked
       ? { ...row, approvalBlocked: true, group: 'needs' as const } : row
   }))), at: Date.now(), readAt: Date.now() }))
@@ -320,7 +320,7 @@ export async function taskDetails(machine: unknown, id: unknown): Promise<TaskDe
   // The closing note and whether it is archived: in the task's file only (1.2.1's `details` leaves them out).
   if (!d.summary && typeof file?.summary === 'string') d = { ...d, summary: file.summary.slice(0, 8000).trim() }
   if (!d.archived && file?.archivedAt) d = { ...d, archived: true }
-  return { ...withStale(d, file), pane: taskPane(m, file), reviewer: reviewerOf(m, file, d.stage) }
+  return { ...withStale(d, file), ...(file ? { identity: taskAgentIdentity(file) } : {}), pane: taskPane(m, file), reviewer: reviewerOf(m, file, d.stage) }
 }
 
 // Whether its failure is behind it: the task's file has when it last moved on.

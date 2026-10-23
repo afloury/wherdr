@@ -223,7 +223,7 @@ onUnmounted(list.unmount)
         <span v-if="pane.agent" class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
       </template>
       <template v-else>
-      <AgentAvatar :agent="pane.agent" :coordinator="board?.coordinator" :icon="board?.icon" />
+      <AgentAvatar :agent="board?.identity ? board.identity.agent : pane.agent" :coordinator="board?.coordinator" :icon="board?.icon" />
       <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
       <span class="card-title" :title="board?.hint">{{ title }}</span>
       <span v-if="machineBadge" class="card-tag card-origin" :title="machineBadge">{{ machineBadge }}</span>
@@ -235,6 +235,7 @@ onUnmounted(list.unmount)
       <span v-else-if="!taskCard && compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>
       <span v-if="!taskCard || !board?.group" class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
       <span v-if="twoLines" class="home-task-line" :title="[board?.stage, boardLine].filter(Boolean).join(' — ')"><span v-if="taskCard && pane.usageLimit" class="home-task-stage quota-limit">{{ tl('Limit', 'Limite') }}</span><span v-if="board?.stage" class="home-task-stage">{{ board.stage }}</span>{{ boardLine }}</span>
+      <TaskAgentMark v-if="taskCard" :identity="board?.identity" />
       <button v-if="board?.onBoard && !taskCard" type="button" class="home-task-go" :title="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" :aria-label="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" @click.stop="board.onBoard"><UIcon name="i-lucide-square-kanban" /></button>
       </template>
       <Transition name="card-more" :appear="appear">

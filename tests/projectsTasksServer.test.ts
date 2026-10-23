@@ -222,6 +222,18 @@ describe('done tasks: when they were made', () => {
   })
 })
 
+describe('task identity across endpoints', () => {
+  it('list and details retain the worker, reviewer and recorded takeover', async () => {
+    const raw = { title: 'Improve search', stage: 'reviewing', agent: 'codex', app: 'claude', on: 'codex/gpt', handovers: [{ role: 'worker', from: 'claude', to: 'codex/gpt' }], link: { pane: 'w1:p1', reviewer: { pane: 'w1:p4', kind: 'omp' } } }
+    taskFile('demo/1', raw)
+    listReply = { code: 0, stdout: JSON.stringify([{ ...raw, id: 'demo/1' }]), stderr: '' }
+    detailsReply = JSON.stringify({ task: { id: 'demo/1', ...raw } })
+    const expected = { agent: 'codex', reviewer: 'omp', from: 'claude' }
+    expect((await read()).machines[0]!.tasks[0]!.identity).toEqual(expected)
+    expect((await T.taskDetails('', 'demo/1')).identity).toEqual(expected)
+  })
+})
+
 describe('actions on a task', () => {
   it('puts the user\'s words after --, so they are never read as flags', async () => {
     await read()

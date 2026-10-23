@@ -4168,3 +4168,16 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 /* Origin badges keep long machine and project names within dense home rows. */
 .card.compact .card-origin { max-width: 72px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; letter-spacing: 0; }
 .state-group .card.compact { column-gap: 5px; }
+
+/* Task identity is independent of the helper whose activity the row tracks. */
+.task-agent-mark, .task-agent-primary, .task-agent-reviewer, .task-agent-from { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.task-agent-mark { flex-wrap: wrap; gap: 4px 8px; font: 10px var(--font-mono); text-transform: uppercase; color: var(--muted); }
+.task-agent-mark .avatar { width: 16px; height: 16px; flex: 0 0 16px; font-size: 12px; }
+.task-agent-mark .avatar .iconify { width: 12px; height: 12px; }
+.task-review-context { flex: 0 0 auto; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.task-review-context button { text-decoration: underline; min-height: 44px; text-align: left; }
+
+.card.compact.task-row:has(> .task-agent-mark) { flex-wrap: wrap; }
+.card.compact.task-row > .task-agent-mark { order: 8; flex-basis: calc(100% - 26px); margin-left: 26px; }
+.task-card .board-card-head { flex-wrap: wrap; }
+.board-panel[data-kind="task"] .board-panel-who > .task-agent-mark { order: 3; flex: 0 0 100%; }
