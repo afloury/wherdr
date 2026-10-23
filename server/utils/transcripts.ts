@@ -107,15 +107,15 @@ const isSelfPrompt = (d: Json) => d.turnOrigin === 'scheduled' || Boolean(d.sche
 // Text of a prompt (a string, or text parts).
 const promptText = (c: unknown) => (typeof c === 'string' ? c
   : Array.isArray(c) ? c.filter((p: Json) => p && p.type === 'text').map((p: Json) => String(p.text || '')).join('\n') : '').trim()
-// queued_command origins of a scheduled prompt (not "human", nor "task-notification").
-const SCHEDULED_ORIGIN = /schedul|cron|wakeup|loop/i
+// Origins of prompts injected by Claude Code, including background completion.
+const SCHEDULED_ORIGIN = /schedul|cron|wakeup|loop|task-notification/i
 // A fire line and its enqueue line are written together (4 ms apart on 2.1.309).
 const FIRE_SLACK_MS = 5000
-// <scheduled-task …>prompt</scheduled-task> (a host's scheduled task): its prompt, else null.
-const SCHEDULED_TAG = /^\s*<scheduled-task(?:\s[^>]*)?>([\s\S]*?)(?:<\/scheduled-task>\s*)?$/
+// Injected task wrappers: unwrap scheduled prompts; retain notification metadata for matching.
+const SCHEDULED_TAG = /^\s*<(scheduled-task|task-notification)(?:\s[^>]*)?>([\s\S]*?)(?:<\/\1>\s*)?$/
 function scheduledTag(t: string): string | null {
   const m = SCHEDULED_TAG.exec(t)
-  return m ? m[1]!.trim() : null
+  return m ? (m[1] === 'task-notification' ? t.trim() : m[2]!.trim()) : null
 }
 // A message written by the user (after removing the paste wrappers).
 function humanText(t: unknown): string | null {
@@ -248,19 +248,34 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
   // line yet (should one come first):
   const fires: { text: string, ts: string | null }[] = []
   const near = (a: string | null, b: string | null) => !a || !b || Math.abs(Date.parse(a) - Date.parse(b)) <= FIRE_SLACK_MS
-  const fired = (text: string, ts: string | null) => {
+  // Only complementary representations of the same event may coalesce.
+  // Two fire lines are always two occurrences, even with the same task ID.
+  // A prompt with that ID may be consumed later, after a busy turn; without
+  // an ID only nearby representations can be paired.
+  const events: { text: string, ts: string | null, id?: string, background: boolean, sources: Set<string> }[] = []
+  const fired = (text: string, ts: string | null, source = 'tag', id?: string) => {
     if (!text.trim()) return
-    // The same fire seen again (its prompt line after its fire line, or taken
-    // during the turn): one item, one entry out of the queue.
-    const lastUser = items.findLastIndex(x => x.role === 'user' || x.role === 'scheduled')
-    const prev = lastUser >= 0 ? items[lastUser]! : null
-    if (prev && prev.role === 'scheduled' && sameMsg(prev.text, text) && !items.slice(lastUser + 1).some(x => x.role === 'assistant')) return
-    // Its enqueue line: the latest entry of this text, queued as it fired.
+    const background = source === 'notification' || /^\s*<task-notification[\s>]/.test(text)
+    const previous = events.findLast(e => sameMsg(e.text, text) && e.ts && ts
+      && (near(e.ts, ts) || (source !== 'fire' && e.sources.has('fire') && e.id && e.id === id))
+      && e.background === background && (!e.id || !id || e.id === id) && !e.sources.has(source))
+    if (previous) {
+      previous.sources.add(source)
+      previous.id ||= id
+      return
+    }
+    events.push({ text, ts, id, background, sources: new Set([source]) })
+    // Background completions may be consumed long after their enqueue.
     let i = -1
-    for (let k = queue.length - 1; k >= 0 && i < 0; k--) if (sameMsg(queue[k]!.text, text) && near(queue[k]!.ts, ts)) i = k
+    for (let k = queue.length - 1; k >= 0 && i < 0; k--) {
+      const q = queue[k]!
+      if (sameMsg(q.text, text) && (near(q.ts, ts) || (background && (!q.ts || !ts || q.ts <= ts)))) i = k
+    }
     if (i >= 0) queue.splice(i, 1)
     else fires.push({ text, ts })
-    items.push({ role: 'scheduled', text: clip(text), ts })
+    const display = /^\s*<task-notification[\s>]/.test(text)
+      ? (tagText(text, 'summary') || text.replace(/<[^>]+>/g, '').trim()) : text
+    items.push({ role: 'scheduled', text: clip(display), ts, ...(background ? { name: 'Background task' } : {}) })
     pendingCmd = null
   }
   // A user message appears: it leaves the queue, even without
@@ -375,11 +390,23 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     // Scheduled task fired (Claude Code 2.1.30x): a system line, then the
     // prompt as a meta user message (turnOrigin "scheduled").
     if (!d.isSidechain && d.type === 'system' && d.subtype === 'scheduled_task_fire') {
-      fired(String(d.prompt || ''), d.timestamp || null)
+      fired(String(d.prompt || ''), d.timestamp || null, 'fire', d.taskId)
       continue
     }
     if (!d.isSidechain && d.type === 'user' && d.isMeta && isSelfPrompt(d)) {
-      fired(promptText(d.message && d.message.content), d.timestamp || null)
+      fired(promptText(d.message && d.message.content), d.timestamp || null, 'prompt', d.scheduledTaskId)
+      continue
+    }
+    if (!d.isSidechain && d.type === 'user') {
+      const injected = promptText(d.message?.content)
+      if (/^\s*<task-notification[\s>]/.test(injected)) {
+        fired(injected, d.timestamp || null, 'tag')
+        continue
+      }
+    }
+    // A scheduled task's prompt taken during a turn (origin set by Claude Code).
+    if (!d.isSidechain && d.type === 'attachment' && d.attachment && d.attachment.type === 'queued_command' && SCHEDULED_ORIGIN.test(String((d.attachment.origin || {}).kind || ''))) {
+      fired(promptText(d.attachment.prompt), d.attachment.timestamp || d.timestamp || null, d.attachment.origin?.kind === 'task-notification' ? 'notification' : 'attachment', d.attachment.taskId)
       continue
     }
     if (d.isSidechain || d.isMeta) continue
@@ -396,11 +423,6 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
         pendingCmd = null
         said(text, d.attachment.timestamp || ts, images)
       }
-      continue
-    }
-    // A scheduled task's prompt taken during a turn (origin set by Claude Code).
-    if (d.type === 'attachment' && d.attachment && d.attachment.type === 'queued_command' && SCHEDULED_ORIGIN.test(String((d.attachment.origin || {}).kind || ''))) {
-      fired(promptText(d.attachment.prompt), d.attachment.timestamp || ts)
       continue
     }
     if (d.type === 'system' && d.subtype === 'compact_boundary') {

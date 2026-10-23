@@ -95,6 +95,50 @@ describe('scheduled task in a Claude transcript', () => {
     expect(items.map(i => `${i.role}:${i.text}`)).toEqual(['scheduled:Check the build'])
   })
 
+  it('keeps separate fire occurrences without an assistant reply between them', () => {
+    const event = (id: string, at: string) => j({ type: 'system', subtype: 'scheduled_task_fire', taskId: id, prompt: PROMPT, timestamp: at })
+    const items = parse([event('first', ts(0)), event('second', ts(0)), event('first', '2026-01-05T12:00:00.000Z')])
+    expect(items.map(i => i.ts)).toEqual([ts(0), ts(0), '2026-01-05T12:00:00.000Z'])
+    expect(items.every(i => i.role === 'scheduled')).toBe(true)
+  })
+
+  it('pairs each simultaneous fire with its own meta prompt by task ID', () => {
+    const event = (id: string) => j({ type: 'system', subtype: 'scheduled_task_fire', taskId: id, prompt: PROMPT, timestamp: ts(7) })
+    const meta = (id: string) => j({ type: 'user', isMeta: true, scheduledTaskId: id, message: { content: PROMPT }, timestamp: ts(7, 1) })
+    expect(parse([event('first'), event('second'), meta('second'), meta('first')])).toHaveLength(2)
+  })
+
+  it('pairs a delayed meta prompt by task ID, but not a new occurrence without one', () => {
+    expect(parse([fire(ts(7)), metaPrompt(ts(20))])).toHaveLength(1)
+    const noId = j({ type: 'user', isMeta: true, turnOrigin: 'scheduled', message: { content: PROMPT }, timestamp: ts(20) })
+    expect(parse([fire(ts(7)), noId])).toHaveLength(2)
+  })
+
+  it.each([false, true])('shows background queued commands in order (isMeta=%s)', (isMeta) => {
+    const text = 'Background build completed'
+    const items = parse([enqueue(text, ts(0)), j({ type: 'attachment', isMeta, attachment: { type: 'queued_command', prompt: text, origin: { kind: 'task-notification' } }, timestamp: ts(7) }), reply('Checked the result', ts(7, 1))])
+    expect(items.map(i => i.role)).toEqual(['scheduled', 'assistant'])
+    expect(items[0]).toMatchObject({ text, name: 'Background task' })
+    expect(items.queue).toEqual([])
+    expect(pendingQueue({ mine: [], claude: items.queue!, items, screen: null })).toEqual([])
+  })
+
+  it.each([false, true])('shows a background notification wrapper (isMeta=%s)', (isMeta) => {
+    const text = '<task-notification><task-id>build</task-id><summary>Background build completed</summary></task-notification>'
+    const items = parse([enqueue(text, ts(0)), j({ type: 'user', isMeta, message: { content: [{ type: 'text', text }] }, timestamp: ts(7) }), reply('Checked', ts(7, 1))])
+    expect(items.map(i => i.role)).toEqual(['scheduled', 'assistant'])
+    expect(items[0]!.text).toBe('Background build completed')
+    expect(items.queue).toEqual([])
+  })
+
+  it('pairs a background queued command with its user wrapper, not another scheduled task', () => {
+    const text = '<task-notification><task-id>build</task-id><summary>Build passed</summary></task-notification>'
+    const items = parse([enqueue(text, ts(7)), j({ type: 'attachment', attachment: { type: 'queued_command', prompt: text, origin: { kind: 'task-notification' } }, timestamp: ts(7) }), j({ type: 'user', message: { content: text }, timestamp: ts(7, 1) })])
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ role: 'scheduled', text: 'Build passed', name: 'Background task' })
+    expect(items.queue).toEqual([])
+  })
+
   it('other meta lines stay hidden', () => {
     const items = parse([j({ type: 'user', message: { role: 'user', content: 'Caveat: hidden' }, isMeta: true, timestamp: ts(1) })])
     expect(items).toHaveLength(0)

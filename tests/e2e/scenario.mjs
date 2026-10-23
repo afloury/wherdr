@@ -267,6 +267,9 @@ export function writeScenario(home) {
     { step: 2, type: 'system', subtype: 'scheduled_task_fire', content: 'Running scheduled task', isMeta: false, taskId: 'e2e00019', prompt: SCHEDULED_PROMPT },
     { type: 'user', message: { role: 'user', content: SCHEDULED_PROMPT }, isMeta: true, promptSource: 'system', wakeupSource: 'schedule_wakeup', scheduledTaskId: 'e2e00019', turnOrigin: 'scheduled' },
     ['assistant', SCHEDULED_REPLY],
+    { type: 'queue-operation', operation: 'enqueue', content: '<task-notification><task-id>build-fixture</task-id><summary>Background build completed</summary></task-notification>' },
+    { type: 'attachment', attachment: { type: 'queued_command', origin: { kind: 'task-notification' }, prompt: '<task-notification><task-id>build-fixture</task-id><summary>Background build completed</summary></task-notification>' } },
+    ['assistant', 'The background build passed.'],
   ])
   const longFile = ompTranscript(home, docs, 'e2e-long', now, longContent)
   const chatFile = ompTranscript(home, demo, 'e2e-chat', now, msg => [

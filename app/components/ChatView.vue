@@ -326,7 +326,7 @@ type Block =
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
   | { k: 'system', key: string, text: string }
   | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean }
-  | { k: 'scheduled', key: string, text: string, time: string | null, at: string | null }
+  | { k: 'scheduled', key: string, text: string, name?: string, time: string | null, at: string | null }
   | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean }
   | { k: 'ompRun', key: string, tool: ChatItem & { omp: OmpToolView } }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
@@ -470,7 +470,7 @@ const blocks = computed<Block[]>(() => {
       out.push({ k: 'shell', key: `s:${it.ts}:${it.text.slice(0, 40)}`, bash: it.role === 'bash', text: it.text, out: o, err: e, lines, long: lines > SHELL_LINES || o.length + e.length > 1500 })
     } else if (it.role === 'scheduled') {
       // Sent by Claude Code itself: folded, never a bubble of the user.
-      out.push({ k: 'scheduled', key, text: it.text, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null })
+      out.push({ k: 'scheduled', key, text: it.text, name: it.name, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null })
     } else if (it.role === 'notice') {
       const [label, icon] = NOTICE[it.name || ''] || [it.name || 'Note', 'i-lucide-info']
       out.push({ k: 'notice', key, label: t(label), icon, html: md(it.text), long: it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 })
@@ -1396,7 +1396,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <div v-else-if="b.k === 'scheduled'" class="msg-scheduled" :class="{ open: isOpen(b.key) }" :data-hit-key="b.key">
                 <button type="button" class="msg-scheduled-head" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
                   <UIcon name="i-lucide-clock" class="msg-scheduled-icon" />
-                  <span class="msg-scheduled-label">{{ t('Scheduled task') }}</span>
+                  <span class="msg-scheduled-label">{{ b.name === 'Background task' ? t('Background task') : t('Scheduled task') }}</span>
                   <span v-if="!isOpen(b.key)" class="msg-scheduled-peek">{{ b.text }}</span>
                   <time v-if="b.time" class="msg-scheduled-time" :title="b.at || undefined">{{ b.time }}</time>
                   <UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="msg-scheduled-chev" />
