@@ -41,20 +41,29 @@ jobs:
       - name: Version
         id: v
         run: |
+          version="$(node -p "require('./package.json').version")"
+          if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Stable version: rolling prerelease is disabled."
+            exit 0
+          fi
           version="$(bash scripts/prerelease.sh version)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - run: npm ci
+      - if: steps.v.outputs.version != ''
+        run: npm ci
 
       - name: Package
+        if: steps.v.outputs.version != ''
         run: |
           mkdir -p "$RUNNER_TEMP/prerelease"
           npm pack --pack-destination "$RUNNER_TEMP/prerelease"
 
       - name: Check the package
+        if: steps.v.outputs.version != ''
         run: bash scripts/prerelease.sh package "$RUNNER_TEMP/prerelease/wherdr-${{ steps.v.outputs.version }}.tgz" "$GITHUB_SHA"
 
       - name: Publish the prerelease
+        if: steps.v.outputs.version != ''
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
