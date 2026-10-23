@@ -257,10 +257,11 @@ function onBarDown(e: PointerEvent, id: string, label: string) {
 }
 // A tab showing one machine only: its section without the header (the tab
 // already names it), its quotas together at the top. A group or "All" keeps
-// the machine headers, even with a single machine in it.
+// the machine headers, even with a single machine in it. State mode has its own
+// machine chips and quotas.
 const soloTab = computed(() => {
   const pick = machineBarPick.value
-  if (!sections.value || sections.value.length !== 1 || !pick || !barMachine(pick)) return null
+  if (homeGrouping.value !== 'machine' || !sections.value || sections.value.length !== 1 || !pick || !barMachine(pick)) return null
   return sections.value[0]!
 })
 const listQuotas = computed(() => (soloTab.value ? tabQuotaRows(topQuotas.value, soloTab.value.quotas) : topQuotas.value))

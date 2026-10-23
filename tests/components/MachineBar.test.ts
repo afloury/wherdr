@@ -321,6 +321,13 @@ describe('a tab showing one machine', () => {
     expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: 'laptop' } })
   })
 
+  it('State mode keeps its own machine chip and quotas', async () => {
+    homeGrouping.value = 'state'
+    machineBarSaved.value = 'devbox'
+    const w = await mountHome()
+    expect(w.find('.machine-tab-info').exists()).toBe(false)
+  })
+
   it('an offline machine says so at the top, with its error', async () => {
     herdrState.value = { ...herdrState.value, machines: machines.map(m => m.key === 'devbox' ? { ...m, error: 'SSH unavailable' } : m) } as never
     machineBarSaved.value = 'devbox'
