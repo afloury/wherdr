@@ -3,7 +3,7 @@ import { flushPromises } from '@vue/test-utils'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import BoardPanel from '~/components/BoardPanel.vue'
-import { herdrState } from '~/composables/useHerdr'
+import { allSessionsState, herdrState } from '~/composables/useHerdr'
 import { parseTaskDetails, parseTaskRow } from '#shared/projectsTasks'
 
 const decision = vi.hoisted(() => ({ yes: true }))
@@ -19,6 +19,7 @@ const calls: unknown[] = []
 registerEndpoint('/api/tasks/details', () => ({ ...parseTaskDetails(JSON.stringify({ task: { id: 'demo/9', title: 'Improve search', stage, msg, description: 'Search by title' }, failure, summary: 'Search tested.' })), ...more, pane }))
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 registerEndpoint('/api/tasks/tell', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
+registerEndpoint('/api/sessions', { method: 'POST', handler: async event => { const body = await readBody(event); calls.push(body); return { session: { name: body.name, key: 'abcdef01', running: true } } } })
 registerEndpoint('/api/tasks/approve', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 const row = () => parseTaskRow({ id: 'demo/9', title: 'Improve search', stage, state: 'error', app: 'claude' })!
 async function panel(extra = {}, agent: string | null = null, status: 'idle' | 'working' = 'idle') {
@@ -27,7 +28,7 @@ async function panel(extra = {}, agent: string | null = null, status: 'idle' | '
   await flushPromises()
   return w
 }
-afterEach(() => { failure = {}; pane = 'w1:p1'; stage = 'failed'; msg = ''; more = {}; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] } })
+afterEach(() => { failure = {}; pane = 'w1:p1'; stage = 'failed'; msg = ''; more = {}; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] }; allSessionsState.value = { ok: false, workspaces: [], panes: [] } })
 
 describe('task panel', () => {
   it('explains setup failure instead of opening a bare shell', async () => {
@@ -187,6 +188,101 @@ describe('task panel', () => {
     expect(w.find('.task-needs').text()).not.toContain('merges into another branch')
     expect(w.find('.task-needs').text()).not.toContain('Send the error to the agent')
     w.unmount()
+  })
+  // WHR-75: the reviewer, not the agent, shows a dialog (1.x reviewneeds).
+  describe('a reviewer that needs you', () => {
+    const REVIEW_MSG = 'The reviewer shows a dialog: open it and answer'
+    const reviewTask = () => ({ ...row(), stage: 'reviewneeds', state: 'blocked', kind: '', msg: REVIEW_MSG, group: 'needs' as const })
+    const buttons = (w: Awaited<ReturnType<typeof panel>>) => w.findAll('.task-needs-actions button').map(b => b.text())
+    // The agent's pane (done) and, when given, its reviewer's.
+    const withReviewer = (status: 'blocked' | 'working' | null) => {
+      const agent = herdrState.value.panes[0]!
+      herdrState.value = { ok: true, workspaces: [], panes: [{ ...agent, status: 'done' }, ...(status ? [{ ...agent, id: 'w1:p4', tab: 'w1:t2', agent: 'codex', status }] : [])] }
+    }
+    it('opens the reviewer\'s pane, never the agent\'s', async () => {
+      stage = 'reviewneeds'; msg = REVIEW_MSG
+      more = { reviewer: { pane: 'w1:p4' } }
+      const w = await panel({ task: reviewTask() }, 'claude')
+      withReviewer('blocked')
+      await flushPromises()
+      expect(w.find('.task-needs h3').text()).toBe(`Needs you · ${REVIEW_MSG}`)
+      expect(buttons(w)).toEqual(['Open the reviewer'])
+      expect(w.find('.task-needs').text()).not.toContain('Answer in the conversation')
+      expect(w.find('.task-needs').text()).not.toContain('Open terminal')
+      expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Terminal', 'Reviewer', 'Task'])
+      await w.find('.task-needs-reviewer-open').trigger('click')
+      await flushPromises()
+      // Its pane, in its conversation (where the dialog shows as choices).
+      expect(w.findAll('.board-panel-tabs button').find(b => b.text() === 'Reviewer')!.classes()).toContain('on')
+      expect(w.find('.board-panel-reviewer-who').text()).toContain('Reviewer')
+      expect(w.find('.embedded-agent').text()).toBe('chat')
+      // Its terminal, by hand.
+      await w.find('.board-panel-reviewer-mode').trigger('click')
+      expect(w.find('.embedded-agent').text()).toBe('term')
+      // Shown already: the banner does not offer it again.
+      expect(buttons(w)).toEqual([])
+      w.unmount()
+    })
+    it('says so plainly when wherdr cannot reach the reviewer', async () => {
+      stage = 'reviewneeds'; msg = REVIEW_MSG
+      more = { reviewer: { pane: null } }
+      const w = await panel({ task: reviewTask(), target: { kind: 'task', machine: '', id: 'demo/9-away' } }, 'claude')
+      expect(w.find('.task-needs-reviewer').attributes('data-wait')).toBe('away')
+      expect(w.find('.task-needs-reviewer').text()).toContain('wherdr cannot reach the reviewer’s pane. Answer it on devbox')
+      expect(buttons(w)).toEqual(['Task actions'])
+      expect(w.findAll('.board-panel-tabs button').map(b => b.text())).not.toContain('Reviewer')
+      w.unmount()
+    })
+    it('a dialog no longer there: the board\'s words and the task\'s actions, never stuck', async () => {
+      stage = 'reviewneeds'; msg = REVIEW_MSG
+      more = { reviewer: { pane: 'w1:p4' } }
+      // Its pane closed.
+      const w = await panel({ task: reviewTask(), target: { kind: 'task', machine: '', id: 'demo/9-gone' } }, 'claude')
+      expect(w.find('.task-needs h3').text()).toContain(REVIEW_MSG)
+      expect(w.find('.task-needs-reviewer').attributes('data-wait')).toBe('gone')
+      expect(buttons(w)).toEqual(['Task actions'])
+      await w.find('.task-needs-task').trigger('click')
+      expect(w.find('.task-content').exists()).toBe(true)
+      w.unmount()
+      // Its pane is back at work: the board is behind, it can still be looked at.
+      const q = await panel({ task: reviewTask(), target: { kind: 'task', machine: '', id: 'demo/9-quiet' } }, 'claude')
+      withReviewer('working')
+      await flushPromises()
+      expect(q.find('.task-needs-reviewer').attributes('data-wait')).toBe('quiet')
+      expect(buttons(q)).toEqual(['Open the reviewer'])
+      q.unmount()
+    })
+    // Review finding: a reviewer in an open session this device does not show is not a closed pane.
+    it('a reviewer in a session this device does not show: names it and offers to switch to it', async () => {
+      stage = 'reviewneeds'; msg = REVIEW_MSG
+      more = { reviewer: { pane: 'abcdef01~w5:p1' } }
+      const w = await panel({ task: reviewTask(), target: { kind: 'task', machine: '', id: 'demo/9-hidden' } }, 'claude')
+      const agent = herdrState.value.panes[0]!
+      allSessionsState.value = {
+        ok: true, workspaces: [],
+        machines: [{ key: '', label: 'devbox', local: true, status: 'online', error: null }, { key: 'abcdef01', baseKey: '', session: 'review', label: 'devbox', local: true, status: 'online', error: null }],
+        panes: [agent, { ...agent, id: 'abcdef01~w5:p1', machine: 'abcdef01', status: 'blocked' }],
+      }
+      await flushPromises()
+      expect(w.find('.task-needs-reviewer').attributes('data-wait')).toBe('hidden')
+      expect(w.find('.task-needs-reviewer').text()).toBe('The reviewer runs in the session “review”, which this device does not show. Switch to it to answer.')
+      expect(w.find('.task-needs').text()).not.toContain('closed')
+      expect(buttons(w)).toEqual(['Switch to that session'])
+      await w.find('.task-needs-reviewer-session').trigger('click')
+      await vi.waitFor(() => expect(calls).toContainEqual({ machine: '', name: 'review' }))
+      w.unmount()
+    })
+    it('an agent\'s own dialog keeps Open terminal and Answer in the conversation', async () => {
+      stage = 'working'
+      more = { reviewer: null }
+      const task = { ...row(), stage: 'working', state: 'blocked', kind: '', msg: 'Waiting for your answer', group: 'needs' as const }
+      const w = await panel({ task, target: { kind: 'task', machine: '', id: 'demo/9-agent' } })
+      expect(buttons(w)).toEqual(['Open terminal'])
+      expect(w.find('.task-needs-reviewer').exists()).toBe(false)
+      await w.find('.task-needs-term').trigger('click')
+      expect(buttons(w)).toEqual(['Answer in the conversation'])
+      w.unmount()
+    })
   })
   // WHR-69: the banner's action follows the kind of wait.
   describe('a wait its agent reported', () => {

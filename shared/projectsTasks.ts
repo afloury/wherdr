@@ -92,6 +92,13 @@ export interface TaskDetails {
   queue?: number | null
 }
 
+// The panes wherdr adds to `details`: its agent's, and its reviewer's while a
+// review runs (1.x `reviewing`, or `reviewneeds` when the reviewer shows a
+// dialog). A reviewer's `pane: null`: its session is not open in wherdr.
+export interface TaskReviewer { pane: string | null }
+export const REVIEW_STAGES: readonly string[] = ['reviewing', 'reviewneeds']
+export type TaskPanes = { pane: string | null, reviewer?: TaskReviewer | null }
+
 // A task's wait (1.x `details` `after`): the tasks it waits for (`waitsFor`,
 // ids, `machine:repo/n` for another machine's), those not done yet (`left`),
 // whether it waits now (stage `after`; else it is to wait once delegated), and
