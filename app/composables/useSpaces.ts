@@ -56,6 +56,7 @@ export async function saveSpaceName(label: string) {
   if (!x) return
   const r = await spaceApi(x.kind === 'tab' ? { op: 'tab.rename', tab_id: x.id, label } : { op: 'workspace.rename', workspace_id: x.id, label })
   if (!r) return
+  if (!r.ok) { toast(t('Rename failed. The name was not changed.'), true); return }
   renameSpace.value = null
   toast(t('Renamed'))
 }
@@ -239,16 +240,16 @@ export function tabItems(tabId: string): MenuItem[] {
     { label: t('Close tab'), icon: 'i-lucide-x', danger: true, run: () => closeTab(tabId) },
   ]
 }
-export function workspaceItems(id: string): MenuItem[] {
+export function workspaceItems(id: string, project = false): MenuItem[] {
   return [
-    { label: t('Rename space'), icon: 'i-lucide-pencil', run: () => renameWorkspace(id) },
+    ...(!project ? [{ label: t('Rename space'), icon: 'i-lucide-pencil', run: () => renameWorkspace(id) }] : []),
     newTabItem(id),
     { label: t('Close space'), icon: 'i-lucide-trash-2', danger: true, run: () => closeWorkspace(id) },
   ]
 }
 // Space and tab of a pane (agent view, long press on its card): "Space"
 // group, new tab first.
-export function paneWorkspaceItems(p: Pane): MenuItem[] {
+export function paneWorkspaceItems(p: Pane, project = false): MenuItem[] {
   const ws = herdrState.value.workspaces.find(w => w.id === p.workspace)
   const entries = paneSpaceEntries(herdrState.value, p.id)
   if (!ws || !entries.length) return []
@@ -259,7 +260,7 @@ export function paneWorkspaceItems(p: Pane): MenuItem[] {
     'workspace.rename': { label: t('Rename space'), icon: 'i-lucide-pencil', run: () => renameWorkspace(ws.id) },
     'workspace.close': { label: t('Close space'), icon: 'i-lucide-trash-2', danger: true, run: () => closeWorkspace(ws.id) },
   }
-  return [notificationMenuItem(conversationNotificationTarget(p)), { kind: 'group', label: tl(`Space “${ws.label}”`, `Espace « ${ws.label} »`) }, ...entries.map(e => item[e])]
+  return [notificationMenuItem(conversationNotificationTarget(p)), { kind: 'group', label: tl(`Space “${ws.label}”`, `Espace « ${ws.label} »`) }, ...entries.filter(e => !project || e !== 'workspace.rename').map(e => item[e])]
 }
 
 // Full menu of a plan pane: rename, split, move, close.
