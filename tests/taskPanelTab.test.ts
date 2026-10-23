@@ -12,6 +12,12 @@ describe('task panel tab', () => {
     expect(taskPanelTab({ chat: true, term: true }, null)).toBe('chat')
     expect(taskPanelTabs({ chat: true, term: false })).toEqual(['chat', 'task'])
   })
+  it('offers the reviewer\'s pane while a review runs, before Task', () => {
+    expect(taskPanelTabs({ chat: true, term: true, reviewer: true })).toEqual(['chat', 'term', 'reviewer', 'task'])
+    expect(taskPanelTab({ chat: true, term: true, reviewer: true }, 'reviewer')).toBe('reviewer')
+    // The review over: back to the default view.
+    expect(taskPanelTab({ chat: true, term: true }, 'reviewer')).toBe('chat')
+  })
   it('keeps a choice while it is offered', () => {
     expect(taskPanelTab({ chat: true, term: true }, 'task')).toBe('task')
     expect(taskPanelTab({ chat: true, term: true }, 'term')).toBe('term')

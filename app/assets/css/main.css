@@ -4099,6 +4099,13 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-panel-tabs { display: flex; flex: none; border-bottom: 1px solid var(--line); background: var(--bg-2); }
 .board-panel-tabs button { position: relative; padding: 11px 14px; border-right: 1px solid var(--line); border-bottom: 2px solid transparent; font: 600 10px/1.2 var(--mono); text-transform: uppercase; color: var(--muted); }
 .board-panel-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+/* The reviewer's tab: its dialog waits for you (1.x reviewneeds). */
+.board-panel-tabs button.asks::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 6px; vertical-align: 1px; background: var(--ochre); }
+.board-panel-reviewer-bar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--bg-2); }
+.board-panel-reviewer-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 10px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); }
+.board-panel-reviewer-mode { flex: none; min-height: 28px; padding: 3px 8px; border: 1px solid var(--line); font: 600 10px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.board-panel-reviewer-mode:hover { border-color: var(--line-strong); }
+.task-needs p.task-needs-reviewer { padding: 6px 8px; border-left: 2px solid var(--ochre); font-size: 12px; line-height: 1.4; }
 .task-new { display: inline-block; margin-left: 5px; width: 5px; height: 5px; background: var(--ochre); }
 .task-needs { flex: 0 1 auto; max-height: 38%; overflow-y: auto; overscroll-behavior: contain; padding: 12px 14px; border-bottom: 1px solid var(--line-strong); border-left: 3px solid var(--ochre); background: var(--bg-2); }
 .task-needs h3 { margin: 0 0 8px; color: var(--ochre); font: 600 12px/1.4 var(--mono); overflow-wrap: anywhere; }

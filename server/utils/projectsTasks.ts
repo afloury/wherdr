@@ -18,7 +18,7 @@ import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
-  type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
+  type MachineTasks, type TaskDetails, type TaskPanes, type TaskReviewer, REVIEW_STAGES, type TaskRow, type TasksBoard,
   TASK_QUESTION_MAX, taskCanFix, taskCanApproveAnyway, failureIsStale, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
   cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots,
@@ -312,7 +312,7 @@ function checkId(id: unknown): string {
   return id
 }
 
-export async function taskDetails(machine: unknown, id: unknown): Promise<TaskDetails & { pane: string | null }> {
+export async function taskDetails(machine: unknown, id: unknown): Promise<TaskDetails & TaskPanes> {
   const m = boardOf(machine)
   const tid = checkId(id)
   const file = await readTaskFile(m, tid).catch(() => null)
@@ -320,7 +320,7 @@ export async function taskDetails(machine: unknown, id: unknown): Promise<TaskDe
   // The closing note and whether it is archived: in the task's file only (1.2.1's `details` leaves them out).
   if (!d.summary && typeof file?.summary === 'string') d = { ...d, summary: file.summary.slice(0, 8000).trim() }
   if (!d.archived && file?.archivedAt) d = { ...d, archived: true }
-  return { ...withStale(d, file), pane: taskPane(m, file) }
+  return { ...withStale(d, file), pane: taskPane(m, file), reviewer: reviewerOf(m, file, d.stage) }
 }
 
 // Whether its failure is behind it: the task's file has when it last moved on.
@@ -335,6 +335,19 @@ function withStale(d: TaskDetails, file: Record<string, unknown> | null): TaskDe
 function taskPane(m: Machine, file: Record<string, unknown> | null): string | null {
   const linked = linkedPane(m, file)
   return linked.pane && findPane(linked.pane) ? linked.pane : null
+}
+
+// The reviewer's pane while a review runs (1.x link.reviewer.pane, in the
+// task's own session): the dialog of a review that needs you is there. Its pane
+// even when Herdr does not show it now (the panel tells a closed pane from
+// one it cannot reach); `pane: null`: its session is not open in wherdr.
+function reviewerOf(m: Machine, file: Record<string, unknown> | null, stage: string): TaskReviewer | null {
+  if (!REVIEW_STAGES.includes(stage || String(file?.stage ?? ''))) return null
+  const link = file && typeof file.link === 'object' && file.link ? file.link as Record<string, unknown> : null
+  const rv = link && typeof link.reviewer === 'object' && link.reviewer ? link.reviewer as Record<string, unknown> : null
+  if (!rv || typeof rv.pane !== 'string' || !/^w[0-9a-z]+:p[0-9a-z]+$/i.test(rv.pane)) return null
+  const key = sessionMachine(m, link!.socket)
+  return { pane: key === null ? null : joinId(key, rv.pane) }
 }
 
 function forget(m: Machine) { lists.delete(m.key) }

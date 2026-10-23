@@ -1,7 +1,8 @@
-// Which view a task's side panel shows: its conversation, its terminal or the
-// task itself. A task with nothing to talk to opens on the task.
+// Which view a task's side panel shows: its conversation, its terminal, its
+// reviewer's pane (while a review runs) or the task itself. A task with
+// nothing to talk to opens on the task.
 
-export type TaskPanelTab = 'chat' | 'term' | 'task'
+export type TaskPanelTab = 'chat' | 'term' | 'reviewer' | 'task'
 
 export interface TaskPanelViews {
   // Something to show under Conversation: an agent pane (its conversation or
@@ -9,10 +10,12 @@ export interface TaskPanelViews {
   chat: boolean
   // A pane whose terminal can be opened.
   term: boolean
+  // Its reviewer's pane, shown in Herdr while a review runs.
+  reviewer?: boolean
 }
 
 export function taskPanelTabs(v: TaskPanelViews): TaskPanelTab[] {
-  return [...(v.chat ? ['chat' as const] : []), ...(v.term ? ['term' as const] : []), 'task']
+  return [...(v.chat ? ['chat' as const] : []), ...(v.term ? ['term' as const] : []), ...(v.reviewer ? ['reviewer' as const] : []), 'task']
 }
 
 // The user's own choice while it is still offered, else Conversation when

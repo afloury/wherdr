@@ -271,6 +271,30 @@ describe('actions on a task', () => {
     expect((await T.taskDetails('', 'demo/1')).pane).toBe('abcd1234~w1:p1')
   })
 
+  // WHR-75: a reviewer that shows a dialog (1.x reviewneeds) waits on its own pane.
+  it('names the reviewer\'s pane while a review runs, in the task\'s session', async () => {
+    detailsReply = JSON.stringify({ task: { id: 'demo/1', title: 'Fix login redirect', stage: 'reviewneeds', msg: 'The reviewer shows a dialog: open it and answer' } })
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'reviewneeds', link: { pane: 'w1:p1', reviewer: { pane: 'w1:p4', tab: 'w1:t2', kind: 'codex' } } })
+    panes.push({ id: 'w1:p1', machine: '', agent: 'claude' }, { id: 'w1:p4', machine: '', agent: 'codex' })
+    expect(await T.taskDetails('', 'demo/1')).toMatchObject({ pane: 'w1:p1', reviewer: { pane: 'w1:p4' } })
+    // In a named session wherdr has open: that session's pane.
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'reviewneeds', link: { socket: '/h/.config/herdr/sessions/review/herdr.sock', pane: 'w1:p1', reviewer: { pane: 'w1:p4' } } })
+    expect((await T.taskDetails('', 'demo/1')).reviewer).toEqual({ pane: 'abcd1234~w1:p4' })
+    // In a session wherdr has not opened: linked, but not reachable.
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'reviewneeds', link: { socket: '/h/.config/herdr/sessions/other/herdr.sock', pane: 'w1:p1', reviewer: { pane: 'w1:p4' } } })
+    expect((await T.taskDetails('', 'demo/1')).reviewer).toEqual({ pane: null })
+  })
+
+  it('no reviewer outside a review, nor one with no pane named', async () => {
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', link: { pane: 'w1:p1', reviewer: { pane: 'w1:p4' } } })
+    expect((await T.taskDetails('', 'demo/1')).reviewer).toBeNull()
+    detailsReply = JSON.stringify({ task: { id: 'demo/1', title: 'Fix login redirect', stage: 'reviewing' } })
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'reviewing', link: { pane: 'w1:p1', reviewer: null } })
+    expect((await T.taskDetails('', 'demo/1')).reviewer).toBeNull()
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'reviewing', link: { pane: 'w1:p1', reviewer: { pane: 'not a pane' } } })
+    expect((await T.taskDetails('', 'demo/1')).reviewer).toBeNull()
+  })
+
   it('no task file: no pane, even with a single agent in its worktree in the board\'s session', async () => {
     panes.push({ id: 'w5:p1', machine: '', agent: 'codex', cwd: '/home/user/code/demo-wt/1' })
     const d = await T.taskDetails('', 'demo/1')

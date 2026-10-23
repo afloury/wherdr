@@ -3,10 +3,12 @@
 // The banner says where the task stands now: a failure it has moved on from
 // (failureStale) is history in the Task tab, never its title or its buttons.
 // Coordinators keep their own startup/delivery lifecycle.
-import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskActions, taskCanFix, taskCanApproveAnyway, taskKey, type TaskCommand, finishCase } from '#shared/projectsTasks'
+import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskPanes, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskActions, taskCanFix, taskCanApproveAnyway, taskKey, type TaskCommand, finishCase } from '#shared/projectsTasks'
 import { visibleAgentKinds } from '~/utils/agentChoices'
 import { finishHint, finishLabel, finishOffered, finishQuestion, finishTitle } from '~/utils/taskFinish'
 import { blockChoices, blockKind, blockKindLabel, offersAlways, permissionReply, questionMessage } from '~/utils/blockNotice'
+import { reviewerWait } from '~/utils/reviewerWait'
+import type { PaneViewMode } from '~/composables/useHerdr'
 
 export type PanelTarget =
   | { machine: string, kind: 'task', id: string, chat?: boolean }
@@ -28,7 +30,7 @@ const emit = defineEmits<{ coordinator: [machine: string, task: TaskRow], close:
 
 // ------------------------------------------------------------ a task's agent
 const taskPane = ref<string | null>(null)
-const details = ref<TaskDetails | null>(null)
+const details = ref<(TaskDetails & Partial<TaskPanes>) | null>(null)
 const loading = ref(false)
 const failed = ref('')
 // No pane, but herdr-projects passes a reply on (`tell`): the field shown instead.
@@ -47,7 +49,7 @@ async function loadTask(again = false) {
     loading.value = true
   }
   try {
-    const d = await api<TaskDetails & { pane: string | null }>(`/api/tasks/details?machine=${encodeURIComponent(t.machine)}&id=${encodeURIComponent(t.id)}`)
+    const d = await api<TaskDetails & TaskPanes>(`/api/tasks/details?machine=${encodeURIComponent(t.machine)}&id=${encodeURIComponent(t.id)}`)
     if (n !== seq) return
     details.value = d
     if (!d.pane) {
@@ -171,6 +173,40 @@ async function seeQuestion() {
   setTimeout(() => el.classList.remove('msg-lit'), 2600)
 }
 
+function tabLabel(tab: TaskPanelTab) {
+  return tab === 'chat' ? t('Conversation') : tab === 'term' ? t('Terminal') : tab === 'reviewer' ? tl('Reviewer', 'Relecteur') : tl('Task', 'Tâche')
+}
+
+// ------------------------------------------------- a reviewer that needs you
+// 1.x `reviewneeds`: the dialog is on the reviewer's pane, not the agent's
+// (done by then). The banner opens the reviewer's pane in its own tab, says
+// plainly when wherdr cannot reach it, and when the dialog is gone already.
+const reviewerAsks = computed(() => needs.value && (props.task?.stage === 'reviewneeds' || details.value?.stage === 'reviewneeds'))
+// Its pane, while Herdr shows it.
+const reviewerPane = computed(() => {
+  const id = details.value?.reviewer?.pane
+  return id && herdrState.value.panes.some(p => p.id === id) ? id : null
+})
+const reviewerAgent = computed(() => herdrState.value.panes.find(p => p.id === reviewerPane.value))
+const reviewerHint = computed(() => reviewerAgent.value ? tl(`Reviewer: ${statusLabel(reviewerAgent.value)}`, `Relecteur : ${statusLabel(reviewerAgent.value)}`) : tl('Reviewer', 'Relecteur'))
+// Only once its details say so too: until then, nothing said of its pane.
+const rvWait = computed(() => (reviewerAsks.value && details.value?.stage === 'reviewneeds'
+  ? reviewerWait({ stage: 'reviewneeds', reviewer: details.value.reviewer, panes: herdrState.value.panes, live: herdrState.value.ok && props.reachable !== false })
+  : null))
+const rvWords = computed(() => {
+  switch (rvWait.value) {
+    case 'quiet': return tl('The reviewer shows no dialog now: the board moves on by itself in a few seconds.', 'Le relecteur n’affiche plus de dialogue : le tableau reprend tout seul dans quelques secondes.')
+    case 'gone': return tl('The reviewer’s pane is closed: no dialog is left to answer. If the task stays here, stop it from the Task tab.', 'Le pane du relecteur est fermé : plus aucun dialogue à répondre. Si la tâche reste bloquée ici, arrête-la depuis l’onglet Tâche.')
+    case 'away': return tl(`wherdr cannot reach the reviewer’s pane. Answer it on ${props.machineLabel}, in the task’s space: its Reviewer tab.`, `wherdr ne peut pas joindre le pane du relecteur. Réponds-y sur ${props.machineLabel}, dans l’espace de la tâche : son onglet Reviewer.`)
+    default: return ''
+  }
+})
+// Its view: the conversation (where its dialog shows as choices) when one can
+// be read, else its terminal; switched by hand in its bar.
+const reviewerChoice = ref<PaneViewMode | null>(null)
+const reviewerMode = computed<PaneViewMode>(() => reviewerChoice.value ?? (reviewerAgent.value && hasChat(reviewerAgent.value) ? 'chat' : 'term'))
+watch(reviewerPane, () => { reviewerChoice.value = null })
+
 // The panel owns view selection so a setup shell never opens by default. A task
 // with nothing to talk to (never started, no pane) opens on the task, its other
 // tabs hidden; a tab picked by hand stays while it is offered (taskPanelTab.ts).
@@ -181,6 +217,7 @@ const settled = computed(() => !loading.value || details.value !== null)
 const views = computed(() => ({
   chat: Boolean(taskPane.value) || tellOnly.value || Boolean(failureDetail.value && !needs.value),
   term: Boolean(taskPane.value),
+  reviewer: Boolean(reviewerPane.value),
 }))
 const tabs = computed(() => taskPanelTabs(views.value))
 const selected = computed(() => taskPanelTab(views.value, choice.value))
@@ -465,8 +502,8 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
     </header>
 
     <nav v-if="target.kind === 'task' && settled" class="board-panel-tabs" :aria-label="tl('Task views', 'Vues de la tâche')">
-      <button v-for="tab in tabs" :key="tab" type="button" :class="{ on: selected === tab }" :aria-pressed="selected === tab" :aria-label="tab === 'chat' ? t('Conversation') : tab === 'term' ? t('Terminal') : tl('Task', 'Tâche')" :aria-description="tab === 'task' && newNote ? tl('New task details', 'Nouveaux détails de la tâche') : undefined" :title="tab === 'task' ? undefined : agentHint" @click="choose(tab)">
-        {{ tab === 'chat' ? t('Conversation') : tab === 'term' ? t('Terminal') : tl('Task', 'Tâche') }}<i v-if="tab === 'task' && newNote" class="task-new" aria-hidden="true" />
+      <button v-for="tab in tabs" :key="tab" type="button" :class="{ on: selected === tab, 'board-panel-tab-reviewer': tab === 'reviewer', asks: tab === 'reviewer' && rvWait === 'open' }" :aria-pressed="selected === tab" :aria-label="tabLabel(tab)" :aria-description="tab === 'task' && newNote ? tl('New task details', 'Nouveaux détails de la tâche') : undefined" :title="tab === 'task' ? undefined : tab === 'reviewer' ? reviewerHint : agentHint" @click="choose(tab)">
+        {{ tabLabel(tab) }}<i v-if="tab === 'task' && newNote" class="task-new" aria-hidden="true" />
       </button>
     </nav>
     <section v-if="target.kind === 'task' && (needs || stuck)" class="task-needs" :class="{ 'task-needs-wait': waitKind }" :data-kind="waitKind || undefined" role="alert">
@@ -483,6 +520,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <h3 v-else>{{ tl('Finishing', 'Fin en cours') }} · {{ tl('its agent is at rest', 'son agent est au repos') }}</h3>
         <pre v-if="failureDetail"><LinkedText :text="failureDetail" /></pre>
         <p v-if="failureNow?.failureNext"><LinkedText :text="failureNow.failureNext" /></p>
+        <p v-if="rvWords" class="task-needs-reviewer" :data-wait="rvWait">{{ rvWords }}</p>
       </template>
       <p v-if="canFinish && finishKind" class="task-finish-why">{{ finishHint(finishKind) }}</p>
       <div class="task-needs-actions">
@@ -497,7 +535,11 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         </template>
         <UButton v-for="c in choices" :key="c.reply" class="task-needs-choice" :title="c.label" :disabled="tapOff" @click="tell(c.reply)">{{ c.label }}</UButton>
         <UButton v-if="answerable && !choices.length && !permissionTaps" class="task-needs-reply" icon="i-lucide-corner-down-left" :disabled="offlineView" @click="replyHere">{{ tl('Reply…', 'Répondre…') }}</UButton>
-        <template v-if="!answerable">
+        <template v-if="reviewerAsks">
+          <UButton v-if="(rvWait === 'open' || rvWait === 'quiet') && selected !== 'reviewer'" class="task-needs-reviewer-open" :color="rvWait === 'open' ? 'primary' : undefined" :disabled="offlineView" @click="choose('reviewer')">{{ tl('Open the reviewer', 'Ouvrir le relecteur') }}</UButton>
+          <UButton v-else-if="(rvWait === 'gone' || rvWait === 'away') && selected !== 'task'" class="task-needs-task" @click="choose('task')">{{ tl('Task actions', 'Actions de la tâche') }}</UButton>
+        </template>
+        <template v-else-if="!answerable">
           <UButton v-if="jump === 'term' && (!waitKind || waitKind === 'auth')" class="task-needs-term" :disabled="offlineView || !reachable" @click="choose('term')">{{ tl('Open terminal', 'Ouvrir le terminal') }}</UButton>
           <UButton v-else-if="jump === 'chat' && waitKind !== 'auth'" class="task-needs-chat" @click="choose('chat')">{{ tl('Answer in the conversation', 'Répondre dans la conversation') }}</UButton>
         </template>
@@ -511,6 +553,13 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
     <div class="board-panel-body">
       <p v-if="target.kind === 'task' && settled && failed && selected === 'task'" class="board-note error">{{ failed }}</p>
       <TaskSheet v-if="target.kind === 'task' && settled && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :refresh="refreshTask" @chat="choose('chat')" @coordinator="(machine, task) => emit('coordinator', machine, task)" @archived="archivedTask" @restored="restoredTask" />
+      <template v-else-if="target.kind === 'task' && selected === 'reviewer' && reviewerPane">
+        <div class="board-panel-reviewer-bar">
+          <span class="board-panel-reviewer-who">{{ tl('Reviewer', 'Relecteur') }}<template v-if="reviewerAgent"> · {{ statusLabel(reviewerAgent) }}</template></span>
+          <button v-if="reviewerAgent && hasChat(reviewerAgent)" type="button" class="board-panel-reviewer-mode" @click="reviewerChoice = reviewerMode === 'chat' ? 'term' : 'chat'">{{ reviewerMode === 'chat' ? t('Terminal') : t('Conversation') }}</button>
+        </div>
+        <AgentView :key="`reviewer-${reviewerPane}`" :pane-id="reviewerPane" cell active embedded :selected-mode="reviewerMode" @update:selected-mode="reviewerChoice = $event" />
+      </template>
       <AgentView v-else-if="paneId && (target.kind === 'coordinator' || selected === 'term' || conversation)" :key="paneId" :pane-id="paneId" cell active :embedded="target.kind === 'task'" @update:selected-mode="choose($event)" :selected-mode="target.kind === 'task' ? (selected === 'term' ? 'term' : 'chat') : undefined" />
       <p v-else-if="target.kind === 'task' && loading" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <p v-else-if="failed" class="board-note error board-panel-wait">{{ failed }}</p>
