@@ -28,7 +28,9 @@
   name, the wherdr mark, **Coordinator** and its state), a bar that folds the group and sums up its
   tasks (`4 TASKS · 1 YOUR TURN · 1 LIMIT`, the branch and `↓` commits behind its upstream, the
   repo space's menu), then its tasks, indented (key, title, progress, time on it, the board's
-  current line); closing a space that holds task agents names the tasks it stops.
+  current line). A remote coordinator link replaces the local coordinator above the bar.
+  Without a coordinator, the group starts with the bar; the repo terminal opens from its **…**
+  menu. Closing a space that holds task agents names the tasks it stops.
 - **New agent**: pick an installed agent (or a plain terminal), a folder, optionally a separate
   Git **worktree** and branch, resume the last conversation, and queue a first message.
 - **Machine bar**: at the top of the list, “All”, then each machine with its state and count; a
