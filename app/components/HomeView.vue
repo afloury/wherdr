@@ -266,10 +266,12 @@ const soloTab = computed(() => {
 })
 const listQuotas = computed(() => (soloTab.value ? tabQuotaRows(topQuotas.value, soloTab.value.quotas) : topQuotas.value))
 const homeScroll = ref<HTMLElement | null>(null)
+const switchMachineConversation = useMachineConversation()
 function pickBar(id: string, event: MouseEvent) {
   if (barLp.swallowClick()) return
   haptic()
   pickMachineBar(id)
+  switchMachineConversation()
   // A folded machine opens: shown alone, it would only be a heading.
   if (id !== BAR_ALL) {
     const selected = machineGroups.value.find(g => g.id === id)?.machines ?? [id]
