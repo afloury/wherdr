@@ -23,6 +23,7 @@ import {
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
   cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots,
 } from '../../shared/projectsTasks'
+import { parseProjectsVersion } from '../../shared/projectsPlugin'
 import { HERDR_BIN, HERDR_CHILD_ENV, log } from './env'
 import { USER_PATH_SH, userPath } from '../../bin/lib/userpath.mjs'
 import { HerdrError } from './herdr'
@@ -112,6 +113,12 @@ async function command(m: Machine, args: string[], timeoutMs = ACTION_TIMEOUT_MS
   const r = await serial(m.key, () => runner(m, launcher, args, timeoutMs))
   if (r.code !== 0) throw new HerdrError('projects_failed', firstLine(r.stderr) || firstLine(r.stdout) || `herdr-projects ${args[0]}: code ${r.code}`)
   return r.stdout
+}
+
+// The program's own version: `version` is one of the two commands that never
+// take over an older install's files (shared/projectsPlugin.ts). null: unknown.
+export async function projectsProgramVersion(m: Machine): Promise<string | null> {
+  return parseProjectsVersion(await command(m, ['version'], LIST_TIMEOUT_MS))
 }
 
 // ---------------------------------------------------------------- the board's files

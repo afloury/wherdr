@@ -514,6 +514,7 @@ const FR: Record<string, string> = {
   'Empty machine name': 'Nom de machine vide',
   'Rename failed': 'Renommage impossible',
   'herdr-projects is already installed': 'herdr-projects est déjà installé',
+  'herdr-projects is already {version} or later': 'herdr-projects est déjà en {version} ou plus',
   'Herdr folder is read-only on {machine}': 'Dossier Herdr en lecture seule sur {machine}',
   'Install failed (code {code})': 'Installation impossible (code {code})',
   'Message not found': 'Message introuvable',

@@ -9,11 +9,17 @@ list of tasks, each handed to an ordinary agent in its own space, reviewed when 
 merged on your yes. wherdr shows it on the **Board** (the button next to Settings, or `H`), for
 every machine at once. It needs **herdr-projects 1.2.1 or later**; the plugin is optional.
 
-**Install herdr-projects** in **Settings → Plugins → herdr-projects**, or on the machine:
+**Install herdr-projects** in **Settings → Plugins → herdr-projects**, or on the machine. wherdr
+installs the release it was tested with (1.2.21):
 
 ```sh
-herdr plugin install eliasstravik/herdr-projects --ref v1.2.1 --yes
+herdr plugin install eliasstravik/herdr-projects --ref v1.2.21 --yes
 ```
+
+A machine with an older 1.x (1.2.1 or later) still works. Settings says **Update available**
+there, with what the update adds, and **Update to 1.2.21** replaces Herdr's copy of the plugin;
+the tasks and settings stay. wherdr reads the program's own version (`herdr-projects version`),
+so a machine that ran `herdr-projects update` to a newer release is never taken back.
 
 > **Breaking change in wherdr 2.0: herdr-projects 0.2 is no longer read.** The Project panel,
 > the `TASKS.md` board, threads, thread limits and **New project** belonged to herdr-projects
