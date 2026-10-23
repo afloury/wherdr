@@ -24,6 +24,7 @@ const FR: Record<string, string> = {
   'This failure needs the human first': 'Cet échec nécessite d’abord ton intervention',
   'Invalid task': 'Tâche invalide', 'Nothing to send': 'Rien à envoyer',
   'This task has no agent to talk to': 'Cette tâche n’a pas d’agent à qui parler',
+  'This task has no failed review to send back': 'Cette tâche n’a pas de relecture échouée à renvoyer',
   'This task does not wait for approval': 'Cette tâche n’attend pas d’approbation',
   'Task not found': 'Tâche introuvable',
   'This task cannot be started now': 'Cette tâche ne peut pas être lancée maintenant',
