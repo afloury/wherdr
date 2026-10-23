@@ -125,12 +125,12 @@ async function setRead(read: boolean) {
 const menuItems = computed<MenuItem[]>(() => space.value ? [
   ...(boardItem.value ? [boardItem.value, { kind: 'separator' as const }] : []),
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
-  ...workspaceItems(space.value.workspace.id),
+  ...workspaceItems(space.value.workspace.id, Boolean(props.board?.lead)),
 ] : [
   ...(boardItem.value ? [boardItem.value, { kind: 'separator' as const }] : []),
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
   ...paneSpaceItems(props.pane),
-  ...paneWorkspaceItems(props.pane),
+  ...paneWorkspaceItems(props.pane, Boolean(props.board?.lead)),
   { kind: 'separator' },
   copyPaneIdItem(props.pane),
   { kind: 'separator' },

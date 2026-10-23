@@ -47,7 +47,7 @@ function openRepo() {
 }
 const repoLabel = computed(() => tl(`Open the terminal of ${g.value.repo}`, `Ouvrir le terminal de ${g.value.repo}`))
 const headItems = (): MenuItem[] => (spaceId.value
-  ? [{ label: repoLabel.value, icon: 'i-lucide-square-terminal', run: openRepo }, { kind: 'separator' }, ...workspaceItems(spaceId.value)]
+  ? [{ label: repoLabel.value, icon: 'i-lucide-square-terminal', run: openRepo }, { kind: 'separator' }, ...workspaceItems(spaceId.value, true)]
   : [])
 // Touch: a long press on the bar opens the same menu as "…".
 const barLp = longPress({

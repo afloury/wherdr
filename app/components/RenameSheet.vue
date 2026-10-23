@@ -55,7 +55,7 @@ async function save(label: string) {
     <template #footer>
       <div class="rename-actions">
         <UButton v-if="!renameSpace && pane && pane.label" color="neutral" variant="ghost" class="sheet-btn" @click="save('')">{{ t('Reset') }}</UButton>
-        <UButton type="submit" form="rename-form" color="primary" variant="solid" class="sheet-btn hw-cta" :disabled="Boolean(renameSpace) && !value.trim()">{{ t('Save') }}</UButton>
+        <UButton type="submit" form="rename-form" color="primary" variant="solid" class="sheet-btn hw-cta" :disabled="Boolean(renameSpace) && (!value.trim() || value.trim() === renameSpace?.label)">{{ t('Save') }}</UButton>
       </div>
     </template>
   </AppSheet>
