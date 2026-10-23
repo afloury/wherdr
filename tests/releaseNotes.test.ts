@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
 import { checkReleaseNotes } from '../scripts/check-release-notes.mjs'
 import { prereleaseSummary } from '../scripts/prerelease-summary.mjs'
@@ -38,4 +39,12 @@ it('refuses a prerelease without current change descriptions', () => {
   for (const changelog of ['', '## [Unreleased]\n\n## [1.0.0]\n- Old change.', '## [Unreleased]\n- See CHANGELOG.md']) {
     expect(() => prereleaseSummary(changelog, 'example/wherdr', 'a'.repeat(40))).toThrow()
   }
+})
+
+it('summarizes the versioned unreleased section used by the repository', () => {
+  const changelog = readFileSync('CHANGELOG.md', 'utf8')
+  expect(changelog).toContain('## 2.0.1 (unreleased)')
+  const notes = prereleaseSummary(changelog, 'example/wherdr', 'a'.repeat(40))
+  expect(notes).toContain(changelog.split('\n').find(line => line.startsWith('- ')))
+  expect(notes).not.toContain('## [2.0.0]')
 })

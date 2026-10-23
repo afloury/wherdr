@@ -216,6 +216,22 @@ describe('workflow', () => {
     expect(wf.match(/if: steps.v.outputs.version != ''/g)).toHaveLength(4)
   })
 
+  it('enables packaging and publication for the repository prerelease version', () => {
+    const script = wf.match(/      - name: Version[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      -)/)![1]!
+      .split('\n').map(line => line.replace(/^          /, '')).join('\n')
+    const home = workspace('2.0.1-dev')
+    const output = path.join(home, 'workflow-output')
+    const result = spawnSync('bash', ['-e', '-c', script], {
+      encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: output },
+    })
+    expect(result.status, result.stderr).toBe(0)
+    expect(readFileSync(output, 'utf8')).toBe('version=2.0.1-dev\n')
+    const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'))
+    expect(lock.version).toBe('2.0.1-dev')
+    expect(lock.packages[''].version).toBe('2.0.1-dev')
+    expect(wf.match(/if: steps.v.outputs.version != ''/g)).toHaveLength(4)
+  })
+
   it('leaves the stable release workflows on vX.Y.Z tags', () => {
     expect(readFileSync('.github/workflows/release.yml', 'utf8')).toContain("tags: ['v*']")
     expect(readFileSync('.github/workflows/npm.yml', 'utf8')).toMatch(/\^v\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+\$/)
