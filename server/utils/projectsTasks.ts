@@ -21,8 +21,9 @@ import {
   taskAgentIdentity, type MachineTasks, type TaskDetails, type TaskPanes, type TaskReviewer, REVIEW_STAGES, type TaskRow, type TasksBoard,
   TASK_QUESTION_MAX, taskCanFix, taskCanApproveAnyway, taskCanSendReview, failureIsStale, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
-  cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots,
+  cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots, finishCase, limitArgs,
 } from '../../shared/projectsTasks'
+import { isLimitValue } from '../../shared/taskLimits'
 import { parseProjectsVersion } from '../../shared/projectsPlugin'
 import { HERDR_BIN, HERDR_CHILD_ENV, log } from './env'
 import { USER_PATH_SH, userPath } from '../../bin/lib/userpath.mjs'
@@ -430,6 +431,24 @@ export async function taskCommand(machine: unknown, id: unknown, action: unknown
   forget(m)
   if (chosen && chosen !== prev) await rememberStartAgent(startAgentKey(m.key, tid), { agent: chosen, prev, at: Date.now() })
   log(`herdr-projects ${action} ${tid}${chosen ? ` --worker.agent=${chosen}` : ''}${waits ? ` --after=${waits.join(',')}` : ''}${m.local ? '' : ` on ${m.label}`}`)
+  return { ok: true, msg: firstLine(out) }
+}
+
+// Raise (or lift) the limit that stopped a task: `set limit.time|limit.tokens
+// <value> --task <id>`, and nothing else. herdr-projects sees the higher limit
+// and carries on by itself within seconds, keeping what was already used
+// (limits/reached.rs `lifted`); a `retry` after it would be refused, or give a
+// fresh limit, so none is sent.
+export async function setTaskLimit(machine: unknown, id: unknown, kind: unknown, value: unknown): Promise<{ ok: true, msg: string }> {
+  const m = boardOf(machine)
+  const tid = checkId(id)
+  if (kind !== 'time' && kind !== 'tokens') throw new HerdrError('bad_limit', 'Unknown limit')
+  if (!isLimitValue(kind, value)) throw new HerdrError('bad_limit', 'Invalid limit')
+  const row = await taskOf(m, tid)
+  if (!row || finishCase(row) !== 'limit') throw new HerdrError('bad_action', 'This task was not stopped at a limit')
+  const out = await command(m, limitArgs(tid, kind, value))
+  forget(m)
+  log(`herdr-projects set limit.${kind} ${value} --task ${tid}${m.local ? '' : ` on ${m.label}`}`)
   return { ok: true, msg: firstLine(out) }
 }
 

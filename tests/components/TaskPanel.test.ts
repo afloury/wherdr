@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
-import { readBody } from 'h3'
+import { readBody, setResponseStatus } from 'h3'
 import BoardPanel from '~/components/BoardPanel.vue'
 import { allSessionsState, herdrState } from '~/composables/useHerdr'
 import { parseTaskDetails, parseTaskRow } from '#shared/projectsTasks'
@@ -23,6 +23,13 @@ registerEndpoint('/api/tasks/details', () => ({ ...parseTaskDetails(JSON.stringi
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 registerEndpoint('/api/tasks/tell', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 registerEndpoint('/api/sessions', { method: 'POST', handler: async event => { const body = await readBody(event); calls.push(body); return { session: { name: body.name, key: 'abcdef01', running: true } } } })
+// `set limit.*`: answered, or refused with herdr-projects' own words.
+let limitReply: { status: number, message: string } | null = null
+registerEndpoint('/api/tasks/limit', { method: 'POST', handler: async (event) => {
+  calls.push(await readBody(event))
+  if (limitReply) { setResponseStatus(event, limitReply.status); return { code: 'projects_failed', error: limitReply.message } }
+  return { ok: true, msg: 'set' }
+} })
 registerEndpoint('/api/tasks/approve', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 const row = () => parseTaskRow({ id: 'demo/9', title: 'Improve search', stage, state: 'error', app: 'claude' })!
 async function panel(extra = {}, agent: string | null = null, status: 'idle' | 'working' = 'idle') {
@@ -31,7 +38,7 @@ async function panel(extra = {}, agent: string | null = null, status: 'idle' | '
   await flushPromises()
   return w
 }
-afterEach(() => { review = null; toasts.length = 0; failure = {}; pane = 'w1:p1'; stage = 'failed'; msg = ''; more = {}; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] }; allSessionsState.value = { ok: false, workspaces: [], panes: [] } })
+afterEach(() => { limitReply = null; document.querySelectorAll('.hw-sheet').forEach(e => e.remove()); review = null; toasts.length = 0; failure = {}; pane = 'w1:p1'; stage = 'failed'; msg = ''; more = {}; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] }; allSessionsState.value = { ok: false, workspaces: [], panes: [] } })
 
 describe('task panel', () => {
   it('labels the worker conversation and opens the separate reviewer terminal', async () => {
@@ -259,8 +266,8 @@ describe('task panel', () => {
     expect(banner.text()).not.toContain('Finish again for a fresh review')
     // Its buttons would act on the old failure: not offered.
     expect(banner.text()).not.toContain('Send the error to the agent')
-    expect(banner.findAll('button').map(b => b.text())).toEqual(expect.arrayContaining(['Retry', 'Finish']))
-    expect(banner.find('.task-finish-why').text()).toContain('the same limit again')
+    expect(banner.findAll('button').map(b => b.text())).toEqual(expect.arrayContaining(['Continue', 'Raise the limit', 'Take it as it is']))
+    expect(banner.find('.task-finish-why').text()).toContain('the same limit once more (2 h a run)')
     w.unmount()
   })
   // WHR-13: the agent started again and asks something new.
@@ -443,11 +450,11 @@ describe('task panel', () => {
     expect(w.find('.task-needs').text()).not.toContain('Finish')
     w.unmount()
   })
-  it('Finish on a limit stop asks first, then sends finish', async () => {
+  it('Take it as it is on a limit stop asks first, then sends finish', async () => {
     stage = 'stopped'
     const task = { ...row(), stage, state: 'blocked', msg: 'Stopped at its token limit', group: 'needs' as const }
     const w = await panel({ task })
-    const finish = () => w.findAll('.task-needs button').find(b => b.text() === 'Finish')!
+    const finish = () => w.findAll('.task-needs button').find(b => b.text() === 'Take it as it is')!
     await vi.waitFor(() => expect(finish().attributes('disabled')).toBeUndefined())
     expect(finish().attributes('title')).toBe('Take the work as it is: checks, then review')
     decision.yes = false
@@ -457,6 +464,51 @@ describe('task panel', () => {
     await finish().trigger('click')
     await vi.waitFor(() => expect(calls).toContainEqual({ machine: '', id: 'demo/9', action: 'finish' }))
     w.unmount()
+  })
+  describe('stopped at a limit', () => {
+    const stopped = (msgText: string) => ({ ...row(), stage: 'stopped', state: 'blocked', msg: msgText, group: 'needs' as const })
+    it('offers Continue, Raise the limit and Take it as it is, and says what Continue does', async () => {
+      stage = 'stopped'; msg = 'stopped at its 2h limit'
+      more = { limits: { time: '2h', timeUsed: '', timeUsedMs: null, tokens: '30m', tokensUsed: 3_400_000, tokensCounted: 3_400_000, stopped: { what: 'time', limit: '2h', used: 7_200_000 } } }
+      const w = await panel({ task: stopped(msg) })
+      expect(w.findAll('.task-needs-actions button').map(b => b.text()).slice(0, 3)).toEqual(['Continue', 'Raise the limit', 'Take it as it is'])
+      expect(w.find('.task-limit-why').text()).toContain('the same limit once more (2 h a run); its tokens keep adding up')
+      await w.find('.task-limit-continue').trigger('click')
+      await vi.waitFor(() => expect(calls).toContainEqual({ machine: '', id: 'demo/9', action: 'retry' }))
+      w.unmount()
+    })
+    it('raises the time limit with set only, then shows Resuming… until the next list', async () => {
+      stage = 'stopped'; msg = 'stopped at its 2h limit'
+      more = { limits: { time: '2h', timeUsed: '', timeUsedMs: null, tokens: 'none', tokensUsed: 0, tokensCounted: 0, stopped: { what: 'time', limit: '2h', used: 7_200_000 } } }
+      const w = await panel({ task: stopped(msg) })
+      await w.find('.task-limit-raise').trigger('click'); await flushPromises()
+      const presets = () => [...document.querySelectorAll<HTMLButtonElement>('.raise-limit-preset')]
+      await vi.waitFor(() => expect(presets()).toHaveLength(3))
+      expect(presets().map(b => b.textContent?.trim())).toEqual(['+1 h3 h', '×24 h', 'No limit'])
+      presets()[0]!.click()
+      await vi.waitFor(() => expect(calls).toContainEqual({ machine: '', id: 'demo/9', kind: 'time', value: '3h' }))
+      expect(calls.filter(c => (c as { action?: string }).action === 'retry')).toHaveLength(0)
+      await vi.waitFor(() => expect(w.find('.task-needs-resuming').text()).toBe('Resuming…'))
+      expect(w.find('.task-needs-actions').exists()).toBe(false)
+      // The next list: a new row, the task at work again.
+      await w.setProps({ task: { ...row(), stage: 'working', state: 'working', msg: '', group: 'working' as const } })
+      expect(w.find('.task-needs-resuming').exists()).toBe(false)
+      w.unmount()
+    })
+    it('shows herdr-projects’ refusal as it is', async () => {
+      stage = 'stopped'; msg = 'stopped at 30m tokens'
+      limitReply = { status: 409, message: 'demo/9 is busy. Try again in a moment.' }
+      more = { limits: { time: 'none', timeUsed: '', timeUsedMs: null, tokens: '30m', tokensUsed: 31_000_000, tokensCounted: 31_000_000, stopped: { what: 'tokens', limit: '30m', used: 31_000_000 } } }
+      const w = await panel({ task: stopped(msg) })
+      await w.find('.task-limit-raise').trigger('click'); await flushPromises()
+      const presets = () => [...document.querySelectorAll<HTMLButtonElement>('.raise-limit-preset')]
+      await vi.waitFor(() => expect(presets()).toHaveLength(3))
+      expect(presets().map(b => b.textContent?.trim())).toEqual(['×260 M', '+10 M40 M', 'No limit'])
+      presets()[1]!.click()
+      await vi.waitFor(() => expect(document.querySelector('.raise-limit .error')?.textContent).toBe('demo/9 is busy. Try again in a moment.'))
+      expect(w.find('.task-needs-resuming').exists()).toBe(false)
+      w.unmount()
+    })
   })
   it('stopped without a summary: Retry and Finish, each said', async () => {
     stage = 'nosummary'

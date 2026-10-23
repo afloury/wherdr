@@ -25,7 +25,7 @@
 import { AFTER_MAX, TASK_QUESTION_MAX, NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, type TasksReply, finishCase, prNumber, startPlace, taskActions, taskKey } from '#shared/projectsTasks'
 import AppSheet from './AppSheet.vue'
 import { type StartAgentChoice, startAgentChoices } from '~/utils/agentChoices'
-import { finishHint, finishLabel, finishQuestion, finishTitle, finishOffered } from '~/utils/taskFinish'
+import { continueLabel, finishHint, finishLabel, finishQuestion, finishTitle, finishOffered, takeAsIsLabel } from '~/utils/taskFinish'
 import { type WaitChoice, queuePlaceText, typedRef, waitChoices, waitName } from '~/utils/taskWait'
 import { sawTasksBoard, seenTasksBoard } from '~/composables/useTasksBoard'
 
@@ -57,6 +57,8 @@ const paneStatus = computed(() => herdrState.value.panes.find(p => p.id === fail
 const withFinish = (a: ReturnType<typeof taskActions>) => ({ ...a, finish: a.finish && Boolean(row.value) && finishOffered(row.value!, paneStatus.value) })
 const actions = computed(() => (row.value ? withFinish(taskActions(row.value, failure.value)) : NO_ACTIONS))
 const finishWhy = computed(() => { const c = row.value ? finishCase(row.value) : null; return c ? finishHint(c) : '' })
+// Stopped at a limit: Retry is Continue, Finish is Take it as it is.
+const atLimit = computed(() => Boolean(row.value && finishCase(row.value) === 'limit'))
 const pr = computed(() => details.value?.pr || props.task?.pr || '')
 const review = computed(() => details.value?.review || props.task?.review || null)
 const label = computed(() => (props.task ? taskKey(props.task.id, props.task.repoKey) : ''))
@@ -288,7 +290,7 @@ async function act(action: TaskCommand, after?: string[]) {
   if (action === 'stop' && !await askConfirm(
     tl(`Stop the agent of “${t.title}”? Its turn ends now; the task stays, and Retry or Start picks it up again.`, `Arrêter l’agent de « ${t.title} » ? Son tour s’arrête maintenant ; la tâche reste, Réessayer ou Lancer la reprend.`),
     tl('Stop the agent', 'Arrêter l’agent'))) return
-  if (action === 'finish' && !await askConfirm(finishQuestion(t.title), finishLabel(), 'primary')) return
+  if (action === 'finish' && !await askConfirm(finishQuestion(t.title), atLimit.value ? takeAsIsLabel() : finishLabel(), 'primary')) return
   if (!still(was)) return
   const g = gen
   busy.value = true
@@ -403,6 +405,7 @@ function chat() {
       <p v-if="loading && !details" class="board-empty">{{ t('Loading…') }}</p>
       <p v-if="error" class="board-note error">{{ error }}</p>
 
+      <TaskLimitGauges v-if="details?.limits" :limits="details.limits" />
       <dl v-if="pr || review || details?.branch || details?.agent" class="task-sheet-facts">
         <template v-if="pr">
           <dt>{{ tl('Pull request', 'Pull request') }}</dt>
@@ -454,11 +457,6 @@ function chat() {
         <h4>{{ tl('Review findings', 'Remarques de relecture') }}</h4>
         <p v-for="(f, i) in details.findings" :key="i" class="task-sheet-text">{{ f.severity }} · {{ f.title }}<template v-if="f.detail"> — {{ f.detail }}</template></p>
       </section>
-      <dl v-if="details?.limits" class="task-sheet-facts">
-        <dt>{{ tl('Time limit', 'Limite de temps') }}</dt><dd>{{ details.limits.time }}<template v-if="details.limits.timeUsed"> · {{ details.limits.timeUsed }}</template></dd>
-        <dt>{{ tl('Token limit', 'Limite de tokens') }}</dt><dd><TokenCount :value="details.limits.tokens" /></dd>
-        <dt>{{ tl('Tokens used', 'Tokens utilisés') }}</dt><dd><TokenCount :value="details.limits.tokensUsed" /></dd>
-      </dl>
 
       <section v-if="!archived" class="task-sheet-block">
         <div class="task-sheet-actions">
@@ -497,8 +495,8 @@ function chat() {
         <UButton v-if="actions.approve" color="primary" icon="i-lucide-check" :loading="busy && !running" :disabled="busy || offlineView" @click="approve">
           {{ task.stage === 'plan' ? tl('Approve plan', 'Accepter le plan') : tl('Approve', 'Approuver') }}
         </UButton>
-        <UButton v-if="actions.retry" color="primary" variant="outline" icon="i-lucide-rotate-ccw" :loading="running === 'retry'" :disabled="busy || offlineView" @click="act('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
-        <UButton v-if="actions.finish" color="primary" variant="outline" icon="i-lucide-flag" class="task-finish" :title="finishTitle()" :aria-description="finishTitle()" :loading="running === 'finish'" :disabled="busy || offlineView" @click="act('finish')">{{ finishLabel() }}</UButton>
+        <UButton v-if="actions.retry" color="primary" variant="outline" icon="i-lucide-rotate-ccw" :loading="running === 'retry'" :disabled="busy || offlineView" @click="act('retry')">{{ atLimit ? continueLabel() : tl('Retry', 'Réessayer') }}</UButton>
+        <UButton v-if="actions.finish" color="primary" variant="outline" icon="i-lucide-flag" class="task-finish" :title="finishTitle()" :aria-description="finishTitle()" :loading="running === 'finish'" :disabled="busy || offlineView" @click="act('finish')">{{ atLimit ? takeAsIsLabel() : finishLabel() }}</UButton>
         <UButton
           v-if="chatShown && !embedded" class="task-chat" color="neutral" variant="outline" icon="i-lucide-message-square"
           @click="chat"

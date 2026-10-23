@@ -6,7 +6,8 @@
 import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskPanes, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskActions, taskCanFix, taskCanApproveAnyway, taskCanSendReview, reviewFindingsBrief, taskKey, type TaskCommand, finishCase } from '#shared/projectsTasks'
 import { PANEL_MIN, PANEL_MAX, clampPanelWidth, panelWidthCss, readPanelWidth, savePanelWidth } from '~/utils/sideWidth'
 import { visibleAgentKinds } from '~/utils/agentChoices'
-import { finishHint, finishLabel, finishOffered, finishQuestion, finishTitle } from '~/utils/taskFinish'
+import { continueLabel, finishHint, finishLabel, finishOffered, finishQuestion, finishTitle, limitHint, raiseLabel, takeAsIsLabel } from '~/utils/taskFinish'
+import { limitStopOf } from '#shared/taskLimits'
 import { blockChoices, blockKind, blockKindLabel, offersAlways, permissionReply, questionMessage } from '~/utils/blockNotice'
 import { reviewerWait } from '~/utils/reviewerWait'
 import { type PaneViewMode, allSessionsState, chooseMachineSession } from '~/composables/useHerdr'
@@ -117,6 +118,28 @@ const disabled = computed(() => Boolean(actionBusy.value || offlineView.value ||
 const finishKind = computed(() => (props.task ? finishCase(props.task) : null))
 const canFinish = computed(() => Boolean(props.task && taskPermissions.value?.finish && finishOffered(props.task, agentPane.value?.status ?? null)))
 const stuck = computed(() => canFinish.value && finishKind.value === 'stuck')
+// Stopped at a limit (herdr-projects 1.2.16+): Continue (`retry`), Raise the
+// limit (`set limit.*`: the board carries on by itself), Take it as it is.
+const atLimit = computed(() => finishKind.value === 'limit')
+const limitStop = computed(() => (atLimit.value ? limitStopOf(details.value?.limits, details.value?.msg || props.task?.msg) : null))
+const raiseOpen = ref(false)
+// A limit raised: herdr-projects carries on by itself within a couple of
+// seconds. "Resuming…" until the next task list shows the task moved on; the
+// list is asked again shortly after, rather than at the Board's next poll.
+// Should herdr-projects not move, the actions come back after a minute.
+const resuming = ref(false)
+let resumeTimers: ReturnType<typeof setTimeout>[] = []
+function stopResuming() { resuming.value = false; resumeTimers.forEach(clearTimeout); resumeTimers = [] }
+function limitRaised() {
+  stopResuming()
+  resuming.value = true
+  actionError.value = ''
+  const again = () => { if (resuming.value) void (props.refresh ? props.refresh() : emit('changed')) }
+  resumeTimers = [setTimeout(again, 3000), setTimeout(again, 8000), setTimeout(stopResuming, 60_000)]
+}
+watch(() => props.task, (t, was) => { if (resuming.value && t !== was && !(t && finishCase(t) === 'limit')) stopResuming() })
+watch(() => (props.target.kind === 'task' ? `${props.target.machine}|${props.target.id}` : ''), stopResuming)
+onBeforeUnmount(stopResuming)
 const needs = computed(() => props.task?.group === 'needs')
 // Its failure, unless the task moved on since (a later stage, its agent started again).
 const failureNow = computed(() => (details.value && !details.value.failureStale ? details.value : null))
@@ -300,7 +323,7 @@ async function taskAction(action: TaskCommand | 'approve' | 'anyway') {
   if (action === 'anyway' && !canAnyway.value) return
   if (action === 'fix' && !canFix.value) return
   if (action === 'review' && !canSendReview.value) return
-  if (action === 'finish' && (!canFinish.value || !await askConfirm(finishQuestion(props.task?.title || details.value?.title || ''), finishLabel(), 'primary'))) return
+  if (action === 'finish' && (!canFinish.value || !await askConfirm(finishQuestion(props.task?.title || details.value?.title || ''), atLimit.value ? takeAsIsLabel() : finishLabel(), 'primary'))) return
   if ((action === 'approve' || action === 'anyway') && !await askConfirm(
     action === 'anyway' ? tl('Approve despite the failed review or checks? This merges the work.', 'Approuver malgré la relecture ou les contrôles en échec ? Cela fusionne le travail.') : tl('Approve this task?', 'Approuver cette tâche ?'),
     action === 'anyway' ? tl('Approve anyway', 'Approuver quand même') : tl('Approve', 'Approuver'), 'primary')) return
@@ -633,11 +656,14 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         </ul>
         <button v-if="reviewBrief.more" type="button" class="task-needs-findings-more" @click="choose('task')">{{ tl(`+${reviewBrief.more} more in Task`, `+${reviewBrief.more} de plus dans Tâche`) }}</button>
       </div>
-      <p v-if="canFinish && finishKind" class="task-finish-why">{{ finishHint(finishKind) }}</p>
-      <div class="task-needs-actions">
+      <p v-if="limitStop && !resuming" class="task-finish-why task-limit-why">{{ limitHint(limitStop) }}</p>
+      <p v-else-if="canFinish && finishKind && !resuming" class="task-finish-why">{{ finishHint(finishKind) }}</p>
+      <p v-if="resuming" class="task-needs-resuming" role="status"><UIcon name="i-lucide-loader-circle" class="animate-spin" />{{ tl('Resuming…', 'Reprise…') }}</p>
+      <div v-else class="task-needs-actions">
         <UButton v-if="canSendReview" class="task-needs-review" color="primary" icon="i-lucide-undo-2" :disabled="disabled" @click="taskAction('review')">{{ tl('Send the review back to the agent', 'Renvoyer les remarques à l’agent') }}</UButton>
-        <UButton v-if="taskPermissions?.retry" :disabled="disabled" @click="taskAction('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
-        <UButton v-if="canFinish" class="task-finish" :title="finishTitle()" :aria-description="finishTitle()" :disabled="disabled" @click="taskAction('finish')">{{ finishLabel() }}</UButton>
+        <UButton v-if="taskPermissions?.retry" :class="{ 'task-limit-continue': atLimit }" :disabled="disabled" @click="taskAction('retry')">{{ atLimit ? continueLabel() : tl('Retry', 'Réessayer') }}</UButton>
+        <UButton v-if="limitStop" class="task-limit-raise" color="primary" icon="i-lucide-arrow-up-to-line" :disabled="disabled" @click="raiseOpen = true">{{ raiseLabel() }}</UButton>
+        <UButton v-if="canFinish" class="task-finish" :title="finishTitle()" :aria-description="finishTitle()" :disabled="disabled" @click="taskAction('finish')">{{ atLimit ? takeAsIsLabel() : finishLabel() }}</UButton>
         <UButton v-if="canFix" :disabled="disabled" @click="taskAction('fix')">{{ tl('Send the error to the agent', 'Envoyer l’erreur à l’agent') }}</UButton>
         <UButton v-if="taskPermissions?.delegate" :disabled="disabled" @click="taskAction('delegate')">{{ tl('Start again', 'Relancer') }}</UButton>
         <template v-if="permissionTaps">
@@ -662,6 +688,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <p v-if="!reachable">{{ tl('Machine unavailable', 'Machine indisponible') }}</p>
       <p v-if="actionError" class="error">{{ actionError }}</p>
     </section>
+    <RaiseLimitSheet v-if="target.kind === 'task' && limitStop" v-model:open="raiseOpen" :machine="target.machine" :id="target.id" :stop="limitStop" :disabled="disabled" @raised="limitRaised" />
 
     <div class="board-panel-body">
       <p v-if="target.kind === 'task' && settled && failed && selected === 'task'" class="board-note error">{{ failed }}</p>
