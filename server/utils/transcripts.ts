@@ -107,6 +107,10 @@ const isSelfPrompt = (d: Json) => d.turnOrigin === 'scheduled' || Boolean(d.sche
 // Text of a prompt (a string, or text parts).
 const promptText = (c: unknown) => (typeof c === 'string' ? c
   : Array.isArray(c) ? c.filter((p: Json) => p && p.type === 'text').map((p: Json) => String(p.text || '')).join('\n') : '').trim()
+// queued_command origins of a scheduled prompt (not "human", nor "task-notification").
+const SCHEDULED_ORIGIN = /schedul|cron|wakeup|loop/i
+// A fire line and its enqueue line are written together (4 ms apart on 2.1.309).
+const FIRE_SLACK_MS = 5000
 // <scheduled-task …>prompt</scheduled-task> (a host's scheduled task): its prompt, else null.
 const SCHEDULED_TAG = /^\s*<scheduled-task(?:\s[^>]*)?>([\s\S]*?)(?:<\/scheduled-task>\s*)?$/
 function scheduledTag(t: string): string | null {
@@ -237,21 +241,26 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
   // they are submitted again, Claude will not read them (see checkSent).
   const popped: ClaudeQueueEntry[] = []
   let started: ClaudeQueueEntry | null = null
-  // Prompts Claude Code sends itself (CronCreate tasks, /loop wakeups): they
-  // go through its queue like typed messages, but are never the user's.
-  const scheduled: string[] = []
-  const isScheduled = (text: string) => scheduled.some(p => sameMsg(p, text) || sameMsg(text, p))
-  // Last scheduled item, so the fire line and the prompt line make one item.
-  let lastFire: ChatItem | null = null
+  // Prompts Claude Code sends itself (CronCreate tasks, /loop wakeups) go
+  // through its queue like typed messages. Only their own lines say so (the
+  // fire line, the prompt line marked "scheduled"), never their text: the
+  // user may type the same words. Fire lines not matched to their enqueue
+  // line yet (should one come first):
+  const fires: { text: string, ts: string | null }[] = []
+  const near = (a: string | null, b: string | null) => !a || !b || Math.abs(Date.parse(a) - Date.parse(b)) <= FIRE_SLACK_MS
   const fired = (text: string, ts: string | null) => {
     if (!text.trim()) return
-    if (!isScheduled(text)) scheduled.push(text)
-    // It leaves the queue (whatever its time: a recurring task repeats its text).
-    const i = queue.findIndex(q => sameMsg(q.text, text) || sameMsg(text, q.text))
+    // The same fire seen again (its prompt line after its fire line, or taken
+    // during the turn): one item, one entry out of the queue.
+    const lastUser = items.findLastIndex(x => x.role === 'user' || x.role === 'scheduled')
+    const prev = lastUser >= 0 ? items[lastUser]! : null
+    if (prev && prev.role === 'scheduled' && sameMsg(prev.text, text) && !items.slice(lastUser + 1).some(x => x.role === 'assistant')) return
+    // Its enqueue line: the latest entry of this text, queued as it fired.
+    let i = -1
+    for (let k = queue.length - 1; k >= 0 && i < 0; k--) if (sameMsg(queue[k]!.text, text) && near(queue[k]!.ts, ts)) i = k
     if (i >= 0) queue.splice(i, 1)
-    if (lastFire && items[items.length - 1] === lastFire && sameMsg(lastFire.text, text)) return
-    lastFire = { role: 'scheduled', text: clip(text), ts }
-    items.push(lastFire)
+    else fires.push({ text, ts })
+    items.push({ role: 'scheduled', text: clip(text), ts })
     pendingCmd = null
   }
   // A user message appears: it leaves the queue, even without
@@ -339,6 +348,12 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       const text = stripImageTags(raw)
       const images = imageTagCount(raw)
       if (d.operation === 'enqueue') {
+        // Queued by a task that fired just before (its fire line came first).
+        const f = fires.findIndex(x => sameMsg(x.text, text) && near(x.ts, d.timestamp || null))
+        if (f >= 0) {
+          fires.splice(f, 1)
+          continue
+        }
         queue.push({ text, ts: d.timestamp || null, ...(images ? { images } : {}) })
         const p = popped.findIndex(q => q.text === text)
         if (p >= 0) popped.splice(p, 1)
@@ -383,10 +398,9 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       }
       continue
     }
-    // Queued by Claude Code itself (a scheduled task taken during a turn).
-    if (d.type === 'attachment' && d.attachment && d.attachment.type === 'queued_command' && (d.attachment.origin || {}).kind !== 'human') {
-      const text = promptText(d.attachment.prompt)
-      if (text && isScheduled(text)) fired(text, d.attachment.timestamp || ts)
+    // A scheduled task's prompt taken during a turn (origin set by Claude Code).
+    if (d.type === 'attachment' && d.attachment && d.attachment.type === 'queued_command' && SCHEDULED_ORIGIN.test(String((d.attachment.origin || {}).kind || ''))) {
+      fired(promptText(d.attachment.prompt), d.attachment.timestamp || ts)
       continue
     }
     if (d.type === 'system' && d.subtype === 'compact_boundary') {
@@ -490,9 +504,6 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
         if (reply) {
           items.push(replyItem({ role: 'assistant', text: clip(reply), ts }, ref, block))
         } else if (part.type === 'tool_use') {
-          // The prompt a task will send later: known before it fires.
-          if ((part.name === 'CronCreate' || part.name === 'ScheduleWakeup') && part.input && typeof part.input.prompt === 'string'
-            && part.input.prompt.trim() && !part.input.prompt.startsWith('<<') && !isScheduled(part.input.prompt)) scheduled.push(part.input.prompt)
           const t: ChatItem = { role: 'tool', name: part.name, text: clip(toolSummary(part.name, part.input, home), 300), ts }
           tools.set(part.id, t)
           items.push(t)
@@ -509,8 +520,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     delete it.err
   }
   // Queued task notifications: not user messages.
-  // Scheduled prompts waiting: not the user's either (shown once they fire).
-  items.queue = queue.filter(q => !isNoise(q.text) && !isScheduled(q.text))
+  items.queue = queue.filter(q => !isNoise(q.text))
   items.popped = popped
   return items
 }

@@ -170,11 +170,12 @@ const claudeSuggestionScreen = text => ['', CLAUDE_RULE, `❯\u00a0 \x1b[0m\x1b[
 function claudeChat(home, cwd, sid, now, turns) {
   const file = path.join(home, '.claude/projects', cwd.replace(/[/.]/g, '-'), `${sid}.jsonl`)
   const base = { isSidechain: false, cwd, sessionId: sid }
-  // A turn is [role, text], or a raw transcript line (an object).
+  // A turn is [role, text], or a raw transcript line (an object; `step`
+  // gives it the time of another turn, as lines Claude writes together).
   write(file, jsonl(turns.map((turn, i) => (Array.isArray(turn) ? {
     ...base, type: turn[0], timestamp: iso(now - 60000 + i * 10000),
     message: turn[0] === 'user' ? { role: turn[0], content: turn[1] } : { model: 'claude-opus-4-1', role: turn[0], content: [{ type: 'text', text: turn[1] }] },
-  } : { ...base, timestamp: iso(now - 60000 + i * 10000), ...turn }))))
+  } : (({ step, ...line }) => ({ ...base, timestamp: iso(now - 60000 + (step ?? i) * 10000), ...line }))(turn)))))
 }
 
 // omp: ~/.omp/agent/sessions/<encoded cwd>/<date>_<id>.jsonl.
@@ -263,7 +264,7 @@ export function writeScenario(home) {
     ['user', 'Why did the nightly build fail?'],
     ['assistant', 'A flaky network test timed out; the rest passed.'],
     { type: 'queue-operation', operation: 'enqueue', content: SCHEDULED_PROMPT },
-    { type: 'system', subtype: 'scheduled_task_fire', content: 'Running scheduled task', isMeta: false, taskId: 'e2e00019', prompt: SCHEDULED_PROMPT },
+    { step: 2, type: 'system', subtype: 'scheduled_task_fire', content: 'Running scheduled task', isMeta: false, taskId: 'e2e00019', prompt: SCHEDULED_PROMPT },
     { type: 'user', message: { role: 'user', content: SCHEDULED_PROMPT }, isMeta: true, promptSource: 'system', wakeupSource: 'schedule_wakeup', scheduledTaskId: 'e2e00019', turnOrigin: 'scheduled' },
     ['assistant', SCHEDULED_REPLY],
   ])
