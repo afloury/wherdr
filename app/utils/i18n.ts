@@ -464,6 +464,7 @@ const FR: Record<string, string> = {
   'Space closed': 'Espace fermé', 'Pane moved': 'Pane déplacé',
   'Start in a new pane': 'Lancer dans un nouveau pane', 'Start in a new tab': 'Lancer dans un nouvel onglet', 'New pane': 'Nouveau pane',
   // Agent list resize handle (computer)
+  'Ticket panel width': 'Largeur du panneau du ticket',
   'List width': 'Largeur de la liste', 'Drag to resize · double-click: default width': 'Glisser pour élargir · double-clic : largeur par défaut', 
   'Pull request': 'Pull request',
   // Server messages (shared/message.ts: {name} = value filled in by the server)

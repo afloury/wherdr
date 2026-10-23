@@ -392,6 +392,9 @@ describe('Start: the agent it starts with', () => {
     startButton()!.click()
     await vi.waitFor(() => expect(sent).toHaveLength(1))
     expect(sent[0]).toEqual({ machine: 'a', id: 'demo/1', action: 'delegate', agent: 'codex' })
+    // Receiving the request precedes its response and the Board refresh.
+    // Wait until the sheet accepts another choice before clicking its radio.
+    await vi.waitFor(() => expect(chips()[0]!.disabled).toBe(false))
     // Back to the default: nothing sent again.
     chips()[0]!.click()
     await flushPromises()
