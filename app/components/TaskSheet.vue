@@ -275,6 +275,7 @@ const ACTION_DONE: Record<Exclude<TaskCommand, 'archive'>, () => string> = {
   stop: () => tl('Stopped', 'Arrêtée'),
   fix: () => tl('Sent to the agent to fix', 'Envoyée à l’agent pour correction'),
   retry: () => tl('Sent back to its agent', 'Renvoyée à son agent'),
+  review: () => tl('Review sent back to the agent', 'Remarques renvoyées à l’agent'),
   finish: () => tl('Taken as it is: checks, then review', 'Prise telle quelle : vérifications puis relecture'),
   restore: () => tl('Restored', 'Restaurée'),
 }

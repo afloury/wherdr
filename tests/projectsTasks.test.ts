@@ -6,7 +6,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   NOTIFY_SETUP, NO_ACTIONS, addArgs, parseBoardAgents, agentKind, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
-  rowFromTaskFile, stateFromTaskFile, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
+  reviewFindingsBrief, rowFromTaskFile, stateFromTaskFile, taskCanSendReview, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
 } from '../shared/projectsTasks'
 import { PROJECTS_TESTED } from '../shared/projectsPlugin'
 
@@ -458,5 +458,34 @@ describe('Start with an agent (delegate --worker.agent, show <id> --json)', () =
     expect(parseWorkerAgent('{"settings":[{"name":"worker.agent","value":""}]}')).toBeNull()
     expect(parseWorkerAgent('not json')).toBeNull()
     expect(parseWorkerAgent('[]')).toBeNull()
+  })
+})
+
+// WHR-85: a failed review is sent back first (`review <id>`), as 1.x asks it.
+describe('a failed review sent back to the agent', () => {
+  const failed = { meets: false, pass: false, findings: [{ severity: 'minor', subject: 'Typo in label' }, { severity: 'critical', subject: 'Token logged' }, { severity: 'major', subject: 'Old note', preexisting: true }] }
+  const row = (o: Record<string, unknown> = {}) => parseTaskList(JSON.stringify([{ id: 'acme/4', state: 'blocked', kind: 'permission', app: 'claude', title: 'T', stage: 'approval', review: failed, ...o }]))[0]!
+
+  it('is offered on a task waiting for approval after a failed review only', () => {
+    expect(taskCanSendReview(row())).toBe(true)
+    expect(taskCanSendReview(row({ review: { ...failed, pass: true } }))).toBe(false)
+    expect(taskCanSendReview(row({ stage: 'merging' }))).toBe(false)
+    expect(taskCanSendReview({ ...row(), archived: true })).toBe(false)
+    expect(taskCanSendReview({ ...row(), research: true })).toBe(false)
+    // Its details, read later, are where it stands now.
+    expect(taskCanSendReview(row({ review: null }), { review: { pass: false, tally: '1 major', by: 'codex' } })).toBe(true)
+  })
+
+  it('keeps whether a finding was there before the task', () => {
+    const d = parseTaskDetails(JSON.stringify({ task: { id: 'acme/4', stage: 'approval' }, review: failed }))
+    expect(d.findings!.map(f => [f.title, f.preexisting ?? false])).toEqual([['Typo in label', false], ['Token logged', false], ['Old note', true]])
+  })
+
+  it('briefs its open findings worst first, then how many more', () => {
+    const d = parseTaskDetails(JSON.stringify({ task: { id: 'acme/4', stage: 'approval' }, review: failed }))
+    expect(reviewFindingsBrief(d.findings)).toEqual({ list: [expect.objectContaining({ severity: 'critical', title: 'Token logged' }), expect.objectContaining({ severity: 'minor', title: 'Typo in label' })], more: 0 })
+    const many = Array.from({ length: 5 }, (_, i) => ({ severity: i === 4 ? 'major' : 'trivial', title: `F${i}`, detail: '' }))
+    expect(reviewFindingsBrief(many)).toEqual({ list: [many[4], many[0], many[1]], more: 2 })
+    expect(reviewFindingsBrief(undefined)).toEqual({ list: [], more: 0 })
   })
 })

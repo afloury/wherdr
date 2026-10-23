@@ -3,7 +3,7 @@
 // The banner says where the task stands now: a failure it has moved on from
 // (failureStale) is history in the Task tab, never its title or its buttons.
 // Coordinators keep their own startup/delivery lifecycle.
-import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskPanes, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskActions, taskCanFix, taskCanApproveAnyway, taskKey, type TaskCommand, finishCase } from '#shared/projectsTasks'
+import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskPanes, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskActions, taskCanFix, taskCanApproveAnyway, taskCanSendReview, reviewFindingsBrief, taskKey, type TaskCommand, finishCase } from '#shared/projectsTasks'
 import { visibleAgentKinds } from '~/utils/agentChoices'
 import { finishHint, finishLabel, finishOffered, finishQuestion, finishTitle } from '~/utils/taskFinish'
 import { blockChoices, blockKind, blockKindLabel, offersAlways, permissionReply, questionMessage } from '~/utils/blockNotice'
@@ -81,7 +81,8 @@ async function tell(said?: string) {
   try {
     await api('/api/tasks/tell', { machine: t.machine, id: t.id, text })
     haptic()
-    toast(tl('Sent to the task’s agent', 'Envoyé à l’agent de la tâche'))
+    // In `reviewneeds`, 1.x passes it to the reviewer (flow/talk.rs), not the worker.
+    toast(toReviewer.value ? tl('Sent to the reviewer', 'Envoyé au relecteur') : tl('Sent to the task’s agent', 'Envoyé à l’agent de la tâche'))
     if (said === undefined) reply.value = ''
     // Its agent may be back on a pane: its conversation then shows here.
     loadTask(true)
@@ -105,6 +106,11 @@ const agentHint = computed(() => agentPane.value ? tl(`Herdr agent: ${statusLabe
 const taskPermissions = computed(() => props.task ? taskActions(props.task, details.value) : null)
 const canFix = computed(() => props.task && taskCanFix(props.task, details.value))
 const canAnyway = computed(() => props.task && taskCanApproveAnyway(props.task, details.value))
+// A failed review: sending it back to the agent comes first, as 1.x asks it.
+const canSendReview = computed(() => Boolean(props.task && taskCanSendReview(props.task, details.value)))
+const reviewBrief = computed(() => (canSendReview.value ? reviewFindingsBrief(details.value?.findings) : null))
+// Who a message reaches now: the reviewer while it shows a dialog (`reviewneeds`).
+const toReviewer = computed(() => (details.value?.stage || props.task?.stage) === 'reviewneeds')
 const disabled = computed(() => Boolean(actionBusy.value || offlineView.value || !props.reachable || props.task?.stale))
 // Finish: a limit, no summary, or a row stuck at "Finishing" with its agent at rest.
 const finishKind = computed(() => (props.task ? finishCase(props.task) : null))
@@ -176,6 +182,17 @@ async function seeQuestion() {
   void el.offsetWidth
   el.classList.add('msg-lit')
   setTimeout(() => el.classList.remove('msg-lit'), 2600)
+}
+
+// The board's severity words (gate.rs), in the reader's language.
+function severityLabel(s: string) {
+  switch (s) {
+    case 'critical': return tl('Critical', 'Critique')
+    case 'major': return tl('Major', 'Majeur')
+    case 'minor': return tl('Minor', 'Mineur')
+    case 'trivial': return tl('Trivial', 'Trivial')
+    default: return s || tl('Finding', 'Remarque')
+  }
 }
 
 function tabLabel(tab: TaskPanelTab) {
@@ -281,6 +298,7 @@ async function taskAction(action: TaskCommand | 'approve' | 'anyway') {
   if (target.kind !== 'task' || disabled.value) return
   if (action === 'anyway' && !canAnyway.value) return
   if (action === 'fix' && !canFix.value) return
+  if (action === 'review' && !canSendReview.value) return
   if (action === 'finish' && (!canFinish.value || !await askConfirm(finishQuestion(props.task?.title || details.value?.title || ''), finishLabel(), 'primary'))) return
   if ((action === 'approve' || action === 'anyway') && !await askConfirm(
     action === 'anyway' ? tl('Approve despite the failed review or checks? This merges the work.', 'Approuver malgré la relecture ou les contrôles en échec ? Cela fusionne le travail.') : tl('Approve this task?', 'Approuver cette tâche ?'),
@@ -555,8 +573,18 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <p v-if="failureNow?.failureNext"><LinkedText :text="failureNow.failureNext" /></p>
         <p v-if="rvWords" class="task-needs-reviewer" :data-wait="rvWait">{{ rvWords }}</p>
       </template>
+      <div v-if="reviewBrief?.list.length" class="task-needs-findings">
+        <span class="task-needs-findings-head">{{ tl('Review findings', 'Remarques de relecture') }}</span>
+        <ul>
+          <li v-for="(f, i) in reviewBrief.list" :key="i" :data-severity="f.severity || undefined">
+            <span class="task-needs-severity">{{ severityLabel(f.severity) }}</span><span class="task-needs-subject">{{ f.title }}</span>
+          </li>
+        </ul>
+        <button v-if="reviewBrief.more" type="button" class="task-needs-findings-more" @click="choose('task')">{{ tl(`+${reviewBrief.more} more in Task`, `+${reviewBrief.more} de plus dans Tâche`) }}</button>
+      </div>
       <p v-if="canFinish && finishKind" class="task-finish-why">{{ finishHint(finishKind) }}</p>
       <div class="task-needs-actions">
+        <UButton v-if="canSendReview" class="task-needs-review" color="primary" icon="i-lucide-undo-2" :disabled="disabled" @click="taskAction('review')">{{ tl('Send the review back to the agent', 'Renvoyer les remarques à l’agent') }}</UButton>
         <UButton v-if="taskPermissions?.retry" :disabled="disabled" @click="taskAction('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
         <UButton v-if="canFinish" class="task-finish" :title="finishTitle()" :aria-description="finishTitle()" :disabled="disabled" @click="taskAction('finish')">{{ finishLabel() }}</UButton>
         <UButton v-if="canFix" :disabled="disabled" @click="taskAction('fix')">{{ tl('Send the error to the agent', 'Envoyer l’erreur à l’agent') }}</UButton>
@@ -577,7 +605,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
           <UButton v-if="jump === 'term' && (!waitKind || waitKind === 'auth')" class="task-needs-term" :disabled="offlineView || !reachable" @click="choose('term')">{{ tl('Open terminal', 'Ouvrir le terminal') }}</UButton>
           <UButton v-else-if="jump === 'chat' && waitKind !== 'auth'" class="task-needs-chat" @click="choose('chat')">{{ tl('Answer in the conversation', 'Répondre dans la conversation') }}</UButton>
         </template>
-        <UButton v-if="canAnyway" :disabled="disabled" @click="taskAction('anyway')">{{ tl('Approve anyway', 'Approuver quand même') }}</UButton>
+        <UButton v-if="canAnyway" class="task-needs-anyway" :color="canSendReview ? 'neutral' : undefined" :variant="canSendReview ? 'outline' : undefined" :disabled="disabled" @click="taskAction('anyway')">{{ tl('Approve anyway', 'Approuver quand même') }}</UButton>
         <UButton v-else-if="taskPermissions?.approve" :disabled="disabled" @click="taskAction('approve')">{{ tl('Approve', 'Approuver') }}</UButton>
       </div>
       <p v-if="!reachable">{{ tl('Machine unavailable', 'Machine indisponible') }}</p>
@@ -602,7 +630,9 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <pre v-if="failureDetail && !needs">{{ failureDetail }}</pre>
         <p>{{ tl('The terminal stays available when the task has a pane. Task details and actions are in the Task tab.', 'Le terminal reste accessible quand la tâche a un pane. Les détails et actions sont dans l’onglet Tâche.') }}</p>
         <form v-if="tellOnly" class="board-panel-first board-panel-tell" @submit.prevent="tell()">
-          <label for="board-panel-tell">{{ task?.stage === 'plan'
+          <label for="board-panel-tell">{{ toReviewer
+            ? tl('The reviewer is waiting for an answer: herdr-projects passes your reply on to it.', 'Le relecteur attend une réponse : herdr-projects lui transmet ta réponse.')
+            : task?.stage === 'plan'
             ? tl('Its agent is not running now: your words send the plan back, through herdr-projects.', 'Son agent ne tourne pas en ce moment : tes mots renvoient le plan, par herdr-projects.')
             : tl('Its agent is not running now: herdr-projects passes your reply on.', 'Son agent ne tourne pas en ce moment : herdr-projects lui transmet ta réponse.') }}</label>
           <p v-if="!reachable" class="board-panel-away" role="status">

@@ -19,7 +19,7 @@ import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
   taskAgentIdentity, type MachineTasks, type TaskDetails, type TaskPanes, type TaskReviewer, REVIEW_STAGES, type TaskRow, type TasksBoard,
-  TASK_QUESTION_MAX, taskCanFix, taskCanApproveAnyway, failureIsStale, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, isTaskCommand,
+  TASK_QUESTION_MAX, taskCanFix, taskCanApproveAnyway, taskCanSendReview, failureIsStale, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
   cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots,
 } from '../../shared/projectsTasks'
@@ -414,7 +414,11 @@ export async function taskCommand(machine: unknown, id: unknown, action: unknown
   const failure = action === 'fix' || (row?.stage === 'failed' && (action === 'retry' || action === 'delegate'))
     ? withStale(parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS)), action === 'fix' ? await readTaskFile(m, tid).catch(() => null) : null)
     : null
-  if (!row || (action === 'fix' ? !taskCanFix(row, failure) : !taskActions(row, failure)[action])) throw refused(action)
+  const allowed = !row ? false
+    : action === 'fix' ? taskCanFix(row, failure)
+      : action === 'review' ? taskCanSendReview(row)
+        : taskActions(row, failure)[action]
+  if (!row || !allowed) throw refused(action)
   // A new start: an agent picked for an earlier one goes first, so the task
   // starts from its own default again (or from the one picked now).
   let prev: string | null = null
@@ -499,6 +503,7 @@ function refused(action: TaskCommand): HerdrError {
     case 'stop': return new HerdrError('bad_action', 'This task has no agent at work to stop')
     case 'fix': return new HerdrError('bad_action', 'This failure needs the human first')
     case 'retry': return new HerdrError('bad_action', 'This task has nothing to retry')
+    case 'review': return new HerdrError('bad_action', 'This task has no failed review to send back')
     case 'finish': return new HerdrError('bad_action', 'This task has nothing to finish as it is')
     case 'archive': return new HerdrError('bad_action', 'This task cannot be archived while an agent works on it')
     case 'restore': return new HerdrError('bad_action', 'This task is not archived')
