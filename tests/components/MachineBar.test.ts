@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import HomeView from '~/components/HomeView.vue'
 import MachineBarSettings from '~/components/MachineBarSettings.vue'
-import { collapsedMachines, eventsOpen, herdrState, homeGrouping, hostLabel } from '~/composables/useHerdr'
+import { collapsedMachines, desk, eventsOpen, herdrState, homeGrouping, hostLabel } from '~/composables/useHerdr'
 import { machineBarHidden, machineBarOn, machineBarOrder, machineBarSaved, machineGroups } from '~/composables/useMachineBar'
 import { BAR_ALL } from '~/utils/machineBar'
 import type { MachineInfo, Pane } from '#shared/types'
@@ -42,6 +42,9 @@ function reset() {
   machineBarOrder.value = []
   machineBarHidden.value = []
   machineBarSaved.value = null
+  localStorage.removeItem('machineConversations')
+  navigate.mockClear()
+  desk.value = false
   collapsedMachines.value = []
 }
 const pass = { template: '<div><slot /></div>' }
@@ -52,6 +55,35 @@ const mountHome = async () => track(await mountSuspended(HomeView, { global: { s
 describe('the machine bar on the home list', () => {
   beforeEach(() => { reset(); setState() })
   afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] }; eventsOpen.value = false; reset() })
+
+  it('restores a device-local conversation when a desktop tab excludes the current one', async () => {
+    desk.value = true
+    localStorage.setItem('machineConversations', JSON.stringify({ laptop: { pane: panes[2]!.id } }))
+    const w = track(await mountSuspended(HomeView, { route: `/a/${encodeURIComponent(panes[0]!.id)}`, global: { stubs: { UContextMenu: pass, UTooltip: pass } } }))
+    await w.find('[data-bar-id="laptop"]').trigger('click')
+    expect(navigate).toHaveBeenCalledWith(`/a/${encodeURIComponent(panes[2]!.id)}`, { replace: true })
+    expect(JSON.parse(localStorage.getItem('machineConversations')!)['*']).toEqual({ pane: panes[0]!.id })
+  })
+
+  it('keeps a matching conversation and All, then clears an incompatible view with no fallback', async () => {
+    desk.value = true
+    const w = track(await mountSuspended(HomeView, { route: `/a/${encodeURIComponent(panes[2]!.id)}`, global: { stubs: { UContextMenu: pass, UTooltip: pass } } }))
+    await w.find('[data-bar-id="laptop"]').trigger('click')
+    expect(navigate).not.toHaveBeenCalled()
+    expect(JSON.parse(localStorage.getItem('machineConversations')!).laptop).toEqual({ pane: panes[2]!.id })
+    await w.find('[data-bar-id="*"]').trigger('click')
+    expect(navigate).not.toHaveBeenCalled()
+    await w.find('[data-bar-id=""]').trigger('click')
+    expect(navigate).toHaveBeenCalledWith('/', { replace: true })
+  })
+
+  it('keeps the phone list first while retaining the per-tab history', async () => {
+    localStorage.setItem('machineConversations', JSON.stringify({ laptop: { pane: panes[2]!.id } }))
+    const w = await mountHome()
+    await w.find('[data-bar-id="laptop"]').trigger('click')
+    expect(navigate).not.toHaveBeenCalled()
+    expect(JSON.parse(localStorage.getItem('machineConversations')!).laptop).toEqual({ pane: panes[2]!.id })
+  })
 
   it('merges online machines into state groups and badges every flat card', async () => {
     homeGrouping.value = 'state'
