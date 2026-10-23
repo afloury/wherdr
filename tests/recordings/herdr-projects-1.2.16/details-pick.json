@@ -1,0 +1,80 @@
+{
+  "task": {
+    "id": "demo/11",
+    "title": "Prepare the lunar garden",
+    "stage": "pick",
+    "msg": null,
+    "description": null
+  },
+  "failure": null,
+  "review": null,
+  "reviews": [],
+  "agent": null,
+  "handovers": [],
+  "research": false,
+  "chat": false,
+  "report": null,
+  "plan": null,
+  "pr": null,
+  "worktree": null,
+  "branch": null,
+  "kept": null,
+  "inUse": null,
+  "limits": {
+    "time": {
+      "limit": "none"
+    },
+    "tokens": {
+      "limit": "none",
+      "used": 0,
+      "total": 0
+    }
+  },
+  "attempts": [
+    {
+      "letter": "A",
+      "id": "demo/11a",
+      "agent": "claude",
+      "standing": "passed",
+      "stage": "tried",
+      "stat": "",
+      "worktree": null,
+      "branch": null,
+      "diff": null,
+      "report": null
+    },
+    {
+      "letter": "B",
+      "id": "demo/11b",
+      "agent": "codex",
+      "standing": "passed",
+      "stage": "tried",
+      "stat": "",
+      "worktree": null,
+      "branch": null,
+      "diff": null,
+      "report": null
+    },
+    {
+      "letter": "C",
+      "id": "demo/11c",
+      "agent": "pi",
+      "standing": "out",
+      "stage": "failed",
+      "stat": "",
+      "worktree": null,
+      "branch": null,
+      "diff": null,
+      "report": null
+    }
+  ],
+  "comparison": {
+    "pick": "B",
+    "why": "The smaller change covers the requirements.",
+    "notes": {
+      "A": "More changes.",
+      "B": "Focused changes."
+    }
+  },
+  "picked": null
+}

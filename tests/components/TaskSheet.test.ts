@@ -4,9 +4,10 @@ import { readBody, setResponseStatus } from 'h3'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import TaskSheet from '~/components/TaskSheet.vue'
 import type { TaskRow } from '#shared/projectsTasks'
-import { hiddenAgents } from '~/composables/useHerdr'
+import { cachedAt, hiddenAgents } from '~/composables/useHerdr'
 
-mockNuxtImport('askConfirm', () => async () => true)
+const confirmation = vi.hoisted(() => ({ accepted: true }))
+mockNuxtImport('askConfirm', () => async () => confirmation.accepted)
 
 // Each action's reply is held until the test lets it go.
 const held: Array<() => void> = []
@@ -25,7 +26,7 @@ let actionBody: unknown
 let actionFails = false
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
 // What the details say, and how many times they were read.
-const shown: { stage: string, failure: string, failureStage: string, archived?: boolean, pane?: string | null } = { stage: 'approval', failure: '', failureStage: '' }
+const shown: { stage: string, failure: string, failureStage: string, attempts?: { letter: string, agent: string, standing: string, stage: string, stat: string }[], archived?: boolean, pane?: string | null } = { stage: 'approval', failure: '', failureStage: '' }
 let detailsReads = 0
 // Start's agent: the task's default (worker.agent, where it comes from) and the installed ones.
 let startReply: unknown = { agent: { value: 'claude', kind: 'claude', place: 'repo', from: 'your entry for demo' }, agents: ['claude', 'codex', 'pi'] }
@@ -780,5 +781,38 @@ it('ends a waiting conversation on its machine and refreshes the sheet', async (
   await flushPromises()
   expect(w.text()).toContain('Conversation is busy')
   actionFails = false
+  registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
   w.unmount()
+})
+
+describe('attempt choices in the task sheet', () => {
+  it('requires confirmation and disables unpassed or unavailable attempts', async () => {
+    shown.stage = 'pick'
+    shown.attempts = [
+      { letter: 'A', agent: 'claude', standing: 'passed', stage: 'tried', stat: '' },
+      { letter: 'B', agent: 'codex', standing: 'out', stage: 'failed', stat: '' },
+    ]
+    const { w } = await sheet(true)
+    await w.setProps({ task: { ...task, stage: 'pick' } })
+    await flushPromises()
+    const buttons = () => w.findAll('.task-attempt button')
+    await vi.waitFor(() => expect(buttons()).toHaveLength(2))
+    await vi.waitFor(() => expect(buttons()[0]!.attributes('disabled')).toBeUndefined())
+    expect(buttons()[1]!.attributes('disabled')).toBeDefined()
+    confirmation.accepted = false
+    await buttons()[0]!.trigger('click')
+    await flushPromises()
+    expect(w.find('.task-sheet-error').exists()).toBe(false)
+    expect(buttons()[0]!.attributes('disabled')).toBeUndefined()
+    cachedAt.value = Date.now()
+    await flushPromises()
+    expect(buttons()[0]!.attributes('disabled')).toBeDefined()
+    cachedAt.value = null
+    await w.setProps({ reachable: false })
+    expect(buttons()[0]!.attributes('disabled')).toBeDefined()
+    confirmation.accepted = true
+    shown.stage = 'approval'
+    delete shown.attempts
+    w.unmount()
+  })
 })
