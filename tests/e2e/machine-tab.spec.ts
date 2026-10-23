@@ -69,6 +69,14 @@ test('a machine tab: no header, quotas together, actions on the tab', { tag: ['@
   await page.keyboard.press('Escape')
   await expect(menu(page, phone)).toHaveCount(0)
 
+  // The local machine (key '') too.
+  await page.locator('[data-bar-id=""]').click()
+  await expect(page.locator('section.machine')).toHaveCount(1)
+  await expect(page.locator('section.machine .machine-row')).toHaveCount(0)
+  const local = await page.locator('.scroll > .quotas .quota-who').evaluateAll(els => els.map(e => e.getAttribute('title')))
+  expect(local.map(w => w?.split(' · ')[0])).toEqual(['Claude', 'Codex'])
+  await page.screenshot({ path: `.shots/machine-tab-local-${info.project.name}.png` })
+
   // A group keeps the machine headers, and its menu opens its settings.
   await page.locator('.machine-bar-item', { hasText: 'Perso' }).click()
   await expect(page.locator('section.machine .machine-row')).toHaveCount(2)

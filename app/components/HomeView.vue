@@ -261,7 +261,7 @@ function onBarDown(e: PointerEvent, id: string, label: string) {
 // machine chips and quotas.
 const soloTab = computed(() => {
   const pick = machineBarPick.value
-  if (homeGrouping.value !== 'machine' || !sections.value || sections.value.length !== 1 || !pick || !barMachine(pick)) return null
+  if (homeGrouping.value !== 'machine' || !sections.value || sections.value.length !== 1 || pick === null || !barMachine(pick)) return null
   return sections.value[0]!
 })
 const listQuotas = computed(() => (soloTab.value ? tabQuotaRows(topQuotas.value, soloTab.value.quotas) : topQuotas.value))

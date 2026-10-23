@@ -321,6 +321,16 @@ describe('a tab showing one machine', () => {
     expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: 'laptop' } })
   })
 
+  it('the local machine (key \'\') drops its header too', async () => {
+    machineBarSaved.value = ''
+    const w = await mountHome()
+    expect(w.findAll('section.machine').map(s => s.attributes('data-machine'))).toEqual(['local'])
+    expect(w.find('.machine-row').exists()).toBe(false)
+    await press(w.find('[data-bar-id=""]').element)
+    expect(menuState.title).toBe('Server')
+    expect(menuState.items.map(i => i.label)).toEqual(expect.arrayContaining(['Herdr sessions', 'Open the board']))
+  })
+
   it('State mode keeps its own machine chip and quotas', async () => {
     homeGrouping.value = 'state'
     machineBarSaved.value = 'devbox'
