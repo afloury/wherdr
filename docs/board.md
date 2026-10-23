@@ -43,7 +43,10 @@ What the Board shows and does:
   output and next-step hint. A failure the task has moved on from (a later stage, or its agent
   started again) is not the banner, and gets no buttons: it stays in Task as an earlier failure.
   It offers **Retry**, **Send the error to the agent** (`fix`), **Open terminal** and, when
-  allowed, **Approve anyway** with confirmation. **Finish** (`finish`, after a confirmation)
+  allowed, **Approve anyway** with confirmation. After a failed review, it lists the open
+  findings (severity and subject, worst first) and offers **Send the review back to the agent**
+  (`review`) first, as herdr-projects does, with **Approve anyway** after it. While the reviewer
+  shows a dialog (`reviewneeds`), a reply goes to the reviewer, and wherdr says so. **Finish** (`finish`, after a confirmation)
   takes the work as it is, then runs its checks and review: offered when the agent stopped at
   a limit (Retry gives it the same limit again) or without a summary, and when its agent is at
   rest while the row stays on "Finishing". A setup failure offers **Start again**:
