@@ -58,6 +58,8 @@ export interface NotificationSource {
   coordinator?: string
   // A task agent (worker, reviewer, attempt, planner).
   subagent?: boolean
+  // A task's Herdr session (its coordinators' folder), when the board says.
+  session?: string
   // A board event (a task waiting for approval, failed…): never a sub-agent's.
   board?: boolean
 }
@@ -127,20 +129,30 @@ export function migrateNotificationSettings(v: { defaults?: unknown, muteSubagen
 
 // The exception that decides for this source, if any (timed mutes that ended
 // and left nothing behind no longer count).
+export const exceptionLive = (e: NotificationException, now = Date.now()) => e.events !== null || (e.until !== null && e.until > now)
 export function notificationException(settings: NotificationSettings, source: NotificationSource, now = Date.now()): NotificationException | undefined {
-  const live = (e: NotificationException) => e.machine === source.machine && (e.events !== null || (e.until !== null && e.until > now))
-  const own = settings.exceptions.find(e => live(e) && ((e.kind === 'conversation' && e.id === source.conversation)
-    || (e.kind === 'coordinator' && source.coordinator !== undefined && e.id === source.coordinator)))
+  const live = (e: NotificationException) => e.machine === source.machine && exceptionLive(e, now)
+  const task = source.subagent || source.board
+  // Task agents never have an exception of their own (only the Sub-agents
+  // switches), even one migrated from the older per-conversation rules.
+  const own = settings.exceptions.find(e => live(e) && ((e.kind === 'conversation' && !task && e.id === source.conversation)
+    || (e.kind === 'coordinator' && !task && source.coordinator !== undefined && e.id === source.coordinator)))
   if (own) return own
-  if (!source.subagent && !source.board) return undefined
-  // A task belongs to its project's coordinator, then to the machine's main
-  // and machine coordinators. Board events follow the project coordinator.
-  const coordinators = settings.exceptions.filter(e => live(e) && e.kind === 'coordinator' && (e.subagents || source.board))
-  const at = (level: string) => coordinators.find(e => {
+  if (!task) return undefined
+  // A task belongs to its project's coordinator in its own session; else to
+  // that session's main, then machine coordinator. The closest coordinator
+  // with an exception decides: its Sub-agents switch off means the default.
+  // Board events follow the project coordinator's exception, switch or not.
+  const at = (level: string) => settings.exceptions.find(e => {
+    if (!live(e) || e.kind !== 'coordinator') return false
     const k = parseCoordinatorKey(e.id)
-    return k.level === level && (level !== 'project' || k.repo === source.project)
+    return k.level === level && (source.session === undefined || k.session === source.session)
+      && (level !== 'project' || k.repo === source.project)
   })
-  return (source.project ? at('project') : undefined) ?? (source.board ? undefined : at('top') ?? at('machine'))
+  const project = source.project ? at('project') : undefined
+  if (source.board) return project
+  const closest = project ?? at('top') ?? at('machine')
+  return closest?.subagents ? closest : undefined
 }
 
 export function notificationEvents(settings: NotificationSettings, source: NotificationSource, now = Date.now()): NotificationEvent[] {
@@ -161,7 +173,12 @@ export function paneNotificationSource(pane: Pick<Pane, 'id' | 'workspace'>, sta
     const coordinator = board.coordinators.find(c => c.pane === pane.id)
     if (coordinator) return { machine: board.machine, project: coordinator.repo, conversation: pane.id, coordinator: coordinatorKey(coordinator) }
     const task = board.tasks.find(t => t.panes.some(p => p.id === pane.id) || (t.workspace !== null && t.workspace === pane.workspace))
-    if (task) return { machine: board.machine, project: task.repo, conversation: pane.id, subagent: true }
+    if (task) {
+      // Each Herdr session has its own key prefix: its coordinators share the task's.
+      const key = machineOf(pane.id)
+      const session = board.coordinators.find(c => c.session !== undefined && machineOf(c.pane ?? c.workspace) === key)?.session
+      return { machine: board.machine, project: task.repo, conversation: pane.id, subagent: true, ...(session === undefined ? {} : { session }) }
+    }
   }
   const board = boards.find(b => b.machine === baseMachine)
   const linked = board?.tasks.find(t => ws?.repo && state.workspaces.find(w => w.id === t.workspace)?.repo === ws.repo)
@@ -169,13 +186,19 @@ export function paneNotificationSource(pane: Pick<Pane, 'id' | 'workspace'>, sta
   return { machine: baseMachine, project: linked?.repo || repo?.repo || ws?.repoName || ws?.repo || undefined, conversation: pane.id }
 }
 
-// Migrated conversation exceptions that name a coordinator's current pane move
-// to its stable identity. Returns null when nothing changes.
-export function rekeyCoordinatorExceptions(settings: NotificationSettings, boards: MachineLinks[]): NotificationSettings | null {
+// Keeps saved exceptions to what the model allows: migrated conversation
+// exceptions that name a coordinator's current pane move to its stable
+// identity, those that name a task agent go (the Sub-agents switch decides),
+// and ended timed mutes that left nothing behind go. Null: nothing changes.
+export function tidyNotificationExceptions(settings: NotificationSettings, boards: MachineLinks[], now = Date.now()): NotificationSettings | null {
   let changed = false
   const exceptions: NotificationException[] = []
   for (const e of settings.exceptions) {
-    const c = e.kind === 'conversation' ? boards.find(b => b.machine === e.machine)?.coordinators.find(c => c.pane === e.id) : undefined
+    if (!exceptionLive(e, now)) { changed = true; continue }
+    const board = e.kind === 'conversation' ? boards.find(b => b.machine === e.machine) : undefined
+    const c = board?.coordinators.find(c => c.pane === e.id)
+    const space = e.id.replace(/:p[0-9a-z]+$/i, '')
+    if (board && !c && board.tasks.some(t => t.panes.some(p => p.id === e.id) || t.workspace === space)) { changed = true; continue }
     if (c) { changed = true; addException(exceptions, { ...e, kind: 'coordinator', id: coordinatorKey(c) }) }
     else addException(exceptions, e)
   }

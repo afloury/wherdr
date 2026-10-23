@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Settings › Notifications: a default for everything, and exceptions to it.
-import { LEVEL_EVENTS, compareEvents, levelOf, sameNotificationTarget, type NotificationEvent, type NotificationException, type NotificationTarget } from '#shared/notificationRules'
+import { LEVEL_EVENTS, compareEvents, exceptionLive, levelOf, sameNotificationTarget, type NotificationEvent, type NotificationException, type NotificationTarget } from '#shared/notificationRules'
 useNotificationClock()
 useNotificationRekey()
 const boards = useBoardLinks()
@@ -14,11 +14,16 @@ const defaultEvents = computed(() => rules.value.default.events)
 
 // Exceptions, by machine then name (ended timed mutes that left nothing are gone).
 const exceptions = computed(() => rules.value.exceptions
-  .filter(e => e.events !== null || (e.until ?? 0) > now.value)
+  .filter(e => exceptionLive(e, now.value) && !(e.kind === 'conversation' && taskPane(e.id)))
   .map(e => ({ e, machine: notificationMachineName(e.machine), name: exceptionName(e) }))
   .sort((a, b) => a.machine.localeCompare(b.machine) || a.name.localeCompare(b.name)))
 function exceptionName(e: NotificationTarget) {
   return e.kind === 'coordinator' ? coordinatorNotificationLabel(e.machine, e.id) : livePaneTitle(e.id) || e.label
+}
+// A conversation exception on a task agent (from older settings) is not shown: the Sub-agents switch decides.
+function taskPane(id: string) {
+  const p = herdrState.value.panes.find(x => x.id === id)
+  return p ? Boolean(notificationSource(p).subagent) : false
 }
 const livePaneTitle = (id: string) => herdrState.value.panes.find(p => p.id === id)?.title || ''
 const mutedUntil = (e: NotificationException) => e.until !== null && e.until > now.value ? e.until : null
@@ -43,7 +48,7 @@ const picking = ref(false)
 const candidates = computed(() => {
   const groups = new Map<string, { machine: string, name: string, items: NotificationTarget[] }>()
   const add = (t: NotificationTarget) => {
-    if (rules.value.exceptions.some(e => sameNotificationTarget(e, t))) return
+    if (rules.value.exceptions.some(e => exceptionLive(e, now.value) && sameNotificationTarget(e, t))) return
     const g = groups.get(t.machine) ?? { machine: t.machine, name: notificationMachineName(t.machine), items: [] }
     if (!g.items.some(x => sameNotificationTarget(x, t))) g.items.push(t)
     groups.set(t.machine, g)

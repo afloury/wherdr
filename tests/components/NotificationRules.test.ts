@@ -4,7 +4,7 @@ import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import NotificationRules from '~/components/NotificationRules.vue'
 import SettingsView from '~/components/SettingsView.vue'
 import { herdrState } from '~/composables/useHerdr'
-import { notificationRules } from '~/composables/useNotificationRules'
+import { notificationClock, notificationRules } from '~/composables/useNotificationRules'
 import { LEVEL_EVENTS, defaultNotifications, type NotificationException, type NotificationSettings } from '#shared/notificationRules'
 import type { Pane } from '#shared/types'
 
@@ -25,6 +25,7 @@ const policy = (events: NotificationSettings['default']['events'], ...exceptions
 
 async function mount(settings: NotificationSettings) {
   notificationRules.value = settings
+  notificationClock.value = Date.now()
   herdrState.value = { ok: true, workspaces: [], panes: [
     pane('w1:p1', { title: 'Coordinator' }), pane('w1:p2', { title: 'Shop coordinator' }),
     pane('w2:p1', { title: 'Task worker' }), pane('w3:p1', { title: 'Standalone agent' }),
@@ -76,6 +77,25 @@ describe('notification settings: a default and exceptions', () => {
     notificationRules.value = policy([], exception(MAIN), exception('default/project/shop'))
     await flushPromises()
     await w.find('.notification-reset').trigger('click')
+    expect(notificationRules.value.exceptions).toEqual([])
+    w.unmount()
+  })
+
+  it('after a timed mute ends, the coordinator can be added again and the old record goes', async () => {
+    const w = await mount(policy([], exception(MAIN, { events: null, until: Date.now() - 1000 })))
+    expect(w.findAll('[data-testid="notification-exception"]')).toHaveLength(0)
+    await w.find('.notification-add').trigger('click')
+    const main = w.find('[data-testid="notification-picker"]').findAll('button').find(b => b.text() === 'Coordinator')
+    expect(main).toBeTruthy()
+    await main!.trigger('click')
+    expect(notificationRules.value.exceptions).toEqual([expect.objectContaining({ id: MAIN, events: LEVEL_EVENTS.finished, until: null })])
+    w.unmount()
+  })
+
+  it('a migrated rule on a task agent is neither shown nor kept', async () => {
+    const w = await mount(policy([], { ...exception('w2:p1', { events: ['message'] }), kind: 'conversation', label: 'Task worker' }))
+    expect(w.findAll('[data-testid="notification-exception"]')).toHaveLength(0)
+    await flushPromises()
     expect(notificationRules.value.exceptions).toEqual([])
     w.unmount()
   })

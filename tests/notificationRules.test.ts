@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { LEVEL_EVENTS, NOTIFICATION_EVENTS, NotificationPresence, compareEvents, coordinatorKey, defaultNotifications, levelOf,
-  notificationEvents, paneNotificationSource, parseNotificationSettings, rekeyCoordinatorExceptions,
+  notificationEvents, paneNotificationSource, parseNotificationSettings, tidyNotificationExceptions,
   type NotificationException, type NotificationSettings, type NotificationSource } from '../shared/notificationRules'
 import type { MachineLinks } from '../shared/boardLinks'
 
@@ -97,6 +97,44 @@ describe('the Sub-agents switch', () => {
   })
 })
 
+describe('review cases', () => {
+  it('a project exception with sub-agents off sends its tasks to the default, not to the main coordinator’s exception', () => {
+    const s = settings([], exception(MAIN, { events: LEVEL_EVENTS.all, subagents: true }), exception(SHOP, { events: ['needs-you'], subagents: false }))
+    expect(notificationEvents(s, worker)).toEqual([])
+    expect(notificationEvents(s, { ...worker, project: 'other' })).toEqual(LEVEL_EVENTS.all)
+  })
+  it('a project coordinator’s exception does not reach the tasks of another Herdr session', () => {
+    const s = settings([], exception(SHOP, { events: LEVEL_EVENTS.all, subagents: true }))
+    const boards: MachineLinks[] = [{ machine: '', coordinators: [
+      { level: 'project', repo: 'shop', session: 'default', pane: 'w1:p2', workspace: 'w1' },
+      { level: 'project', repo: 'shop', session: 'other', pane: 'abcd~w1:p2', workspace: 'abcd~w1' },
+    ], tasks: [
+      { id: 'shop/1', repo: 'shop', n: 1, key: 'SHOP-1', title: 'A', panes: [{ id: 'w2:p1', role: 'worker' }], workspace: 'w2', stage: 'working', progress: null, msg: '', since: null },
+      { id: 'shop/2', repo: 'shop', n: 2, key: 'SHOP-2', title: 'B', panes: [{ id: 'abcd~w2:p1', role: 'worker' }], workspace: 'abcd~w2', stage: 'working', progress: null, msg: '', since: null },
+    ] }]
+    const other = paneNotificationSource({ id: 'abcd~w2:p1', workspace: 'abcd~w2' }, { workspaces: [] }, boards, '')
+    expect(other).toMatchObject({ subagent: true, session: 'other' })
+    expect(notificationEvents(s, other)).toEqual([])
+    const mine = paneNotificationSource({ id: 'w2:p1', workspace: 'w2' }, { workspaces: [] }, boards, '')
+    expect(notificationEvents(s, mine)).toEqual(LEVEL_EVENTS.all)
+  })
+  it('a migrated rule on a task agent never bypasses the Sub-agents switch, and is dropped once the board names it', () => {
+    const s = parseNotificationSettings(JSON.stringify({ defaults: [], muteSubagents: true, rules: [
+      { scope: 'conversation', mode: 'on', machine: '', id: 'w2:p1', label: 'Worker', events: ['message'], until: null },
+    ] }))
+    expect(notificationEvents(s, worker)).toEqual([])
+    const boards: MachineLinks[] = [{ machine: '', coordinators: [], tasks: [
+      { id: 'shop/1', repo: 'shop', n: 1, key: 'SHOP-1', title: 'A', panes: [{ id: 'w2:p1', role: 'worker' }], workspace: 'w2', stage: 'working', progress: null, msg: '', since: null },
+    ] }]
+    expect(tidyNotificationExceptions(s, boards)!.exceptions).toEqual([])
+  })
+  it('drops an ended timed mute that left nothing behind', () => {
+    const s = settings([], exception(MAIN, { events: null, until: 1000 }), exception('w3:p1'))
+    expect(tidyNotificationExceptions(s, [], 2000)!.exceptions.map(e => e.id)).toEqual(['w3:p1'])
+    expect(tidyNotificationExceptions(s, [], 500)).toBeNull()
+  })
+})
+
 describe('timed mutes', () => {
   it('mutes until then, and then the exception’s own level', () => {
     const s = settings([], exception(MAIN, { until: 5000 }))
@@ -154,12 +192,12 @@ describe('migration of #156 rules', () => {
   it('moves a migrated coordinator’s pane exception to its stable identity', () => {
     const s = old([rule('conversation', 'on', { events: ['needs-you'] }), rule('conversation', 'muted', { id: 'w3:p1' })])
     const boards: MachineLinks[] = [{ machine: '', tasks: [], coordinators: [{ level: 'top', session: 'default', pane: 'w1:p1', workspace: 'w1' }] }]
-    const next = rekeyCoordinatorExceptions(s, boards)!
+    const next = tidyNotificationExceptions(s, boards)!
     expect(next.exceptions).toEqual([
       expect.objectContaining({ kind: 'coordinator', id: MAIN, events: ['needs-you'] }),
       expect.objectContaining({ kind: 'conversation', id: 'w3:p1' }),
     ])
-    expect(rekeyCoordinatorExceptions(next, boards)).toBeNull()
+    expect(tidyNotificationExceptions(next, boards)).toBeNull()
     // The same intent as before the move, and after a restart on a new pane.
     expect(notificationEvents(next, main)).toEqual(['needs-you'])
     expect(notificationEvents(next, { ...main, conversation: 'w8:p1' })).toEqual(['needs-you'])

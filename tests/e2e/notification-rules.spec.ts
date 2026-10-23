@@ -95,6 +95,23 @@ test('the exception picker lists coordinators by machine, never task agents', as
   ])
 })
 
+test('an ended timed mute leaves the coordinator addable again, and a migrated task rule is dropped', async ({ page }) => {
+  await page.route('**/api/tasks/links*', route => route.fulfill({ json: { version: 'example', machines: [{ machine: '',
+    coordinators: [{ level: 'top', session: 'default', pane: 'w1:p2', workspace: 'w1' }],
+    tasks: [{ id: 'example/1', repo: 'example', n: 1, key: 'APP-1', title: 'Example', panes: [{ id: 'w1:p1', role: 'worker' }], workspace: 'w1', stage: 'working', progress: null, msg: '', since: null }],
+  }] } }))
+  await seed(page, { version: 2, default: { events: [], subagents: false }, exceptions: [
+    { kind: 'coordinator', machine: '', id: 'default/top/', label: 'Coordinator', events: null, subagents: false, until: Date.now() - 60000 },
+    { kind: 'conversation', machine: '', id: 'w1:p1', label: 'Worker', events: ['message'], subagents: false, until: null },
+  ] })
+  await page.goto('/#/settings?section=notifications')
+  await expect(page.getByTestId('notification-exception')).toHaveCount(0)
+  await expect.poll(async () => (await stored(page))?.exceptions).toEqual([])
+  await page.getByRole('button', { name: 'Add an exception', exact: true }).click()
+  await page.getByTestId('notification-picker').getByRole('button', { name: 'Coordinator', exact: true }).click()
+  await expect.poll(async () => (await stored(page))?.exceptions).toEqual([expect.objectContaining({ id: 'default/top/', events: ['needs-you', 'finished'], until: null })])
+})
+
 test('viewing heartbeat requires visibility and recent activity', async ({ page }) => {
   const viewing: { pane: string | null, visible: boolean }[] = []
   page.on('websocket', ws => ws.on('framesent', frame => {

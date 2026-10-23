@@ -1,7 +1,7 @@
 import { SETTING_MAX } from '#shared/settings'
 import { machineOf } from '#shared/ids'
 import { EXCEPTIONS_MAX, LEVEL_EVENTS, NOTIFICATION_LEVELS, coordinatorKey, levelOf, notificationEvents, notificationException,
-  paneNotificationSource, parseCoordinatorKey, parseNotificationSettings, rekeyCoordinatorExceptions, sameNotificationTarget,
+  paneNotificationSource, parseCoordinatorKey, parseNotificationSettings, tidyNotificationExceptions, sameNotificationTarget,
   type NotificationEvent, type NotificationException, type NotificationLevel, type NotificationSettings, type NotificationTarget } from '#shared/notificationRules'
 import type { LinkedCoordinator } from '#shared/boardLinks'
 import type { Pane } from '#shared/types'
@@ -84,12 +84,12 @@ export function removeException(target: Pick<NotificationTarget, 'kind' | 'machi
   toast(tl(`Back to the default: ${defaultLevelLabel()}`, `Retour au défaut : ${defaultLevelLabel()}`))
 }
 
-// Exceptions saved before coordinators had a stable identity (by pane) move
-// to it as soon as the board names that pane.
+// Saved exceptions the model does not allow (pane-keyed coordinators, task
+// agents, ended timed mutes) are fixed once the board's links are known.
 export function useNotificationRekey() {
   const boards = useBoardLinks()
-  watch([boards, notificationRules], ([b, s]) => {
-    const next = b.length ? rekeyCoordinatorExceptions(s, b) : null
+  watch([boards, notificationRules, notificationClock], ([b, s, now]) => {
+    const next = tidyNotificationExceptions(s, b, now)
     if (next) saveNotificationRules(next)
   }, { immediate: true })
 }
