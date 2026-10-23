@@ -14,11 +14,17 @@ list of tasks, each handed to an ordinary agent in its own space, reviewed when 
 merged on your yes. wherdr shows it on the **Board** (the button next to Settings, or `H`), for
 every machine at once. It needs **herdr-projects 1.2.1 or later**; the plugin is optional.
 
-**Install herdr-projects** in **Settings → Plugins → herdr-projects**, or on the machine:
+**Install herdr-projects** in **Settings → Plugins → herdr-projects**, or on the machine. wherdr
+installs the release it was tested with (1.2.21):
 
 ```sh
-herdr plugin install eliasstravik/herdr-projects --ref v1.2.1 --yes
+herdr plugin install eliasstravik/herdr-projects --ref v1.2.21 --yes
 ```
+
+A machine with an older 1.x (1.2.1 or later) still works. Settings says **Update available**
+there, with what the update adds, and **Update to 1.2.21** replaces Herdr's copy of the plugin;
+the tasks and settings stay. wherdr reads the program's own version (`herdr-projects version`),
+so a machine that ran `herdr-projects update` to a newer release is never taken back.
 
 > **Breaking change in wherdr 2.0: herdr-projects 0.2 is no longer read.** The Project panel,
 > the `TASKS.md` board, threads, thread limits and **New project** belonged to herdr-projects
@@ -48,7 +54,10 @@ What the Board shows and does:
   output and next-step hint. A failure the task has moved on from (a later stage, or its agent
   started again) is not the banner, and gets no buttons: it stays in Task as an earlier failure.
   It offers **Retry**, **Send the error to the agent** (`fix`), **Open terminal** and, when
-  allowed, **Approve anyway** with confirmation. **Finish** (`finish`, after a confirmation)
+  allowed, **Approve anyway** with confirmation. After a failed review, it lists the open
+  findings (severity and subject, worst first) and offers **Send the review back to the agent**
+  (`review`) first, as herdr-projects does, with **Approve anyway** after it. While the reviewer
+  shows a dialog (`reviewneeds`), a reply goes to the reviewer, and wherdr says so. **Finish** (`finish`, after a confirmation)
   takes the work as it is, then runs its checks and review: offered when the agent stopped at
   a limit (Retry gives it the same limit again) or without a summary, and when its agent is at
   rest while the row stays on "Finishing". A setup failure offers **Start again**:
@@ -89,8 +98,8 @@ What the Board shows and does:
   another open session. After a worker fallback, the main logo names the current worker and
   **Took over from** names the previous one from the recorded handover.
 - **The agent list** groups the board's spaces under their repo, as Herdr's sidebar does: each
-  machine's Coordinator and machine coordinator first, each with its own icon and label (**Board
-  coordinator** with the board's icon, **Machine coordinator** with the machine's), then per repo a head row, its project
+  machine's Coordinator and machine coordinator first, each with its own icon and the Board's name (**Coordinator** with
+  the board's icon, **`<machine>` coordinator** with the machine's), then per repo a head row, its project
   coordinator (named after the repo, the wherdr mark on the accent, **Coordinator**, its state; its
   question and one-tap answers when it asks one; without a coordinator here, the repo's own space
   with its initial), a bar under it (fold, the tasks' summary such as `4 TASKS · 1 YOUR TURN ·
@@ -105,11 +114,13 @@ What the Board shows and does:
   and from Herdr's worktree groups, every 15 seconds while the list is shown, never through
   herdr-projects' command line; the branch and behind count come from `git` in the repo's main
   checkout, once a minute, without fetching.
-- **Coordinator entry points**: the top of the Board names the host of the main Coordinator,
-  for all repos and machines it can reach. With several hosts, choose one from the menu;
-  unavailable and read-only hosts stay listed with their reason. Machine headings offer
-  **`<machine> setup`** (that machine's setup, folders and repos), repo headings offer
-  **`<repo> coordinator`** (work in that repo). Hover or long-press an entry for its role;
+- **Coordinator entry points**, named as herdr-projects names them, one name per level on the
+  Board, the home list, the conversation header and the menus: the top of the Board offers the
+  main **Coordinator** (FR **Coordinateur**), for all repos and machines it can reach. With
+  several hosts, its menu lists them by name; unavailable and read-only hosts stay listed with
+  their reason. Machine headings offer **`<machine> coordinator`** (FR **Coordinateur ·
+  `<machine>`**: the machine as a whole, its repos and folders, its tasks and agents), repo
+  headings offer **`<repo> coordinator`** (FR **Coordinateur · `<dépôt>`**: work in that repo). Hover or long-press an entry for its role;
   the conversation header repeats that description.
 - **A machine is one board**, shared by its named sessions: one list, one queue, one card per
   task. A machine whose read fails says why on the Board, and its last tasks stay, marked with

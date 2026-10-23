@@ -5,11 +5,47 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  NOTIFY_SETUP, NO_ACTIONS, addArgs, agentKind, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
-  rowFromTaskFile, stateFromTaskFile, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
+  NOTIFY_SETUP, NO_ACTIONS, addArgs, parseBoardAgents, agentKind, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
+  reviewFindingsBrief, rowFromTaskFile, stateFromTaskFile, taskCanSendReview, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
 } from '../shared/projectsTasks'
+import { PROJECTS_TESTED } from '../shared/projectsPlugin'
 
 const fixture = (name: string) => readFileSync(path.join(import.meta.dirname, 'recordings/herdr-projects-1.2.1', name), 'utf8')
+
+// The release wherdr installs (PROJECTS_TESTED): its real output, recorded the
+// same way (docs/RELEASING.md, "herdr-projects tested version").
+describe(`herdr-projects ${PROJECTS_TESTED}, the release wherdr installs`, () => {
+  const tested = (name: string) => readFileSync(path.join(import.meta.dirname, `recordings/herdr-projects-${PROJECTS_TESTED}`, name), 'utf8')
+
+  it('list --json and list --json --archived', () => {
+    const rows = parseTaskList(tested('list.json'))
+    expect(rows.map(r => [r.id, r.stage, r.group])).toEqual([['demo/2', 'todo', 'todo'], ['demo/1', 'failed', 'needs']])
+    expect(rows[1]).toMatchObject({ repo: 'demo', n: 1, app: 'claude', title: 'Fix login page', state: 'error' })
+    expect(parseTaskList(tested('list-archived.json'))).toMatchObject([{ id: 'demo/2', archived: true }])
+  })
+
+  it('details --json: a failed start, and a task that waits for another (after)', () => {
+    expect(parseTaskDetails(tested('details-failed.json'))).toMatchObject({
+      id: 'demo/1', stage: 'failed', description: 'Fictional', agent: 'claude',
+      failureTitle: 'Could not start the agent', failureStage: 'start', failureCanFix: false, failureAuth: false,
+      failureNext: 'Fix what herdr reports, then delegate again (ctrl+s).', limits: { time: 'none', tokens: 'none' },
+    })
+    expect(parseTaskDetails(tested('details-todo.json'))).toMatchObject({
+      id: 'demo/2', stage: 'todo', after: { waitsFor: ['demo/1'], left: ['demo/1'], waiting: false, titles: { 'demo/1': 'Fix login page' } },
+    })
+  })
+
+  it('show --json: the worker agent, the board\'s slots and the repo key', () => {
+    const show = tested('show-task.json')
+    expect(parseWorkerAgent(show)).toEqual({ value: 'claude', kind: 'claude', place: 'builtin', from: 'built in' })
+    expect(parseBoardAgents(show)).toBe(4)
+    expect(parseRepoKey(show)).toBe('DEMO')
+  })
+
+  it('coordinator --machine --json status', () => {
+    expect(parseCoordinatorStatus(tested('coordinator-machine.json'))).toEqual({ state: 'none', queued: 0, pane: null, error: '', name: 'devbox coordinator' })
+  })
+})
 
 describe('list --json (1.2.1)', () => {
   const rows = parseTaskList(fixture('list.json'))
@@ -422,5 +458,34 @@ describe('Start with an agent (delegate --worker.agent, show <id> --json)', () =
     expect(parseWorkerAgent('{"settings":[{"name":"worker.agent","value":""}]}')).toBeNull()
     expect(parseWorkerAgent('not json')).toBeNull()
     expect(parseWorkerAgent('[]')).toBeNull()
+  })
+})
+
+// WHR-85: a failed review is sent back first (`review <id>`), as 1.x asks it.
+describe('a failed review sent back to the agent', () => {
+  const failed = { meets: false, pass: false, findings: [{ severity: 'minor', subject: 'Typo in label' }, { severity: 'critical', subject: 'Token logged' }, { severity: 'major', subject: 'Old note', preexisting: true }] }
+  const row = (o: Record<string, unknown> = {}) => parseTaskList(JSON.stringify([{ id: 'acme/4', state: 'blocked', kind: 'permission', app: 'claude', title: 'T', stage: 'approval', review: failed, ...o }]))[0]!
+
+  it('is offered on a task waiting for approval after a failed review only', () => {
+    expect(taskCanSendReview(row())).toBe(true)
+    expect(taskCanSendReview(row({ review: { ...failed, pass: true } }))).toBe(false)
+    expect(taskCanSendReview(row({ stage: 'merging' }))).toBe(false)
+    expect(taskCanSendReview({ ...row(), archived: true })).toBe(false)
+    expect(taskCanSendReview({ ...row(), research: true })).toBe(false)
+    // Its details, read later, are where it stands now.
+    expect(taskCanSendReview(row({ review: null }), { review: { pass: false, tally: '1 major', by: 'codex' } })).toBe(true)
+  })
+
+  it('keeps whether a finding was there before the task', () => {
+    const d = parseTaskDetails(JSON.stringify({ task: { id: 'acme/4', stage: 'approval' }, review: failed }))
+    expect(d.findings!.map(f => [f.title, f.preexisting ?? false])).toEqual([['Typo in label', false], ['Token logged', false], ['Old note', true]])
+  })
+
+  it('briefs its open findings worst first, then how many more', () => {
+    const d = parseTaskDetails(JSON.stringify({ task: { id: 'acme/4', stage: 'approval' }, review: failed }))
+    expect(reviewFindingsBrief(d.findings)).toEqual({ list: [expect.objectContaining({ severity: 'critical', title: 'Token logged' }), expect.objectContaining({ severity: 'minor', title: 'Typo in label' })], more: 0 })
+    const many = Array.from({ length: 5 }, (_, i) => ({ severity: i === 4 ? 'major' : 'trivial', title: `F${i}`, detail: '' }))
+    expect(reviewFindingsBrief(many)).toEqual({ list: [many[4], many[0], many[1]], more: 2 })
+    expect(reviewFindingsBrief(undefined)).toEqual({ list: [], more: 0 })
   })
 })

@@ -27,6 +27,8 @@ case "$1" in
   list) if [ "$3" = --archived ]; then if [ -f '${root}/archived.json' ]; then cat '${root}/archived.json'; else echo '[]'; fi
     elif [ -f '${root}/list.json' ]; then cat '${root}/list.json'; else cat '${fixtures}/list.json'; fi ;;
   details) if [ -f '${root}/details.json' ]; then cat '${root}/details.json'; else case "$4" in demo/1) cat '${fixtures}/details-approval.json' ;; demo/2) cat '${fixtures}/details-asks.json' ;; demo/6) echo '${JSON.stringify(failedDetails)}' ;; *) cat '${fixtures}/details-working.json' ;; esac; fi ;;
+  # The program's own version: the tested release, unless the spec writes another.
+  version) if [ -f '${root}/version' ]; then cat '${root}/version'; else echo 'herdr-projects 1.2.21 (/opt/herdr-projects/bin/herdr-projects-linux-x86_64)'; fi ;;
   tell) echo "$3: sent" ;;
   approve) if [ -f '${root}/after-approve.json' ]; then mv '${root}/after-approve.json' '${root}/list.json'; fi; echo "$3: approved, merging" ;;
   coordinator) co="$2"; case "$co" in --machine|--project=*) ;; *) co=main ;; esac
@@ -68,7 +70,7 @@ const home = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8').trim()), 
 const taskDir = path.join(home, '.herdr-projects/data/tasks/demo/1')
 
 test.beforeEach(() => {
-  for (const f of [path.join(root, 'details.json'), calls, path.join(root, 'own-agent'), path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'after-approve.json'), path.join(root, 'web-coordinator'), path.join(root, 'refuse'), path.join(root, 'show.json'), told]) fs.rmSync(f, { recursive: true, force: true })
+  for (const f of [path.join(root, 'details.json'), calls, path.join(root, 'own-agent'), path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'after-approve.json'), path.join(root, 'web-coordinator'), path.join(root, 'refuse'), path.join(root, 'show.json'), path.join(root, 'version'), told]) fs.rmSync(f, { recursive: true, force: true })
   fs.mkdirSync(told)
 })
 test.afterEach(async () => { await fakeHerdr('e2e.plugins', { plugins: [] }) })
@@ -195,7 +197,7 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', { tag
   // No chat box on the Board: the top bar's Coordinator button opens it in the panel,
   // in both views; one not started yet takes a first message, which starts it.
   await expect(page.locator('#board-coord-text')).toHaveCount(0)
-  await page.locator('.board-top').getByRole('button', { name: /^Coordinator · / }).click()
+  await page.locator('.board-top').getByRole('button', { name: 'Coordinator', exact: true }).click()
   await expect(panel.locator('.board-panel-name')).toHaveText('Coordinator')
   await panel.locator('#board-panel-first').fill('Add a dark mode toggle')
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
@@ -214,7 +216,7 @@ test('a 0.2 or a 1.x older than 1.2.1: the Board and Settings say what to do, an
     await expect(machine.locator('.projects-plugin-head')).toContainText(`Update needed · v${plugin.version}`, { timeout: 15000 })
     const note = machine.locator('.projects-upgrade')
     await expect(note).toContainText('Update herdr-projects to 1.2.1 or later, or downgrade wherdr to 1.3.4')
-    await expect(note).toContainText('herdr plugin uninstall herdr-projects && herdr plugin install eliasstravik/herdr-projects --ref v1.2.1 --yes')
+    await expect(note).toContainText('herdr plugin uninstall herdr-projects && herdr plugin install eliasstravik/herdr-projects --ref v1.2.21 --yes')
     await expect(note).toContainText('npm install -g wherdr@1.3.4')
     await expect(note).toContainText('docs/herdr-projects-1x.md')
     if (plugin.version === '0.2.34') {
@@ -232,17 +234,70 @@ test('a 0.2 or a 1.x older than 1.2.1: the Board and Settings say what to do, an
   expect(callLog()).toEqual([])
 })
 
-test('without herdr-projects: install it, from 1.2.1', async ({ page }, testInfo) => {
+test('without herdr-projects: install the tested release, 1.2.21', async ({ page }, testInfo) => {
   await page.route('**/api/plugins/projects?*', route => route.fulfill({ json: { status: 'missing', version: null, installable: true } }))
   await page.goto('/#/settings?section=plugins')
   const machine = page.locator('.projects-plugin-machine').first()
   await expect(machine.locator('.projects-plugin-head')).toContainText('Not installed', { timeout: 15000 })
-  await expect(machine.locator('.projects-upgrade')).toContainText('herdr plugin install eliasstravik/herdr-projects --ref v1.2.1 --yes')
+  await expect(machine.locator('.projects-upgrade')).toContainText('herdr plugin install eliasstravik/herdr-projects --ref v1.2.21 --yes')
   await machine.getByRole('button', { name: 'Install herdr-projects', exact: true }).click()
   const dialog = page.getByRole('dialog')
-  await expect(dialog).toContainText('Install herdr-projects 1.2.1')
+  await expect(dialog).toContainText('Install herdr-projects 1.2.21')
+  await expect(dialog).toContainText('release v1.2.21')
   await page.screenshot({ path: `.shots/projects-plugin-install-${testInfo.project.name}.png` })
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+})
+
+// The real reply of the server (its program version from the fake launcher),
+// on a machine whose Herdr folder wherdr may write to.
+const writableHerdr = (page: import('@playwright/test').Page) => page.route('**/api/plugins/projects?*', async (route) => {
+  const reply = await route.fetch()
+  await route.fulfill({ json: { ...(await reply.json()), installable: true } })
+})
+
+test('an older 1.x: Update to the tested release, from what the program itself says', async ({ page }, testInfo) => {
+  // Herdr's manifest says 1.2.1; the program was updated since (`herdr-projects update`).
+  await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+  fs.writeFileSync(path.join(root, 'version'), 'herdr-projects 1.2.16 (/opt/herdr-projects/bin/herdr-projects-linux-x86_64)\n')
+  const posted: unknown[] = []
+  await page.route('**/api/plugins/projects', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    posted.push(route.request().postDataJSON())
+    fs.rmSync(path.join(root, 'version'), { force: true })
+    await route.fulfill({ json: { output: 'Installed herdr-projects' } })
+  })
+  await writableHerdr(page)
+  await page.goto('/#/settings?section=plugins')
+  const machine = page.locator('.projects-plugin-machine').first()
+  await expect(machine.locator('.projects-plugin-head')).toContainText('Update available · v1.2.16', { timeout: 15000 })
+  // Only what 1.2.16 does not have yet.
+  await expect(machine.locator('.projects-plugin-update')).toHaveText('Tested with 1.2.21. Adds archiving a whole project, and fixes; your tasks and settings stay.')
+  await expect(machine.locator('.projects-upgrade')).toHaveCount(0)
+  await machine.locator('.projects-plugin-update').scrollIntoViewIfNeeded()
+  await page.screenshot({ path: `.shots/projects-plugin-update-${testInfo.project.name}.png` })
+  await machine.getByRole('button', { name: 'Update to 1.2.21', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('Update herdr-projects from 1.2.16 to 1.2.21')
+  await expect(dialog).toContainText('Your tasks and settings stay.')
+  await dialog.getByRole('button', { name: 'Update', exact: true }).click()
+  await expect.poll(() => posted).toEqual([{ machine: expect.any(String), update: true }])
+  // Then it reads 1.2.21: nothing more to offer.
+  await expect(machine.locator('.projects-plugin-head')).toContainText('Installed · v1.2.21')
+  await expect(machine.getByRole('button', { name: 'Update to 1.2.21' })).toHaveCount(0)
+  await expect(machine.locator('.projects-plugin-reload')).toContainText('prefix')
+  await expect(machine.locator('.projects-plugin-reload')).not.toContainText('first-run questions')
+})
+
+test('an older 1.x, in French: what the update adds', async ({ page }) => {
+  await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+  fs.writeFileSync(path.join(root, 'version'), 'herdr-projects 1.2.1 (/opt/herdr-projects/bin/herdr-projects-linux-x86_64)\n')
+  await page.addInitScript(() => localStorage.setItem('herdrLanguage', 'fr'))
+  await writableHerdr(page)
+  await page.goto('/#/settings?section=plugins')
+  const machine = page.locator('.projects-plugin-machine').first()
+  await expect(machine.locator('.projects-plugin-head')).toContainText('Mise à jour disponible · v1.2.1', { timeout: 15000 })
+  await expect(machine.locator('.projects-plugin-update')).toHaveText('Testé avec 1.2.21. Ajoute l’accès auto des agents, une page de réglages, les tâches conversation seule, l’archivage de tous les terminés d’un coup, l’autopilot, l’archivage d’un projet entier, et des corrections ; tes tâches et tes réglages restent.')
+  await expect(machine.getByRole('button', { name: 'Mettre à jour en 1.2.21', exact: true })).toBeVisible()
 })
 
 // Replies of the server the Board must show as they are: a failed read.
@@ -346,21 +401,21 @@ test('grouped by machine then repo: each heading opens its coordinator in the si
   await expect(panel.locator('.cell-view textarea')).toBeVisible()
   await expect(panel.locator('.board-panel-name')).toHaveText('web coordinator')
   await page.screenshot({ path: `.shots/board-1x-coord-panel-${testInfo.project.name}.png` })
-  // The main Coordinator stays at the top; machine setup is in its lane.
+  // The main Coordinator stays at the top; the machine coordinator is in its lane.
   if (phone) await closePanel(page, phone)
   const machineHead = page.locator('.board-head.machine')
-  await page.locator('.board-top').getByRole('button', { name: /^Coordinator · / }).click()
+  await page.locator('.board-top').getByRole('button', { name: 'Coordinator', exact: true }).click()
   await expect(panel.locator('.board-panel-name')).toHaveText('Coordinator')
   await expect(panel.locator('.board-panel-repo')).toHaveCount(0)
   await panel.locator('#board-panel-first').fill('plain')
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
   await expect.poll(callLog).toContain('coordinator -- tell plain')
   if (phone) await closePanel(page, phone)
-  await machineHead.getByRole('button', { name: / setup$/ }).click()
+  await machineHead.getByRole('button', { name: / coordinator$/ }).click()
   // Named once, after its machine: "<machine> coordinator".
   const host = ((await panel.locator('.board-panel-machine').textContent()) || '').trim()
   expect(host).not.toBe('')
-  await expect(panel.locator('.board-panel-name')).toHaveText(`${host} setup`)
+  await expect(panel.locator('.board-panel-name')).toHaveText(`${host} coordinator`)
   await panel.locator('#board-panel-first').fill('for the machine')
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
   await expect.poll(callLog).toContain('coordinator --machine -- tell for the machine')
@@ -846,7 +901,7 @@ test('a coordinator herdr-projects could not start says why, and Try again start
     await route.fulfill({ json: { ok: true, msg: 'sent' } })
   })
   await page.goto('/#/board')
-  await page.locator('.board-top').getByRole('button', { name: /^Coordinator · / }).click({ timeout: 15000 })
+  await page.locator('.board-top').getByRole('button', { name: 'Coordinator', exact: true }).click({ timeout: 15000 })
   const panel = page.locator('.board-panel')
   await expect(panel.locator('.board-panel-name')).toHaveText('Coordinator')
   await panel.locator('#board-panel-first').fill('Add a dark mode toggle')
@@ -880,12 +935,12 @@ test('Coordinator choices keep unavailable hosts visible and explain the three r
   })
   await page.goto('/#/board')
   const top = page.locator('.board-top-coord')
-  await expect(top).toHaveText('Coordinator · all work')
-  await expect(page.locator('.board-head.machine .board-coord')).toHaveText(['devbox setup', 'mb setup'])
+  await expect(top).toHaveText('Coordinator')
+  await expect(page.locator('.board-head.machine .board-coord')).toHaveText(['devbox coordinator', 'mb coordinator'])
   await top.click()
   const choices = page.getByRole('menuitem')
   await expect(choices).toHaveCount(3)
-  await expect(choices.nth(0)).toContainText('Coordinator · devbox')
+  await expect(choices.nth(0)).toContainText('devbox')
   await expect(choices.nth(0)).toContainText('Local read failed')
   await expect(choices.nth(0)).toBeDisabled()
   await expect(choices.nth(1)).toContainText('SSH unavailable')
@@ -897,9 +952,10 @@ test('Coordinator choices keep unavailable hosts visible and explain the three r
   await expect(panel.locator('.board-panel-purpose')).toContainText('All work')
   expect(requests).toEqual(['mb'])
   await closePanel(page, testInfo.project.name.includes('phone'))
-  await page.getByRole('button', { name: 'mb setup', exact: true }).click()
-  await expect(panel.locator('.board-panel-purpose')).toContainText('setup, folders and repos')
-  await page.screenshot({ path: `.shots/board-machine-setup-${testInfo.project.name}.png` })
+  await page.getByRole('button', { name: 'mb coordinator', exact: true }).click()
+  await expect(panel.locator('.board-panel-purpose')).toContainText('its tasks and agents')
+  await expect(panel.locator('.board-panel-title')).toHaveText('mb coordinator')
+  await page.screenshot({ path: `.shots/board-machine-coordinator-${testInfo.project.name}.png` })
   await closePanel(page, testInfo.project.name.includes('phone'))
   await page.getByRole('button', { name: 'web coordinator', exact: true }).click()
   await expect(panel.locator('.board-panel-purpose')).toContainText('this repo')
@@ -908,10 +964,10 @@ test('Coordinator choices keep unavailable hosts visible and explain the three r
   await page.locator('.board-filter').click()
   await expect(page.getByRole('status').filter({ hasText: 'No Coordinator can be reached' })).toBeVisible()
   await page.screenshot({ path: `.shots/board-no-coordinator-${testInfo.project.name}.png` })
-  // A single host keeps its name on the button, even when it is unavailable.
+  // A single host: the same name, even when it is unavailable.
   machines = [{ machine: 'mb', tasks: [] }]
   await page.locator('.board-filter').click()
-  await expect(top).toHaveText('Coordinator · mb')
+  await expect(top).toHaveText('Coordinator')
   await top.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 100, clientY: 20 })
   await expect(page.locator('.coordinator-tooltip')).toBeVisible()
   await expect(page.locator('.coordinator-tooltip')).toContainText('All work')
@@ -922,17 +978,17 @@ test('Coordinator choices keep unavailable hosts visible and explain the three r
   machines = [{ machine: 'mb', status: 'error', error: 'SSH unavailable', tasks: [] }]
   await page.locator('.board-filter').click()
   await expect(top).toBeDisabled()
-  await expect(top).toHaveText('Coordinator · mb')
+  await expect(top).toHaveText('Coordinator')
   // No horizontal overflow at the phone viewport.
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.evaluate(() => localStorage.setItem('herdrLanguage', 'fr'))
   await page.reload()
-  await expect(top).toHaveText('Coordinateur · mb')
+  await expect(top).toHaveText('Coordinateur')
   await expect(page.getByRole('status').filter({ hasText: 'Aucun Coordinateur' })).toBeVisible()
   await page.screenshot({ path: `.shots/board-no-coordinator-fr-${testInfo.project.name}.png` })
   machines = [{ machine: 'long-example-workstation-name', tasks: [] }]
   await page.locator('.board-filter').click()
-  await expect(top).toHaveText('Coordinateur · long-example-workstation-name')
+  await expect(top).toHaveText('Coordinateur')
   expect(await top.evaluate(el => el.scrollHeight <= el.clientHeight)).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: `.shots/board-coordinator-long-host-${testInfo.project.name}.png` })

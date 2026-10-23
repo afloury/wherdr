@@ -19,10 +19,11 @@ import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
   taskAgentIdentity, type MachineTasks, type TaskDetails, type TaskPanes, type TaskReviewer, REVIEW_STAGES, type TaskRow, type TasksBoard,
-  TASK_QUESTION_MAX, taskCanFix, taskCanApproveAnyway, failureIsStale, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, isTaskCommand,
+  TASK_QUESTION_MAX, taskCanFix, taskCanApproveAnyway, taskCanSendReview, failureIsStale, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
   cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots,
 } from '../../shared/projectsTasks'
+import { parseProjectsVersion } from '../../shared/projectsPlugin'
 import { HERDR_BIN, HERDR_CHILD_ENV, log } from './env'
 import { USER_PATH_SH, userPath } from '../../bin/lib/userpath.mjs'
 import { HerdrError } from './herdr'
@@ -112,6 +113,12 @@ async function command(m: Machine, args: string[], timeoutMs = ACTION_TIMEOUT_MS
   const r = await serial(m.key, () => runner(m, launcher, args, timeoutMs))
   if (r.code !== 0) throw new HerdrError('projects_failed', firstLine(r.stderr) || firstLine(r.stdout) || `herdr-projects ${args[0]}: code ${r.code}`)
   return r.stdout
+}
+
+// The program's own version: `version` is one of the two commands that never
+// take over an older install's files (shared/projectsPlugin.ts). null: unknown.
+export async function projectsProgramVersion(m: Machine): Promise<string | null> {
+  return parseProjectsVersion(await command(m, ['version'], LIST_TIMEOUT_MS))
 }
 
 // ---------------------------------------------------------------- the board's files
@@ -407,7 +414,11 @@ export async function taskCommand(machine: unknown, id: unknown, action: unknown
   const failure = action === 'fix' || (row?.stage === 'failed' && (action === 'retry' || action === 'delegate'))
     ? withStale(parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS)), action === 'fix' ? await readTaskFile(m, tid).catch(() => null) : null)
     : null
-  if (!row || (action === 'fix' ? !taskCanFix(row, failure) : !taskActions(row, failure)[action])) throw refused(action)
+  const allowed = !row ? false
+    : action === 'fix' ? taskCanFix(row, failure)
+      : action === 'review' ? taskCanSendReview(row)
+        : taskActions(row, failure)[action]
+  if (!row || !allowed) throw refused(action)
   // A new start: an agent picked for an earlier one goes first, so the task
   // starts from its own default again (or from the one picked now).
   let prev: string | null = null
@@ -492,6 +503,7 @@ function refused(action: TaskCommand): HerdrError {
     case 'stop': return new HerdrError('bad_action', 'This task has no agent at work to stop')
     case 'fix': return new HerdrError('bad_action', 'This failure needs the human first')
     case 'retry': return new HerdrError('bad_action', 'This task has nothing to retry')
+    case 'review': return new HerdrError('bad_action', 'This task has no failed review to send back')
     case 'finish': return new HerdrError('bad_action', 'This task has nothing to finish as it is')
     case 'archive': return new HerdrError('bad_action', 'This task cannot be archived while an agent works on it')
     case 'restore': return new HerdrError('bad_action', 'This task is not archived')

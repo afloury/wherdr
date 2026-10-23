@@ -43,6 +43,7 @@ Tailscale; never expose it to the public Internet. Read [Security](docs/security
 - **[Files and changes](docs/files.md)** — Review Git changes and comment on lines or blocks. Compose a review for the agent.
 - **[Computer, phone and iPad](docs/devices.md)** — Use split panes, keyboard shortcuts and touch controls. Describes device-specific layouts.
 - **[Installation and updates](docs/installation.md)** — Requirements, native installer, agent PATH, updates and migration from Docker.
+- **[Migrate from a 1.x Docker install](docs/migrate-from-1.x-docker.md)** — Move a wherdr 1.x container to the native 2.0 service, keeping its port, passkeys and data. Written so an AI agent can run it step by step.
 - **[Phone access and private networks](docs/networks.md)** — Set up Tailscale or another private network with HTTPS. Includes always-on servers and keep-awake.
 - **[The wherdr command](docs/command.md)** — Install through npm or Homebrew and manage the native service from the command line.
 - **[Herdr plugins](docs/plugins.md)** — Install and configure the wherdr plugin, its panel key and plugin actions.

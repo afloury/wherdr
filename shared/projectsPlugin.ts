@@ -13,7 +13,11 @@ export const PROJECTS_REPO = 'eliasstravik/herdr-projects'
 export const PROJECTS_REPO_URL = `https://github.com/${PROJECTS_REPO}`
 // The oldest 1.x whose `list --json` and `details --json` wherdr was checked against.
 export const PROJECTS_MIN = '1.2.1'
-export const PROJECTS_REF = `v${PROJECTS_MIN}`
+// The release wherdr installs and offers to update to: the newest one its
+// commands were checked against (tests/recordings/herdr-projects-<version>).
+// The one place to bump for a new release: docs/RELEASING.md says how.
+export const PROJECTS_TESTED = '1.2.21'
+export const PROJECTS_REF = `v${PROJECTS_TESTED}`
 export const PROJECTS_INSTALL_ARGS = ['plugin', 'install', PROJECTS_REPO, '--ref', PROJECTS_REF, '--yes'] as const
 export const PROJECTS_COMMAND = `herdr ${PROJECTS_INSTALL_ARGS.join(' ')}`
 export const PROJECTS_UNINSTALL_COMMAND = 'herdr plugin uninstall herdr-projects'
@@ -87,6 +91,20 @@ export function projectsStatus(p: RawProjectsPlugin | null | undefined): Project
   if (!p) return 'missing'
   if (!versionAtLeast(cleanVersion(p.version), PROJECTS_MIN) || !projectsLauncher(p)) return 'old'
   return p.enabled === false ? 'disabled' : 'ready'
+}
+
+// The program's own version, from `herdr-projects version` ("herdr-projects
+// 1.2.21 (/path/to/binary)"). It can be newer than Herdr's manifest says:
+// `herdr-projects update` replaces the program, not the manifest.
+export function parseProjectsVersion(stdout: string): string | null {
+  const m = /^herdr-projects v?(\S+)/.exec(stdout.trim())
+  return m ? cleanVersion(m[1]) : null
+}
+
+// A herdr-projects wherdr reads (1.2.1 or later) that is older than the
+// release wherdr was tested with: wherdr offers to update it.
+export function projectsBehind(version: string | null | undefined): boolean {
+  return versionAtLeast(version, PROJECTS_MIN) && !versionAtLeast(version, PROJECTS_TESTED)
 }
 
 export function findProjectsPlugin(plugins: unknown): RawProjectsPlugin | null {

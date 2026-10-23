@@ -8,9 +8,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Added and improved
 
+- **Moving from a 1.x Docker install** has its own guide, [docs/migrate-from-1.x-docker.md](docs/migrate-from-1.x-docker.md), written so an AI agent can run it: back up, stop the container, install the native service, check each step, and go back if needed. The installer, the plugin and the 2.0.0 release notes link to it.
+
+- **Install herdr-projects** now installs 1.2.21, the release wherdr was tested with, instead of 1.2.1 (which had no autopilot, chat-only tasks or settings page). A machine with an older 1.x shows **Update available** in Settings › Plugins, with what the update adds in one line, and **Update to 1.2.21** replaces Herdr's copy of the plugin; tasks and settings stay. wherdr still reads 1.2.1 and later.
+
 - Task logos consistently identify the worker on Home, Board cards and conversation headers. Reviews show a separate reviewer mark and explain whose conversation is open, with access to the reviewer terminal or session. Worker fallbacks show the current agent and who it took over from.
 
 - Switching machine or group tabs restores the last conversation for that selection on the device, with a coordinator fallback, while preserving unsent drafts. All and conversations already in the selection stay open.
+
+- **Coordinators have the names herdr-projects gives them**, the same on the Board, the home list, the conversation header and the menus: **Coordinator**, **`<machine>` coordinator** and **`<repo>` coordinator** (FR **Coordinateur**, **Coordinateur · `<machine>`**, **Coordinateur · `<dépôt>`**). The machine coordinator is no longer called "setup" / "Configuration": it is an agent for the machine as a whole.
+
+- **A failed review can be sent back to the agent** from the task's banner (`herdr-projects review`), its findings listed briefly; **Approve anyway** becomes the second choice. A reply sent while the reviewer waits now says it went to the reviewer.
 
 - **A machine's tab on the home list** no longer repeats its header: its Claude and Codex quotas sit together at the top, an offline machine says so there, and a right click or long press on the tab offers the machine's actions. A group's tab offers **Group settings**.
 

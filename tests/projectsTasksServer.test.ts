@@ -512,6 +512,21 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     expect(calls.filter(c => c[0] === 'fix')).toEqual([['fix', '--', 'demo/8']])
   })
 
+  // WHR-85: `review <id>` sends a failed review back; refused on anything else.
+  it('sends a failed review back to its agent, and only a failed one', async () => {
+    const review = (pass: boolean) => ({ meets: false, pass, findings: [{ severity: 'major', subject: 'Missing test' }] })
+    listReply = { code: 0, stdout: JSON.stringify([
+      { id: 'demo/13', state: 'blocked', kind: 'permission', app: 'claude', title: 'Failed review', stage: 'approval', review: review(false) },
+      { id: 'demo/14', state: 'blocked', kind: 'permission', app: 'claude', title: 'Passed review', stage: 'approval', review: review(true) },
+    ]), stderr: '' }
+    await read()
+    await T.taskCommand('', 'demo/13', 'review')
+    expect(calls.filter(c => c[0] === 'review')).toEqual([['review', '--', 'demo/13']])
+    await read()
+    await expect(T.taskCommand('', 'demo/14', 'review')).rejects.toThrow('This task has no failed review to send back')
+    expect(calls.filter(c => c[0] === 'review')).toEqual([['review', '--', 'demo/13']])
+  })
+
   it('Finish takes the work as it is where 1.x finish does, and is refused elsewhere', async () => {
     listReply = { code: 0, stdout: JSON.stringify([
       { id: 'demo/10', state: 'blocked', app: 'claude', title: 'Limit', stage: 'stopped', msg: 'Stopped at its 2h limit' },
