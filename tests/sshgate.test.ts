@@ -103,6 +103,18 @@ describe('SessionGate', () => {
   })
 })
 
+it('releases non-replayable stream slots without clearing their refusal streak', async () => {
+  const gate = new SessionGate()
+  await gate.withSlot(async () => {
+    expect(gate.stats().execs).toBe(1)
+    gate.refused()
+  })
+  expect(gate.stats().execs).toBe(0)
+  expect(gate.stats().streak).toBe(1)
+  await expect(gate.withSlot(async () => { throw new Error('closed') })).rejects.toThrow('closed')
+  expect(gate.stats().execs).toBe(0)
+})
+
 describe('isRefused', () => {
   it('recognises the refusals of a full multiplexed connection', () => {
     expect(isRefused('mux_client_request_session: session request failed: Session open refused by peer\nConnection closed by UNKNOWN port 65535')).toBe(true)

@@ -75,6 +75,13 @@ export class SessionGate {
   // A session was opened: the connection carries sessions again.
   accepted() { this.streak = 0 }
 
+  // Reserve a command slot for a byte stream that cannot be replayed.
+  async withSlot<T>(run: () => Promise<T>): Promise<T> {
+    await this.acquire()
+    try { return await run() }
+    finally { this.execs--; this.wake() }
+  }
+
   // Runs a short command under the budget; `refused` tells a refused session
   // apart from the command's own failure. `key` shares a running identical call.
   run<T>(fn: () => Promise<T>, refused: (r: T) => boolean, key?: string): Promise<T> {

@@ -1,6 +1,7 @@
 // A remote machine whose SSH sessions are refused reopens its master
 // connection by itself (fake ssh: tests/helpers/fake-ssh.sh).
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import net from 'node:net'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -25,6 +26,7 @@ afterEach(() => {
   current?.stop()
   current = null
   fs.rmSync(path.join(dir, 'refuse'), { force: true })
+  for (const marker of ['windows', 'bad-shell', 'no-bridge']) fs.rmSync(path.join(dir, marker), { force: true })
   fs.rmSync(path.join(dir, 'log'), { force: true })
 })
 afterAll(() => { vi.unstubAllEnvs(); fs.rmSync(dir, { recursive: true, force: true }) })
@@ -46,6 +48,8 @@ describe('SSH session refusals', () => {
     const { m, statuses } = startMachine()
     await online(m)
     const first = m.ctl
+    expect(sshLog()).toContain(`forward ${m.fwd}:/tmp/fake-herdr.sock`)
+    expect(sshLog()).toContain(`forward ${m.fwdClient}:/tmp/herdr-client.sock`)
     expect((await m.exec('true')).code).toBe(0)
     // What an older master exiting late used to do: remove the control path in use.
     fs.rmSync(first)
@@ -138,3 +142,48 @@ describe('control socket names', () => {
     expect(machines.staleCtls(files, 'abcd1234', pid => pid === 20)).toEqual(['abcd1234.ctl', 'abcd1234.10.1.ctl'])
   })
 })
+
+
+it('uses native stdio bridges for Windows sockets and removes them on stop', async () => {
+  fs.writeFileSync(path.join(dir, 'windows'), '')
+  const { m } = startMachine()
+  await online(m)
+  expect(m.remoteSock).toBe('C:\\Users\\test\\herdr.sock')
+  expect(sshLog().some(l => l.startsWith('forward '))).toBe(false)
+  for (const socketPath of [m.sock(), m.clientSock()]) {
+    expect(socketPath).toBeTruthy()
+    await new Promise<void>((resolve, reject) => {
+      const socket = net.createConnection(socketPath!)
+      socket.on('error', reject)
+      socket.on('connect', () => socket.write('test\n'))
+      socket.once('data', b => { expect(b.toString()).toBe('test\n'); socket.destroy(); resolve() })
+    })
+  }
+  expect(sshLog().filter(l => l.startsWith('bridge '))).toHaveLength(2)
+  const first = m.ctl
+  m.retry()
+  await online(m)
+  expect(m.ctl).not.toBe(first)
+  expect(fs.existsSync(m.fwd)).toBe(true)
+  m.stop()
+  await vi.waitFor(() => expect(m.gate.stats().streams + m.gate.stats().execs).toBe(0))
+  expect(fs.existsSync(m.fwd)).toBe(false)
+  expect(fs.existsSync(m.fwdClient)).toBe(false)
+}, 30000)
+
+
+it('explains bootstrap failures even when Windows stderr is not UTF-8', async () => {
+  fs.writeFileSync(path.join(dir, 'bad-shell'), '')
+  const { m } = startMachine()
+  await vi.waitFor(() => expect(m.error).toContain('DefaultShell to Git Bash'), { timeout: 10000 })
+  expect(m.sock()).toBeNull()
+}, 15000)
+
+it('requires the native API bridge before exposing a Windows transport', async () => {
+  fs.writeFileSync(path.join(dir, 'windows'), '')
+  fs.writeFileSync(path.join(dir, 'no-bridge'), '')
+  const { m } = startMachine()
+  await vi.waitFor(() => expect(m.error).toContain('must provide remote-api-bridge'), { timeout: 10000 })
+  expect(m.sock()).toBeNull()
+  expect(fs.existsSync(m.fwd)).toBe(false)
+}, 15000)
