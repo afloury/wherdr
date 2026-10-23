@@ -49,7 +49,7 @@ const repoLabel = computed(() => tl(`Open the terminal of ${g.value.repo}`, `Ouv
 useNotificationClock()
 const notifyTarget = computed(() => projectNotificationTarget(props.machine || '', g.value.repo))
 const headItems = (): MenuItem[] => [notificationMenuItem(notifyTarget.value), ...(spaceId.value
-  ? [{ label: repoLabel.value, icon: 'i-lucide-square-terminal', run: openRepo }, { kind: 'separator' as const }, ...workspaceItems(spaceId.value)]
+  ? [{ label: repoLabel.value, icon: 'i-lucide-square-terminal', run: openRepo }, { kind: 'separator' as const }, ...workspaceItems(spaceId.value, true)]
   : [])]
 // Touch: a long press on the bar opens the same menu as "…".
 const barLp = longPress({

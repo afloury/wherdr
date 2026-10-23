@@ -358,3 +358,33 @@ describe('closing what holds a task', () => {
     expect(taskStopMessage([{ key: 'APP-2', title: '' }], (a: string) => a)?.action).toBe('Close and stop the task')
   })
 })
+
+describe('checkout path attachment after a repository move', () => {
+  it('preserves the checkout path from Herdr metadata', () => {
+    expect(snapshot().workspaces.find(w => w.id === 'w2')!.path).toBe('/home/u/dev/app')
+  })
+
+  for (const metadata of [false, true]) {
+    it(`attaches the checkout with ${metadata ? 'stale' : 'missing'} Git metadata without renaming the board`, () => {
+      const st = snapshot()
+      const w = st.workspaces.find(w => w.id === 'w2')!
+      w.label = 'renamed-folder'
+      w.repo = metadata ? '/old/checkout/.git' : undefined
+      w.path = undefined
+      st.panes.find(p => p.id === 'w2:p1')!.cwd = '/projects/renamed-folder/'
+      const board = links()
+      board.repos![0]!.root = '/projects/renamed-folder'
+      const result = boardSections(spaceRows(st), st.workspaces, [board], new Set(st.panes.map(p => p.id)))
+      expect(result.projects).toHaveLength(1)
+      expect(result.projects[0]!.repo).toBe('app')
+      expect(result.projects[0]!.space?.lead.id).toBe('w2:p1')
+      expect(result.others.some(r => r.lead.id === 'w2:p1')).toBe(false)
+      // A sibling or subdirectory must not be treated as the checkout.
+      st.panes.find(p => p.id === 'w2:p1')!.cwd = '/projects/renamed-folder/subdir'
+      expect(boardSections(spaceRows(st), st.workspaces, [board], new Set()).projects[0]!.space).toBeNull()
+      w.machine = 'another-machine'
+      st.panes.find(p => p.id === 'w2:p1')!.cwd = '/projects/renamed-folder'
+      expect(boardSections(spaceRows(st), st.workspaces, [board], new Set()).projects[0]!.space).toBeNull()
+    })
+  }
+})
