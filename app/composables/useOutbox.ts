@@ -3,7 +3,7 @@
 // the order they were typed, whatever each one takes on the server.
 import { reactive } from 'vue'
 import type { Pane, QueuedMessage } from '#shared/types'
-import { type OutboxItem, addSending, failLocal, newOutboxId, prune, resend, settle } from '~/utils/outbox'
+import { type OutboxItem, SEND_STUCK_MS, addSending, failLocal, giveUpSending, newOutboxId, prune, resend, settle } from '~/utils/outbox'
 import { sendMessage } from './useActions'
 
 // Plain module state: it outlives the views (switching conversations while sending).
@@ -23,9 +23,11 @@ export const outboxFor = (paneId: string): OutboxItem[] => boxes.get(paneId) || 
 function deliver(p: Pane | undefined, paneId: string, id: string, text: string): Promise<QueuedMessage | null> {
   const run = (chains.get(paneId) || Promise.resolve()).catch(() => {}).then(() => sendMessage(p, paneId, text, id))
   chains.set(paneId, run)
+  // A request that never answers: "Not sent", Retry / Cancel.
+  const stuck = setTimeout(() => update(paneId, l => giveUpSending(l, id)), SEND_STUCK_MS)
   return run.then(
-    (q) => { update(paneId, l => settle(l, id, q, Date.now())); return q },
-    (err) => { update(paneId, l => failLocal(l, id)); throw err },
+    (q) => { clearTimeout(stuck); update(paneId, l => settle(l, id, q, Date.now())); return q },
+    (err) => { clearTimeout(stuck); update(paneId, l => failLocal(l, id)); throw err },
   )
 }
 
