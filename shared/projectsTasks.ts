@@ -47,7 +47,12 @@ export interface TaskRow {
   readAt?: number
 }
 
+export interface TaskAttempt { letter: string, agent: string, standing: string, stage: string, stat: string }
+export interface TaskComparison { pick: string, why: string, error: string, notes: Record<string, string> }
+
 export interface TaskDetails {
+  attempts?: TaskAttempt[]
+  comparison?: TaskComparison | null
   id: string
   title: string
   stage: string
@@ -307,6 +312,8 @@ export function parseTaskDetails(text: string): TaskDetails {
   if (!d || !t || !isTaskId(t.id)) throw new Error('herdr-projects details: unexpected reply')
   const plan = obj(d.plan)
   return {
+    attempts: parseTaskAttempts(d.attempts),
+    comparison: parseTaskComparison(d.comparison),
     id: t.id,
     title: str(t.title, 300), stage: str(t.stage, 30), msg: str(t.msg, 1000), description: str(t.description, 8000),
     agent: str(d.agent, 40),
@@ -807,4 +814,28 @@ export function reviewFindingsBrief(findings: TaskDetails['findings'], shown = 3
   const open = (findings || []).filter(f => !f.preexisting && f.title)
     .map((f, i) => ({ f, i })).sort((a, b) => severityRank(a.f.severity) - severityRank(b.f.severity) || a.i - b.i).map(x => x.f)
   return { list: open.slice(0, shown), more: Math.max(0, open.length - shown) }
+}
+
+// CLI details (1.2.16, actions/finish_line.rs): only `passed` may be picked.
+export function parseTaskAttempts(value: unknown): TaskAttempt[] {
+  if (!Array.isArray(value)) return []
+  const letters = new Set<string>()
+  return value.slice(0, 5).flatMap(value => {
+    const a = obj(value)
+    const letter = str(a?.letter, 10)
+    if (!/^[A-E]$/.test(letter) || letters.has(letter)) return []
+    letters.add(letter)
+    return [{ letter, agent: str(a?.agent, 160), standing: str(a?.standing, 30), stage: str(a?.stage, 30), stat: str(a?.stat, 500) }]
+  })
+}
+function parseTaskComparison(value: unknown): TaskComparison | null {
+  const c = obj(value)
+  if (!c) return null
+  const notes: Record<string, string> = {}
+  for (const [letter, note] of Object.entries(obj(c.notes) || {})) if (/^[A-E]$/.test(letter)) notes[letter] = str(note, 600)
+  return { pick: /^[A-E]$/.test(str(c.pick, 10)) ? str(c.pick, 10) : '', why: str(c.why, 2000), error: str(c.error, 2000), notes }
+}
+export function canPickAttempt(details: TaskDetails | null | undefined, letter: unknown): boolean {
+  return Boolean(details && !details.archived && details.stage === 'pick' && typeof letter === 'string'
+    && /^[A-E]$/.test(letter) && details.attempts?.some(a => a.letter === letter && a.standing === 'passed'))
 }
