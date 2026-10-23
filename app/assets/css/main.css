@@ -648,6 +648,8 @@ body.short-bottom { --safe-bottom: 0px; }
   background: transparent; border: 0; border-right: 1px solid var(--line); border-radius: 0;
   box-shadow: inset 0 -2px 0 transparent; white-space: nowrap; cursor: pointer;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  /* Long press opens its menu: no iOS callout nor text selection. */
+  -webkit-touch-callout: none; user-select: none; -webkit-user-select: none;
 }
 .machine-bar-item:last-child { border-right: 0; }
 .machine-bar-item:hover { color: var(--text); background: var(--surface); }
@@ -719,6 +721,19 @@ body.short-bottom { --safe-bottom: 0px; }
   overflow-wrap: anywhere;
 }
 .machine.collapsed .machine-error { margin-top: 8px; }
+/* A machine bar tab showing one machine: no header; an unreachable machine
+   says so at the top of the list, its session and keep-awake on one line. */
+.machine-tab-info { margin: 0 0 16px; }
+.machine-tab-offline { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 12px; border: 1px solid var(--line-strong); background: var(--surface); }
+.machine-tab-offline > i { flex: none; width: 8px; height: 8px; margin-top: 2px; background: var(--rose); }
+.machine-tab-offline.connecting > i { background: var(--ochre); }
+.machine-tab-offline span { display: grid; gap: 5px; min-width: 0; }
+.machine-tab-offline b { color: var(--text); font: 600 11px/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; overflow-wrap: anywhere; }
+.machine-tab-offline small { color: var(--text-3); font: 400 11px/1.45 var(--mono); overflow-wrap: anywhere; }
+.machine-tab-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0; }
+.machine-tab-offline + .machine-tab-meta { margin-top: 10px; }
+.machine-tab-session { display: inline-flex; align-items: center; gap: 4px; color: var(--mauve); font: 500 10px/1 var(--mono); letter-spacing: .1em; }
+.machine-tab-session svg { width: 13px; height: 13px; }
 .machine:not(.online) .machine-icon, .machine:not(.online) .machine-name { color: var(--muted); }
 .machine:not(.online) .machine-body { opacity: .5; filter: grayscale(.7); }
 .machine-body .agent-group { margin-bottom: 20px; }

@@ -18,7 +18,8 @@ import type { MachineInfo, NamedSession, Pane } from '#shared/types'
 import { type ReadySort, type Row, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
 import { spaceTitle } from '#shared/displayTitles'
 import { type BoardCard, type CoordinatorLevel, boardSections, countedPanes } from '#shared/boardLinks'
-import { claudeSuggestion, machineQuotaRows, quotaRows } from '~/utils/quotas'
+import { claudeSuggestion, machineQuotaRows, quotaRows, tabQuotaRows } from '~/utils/quotas'
+import { longPress } from '~/utils/longPress'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
 import { headerFold } from '~/utils/headerFold'
 import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
@@ -219,8 +220,54 @@ const barEntries = computed(() => machineBarShown.value.map((id) => {
   const label = (listed.length ? machineName(listed[0]!.key) : mine[0]?.label) || id || t('This machine')
   return { id, label, status, title: `${label} · ${t(STATE_LABEL[status])}`, n: counted.value.filter(p => keys.has(p.machine || '')).length }
 }))
+// The machine a bar item stands for (a named session counts as its machine):
+// the base machine itself when Herdr lists it, else its first session.
+function barMachine(id: string): MachineInfo | null {
+  if (id === BAR_ALL || machineGroups.value.some(g => g.id === id)) return null
+  const listed = machines.value.filter(m => baseKeyOf(m) === id)
+  return listed.find(m => m.key === id) ?? listed[0] ?? (id === soloMachine.value.key ? soloMachine.value : null)
+}
+// Right click (computer) or long press (phone) on a bar item: a machine's
+// actions (those of its "…" menu), a group's settings. "All" has none.
+function barMenuItems(id: string): MenuItem[] {
+  const group = machineGroups.value.find(g => g.id === id)
+  if (group) return [{ label: tl('Group settings', 'Réglages du groupe'), icon: 'i-lucide-settings-2', run: () => navigateTo({ path: '/settings', query: { section: 'appearance', group: group.id } }) }]
+  const m = barMachine(id)
+  return m ? machineMenuItems(m) : []
+}
+function onBarMenu(id: string, open: boolean) {
+  const m = barMachine(id)
+  if (open && m?.status === 'online') loadPluginActions(multiMachine.value ? m.key : '')
+}
+let barPressed: { id: string, label: string } | null = null
+const barLp = longPress({
+  onPress: () => {
+    const items = barPressed ? barMenuItems(barPressed.id) : []
+    if (!barPressed || !items.length) return
+    haptic()
+    onBarMenu(barPressed.id, true)
+    openMenu(items, barPressed.label)
+  },
+})
+// Touch or narrow screen only: otherwise the floating context menu handles it.
+function onBarDown(e: PointerEvent, id: string, label: string) {
+  if (!sheetMenus.value) return
+  barPressed = { id, label }
+  barLp.down(e)
+}
+// A tab showing one machine only: its section without the header (the tab
+// already names it), its quotas together at the top. A group or "All" keeps
+// the machine headers, even with a single machine in it. State mode has its own
+// machine chips and quotas.
+const soloTab = computed(() => {
+  const pick = machineBarPick.value
+  if (homeGrouping.value !== 'machine' || !sections.value || sections.value.length !== 1 || pick === null || !barMachine(pick)) return null
+  return sections.value[0]!
+})
+const listQuotas = computed(() => (soloTab.value ? tabQuotaRows(topQuotas.value, soloTab.value.quotas) : topQuotas.value))
 const homeScroll = ref<HTMLElement | null>(null)
 function pickBar(id: string, event: MouseEvent) {
+  if (barLp.swallowClick()) return
   haptic()
   pickMachineBar(id)
   // A folded machine opens: shown alone, it would only be a heading.
@@ -346,7 +393,7 @@ const renameMachineOpen = computed({
 const connectionMachine = ref<MachineInfo | null>(null)
 const connectionInfo = computed(() => machines.value.find(m => m.key === connectionMachine.value?.key) ?? connectionMachine.value)
 const connectionOpen = computed({ get: () => !!connectionMachine.value, set: (v: boolean) => { if (!v) connectionMachine.value = null } })
-function machineMenu(m: MachineInfo) {
+function machineMenuItems(m: MachineInfo): MenuItem[] {
   const items: MenuItem[] = [{ label: t('Herdr sessions'), icon: 'i-lucide-layers', run: () => openSessions(m) }, { label: t('Rename'), icon: 'i-lucide-pencil', run: () => {
     renamingMachine.value = m
     machineLabel.value = m.label
@@ -385,8 +432,9 @@ function machineMenu(m: MachineInfo) {
       } },
     )
   }
-  return toDropdown(items)
+  return items
 }
+const machineMenu = (m: MachineInfo) => toDropdown(machineMenuItems(m))
 // Plugin actions of each online machine (a single one: the local one).
 const onlineKeys = computed(() => JSON.stringify(multiMachine.value ? machines.value.filter(m => m.status === 'online').map(m => m.key) : (st.value.ok ? [''] : [])))
 watch(onlineKeys, (keys) => { for (const k of JSON.parse(keys) as string[]) loadPluginActions(k) }, { immediate: true })
@@ -605,21 +653,41 @@ function resetListWidth() {
     </header>
 
     <nav v-if="barEntries.length" class="machine-bar" :aria-label="tl('Machines shown', 'Machines affichées')" @wheel="onBarWheel">
-      <button
-        v-for="b in barEntries" :key="b.id" type="button" class="machine-bar-item" :class="[b.status, { on: b.id === machineBarPick }]"
-        :aria-pressed="b.id === machineBarPick" :title="b.title" @click="pickBar(b.id, $event)"
+      <UContextMenu
+        v-for="b in barEntries" :key="b.id" :disabled="sheetMenus || b.id === BAR_ALL"
+        :items="sheetMenus || b.id === BAR_ALL ? [] : toDropdown(barMenuItems(b.id))" :ui="{ content: 'hw-dropdown' }"
+        @update:open="(o: boolean) => onBarMenu(b.id, o)"
       >
-        <UIcon v-if="machineGroups.some(g => g.id === b.id)" name="i-lucide-group" class="machine-bar-group" aria-hidden="true" />
-        <i v-if="b.status" class="machine-bar-state" aria-hidden="true" />
-        <span class="machine-bar-label">{{ b.label }}</span>
-        <b class="machine-bar-count">{{ b.n }}</b>
-      </button>
+        <button
+          type="button" class="machine-bar-item" :class="[b.status, { on: b.id === machineBarPick }]" :data-bar-id="b.id"
+          :aria-pressed="b.id === machineBarPick" :title="b.title"
+          @pointerdown="onBarDown($event, b.id, b.label)" @pointermove="barLp.move" @pointerup="barLp.cancel" @pointercancel="barLp.cancel"
+          @contextmenu="sheetMenus && $event.preventDefault()" @click="pickBar(b.id, $event)"
+        >
+          <UIcon v-if="machineGroups.some(g => g.id === b.id)" name="i-lucide-group" class="machine-bar-group" aria-hidden="true" />
+          <i v-if="b.status" class="machine-bar-state" aria-hidden="true" />
+          <span class="machine-bar-label">{{ b.label }}</span>
+          <b class="machine-bar-count">{{ b.n }}</b>
+        </button>
+      </UContextMenu>
     </nav>
     <div ref="homeScroll" class="scroll">
       <OfflineNote v-if="(offlineView && cachedAt) || netDown" class="home-offline" :label="offlineView && cachedAt ? t('Last known state') : undefined" :at="cachedAt" date-style="medium" />
       <div v-if="eventsOpen && !st.ok" class="notice">
         {{ t('The Herdr server is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
         {{ hostLabel ? tl(`Run herdr on ${hostLabel} to start it.`, `Lance herdr sur ${hostLabel} pour le démarrer.`) : tl('Run herdr on the server to start it.', 'Lance herdr sur le serveur pour le démarrer.') }}
+      </div>
+      <!-- A tab showing one machine: no header, so its state and session stay here. -->
+      <div v-if="soloTab && (soloTab.m.status !== 'online' || (soloTab.m.session && soloTab.m.session !== 'default') || awakeByMachine[soloTab.m.key]?.active)" class="machine-tab-info">
+        <p v-if="soloTab.m.status !== 'online'" class="machine-tab-offline" :class="soloTab.m.status" role="status">
+          <i aria-hidden="true" />
+          <span><b>{{ soloTab.m.status === 'offline' ? tl(`${soloTab.name} is offline`, `${soloTab.name} est hors ligne`) : tl(`${soloTab.name}: reconnecting…`, `${soloTab.name} : reconnexion…`) }}</b>
+            <small v-if="soloTab.m.error">{{ t(soloTab.m.error) }}</small></span>
+        </p>
+        <p v-if="(soloTab.m.session && soloTab.m.session !== 'default') || awakeByMachine[soloTab.m.key]?.active" class="machine-tab-meta">
+          <span v-if="soloTab.m.session && soloTab.m.session !== 'default'" class="machine-tab-session"><UIcon name="i-lucide-layers" />{{ soloTab.m.session }}</span>
+          <span v-if="awakeByMachine[soloTab.m.key]?.active" class="machine-awake"><UIcon name="i-lucide-sun" />{{ awakeLabel(awakeByMachine[soloTab.m.key]) }}</span>
+        </p>
       </div>
       <div v-if="homeGrouping === 'machine' && !multiMachine && soloSelected" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Herdr sessions')" @click="openSessions(soloMachine)">
         <span><UIcon name="i-lucide-layers" />{{ soloMachine.label }}</span>
@@ -634,7 +702,7 @@ function resetListWidth() {
           <span><i />{{ c.label }}</span>
         </div>
       </div>
-      <QuotaStrip :rows="topQuotas" :class="{ 'after-stats': showCounters && agents.length }" />
+      <QuotaStrip :rows="listQuotas" :class="{ 'after-stats': showCounters && agents.length }" />
 
       <OpenNetworkBanner />
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
@@ -729,7 +797,7 @@ function resetListWidth() {
           @dragleave="(e: DragEvent) => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) dropMachine = null }"
           @drop="onMachineDrop(baseKeyOf(s.m), $event)"
         >
-          <div class="machine-row">
+          <div v-if="!soloTab" class="machine-row">
             <button v-if="desk" type="button" class="machine-grip" draggable="true"
               :aria-label="tl(`Move ${s.name} — up and down arrows`, `Déplacer ${s.name} — flèches haut et bas`)"
               :title="t('Drag to reorder')"
@@ -757,10 +825,10 @@ function resetListWidth() {
               <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="machine-options icon-btn" :aria-label="`${t('Options')} : ${s.name}`" />
             </UDropdownMenu>
           </div>
-          <p v-if="s.m.status !== 'online' && s.m.error" class="machine-error">{{ t(s.m.error) }}</p>
+          <p v-if="!soloTab && s.m.status !== 'online' && s.m.error" class="machine-error">{{ t(s.m.error) }}</p>
 
-          <div v-if="!s.collapsed" class="machine-body">
-            <QuotaStrip :rows="s.quotas" class="machine-quotas" />
+          <div v-if="soloTab || !s.collapsed" class="machine-body">
+            <QuotaStrip v-if="!soloTab" :rows="s.quotas" class="machine-quotas" />
             <section v-if="s.coordinators.length" class="agent-group coordinators">
               <h2 class="group-title"><span>{{ tl('Coordinators', 'Coordinateurs') }}</span><span class="count">{{ s.coordinators.length }}</span></h2>
               <div class="card-list">
