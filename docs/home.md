@@ -44,6 +44,7 @@
   Switching selections keeps the current conversation if it belongs there; otherwise the desktop
   restores that selection's last conversation on this device, then its machine coordinator (a group's
   first online machine), or the empty view. All always keeps the current conversation. Phones keep
-  the list first and check the same rule when reopening a conversation. Unsent drafts stay saved.
+  the list first and check the same rule when reopening a conversation through browser history.
+  Explicit choices from search, cards or links open the chosen conversation. Unsent drafts stay saved.
 - **Named Herdr sessions**, **quotas** (remaining Claude and Codex usage limits), **Herdr plugin
   actions** in the menus, **passkey lock** (Face ID, Touch ID, Windows Hello, Android…).
