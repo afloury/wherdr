@@ -17,6 +17,19 @@ function editGroup(group?: MachineGroup) {
   editing.value = group ? { ...group, machines: [...group.machines] } : { id: `*group:${crypto.randomUUID()}`, name: '', machines: [] }
   draftOrder.value = [...new Set([...editing.value.machines, ...(machineBaseKeys.value.length ? machineBaseKeys.value : [''])])]
 }
+// Home › a group tab's menu › Group settings: `?group=<id>` opens its editor,
+// scrolled into view. The query goes once read, so Back or a reload keeps the list.
+const route = useRoute()
+const root = ref<HTMLElement | null>(null)
+// Groups kept on the server may arrive after the page opens.
+watch(() => [route.query.group, machineGroups.value.length] as const, ([id]) => {
+  const group = typeof id === 'string' ? machineGroups.value.find(g => g.id === id) : undefined
+  if (!group) return
+  editGroup(group)
+  const { group: _, ...query } = route.query
+  navigateTo({ path: route.path, query }, { replace: true })
+  nextTick(() => root.value?.scrollIntoView?.({ block: 'start' }))
+}, { immediate: true })
 function saveGroup() {
   const draft = editing.value
   if (!draft?.name.trim()) return
@@ -140,7 +153,7 @@ function onGrab(id: string, e: PointerEvent) {
 
 <template>
   <!-- Inside the Home screen group (Settings › Appearance › Home screen). -->
-  <div class="machine-bar-settings">
+  <div ref="root" class="machine-bar-settings">
     <h4 class="theme-section-title bar-pref-title">{{ tl('Machine bar', 'Barre des machines') }}</h4>
     <label v-if="!editing" class="settings-toggle">
       <span><b>{{ tl('Show the machine bar', 'Afficher la barre des machines') }}</b><small>{{ tl('At the top of the home screen: “All”, then each machine. A tap shows that machine only.', 'En haut de l’accueil : « Toutes », puis chaque machine. Un toucher n’affiche que cette machine.') }}</small></span>

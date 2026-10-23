@@ -7,13 +7,25 @@ import { hasCommands } from './helpers/commands'
 import type { Quotas } from '../shared/types'
 import { readClaude, mergeQuotas } from '../server/utils/quotas'
 import { localFs } from '../server/utils/fsx'
-import { claudeInstallCommand, claudeSetupOf, claudeSetupRows, claudeSuggestion, machineQuotaRows, quotaLeft, quotaRows, resetText } from '../app/utils/quotas'
+import { claudeInstallCommand, claudeSetupOf, claudeSetupRows, claudeSuggestion, machineQuotaRows, quotaLeft, quotaRows, resetText, tabQuotaRows } from '../app/utils/quotas'
 
 // The install command passes settings.json to python3 (missing from node:22-alpine).
 const hasPython = hasCommands('python3')
 const five = (used: number) => ({ used, resetsAt: 2000, minutes: 300 })
 
 describe('quota split (top / machines)', () => {
+  it('a tab showing one machine: shared and own rows together, Claude then Codex', () => {
+    const q: Quotas = {
+      claude: null, codex: { five: five(40), week: null, at: 2 },
+      claudeAccounts: [
+        { five: five(10), week: null, at: 1, account: 'a', machines: [{ key: '', label: 'Server' }] },
+        { five: five(20), week: null, at: 1, account: 'b', machines: [{ key: 'laptop', label: 'Laptop' }] },
+      ],
+    }
+    expect(quotaRows(q).map(r => r.key)).toEqual(['codex'])
+    expect(tabQuotaRows(quotaRows(q), machineQuotaRows(q, 'laptop')).map(r => r.key)).toEqual(['claude:laptop', 'codex'])
+    expect(tabQuotaRows(quotaRows(q), [])).toEqual(quotaRows(q))
+  })
   it('a single account: Claude and Codex at the top, nothing under the machines', () => {
     const q: Quotas = { claude: { five: five(10), week: null, at: 1 }, codex: { five: five(40), week: null, at: 2 } }
     expect(quotaRows(q).map(r => r.key)).toEqual(['claude', 'codex'])

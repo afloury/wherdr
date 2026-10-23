@@ -7,6 +7,8 @@ import { machineBarHidden, machineBarOn, machineBarOrder, machineBarSaved, machi
 import { BAR_ALL } from '~/utils/machineBar'
 import type { MachineInfo, Pane } from '#shared/types'
 
+import { menuState } from '~/composables/useUi'
+
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigate)
 
@@ -290,5 +292,68 @@ describe('machine groups', () => {
     machineBarSaved.value = '*group:empty'
     const w = await mountHome()
     expect(w.findAll('.card')).toHaveLength(0)
+  })
+})
+
+describe('a tab showing one machine', () => {
+  beforeEach(() => { reset(); setState(); menuState.open = false })
+  afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] }; eventsOpen.value = false; menuState.open = false; reset() })
+  // Long press with a finger: the phone's menu sheet.
+  async function press(el: Element) {
+    el.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch', clientX: 5, clientY: 5, bubbles: true }))
+    await new Promise(r => setTimeout(r, 500))
+    el.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'touch', bubbles: true }))
+  }
+
+  it('drops the machine header; the tab carries its actions', async () => {
+    machineBarSaved.value = 'laptop'
+    const w = await mountHome()
+    expect(w.findAll('section.machine').map(s => s.attributes('data-machine'))).toEqual(['laptop'])
+    expect(w.find('.machine-row').exists()).toBe(false)
+    expect(w.find('.machine-tab-offline').exists()).toBe(false)
+    expect(w.findAll('section.machine .card')).toHaveLength(1)
+    await press(w.find('[data-bar-id="laptop"]').element)
+    expect(menuState.open).toBe(true)
+    expect(menuState.title).toBe('Laptop')
+    expect(menuState.items.map(i => i.label)).toEqual(expect.arrayContaining(['Herdr sessions', 'Rename', 'Connection status', 'Open the board']))
+    navigate.mockClear()
+    menuState.items.find(i => i.label === 'Open the board')!.run!()
+    expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: 'laptop' } })
+  })
+
+  it('an offline machine says so at the top, with its error', async () => {
+    herdrState.value = { ...herdrState.value, machines: machines.map(m => m.key === 'devbox' ? { ...m, error: 'SSH unavailable' } : m) } as never
+    machineBarSaved.value = 'devbox'
+    const w = await mountHome()
+    expect(w.find('.machine-row').exists()).toBe(false)
+    expect(w.find('.machine-tab-offline').text()).toContain('Devbox is offline')
+    expect(w.find('.machine-tab-offline').text()).toContain('SSH unavailable')
+    expect(w.find('[data-bar-id="devbox"]').classes()).toContain('offline')
+  })
+
+  it('a group keeps the headers, even with one machine, and its menu opens its settings', async () => {
+    machineGroups.value = [{ id: '*group:solo', name: 'Solo', machines: ['laptop'] }]
+    machineBarSaved.value = '*group:solo'
+    const w = await mountHome()
+    expect(w.findAll('.machine-row')).toHaveLength(1)
+    await press(w.find('[data-bar-id="*group:solo"]').element)
+    expect(menuState.items.map(i => i.label)).toEqual(['Group settings'])
+    navigate.mockClear()
+    menuState.items[0]!.run!()
+    expect(navigate).toHaveBeenCalledWith({ path: '/settings', query: { section: 'appearance', group: '*group:solo' } })
+    menuState.open = false
+    // "All" has no menu.
+    await press(w.find('[data-bar-id="*"]').element)
+    expect(menuState.open).toBe(false)
+  })
+
+  it('Settings › Group settings opens that group\'s editor', async () => {
+    machineGroups.value = [{ id: '*group:solo', name: 'Solo', machines: ['laptop'] }]
+    navigate.mockClear()
+    const w = track(await mountSuspended(MachineBarSettings, { route: { path: '/settings', query: { section: 'appearance', group: '*group:solo' } } }))
+    await vi.waitFor(() => expect(w.find('.machine-group-name input').exists()).toBe(true))
+    expect((w.find('.machine-group-name input').element as HTMLInputElement).value).toBe('Solo')
+    // Read once: the query goes, the editor stays.
+    expect(navigate).toHaveBeenCalledWith({ path: '/settings', query: { section: 'appearance' } }, { replace: true })
   })
 })
