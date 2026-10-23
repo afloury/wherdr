@@ -6,7 +6,8 @@
 // the others. So we connect to each one ourselves:
 //  - one SSH master connection per machine (ControlMaster, control socket
 //    in RUNTIME_DIR), which forwards the remote Herdr server's Unix socket
-//    to RUNTIME_DIR/<machine>.sock. The line-delimited JSON client (herdr.ts) uses
+//    to RUNTIME_DIR/<machine>.sock (native stdio bridges for Windows paths).
+//    The line-delimited JSON client (herdr.ts) uses
 //    it as is: snapshot every second, prompt, send_input, pane.read…
 //  - file reads (transcripts, folders) and the terminal go
 //    through sessions multiplexed over that same connection (no new
@@ -35,6 +36,7 @@ import {
 import { HerdrError, herdr, setSocketResolver } from './herdr'
 import { type ExecResult, type MachineFs, type ShellExec, boundedOutput, createShellFs, localFs, remoteCommand, shq } from './fsx'
 import { SessionGate, isRefused } from './sshgate'
+import { SocketRelay, bridgeCommand, socketTransport } from './socketRelay'
 import { type Transcripts, createTranscripts } from './transcripts'
 import { fmt } from '../../shared/message'
 import { ATTACH_SUBDIR } from '../../shared/attachments'
@@ -226,6 +228,7 @@ export class RemoteMachine implements Machine {
   readonly fwd: string
   readonly fwdClient: string
   private clientFwd = false
+  private relays: SocketRelay[] = []
   fs: MachineFs
   transcripts: Transcripts
   exec: ShellExec
@@ -343,9 +346,9 @@ export class RemoteMachine implements Machine {
   // Long-lived session in the budget; a refused one counts in the streak
   // (a terminal retrying alone must also bring the connection back), an
   // accepted one ends it.
-  private stream(cmd: string): ChildProcessWithoutNullStreams {
+  private stream(cmd: string, counted = true): ChildProcessWithoutNullStreams {
     const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, cmd], { stdio: ['pipe', 'pipe', 'pipe'] })
-    const close = this.gate.openStream()
+    const close = counted ? this.gate.openStream() : () => {}
     let err = ''
     let opened = false
     child.stdout.once('data', () => {
@@ -441,6 +444,8 @@ export class RemoteMachine implements Machine {
     // Stop by exact PID: the ssh master process we started.
     if (m && m.exitCode === null) m.kill('SIGTERM')
     this.clientFwd = false
+    for (const relay of this.relays) relay.stop()
+    this.relays = []
     fsp.unlink(this.fwd).catch(() => {})
     fsp.unlink(this.fwdClient).catch(() => {})
   }
@@ -509,7 +514,7 @@ export class RemoteMachine implements Machine {
         if (this.master !== child) return
         this.master = null
         const why = this.masterErr.filter(l => !/^Warning: Permanently added/.test(l)).pop() || fmt('SSH connection closed (code {code})', { code })
-        if (!this.connecting) this.fail(why)
+        if (!this.connecting) { this.killMaster(); this.fail(why) }
       })
 
       if (!(await this.waitControl(child, 20000))) {
@@ -519,6 +524,9 @@ export class RemoteMachine implements Machine {
       const probe = await this.exec(PROBE_SCRIPT, [this.session === 'default' ? '' : this.session], { timeoutMs: 15000 })
       const out = probe.stdout.toString('utf8')
       const kv = (k: string) => (new RegExp(`^${k}=(.*)$`, 'm').exec(out) || [])[1] || ''
+      if (!kv('home') && probe.code !== 255) {
+        throw new Error('Remote SSH shell must support POSIX commands. On Windows, set OpenSSH DefaultShell to Git Bash (see Machines documentation).')
+      }
       if (probe.code !== 0) throw new Error(lastLine(probe.stderr) || fmt('Probe failed (code {code})', { code: probe.code }))
       if (kv('self') && kv('self') === localMachineId()) throw new SkipMachine('this machine itself')
       if (kv('error')) throw new Error(fmt('{reason} on {machine}', { reason: kv('error'), machine: this.label }))
@@ -533,15 +541,37 @@ export class RemoteMachine implements Machine {
       this.remoteSock = sock
       this.ident = `${kv('host').toLowerCase()}|${sock}`
       this.transcripts = createTranscripts({ home: this.home, herdr, fs: this.fs })
-      // Transfert du socket Unix distant vers RUNTIME_DIR/<machine>.sock.
-      const fwd = await runFile(SSH_BIN, ['-S', this.ctl, '-O', 'forward', '-L', `${this.fwd}:${sock}`, '--', this.target], 10000)
-      if (fwd.code !== 0) throw new Error(fmt('Herdr socket forwarding failed: {reason}', { reason: lastLine(fwd.stderr) || fwd.code }))
-      // Client socket (notifications): optional, the machine stays usable without it.
-      const clientSock = path.posix.join(path.posix.dirname(sock), 'herdr-client.sock')
-      const fwdc = await runFile(SSH_BIN, ['-S', this.ctl, '-O', 'forward', '-L', `${this.fwdClient}:${clientSock}`, '--', this.target], 10000)
-      this.clientFwd = fwdc.code === 0
-      if (!this.clientFwd) log(`machine ${this.label}: herdr notifications unavailable (${lastLine(fwdc.stderr) || fwdc.code})`)
-      if (this.master !== child || child.exitCode !== null) throw new Error('SSH connection closed')
+      if (socketTransport(sock) === 'relay') {
+        const check = await this.runOnce(bridgeCommand(this.bin, this.session, false, true), { timeoutMs: 10000 })
+        if (check.code !== 0 || check.stdout.toString('utf8').trim() !== 'herdr-api-bridge-v1') {
+          throw new Error('Remote Herdr must provide remote-api-bridge (Herdr 0.9.3 or later).')
+        }
+        if (this.stopped || this.master !== child) throw new Error('SSH connection closed')
+        // API channels use the command budget, including time spent streaming.
+        // A consumed byte stream cannot be retried, so refusals are counted by stream().
+        const api = new SocketRelay(() => this.stream(bridgeCommand(this.bin, this.session), false),
+          run => this.gate.withSlot(run))
+        this.relays.push(api)
+        await api.listen(this.fwd)
+        const client = new SocketRelay(() => this.stream(bridgeCommand(this.bin, this.session, true)))
+        this.relays.push(client)
+        try {
+          await client.listen(this.fwdClient)
+          this.clientFwd = true
+        } catch (e) {
+          client.stop()
+          log(`machine ${this.label}: herdr notifications unavailable (${(e as Error).message})`)
+        }
+      } else {
+        // POSIX machines retain OpenSSH's native Unix socket forwarding.
+        const fwd = await runFile(SSH_BIN, ['-S', this.ctl, '-O', 'forward', '-L', `${this.fwd}:${sock}`, '--', this.target], 10000)
+        if (fwd.code !== 0) throw new Error(fmt('Herdr socket forwarding failed: {reason}', { reason: lastLine(fwd.stderr) || fwd.code }))
+        const clientSock = path.posix.join(path.posix.dirname(sock), 'herdr-client.sock')
+        const fwdc = await runFile(SSH_BIN, ['-S', this.ctl, '-O', 'forward', '-L', `${this.fwdClient}:${clientSock}`, '--', this.target], 10000)
+        this.clientFwd = fwdc.code === 0
+        if (!this.clientFwd) log(`machine ${this.label}: herdr notifications unavailable (${lastLine(fwdc.stderr) || fwdc.code})`)
+      }
+      if (this.stopped || this.master !== child || child.exitCode !== null) throw new Error('SSH connection closed')
       this.fails = 0
       this.pollFails = 0
       this.connecting = false

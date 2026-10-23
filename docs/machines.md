@@ -41,3 +41,29 @@ The terminal view uses `terminal.mouse` on Herdr 0.9.2+ (both CLI and server): c
 touch taps, drags and movement are encoded by Herdr for the application's mouse mode.
 Use **Shift + drag** to select text, and Ctrl/⌘+click to open links. Older or unknown
 versions keep the existing terminal keyboard, selection and scrolling behavior.
+
+### Windows remote machines
+
+The wherdr host must support Unix sockets and OpenSSH multiplexing (for example,
+Linux/WSL or macOS). On the **remote Windows machine**, install Git Bash and set
+it as the OpenSSH server's default shell. In an elevated PowerShell:
+
+```powershell
+New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell -Value 'C:\Program Files\Git\bin\bash.exe' -PropertyType String -Force
+Restart-Service sshd
+```
+
+Reconnect SSH after changing the shell. Adjust the path if Git is installed
+elsewhere. wherdr's bootstrap and file commands require a POSIX shell; with
+cmd.exe or PowerShell as the default, they fail before Herdr is discovered.
+Localized Windows errors (including GBK output) can appear as unreadable text.
+If the bootstrap does not produce its shell markers, wherdr shows a shell
+configuration hint; this also covers other failures before the bootstrap runs.
+
+Herdr must be available in this non-interactive shell (`ssh laptop 'command -v herdr'`) and its server must already be running. Windows remotes require Herdr
+0.9.3 or later with `remote-api-bridge` support. wherdr selects a stdio relay for
+socket paths containing a drive letter or backslashes, rather than putting the
+Windows path into `ssh -L`. It uses Herdr's native `remote-api-bridge` for API
+requests and `remote-client-bridge` for notifications, over the same SSH master.
+No additional relay program or TCP listening port is needed. Linux and macOS
+POSIX socket paths continue to use `ssh -L`.
