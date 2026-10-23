@@ -326,7 +326,6 @@ const coordLoaded = ref(false)
 const coordState = ref('')
 const coordError = ref('')
 const coordQueued = ref<number | null>(null)
-const coordStatusName = ref('')
 let poll: ReturnType<typeof setTimeout> | undefined
 let tries = 0
 // `look` numbers each lookup: only the latest one's answer counts. Two lookups
@@ -347,8 +346,6 @@ async function lookCoordinator(g: number) {
     coordState.value = r.state ?? ''
     coordError.value = r.error ?? ''
     coordQueued.value = r.queued ?? null
-    // Its name stays what it was when a reply leaves it out.
-    if (r.name) coordStatusName.value = r.name
     // Starting (or just told to): asked again until it has a pane. A pane Herdr
     // does not show (yet, or any more): asked again too, for the one it has now.
     // A failed start is not tried again by itself: nothing to wait for.
@@ -393,15 +390,11 @@ const gone = computed(() => props.target.kind === 'task' && Boolean(taskPane.val
 watch(gone, (g) => { if (g) loadTask(true) })
 
 // ------------------------------------------------------------ who it is
-// Match the Board entry points: all work, machine setup, repo work.
-const coordSubject = computed(() => (props.target.kind === 'coordinator' ? coordinatorSubject(props.target.to, props.machineLabel, coordStatusName.value) : ''))
-const coordName = computed(() => {
-  if (props.target.kind !== 'coordinator') return ''
-  return props.target.to.kind === 'main' ? tl('Coordinator', 'Coordinateur') : coordinatorLabel(props.target.to, props.machineLabel)
-})
-// "The Coordinator", "the web coordinator", in a sentence.
+// The same name as the Board button that opened it (coordinatorLabel).
+const coordSubject = computed(() => (props.target.kind === 'coordinator' ? coordinatorSubject(props.target.to, props.machineLabel) : ''))
+const coordName = computed(() => (props.target.kind === 'coordinator' ? coordinatorLabel(props.target.to, props.machineLabel) : ''))
+// "The Coordinator", "the devbox coordinator", "the web coordinator", in a sentence.
 const coordThe = computed(() => {
-  if (props.target.kind === 'coordinator' && props.target.to.kind === 'machine') return tl(`The ${props.machineLabel} setup assistant`, `L’assistant de configuration de ${props.machineLabel}`)
   const s = coordSubject.value
   return s ? tl(`The ${s} coordinator`, `Le coordinateur ${s}`) : tl('The Coordinator', 'Le Coordinateur')
 })
@@ -450,7 +443,6 @@ watch(() => JSON.stringify(props.target), () => {
   coordState.value = ''
   coordError.value = ''
   coordQueued.value = null
-  coordStatusName.value = ''
   lookCoordinator(gen)
 }, { immediate: true })
 async function start() {
