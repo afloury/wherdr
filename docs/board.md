@@ -101,15 +101,16 @@ What the Board shows and does:
   machine's Coordinator and machine coordinator first, each with its own icon and the Board's name (**Coordinator** with
   the board's icon, **`<machine>` coordinator** with the machine's), then per repo a head row, its project
   coordinator (named after the repo, the wherdr mark on the accent, **Coordinator**, its state; its
-  question and one-tap answers when it asks one; without a coordinator here, the repo's own space
-  with its initial), a bar under it (fold, the tasks' summary such as `4 TASKS · 1 YOUR TURN ·
+  question and one-tap answers when it asks one), a bar under it (fold, the tasks' summary such as `4 TASKS · 1 YOUR TURN ·
   1 LIMIT`, branch and commits behind its upstream, and the repo space's **…** menu, which opens
   its terminal), and its tasks' spaces, indented and folding with the bar (key, title, state,
   progress, time on it, the line the board reports; the Board icon opens the task there). One
   row per task: its reviewer, planner and attempts, each in a tab of the task's space, are part
   of it; in normal mode the row says the stage (**Under review · codex**), and both modes
   open the task panel while a review runs. The counters count tasks, not tabs. A repo
-  coordinated from another machine shows **Coordinated from <machine>**. wherdr reads this from
+  coordinated from another machine shows **Coordinated from <machine>** above the bar instead
+  of a local coordinator. Without either coordinator, the bar is the first row; the repo's plain
+  terminal stays accessible through its **…** menu. wherdr reads this from
   the board's files (`~/.herdr-projects/data`: tasks, attempts, reviewers, coordinators, repos)
   and from Herdr's worktree groups, every 15 seconds while the list is shown, never through
   herdr-projects' command line; the branch and behind count come from `git` in the repo's main
