@@ -3,7 +3,7 @@ import { flushPromises } from '@vue/test-utils'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import NotificationRules from '~/components/NotificationRules.vue'
 import SettingsView from '~/components/SettingsView.vue'
-import { herdrState } from '~/composables/useHerdr'
+import { desk, herdrState } from '~/composables/useHerdr'
 import { notificationClock, notificationRules } from '~/composables/useNotificationRules'
 import { LEVEL_EVENTS, defaultNotifications, type NotificationException, type NotificationSettings } from '#shared/notificationRules'
 import type { Pane } from '#shared/types'
@@ -124,6 +124,9 @@ describe('notification settings: a default and exceptions', () => {
 })
 
 it('orders the Notifications section: Do not disturb, default, exceptions, this device', async () => {
+  // Computer layout: on a phone, Settings re-routes after mounting (history), past the test's end.
+  const wasDesk = desk.value
+  desk.value = true
   const w = await mountSuspended(SettingsView, { route: '/settings?section=notifications', global: { stubs: { UTooltip: { template: '<span><slot /></span>' } } } })
   const html = w.html()
   const at = (id: string) => html.indexOf(`data-testid="${id}"`)
@@ -134,4 +137,5 @@ it('orders the Notifications section: Do not disturb, default, exceptions, this 
   expect(w.find('[data-testid="notification-quiet"]').text()).toContain('Turns off every notification, no exceptions')
   expect(w.find('[data-testid="push-card"]').text()).toContain('What notifies is set above')
   w.unmount()
+  desk.value = wasDesk
 })
