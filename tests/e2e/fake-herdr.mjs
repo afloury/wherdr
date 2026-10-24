@@ -224,11 +224,20 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       const p = need(params.pane_id)
       p.starts = [...(p.starts || []), params]
       p.agent = params.kind; p.status = 'idle'; p.pid = (p.pid || 3000) + 1; p.updateOutput = params.kind === 'codex' ? '› ' : ''
+      if (p.slowExit?.exiting) { p.customScreen = p.slowExit.after; p.slowExit = null }
       return { agent: { pane_id: p.id, agent: p.agent } }
     },
     'pane.send_input': (params) => {
       const p = paneById(params.pane_id)
       if (p) p.writes = [...(p.writes || []), params]
+      // `/exit` then Enter: the exit screen, the agent still reported for `ms`.
+      if (p?.slowExit && params.text === '/exit') p.slowExit.typed = true
+      if (p?.slowExit?.typed && (params.keys || []).includes('enter')) {
+        p.slowExit = { ...p.slowExit, typed: false, exiting: true }
+        p.customScreen = p.slowExit.screen
+        setTimeout(() => { p.agent = null; p.status = 'unknown' }, p.slowExit.ms)
+        return {}
+      }
       if (p?.run && (params.keys || []).includes('esc')) p.run = null
       if (p?.customScreen !== undefined && p.customScreen !== null) {
         p.sentKeys ||= []
@@ -244,6 +253,12 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
         p.answers = [...(p.answers || []), params.keys]
         p.ask = null; p.status = 'idle'
       }
+      return {}
+    },
+    // The agent quits slowly on `/exit`: Herdr keeps reporting it while its
+    // exit screen (`screen`) shows; `agent.start` then shows `after`.
+    'e2e.slow_exit': params => {
+      need(params.pane_id).slowExit = params.ms ? { ms: params.ms, screen: params.screen, after: params.after } : null
       return {}
     },
     'e2e.read_failure': params => { need(params.pane_id).readFailure = Boolean(params.fail); return {} },
