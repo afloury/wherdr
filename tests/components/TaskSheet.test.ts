@@ -22,6 +22,8 @@ registerEndpoint('/api/tasks/question', { method: 'POST', handler: async (event)
   return { ok: true }
 } })
 registerEndpoint('/api/tasks/approve', { method: 'POST', handler: hold })
+let actionBody: unknown
+let actionFails = false
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
 // What the details say, and how many times they were read.
 const shown: { stage: string, failure: string, failureStage: string, attempts?: { letter: string, agent: string, standing: string, stage: string, stat: string }[], archived?: boolean, pane?: string | null } = { stage: 'approval', failure: '', failureStage: '' }
@@ -750,6 +752,36 @@ it('opens coordinator replies in one tap without sending a question', async () =
   await w.findAll('button').find(b => b.text() === 'Coordinator replies')!.trigger('click')
   expect(w.emitted('coordinator')?.[0]).toEqual(['a', expect.objectContaining({ id: 'demo/1' })])
   expect(w.props('open')).toBe(false)
+  w.unmount()
+})
+
+
+it('ends a waiting conversation on its machine and refreshes the sheet', async () => {
+  registerEndpoint('/api/tasks/action', { method: 'POST', handler: async event => {
+    actionBody = await readBody(event)
+    if (actionFails) { setResponseStatus(event, 502); return { error: 'Conversation is busy' } }
+    return hold()
+  } })
+  const { w, vm } = await sheet(true)
+  await w.setProps({ task: { ...task, chat: true, stage: 'asks', state: 'blocked' }, machine: 'remote' })
+  await flushPromises()
+  expect(w.find('.task-finish').text()).toBe('End conversation')
+  expect(w.text()).toContain('Conversation')
+  expect(w.text()).not.toContain('same limit')
+  const before = detailsReads
+  const done = vm.act('finish')
+  await flushPromises()
+  expect(actionBody).toEqual({ machine: 'remote', id: 'demo/1', action: 'finish' })
+  held.shift()!()
+  await done
+  await flushPromises()
+  expect(detailsReads).toBeGreaterThan(before)
+  actionFails = true
+  await vm.act('finish')
+  await flushPromises()
+  expect(w.text()).toContain('Conversation is busy')
+  actionFails = false
+  registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
   w.unmount()
 })
 

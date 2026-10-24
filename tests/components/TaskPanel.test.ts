@@ -478,3 +478,16 @@ describe('task panel', () => {
     busy.unmount()
   })
 })
+
+
+it('ends a waiting conversation on the target machine', async () => {
+  stage = 'asks'
+  more = { chat: true }
+  const w = await panel({ target: { kind: 'task', machine: 'remote', id: 'demo/9' }, task: { ...row(), chat: true, state: 'blocked', group: 'needs' } })
+  expect(w.find('.task-finish').text()).toBe('End conversation')
+  expect(w.find('.task-finish-why').text()).not.toContain('limit')
+  await w.find('.task-finish').trigger('click')
+  await flushPromises()
+  expect(calls).toContainEqual({ machine: 'remote', id: 'demo/9', action: 'finish' })
+  w.unmount()
+})

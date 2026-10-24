@@ -542,6 +542,24 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     expect(calls.filter(c => c[0] === 'finish')).toEqual([['finish', '--', 'demo/10'], ['finish', '--', 'demo/11']])
   })
 
+  it('finishes a waiting conversation on its own machine, without approval', async () => {
+    listReply = { code: 0, stdout: JSON.stringify([
+      { id: 'demo/20', chat: true, state: 'blocked', app: 'codex', stage: 'asks' },
+      { id: 'demo/21', chat: true, state: 'working', app: 'codex', stage: 'working' },
+      { id: 'demo/22', chat: true, state: 'done', app: 'codex', stage: 'done' },
+      { id: 'demo/23', chat: true, state: 'blocked', app: 'codex', stage: 'approval' },
+    ]), stderr: '' }
+    const sent: Array<{ machine: string, args: string[] }> = []
+    T.setRunner(async (m, _launcher, args) => {
+      sent.push({ machine: m.key, args })
+      return args[0] === 'list' ? listReply : { code: 0, stdout: 'Conversation ended', stderr: '' }
+    })
+    await T.taskCommand('remote', 'demo/20', 'finish')
+    expect(sent).toContainEqual({ machine: 'remote', args: ['finish', '--', 'demo/20'] })
+    for (const id of ['demo/21', 'demo/22']) await expect(T.taskCommand('remote', id, 'finish')).rejects.toThrow('nothing to finish')
+    await expect(T.approveTask('remote', 'demo/23')).rejects.toThrow('does not wait for approval')
+  })
+
   // The task's worker.agent as 1.x resolves it now.
   const resolved = async (id: string) => { const before = calls.length; const o = await T.taskStartOptions('', id); calls.splice(before); return o.agent }
   // herdr-projects keeps the list a moment: an action dropped it, the next read is fresh.

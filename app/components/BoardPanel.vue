@@ -301,7 +301,7 @@ async function taskAction(action: TaskCommand | 'approve' | 'anyway') {
   if (action === 'anyway' && !canAnyway.value) return
   if (action === 'fix' && !canFix.value) return
   if (action === 'review' && !canSendReview.value) return
-  if (action === 'finish' && (!canFinish.value || !await askConfirm(finishQuestion(props.task?.title || details.value?.title || ''), finishLabel(), 'primary'))) return
+  if (action === 'finish' && (!canFinish.value || !await askConfirm(finishQuestion(props.task?.title || details.value?.title || '', props.task?.chat), finishLabel(props.task?.chat), 'primary'))) return
   if ((action === 'approve' || action === 'anyway') && !await askConfirm(
     action === 'anyway' ? tl('Approve despite the failed review or checks? This merges the work.', 'Approuver malgré la relecture ou les contrôles en échec ? Cela fusionne le travail.') : tl('Approve this task?', 'Approuver cette tâche ?'),
     action === 'anyway' ? tl('Approve anyway', 'Approuver quand même') : tl('Approve', 'Approuver'), 'primary')) return
@@ -586,6 +586,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
             <span class="board-panel-title">{{ coordName }}</span>
           </template>
         </p>
+        <span v-if="target.kind === 'task' && task?.chat" class="task-chip">{{ tl('Conversation', 'Conversation') }}</span>
         <TaskAgentMark v-if="target.kind === 'task'" :identity="identity" />
         <p v-if="target.kind === 'coordinator'" class="board-panel-purpose">{{ coordinatorDescription(target.to) }}</p>
       </div>
@@ -639,7 +640,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <UButton v-if="choosingAttempt && selected !== 'task'" @click="choose('task')">{{ tl('Choose an attempt', 'Choisis un essai') }}</UButton>
         <UButton v-if="canSendReview" class="task-needs-review" color="primary" icon="i-lucide-undo-2" :disabled="disabled" @click="taskAction('review')">{{ tl('Send the review back to the agent', 'Renvoyer les remarques à l’agent') }}</UButton>
         <UButton v-if="taskPermissions?.retry" :disabled="disabled" @click="taskAction('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
-        <UButton v-if="canFinish" class="task-finish" :title="finishTitle()" :aria-description="finishTitle()" :disabled="disabled" @click="taskAction('finish')">{{ finishLabel() }}</UButton>
+        <UButton v-if="canFinish" class="task-finish" :title="finishTitle(task?.chat)" :aria-description="finishTitle(task?.chat)" :disabled="disabled" @click="taskAction('finish')">{{ finishLabel(task?.chat) }}</UButton>
         <UButton v-if="canFix" :disabled="disabled" @click="taskAction('fix')">{{ tl('Send the error to the agent', 'Envoyer l’erreur à l’agent') }}</UButton>
         <UButton v-if="taskPermissions?.delegate" :disabled="disabled" @click="taskAction('delegate')">{{ tl('Start again', 'Relancer') }}</UButton>
         <template v-if="permissionTaps">
