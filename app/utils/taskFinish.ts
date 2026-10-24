@@ -6,6 +6,7 @@ import { tl } from './i18n'
 // One line: what Retry does, what Finish does, for this case.
 export function finishHint(c: FinishCase): string {
   switch (c) {
+    case 'conversation': return tl('End this conversation when you are done.', 'Termine cette conversation quand tu as fini.')
     case 'limit': return tl(
       'Retry: the agent goes on, with the same limit again. Finish: the work is taken as it is, checked, then reviewed.',
       'Réessayer : l’agent continue, avec la même limite. Terminer : le travail est pris tel quel, vérifié, puis relu.')
@@ -18,9 +19,9 @@ export function finishHint(c: FinishCase): string {
   }
 }
 
-export const finishLabel = () => tl('Finish', 'Terminer')
-export const finishTitle = () => tl('Take the work as it is: checks, then review', 'Prendre le travail tel quel : vérifications puis relecture')
-export const finishQuestion = (title: string) => tl(
+export const finishLabel = (chat = false) => chat ? tl('End conversation', 'Terminer la conversation') : tl('Finish', 'Terminer')
+export const finishTitle = (chat = false) => chat ? tl('End this conversation', 'Terminer cette conversation') : tl('Take the work as it is: checks, then review', 'Prendre le travail tel quel : vérifications puis relecture')
+export const finishQuestion = (title: string, chat = false) => chat ? tl(`End “${title}”?`, `Terminer la conversation « ${title} » ?`) : tl(
   `Take “${title}” as it is? Its checks run, then its review. If this task merges by itself (merge.by itself), it can merge without asking you.`,
   `Prendre « ${title} » tel quel ? Ses vérifications tournent, puis sa relecture. Si cette tâche fusionne d’elle-même (merge.by itself), elle peut fusionner sans te demander.`)
 

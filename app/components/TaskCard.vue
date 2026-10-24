@@ -38,7 +38,8 @@ const staleTitle = computed(() => (props.stale
       <span v-if="waitKind" class="task-needs-type" :data-kind="waitKind">{{ blockKindLabel(waitKind) }}</span>
       <span class="task-card-msg-text"><LinkedText :text="line" /></span>
     </span>
-    <span v-if="meta.length || task.review" class="task-chips">
+    <span v-if="task.chat || meta.length || task.review" class="task-chips">
+      <span v-if="task.chat" class="task-chip">{{ tl('Conversation', 'Conversation') }}</span>
       <span v-for="m in meta" :key="m" class="task-chip">{{ m }}</span>
       <span v-if="task.review" class="task-chip" :class="task.review.pass === false ? 'fail' : task.review.pass ? 'pass' : ''">
         {{ task.review.pass === false ? tl('review failed', 'revue échouée') : tl('review', 'revue') }}{{ task.review.tally ? ` · ${task.review.tally}` : '' }}
