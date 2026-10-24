@@ -22,6 +22,8 @@ All notable changes to this project are documented here. The format follows
 
 - **A machine's tab on the home list** no longer repeats its header: its Claude and Codex quotas sit together at the top, an offline machine says so there, and a right click or long press on the tab offers the machine's actions. A group's tab offers **Group settings**.
 
+- **Restart to update** no longer opens the interactive terminal for a moment while the agent exits: the conversation stays as it is, with only the restart progress above the message field.
+
 ## [2.0.0] — 2026-10-23
 
 ### Added and improved
