@@ -13,7 +13,7 @@ import path from 'node:path'
 import {
   type BoardLinks, type FileLinks, type LinkedCoordinator, type MachineLinks, type RepoInfo,
   parseRepoGit,
-  TASK_DIR_RE, coordinatorFromFile, linksFromTaskFile, socketSession, tasksFromFiles,
+  TASK_DIR_RE, coordinatorFromFile, linksFromTaskFile, tasksFromFiles,
 } from '../../shared/boardLinks'
 import { repoKeysFromFile } from '../../shared/projectsTasks'
 import type { FsStat } from './fsx'
@@ -66,11 +66,11 @@ async function readMachine(m: Machine, files: Map<string, Seen>): Promise<Machin
       .sort((a, b) => parseInt(b, 10) - parseInt(a, 10) || a.localeCompare(b)).slice(0, PER_REPO_MAX)
     for (const n of dirs) taskPaths.push(path.posix.join(tasksDir, repo, n, 'task.json'))
   }
-  const coordPaths: { p: string, level: LinkedCoordinator['level'], session: string, folder?: string }[] = []
+  const coordPaths: { p: string, level: LinkedCoordinator['level'], folder?: string }[] = []
   for (const s of await names(m, coordDir)) {
     const top = path.posix.join(coordDir, s)
-    coordPaths.push({ p: path.posix.join(top, 'state.json'), level: 'top', session: s }, { p: path.posix.join(top, 'machine/state.json'), level: 'machine', session: s })
-    for (const r of await names(m, path.posix.join(top, 'projects'))) coordPaths.push({ p: path.posix.join(top, 'projects', r, 'state.json'), level: 'project', session: s, folder: r })
+    coordPaths.push({ p: path.posix.join(top, 'state.json'), level: 'top' }, { p: path.posix.join(top, 'machine/state.json'), level: 'machine' })
+    for (const r of await names(m, path.posix.join(top, 'projects'))) coordPaths.push({ p: path.posix.join(top, 'projects', r, 'state.json'), level: 'project', folder: r })
   }
   const keysPath = path.posix.join(data, 'repo-keys.json')
   const all = [...taskPaths.slice(0, FILES_MAX), ...coordPaths.map(c => c.p), keysPath, path.posix.join(data, 'repos.json')]
@@ -78,8 +78,8 @@ async function readMachine(m: Machine, files: Map<string, Seen>): Promise<Machin
   const sessionKey = (socket: unknown) => sessionMachine(m, socket)
   const keysFile = read.get(keysPath)
   const keys = keysFile ? repoKeysFromFile(JSON.stringify(keysFile)) : {}
-  const links = taskPaths.map(p => linksFromTaskFile(read.get(p), sessionKey, socket => socketSession(socket, m.session || 'default'))).filter((x): x is FileLinks => x !== null && !x.archived)
-  const coordinators = coordPaths.map(c => coordinatorFromFile(c.level, read.get(c.p), sessionKey, c.folder, c.session)).filter((c): c is LinkedCoordinator => c !== null)
+  const links = taskPaths.map(p => linksFromTaskFile(read.get(p), sessionKey)).filter((x): x is FileLinks => x !== null && !x.archived)
+  const coordinators = coordPaths.map(c => coordinatorFromFile(c.level, read.get(c.p), sessionKey, c.folder)).filter((c): c is LinkedCoordinator => c !== null)
   const reposFile = read.get(path.posix.join(data, 'repos.json'))
   return { machine: m.key, tasks: tasksFromFiles(links, keys), coordinators, repos: await reposOf(m, reposFile) }
 }

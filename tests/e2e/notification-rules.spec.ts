@@ -3,117 +3,75 @@ import { test, expect, type Page } from './test'
 import { BASE_URL } from './scenario.mjs'
 
 const policy = {
-  version: 2, default: { events: [], subagents: false }, exceptions: [
-    { kind: 'conversation', machine: '', id: 'w1:p1', label: 'Example agent', events: ['needs-you', 'finished'], subagents: false, until: null },
-    { kind: 'coordinator', machine: '', id: 'default/top/', label: 'Coordinator', events: [], subagents: false, until: Date.now() + 3600000 },
+  defaults: [], muteSubagents: true, rules: [
+    { scope: 'machine', machine: '', id: '', label: 'Development', mode: 'muted', events: [], until: null },
+    { scope: 'project', machine: '', id: 'example', label: 'Example', mode: 'muted', events: [], until: Date.now() + 3600000 },
+    { scope: 'conversation', machine: '', id: 'w1:p1', label: 'Main coordinator', mode: 'on', events: ['needs-you', 'finished'], until: null },
   ],
 }
 const stored = async (page: Page) => {
   const r = await (await page.request.get('/api/settings')).json()
   return r.settings.notificationRules ? JSON.parse(r.settings.notificationRules) : null
 }
-// The agent's "…" menu: a sheet on a phone, a dropdown on a computer.
-const notificationsItem = (page: Page) => page.getByRole('menuitem', { name: 'Notifications', exact: true })
-  .or(page.getByRole('button', { name: 'Notifications', exact: true }))
-const seed = async (page: Page, value: object = policy) => {
-  await page.request.post('/api/settings', { headers: { Origin: BASE_URL }, data: { settings: { notificationRules: JSON.stringify(value) } } })
+const seed = async (page: Page) => {
+  await page.request.post('/api/settings', { headers: { Origin: BASE_URL }, data: { settings: { notificationRules: JSON.stringify(policy) } } })
 }
 
-test('the default and exceptions sync across devices, customize, and remove all', async ({ page, browser }) => {
+test('notification rules sync, select events independently, inherit and reset', async ({ page, browser }) => {
   await seed(page)
   await page.goto('/#/settings?section=notifications')
   const rules = page.getByTestId('notification-rules')
   await expect(rules).toBeVisible()
-  const cards = rules.getByTestId('notification-exception')
-  await expect(cards).toHaveCount(2)
-  await expect(rules.getByRole('combobox', { name: 'Default level', exact: true })).toHaveValue('muted')
-  const agent = cards.filter({ hasText: 'Conversation' })
-  await expect(agent).toContainText('Louder than the default (Muted)')
-  await agent.getByText('Customize', { exact: true }).click()
-  await expect(agent.getByRole('checkbox', { name: 'Needs you', exact: true })).toBeChecked()
-  await agent.getByRole('checkbox', { name: 'New message', exact: true }).check()
-  await expect.poll(async () => (await stored(page))?.exceptions.find((e: { id: string }) => e.id === 'w1:p1')?.events).toContain('message')
+  await expect(rules.locator('.notification-rule')).toHaveCount(3)
+  await expect(rules.getByRole('checkbox', { name: 'Needs you', exact: true })).toBeChecked()
+  await rules.getByRole('checkbox', { name: 'New message', exact: true }).check()
+  await expect.poll(async () => (await stored(page))?.rules[2].events).toContain('message')
 
   const other = await browser.newContext({ baseURL: BASE_URL, viewport: page.viewportSize(), serviceWorkers: 'block' })
   try {
     const b = await other.newPage()
     await b.goto('/#/settings?section=notifications')
     const second = b.getByTestId('notification-rules')
-    await expect(second.getByTestId('notification-exception').filter({ hasText: 'Conversation' }).getByRole('combobox')).toHaveValue('custom')
-    await second.getByRole('combobox', { name: 'Default level', exact: true }).selectOption('all')
-    await expect(rules.getByRole('combobox', { name: 'Default level', exact: true })).toHaveValue('all')
-    await rules.getByRole('button', { name: 'Remove all exceptions', exact: true }).click()
-    await expect(second.getByTestId('notification-exception')).toHaveCount(0)
-    await expect.poll(async () => (await stored(page))?.exceptions).toEqual([])
+    await expect(second.getByRole('checkbox', { name: 'New message', exact: true })).toBeChecked()
+    await rules.getByRole('checkbox', { name: 'Scheduled task', exact: true }).check()
+    await expect(second.getByRole('checkbox', { name: 'Scheduled task', exact: true })).toBeChecked()
+    await second.getByRole('combobox', { name: 'Notifications: Example', exact: true }).selectOption('inherit')
+    await expect(rules.locator('.notification-rule')).toHaveCount(2)
+    await rules.getByRole('button', { name: 'Reset notification rules', exact: true }).click()
+    await expect(second.locator('.notification-rule')).toHaveCount(0)
+    await expect.poll(async () => (await stored(page))?.rules).toEqual([])
   } finally { await other.close() }
 })
 
-test('old machine/project/conversation rules become a default and exceptions', async ({ page }) => {
-  await seed(page, { defaults: [], muteSubagents: true, rules: [
-    { scope: 'machine', machine: '', id: '', label: 'Development', mode: 'muted', events: [], until: null },
-    { scope: 'project', machine: '', id: 'example', label: 'Example', mode: 'on', events: ['message'], until: null },
-    { scope: 'conversation', machine: '', id: 'w1:p1', label: 'Example agent', mode: 'on', events: ['needs-you', 'finished'], until: null },
-  ] })
-  await page.goto('/#/settings?section=notifications')
-  const rules = page.getByTestId('notification-rules')
-  await expect(rules.getByRole('combobox', { name: 'Default level', exact: true })).toHaveValue('muted')
-  await expect(rules.getByTestId('notification-exception')).toHaveCount(1)
-  await expect(rules.getByTestId('notification-exception')).toContainText('Louder than the default (Muted)')
-})
-
-test('a conversation menu sets its exception, mutes for a while and follows the default again', async ({ page }) => {
-  await seed(page, { version: 2, default: { events: ['needs-you', 'finished'], subagents: false }, exceptions: [] })
+test('a conversation menu can opt in, mute temporarily and inherit', async ({ page }) => {
   await page.goto('/#/a/w1:p1')
-  // The menu is built from the loaded conversation: retry until it is there.
   const open = async () => {
-    await expect(async () => {
-      await page.keyboard.press('Escape')
-      await page.locator('#agent').getByRole('button', { name: 'Options', exact: true }).click()
-      await notificationsItem(page).click({ timeout: 2000 })
-    }).toPass({ timeout: 15000 })
+    await page.locator('#agent').getByRole('button', { name: 'Options', exact: true }).click()
+    await page.getByRole('button', { name: 'Notifications', exact: true }).click()
   }
   await open()
-  await expect(page.getByRole('button', { name: /^Follow the default \(Needs you \+ finished\)/ })).toBeVisible()
-  await page.getByRole('button', { name: /^Needs you$/ }).click()
-  await expect.poll(async () => (await stored(page))?.exceptions[0]?.events).toEqual(['needs-you'])
+  await page.getByRole('button', { name: 'Only needs you', exact: true }).click()
+  await expect.poll(async () => (await stored(page))?.rules[0]?.events).toEqual(['needs-you'])
   await open()
   await page.getByRole('button', { name: 'Mute for 8 hours', exact: true }).click()
-  await expect.poll(async () => (await stored(page))?.exceptions[0]?.until).toBeGreaterThan(Date.now() + 7 * 3600000)
-  expect((await stored(page)).exceptions[0].events).toEqual(['needs-you'])
+  await expect.poll(async () => (await stored(page))?.rules[0]?.mode).toBe('muted')
+  const mute = (await stored(page)).rules[0]
+  expect(mute.until).toBeGreaterThan(Date.now() + 7 * 3600000)
   await open()
-  await page.getByRole('button', { name: /^Follow the default/ }).click()
-  await expect.poll(async () => (await stored(page))?.exceptions).toEqual([])
+  await page.getByRole('button', { name: 'Inherit notifications', exact: true }).click()
+  await expect.poll(async () => (await stored(page))?.rules).toEqual([])
 })
 
-test('the exception picker lists coordinators by machine, never task agents', async ({ page }) => {
+test('the main-coordinator preset mutes base machines and enables only the main conversation', async ({ page }) => {
   await page.route('**/api/tasks/links*', route => route.fulfill({ json: { version: 'example', machines: [{ machine: '', tasks: [],
-    coordinators: [{ level: 'top', session: 'default', pane: 'w1:p2', workspace: 'w1' }, { level: 'machine', session: 'default', pane: 'w1:p3', workspace: 'w1' }],
+    coordinators: [{ level: 'top', pane: 'w1:p1', workspace: 'w1' }, { level: 'machine', pane: 'w1:p2', workspace: 'w1' }],
   }] } }))
-  await seed(page, { version: 2, default: { events: [], subagents: false }, exceptions: [] })
   await page.goto('/#/settings?section=notifications')
-  await page.getByRole('button', { name: 'Add an exception', exact: true }).click()
-  const picker = page.getByTestId('notification-picker')
-  await picker.getByRole('button', { name: 'Coordinator', exact: true }).click()
-  await expect.poll(async () => (await stored(page))?.exceptions).toEqual([
-    expect.objectContaining({ kind: 'coordinator', id: 'default/top/', events: ['needs-you', 'finished'] }),
+  await page.getByRole('button', { name: 'Only main coordinators', exact: true }).click()
+  await expect.poll(async () => (await stored(page))?.rules.filter((r: { scope: string }) => r.scope === 'conversation')).toEqual([
+    expect.objectContaining({ id: 'w1:p1', mode: 'on', events: ['needs-you', 'finished'] }),
   ])
-})
-
-test('an ended timed mute leaves the coordinator addable again, and a migrated task rule is dropped', async ({ page }) => {
-  await page.route('**/api/tasks/links*', route => route.fulfill({ json: { version: 'example', machines: [{ machine: '',
-    coordinators: [{ level: 'top', session: 'default', pane: 'w1:p2', workspace: 'w1' }],
-    tasks: [{ id: 'example/1', repo: 'example', n: 1, key: 'APP-1', title: 'Example', panes: [{ id: 'w1:p1', role: 'worker' }], workspace: 'w1', stage: 'working', progress: null, msg: '', since: null }],
-  }] } }))
-  await seed(page, { version: 2, default: { events: [], subagents: false }, exceptions: [
-    { kind: 'coordinator', machine: '', id: 'default/top/', label: 'Coordinator', events: null, subagents: false, until: Date.now() - 60000 },
-    { kind: 'conversation', machine: '', id: 'w1:p1', label: 'Worker', events: ['message'], subagents: false, until: null },
-  ] })
-  await page.goto('/#/settings?section=notifications')
-  await expect(page.getByTestId('notification-exception')).toHaveCount(0)
-  await expect.poll(async () => (await stored(page))?.exceptions).toEqual([])
-  await page.getByRole('button', { name: 'Add an exception', exact: true }).click()
-  await page.getByTestId('notification-picker').getByRole('button', { name: 'Coordinator', exact: true }).click()
-  await expect.poll(async () => (await stored(page))?.exceptions).toEqual([expect.objectContaining({ id: 'default/top/', events: ['needs-you', 'finished'], until: null })])
+  expect((await stored(page)).rules).toContainEqual(expect.objectContaining({ scope: 'machine', machine: '', mode: 'muted' }))
 })
 
 test('viewing heartbeat requires visibility and recent activity', async ({ page }) => {
@@ -149,7 +107,7 @@ test('notifications screenshots on phone and desktop, with no horizontal overflo
   await expect(page.getByTestId('notification-rules')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await page.screenshot({ path: '.shots/notifications-mobile.png', fullPage: true })
-  await page.getByTestId('notification-exception').last().scrollIntoViewIfNeeded()
+  await page.locator('.notification-rule').last().scrollIntoViewIfNeeded()
   await page.screenshot({ path: '.shots/notifications-mobile-rules.png', fullPage: true })
   const desktop = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' })
   try {
@@ -161,11 +119,8 @@ test('notifications screenshots on phone and desktop, with no horizontal overflo
     await p.screenshot({ path: '.shots/notifications-desktop.png', fullPage: true })
   } finally { await desktop.close() }
   await page.goto('/#/a/w1:p1')
-  await expect(async () => {
-    await page.keyboard.press('Escape')
-    await page.locator('#agent').getByRole('button', { name: 'Options', exact: true }).click()
-    await notificationsItem(page).click({ timeout: 2000 })
-  }).toPass({ timeout: 15000 })
+  await page.locator('#agent').getByRole('button', { name: 'Options', exact: true }).click()
+  await page.getByRole('button', { name: 'Notifications', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Muet pendant 1 h', exact: true })).toBeVisible()
   await page.screenshot({ path: '.shots/notifications-menu-mobile.png' })
 })

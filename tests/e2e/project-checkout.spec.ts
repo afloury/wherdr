@@ -17,8 +17,7 @@ test('moved checkout belongs to its board project and its menu cannot rename the
   await expect(page.locator('.card-title', { hasText: 'new-folder' })).toHaveCount(0)
   await project.getByRole('button', { name: 'Options: original-project', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Rename space', exact: true })).toHaveCount(0)
-  // Notifications are set per coordinator or agent, never on a project.
-  await expect(page.getByRole('button', { name: 'Notifications', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Notifications', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Open the terminal of original-project', exact: true })).toBeVisible()
   await fs.mkdir('.shots', { recursive: true })
   for (const [width, height] of [[390, 844], [1440, 900]]) {

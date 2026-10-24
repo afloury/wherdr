@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { reduceSnapshot } from '../server/utils/snapshot'
 import { spaceRows } from '../shared/spaces'
 import {
-  type MachineLinks, boardSections, coordinatorFromFile, countedPanes, socketSession, elapsedLabel, linksFromTaskFile, memberStage, memberTag,
+  type MachineLinks, boardSections, coordinatorFromFile, countedPanes, elapsedLabel, linksFromTaskFile, memberStage, memberTag,
   parseRepoGit, shownPane, tasksFromFiles, tasksIn,
 } from '../shared/boardLinks'
 
@@ -80,16 +80,6 @@ describe('reading the board\'s files', () => {
   it('carries worker takeover and review identity through Home grouping', () => {
     const file = linksFromTaskFile({ id: 'app/4', agent: 'claude', on: 'codex/gpt', stage: 'reviewing', handovers: [{ role: 'worker', from: 'claude', to: 'codex/gpt' }], link: { pane: 'w2:p3', reviewer: { pane: 'w2:p4', kind: 'omp' } } }, local)!
     expect(tasksFromFiles([file], {})[0]!.identity).toEqual({ agent: 'codex', reviewer: 'omp', from: 'claude' })
-  })
-
-  it('names the Herdr session of a task from its socket', () => {
-    expect(socketSession('/run/sessions/other/herdr.sock', 'default')).toBe('other')
-    expect(socketSession(SOCK, 'default')).toBe('default')
-    expect(socketSession(undefined, 'main')).toBe('main')
-    const name = (s: unknown) => socketSession(s, 'default')
-    const other = linksFromTaskFile({ id: 'shop/2', link: { socket: '/run/sessions/other/herdr.sock', pane: 'w2:p1' } }, () => 'abcd', name)!
-    expect(tasksFromFiles([other], {})[0]).toMatchObject({ session: 'other', panes: [{ id: 'abcd~w2:p1' }] })
-    expect(linksFromTaskFile({ id: 'shop/1', link: { pane: 'w2:p1' } }, local, name)!.session).toBe('default')
   })
 
   it('coordinator state files', () => {
