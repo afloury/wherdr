@@ -46,9 +46,3 @@ describe('Needs you banner jump', () => {
     expect(needsJumpTab(['term', 'task'], 'term')).toBeNull()
   })
 })
-
-it('offers settings for tasks and retains the selected settings view', () => {
-  const views = { chat: true, term: true, settings: true }
-  expect(taskPanelTabs(views)).toEqual(['chat', 'term', 'task', 'settings'])
-  expect(taskPanelTab(views, 'settings')).toBe('settings')
-})

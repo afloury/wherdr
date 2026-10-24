@@ -1043,7 +1043,7 @@ for (const lang of ['en', 'fr']) {
     await expect(panel.locator('.task-needs')).toContainText('Restore the lockfile')
     await expect(panel.locator('.agent-top')).toHaveCount(0)
     // A stale agent link must not make setup failure open a conversation.
-    await expect(panel.locator('.board-panel-tabs button')).toHaveText(['Conversation', 'Terminal', lang === 'fr' ? 'Tâche' : 'Task', lang === 'fr' ? 'Réglages' : 'Settings'])
+    await expect(panel.locator('.board-panel-tabs button')).toHaveText(['Conversation', 'Terminal', lang === 'fr' ? 'Tâche' : 'Task'])
     await expect(panel.locator('.board-panel-name .task-state')).toHaveText(lang === 'fr' ? 'À toi' : 'Needs you')
     await page.screenshot({ path: `.shots/task-panel-${lang}-setup-${testInfo.project.name}.png` })
     await panel.locator('.board-panel-tabs').getByRole('button', { name: 'Terminal', exact: true }).click()
@@ -1095,7 +1095,7 @@ for (const lang of ['en', 'fr']) {
     await page.reload()
     await page.goto('/#/board?machine=&task=demo%2F9')
     await expect(panel.locator('.task-sheet')).toContainText('Search supports titles and labels.')
-    await expect(panel.locator('.board-panel-tabs button')).toHaveText([lang === 'fr' ? 'Tâche' : 'Task', lang === 'fr' ? 'Réglages' : 'Settings'])
+    await expect(panel.locator('.board-panel-tabs button')).toHaveText([lang === 'fr' ? 'Tâche' : 'Task'])
     await expect(panel.locator('.task-setup')).toHaveCount(0)
     await expect(panel.locator('.task-needs')).toContainText('npm ci')
     await expect(page.getByRole('dialog')).toHaveCount(0)

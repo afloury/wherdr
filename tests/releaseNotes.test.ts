@@ -42,9 +42,14 @@ it('refuses a prerelease without current change descriptions', () => {
 })
 
 it('summarizes the versioned unreleased section used by the repository', () => {
-  const changelog = readFileSync('CHANGELOG.md', 'utf8')
-  expect(changelog).toContain('## 2.0.1 (unreleased)')
+  const changelog = '# Changelog\n\n## 2.0.1 (unreleased)\n\n- A future patch improves task navigation.\n\n## [2.0.0] — 2026-10-24\n- Stable changes.'
   const notes = prereleaseSummary(changelog, 'example/wherdr', 'a'.repeat(40))
   expect(notes).toContain(changelog.split('\n').find(line => line.startsWith('- ')))
   expect(notes).not.toContain('## [2.0.0]')
+})
+
+it('validates the reviewed 2.0.0 release notes', () => {
+  const notes = readFileSync('docs/release-notes-2.0.0.md', 'utf8')
+  const repo = JSON.parse(readFileSync('package.json', 'utf8')).repository.url.replace('git+https://github.com/', '').replace(/\.git$/, '')
+  expect(() => checkReleaseNotes(notes, repo, 'v2.0.0')).not.toThrow()
 })

@@ -1,6 +1,6 @@
 # Migrate a wherdr 1.x Docker install to wherdr 2.0
 
-wherdr 2.0 has no Docker image: it runs natively, as your user, so the herdr-projects Board can act.
+wherdr 2.0.0 has no Docker image: it runs natively, as your user, so the herdr-projects Board can act.
 This guide moves a wherdr 1.x container to the native service. It keeps the port, the data
 folder (passkeys, push subscriptions, phone address, settings) and therefore the address your
 devices open.

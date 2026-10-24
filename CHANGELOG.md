@@ -4,7 +4,10 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## 2.0.1 (unreleased)
+## [2.0.0] — 2026-10-24
+
+This major release follows 1.3.4. Read the [migration guide](docs/herdr-projects-1x.md)
+(#152) before upgrading; Docker installs also need the [native migration guide](docs/migrate-from-1.x-docker.md).
 
 ### Added and improved
 
@@ -21,10 +24,6 @@ All notable changes to this project are documented here. The format follows
 - **A failed review can be sent back to the agent** from the task's banner (`herdr-projects review`), its findings listed briefly; **Approve anyway** becomes the second choice. A reply sent while the reviewer waits now says it went to the reviewer.
 
 - **A machine's tab on the home list** no longer repeats its header: its Claude and Codex quotas sit together at the top, an offline machine says so there, and a right click or long press on the tab offers the machine's actions. A group's tab offers **Group settings**.
-
-## [2.0.0] — 2026-10-23
-
-### Added and improved
 
 - **New agent and slash menu:** New opens an existing project coordinator or creates one; the slash menu includes plugin skills and MCP prompts (#130, #122).
 - **Messages waiting behind other text** explain why they cannot be sent and offer to clear the field (#131).
@@ -70,9 +69,9 @@ All notable changes to this project are documented here. The format follows
 - Coordinator failure messages distinguish startup and message delivery errors, and report the actual pending message count in English and French.
 - **Useful home list densities**: Compact keeps each Board task on one line (agent, key, truncated title, progress, duration and state, with Your turn when needed). Normal adds one activity line with relevant limit or review labels. Large detailed cards are removed; coordinators and other agents stay dense too, while agents outside the Board keep their one-tap answers. Normal is now the default (see above).
 The release includes the merged work in #70, #133, #135, #136, #137 and #139.
-WHR-71 and WHR-72 are reserved for 2.0.1 and are not included.
+PRs #153, #154, #155, #157, #163 and #71 are reserved for 2.0.1 and are not included.
 
-### Breaking changes and migration from 1.x
+### Breaking changes and migration from 1.3.4
 
 - **Shared display settings** now belong to the server (`DATA_DIR/settings.json`), rather than each browser. Each browser imports only keys missing on the server once; existing server choices win. Back up the data directory before upgrading. Screen and hardware preferences, language, drafts and authentication remain local. Compact list resets to Normal once; enable it again in Settings if wanted.
 - **Upgrade checklist:** back up wherdr's data and any herdr-projects 0.2 projects first. Follow the [herdr-projects migration guide](docs/herdr-projects-1x.md) before running upstream 1.x; the old Project panel is replaced by the Board. Docker users must [move to the native service](docs/herdr-projects-1x.md#moving-from-docker-to-the-native-service). Native plugin users can update through Herdr, npm users with `npm install -g wherdr@2.0.0 && wherdr restart`, and Homebrew users with `brew upgrade wherdr && brew services restart wherdr`, once 2.0.0 is published. Open each browser once to import its settings, then check Settings and the Board.
@@ -102,7 +101,7 @@ WHR-71 and WHR-72 are reserved for 2.0.1 and are not included.
   - **Repo groups headed by their coordinator**: in the agent list, a repo's group now starts with its project coordinator, larger than its tasks: the wherdr mark on the theme's accent, the repo's name in the title face, a **Coordinator** label and its state, without its last message (its question and one-tap answers still show when it asks one). Under it, a bar folds the group and sums up its tasks (“4 TASKS · 1 YOUR TURN · 1 LIMIT”), with the branch and the repo space's **…** menu, which holds its terminal (the separate terminal button is gone). The tasks hang under the bar, indented on a rule, and fold with it (kept per project on the device). A repo with no coordinator here keeps the same layout, with its initial and no label.
   - **Closing a space that holds a task's agent says so**: closing a repo's space closes its whole worktree group in Herdr; the confirmation now names the herdr-projects tasks whose agents it stops, and its button says it (“Close and stop 2 tasks”). The same for a task's own space or its agent's pane.
   - **Start names its agent, and takes another one**: a task's sheet shows, beside **Start**, the agent it starts with by default (its `worker.agent`, as `show <id> --json` resolves it, and where that comes from) and the other agents installed on its machine. One click on Start starts it with that default, as before; picking another agent starts it with that one for this start only (`delegate --worker.agent=<agent>`). herdr-projects keeps that pick as the task's own setting while the run lasts; wherdr then puts back what the task had (`unset`, or `set` to its earlier value) once the run is over and before its next Start, so the task's default, the repo's and your own settings are unchanged. A default agent not installed on the task's machine is shown but cannot be picked, and Start waits for an installed one.
-  - The app says 2.0.0-dev (package, `/api/health`, the Herdr plugin's manifest) until 2.0.0 is released.
+  - The app, `/api/health`, npm package and Herdr plugin manifest all report 2.0.0.
   - **Board commands find agents installed in a user folder**, on an SSH machine as on this one: a non-interactive SSH session only has sshd's default PATH, so herdr-projects there could not find an agent in `~/.local/bin`… and refused to start the Coordinator (“"claude" is not installed here”). The remote command now gets the same PATH as the local ones and the login service (see Agent PATH in the README), the one an interactive login shell would have: first the PATH herdr-projects recorded from a login shell there (`env.json`, in its order, its JSON escapes decoded, under `HERDR_PROJECTS_DATA_DIR` or `HERDR_PROJECTS_HOME` as herdr-projects finds it), then the usual user folders that exist, then the session's own PATH and the system folders. Everywhere, the user's folders now come before the system ones, so an older system-wide copy of an agent no longer wins over theirs.
   - **A coordinator that cannot start says why**: when herdr-projects gives up starting a coordinator (its `coordinator status --json` keeps an `error`, such as “"claude" is not installed here, so it cannot be the Coordinator.”), the Board's side panel shows that reason instead of “starting” forever, with **Try again** (`coordinator restart`: started again, the message still waiting goes in). The panel says “starting” only while herdr-projects does, and names each coordinator once: “The Coordinator is starting”, “the devbox coordinator”, “the web coordinator” (no more “The Coordinator coordinator”); the machine coordinator is named after its machine, as herdr-projects names it.
   - **The Board's machine filter lists this machine again**: wherdr's own machine was missing from it (its key is empty, and the select drops an item with an empty value), although its tasks showed. It is now there under its name, and kept when chosen. A machine Herdr does not name reads as its key on the Board, never as this machine's name.
