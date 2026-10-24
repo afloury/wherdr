@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  NOTIFY_SETUP, NO_ACTIONS, addArgs, parseBoardAgents, agentKind, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
+  NOTIFY_SETUP, NO_ACTIONS, addArgs, parseBoardAgents, agentKind, delegateArgs, effortsFor, isAgentName, isEffortName, parseModels, parseWorkerAgent, parseWorkerEffort, restoreAgentArgs, runOver, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
   reviewFindingsBrief, rowFromTaskFile, stateFromTaskFile, taskCanSendReview, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
 } from '../shared/projectsTasks'
 import { PROJECTS_TESTED } from '../shared/projectsPlugin'
@@ -427,9 +427,17 @@ describe('Start with an agent (delegate --worker.agent, show <id> --json)', () =
     expect(delegateArgs('demo/5', 'codex')).toEqual(['delegate', '--worker.agent=codex', '--', 'demo/5'])
   })
 
-  it('an agent name is one plain word, never an option nor a model', () => {
-    for (const ok of ['claude', 'codex', 'pi', 'qodercli', 'kimi-code']) expect(isAgentName(ok)).toBe(true)
-    for (const bad of ['', '--now', 'codex/gpt-5', 'Claude', 'codex --merge.by=itself', 'a b', 7, null, 'x'.repeat(41)]) expect(isAgentName(bad)).toBe(false)
+  it('a model and an effort: the agent names it, the level is its own setting; the machine stays the caller\'s', () => {
+    expect(delegateArgs('demo/5', 'codex/gpt-6-sol')).toEqual(['delegate', '--worker.agent=codex/gpt-6-sol', '--', 'demo/5'])
+    expect(delegateArgs('demo/5', 'codex/gpt-6-sol', null, 'xhigh')).toEqual(['delegate', '--worker.agent=codex/gpt-6-sol', '--worker.effort=xhigh', '--', 'demo/5'])
+    expect(delegateArgs('demo/5', 'pi/openai/gpt-5', ['DEMO-3'], 'low')).toEqual(['delegate', '--worker.agent=pi/openai/gpt-5', '--worker.effort=low', '--after=DEMO-3', '--', 'demo/5'])
+  })
+
+  it('an agent name is a program, or program/model (pi: program/provider/model), never an option', () => {
+    for (const ok of ['claude', 'codex', 'pi', 'qodercli', 'kimi-code', 'codex/gpt-6.1-sol', 'claude/claude-opus-5-5', 'claude/opusplan', 'pi/openai/gpt-5.6']) expect(isAgentName(ok)).toBe(true)
+    for (const bad of ['', '--now', 'codex/', 'codex/-x', 'codex/a/b/c', 'Claude', 'codex --merge.by=itself', 'codex/gpt 5', 'a b', 7, null, 'x'.repeat(41)]) expect(isAgentName(bad)).toBe(false)
+    for (const ok of ['low', 'xhigh', 'max']) expect(isEffortName(ok)).toBe(true)
+    for (const bad of ['', '--x', 'High', 'a b', 3]) expect(isEffortName(bad)).toBe(false)
   })
 
   it('reads worker.agent and where it comes from in show\'s settings', () => {
@@ -453,11 +461,48 @@ describe('Start with an agent (delegate --worker.agent, show <id> --json)', () =
     expect(runOver({ stage: 'todo', state: 'idle', archived: true })).toBe(false)
   })
 
+  it('reads worker.effort and where it comes from', () => {
+    const show = JSON.stringify({ settings: [{ name: 'worker.effort', value: 'high', place: 'task' }] })
+    expect(parseWorkerEffort(show)).toEqual({ value: 'high', place: 'task' })
+    expect(parseWorkerEffort('{"settings":[]}')).toBeNull()
+    expect(parseWorkerEffort('nope')).toBeNull()
+  })
+
   it('no worker.agent, or not JSON: no default known', () => {
     expect(parseWorkerAgent('{"settings":[]}')).toBeNull()
     expect(parseWorkerAgent('{"settings":[{"name":"worker.agent","value":""}]}')).toBeNull()
     expect(parseWorkerAgent('not json')).toBeNull()
     expect(parseWorkerAgent('[]')).toBeNull()
+  })
+})
+
+// `herdr-projects models <program>` (1.2.x), as it prints it.
+describe('the models and efforts a program takes (models <program>)', () => {
+  const codex = [
+    'Models herdr-projects accepts for codex (worker.agent codex/<model>):',
+    'codex/gpt-6.1-sol', 'codex/gpt-6-astra', 'codex/gpt-6-sol', 'codex/gpt-6-luna', 'codex/gpt-5.6-sol', 'codex/gpt-5.6-terra', 'codex/gpt-5.6-luna',
+    'Effort (worker.effort and the like): low, medium, high, xhigh, max, ultra (from `codex debug models`); gpt-reserve, gpt-6-luna, gpt-5.6-luna, codex-auto-review only low, medium, high, xhigh, max.',
+  ].join('\n')
+  it('codex: its models, every level, and the models limited to fewer', () => {
+    const m = parseModels(codex, 'codex')
+    expect(m.models).toEqual(['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
+    expect(m.efforts).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+    expect(m.only).toEqual([{ models: ['gpt-reserve', 'gpt-6-luna', 'gpt-5.6-luna', 'codex-auto-review'], levels: ['low', 'medium', 'high', 'xhigh', 'max'] }])
+    expect(effortsFor(m, 'gpt-6-sol')).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+    expect(effortsFor(m, 'gpt-6-luna')).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+    // No model picked: no level offered (the program's own model is not known).
+    expect(effortsFor(m, null)).toEqual([])
+  })
+  it('claude: aliases and full names; no effort line, no level', () => {
+    const out = ['Models herdr-projects accepts for claude:', ...['default', 'fable', 'opus', 'sonnet', 'haiku', 'opusplan', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5'].map(n => `claude/${n}`)].join('\n')
+    const m = parseModels(out, 'claude')
+    expect(m.models).toEqual(['default', 'fable', 'opus', 'sonnet', 'haiku', 'opusplan', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5'])
+    expect(effortsFor(m, 'opus')).toEqual([])
+  })
+  it('an empty answer, or another program\'s lines: nothing', () => {
+    expect(parseModels('', 'codex')).toEqual({ program: 'codex', models: [], efforts: [], only: [] })
+    expect(parseModels('error: unknown agent kind\nclaude/opus', 'codex').models).toEqual([])
+    expect(effortsFor(null, 'gpt-6-sol')).toEqual([])
   })
 })
 

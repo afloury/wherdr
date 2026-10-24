@@ -3983,6 +3983,11 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-start-chip.off small { color: var(--ochre); }
 .task-start-missing { color: var(--ochre); }
 .task-start-from { flex-basis: 100%; font: 11px/1.4 var(--mono); color: var(--dim); }
+/* Start: the model and effort after the program (ModelPicker, `launch`). */
+.task-start-model { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.task-start-model .model-pick { border: 1px solid var(--line); border-radius: 0; font-family: var(--mono); max-width: 100%; }
+.task-start-model .model-pick-wrap { min-width: 0; max-width: 100%; }
+.model-pick-none { font: 11px/1.4 var(--mono); color: var(--dim); }
 /* Queue and "Start after…" (TaskSheet): the place Start would get, what a task waits for, the picker. */
 .task-queue-place { margin: 6px 0 0; font: 500 11px/1.4 var(--mono); letter-spacing: .04em; color: var(--text-2); }
 .task-wait-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text); }
@@ -4096,7 +4101,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-chip.task-archived { display: inline-flex; align-items: center; gap: 4px; color: var(--ochre); border-color: color-mix(in srgb, var(--ochre) 45%, var(--line)); }
 .task-chip.task-archived svg { width: 11px; height: 11px; }
 .task-sheet-archived { margin: 0; }
-.task-sheet-error { margin: 0; }
+.task-sheet-error { margin: 0; white-space: pre-line; }
 .hw-toast .hw-toast-action { border-radius: 0; font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
 
 .card.compact .task-attention { color: var(--rose); border-color: currentColor; }
