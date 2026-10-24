@@ -3,8 +3,9 @@
 // the order they were typed, whatever each one takes on the server.
 import { reactive } from 'vue'
 import type { Pane, QueuedMessage } from '#shared/types'
-import { type OutboxItem, addSending, failLocal, newOutboxId, prune, resend, settle } from '~/utils/outbox'
+import { type OutboxItem, SEND_STUCK_MS, addSending, failLocal, giveUpSending, newOutboxId, prune, resend, settle } from '~/utils/outbox'
 import { sendMessage } from './useActions'
+import { tl } from '~/utils/i18n'
 
 // Plain module state: it outlives the views (switching conversations while sending).
 const boxes = reactive(new Map<string, OutboxItem[]>())
@@ -18,14 +19,40 @@ const update = (paneId: string, f: (l: OutboxItem[]) => OutboxItem[]) => {
 
 export const outboxFor = (paneId: string): OutboxItem[] => boxes.get(paneId) || []
 
+// A send whose request did not answer in time (see deliver).
+export class SendStuckError extends Error {
+  constructor() { super(tl('No answer from the server', 'Pas de réponse du serveur')) }
+}
+
 // Send after the earlier sends of this conversation; the bubble moves to the
 // server's record, or to "Not sent" if the request fails (error rethrown).
 function deliver(p: Pane | undefined, paneId: string, id: string, text: string): Promise<QueuedMessage | null> {
-  const run = (chains.get(paneId) || Promise.resolve()).catch(() => {}).then(() => sendMessage(p, paneId, text, id))
+  // A request that never answers gives up after SEND_STUCK_MS: the bubble
+  // turns "Not sent" (Retry / Cancel) and the next sends of the conversation,
+  // a Retry among them, no longer wait for it. Should it answer later, the
+  // server's record still replaces the bubble.
+  const run = (chains.get(paneId) || Promise.resolve()).catch(() => {}).then(() => new Promise<QueuedMessage | null>((resolve, reject) => {
+    let late = false
+    const stuck = setTimeout(() => {
+      late = true
+      reject(new SendStuckError())
+    }, SEND_STUCK_MS)
+    sendMessage(p, paneId, text, id).then(
+      (q) => {
+        clearTimeout(stuck)
+        if (late) update(paneId, l => settle(l, id, q, Date.now()))
+        resolve(q)
+      },
+      (err) => {
+        clearTimeout(stuck)
+        reject(err)
+      },
+    )
+  }))
   chains.set(paneId, run)
   return run.then(
     (q) => { update(paneId, l => settle(l, id, q, Date.now())); return q },
-    (err) => { update(paneId, l => failLocal(l, id)); throw err },
+    (err) => { update(paneId, l => (err instanceof SendStuckError ? giveUpSending(l, id) : failLocal(l, id))); throw err },
   )
 }
 

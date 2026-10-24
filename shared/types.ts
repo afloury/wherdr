@@ -250,7 +250,9 @@ export interface HerdrState {
 // 'bash': Claude Code "!" command (bash mode), 'cmd': local "/" command.
 // 'notice': note shown by the agent outside its replies (omp advisor,
 // finished background task, IRC message…); `name` gives its kind.
-export type ChatRole = 'user' | 'assistant' | 'thinking' | 'tool' | 'cmd' | 'bash' | 'system' | 'notice' | 'job'
+// 'scheduled': a prompt Claude Code sent itself (a CronCreate task, a /loop
+// wakeup or background completion), never typed by the user. `name` distinguishes background tasks.
+export type ChatRole = 'user' | 'assistant' | 'thinking' | 'tool' | 'cmd' | 'bash' | 'system' | 'notice' | 'job' | 'scheduled'
 export interface ChatItem {
   role: ChatRole
   text: string

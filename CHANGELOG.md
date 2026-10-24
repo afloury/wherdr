@@ -22,6 +22,8 @@ All notable changes to this project are documented here. The format follows
 
 - **A machine's tab on the home list** no longer repeats its header: its Claude and Codex quotas sit together at the top, an offline machine says so there, and a right click or long press on the tab offers the machine's actions. A group's tab offers **Group settings**.
 
+- **A Claude Code scheduled task** (`CronCreate`, `/loop`) shows in its place in the conversation as a folded **Scheduled task** with a clock, instead of a “Queued · sending…” bubble of yours stuck under the agent's reply. Entries of Claude's own queue already in the transcript, or left over while the agent rests, are no longer shown as waiting, and a send the server never answers turns “Not sent” with Retry / Cancel after two minutes.
+
 ## [2.0.0] — 2026-10-23
 
 ### Added and improved

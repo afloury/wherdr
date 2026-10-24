@@ -1489,6 +1489,20 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
 }
 .msg-shell-more:hover { color: var(--text); background: var(--surface); }
 @media (pointer: coarse) { .msg-shell-more { min-height: 40px; } .msg-shell-copy { width: 32px; height: 32px; } }
+/* Prompt Claude Code sent itself (scheduled task, /loop wakeup): folded, on the agent's side. */
+.msg-scheduled { align-self: stretch; max-width: min(100%, 760px); border: 1px dashed var(--line); background: var(--bg-2); }
+.msg-scheduled-head {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 5px 10px; text-align: left;
+  font: 400 11.5px/1.5 var(--mono); color: var(--text-2); white-space: nowrap;
+}
+.msg-scheduled-head:hover { color: var(--text); background: var(--surface); }
+.msg-scheduled-icon { flex: none; color: var(--accent); }
+.msg-scheduled-label { flex: none; font-weight: 500; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.msg-scheduled-peek { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+.msg-scheduled-time { margin-left: auto; flex: none; color: var(--dim); font-variant-numeric: tabular-nums; }
+.msg-scheduled-chev { flex: none; color: var(--dim); }
+.msg-scheduled-body { margin: 0; padding: 2px 12px 10px 30px; font-size: 13.5px; line-height: 1.5; color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (pointer: coarse) { .msg-scheduled-head { min-height: 40px; } }
 /* Agent note outside its replies (omp advisor, background task…). */
 .msg-notice {
   align-self: flex-start; width: 100%; max-width: min(100%, 760px);

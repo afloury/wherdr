@@ -8,8 +8,16 @@ test.afterEach(async () => {
   await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: null, agent: 'omp', status: 'idle' })
 })
 
-test('a queued message explains the terminal draft and offers clear or terminal', async ({ page }, info) => {
+test('a queued message explains the terminal draft and offers clear or terminal', async ({ page, request }, info) => {
   await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: screen('ns'), agent: 'claude', status: 'idle' })
+  // The fake terminal changes immediately, while the app refreshes its pane
+  // snapshot on a poll. Sending against the old omp snapshot bypasses Claude's
+  // draft guard and makes this test depend on the preceding spec's timing.
+  await expect.poll(async () => {
+    const state = await (await request.get('/api/state')).json()
+    const current = state.panes.find((p: { id: string }) => p.id === pane)
+    return { agent: current?.agent, status: current?.status }
+  }).toEqual({ agent: 'claude', status: 'idle' })
   await page.goto(`/#/a/${pane}`)
   await page.locator('.prompt').locator('textarea, [contenteditable="true"]').first().fill('Please update the release notes.')
   await page.locator('.prompt-send').click()

@@ -81,6 +81,10 @@ export const CLAUDE_SUGGEST_ASK_PANE = 'w18:p1'
 export const CLAUDE_SUGGEST_PANE = 'w19:p1'
 export const SUGGEST_ASK = 'yes add the teardown and check both'
 export const SUGGEST_PLAIN = 'run the nightly build again'
+// A CronCreate task that fired in the nightly conversation, as Claude Code
+// 2.1.309 writes it; its enqueue line has no dequeue (the stuck bubble).
+export const SCHEDULED_PROMPT = '[Scheduled check every 2 h - not a user message] Look at the nightly build and report only what changed.'
+export const SCHEDULED_REPLY = 'Nothing changed since the last check: the nightly build is green.'
 export const CODEX_UPDATE_SESSION = '00000000-0000-4000-8000-000000000288'
 
 // Unique markers of the long omp transcript (asserted on by the specs).
@@ -166,10 +170,12 @@ const claudeSuggestionScreen = text => ['', CLAUDE_RULE, `❯\u00a0 \x1b[0m\x1b[
 function claudeChat(home, cwd, sid, now, turns) {
   const file = path.join(home, '.claude/projects', cwd.replace(/[/.]/g, '-'), `${sid}.jsonl`)
   const base = { isSidechain: false, cwd, sessionId: sid }
-  write(file, jsonl(turns.map(([role, text], i) => ({
-    ...base, type: role, timestamp: iso(now - 60000 + i * 10000),
-    message: role === 'user' ? { role, content: text } : { model: 'claude-opus-4-1', role, content: [{ type: 'text', text }] },
-  }))))
+  // A turn is [role, text], or a raw transcript line (an object; `step`
+  // gives it the time of another turn, as lines Claude writes together).
+  write(file, jsonl(turns.map((turn, i) => (Array.isArray(turn) ? {
+    ...base, type: turn[0], timestamp: iso(now - 60000 + i * 10000),
+    message: turn[0] === 'user' ? { role: turn[0], content: turn[1] } : { model: 'claude-opus-4-1', role: turn[0], content: [{ type: 'text', text: turn[1] }] },
+  } : (({ step, ...line }) => ({ ...base, timestamp: iso(now - 60000 + (step ?? i) * 10000), ...line }))(turn)))))
 }
 
 // omp: ~/.omp/agent/sessions/<encoded cwd>/<date>_<id>.jsonl.
@@ -257,6 +263,13 @@ export function writeScenario(home) {
   claudeChat(home, nightly, nightlySid, now, [
     ['user', 'Why did the nightly build fail?'],
     ['assistant', 'A flaky network test timed out; the rest passed.'],
+    { type: 'queue-operation', operation: 'enqueue', content: SCHEDULED_PROMPT },
+    { step: 2, type: 'system', subtype: 'scheduled_task_fire', content: 'Running scheduled task', isMeta: false, taskId: 'e2e00019', prompt: SCHEDULED_PROMPT },
+    { type: 'user', message: { role: 'user', content: SCHEDULED_PROMPT }, isMeta: true, promptSource: 'system', wakeupSource: 'schedule_wakeup', scheduledTaskId: 'e2e00019', turnOrigin: 'scheduled' },
+    ['assistant', SCHEDULED_REPLY],
+    { type: 'queue-operation', operation: 'enqueue', content: '<task-notification><task-id>build-fixture</task-id><summary>Background build completed</summary></task-notification>' },
+    { type: 'attachment', attachment: { type: 'queued_command', origin: { kind: 'task-notification' }, prompt: '<task-notification><task-id>build-fixture</task-id><summary>Background build completed</summary></task-notification>' } },
+    ['assistant', 'The background build passed.'],
   ])
   const longFile = ompTranscript(home, docs, 'e2e-long', now, longContent)
   const chatFile = ompTranscript(home, demo, 'e2e-chat', now, msg => [

@@ -35,6 +35,9 @@ export interface PendingMessage {
   pasted?: string[]
 }
 
+// How long the agent rests before its own queue is known empty.
+export const QUEUE_STALE_MS = 15000
+
 const normText = (s: string) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase()
 // `text` holds the message `sent`: the same reference at its start, then the
 // first words of `sent` (see sameSent).
@@ -57,6 +60,10 @@ export function pendingQueue(o: {
   items: ChatItem[]
   screen: ClaudeScreen | null
   memory?: OutboxItem[]
+  // The agent has rested a while (see QUEUE_STALE_MS): Claude has emptied
+  // its queue, so its entries still listed are stale (a line the transcript
+  // never closed), not messages waiting.
+  resting?: boolean
 }): PendingMessage[] {
   // Already in the conversation (the server has not noticed yet): we do not
   // show two copies. "! cmd" appears there as a command without "!" (omp:
@@ -78,7 +85,13 @@ export function pendingQueue(o: {
   const minePhases = queuedPhases(list.map(q => q.text), o.screen)
   let ownPhotos = list.filter((q, i) => photosOnly(q.text) && !q.state && minePhases[i] === 'queued').length
   const memPhotos = (o.memory || []).filter(m => photosOnly(m.text) && !mine.some(q => q.id === m.id))
+  // A Claude entry whose text the conversation already shows as a message,
+  // from its time on: taken, not waiting. (A scheduled task's prompt leaves
+  // the queue on the server, by its own lines: the same words typed are not it.)
+  const landed = (q: ClaudeQueueEntry) => o.items.some(i => i.role === 'user'
+    && (!q.ts || !i.ts || Date.parse(i.ts) >= Date.parse(q.ts) - 2000) && holds(i.text, q.text))
   for (const q of o.claude) {
+    if (o.resting) break
     const images = q.images || 0
     if (!q.text) {
       if (!images) continue
@@ -89,7 +102,7 @@ export function pendingQueue(o: {
       list.push({ id: `cc-${q.ts}`, text: known || '', missing: known ? 0 : images })
       continue
     }
-    if (!normText(q.text) || mine.some(x => holds(x.text, q.text))) continue
+    if (!normText(q.text) || mine.some(x => holds(x.text, q.text)) || landed(q)) continue
     const known = images ? q.sent || [...(o.memory || [])].reverse().find(m => holds(withoutUploads(m.text), q.text))?.text : null
     list.push({ id: `cc-${q.ts}`, text: known || q.text, missing: known ? 0 : images })
   }

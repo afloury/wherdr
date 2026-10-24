@@ -27,12 +27,17 @@
 - **Composer**: send messages while the agent works (queued, cancellable: the agent's own
   queue when it takes them, else held by wherdr and sent when the turn ends; never left
   half-typed in its field; a message pulled back out of Claude's queue before it read it, or not seen after an hour, is
-  marked “Not sent” with Retry / Cancel, and “Not sent” clears once the message shows in its transcript), attach or paste
+  marked “Not sent” with Retry / Cancel, and “Not sent” clears once the message shows in its transcript; a send the
+  server never answers turns “Not sent” after two minutes), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
   of local commands. Stop button while the agent works. When Claude Code suggests a reply
   (grayed-out in the empty field), `Tab` takes it on a computer and **Use**, inside the field on
-  its right, on a phone: the field gets the text, to edit or send. A long pasted text (log, output) becomes
+  its right, on a phone: the field gets the text, to edit or send. A prompt Claude Code sends itself
+  (a `CronCreate` scheduled task, a `/loop` wakeup) shows in its place as a folded **Scheduled task**
+  with a clock, never as your message nor as a queued one. Background completion notifications
+  appear the same way as **Background task** and leave the pending queue. Separate task firings
+  remain separate events even with identical prompts and no reply between them. A long pasted text (log, output) becomes
   a "Pasted text · N lines" card, sent to the agent as it is and shown the same way in the
   conversation, where it opens in full with Copy; long typed messages fold with Show more.
   The draft (text, quotes, attachments) is kept per agent, across reloads: when Herdr closes a
