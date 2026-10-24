@@ -46,11 +46,12 @@ vi.mock('../server/utils/agentAvailability', () => ({ installedAgentKinds: async
 // Each task's own worker.agent, as 1.x keeps it: `delegate --worker.agent` writes
 // it (1.2.1 start.rs delegate_with), `set`/`unset --task` change it.
 let own: Record<string, string> = {}
+let ownEffort: Record<string, string> = {}
 // `board.agents` in the same reply (how many work at once); null: left out.
 let boardAgents: number | null = null
-const taskSettings = (value: string, place: string, from: string) => JSON.stringify({ settings: [
+const taskSettings = (value: string, place: string, from: string, effortOf?: string) => JSON.stringify({ settings: [
   { name: 'worker.agent', kind: 'work', value, from, place, own: false, note: '' },
-  { name: 'worker.effort', kind: 'work', value: 'default', from: 'built in', place: 'builtin', own: false, note: '' },
+  { name: 'worker.effort', kind: 'work', ...(effortOf ? { value: effortOf, from: 'this task', place: 'task' } : { value: 'default', from: 'built in', place: 'builtin' }), own: false, note: '' },
   ...(boardAgents === null ? [] : [{ name: 'board.agents', kind: 'board', value: boardAgents, from: 'you', place: 'you', own: false, note: '' }]),
 ], problems: [] })
 
@@ -83,7 +84,9 @@ beforeEach(() => {
   coordStatus = {}
   installed = ['claude', 'codex']
   own = {}
+  ownEffort = {}
   boardAgents = null
+  T.resetModelsCache()
   rmSync(path.join(home, 'wherdr-data'), { recursive: true, force: true })
   SA.resetStartAgents()
   infoFails = false
@@ -96,12 +99,25 @@ beforeEach(() => {
     if (args[0] === 'show' && args[2] === '--') {
       calls.push(args)
       const mine = own[args[3]!]
-      return { code: 0, stdout: mine ? taskSettings(mine, 'task', 'this task') : taskSettings('claude', 'repo', 'your entry for demo'), stderr: '' }
+      const level = ownEffort[args[3]!]
+      return { code: 0, stdout: mine ? taskSettings(mine, 'task', 'this task', level) : taskSettings('claude', 'repo', 'your entry for demo', level), stderr: '' }
     }
     const id = args.at(-1)!
     if (args[0] === 'delegate' && args[1]?.startsWith('--worker.agent=')) own[id] = args[1].slice('--worker.agent='.length)
     if (args[0] === 'set' && args[3] === 'worker.agent') own[args[1]!.slice('--task='.length)] = args[4]!
     if (args[0] === 'unset' && args[3] === 'worker.agent') delete own[args[1]!.slice('--task='.length)]
+    const effortArg = args[0] === 'delegate' ? args.find(a => a.startsWith('--worker.effort=')) : undefined
+    if (effortArg) ownEffort[id] = effortArg.slice('--worker.effort='.length)
+    if (args[0] === 'set' && args[3] === 'worker.effort') ownEffort[args[1]!.slice('--task='.length)] = args[4]!
+    if (args[0] === 'unset' && args[3] === 'worker.effort') delete ownEffort[args[1]!.slice('--task='.length)]
+    // 1.x refuses a model it does not take, and names those it does.
+    if (args[0] === 'delegate' && args.includes('--worker.agent=codex/gpt-9')) return { code: 1, stdout: '', stderr: 'unknown model codex/gpt-9 for worker.agent.\nAccepted: codex/gpt-6-sol, codex/gpt-6-luna\n' }
+    if (args[0] === 'models') {
+      calls.push(args)
+      if (args[1] === 'codex') return { code: 0, stdout: 'Models for codex:\ncodex/gpt-6-sol\ncodex/gpt-6-luna\nEffort (worker.effort and the like): low, high, ultra; gpt-6-luna only low, high.\n', stderr: '' }
+      if (args[1] === 'claude') return { code: 0, stdout: '', stderr: '' }
+      return { code: 2, stdout: '', stderr: `error: unknown agent ${args[1]}` }
+    }
     if (args[0] === 'show') {
       shows.push(args)
       const repo = args[1]!.replace('--repo=', '')
@@ -662,6 +678,61 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     await expect(T.taskCommand('', 'demo/5', 'delegate', { kind: 'codex' })).rejects.toThrow(/is not installed/)
     await expect(T.taskCommand('', 'demo/3', 'stop', 'codex')).rejects.toThrow(/Only Start takes an agent/)
     expect(calls).toEqual([])
+  })
+
+  it('Start with a model and an effort: both for this start only, put back once the run is over', async () => {
+    await read()
+    calls = []
+    await T.taskCommand('', 'demo/5', 'delegate', 'codex/gpt-6-sol', null, 'ultra')
+    expect(calls).toEqual([['show', '--json', '--', 'demo/5'], ['delegate', '--worker.agent=codex/gpt-6-sol', '--worker.effort=ultra', '--', 'demo/5']])
+    expect([own['demo/5'], ownEffort['demo/5']]).toEqual(['codex/gpt-6-sol', 'ultra'])
+    calls = []
+    expect(await resolved('demo/5')).toMatchObject({ value: 'claude', place: 'repo' })
+    expect([own['demo/5'], ownEffort['demo/5']]).toEqual([undefined, undefined])
+    // The program of a model is what must be installed; a malformed effort is refused first.
+    await read()
+    calls = []
+    await expect(T.taskCommand('', 'demo/5', 'delegate', 'pi/openai/gpt-5')).rejects.toThrow('pi is not installed on devbox')
+    await expect(T.taskCommand('', 'demo/5', 'delegate', 'codex/gpt-6-sol', null, '--now')).rejects.toThrow('Invalid effort')
+    await expect(T.taskCommand('', 'demo/3', 'stop', null, null, 'low')).rejects.toThrow('Invalid effort')
+    expect(calls).toEqual([])
+  })
+
+  it('a model the CLI does not take: its refusal, every line, as it says it', async () => {
+    await read()
+    await expect(T.taskCommand('', 'demo/5', 'delegate', 'codex/gpt-9')).rejects.toThrow('unknown model codex/gpt-9 for worker.agent.\nAccepted: codex/gpt-6-sol, codex/gpt-6-luna')
+  })
+
+  it('a model on another machine: the command runs there', async () => {
+    const sent: Array<{ machine: string, args: string[] }> = []
+    T.setRunner(async (m, _launcher, args) => {
+      sent.push({ machine: m.key, args })
+      if (args[0] === 'list') return { code: 0, stdout: board, stderr: '' }
+      if (args[0] === 'show') return { code: 0, stdout: taskSettings('claude', 'repo', 'x'), stderr: '' }
+      if (args[0] === 'models') return { code: 0, stdout: 'codex/gpt-6-sol\n', stderr: '' }
+      return { code: 0, stdout: 'started', stderr: '' }
+    })
+    await T.readTasksBoard()
+    expect((await T.taskStartModels('remote', 'codex')).models).toEqual(['gpt-6-sol'])
+    await T.taskCommand('remote', 'demo/5', 'delegate', 'codex/gpt-6-sol', null, 'high')
+    expect(sent).toContainEqual({ machine: 'remote', args: ['models', 'codex'] })
+    expect(sent).toContainEqual({ machine: 'remote', args: ['delegate', '--worker.agent=codex/gpt-6-sol', '--worker.effort=high', '--', 'demo/5'] })
+  })
+
+  it('models <program>: read once per machine and program, read again on demand; nothing read is not kept', async () => {
+    calls = []
+    const m = await T.taskStartModels('', 'codex')
+    expect(m).toEqual({ program: 'codex', models: ['gpt-6-sol', 'gpt-6-luna'], efforts: ['low', 'high', 'ultra'], only: [{ models: ['gpt-6-luna'], levels: ['low', 'high'] }] })
+    await T.taskStartModels('', 'codex')
+    expect(calls).toEqual([['models', 'codex']])
+    await T.taskStartModels('', 'codex', true)
+    expect(calls).toHaveLength(2)
+    expect((await T.taskStartModels('', 'claude')).models).toEqual([])
+    await T.taskStartModels('', 'claude')
+    expect(calls.filter(c => c[1] === 'claude')).toHaveLength(2)
+    await expect(T.taskStartModels('', 'gemini')).rejects.toThrow('error: unknown agent gemini')
+    await expect(T.taskStartModels('', '--now')).rejects.toThrow('Invalid agent')
+    await expect(T.taskStartModels('', 'codex/x')).rejects.toThrow('Invalid agent')
   })
 
   it('what Start offers: the task\'s worker.agent as show resolves it, and the installed agents', async () => {

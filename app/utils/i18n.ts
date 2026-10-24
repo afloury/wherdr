@@ -434,6 +434,8 @@ const FR: Record<string, string> = {
   'Change effort': 'Changer d’effort', 'Default (recommended)': 'Par défaut (recommandé)',
   'Effort': 'Effort', 'Effort level unavailable for this model': 'Niveau d’effort indisponible pour ce modèle',
   'Reading models…': 'Lecture des modèles…', 'Reload list': 'Relire la liste', 'For this session only': 'Pour cette session seulement',
+  'For this start only': 'Pour ce lancement seulement', 'Program’s default': 'Défaut du programme', 'Model’s default': 'Défaut du modèle',
+  'Models could not be read: Start uses the program alone.': 'Modèles illisibles : le lancement utilise le programme seul.',
   'The agent is working — change the model once it’s done.': 'L’agent travaille — change de modèle quand il a fini.',
   'The agent is waiting for an answer — reply first.': 'L’agent attend une réponse — réponds-lui d’abord.',
   'Model change already in progress': 'Changement de modèle déjà en cours',
