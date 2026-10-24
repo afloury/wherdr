@@ -64,9 +64,13 @@ test('old machine/project/conversation rules become a default and exceptions', a
 test('a conversation menu sets its exception, mutes for a while and follows the default again', async ({ page }) => {
   await seed(page, { version: 2, default: { events: ['needs-you', 'finished'], subagents: false }, exceptions: [] })
   await page.goto('/#/a/w1:p1')
+  // The menu is built from the loaded conversation: retry until it is there.
   const open = async () => {
-    await page.locator('#agent').getByRole('button', { name: 'Options', exact: true }).click()
-    await notificationsItem(page).click()
+    await expect(async () => {
+      await page.keyboard.press('Escape')
+      await page.locator('#agent').getByRole('button', { name: 'Options', exact: true }).click()
+      await notificationsItem(page).click({ timeout: 2000 })
+    }).toPass({ timeout: 15000 })
   }
   await open()
   await expect(page.getByRole('button', { name: /^Follow the default \(Needs you \+ finished\)/ })).toBeVisible()
@@ -157,8 +161,11 @@ test('notifications screenshots on phone and desktop, with no horizontal overflo
     await p.screenshot({ path: '.shots/notifications-desktop.png', fullPage: true })
   } finally { await desktop.close() }
   await page.goto('/#/a/w1:p1')
-  await page.locator('#agent').getByRole('button', { name: 'Options', exact: true }).click()
-  await notificationsItem(page).click()
+  await expect(async () => {
+    await page.keyboard.press('Escape')
+    await page.locator('#agent').getByRole('button', { name: 'Options', exact: true }).click()
+    await notificationsItem(page).click({ timeout: 2000 })
+  }).toPass({ timeout: 15000 })
   await expect(page.getByRole('button', { name: 'Muet pendant 1 h', exact: true })).toBeVisible()
   await page.screenshot({ path: '.shots/notifications-menu-mobile.png' })
 })

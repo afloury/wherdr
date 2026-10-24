@@ -3,6 +3,8 @@
 // checks that every key used in the code has one). The choice is saved on the device.
 
 const FR: Record<string, string> = {
+  'Invalid attempt choice': 'Choix d’essai invalide',
+  'This attempt cannot be chosen': 'Cet essai ne peut pas être sélectionné',
   // Notifications: a default and exceptions (NotificationRules.vue)
   'Too many exceptions. Remove an old one first.': 'Trop d’exceptions. Retire d’abord une ancienne.',
   'All activity': 'Toute l’activité',
@@ -506,6 +508,7 @@ const FR: Record<string, string> = {
   'Board': 'Tableau', 'Todo': 'À faire', 'Nothing here': 'Rien ici',
   'Drag to move the pane': 'Glisser pour déplacer le pane', 'Swap': 'Échanger', 'Place left': 'Placer à gauche', 'Place right': 'Placer à droite',
   'Place above': 'Placer au-dessus', 'Place below': 'Placer en dessous', 'Resize': 'Redimensionner',
+  'Rename failed. The name was not changed.': 'Échec du renommage. Le nom n’a pas été modifié.',
   'Rename tab': 'Renommer l’onglet', 'Rename space': 'Renommer l’espace', 'Close tab': 'Fermer l’onglet', 'Close space': 'Fermer l’espace',
   'Tab name': 'Nom de l’onglet', 'Space name': 'Nom de l’espace',
   'Tab options': 'Options de l’onglet', 'Pane options': 'Options du pane',

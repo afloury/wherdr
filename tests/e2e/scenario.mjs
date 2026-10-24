@@ -12,7 +12,7 @@ export const PORT = Number(process.env.E2E_PORT || 7699)
 export const BASE_URL = `http://127.0.0.1:${PORT}`
 
 // Path of the fake Herdr's socket, written by the launcher.
-export const SOCK_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../.e2e-tmp/herdr-sock')
+export const SOCK_FILE = path.join(process.env.E2E_TMP_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '../../.e2e-tmp'), 'herdr-sock')
 
 // A call to the fake Herdr from a spec (its state, e.g. `e2e.pane_size`).
 export function fakeHerdr(method, params = {}) {

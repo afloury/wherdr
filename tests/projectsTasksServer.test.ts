@@ -542,6 +542,24 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     expect(calls.filter(c => c[0] === 'finish')).toEqual([['finish', '--', 'demo/10'], ['finish', '--', 'demo/11']])
   })
 
+  it('finishes a waiting conversation on its own machine, without approval', async () => {
+    listReply = { code: 0, stdout: JSON.stringify([
+      { id: 'demo/20', chat: true, state: 'blocked', app: 'codex', stage: 'asks' },
+      { id: 'demo/21', chat: true, state: 'working', app: 'codex', stage: 'working' },
+      { id: 'demo/22', chat: true, state: 'done', app: 'codex', stage: 'done' },
+      { id: 'demo/23', chat: true, state: 'blocked', app: 'codex', stage: 'approval' },
+    ]), stderr: '' }
+    const sent: Array<{ machine: string, args: string[] }> = []
+    T.setRunner(async (m, _launcher, args) => {
+      sent.push({ machine: m.key, args })
+      return args[0] === 'list' ? listReply : { code: 0, stdout: 'Conversation ended', stderr: '' }
+    })
+    await T.taskCommand('remote', 'demo/20', 'finish')
+    expect(sent).toContainEqual({ machine: 'remote', args: ['finish', '--', 'demo/20'] })
+    for (const id of ['demo/21', 'demo/22']) await expect(T.taskCommand('remote', id, 'finish')).rejects.toThrow('nothing to finish')
+    await expect(T.approveTask('remote', 'demo/23')).rejects.toThrow('does not wait for approval')
+  })
+
   // The task's worker.agent as 1.x resolves it now.
   const resolved = async (id: string) => { const before = calls.length; const o = await T.taskStartOptions('', id); calls.splice(before); return o.agent }
   // herdr-projects keeps the list a moment: an action dropped it, the next read is fresh.
@@ -918,4 +936,35 @@ it('sends task questions through the owning remote machine launcher', async () =
   expect(owners).toEqual(['remote', 'remote'])
   expect(calls.at(-1)!.slice(0, 4)).toEqual(['coordinator', '--project=demo', '--', 'tell'])
   expect(calls.at(-1)![4]).toContain('Fix login redirect')
+})
+
+describe('human attempt picks', () => {
+  const recorded = () => readFileSync(path.join(import.meta.dirname, 'recordings/herdr-projects-1.2.16/details-pick.json'), 'utf8')
+  it('rechecks details and sends the exact letter to the owning remote machine', async () => {
+    const seen: string[] = []
+    T.setRunner(async (m, _launcher, args) => {
+      seen.push(m.key)
+      calls.push(args)
+      return { code: 0, stdout: args[0] === 'details' ? recorded() : 'Attempt A chosen', stderr: '' }
+    })
+    expect(await T.pickTask('remote', 'demo/11', 'A', true)).toEqual({ ok: true, msg: 'Attempt A chosen' })
+    expect(calls).toEqual([['details', '--json', '--', 'demo/11'], ['pick', '--', 'demo/11', 'A']])
+    expect(seen).toEqual(['remote', 'remote'])
+  })
+  it('refuses missing confirmation, invalid letters and non-selectable attempts', async () => {
+    detailsReply = recorded()
+    for (const [letter, confirmed] of [['B', false], ['', true], ['--help', true], ['C', true], ['D', true]] as const) await expect(T.pickTask('', 'demo/11', letter, confirmed)).rejects.toThrow()
+    expect(calls.some(a => a[0] === 'pick')).toBe(false)
+    detailsReply = recorded().replace('"stage": "pick"', '"stage": "reviewing"')
+    await expect(T.pickTask('', 'demo/11', 'A', true)).rejects.toThrow()
+  })
+  it('propagates CLI and unavailable-machine errors without falling back locally', async () => {
+    T.setRunner(async (m, _launcher, args) => {
+      expect(m.key).toBe('remote')
+      return args[0] === 'details' ? { code: 0, stdout: recorded(), stderr: '' } : { code: 1, stdout: '', stderr: 'Attempt A cannot be chosen now' }
+    })
+    await expect(T.pickTask('remote', 'demo/11', 'A', true)).rejects.toThrow('Attempt A cannot be chosen now')
+    infoFails = true
+    await expect(T.pickTask('remote', 'demo/11', 'A', true)).rejects.toThrow('Herdr did not answer')
+  })
 })

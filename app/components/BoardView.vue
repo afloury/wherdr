@@ -609,7 +609,7 @@ function back() {
       @archived="onArchived" @restored="onRestored" @changed="reload" @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent" @coordinator="askCoordinator"
     />
     <TaskSheet
-      v-model:open="sheetOpen" :task="pickedTask" :machine="picked?.machine ?? ''"
+      v-model:open="sheetOpen" :task="pickedTask" :machine="picked?.machine ?? ''" :reachable="ready.some(m => m.machine === (picked?.machine ?? ''))"
       :refresh="reload" @archived="onArchived" @restored="onRestored" @chat="chatWith" @coordinator="askCoordinator"
     />
     <NewTaskSheet v-model:open="newOpen" :machines="ready.map(m => m.machine)" :repos="reposByMachine" :machine="newFor.machine" :repo="newFor.repo" @added="added" />

@@ -18,7 +18,7 @@ import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
-  taskAgentIdentity, type MachineTasks, type TaskDetails, type TaskPanes, type TaskReviewer, REVIEW_STAGES, type TaskRow, type TasksBoard,
+  canPickAttempt, taskAgentIdentity, type MachineTasks, type TaskDetails, type TaskPanes, type TaskReviewer, REVIEW_STAGES, type TaskRow, type TasksBoard,
   TASK_QUESTION_MAX, taskCanFix, taskCanApproveAnyway, taskCanSendReview, failureIsStale, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
   cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots,
@@ -608,4 +608,16 @@ export async function askTaskCoordinator(machine: unknown, id: unknown, text: un
   if (!words) throw new HerdrError('empty', 'Nothing to send')
   const task = await taskDetails(machine, tid)
   return tellCoordinator(machine, `Question about task ${tid}: “${task.title}”. References to “it” or “this task” mean this task. Answer the question only; do not start, delegate or change any task.\n\n${words}`, { to: { kind: 'project', repo: tid.split('/')[0] } })
+}
+
+// Re-read the owning board before a human pick; never use the recommendation as a default.
+export async function pickTask(machine: unknown, id: unknown, letter: unknown, confirmed: unknown) {
+  const m = boardOf(machine)
+  const tid = checkId(id)
+  if (confirmed !== true || typeof letter !== 'string' || !/^[A-E]$/.test(letter)) throw new HerdrError('bad_action', 'Invalid attempt choice')
+  const details = await taskDetails(machine, tid)
+  if (details.id !== tid || !canPickAttempt(details, letter)) throw new HerdrError('bad_action', 'This attempt cannot be chosen')
+  const out = await command(m, ['pick', '--', tid, letter])
+  forget(m)
+  return { ok: true, msg: firstLine(out) }
 }

@@ -234,7 +234,7 @@ const hasAgent = (r: Row) => rowPanes(r).some(p => p.agent)
 // agents, if any, are listed as before.
 export function boardSections(
   rows: Row[],
-  workspaces: Pick<Workspace, 'id' | 'repo' | 'repoName' | 'worktree' | 'machine'>[],
+  workspaces: Pick<Workspace, 'id' | 'repo' | 'repoName' | 'worktree' | 'machine' | 'path'>[],
   machines: MachineLinks[],
   live: ReadonlySet<string>,
   // The board (base machine) of a machine or named session's key.
@@ -311,10 +311,20 @@ export function boardSections(
     if (!nameOfId.has(id)) nameOfId.set(id, name)
   }
   for (const s of sorted) if (s.task) learn(s.task.task.repo, wsOf.get(rowSpace(s.row))?.repo)
+  const checkoutOf = new Map<string, string>()
+  const pathKey = (p: string) => p.replace(/\/+$/, '')
   for (const r of machines.find(m => m.machine === sectionBoard)?.repos || []) {
     // That board's own checkout, in Herdr's spaces of that machine.
     const w = workspaces.find(x => x.repo && !x.worktree && baseOf(x.machine || '') === sectionBoard && (x.repo === r.root || x.repo === `${r.root}/.git`))
     learn(r.repo, w?.repo)
+    // A plain shell may have no Git metadata, or retain the old repo key
+    // after a move. Match the board's current checkout on this machine only.
+    for (const x of workspaces) {
+      if (x.worktree || baseOf(x.machine || '') !== sectionBoard) continue
+      const ownRows = rows.filter(row => rowSpace(row) === x.id)
+      const paths = x.path ? [x.path] : ownRows.flatMap(row => rowPanes(row).map(p => p.cwd).filter((p): p is string => Boolean(p)))
+      if (paths.length && paths.every(p => pathKey(p) === pathKey(r.root))) checkoutOf.set(x.id, r.repo)
+    }
   }
   const groupId = (name: string) => idOfName.get(name) || `repo:${name}`
   const groups = new Map<string, ProjectSection & { board: string }>()
@@ -353,8 +363,10 @@ export function boardSections(
     }
     // The repo's own space (main checkout) heads its group.
     const w = wsOf.get(rowSpace(s.row))
-    if (w?.repo && !w.worktree && owned.has(w.repo)) {
-      const g = group(w.repo, nameOfId.get(w.repo) || w.repoName || w.repo, sectionBoard)
+    const checkout = w && checkoutOf.get(w.id)
+    const repoId = checkout ? groupId(checkout) : w?.repo
+    if (w && repoId && !w.worktree && owned.has(repoId)) {
+      const g = group(repoId, checkout || nameOfId.get(repoId) || w.repoName || repoId, sectionBoard)
       if (!g.space) { g.space = s.row; continue }
     }
     out.others.push(s.row)

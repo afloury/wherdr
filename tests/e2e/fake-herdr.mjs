@@ -136,6 +136,9 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       if (params.event) terminalMouse.push(params)
       return { events: terminalMouse }
     },
+    // Simulate a server that acknowledges a rename but leaves the name intact.
+    'workspace.rename': () => ({}),
+    'tab.rename': () => ({}),
     'session.snapshot': () => {
       for (const action of snapshotActions.splice(0)) action()
       return { snapshot: snapshot() }

@@ -120,7 +120,8 @@ const stuck = computed(() => canFinish.value && finishKind.value === 'stuck')
 const needs = computed(() => props.task?.group === 'needs')
 // Its failure, unless the task moved on since (a later stage, its agent started again).
 const failureNow = computed(() => (details.value && !details.value.failureStale ? details.value : null))
-const failureTitle = computed(() => failureNow.value?.failureTitle || details.value?.msg || props.task?.msg || agentPane.value?.prompt?.question || tl('Your answer is needed', 'Ta réponse est attendue'))
+const choosingAttempt = computed(() => props.task?.stage === 'pick')
+const failureTitle = computed(() => choosingAttempt.value ? tl('Choose an attempt', 'Choisis un essai') : failureNow.value?.failureTitle || details.value?.msg || props.task?.msg || agentPane.value?.prompt?.question || tl('Your answer is needed', 'Ta réponse est attendue'))
 const failureDetail = computed(() => failureNow.value?.failureDetail || failureNow.value?.failure || '')
 
 // ------------------------------------------------- the one-line "Needs you"
@@ -128,7 +129,7 @@ const failureDetail = computed(() => failureNow.value?.failureDetail || failureN
 // line (its kind, its words, folded) and the actions that answer that kind.
 // Only a sign-in keeps "Open terminal": a question or a permission is answered
 // by a message, in the field below or with one tap.
-const waitKind = computed(() => (needs.value && !failureNow.value?.failureTitle && !failureDetail.value ? blockKind(props.task?.kind) : null))
+const waitKind = computed(() => (needs.value && !choosingAttempt.value && !failureNow.value?.failureTitle && !failureDetail.value ? blockKind(props.task?.kind) : null))
 const waitText = computed(() => failureTitle.value)
 // The agent's own question (`report --state blocked`): a message answers it.
 const asks = computed(() => props.task?.stage === 'asks')
@@ -300,7 +301,7 @@ async function taskAction(action: TaskCommand | 'approve' | 'anyway') {
   if (action === 'anyway' && !canAnyway.value) return
   if (action === 'fix' && !canFix.value) return
   if (action === 'review' && !canSendReview.value) return
-  if (action === 'finish' && (!canFinish.value || !await askConfirm(finishQuestion(props.task?.title || details.value?.title || ''), finishLabel(), 'primary'))) return
+  if (action === 'finish' && (!canFinish.value || !await askConfirm(finishQuestion(props.task?.title || details.value?.title || '', props.task?.chat), finishLabel(props.task?.chat), 'primary'))) return
   if ((action === 'approve' || action === 'anyway') && !await askConfirm(
     action === 'anyway' ? tl('Approve despite the failed review or checks? This merges the work.', 'Approuver malgré la relecture ou les contrôles en échec ? Cela fusionne le travail.') : tl('Approve this task?', 'Approuver cette tâche ?'),
     action === 'anyway' ? tl('Approve anyway', 'Approuver quand même') : tl('Approve', 'Approuver'), 'primary')) return
@@ -585,6 +586,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
             <span class="board-panel-title">{{ coordName }}</span>
           </template>
         </p>
+        <span v-if="target.kind === 'task' && task?.chat" class="task-chip">{{ tl('Conversation', 'Conversation') }}</span>
         <TaskAgentMark v-if="target.kind === 'task'" :identity="identity" />
         <p v-if="target.kind === 'coordinator'" class="board-panel-purpose">{{ coordinatorDescription(target.to) }}</p>
       </div>
@@ -635,9 +637,10 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       </div>
       <p v-if="canFinish && finishKind" class="task-finish-why">{{ finishHint(finishKind) }}</p>
       <div class="task-needs-actions">
+        <UButton v-if="choosingAttempt && selected !== 'task'" @click="choose('task')">{{ tl('Choose an attempt', 'Choisis un essai') }}</UButton>
         <UButton v-if="canSendReview" class="task-needs-review" color="primary" icon="i-lucide-undo-2" :disabled="disabled" @click="taskAction('review')">{{ tl('Send the review back to the agent', 'Renvoyer les remarques à l’agent') }}</UButton>
         <UButton v-if="taskPermissions?.retry" :disabled="disabled" @click="taskAction('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
-        <UButton v-if="canFinish" class="task-finish" :title="finishTitle()" :aria-description="finishTitle()" :disabled="disabled" @click="taskAction('finish')">{{ finishLabel() }}</UButton>
+        <UButton v-if="canFinish" class="task-finish" :title="finishTitle(task?.chat)" :aria-description="finishTitle(task?.chat)" :disabled="disabled" @click="taskAction('finish')">{{ finishLabel(task?.chat) }}</UButton>
         <UButton v-if="canFix" :disabled="disabled" @click="taskAction('fix')">{{ tl('Send the error to the agent', 'Envoyer l’erreur à l’agent') }}</UButton>
         <UButton v-if="taskPermissions?.delegate" :disabled="disabled" @click="taskAction('delegate')">{{ tl('Start again', 'Relancer') }}</UButton>
         <template v-if="permissionTaps">
@@ -665,7 +668,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
 
     <div class="board-panel-body">
       <p v-if="target.kind === 'task' && settled && failed && selected === 'task'" class="board-note error">{{ failed }}</p>
-      <TaskSheet v-if="target.kind === 'task' && settled && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :refresh="refreshTask" @chat="choose('chat')" @coordinator="(machine, task) => emit('coordinator', machine, task)" @archived="archivedTask" @restored="restoredTask" />
+      <TaskSheet v-if="target.kind === 'task' && settled && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :reachable="reachable" :refresh="refreshTask" @chat="choose('chat')" @coordinator="(machine, task) => emit('coordinator', machine, task)" @archived="archivedTask" @restored="restoredTask" />
       <template v-else-if="target.kind === 'task' && selected === 'reviewer' && reviewerPane">
         <div class="board-panel-reviewer-bar">
           <span class="board-panel-reviewer-who">{{ tl('Reviewer', 'Relecteur') }}<template v-if="reviewerAgent"> · {{ statusLabel(reviewerAgent) }}</template></span>
