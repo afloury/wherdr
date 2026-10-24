@@ -236,6 +236,9 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
   // from the phone or the computer): enqueue, then dequeue (taken at the end of
   // the turn) or remove "absorbed_mid_turn" (taken during the turn).
   const queue: ClaudeQueueEntry[] = []
+  // Keep consumed injected entries as hidden placeholders until Claude's
+  // dequeue arrives, so even a contentless dequeue removes the right head.
+  const injectedTaken = new Set<ClaudeQueueEntry>()
   // Entries pulled back out of the queue into the input field (`popAll`: ↑ in
   // the terminal, or wherdr's Cancel) and not queued again since: unless
   // they are submitted again, Claude will not read them (see checkSent).
@@ -269,9 +272,9 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     let i = -1
     for (let k = queue.length - 1; k >= 0 && i < 0; k--) {
       const q = queue[k]!
-      if (sameMsg(q.text, text) && (near(q.ts, ts) || (background && (!q.ts || !ts || q.ts <= ts)))) i = k
+      if (!injectedTaken.has(q) && sameMsg(q.text, text) && (near(q.ts, ts) || (background && (!q.ts || !ts || q.ts <= ts)))) i = k
     }
-    if (i >= 0) queue.splice(i, 1)
+    if (i >= 0) injectedTaken.add(queue[i]!)
     else fires.push({ text, ts })
     const display = /^\s*<task-notification[\s>]/.test(text)
       ? (tagText(text, 'summary') || text.replace(/<[^>]+>/g, '').trim()) : text
@@ -292,7 +295,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       const i = queue.findIndex(q => !q.text && (q.images || 0) > 0 && (!q.ts || !ts || q.ts <= ts))
       if (i >= 0) queue.splice(i, 1)
     }
-    const head = queue.find(q => !isNoise(q.text))
+    const head = queue.find(q => !injectedTaken.has(q) && !isNoise(q.text))
     if (queue.length === before && head && (!head.ts || !ts || head.ts <= ts)) started = head
   }
   // Command ("!" or "/") waiting for its output: the next message.
@@ -365,18 +368,23 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       if (d.operation === 'enqueue') {
         // Queued by a task that fired just before (its fire line came first).
         const f = fires.findIndex(x => sameMsg(x.text, text) && near(x.ts, d.timestamp || null))
+        const entry = { text, ts: d.timestamp || null, ...(images ? { images } : {}) }
+        queue.push(entry)
         if (f >= 0) {
           fires.splice(f, 1)
+          injectedTaken.add(entry)
           continue
         }
-        queue.push({ text, ts: d.timestamp || null, ...(images ? { images } : {}) })
         const p = popped.findIndex(q => q.text === text)
         if (p >= 0) popped.splice(p, 1)
       } else {
         if (d.operation === 'popAll' && !isNoise(text)) popped.push({ text, ts: d.timestamp || null, ...(images ? { images } : {}) })
         const i = queue.findIndex(q => q.text === text)
-        queue.splice(i >= 0 ? i : 0, 1)
-        if (queue[0] !== started) started = null
+        // A fire or prompt line may already have consumed this entry. A
+        // dequeue naming it must not consume an unrelated entry as well.
+        // Contentless operations still take the queue's head.
+        if (i >= 0 || !text) queue.splice(i >= 0 ? i : 0, 1)
+        if (queue.find(q => !injectedTaken.has(q) && !isNoise(q.text)) !== started) started = null
       }
       continue
     }
@@ -393,16 +401,18 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       fired(String(d.prompt || ''), d.timestamp || null, 'fire', d.taskId)
       continue
     }
+    if (!d.isSidechain && d.type === 'user') {
+      // Recognize task envelopes before the generic meta-message filter,
+      // including prompts which also carry scheduled-origin metadata.
+      const tagged = scheduledTag(promptText(d.message?.content))
+      if (tagged !== null) {
+        fired(tagged, d.timestamp || null, 'tag', d.scheduledTaskId)
+        continue
+      }
+    }
     if (!d.isSidechain && d.type === 'user' && d.isMeta && isSelfPrompt(d)) {
       fired(promptText(d.message && d.message.content), d.timestamp || null, 'prompt', d.scheduledTaskId)
       continue
-    }
-    if (!d.isSidechain && d.type === 'user') {
-      const injected = promptText(d.message?.content)
-      if (/^\s*<task-notification[\s>]/.test(injected)) {
-        fired(injected, d.timestamp || null, 'tag')
-        continue
-      }
     }
     // A scheduled task's prompt taken during a turn (origin set by Claude Code).
     if (!d.isSidechain && d.type === 'attachment' && d.attachment && d.attachment.type === 'queued_command' && SCHEDULED_ORIGIN.test(String((d.attachment.origin || {}).kind || ''))) {
@@ -542,7 +552,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     delete it.err
   }
   // Queued task notifications: not user messages.
-  items.queue = queue.filter(q => !isNoise(q.text))
+  items.queue = queue.filter(q => !injectedTaken.has(q) && !isNoise(q.text))
   items.popped = popped
   return items
 }

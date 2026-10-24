@@ -36,6 +36,43 @@ describe('scheduled task in a Claude transcript', () => {
     expect(items.queue).toEqual([])
   })
 
+  it.each(['before', 'after'])('keeps an unrelated queued message when dequeue is %s fire', (order) => {
+    const taken = j({ type: 'queue-operation', operation: 'dequeue', content: PROMPT, timestamp: ts(7, 1) })
+    const event = fire(ts(7))
+    const items = parse([
+      enqueue(PROMPT, ts(7)), enqueue('Please fix login', ts(7)),
+      ...(order === 'before' ? [taken, event] : [event, taken]),
+    ])
+    expect(items.queue).toEqual([{ text: 'Please fix login', ts: ts(7) }])
+    expect(pendingQueue({ mine: [], claude: items.queue!, items, screen: null }).map(q => q.raw)).toEqual(['Please fix login'])
+    expect(items.filter(i => i.role === 'scheduled')).toHaveLength(1)
+  })
+
+  it.each(['enqueue-first', 'fire-first'])('keeps the next user entry after a contentless task dequeue (%s)', (order) => {
+    const queued = enqueue(PROMPT, ts(7))
+    const event = fire(ts(7))
+    const items = parse([
+      ...(order === 'enqueue-first' ? [queued, event] : [event, queued]),
+      enqueue('Please fix login', ts(7)), dequeue(ts(7, 1)),
+    ])
+    expect(items.queue!.map(q => q.text)).toEqual(['Please fix login'])
+  })
+
+  it('keeps tracking a modified user message behind a consumed task until turn end', () => {
+    const items = parse([
+      enqueue(PROMPT, ts(7)), fire(ts(7)), enqueue('Original request', ts(7)),
+      human('Edited request', ts(7, 1)), enqueue('Cancel this', ts(7, 2)),
+      j({ type: 'queue-operation', operation: 'remove', content: 'Cancel this', timestamp: ts(7, 3) }),
+      turnEnd(ts(7, 4)),
+    ])
+    expect(items.queue).toEqual([])
+  })
+
+  it('still takes the head for a dequeue without content', () => {
+    const items = parse([enqueue('first', ts(7)), enqueue('second', ts(7)), dequeue(ts(7, 1))])
+    expect(items.queue!.map(q => q.text)).toEqual(['second'])
+  })
+
   it('never stays in the queue when Claude wrote no dequeue (the stuck "Queued · sending…")', () => {
     const items = parse([enqueue(PROMPT, ts(7)), fire(ts(7)), metaPrompt(ts(7, 1)), reply('OK', ts(7, 4))])
     expect(items.queue).toEqual([])
@@ -93,6 +130,19 @@ describe('scheduled task in a Claude transcript', () => {
   it('a <scheduled-task> wrapper is the scheduled item, without its tags', () => {
     const items = parse([j({ type: 'user', message: { role: 'user', content: '<scheduled-task name="daily">Check the build</scheduled-task>' }, timestamp: ts(1) })])
     expect(items.map(i => `${i.role}:${i.text}`)).toEqual(['scheduled:Check the build'])
+  })
+
+  it.each([
+    { parts: false, scheduled: false }, { parts: true, scheduled: false },
+    { parts: false, scheduled: true }, { parts: true, scheduled: true },
+  ])('renders a meta scheduled-task envelope (%j)', ({ parts, scheduled }) => {
+    const text = '<scheduled-task name="daily">Check the build</scheduled-task>'
+    const items = parse([
+      j({ type: 'user', isMeta: true, ...(scheduled ? { turnOrigin: 'scheduled' } : {}), message: { content: parts ? [{ type: 'text', text }] : text }, timestamp: ts(7) }),
+      reply('Build passed', ts(7, 1)),
+    ])
+    expect(items.map(i => [i.role, i.text])).toEqual([['scheduled', 'Check the build'], ['assistant', 'Build passed']])
+    expect(items.queue).toEqual([])
   })
 
   it('keeps separate fire occurrences without an assistant reply between them', () => {
