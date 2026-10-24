@@ -26,7 +26,7 @@ const staleTitle = computed(() => (props.stale
     <button type="button" class="task-card-open" :aria-label="`${taskKey(task.id, task.repoKey)} ${task.title}`" @click="$emit('open')" />
     <span class="board-card-head">
       <TaskAgentMark :identity="task.identity || { agent: task.app, reviewer: '', from: '' }" primary />
-      <span class="task-key">{{ taskKey(task.id, task.repoKey) }}</span>
+      <TaskKey :value="taskKey(task.id, task.repoKey)" />
       <span v-if="status" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
       <span v-if="machine" class="board-card-label">{{ machine }}</span>
     </span>

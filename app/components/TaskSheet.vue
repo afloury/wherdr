@@ -405,7 +405,7 @@ function chat() {
   <component :is="embedded ? 'section' : AppSheet" v-model:open="open" :title="task?.title || tl('Task', 'Tâche')" wide>
     <div v-if="task" class="task-sheet">
       <p v-if="!embedded" class="task-sheet-meta">
-        <span class="task-key">{{ label }}</span>
+        <TaskKey :value="label" />
         <span class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
         <span v-if="archived" class="task-chip task-archived"><UIcon name="i-lucide-archive" />{{ tl('Archived', 'Archivée') }}</span>
         <span v-if="task.app" class="task-chip">{{ task.app }}</span>

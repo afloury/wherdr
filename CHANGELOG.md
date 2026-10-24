@@ -27,6 +27,12 @@ This major release follows 1.3.4. Read the [migration guide](docs/herdr-projects
 
 - **A machine's tab on the home list** no longer repeats its header: its Claude and Codex quotas sit together at the top, an offline machine says so there, and a right click or long press on the tab offers the machine's actions. A group's tab offers **Group settings**.
 
+- **Restart to update** no longer opens the interactive terminal for a moment while the agent exits: the conversation stays as it is, with only the restart progress above the message field.
+
+## [2.0.0] — 2026-10-23
+
+### Added and improved
+
 - **New agent and slash menu:** New opens an existing project coordinator or creates one; the slash menu includes plugin skills and MCP prompts (#130, #122).
 - **Messages waiting behind other text** explain why they cannot be sent and offer to clear the field (#131).
 - **Installation and documentation:** the README links to focused guides in `docs/`. Automatic startup is at login on macOS; on Linux it is at boot with lingering enabled, otherwise at login. The installer checks and reports the actual state (#136, #137).
