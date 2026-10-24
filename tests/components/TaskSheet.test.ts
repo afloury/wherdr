@@ -36,6 +36,18 @@ registerEndpoint('/api/tasks/start', () => {
   if (!startReply) throw createError({ statusCode: 502, data: { error: 'herdr-projects did not answer' } })
   return startReply
 })
+// `models <program>` on the task's machine, as the server reads it; null: it fails.
+const modelsAsked: string[] = []
+let modelsReply: ((program: string) => unknown) | null = program => ({
+  program, models: program === 'codex' ? ['gpt-6-sol', 'gpt-6-luna'] : ['opus', 'sonnet'],
+  efforts: ['low', 'high', 'ultra'], only: [{ models: ['gpt-6-luna'], levels: ['low', 'high'] }],
+})
+registerEndpoint('/api/tasks/models', (e) => {
+  const q = new URL(e.node.req.url || '', 'http://x').searchParams
+  modelsAsked.push(`${q.get('machine')}|${q.get('program')}`)
+  if (!modelsReply) throw createError({ statusCode: 502, data: { error: 'herdr-projects models: code 2' } })
+  return modelsReply(q.get('program') || '')
+})
 registerEndpoint('/api/tasks/details', () => {
   detailsReads++
   return { id: 'demo/1', title: 'Fix login', msg: '', description: '', agent: 'claude', pr: '', branch: '', worktree: '', failureAuth: false, pane: null as string | null, ...shown }
@@ -402,6 +414,85 @@ describe('Start: the agent it starts with', () => {
     chips()[0]!.click()
     await flushPromises()
     await vi.waitFor(() => expect(startButton()!.textContent?.trim()).toBe('Start'))
+    done(w)
+  })
+
+  // The model and effort menus (ModelPicker, `launch`), and their items.
+  const modelButtons = () => [...document.querySelectorAll<HTMLButtonElement>('.task-start-model .model-pick')]
+  const menuItem = async (label: string) => {
+    let item: HTMLElement | undefined
+    await vi.waitFor(() => {
+      item = [...document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].find(i => i.textContent?.trim() === label)
+      expect(item, label).toBeTruthy()
+    })
+    return item!
+  }
+  const pickFrom = async (button: number, label: string) => {
+    // The menu before has closed first.
+    await vi.waitFor(() => expect(document.querySelector('[role="menuitemcheckbox"]')).toBeNull())
+    modelButtons()[button]!.click()
+    await flushPromises()
+    ;(await menuItem(label)).click()
+    await flushPromises()
+  }
+
+  it('a model and an effort after the program: none by default; picked, sent with it for this start', async () => {
+    modelsAsked.length = 0
+    const w = await open()
+    await vi.waitFor(() => expect(modelButtons()).toHaveLength(1))
+    expect(modelsAsked).toEqual(['a|claude'])
+    expect(modelButtons()[0]!.textContent?.trim()).toBe('Model')
+    // Codex: its own list, read for its machine and program; nothing picked for the user.
+    chips()[1]!.click()
+    await vi.waitFor(() => expect(modelsAsked).toEqual(['a|claude', 'a|codex']))
+    expect(startButton()!.textContent?.trim()).toBe('Start with codex')
+    await pickFrom(0, 'gpt-6-luna')
+    expect(startButton()!.textContent?.trim()).toBe('Start with codex/gpt-6-luna')
+    // The levels that model takes, none picked until asked.
+    await vi.waitFor(() => expect(modelButtons()).toHaveLength(2))
+    await pickFrom(1, 'high')
+    startButton()!.click()
+    await vi.waitFor(() => expect(sent).toHaveLength(1))
+    expect(sent[0]).toEqual({ machine: 'a', id: 'demo/1', action: 'delegate', agent: 'codex/gpt-6-luna', effort: 'high' })
+    done(w)
+  })
+
+  it('a model on the default program; back to the program\'s default sends nothing again', async () => {
+    const w = await open()
+    await vi.waitFor(() => expect(modelButtons()).toHaveLength(1))
+    await pickFrom(0, 'opus')
+    expect(startButton()!.textContent?.trim()).toBe('Start with claude/opus')
+    await pickFrom(0, 'Program’s default')
+    expect(modelButtons()).toHaveLength(1)
+    startButton()!.click()
+    await vi.waitFor(() => expect(sent).toHaveLength(1))
+    expect(sent[0]).toEqual({ machine: 'a', id: 'demo/1', action: 'delegate' })
+    done(w)
+  })
+
+  it('models that cannot be read, or none: Start with the program alone, said quietly', async () => {
+    for (const reply of [null, (program: string) => ({ program, models: [], efforts: [], only: [] })]) {
+      modelsReply = reply
+      const w = await open()
+      await vi.waitFor(() => expect(document.querySelector('.model-pick-none')?.textContent).toBe('Models could not be read: Start uses the program alone.'))
+      expect(modelButtons()).toHaveLength(0)
+      startButton()!.click()
+      await vi.waitFor(() => expect(sent).toHaveLength(1))
+      expect(sent[0]).toEqual({ machine: 'a', id: 'demo/1', action: 'delegate' })
+      w.unmount()
+      mounted = null
+    }
+    modelsReply = program => ({ program, models: ['opus'], efforts: [], only: [] })
+  })
+
+  it('a model the CLI refuses: its words, as they are, in the sheet', async () => {
+    const w = await open()
+    const said = 'unknown model claude/opus for worker.agent.\nAccepted: claude/sonnet, claude/haiku'
+    registerEndpoint('/api/tasks/action', { method: 'POST', handler: (e) => { setResponseStatus(e, 502); return { code: 'projects_failed', error: said } } })
+    await vi.waitFor(() => expect(modelButtons()).toHaveLength(1))
+    await pickFrom(0, 'opus')
+    startButton()!.click()
+    await vi.waitFor(() => expect(document.querySelector('.task-sheet-error')?.textContent).toBe(said))
     done(w)
   })
 

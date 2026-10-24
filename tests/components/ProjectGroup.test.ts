@@ -155,11 +155,11 @@ describe('a repo group on the home list', () => {
     w.unmount()
   })
 
-  it('without a repo space the bar comes first and still has its notification menu', async () => {
+  it('without a repo space the bar comes first, with nothing to open (notifications are set per coordinator)', async () => {
     const w = await mount(section({ coordinator: null }))
     expect(w.find('.project-lead').exists()).toBe(false)
     expect(w.element.firstElementChild?.classList.contains('project-bar')).toBe(true)
-    expect(w.find('.project-bar .space-menu').exists()).toBe(true)
+    expect(w.find('.project-bar .space-menu').exists()).toBe(false)
     expect(w.findAll('.project-tree .card')).toHaveLength(2)
     w.unmount()
   })

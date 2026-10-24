@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added and improved
 
+- **Start with… a model and an effort.** On the Board, after the program, Start offers the models and effort levels herdr-projects takes for it on that machine (`herdr-projects models <program>`, read once per machine and program), for this start only (`--worker.agent <program>/<model>`, `--worker.effort`). None is picked by default: the program alone, as before. A name the CLI refuses shows its own words; when the models cannot be read, Start uses the program alone and says so.
+
 - **Moving from a 1.x Docker install** has its own guide, [docs/migrate-from-1.x-docker.md](docs/migrate-from-1.x-docker.md), written so an AI agent can run it: back up, stop the container, install the native service, check each step, and go back if needed. The installer, the plugin and the 2.0.0 release notes link to it.
 
 - **Install herdr-projects** now installs 1.2.21, the release wherdr was tested with, instead of 1.2.1 (which had no autopilot, chat-only tasks or settings page). A machine with an older 1.x shows **Update available** in Settings › Plugins, with what the update adds in one line, and **Update to 1.2.21** replaces Herdr's copy of the plugin; tasks and settings stay. wherdr still reads 1.2.1 and later.
@@ -21,6 +23,8 @@ All notable changes to this project are documented here. The format follows
 - **A failed review can be sent back to the agent** from the task's banner (`herdr-projects review`), its findings listed briefly; **Approve anyway** becomes the second choice. A reply sent while the reviewer waits now says it went to the reviewer.
 
 - **A machine's tab on the home list** no longer repeats its header: its Claude and Codex quotas sit together at the top, an offline machine says so there, and a right click or long press on the tab offers the machine's actions. A group's tab offers **Group settings**.
+
+- **Restart to update** no longer opens the interactive terminal for a moment while the agent exits: the conversation stays as it is, with only the restart progress above the message field.
 
 ## [2.0.0] — 2026-10-23
 

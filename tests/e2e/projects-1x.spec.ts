@@ -602,6 +602,41 @@ test('agents unchecked in Settings › Agents are not offered at Start; an unche
   await page.screenshot({ path: `.shots/board-1x-start-hidden-agents-${testInfo.project.name}.png` })
 })
 
+test('Start with a model and an effort: none by default, picked after the program, sent for this start', async ({ page }, testInfo) => {
+  fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
+  await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+  await page.route(url => new URL(url).pathname === '/api/tasks/models', route => {
+    const program = new URL(route.request().url()).searchParams.get('program')
+    return route.fulfill({ json: { program, models: ['gpt-6-sol', 'gpt-6-luna'], efforts: ['low', 'high', 'ultra'], only: [{ models: ['gpt-6-luna'], levels: ['low', 'high'] }] } })
+  })
+  const sent: unknown[] = []
+  await page.route(url => new URL(url).pathname === '/api/tasks/action', (route) => {
+    sent.push(route.request().postDataJSON())
+    return route.fulfill({ json: { ok: true, msg: 'started' } })
+  })
+  await page.goto('/#/board')
+  if (testInfo.project.name.includes('phone')) await page.locator('.board-seg').getByRole('button', { name: /^To do/ }).click()
+  await page.locator('.task-card', { hasText: 'In the backlog' }).click({ timeout: 15000 })
+  await page.locator('.board-panel-sheet').click()
+  const sheet = page.getByRole('dialog')
+  const model = sheet.locator('.task-start-model')
+  await expect(model.getByRole('button', { name: 'Model : Program’s default' })).toBeVisible()
+  await model.getByRole('button', { name: /^Model/ }).click()
+  await page.getByRole('menuitemcheckbox', { name: 'gpt-6-luna' }).click()
+  await model.getByRole('button', { name: /^Effort/ }).click()
+  await expect(page.getByRole('menuitemcheckbox')).toHaveText(['Model’s default', 'low', 'high'])
+  await page.getByRole('menuitemcheckbox', { name: 'high' }).click()
+  // Square, 1 px, inside the sheet on a phone: no sideways scroll.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: `.shots/board-1x-start-model-${testInfo.project.name}.png` })
+  const start = sheet.getByRole('button', { name: /^Start with/ })
+  await expect(start).toHaveText(/codex\/gpt-6-luna|claude\/gpt-6-luna/)
+  await start.click()
+  await expect.poll(() => sent.length).toBe(1)
+  expect(sent[0]).toMatchObject({ action: 'delegate', effort: 'high' })
+  expect((sent[0] as { agent: string }).agent).toMatch(/\/gpt-6-luna$/)
+})
+
 test('Archived:the archived tasks, each one\'s sheet read-only with Restore', async ({ page }, testInfo) => {
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
   fs.writeFileSync(path.join(root, 'archived.json'), JSON.stringify([

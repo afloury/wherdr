@@ -9,6 +9,8 @@
 // where that comes from) and offers the other agents installed on its machine
 // that Settings › Agents offers (the default is shown even when unchecked):
 // a pick is for this start only (`delegate --worker.agent`), the defaults stay.
+// After the program, a model and an effort it takes (ModelPicker, `launch`):
+// none picked, the program alone; never one picked for the user.
 // No message field here: "Open the chat" closes the sheet and opens the task's
 // agent in the Board's side panel (`chat`), where replying happens (with no
 // pane for its agent, the panel's field sends the reply through herdr-projects).
@@ -24,6 +26,7 @@
 // (`after --clear`), and one in the queue says its place.
 import { canPickAttempt, AFTER_MAX, TASK_QUESTION_MAX, NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, type TasksReply, finishCase, prNumber, startPlace, taskActions, taskKey } from '#shared/projectsTasks'
 import AppSheet from './AppSheet.vue'
+import ModelPicker from './ModelPicker.vue'
 import { type StartAgentChoice, startAgentChoices } from '~/utils/agentChoices'
 import { finishHint, finishLabel, finishQuestion, finishTitle, finishOffered } from '~/utils/taskFinish'
 import { type WaitChoice, queuePlaceText, typedRef, waitChoices, waitName } from '~/utils/taskWait'
@@ -110,6 +113,12 @@ const defaultUsable = computed(() => startAgents.value[0]?.usable ?? true)
 const startAgent = computed(() => (pick.value && startAgents.value.some(a => !a.isDefault && a.id === pick.value) ? pick.value : null))
 // The default is not installed there: Start waits for another agent.
 const needsPick = computed(() => !defaultUsable.value && !startAgent.value)
+// The model and effort for this start (none: the program's own).
+const startModel = ref<string | null>(null)
+const startEffort = ref<string | null>(null)
+const startProgram = computed(() => startAgent.value || (defaultUsable.value ? defaultKind.value : ''))
+// What Start sends: the program, with the model when one is picked.
+const startName = computed(() => (startModel.value && startProgram.value ? `${startProgram.value}/${startModel.value}` : startAgent.value))
 const checked = (a: StartAgentChoice) => (a.isDefault ? a.usable && !startAgent.value : a.id === startAgent.value)
 // The default's tag: not installed there, or unchecked in Settings › Agents.
 function defaultTag(a: StartAgentChoice) {
@@ -149,7 +158,7 @@ async function loadStart() {
 // Queue: no slot free on the task's board, so Start puts it in the queue, at this place.
 const place = computed(() => startPlace(startOpts.value?.slots))
 function startLabel(): string {
-  const a = startAgent.value
+  const a = startName.value
   if (place.value) return a ? tl(`Queue with ${a}`, `Mettre en file avec ${a}`) : tl('Queue', 'Mettre en file')
   return a ? tl(`Start with ${a}`, `Lancer avec ${a}`) : tl('Start', 'Lancer')
 }
@@ -238,6 +247,8 @@ watch([open, target], ([o]) => {
   actionError.value = ''
   restored.value = false
   pick.value = null
+  startModel.value = null
+  startEffort.value = null
   closePicker()
   question.value = ''
   asking.value = false
@@ -354,8 +365,9 @@ async function act(action: TaskCommand, after?: string[]) {
   running.value = action
   actionError.value = ''
   try {
-    const agent = action === 'delegate' ? startAgent.value : null
-    const r = await api<{ msg: string }>('/api/tasks/action', { machine, id: t.id, action, ...(agent ? { agent } : {}), ...(action === 'delegate' && after?.length ? { after } : {}) })
+    const agent = action === 'delegate' ? startName.value : null
+    const effort = action === 'delegate' && startModel.value ? startEffort.value : null
+    const r = await api<{ msg: string }>('/api/tasks/action', { machine, id: t.id, action, ...(agent ? { agent } : {}), ...(effort ? { effort } : {}), ...(action === 'delegate' && after?.length ? { after } : {}) })
     if (action === 'delegate' && g === gen) closePicker()
     haptic()
     if (action === 'archive') {
@@ -429,7 +441,7 @@ function chat() {
   <component :is="embedded ? 'section' : AppSheet" v-model:open="open" :title="task?.title || tl('Task', 'Tâche')" wide>
     <div v-if="task" class="task-sheet">
       <p v-if="!embedded" class="task-sheet-meta">
-        <span class="task-key">{{ label }}</span>
+        <TaskKey :value="label" />
         <span class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
         <span v-if="archived" class="task-chip task-archived"><UIcon name="i-lucide-archive" />{{ tl('Archived', 'Archivée') }}</span>
         <span v-if="task.app" class="task-chip">{{ task.app }}</span>
@@ -564,9 +576,13 @@ function chat() {
         >
           <AgentAvatar v-if="a.id || startOpts?.agent" :agent="a.id || defaultKind" /><span class="task-start-name">{{ a.label }}</span><small v-if="a.isDefault">{{ defaultTag(a) }}</small>
         </button>
+        <span v-if="startOpts && startProgram && !offlineView" class="task-start-model">
+          <span class="task-start-label">{{ tl('Model', 'Modèle') }}</span>
+          <ModelPicker :key="`${target()}|${startProgram}`" v-model:model="startModel" v-model:effort="startEffort" :launch="{ machine, program: startProgram }" />
+        </span>
         <span v-if="startOpts?.agent" class="task-start-from">{{ agentSource() }}</span>
         <span v-if="needsPick" class="task-start-from task-start-missing" role="status">{{ tl(`${defaultKind} is not installed on this machine: pick another agent to start it.`, `${defaultKind} n’est pas installé sur cette machine : choisis un autre agent pour la lancer.`) }}</span>
-        <span v-if="startAgent" class="task-start-from">{{ tl('For this start only: the default stays.', 'Pour ce lancement seulement : le défaut ne change pas.') }}</span>
+        <span v-if="startName" class="task-start-from">{{ tl('For this start only: the default stays.', 'Pour ce lancement seulement : le défaut ne change pas.') }}</span>
       </div>
       <div v-if="chatShown || actions.approve || actions.delegate || actions.retry || actions.finish || actions.stop || actions.archive || actions.restore" class="task-sheet-actions">
         <UButton v-if="actions.restore" color="primary" icon="i-lucide-archive-restore" :loading="running === 'restore'" :disabled="busy || offlineView" @click="act('restore')">{{ tl('Restore', 'Restaurer') }}</UButton>
