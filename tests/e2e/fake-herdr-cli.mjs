@@ -75,6 +75,10 @@ async function leave(code) {
 pollTimer = setInterval(async () => {
   const r = await call('e2e.terminal_screen', { pane_id: pane }).catch(() => null)
   if (r && !done) currentText = r.text
+  for (const data of r?.osc || []) {
+    if (done || !currentSize) break
+    out({ type: 'terminal.frame', encoding: 'ansi', full: false, width: currentSize.cols, height: currentSize.rows, seq: ++seq, bytes: Buffer.from(data).toString('base64') })
+  }
 }, 200)
 
 try {
