@@ -70,7 +70,7 @@ const FR: Record<string, string> = {
   'This task is not archived': 'Cette tâche n’est pas archivée',
   'This task cannot be archived while an agent works on it': 'Cette tâche ne peut pas être archivée pendant qu’un agent y travaille',
   'Unknown action': 'Action inconnue', 'A task needs a title': 'Une tâche a besoin d’un titre',
-  'Invalid repo': 'Dépôt invalide', 'Invalid agent': 'Agent invalide', 'Invalid coordinator': 'Coordinateur invalide',
+  'Invalid repo': 'Dépôt invalide', 'Invalid agent': 'Agent invalide', 'Invalid effort': 'Effort invalide', 'Invalid coordinator': 'Coordinateur invalide',
   'Move up': 'Monter', 'Move down': 'Descendre', 'Reset order': 'Réinitialiser l’ordre',
   
   
