@@ -3949,6 +3949,15 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-card.working { border-left: 2px solid var(--working); }
 .task-card.todo { border-left: 2px solid var(--line-strong); }
 .task-key { font: 600 10.5px/1 var(--mono); letter-spacing: .08em; color: var(--text-3); }
+.task-key-copy { position: relative; display: inline-grid; flex: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.task-key-copy > span { grid-area: 1 / 1; }
+.task-key-copy:hover, .task-key-copy:focus-visible { color: var(--text); }
+.task-key-copy:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.task-key-copy.done .task-key-text, .task-key-copy.fail .task-key-text { visibility: hidden; }
+.task-key-flash { text-transform: uppercase; white-space: nowrap; }
+.task-key-copy.done { color: var(--green); }
+.task-key-copy.fail { color: var(--rose); }
+.task-card .task-key-copy { z-index: 2; }
 .task-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .task-chip { padding: 3px 5px; border: 1px solid var(--line); font: 500 9.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
 .task-chip.pass { color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, var(--line)); }
@@ -3997,6 +4006,11 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-start-chip.off small { color: var(--ochre); }
 .task-start-missing { color: var(--ochre); }
 .task-start-from { flex-basis: 100%; font: 11px/1.4 var(--mono); color: var(--dim); }
+/* Start: the model and effort after the program (ModelPicker, `launch`). */
+.task-start-model { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.task-start-model .model-pick { border: 1px solid var(--line); border-radius: 0; font-family: var(--mono); max-width: 100%; }
+.task-start-model .model-pick-wrap { min-width: 0; max-width: 100%; }
+.model-pick-none { font: 11px/1.4 var(--mono); color: var(--dim); }
 /* Queue and "Start after…" (TaskSheet): the place Start would get, what a task waits for, the picker. */
 .task-queue-place { margin: 6px 0 0; font: 500 11px/1.4 var(--mono); letter-spacing: .04em; color: var(--text-2); }
 .task-wait-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text); }
@@ -4110,7 +4124,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-chip.task-archived { display: inline-flex; align-items: center; gap: 4px; color: var(--ochre); border-color: color-mix(in srgb, var(--ochre) 45%, var(--line)); }
 .task-chip.task-archived svg { width: 11px; height: 11px; }
 .task-sheet-archived { margin: 0; }
-.task-sheet-error { margin: 0; }
+.task-sheet-error { margin: 0; white-space: pre-line; }
 .hw-toast .hw-toast-action { border-radius: 0; font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
 
 .card.compact .task-attention { color: var(--rose); border-color: currentColor; }

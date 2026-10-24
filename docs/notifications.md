@@ -20,27 +20,61 @@ the foreground client and never resizes anything. Side effects: with wherdr conn
 `notification show` reports `shown: true` even with no terminal attached, and an empty session
 gets a default workspace, as with any attached client.
 
-## Rules shared across devices
+## A default and exceptions
 
-Settings → Notifications stores its policy with the other synchronized settings
-(`notificationRules` in `settings.json`). A conversation overrides its project,
-which overrides its machine. **Inherit** removes the override. Timed mutes expire
-back to inheritance after 1 or 8 hours; permanent mutes last until removed.
+Settings → Notifications stores one policy, synchronized across devices
+(`notificationRules` in `settings.json`): **a default for everything, and
+exceptions to that default**. Every setting uses the same scale:
 
-Ordinary conversations and custom notices are quiet by default. Coordinators
-notify for **needs you** and **finished**. The **Mute sub-agents** preset is enabled
-by default: board workers, reviewers, planners and attempts stay silent even if a
-machine or project allows notifications. An explicit conversation rule can enable
-one. Use **Only main coordinators** to mute every known machine and enable its main
-coordinator; the Notifications menu also lets you enable just one conversation.
+| Level | Notifies for |
+|---|---|
+| **Muted** | nothing |
+| **Needs you** | a task or a coordinator waiting for you (questions, permission requests, board approvals) |
+| **Needs you + finished** | also a finished task, or a coordinator that finished answering you |
+| **All activity** | also every intermediate message and scheduled tasks |
 
-A rule can select needs you (including permission requests), finished, new assistant
-messages, and scheduled tasks independently. New assistant messages are identified
-by their transcript position, so streaming updates do not ring repeatedly. Custom
-`herdr notification show` notices follow the same policy: notices with a pane use
-that conversation; other notices use their machine. Scripts can mark a scheduled
-notice with a `[scheduled]` title prefix. Board approval/failure notices count as
-needs you and use the task's linked conversation where available.
+Under each level, **Customize** keeps the individual events (needs you, finished,
+new message, scheduled task) for edge cases.
+
+The screen reads top to bottom:
+
+1. **Do not disturb** turns off every notification, no exceptions: the default and
+   the exceptions are ignored while it is on.
+2. **Default (applies to everything)**: a level (needs you + finished at first)
+   and a **Sub-agents** switch. Off, only coordinators, standalone agents and board
+   events notify; on, task agents (workers, reviewers, planners, attempts) notify
+   too, at the same level. Sub-agents are all on or all off, never task by task.
+3. **Exceptions**: **Add an exception** picks a coordinator (main, machine or project
+   coordinator, grouped by machine) or a standalone agent conversation. Each one has
+   its own level, Customize and, for a coordinator, a Sub-agents switch: on, the task
+   agents of its board follow the exception instead of the default (a project
+   coordinator covers its project's tasks; the main and machine coordinators cover the
+   others). Each says how it differs from the default; removing one goes back to it.
+4. **This device's notifications** only asks this browser or phone for permission to
+   show push notifications, and shows whether it is allowed, blocked or not asked yet.
+
+A coordinator's exception is kept by its identity (machine, Herdr session, level and
+repo), not its pane: it still applies after `coordinator new` or a restart.
+
+Right-click → **Notifications** on a coordinator or a standalone agent sets that
+conversation's exception: the four levels (with a check mark on the current one, and
+whether it is an exception or the default), **Mute for 1 hour / 8 hours** (then back
+to what it was), and **Follow the default** to remove the exception. On a task agent,
+the menu points to the Sub-agents switch instead.
+
+Board events (`herdr-projects` approvals and failures) follow the default even with
+Sub-agents off, or their project coordinator's exception in the task's own Herdr
+session (the default when that session is not known: a task with no pane or space linked). Custom `herdr notification
+show` notices with a pane follow that conversation; others follow the default. Scripts
+can mark a scheduled notice with a `[scheduled]` title prefix. New assistant messages
+are identified by their transcript position, so streaming updates do not ring
+repeatedly.
+
+Settings saved by the earlier machine → project → conversation rules are converted
+once: a permanent machine rule becomes the default (so "Only main coordinators"
+becomes default Muted plus one exception), project rules are dropped, and
+conversation rules become exceptions (moved to the coordinator's identity when the
+conversation is a coordinator).
 
 An open conversation suppresses push to **every** device while the page is visible,
 focused and recently used (within two minutes). A WebSocket heartbeat renews a
