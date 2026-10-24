@@ -434,6 +434,21 @@ export async function taskCommand(machine: unknown, id: unknown, action: unknown
   return { ok: true, msg: firstLine(out) }
 }
 
+// Raising a task limit resumes it in the CLI; never follow this with retry.
+export async function raiseTaskLimit(machine: unknown, id: unknown, name: unknown, value: unknown) {
+  const m = boardOf(machine)
+  const tid = checkId(id)
+  if ((name !== 'limit.time' && name !== 'limit.tokens') || typeof value !== 'string' || !value.trim() || value.length > 40 || /[\r\n\0]/.test(value)) {
+    throw new HerdrError('bad_action', 'Invalid settings')
+  }
+  const row = await taskOf(m, tid)
+  if (!row || row.archived || row.stage !== 'stopped' || row.state !== 'blocked') throw refused('retry')
+  // CLI validates units and refuses invalid values without changing the task.
+  const out = await command(m, ['set', name, value.trim(), '--task', tid])
+  forget(m)
+  return { ok: true, msg: firstLine(out) }
+}
+
 // The task's worker.agent as 1.x resolves it, and where it comes from.
 async function taskAgent(m: Machine, id: string): Promise<TaskAgent | null> {
   return parseWorkerAgent(await taskShow(m, id))

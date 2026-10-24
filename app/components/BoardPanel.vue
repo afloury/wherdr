@@ -115,6 +115,12 @@ const toReviewer = computed(() => (details.value?.stage || props.task?.stage) ==
 const disabled = computed(() => Boolean(actionBusy.value || offlineView.value || !props.reachable || props.task?.stale))
 // Finish: a limit, no summary, or a row stuck at "Finishing" with its agent at rest.
 const finishKind = computed(() => (props.task ? finishCase(props.task) : null))
+const limitRequest = ref(0)
+async function openWorkLimit() {
+  choose('task')
+  await nextTick()
+  limitRequest.value++
+}
 const canFinish = computed(() => Boolean(props.task && taskPermissions.value?.finish && finishOffered(props.task, agentPane.value?.status ?? null)))
 const stuck = computed(() => canFinish.value && finishKind.value === 'stuck')
 const needs = computed(() => props.task?.group === 'needs')
@@ -640,8 +646,9 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <div class="task-needs-actions">
         <UButton v-if="choosingAttempt && selected !== 'task'" @click="choose('task')">{{ tl('Choose an attempt', 'Choisis un essai') }}</UButton>
         <UButton v-if="canSendReview" class="task-needs-review" color="primary" icon="i-lucide-undo-2" :disabled="disabled" @click="taskAction('review')">{{ tl('Send the review back to the agent', 'Renvoyer les remarques à l’agent') }}</UButton>
-        <UButton v-if="taskPermissions?.retry" :disabled="disabled" @click="taskAction('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
-        <UButton v-if="canFinish" class="task-finish" :title="finishTitle(task?.chat)" :aria-description="finishTitle(task?.chat)" :disabled="disabled" @click="taskAction('finish')">{{ finishLabel(task?.chat) }}</UButton>
+        <UButton v-if="taskPermissions?.retry" :disabled="disabled" @click="taskAction('retry')">{{ finishKind === 'limit' ? tl('Continue', 'Continuer') : tl('Retry', 'Réessayer') }}</UButton>
+        <UButton v-if="finishKind === 'limit'" :disabled="disabled" @click="openWorkLimit">{{ tl('Raise limit', 'Relever la limite') }}</UButton>
+        <UButton v-if="canFinish" class="task-finish" :title="finishTitle(task?.chat)" :aria-description="finishTitle(task?.chat)" :disabled="disabled" @click="taskAction('finish')">{{ finishKind === 'limit' && !task?.chat ? tl('Take as is', 'Prendre tel quel') : finishLabel(task?.chat) }}</UButton>
         <UButton v-if="canFix" :disabled="disabled" @click="taskAction('fix')">{{ tl('Send the error to the agent', 'Envoyer l’erreur à l’agent') }}</UButton>
         <UButton v-if="taskPermissions?.delegate" :disabled="disabled" @click="taskAction('delegate')">{{ tl('Start again', 'Relancer') }}</UButton>
         <template v-if="permissionTaps">
@@ -670,7 +677,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
     <div class="board-panel-body">
       <p v-if="target.kind === 'task' && settled && failed && selected === 'task'" class="board-note error">{{ failed }}</p>
       <TaskSettings v-if="target.kind === 'task' && settled" v-show="selected === 'settings'" :machine="target.machine" :id="target.id" :active="selected === 'settings'" :reachable="reachable" />
-      <TaskSheet v-if="target.kind === 'task' && settled && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :reachable="reachable" :refresh="refreshTask" @chat="choose('chat')" @coordinator="(machine, task) => emit('coordinator', machine, task)" @archived="archivedTask" @restored="restoredTask" />
+      <TaskSheet :limit-request="limitRequest" v-if="target.kind === 'task' && settled && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :reachable="reachable" :refresh="refreshTask" @chat="choose('chat')" @coordinator="(machine, task) => emit('coordinator', machine, task)" @archived="archivedTask" @restored="restoredTask" />
       <template v-else-if="selected === 'settings'" />
       <template v-else-if="target.kind === 'task' && selected === 'reviewer' && reviewerPane">
         <div class="board-panel-reviewer-bar">

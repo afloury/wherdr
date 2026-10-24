@@ -33,7 +33,7 @@ import { sawTasksBoard, seenTasksBoard } from '~/composables/useTasksBoard'
 // it, `changed` asks for that. `archived` / `restored`: the task was put away
 // or brought back from here.
 // `chat`: open this task's agent in the side panel (the sheet has closed).
-const props = withDefaults(defineProps<{ task: TaskRow | null, machine: string, refresh?: () => Promise<unknown>, embedded?: boolean, reachable?: boolean }>(), { reachable: true })
+const props = withDefaults(defineProps<{ task: TaskRow | null, machine: string, refresh?: () => Promise<unknown>, embedded?: boolean, reachable?: boolean, limitRequest?: number }>(), { reachable: true })
 const emit = defineEmits<{ changed: [], archived: [machine: string, task: TaskRow], restored: [machine: string, task: TaskRow], chat: [machine: string, task: TaskRow], coordinator: [machine: string, task: TaskRow] }>()
 const open = defineModel<boolean>('open', { default: false })
 
@@ -57,6 +57,31 @@ const paneStatus = computed(() => herdrState.value.panes.find(p => p.id === fail
 const withFinish = (a: ReturnType<typeof taskActions>) => ({ ...a, finish: a.finish && Boolean(row.value) && finishOffered(row.value!, paneStatus.value) })
 const actions = computed(() => (row.value ? withFinish(taskActions(row.value, failure.value)) : NO_ACTIONS))
 const finishWhy = computed(() => { const c = row.value ? finishCase(row.value) : null; return c ? finishHint(c) : '' })
+const limitStopped = computed(() => row.value?.stage === 'stopped' && row.value?.state === 'blocked' && !archived.value)
+const limitOpen = ref(false)
+const limitName = ref('limit.time')
+const limitValue = ref('')
+const resuming = ref(false)
+function openLimit() {
+  limitName.value = 'limit.time'
+  limitValue.value = ''
+  limitOpen.value = true
+}
+async function raiseLimit() {
+  const task = props.task
+  if (!task || busy.value || offlineView.value || props.reachable === false || !limitStopped.value || !limitValue.value.trim()) return
+  const g = gen
+  const machine = props.machine
+  busy.value = true
+  resuming.value = true
+  actionError.value = ''
+  try {
+    await api('/api/tasks/limit', { machine, id: task.id, name: limitName.value, value: limitValue.value.trim() })
+    if (g === gen) limitOpen.value = false
+    await settle(g)
+  } catch (e) { failed(e, g) }
+  finally { if (g === gen) { busy.value = false; resuming.value = false } }
+}
 const pr = computed(() => details.value?.pr || props.task?.pr || '')
 const review = computed(() => details.value?.review || props.task?.review || null)
 const label = computed(() => (props.task ? taskKey(props.task.id, props.task.repoKey) : ''))
@@ -198,6 +223,9 @@ const target = () => `${props.machine}|${props.task?.id ?? ''}`
 let gen = 0
 watch([open, target], ([o]) => {
   gen++
+  limitOpen.value = false
+  limitValue.value = ''
+  resuming.value = false
   busy.value = false
   running.value = null
   actionError.value = ''
@@ -213,6 +241,7 @@ watch([open, target], ([o]) => {
   details.value = null
   load()
 }, { immediate: true })
+watch(() => props.limitRequest, () => { if (limitStopped.value) openLimit() })
 // Asked once per sheet, when it offers Start (a failed task may offer it only
 // once its details say what failed).
 // Watched after the reset above, so another task's sheet asks again.
@@ -496,9 +525,10 @@ function chat() {
         <p v-for="(f, i) in details.findings" :key="i" class="task-sheet-text">{{ f.severity }} · {{ f.title }}<template v-if="f.detail"> — {{ f.detail }}</template></p>
       </section>
       <dl v-if="details?.limits" class="task-sheet-facts">
-        <dt>{{ tl('Time limit', 'Limite de temps') }}</dt><dd>{{ details.limits.time }}<template v-if="details.limits.timeUsed"> · {{ details.limits.timeUsed }}</template></dd>
-        <dt>{{ tl('Token limit', 'Limite de tokens') }}</dt><dd><TokenCount :value="details.limits.tokens" /></dd>
-        <dt>{{ tl('Tokens used', 'Tokens utilisés') }}</dt><dd><TokenCount :value="details.limits.tokensUsed" /></dd>
+        <dt>{{ tl('Time used · this run', 'Temps consommé · cette tranche') }}</dt><dd>{{ details.limits.timeUsed || tl('Not provided', 'Non renseigné') }}</dd>
+        <dt>{{ tl('Time limit', 'Plafond de temps') }}</dt><dd>{{ details.limits.time === 'none' ? tl('No limit', 'Aucune limite') : details.limits.time || tl('Not provided', 'Non renseigné') }}</dd>
+        <dt>{{ tl('Token limit', 'Limite de tokens') }}</dt><dd><span v-if="details.limits.tokens === 'none'">{{ tl('No limit', 'Aucune limite') }}</span><TokenCount v-else :value="details.limits.tokens" /></dd>
+        <dt>{{ tl('Tokens used · whole task', 'Jetons consommés · toute la tâche') }}</dt><dd><TokenCount :value="details.limits.tokensUsed" /></dd>
       </dl>
 
       <section v-if="!archived" class="task-sheet-block">
@@ -538,8 +568,9 @@ function chat() {
         <UButton v-if="actions.approve" color="primary" icon="i-lucide-check" :loading="busy && !running" :disabled="busy || offlineView" @click="approve">
           {{ task.stage === 'plan' ? tl('Approve plan', 'Accepter le plan') : tl('Approve', 'Approuver') }}
         </UButton>
-        <UButton v-if="actions.retry" color="primary" variant="outline" icon="i-lucide-rotate-ccw" :loading="running === 'retry'" :disabled="busy || offlineView" @click="act('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
-        <UButton v-if="actions.finish" color="primary" variant="outline" icon="i-lucide-flag" class="task-finish" :title="finishTitle(row?.chat)" :aria-description="finishTitle(row?.chat)" :loading="running === 'finish'" :disabled="busy || offlineView" @click="act('finish')">{{ finishLabel(row?.chat) }}</UButton>
+        <UButton v-if="actions.retry" color="primary" variant="outline" icon="i-lucide-rotate-ccw" :loading="running === 'retry'" :disabled="busy || offlineView" @click="act('retry')">{{ limitStopped ? tl('Continue', 'Continuer') : tl('Retry', 'Réessayer') }}</UButton>
+        <UButton v-if="limitStopped" variant="outline" :disabled="busy || offlineView || reachable === false" @click="openLimit">{{ tl('Raise limit', 'Relever la limite') }}</UButton>
+        <UButton v-if="actions.finish" color="primary" variant="outline" icon="i-lucide-flag" class="task-finish" :title="finishTitle(row?.chat)" :aria-description="finishTitle(row?.chat)" :loading="running === 'finish'" :disabled="busy || offlineView" @click="act('finish')">{{ limitStopped && !row?.chat ? tl('Take as is', 'Prendre tel quel') : finishLabel(row?.chat) }}</UButton>
         <UButton
           v-if="chatShown && !embedded" class="task-chat" color="neutral" variant="outline" icon="i-lucide-message-square"
           @click="chat"
@@ -549,6 +580,25 @@ function chat() {
         <UButton v-if="actions.stop" color="error" variant="outline" icon="i-lucide-square" :loading="running === 'stop'" :disabled="busy || offlineView" @click="act('stop')">{{ tl('Stop', 'Arrêter') }}</UButton>
         <UButton v-if="actions.archive" color="neutral" variant="ghost" icon="i-lucide-archive" class="task-archive" :loading="running === 'archive'" :disabled="busy || offlineView" @click="act('archive')">{{ tl('Archive', 'Archiver') }}</UButton>
       </div>
+      <p v-if="resuming" role="status">{{ tl('Resuming…', 'Reprise…') }}</p>
+      <p v-if="limitStopped && embedded" class="task-finish-why">{{ finishWhy }}</p>
+      <AppSheet v-model:open="limitOpen" :title="tl('Raise limit', 'Relever la limite')" top>
+        <form class="sheet-form task-question" @submit.prevent="raiseLimit">
+          <p>{{ tl('Choose a new total limit. Usage is kept; the CLI resumes automatically. Enter none to explicitly remove the limit.', 'Choisis un nouveau plafond total. La consommation est conservée ; le CLI reprend automatiquement. Saisis none pour supprimer explicitement la limite.') }}</p>
+          <label for="task-limit-kind" class="field-label">{{ tl('Work limit', 'Limite de travail') }}</label>
+          <select id="task-limit-kind" v-model="limitName" :disabled="busy" @change="limitValue = ''">
+            <option value="limit.time">{{ tl('Time per run', 'Temps par tranche') }}</option>
+            <option value="limit.tokens">{{ tl('Tokens for the whole task', 'Jetons pour toute la tâche') }}</option>
+          </select>
+          <label for="task-limit-value" class="field-label">{{ limitName === 'limit.time' ? tl('New duration (e.g. 4h, 90m, none)', 'Nouvelle durée (ex. 4h, 90m, none)') : tl('New token count (e.g. 3m, 500k, none)', 'Nouvelle quantité de jetons (ex. 3m, 500k, none)') }}</label>
+          <UInput id="task-limit-value" v-model="limitValue" :disabled="busy" :maxlength="40" />
+          <p v-if="actionError" role="alert">{{ actionError }}</p>
+          <div class="task-sheet-actions">
+            <UButton color="neutral" variant="outline" :disabled="busy" @click="limitOpen = false">{{ tl('Cancel', 'Annuler') }}</UButton>
+            <UButton type="submit" :disabled="busy || offlineView || !limitValue.trim()" :loading="resuming">{{ resuming ? tl('Resuming…', 'Reprise…') : tl('Apply and resume', 'Appliquer et reprendre') }}</UButton>
+          </div>
+        </form>
+      </AppSheet>
       <p v-if="actions.delegate && placeLine" class="task-queue-place" role="status">{{ placeLine }}</p>
       <!-- Start after…: the tasks to wait for, searched by key, id or title, on every machine the Board reads. -->
       <section v-if="actions.delegate && picking" class="task-sheet-block task-after-pick">

@@ -296,7 +296,14 @@ function parseTaskLimits(v: unknown): TaskDetails['limits'] {
   if (!limits) return undefined
   const time = obj(limits.time)
   const tokens = obj(limits.tokens)
-  return { time: str(time?.limit, 40), timeUsed: str(time?.used, 40), tokens: str(tokens?.limit, 40), tokensUsed: num(tokens?.total) ?? num(tokens?.used) }
+  // 1.2.16 omits time.used after stopping; stopped.used is milliseconds.
+  const stopped = obj(limits.stopped)
+  const usedMs = stopped?.what === 'time' ? num(stopped.used) : null
+  const seconds = usedMs === null ? null : Math.round(Math.max(0, usedMs) / 1000)
+  const stoppedTime = seconds === null ? '' : seconds >= 3600
+    ? `${Math.floor(seconds / 3600)}h${Math.floor(seconds % 3600 / 60) ? `${Math.floor(seconds % 3600 / 60)}m` : ''}`
+    : seconds >= 60 ? `${Math.floor(seconds / 60)}m${seconds % 60 ? `${seconds % 60}s` : ''}` : `${seconds}s`
+  return { time: str(time?.limit, 40), timeUsed: str(time?.used, 40) || stoppedTime, tokens: str(tokens?.limit, 40), tokensUsed: num(tokens?.total) ?? num(tokens?.used) }
 }
 function parseFindings(v: unknown): NonNullable<TaskDetails['findings']> {
   const review = obj(v)
