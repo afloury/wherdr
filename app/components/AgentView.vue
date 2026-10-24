@@ -345,7 +345,7 @@ const dropHint = computed(() => pane.value?.agent === 'claude'
 useNotificationClock()
 const agentMenu = computed<MenuItem[]>(() => {
   const p = pane.value
-  const items: MenuItem[] = p ? [notificationMenuItem(conversationNotificationTarget(p))] : []
+  const items: MenuItem[] = p ? [notificationMenuItem(p)] : []
   if (canAttachTerminal.value) items.push({ label: t('Attach a file…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
   if (p) items.push({ label: t('View changes'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
   if (p) items.push({ label: t('Browse files'), icon: 'i-lucide-folder-tree', run: () => { filesOpen.value = true } })
@@ -546,7 +546,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
           :aria-label="t('Back')" @click="goBack"
         />
         <div class="agent-head">
-          <div class="agent-title">{{ headTitle }} <UIcon v-if="pane && notificationsMuted(conversationNotificationTarget(pane), pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
+          <div class="agent-title">{{ headTitle }} <UIcon v-if="pane && paneNotificationsMuted(pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
           <div class="agent-meta">
             <StatusPill :pane="pane" kind />
             <span v-if="subtitle" class="agent-subtitle">{{ subtitle }}</span>
