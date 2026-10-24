@@ -224,7 +224,8 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       const p = need(params.pane_id)
       p.starts = [...(p.starts || []), params]
       p.agent = params.kind; p.status = 'idle'; p.pid = (p.pid || 3000) + 1; p.updateOutput = params.kind === 'codex' ? '› ' : ''
-      if (p.slowExit?.exiting) { p.customScreen = p.slowExit.after; p.slowExit = null }
+      // Only the screen given by the spec: no `updateOutput` left behind on this pane.
+      if (p.slowExit?.exiting) { p.customScreen = p.slowExit.after; p.updateOutput = undefined; p.slowExit = null }
       return { agent: { pane_id: p.id, agent: p.agent } }
     },
     'pane.send_input': (params) => {

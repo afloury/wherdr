@@ -1,7 +1,7 @@
 // "Restart to update": Claude exits then restarts in the same pane. While
 // Herdr still reports it during its exit, the conversation stays as it is:
 // no interactive terminal opens then closes on its own.
-import { expect, test } from './test'
+import { expect, test, type Page } from './test'
 import { OMP_CHAT_PANE as pane, fakeHerdr } from './scenario.mjs'
 
 const RULE = '─'.repeat(60)
@@ -10,15 +10,21 @@ const EXITING = '❯ /exit\n  ⎿  Goodbye!\n\nResume this session with:\nclaude
 const show = (text: string | null, agent = 'claude', status = 'idle') =>
   fakeHerdr('e2e.interaction_screen', { pane_id: pane, text, agent, status })
 
-test.afterEach(async () => {
+const state = async (page: Page) =>
+  (await (await page.request.get('/api/state')).json()).panes.find((p: { id: string }) => p.id === pane)
+
+// The pane is shared with other specs: give it back as an idle omp, seen so by the server.
+test.afterEach(async ({ page }) => {
   await fakeHerdr('e2e.slow_exit', { pane_id: pane })
-  await show(null, 'omp')
+  await show(null, 'omp', 'idle')
+  await expect.poll(async () => (await state(page))?.agent).toBe('omp')
 })
 
 test('restarting the agent keeps the conversation without opening the terminal', async ({ page }) => {
   await show(FIELD)
   await page.goto(`/#/a/${pane}`)
-  await expect.poll(async () => (await (await page.request.get('/api/state')).json()).panes.find((p: { id: string }) => p.id === pane)?.interaction).toBe('input')
+  // Claude, as the server sees it, at its message field.
+  await expect.poll(async () => { const p = await state(page); return `${p?.agent} ${p?.interaction}` }).toBe('claude input')
   await expect(page.locator('.composer')).toBeVisible()
   // Record any appearance of the modal, however brief.
   await page.evaluate(() => {
