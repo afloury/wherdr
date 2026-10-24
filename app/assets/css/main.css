@@ -4118,8 +4118,8 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-panel[data-kind="task"] .board-panel-name .board-panel-title { flex: 1; font-family: var(--display, var(--sans)); }
 .board-panel[data-kind="task"] .board-panel-name .task-state { flex: none; font-size: 9px; }
 .board-panel[data-kind="task"] .board-panel-name .task-key { border: 1px solid var(--line-strong); padding: 3px; }
-.board-panel-tabs { display: flex; flex: none; border-bottom: 1px solid var(--line); background: var(--bg-2); }
-.board-panel-tabs button { position: relative; padding: 11px 14px; border-right: 1px solid var(--line); border-bottom: 2px solid transparent; font: 600 10px/1.2 var(--mono); text-transform: uppercase; color: var(--muted); }
+.board-panel-tabs { display: flex; flex: none; overflow-x: auto; border-bottom: 1px solid var(--line); background: var(--bg-2); }
+.board-panel-tabs button { position: relative; flex-shrink: 0; padding: 11px 14px; border-right: 1px solid var(--line); border-bottom: 2px solid transparent; font: 600 10px/1.2 var(--mono); text-transform: uppercase; color: var(--muted); }
 .board-panel-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
 /* The reviewer's tab: its dialog waits for you (1.x reviewneeds). */
 .board-panel-tabs button.asks::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 6px; vertical-align: 1px; background: var(--ochre); }

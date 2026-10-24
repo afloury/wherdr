@@ -2,7 +2,7 @@
 // reviewer's pane (while a review runs) or the task itself. A task with
 // nothing to talk to opens on the task.
 
-export type TaskPanelTab = 'chat' | 'term' | 'reviewer' | 'task'
+export type TaskPanelTab = 'chat' | 'term' | 'reviewer' | 'task' | 'settings'
 
 export interface TaskPanelViews {
   // Something to show under Conversation: an agent pane (its conversation or
@@ -12,10 +12,11 @@ export interface TaskPanelViews {
   term: boolean
   // Its reviewer's pane, shown in Herdr while a review runs.
   reviewer?: boolean
+  settings?: boolean
 }
 
 export function taskPanelTabs(v: TaskPanelViews): TaskPanelTab[] {
-  return [...(v.chat ? ['chat' as const] : []), ...(v.term ? ['term' as const] : []), ...(v.reviewer ? ['reviewer' as const] : []), 'task']
+  return [...(v.chat ? ['chat' as const] : []), ...(v.term ? ['term' as const] : []), ...(v.reviewer ? ['reviewer' as const] : []), 'task', ...(v.settings ? ['settings' as const] : [])]
 }
 
 // The user's own choice while it is still offered, else Conversation when

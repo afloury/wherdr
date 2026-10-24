@@ -208,9 +208,11 @@ test('normal list: a waiting agent keeps its dense card and answers', async ({ p
   await expect(omp.locator('.card-choices button .l')).toHaveText(['Approve', 'Deny'])
   await expect(omp).toHaveClass(/compact.*open/)
   await expect(omp.locator('.card-main')).toHaveCount(0)
-  // The answers stay under the title, as before.
-  const [title, choices] = await Promise.all([omp.locator('.card-title').boundingBox(), omp.locator('.card-choices').boundingBox()])
-  expect(Math.abs(choices!.x - title!.x)).toBeLessThanOrEqual(1)
+  // Dense cards keep their answers below the header and inside the card.
+  const [title, choices, bounds] = await Promise.all([omp.locator('.card-title').boundingBox(), omp.locator('.card-choices').boundingBox(), omp.boundingBox()])
+  expect(choices!.y).toBeGreaterThanOrEqual(title!.y + title!.height)
+  expect(choices!.x).toBeGreaterThanOrEqual(bounds!.x)
+  expect(choices!.x + choices!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width)
   await shot(page, 'detailed-blocked', testInfo.project.name)
   await omp.locator('.card-choices button', { hasText: 'Deny' }).click()
   await expect.poll(() => answers(OMP_ASK_PANE)).toEqual([['down', 'enter']])
