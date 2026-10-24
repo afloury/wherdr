@@ -580,7 +580,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <p class="board-panel-name">
           <template v-if="target.kind === 'task'">
             <AgentAvatar :agent="identity.agent" :title="agentHint" />
-            <span class="task-key">{{ taskLabel }}</span><span class="board-panel-title" :title="details?.title || task?.title">{{ details?.title || task?.title }}</span><span v-if="task" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
+            <TaskKey :value="taskLabel" /><span class="board-panel-title" :title="details?.title || task?.title">{{ details?.title || task?.title }}</span><span v-if="task" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
           </template>
           <template v-else>
             <UIcon name="i-lucide-message-square-text" class="board-panel-coord-icon" />
