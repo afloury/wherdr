@@ -107,6 +107,12 @@ describe('work limit consumption from CLI details', () => {
     }
     expect(parseTaskDetails(JSON.stringify({ task: { id: 'demo/9' }, limits: { stopped: { what: 'tokens', used: 2000000 } } })).limits?.timeUsed).toBe('')
   })
+  it('preserves only a recognized stopped-limit dimension', () => {
+    for (const what of ['time', 'tokens', 'provider', undefined]) {
+      const d = parseTaskDetails(JSON.stringify({ task: { id: 'demo/9' }, limits: { stopped: { what } } }))
+      expect(d.limits?.stopped).toBe(what === 'time' || what === 'tokens' ? what : undefined)
+    }
+  })
   it('keeps absent limits and missing usage unknown', () => {
     expect(parseTaskDetails('{"task":{"id":"demo/9"}}').limits).toBeUndefined()
     expect(parseTaskDetails('{"task":{"id":"demo/9"},"limits":{"time":{"limit":"none"},"tokens":{"limit":"none"}}}').limits).toEqual({ time: 'none', timeUsed: '', tokens: 'none', tokensUsed: null })

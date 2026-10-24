@@ -78,7 +78,7 @@ export interface TaskDetails {
   // history, not where the task stands.
   failureAt?: number | null
   failureStale?: boolean
-  limits?: { time: string, timeUsed: string, tokens: string, tokensUsed: number | null }
+  limits?: { time: string, timeUsed: string, tokens: string, tokensUsed: number | null, stopped?: 'time' | 'tokens' }
   // `preexisting`: there before the task (1.x gate.rs), not what it must fix.
   findings?: { severity: string, title: string, detail: string, preexisting?: boolean }[]
   failureStage: string
@@ -303,7 +303,7 @@ function parseTaskLimits(v: unknown): TaskDetails['limits'] {
   const stoppedTime = seconds === null ? '' : seconds >= 3600
     ? `${Math.floor(seconds / 3600)}h${Math.floor(seconds % 3600 / 60) ? `${Math.floor(seconds % 3600 / 60)}m` : ''}`
     : seconds >= 60 ? `${Math.floor(seconds / 60)}m${seconds % 60 ? `${seconds % 60}s` : ''}` : `${seconds}s`
-  return { time: str(time?.limit, 40), timeUsed: str(time?.used, 40) || stoppedTime, tokens: str(tokens?.limit, 40), tokensUsed: num(tokens?.total) ?? num(tokens?.used) }
+  return { ...(stopped?.what === 'time' || stopped?.what === 'tokens' ? { stopped: stopped.what } : {}), time: str(time?.limit, 40), timeUsed: str(time?.used, 40) || stoppedTime, tokens: str(tokens?.limit, 40), tokensUsed: num(tokens?.total) ?? num(tokens?.used) }
 }
 function parseFindings(v: unknown): NonNullable<TaskDetails['findings']> {
   const review = obj(v)

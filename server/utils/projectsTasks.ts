@@ -443,6 +443,8 @@ export async function raiseTaskLimit(machine: unknown, id: unknown, name: unknow
   }
   const row = await taskOf(m, tid)
   if (!row || row.archived || row.stage !== 'stopped' || row.state !== 'blocked') throw refused('retry')
+  const details = parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
+  if (!details.limits?.stopped || name !== `limit.${details.limits.stopped}`) throw new HerdrError('bad_action', 'Invalid settings')
   // CLI validates units and refuses invalid values without changing the task.
   const out = await command(m, ['set', name, value.trim(), '--task', tid])
   forget(m)

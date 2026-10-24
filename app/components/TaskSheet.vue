@@ -59,26 +59,32 @@ const actions = computed(() => (row.value ? withFinish(taskActions(row.value, fa
 const finishWhy = computed(() => { const c = row.value ? finishCase(row.value) : null; return c ? finishHint(c) : '' })
 const limitStopped = computed(() => row.value?.stage === 'stopped' && row.value?.state === 'blocked' && !archived.value)
 const limitOpen = ref(false)
-const limitName = ref('limit.time')
+const limitName = computed(() => failure.value?.limits?.stopped ? `limit.${failure.value.limits.stopped}` : null)
+const limitNotice = ref('')
 const limitValue = ref('')
 const resuming = ref(false)
+watch(limitName, () => { limitValue.value = ''; limitNotice.value = '' })
 function openLimit() {
-  limitName.value = 'limit.time'
+  limitNotice.value = ''
   limitValue.value = ''
   limitOpen.value = true
 }
 async function raiseLimit() {
   const task = props.task
-  if (!task || busy.value || offlineView.value || props.reachable === false || !limitStopped.value || !limitValue.value.trim()) return
+  if (!task || busy.value || offlineView.value || props.reachable === false || !limitStopped.value || !limitName.value || !limitValue.value.trim()) return
   const g = gen
   const machine = props.machine
   busy.value = true
   resuming.value = true
+  limitNotice.value = ''
   actionError.value = ''
   try {
     await api('/api/tasks/limit', { machine, id: task.id, name: limitName.value, value: limitValue.value.trim() })
-    if (g === gen) limitOpen.value = false
     await settle(g)
+    if (g === gen) {
+      if (!error.value && failure.value?.stage && failure.value.stage !== 'stopped') limitOpen.value = false
+      else limitNotice.value = tl('Limit saved. Resumption is not confirmed yet. It can take a few seconds; if the task stays stopped, choose a ceiling above its usage.', 'Plafond enregistré. La reprise n’est pas encore confirmée. Elle peut prendre quelques secondes ; si la tâche reste arrêtée, choisis un plafond supérieur à sa consommation.')
+    }
   } catch (e) { failed(e, g) }
   finally { if (g === gen) { busy.value = false; resuming.value = false } }
 }
@@ -225,6 +231,7 @@ watch([open, target], ([o]) => {
   gen++
   limitOpen.value = false
   limitValue.value = ''
+  limitNotice.value = ''
   resuming.value = false
   busy.value = false
   running.value = null
@@ -584,18 +591,15 @@ function chat() {
       <p v-if="limitStopped && embedded" class="task-finish-why">{{ finishWhy }}</p>
       <AppSheet v-model:open="limitOpen" :title="tl('Raise limit', 'Relever la limite')" top>
         <form class="sheet-form task-question" @submit.prevent="raiseLimit">
-          <p>{{ tl('Choose a new total limit. Usage is kept; the CLI resumes automatically. Enter none to explicitly remove the limit.', 'Choisis un nouveau plafond total. La consommation est conservée ; le CLI reprend automatiquement. Saisis none pour supprimer explicitement la limite.') }}</p>
-          <label for="task-limit-kind" class="field-label">{{ tl('Work limit', 'Limite de travail') }}</label>
-          <select id="task-limit-kind" v-model="limitName" :disabled="busy" @change="limitValue = ''">
-            <option value="limit.time">{{ tl('Time per run', 'Temps par tranche') }}</option>
-            <option value="limit.tokens">{{ tl('Tokens for the whole task', 'Jetons pour toute la tâche') }}</option>
-          </select>
+          <p>{{ tl('Choose a total ceiling above usage for the limit that stopped this task. Usage is kept; the CLI resumes automatically when this limit is lifted. Enter none to explicitly remove it.', 'Choisis un plafond total supérieur à la consommation pour la limite qui a arrêté cette tâche. La consommation est conservée ; le CLI reprend automatiquement quand cette limite est levée. Saisis none pour la supprimer explicitement.') }}</p>
+          <p id="task-limit-kind" class="field-label">{{ limitName === 'limit.time' ? tl('Reached limit: time per run', 'Limite atteinte : temps par tranche') : limitName === 'limit.tokens' ? tl('Reached limit: tokens for the whole task', 'Limite atteinte : jetons pour toute la tâche') : tl('The reached limit is not available. Refresh the task before changing a ceiling.', 'La limite atteinte n’est pas disponible. Actualise la tâche avant de modifier un plafond.') }}</p>
           <label for="task-limit-value" class="field-label">{{ limitName === 'limit.time' ? tl('New duration (e.g. 4h, 90m, none)', 'Nouvelle durée (ex. 4h, 90m, none)') : tl('New token count (e.g. 3m, 500k, none)', 'Nouvelle quantité de jetons (ex. 3m, 500k, none)') }}</label>
-          <UInput id="task-limit-value" v-model="limitValue" :disabled="busy" :maxlength="40" />
+          <UInput id="task-limit-value" v-model="limitValue" :disabled="busy || !limitName" :maxlength="40" />
+          <p v-if="limitNotice" role="status">{{ limitNotice }}</p>
           <p v-if="actionError" role="alert">{{ actionError }}</p>
           <div class="task-sheet-actions">
             <UButton color="neutral" variant="outline" :disabled="busy" @click="limitOpen = false">{{ tl('Cancel', 'Annuler') }}</UButton>
-            <UButton type="submit" :disabled="busy || offlineView || !limitValue.trim()" :loading="resuming">{{ resuming ? tl('Resuming…', 'Reprise…') : tl('Apply and resume', 'Appliquer et reprendre') }}</UButton>
+            <UButton type="submit" :disabled="busy || offlineView || !limitName || !limitValue.trim()" :loading="resuming">{{ resuming ? tl('Resuming…', 'Reprise…') : tl('Apply limit', 'Appliquer le plafond') }}</UButton>
           </div>
         </form>
       </AppSheet>
