@@ -29,7 +29,7 @@ test.afterEach(async () => {
 })
 test.afterAll(() => fs.rmSync(root, { recursive: true, force: true }))
 
-test('worker identity stays consistent during review on Home, Board and conversation', async ({ page }) => {
+test('worker identity stays consistent during review on Home, Board and conversation', async ({ page, request }) => {
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, 'task.json'), JSON.stringify({ ...row, link: { pane: CLAUDE_PANE, workspace: 'w1', ownsWorkspace: true, reviewer: { pane: CODEX_UPDATE_PANE, kind: 'codex' } } }))
   fs.mkdirSync(fallbackDir, { recursive: true })
@@ -38,6 +38,13 @@ test('worker identity stays consistent during review on Home, Board and conversa
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify([row, fallback]))
   fs.writeFileSync(path.join(root, 'details.json'), JSON.stringify({ task: row, agent: 'claude' }))
   await fakeHerdr('e2e.plugins', { plugins: [plugin] })
+  // Another spec may have filled Home's short-lived links cache. Wait
+  // for this fixture before Home's first read, rather than its next poll.
+  await expect.poll(async () => {
+    const response = await request.get('/api/tasks/links')
+    const board = await response.json()
+    return board.machines?.flatMap((machine: { tasks: { id: string }[] }) => machine.tasks.map(task => task.id)) ?? []
+  }, { timeout: 15_000 }).toContain(row.id)
   await page.goto('/')
   const homeRow = page.locator('.task-row').filter({ hasText: row.title }).first()
   await expect(homeRow.locator(':scope > .avatar')).toHaveClass(/claude/)
