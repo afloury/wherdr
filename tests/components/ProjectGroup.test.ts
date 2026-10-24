@@ -8,6 +8,7 @@ import { type Row, spaceRows } from '#shared/spaces'
 import { type LinkedTask, type Member, type ProjectSection, boardSections, linksFromTaskFile, tasksFromFiles } from '#shared/boardLinks'
 import { useBoardNow } from '~/composables/useBoardLinks'
 import { noteTab } from '~/composables/useWorkspaces'
+import { machineBarHidden, machineBarPick, machineBarSaved } from '~/composables/useMachineBar'
 
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigate)
@@ -176,6 +177,23 @@ describe('a repo group on the home list', () => {
     expect(w.find('.project-tree').exists()).toBe(false)
     expect(w.find('.project-remote').exists()).toBe(true)
     w.unmount()
+  })
+
+  it('a remote coordinator link switches the machine bar to its machine, shown again if hidden', async () => {
+    for (const hidden of [false, true]) {
+      const w = await mount(section({ coordinator: null, remote: { pane: 'abcd1234~w1:p1', machine: 'abcd1234' } }))
+      herdrState.value = { ...herdrState.value, machines: [
+        { key: '', label: 'Server', local: true, status: 'online', error: null },
+        { key: 'abcd1234', label: 'Build box', local: false, status: 'online', error: null }] }
+      machineBarHidden.value = hidden ? ['abcd1234'] : []
+      machineBarSaved.value = ''
+      expect(machineBarPick.value).toBe('')
+      await w.find('.project-remote').trigger('click')
+      expect(machineBarPick.value).toBe('abcd1234')
+      expect(machineBarHidden.value).toEqual([])
+      w.unmount()
+    }
+    machineBarSaved.value = '*'
   })
 
   it('a coordinator that asks something shows its question and answers in its row', async () => {

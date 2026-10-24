@@ -85,6 +85,7 @@ const leadLabel = computed(() => coordinatorLabel({ kind: 'project', repo: g.val
 function openRemote() {
   if (!g.value.remote) return
   haptic()
+  showMachineInBar(g.value.remote.machine)
   navigateTo(panePath(g.value.remote.pane))
 }
 const rowKey = (r: Row) => r.key

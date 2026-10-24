@@ -4,7 +4,7 @@
 // for the machines they do not place.
 import { sortMachines } from '#shared/machineOrder'
 import { flag, syncedRef } from './useSyncedSettings'
-import { BAR_ALL, groupedBarItems, barMachineSelection, barPick, readBarList, readBarPick, readMachineGroups } from '~/utils/machineBar'
+import { BAR_ALL, groupedBarItems, barMachineSelection, barPick, readBarList, readBarPick, readMachineGroups, setBarItemShown } from '~/utils/machineBar'
 
 const store = {
   get(k: string) { try { return localStorage.getItem(k) } catch { return null } },
@@ -62,6 +62,18 @@ export const machineBarPick = computed(() => barPick(machineBarSaved.value, mach
 export const machineBarSelection = computed(() => barMachineSelection(machineBarPick.value, machineGroups.value))
 export function pickMachineBar(id: string) {
   machineBarSaved.value = id
+}
+// A conversation opened from outside the list (a remote coordinator link):
+// its machine's bar item becomes current, shown again if hidden, as if the
+// conversation had been opened from the list.
+export function showMachineInBar(machine: string) {
+  const base = machineInfo(machine)?.baseKey ?? machine
+  const only = machineBarSelection.value
+  if (only === null || only.includes(base) || !machineBarItems.value.some(x => x.id === base)) return
+  if (machineBarHidden.value.includes(base)) machineBarHidden.value = setBarItemShown(machineBarHidden.value, base, true)
+  pickMachineBar(base)
+  const keys = machines.value.filter(m => (m.baseKey ?? m.key) === base).map(m => m.key)
+  if (keys.some(k => collapsedMachines.value.includes(k))) collapsedMachines.value = collapsedMachines.value.filter(k => !keys.includes(k))
 }
 export function resetMachineBar() {
   machineBarOrder.value = []
