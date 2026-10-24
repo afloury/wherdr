@@ -202,7 +202,7 @@ const FR: Record<string, string> = {
   'Files': 'Fichiers', 'Web search': 'Recherche web',
   'Subagent': 'Sous-agent', 'Tasks': 'Tâches', 'Tool': 'Outil', 'actions': 'actions',
   'Advisor': 'Conseiller', 'Background job done': 'Tâche de fond terminée', 'Agent message': 'Message d’un agent',
-  'Process': 'Processus', 'Background task': 'Tâche en arrière-plan', 'Scheduled task': 'Tâche planifiée', 'Show all': 'Tout afficher',
+  'Process': 'Processus', 'Background task': 'Tâche en arrière-plan', 'Show all': 'Tout afficher',
   'Show list': 'Afficher la liste', 'Collapse list': 'Réduire la liste', 'Continue': 'Continuer',
   'Sort ready': 'Trier les prêts', 'Herdr order': 'Ordre de Herdr', 'Recent activity': 'Activité récente',
   'Open terminal': 'Ouvrir le terminal',
