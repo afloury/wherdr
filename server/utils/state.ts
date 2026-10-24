@@ -1101,9 +1101,17 @@ async function enrich(next: HerdrState, snap: Json, machine: string, publish?: (
       }
     }
     if (!p.agent) return
-    // Outside `working`, we also look for a question: some (Codex's folder
-    // trust) do not make the agent `blocked` for Herdr.
-    if (p.status !== 'working') {
+    // Stop and relaunch in progress: Herdr may still report the old agent
+    // while it prints its exit and the shell prompt, which would read as a
+    // terminal to show. The restart owns the pane until the new agent is up;
+    // a failed one hands it back.
+    const owned = restarts.get(p.id)
+    if (owned && owned.phase !== 'failed') {
+      p.interaction = 'managed'
+      choicesCache.delete(p.id)
+    } else if (p.status !== 'working') {
+      // Outside `working`, we also look for a question: some (Codex's folder
+      // trust) do not make the agent `blocked` for Herdr.
       // Agent without a conversation or born less than 2 min ago (Codex sometimes reports
       // another pane's session, see transcripts.ts): screen watched.
       const young = !p.agentSession || (p.bornAt && Date.now() - p.bornAt < 120000)
