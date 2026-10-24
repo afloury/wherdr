@@ -89,7 +89,7 @@ const FR: Record<string, string> = {
   'This task is not archived': 'Cette tâche n’est pas archivée',
   'This task cannot be archived while an agent works on it': 'Cette tâche ne peut pas être archivée pendant qu’un agent y travaille',
   'Unknown action': 'Action inconnue', 'A task needs a title': 'Une tâche a besoin d’un titre',
-  'Invalid repo': 'Dépôt invalide', 'Invalid agent': 'Agent invalide', 'Invalid coordinator': 'Coordinateur invalide',
+  'Invalid repo': 'Dépôt invalide', 'Invalid agent': 'Agent invalide', 'Invalid effort': 'Effort invalide', 'Invalid coordinator': 'Coordinateur invalide',
   'Move up': 'Monter', 'Move down': 'Descendre', 'Reset order': 'Réinitialiser l’ordre',
   
   
@@ -441,7 +441,7 @@ const FR: Record<string, string> = {
   'Conversation compacted': 'Conversation compactée', 'Conversation cleared': 'Conversation effacée', 'Interrupted': 'Interrompu',
   'App is locked': 'app verrouillée', 'Origin refused': 'origine refusée', 'Not found': 'introuvable',
   'Waiting for your reply — details in the Terminal tab': 'En attente de ta réponse — détail dans l’onglet Terminal',
-  'Copy': 'Copier', 'Reply': 'Répondre', 'Reply to this passage': 'Répondre à ce passage', 'Show original message': 'Voir le message d’origine', 'Original message not found (further up the conversation?)': 'Message d’origine introuvable (plus haut dans la conversation ?)', 'Copy reply': 'Copier la réponse', 'No output': 'Aucune sortie', 'Copied': 'Copié', 'Copy pane ID': 'Copier l’ID du pane', 'Copy failed': 'Copie impossible',
+  'Copy': 'Copier', 'Reply': 'Répondre', 'Reply to this passage': 'Répondre à ce passage', 'Show original message': 'Voir le message d’origine', 'Original message not found (further up the conversation?)': 'Message d’origine introuvable (plus haut dans la conversation ?)', 'Copy reply': 'Copier la réponse', 'No output': 'Aucune sortie', 'Copied': 'Copié', 'Copy pane ID': 'Copier l’ID du pane', 'Copy failed': 'Copie impossible', 'Copy ID': 'Copier l’identifiant',
   'Quoted': 'Citée', 'Discuss': 'Discuter', 'Yes': 'Oui', 'No': 'Non', 'OK to all': 'Ok tout', 'Decisions': 'Décisions', 'Quoted questions': 'Citations', 'Remove quote': 'Retirer la citation',
   '⌘+click to open': '⌘+clic pour ouvrir', 'Ctrl+click to open': 'Ctrl+clic pour ouvrir',
   'Enter': 'Entrée', 'send': 'envoyer', 'suggestion': 'suggestion', 'Use suggestion': 'Utiliser la suggestion', 'new line': 'nouvelle ligne',
@@ -453,6 +453,8 @@ const FR: Record<string, string> = {
   'Change effort': 'Changer d’effort', 'Default (recommended)': 'Par défaut (recommandé)',
   'Effort': 'Effort', 'Effort level unavailable for this model': 'Niveau d’effort indisponible pour ce modèle',
   'Reading models…': 'Lecture des modèles…', 'Reload list': 'Relire la liste', 'For this session only': 'Pour cette session seulement',
+  'For this start only': 'Pour ce lancement seulement', 'Program’s default': 'Défaut du programme', 'Model’s default': 'Défaut du modèle',
+  'Models could not be read: Start uses the program alone.': 'Modèles illisibles : le lancement utilise le programme seul.',
   'The agent is working — change the model once it’s done.': 'L’agent travaille — change de modèle quand il a fini.',
   'The agent is waiting for an answer — reply first.': 'L’agent attend une réponse — réponds-lui d’abord.',
   'Model change already in progress': 'Changement de modèle déjà en cours',

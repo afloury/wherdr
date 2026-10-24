@@ -602,6 +602,41 @@ test('agents unchecked in Settings › Agents are not offered at Start; an unche
   await page.screenshot({ path: `.shots/board-1x-start-hidden-agents-${testInfo.project.name}.png` })
 })
 
+test('Start with a model and an effort: none by default, picked after the program, sent for this start', async ({ page }, testInfo) => {
+  fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
+  await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+  await page.route(url => new URL(url).pathname === '/api/tasks/models', route => {
+    const program = new URL(route.request().url()).searchParams.get('program')
+    return route.fulfill({ json: { program, models: ['gpt-6-sol', 'gpt-6-luna'], efforts: ['low', 'high', 'ultra'], only: [{ models: ['gpt-6-luna'], levels: ['low', 'high'] }] } })
+  })
+  const sent: unknown[] = []
+  await page.route(url => new URL(url).pathname === '/api/tasks/action', (route) => {
+    sent.push(route.request().postDataJSON())
+    return route.fulfill({ json: { ok: true, msg: 'started' } })
+  })
+  await page.goto('/#/board')
+  if (testInfo.project.name.includes('phone')) await page.locator('.board-seg').getByRole('button', { name: /^To do/ }).click()
+  await page.locator('.task-card', { hasText: 'In the backlog' }).click({ timeout: 15000 })
+  await page.locator('.board-panel-sheet').click()
+  const sheet = page.getByRole('dialog')
+  const model = sheet.locator('.task-start-model')
+  await expect(model.getByRole('button', { name: 'Model : Program’s default' })).toBeVisible()
+  await model.getByRole('button', { name: /^Model/ }).click()
+  await page.getByRole('menuitemcheckbox', { name: 'gpt-6-luna' }).click()
+  await model.getByRole('button', { name: /^Effort/ }).click()
+  await expect(page.getByRole('menuitemcheckbox')).toHaveText(['Model’s default', 'low', 'high'])
+  await page.getByRole('menuitemcheckbox', { name: 'high' }).click()
+  // Square, 1 px, inside the sheet on a phone: no sideways scroll.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: `.shots/board-1x-start-model-${testInfo.project.name}.png` })
+  const start = sheet.getByRole('button', { name: /^Start with/ })
+  await expect(start).toHaveText(/codex\/gpt-6-luna|claude\/gpt-6-luna/)
+  await start.click()
+  await expect.poll(() => sent.length).toBe(1)
+  expect(sent[0]).toMatchObject({ action: 'delegate', effort: 'high' })
+  expect((sent[0] as { agent: string }).agent).toMatch(/\/gpt-6-luna$/)
+})
+
 test('Archived:the archived tasks, each one\'s sheet read-only with Restore', async ({ page }, testInfo) => {
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
   fs.writeFileSync(path.join(root, 'archived.json'), JSON.stringify([
@@ -1043,7 +1078,7 @@ for (const lang of ['en', 'fr']) {
     await expect(panel.locator('.task-needs')).toContainText('Restore the lockfile')
     await expect(panel.locator('.agent-top')).toHaveCount(0)
     // A stale agent link must not make setup failure open a conversation.
-    await expect(panel.locator('.board-panel-tabs button')).toHaveCount(3)
+    await expect(panel.locator('.board-panel-tabs button')).toHaveText(['Conversation', 'Terminal', lang === 'fr' ? 'Tâche' : 'Task', lang === 'fr' ? 'Réglages' : 'Settings'])
     await expect(panel.locator('.board-panel-name .task-state')).toHaveText(lang === 'fr' ? 'À toi' : 'Needs you')
     await page.screenshot({ path: `.shots/task-panel-${lang}-setup-${testInfo.project.name}.png` })
     await panel.locator('.board-panel-tabs').getByRole('button', { name: 'Terminal', exact: true }).click()
@@ -1095,7 +1130,7 @@ for (const lang of ['en', 'fr']) {
     await page.reload()
     await page.goto('/#/board?machine=&task=demo%2F9')
     await expect(panel.locator('.task-sheet')).toContainText('Search supports titles and labels.')
-    await expect(panel.locator('.board-panel-tabs button')).toHaveText([lang === 'fr' ? 'Tâche' : 'Task'])
+    await expect(panel.locator('.board-panel-tabs button')).toHaveText([lang === 'fr' ? 'Tâche' : 'Task', lang === 'fr' ? 'Réglages' : 'Settings'])
     await expect(panel.locator('.task-setup')).toHaveCount(0)
     await expect(panel.locator('.task-needs')).toContainText('npm ci')
     await expect(page.getByRole('dialog')).toHaveCount(0)

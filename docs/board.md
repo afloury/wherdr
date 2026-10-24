@@ -45,11 +45,16 @@ What the Board shows and does:
   pull request and its review (pass or fail, with the findings by severity).
 - **A task** opens one compact side panel from the Board or its home row. The header names
   the machine, repo, task and agent program, with the Board's one state: Needs you, Ready to
-  approve, Working, To do or Done. **Conversation**, **Terminal** and **Task** sit below it.
+  approve, Working, To do or Done. **Conversation**, **Terminal**, **Task** and **Settings** sit below it.
   Task holds the description, closing note, report, pull request, review findings, limits,
   token use and actions; a dot marks a new closing note or review. The agent's own Herdr state
   is in a tooltip, separate from the task's state. The panel sits beside the Board on a
   computer (with a full-screen button) and fills the screen on a phone.
+- **Settings** reads the effective task settings from `show --json` on its machine when
+  opened. Agent, review, plan and attempts, limits, merge and workspace settings show their
+  value and source: task, repository, you, repository file or default. Source details,
+  CLI notes and problems stay visible. This view is read-only; unavailable or missing data
+  is stated explicitly. Board refreshes do not reread the settings.
 - **Needs you** shows where the task stands now: the Board's failure or question, its command
   output and next-step hint. A failure the task has moved on from (a later stage, or its agent
   started again) is not the banner, and gets no buttons: it stays in Task as an earlier failure.

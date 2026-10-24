@@ -515,11 +515,51 @@ export function addArgs(t: NewTask): string[] {
 // Start with another agent, for this start only: `delegate --worker.agent=<kind>
 // -- <id>` is a work setting for this task (1.x "any work setting, for this
 // task only"); the repo's and the user's defaults are not touched. No agent:
-// the task's own default, exactly as before.
-const AGENT_NAME_RE = /^[a-z][a-z0-9-]{0,39}$/
+// the task's own default, exactly as before. The agent can name a model
+// (`codex/gpt-6-sol`, `pi/<provider>/<model>`) and `--worker.effort` a level:
+// the CLI checks both and says which names it takes.
+const PROGRAM_RE = /^[a-z][a-z0-9-]{0,39}$/
+const AGENT_NAME_RE = /^[a-z][a-z0-9-]{0,39}(?:\/[A-Za-z0-9][\w.:[\]-]{0,79}){0,2}$/
+export const isProgramName = (v: unknown): v is string => typeof v === 'string' && PROGRAM_RE.test(v)
 export const isAgentName = (v: unknown): v is string => typeof v === 'string' && AGENT_NAME_RE.test(v)
-export function delegateArgs(id: string, agent?: string | null, after?: string[] | null): string[] {
-  return ['delegate', ...(agent ? [`--worker.agent=${agent}`] : []), ...(after?.length ? [`--after=${after.join(',')}`] : []), '--', id]
+const EFFORT_RE = /^[a-z][a-z0-9-]{0,19}$/
+export const isEffortName = (v: unknown): v is string => typeof v === 'string' && EFFORT_RE.test(v)
+export function delegateArgs(id: string, agent?: string | null, after?: string[] | null, effort?: string | null): string[] {
+  return ['delegate', ...(agent ? [`--worker.agent=${agent}`] : []), ...(effort ? [`--worker.effort=${effort}`] : []), ...(after?.length ? [`--after=${after.join(',')}`] : []), '--', id]
+}
+
+// `models <program>`: a sentence, one `program/model` line per model it takes,
+// then `Effort (…): low, medium, high (from …); a, b only low, medium.`
+// `models`: the model part only (`gpt-6-sol`, `openai/gpt-5` for pi).
+// `efforts`: the levels for every model, `only` those some models are limited to.
+export interface StartModels { program: string, models: string[], efforts: string[], only: { models: string[], levels: string[] }[] }
+const words = (s: string) => s.replace(/\([^)]*\)/g, ' ').replace(/`/g, ' ').split(',').map(w => w.trim().replace(/\.$/, '')).filter(w => EFFORT_RE.test(w) || AGENT_NAME_RE.test(`x/${w}`))
+export function parseModels(stdout: string, program: string): StartModels {
+  const out: StartModels = { program, models: [], efforts: [], only: [] }
+  for (const raw of stdout.split('\n')) {
+    const l = raw.trim()
+    const effort = /^effort\b[^:]*:\s*(.*)$/i.exec(l)
+    if (effort) {
+      const [all = '', ...rest] = effort[1]!.split(';')
+      out.efforts = words(all).filter(w => EFFORT_RE.test(w))
+      for (const part of rest) {
+        const m = /^(.*?)\s+only\s+(.*)$/i.exec(part.trim())
+        if (!m) continue
+        const levels = words(m[2]!).filter(w => EFFORT_RE.test(w))
+        const models = words(m[1]!)
+        if (levels.length && models.length) out.only.push({ models, levels })
+      }
+      continue
+    }
+    if (l.startsWith(`${program}/`) && isAgentName(l) && !out.models.includes(l.slice(program.length + 1))) out.models.push(l.slice(program.length + 1))
+  }
+  return out
+}
+// The levels a model takes: its own limit, else every level. No model: none
+// (the program's own model is not known here).
+export function effortsFor(m: StartModels | null | undefined, model: string | null | undefined): string[] {
+  if (!m || !model) return []
+  return m.only.find(o => o.models.includes(model))?.levels ?? m.efforts
 }
 
 // `delegate --after`: the tasks to wait for, as a person names them: an id
@@ -589,8 +629,8 @@ export function parseBoardAgents(stdout: string): number | null {
 // task`) and reads it at every start of its agent, so it stays for the run;
 // afterwards wherdr puts back what the task had: its own value (`set`), or
 // none (`unset`: its repo's or the user's default applies again).
-export function restoreAgentArgs(id: string, prev: string | null): string[] {
-  return prev ? ['set', `--task=${id}`, '--', 'worker.agent', prev] : ['unset', `--task=${id}`, '--', 'worker.agent']
+export function restoreAgentArgs(id: string, prev: string | null, name: 'worker.agent' | 'worker.effort' = 'worker.agent'): string[] {
+  return prev ? ['set', `--task=${id}`, '--', name, prev] : ['unset', `--task=${id}`, '--', name]
 }
 // A run is over, so the agent picked for it can be taken back: the task is
 // back in the backlog, or done. (A task that waits for another, `after`, or
@@ -615,6 +655,15 @@ export function parseWorkerAgent(stdout: string): TaskAgent | null {
   const value = row && typeof row.value === 'string' ? row.value.trim().slice(0, 120) : ''
   if (!value) return null
   return { value, kind: agentKind(value), place: str(row!.place, 40), from: str(row!.from, 200) }
+}
+// The task's `worker.effort` (a level picked for one start is put back too).
+export function parseWorkerEffort(stdout: string): { value: string, place: string } | null {
+  let v: unknown
+  try { v = JSON.parse(stdout) } catch { return null }
+  const list = obj(v)?.settings
+  const row = Array.isArray(list) ? list.map(obj).find(r => r?.name === 'worker.effort') : null
+  const value = row && typeof row.value === 'string' ? row.value.trim().slice(0, 40) : ''
+  return value ? { value, place: str(row!.place, 40) } : null
 }
 
 // Who the Board's chat talks to on a machine: its Coordinator (one per Herdr
