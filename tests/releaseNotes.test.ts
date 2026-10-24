@@ -42,7 +42,7 @@ it('refuses a prerelease without current change descriptions', () => {
 })
 
 it('summarizes the versioned unreleased section used by the repository', () => {
-  const changelog = '# Changelog\n\n## 2.0.1 (unreleased)\n\n- A future patch improves task navigation.\n\n## [2.0.0] — 2026-10-24\n- Stable changes.'
+  const changelog = '# Changelog\n\n## 2.0.1 (unreleased)\n\n- A future patch improves task navigation across machines. Tasks keep their current selection when a machine reconnects.\n\n## [2.0.0] — 2026-10-24\n- Stable changes.'
   const notes = prereleaseSummary(changelog, 'example/wherdr', 'a'.repeat(40))
   expect(notes).toContain(changelog.split('\n').find(line => line.startsWith('- ')))
   expect(notes).not.toContain('## [2.0.0]')

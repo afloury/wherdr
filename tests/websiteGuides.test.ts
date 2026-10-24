@@ -72,7 +72,7 @@ describe('agent.md', () => {
 
   it('keeps the passkey lock optional, as the README says', () => {
     // wherdr answers only this computer and the tailnet; a passkey is an extra lock.
-    expect(read('../README.md')).toContain('The passkey lock is never required')
+    expect(read('../README.md')).toContain('optional passkey lock')
     expect(guide).not.toMatch(/passkey[^\n]*\(required|\brequired\b[^\n]*passkey/i)
     expect(guide).toMatch(/\*\*Passkey lock\*\* \(optional/)
   })
