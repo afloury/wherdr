@@ -9,6 +9,9 @@ test.afterEach(async () => {
 })
 
 test('a queued message explains the terminal draft and offers clear or terminal', async ({ page, request }, info) => {
+  // Two page loads, pane refreshes and optional phone/desktop captures share
+  // this scenario's budget; keep each assertion's normal timeout.
+  test.setTimeout(60_000)
   await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: screen('ns'), agent: 'claude', status: 'idle' })
   // The fake terminal changes immediately, while the app refreshes its pane
   // snapshot on a poll. Sending against the old omp snapshot bypasses Claude's
