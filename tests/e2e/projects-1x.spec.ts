@@ -39,6 +39,8 @@ case "$1" in
       elif [ -f "${told}/$co" ]; then echo '{"state":"starting","pane":""}'; else echo '{"state":"none","pane":""}'; fi ;;
     *) : > "${told}/$co"; echo "sent to the Coordinator" ;;
   esac ;;
+  # Autopilot (1.2.15+): every coordinator of the machine, all off.
+  autopilot) echo '[]' ;;
   add) echo "demo/7: added" ;;
   # delegate --worker.agent=X keeps X as the task's own setting, as 1.x does; set/unset --task change it.
   # A refusal the spec writes (a wait in a circle…) is said on stderr, as 1.x does.
@@ -1078,7 +1080,7 @@ for (const lang of ['en', 'fr']) {
     await expect(panel.locator('.task-needs')).toContainText('Restore the lockfile')
     await expect(panel.locator('.agent-top')).toHaveCount(0)
     // A stale agent link must not make setup failure open a conversation.
-    await expect(panel.locator('.board-panel-tabs button')).toHaveText(['Conversation', 'Terminal', lang === 'fr' ? 'Tâche' : 'Task'])
+    await expect(panel.locator('.board-panel-tabs button')).toHaveText(['Conversation', 'Terminal', lang === 'fr' ? 'Tâche' : 'Task', lang === 'fr' ? 'Réglages' : 'Settings'])
     await expect(panel.locator('.board-panel-name .task-state')).toHaveText(lang === 'fr' ? 'À toi' : 'Needs you')
     await page.screenshot({ path: `.shots/task-panel-${lang}-setup-${testInfo.project.name}.png` })
     await panel.locator('.board-panel-tabs').getByRole('button', { name: 'Terminal', exact: true }).click()
@@ -1130,7 +1132,7 @@ for (const lang of ['en', 'fr']) {
     await page.reload()
     await page.goto('/#/board?machine=&task=demo%2F9')
     await expect(panel.locator('.task-sheet')).toContainText('Search supports titles and labels.')
-    await expect(panel.locator('.board-panel-tabs button')).toHaveText([lang === 'fr' ? 'Tâche' : 'Task'])
+    await expect(panel.locator('.board-panel-tabs button')).toHaveText([lang === 'fr' ? 'Tâche' : 'Task', lang === 'fr' ? 'Réglages' : 'Settings'])
     await expect(panel.locator('.task-setup')).toHaveCount(0)
     await expect(panel.locator('.task-needs')).toContainText('npm ci')
     await expect(page.getByRole('dialog')).toHaveCount(0)

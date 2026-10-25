@@ -8,6 +8,13 @@ A major upgrade from **1.3.4**, with the new work board and a native service.
 
 ## New
 
+Notifications use one default level and coordinator or agent exceptions, with a separate
+sub-agent switch (#157). Task panels include read-only effective settings and their
+provenance (#163). Start offers a model and effort for this run (#165); task keys can
+be copied with a click or tap (#168). Tasks stopped at a limit offer Continue or a
+higher limit (#167). Remote coordinator links select their machine (#169), and
+restarting an agent keeps its terminal closed (#164).
+
 The new Board works with herdr-projects 1.2.1 or later across your machines: create,
 start, queue, stop, retry, approve and archive tasks, set dependencies, and talk to
 project coordinators. Task panels bring together the conversation, terminal, review,
@@ -72,6 +79,6 @@ with a tap-to-copy fallback when a browser requires a gesture.
    in Settings; that choice follows you to other devices. Check Settings and the Board
    after updating. The migration guide also documents rollback.
 
-PRs #153, #154, #155, #157, #163 and #71 are deferred to 2.0.1.
+PRs #153, #154, #155 and #71 are deferred to 2.0.1.
 
 [Full changelog](https://github.com/afloury/wherdr/blob/v2.0.0/CHANGELOG.md)

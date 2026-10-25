@@ -10,13 +10,16 @@ import { finishHint, finishLabel, finishOffered, finishQuestion, finishTitle } f
 import { blockChoices, blockKind, blockKindLabel, offersAlways, permissionReply, questionMessage } from '~/utils/blockNotice'
 import { reviewerWait } from '~/utils/reviewerWait'
 import { type PaneViewMode, allSessionsState, chooseMachineSession } from '~/composables/useHerdr'
+import { useAutopilot } from '~/composables/useAutopilot'
 
 export type PanelTarget =
   | { machine: string, kind: 'task', id: string, chat?: boolean }
   | { machine: string, kind: 'coordinator', to: CoordinatorTarget, freshProject?: boolean }
 
 // `reachable`: its machine's board answers now (a message waits while it does not).
-const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, reachable?: boolean, refresh?: () => Promise<unknown> }>()
+const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, reachable?: boolean, refresh?: () => Promise<unknown>, refreshKey?: number }>()
+// A switch's action: the Scheduled section reads the Autopilot again.
+const { actions: autopilotActions } = useAutopilot()
 const launchAgent = ref('__default')
 const launchModel = ref('')
 const launchEffort = ref('__default')
@@ -204,7 +207,7 @@ function severityLabel(s: string) {
 }
 
 function tabLabel(tab: TaskPanelTab) {
-  return tab === 'chat' ? t('Conversation') : tab === 'term' ? t('Terminal') : tab === 'reviewer' ? tl('Reviewer', 'Relecteur') : tl('Task', 'Tâche')
+  return tab === 'settings' ? tl('Settings', 'Réglages') : tab === 'chat' ? t('Conversation') : tab === 'term' ? t('Terminal') : tab === 'reviewer' ? tl('Reviewer', 'Relecteur') : tl('Task', 'Tâche')
 }
 
 // ------------------------------------------------- a reviewer that needs you
@@ -270,6 +273,7 @@ const views = computed(() => ({
   chat: Boolean(taskPane.value) || tellOnly.value || Boolean(failureDetail.value && !needs.value),
   term: Boolean(taskPane.value),
   reviewer: Boolean(reviewerPane.value),
+  settings: props.target.kind === 'task',
 }))
 const tabs = computed(() => taskPanelTabs(views.value))
 const selected = computed(() => taskPanelTab(views.value, choice.value))
@@ -606,8 +610,11 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       />
     </header>
 
+    <div v-if="target.kind === 'coordinator'" class="board-panel-autopilot">
+      <CoordinatorAutopilot :key="JSON.stringify(target)" :machine="target.machine" :to="target.to" :disabled="!reachable" />
+    </div>
     <nav v-if="target.kind === 'task' && settled" class="board-panel-tabs" :aria-label="tl('Task views', 'Vues de la tâche')">
-      <button v-for="tab in tabs" :key="tab" type="button" :class="{ on: selected === tab, 'board-panel-tab-reviewer': tab === 'reviewer', asks: tab === 'reviewer' && rvWait === 'open' }" :aria-pressed="selected === tab" :aria-label="tabLabel(tab)" :aria-description="tab === 'task' && newNote ? tl('New task details', 'Nouveaux détails de la tâche') : undefined" :title="tab === 'task' ? undefined : tab === 'reviewer' ? reviewerHint : agentHint" @click="choose(tab)">
+      <button v-for="tab in tabs" :key="tab" type="button" :class="{ on: selected === tab, 'board-panel-tab-reviewer': tab === 'reviewer', asks: tab === 'reviewer' && rvWait === 'open' }" :aria-pressed="selected === tab" :aria-label="tabLabel(tab)" :aria-description="tab === 'task' && newNote ? tl('New task details', 'Nouveaux détails de la tâche') : undefined" :title="tab === 'task' || tab === 'settings' ? undefined : tab === 'reviewer' ? reviewerHint : agentHint" @click="choose(tab)">
         {{ tabLabel(tab) }}<i v-if="tab === 'task' && newNote" class="task-new" aria-hidden="true" />
       </button>
     </nav>
@@ -673,9 +680,13 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <p v-if="actionError" class="error">{{ actionError }}</p>
     </section>
 
+    <CoordinatorScheduled v-if="target.kind === 'coordinator'" :machine="target.machine" :target="target.to" :refresh-key="(refreshKey ?? 0) + autopilotActions" />
+
     <div class="board-panel-body">
       <p v-if="target.kind === 'task' && settled && failed && selected === 'task'" class="board-note error">{{ failed }}</p>
+      <TaskSettings v-if="target.kind === 'task' && settled" v-show="selected === 'settings'" :machine="target.machine" :id="target.id" :active="selected === 'settings'" :reachable="reachable" />
       <TaskSheet :limit-request="limitRequest" v-if="target.kind === 'task' && settled && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :reachable="reachable" :refresh="refreshTask" @chat="choose('chat')" @coordinator="(machine, task) => emit('coordinator', machine, task)" @archived="archivedTask" @restored="restoredTask" />
+      <template v-else-if="selected === 'settings'" />
       <template v-else-if="target.kind === 'task' && selected === 'reviewer' && reviewerPane">
         <div class="board-panel-reviewer-bar">
           <span class="board-panel-reviewer-who">{{ tl('Reviewer', 'Relecteur') }}<template v-if="reviewerAgent"> · {{ statusLabel(reviewerAgent) }}</template></span>
