@@ -51,7 +51,10 @@ export interface TaskRow {
 export interface TaskAttempt { letter: string, agent: string, standing: string, stage: string, stat: string }
 export interface TaskComparison { pick: string, why: string, error: string, notes: Record<string, string> }
 
+export interface TaskHandover { at: number | null, role: string, from: string, to: string, why: string }
+
 export interface TaskDetails {
+  handovers?: TaskHandover[]
   attempts?: TaskAttempt[]
   comparison?: TaskComparison | null
   id: string
@@ -314,6 +317,23 @@ function parseFindings(v: unknown): NonNullable<TaskDetails['findings']> {
   })
 }
 
+// CLI 1.2.16: oldest first, { at (milliseconds), role, from, to, why }.
+// Keep partial records without guessing a role, participant or date. Undated
+// records follow dated ones in their original order. Identity uses raw history.
+export function parseTaskHandovers(value: unknown): TaskHandover[] {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, 500).flatMap(value => {
+    const h = obj(value)
+    if (!h) return []
+    const at = num(h.at)
+    const record = {
+      at: at !== null && at >= 0 && at <= 8640000000000000 ? at : null,
+      role: str(h.role, 80), from: str(h.from, 160), to: str(h.to, 160), why: str(h.why, 2000),
+    }
+    return record.at !== null || record.role || record.from || record.to || record.why ? [record] : []
+  }).sort((a, b) => (a.at ?? Infinity) - (b.at ?? Infinity))
+}
+
 export function parseTaskDetails(text: string): TaskDetails {
   let v: unknown
   try { v = JSON.parse(text) } catch { throw new Error('herdr-projects details: not JSON') }
@@ -322,6 +342,7 @@ export function parseTaskDetails(text: string): TaskDetails {
   if (!d || !t || !isTaskId(t.id)) throw new Error('herdr-projects details: unexpected reply')
   const plan = obj(d.plan)
   return {
+    handovers: parseTaskHandovers(d.handovers),
     attempts: parseTaskAttempts(d.attempts),
     comparison: parseTaskComparison(d.comparison),
     id: t.id,
@@ -848,6 +869,7 @@ export function detailsFromTaskFile(t: unknown): TaskDetails | null {
   if (!o || !isTaskId(o.id)) return null
   return parseTaskDetails(JSON.stringify({
     task: { id: o.id, title: o.title, stage: o.stage, msg: o.msg, description: o.description, summary: o.summary, archivedAt: o.archivedAt ?? null },
+    handovers: o.handovers,
     report: o.report ?? null,
     failure: o.failure ?? o.prFailure ?? null, limits: o.limits, review: o.review ?? null, reviews: [],
     // The program on it: `on` while one works, then `agent`, as `details` gives it; else the row's `app`.
