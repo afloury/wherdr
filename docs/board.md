@@ -34,11 +34,6 @@ so a machine that ran `herdr-projects update` to a newer release is never taken 
 > [docs/herdr-projects-1x.md](herdr-projects-1x.md). wherdr 1.3.4 is the last version
 > that reads herdr-projects 0.2.
 
-The machine selector follows the selected sidebar tab when the Board opens and
-when the tab changes. You can then choose another scope manually; it stays selected
-through refreshes and visits to the Board until you change sidebar tabs. With no
-selected tab, or no Board machine in that tab, the existing scope is kept.
-
 What the Board shows and does:
 
 - **The board's groups**: needs you, ready to approve, working, to do. **Done** is history, so it

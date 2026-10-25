@@ -2,7 +2,6 @@
 // current choice. The home list's machine order (server side,
 // /api/machine/order) lives here too: the bar and its settings list follow it
 // for the machines they do not place.
-import { boardTabChoice } from '~/utils/boardScope'
 import { sortMachines } from '#shared/machineOrder'
 import { flag, syncedRef } from './useSyncedSettings'
 import { BAR_ALL, groupedBarItems, barMachineSelection, barPick, readBarList, readBarPick, readMachineGroups, setBarItemShown } from '~/utils/machineBar'
@@ -59,9 +58,6 @@ export const machineBarShown = computed(() => (machineBarOn.value
   ? machineBarItems.value.filter(x => x.shown).map(x => x.id)
   : []))
 export const machineBarPick = computed(() => barPick(machineBarSaved.value, machineBarShown.value))
-// Track tab changes even while the Board is closed: returning to a previous
-// tab starts from that tab's scope rather than an earlier manual choice.
-watch(machineBarPick, pick => boardTabChoice.followTab(pick), { immediate: true, flush: 'sync' })
 // Ordered base keys shown by the selection, or null for every machine.
 export const machineBarSelection = computed(() => barMachineSelection(machineBarPick.value, machineGroups.value))
 export function pickMachineBar(id: string) {
