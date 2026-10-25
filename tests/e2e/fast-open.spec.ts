@@ -87,11 +87,13 @@ async function open(page: Page) {
     // How many user messages were on the page when the last reply first showed.
     const w = window as unknown as { firstUsers: number | null }
     w.firstUsers = null
-    const look = () => {
-      if (document.querySelector('.chat-list')?.textContent?.includes('All steps done.')) w.firstUsers = document.querySelectorAll('.chat-list .msg-user-wrap').length
-      else requestAnimationFrame(look)
-    }
-    requestAnimationFrame(look)
+    // Observe the first DOM commit before idle callbacks can add more blocks.
+    const observer = new MutationObserver(() => {
+      if (!document.querySelector('.chat-list')?.textContent?.includes('All steps done.')) return
+      w.firstUsers = document.querySelectorAll('.chat-list .msg-user-wrap').length
+      observer.disconnect()
+    })
+    observer.observe(document, { childList: true, subtree: true })
   })
   await page.goto(`/#/a/${CLAUDE_SUGGEST_PANE}`)
 }
@@ -134,4 +136,41 @@ test('a conversation: its shapes while nothing is kept, then the end kept at onc
   await expect(page.locator('.chat-cached')).toContainText(/Read at \d/)
   await shot(page, 'chat-cached', testInfo.project.name)
   await expect(page.locator('.chat-cached')).toHaveCount(0, { timeout: 6000 })
+})
+
+test('a fresh empty conversation wins over an older cache that arrives later', async ({ page }) => {
+  await open(page)
+  await expect(page.locator('.chat-list')).toContainText('All steps done.')
+  await page.waitForTimeout(3000)
+  await page.addInitScript(() => {
+    const get = IDBObjectStore.prototype.get
+    IDBObjectStore.prototype.get = function (key) {
+      const request = get.call(this, key)
+      if (this.name !== 'chats') return request
+      // Delay only delivery of the cached conversation, not the network.
+      return new Proxy(request, {
+        get(target, name) { return Reflect.get(target, name, target) },
+        set(target, name, value) {
+          if (name === 'onsuccess') {
+            target.onsuccess = event => setTimeout(() => value.call(target, event), 1200)
+            return true
+          }
+          return Reflect.set(target, name, value, target)
+        },
+      })
+    }
+  })
+  let answered = false
+  await page.route('**/api/chat?*', async route => {
+    if (new URL(route.request().url()).searchParams.get('pane') !== CLAUDE_SUGGEST_PANE) return route.continue()
+    const response = await route.fetch()
+    const body = await response.json()
+    await route.fulfill({ json: { ...body, available: true, unchanged: false, items: [], start: 0 } })
+    answered = true
+  })
+  await page.reload()
+  await expect.poll(() => answered).toBe(true)
+  await page.waitForTimeout(1800)
+  await expect(page.locator('.chat-list')).not.toContainText('All steps done.')
+  await expect(page.locator('.chat-cached')).toHaveCount(0)
 })

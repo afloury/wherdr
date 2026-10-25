@@ -69,7 +69,7 @@ async function restoreChat() {
   if (!mayReadOffline(readOfflineAccess())) return
   const id = props.pane.id
   const saved = await readChat(id)
-  if (!saved || items.value.length || id !== props.pane.id) return
+  if (!saved || synced || rendered.value || unavailable.value || id !== props.pane.id) return
   await apply(() => {
     chat.value = { ...fresh(), tail: saved.items }
     savedAt.value = saved.at
