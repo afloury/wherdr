@@ -374,6 +374,8 @@ const NOTICE: Record<string, [string, string]> = {
   'launch-completion': ['Process', 'i-lucide-cpu'],
   'lsp-late-diagnostic': ['Diagnostics', 'i-lucide-triangle-alert'],
   'background-tan-dispatch': ['Background task', 'i-lucide-bot'],
+  // Prompt a scheduled task gave Claude Code (see server/utils/transcripts.ts).
+  'scheduled': ['Scheduled task', 'i-lucide-clock'],
 }
 
 const UPLOAD_RE = /\/\.cache\/herdr-web\/uploads\/\S+/g
@@ -386,7 +388,7 @@ type Block =
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
   | { k: 'system', key: string, text: string }
-  | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean }
+  | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean, scheduled?: boolean }
   | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean }
   | { k: 'ompRun', key: string, tool: ChatItem & { omp: OmpToolView } }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
@@ -483,7 +485,7 @@ const blocks = computed<Block[]>(() => {
         lastDay = day
       }
     }
-    if (it.role === 'user' || it.role === 'cmd' || it.role === 'bash') {
+    if (it.role === 'user' || it.role === 'cmd' || it.role === 'bash' || (it.role === 'notice' && it.name === 'scheduled')) {
       flush()
       closeTurn()
       needWho = true
@@ -537,7 +539,8 @@ const blocks = computed<Block[]>(() => {
       out.push({ k: 'shell', key: `s:${it.ts}:${it.text.slice(0, 40)}`, bash: it.role === 'bash', text: it.text, out: o, err: e, lines, long: lines > SHELL_LINES || o.length + e.length > 1500 })
     } else if (it.role === 'notice') {
       const [label, icon] = NOTICE[it.name || ''] || [it.name || 'Note', 'i-lucide-info']
-      out.push(lazyHtml({ k: 'notice' as const, key, label: t(label), icon, long: it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 }, () => md(it.text)))
+      // A scheduled prompt starts folded: it is not what the user wrote.
+      out.push(lazyHtml({ k: 'notice' as const, key, label: t(label), icon, scheduled: it.name === 'scheduled', long: it.name === 'scheduled' || it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 }, () => md(it.text)))
     } else {
       const effort = it.role === 'system' ? it.text.match(/^Effort : (low|medium|high|xhigh|max|ultracode) \(cette session\)$/) : null
       // Local "/" command: one-line system separator ("/cost → …").
@@ -931,7 +934,9 @@ const queuedList = computed(() => {
   const mine = withOutbox(readOnly.value ? [] : (p.queued || []).filter(q => !q.back), props.localQueued)
   const memory = rememberSent(p.id, mine)
   const replies = blocks.value.filter(b => b.k === 'assistant')
-  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory }).map((q) => {
+  // Agent idle, nothing holding it: Claude's own queue is empty by now.
+  const idle = queueReason(p, {}) === 'sending'
+  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle }).map((q) => {
     const lines = q.raw.split('\n')
     const text = lines.filter(l => !isUploadLine(l) && !isAttachmentLine(l)).join('\n').trim()
     const parsed = parseReply(text)
@@ -1450,7 +1455,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <OmpTool :tool="b.tool" run />
               </div>
               <div v-else-if="b.k === 'system'" class="msg-system"><span>{{ b.text }}</span></div>
-              <div v-else-if="b.k === 'notice'" class="msg-notice" :class="{ long: b.long, open: isOpen(b.key) }">
+              <div v-else-if="b.k === 'notice'" class="msg-notice" :class="{ long: b.long, open: isOpen(b.key), scheduled: b.scheduled }">
                 <div class="msg-notice-head"><UIcon :name="b.icon" /><span>{{ b.label }}</span></div>
                 <ChatMarkdown class="msg-notice-body md" :html="b.html" :typing="null" />
                 <button v-if="b.long" type="button" class="msg-shell-more" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
