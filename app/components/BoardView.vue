@@ -605,7 +605,7 @@ function back() {
     </template>
     <BoardPanel
       v-if="panel" :key="panelKey" :target="panel" :task="panelTask"
-      :refresh="reload" :machine-label="machineLabel(panel.machine)" :reachable="ready.some(m => m.machine === panel!.machine)"
+      :refresh="reload" :refresh-key="reads" :machine-label="machineLabel(panel.machine)" :reachable="ready.some(m => m.machine === panel!.machine)"
       @archived="onArchived" @restored="onRestored" @changed="reload" @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent" @coordinator="askCoordinator"
     />
     <TaskSheet

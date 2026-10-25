@@ -13,6 +13,8 @@
 //    command at a time per machine, a list reused for REUSE_MS, the last list
 //    kept (marked stale) when a read outlives READ_DEADLINE_MS.
 // Only where Herdr reports a 1.x from 1.2.1 on (shared/projectsPlugin.ts).
+import { autopilotNextAt, parseAutopilot, parseAutomations, reconstructTimers, type Scheduled } from '../../shared/scheduled'
+import { machineOfPane } from './machines'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
@@ -672,4 +674,67 @@ export async function pickTask(machine: unknown, id: unknown, letter: unknown, c
   const out = await command(m, ['pick', '--', tid, letter])
   forget(m)
   return { ok: true, msg: firstLine(out) }
+}
+
+// Read only, requested when the Scheduled disclosure opens or the board refreshes.
+export async function coordinatorScheduled(machine: unknown, to: unknown): Promise<Scheduled> {
+  const m = boardOf(machine)
+  const target = cleanTarget(to)
+  if (!target) throw new HerdrError('bad_target', 'Invalid coordinator')
+  const out: Scheduled = { autopilot: null, automations: [], timers: [], timezone: 'UTC', warnings: [] }
+  try {
+    if (m.local) out.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    else {
+      const r = await m.exec!('if [ -f /etc/timezone ]; then cat /etc/timezone; else readlink /etc/localtime; fi', [], { timeoutMs: 4000, maxBytes: 1024 })
+      const zone = r.stdout.toString('utf8').trim().replace(/^.*zoneinfo\//, '')
+      new Intl.DateTimeFormat('en', { timeZone: zone }).format()
+      out.timezone = zone
+    }
+  } catch { out.warnings.push('Machine time zone unavailable; using UTC') }
+  try { out.autopilot = parseAutopilot(await command(m, ['autopilot', '--json'], LIST_TIMEOUT_MS), target) }
+  catch { out.warnings.push('Autopilot unavailable') }
+  try {
+    out.automations = parseAutomations(await command(m, ['automations', '--json'], LIST_TIMEOUT_MS), target)
+    for (const automation of out.automations) {
+      if (!/^[a-f0-9]{8}$/.test(automation.id)) continue
+      try {
+        const file = path.posix.join(m.home, '.herdr-projects/data/automations/firings', `${automation.id}.jsonl`)
+        const stat = await m.fs.stat(file)
+        if (stat.size > 1024 * 1024) continue
+        const lines = (await m.fs.readFile(file)).trim().split('\n').slice(-5)
+        const tasks = lines.flatMap(line => {
+          try { const f = JSON.parse(line); return typeof f.task === 'string' && isTaskId(f.task) ? [f.task] : [] }
+          catch { return [] }
+        }).reverse()
+        automation.tasks = [...new Set(tasks)]
+      } catch { /* The list still carries the latest task on older installs. */ }
+    }
+  }
+  catch { out.warnings.push('Automations unavailable') }
+  try {
+    // Raw state supplements the human-readable CLI dates without changing it.
+    const folder = path.posix.join(m.home, '.herdr-projects/data/coordinator', m.session || 'default',
+      ...(target.kind === 'machine' ? ['machine'] : target.kind === 'project' ? ['projects', target.repo] : []))
+    const state = JSON.parse(await m.fs.readFile(path.posix.join(folder, 'state.json')))
+    if (out.autopilot?.on && state.autopilot) {
+      const p = state.autopilot
+      const next = autopilotNextAt(p.timerAt, out.autopilot)
+      if (next) out.autopilot.next = next
+      if (Array.isArray(p.wakes) && p.wakes.length) out.autopilot.last = Math.max(...p.wakes.map((w: { at?: number }) => w.at || 0)) || out.autopilot.last
+    }
+  } catch { /* Older board versions need only the CLI. */ }
+  try {
+    const status = await coordinatorPane(machine, target)
+    const pane = status.pane ? findPane(status.pane) : undefined
+    if (pane?.agent === 'claude') {
+      const owner = machineOfPane(pane.id)
+      const loc = owner && await owner.transcripts.locate(pane)
+      if (owner && loc) {
+        const stat = await owner.fs.stat(loc.file)
+        if (stat.size > 24 * 1024 * 1024) out.warnings.push('Session transcript too large to reconstruct timers')
+        else out.timers = reconstructTimers(await owner.fs.readFile(loc.file), Date.now(), out.timezone)
+      }
+    }
+  } catch { out.warnings.push('Session timers unavailable') }
+  return out
 }
