@@ -4,13 +4,23 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [2.0.1] — Unreleased
+## [Unreleased]
 
 ### Added and improved
 
 - **Task limit gauges and one-tap raises (#155).** The Task tab shows each limit as a thin gauge, **Time · this run 2 min 38 / 2 h** and **Tokens 3.4 M / 30 M**, red from 90 %; a limit not set says **No limit**, and the whole task's tokens stay shown when they differ from what the limit counts. At a limit stop, the hint names what **Continue** grants once more (`2 h a run`), and **Raise limit** (#167) offers presets above the typed value: +1 h / ×2 / none for time, ×2 / +10 M / none for tokens. Each preset runs the same `set` as a typed value; a preset not above what was already used is disabled, since herdr-projects would not resume. Durations and token counts read the same everywhere (`2 h`, `45 min`, `3.4 M`, `500 k`).
 
-- **The Board's machine selector follows the sidebar tab (#171).** Opening the Board, or changing the sidebar tab, sets the selector to that tab's machine, group or All machines. A scope chosen by hand stays through refreshes, page reloads and visits to the Board until another sidebar tab is chosen. With no tab, or no Board machine in it, the current scope is kept. Taken out of 2.0.0 because a page reload dropped the choice made by hand; it is now kept on the device with its tab.
+## [2.0.1] — 2026-10-26
+
+### Added and improved
+
+- **Provider quotas have a distinct name (#180).** Cards, compact rows, project summaries, chat status and Claude quota setup now use “Quota” in English and French. “Limit” / “Limite” remains reserved for task time and token ceilings; computations, actions and settings are unchanged.
+
+- **The Board's machine selector follows the sidebar tab (#181, restoring #171).** Opening the Board, or changing the sidebar tab, sets the selector to that tab's machine, group or All machines. A scope chosen by hand stays through refreshes, page reloads and visits to the Board until another sidebar tab is chosen. With no tab, or no Board machine in it, the current scope is kept. Taken out of 2.0.0 because a page reload dropped the choice made by hand; it is now kept on the device with its tab.
+
+### Documentation
+
+- Documentation: prerequisites for Windows remote machines (#182, documenting #132). [docs/machines.md](docs/machines.md#windows-remote-machines) says to set Git Bash as the OpenSSH server's default shell, and the error shown when the remote shell is `cmd.exe` now names that section.
 
 ## [2.0.0] — 2026-10-25
 
@@ -91,6 +101,7 @@ This major release follows 1.3.4. Read the [migration guide](docs/herdr-projects
 - **A draft follows its agent when Herdr replaces its pane**: when a pane is closed and a new one opens for the same agent (the same conversation, or the same herdr-projects coordinator or task, as after `coordinator restart`), the open view moves to the new pane and the message being written (text, quotes, pasted texts, attachments) comes along; opening the new pane from the list brings it back too. A pane closed with no successor keeps its draft under the “pane closed” banner, with **Copy draft**.
 - **Yes, No and OK to all hand the field the focus on a computer**: after a click, the caret sits right after the answer written in the field, so Enter sends it at once. On a phone the keyboard stays down as before (Enter adds a line there), and a button pressed with the keyboard keeps the focus, to answer the next question.
 - **Enter sends in a narrow computer window too**: a window narrow enough for the phone layout no longer turns Enter into a new line when the device has no touch screen (Shift+Enter still adds one).
+- **Windows remote machines are reached through a relay (#144, fixes #132).** wherdr no longer passes a Windows socket path (`C:\…`) to `ssh -L`: it uses Herdr's `remote-api-bridge` and `remote-client-bridge` over the same SSH connection (Herdr 0.9.3+). The OpenSSH server must use Git Bash as its default shell; see [docs/machines.md](docs/machines.md#windows-remote-machines).
 
 - Task panels use one compact header and Conversation / Terminal / Task tabs, with structured Needs you explanations and actions, setup failures kept visible, and the Board’s state vocabulary on home rows. The Task tab holds descriptions, closing notes, review findings, limits and actions in English and French.
 - Claude quota snapshots bind the account fingerprint and observation time atomically. Update older status lines to remove the ten-minute identity cache. Failed Claude reads are retried once; after two failures, that machine's Claude gauge is temporarily omitted until reading recovers, instead of reusing an old account reading indefinitely. This supersedes the earlier keep-last-reading behavior for Claude; Codex is unchanged.
