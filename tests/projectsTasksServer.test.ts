@@ -1081,6 +1081,64 @@ describe('human attempt picks', () => {
   })
 })
 
+describe('coordinator Autopilot', () => {
+  // A board that keeps each coordinator's state, as herdr-projects does.
+  function autopilotRunner(version = '1.2.21', refuse = '') {
+    const on = new Set<string>()
+    T.setRunner(async (_m, _launcher, args) => {
+      calls.push(args)
+      if (args[0] === 'version') return { code: 0, stdout: `herdr-projects ${version}`, stderr: '' }
+      if (args[0] === 'show') return { code: 0, stdout: JSON.stringify({ settings: [{ name: 'autopilot.goal', value: 'Keep the garden healthy' }, { name: 'autopilot.every', value: '6h' }] }), stderr: '' }
+      if (args[1] === 'on' || args[1] === 'off') {
+        if (refuse) return { code: 1, stdout: '', stderr: refuse }
+        const id = args[2] === '--project' ? `project:${args[3]}` : args[2] === '--machine' ? 'machine' : 'main'
+        if (args[1] === 'on') on.add(id)
+        else on.delete(id)
+        // Not a status: the state must be read again.
+        return { code: 0, stdout: 'Done', stderr: '' }
+      }
+      if (args[0] === 'autopilot' && args[1] === '--json') {
+        return { code: 0, stdout: JSON.stringify(['main', 'machine', 'project:demo'].map(c => on.has(c) ? { on: true, state: 'on', coordinator: c, goal: 'Grow', next: 'next in 2h' } : { on: false, coordinator: c })), stderr: '' }
+      }
+      return { code: 1, stdout: '', stderr: 'unexpected' }
+    })
+  }
+  it('turns a project coordinator on and reads its real state back', async () => {
+    autopilotRunner()
+    expect(await T.coordinatorAutopilot('remote', { kind: 'project', repo: 'demo' }, { action: 'on', goal: 'Grow', every: '2h' }))
+      .toMatchObject({ on: true, goal: 'Grow', next: 'next in 2h', defaults: { every: '6h' } })
+    expect(calls).toContainEqual(['autopilot', 'on', '--project', 'demo', '--goal', 'Grow', '--autopilot.every', '2h'])
+    expect(calls).toContainEqual(['autopilot', '--json'])
+    expect(calls).toContainEqual(['show', '--project-coordinator', 'demo', '--json'])
+  })
+  it('refuses an empty goal without running on', async () => {
+    autopilotRunner()
+    await expect(T.coordinatorAutopilot('', { kind: 'main' }, { action: 'on', goal: ' ' })).rejects.toThrow('goal is required')
+    expect(calls).toEqual([])
+  })
+  it('stops the machine coordinator and keeps its saved goal to show', async () => {
+    autopilotRunner()
+    await T.coordinatorAutopilot('', { kind: 'machine' }, { action: 'on', goal: 'Grow' })
+    expect(await T.coordinatorAutopilot('', { kind: 'machine' }, { action: 'off' })).toMatchObject({ on: false, goal: 'Keep the garden healthy' })
+    expect(calls).toContainEqual(['autopilot', 'off', '--machine'])
+  })
+  it('lists every coordinator of a machine', async () => {
+    autopilotRunner()
+    await T.coordinatorAutopilot('', { kind: 'project', repo: 'demo' }, { action: 'on', goal: 'Grow' })
+    const all = await T.autopilotStatuses('')
+    expect(all.main).toMatchObject({ on: false })
+    expect(all['project:demo']).toMatchObject({ on: true, next: 'next in 2h' })
+  })
+  it('passes the board refusal on, and refuses older versions', async () => {
+    autopilotRunner('1.2.21', 'Tell a coordinator its goal first.')
+    await expect(T.coordinatorAutopilot('', { kind: 'main' }, { action: 'on', goal: 'Grow' })).rejects.toThrow('Tell a coordinator its goal first.')
+    calls = []
+    T.resetTasksCache()
+    autopilotRunner('1.2.14')
+    await expect(T.autopilotStatuses('')).rejects.toThrow('herdr-projects 1.2.15 or later')
+    expect(calls).toEqual([['version']])
+  })
+})
 
 describe('scheduled coordinator reads', () => {
   it('only issues read commands and keeps unavailable sources separate from an empty schedule', async () => {

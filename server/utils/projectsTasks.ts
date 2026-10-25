@@ -26,7 +26,11 @@ import {
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
   cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots,
 } from '../../shared/projectsTasks'
-import { parseProjectsVersion } from '../../shared/projectsPlugin'
+import {
+  AUTOPILOT_MIN, OFF, autopilotId, autopilotOnArgs, autopilotTargetArgs, coordinatorShowArgs, parseAutopilotList, parseCoordinatorSettings,
+  type AutopilotDetails, type AutopilotStatus,
+} from '../../shared/autopilot'
+import { parseProjectsVersion, versionAtLeast } from '../../shared/projectsPlugin'
 import { HERDR_BIN, HERDR_CHILD_ENV, log } from './env'
 import { USER_PATH_SH, userPath } from '../../bin/lib/userpath.mjs'
 import { HerdrError } from './herdr'
@@ -368,7 +372,7 @@ function forget(m: Machine) { lists.delete(m.key) }
 // Tests start from an empty cache.
 // `keepKeys`: the repos' keys stay (a later list without asking them again).
 export function resetTasksCache(keepKeys = false) {
-  lists.clear(); reading.clear(); queues.clear(); createdAt.clear()
+  lists.clear(); reading.clear(); queues.clear(); createdAt.clear(); versions.clear()
   if (!keepKeys) { repoKeys.clear(); keysReading.clear() }
 }
 
@@ -675,6 +679,59 @@ export async function pickTask(machine: unknown, id: unknown, letter: unknown, c
   const out = await command(m, ['pick', '--', tid, letter])
   forget(m)
   return { ok: true, msg: firstLine(out) }
+}
+
+// ---------------------------------------------------------------- autopilot
+// Autopilot runs on the same machine as the coordinator's commands. The state
+// shown is always read back from `autopilot --json`, never assumed.
+// The program's version, asked again after a while (it can be updated).
+const VERSION_TTL_MS = 5 * 60_000
+const versions = new Map<string, { version: string | null, at: number }>()
+async function needsAutopilot(m: Machine) {
+  let known = versions.get(m.key)
+  if (!known || Date.now() - known.at > VERSION_TTL_MS) {
+    known = { version: await projectsProgramVersion(m), at: Date.now() }
+    versions.set(m.key, known)
+  }
+  const version = known.version
+  if (!versionAtLeast(version, AUTOPILOT_MIN)) {
+    throw new HerdrError('projects_too_old', fmt('Autopilot needs herdr-projects {min} or later on {machine} (it has {version}).', { min: AUTOPILOT_MIN, machine: m.label, version: version ?? '?' }))
+  }
+}
+async function autopilotList(m: Machine): Promise<Record<string, AutopilotStatus>> {
+  try { return parseAutopilotList(await command(m, ['autopilot', '--json'], LIST_TIMEOUT_MS)) }
+  catch (e) {
+    if (e instanceof HerdrError) throw e
+    throw new HerdrError('projects_failed', 'herdr-projects gave an Autopilot status wherdr cannot read.')
+  }
+}
+
+// Every coordinator of a machine, by its autopilot id ("main", "machine", "project:<repo>").
+export async function autopilotStatuses(machine: unknown): Promise<Record<string, AutopilotStatus>> {
+  const m = boardOf(machine)
+  await needsAutopilot(m)
+  return autopilotList(m)
+}
+
+// One coordinator, with its saved goal and the values `on` falls back on.
+// `input`: turn it on ({ action: 'on', goal, every?, tasksPerDay?, tasksAtOnce? }) or off first.
+export async function coordinatorAutopilot(machine: unknown, to: unknown, input?: Record<string, unknown>): Promise<AutopilotDetails> {
+  const m = boardOf(machine)
+  const target = cleanTarget(to)
+  if (!target) throw new HerdrError('bad_target', 'Invalid coordinator')
+  let args: string[] | undefined
+  if (input) {
+    if (input.action !== 'on' && input.action !== 'off') throw new HerdrError('bad_action', 'Invalid Autopilot action.')
+    try { args = input.action === 'on' ? autopilotOnArgs(target, input) : ['autopilot', 'off', ...autopilotTargetArgs(target)] }
+    catch (e) { throw new HerdrError('bad_value', (e as Error).message) }
+  }
+  await needsAutopilot(m)
+  if (args) await command(m, args, ACTION_TIMEOUT_MS, true)
+  const status = (await autopilotList(m))[autopilotId(target)] ?? OFF
+  let saved = { goal: '', defaults: { every: '', tasksPerDay: '', tasksAtOnce: '' } }
+  try { saved = parseCoordinatorSettings(await command(m, ['show', ...coordinatorShowArgs(target), '--json'], LIST_TIMEOUT_MS)) }
+  catch { /* the status still stands without its saved settings */ }
+  return { ...status, goal: status.goal || saved.goal, defaults: saved.defaults }
 }
 
 // Read only, requested when the Scheduled disclosure opens or the board refreshes.

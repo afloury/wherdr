@@ -91,6 +91,14 @@ What the Board shows and does:
   not started yet takes a first message (`coordinator tell`), which starts it. One that
   herdr-projects could not start (an agent not installed there…) says why, with **Try again**
   (`coordinator restart`) once it is fixed: the message still waiting then goes in.
+- **Autopilot** (herdr-projects 1.2.15 or later): each coordinator has a switch, under the Board's
+  bar for the main Coordinator, in each machine and repo heading, and at the top of its panel. It
+  shows whether the board wakes that coordinator to work toward its goal, and when next. Turning it
+  on asks for the goal (filled in with the saved one, required otherwise) and, optionally, how often
+  and how many tasks a day or at once, for this time only (`herdr-projects autopilot on --goal …
+  [--machine | --project <repo>]`); stopping asks first (`autopilot off`). The state shown is read
+  back from `herdr-projects autopilot --json` after each action; a refusal (no goal, older version)
+  is shown as the board says it.
 - **Task identity** stays with the worker on the home list, Board card and conversation header.
   During a review, **Reviewed by** names the reviewer beside its own small logo. The conversation
   explains that it belongs to the worker and the review runs separately; **Open reviewer terminal**
