@@ -3974,6 +3974,10 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-sheet-facts a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
 .task-sheet-block h4 { margin: 0 0 6px; font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .task-sheet-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; color: var(--text-2); }
+.task-handover-list { list-style: none; padding: 0; margin: 0; }
+.task-handover-list li + li { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.task-handover-list p { margin: 0; }
+.task-handover-meta { color: var(--text-3); font: 11px/1.5 var(--mono); }
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-sheet-actions > button { border-radius: 0; }
 .task-sheet-actions .task-archive { margin-left: auto; }
