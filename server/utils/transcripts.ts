@@ -102,6 +102,9 @@ const stripImageTags = (t: unknown) => String(t || '').replace(/\[Image #\d+(?:,
 // pasted next to typed words are also listed (`pasted`) to be shown as cards.
 const PASTED = /<pasted_content(?:\s[^>]*)?>\n?|\n?<\/pasted_content(?:\s[^>]*)?>/g
 export const unwrapPasted = (t: string) => (t.includes('<pasted_content') ? t.replace(PASTED, '').trim() : t)
+// Prompt of a scheduled task (CronCreate, /loop…) wrapped by Claude Code.
+const SCHEDULED = /^\s*<scheduled-task(?:\s[^>]*)?>\n?([\s\S]*?)\n?<\/scheduled-task>\s*$/
+const scheduledText = (t: unknown) => (String(t || '').match(SCHEDULED) || [])[1]?.trim() || null
 // A message written by the user (after removing the paste wrappers).
 function humanText(t: unknown): string | null {
   const s = String(t || '')
@@ -243,6 +246,19 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     const head = queue.find(q => !isNoise(q.text))
     if (queue.length === before && head && (!head.ts || !ts || head.ts <= ts)) started = head
   }
+  // Prompt injected by Claude Code itself (scheduled task, task notification…):
+  // it leaves the queue, never typed by the user. Scheduled ones are shown
+  // where they ran, as a note, not as a user message.
+  let fire: string | null = null
+  const injected = (text: string, ts: string | null, scheduled: boolean) => {
+    for (let i = queue.length - 1; i >= 0; i--) {
+      const q = queue[i]!
+      if ((!q.ts || !ts || q.ts <= ts) && (sameMsg(q.text, text) || sameMsg(scheduledText(q.text) || '', text))) queue.splice(i, 1)
+    }
+    if (scheduled && text.trim()) items.push({ role: 'notice', name: 'scheduled', text: clip(text.trim()), ts })
+    fire = null
+    pendingCmd = null
+  }
   // Command ("!" or "/") waiting for its output: the next message.
   let open: ChatItem | null = null
   // "/" command followed by an agent reply (skill, custom command,
@@ -324,6 +340,10 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     }
     // End of turn: the head entry taken by this turn without a trace in the queue
     // (no dequeue, modified text) has been handled.
+    if (d.type === 'system' && d.subtype === 'scheduled_task_fire') {
+      fire = typeof d.prompt === 'string' ? d.prompt : null
+      continue
+    }
     if (d.type === 'system' && d.subtype === 'turn_duration') {
       if (started) queue.splice(queue.indexOf(started), 1)
       started = null
@@ -343,6 +363,13 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
         pendingCmd = null
         said(text, d.attachment.timestamp || ts, images)
       }
+      continue
+    }
+    if (d.type === 'attachment' && d.attachment && d.attachment.type === 'queued_command' && d.attachment.commandMode === 'prompt') {
+      const parts: Json[] = Array.isArray(d.attachment.prompt) ? d.attachment.prompt : [{ type: 'text', text: String(d.attachment.prompt || '') }]
+      const text = unwrapPasted(parts.filter(p => p.type === 'text').map(p => String(p.text || '')).join('\n'))
+      const kind = String((d.attachment.origin || {}).kind || '')
+      injected(scheduledText(text) || stripImageTags(text), d.attachment.timestamp || ts, /^(scheduled|cron)/.test(kind) || Boolean(scheduledText(text)))
       continue
     }
     if (d.type === 'system' && d.subtype === 'compact_boundary') {
@@ -389,6 +416,8 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
           continue
         } else if (/^\[Request interrupted/.test(content)) {
           items.push({ role: 'system', text: 'Interrupted', ts })
+        } else if (scheduledText(content) || (fire && sameMsg(fire, content))) {
+          injected(scheduledText(content) || content, ts, true)
         } else {
           const text = humanText(content)
           if (text) {
@@ -419,6 +448,8 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
           }
           toolImages += n
         } else if (part.type === 'text') {
+          const sched = scheduledText(part.text) || (fire && sameMsg(fire, String(part.text || '')) ? String(part.text) : null)
+          if (sched) { injected(sched, ts, true); continue }
           if (special(String(part.text || ''), ts)) continue
           const t = humanText(part.text)
           if (t === null) continue
