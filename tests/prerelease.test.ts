@@ -216,20 +216,26 @@ describe('workflow', () => {
     expect(wf.match(/if: steps.v.outputs.version != ''/g)).toHaveLength(4)
   })
 
-  it('enables packaging and publication for the repository prerelease version', () => {
+  it('enables packaging and publication for an isolated prerelease version', () => {
     const script = wf.match(/      - name: Version[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      -)/)![1]!
       .split('\n').map(line => line.replace(/^          /, '')).join('\n')
     const home = workspace('2.0.1-dev')
+    mkdirSync(path.join(home, 'scripts'))
+    cpSync(SCRIPT, path.join(home, 'scripts/prerelease.sh'))
     const output = path.join(home, 'workflow-output')
     const result = spawnSync('bash', ['-e', '-c', script], {
-      encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: output },
+      cwd: home, encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: output },
     })
     expect(result.status, result.stderr).toBe(0)
     expect(readFileSync(output, 'utf8')).toBe('version=2.0.1-dev\n')
-    const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'))
-    expect(lock.version).toBe('2.0.1-dev')
-    expect(lock.packages[''].version).toBe('2.0.1-dev')
     expect(wf.match(/if: steps.v.outputs.version != ''/g)).toHaveLength(4)
+  })
+
+  it('keeps the repository lockfile versions aligned with its package version', () => {
+    const version = JSON.parse(readFileSync('package.json', 'utf8')).version
+    const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'))
+    expect(lock.version).toBe(version)
+    expect(lock.packages[''].version).toBe(version)
   })
 
   it('leaves the stable release workflows on vX.Y.Z tags', () => {

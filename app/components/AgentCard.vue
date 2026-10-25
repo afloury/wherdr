@@ -123,14 +123,15 @@ async function setRead(read: boolean) {
   } catch (err) { toast((err as Error).message, true) }
 }
 useNotificationClock()
-const mutedNotifications = computed(() => paneNotificationsMuted(props.pane))
+const notificationTarget = computed(() => conversationNotificationTarget(props.pane))
+const mutedNotifications = computed(() => notificationsMuted(notificationTarget.value, props.pane))
 const menuItems = computed<MenuItem[]>(() => space.value ? [
-  notificationMenuItem(props.pane),
+  notificationMenuItem(notificationTarget.value),
   ...(boardItem.value ? [boardItem.value, { kind: 'separator' as const }] : []),
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
   ...workspaceItems(space.value.workspace.id, Boolean(props.board?.lead)),
 ] : [
-  notificationMenuItem(props.pane),
+  notificationMenuItem(notificationTarget.value),
   ...(boardItem.value ? [boardItem.value, { kind: 'separator' as const }] : []),
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
   ...paneSpaceItems(props.pane),

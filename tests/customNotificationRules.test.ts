@@ -43,7 +43,7 @@ describe('custom notice delivery', () => {
     deps.links.mockResolvedValue({ machines: [{ machine: '', tasks: [{ id: 'example/1', panes: [{ id: p.id }] }] }] })
     deps.findPane.mockReturnValue(p)
     await onNotice(machine, notice('example/1 · ready to approve'))
-    expect(deps.allowed).toHaveBeenCalledWith('needs-you', expect.anything(), p, expect.objectContaining({ board: true, project: 'example' }))
+    expect(deps.allowed).toHaveBeenCalledWith('needs-you', expect.anything(), p, expect.objectContaining({ subagent: true, project: 'example' }))
   })
   it('does not let a board hook borrow its calling coordinator notification rules', async () => {
     const worker = { id: 'w2:p1', workspace: 'w2' }
@@ -51,7 +51,7 @@ describe('custom notice delivery', () => {
     deps.findPane.mockImplementation(id => id === worker.id ? worker : coordinator)
     deps.links.mockResolvedValue({ machines: [{ machine: '', tasks: [{ id: 'example/2', panes: [{ id: worker.id }] }] }] })
     await onNotice(machine, notice('example/2 · needs you', coordinator.id))
-    expect(deps.allowed).toHaveBeenCalledWith('needs-you', expect.anything(), worker, expect.objectContaining({ board: true }))
+    expect(deps.allowed).toHaveBeenCalledWith('needs-you', expect.anything(), worker, expect.objectContaining({ subagent: true }))
   })
   it('ignores Herdr state notices already delivered by state transitions', async () => {
     await onNotice(machine, { ...notice('Example done'), kind: 'finished' })

@@ -275,7 +275,15 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     },
     'e2e.terminal_screen': params => {
       const p = need(params.pane_id)
-      return { text: p.customScreen || '', size: p.size, keys: p.sentKeys || [] }
+      const osc = p.osc || []
+      p.osc = []
+      return { text: p.customScreen || '', size: p.size, keys: p.sentKeys || [], osc }
+    },
+    // Raw sequences (OSC 52…) the control session writes once, after the screen.
+    'e2e.terminal_osc': params => {
+      const p = need(params.pane_id)
+      ;(p.osc ||= []).push(params.data)
+      return {}
     },
     'pane.layout': (params) => {
       const p = need(params.pane_id)

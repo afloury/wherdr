@@ -14,12 +14,8 @@ export async function notificationAllowed(event: NotificationEvent, state: Pick<
   const source = pane ? paneNotificationSource(pane, state, board && 'machines' in board ? board.machines : [],
     machine?.info().baseKey ?? machine?.key ?? fallback?.machine) : fallback
   if (!source) return false
-  // Resolve session machine keys to the base machine used by the menus. A
-  // board event keeps its task's conversation (for visibility) but is not a
-  // sub-agent's message: it follows the default or its project coordinator.
-  const boardEvent = fallback?.board === true
-  const resolved = { ...source, project: source.project ?? fallback?.project, session: source.session ?? fallback?.session, board: boardEvent,
-    subagent: !boardEvent && Boolean(source.subagent || fallback?.subagent), coordinator: boardEvent ? undefined : source.coordinator,
+  // Resolve session machine keys to the base machine used by the menus.
+  const resolved = { ...source, project: source.project ?? fallback?.project, subagent: source.subagent || fallback?.subagent,
     machine: getMachine(source.machine)?.info().baseKey ?? source.machine }
   return notificationEvents(settings, resolved).includes(event)
     && !(source.conversation && notificationPresence.viewed(source.conversation))

@@ -1,6 +1,6 @@
 # Moving from herdr-projects 0.2 to 1.x
 
-wherdr 2.0 reads herdr-projects **1.2.1 or later** only. wherdr 1.3.4 is the last version
+wherdr **2.0.0** reads herdr-projects **1.2.1 or later** only. wherdr 1.3.4 is the last version
 that reads herdr-projects 0.2 (its Project panel, `TASKS.md`, threads). This page moves one
 machine from 0.2 to 1.x, keeps a backup, and says how to go back. Do it on each machine that
 runs herdr-projects.
