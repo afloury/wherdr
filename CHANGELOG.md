@@ -43,6 +43,12 @@ This major release follows 1.3.4. Read the [migration guide](docs/herdr-projects
 
 - **Scheduled section in the coordinator panel (#173).** Each coordinator shows, read-only, its Autopilot wakes, its automations with the tasks they recently started, and its Claude timers.
 
+- **Board settings screen (#175).** A gear on the Board, a right click on a machine tab or a project header opens the settings of herdr-projects on that machine: the board itself, your defaults and each repo, with each value’s source and a reset to the inherited value. Choices come from herdr-projects (agents, models, efforts); refused values show its own message, and settings with an immediate effect ask for confirmation.
+
+- **Hand-overs in task details (#176).** When a stand-in agent takes over a task or its review (provider down, out of allowance, failed rounds), the task details list each hand-over in order, with roles, agents, reasons and times.
+
+- **Scheduled prompts are notes, not stuck messages (#170).** A prompt that Claude Code injects itself (a scheduled task, a background task notification) shows where it ran as a folded “Scheduled task” note, and never as a “Queued · sending…” bubble left under the conversation; messages you typed stay in the queue.
+
 - **New agent and slash menu:** New opens an existing project coordinator or creates one; the slash menu includes plugin skills and MCP prompts (#130, #122).
 - **Messages waiting behind other text** explain why they cannot be sent and offer to clear the field (#131).
 - **Installation and documentation:** the README links to focused guides in `docs/`. Automatic startup is at login on macOS; on Linux it is at boot with lingering enabled, otherwise at login. The installer checks and reports the actual state (#136, #137).
