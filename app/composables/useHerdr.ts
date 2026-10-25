@@ -170,6 +170,9 @@ export const fontSize = ref(Number(ls.get('fontSize')) || 12)
 watch(fontSize, v => ls.set('fontSize', String(v)))
 export const terminalRenderer = ref(parseTerminalRenderer(ls.get('terminalRenderer')))
 watch(terminalRenderer, v => ls.set('terminalRenderer', v))
+// OSC 52 copies of the agents written to this device's clipboard (on by default).
+export const agentClipboard = ref(ls.get('agentClipboard') !== '0')
+watch(agentClipboard, v => ls.set('agentClipboard', v ? '1' : '0'))
 // The engine actually loaded in xterm; kept after the terminal view
 // is closed so Settings can show the last observed result.
 export const terminalRenderStatus = ref<ActiveTerminalRenderer | null>(null)
@@ -345,6 +348,21 @@ export function toast(msg: string, err = false, detail?: string, action?: ToastA
     ...(action
       ? { orientation: 'horizontal' as const, actions: [{ label: action.label, icon: action.icon, color: 'neutral' as const, variant: 'outline' as const, size: 'xs' as const, class: 'hw-toast-action', onClick: () => action.run() }] }
       : {}),
+  })
+}
+
+// A toast with one button (`fn` runs in the tap: a user gesture, which iOS
+// Safari asks for before writing the clipboard).
+export function toastAction(msg: string, label: string, fn: () => void) {
+  if (!toaster) return
+  toaster.clear()
+  toaster.add({
+    title: msg,
+    color: 'neutral',
+    duration: 10000,
+    close: false,
+    orientation: 'horizontal',
+    actions: [{ label, color: 'primary', variant: 'solid', onClick: fn }],
   })
 }
 
@@ -528,9 +546,19 @@ export function retryEvents() {
   connectEvents()
 }
 
-// Tells the server which agent is on screen: it does not notify for that one.
+// Visible, focused and recently used: renew a 30-second server lease.
+let notificationActivityAt = Date.now()
+let notificationLastSentAt = 0
+let notificationLastVisible = false
+export function noteNotificationActivity() {
+  notificationActivityAt = Date.now()
+  if (!notificationLastVisible || notificationActivityAt - notificationLastSentAt >= 1000) sendViewing()
+}
 export function sendViewing() {
-  if (evWs && evWs.readyState === 1) evWs.send(JSON.stringify({ type: 'viewing', pane: curPane.value, visible: pageVisible.value }))
+  notificationLastSentAt = Date.now()
+  const visible = pageVisible.value && document.hasFocus() && Date.now() - notificationActivityAt < 120_000
+  notificationLastVisible = visible
+  if (evWs && evWs.readyState === 1) evWs.send(JSON.stringify({ type: 'viewing', pane: curPane.value, visible }))
 }
 watch(curPane, sendViewing)
 

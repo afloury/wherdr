@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
-import { readBody, setResponseStatus } from 'h3'
+import { readBody } from 'h3'
 import BoardPanel from '~/components/BoardPanel.vue'
 import { allSessionsState, herdrState } from '~/composables/useHerdr'
 import { parseTaskDetails, parseTaskRow } from '#shared/projectsTasks'
@@ -18,18 +18,13 @@ let msg = ''
 // What the server adds from the task's file (failureStale).
 let more: Record<string, unknown> = {}
 let review: unknown = null
+let settingsReads = 0
+registerEndpoint('/api/tasks/settings', () => { settingsReads++; return { settings: [], problems: [] } })
 const calls: unknown[] = []
 registerEndpoint('/api/tasks/details', () => ({ ...parseTaskDetails(JSON.stringify({ task: { id: 'demo/9', title: 'Improve search', stage, msg, description: 'Search by title' }, failure, review, summary: 'Search tested.' })), ...more, pane }))
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 registerEndpoint('/api/tasks/tell', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 registerEndpoint('/api/sessions', { method: 'POST', handler: async event => { const body = await readBody(event); calls.push(body); return { session: { name: body.name, key: 'abcdef01', running: true } } } })
-// `set limit.*`: answered, or refused with herdr-projects' own words.
-let limitReply: { status: number, message: string } | null = null
-registerEndpoint('/api/tasks/limit', { method: 'POST', handler: async (event) => {
-  calls.push(await readBody(event))
-  if (limitReply) { setResponseStatus(event, limitReply.status); return { code: 'projects_failed', error: limitReply.message } }
-  return { ok: true, msg: 'set' }
-} })
 registerEndpoint('/api/tasks/approve', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 const row = () => parseTaskRow({ id: 'demo/9', title: 'Improve search', stage, state: 'error', app: 'claude' })!
 async function panel(extra = {}, agent: string | null = null, status: 'idle' | 'working' = 'idle') {
@@ -38,7 +33,7 @@ async function panel(extra = {}, agent: string | null = null, status: 'idle' | '
   await flushPromises()
   return w
 }
-afterEach(() => { limitReply = null; document.querySelectorAll('.hw-sheet').forEach(e => e.remove()); review = null; toasts.length = 0; failure = {}; pane = 'w1:p1'; stage = 'failed'; msg = ''; more = {}; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] }; allSessionsState.value = { ok: false, workspaces: [], panes: [] } })
+afterEach(() => { settingsReads = 0; review = null; toasts.length = 0; failure = {}; pane = 'w1:p1'; stage = 'failed'; msg = ''; more = {}; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] }; allSessionsState.value = { ok: false, workspaces: [], panes: [] } })
 
 describe('task panel', () => {
   it('labels the worker conversation and opens the separate reviewer terminal', async () => {
@@ -102,7 +97,7 @@ describe('task panel', () => {
     const w = await panel()
     expect(w.emitted('noAgent')).toBeUndefined()
     // Nothing to talk to: straight to Task, the other tabs hidden.
-    expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Task'])
+    expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Task', 'Settings'])
     expect(w.find('.task-content').text()).toContain('Search by title')
     expect(w.find('.task-new').exists()).toBe(false)
     expect(w.find('.task-setup').exists()).toBe(false)
@@ -114,14 +109,14 @@ describe('task panel', () => {
     stage = 'todo'
     const todo = { ...row(), stage: 'todo', state: 'idle', app: '', group: 'todo' as const }
     const w = await panel({ task: todo, target: { kind: 'task', machine: '', id: `demo/9-${Math.random()}` } }, 'claude')
-    expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Task'])
+    expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Task', 'Settings'])
     expect(w.find('.task-content').exists()).toBe(true)
     expect(w.text()).not.toContain('No agent conversation yet')
     // Its agent starts: Conversation is back and shown.
     pane = 'w1:p1'
     stage = 'working'
     await w.setProps({ task: { ...todo, stage: 'working', state: 'working', app: 'claude', group: 'working' } })
-    await vi.waitFor(() => expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Terminal', 'Task']))
+    await vi.waitFor(() => expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Terminal', 'Task', 'Settings']))
     expect(w.find('.embedded-agent').text()).toBe('chat')
     w.unmount()
   })
@@ -147,7 +142,7 @@ describe('task panel', () => {
     expect(again.find('.embedded-agent').text()).toBe('term')
     pane = null
     await again.setProps({ task: { ...task, msg: 'stopped' } })
-    await vi.waitFor(() => expect(again.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Task']))
+    await vi.waitFor(() => expect(again.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Task', 'Settings']))
     // Its reply field (tell) is the default view again, not the terminal.
     expect(again.find('#board-panel-tell').exists()).toBe(true)
     again.unmount()
@@ -161,7 +156,7 @@ describe('task panel', () => {
     stage = 'working'
     const task = { ...row(), stage: 'working', state: 'working', group: 'working' as const }
     const w = await panel({ task, target: { kind: 'task', machine: '', id: `demo/9-${Math.random()}` } })
-    expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Task'])
+    expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Task', 'Settings'])
     expect(w.find('#board-panel-tell').exists()).toBe(true)
     w.unmount()
   })
@@ -266,8 +261,9 @@ describe('task panel', () => {
     expect(banner.text()).not.toContain('Finish again for a fresh review')
     // Its buttons would act on the old failure: not offered.
     expect(banner.text()).not.toContain('Send the error to the agent')
-    expect(banner.findAll('button').map(b => b.text())).toEqual(expect.arrayContaining(['Continue', 'Raise the limit', 'Take it as it is']))
-    expect(banner.find('.task-finish-why').text()).toContain('the same limit once more (2 h a run)')
+    expect(banner.findAll('button').map(b => b.text())).toEqual(expect.arrayContaining(['Continue', 'Raise limit', 'Take as is']))
+    // The limit Continue grants once more, read from the board's line.
+    expect(banner.find('.task-finish-why').text()).toContain('new allowance (2 h a run)')
     w.unmount()
   })
   // WHR-13: the agent started again and asks something new.
@@ -303,7 +299,7 @@ describe('task panel', () => {
       expect(buttons(w)).toEqual(['Open the reviewer'])
       expect(w.find('.task-needs').text()).not.toContain('Answer in the conversation')
       expect(w.find('.task-needs').text()).not.toContain('Open terminal')
-      expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Terminal', 'Reviewer', 'Task'])
+      expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Conversation', 'Terminal', 'Reviewer', 'Task', 'Settings'])
       await w.find('.task-needs-reviewer-open').trigger('click')
       await flushPromises()
       // Its pane, in its conversation (where the dialog shows as choices).
@@ -450,11 +446,11 @@ describe('task panel', () => {
     expect(w.find('.task-needs').text()).not.toContain('Finish')
     w.unmount()
   })
-  it('Take it as it is on a limit stop asks first, then sends finish', async () => {
+  it('Finish on a limit stop asks first, then sends finish', async () => {
     stage = 'stopped'
     const task = { ...row(), stage, state: 'blocked', msg: 'Stopped at its token limit', group: 'needs' as const }
     const w = await panel({ task })
-    const finish = () => w.findAll('.task-needs button').find(b => b.text() === 'Take it as it is')!
+    const finish = () => w.findAll('.task-needs button').find(b => b.text() === 'Take as is')!
     await vi.waitFor(() => expect(finish().attributes('disabled')).toBeUndefined())
     expect(finish().attributes('title')).toBe('Take the work as it is: checks, then review')
     decision.yes = false
@@ -464,51 +460,6 @@ describe('task panel', () => {
     await finish().trigger('click')
     await vi.waitFor(() => expect(calls).toContainEqual({ machine: '', id: 'demo/9', action: 'finish' }))
     w.unmount()
-  })
-  describe('stopped at a limit', () => {
-    const stopped = (msgText: string) => ({ ...row(), stage: 'stopped', state: 'blocked', msg: msgText, group: 'needs' as const })
-    it('offers Continue, Raise the limit and Take it as it is, and says what Continue does', async () => {
-      stage = 'stopped'; msg = 'stopped at its 2h limit'
-      more = { limits: { time: '2h', timeUsed: '', timeUsedMs: null, tokens: '30m', tokensUsed: 3_400_000, tokensCounted: 3_400_000, stopped: { what: 'time', limit: '2h', used: 7_200_000 } } }
-      const w = await panel({ task: stopped(msg) })
-      expect(w.findAll('.task-needs-actions button').map(b => b.text()).slice(0, 3)).toEqual(['Continue', 'Raise the limit', 'Take it as it is'])
-      expect(w.find('.task-limit-why').text()).toContain('the same limit once more (2 h a run); its tokens keep adding up')
-      await w.find('.task-limit-continue').trigger('click')
-      await vi.waitFor(() => expect(calls).toContainEqual({ machine: '', id: 'demo/9', action: 'retry' }))
-      w.unmount()
-    })
-    it('raises the time limit with set only, then shows Resuming… until the next list', async () => {
-      stage = 'stopped'; msg = 'stopped at its 2h limit'
-      more = { limits: { time: '2h', timeUsed: '', timeUsedMs: null, tokens: 'none', tokensUsed: 0, tokensCounted: 0, stopped: { what: 'time', limit: '2h', used: 7_200_000 } } }
-      const w = await panel({ task: stopped(msg) })
-      await w.find('.task-limit-raise').trigger('click'); await flushPromises()
-      const presets = () => [...document.querySelectorAll<HTMLButtonElement>('.raise-limit-preset')]
-      await vi.waitFor(() => expect(presets()).toHaveLength(3))
-      expect(presets().map(b => b.textContent?.trim())).toEqual(['+1 h3 h', '×24 h', 'No limit'])
-      presets()[0]!.click()
-      await vi.waitFor(() => expect(calls).toContainEqual({ machine: '', id: 'demo/9', kind: 'time', value: '3h' }))
-      expect(calls.filter(c => (c as { action?: string }).action === 'retry')).toHaveLength(0)
-      await vi.waitFor(() => expect(w.find('.task-needs-resuming').text()).toBe('Resuming…'))
-      expect(w.find('.task-needs-actions').exists()).toBe(false)
-      // The next list: a new row, the task at work again.
-      await w.setProps({ task: { ...row(), stage: 'working', state: 'working', msg: '', group: 'working' as const } })
-      expect(w.find('.task-needs-resuming').exists()).toBe(false)
-      w.unmount()
-    })
-    it('shows herdr-projects’ refusal as it is', async () => {
-      stage = 'stopped'; msg = 'stopped at 30m tokens'
-      limitReply = { status: 409, message: 'demo/9 is busy. Try again in a moment.' }
-      more = { limits: { time: 'none', timeUsed: '', timeUsedMs: null, tokens: '30m', tokensUsed: 31_000_000, tokensCounted: 31_000_000, stopped: { what: 'tokens', limit: '30m', used: 31_000_000 } } }
-      const w = await panel({ task: stopped(msg) })
-      await w.find('.task-limit-raise').trigger('click'); await flushPromises()
-      const presets = () => [...document.querySelectorAll<HTMLButtonElement>('.raise-limit-preset')]
-      await vi.waitFor(() => expect(presets()).toHaveLength(3))
-      expect(presets().map(b => b.textContent?.trim())).toEqual(['×260 M', '+10 M40 M', 'No limit'])
-      presets()[1]!.click()
-      await vi.waitFor(() => expect(document.querySelector('.raise-limit .error')?.textContent).toBe('demo/9 is busy. Try again in a moment.'))
-      expect(w.find('.task-needs-resuming').exists()).toBe(false)
-      w.unmount()
-    })
   })
   it('stopped without a summary: Retry and Finish, each said', async () => {
     stage = 'nosummary'
@@ -529,4 +480,35 @@ describe('task panel', () => {
     expect(busy.find('.task-needs').exists()).toBe(false)
     busy.unmount()
   })
+})
+
+
+it('keeps settings loaded through board row refreshes and tab switches', async () => {
+  const w = await panel({ target: { kind: 'task', machine: '', id: 'demo/settings-cache' } }, 'claude')
+  expect(settingsReads).toBe(0)
+  const tab = (name: string) => w.findAll('.board-panel-tabs button').find(button => button.text() === name)!
+  await tab('Settings').trigger('click')
+  await vi.waitFor(() => expect(w.find('.task-settings').text()).toContain('No settings returned'))
+  expect(settingsReads).toBe(1)
+  expect(w.find('.embedded-agent').exists()).toBe(false)
+  await w.setProps({ task: { ...row(), msg: 'Board refreshed' } })
+  await flushPromises()
+  expect(settingsReads).toBe(1)
+  await tab('Task').trigger('click')
+  await tab('Settings').trigger('click')
+  await flushPromises()
+  expect(settingsReads).toBe(1)
+  w.unmount()
+})
+
+it('ends a waiting conversation on the target machine', async () => {
+  stage = 'asks'
+  more = { chat: true }
+  const w = await panel({ target: { kind: 'task', machine: 'remote', id: 'demo/9' }, task: { ...row(), chat: true, state: 'blocked', group: 'needs' } })
+  expect(w.find('.task-finish').text()).toBe('End conversation')
+  expect(w.find('.task-finish-why').text()).not.toContain('limit')
+  await w.find('.task-finish').trigger('click')
+  await flushPromises()
+  expect(calls).toContainEqual({ machine: 'remote', id: 'demo/9', action: 'finish' })
+  w.unmount()
 })

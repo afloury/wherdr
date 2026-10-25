@@ -31,6 +31,7 @@ export interface TaskRow {
   pr: string // the pull request URL, or ''
   review: TaskReview | null
   reviewRound: number
+  chat?: boolean // CLI `chat`: effective chat.only, distinct from a task-file chat exchange.
   research: boolean
   archived: boolean
   queue: number | null
@@ -47,7 +48,15 @@ export interface TaskRow {
   readAt?: number
 }
 
+export interface TaskAttempt { letter: string, agent: string, standing: string, stage: string, stat: string }
+export interface TaskComparison { pick: string, why: string, error: string, notes: Record<string, string> }
+
+export interface TaskHandover { at: number | null, role: string, from: string, to: string, why: string }
+
 export interface TaskDetails {
+  handovers?: TaskHandover[]
+  attempts?: TaskAttempt[]
+  comparison?: TaskComparison | null
   id: string
   title: string
   stage: string
@@ -72,12 +81,13 @@ export interface TaskDetails {
   // history, not where the task stands.
   failureAt?: number | null
   failureStale?: boolean
-  // `details.limits` (1.2.16+ limits/shown.rs limits_detail): each limit as
-  // the board writes it (`2h`, `30m` tokens, `none`), the time this run has
-  // taken (only while one runs), the tokens counted against `limit.tokens`
-  // (`used`; `tokensUsed` is the task's whole count, `total`), and the stop
-  // when a limit stopped it (`what`, the limit then, what was used: ms or tokens).
-  limits?: TaskLimits
+  // `details.limits` (1.2.16+): each limit as the board writes it (`2h`, `30m`
+  // tokens, `none`), the time this run has taken and the task's tokens, and
+  // which limit stopped it. For the gauges, when the CLI gives them:
+  // `timeUsedMs` (this run, or the run the time limit stopped), `tokensCounted`
+  // (the tokens counted against `limit.tokens`) and `stoppedUsed` (what was
+  // used at the stop: ms or tokens).
+  limits?: { time: string, timeUsed: string, tokens: string, tokensUsed: number | null, stopped?: 'time' | 'tokens', timeUsedMs?: number, tokensCounted?: number, stoppedUsed?: number }
   // `preexisting`: there before the task (1.x gate.rs), not what it must fix.
   findings?: { severity: string, title: string, detail: string, preexisting?: boolean }[]
   failureStage: string
@@ -90,6 +100,7 @@ export interface TaskDetails {
   review: TaskReview | null
   reviewRounds: number
   plan: string
+  chat?: boolean // CLI `chat`: effective chat.only, distinct from a task-file chat exchange.
   research: boolean
   // Put away (`archivedAt`): 1.2.1's `details` leaves it out, so the server
   // reads it from the task's file, as the closing note.
@@ -98,16 +109,6 @@ export interface TaskDetails {
   // its place in the queue for a free slot (1 gets the next one).
   after?: TaskWait | null
   queue?: number | null
-}
-
-export interface TaskLimits {
-  time: string
-  timeUsed: string
-  timeUsedMs: number | null
-  tokens: string
-  tokensUsed: number | null
-  tokensCounted: number | null
-  stopped: { what: 'time' | 'tokens', limit: string, used: number | null } | null
 }
 
 // The panes wherdr adds to `details`: its agent's, and its reviewer's while a
@@ -272,6 +273,7 @@ export function parseTaskRow(v: unknown): TaskRow | null {
     pr: cleanUrl(t.pr),
     review: parseReview(t.review),
     reviewRound: Math.max(0, Math.floor(num(t.reviewRound) ?? 0)),
+    chat: t.chat === true,
     research: t.research === true,
     archived: Boolean(t.archivedAt),
     queue: num(t.queue),
@@ -303,12 +305,20 @@ function parseTaskLimits(v: unknown): TaskDetails['limits'] {
   if (!limits) return undefined
   const time = obj(limits.time)
   const tokens = obj(limits.tokens)
-  const stop = obj(limits.stopped)
-  const what = stop?.what === 'time' || stop?.what === 'tokens' ? stop.what : null
+  // 1.2.16 omits time.used after stopping; stopped.used is milliseconds.
+  const stopped = obj(limits.stopped)
+  const usedMs = stopped?.what === 'time' ? num(stopped.used) : null
+  const seconds = usedMs === null ? null : Math.round(Math.max(0, usedMs) / 1000)
+  const stoppedTime = seconds === null ? '' : seconds >= 3600
+    ? `${Math.floor(seconds / 3600)}h${Math.floor(seconds % 3600 / 60) ? `${Math.floor(seconds % 3600 / 60)}m` : ''}`
+    : seconds >= 60 ? `${Math.floor(seconds / 60)}m${seconds % 60 ? `${seconds % 60}s` : ''}` : `${seconds}s`
+  const timeUsedMs = num(time?.usedMs) ?? usedMs
+  const tokensCounted = num(tokens?.used) ?? num(tokens?.total)
+  const stoppedUsed = stopped?.what === 'time' || stopped?.what === 'tokens' ? num(stopped.used) : null
   return {
-    time: str(time?.limit, 40), timeUsed: str(time?.used, 40), timeUsedMs: num(time?.usedMs),
-    tokens: str(tokens?.limit, 40), tokensUsed: num(tokens?.total) ?? num(tokens?.used), tokensCounted: num(tokens?.used) ?? num(tokens?.total),
-    stopped: what ? { what, limit: str(stop?.limit, 40), used: num(stop?.used) } : null,
+    ...(stopped?.what === 'time' || stopped?.what === 'tokens' ? { stopped: stopped.what } : {}),
+    time: str(time?.limit, 40), timeUsed: str(time?.used, 40) || stoppedTime, tokens: str(tokens?.limit, 40), tokensUsed: num(tokens?.total) ?? num(tokens?.used),
+    ...(timeUsedMs === null ? {} : { timeUsedMs }), ...(tokensCounted === null ? {} : { tokensCounted }), ...(stoppedUsed === null ? {} : { stoppedUsed }),
   }
 }
 function parseFindings(v: unknown): NonNullable<TaskDetails['findings']> {
@@ -320,6 +330,23 @@ function parseFindings(v: unknown): NonNullable<TaskDetails['findings']> {
   })
 }
 
+// CLI 1.2.16: oldest first, { at (milliseconds), role, from, to, why }.
+// Keep partial records without guessing a role, participant or date. Undated
+// records follow dated ones in their original order. Identity uses raw history.
+export function parseTaskHandovers(value: unknown): TaskHandover[] {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, 500).flatMap(value => {
+    const h = obj(value)
+    if (!h) return []
+    const at = num(h.at)
+    const record = {
+      at: at !== null && at >= 0 && at <= 8640000000000000 ? at : null,
+      role: str(h.role, 80), from: str(h.from, 160), to: str(h.to, 160), why: str(h.why, 2000),
+    }
+    return record.at !== null || record.role || record.from || record.to || record.why ? [record] : []
+  }).sort((a, b) => (a.at ?? Infinity) - (b.at ?? Infinity))
+}
+
 export function parseTaskDetails(text: string): TaskDetails {
   let v: unknown
   try { v = JSON.parse(text) } catch { throw new Error('herdr-projects details: not JSON') }
@@ -328,6 +355,9 @@ export function parseTaskDetails(text: string): TaskDetails {
   if (!d || !t || !isTaskId(t.id)) throw new Error('herdr-projects details: unexpected reply')
   const plan = obj(d.plan)
   return {
+    handovers: parseTaskHandovers(d.handovers),
+    attempts: parseTaskAttempts(d.attempts),
+    comparison: parseTaskComparison(d.comparison),
     id: t.id,
     title: str(t.title, 300), stage: str(t.stage, 30), msg: str(t.msg, 1000), description: str(t.description, 8000),
     agent: str(d.agent, 40),
@@ -349,6 +379,7 @@ export function parseTaskDetails(text: string): TaskDetails {
     review: parseReview(d.review),
     reviewRounds: Array.isArray(d.reviews) ? d.reviews.length : 0,
     plan: plan ? str(plan.text, 8000) : '',
+    chat: d.chat === true,
     research: d.research === true,
     archived: Boolean(t.archivedAt ?? d.archivedAt),
     summary: str(d.summary ?? t.summary, 8000).trim(),
@@ -415,7 +446,7 @@ export type TaskFailure = Pick<TaskDetails, 'failureStage' | 'failureAuth'>
 const ACTIVE_STAGES = ['starting', 'setup', 'working', 'checking', 'pushing', 'reviewing', 'merging', 'queued', 'attempts']
 // A failure before any agent was on it: Start again, not Retry.
 const BEFORE_AGENT = ['start', 'setup', 'attempts']
-export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group' | 'archived' | 'app'> & { msg?: string }, f?: TaskFailure | null): TaskActions {
+export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group' | 'archived' | 'app'> & { msg?: string, chat?: boolean }, f?: TaskFailure | null): TaskActions {
   if (r.archived) return { ...NO_ACTIONS, restore: true }
   const live = r.group !== 'todo' && r.group !== 'done'
   const limitStop = r.stage === 'stopped' && r.state === 'blocked'
@@ -424,7 +455,7 @@ export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group
   const retryFailed = failed && Boolean(f) && !f!.failureAuth && (f!.failureStage === 'send' || (Boolean(f!.failureStage) && !BEFORE_AGENT.includes(f!.failureStage)))
   return {
     tell: live && Boolean(r.app) && !(failed && f && BEFORE_AGENT.includes(f.failureStage)),
-    approve: r.stage === 'approval' || (r.stage === 'plan' && r.state === 'blocked'),
+    approve: !r.chat && (r.stage === 'approval' || (r.stage === 'plan' && r.state === 'blocked')),
     delegate: r.group === 'todo' || (failed && Boolean(f) && BEFORE_AGENT.includes(f!.failureStage)),
     // Also an agent whose terminal is gone or that exited: still at work for 1.x.
     stop: r.group === 'working' || (r.group === 'needs' && r.state === 'blocked' && Boolean(r.app) && !limitStop && r.kind !== 'auth')
@@ -436,17 +467,18 @@ export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group
   }
 }
 
-// Why Finish is offered: a limit, no summary, or a finish the board missed.
-export type FinishCase = 'limit' | 'nosummary' | 'stuck'
+// Why Finish is offered: a waiting conversation, a limit, no summary, or a missed finish.
+export type FinishCase = 'conversation' | 'limit' | 'nosummary' | 'stuck'
 // 1.x shown/states.rs stuck_finishing: an agent task at stage "working" whose
 // row says "Finishing" (state.rs: its agent idle or done, its turn's end not
 // seen). 1.x refuses it while the agent is still at work.
-type FinishRow = Pick<TaskRow, 'state' | 'stage' | 'app' | 'archived'> & { msg?: string }
+type FinishRow = Pick<TaskRow, 'state' | 'stage' | 'app' | 'archived'> & { msg?: string, chat?: boolean }
 export function taskStuckFinishing(r: FinishRow): boolean {
   return !r.archived && Boolean(r.app) && r.stage === 'working' && r.state === 'working' && r.msg === 'Finishing'
 }
 export function finishCase(r: FinishRow): FinishCase | null {
   if (r.archived) return null
+  if (r.chat) return r.stage === 'asks' && r.state === 'blocked' ? 'conversation' : null
   if (r.stage === 'stopped' && r.state === 'blocked') return 'limit'
   if (r.stage === 'nosummary') return 'nosummary'
   return taskStuckFinishing(r) ? 'stuck' : null
@@ -524,11 +556,51 @@ export function addArgs(t: NewTask): string[] {
 // Start with another agent, for this start only: `delegate --worker.agent=<kind>
 // -- <id>` is a work setting for this task (1.x "any work setting, for this
 // task only"); the repo's and the user's defaults are not touched. No agent:
-// the task's own default, exactly as before.
-const AGENT_NAME_RE = /^[a-z][a-z0-9-]{0,39}$/
+// the task's own default, exactly as before. The agent can name a model
+// (`codex/gpt-6-sol`, `pi/<provider>/<model>`) and `--worker.effort` a level:
+// the CLI checks both and says which names it takes.
+const PROGRAM_RE = /^[a-z][a-z0-9-]{0,39}$/
+const AGENT_NAME_RE = /^[a-z][a-z0-9-]{0,39}(?:\/[A-Za-z0-9][\w.:[\]-]{0,79}){0,2}$/
+export const isProgramName = (v: unknown): v is string => typeof v === 'string' && PROGRAM_RE.test(v)
 export const isAgentName = (v: unknown): v is string => typeof v === 'string' && AGENT_NAME_RE.test(v)
-export function delegateArgs(id: string, agent?: string | null, after?: string[] | null): string[] {
-  return ['delegate', ...(agent ? [`--worker.agent=${agent}`] : []), ...(after?.length ? [`--after=${after.join(',')}`] : []), '--', id]
+const EFFORT_RE = /^[a-z][a-z0-9-]{0,19}$/
+export const isEffortName = (v: unknown): v is string => typeof v === 'string' && EFFORT_RE.test(v)
+export function delegateArgs(id: string, agent?: string | null, after?: string[] | null, effort?: string | null): string[] {
+  return ['delegate', ...(agent ? [`--worker.agent=${agent}`] : []), ...(effort ? [`--worker.effort=${effort}`] : []), ...(after?.length ? [`--after=${after.join(',')}`] : []), '--', id]
+}
+
+// `models <program>`: a sentence, one `program/model` line per model it takes,
+// then `Effort (…): low, medium, high (from …); a, b only low, medium.`
+// `models`: the model part only (`gpt-6-sol`, `openai/gpt-5` for pi).
+// `efforts`: the levels for every model, `only` those some models are limited to.
+export interface StartModels { program: string, models: string[], efforts: string[], only: { models: string[], levels: string[] }[] }
+const words = (s: string) => s.replace(/\([^)]*\)/g, ' ').replace(/`/g, ' ').split(',').map(w => w.trim().replace(/\.$/, '')).filter(w => EFFORT_RE.test(w) || AGENT_NAME_RE.test(`x/${w}`))
+export function parseModels(stdout: string, program: string): StartModels {
+  const out: StartModels = { program, models: [], efforts: [], only: [] }
+  for (const raw of stdout.split('\n')) {
+    const l = raw.trim()
+    const effort = /^effort\b[^:]*:\s*(.*)$/i.exec(l)
+    if (effort) {
+      const [all = '', ...rest] = effort[1]!.split(';')
+      out.efforts = words(all).filter(w => EFFORT_RE.test(w))
+      for (const part of rest) {
+        const m = /^(.*?)\s+only\s+(.*)$/i.exec(part.trim())
+        if (!m) continue
+        const levels = words(m[2]!).filter(w => EFFORT_RE.test(w))
+        const models = words(m[1]!)
+        if (levels.length && models.length) out.only.push({ models, levels })
+      }
+      continue
+    }
+    if (l.startsWith(`${program}/`) && isAgentName(l) && !out.models.includes(l.slice(program.length + 1))) out.models.push(l.slice(program.length + 1))
+  }
+  return out
+}
+// The levels a model takes: its own limit, else every level. No model: none
+// (the program's own model is not known here).
+export function effortsFor(m: StartModels | null | undefined, model: string | null | undefined): string[] {
+  if (!m || !model) return []
+  return m.only.find(o => o.models.includes(model))?.levels ?? m.efforts
 }
 
 // `delegate --after`: the tasks to wait for, as a person names them: an id
@@ -598,12 +670,8 @@ export function parseBoardAgents(stdout: string): number | null {
 // task`) and reads it at every start of its agent, so it stays for the run;
 // afterwards wherdr puts back what the task had: its own value (`set`), or
 // none (`unset`: its repo's or the user's default applies again).
-export function restoreAgentArgs(id: string, prev: string | null): string[] {
-  return prev ? ['set', `--task=${id}`, '--', 'worker.agent', prev] : ['unset', `--task=${id}`, '--', 'worker.agent']
-}
-// Raise or lift a task's limit (1.2.16+): `set --task=<id> -- limit.<kind> <value>`.
-export function limitArgs(id: string, kind: 'time' | 'tokens', value: string): string[] {
-  return ['set', `--task=${id}`, '--', `limit.${kind}`, value]
+export function restoreAgentArgs(id: string, prev: string | null, name: 'worker.agent' | 'worker.effort' = 'worker.agent'): string[] {
+  return prev ? ['set', `--task=${id}`, '--', name, prev] : ['unset', `--task=${id}`, '--', name]
 }
 // A run is over, so the agent picked for it can be taken back: the task is
 // back in the backlog, or done. (A task that waits for another, `after`, or
@@ -628,6 +696,15 @@ export function parseWorkerAgent(stdout: string): TaskAgent | null {
   const value = row && typeof row.value === 'string' ? row.value.trim().slice(0, 120) : ''
   if (!value) return null
   return { value, kind: agentKind(value), place: str(row!.place, 40), from: str(row!.from, 200) }
+}
+// The task's `worker.effort` (a level picked for one start is put back too).
+export function parseWorkerEffort(stdout: string): { value: string, place: string } | null {
+  let v: unknown
+  try { v = JSON.parse(stdout) } catch { return null }
+  const list = obj(v)?.settings
+  const row = Array.isArray(list) ? list.map(obj).find(r => r?.name === 'worker.effort') : null
+  const value = row && typeof row.value === 'string' ? row.value.trim().slice(0, 40) : ''
+  return value ? { value, place: str(row!.place, 40) } : null
 }
 
 // Who the Board's chat talks to on a machine: its Coordinator (one per Herdr
@@ -780,6 +857,9 @@ export function stateFromTaskFile(t: Raw, paneStatus: string | null): { state: s
   return { state: 'working', kind: '' } // queued, starting, reviewing, checking, merging, attempts…
 }
 
+// A delegated run keeps its mode even if chat.only changes afterwards (CLI 1.2.16).
+const chatFromTaskFile = (o: Raw) => typeof o.chatRun === 'boolean' ? o.chatRun : obj(o.settings)?.['chat.only'] === true
+
 // One row of the board from a task file; null for what the board does not list
 // on its own (an attempt of a task done several times at once) or cannot read.
 export function rowFromTaskFile(t: unknown, paneStatus: string | null): TaskRow | null {
@@ -790,6 +870,7 @@ export function rowFromTaskFile(t: unknown, paneStatus: string | null): TaskRow 
   return parseTaskRow({
     id: o.id, identity: taskAgentIdentity(o), state, kind, mergeFailed: o.mergeFailed, syncBlocked: o.syncBlocked, prFailure: o.prFailure, prState: o.prState, stage: o.stage, title: o.title, msg: o.msg, app: o.app,
     pr: o.pr, review: review && !review.stale ? review : null, reviewRound: o.reviewRound,
+    chat: chatFromTaskFile(o),
     research: o.research === true, archivedAt: o.archivedAt, created: o.created,
     progress: obj(o.watch)?.progress,
   })
@@ -801,10 +882,12 @@ export function detailsFromTaskFile(t: unknown): TaskDetails | null {
   if (!o || !isTaskId(o.id)) return null
   return parseTaskDetails(JSON.stringify({
     task: { id: o.id, title: o.title, stage: o.stage, msg: o.msg, description: o.description, summary: o.summary, archivedAt: o.archivedAt ?? null },
+    handovers: o.handovers,
     report: o.report ?? null,
     failure: o.failure ?? o.prFailure ?? null, limits: o.limits, review: o.review ?? null, reviews: [],
     // The program on it: `on` while one works, then `agent`, as `details` gives it; else the row's `app`.
     agent: o.on || o.agent || o.app || null,
+    chat: chatFromTaskFile(o),
     research: o.research === true, pr: o.pr ?? null, branch: o.branch ?? null, worktree: o.worktree ?? null, plan: null,
     after: o.after ? { waitsFor: o.after, left: o.stage === 'after' ? o.afterLeft : undefined, waiting: o.stage === 'after', waitsForYou: o.afterBlocked } : null,
   }))
@@ -816,14 +899,14 @@ export function taskCanFix(r: Pick<TaskRow, 'archived' | 'stage' | 'app'>, d: Ta
   return !r.archived && Boolean(r.app) && Boolean(d?.failureCanFix) && !d?.failureAuth && !d?.failureStale
     && !(d?.failureSent && r.stage === 'working') && r.stage !== 'merging'
 }
-export function taskCanApproveAnyway(r: Pick<TaskRow, 'archived' | 'stage' | 'research' | 'review'>, d: TaskDetails | null): boolean {
-  return !r.archived && !r.research && r.stage === 'approval'
+export function taskCanApproveAnyway(r: Pick<TaskRow, 'archived' | 'stage' | 'research' | 'review' | 'chat'>, d: TaskDetails | null): boolean {
+  return !r.archived && !r.chat && !r.research && r.stage === 'approval'
     && (r.review?.pass === false || (d?.failureRemoteKind === 'checks'))
 }
 // A review that failed, its task waiting for you: 1.x asks "merge anyway, or
 // send the review back" (`review <id>`), sending back first.
-export function taskCanSendReview(r: Pick<TaskRow, 'archived' | 'stage' | 'research' | 'review'>, d?: Pick<TaskDetails, 'review'> | null): boolean {
-  return !r.archived && !r.research && r.stage === 'approval' && (d?.review ?? r.review)?.pass === false
+export function taskCanSendReview(r: Pick<TaskRow, 'archived' | 'stage' | 'research' | 'review' | 'chat'>, d?: Pick<TaskDetails, 'review'> | null): boolean {
+  return !r.archived && !r.chat && !r.research && r.stage === 'approval' && (d?.review ?? r.review)?.pass === false
 }
 // What a sent-back review carries, worst first: its open findings (those there
 // before the task stay out), `shown` of them, and how many more.
@@ -832,4 +915,28 @@ export function reviewFindingsBrief(findings: TaskDetails['findings'], shown = 3
   const open = (findings || []).filter(f => !f.preexisting && f.title)
     .map((f, i) => ({ f, i })).sort((a, b) => severityRank(a.f.severity) - severityRank(b.f.severity) || a.i - b.i).map(x => x.f)
   return { list: open.slice(0, shown), more: Math.max(0, open.length - shown) }
+}
+
+// CLI details (1.2.16, actions/finish_line.rs): only `passed` may be picked.
+export function parseTaskAttempts(value: unknown): TaskAttempt[] {
+  if (!Array.isArray(value)) return []
+  const letters = new Set<string>()
+  return value.slice(0, 5).flatMap(value => {
+    const a = obj(value)
+    const letter = str(a?.letter, 10)
+    if (!/^[A-E]$/.test(letter) || letters.has(letter)) return []
+    letters.add(letter)
+    return [{ letter, agent: str(a?.agent, 160), standing: str(a?.standing, 30), stage: str(a?.stage, 30), stat: str(a?.stat, 500) }]
+  })
+}
+function parseTaskComparison(value: unknown): TaskComparison | null {
+  const c = obj(value)
+  if (!c) return null
+  const notes: Record<string, string> = {}
+  for (const [letter, note] of Object.entries(obj(c.notes) || {})) if (/^[A-E]$/.test(letter)) notes[letter] = str(note, 600)
+  return { pick: /^[A-E]$/.test(str(c.pick, 10)) ? str(c.pick, 10) : '', why: str(c.why, 2000), error: str(c.error, 2000), notes }
+}
+export function canPickAttempt(details: TaskDetails | null | undefined, letter: unknown): boolean {
+  return Boolean(details && !details.archived && details.stage === 'pick' && typeof letter === 'string'
+    && /^[A-E]$/.test(letter) && details.attempts?.some(a => a.letter === letter && a.standing === 'passed'))
 }

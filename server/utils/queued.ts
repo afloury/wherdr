@@ -127,6 +127,8 @@ export interface QueueEntry {
   at: number
   held?: boolean
   failed?: boolean
+  // Claimed on disk before terminal I/O; an interrupted attempt is uncertain.
+  delivering?: boolean
   // Held (or failed) because the agent's input field was not empty.
   inputText?: string
   busy?: boolean
@@ -295,7 +297,7 @@ export const publicEntry = (q: QueueEntry): QueuedMessage => ({
 })
 
 // Records read back from data/queued.json at startup: well-formed ones (a
-// delivery interrupted by the restart is held again). A message older than
+// delivery interrupted by the restart requires explicit retry). A message older than
 // QUEUED_TTL_MS comes back as not sent (sent: not seen) rather than
 // vanishing, except a held terminal draft still waiting for the user; one
 // older than FAILED_TTL_MS is dropped.
@@ -307,6 +309,9 @@ export function loadQueued(raw: unknown, now: number): [string, QueueEntry[]][] 
     const ok = list.filter((q): q is QueueEntry => Boolean(q) && typeof q.id === 'string' && typeof q.text === 'string' && typeof q.at === 'number'
       && now - q.at < FAILED_TTL_MS)
       .map((q) => {
+        // Older versions persisted ambiguous typed attempts as held. Never
+        // resume those automatically after upgrading or restarting.
+        if (q.delivering || (q.held && q.typedAt)) q = { ...q, held: false, failed: true }
         const old = !q.failed && !(q.held && q.busy) && now - q.at >= QUEUED_TTL_MS
         return { id: q.id, text: q.text, at: q.at, ...(q.held && !old ? { held: true } : {}), ...(q.failed || old ? { failed: true } : {}), ...(q.busy ? { busy: true } : {}), ...(q.back ? { back: true } : {}),
           ...(typeof q.typedAt === 'number' ? { typedAt: q.typedAt } : {}), ...(q.turn && !old ? { turn: true } : {}),

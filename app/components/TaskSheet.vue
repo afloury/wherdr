@@ -9,6 +9,8 @@
 // where that comes from) and offers the other agents installed on its machine
 // that Settings › Agents offers (the default is shown even when unchecked):
 // a pick is for this start only (`delegate --worker.agent`), the defaults stay.
+// After the program, a model and an effort it takes (ModelPicker, `launch`):
+// none picked, the program alone; never one picked for the user.
 // No message field here: "Open the chat" closes the sheet and opens the task's
 // agent in the Board's side panel (`chat`), where replying happens (with no
 // pane for its agent, the panel's field sends the reply through herdr-projects).
@@ -22,18 +24,20 @@
 // "Start after…" picks tasks to wait for, on any machine the Board reads
 // (`delegate --after`); a task that waits says for what, with "Stop waiting"
 // (`after --clear`), and one in the queue says its place.
-import { AFTER_MAX, TASK_QUESTION_MAX, NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, type TasksReply, finishCase, prNumber, startPlace, taskActions, taskKey } from '#shared/projectsTasks'
+import { canPickAttempt, AFTER_MAX, TASK_QUESTION_MAX, NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, type TasksReply, finishCase, prNumber, startPlace, taskActions, taskKey } from '#shared/projectsTasks'
 import AppSheet from './AppSheet.vue'
+import ModelPicker from './ModelPicker.vue'
 import { type StartAgentChoice, startAgentChoices } from '~/utils/agentChoices'
-import { continueLabel, finishHint, finishLabel, finishQuestion, finishTitle, finishOffered, takeAsIsLabel } from '~/utils/taskFinish'
+import { finishHint, finishLabel, finishQuestion, finishTitle, finishOffered } from '~/utils/taskFinish'
 import { type WaitChoice, queuePlaceText, typedRef, waitChoices, waitName } from '~/utils/taskWait'
+import { type LimitPreset, formatLimit, limitStopOf, raisePresets } from '#shared/taskLimits'
 import { sawTasksBoard, seenTasksBoard } from '~/composables/useTasksBoard'
 
 // `refresh`: reads the Board again (its promise ends with the read); without
 // it, `changed` asks for that. `archived` / `restored`: the task was put away
 // or brought back from here.
 // `chat`: open this task's agent in the side panel (the sheet has closed).
-const props = defineProps<{ task: TaskRow | null, machine: string, refresh?: () => Promise<unknown>, embedded?: boolean }>()
+const props = withDefaults(defineProps<{ task: TaskRow | null, machine: string, refresh?: () => Promise<unknown>, embedded?: boolean, reachable?: boolean, limitRequest?: number }>(), { reachable: true })
 const emit = defineEmits<{ changed: [], archived: [machine: string, task: TaskRow], restored: [machine: string, task: TaskRow], chat: [machine: string, task: TaskRow], coordinator: [machine: string, task: TaskRow] }>()
 const open = defineModel<boolean>('open', { default: false })
 
@@ -51,14 +55,65 @@ const failure = computed(() => (details.value && details.value.id === props.task
 // Archived: as its details (its file) or its row say, until Restore from here.
 const restored = ref(false)
 const archived = computed(() => Boolean(failure.value?.archived) || (Boolean(props.task?.archived) && !restored.value))
-const row = computed(() => (props.task ? { ...props.task, archived: archived.value } : null))
+const row = computed(() => (props.task ? { ...props.task, archived: archived.value, chat: failure.value?.chat ?? props.task.chat } : null))
 // Finish on a row stuck at "Finishing": not while its agent is still at work (1.x refuses).
 const paneStatus = computed(() => herdrState.value.panes.find(p => p.id === failure.value?.pane)?.status ?? null)
 const withFinish = (a: ReturnType<typeof taskActions>) => ({ ...a, finish: a.finish && Boolean(row.value) && finishOffered(row.value!, paneStatus.value) })
 const actions = computed(() => (row.value ? withFinish(taskActions(row.value, failure.value)) : NO_ACTIONS))
 const finishWhy = computed(() => { const c = row.value ? finishCase(row.value) : null; return c ? finishHint(c) : '' })
-// Stopped at a limit: Retry is Continue, Finish is Take it as it is.
-const atLimit = computed(() => Boolean(row.value && finishCase(row.value) === 'limit'))
+const limitStopped = computed(() => row.value?.stage === 'stopped' && row.value?.state === 'blocked' && !archived.value)
+const limitOpen = ref(false)
+const limitName = computed(() => failure.value?.limits?.stopped ? `limit.${failure.value.limits.stopped}` : null)
+const limitNotice = ref('')
+const limitValue = ref('')
+const resuming = ref(false)
+watch(limitName, () => { limitValue.value = ''; limitNotice.value = '' })
+function openLimit() {
+  limitNotice.value = ''
+  limitValue.value = ''
+  limitOpen.value = true
+}
+// One tap per preset (+1 h / ×2 / none for time, ×2 / +10 M / none for tokens):
+// the same `set` as a typed value. A preset not above what was already used
+// is offered disabled, since herdr-projects would not resume.
+const limitStop = computed(() => (limitStopped.value ? limitStopOf(failure.value?.limits, row.value?.msg) : null))
+const limitPresets = computed(() => {
+  const s = limitStop.value
+  return s && limitName.value === `limit.${s.kind}` ? raisePresets(s.kind, s.limit, s.used) : []
+})
+function presetLabel(p: LimitPreset): string {
+  switch (p.id) {
+    case 'plus1h': return '+1 h'
+    case 'plus10m': return '+10 M'
+    case 'double': return '×2'
+    default: return tl('No limit', 'Sans limite')
+  }
+}
+const presetTo = (p: LimitPreset) => (p.value === 'none' || !limitStop.value ? '' : formatLimit(limitStop.value.kind, p.value, language))
+function applyPreset(p: LimitPreset) {
+  if (!p.resumes) return
+  limitValue.value = p.value
+  void raiseLimit()
+}
+async function raiseLimit() {
+  const task = props.task
+  if (!task || busy.value || offlineView.value || props.reachable === false || !limitStopped.value || !limitName.value || !limitValue.value.trim()) return
+  const g = gen
+  const machine = props.machine
+  busy.value = true
+  resuming.value = true
+  limitNotice.value = ''
+  actionError.value = ''
+  try {
+    await api('/api/tasks/limit', { machine, id: task.id, name: limitName.value, value: limitValue.value.trim() })
+    await settle(g)
+    if (g === gen) {
+      if (!error.value && failure.value?.stage && failure.value.stage !== 'stopped') limitOpen.value = false
+      else limitNotice.value = tl('Limit saved. Resumption is not confirmed yet. It can take a few seconds; if the task stays stopped, choose a ceiling above its usage.', 'Plafond enregistré. La reprise n’est pas encore confirmée. Elle peut prendre quelques secondes ; si la tâche reste arrêtée, choisis un plafond supérieur à sa consommation.')
+    }
+  } catch (e) { failed(e, g) }
+  finally { if (g === gen) { busy.value = false; resuming.value = false } }
+}
 const pr = computed(() => details.value?.pr || props.task?.pr || '')
 const review = computed(() => details.value?.review || props.task?.review || null)
 const label = computed(() => (props.task ? taskKey(props.task.id, props.task.repoKey) : ''))
@@ -81,6 +136,12 @@ const defaultUsable = computed(() => startAgents.value[0]?.usable ?? true)
 const startAgent = computed(() => (pick.value && startAgents.value.some(a => !a.isDefault && a.id === pick.value) ? pick.value : null))
 // The default is not installed there: Start waits for another agent.
 const needsPick = computed(() => !defaultUsable.value && !startAgent.value)
+// The model and effort for this start (none: the program's own).
+const startModel = ref<string | null>(null)
+const startEffort = ref<string | null>(null)
+const startProgram = computed(() => startAgent.value || (defaultUsable.value ? defaultKind.value : ''))
+// What Start sends: the program, with the model when one is picked.
+const startName = computed(() => (startModel.value && startProgram.value ? `${startProgram.value}/${startModel.value}` : startAgent.value))
 const checked = (a: StartAgentChoice) => (a.isDefault ? a.usable && !startAgent.value : a.id === startAgent.value)
 // The default's tag: not installed there, or unchecked in Settings › Agents.
 function defaultTag(a: StartAgentChoice) {
@@ -120,7 +181,7 @@ async function loadStart() {
 // Queue: no slot free on the task's board, so Start puts it in the queue, at this place.
 const place = computed(() => startPlace(startOpts.value?.slots))
 function startLabel(): string {
-  const a = startAgent.value
+  const a = startName.value
   if (place.value) return a ? tl(`Queue with ${a}`, `Mettre en file avec ${a}`) : tl('Queue', 'Mettre en file')
   return a ? tl(`Start with ${a}`, `Lancer avec ${a}`) : tl('Start', 'Lancer')
 }
@@ -200,11 +261,17 @@ const target = () => `${props.machine}|${props.task?.id ?? ''}`
 let gen = 0
 watch([open, target], ([o]) => {
   gen++
+  limitOpen.value = false
+  limitValue.value = ''
+  limitNotice.value = ''
+  resuming.value = false
   busy.value = false
   running.value = null
   actionError.value = ''
   restored.value = false
   pick.value = null
+  startModel.value = null
+  startEffort.value = null
   closePicker()
   question.value = ''
   asking.value = false
@@ -215,6 +282,7 @@ watch([open, target], ([o]) => {
   details.value = null
   load()
 }, { immediate: true })
+watch(() => props.limitRequest, () => { if (limitStopped.value) openLimit() })
 // Asked once per sheet, when it offers Start (a failed task may offer it only
 // once its details say what failed).
 // Watched after the reset above, so another task's sheet asks again.
@@ -269,6 +337,29 @@ async function approve() {
   finally { if (g === gen) busy.value = false }
 }
 
+const attemptUnavailable = () => offlineView.value || props.reachable === false
+
+// The human names a letter and explicitly accepts closing every other attempt.
+async function keepAttempt(letter: string) {
+  const task = props.task
+  if (!task || busy.value || attemptUnavailable() || loading.value || error.value || !canPickAttempt(failure.value, letter)) return
+  const was = target()
+  const g = gen
+  const machine = props.machine
+  busy.value = true
+  actionError.value = ''
+  try {
+    const ok = await askConfirm(
+      tl(`Keep attempt ${letter} for “${task.title}”? The other attempts’ tabs close.`, `Garder l’essai ${letter} pour « ${task.title} » ? Les onglets des autres essais se ferment.`),
+      tl(`Keep ${letter} and close the others`, `Garder ${letter} et fermer les autres`), 'primary')
+    if (!ok || g !== gen || !still(was) || attemptUnavailable() || !canPickAttempt(failure.value, letter)) return
+    const r = await api<{ msg: string }>('/api/tasks/pick', { machine, id: task.id, letter, confirmed: true })
+    toast(r.msg)
+    await settle(g)
+  } catch (e) { failed(e, g) }
+  finally { if (g === gen) busy.value = false }
+}
+
 // Start, stop, retry, archive, restore: the task's id only. Stopping is asked
 // first (the agent's turn is cut short); archiving is undone by Restore, which
 // the Board offers right after it.
@@ -290,15 +381,16 @@ async function act(action: TaskCommand, after?: string[]) {
   if (action === 'stop' && !await askConfirm(
     tl(`Stop the agent of “${t.title}”? Its turn ends now; the task stays, and Retry or Start picks it up again.`, `Arrêter l’agent de « ${t.title} » ? Son tour s’arrête maintenant ; la tâche reste, Réessayer ou Lancer la reprend.`),
     tl('Stop the agent', 'Arrêter l’agent'))) return
-  if (action === 'finish' && !await askConfirm(finishQuestion(t.title), atLimit.value ? takeAsIsLabel() : finishLabel(), 'primary')) return
+  if (action === 'finish' && !await askConfirm(finishQuestion(t.title, row.value?.chat), finishLabel(row.value?.chat), 'primary')) return
   if (!still(was)) return
   const g = gen
   busy.value = true
   running.value = action
   actionError.value = ''
   try {
-    const agent = action === 'delegate' ? startAgent.value : null
-    const r = await api<{ msg: string }>('/api/tasks/action', { machine, id: t.id, action, ...(agent ? { agent } : {}), ...(action === 'delegate' && after?.length ? { after } : {}) })
+    const agent = action === 'delegate' ? startName.value : null
+    const effort = action === 'delegate' && startModel.value ? startEffort.value : null
+    const r = await api<{ msg: string }>('/api/tasks/action', { machine, id: t.id, action, ...(agent ? { agent } : {}), ...(effort ? { effort } : {}), ...(action === 'delegate' && after?.length ? { after } : {}) })
     if (action === 'delegate' && g === gen) closePicker()
     haptic()
     if (action === 'archive') {
@@ -307,7 +399,7 @@ async function act(action: TaskCommand, after?: string[]) {
       emit('archived', machine, t)
       return
     }
-    toast(r.msg || ACTION_DONE[action]())
+    toast(r.msg || (action === 'finish' && row.value?.chat ? tl('Conversation ended', 'Conversation terminée') : ACTION_DONE[action]()))
     if (action === 'restore' && g === gen) restored.value = true
     if (action === 'restore') emit('restored', machine, t)
     await settle(g)
@@ -372,13 +464,15 @@ function chat() {
   <component :is="embedded ? 'section' : AppSheet" v-model:open="open" :title="task?.title || tl('Task', 'Tâche')" wide>
     <div v-if="task" class="task-sheet">
       <p v-if="!embedded" class="task-sheet-meta">
-        <span class="task-key">{{ label }}</span>
+        <TaskKey :value="label" />
         <span class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
         <span v-if="archived" class="task-chip task-archived"><UIcon name="i-lucide-archive" />{{ tl('Archived', 'Archivée') }}</span>
         <span v-if="task.app" class="task-chip">{{ task.app }}</span>
-        <span v-if="task.research" class="task-chip">{{ tl('research', 'recherche') }}</span>
+        <span v-if="row?.chat" class="task-chip">{{ tl('Conversation', 'Conversation') }}</span>
+        <span v-else-if="task.research" class="task-chip">{{ tl('research', 'recherche') }}</span>
         <span v-if="multiMachine && machine !== undefined" class="task-chip">{{ machineName(machine) }}</span>
       </p>
+      <span v-if="embedded && row?.chat" class="task-chip">{{ tl('Conversation', 'Conversation') }}</span>
       <p v-if="embedded && task.group === 'working' && task.progress !== null" class="task-sheet-msg">{{ tl('Progress', 'Avancement') }} · {{ task.progress }}%<template v-if="task.eta !== null"> · {{ tl(`${task.eta} min left`, `${task.eta} min restantes`) }}</template></p>
       <p v-if="task.msg && !wait && queued === null" class="task-sheet-msg">{{ task.msg }}</p>
       <!-- Where a started task stands before an agent is on it: the queue, or what it waits for. -->
@@ -405,7 +499,21 @@ function chat() {
       <p v-if="loading && !details" class="board-empty">{{ t('Loading…') }}</p>
       <p v-if="error" class="board-note error">{{ error }}</p>
 
-      <TaskLimitGauges v-if="details?.limits" :limits="details.limits" />
+      <section v-if="!archived && task.stage === 'pick' && details?.stage === 'pick'" class="task-sheet-block task-attempts">
+        <h4>{{ tl('Choose an attempt', 'Choisis un essai') }}</h4>
+        <p v-if="details.comparison?.pick" class="task-sheet-text">{{ tl(`Picker recommends ${details.comparison.pick}`, `Le picker recommande ${details.comparison.pick}`) }}</p>
+        <p v-if="details.comparison?.why" class="task-sheet-text">{{ details.comparison.why }}</p>
+        <p v-if="details.comparison?.error" class="board-note error">{{ details.comparison.error }}</p>
+        <div v-for="attempt in details.attempts" :key="attempt.letter" class="task-attempt">
+          <p><strong class="mono">{{ attempt.letter }}</strong> · {{ attempt.agent }}</p>
+          <p>{{ attempt.standing === 'passed' ? tl('Checks passed', 'Vérifications réussies') : attempt.standing === 'out' ? tl('Not selectable', 'Non sélectionnable') : tl('Checks not passed yet', 'Vérifications pas encore réussies') }}<template v-if="attempt.standing !== 'passed'"> · {{ attempt.stage }}</template></p>
+          <p v-if="attempt.stat">{{ attempt.stat }}</p>
+          <p v-if="details.comparison?.notes[attempt.letter]">{{ details.comparison.notes[attempt.letter] }}</p>
+          <UButton :disabled="busy || offlineView || reachable === false || loading || !!error || !canPickAttempt(details, attempt.letter)" @click="keepAttempt(attempt.letter)">{{ tl(`Keep ${attempt.letter}`, `Garder ${attempt.letter}`) }}</UButton>
+        </div>
+        <p v-if="!details.attempts?.length" class="board-note">{{ tl('No attempts available', 'Aucun essai disponible') }}</p>
+      </section>
+
       <dl v-if="pr || review || details?.branch || details?.agent" class="task-sheet-facts">
         <template v-if="pr">
           <dt>{{ tl('Pull request', 'Pull request') }}</dt>
@@ -426,6 +534,18 @@ function chat() {
           <dd>{{ details.agent }}</dd>
         </template>
       </dl>
+      <section v-if="details?.handovers?.length" class="task-sheet-block task-handovers">
+        <h4>{{ t('Handovers') }}</h4>
+        <ol class="task-handover-list">
+          <li v-for="(handover, index) in details.handovers" :key="index" class="task-sheet-text">
+            <p v-if="handover.role" class="task-handover-meta">{{ handover.role === 'worker' ? t('Agent') : handover.role === 'reviewer' ? t('Reviewer') : handover.role }}</p>
+            <p v-if="handover.from"><span>{{ t('Previous agent') }}: </span>{{ handover.from }}</p>
+            <p v-if="handover.to"><span>{{ t('Taken over by') }}: </span>{{ handover.to }}</p>
+            <p v-if="handover.why">{{ handover.why }}</p>
+            <time v-if="handover.at !== null" :datetime="new Date(handover.at).toISOString()" class="task-handover-meta">{{ new Date(handover.at).toLocaleString() }}</time>
+          </li>
+        </ol>
+      </section>
       <div v-if="details?.failure && !details.failureStale && !embedded" class="plugin-input-note warn">
         <UIcon name="i-lucide-triangle-alert" />
         <p>{{ details.failure }}</p>
@@ -439,6 +559,7 @@ function chat() {
         <h4>{{ tl('Description', 'Description') }}</h4>
         <p class="task-sheet-text">{{ details.description }}</p>
       </section>
+      <TaskSettings v-if="!embedded" :machine="machine" :id="task.id" :active="open" :reachable="reachable" />
       <section v-if="details?.plan" class="task-sheet-block">
         <h4>{{ tl('Plan', 'Plan') }}</h4>
         <p class="task-sheet-text">{{ details.plan }}</p>
@@ -457,6 +578,7 @@ function chat() {
         <h4>{{ tl('Review findings', 'Remarques de relecture') }}</h4>
         <p v-for="(f, i) in details.findings" :key="i" class="task-sheet-text">{{ f.severity }} · {{ f.title }}<template v-if="f.detail"> — {{ f.detail }}</template></p>
       </section>
+      <TaskLimitGauges v-if="details?.limits" :limits="details.limits" />
 
       <section v-if="!archived" class="task-sheet-block">
         <div class="task-sheet-actions">
@@ -484,9 +606,13 @@ function chat() {
         >
           <AgentAvatar v-if="a.id || startOpts?.agent" :agent="a.id || defaultKind" /><span class="task-start-name">{{ a.label }}</span><small v-if="a.isDefault">{{ defaultTag(a) }}</small>
         </button>
+        <span v-if="startOpts && startProgram && !offlineView" class="task-start-model">
+          <span class="task-start-label">{{ tl('Model', 'Modèle') }}</span>
+          <ModelPicker :key="`${target()}|${startProgram}`" v-model:model="startModel" v-model:effort="startEffort" :launch="{ machine, program: startProgram }" />
+        </span>
         <span v-if="startOpts?.agent" class="task-start-from">{{ agentSource() }}</span>
         <span v-if="needsPick" class="task-start-from task-start-missing" role="status">{{ tl(`${defaultKind} is not installed on this machine: pick another agent to start it.`, `${defaultKind} n’est pas installé sur cette machine : choisis un autre agent pour la lancer.`) }}</span>
-        <span v-if="startAgent" class="task-start-from">{{ tl('For this start only: the default stays.', 'Pour ce lancement seulement : le défaut ne change pas.') }}</span>
+        <span v-if="startName" class="task-start-from">{{ tl('For this start only: the default stays.', 'Pour ce lancement seulement : le défaut ne change pas.') }}</span>
       </div>
       <div v-if="chatShown || actions.approve || actions.delegate || actions.retry || actions.finish || actions.stop || actions.archive || actions.restore" class="task-sheet-actions">
         <UButton v-if="actions.restore" color="primary" icon="i-lucide-archive-restore" :loading="running === 'restore'" :disabled="busy || offlineView" @click="act('restore')">{{ tl('Restore', 'Restaurer') }}</UButton>
@@ -495,8 +621,9 @@ function chat() {
         <UButton v-if="actions.approve" color="primary" icon="i-lucide-check" :loading="busy && !running" :disabled="busy || offlineView" @click="approve">
           {{ task.stage === 'plan' ? tl('Approve plan', 'Accepter le plan') : tl('Approve', 'Approuver') }}
         </UButton>
-        <UButton v-if="actions.retry" color="primary" variant="outline" icon="i-lucide-rotate-ccw" :loading="running === 'retry'" :disabled="busy || offlineView" @click="act('retry')">{{ atLimit ? continueLabel() : tl('Retry', 'Réessayer') }}</UButton>
-        <UButton v-if="actions.finish" color="primary" variant="outline" icon="i-lucide-flag" class="task-finish" :title="finishTitle()" :aria-description="finishTitle()" :loading="running === 'finish'" :disabled="busy || offlineView" @click="act('finish')">{{ atLimit ? takeAsIsLabel() : finishLabel() }}</UButton>
+        <UButton v-if="actions.retry" color="primary" variant="outline" icon="i-lucide-rotate-ccw" :loading="running === 'retry'" :disabled="busy || offlineView" @click="act('retry')">{{ limitStopped ? tl('Continue', 'Continuer') : tl('Retry', 'Réessayer') }}</UButton>
+        <UButton v-if="limitStopped" variant="outline" :disabled="busy || offlineView || reachable === false" @click="openLimit">{{ tl('Raise limit', 'Relever la limite') }}</UButton>
+        <UButton v-if="actions.finish" color="primary" variant="outline" icon="i-lucide-flag" class="task-finish" :title="finishTitle(row?.chat)" :aria-description="finishTitle(row?.chat)" :loading="running === 'finish'" :disabled="busy || offlineView" @click="act('finish')">{{ limitStopped && !row?.chat ? tl('Take as is', 'Prendre tel quel') : finishLabel(row?.chat) }}</UButton>
         <UButton
           v-if="chatShown && !embedded" class="task-chat" color="neutral" variant="outline" icon="i-lucide-message-square"
           @click="chat"
@@ -506,6 +633,27 @@ function chat() {
         <UButton v-if="actions.stop" color="error" variant="outline" icon="i-lucide-square" :loading="running === 'stop'" :disabled="busy || offlineView" @click="act('stop')">{{ tl('Stop', 'Arrêter') }}</UButton>
         <UButton v-if="actions.archive" color="neutral" variant="ghost" icon="i-lucide-archive" class="task-archive" :loading="running === 'archive'" :disabled="busy || offlineView" @click="act('archive')">{{ tl('Archive', 'Archiver') }}</UButton>
       </div>
+      <p v-if="resuming" role="status">{{ tl('Resuming…', 'Reprise…') }}</p>
+      <p v-if="limitStopped && embedded" class="task-finish-why">{{ finishWhy }}</p>
+      <AppSheet v-model:open="limitOpen" :title="tl('Raise limit', 'Relever la limite')" top>
+        <form class="sheet-form task-question" @submit.prevent="raiseLimit">
+          <p>{{ tl('Choose a total ceiling above usage for the limit that stopped this task. Usage is kept; the CLI resumes automatically when this limit is lifted. Enter none to explicitly remove it.', 'Choisis un plafond total supérieur à la consommation pour la limite qui a arrêté cette tâche. La consommation est conservée ; le CLI reprend automatiquement quand cette limite est levée. Saisis none pour la supprimer explicitement.') }}</p>
+          <p id="task-limit-kind" class="field-label">{{ limitName === 'limit.time' ? tl('Reached limit: time per run', 'Limite atteinte : temps par tranche') : limitName === 'limit.tokens' ? tl('Reached limit: tokens for the whole task', 'Limite atteinte : jetons pour toute la tâche') : tl('The reached limit is not available. Refresh the task before changing a ceiling.', 'La limite atteinte n’est pas disponible. Actualise la tâche avant de modifier un plafond.') }}</p>
+          <div v-if="limitPresets.length" class="raise-limit-presets" role="group" :aria-label="tl('Quick choices', 'Choix rapides')">
+            <UButton v-for="p in limitPresets" :key="p.id" color="neutral" variant="outline" :data-preset="p.id" :disabled="busy || offlineView || reachable === false || !p.resumes" :title="p.resumes ? undefined : tl('Not above what it already used: it would not resume', 'Pas au-dessus de ce qu’elle a déjà utilisé : elle ne reprendrait pas')" @click="applyPreset(p)">
+              <span class="raise-limit-op">{{ presetLabel(p) }}</span><span v-if="presetTo(p)" class="raise-limit-to">{{ presetTo(p) }}</span>
+            </UButton>
+          </div>
+          <label for="task-limit-value" class="field-label">{{ limitName === 'limit.time' ? tl('New duration (e.g. 4h, 90m, none)', 'Nouvelle durée (ex. 4h, 90m, none)') : tl('New token count (e.g. 3m, 500k, none)', 'Nouvelle quantité de jetons (ex. 3m, 500k, none)') }}</label>
+          <UInput id="task-limit-value" v-model="limitValue" :disabled="busy || !limitName" :maxlength="40" />
+          <p v-if="limitNotice" role="status">{{ limitNotice }}</p>
+          <p v-if="actionError" role="alert">{{ actionError }}</p>
+          <div class="task-sheet-actions">
+            <UButton color="neutral" variant="outline" :disabled="busy" @click="limitOpen = false">{{ tl('Cancel', 'Annuler') }}</UButton>
+            <UButton type="submit" :disabled="busy || offlineView || !limitName || !limitValue.trim()" :loading="resuming">{{ resuming ? tl('Resuming…', 'Reprise…') : tl('Apply limit', 'Appliquer le plafond') }}</UButton>
+          </div>
+        </form>
+      </AppSheet>
       <p v-if="actions.delegate && placeLine" class="task-queue-place" role="status">{{ placeLine }}</p>
       <!-- Start after…: the tasks to wait for, searched by key, id or title, on every machine the Board reads. -->
       <section v-if="actions.delegate && picking" class="task-sheet-block task-after-pick">
@@ -543,6 +691,7 @@ function chat() {
 </template>
 
 <style scoped>
+.task-attempt { border-top: 1px solid var(--line); padding: 12px 0; display: grid; gap: 8px; overflow-wrap: anywhere; }
 .task-question { display: grid; gap: 12px; margin-top: 16px; }
 .task-question p { color: var(--muted); font-size: 13px; }
 </style>

@@ -1,5 +1,5 @@
 // Task limits (herdr-projects 1.2.16+): the Task tab's gauges, and a task
-// stopped at a limit — Continue, Raise the limit, Take it as it is. The
+// stopped at a limit raised with one preset (#167's sheet, #155's presets). The
 // plugin's launcher is a fake that answers with `details --json` as 1.2.21
 // writes it (limits/shown.rs) and writes down each call.
 import { expect, test } from './test'
@@ -21,7 +21,8 @@ case "$1" in
   details) cat '${root}/details.json' ;;
   version) echo 'herdr-projects 1.2.21 (/opt/herdr-projects/bin/herdr-projects-linux-x86_64)' ;;
   set) if [ -f '${root}/refuse' ]; then cat '${root}/refuse' >&2; exit 1; fi
-    if [ -f '${root}/after-set.json' ]; then mv '${root}/after-set.json' '${root}/list.json'; fi; echo "set" ;;
+    if [ -f '${root}/after-set.json' ]; then mv '${root}/after-set.json' '${root}/list.json'; fi
+    if [ -f '${root}/after-set-details.json' ]; then mv '${root}/after-set-details.json' '${root}/details.json'; fi; echo "set" ;;
   retry|finish) echo "$3: done" ;;
   show) echo '${keyReply}' ;;
   *) echo "unexpected: $*" >&2; exit 1 ;;
@@ -39,7 +40,7 @@ const limits = (extra: Record<string, unknown> = {}) => ({
 })
 
 test.beforeEach(async () => {
-  for (const f of ['refuse', 'after-set.json', 'calls.log']) fs.rmSync(path.join(root, f), { force: true })
+  for (const f of ['refuse', 'after-set.json', 'after-set-details.json', 'calls.log']) fs.rmSync(path.join(root, f), { force: true })
   await fakeHerdr('e2e.plugins', { plugins: [manifest] })
 })
 test.afterEach(async () => { await fakeHerdr('e2e.plugins', { plugins: [] }) })
@@ -63,7 +64,7 @@ for (const lang of ['en', 'fr']) {
     await panel.locator('.board-panel-tabs').getByRole('button', { name: lang === 'fr' ? 'Tâche' : 'Task', exact: true }).click()
     await expect(panel.locator('.task-limit')).toHaveCount(2, { timeout: 20_000 })
     await shot(page, `gauges-${lang}`)
-    await expect(panel.locator('.task-limit[data-kind="time"] .task-limit-label')).toHaveText(lang === 'fr' ? 'Temps' : 'Time')
+    await expect(panel.locator('.task-limit[data-kind="time"] .task-limit-label')).toHaveText(lang === 'fr' ? 'Temps · cette tranche' : 'Time · this run')
     await expect(panel.locator('.task-limit[data-kind="time"] .task-limit-value')).toHaveText('2 min 38 / 2 h')
     await expect(panel.locator('.task-limit[data-kind="tokens"] .task-limit-value')).toHaveText(lang === 'fr' ? '3,4 M / 30 M' : '3.4 M / 30 M')
     await expect(panel.locator('.task-limit.hot')).toHaveCount(0)
@@ -75,27 +76,22 @@ for (const lang of ['en', 'fr']) {
     write('list.json', [stopped])
     write('details.json', { task: { ...stopped, description: 'Make the search page easier to scan.' }, limits: limits({ stopped: { what: 'time', limit: '2h', used: 7_200_000, role: 'worker', line: stopped.msg } }) })
     write('after-set.json', [working])
+    write('after-set-details.json', { task: { ...working, description: 'Make the search page easier to scan.' }, limits: limits({ time: { limit: '3h', used: '0s', usedMs: 0 } }) })
     await page.goto('/#/board?machine=&task=demo%2F9')
     const banner = page.locator('.task-needs')
     // The previous test's list is reused for a few seconds (REUSE_MS).
     await expect(banner).toContainText('stopped at its 2h limit', { timeout: 20_000 })
     await shot(page, `stopped-${lang}`)
-    await expect(banner.locator('.task-needs-actions button').nth(0)).toHaveText(lang === 'fr' ? 'Continuer' : 'Continue')
-    await expect(banner.locator('.task-needs-actions button').nth(1)).toHaveText(lang === 'fr' ? 'Relever la limite' : 'Raise the limit')
-    await expect(banner.locator('.task-needs-actions button').nth(2)).toHaveText(lang === 'fr' ? 'Prendre telle quelle' : 'Take it as it is')
-    await expect(banner.locator('.task-limit-why')).toContainText(lang === 'fr' ? 'la même limite une fois de plus (2 h par passage)' : 'the same limit once more (2 h a run)')
-    await banner.locator('.task-limit-raise').click()
-    const sheet = page.locator('.raise-limit')
-    await expect(sheet.locator('.raise-limit-value')).toHaveText('2 h / 2 h')
-    await expect(sheet.locator('.raise-limit-preset')).toHaveText(['+1 h3 h', '×24 h', lang === 'fr' ? 'Sans limite' : 'No limit'])
+    // The hint names the limit Continue grants once more.
+    await expect(banner.locator('.task-finish-why')).toContainText(lang === 'fr' ? 'nouvelle tranche (2 h par tranche)' : 'new allowance (2 h a run)')
+    await banner.getByRole('button', { name: lang === 'fr' ? 'Relever la limite' : 'Raise limit', exact: true }).click()
+    const presets = page.locator('.raise-limit-presets button')
+    await expect(presets).toHaveText(['+1 h3 h', '×24 h', lang === 'fr' ? 'Sans limite' : 'No limit'])
     await shot(page, `raise-${lang}`)
-    await sheet.locator('.raise-limit-preset').first().click()
-    await expect(sheet).toHaveCount(0)
-    await expect(banner.locator('.task-needs-resuming')).toHaveText(lang === 'fr' ? 'Reprise…' : 'Resuming…')
+    await presets.first().click()
     // Only set: herdr-projects carries on by itself, so no retry follows.
-    expect(callLog()).toContain('set --task=demo/9 -- limit.time 3h')
+    await expect.poll(callLog).toContain('set limit.time 3h --task demo/9')
     expect(callLog().some(c => c.startsWith('retry'))).toBe(false)
-    // Resuming… until the task list brings the task back at work.
     await expect(banner).toHaveCount(0, { timeout: 15_000 })
     expect(callLog().some(c => c.startsWith('retry'))).toBe(false)
   })
@@ -106,11 +102,11 @@ test('a refused raise shows herdr-projects’ words as they are', async ({ page 
   write('details.json', { task: { ...stopped, msg: 'stopped at 30m tokens' }, limits: limits({ time: { limit: 'none' }, tokens: { limit: '30m', used: 31_000_000, total: 31_000_000 }, stopped: { what: 'tokens', limit: '30m', used: 31_000_000, role: 'worker' } }) })
   fs.writeFileSync(path.join(root, 'refuse'), 'demo/9 is busy. Try again in a moment.\n')
   await page.goto('/#/board?machine=&task=demo%2F9')
-  await page.locator('.task-limit-raise').click({ timeout: 20_000 })
-  const sheet = page.locator('.raise-limit')
-  await expect(sheet.locator('.raise-limit-preset')).toHaveText(['×260 M', '+10 M40 M', 'No limit'])
-  await sheet.locator('.raise-limit-preset').nth(1).click()
-  await expect(sheet.locator('.error')).toHaveText('demo/9 is busy. Try again in a moment.')
-  expect(callLog()).toContain('set --task=demo/9 -- limit.tokens 40m')
-  await expect(page.locator('.task-needs-resuming')).toHaveCount(0)
+  await page.locator('.task-needs').getByRole('button', { name: 'Raise limit', exact: true }).click({ timeout: 20_000 })
+  const presets = page.locator('.raise-limit-presets button')
+  // ×2 is 60 M, above the 31 M used; +10 M is 40 M.
+  await expect(presets).toHaveText(['×260 M', '+10 M40 M', 'No limit'])
+  await presets.nth(1).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'busy' })).toHaveText('demo/9 is busy. Try again in a moment.')
+  expect(callLog()).toContain('set limit.tokens 40m --task demo/9')
 })

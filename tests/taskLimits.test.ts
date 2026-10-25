@@ -109,12 +109,14 @@ describe('the gauge and the stop', () => {
     expect(limitShare(5, 0)).toBeNull()
   })
   it('from details.limits.stopped, the value in force now', () => {
-    expect(limitStopOf({ time: '2h', tokens: 'none', stopped: { what: 'time', limit: '2h', used: 7_201_000 } }, '')).toEqual({ kind: 'time', limit: '2h', used: 7_201_000 })
-    expect(limitStopOf({ time: 'none', tokens: '30m', tokensCounted: 31_000_000, stopped: { what: 'tokens', limit: '30m', used: 30_500_000 } }, '')).toEqual({ kind: 'tokens', limit: '30m', used: 31_000_000 })
+    expect(limitStopOf({ time: '2h', tokens: 'none', stopped: 'time', stoppedUsed: 7_201_000 }, '')).toEqual({ kind: 'time', limit: '2h', used: 7_201_000 })
+    expect(limitStopOf({ time: 'none', tokens: '30m', tokensCounted: 31_000_000, stopped: 'tokens', stoppedUsed: 30_500_000 }, '')).toEqual({ kind: 'tokens', limit: '30m', used: 31_000_000 })
   })
   it('from the board’s line when details say nothing of it', () => {
     expect(limitStopOf(null, 'stopped at its 2h limit')).toEqual({ kind: 'time', limit: '2h', used: null })
     expect(limitStopOf({ tokens: '30m', tokensCounted: 30_100_000 }, 'stopped at 30m tokens')).toEqual({ kind: 'tokens', limit: '30m', used: 30_100_000 })
     expect(limitStopOf(null, 'Asks for your OK')).toBeNull()
+    // Lifted to none since: the limit it stopped at, from the line.
+    expect(limitStopOf({ time: 'none', tokens: 'none', stopped: 'time' }, 'Stopped at its 2h limit')).toEqual({ kind: 'time', limit: '2h', used: null })
   })
 })

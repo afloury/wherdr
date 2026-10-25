@@ -14,7 +14,7 @@ const en = (e: string) => e
 const fr = (_: string, f: string) => f
 
 describe('the summary of a repo group', () => {
-  it('counts the tasks, those waiting for you, working and at their limit', () => {
+  it('counts the tasks, those waiting for you, working and at a provider quota', () => {
     const s = taskSummary([
       member(pane('a:1', { status: 'blocked' })),
       member(pane('b:1', { status: 'working' })),
@@ -22,8 +22,8 @@ describe('the summary of a repo group', () => {
       member(pane('d:1', { status: 'done' })),
     ])
     expect(s).toEqual({ tasks: 4, blocked: 1, working: 1, limit: 1 })
-    expect(summaryParts(s, en).map(p => p.text)).toEqual(['4 tasks', '1 your turn', '1 working', '1 limit'])
-    expect(summaryParts(s, fr).map(p => p.text)).toEqual(['4 tâches', '1 à toi', '1 en cours', '1 limite'])
+    expect(summaryParts(s, en).map(p => p.text)).toEqual(['4 tasks', '1 your turn', '1 working', '1 quota'])
+    expect(summaryParts(s, fr).map(p => p.text)).toEqual(['4 tâches', '1 à toi', '1 en cours', '1 quota'])
   })
 
   it('leaves out the counts at zero, says when there is no task, and the singular', () => {
@@ -31,7 +31,7 @@ describe('the summary of a repo group', () => {
     expect(summaryParts(taskSummary([]), fr).map(p => p.text)).toEqual(['Aucune tâche'])
     expect(summaryParts(taskSummary([member(pane('a:1'))]), fr).map(p => p.text)).toEqual(['1 tâche'])
     expect(summaryParts({ tasks: 3, blocked: 0, working: 0, limit: 2 }, en).map(p => p.key)).toEqual(['tasks', 'limit'])
-    expect(summaryParts({ tasks: 3, blocked: 0, working: 0, limit: 2 }, fr)[1]!.text).toBe('2 limites')
+    expect(summaryParts({ tasks: 3, blocked: 0, working: 0, limit: 2 }, fr)[1]!.text).toBe('2 quotas')
   })
 
   it('counts the tasks of the Board as their rows say them', () => {

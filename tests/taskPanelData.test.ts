@@ -15,9 +15,10 @@ describe('task panel details', () => {
       time: { limit: '2h', used: '2m38s', usedMs: 158000 }, tokens: { limit: '30m', used: 3400000, total: 5100000 },
       stopped: { what: 'tokens', limit: '30m', used: 30100000, role: 'worker', line: 'stopped at 30m tokens' },
     } }))
-    expect(d.limits).toEqual({ time: '2h', timeUsed: '2m38s', timeUsedMs: 158000, tokens: '30m', tokensUsed: 5100000, tokensCounted: 3400000, stopped: { what: 'tokens', limit: '30m', used: 30100000 } })
-    const old = parseTaskDetails(JSON.stringify({ task: { id: 'demo/9' }, limits: { time: { limit: 'none' }, tokens: { limit: 'none', total: 0 }, stopped: { what: 'other' } } }))
-    expect(old.limits).toMatchObject({ timeUsedMs: null, tokensCounted: 0, stopped: null })
+    expect(d.limits).toEqual({ time: '2h', timeUsed: '2m38s', timeUsedMs: 158000, tokens: '30m', tokensUsed: 5100000, tokensCounted: 3400000, stopped: 'tokens', stoppedUsed: 30100000 })
+    // Nothing more than before when the CLI gives none of it.
+    const old = parseTaskDetails(JSON.stringify({ task: { id: 'demo/9' }, limits: { time: { limit: 'none' }, tokens: { limit: 'none' }, stopped: { what: 'other' } } }))
+    expect(old.limits).toEqual({ time: 'none', timeUsed: '', tokens: 'none', tokensUsed: null })
   })
 })
 

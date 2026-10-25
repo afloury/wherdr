@@ -46,3 +46,12 @@ it('keeps the worker logo with separate reviewer and takeover marks', async () =
   expect(w.find('.task-agent-reviewer .avatar').classes()).toContain('claude')
   expect(w.find('.task-agent-from').text()).toContain('Took over from')
 })
+
+
+it('labels conversation-only cards', async () => {
+  const w = await mountSuspended(TaskCard, { props: { task: row({ chat: true }) } })
+  expect(w.find('.task-chip').text()).toBe('Conversation')
+  await w.setProps({ task: row({ research: true }) })
+  expect(w.text()).not.toContain('Conversation')
+  w.unmount()
+})

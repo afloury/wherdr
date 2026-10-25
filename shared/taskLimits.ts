@@ -59,7 +59,8 @@ export function formatTokenCount(n: number, lang: Lang = 'en'): string {
     if (s.includes('.')) s = s.replace(/0+$/, '').replace(/\.$/, '')
     return s.replace('.', decimal(lang))
   }
-  if (x >= 1e6) return `${cut(x / 1e6)} M`
+  // 999 999 reads 1 M, not 1000 k.
+  if (x >= 999_500) return `${cut(x / 1e6)} M`
   if (x >= 1e3) return `${cut(x / 1e3)} k`
   return String(x)
 }
@@ -136,22 +137,18 @@ export const LIMIT_HOT = 0.9
 // wins over the one it stopped at); `used`: ms or tokens, when known.
 export interface LimitStop { kind: LimitKind, limit: string, used: number | null }
 interface StopSource {
-  time?: string, tokens?: string, timeUsedMs?: number | null, tokensCounted?: number | null
-  stopped?: { what: LimitKind, limit: string, used: number | null } | null
+  time?: string, tokens?: string, timeUsedMs?: number, tokensCounted?: number
+  stopped?: LimitKind, stoppedUsed?: number
 }
 export function limitStopOf(limits: StopSource | null | undefined, msg: string | null | undefined): LimitStop | null {
-  const s = limits?.stopped
-  let kind: LimitKind | null = s?.what ?? null
-  let at = s?.limit || ''
-  if (!kind) {
-    const m = (msg || '').match(/^stopped at its (\S+) limit\b/i)
-    const n = m ? null : (msg || '').match(/^stopped at (\S+) tokens\b/i)
-    if (m) { kind = 'time'; at = m[1]! }
-    else if (n) { kind = 'tokens'; at = n[1]! }
-  }
+  const m = (msg || '').match(/^stopped at its (\S+) limit\b/i)
+  const n = m ? null : (msg || '').match(/^stopped at (\S+) tokens\b/i)
+  const said: LimitKind | null = m ? 'time' : n ? 'tokens' : null
+  const kind = limits?.stopped ?? said
   if (!kind) return null
+  const at = kind === said ? (m ?? n)![1]! : ''
   const now = limits?.[kind]
   const limit = now && now !== NO_LIMIT && (kind === 'time' ? parseLimitTime(now) : parseTokenCount(now)) !== null ? now : at
-  const used = kind === 'tokens' ? (limits?.tokensCounted ?? s?.used ?? null) : (s?.used ?? null)
+  const used = kind === 'tokens' ? (limits?.tokensCounted ?? limits?.stoppedUsed ?? null) : (limits?.stoppedUsed ?? limits?.timeUsedMs ?? null)
   return { kind, limit, used }
 }

@@ -39,6 +39,8 @@ case "$1" in
       elif [ -f "${told}/$co" ]; then echo '{"state":"starting","pane":""}'; else echo '{"state":"none","pane":""}'; fi ;;
     *) : > "${told}/$co"; echo "sent to the Coordinator" ;;
   esac ;;
+  # Autopilot (1.2.15+): every coordinator of the machine, all off.
+  autopilot) echo '[]' ;;
   add) echo "demo/7: added" ;;
   # delegate --worker.agent=X keeps X as the task's own setting, as 1.x does; set/unset --task change it.
   # A refusal the spec writes (a wait in a circle…) is said on stderr, as 1.x does.
@@ -602,6 +604,41 @@ test('agents unchecked in Settings › Agents are not offered at Start; an unche
   await page.screenshot({ path: `.shots/board-1x-start-hidden-agents-${testInfo.project.name}.png` })
 })
 
+test('Start with a model and an effort: none by default, picked after the program, sent for this start', async ({ page }, testInfo) => {
+  fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
+  await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+  await page.route(url => new URL(url).pathname === '/api/tasks/models', route => {
+    const program = new URL(route.request().url()).searchParams.get('program')
+    return route.fulfill({ json: { program, models: ['gpt-6-sol', 'gpt-6-luna'], efforts: ['low', 'high', 'ultra'], only: [{ models: ['gpt-6-luna'], levels: ['low', 'high'] }] } })
+  })
+  const sent: unknown[] = []
+  await page.route(url => new URL(url).pathname === '/api/tasks/action', (route) => {
+    sent.push(route.request().postDataJSON())
+    return route.fulfill({ json: { ok: true, msg: 'started' } })
+  })
+  await page.goto('/#/board')
+  if (testInfo.project.name.includes('phone')) await page.locator('.board-seg').getByRole('button', { name: /^To do/ }).click()
+  await page.locator('.task-card', { hasText: 'In the backlog' }).click({ timeout: 15000 })
+  await page.locator('.board-panel-sheet').click()
+  const sheet = page.getByRole('dialog')
+  const model = sheet.locator('.task-start-model')
+  await expect(model.getByRole('button', { name: 'Model : Program’s default' })).toBeVisible()
+  await model.getByRole('button', { name: /^Model/ }).click()
+  await page.getByRole('menuitemcheckbox', { name: 'gpt-6-luna' }).click()
+  await model.getByRole('button', { name: /^Effort/ }).click()
+  await expect(page.getByRole('menuitemcheckbox')).toHaveText(['Model’s default', 'low', 'high'])
+  await page.getByRole('menuitemcheckbox', { name: 'high' }).click()
+  // Square, 1 px, inside the sheet on a phone: no sideways scroll.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: `.shots/board-1x-start-model-${testInfo.project.name}.png` })
+  const start = sheet.getByRole('button', { name: /^Start with/ })
+  await expect(start).toHaveText(/codex\/gpt-6-luna|claude\/gpt-6-luna/)
+  await start.click()
+  await expect.poll(() => sent.length).toBe(1)
+  expect(sent[0]).toMatchObject({ action: 'delegate', effort: 'high' })
+  expect((sent[0] as { agent: string }).agent).toMatch(/\/gpt-6-luna$/)
+})
+
 test('Archived:the archived tasks, each one\'s sheet read-only with Restore', async ({ page }, testInfo) => {
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
   fs.writeFileSync(path.join(root, 'archived.json'), JSON.stringify([
@@ -1043,7 +1080,7 @@ for (const lang of ['en', 'fr']) {
     await expect(panel.locator('.task-needs')).toContainText('Restore the lockfile')
     await expect(panel.locator('.agent-top')).toHaveCount(0)
     // A stale agent link must not make setup failure open a conversation.
-    await expect(panel.locator('.board-panel-tabs button')).toHaveCount(3)
+    await expect(panel.locator('.board-panel-tabs button')).toHaveText(['Conversation', 'Terminal', lang === 'fr' ? 'Tâche' : 'Task', lang === 'fr' ? 'Réglages' : 'Settings'])
     await expect(panel.locator('.board-panel-name .task-state')).toHaveText(lang === 'fr' ? 'À toi' : 'Needs you')
     await page.screenshot({ path: `.shots/task-panel-${lang}-setup-${testInfo.project.name}.png` })
     await panel.locator('.board-panel-tabs').getByRole('button', { name: 'Terminal', exact: true }).click()
@@ -1098,7 +1135,7 @@ for (const lang of ['en', 'fr']) {
     await page.reload()
     await page.goto('/#/board?machine=&task=demo%2F9')
     await expect(panel.locator('.task-sheet')).toContainText('Search supports titles and labels.')
-    await expect(panel.locator('.board-panel-tabs button')).toHaveText([lang === 'fr' ? 'Tâche' : 'Task'])
+    await expect(panel.locator('.board-panel-tabs button')).toHaveText([lang === 'fr' ? 'Tâche' : 'Task', lang === 'fr' ? 'Réglages' : 'Settings'])
     await expect(panel.locator('.task-setup')).toHaveCount(0)
     await expect(panel.locator('.task-needs')).toContainText('npm ci')
     await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -1109,7 +1146,7 @@ for (const lang of ['en', 'fr']) {
 }
 
 // WHR-38: a review that failed the day before, then a run stopped at its limit.
-// The banner says the limit, not the old failure; Take it as it is (finish) takes the work as it is.
+// The banner says the limit, not the old failure; Finish takes the work as it is.
 for (const lang of ['en', 'fr']) {
   test(`a stale failure is history; Finish on a limit stop (${lang})`, async ({ page }, testInfo) => {
     await page.addInitScript(l => localStorage.setItem('herdrLanguage', l), lang)
@@ -1131,19 +1168,18 @@ for (const lang of ['en', 'fr']) {
     await expect(banner.locator('h3')).toHaveText(`${lang === 'fr' ? 'À toi' : 'Needs you'} · Stopped at its 2h limit`)
     await expect(banner).not.toContainText('Review failed')
     await expect(banner.getByRole('button', { name: lang === 'fr' ? 'Envoyer l’erreur à l’agent' : 'Send the error to the agent' })).toHaveCount(0)
-    await expect(banner.locator('.task-finish-why')).toContainText(lang === 'fr' ? 'même limite une fois de plus' : 'same limit once more')
+    await expect(banner.locator('.task-finish-why')).toContainText(lang === 'fr' ? 'nouvelle tranche' : 'new allowance')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: `.shots/task-finish-${lang}-${testInfo.project.name}.png` })
     // The old failure stays in the Task tab, as history.
     await page.locator('.board-panel-tabs').getByRole('button', { name: lang === 'fr' ? 'Tâche' : 'Task', exact: true }).click()
     await expect(page.locator('.board-panel .task-sheet-earlier')).toContainText('Review failed')
     await page.screenshot({ path: `.shots/task-finish-${lang}-earlier-${testInfo.project.name}.png` })
-    const asIs = lang === 'fr' ? 'Prendre telle quelle' : 'Take it as it is'
-    await banner.getByRole('button', { name: asIs, exact: true }).click()
+    await banner.getByRole('button', { name: lang === 'fr' ? 'Prendre tel quel' : 'Take as is', exact: true }).click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toContainText('merge.by itself')
     await page.screenshot({ path: `.shots/task-finish-${lang}-confirm-${testInfo.project.name}.png` })
-    await dialog.getByRole('button', { name: asIs, exact: true }).click()
+    await dialog.getByRole('button', { name: lang === 'fr' ? 'Terminer' : 'Finish', exact: true }).click()
     await expect.poll(callLog).toContain('finish -- demo/11')
     fs.rmSync(dir, { recursive: true, force: true })
   })

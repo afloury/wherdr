@@ -75,6 +75,7 @@ const homeGroupItems = computed(() => [{ value: 'machine', label: t('Machine') }
 const compactOn = compactList
 const autoReorderOn = autoReorderReady
 const encryptedOn = encryptedText
+const agentClipboardOn = agentClipboard
 // Quoted replies: the mode of this device.
 const quoteChoice = quoteMode
 const quoteItems = computed(() => [
@@ -437,6 +438,13 @@ onMounted(() => {
               </div>
             </div>
           </div>
+          <div class="settings-group">
+            <h3>{{ t('Clipboard') }}</h3>
+            <label class="settings-toggle">
+              <span><b>{{ t('Agent copies') }}</b><small>{{ t('Text an agent copies in the terminal (OSC 52) goes to this device’s clipboard. Never read from it. Saved on this device.') }}</small></span>
+              <USwitch v-model="agentClipboardOn" color="success" size="xl" />
+            </label>
+          </div>
           <div class="settings-group settings-renderer">
             <h3>{{ t('Terminal rendering') }}</h3>
             <URadioGroup v-model="renderer" :items="rendererItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
@@ -466,9 +474,9 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'notifications'" class="settings-section">
-          <div class="settings-group">
+          <div class="settings-group" data-testid="notification-quiet">
             <label class="settings-toggle quiet-toggle">
-              <span><b><UIcon :name="quietOn ? 'i-lucide-bell-off' : 'i-lucide-bell'" />{{ tl('Do not disturb', 'Silence') }}</b><small>{{ tl('No push notifications while it is on.', 'Aucune notification push tant qu’il est actif.') }}</small></span>
+              <span><b><UIcon :name="quietOn ? 'i-lucide-bell-off' : 'i-lucide-bell'" />{{ tl('Do not disturb', 'Silence') }}</b><small>{{ tl('Turns off every notification, no exceptions: the rules below are ignored.', 'Coupe toutes les notifications, sans exception : les réglages ci-dessous sont ignorés.') }}</small></span>
               <USwitch v-model="quietOn" color="success" size="xl" />
             </label>
             <p class="notify-caption">{{ tl('Silence on', 'Couper pour') }}</p>
@@ -478,8 +486,10 @@ onMounted(() => {
             <URadioGroup :model-value="quietDuration" :items="quietDurationItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" @update:model-value="v => pickQuietDuration(v as QuietDuration)" />
             <p class="muted notify-hint" :class="{ 'quiet-end': quietOn }">{{ quietEnd || tl('Notifications come back on by themselves at the end.', 'Retour automatique à la normale à la fin de la durée choisie.') }}</p>
           </div>
+          <NotificationRules />
           <div class="settings-group">
-            <PushCard />
+            <h3>{{ tl('This device’s notifications', 'Notifications de cet appareil') }}</h3>
+            <PushCard detailed />
           </div>
         </div>
 

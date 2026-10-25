@@ -136,6 +136,9 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       if (params.event) terminalMouse.push(params)
       return { events: terminalMouse }
     },
+    // Simulate a server that acknowledges a rename but leaves the name intact.
+    'workspace.rename': () => ({}),
+    'tab.rename': () => ({}),
     'session.snapshot': () => {
       for (const action of snapshotActions.splice(0)) action()
       return { snapshot: snapshot() }
@@ -221,11 +224,21 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       const p = need(params.pane_id)
       p.starts = [...(p.starts || []), params]
       p.agent = params.kind; p.status = 'idle'; p.pid = (p.pid || 3000) + 1; p.updateOutput = params.kind === 'codex' ? '› ' : ''
+      // Only the screen given by the spec: no `updateOutput` left behind on this pane.
+      if (p.slowExit?.exiting) { p.customScreen = p.slowExit.after; p.updateOutput = undefined; p.slowExit = null }
       return { agent: { pane_id: p.id, agent: p.agent } }
     },
     'pane.send_input': (params) => {
       const p = paneById(params.pane_id)
       if (p) p.writes = [...(p.writes || []), params]
+      // `/exit` then Enter: the exit screen, the agent still reported for `ms`.
+      if (p?.slowExit && params.text === '/exit') p.slowExit.typed = true
+      if (p?.slowExit?.typed && (params.keys || []).includes('enter')) {
+        p.slowExit = { ...p.slowExit, typed: false, exiting: true }
+        p.customScreen = p.slowExit.screen
+        setTimeout(() => { p.agent = null; p.status = 'unknown' }, p.slowExit.ms)
+        return {}
+      }
       if (p?.run && (params.keys || []).includes('esc')) p.run = null
       if (p?.customScreen !== undefined && p.customScreen !== null) {
         p.sentKeys ||= []
@@ -243,6 +256,12 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       }
       return {}
     },
+    // The agent quits slowly on `/exit`: Herdr keeps reporting it while its
+    // exit screen (`screen`) shows; `agent.start` then shows `after`.
+    'e2e.slow_exit': params => {
+      need(params.pane_id).slowExit = params.ms ? { ms: params.ms, screen: params.screen, after: params.after } : null
+      return {}
+    },
     'e2e.read_failure': params => { need(params.pane_id).readFailure = Boolean(params.fail); return {} },
     'e2e.interaction_screen': params => {
       const p = need(params.pane_id)
@@ -256,7 +275,15 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     },
     'e2e.terminal_screen': params => {
       const p = need(params.pane_id)
-      return { text: p.customScreen || '', size: p.size, keys: p.sentKeys || [] }
+      const osc = p.osc || []
+      p.osc = []
+      return { text: p.customScreen || '', size: p.size, keys: p.sentKeys || [], osc }
+    },
+    // Raw sequences (OSC 52…) the control session writes once, after the screen.
+    'e2e.terminal_osc': params => {
+      const p = need(params.pane_id)
+      ;(p.osc ||= []).push(params.data)
+      return {}
     },
     'pane.layout': (params) => {
       const p = need(params.pane_id)

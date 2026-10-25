@@ -17,9 +17,9 @@ if (!fs.existsSync(entry)) {
   process.exit(1)
 }
 
-// HOME and data under the repo (.e2e-tmp, git-ignored); the socket under the
-// system temp dir: a Unix socket path is limited to ~104 bytes.
-const tmp = path.join(root, '.e2e-tmp')
+// Keep test data in E2E_TMP_DIR when set, otherwise .e2e-tmp (git-ignored).
+// The socket uses the system temp dir: Unix socket paths have a size limit.
+const tmp = process.env.E2E_TMP_DIR || path.join(root, '.e2e-tmp')
 fs.rmSync(tmp, { recursive: true, force: true })
 // Keep fixture folders outside the checkout: project/thread names in a
 // worktree path must not leak into the app's titles or screenshots.

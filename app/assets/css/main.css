@@ -528,7 +528,7 @@ body.short-bottom { --safe-bottom: 0px; }
 .project-tree::before { content: ''; position: absolute; top: -4px; bottom: 0; left: -12px; width: 1px; background: var(--line); }
 /* Coordinated from another machine: a link to that coordinator. */
 .project-remote {
-  display: flex; align-items: center; gap: 8px; width: calc(100% - 24px); margin: 0 0 6px 24px; padding: 7px 10px; text-align: left;
+  display: flex; align-items: center; gap: 8px; width: 100%; margin: 0 0 6px; padding: 7px 10px; text-align: left;
   border: 1px dashed var(--line); font: 500 11px/1.3 var(--mono); letter-spacing: .04em; color: var(--muted); cursor: pointer;
 }
 .project-remote b { color: var(--text-2); font-weight: 600; }
@@ -1504,6 +1504,9 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
   mask-image: linear-gradient(to bottom, #000 70%, transparent);
   -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
 }
+/* Scheduled task prompt: one line until opened. */
+.msg-notice.scheduled:not(.open) .msg-notice-body { max-height: 1.6em; mask-image: none; -webkit-mask-image: none; white-space: nowrap; text-overflow: ellipsis; }
+.msg-notice.scheduled:not(.open) .msg-notice-body > * { margin: 0; overflow: hidden; text-overflow: ellipsis; }
 .msg-system, .day-sep {
   display: flex; align-items: center; gap: 12px; margin: 6px 0;
   font: 500 10.5px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--dim);
@@ -3935,6 +3938,15 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-card.working { border-left: 2px solid var(--working); }
 .task-card.todo { border-left: 2px solid var(--line-strong); }
 .task-key { font: 600 10.5px/1 var(--mono); letter-spacing: .08em; color: var(--text-3); }
+.task-key-copy { position: relative; display: inline-grid; flex: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.task-key-copy > span { grid-area: 1 / 1; }
+.task-key-copy:hover, .task-key-copy:focus-visible { color: var(--text); }
+.task-key-copy:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.task-key-copy.done .task-key-text, .task-key-copy.fail .task-key-text { visibility: hidden; }
+.task-key-flash { text-transform: uppercase; white-space: nowrap; }
+.task-key-copy.done { color: var(--green); }
+.task-key-copy.fail { color: var(--rose); }
+.task-card .task-key-copy { z-index: 2; }
 .task-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .task-chip { padding: 3px 5px; border: 1px solid var(--line); font: 500 9.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
 .task-chip.pass { color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, var(--line)); }
@@ -3968,6 +3980,10 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-limit.hot .task-limit-value { color: var(--danger); }
 .task-sheet-block h4 { margin: 0 0 6px; font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .task-sheet-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; color: var(--text-2); }
+.task-handover-list { list-style: none; padding: 0; margin: 0; }
+.task-handover-list li + li { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.task-handover-list p { margin: 0; }
+.task-handover-meta { color: var(--text-3); font: 11px/1.5 var(--mono); }
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-sheet-actions > button { border-radius: 0; }
 .task-sheet-actions .task-archive { margin-left: auto; }
@@ -3993,6 +4009,11 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-start-chip.off small { color: var(--ochre); }
 .task-start-missing { color: var(--ochre); }
 .task-start-from { flex-basis: 100%; font: 11px/1.4 var(--mono); color: var(--dim); }
+/* Start: the model and effort after the program (ModelPicker, `launch`). */
+.task-start-model { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.task-start-model .model-pick { border: 1px solid var(--line); border-radius: 0; font-family: var(--mono); max-width: 100%; }
+.task-start-model .model-pick-wrap { min-width: 0; max-width: 100%; }
+.model-pick-none { font: 11px/1.4 var(--mono); color: var(--dim); }
 /* Queue and "Start after…" (TaskSheet): the place Start would get, what a task waits for, the picker. */
 .task-queue-place { margin: 6px 0 0; font: 500 11px/1.4 var(--mono); letter-spacing: .04em; color: var(--text-2); }
 .task-wait-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text); }
@@ -4106,7 +4127,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-chip.task-archived { display: inline-flex; align-items: center; gap: 4px; color: var(--ochre); border-color: color-mix(in srgb, var(--ochre) 45%, var(--line)); }
 .task-chip.task-archived svg { width: 11px; height: 11px; }
 .task-sheet-archived { margin: 0; }
-.task-sheet-error { margin: 0; }
+.task-sheet-error { margin: 0; white-space: pre-line; }
 .hw-toast .hw-toast-action { border-radius: 0; font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
 
 .card.compact .task-attention { color: var(--rose); border-color: currentColor; }
@@ -4128,8 +4149,9 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-panel[data-kind="task"] .board-panel-name .board-panel-title { flex: 1; font-family: var(--display, var(--sans)); }
 .board-panel[data-kind="task"] .board-panel-name .task-state { flex: none; font-size: 9px; }
 .board-panel[data-kind="task"] .board-panel-name .task-key { border: 1px solid var(--line-strong); padding: 3px; }
-.board-panel-tabs { display: flex; flex: none; border-bottom: 1px solid var(--line); background: var(--bg-2); }
-.board-panel-tabs button { position: relative; padding: 11px 14px; border-right: 1px solid var(--line); border-bottom: 2px solid transparent; font: 600 10px/1.2 var(--mono); text-transform: uppercase; color: var(--muted); }
+.board-panel-autopilot { flex: none; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--bg-2); }
+.board-panel-tabs { display: flex; flex: none; overflow-x: auto; border-bottom: 1px solid var(--line); background: var(--bg-2); }
+.board-panel-tabs button { position: relative; flex-shrink: 0; padding: 11px 14px; border-right: 1px solid var(--line); border-bottom: 2px solid transparent; font: 600 10px/1.2 var(--mono); text-transform: uppercase; color: var(--muted); }
 .board-panel-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
 /* The reviewer's tab: its dialog waits for you (1.x reviewneeds). */
 .board-panel-tabs button.asks::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 6px; vertical-align: 1px; background: var(--ochre); }
@@ -4210,15 +4232,13 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-card .board-card-head { flex-wrap: wrap; }
 .board-panel[data-kind="task"] .board-panel-who > .task-agent-mark { order: 3; flex: 0 0 100%; }
 
-/* Raise the limit: what stopped it, then one tap per preset. */
-.raise-limit { display: flex; flex-direction: column; gap: 14px; padding: 4px 0 8px; }
-.raise-limit-now { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-.raise-limit-label { font: 600 10px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-.raise-limit-value { font: 500 13px/1.4 var(--mono); font-variant-numeric: tabular-nums; color: var(--text); }
+/* Raise the limit: one tap per preset, above the typed value. */
 .raise-limit-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); }
-.raise-limit-presets > button { border-radius: 0; flex-direction: column; justify-content: center; gap: 2px; min-height: 58px; box-shadow: none; border-left: 1px solid var(--line); }
+.raise-limit-presets > button { border-radius: 0; flex-direction: column; justify-content: center; gap: 2px; min-height: 58px; box-shadow: none; border: 0; border-left: 1px solid var(--line); }
 .raise-limit-presets > button:first-child { border-left: 0; }
 .raise-limit-op { font: 600 13px/1.2 var(--mono); letter-spacing: .04em; }
 .raise-limit-to { font: 500 11px/1.2 var(--mono); color: var(--muted); }
-.raise-limit-hint { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
-.task-needs .task-needs-resuming { display: inline-flex; align-items: center; gap: 6px; margin: 0; font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.task-limit.unset .task-limit-value { color: var(--muted); }
+.task-limit-total { margin: 0; font: 500 11px/1.4 var(--mono); color: var(--muted); }
+/* A quiet source stays identifiable without competing with its state. */
+.notification-muted { color: var(--muted); width: 12px; height: 12px; flex-shrink: 0; }

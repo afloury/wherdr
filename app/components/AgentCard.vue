@@ -95,7 +95,7 @@ const quick = computed(() => quickChoices(prompt.value, 4))
 const interactive = computed(() => props.pane.interaction === 'terminal' && props.pane.status === 'blocked' && !prompt.value && !props.pane.menu && !props.pane.screen)
 // Recognized waiting screen (Codex hooks…): its title says better what is expected.
 const screen = computed(() => knownScreen(props.pane))
-const preview = computed(() => props.pane.usageLimit ? tl('Usage limit reached', 'Limite de quota atteinte') : interactive.value ? tl('Interactive agent screen', 'Écran interactif de l’agent') : (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.kind === 'self-update' ? t(prompt.value.question || '') : prompt.value.question : props.pane.preview))
+const preview = computed(() => props.pane.usageLimit ? tl('Provider quota reached', 'Quota fournisseur atteint') : interactive.value ? tl('Interactive agent screen', 'Écran interactif de l’agent') : (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.kind === 'self-update' ? t(prompt.value.question || '') : prompt.value.question : props.pane.preview))
 const more = computed(() => !taskCard.value && compactOpen({ status: props.pane.status, preview: preview.value, detail: prompt.value?.detail, choices: quick.value.length }))
 // Read / unread: only for an agent that has finished (ready).
 const unread = computed(() => (space.value ? space.value.panes.filter(p => p.agent && p.status === 'done') : []))
@@ -122,15 +122,19 @@ async function setRead(read: boolean) {
     if (!read && curPane.value === props.pane.id) navigateTo('/')
   } catch (err) { toast((err as Error).message, true) }
 }
+useNotificationClock()
+const mutedNotifications = computed(() => paneNotificationsMuted(props.pane))
 const menuItems = computed<MenuItem[]>(() => space.value ? [
+  notificationMenuItem(props.pane),
   ...(boardItem.value ? [boardItem.value, { kind: 'separator' as const }] : []),
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
-  ...workspaceItems(space.value.workspace.id),
+  ...workspaceItems(space.value.workspace.id, Boolean(props.board?.lead)),
 ] : [
+  notificationMenuItem(props.pane),
   ...(boardItem.value ? [boardItem.value, { kind: 'separator' as const }] : []),
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
   ...paneSpaceItems(props.pane),
-  ...paneWorkspaceItems(props.pane),
+  ...paneWorkspaceItems(props.pane, Boolean(props.board?.lead)),
   { kind: 'separator' },
   copyPaneIdItem(props.pane),
   { kind: 'separator' },
@@ -217,12 +221,14 @@ onUnmounted(list.unmount)
           <AppLogo v-if="board?.coordinator" aria-hidden="true" /><template v-else>{{ leadInitial }}</template>
         </span>
         <span class="card-title lead-name">{{ title }}</span>
+        <UIcon v-if="mutedNotifications" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" />
         <span v-if="board?.coordinator" class="card-tag lead-coord-tag">{{ t('Coordinator') }}</span>
-        <span v-if="statePane.usageLimit" class="card-tag quota-limit" :title="stateTitle">{{ tl('Limit', 'Quota') }}</span>
+        <span v-if="statePane.usageLimit" class="card-tag quota-limit" :title="stateTitle">{{ tl('Quota', 'Quota') }}</span>
         <span v-if="compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
         <span v-if="pane.agent" class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
       </template>
       <template v-else>
+      <UIcon v-if="mutedNotifications" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" />
       <AgentAvatar :agent="board?.identity ? board.identity.agent : pane.agent" :coordinator="board?.coordinator" :icon="board?.icon" />
       <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
       <span class="card-title" :title="board?.hint">{{ title }}</span>
@@ -230,11 +236,11 @@ onUnmounted(list.unmount)
       <span v-if="projectBadge" class="card-tag card-origin" :title="projectBadge">{{ projectBadge }}</span>
       <span v-if="boardStats" class="home-task-stats">{{ boardStats }}</span>
       <span v-if="taskCard && board?.group" class="task-state" :class="board.group">{{ taskGroupLabel(board.group) }}</span>
-      <span v-if="statePane.usageLimit && !taskCard" class="card-tag quota-limit" :title="stateTitle">{{ tl('Limit', 'Quota') }}</span>
+      <span v-if="statePane.usageLimit && !taskCard" class="card-tag quota-limit" :title="stateTitle">{{ tl('Quota', 'Quota') }}</span>
       <span v-if="!taskCard && compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
       <span v-else-if="!taskCard && compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>
       <span v-if="!taskCard || !board?.group" class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
-      <span v-if="twoLines" class="home-task-line" :title="[board?.stage, boardLine].filter(Boolean).join(' — ')"><span v-if="taskCard && pane.usageLimit" class="home-task-stage quota-limit">{{ tl('Limit', 'Limite') }}</span><span v-if="board?.stage" class="home-task-stage">{{ board.stage }}</span>{{ boardLine }}</span>
+      <span v-if="twoLines" class="home-task-line" :title="[board?.stage, boardLine].filter(Boolean).join(' — ')"><span v-if="taskCard && pane.usageLimit" class="home-task-stage quota-limit">{{ tl('Quota', 'Quota') }}</span><span v-if="board?.stage" class="home-task-stage">{{ board.stage }}</span>{{ boardLine }}</span>
       <TaskAgentMark v-if="taskCard" :identity="board?.identity" />
       <button v-if="board?.onBoard && !taskCard" type="button" class="home-task-go" :title="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" :aria-label="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" @click.stop="board.onBoard"><UIcon name="i-lucide-square-kanban" /></button>
       </template>

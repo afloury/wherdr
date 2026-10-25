@@ -82,6 +82,13 @@ type HerdrCall = (method: string, params?: Record<string, unknown>, timeoutMs?: 
 type Json = any
 
 const clip = (s: string, n = MAX_TEXT) => (s.length > n ? s.slice(0, n) + '…' : s)
+// Keep notification identities server-side. Absolute line offsets survive a
+// moving tail window; lengths and text can change while a reply streams.
+const replyKeys = new WeakMap<ChatItem, string>()
+function replyItem(item: ChatItem, ref: string | undefined, block = 0): ChatItem {
+  if (ref) replyKeys.set(item, `${item.ts || ''}:${ref.split(':')[0]}:${block}`)
+  return item
+}
 const firstLine = (s: unknown) => String(s || '').split('\n').find(l => l.trim()) || ''
 
 // "Technical" messages injected into the thread (system reminders, outputs of
@@ -95,6 +102,9 @@ const stripImageTags = (t: unknown) => String(t || '').replace(/\[Image #\d+(?:,
 // pasted next to typed words are also listed (`pasted`) to be shown as cards.
 const PASTED = /<pasted_content(?:\s[^>]*)?>\n?|\n?<\/pasted_content(?:\s[^>]*)?>/g
 export const unwrapPasted = (t: string) => (t.includes('<pasted_content') ? t.replace(PASTED, '').trim() : t)
+// Prompt of a scheduled task (CronCreate, /loop…) wrapped by Claude Code.
+const SCHEDULED = /^\s*<scheduled-task(?:\s[^>]*)?>\n?([\s\S]*?)\n?<\/scheduled-task>\s*$/
+const scheduledText = (t: unknown) => (String(t || '').match(SCHEDULED) || [])[1]?.trim() || null
 // A message written by the user (after removing the paste wrappers).
 function humanText(t: unknown): string | null {
   const s = String(t || '')
@@ -236,6 +246,19 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     const head = queue.find(q => !isNoise(q.text))
     if (queue.length === before && head && (!head.ts || !ts || head.ts <= ts)) started = head
   }
+  // Prompt injected by Claude Code itself (scheduled task, task notification…):
+  // it leaves the queue, never typed by the user. Scheduled ones are shown
+  // where they ran, as a note, not as a user message.
+  let fire: string | null = null
+  const injected = (text: string, ts: string | null, scheduled: boolean) => {
+    for (let i = queue.length - 1; i >= 0; i--) {
+      const q = queue[i]!
+      if ((!q.ts || !ts || q.ts <= ts) && (sameMsg(q.text, text) || sameMsg(scheduledText(q.text) || '', text))) queue.splice(i, 1)
+    }
+    if (scheduled && text.trim()) items.push({ role: 'notice', name: 'scheduled', text: clip(text.trim()), ts })
+    fire = null
+    pendingCmd = null
+  }
   // Command ("!" or "/") waiting for its output: the next message.
   let open: ChatItem | null = null
   // "/" command followed by an agent reply (skill, custom command,
@@ -317,6 +340,10 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     }
     // End of turn: the head entry taken by this turn without a trace in the queue
     // (no dequeue, modified text) has been handled.
+    if (d.type === 'system' && d.subtype === 'scheduled_task_fire') {
+      fire = typeof d.prompt === 'string' ? d.prompt : null
+      continue
+    }
     if (d.type === 'system' && d.subtype === 'turn_duration') {
       if (started) queue.splice(queue.indexOf(started), 1)
       started = null
@@ -336,6 +363,13 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
         pendingCmd = null
         said(text, d.attachment.timestamp || ts, images)
       }
+      continue
+    }
+    if (d.type === 'attachment' && d.attachment && d.attachment.type === 'queued_command' && d.attachment.commandMode === 'prompt') {
+      const parts: Json[] = Array.isArray(d.attachment.prompt) ? d.attachment.prompt : [{ type: 'text', text: String(d.attachment.prompt || '') }]
+      const text = unwrapPasted(parts.filter(p => p.type === 'text').map(p => String(p.text || '')).join('\n'))
+      const kind = String((d.attachment.origin || {}).kind || '')
+      injected(scheduledText(text) || stripImageTags(text), d.attachment.timestamp || ts, /^(scheduled|cron)/.test(kind) || Boolean(scheduledText(text)))
       continue
     }
     if (d.type === 'system' && d.subtype === 'compact_boundary') {
@@ -382,6 +416,8 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
           continue
         } else if (/^\[Request interrupted/.test(content)) {
           items.push({ role: 'system', text: 'Interrupted', ts })
+        } else if (scheduledText(content) || (fire && sameMsg(fire, content))) {
+          injected(scheduledText(content) || content, ts, true)
         } else {
           const text = humanText(content)
           if (text) {
@@ -412,6 +448,8 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
           }
           toolImages += n
         } else if (part.type === 'text') {
+          const sched = scheduledText(part.text) || (fire && sameMsg(fire, String(part.text || '')) ? String(part.text) : null)
+          if (sched) { injected(sched, ts, true); continue }
           if (special(String(part.text || ''), ts)) continue
           const t = humanText(part.text)
           if (t === null) continue
@@ -427,10 +465,10 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
         noteSaid(d)
       }
     } else if (Array.isArray(content)) {
-      for (const part of content) {
+      for (const [block, part] of content.entries()) {
         const reply = assistantText(part)
         if (reply) {
-          items.push({ role: 'assistant', text: clip(reply), ts })
+          items.push(replyItem({ role: 'assistant', text: clip(reply), ts }, ref, block))
         } else if (part.type === 'tool_use') {
           const t: ChatItem = { role: 'tool', name: part.name, text: clip(toolSummary(part.name, part.input, home), 300), ts }
           tools.set(part.id, t)
@@ -500,7 +538,10 @@ export function parseCodex(lines: Lines): Parsed {
         } else if ((part.type === 'input_text' || part.type === 'output_text') && part.text && !isNoise(part.text)) text += (text ? '\n' : '') + part.text
         else if (part.type === 'input_image') images++
       }
-      if (text.trim() || images) items.push({ role: p.role, text: clip(text.trim()), images, ref: images ? ref : undefined, ts })
+      if (text.trim() || images) {
+        const item: ChatItem = { role: p.role, text: clip(text.trim()), images, ref: images ? ref : undefined, ts }
+        items.push(p.role === 'assistant' ? replyItem(item, ref) : item)
+      }
     } else if (p.type === 'custom_tool_call' || p.type === 'function_call' || p.type === 'local_shell_call') {
       let summary: unknown = ''
       if (p.type === 'custom_tool_call') summary = codexCommand(p.input)
@@ -614,13 +655,13 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
       const images = parts.filter(p => p && p.type === 'image').length
       if (text || images) items.push({ role: 'user', text: clip(text), images, ref: images ? ref : undefined, ts })
     } else if (m.role === 'assistant') {
-      for (const part of Array.isArray(m.content) ? m.content : []) {
+      for (const [block, part] of (Array.isArray(m.content) ? m.content : []).entries()) {
         if (!part) continue
         if (part.type === 'thinking' && typeof part.thinking === 'string' && part.thinking.trim()) {
           const ms = ts && priorTs ? Math.max(0, Date.parse(ts) - Date.parse(priorTs)) : undefined
           items.push({ role: 'thinking', text: clip(part.thinking), ts, ms: Number.isFinite(ms) ? ms : undefined })
         } else if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
-          items.push({ role: 'assistant', text: clip(part.text), ts })
+          items.push(replyItem({ role: 'assistant', text: clip(part.text), ts }, ref, block))
         } else if (part.type === 'toolCall') {
           const name = String(part.name || '').trim()
           const t: ChatItem = { role: 'tool', name: OMP_TOOLS[name] || name, text: clip(ompToolSummary(part.arguments, home), 300), ts, omp: ompToolCall(name, part.arguments, cwd, home) }
@@ -1173,18 +1214,25 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   }
 
   // Agent's last reply, for cards and notifications.
-  async function preview(pane: TranscriptPane): Promise<string | null> {
+  // A stable message identity lets notifications distinguish a new reply
+  // from another poll (or more streamed text in the same reply).
+  async function latestReply(pane: TranscriptPane): Promise<{ key: string, text: string } | null> {
     try {
       const r = await chat(pane, {})
       if (!r.available || !r.items) return null
       for (let i = r.items.length - 1; i >= 0; i--) {
         const it = r.items[i]!
-        if (it.role === 'assistant') {
-          return it.text.replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180)
+        if (it.role === 'assistant' && it.text.trim()) {
+          const text = it.text.replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180)
+          const key = replyKeys.get(it)
+          if (key) return { key, text }
         }
       }
     } catch { /* no preview */ }
     return null
+  }
+  async function preview(pane: TranscriptPane): Promise<string | null> {
+    return (await latestReply(pane))?.text ?? null
   }
 
   // Image no. `index` of the message at `ref` ("start:length"): we re-read
@@ -1335,7 +1383,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     claudeAskCache.delete(paneId)
   }
 
-  return { chat, preview, image, forget, locate, model, observe, wasActive: activity.was, search, pendingTool, pendingAsk, pendingClaudeQuestions }
+  return { chat, preview, latestReply, image, forget, locate, model, observe, wasActive: activity.was, search, pendingTool, pendingAsk, pendingClaudeQuestions }
 }
 
 export type Transcripts = ReturnType<typeof createTranscripts>

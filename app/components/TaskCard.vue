@@ -26,7 +26,7 @@ const staleTitle = computed(() => (props.stale
     <button type="button" class="task-card-open" :aria-label="`${taskKey(task.id, task.repoKey)} ${task.title}`" @click="$emit('open')" />
     <span class="board-card-head">
       <TaskAgentMark :identity="task.identity || { agent: task.app, reviewer: '', from: '' }" primary />
-      <span class="task-key">{{ taskKey(task.id, task.repoKey) }}</span>
+      <TaskKey :value="taskKey(task.id, task.repoKey)" />
       <span v-if="status" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
       <span v-if="machine" class="board-card-label">{{ machine }}</span>
     </span>
@@ -38,7 +38,8 @@ const staleTitle = computed(() => (props.stale
       <span v-if="waitKind" class="task-needs-type" :data-kind="waitKind">{{ blockKindLabel(waitKind) }}</span>
       <span class="task-card-msg-text"><LinkedText :text="line" /></span>
     </span>
-    <span v-if="meta.length || task.review" class="task-chips">
+    <span v-if="task.chat || meta.length || task.review" class="task-chips">
+      <span v-if="task.chat" class="task-chip">{{ tl('Conversation', 'Conversation') }}</span>
       <span v-for="m in meta" :key="m" class="task-chip">{{ m }}</span>
       <span v-if="task.review" class="task-chip" :class="task.review.pass === false ? 'fail' : task.review.pass ? 'pass' : ''">
         {{ task.review.pass === false ? tl('review failed', 'revue échouée') : tl('review', 'revue') }}{{ task.review.tally ? ` · ${task.review.tally}` : '' }}

@@ -10,9 +10,10 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { DATA_DIR } from './env'
 
-// `agent`: what wherdr set; `prev`: the task's own worker.agent before (null:
-// it had none, its repo's or the user's applied); `at`: when (ms).
-export interface StartAgentRecord { agent: string, prev: string | null, at: number }
+// `agent`: what wherdr set ('' : left as it was); `prev`: the task's own
+// worker.agent before (null: it had none, its repo's or the user's applied);
+// `effort`/`prevEffort`: the same for worker.effort; `at`: when (ms).
+export interface StartAgentRecord { agent: string, prev: string | null, effort?: string | null, prevEffort?: string | null, at: number }
 
 // Forgotten after this long (a task cleared from the board, say).
 const KEEP_MS = 90 * 24 * 3600_000
@@ -27,7 +28,11 @@ function clean(v: unknown): Map<string, StartAgentRecord> {
     const o = r as Record<string, unknown> | null
     if (!o || typeof o.agent !== 'string' || typeof o.at !== 'number') continue
     if (Date.now() - o.at > KEEP_MS) continue
-    out.set(k, { agent: o.agent, prev: typeof o.prev === 'string' ? o.prev : null, at: o.at })
+    out.set(k, {
+      agent: o.agent, prev: typeof o.prev === 'string' ? o.prev : null,
+      ...(typeof o.effort === 'string' ? { effort: o.effort, prevEffort: typeof o.prevEffort === 'string' ? o.prevEffort : null } : {}),
+      at: o.at,
+    })
   }
   return out
 }

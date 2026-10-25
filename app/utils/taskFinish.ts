@@ -7,9 +7,10 @@ import { language, tl } from './i18n'
 // One line: what Retry does, what Finish does, for this case.
 export function finishHint(c: FinishCase): string {
   switch (c) {
+    case 'conversation': return tl('End this conversation when you are done.', 'Termine cette conversation quand tu as fini.')
     case 'limit': return tl(
-      'Continue: the agent goes on with the same limit once more; its tokens keep adding up. Take it as it is: the work is checked, then reviewed.',
-      'Continuer : l’agent reprend avec la même limite une fois de plus ; ses tokens continuent de s’additionner. Prendre telle quelle : le travail est vérifié, puis relu.')
+      'Continue grants a new allowance. Raising the limit keeps usage and resumes automatically. Take as is: checks, then review. These work limits are separate from provider quotas.',
+      'Continuer accorde une nouvelle tranche. Relever la limite conserve la consommation et reprend automatiquement. Prendre tel quel : vérifications puis relecture. Ces limites de travail sont distinctes des quotas fournisseur.')
     case 'nosummary': return tl(
       'Retry: the agent goes on. Finish: the work is taken as it is, its screen as the summary, checked, then reviewed.',
       'Réessayer : l’agent continue. Terminer : le travail est pris tel quel, son écran comme résumé, vérifié, puis relu.')
@@ -19,9 +20,9 @@ export function finishHint(c: FinishCase): string {
   }
 }
 
-export const finishLabel = () => tl('Finish', 'Terminer')
-export const finishTitle = () => tl('Take the work as it is: checks, then review', 'Prendre le travail tel quel : vérifications puis relecture')
-export const finishQuestion = (title: string) => tl(
+export const finishLabel = (chat = false) => chat ? tl('End conversation', 'Terminer la conversation') : tl('Finish', 'Terminer')
+export const finishTitle = (chat = false) => chat ? tl('End this conversation', 'Terminer cette conversation') : tl('Take the work as it is: checks, then review', 'Prendre le travail tel quel : vérifications puis relecture')
+export const finishQuestion = (title: string, chat = false) => chat ? tl(`End “${title}”?`, `Terminer la conversation « ${title} » ?`) : tl(
   `Take “${title}” as it is? Its checks run, then its review. If this task merges by itself (merge.by itself), it can merge without asking you.`,
   `Prendre « ${title} » tel quel ? Ses vérifications tournent, puis sa relecture. Si cette tâche fusionne d’elle-même (merge.by itself), elle peut fusionner sans te demander.`)
 
@@ -32,15 +33,13 @@ export function finishOffered(r: Parameters<typeof finishCase>[0], paneStatus: s
   return c !== null && !(c === 'stuck' && (paneStatus === 'working' || paneStatus === 'blocked'))
 }
 
-// A task stopped at a limit (herdr-projects 1.2.16+): Continue (`retry`),
-// Raise the limit (`set limit.*`), Take it as it is (`finish`).
-export const continueLabel = () => tl('Continue', 'Continuer')
-export const raiseLabel = () => tl('Raise the limit', 'Relever la limite')
-export const takeAsIsLabel = () => tl('Take it as it is', 'Prendre telle quelle')
-export function limitHint(stop: LimitStop): string {
+// At a limit stop, the same line naming the limit Continue grants once more
+// (`2 h a run`, `30 M tokens`), when the stop is known.
+export function limitHint(stop: LimitStop | null): string {
+  if (!stop?.limit) return finishHint('limit')
   const v = formatLimit(stop.kind, stop.limit, language)
-  const same = stop.kind === 'time' ? tl(`${v} a run`, `${v} par passage`) : tl(`${v} tokens`, `${v} tokens`)
+  const again = stop.kind === 'time' ? tl(`${v} a run`, `${v} par tranche`) : tl(`${v} tokens`, `${v} tokens`)
   return tl(
-    `Continue: it gets the same limit once more (${same}); its tokens keep adding up. Raise the limit: it carries on by itself, from what it already used. Take it as it is: the work is checked, then reviewed.`,
-    `Continuer : elle a la même limite une fois de plus (${same}) ; ses tokens continuent de s’additionner. Relever la limite : elle reprend toute seule, à partir de ce qu’elle a déjà utilisé. Prendre telle quelle : le travail est vérifié, puis relu.`)
+    `Continue grants a new allowance (${again}). Raising the limit keeps usage and resumes automatically. Take as is: checks, then review. These work limits are separate from provider quotas.`,
+    `Continuer accorde une nouvelle tranche (${again}). Relever la limite conserve la consommation et reprend automatiquement. Prendre tel quel : vérifications puis relecture. Ces limites de travail sont distinctes des quotas fournisseur.`)
 }
