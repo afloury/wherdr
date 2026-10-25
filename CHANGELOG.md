@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.0.1] — Unreleased
+
+### Added and improved
+
+- **The Board's machine selector follows the sidebar tab (#171).** Opening the Board, or changing the sidebar tab, sets the selector to that tab's machine, group or All machines. A scope chosen by hand stays through refreshes, page reloads and visits to the Board until another sidebar tab is chosen. With no tab, or no Board machine in it, the current scope is kept. Taken out of 2.0.0 because a page reload dropped the choice made by hand; it is now kept on the device with its tab.
+
 ## [2.0.0] — 2026-10-25
 
 This major release follows 1.3.4. Read the [migration guide](docs/herdr-projects-1x.md)

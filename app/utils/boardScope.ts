@@ -18,6 +18,65 @@ export const boardScopeMachine = (value: string | null | undefined) => (value ==
 // Appearance › Machine bar). Group IDs start with `*group:`: never a machine key.
 export const isGroupScope = (scope: string) => scope.startsWith('*group:')
 
+// The Board's scope follows the sidebar tab (the machine bar's pick): one
+// automatic choice per tab. A late Board read may still bring the tab's
+// machine; after that, and after a choice made by hand, refreshes, page
+// reloads and new visits to the Board on the same tab keep what was chosen.
+// The next tab starts from its own selection.
+//
+// A choice made by hand is kept on the device with the tab it was made on, so
+// that a reload keeps it: the pick may pass through other tabs while the page
+// loads (the machines arrive later), and only `forget` (the user chose another
+// tab) drops it.
+export interface BoardTabStore {
+  read: () => string | null
+  write: (value: string | null) => void
+}
+const TAB_CHOICE_KEY = 'boardMachineTab'
+const deviceStore: BoardTabStore = {
+  read() { try { return localStorage.getItem(TAB_CHOICE_KEY) } catch { return null } },
+  write(value) {
+    try { if (value === null) localStorage.removeItem(TAB_CHOICE_KEY); else localStorage.setItem(TAB_CHOICE_KEY, value) }
+    catch { /* storage unavailable */ }
+  },
+}
+function readTabChoice(store: BoardTabStore): { tab: string | null, scope: string } | undefined {
+  try {
+    const v = JSON.parse(store.read() || 'null')
+    if (v && (typeof v.tab === 'string' || v.tab === null) && typeof v.scope === 'string') return { tab: v.tab, scope: v.scope }
+  }
+  catch { /* not ours */ }
+}
+
+export function boardTabScope(store: BoardTabStore = deviceStore) {
+  let tab: string | null | undefined
+  let chosen: string | undefined
+  const followTab = (pick: string | null) => {
+    if (pick === tab) return
+    tab = pick
+    const saved = readTabChoice(store)
+    chosen = saved && saved.tab === pick ? saved.scope : undefined
+  }
+  return {
+    followTab,
+    manual(scope: string) {
+      chosen = scope
+      if (tab !== undefined) store.write(JSON.stringify({ tab, scope }))
+    },
+    // The user chose another sidebar tab: the choice made by hand is over.
+    forget() { store.write(null) },
+    update(pick: string | null, machines: readonly string[], groups: readonly MachineGroup[]): string | undefined {
+      followTab(pick)
+      if (chosen !== undefined || pick === null) return chosen
+      const group = groups.find(g => g.id === pick)
+      if (pick === SCOPE_ALL || (group ? group.machines.some(m => machines.includes(m)) : machines.includes(pick))) return chosen = pick
+    },
+  }
+}
+
+// One per app, so that leaving the Board and coming back keeps the choice.
+export const boardTabChoice = boardTabScope()
+
 export type BoardScopeItem =
   | { label: string, value: string, icon?: string }
   | { type: 'label', label: string }
