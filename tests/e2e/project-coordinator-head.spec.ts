@@ -47,8 +47,19 @@ for (const kind of ['local', 'remote', 'terminal'] as const) {
       await expect(page.locator('.xterm-screen')).toBeVisible()
     }
     if (kind === 'remote') {
-      await project.locator('.project-remote').click()
-      await expect.poll(() => decodeURIComponent(page.url())).toContain('/a/abcd1234~w7:p1')
+      // From a bar tab that does not show the coordinator's machine, the
+      // link switches to that machine's tab, as opening it from the list does.
+      for (const [width, height] of [[1440, 900], [390, 844]]) {
+        await page.setViewportSize({ width, height })
+        await page.goto('/#/')
+        await page.locator('[data-bar-id=""]').click()
+        await expect(page.locator('[data-bar-id=""]')).toHaveAttribute('aria-pressed', 'true')
+        await project.locator('.project-remote').click()
+        await expect.poll(() => decodeURIComponent(page.url())).toContain(`/a/${remote}~w7:p1`)
+        if (width < 1000) await page.goBack()
+        await expect(page.locator(`[data-bar-id="${remote}"]`)).toHaveAttribute('aria-pressed', 'true')
+        await expect(page.locator('[data-bar-id=""]')).toHaveAttribute('aria-pressed', 'false')
+      }
     }
   })
 }
