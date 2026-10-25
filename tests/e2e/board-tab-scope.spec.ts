@@ -36,6 +36,12 @@ test('Board follows the sidebar tab and keeps manual choices through refreshes',
   await expect(page.locator('[data-bar-id="laptop"]')).toBeVisible()
   await page.evaluate(() => { location.hash = '#/board' })
   await expect(select).toContainText('All machines')
+  // Switching tabs away from the Board resets the earlier manual choice.
+  await page.evaluate(() => { location.hash = '#/' })
+  await page.locator('[data-bar-id="laptop"]').click()
+  await page.locator('[data-bar-id="*group:personal"]').click()
+  await page.evaluate(() => { location.hash = '#/board' })
+  await expect(select).toContainText('Personal')
   await page.goto('/')
   await page.locator('[data-bar-id="laptop"]').click()
   await page.goto('/#/board')

@@ -26,10 +26,14 @@ export const isGroupScope = (scope: string) => scope.startsWith('*group:')
 export function boardTabScope() {
   let tab: string | null | undefined
   let chosen: string | undefined
+  const followTab = (pick: string | null) => {
+    if (pick !== tab) { tab = pick; chosen = undefined }
+  }
   return {
+    followTab,
     manual(scope: string) { chosen = scope },
     update(pick: string | null, machines: readonly string[], groups: readonly MachineGroup[]): string | undefined {
-      if (pick !== tab) { tab = pick; chosen = undefined }
+      followTab(pick)
       if (chosen !== undefined || pick === null) return chosen
       const group = groups.find(g => g.id === pick)
       if (pick === SCOPE_ALL || (group ? group.machines.some(m => machines.includes(m)) : machines.includes(pick))) return chosen = pick

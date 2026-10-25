@@ -124,6 +124,15 @@ describe('Board scope follows the sidebar tab', () => {
     expect(selection.update('work', machines, groups)).toBe('laptop')
   })
 
+  it('resets after tab changes while the Board is closed', () => {
+    const selection = boardTabScope()
+    selection.update('work', machines, groups)
+    selection.manual(SCOPE_ALL)
+    selection.followTab('*group:personal')
+    selection.followTab('work')
+    expect(selection.update('work', machines, groups)).toBe('work')
+  })
+
   it('waits for known Board machines without overriding a manual choice', () => {
     const selection = boardTabScope()
     expect(selection.update('work', [], groups)).toBeUndefined()
