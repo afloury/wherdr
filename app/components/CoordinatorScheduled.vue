@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CoordinatorTarget } from '#shared/projectsTasks'
-import type { Scheduled } from '#shared/scheduled'
+import { WAKEUP_ID, type Scheduled } from '#shared/scheduled'
 import { language } from '~/utils/i18n'
 
 const props = defineProps<{ machine: string, target: CoordinatorTarget, refreshKey?: number }>()
@@ -98,8 +98,8 @@ const taskLink = (id: string) => `/#/board?machine=${encodeURIComponent(props.ma
         <template v-if="data.timers.length">
           <p class="scheduled-session">{{ tl('Session: lost when the session closes', 'Session : perdus si la session se ferme') }}</p>
           <article v-for="timer in data.timers" :key="timer.id">
-            <h4>{{ timer.id }} <span>{{ timer.recurring ? tl('Recurring', 'Récurrent') : tl('Once', 'Ponctuel') }}</span></h4>
-            <p class="scheduled-cron">{{ timer.cron }}</p>
+            <h4>{{ timer.id === WAKEUP_ID ? tl('Wakeup', 'Réveil') : timer.id }} <span>{{ timer.recurring ? tl('Recurring', 'Récurrent') : tl('Once', 'Ponctuel') }}</span></h4>
+            <p v-if="timer.cron" class="scheduled-cron">{{ timer.cron }}</p>
             <p>{{ tl('Next run (estimated)', 'Prochaine exécution (estimée)') }} : {{ time(timer.next) }}</p>
             <p class="scheduled-prompt">{{ timer.prompt }}</p>
           </article>

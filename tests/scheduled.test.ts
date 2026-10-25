@@ -61,12 +61,26 @@ describe('Claude session timers', () => {
     expect(parse([...create(), fire], start + 3600001)[0]?.next).toBe(start + 25 * 3600000)
     expect(parse([...create(false), line({ scheduledTaskId: 'job-1' })])).toEqual([])
   })
-  it('reconstructs ScheduleWakeup and tolerates malformed or duplicated transcript records', () => {
-    const lines = [call('ScheduleWakeup', { cron: '*/5 * * * *', recurring: false, prompt: 'Check once' }), result('{"id":"wake-1"}'), '{incomplete']
-    expect(parse([...lines, ...lines])).toMatchObject([{ id: 'wake-1', recurring: false, next: start + 300000 }])
+  // Same shape as a real Claude Code transcript: the call has delaySeconds,
+  // the result is prose without an ID, the wake time is in toolUseResult.
+  const wake = (id: string, input: object, scheduledFor: number | null, timestamp = start) => [
+    call('ScheduleWakeup', input, id, timestamp),
+    line({ type: 'user', timestamp: new Date(timestamp).toISOString(), toolUseResult: scheduledFor ? { scheduledFor, clampedDelaySeconds: 1200, wasClamped: false } : undefined,
+      message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'Next wakeup scheduled for 08:20:00 (in 1200s). If you owe the user a status update this tick, write it now.' }] } }),
+  ]
+  it('reconstructs a real ScheduleWakeup call from its delay and scheduledFor', () => {
+    const lines = [...wake('w1', { delaySeconds: 1200, noop: true, prompt: 'continue: check e2e results', reason: 'fallback' }, start + 1200000), '{incomplete']
+    expect(parse([...lines, ...lines])).toMatchObject([{ id: 'ScheduleWakeup', cron: '', recurring: false, next: start + 1200000, prompt: 'continue: check e2e results' }])
   })
-  it('reads a one-shot ScheduleWakeup with an explicit timestamp', () => {
-    expect(parse([call('ScheduleWakeup', { timestamp: '2026-01-05T09:00:00Z', prompt: 'Check once' }), result('{"task_id":"wake-2"}')])).toMatchObject([{ id: 'wake-2', recurring: false, next: start + 3600000 }])
+  it('falls back to the delay in the result text, and shows the reason of an autonomous loop', () => {
+    expect(parse(wake('w1', { delaySeconds: 900, prompt: '<<autonomous-loop-dynamic>>', reason: 'watching CI run' }, null))).toMatchObject([{ next: start + 1200000, prompt: 'watching CI run' }])
+  })
+  it('keeps only the latest wakeup, drops it once fired and when the loop stops', () => {
+    const first = wake('w1', { delaySeconds: 1200, prompt: 'one' }, start + 1200000)
+    const second = wake('w2', { delaySeconds: 1200, prompt: 'two' }, start + 1500000, start + 300000)
+    expect(parse([...first, ...second], start + 400000)).toMatchObject([{ prompt: 'two', next: start + 1500000 }])
+    expect(parse(first, start + 1200001)).toEqual([])
+    expect(parse([...first, ...wake('w3', { stop: true }, null, start + 30000)])).toEqual([])
   })
   it('expires all jobs after seven days and does not treat unrelated prose as a firing', () => {
     expect(parse(create(), start + 7 * 86400000)).toEqual([])

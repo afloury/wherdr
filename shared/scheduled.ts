@@ -73,6 +73,7 @@ export function nextCron(cron: string, after: number, timezone = 'UTC'): number 
   return null
 }
 
+export const WAKEUP_ID = 'ScheduleWakeup'
 export function createTimerReconstruction(now = Date.now(), timezone = 'UTC') {
   const pending = new Map<string, { name: string, input: Record<string, any>, created: number }>()
   const timers = new Map<string, SessionTimer>()
@@ -102,6 +103,7 @@ export function createTimerReconstruction(now = Date.now(), timezone = 'UTC') {
         let result = obj(b.content)
         try { result = obj(JSON.parse(text)) } catch { /* CLI-style text result */ }
         if (call.name === 'CronDelete') { timers.delete(str(call.input.id || call.input.taskId)); continue }
+        if (call.name === 'ScheduleWakeup') { wakeup(call, obj(r.toolUseResult), text); continue }
         const id = str(result.id || result.taskId || result.task_id || result.job_id) || /\bID\s*[:=]?\s*([a-z0-9][\w-]*)/i.exec(text)?.[1] || /(?:\bjob\s+|\btask\s+)([a-z0-9][\w-]*)/i.exec(text)?.[1] || ''
         if (!id || call.created <= 0 || now - call.created >= 7 * 86400000) continue
         const cron = str(call.input.cron || call.input.cron_expression)
@@ -114,6 +116,19 @@ export function createTimerReconstruction(now = Date.now(), timezone = 'UTC') {
         timers.set(id, { id, cron, recurring, next, prompt: str(call.input.prompt).replace(/\s+/g, ' ').slice(0, 180), created: call.created })
       }
     }
+  }
+  // A session holds a single pending wakeup: each call replaces the previous
+  // one and `stop: true` cancels it. The call gives only `delaySeconds`; the
+  // wake time is in the record's toolUseResult.scheduledFor, else in the text
+  // ("Next wakeup scheduled for 08:58:00 (in 1248s)").
+  function wakeup(call: { input: Record<string, any>, created: number }, meta: Record<string, any>, text: string) {
+    timers.delete(WAKEUP_ID)
+    if (call.input.stop === true || call.created <= 0) return
+    const seconds = at(meta.clampedDelaySeconds) || Number(/\(in (\d+)s\)/.exec(text)?.[1]) || at(call.input.delaySeconds)
+    const next = at(meta.scheduledFor) || (seconds ? call.created + seconds * 1000 : null)
+    if (!next) return
+    const prompt = str(call.input.prompt) === '<<autonomous-loop-dynamic>>' ? str(call.input.reason) || str(call.input.prompt) : str(call.input.prompt) || str(call.input.reason)
+    timers.set(WAKEUP_ID, { id: WAKEUP_ID, cron: '', recurring: false, next, prompt: prompt.replace(/\s+/g, ' ').slice(0, 180), created: call.created })
   }
   function finish(): SessionTimer[] {
     return [...timers.values()].filter(t => now - t.created < 7 * 86400000 && (t.recurring || !t.next || t.next > now))
