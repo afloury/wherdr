@@ -3,6 +3,10 @@
 // checks that every key used in the code has one). The choice is saved on the device.
 
 const FR: Record<string, string> = {
+  'Handovers': 'Reprises',
+  'Reviewer': 'Relecteur',
+  'Previous agent': 'Agent précédent',
+  'Taken over by': 'Repris par',
   'Machine time zone unavailable; using UTC': 'Fuseau de la machine indisponible ; utilisation d’UTC',
   'Autopilot unavailable': 'Autopilot indisponible',
   'Automations unavailable': 'Automations indisponibles',

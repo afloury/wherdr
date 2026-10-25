@@ -8,7 +8,12 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'identity-'))
 const home = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8').trim()), 'home')
 const dir = path.join(home, '.herdr-projects/data/tasks/demo/82')
 const fallbackDir = path.join(home, '.herdr-projects/data/tasks/demo/83')
-const fallback = { id: 'demo/83', title: 'Cache product images', app: 'claude', agent: 'claude', on: 'claude/opus', stage: 'working', state: 'working', handovers: [{ role: 'worker', from: 'codex/gpt', to: 'claude/opus' }] }
+const handovers = [
+  { at: 1700000000000, role: 'worker', from: 'codex/gpt', to: 'claude/opus', why: 'Out of allowance until tomorrow. The task continues with the next available agent.' },
+  { at: 1700000060000, role: 'reviewer', from: 'claude/opus', to: 'codex/gpt', why: 'Review rounds exhausted' },
+  { role: 'reviewer', why: 'Provider temporarily unavailable' },
+]
+const fallback = { id: 'demo/83', title: 'Cache product images', app: 'claude', agent: 'claude', on: 'claude/opus', stage: 'working', state: 'working', handovers }
 const row = { id: 'demo/82', title: 'Improve product search', app: 'codex', agent: 'claude', stage: 'reviewing', state: 'working' }
 fs.mkdirSync(path.join(root, 'bin'))
 fs.writeFileSync(path.join(root, 'bin/run.sh'), `#!/bin/sh
@@ -30,11 +35,12 @@ test.afterEach(async () => {
 test.afterAll(() => fs.rmSync(root, { recursive: true, force: true }))
 
 test('worker identity stays consistent during review on Home, Board and conversation', async ({ page, request }) => {
+  test.setTimeout(60_000)
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, 'task.json'), JSON.stringify({ ...row, link: { pane: CLAUDE_PANE, workspace: 'w1', ownsWorkspace: true, reviewer: { pane: CODEX_UPDATE_PANE, kind: 'codex' } } }))
   fs.mkdirSync(fallbackDir, { recursive: true })
   fs.writeFileSync(path.join(fallbackDir, 'task.json'), JSON.stringify({ ...fallback, link: { pane: CLAUDE_ASK_PANE, workspace: 'w12', ownsWorkspace: true } }))
-  fs.writeFileSync(path.join(root, 'fallback.json'), JSON.stringify({ task: fallback, agent: 'claude' }))
+  fs.writeFileSync(path.join(root, 'fallback.json'), JSON.stringify({ task: fallback, agent: 'claude', handovers }))
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify([row, fallback]))
   fs.writeFileSync(path.join(root, 'details.json'), JSON.stringify({ task: row, agent: 'claude' }))
   await fakeHerdr('e2e.plugins', { plugins: [plugin] })
@@ -78,12 +84,31 @@ test('worker identity stays consistent during review on Home, Board and conversa
   await panel.getByRole('button', { name: 'Open reviewer terminal', exact: true }).click()
   await expect(panel.locator('.board-panel-tab-reviewer')).toHaveAttribute('aria-pressed', 'true')
   await expect(panel.getByRole('textbox', { name: 'Terminal input', exact: true })).toBeVisible()
+  await panel.getByRole('button', { name: 'Task', exact: true }).click()
+  await expect(panel.locator('.task-handovers')).toHaveCount(0)
   await page.goto('/#/board?machine=&task=demo%2F83')
   await expect(panel.locator('.board-panel-name > .avatar')).toHaveClass(/claude/)
   await expect(panel.locator('.task-agent-from .avatar')).toHaveClass(/codex/)
   await expect(panel.locator('.task-agent-reviewer')).toHaveCount(0)
   await expect(panel.locator('.task-review-context')).toHaveCount(0)
+  await panel.getByRole('button', { name: 'Task', exact: true }).click()
+  const history = panel.locator('.task-handovers')
+  await expect(history).toBeVisible()
+  await expect(history.locator('li')).toHaveCount(3)
+  await expect(history).toContainText('Out of allowance until tomorrow')
+  await expect(history).toContainText('Reviewer')
+  await expect(history.locator('time')).toHaveCount(2)
+  expect(await history.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
   await page.screenshot({ path: '.shots/identity-fallback-phone.png' })
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.screenshot({ path: '.shots/identity-fallback-desktop.png' })
+  await page.evaluate(() => localStorage.setItem('herdrLanguage', 'fr'))
+  await page.reload()
+  await page.goto('/#/board?machine=&task=demo%2F83')
+  await panel.getByRole('button', { name: 'Tâche', exact: true }).click()
+  await expect(history).toContainText('Reprises')
+  await expect(history).toContainText('Relecteur')
+  await expect(history).toContainText('Repris par')
+  await expect(panel.locator('.board-panel-name > .avatar')).toHaveClass(/claude/)
+
 })

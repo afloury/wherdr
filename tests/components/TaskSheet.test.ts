@@ -3,7 +3,7 @@ import { flushPromises } from '@vue/test-utils'
 import { readBody, setResponseStatus } from 'h3'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import TaskSheet from '~/components/TaskSheet.vue'
-import type { TaskRow } from '#shared/projectsTasks'
+import type { TaskHandover, TaskRow } from '#shared/projectsTasks'
 import { cachedAt, hiddenAgents } from '~/composables/useHerdr'
 
 const confirmation = vi.hoisted(() => ({ accepted: true }))
@@ -26,7 +26,7 @@ let actionBody: unknown
 let actionFails = false
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
 // What the details say, and how many times they were read.
-const shown: { stage: string, failure: string, failureStage: string, attempts?: { letter: string, agent: string, standing: string, stage: string, stat: string }[], archived?: boolean, pane?: string | null } = { stage: 'approval', failure: '', failureStage: '' }
+const shown: { handovers?: TaskHandover[], stage: string, failure: string, failureStage: string, attempts?: { letter: string, agent: string, standing: string, stage: string, stat: string }[], archived?: boolean, pane?: string | null } = { stage: 'approval', failure: '', failureStage: '' }
 let detailsReads = 0
 // Start's agent: the task's default (worker.agent, where it comes from) and the installed ones.
 let startReply: unknown = { agent: { value: 'claude', kind: 'claude', place: 'repo', from: 'your entry for demo' }, agents: ['claude', 'codex', 'pi'] }
@@ -904,6 +904,39 @@ describe('attempt choices in the task sheet', () => {
     confirmation.accepted = true
     shown.stage = 'approval'
     delete shown.attempts
+    w.unmount()
+  })
+})
+
+
+describe('handover history in the task sheet', () => {
+  afterEach(() => { delete shown.handovers })
+
+  it('omits history for older details replies', async () => {
+    delete shown.handovers
+    const { w } = await sheet(true)
+    expect(w.find('.task-handovers').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('renders roles, full identities, reasons and dates, omitting missing fields', async () => {
+    shown.handovers = [
+      { at: 1000, role: 'worker', from: 'claude/opus', to: 'codex/model', why: 'Out of allowance until tomorrow' },
+      { at: 2000, role: 'reviewer', from: 'codex/model', to: 'claude/opus', why: 'Review rounds exhausted' },
+      { at: null, role: '', from: '', to: 'pi', why: '' },
+    ]
+    const { w } = await sheet(true)
+    const history = w.get('.task-handovers')
+    const rows = history.findAll('li')
+    expect(rows).toHaveLength(3)
+    expect(rows[0]!.text()).toContain('claude/opus')
+    expect(rows[0]!.text()).toContain('codex/model')
+    expect(rows[0]!.text()).toContain('Out of allowance until tomorrow')
+    expect(rows[0]!.text()).toContain('Agent')
+    expect(rows[1]!.text()).toContain('Reviewer')
+    expect(history.findAll('time').map(t => t.attributes('datetime'))).toEqual(['1970-01-01T00:00:01.000Z', '1970-01-01T00:00:02.000Z'])
+    expect(rows[2]!.find('time').exists()).toBe(false)
+    expect(rows[2]!.findAll('p')).toHaveLength(1)
     w.unmount()
   })
 })
