@@ -10,6 +10,8 @@ const loading = new Map<string, Promise<void>>()
 
 export function useAutopilot() {
   const machines = useState<Record<string, MachineAutopilot>>('autopilot', () => ({}))
+  // Counts the switches' actions: other views of the Autopilot read it again.
+  const actions = useState('autopilot-actions', () => 0)
   function load(machine: string, force = false): Promise<void> {
     const had = machines.value[machine]
     if (!force && had && Date.now() - had.at < FRESH_MS) return Promise.resolve()
@@ -23,9 +25,10 @@ export function useAutopilot() {
     return next
   }
   // A coordinator's state as one action read it back.
-  function put(machine: string, id: string, status: AutopilotStatus) {
+  function put(machine: string, id: string, status: AutopilotStatus, acted = false) {
+    if (acted) actions.value++
     const had = machines.value[machine]
     machines.value[machine] = { statuses: { ...had?.statuses, [id]: status }, at: had?.statuses ? had.at : 0 }
   }
-  return { machines, load, put }
+  return { machines, actions, load, put }
 }

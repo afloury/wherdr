@@ -10,13 +10,16 @@ import { finishHint, finishLabel, finishOffered, finishQuestion, finishTitle } f
 import { blockChoices, blockKind, blockKindLabel, offersAlways, permissionReply, questionMessage } from '~/utils/blockNotice'
 import { reviewerWait } from '~/utils/reviewerWait'
 import { type PaneViewMode, allSessionsState, chooseMachineSession } from '~/composables/useHerdr'
+import { useAutopilot } from '~/composables/useAutopilot'
 
 export type PanelTarget =
   | { machine: string, kind: 'task', id: string, chat?: boolean }
   | { machine: string, kind: 'coordinator', to: CoordinatorTarget, freshProject?: boolean }
 
 // `reachable`: its machine's board answers now (a message waits while it does not).
-const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, reachable?: boolean, refresh?: () => Promise<unknown> }>()
+const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, reachable?: boolean, refresh?: () => Promise<unknown>, refreshKey?: number }>()
+// A switch's action: the Scheduled section reads the Autopilot again.
+const { actions: autopilotActions } = useAutopilot()
 const launchAgent = ref('__default')
 const launchModel = ref('')
 const launchEffort = ref('__default')
@@ -675,6 +678,8 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <p v-if="!reachable">{{ tl('Machine unavailable', 'Machine indisponible') }}</p>
       <p v-if="actionError" class="error">{{ actionError }}</p>
     </section>
+
+    <CoordinatorScheduled v-if="target.kind === 'coordinator'" :machine="target.machine" :target="target.to" :refresh-key="(refreshKey ?? 0) + autopilotActions" />
 
     <div class="board-panel-body">
       <p v-if="target.kind === 'task' && settled && failed && selected === 'task'" class="board-note error">{{ failed }}</p>

@@ -3,6 +3,10 @@
 // checks that every key used in the code has one). The choice is saved on the device.
 
 const FR: Record<string, string> = {
+  'Machine time zone unavailable; using UTC': 'Fuseau de la machine indisponible ; utilisation d’UTC',
+  'Autopilot unavailable': 'Autopilot indisponible',
+  'Automations unavailable': 'Automations indisponibles',
+  'Session timers unavailable': 'Minuteurs de session indisponibles',
   'Invalid attempt choice': 'Choix d’essai invalide',
   'This attempt cannot be chosen': 'Cet essai ne peut pas être sélectionné',
   'Too many notification rules. Remove an old rule first.': 'Trop de règles de notification. Retire d’abord une ancienne règle.',

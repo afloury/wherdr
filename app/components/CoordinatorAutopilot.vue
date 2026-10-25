@@ -59,10 +59,10 @@ async function show() {
 function query() {
   return new URLSearchParams({ machine: props.machine, kind: props.to.kind, ...(props.to.kind === 'project' ? { repo: props.to.repo } : {}) })
 }
-function take(d: AutopilotDetails) {
+function take(d: AutopilotDetails, acted = false) {
   const { defaults: dv, ...s } = d
   defaults.value = dv
-  put(props.machine, id.value, s)
+  put(props.machine, id.value, s, acted)
 }
 
 const canSubmit = computed(() => !busy.value && !reading.value && Boolean(status.value) && (status.value!.on || Boolean(goal.value.trim())))
@@ -75,7 +75,7 @@ async function submit() {
     take(await api<AutopilotDetails>('/api/tasks/autopilot', {
       machine: props.machine, to: props.to, action: on ? 'on' : 'off',
       ...(on ? { goal: goal.value, every: every.value, tasksPerDay: tasksPerDay.value, tasksAtOnce: tasksAtOnce.value } : {}),
-    }))
+    }), true)
     open.value = false
   } catch (e) {
     // The board's own reason. The command may have run before a later read

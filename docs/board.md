@@ -123,6 +123,15 @@ What the Board shows and does:
   and from Herdr's worktree groups, every 15 seconds while the list is shown, never through
   herdr-projects' command line; the branch and behind count come from `git` in the repo's main
   checkout, once a minute, without fetching.
+- **Scheduled** (FR **Programmé**), collapsed in every coordinator panel: its Autopilot
+  status, wake frequency, goal and daily limits; board automations for that project
+  (including events across all repos), their latest firings and links to created tasks;
+  and Claude Code session timers reconstructed from successful transcript tool calls.
+  Open the section to read it; refreshing the Board refreshes an open section. It is
+  read only. Dates use the coordinator machine's time zone. Session timers disappear
+  when deleted, after a one-shot fires, or after seven days; they are lost when the
+  Claude Code session closes. An unavailable source is shown explicitly rather than
+  presented as an empty schedule.
 - **Coordinator entry points**, named as herdr-projects names them, one name per level on the
   Board, the home list, the conversation header and the menus: the top of the Board offers the
   main **Coordinator** (FR **Coordinateur**), for all repos and machines it can reach. With

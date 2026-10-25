@@ -40,6 +40,9 @@ const FOLDS_KEY = 'boardFolds'
 const router = useRouter()
 const route = useRoute()
 const { board, error, reads, reload } = useTasksBoard()
+// Counts the Refresh button's clicks: the coordinator's Scheduled section reads
+// again then, not on every 15 s poll (it may scan a large transcript).
+const refreshes = ref(0)
 const projectLinks = useBoardLinks()
 
 const readStore = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
@@ -442,7 +445,7 @@ function back() {
           </UButton>
         </CoordinatorHint>
       </UDropdownMenu>
-      <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="lg" class="icon-btn board-filter" :aria-label="tl('Refresh', 'Actualiser')" :disabled="offlineView" @click="reload" />
+      <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="lg" class="icon-btn board-filter" :aria-label="tl('Refresh', 'Actualiser')" :disabled="offlineView" @click="refreshes++; reload()" />
     </header>
     <!-- Each machine's main Coordinator: its Autopilot. -->
     <div v-if="coordMachines.length && !offlineView" class="board-autopilots">
@@ -614,7 +617,7 @@ function back() {
     </template>
     <BoardPanel
       v-if="panel" :key="panelKey" :target="panel" :task="panelTask"
-      :refresh="reload" :machine-label="machineLabel(panel.machine)" :reachable="ready.some(m => m.machine === panel!.machine)"
+      :refresh="reload" :refresh-key="refreshes" :machine-label="machineLabel(panel.machine)" :reachable="ready.some(m => m.machine === panel!.machine)"
       @archived="onArchived" @restored="onRestored" @changed="reload" @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent" @coordinator="askCoordinator"
     />
     <TaskSheet
