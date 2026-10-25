@@ -1220,14 +1220,16 @@ describe('description writes', () => {
     expect(JSON.parse(output)).toEqual(args)
   })
   it.each(['', session.key, 'remote'])('routes opaque multiline text to the owner of %s', async key => {
-    const text = "--title=literal\n\nIt's data: $(touch nope); `id` & < > | \\\nlast\n"
+    const text = "--title=literal\n\nIt's data: $(touch nope); `id` & < > | \\\nlast\r\n\r\n"
     const seen: { machine: string, args: string[] }[] = []
     T.setRunner(async (m, _launcher, args) => {
       seen.push({ machine: m.key, args })
-      return { code: 0, stdout: args[0] === 'list' ? fixture('list.json') : 'updated', stderr: '' }
+      return { code: 0, stdout: args[0] === 'list' ? fixture('list.json') : args[0] === 'details'
+        ? JSON.stringify({ task: { id: 'demo/1', description: text.replace(/\r/g, '').trim() } }) : 'updated', stderr: '' }
     })
     await T.describeTask(key, 'demo/1', text)
     expect(seen.at(-1)).toEqual({ machine: key === 'remote' ? 'remote' : '', args: ['describe', '--', 'demo/1', text] })
+    expect((await T.taskDetails(key, 'demo/1')).description).toBe(text.replace(/\r/g, '').trim())
   })
   it('refuses an archived file and an offline owner before writing', async () => {
     taskFile('demo/1', { archivedAt: 123 })

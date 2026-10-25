@@ -391,7 +391,7 @@ export async function tellTask(machine: unknown, id: unknown, text: unknown): Pr
   return { ok: true, msg: firstLine(out) }
 }
 
-// Description is opaque data: preserve whitespace and pass it as one argv item.
+// Description is opaque data: pass it unchanged as one argv item; the CLI owns normalization.
 export async function describeTask(machine: unknown, id: unknown, text: unknown): Promise<{ ok: true, msg: string }> {
   const m = boardOf(machine)
   const tid = checkId(id)

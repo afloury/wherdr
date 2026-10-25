@@ -6,7 +6,8 @@ for (const language of ['en', 'fr']) {
     await page.addInitScript(lang => localStorage.setItem('herdrLanguage', lang), language)
     const row = { id: 'demo/11', repo: 'demo', repoKey: 'DEMO', n: 11, state: 'idle', kind: '', stage: 'todo', title: 'Prepare the lunar garden', msg: '', app: '', progress: null, eta: null, pr: '', review: null, reviewRound: 0, research: false, archived: false, queue: null, group: 'todo' }
     let description = 'A garden task\n\nKeep these lines.\n'
-    const draft = "It's a garden; $(literal) & `data`\n\nKeep the final newline.\n"
+    const draft = "\n  It's a garden; $(literal) & `data`\n\nKeep these internal lines.\n\n"
+    const stored = draft.replace(/\r/g, '').trim()
     let writes = 0
     let refuse = true
     await page.route('**/api/tasks**', async route => {
@@ -17,7 +18,7 @@ for (const language of ['en', 'fr']) {
         writes++
         expect(route.request().postDataJSON()).toEqual({ machine: 'remote', id: row.id, text: draft })
         if (refuse) return route.fulfill({ status: 502, json: { error: 'CLI refused the description' } })
-        description = draft
+        description = stored
         return route.fulfill({ json: { ok: true } })
       }
       return route.fulfill({ json: { agent: null, agents: [], settings: [], problems: [] } })
@@ -39,12 +40,18 @@ for (const language of ['en', 'fr']) {
     await fs.mkdir('.shots', { recursive: true })
     await page.screenshot({ path: `.shots/task-description-${language}-phone.png`, fullPage: true })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    const phoneViewport = page.viewportSize()!
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.screenshot({ path: `.shots/task-description-${language}-desktop.png`, fullPage: true })
     refuse = false
     await save.click()
     await expect(block.locator('textarea')).toHaveCount(0)
-    await expect(block.locator('.task-sheet-text')).toHaveText(draft)
+    await expect.poll(() => block.locator('.task-sheet-text').evaluate(el => el.textContent)).toBe(stored)
+    await page.screenshot({ path: `.shots/task-description-${language}-saved-desktop.png`, fullPage: true })
+    await page.setViewportSize(phoneViewport)
+    await page.screenshot({ path: `.shots/task-description-${language}-saved-phone.png`, fullPage: true })
+    await block.getByRole('button', { name: language === 'fr' ? 'Modifier' : 'Edit description' }).click()
+    await expect(block.locator('textarea')).toHaveValue(stored)
     expect(writes).toBe(2)
   })
 }

@@ -62,6 +62,7 @@ async function saveDescription() {
     await api('/api/tasks/describe', { machine: props.machine, id: task.id, text })
     if (g !== gen) return
     editingDescription.value = false
+    // Read the stored value: describe removes carriage returns and trims its edges.
     await settle(g)
   } catch (e) { if (g === gen) descriptionError.value = (e as Error).message }
   finally { if (g === gen) busy.value = false }

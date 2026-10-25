@@ -949,7 +949,8 @@ describe('description editor', () => {
     const body = await readBody(e)
     writes.push(body)
     if (refuses) { setResponseStatus(e, 502); return { error: 'CLI refused the description' } }
-    description = body.text
+    // Match the installed CLI's describe contract.
+    description = body.text.replace(/\r/g, '').trim()
     return { ok: true }
   } })
   async function editor() {
@@ -967,13 +968,16 @@ describe('description editor', () => {
     expect(writes).toEqual([])
     await block().get('button').trigger('click')
     expect(block().get('textarea').element.value).toBe(description)
-    const text = "It's $(data); `literal`\n\nFinal line\n"
+    const text = "\n  It's $(data); `literal`\n\nFinal line\n\n"
     await block().get('textarea').setValue(text)
     expect(writes).toEqual([])
     await block().get('form').trigger('submit')
     await flushPromises()
     expect(writes).toEqual([{ machine: 'a', id: 'demo/1', text }])
-    await vi.waitFor(() => expect(block().get('.task-sheet-text').text()).toBe(text.trim()))
+    const stored = text.replace(/\r/g, '').trim()
+    await vi.waitFor(() => expect(block().get('.task-sheet-text').element.textContent).toBe(stored))
+    await block().get('button').trigger('click')
+    expect(block().get('textarea').element.value).toBe(stored)
     w.unmount()
   })
   it('keeps the draft and CLI error after refusal, then retries', async () => {
