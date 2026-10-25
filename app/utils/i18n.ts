@@ -619,6 +619,8 @@ const FR: Record<string, string> = {
   'This pane’s folder is unknown': 'Dossier de ce pane inconnu',
   'Invalid machine order': 'Ordre des machines invalide',
   'Invalid settings': 'Réglages invalides',
+  'Invalid repository': 'Dépôt invalide',
+  'herdr-projects gave settings wherdr cannot read.': 'herdr-projects a renvoyé des réglages que wherdr ne peut pas lire.',
   'Invalid machine name (40 characters max)': 'Nom de machine invalide (40 caractères maximum)',
   'Invalid quiet setting': 'Réglage de silence invalide',
   'Notifications are not enabled on this device': 'Notifications non activées sur cet appareil',
