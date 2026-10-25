@@ -16,7 +16,7 @@ export type PanelTarget =
   | { machine: string, kind: 'coordinator', to: CoordinatorTarget, freshProject?: boolean }
 
 // `reachable`: its machine's board answers now (a message waits while it does not).
-const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, reachable?: boolean, refresh?: () => Promise<unknown> }>()
+const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, reachable?: boolean, refresh?: () => Promise<unknown>, refreshKey?: number }>()
 const launchAgent = ref('__default')
 const launchModel = ref('')
 const launchEffort = ref('__default')
@@ -672,6 +672,8 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <p v-if="!reachable">{{ tl('Machine unavailable', 'Machine indisponible') }}</p>
       <p v-if="actionError" class="error">{{ actionError }}</p>
     </section>
+
+    <CoordinatorScheduled v-if="target.kind === 'coordinator'" :machine="target.machine" :target="target.to" :refresh-key="refreshKey" />
 
     <div class="board-panel-body">
       <p v-if="target.kind === 'task' && settled && failed && selected === 'task'" class="board-note error">{{ failed }}</p>
