@@ -4,14 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [2.0.0] — 2026-10-24
+## [2.0.0] — 2026-10-25
 
 This major release follows 1.3.4. Read the [migration guide](docs/herdr-projects-1x.md)
 (#152) before upgrading; Docker installs also need the [native migration guide](docs/migrate-from-1.x-docker.md).
 
 ### Added and improved
 
-- **Start with… a model and an effort.** On the Board, after the program, Start offers the models and effort levels herdr-projects takes for it on that machine (`herdr-projects models <program>`, read once per machine and program), for this start only (`--worker.agent <program>/<model>`, `--worker.effort`). None is picked by default: the program alone, as before. A name the CLI refuses shows its own words; when the models cannot be read, Start uses the program alone and says so.
+- **Notification defaults and exceptions (#157).** Choose one default notification level and exceptions for coordinators or standalone agents. A separate Sub-agents switch controls task workers, reviewers and attempts. Do not disturb silences every notification; device permission is shown separately.
+
+- **Task settings and provenance (#163).** The task panel’s Settings tab reads effective values and their sources from the task’s machine, including CLI notes and problems, without editing them or rereading on each Board refresh.
+
+- **Start with… a model and an effort (#165).** On the Board, after the program, Start offers the models and effort levels herdr-projects takes for it on that machine (`herdr-projects models <program>`, read once per machine and program), for this start only (`--worker.agent <program>/<model>`, `--worker.effort`). None is picked by default: the program alone, as before. A name the CLI refuses shows its own words; when the models cannot be read, Start uses the program alone and says so.
 
 - **Moving from a 1.x Docker install** has its own guide, [docs/migrate-from-1.x-docker.md](docs/migrate-from-1.x-docker.md), written so an AI agent can run it: back up, stop the container, install the native service, check each step, and go back if needed. The installer, the plugin and the 2.0.0 release notes link to it.
 
@@ -27,11 +31,13 @@ This major release follows 1.3.4. Read the [migration guide](docs/herdr-projects
 
 - **A machine's tab on the home list** no longer repeats its header: its Claude and Codex quotas sit together at the top, an offline machine says so there, and a right click or long press on the tab offers the machine's actions. A group's tab offers **Group settings**.
 
-- **Restart to update** no longer opens the interactive terminal for a moment while the agent exits: the conversation stays as it is, with only the restart progress above the message field.
+- **Restart to update (#164)** no longer opens the interactive terminal for a moment while the agent exits: the conversation stays as it is, with only the restart progress above the message field.
 
-## [2.0.0] — 2026-10-23
+- **Task limits** offer explicit controls to continue or raise the reached token or duration limit, and confirm resumption before closing (#167).
 
-### Added and improved
+- **Remote coordinator links** switch the home machine bar to the coordinator’s machine (#169).
+
+- **Task keys** can be copied with a click or tap (#168).
 
 - **New agent and slash menu:** New opens an existing project coordinator or creates one; the slash menu includes plugin skills and MCP prompts (#130, #122).
 - **Messages waiting behind other text** explain why they cannot be sent and offer to clear the field (#131).
@@ -77,7 +83,7 @@ This major release follows 1.3.4. Read the [migration guide](docs/herdr-projects
 - Coordinator failure messages distinguish startup and message delivery errors, and report the actual pending message count in English and French.
 - **Useful home list densities**: Compact keeps each Board task on one line (agent, key, truncated title, progress, duration and state, with Your turn when needed). Normal adds one activity line with relevant limit or review labels. Large detailed cards are removed; coordinators and other agents stay dense too, while agents outside the Board keep their one-tap answers. Normal is now the default (see above).
 The release includes the merged work in #70, #133, #135, #136, #137 and #139.
-PRs #153, #154, #155, #157, #163 and #71 are reserved for 2.0.1 and are not included.
+PRs #153, #154, #155 and #71 are reserved for 2.0.1 and are not included.
 
 ### Breaking changes and migration from 1.3.4
 

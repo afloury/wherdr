@@ -47,11 +47,9 @@ function openRepo() {
   else navigateTo(panePath(r.pane.id))
 }
 const repoLabel = computed(() => tl(`Open the terminal of ${g.value.repo}`, `Ouvrir le terminal de ${g.value.repo}`))
-useNotificationClock()
-const notifyTarget = computed(() => projectNotificationTarget(props.machine || '', g.value.repo))
-const headItems = (): MenuItem[] => [notificationMenuItem(notifyTarget.value), ...(spaceId.value
-  ? [{ label: repoLabel.value, icon: 'i-lucide-square-terminal', run: openRepo }, { kind: 'separator' as const }, ...workspaceItems(spaceId.value, true)]
-  : [])]
+const headItems = (): MenuItem[] => (spaceId.value
+  ? [{ label: repoLabel.value, icon: 'i-lucide-square-terminal', run: openRepo }, { kind: 'separator' }, ...workspaceItems(spaceId.value, true)]
+  : [])
 // Touch: a long press on the bar opens the same menu as "…".
 const barLp = longPress({
   onPress: () => {
@@ -102,7 +100,7 @@ const rowKey = (r: Row) => r.key
       <span class="project-remote-go">{{ t('coordinator') }}<UIcon name="i-lucide-arrow-up-right" /></span>
     </button>
     <div class="project-bar">
-      <UContextMenu :disabled="sheetMenus" :items="sheetMenus ? [] : toDropdown(headItems())" :ui="{ content: 'hw-dropdown' }">
+      <UContextMenu :disabled="sheetMenus || !spaceId" :items="sheetMenus || !spaceId ? [] : toDropdown(headItems())" :ui="{ content: 'hw-dropdown' }">
         <button
           type="button" class="project-head" :aria-expanded="!collapsed" :title="headTitle"
           @pointerdown="sheetMenus && barLp.down($event)" @pointermove="barLp.move" @pointerup="barLp.cancel" @pointercancel="barLp.cancel"
@@ -110,7 +108,6 @@ const rowKey = (r: Row) => r.key
         >
           <UIcon name="i-lucide-chevron-down" class="project-chev" />
           <span class="sr-only">{{ foldLabel }}</span>
-          <UIcon v-if="notificationsMuted(notifyTarget)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" />
           <span class="project-sum">
             <!-- Keep the summary on one line; the button title retains every count on narrow screens. -->
             <span v-for="(p, i) in parts" :key="p.key" class="project-sum-part"><span :class="`project-sum-${p.key}`">{{ p.text }}</span><span v-if="i < parts.length - 1" class="project-sum-sep" aria-hidden="true">·</span></span>
@@ -118,7 +115,7 @@ const rowKey = (r: Row) => r.key
         </button>
       </UContextMenu>
       <span v-if="group.info?.branch" class="project-branch" :title="branchTitle"><UIcon name="i-lucide-git-branch" /><span class="project-branch-name">{{ group.info.branch }}</span><b v-if="behind">↓{{ behind }}</b></span>
-      <SpaceMenu :items="headItems" :title="group.repo" size="sm" :label="tl(`Options: ${group.repo}`, `Options : ${group.repo}`)" />
+      <SpaceMenu v-if="spaceId" :items="headItems" :title="group.repo" size="sm" :label="tl(`Options: ${group.repo}`, `Options : ${group.repo}`)" />
     </div>
     <div v-if="!collapsed && group.members.length" class="card-list project-tree">
       <AgentCard v-for="m in group.members" :key="rowKey(m.row)" :pane="m.row.lead" :row="m.row" :board="memberCard(m)" />

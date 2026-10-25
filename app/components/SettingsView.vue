@@ -474,10 +474,9 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'notifications'" class="settings-section">
-          <NotificationRules />
-          <div class="settings-group">
+          <div class="settings-group" data-testid="notification-quiet">
             <label class="settings-toggle quiet-toggle">
-              <span><b><UIcon :name="quietOn ? 'i-lucide-bell-off' : 'i-lucide-bell'" />{{ tl('Do not disturb', 'Silence') }}</b><small>{{ tl('No push notifications while it is on.', 'Aucune notification push tant qu’il est actif.') }}</small></span>
+              <span><b><UIcon :name="quietOn ? 'i-lucide-bell-off' : 'i-lucide-bell'" />{{ tl('Do not disturb', 'Silence') }}</b><small>{{ tl('Turns off every notification, no exceptions: the rules below are ignored.', 'Coupe toutes les notifications, sans exception : les réglages ci-dessous sont ignorés.') }}</small></span>
               <USwitch v-model="quietOn" color="success" size="xl" />
             </label>
             <p class="notify-caption">{{ tl('Silence on', 'Couper pour') }}</p>
@@ -487,8 +486,10 @@ onMounted(() => {
             <URadioGroup :model-value="quietDuration" :items="quietDurationItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" @update:model-value="v => pickQuietDuration(v as QuietDuration)" />
             <p class="muted notify-hint" :class="{ 'quiet-end': quietOn }">{{ quietEnd || tl('Notifications come back on by themselves at the end.', 'Retour automatique à la normale à la fin de la durée choisie.') }}</p>
           </div>
+          <NotificationRules />
           <div class="settings-group">
-            <PushCard />
+            <h3>{{ tl('This device’s notifications', 'Notifications de cet appareil') }}</h3>
+            <PushCard detailed />
           </div>
         </div>
 
