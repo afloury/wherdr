@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { OMP_CHAT_PANE, SPLIT_CHAT_PANE, SPLIT_TAB } from './scenario.mjs'
 
 // The address changes while the app starts. The scripts asked for after the
@@ -35,7 +35,7 @@ test('an address set while the app starts is kept', async ({ page, isMobile }) =
   await expect(page).toHaveURL(new RegExp(`#/t/${SPLIT_TAB}`))
 })
 
-test('Back pressed while the app reloads goes back', async ({ page, isMobile }) => {
+test('Back pressed while the app reloads goes back', { tag: '@webkit-phone' }, async ({ page, isMobile }) => {
   await changeWhileStarting(page, null)
   await page.goto(`/#/t/${SPLIT_TAB}`)
   await expect(cell(page, isMobile)).toBeVisible()

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { closeSummary, moveTargets, paneSpaceEntries, spaceCall, spaceResult } from '../shared/spaceActions'
+import { closeSummary, moveTargets, paneSpaceEntries, spaceCall, spaceResult, verifySpaceRename } from '../shared/spaceActions'
 import { reduceSnapshot } from '../server/utils/snapshot'
 import layouts from './fixtures/snapshot-layouts.json'
 import { closeConfirm } from '../app/utils/spaceConfirm'
@@ -167,4 +167,17 @@ describe('closeConfirm', () => {
     expect(c.message).toContain('5 agents y tournent : Claude « a0 », Codex « a1 », Claude « a2 » et 2 autres.')
     expect(c.action).toBe('Fermer et arrêter 5 agents')
   })
+})
+
+describe('rename confirmation', () => {
+  for (const kind of ['workspace', 'tab'] as const) {
+    it(`${kind}: refuses an acknowledged rename without the requested name`, () => {
+      const key = `${kind}_id`
+      const id = kind === 'tab' ? 'w1:t1' : 'w1'
+      const call = spaceCall({ op: `${kind}.rename`, [key]: id, label: 'new' })
+      expect(() => verifySpaceRename(call, { [`${kind}s`]: [{ [key]: id, label: 'old' }] })).toThrow('Rename failed')
+      expect(() => verifySpaceRename(call, {})).toThrow('Rename failed')
+      expect(() => verifySpaceRename(call, { [`${kind}s`]: [{ [key]: id, label: 'new' }] })).not.toThrow()
+    })
+  }
 })

@@ -150,6 +150,10 @@ describe('files of a remote machine (shell)', () => {
     expect(parseStatLine('1234 1758860000 Regular File')).toEqual({ size: 1234, mtimeMs: 1758860000000, isFile: true, isDir: false })
     expect(parseStatLine('0 1758860000 regular empty file')!.isFile).toBe(true)
     expect(parseStatLine('x')).toBeNull()
+    expect(parseStatLine('1234 1758860000 98765 regular file')).toEqual({ size: 1234, mtimeMs: 1758860000000, isFile: true, isDir: false, ino: 98765 })
+    expect(parseStatLine('0 1758860000 12 directory')!.isDir).toBe(true)
+    expect(parseStatLine('5 1758860000.800000000 12 regular file')!.mtimeMs).toBe(1758860000800)
+    expect(parseStatLine('5 1758860000.123456789 12 regular file')!.mtimeMs).toBeCloseTo(1758860000123.456, 3)
   })
 
   it('reads a byte range, a file, a folder', async () => {

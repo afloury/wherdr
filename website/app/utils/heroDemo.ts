@@ -1,7 +1,7 @@
 // The made-up wherdr session the hero plays in a loop (~14 s), on the
 // phone (PhoneDemo) and in the Safari window (DesktopDemo) on one shared
 // clock, like one wherdr session opened on both devices.
-import type { AgentState, DemoScript } from './demoScript'
+import type { AgentState, DemoProject, DemoScript } from './demoScript'
 
 export const AGENT = 'acme-api'
 export const MESSAGE = 'Cache getUser, and clear the entry when a user changes.'
@@ -23,6 +23,17 @@ export const OPTIONS = [
   { n: 3, title: '15 minutes', sub: 'Fewest reads' },
 ] as const
 export const PICKED = 2
+
+/** The project next to the demo agent in the list (desktop and phone): its coordinator and two tasks at work. */
+export const SHOP: DemoProject = {
+  repo: 'web-shop',
+  coordinator: 'idle',
+  branch: 'main',
+  tasks: [
+    { name: 'Save the cart between visits', tag: 'SHOP-15', agent: 'claude', model: 'Opus 5.5', state: 'working', stats: '40% 18m', line: '' },
+    { name: 'Guest checkout', tag: 'SHOP-14', agent: 'codex', model: 'gpt-5.5', state: 'working', stats: '75% 26m', line: '' },
+  ],
+}
 
 // Steps: 1 typing · 2 queued · 3 sent · 4–7 actions · 8 answer · 9 your turn · 10 picked · 11 fade.
 // The answer (step 8) types for ~2.1 s at the app's default speed before the question.

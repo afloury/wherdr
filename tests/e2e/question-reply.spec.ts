@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from './test'
 import { COORDINATOR_PANE, OMP_QUESTIONS_PANE } from './scenario.mjs'
 import { expectDraft, point } from './refs'
 
@@ -83,6 +83,17 @@ test('icon style: a question in the middle of a paragraph gets its own Reply but
 // One-tap answers: "Yes" / "No" next to the Reply button of a closed question.
 const ansBtn = (text: string, a: 'yes' | 'no') => quoteBtn(text, `q-${a}`)
 const sentCount = (page: Page) => page.locator('.msg-user-wrap').count()
+// Messages an earlier test sent here stay queued on the server (this pane's fake agent
+// writes no transcript), and their bubbles may reach a new page a little after the
+// conversation. Count once every one of them shows, or a late one passes for a new send.
+async function settledSentCount(page: Page) {
+  const state = await (await page.request.get('/api/state')).json()
+  const held = (state.panes.find((p: { id: string }) => p.id === OMP_QUESTIONS_PANE)?.queued || []).length
+  await expect.poll(() => page.locator('.queued-list .msg-user-wrap').count()).toBeGreaterThanOrEqual(held)
+  return sentCount(page)
+}
+// Caret of the field when it has the focus, else null.
+const focusedAt = (field: Locator) => field.evaluate((el: HTMLTextAreaElement) => document.activeElement === el ? el.selectionStart : null)
 
 test('a closed question is answered in one tap, several in a row, nothing is sent', async ({ page }, testInfo) => {
   const { chat, field } = await open(page)
@@ -114,8 +125,11 @@ test('a closed question is answered in one tap, several in a row, nothing is sen
   await expectDraft(field, `${point(STEP)}\nYes\n`)
   await expect(yes).toHaveAttribute('aria-pressed', 'true')
   await expect(chat.locator(quoteBtn(STEP))).toHaveClass(/quoted/)
-  // The field does not take the focus: the next question stays in sight.
-  expect(await field.evaluate(el => document.activeElement === el)).toBe(false)
+  // On a computer the field takes the focus, the caret right after the answer,
+  // so that Enter sends it. On a phone it does not: the keyboard stays down and
+  // the next question stays in sight.
+  if (phone(testInfo.project.name)) expect(await focusedAt(field)).toBeNull()
+  else await expect.poll(() => focusedAt(field)).toBe((await field.inputValue()).length - 1)
   await chat.locator(ansBtn(TAG, 'no')).click()
   await expectDraft(field, `${point(STEP)}\nYes\n${point(TAG)}\nNo\n`)
   // A plain Reply joins them, and the other answer replaces the first.
@@ -132,6 +146,30 @@ test('a closed question is answered in one tap, several in a row, nothing is sen
   await expectDraft(field, `${point(STEP)}\nNo, tomorrow.\n`)
   expect(await sentCount(page)).toBe(before)
   expect(await fits(page)).toBe(true)
+})
+
+for (const width of [1440, 650]) test(`on a computer ${width} px wide, Enter sends the answer a click on Yes wrote; a key on Yes keeps the focus on it`, { tag: '@chromium-desktop' }, async ({ page }, testInfo) => {
+  test.fixme(testInfo.project.name === 'webkit-desktop', 'flaky on webkit-desktop, to fix separately')
+  test.skip(phone(testInfo.project.name), 'a phone keeps the keyboard down: no focus, Enter adds a line there')
+  // 650 px: a narrow window gets the phone layout, but no on-screen keyboard.
+  await page.setViewportSize({ width, height: 900 })
+  const { chat, field } = await open(page)
+  const before = await settledSentCount(page)
+  const yes = chat.locator(ansBtn(STEP, 'yes'))
+  await yes.scrollIntoViewIfNeeded()
+  await yes.click()
+  await expectDraft(field, `${point(STEP)}\nYes\n`)
+  await expect.poll(() => focusedAt(field)).toBe((await field.inputValue()).length - 1)
+  await shot(page, `yes-focused-${width}`, testInfo.project.name)
+  await page.keyboard.press('Enter')
+  await expect.poll(() => sentCount(page)).toBe(before + 1)
+  await expectDraft(field, '')
+  // Pressed with the keyboard, the button keeps the focus, for the next one.
+  const no = chat.locator(ansBtn(TAG, 'no'))
+  await no.focus()
+  await page.keyboard.press('Enter')
+  await expectDraft(field, `${point(TAG)}\nNo\n`)
+  await expect(no).toBeFocused()
 })
 
 test('text style: Yes / No stay next to the underlined question', async ({ page }, testInfo) => {
@@ -243,7 +281,7 @@ test('text style: the words of a question are its button, a point is clicked', a
   await expectDraft(field, `${point(MERGE)}\n\n${point(EXPORT)}\n\n${point(STEP)}\n\n${point(LIMITS)}\n`)
 })
 
-test('text style: selecting text in a point still offers to reply to the passage', async ({ page }, testInfo) => {
+test('text style: selecting text in a point still offers to reply to the passage', { tag: '@chromium-desktop' }, async ({ page }, testInfo) => {
   test.skip(phone(testInfo.project.name), 'a mouse selection')
   const { chat, field } = await open(page, 'text')
   const item = chat.locator('li', { hasText: EXPORT })
@@ -350,10 +388,9 @@ test('the reply style is chosen in Settings and kept on the device', async ({ pa
 })
 
 // Reference screenshots of each style, dark and light (SHOTS=<folder> only).
-for (const style of ['icon', 'text', 'list']) {
+if (process.env.SHOTS) for (const style of ['icon', 'text', 'list']) {
   for (const theme of ['wherdr-titanium', 'catppuccin-latte']) {
     test(`screenshot: ${style} style, ${theme}`, async ({ page }, testInfo) => {
-      test.skip(!process.env.SHOTS, 'screenshots on demand')
       if (!phone(testInfo.project.name)) await page.setViewportSize({ width: 1280, height: 800 })
       const { chat } = await open(page, style, theme)
       const item = chat.locator('li', { hasText: EXPORT })

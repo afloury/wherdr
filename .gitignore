@@ -13,10 +13,11 @@ coverage/
 test-sandbox/
 test-data-old/
 /branding/
-/docker-compose.override.yml
 .leak-patterns
 test-results/
 playwright-report/
 .e2e-tmp/
 # herdr-plugin.sh: folder chosen at plugin install time
 /.wherdr-dir
+blob-report/
+e2e-metrics/

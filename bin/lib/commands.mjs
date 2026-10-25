@@ -10,7 +10,8 @@ import { pathToFileURL } from 'node:url'
 import { BIN, CliError, SERVER, VERSION, bad, c, homebrewInstall, localUrl, ok, portTaken, probe, row, say, serverEnv, settingsFile, warn, wherdrDir, withSettings } from './core.mjs'
 import { RUNTIME_HELP, findRuntime, isBun, runtimeOk, runtimeVersion, temporaryInstall } from './runtime.mjs'
 import { brewDoctor, brewRedirect, brewService, brewStatusRows } from './brew.mjs'
-import { controlService, installService, serviceFile, servicePlatform, serviceState, uninstallService } from './service.mjs'
+import { controlService, enableLinger, installService, lingerOn, serviceFile, servicePlatform, serviceState, uninstallService } from './service.mjs'
+import { loginShellPath, userPath } from './userpath.mjs'
 import { refreshSkill } from './skill.mjs'
 import { LINKS, inspect, publishCommand, reachable } from './tailnet.mjs'
 
@@ -224,7 +225,7 @@ export async function stop(opts, { quiet = false } = {}) {
   }
   if (quiet) return false
   const other = await probe(ctx.port, ctx.host)
-  if (other) warn(`the wherdr on port ${ctx.port} was not started by \`wherdr start\` (Docker, plugin, a terminal…): left running.`)
+  if (other) warn(`the wherdr on port ${ctx.port} was not started by \`wherdr start\` (plugin, a terminal…): left running.`)
   else say('wherdr is not running.')
   return false
 }
@@ -254,7 +255,7 @@ export async function status(opts) {
   const hb = brew && brewStatusRows(brew)
   say(`${c.bold('wherdr')} ${VERSION}`)
   row('Address', answer === 'wherdr' ? `${c.green('●')} ${c.cyan(ctx.url)} answers` : answer ? `${c.yellow('●')} port ${ctx.port} is taken by another program` : `${c.dim('○')} port ${ctx.port} free: not running`)
-  row('Process', hb?.process ? hb.process : svc.running ? 'login service' : pid ? `pid ${pid} (wherdr start)` : answer === 'wherdr' ? 'started another way (Docker, plugin, a terminal…)' : 'none')
+  row('Process', hb?.process ? hb.process : svc.running ? 'login service' : pid ? `pid ${pid} (wherdr start)` : answer === 'wherdr' ? 'started another way (plugin, a terminal…)' : 'none')
   row('Service', hb ? hb.service : svc.installed ? `installed (${serviceFile()})${svc.running ? '' : ', not running'}` : 'not installed · wherdr service install')
   row('Data', ctx.env.DATA_DIR)
   row('Log', hb ? hb.log : ctx.files.log)
@@ -403,20 +404,51 @@ export async function service(opts) {
   const runtime = findRuntime(ctx.env)
   if (!runtime) throw new CliError(RUNTIME_HELP)
   // The background server of `wherdr start` would hold the port.
-  if (await stop(opts, { quiet: true })) ok('background wherdr stopped (the service takes over).')
+  const stopped = await stop(opts, { quiet: true })
+  if (stopped) ok('background wherdr stopped (the service takes over).')
   await checkPort(ctx)
   remember(ctx)
   const args = [bin, 'run', '--port', ctx.port, '--host', ctx.host, '--data-dir', ctx.env.DATA_DIR]
   if (ctx.env.HERDR_WEB_SESSION) args.push('--session', ctx.env.HERDR_WEB_SESSION)
-  const PATH = [...new Set([path.dirname(runtime), path.join(os.homedir(), '.local/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'])].join(':')
+  // launchd and systemd do not see the shell's PATH: the service gets the
+  // user's, so agents in user folders are found by the Board's commands.
+  const PATH = servicePath(runtime, ctx.env)
   const env = { PATH, WHERDR_DIR: ctx.dir, WHERDR_RUNTIME: runtime }
-  for (const k of ['APP_URL', 'HERDR_BIN', 'HOST_LABEL', 'CLAUDE_CONFIG_DIR', 'WHERDR_SKILL']) if (ctx.env[k]) env[k] = ctx.env[k]
-  const file = installService({ runtime, args, env, log: ctx.files.log })
+  for (const k of ['APP_URL', 'HERDR_BIN', 'HOST_LABEL', 'CLAUDE_CONFIG_DIR', 'WHERDR_SKILL', 'HERDR_PROJECTS_DATA_DIR']) if (ctx.env[k]) env[k] = ctx.env[k]
+  let file
+  try {
+    file = installService({ runtime, args, env, log: ctx.files.log })
+  } catch (e) {
+    // wherdr was stopped above for the service to take over: started again,
+    // as it was (the previous service, or in the background).
+    let back = ''
+    if (stopped) {
+      try {
+        await start(opts)
+        back = '\n  wherdr was started again as before.'
+      } catch (err) { back = `\n  wherdr could not be started again: ${err.message}` }
+    }
+    throw new CliError(`${e.message}${back}`)
+  }
   ok(`login service installed: ${file}`)
   say(c.dim(`    ${runtime} ${args.join(' ')}`))
   if (await waitUp(ctx, () => true)) ok(`wherdr runs: ${c.cyan(ctx.url)} (and starts at every login)`)
   else failWithLog(`the service did not answer on port ${ctx.port} after 45 s.`, ctx.files.log, 0)
-  if (servicePlatform() === 'systemd') say(c.dim('    To keep it running while you are logged out: loginctl enable-linger'))
+  if (servicePlatform() === 'systemd') {
+    // Without lingering, systemd stops the user's services at logout (and
+    // starts them only at the next login): a server reached over SSH or from
+    // the phone would go away. Allowed for one's own user, without sudo, on
+    // most systems; otherwise the command to run is printed.
+    const linger = enableLinger()
+    if (linger.ok) ok(linger.already ? 'lingering is on: wherdr keeps running when you log out.' : 'lingering enabled (loginctl enable-linger): wherdr keeps running when you log out.')
+    else warn(`lingering is off: wherdr stops when you log out. To keep it running, run once: ${c.cyan(`sudo loginctl enable-linger ${os.userInfo().username}`)}`)
+  }
+}
+
+// The service's PATH: the runtime's folder, then the user's PATH (the login
+// shell's, asked once, herdr-projects' record and the usual folders).
+export function servicePath(runtime, env = process.env, { home = os.homedir(), login = loginShellPath(env), exists } = {}) {
+  return userPath({ env, home, first: [path.dirname(runtime)], login, exists })
 }
 
 // ---------------------------------------------------------------- doctor
@@ -478,6 +510,9 @@ export async function doctor(opts) {
   else if (!svc.installed) warn('Login service: not installed (wherdr service install starts wherdr at login).')
   else if (svc.running) ok(`Login service: running (${serviceFile()})`)
   else fail(`Login service: installed but not running (${serviceFile()}). See wherdr logs.`)
+  if (!brew && svc.installed && servicePlatform() === 'systemd' && !lingerOn()) {
+    warn(`Lingering is off: wherdr stops when you log out (sudo loginctl enable-linger ${os.userInfo().username}).`)
+  }
 
   try {
     mkdirSync(ctx.env.DATA_DIR, { recursive: true })

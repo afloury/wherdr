@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { screenChoices } from '../../server/utils/choices'
 import { OMP_CHAT_PANE, SPLIT_CHAT_PANE, SPLIT_SHELL_PANE, SPLIT_TAB, fakeHerdr } from './scenario.mjs'
 
@@ -27,7 +27,7 @@ test.afterEach(async () => {
   await fakeHerdr('e2e.interaction_screen', { pane_id: SPLIT_CHAT_PANE, text: null, agent: 'omp', status: 'idle' })
 })
 
-test('shows only the live TUI, sends real keys and closes when its field returns', async ({ page }, info) => {
+test('shows only the live TUI, sends real keys and closes when its field returns', { tag: '@webkit-phone' }, async ({ page }, info) => {
   const window = page.getByRole('dialog', { name: 'Interactive terminal', exact: true })
   await expect(window).toBeVisible()
   await expect(window.locator('.xterm-rows')).toContainText('View analytics')
@@ -56,7 +56,7 @@ test('shows only the live TUI, sends real keys and closes when its field returns
   await expect.poll(size, { timeout: 15_000 }).toEqual(original)
 })
 
-test('the scrim covers the whole app; a click on it closes the window until it is reopened', async ({ page, isMobile }, info) => {
+test('the scrim covers the whole app; a click on it closes the window until it is reopened', { tag: '@chromium-desktop' }, async ({ page, isMobile }, info) => {
   test.skip(isMobile, 'the window fills the phone screen: no scrim to tap')
   const window = page.getByRole('dialog', { name: 'Interactive terminal', exact: true })
   await expect(window.locator('.xterm-rows')).toContainText('View analytics')
@@ -89,7 +89,7 @@ test('the scrim covers the whole app; a click on it closes the window until it i
   await expect(window).toHaveCount(0)
 })
 
-test('Escape goes to the agent instead of closing the window', async ({ page, isMobile }) => {
+test('Escape goes to the agent instead of closing the window', { tag: '@chromium-desktop' }, async ({ page, isMobile }) => {
   test.skip(isMobile, 'no hardware keyboard on the phone')
   const window = page.getByRole('dialog', { name: 'Interactive terminal', exact: true })
   await expect(window.locator('.xterm-rows')).toContainText('View analytics')
@@ -102,7 +102,7 @@ test('Escape goes to the agent instead of closing the window', async ({ page, is
   await expect(page.locator('.composer')).toBeVisible()
 })
 
-test('manual close releases the pane without Escape and does not reopen the same screen', async ({ page }) => {
+test('manual close releases the pane without Escape and does not reopen the same screen', { tag: '@webkit-phone' }, async ({ page }) => {
   const window = page.getByRole('dialog', { name: 'Interactive terminal', exact: true })
   await expect(window).toBeVisible()
   await window.getByRole('button', { name: 'Close terminal window' }).click()
@@ -147,7 +147,7 @@ test('Terminal view after closing the window keeps one fitted terminal for the p
   await expect.poll(size, { timeout: 15_000 }).toEqual(original)
 })
 
-test('in a split, only the cell in use opens the window; another one keeps its button', async ({ page, isMobile }) => {
+test('in a split, only the cell in use opens the window; another one keeps its button', { tag: '@chromium-desktop' }, async ({ page, isMobile }) => {
   test.skip(isMobile, 'side-by-side cells are a computer layout')
   await fakeHerdr('e2e.interaction_screen', { pane_id: SPLIT_CHAT_PANE, text: usage, agent: 'codex', status: 'idle' })
   // The app is still starting on the first pane: a hash change sent now can be

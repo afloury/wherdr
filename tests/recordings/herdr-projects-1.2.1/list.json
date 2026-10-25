@@ -1,0 +1,49 @@
+[
+  {
+    "id": "demo/4",
+    "state": "done",
+    "title": "Old cleanup",
+    "msg": "Merged",
+    "stage": "done"
+  },
+  {
+    "id": "demo/3",
+    "state": "working",
+    "app": "codex",
+    "title": "Add dark mode toggle",
+    "msg": "In session default",
+    "stage": "working"
+  },
+  {
+    "id": "demo/2",
+    "state": "blocked",
+    "kind": "question",
+    "title": "Write release notes",
+    "msg": "Which changelog format?",
+    "stage": "asks"
+  },
+  {
+    "id": "demo/1",
+    "state": "blocked",
+    "kind": "permission",
+    "app": "claude",
+    "title": "Fix login redirect",
+    "msg": "",
+    "stage": "approval",
+    "pr": "https://github.com/example/demo/pull/7",
+    "review": {
+      "meets": true,
+      "pass": true,
+      "gate": "major",
+      "findings": [
+        {
+          "id": "f1",
+          "severity": "minor",
+          "title": "Unused import"
+        }
+      ],
+      "by": "codex"
+    },
+    "reviewRound": 1
+  }
+]

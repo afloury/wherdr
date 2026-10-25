@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { OMP_CHAT_PANE, SPLIT_TAB } from './scenario.mjs'
 
 // Panes side by side on a computer: a cell is full width on a solid background.
@@ -15,7 +15,7 @@ const paint = (el: Element) => {
 }
 
 for (const width of [1440, 2000]) {
-  test(`a cell shows neither the backdrop nor the column lines (${width} px)`, async ({ page }, testInfo) => {
+  test(`a cell shows neither the backdrop nor the column lines (${width} px)`, { tag: '@chromium-desktop' }, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: width === 2000 ? 1125 : 900 })
     await page.goto(`/#/t/${SPLIT_TAB}`)
     const cells = page.locator('.cell-view')
@@ -40,7 +40,7 @@ for (const width of [1440, 2000]) {
   })
 }
 
-test('a pane opened alone keeps the backdrop in its margins', async ({ page }) => {
+test('a pane opened alone keeps the backdrop in its margins', { tag: '@chromium-desktop' }, async ({ page }) => {
   await page.goto(`/#/a/${OMP_CHAT_PANE}`)
   await expect(page.locator('.chat').getByText('Ready when you are.')).toBeVisible()
   await expect(page.locator('.agent-main > .grid-backdrop')).toHaveCount(1)
@@ -50,7 +50,7 @@ test('a pane opened alone keeps the backdrop in its margins', async ({ page }) =
 // The Conversation / Terminal selector of a cell: its labels where they fit,
 // its two icons in a narrow cell; never cut by the cell's edge.
 for (const [width, narrow] of [[1440, false], [1000, true]] as const) {
-  test(`the selector of a cell stays whole (${width} px)`, async ({ page }, testInfo) => {
+  test(`the selector of a cell stays whole (${width} px)`, { tag: '@chromium-desktop' }, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 800 })
     await page.goto(`/#/t/${SPLIT_TAB}`)
     const cell = page.locator('.cell-view').first()

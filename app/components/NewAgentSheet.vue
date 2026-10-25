@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// New agent (Claude, Codex) or new terminal: folder (browser +
+// New agent (Claude, Codex), terminal or project coordinator: folder (browser +
 // recent ones), separate worktree if it is a Git repository, conversation resume,
 // first message (queued on the server until the agent is ready).
 // Several machines: choice of the machine, its folders and recent ones.
@@ -9,8 +9,7 @@
 // machine nor worktree.
 // On the phone it opens full screen, Launch pinned at the bottom.
 import type { MachineConfig } from '#shared/types'
-import type { ProjectFolderKind } from '#shared/projectFolders'
-import { machineOf } from '#shared/ids'
+import { AGENT_NAME_HINT, machineOf, toAgentName } from '#shared/ids'
 import { splitPreview } from '#shared/layout'
 import { selectedAgentKind, visibleAgentKinds } from '~/utils/agentChoices'
 import { type NewPanePlace, launchInNewPane } from '~/utils/paneLaunch'
@@ -23,12 +22,26 @@ const branch = ref('')
 const resume = ref(false)
 const prompt = ref('')
 const name = ref('')
+// Typed name converted to the one Herdr will really use; nothing usable
+// left (only symbols): the rule is shown instead.
+const agentName = computed(() => toAgentName(name.value))
+const nameShown = computed(() => (name.value.trim() && agentName.value !== name.value.trim() ? agentName.value : ''))
+const nameUnusable = computed(() => !!name.value.trim() && !agentName.value)
 const error = ref<string | null>(null)
 const launching = ref(false)
 const isGit = ref(false)
 const browsing = ref(false)
 
 const kinds = computed(() => visibleAgentKinds(machineCfg.value?.kinds || appConfig.value.kinds || [], hiddenAgents.value))
+const coordinator = ref(false)
+const links = useBoardLinks()
+const repoPick = ref('')
+const repos = computed(() => links.value.find(m => m.machine === machine.value)?.repos || [])
+// A known repo's name is its coordinator key; its root would name another coordinator.
+const repoItems = computed(() => [...repos.value.map(r => ({ label: r.repo, value: r.repo })), { label: tl('Other repository…', 'Autre dépôt…'), value: '__other' }])
+const project = computed(() => repoPick.value === '__other'
+  ? repos.value.find(r => r.root === dir.value)?.repo || dir.value
+  : repoPick.value)
 const shell = computed(() => kind.value === 'shell')
 const canResume = computed(() => kind.value === 'claude' || kind.value === 'codex')
 
@@ -68,16 +81,11 @@ watch(newAgentOpen, (o) => {
 // `machines` only exists with several machines; otherwise everything is local, as before.
 const machineList = machineChoices
 const machine = ref('')
+watch(machine, () => { repoPick.value = '' })
 const machineCfg = computed(() => (machineList.value ? machineList.value.find(m => m.key === machine.value) : undefined))
 const online = machineOnline
 const home = computed(() => (machineCfg.value ? machineCfg.value.home : appConfig.value.home))
 const recents = computed(() => (machineCfg.value ? machineCfg.value.dirs : appConfig.value.dirs) || [])
-// herdr-projects folders: those among the recent ones, plus the chosen folder (/api/isgit).
-const dirKind = ref<{ dir: string, kind: ProjectFolderKind } | null>(null)
-const dirKinds = computed(() => {
-  const known = (machineCfg.value ? machineCfg.value.projectDirs : appConfig.value.projectDirs) || {}
-  return dirKind.value ? { ...known, [dirKind.value.dir]: dirKind.value.kind } : known
-})
 const qMachine = () => (machine.value ? `&machine=${encodeURIComponent(machine.value)}` : '')
 
 function syncKind() {
@@ -109,6 +117,8 @@ watch(newAgentOpen, async (open) => {
     dir.value = (newTabSpace.value ? spaceCwd(newTabSpace.value) : target.value?.cwd) || dir.value
     worktree.value = false
   }
+  coordinator.value = false
+  repoPick.value = ''
   error.value = null
   browsing.value = false
   launching.value = false
@@ -124,6 +134,7 @@ watch(() => machines.value.map(m => `${m.key}:${m.status}`).join(','), async () 
 })
 watch(kinds, syncKind)
 function pickKind(k: string) {
+  coordinator.value = false
   kind.value = k
   lastKind.value = k
 }
@@ -135,10 +146,9 @@ watch(dir, async (d) => {
   gitFor = d
   isGit.value = false
   try {
-    const r = await api<{ git: boolean, project?: ProjectFolderKind }>(`/api/isgit?path=${encodeURIComponent(d)}${qMachine()}`)
+    const r = await api<{ git: boolean }>(`/api/isgit?path=${encodeURIComponent(d)}${qMachine()}`)
     if (gitFor === d) {
       isGit.value = r.git
-      dirKind.value = r.project ? { dir: d, kind: r.project } : null
     }
   } catch { /* no repository */ }
   if (!isGit.value) {
@@ -207,6 +217,12 @@ async function launch() {
   launching.value = true
   error.value = null
   try {
+    if (coordinator.value) {
+      if (!project.value) return
+      newAgentOpen.value = false
+      await navigateTo({ path: '/board', query: { machine: machine.value, coordinator: project.value } })
+      return
+    }
     if (newTabSpace.value) return await launchNew({ kind: 'tab', workspaceId: newTabSpace.value, label: tabName.value })
     if (newSplit.value) return await launchNew({ kind: 'split', ...newSplit.value })
     const r = await api<{ pane_id: string }>('/api/agents', {
@@ -233,7 +249,7 @@ async function launch() {
 </script>
 
 <template>
-  <AppSheet v-model:open="open" :title="newTabSpace ? t('Start in a new tab') : newSplit ? t('Start in a new pane') : t(shell ? 'New terminal' : 'New agent')" tall screen>
+  <AppSheet v-model:open="open" :title="newTabSpace ? t('Start in a new tab') : newSplit ? t('Start in a new pane') : coordinator ? tl('Project coordinator', 'Coordinateur de projet') : t(shell ? 'New terminal' : 'New agent')" tall screen>
     <div v-if="!browsing" class="sheet-form">
       <div v-if="newSplit || newTabSpace" class="into-pane">
         <TabMap v-if="splitMap && targetTab" :layout="splitMap" :panes="targetTab.panes" :current="NEW_PANE" />
@@ -257,44 +273,63 @@ async function launch() {
       </template>
 
       <label class="field-label">{{ t('Type') }}</label>
-      <div class="segmented agent-kinds" :style="{ '--segment-count': kinds.length }">
-        <button v-for="k in kinds" :key="k" type="button" :class="{ on: k === kind }" :data-kind="k" @click="pickKind(k)">
+      <div class="segmented agent-kinds" :style="{ '--segment-count': kinds.length + (fixedMachine ? 0 : 1) }">
+        <button v-for="k in kinds" :key="k" type="button" :class="{ on: !coordinator && k === kind }" :data-kind="k" @click="pickKind(k)">
           <AgentAvatar :agent="k === 'shell' ? null : k" /><span>{{ k === 'shell' ? 'Terminal' : kindLabel(k) }}</span>
+        </button>
+        <button v-if="!fixedMachine" type="button" :class="{ on: coordinator }" data-kind="coordinator" @click="coordinator = true; repoPick ||= repoItems[0]?.value || '__other'">
+          <UIcon name="i-lucide-message-square-text" /><span>{{ tl('Coordinator', 'Coordinateur') }}</span>
         </button>
       </div>
 
-      <label class="field-label">{{ t('Folder') }}</label>
-      <DirField :key="machine" v-model="dir" :recents="recents" :kinds="dirKinds" @browse="browsing = true" />
+      <template v-if="coordinator">
+        <label class="field-label" for="coordinator-repo">{{ tl('Repository', 'Dépôt') }}</label>
+        <USelect id="coordinator-repo" v-model="repoPick" :items="repoItems" size="xl" class="w-full" :ui="{ content: 'z-[30]' }" />
+        <template v-if="repoPick === '__other'">
+          <label class="field-label">{{ t('Folder') }}</label>
+          <DirField :key="machine" v-model="dir" :recents="recents" @browse="browsing = true" />
+        </template>
+        <p class="muted">{{ tl('Open this project’s conversation. Your first message starts its coordinator.', 'Ouvrir la conversation du projet. Ton premier message lance son coordinateur.') }}</p>
+      </template>
+      <template v-else>
+        <label class="field-label">{{ t('Folder') }}</label>
+        <DirField :key="machine" v-model="dir" :recents="recents" @browse="browsing = true" />
 
-      <label v-if="isGit && !fixedMachine" class="toggle-row">
-        <span><b>{{ t('Separate worktree') }}</b><small>{{ t('new branch, leaves the original folder untouched') }}</small></span>
-        <USwitch v-model="worktree" color="success" size="xl" />
-      </label>
-      <div v-if="isGit && worktree && !fixedMachine">
-        <label class="field-label" for="newBranch">{{ t('Branch') }} <span class="muted">{{ t('(optional)') }}</span></label>
-        <UInput
-          id="newBranch" ref="branchInput" v-model="branch" size="xl" class="w-full mono" autocapitalize="none" autocorrect="off"
-          :spellcheck="false" placeholder="claude-a1b2" maxlength="80"
+        <label v-if="isGit && !fixedMachine" class="toggle-row">
+          <span><b>{{ t('Separate worktree') }}</b><small>{{ t('new branch, leaves the original folder untouched') }}</small></span>
+          <USwitch v-model="worktree" color="success" size="xl" />
+        </label>
+        <div v-if="isGit && worktree && !fixedMachine">
+          <label class="field-label" for="newBranch">{{ t('Branch') }} <span class="muted">{{ t('(optional)') }}</span></label>
+          <UInput
+            id="newBranch" ref="branchInput" v-model="branch" size="xl" class="w-full mono" autocapitalize="none" autocorrect="off"
+            :spellcheck="false" placeholder="claude-a1b2" maxlength="80"
+          />
+        </div>
+
+        <label v-if="canResume" class="toggle-row">
+          <span><b>{{ t('Resume the last conversation') }}</b><small>{{ t('for this agent in this folder') }}</small></span>
+          <USwitch v-model="resume" color="success" size="xl" />
+        </label>
+
+        <label class="field-label" for="newPrompt">{{ t(shell ? 'Command to run' : 'First message') }} <span class="muted">{{ t('(optional)') }}</span></label>
+        <UTextarea
+          id="newPrompt" v-model="prompt" :rows="2" autoresize size="xl" class="w-full" :class="{ mono: shell }"
+          :placeholder="t(shell ? 'E.g. npm run dev' : 'E.g. Summarize the project TODOs')"
         />
-      </div>
 
-      <label v-if="canResume" class="toggle-row">
-        <span><b>{{ t('Resume the last conversation') }}</b><small>{{ t('for this agent in this folder') }}</small></span>
-        <USwitch v-model="resume" color="success" size="xl" />
-      </label>
-
-      <label class="field-label" for="newPrompt">{{ t(shell ? 'Command to run' : 'First message') }} <span class="muted">{{ t('(optional)') }}</span></label>
-      <UTextarea
-        id="newPrompt" v-model="prompt" :rows="2" autoresize size="xl" class="w-full" :class="{ mono: shell }"
-        :placeholder="t(shell ? 'E.g. npm run dev' : 'E.g. Summarize the project TODOs')"
-      />
-
-      <template v-if="!shell">
-        <label class="field-label" for="newName">{{ t('Name') }} <span class="muted">{{ t('(optional)') }}</span></label>
-        <UInput
-          id="newName" v-model="name" size="xl" class="w-full" autocapitalize="none" autocorrect="off"
-          :spellcheck="false" placeholder="reviewer" maxlength="32"
-        />
+        <template v-if="!shell">
+          <label class="field-label" for="newName">{{ t('Name') }} <span class="muted">{{ t('(optional)') }}</span></label>
+          <UInput
+            id="newName" v-model="name" size="xl" class="w-full" autocapitalize="none" autocorrect="off"
+            :spellcheck="false" placeholder="reviewer" maxlength="80"
+            :aria-describedby="nameShown || nameUnusable ? 'newNameNote' : undefined"
+          />
+          <p v-if="nameUnusable" id="newNameNote" class="form-error name-note">{{ t(AGENT_NAME_HINT) }}</p>
+          <p v-else-if="nameShown" id="newNameNote" class="name-note" data-testid="agent-name-preview">
+            {{ tl('Will be launched as:', 'Sera lancé comme :') }} <code>{{ nameShown }}</code>
+          </p>
+        </template>
       </template>
     </div>
 
@@ -303,8 +338,8 @@ async function launch() {
     <template #footer>
       <div v-if="!browsing" class="sheet-form">
         <p v-if="error" class="form-error">{{ t(error) }}</p>
-        <UButton block size="xl" color="primary" variant="solid" class="launch-btn hw-cta" icon="i-lucide-play" :loading="launching" :disabled="!kind" @click="launch">
-          {{ launching ? t('Starting…') : t('Launch') }}
+        <UButton block size="xl" color="primary" variant="solid" class="launch-btn hw-cta" icon="i-lucide-play" :loading="launching" :disabled="coordinator ? !project : !kind" @click="launch">
+          {{ coordinator ? tl('Open conversation', 'Ouvrir la conversation') : launching ? t('Starting…') : t('Launch') }}
         </UButton>
       </div>
     </template>

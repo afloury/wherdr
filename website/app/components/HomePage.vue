@@ -33,9 +33,9 @@ const stories = [
   {
     id: 'projects',
     label: 'herdr-projects',
-    title: 'A coordinator, its threads, one board.',
-    text: 'With the herdr-projects plugin (v0.2.36 from the fork; 1.x is not supported yet), a coordinator conversation runs parallel threads, each in its own Git worktree. wherdr groups them under their project and shows the project\'s TASKS.md as a live board: to test, to decide, in progress, blocked, backlog — with one-click replies.',
-    points: ['Threads live: state, progress, report', 'Thread slots per machine, across projects', 'wherdr never writes TASKS.md: buttons message the coordinator'],
+    title: 'Tasks, coordinators, one Board.',
+    text: 'With herdr-projects 1.2.1 or later, each task gets its own agent, is reviewed when it finishes and merged on your yes. The Board shows every machine\'s tasks in five groups — needs you, ready to approve, working, to do, done — with each task\'s agent, pull request and review. Write to a Coordinator from the Board: it turns your words into tasks.',
+    points: ['Approve finished work: herdr-projects merges it', 'Reply to a task\'s agent, start, stop, retry or archive it', 'Coordinators for all work, a machine\'s setup or one repo'],
   },
 ] as const
 
@@ -44,7 +44,7 @@ const why = [
   { k: 'SPLITS', title: 'Herdr\'s splits, live', text: 'A tab with several panes is drawn in Herdr\'s real layout, every pane live. Drag a pane to move it or a divider to resize: the change goes to Herdr itself.' },
   { k: 'LOCK', title: 'A passkey lock', text: 'Face ID, Touch ID, Windows Hello or Android unlock the app. Once a passkey exists, nothing about your agents is served to a locked session.' },
   { k: 'DIFF', title: 'The agent\'s diff', text: 'Git status and diff of each agent\'s working folder, one click away from its conversation.' },
-  { k: 'BOARD', title: 'The herdr-projects board', text: 'A coordinator and its threads grouped under their project, with the project\'s task lists as a live board and one-click replies.' },
+  { k: 'BOARD', title: 'The herdr-projects Board', text: 'Every machine\'s tasks in five groups, each with its agent, pull request and review. Reply, approve, and talk to the Coordinator.' },
   { k: 'KEYS', title: 'Keyboard and global search', text: 'One shortcut searches every agent and conversation. Next agent, new tab, pane swaps and 1–9 answers never need the mouse.' },
   { k: 'LIVE', title: 'Real time, and private', text: 'The real terminal over a WebSocket, a push when an agent needs you, and your phone through Tailscale. Nothing is on the Internet.' },
 ]
@@ -85,11 +85,11 @@ const runner = computed(() => pm.value === 'brew' ? null : RUNNERS[pm.value])
 
 const faq = [
   { label: 'Is wherdr free?', content: 'Yes. It is open source under the MIT license, with no account, no paid plan and no hosted version. You run it on your own machine.' },
-  { label: 'What do I need?', content: 'Herdr 0.9.1 or newer running on a Mac or a Linux machine, and Node.js 22 (the installer offers brew install node on a Mac without it) or, on Linux, Docker. For your phone: a private HTTPS address, which Tailscale Serve gives you in one command.' },
+  { label: 'What do I need?', content: 'Herdr 0.9.1 or newer running on a Mac or a Linux machine, and Node.js 22: the installer offers to install it when it is missing (Homebrew, or the official build in ~/wherdr/node, no sudo). For your phone: a private HTTPS address, which Tailscale Serve gives you in one command.' },
   { label: 'Can I put it on the Internet?', content: 'No. wherdr is a remote shell on your machine: whoever reaches it can start agents and run commands as your user. Use it on localhost or over a private network such as Tailscale, and enable the passkey lock.' },
   { label: 'Does my code or my conversations leave my machine?', content: 'No. wherdr reads the agents\' transcript files and the Herdr socket locally and serves them to your own devices. Push notifications travel through your browser\'s push service, encrypted as the Web Push standard requires. The only other outgoing request is an optional daily check of the latest GitHub release (WHERDR_UPDATE_CHECK=off disables it).' },
   { label: 'Which agents are supported?', content: 'Every agent Herdr recognizes appears in the list with its terminal. Claude Code, Codex and omp also get the full conversation view, model and effort pickers and one-tap answers.' },
-  { label: 'Does it work on macOS?', content: 'Yes, natively, with the same one command: it installs the wherdr Herdr plugin, which runs wherdr with Node.js. Docker Desktop cannot reach Herdr\'s Unix socket on the host, so Docker is only used on Linux.' },
+  { label: 'Does it work on macOS?', content: 'Yes, natively, with the same one command: it installs the wherdr Herdr plugin, which runs wherdr with Node.js and starts it at login with a LaunchAgent.' },
   { label: 'Will it change my agents\' settings?', content: 'No. Model and effort changes apply to the current session only; wherdr never changes your default model or your agents\' configuration.' },
   { label: 'Is it an official Herdr project?', content: 'No. wherdr is an independent project built on Herdr\'s public socket API. It is not affiliated with Herdr, Anthropic or OpenAI.' },
 ]
@@ -119,7 +119,7 @@ const faq = [
             </p>
             <div class="hero-ctas">
               <a class="btn primary" href="#install">Ask your AI agent <UIcon name="i-lucide-arrow-right" class="size-4" /></a>
-              <a class="btn" href="/demo/"><UIcon name="i-lucide-play" class="size-4" /> Try it in your browser — no install</a>
+              <a class="btn" href="/demo/"><UIcon name="i-lucide-play" class="size-4" /><span>Try it in your browser<span class="demo-install-note"> — no install</span></span></a>
               <a class="btn" :href="REPO" target="_blank" rel="noopener"><GithubMark /> Star on GitHub</a>
             </div>
             <p class="hero-note label">macOS and Linux · needs Herdr ≥ 0.9.1 · phone through Tailscale</p>
@@ -192,8 +192,8 @@ const faq = [
                   <AgentListDemo />
                 </PhoneFrame>
               </div>
-              <BrowserFrame v-else alt="A coordinator with the project board: a thread becomes ready for review, is merged and moves to To test; a To decide question is answered from the board">
-                <ProjectDemo />
+              <BrowserFrame v-else alt="The herdr-projects Board: a task becomes ready to approve, is approved and moves to Done; the Coordinator, opened from the Board, turns a message into a new task">
+                <BoardDemo />
               </BrowserFrame>
             </div>
           </article>
@@ -269,16 +269,17 @@ const faq = [
 
             <div aria-labelledby="installer-title" class="panel one">
               <h3 id="installer-title" class="cell-title">Or run the installer yourself</h3>
-              <p class="cell-text">On the computer that runs Herdr — your Mac, or an always-on Linux box (a Raspberry Pi works). It installs the wherdr Herdr plugin: wherdr in <code>~/wherdr</code>, listening on 127.0.0.1 only, started now and with Herdr. No sudo, and a wherdr that already runs is never replaced. <a href="/install" target="_blank">Read the script first.</a></p>
+              <p class="cell-text">On the computer that runs Herdr — your Mac, or an always-on Linux box (a Raspberry Pi works). It installs the wherdr Herdr plugin with the verified GitHub release: wherdr in <code>~/wherdr</code>, listening on 127.0.0.1 only, running as your user and started at login on macOS (LaunchAgent), or at boot on Linux when lingering is enabled (otherwise at login, with a systemd user service). No Node.js 22? It offers to install it. No sudo, and a wherdr that already runs is never replaced. Run it again to update. <a href="/install" target="_blank">Read the script first.</a></p>
               <InstallCommand :command="INSTALL_COMMAND" />
               <InstallTerminal :demo="ONE_COMMAND_DEMO" />
               <p class="prereq">
                 Needs <a href="https://herdr.dev" target="_blank" rel="noopener">Herdr</a> 0.9.1+ <span class="sep" aria-hidden="true">·</span> macOS or Linux <span class="sep" aria-hidden="true">·</span> phone through <a href="https://tailscale.com/download" target="_blank" rel="noopener">Tailscale</a>.
-                <a :href="`${REPO}#other-private-networks`" target="_blank" rel="noopener">Other private networks</a>.
+                <a :href="`${REPO}/blob/main/docs/networks.md#other-private-networks`" target="_blank" rel="noopener">Other private networks</a>.
               </p>
             </div>
 
             <p class="or"><span>Other methods</span></p>
+            <p class="cell-text other-note">The same app from npm or Homebrew. npm can hold a new release for up to two days: the installer gets it from GitHub at once.</p>
             <div class="tabs" role="tablist" aria-label="Installation methods">
               <button v-for="t in installTabs" :id="`tab-${t.id}`" :key="t.id" type="button" role="tab" class="tab" :aria-label="t.label" :aria-selected="tab === t.id" :aria-controls="`panel-${t.id}`" @click="tab = t.id">
                 <span class="tab-long">{{ t.label }}</span><span class="tab-short" aria-hidden="true">{{ t.short }}</span>
@@ -301,7 +302,7 @@ const faq = [
                 <InstallCommand :command="runner.run" />
                 <ol class="steps">
                   <li><b>Try it</b> on the machine that runs Herdr, macOS or Linux, with Node.js 22{{ pm === 'bunx' ? ' or Bun' : '' }}. The package is prebuilt: nothing compiles. Open <code>http://localhost:7683</code>.</li>
-                  <li><b>Keep it:</b> <code>{{ runner.keep }}</code>, then <code>wherdr service install</code> starts it at every login.</li>
+                  <li><b>Keep it:</b> <code>{{ runner.keep }}</code>, then <code>wherdr service install</code> configures startup: at login on macOS; at boot on Linux with lingering enabled, otherwise at login.</li>
                   <li><b>Stuck?</b> <code>wherdr doctor</code> checks Node, Herdr and its socket, the port and the service.</li>
                 </ol>
               </template>
@@ -310,7 +311,7 @@ const faq = [
             <div v-show="tab === 'plugin'" id="panel-plugin" role="tabpanel" aria-labelledby="tab-plugin" class="panel">
               <InstallCommand :command="PLUGIN_COMMAND" />
               <ol class="steps">
-                <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1): what the one command does, minus its checks. It installs wherdr in <code>~/wherdr</code> (Docker on Linux when available, Node.js 22 otherwise; no sudo), starts it and, the first time, opens its setup guide.</li>
+                <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1): what the one command does, minus its checks. It installs wherdr in <code>~/wherdr</code> with Node.js 22 (no sudo), starts it with Herdr and, the first time, opens its setup guide. <b>A</b> in its panel adds the login service.</li>
                 <li><b>Press <code>prefix+i</code></b> in Herdr: the wherdr panel — start, stop, log, update, phone.</li>
               </ol>
             </div>
@@ -327,7 +328,7 @@ const faq = [
             </div>
 
             <p class="install-foot">
-              Full guide, configuration and troubleshooting in the <a :href="`${REPO}#installation`" target="_blank" rel="noopener">README</a>.
+              Full guide, configuration and troubleshooting in the <a :href="`${REPO}/blob/main/docs/README.md`" target="_blank" rel="noopener">documentation</a>.
             </p>
           </div>
         </div>
@@ -447,6 +448,7 @@ const faq = [
 .prereq a, .steps a, .agent-note a { color: var(--text); text-decoration-color: var(--accent); text-underline-offset: 3px; }
 .panel.one { margin-top: 28px; }
 .or { display: flex; align-items: center; gap: 16px; margin: 28px 0; font: 600 12px/1 var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--dim); }
+.other-note { margin: -12px 0 16px; font-size: 14px; }
 .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .panel.agent { gap: 16px; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 5%, var(--surface)); box-shadow: inset 0 2px 0 var(--accent); }
 .agent-label { display: inline-flex; align-items: center; gap: 8px; margin: 0; color: var(--accent); }
@@ -507,6 +509,9 @@ const faq = [
   .hv-phone { right: 0; }
   .sec-grid { grid-template-columns: repeat(2, 1fr); }
   .cells { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 400px) {
+  .demo-install-note { display: none; }
 }
 @media (max-width: 760px) {
   .story, .story.phones { grid-template-columns: minmax(0, 1fr); }

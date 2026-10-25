@@ -15,7 +15,7 @@ npm run build        # production build in .output/
 npm run build:demo   # browser demo (wherdr.dev/demo/) in .output-demo/public/
 ```
 
-Before opening a pull request, make sure `npx vitest run` and `npx nuxt typecheck` pass, and add
+Before opening a pull request, run the [affected tests](#agent-test-rule) and `npx nuxt typecheck`, and add
 tests for new logic (see [Tests](#tests) below; fixtures in `tests/fixtures/`, **never real
 conversations or personal paths**: use neutral names such as `host-a`, `laptop`, `alice`,
 `/home/user`).
@@ -31,6 +31,10 @@ under `/demo/` to try it (for example `.output-demo/public` copied to `<root>/de
 workflow (`.github/workflows/site.yml`) builds it and deploys it with the site. Demo content stays
 invented and in English, like the test fixtures.
 
+The README screenshots (`docs/screenshots/`) are taken from that build: `npm run build:demo`, then
+`npm run shots:readme` (computer at 1440×900, phone as an iPhone 13). The launch film in `assets/`
+is made from it too: see `tools/launch-video/README.md`.
+
 ## Tests
 
 **A fixed bug comes with a test that fails before the fix and passes after it.** Write the test
@@ -41,15 +45,71 @@ sent request, a stored value), not the wiring.
 | --- | --- | --- | --- |
 | Unit | `tests/*.test.ts` | `npx vitest run --project unit` | Pure modules of `server/`, `shared/`, `app/utils/`, in Node. |
 | Component | `tests/components/*.test.ts` | `npx vitest run --project components` | Vue components mounted in a Nuxt environment (auto-imports, Nuxt UI) on happy-dom, with `mountSuspended` and `registerEndpoint` from `@nuxt/test-utils/runtime`. |
-| End to end | `tests/e2e/*.spec.ts` | `npm run build && npm run test:e2e` | The built app in Chromium and WebKit (Safari's engine, for iOS bugs), at iPhone and desktop sizes, against a fake Herdr server with neutral data. |
+| End to end | `tests/e2e/*.spec.ts` | `npm run build && npm run test:e2e -- tests/e2e/<name>.spec.ts --project chromium-phone` | The built app in Chromium and WebKit (Safari's engine, for iOS bugs), at iPhone and desktop sizes, against a fake Herdr server with neutral data. |
 
 `npx vitest run` runs the unit and component projects together. For the end-to-end tests,
 install the browsers once with `npx playwright install --with-deps chromium webkit`; a single
-project runs with `npm run test:e2e -- --project=webkit-phone` (names in `playwright.config.ts`),
+project and spec run with `npm run test:e2e -- tests/e2e/<name>.spec.ts --project=webkit-phone`
+(names in `playwright.config.ts`),
 and `npx playwright show-report` opens the last report. They never touch a real Herdr session.
 
+For a focused check of browser-test stability, build once, then run
+`npm run test:e2e:stability`. It covers Codex startup, held MCP navigation, legacy quote
+preferences, UTC midnight, and setup deep links on all four profiles, with retries disabled.
+Use this small set for a quick regression check; `npm run test:e2e` still runs the full suite.
+Repeated runs of entire files can take tens of minutes on a small machine.
+
 GitHub Actions (`.github/workflows/ci.yml`) runs all of them, the type check and the leak check
-(gitleaks only: your `.leak-patterns` stays local) on every push and pull request to `main`.
+(gitleaks only: your `.leak-patterns` stays local). Pull requests and pushes run a light
+end-to-end set: every test on `chromium-phone` (two shards) and, on the other three projects,
+only the tests tagged with that project's name: `{ tag: '@webkit-phone' }` for a Safari/iOS
+journey, `'@chromium-desktop'` for a keyboard or split-view case, `'@webkit-desktop'` for iPad
+and desktop Safari. A test skipped on phones must carry one of these tags, or the run fails
+(`tests/e2e/scope.ts`). The whole suite on all four projects runs only on a manual run of the
+workflow and on release tags `vX.Y.Z`.
+`E2E_SCOPE=light npm run test:e2e -- --project=webkit-phone` reproduces the light selection
+locally; without `E2E_SCOPE`, a local run is the whole suite. CI retries a failed test once (it
+then shows as flaky); local runs never retry.
+
+## Agent test rule
+
+Read the relevant [documentation page](docs/README.md), rather than the entire documentation.
+For setup use [Installation and updates](docs/installation.md); for UI changes read the
+[device guide](docs/devices.md) and the iOS notes in [Conventions](#conventions).
+Check documentation links with `npm run check:docs`.
+
+Test each change at the lowest level that can detect the regression. Use Node for parsers,
+state transitions and server contracts; `mountSuspended` on happy-dom for component state
+and emitted actions. Use a real browser for focus, keyboard, selection, layout and overlays
+(the repository currently uses Playwright, with no Vitest Browser Mode project). Add an
+end-to-end test when the regression crosses the built app, routing, transport or Herdr
+boundaries. Reuse an existing journey when it proves the same contract.
+
+Start with `npm run test:affected -- --base <target-branch> --dry-run`, review its selection,
+then run `npm run test:affected -- --base <target-branch>`. Use `origin/v2` when targeting v2.
+The selector combines `vitest related --run` with the reviewed domain table in
+[`scripts/test-affected.mjs`](scripts/test-affected.mjs). The dry run prints changed paths
+(including both sides of renames), domain reasons, explicit tests and sources passed to
+Vitest related; the import graph is resolved by Vitest during execution. Deleted files use
+their former domains. Changed tests run explicitly. Documentation alone runs no browser.
+Unknown paths, missing merge-bases and global infrastructure select all unit/component
+tests plus a startup e2e smoke, and recommend CI's complete reduced suite; review additional
+journeys for these broad changes. A missing base must be fetched before relying on the diff.
+
+Run typecheck and the configured lint checks for code changes. There is currently no lint
+script: do not invent a successful lint command. Do not run the full Playwright suite locally.
+Run only relevant specs on one project, `chromium-phone` by default; pass `--safari` to the
+selector for Safari-specific behavior (`webkit-phone`). The selector serializes heavy
+commands with `flock /tmp/wherdr-heavy.lock`, builds once only if e2e tests are selected,
+and finds a free port in 7690–7699. Its e2e tests use the existing isolated fake-data launcher.
+For manual commands, use the same lock, port range, isolated data and sessions.
+Never connect tests to a user's live agents.
+
+For a new regression, demonstrate that the test fails with the broken behavior and passes
+with the fix. Assert observable output or effects, not only internal wiring. Do not use
+happy-dom to prove geometry, touch behavior or focus. Do not add arbitrary sleeps or retries
+to hide races. Report selected tests, results and any untested boundary. CI runs the complete
+reduced suite and required Safari selection; this local selector does not change CI.
 
 ## Testing without touching your real agents
 
@@ -69,9 +129,6 @@ HERDR_WEB_SESSION=wherdr-dev HERDR_WEB_MACHINES=off DATA_DIR=dev-data npm run de
 herdr --session wherdr-dev server stop
 rm -rf ~/.config/herdr/sessions/wherdr-dev dev-data
 ```
-
-`docker-compose.test.yml` does the same with Docker (port 7684, data in `test-data/`, Herdr
-session `hwtest`, also used on remote machines through `HERDR_WEB_REMOTE_SESSION`).
 
 Do not test model changes with `/model <name>` or Enter in the `/model` menu of a real agent:
 both change the account's default model. wherdr itself only uses "this session" choices.
@@ -106,9 +163,9 @@ both change the account's default model. wherdr itself only uses "this session" 
 The repository is public, and so is every commit in its history: a private value committed and
 then removed is still published. `scripts/check-leaks.mjs` combines two checks:
 
-- **gitleaks** for tokens and keys: the `gitleaks` binary when installed, otherwise the
-  `zricethezav/gitleaks` Docker image when it has been pulled (`docker pull zricethezav/gitleaks`),
-  run with read-only mounts and no network; otherwise it is skipped with a message.
+- **gitleaks** for tokens and keys: the `gitleaks` binary when installed
+  ([install it](https://github.com/gitleaks/gitleaks#installing)); otherwise it is skipped with a
+  message.
 - **Your forbidden patterns** for what no generic tool knows: your user name, host names,
   e-mail addresses, tailnet, private IPs, project and client names. They live in `.leak-patterns`,
   which git ignores (format in `.leak-patterns.example`: one case-insensitive regex per line,

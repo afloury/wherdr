@@ -1,0 +1,13 @@
+{
+  "name": "devbox coordinator",
+  "state": "none",
+  "agent": "claude",
+  "model": "",
+  "effort": "",
+  "oneOff": false,
+  "default": "claude · default model · default effort",
+  "pane": "",
+  "queued": 0,
+  "error": "",
+  "said": ""
+}

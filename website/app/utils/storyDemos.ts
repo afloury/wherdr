@@ -42,46 +42,69 @@ export const PHONE: DemoScript = {
 }
 
 /* -------------------------------------------------------------- 1.3 herdr-projects
-   A thread reports progress, becomes ready for review; the coordinator merges
-   it and the task moves to "To test"; the user answers a "To decide" question
-   from the board: its Reply button fills the field with the decision
-   reference (the app's decisionPrefix: the task on one line, the answer
-   below it), the user types the answer and sends it. */
-export const DECISION = 'Should coupons stack with sale prices?'
-/** What the board's Reply button puts in the field (shared/projectBoard.ts
-    decisionPrefix): the line "↳ Decision: <task> —", drawn as a token in the
-    field and as a quote in the message sent, the answer on the line below. */
-export const DECISION_QUOTE = { label: 'Decision:', text: DECISION }
-export const DECISION_ANSWER = 'No, the best price wins.'
+   The Board of herdr-projects 1.x: a task's agent finishes, its pull request
+   passes review and the card moves to Ready to approve; the user opens the
+   card, approves it, and the task moves to Done. Then the Coordinator, opened
+   from the Board, turns a message into a new task, which starts. */
+export const COORD_ASK = 'Add gift cards to the checkout.'
 
-export const PROJECT: DemoScript = {
-  id: 'project',
-  // 1 progress 80 % · 2 ready for review · 3 coordinator merges · 4 moved to To test
-  // · 5 Reply pressed (prefix in the field) · 6 answer typed · 7 sent · 8 coordinator answers
-  timeline: [[1000, 1], [2200, 2], [3300, 3], [4700, 4], [6000, 5], [6500, 6], [8300, 7], [9700, 8]],
-  loop: 13000,
-  final: 8,
-  typing: { step: 6, text: DECISION_ANSWER, ms: 1000 },
+export const BOARD: DemoScript = {
+  id: 'board',
+  // 1 progress 90 % · 2 ready to approve · 3 card opened (its sheet) · 4 Approve
+  // pressed, confirmation · 5 Approve and merge pressed · 6 merged, in Done
+  // · 7 Coordinator opened · 8 message typed · 9 sent · 10 the coordinator
+  // answers, new task in To do · 11 its agent starts, in Working
+  timeline: [[1000, 1], [2200, 2], [3300, 3], [4300, 4], [5300, 5], [5900, 6], [7300, 7], [7900, 8], [9400, 9], [10500, 10], [12000, 11]],
+  loop: 15000,
+  final: 6,
+  typing: { step: 8, text: COORD_ASK, ms: 1200 },
 }
 
-export type BoardItem = { title: string, note?: string, state?: 'ready' | 'work', fresh?: boolean }
-export type Board = { test: BoardItem[], decide: BoardItem[], progress: BoardItem[], backlog: BoardItem[] }
+/** The Board's five groups, with the app's keys (shared/projectsTasks.ts TaskGroup). */
+export type BoardGroup = 'needs' | 'ready' | 'working' | 'todo' | 'done'
+export const BOARD_GROUPS: readonly { id: BoardGroup, label: string }[] = [
+  { id: 'needs', label: 'Needs you' },
+  { id: 'ready', label: 'Ready to approve' },
+  { id: 'working', label: 'Working' },
+  { id: 'todo', label: 'To do' },
+  { id: 'done', label: 'Done' },
+]
+/** A card (app/components/TaskCard.vue): key, title, the line its agent reports, chips. */
+export type BoardCard = {
+  key: string
+  title: string
+  msg?: string
+  app?: string
+  progress?: number
+  pr?: string
+  review?: 'pass' | 'fail'
+  /** Just moved here: drawn with the app's highlight. */
+  fresh?: boolean
+}
+export type Board = Record<BoardGroup, BoardCard[]>
 
-/** The project's TASKS.md board at a step of PROJECT. */
+/** The task approved in the demo. */
+export const COUPONS = { key: 'SHOP-12', title: 'Coupon codes at checkout', branch: 'shop-12-coupon-codes', pr: '#42' } as const
+
+/** The Board at a step of BOARD. */
 export function boardAt(step: number): Board {
-  const coupon: BoardItem = step >= 2
-    ? { title: 'Coupon codes', note: 'T-0001 · 100 % · just now', state: 'ready' }
-    : { title: 'Coupon codes', note: step >= 1 ? 'T-0001 · 80 % · Running tests · now' : 'T-0001 · 60 % · Testing changes · 1 min ago', state: 'work' }
+  const coupons: BoardCard = { key: COUPONS.key, title: COUPONS.title, app: 'codex' }
+  const gift: BoardCard = { key: 'SHOP-16', title: 'Gift cards at checkout', app: 'claude' }
   return {
-    test: [
-      { title: 'Free shipping banner on the cart page' },
-      ...(step >= 4 ? [{ title: 'Coupon codes', fresh: true }] : []),
+    needs: [{ key: 'SHOP-14', title: 'Guest checkout', msg: 'Asks: keep the cart after sign-in?', app: 'claude', progress: 40 }],
+    ready: step >= 2 && step < 6 ? [{ ...coupons, msg: 'Ready for review', pr: COUPONS.pr, review: 'pass', fresh: step === 2 }] : [],
+    working: [
+      ...(step >= 11 ? [{ ...gift, msg: 'Reading the checkout code', progress: 5, fresh: true }] : []),
+      ...(step < 2 ? [{ ...coupons, msg: step >= 1 ? 'Opening the pull request' : 'Running the tests', progress: step >= 1 ? 90 : 75 }] : []),
+      { key: 'SHOP-15', title: 'Save the cart between visits', msg: 'Writing the storage layer', app: 'omp', progress: 30 },
     ],
-    decide: step >= 7 ? [] : [{ title: DECISION }],
-    progress: [
-      { title: 'Guest checkout', note: 'T-0002 · 40 % · Writing the form · 2 min ago', state: 'work' },
-      ...(step >= 4 ? [] : [coupon]),
+    todo: [
+      ...(step === 10 ? [{ ...gift, fresh: true }] : []),
+      { key: 'SHOP-17', title: 'Order history page' },
     ],
-    backlog: [{ title: 'Save the cart between visits' }, { title: 'Gift cards' }],
+    done: [
+      ...(step >= 6 ? [{ ...coupons, msg: 'Merged', pr: COUPONS.pr, fresh: step === 6 }] : []),
+      { key: 'SHOP-9', title: 'Free shipping banner', msg: 'Merged', pr: '#38' },
+    ],
   }
 }

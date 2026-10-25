@@ -39,8 +39,6 @@ export interface UpdatePlan {
   releaseBase: string
 }
 
-// Why an update cannot start now (HerdrError code + English message), or the
-// plan. The install mode decides: the Docker image sets WHERDR_INSTALL=docker.
 export function buildPlan(o: {
   mode: InstallMode, current: string, latest: string | null, to: unknown,
   job: UpdateJob | null, now: number, root: string, dir: string, runtime: string, pid: number, env: NodeJS.ProcessEnv,

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import fs from 'node:fs'
 import path from 'node:path'
 import { CODEX_UPDATE_PANE, CODEX_UPDATE_SESSION, SOCK_FILE, fakeHerdr } from './scenario.mjs'
@@ -31,8 +31,10 @@ const stats = () => fakeHerdr('e2e.update_starts', { pane_id: CODEX_UPDATE_PANE 
 const post = (page: Page, endpoint: string, data: object) => page.request.post(`/api/${endpoint}`, {
   headers: { Origin: new URL(page.url()).origin }, data: { pane_id: CODEX_UPDATE_PANE, ...data },
 })
+// Commit resets at the next poll snapshot: an in-flight observation must
+// finish reading the old invocation before the fake exposes the new PID.
 async function stopAfterUpdate(page: Page, existing = false, question = 'Codex updated itself and stopped') {
-  const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE, ...(existing ? { session: CODEX_UPDATE_SESSION } : {}) })
+  const { pid } = await fakeHerdr('e2e.update_reset', { onSnapshot: true, pane_id: CODEX_UPDATE_PANE, ...(existing ? { session: CODEX_UPDATE_SESSION } : {}) })
   await page.goto(`/#/a/${CODEX_UPDATE_PANE}`)
   // Wait for wherdr to capture this invocation's argv and conversation.
   await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, conversation: existing ? 'existing' : 'empty', ...(existing ? { session: CODEX_UPDATE_SESSION } : {}) })
@@ -66,7 +68,7 @@ const leaving = async (page: Page) => {
 }
 
 test('a Project message sent before the card appears is held, never typed into the shell', async ({ page }) => {
-  const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE })
+  const { pid } = await fakeHerdr('e2e.update_reset', { onSnapshot: true, pane_id: CODEX_UPDATE_PANE })
   await page.goto(`/#/a/${CODEX_UPDATE_PANE}`)
   await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, conversation: 'empty' })
   await fakeHerdr('e2e.update_exit', { pane_id: CODEX_UPDATE_PANE })
@@ -135,7 +137,7 @@ test('Dismiss forgets the update and gives the pane back as a plain shell', asyn
 })
 
 test('a Codex that simply left gives the message held meanwhile back into the field', async ({ page }, info) => {
-  const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE })
+  const { pid } = await fakeHerdr('e2e.update_reset', { onSnapshot: true, pane_id: CODEX_UPDATE_PANE })
   await page.goto(`/#/a/${CODEX_UPDATE_PANE}`)
   await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, conversation: 'empty' })
   // /exit, no update: a bare shell whose screen is not checked yet.
@@ -155,7 +157,7 @@ test('a Codex that simply left gives the message held meanwhile back into the fi
   if (info.project.name.startsWith('chromium')) await page.screenshot({ path: `.shots/codex-left-${info.project.name}.png`, fullPage: true })
 })
 
-test('an existing Codex resumes its exact session', async ({ page }) => {
+test('an existing Codex resumes its exact session', { tag: '@chromium-desktop' }, async ({ page }) => {
   await stopAfterUpdate(page, true)
   await expect(card(page).getByRole('button', { name: /Start fresh/ })).toBeVisible()
   expect((await (await post(page, 'prompt', { text: 'Held until exact resume' })).json()).queued.state).toBe('held')
@@ -209,7 +211,7 @@ for (const draft of ["echo '\n> ", 'cat <<EOF\n> ']) {
   test(`a continuation draft present before the first exit check never allows a restart: ${draft.split('\n')[0]}`, async ({ page }) => {
     await stopAfterUpdate(page)
     // Re-arm a new invocation, then atomically exit with a pre-existing draft.
-    const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE })
+    const { pid } = await fakeHerdr('e2e.update_reset', { onSnapshot: true, pane_id: CODEX_UPDATE_PANE })
     await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, conversation: 'empty' })
     await fakeHerdr('e2e.update_exit', { pane_id: CODEX_UPDATE_PANE, draft })
     await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, checked: true })
@@ -223,7 +225,7 @@ for (const draft of ["echo '\n> ", 'cat <<EOF\n> ']) {
 
 test('a rapidly replaced process keeps its own arguments through the restart API', async ({ page }) => {
   await stopAfterUpdate(page)
-  const first = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE })
+  const first = await fakeHerdr('e2e.update_reset', { onSnapshot: true, pane_id: CODEX_UPDATE_PANE })
   await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid: first.pid, conversation: 'empty' })
   const second = await fakeHerdr('e2e.update_replace', { pane_id: CODEX_UPDATE_PANE, argv: ['codex', '--profile', 'second', 'second task'] })
   await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid: second.pid, argv: ['codex', '--profile', 'second', 'second task'] })
@@ -238,7 +240,7 @@ test('an empty transcript followed by a failed final read offers Resume with the
   const original = fs.readFileSync(file, 'utf8')
   try {
     fs.writeFileSync(file, original.split('\n')[0] + '\n')
-    const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE, session: CODEX_UPDATE_SESSION })
+    const { pid } = await fakeHerdr('e2e.update_reset', { onSnapshot: true, pane_id: CODEX_UPDATE_PANE, session: CODEX_UPDATE_SESSION })
     await page.goto(`/#/a/${CODEX_UPDATE_PANE}`)
     await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, conversation: 'empty', session: CODEX_UPDATE_SESSION })
     // First messages arrive, but the final re-read cannot read the transcript.
@@ -258,7 +260,7 @@ test('an empty transcript followed by a failed final read offers Resume with the
 
 test('guessed B invalidates exact A before a final read failure and Resume opens the picker', async ({ page }) => {
   await stopAfterUpdate(page, true)
-  const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE, session: CODEX_UPDATE_SESSION })
+  const { pid } = await fakeHerdr('e2e.update_reset', { onSnapshot: true, pane_id: CODEX_UPDATE_PANE, session: CODEX_UPDATE_SESSION })
   await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, session: CODEX_UPDATE_SESSION, conversation: 'existing' })
   const sessionB = `00000000-0000-4000-8000-${String(pid).padStart(12, '0')}`
   const file = transcriptFile(sessionB)
@@ -281,38 +283,3 @@ test('guessed B invalidates exact A before a final read failure and Resume opens
   } finally { fs.unlinkSync(file) }
 })
 
-for (const occupied of ['draft', 'foreground']) {
-  test(`Project panel confirmation and launch stay queued with a shell ${occupied}`, async ({ page }) => {
-    await stopAfterUpdate(page, true)
-    if (occupied === 'draft') await fakeHerdr('e2e.update_draft', { pane_id: CODEX_UPDATE_PANE, text: 'echo hello' })
-    else await fakeHerdr('e2e.update_foreground', { pane_id: CODEX_UPDATE_PANE })
-    const board = { slug: 'acme', version: 'v1', lists: [
-      { title: 'To test', kind: 'test', tasks: [{ text: 'Check the restart', done: false, owner: 'agent', thread: null }] },
-      { title: 'Backlog', kind: 'backlog', tasks: [{ text: 'Continue the task', done: false, owner: 'agent', thread: null }] },
-    ], open: [], resolved: [] }
-    await page.route('**/api/project?**', route => route.fulfill({ json: board }))
-    await page.evaluate(pane => localStorage.setItem('viewModes', JSON.stringify({ [pane]: 'project' })), CODEX_UPDATE_PANE)
-    await page.reload()
-    const held: { id: string, text: string }[] = []
-    for (const label of ['Confirm: Check the restart', 'Launch: Continue the task']) {
-      const response = page.waitForResponse(r => r.url().endsWith('/api/prompt') && r.request().method() === 'POST')
-      await page.getByRole('button', { name: label, exact: true }).click()
-      const r = await response
-      expect(r.status()).toBe(200)
-      const queued = (await r.json()).queued
-      expect(queued.state).toBe('held')
-      held.push(queued)
-    }
-    // A stale client bypassing sendMessage is guarded by the real raw endpoint too.
-    const raw = await post(page, 'input', { text: 'Send to coordinator', keys: ['enter'] })
-    const queued = (await raw.json()).queued
-    expect(queued.state).toBe('held')
-    held.push(queued)
-    expect((await post(page, 'input', { keys: ['enter'] })).status()).toBe(400)
-    expect((await post(page, 'prompt', { text: '/exit' })).status()).toBe(400)
-    expect(await stats()).toMatchObject({ starts: [], writes: [], prompts: [] })
-    // Leave no held Project messages for the next browser profile's restart.
-    for (const message of held) expect((await post(page, 'unqueue', message)).status()).toBe(200)
-    expect(await stats()).toMatchObject({ starts: [], writes: [], prompts: [] })
-  })
-}

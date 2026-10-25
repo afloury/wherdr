@@ -5,7 +5,7 @@
 // after a "\\": that one becomes a line break and nothing is submitted).
 import { describe, expect, it } from 'vitest'
 import { type GuardDeps, classifyBox, guardedSend, submittable, withPaneLock } from '../server/utils/guardedSend'
-import { BUSY_TTL_MS, type QueueEntry, checkQueue, loadQueued, publicEntry } from '../server/utils/queued'
+import { HOLD_TTL_MS, QUEUED_TTL_MS, type QueueEntry, checkQueue, loadQueued, publicEntry } from '../server/utils/queued'
 
 const OURS = 'do we have a way to pass the total number of threads (all projects) ?'
 const NOTICE = '[hp inbox] t-0171 new report'
@@ -284,15 +284,30 @@ describe('per-pane lock', () => {
 
 describe('message held while the field is busy', () => {
   const q = (o: Partial<QueueEntry> = {}): QueueEntry => ({ id: 'a', text: 't', at: 0, held: true, busy: true, ...o })
-  it('shown as waiting for a free field, then as not sent with its reason', () => {
-    expect(publicEntry(q())).toMatchObject({ state: 'held', reason: 'busy' })
-    const list = [q()]
-    expect(checkQueue(list, 'idle', BUSY_TTL_MS - 1)).toBe(false)
-    expect(checkQueue(list, 'idle', BUSY_TTL_MS + 1)).toBe(true)
-    expect(publicEntry(list[0]!)).toMatchObject({ state: 'failed', reason: 'busy' })
+  it('keeps the draft and actions available beyond the former busy timeout', () => {
+    const list = [q({ inputText: 'ns' })]
+    for (const now of [60_000, 121_000, HOLD_TTL_MS + 1, QUEUED_TTL_MS + 1]) {
+      expect(checkQueue(list, 'idle', now)).toBe(false)
+      expect(publicEntry(list[0]!)).toMatchObject({ state: 'held', reason: 'busy', inputText: 'ns' })
+    }
     expect(publicEntry(q({ busy: false }))).not.toHaveProperty('reason')
   })
-  it('kept across a restart', () => {
-    expect(loadQueued({ 'w1:p1': [q({ at: 10 })] }, 20)[0]![1][0]).toMatchObject({ busy: true, held: true })
+  it('does not fail on the first idle poll after a long turn reveals a draft', () => {
+    const entry = q({ busy: false, turn: true })
+    const now = 5 * 60_000
+    expect(checkQueue([entry], 'working', now)).toBe(false)
+    expect(checkQueue([entry], 'idle', now)).toBe(false)
+    // deliverHeld discovers the terminal draft after that idle check.
+    entry.busy = true
+    entry.inputText = 'ns'
+    expect(checkQueue([entry], 'idle', now + 1000)).toBe(false)
+    expect(publicEntry(entry)).toMatchObject({ state: 'held', reason: 'busy', inputText: 'ns' })
+  })
+  it('kept across a restart, including an older busy hold', () => {
+    for (const now of [20, QUEUED_TTL_MS + 20]) {
+      const entry = loadQueued({ 'w1:p1': [q({ at: 10 })] }, now)[0]![1][0]!
+      expect(entry).toMatchObject({ busy: true, held: true })
+      expect(entry.failed).toBeUndefined()
+    }
   })
 })

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { OMP_CHAT_PANE } from './scenario.mjs'
 
 // Phone only: on a computer the menu is a dropdown, not a bottom sheet.
@@ -63,7 +63,7 @@ test('a tap on the handle closes the sheet', async ({ page }) => {
   await expect(sheet(page)).toHaveCount(0)
 })
 
-test('a swipe down from the handle closes the sheet; a short one springs back', async ({ page }) => {
+test('a swipe down from the handle closes the sheet; a short one springs back', { tag: '@webkit-phone' }, async ({ page }) => {
   await openMenu(page)
   await swipe(page, '.hw-sheet-handle', 30, 6, 60)
   await page.waitForTimeout(400)

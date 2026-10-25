@@ -45,6 +45,7 @@ it('sends quota commands through the checked field, preserving other slash routi
     withPaneLock: (_id: string, fn: () => unknown) => fn(), findPane: () => p,
     GUARD_STATES: new Set(['idle', 'done', 'working']), isSlashCommand,
     guardedSend, agentPrompt, sleep: async () => {}, typedFor: (_p: unknown, text: string) => text,
+    fieldDeps: () => ({}), inputBox: () => '', codexFieldLine: () => '', confirmSubmitted: async () => {},
   })
   await send(p, '/usage-credits')
   expect(guardedSend).toHaveBeenCalledOnce()

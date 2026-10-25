@@ -1,18 +1,3 @@
-// Agent transcripts, for the "Conversation" view: the real
-// conversation, as text reflowed to the phone's width, without touching the
-// terminal (so without resizing the pane the computer is looking at).
-//
-// Finding a pane's file:
-//  - session identifier passed by the agent's Herdr integration
-//    (`herdr integration install claude|codex|omp`): exact, follows /clear. omp
-//    reports the path of its session directly.
-//  - Claude Code without integration: Herdr gives the PID of the pane's `claude`
-//    process, and Claude keeps ~/.claude/sessions/<pid>.json -> { sessionId, cwd }.
-//    The file is ~/.claude/projects/<encoded cwd>/<sessionId>.jsonl.
-//  - Codex without integration: no PID -> session table readable from the
-//    container (the host's /proc is closed by AppArmor). We take the main
-//    rollout (thread_source "user", no parent) of the same cwd, modified
-//    last. Ambiguous only if two Codex run in the same folder.
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { imageTagCount } from '../../shared/queuedMatch'
@@ -52,8 +37,44 @@ interface CodexRollout { file: string, id: string, ts: number, mtimeMs: number }
 const CODEX_BIRTH_BEFORE = 5000
 const CODEX_BIRTH_AFTER = 120000
 type Lines = string[] & { refs?: string[] }
-type Parsed = ChatItem[] & { queue?: ClaudeQueueEntry[] }
-interface TailResult { start: number, items: ChatItem[], queue: ClaudeQueueEntry[] }
+type Parsed = ChatItem[] & { queue?: ClaudeQueueEntry[], popped?: ClaudeQueueEntry[] }
+// `anchor`: fingerprint of the bytes just above `start` (see anchorAt).
+interface TailResult { start: number, items: ChatItem[], queue: ClaudeQueueEntry[], popped?: ClaudeQueueEntry[], anchor?: string }
+
+// Join check of a re-read from a cursor: the bytes just above it, hashed. A
+// transcript rewritten at the same size, or shortened but still longer than
+// the cursor, keeps the token's size and may keep a line start at the cursor,
+// so the client would splice a new bottom under pages of another file. The
+// token carries the anchor of its start (`/<start>.<hash>`) and a re-read from
+// that start checks it first.
+const ANCHOR_BYTES = 4096
+const anchorHash = (b: Uint8Array) => createHash('sha1').update(b).digest('hex').slice(0, 12)
+const ANCHOR = /\/(\d+)\.([0-9a-f]{12})(?=[~#]|$)/
+// Anchor of a token as the client sent it (other suffixes allowed after it).
+export function anchorOf(token: string | null | undefined): { start: number, hash: string } | null {
+  const m = ANCHOR.exec(String(token || ''))
+  return m ? { start: Number(m[1]), hash: m[2]! } : null
+}
+// File generation for the token: another inode or another modification time
+// is another state, even at the same size.
+// Modification time in microseconds.
+const genOf = (st: { mtimeMs: number, ino?: number }) => `${st.ino ? `${st.ino}-` : ''}${Math.round(st.mtimeMs * 1000)}`
+// State a client's token was read from: file, size, cursor, inode, mtime
+// (`!`: read before its mtime second was over, see SETTLE_MS).
+const HEAD = /^(.*):(\d+):(null|\d+):(?:(\d+)-)?(\d+)(!?)(?=[/~#]|$)/
+export function headOf(token: string | null | undefined): { file: string, size: number, from: number | null, ino: number | null, gen: string, unsettled: boolean } | null {
+  const m = HEAD.exec(String(token || ''))
+  if (!m) return null
+  return { file: m[1]!, size: Number(m[2]), from: m[3] === 'null' ? null : Number(m[3]), ino: m[4] ? Number(m[4]) : null, gen: `${m[4] ? `${m[4]}-` : ''}${m[5]}`, unsettled: m[6] === '!' }
+}
+// A stat that gives whole seconds only (a remote `stat` without fractions, a
+// coarse file system): a rewrite at the same size within the second already
+// read keeps the same generation. Such a state is only trusted ("unchanged",
+// parse cache) once read this long after it was first seen: any write of
+// that second happened before first sight + 1 s. Until then its token is
+// marked `!`, and the checksum of the file taken at first sight tells whether
+// what the client read is still there (see chat).
+const SETTLE_MS = 1500
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type HerdrCall = (method: string, params?: Record<string, unknown>, timeoutMs?: number) => Promise<any>
 
@@ -61,6 +82,13 @@ type HerdrCall = (method: string, params?: Record<string, unknown>, timeoutMs?: 
 type Json = any
 
 const clip = (s: string, n = MAX_TEXT) => (s.length > n ? s.slice(0, n) + '…' : s)
+// Keep notification identities server-side. Absolute line offsets survive a
+// moving tail window; lengths and text can change while a reply streams.
+const replyKeys = new WeakMap<ChatItem, string>()
+function replyItem(item: ChatItem, ref: string | undefined, block = 0): ChatItem {
+  if (ref) replyKeys.set(item, `${item.ts || ''}:${ref.split(':')[0]}:${block}`)
+  return item
+}
 const firstLine = (s: unknown) => String(s || '').split('\n').find(l => l.trim()) || ''
 
 // "Technical" messages injected into the thread (system reminders, outputs of
@@ -74,6 +102,9 @@ const stripImageTags = (t: unknown) => String(t || '').replace(/\[Image #\d+(?:,
 // pasted next to typed words are also listed (`pasted`) to be shown as cards.
 const PASTED = /<pasted_content(?:\s[^>]*)?>\n?|\n?<\/pasted_content(?:\s[^>]*)?>/g
 export const unwrapPasted = (t: string) => (t.includes('<pasted_content') ? t.replace(PASTED, '').trim() : t)
+// Prompt of a scheduled task (CronCreate, /loop…) wrapped by Claude Code.
+const SCHEDULED = /^\s*<scheduled-task(?:\s[^>]*)?>\n?([\s\S]*?)\n?<\/scheduled-task>\s*$/
+const scheduledText = (t: unknown) => (String(t || '').match(SCHEDULED) || [])[1]?.trim() || null
 // A message written by the user (after removing the paste wrappers).
 function humanText(t: unknown): string | null {
   const s = String(t || '')
@@ -193,6 +224,10 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
   // from the phone or the computer): enqueue, then dequeue (taken at the end of
   // the turn) or remove "absorbed_mid_turn" (taken during the turn).
   const queue: ClaudeQueueEntry[] = []
+  // Entries pulled back out of the queue into the input field (`popAll`: ↑ in
+  // the terminal, or wherdr's Cancel) and not queued again since: unless
+  // they are submitted again, Claude will not read them (see checkSent).
+  const popped: ClaudeQueueEntry[] = []
   let started: ClaudeQueueEntry | null = null
   // A user message appears: it leaves the queue, even without
   // dequeue; otherwise, the head of the queue may be this message, modified.
@@ -210,6 +245,19 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     }
     const head = queue.find(q => !isNoise(q.text))
     if (queue.length === before && head && (!head.ts || !ts || head.ts <= ts)) started = head
+  }
+  // Prompt injected by Claude Code itself (scheduled task, task notification…):
+  // it leaves the queue, never typed by the user. Scheduled ones are shown
+  // where they ran, as a note, not as a user message.
+  let fire: string | null = null
+  const injected = (text: string, ts: string | null, scheduled: boolean) => {
+    for (let i = queue.length - 1; i >= 0; i--) {
+      const q = queue[i]!
+      if ((!q.ts || !ts || q.ts <= ts) && (sameMsg(q.text, text) || sameMsg(scheduledText(q.text) || '', text))) queue.splice(i, 1)
+    }
+    if (scheduled && text.trim()) items.push({ role: 'notice', name: 'scheduled', text: clip(text.trim()), ts })
+    fire = null
+    pendingCmd = null
   }
   // Command ("!" or "/") waiting for its output: the next message.
   let open: ChatItem | null = null
@@ -278,8 +326,12 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       const raw = unwrapPasted(String(d.content || ''))
       const text = stripImageTags(raw)
       const images = imageTagCount(raw)
-      if (d.operation === 'enqueue') queue.push({ text, ts: d.timestamp || null, ...(images ? { images } : {}) })
-      else {
+      if (d.operation === 'enqueue') {
+        queue.push({ text, ts: d.timestamp || null, ...(images ? { images } : {}) })
+        const p = popped.findIndex(q => q.text === text)
+        if (p >= 0) popped.splice(p, 1)
+      } else {
+        if (d.operation === 'popAll' && !isNoise(text)) popped.push({ text, ts: d.timestamp || null, ...(images ? { images } : {}) })
         const i = queue.findIndex(q => q.text === text)
         queue.splice(i >= 0 ? i : 0, 1)
         if (queue[0] !== started) started = null
@@ -288,6 +340,10 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     }
     // End of turn: the head entry taken by this turn without a trace in the queue
     // (no dequeue, modified text) has been handled.
+    if (d.type === 'system' && d.subtype === 'scheduled_task_fire') {
+      fire = typeof d.prompt === 'string' ? d.prompt : null
+      continue
+    }
     if (d.type === 'system' && d.subtype === 'turn_duration') {
       if (started) queue.splice(queue.indexOf(started), 1)
       started = null
@@ -307,6 +363,13 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
         pendingCmd = null
         said(text, d.attachment.timestamp || ts, images)
       }
+      continue
+    }
+    if (d.type === 'attachment' && d.attachment && d.attachment.type === 'queued_command' && d.attachment.commandMode === 'prompt') {
+      const parts: Json[] = Array.isArray(d.attachment.prompt) ? d.attachment.prompt : [{ type: 'text', text: String(d.attachment.prompt || '') }]
+      const text = unwrapPasted(parts.filter(p => p.type === 'text').map(p => String(p.text || '')).join('\n'))
+      const kind = String((d.attachment.origin || {}).kind || '')
+      injected(scheduledText(text) || stripImageTags(text), d.attachment.timestamp || ts, /^(scheduled|cron)/.test(kind) || Boolean(scheduledText(text)))
       continue
     }
     if (d.type === 'system' && d.subtype === 'compact_boundary') {
@@ -353,6 +416,8 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
           continue
         } else if (/^\[Request interrupted/.test(content)) {
           items.push({ role: 'system', text: 'Interrupted', ts })
+        } else if (scheduledText(content) || (fire && sameMsg(fire, content))) {
+          injected(scheduledText(content) || content, ts, true)
         } else {
           const text = humanText(content)
           if (text) {
@@ -383,6 +448,8 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
           }
           toolImages += n
         } else if (part.type === 'text') {
+          const sched = scheduledText(part.text) || (fire && sameMsg(fire, String(part.text || '')) ? String(part.text) : null)
+          if (sched) { injected(sched, ts, true); continue }
           if (special(String(part.text || ''), ts)) continue
           const t = humanText(part.text)
           if (t === null) continue
@@ -398,10 +465,10 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
         noteSaid(d)
       }
     } else if (Array.isArray(content)) {
-      for (const part of content) {
+      for (const [block, part] of content.entries()) {
         const reply = assistantText(part)
         if (reply) {
-          items.push({ role: 'assistant', text: clip(reply), ts })
+          items.push(replyItem({ role: 'assistant', text: clip(reply), ts }, ref, block))
         } else if (part.type === 'tool_use') {
           const t: ChatItem = { role: 'tool', name: part.name, text: clip(toolSummary(part.name, part.input, home), 300), ts }
           tools.set(part.id, t)
@@ -420,6 +487,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
   }
   // Queued task notifications: not user messages.
   items.queue = queue.filter(q => !isNoise(q.text))
+  items.popped = popped
   return items
 }
 
@@ -470,7 +538,10 @@ export function parseCodex(lines: Lines): Parsed {
         } else if ((part.type === 'input_text' || part.type === 'output_text') && part.text && !isNoise(part.text)) text += (text ? '\n' : '') + part.text
         else if (part.type === 'input_image') images++
       }
-      if (text.trim() || images) items.push({ role: p.role, text: clip(text.trim()), images, ref: images ? ref : undefined, ts })
+      if (text.trim() || images) {
+        const item: ChatItem = { role: p.role, text: clip(text.trim()), images, ref: images ? ref : undefined, ts }
+        items.push(p.role === 'assistant' ? replyItem(item, ref) : item)
+      }
     } else if (p.type === 'custom_tool_call' || p.type === 'function_call' || p.type === 'local_shell_call') {
       let summary: unknown = ''
       if (p.type === 'custom_tool_call') summary = codexCommand(p.input)
@@ -584,13 +655,13 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
       const images = parts.filter(p => p && p.type === 'image').length
       if (text || images) items.push({ role: 'user', text: clip(text), images, ref: images ? ref : undefined, ts })
     } else if (m.role === 'assistant') {
-      for (const part of Array.isArray(m.content) ? m.content : []) {
+      for (const [block, part] of (Array.isArray(m.content) ? m.content : []).entries()) {
         if (!part) continue
         if (part.type === 'thinking' && typeof part.thinking === 'string' && part.thinking.trim()) {
           const ms = ts && priorTs ? Math.max(0, Date.parse(ts) - Date.parse(priorTs)) : undefined
           items.push({ role: 'thinking', text: clip(part.thinking), ts, ms: Number.isFinite(ms) ? ms : undefined })
         } else if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
-          items.push({ role: 'assistant', text: clip(part.text), ts })
+          items.push(replyItem({ role: 'assistant', text: clip(part.text), ts }, ref, block))
         } else if (part.type === 'toolCall') {
           const name = String(part.name || '').trim()
           const t: ChatItem = { role: 'tool', name: OMP_TOOLS[name] || name, text: clip(ompToolSummary(part.arguments, home), 300), ts, omp: ompToolCall(name, part.arguments, cwd, home) }
@@ -738,10 +809,42 @@ export function isMissing(e: unknown): boolean {
   return err.code === 'remote' && /no such file|not a directory|introuvable/i.test(err.message || '')
 }
 
-export function createTranscripts({ home, herdr, fs = localFs }: { home: string, herdr: HerdrCall, fs?: MachineFs }) {
+export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }: { home: string, herdr: HerdrCall, fs?: MachineFs, now?: () => number }) {
+  // File -> state (size, generation) and when this server first saw it, for
+  // whole-second mtimes (see SETTLE_MS); `file|size|gen` -> checksum of the
+  // file at first sight (null: could not be taken).
+  const genSeen = new Map<string, { state: string, at: number }>()
+  const firstSums = new Map<string, Promise<string | null>>()
+  const sumKey = (file: string, size: number, gen: string) => `${file}|${size}|${gen}`
+  async function settledGen(file: string, st: { size: number, mtimeMs: number }, gen: string) {
+    if (Math.round(st.mtimeMs * 1000) % 1_000_000) return true // sub-second mtime: exact
+    const state = `${st.size}|${gen}`
+    const seen = genSeen.get(file)
+    if (seen && seen.state === state) return now() - seen.at >= SETTLE_MS
+    genSeen.delete(file)
+    genSeen.set(file, { state, at: now() })
+    if (genSeen.size > 64) genSeen.delete(genSeen.keys().next().value!)
+    if (fs.digest) {
+      // Taken before the bottom is read: what any client reads of this
+      // state comes after it.
+      const sum = fs.digest(file, st.size).catch(() => null)
+      firstSums.set(sumKey(file, st.size, gen), sum)
+      if (firstSums.size > 64) firstSums.delete(firstSums.keys().next().value!)
+      await sum
+    }
+    return false
+  }
+  // A client list read from a state not settled yet: is its part of the file
+  // (its first `size` bytes, appends only add after them) still the same?
+  async function stillThere(file: string, prev: { size: number, gen: string }) {
+    if (!fs.digest) return true // no checksum on this machine: cannot tell
+    const before = await firstSums.get(sumKey(file, prev.size, prev.gen))
+    if (!before) return false // forgotten (server restarted): start again to be safe
+    return await fs.digest(file, prev.size).catch(() => null) === before
+  }
   const locCache = new Map<string, { at: number, loc: Loc | null, session?: string | null }>()
   const lastLoc = new Map<string, Loc>() // last file found, fallback if a lookup fails
-  const parseCache = new Map<string, { size: number, r: TailResult }>()
+  const parseCache = new Map<string, { size: number, gen: string, settled: boolean, r: TailResult }>()
   const metaCache = new Map<string, Json>()
   // omp file commands of this machine (see parseOmp), re-read every 5 min.
   let ompTemplates: { at: number, list: CommandTemplate[] } = { at: 0, list: [] }
@@ -973,12 +1076,18 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return cwd
   }
 
+  async function anchorAt(file: string, start: number) {
+    const s0 = Math.max(0, start - ANCHOR_BYTES)
+    return anchorHash(start > 0 ? await fs.read(file, s0, start - s0) : new Uint8Array())
+  }
+
   // Goes back from `end` by windows up to PAGE_ITEMS messages (or the start).
   async function readBackwards(file: string, end: number, kind: string | null): Promise<TailResult> {
     const cwd = kind === 'omp' ? await ompCwd(file) : ''
     let start = end
     let items: ChatItem[] = []
     let queue: ClaudeQueueEntry[] | null = null
+    let popped: ClaudeQueueEntry[] | null = null
     while (start > 0 && end - start < MAX_READ_BYTES) {
       // Window widened as long as it contains no line start (a
       // multi-MB line: message with images), within the cap.
@@ -995,29 +1104,42 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
       // call is in the previous window just loses its red mark).
       const parsed = parseLines(r.text, kind, r.start, home, ompTemplates.list, cwd)
       if (!queue) queue = parsed.queue || [] // the queue lives in the most recent window
+      if (!popped) popped = parsed.popped || []
       items = parsed.concat(items)
       start = r.start
       if (items.length >= PAGE_ITEMS) break
     }
-    return { start, items, queue: queue || [] }
+    return { start, items, queue: queue || [], popped: popped || [] }
   }
 
   // Bottom of the conversation: from `from` (already shown on the phone) or,
   // on first load, the last PAGE_ITEMS messages. Cached by
-  // (file, kind, size, from).
-  async function tail(file: string, kind: string | null, size: number, from: number | null): Promise<TailResult> {
+  // (file, kind, size, generation, from), when read once the state settled.
+  async function tail(file: string, kind: string | null, size: number, gen: string, from: number | null, settled = true): Promise<TailResult> {
     const key = `${file}|${kind}|${from}`
     const c = parseCache.get(key)
-    if (c && c.size === size) return c.r
+    if (c && c.settled && c.size === size && c.gen === gen) return c.r
     let r: TailResult
     if (from !== null && from <= size && size - from <= MAX_READ_BYTES) {
-      const x = await readRange(file, from, size)
-      const items = parseLines(x.text, kind, x.start, home, ompTemplates.list, kind === 'omp' ? await ompCwd(file) : '')
-      r = { start: from, items, queue: items.queue || [] }
+      // One read for the anchor above `from` and the bottom (as readRange: a
+      // `from` in the middle of a line skips to the next line start).
+      const s0 = Math.max(0, from - ANCHOR_BYTES)
+      const buf = await fs.read(file, s0, size - s0)
+      const above = buf.subarray(0, from - s0)
+      let off = from - s0
+      if (from > 0 && above[above.length - 1] !== 0x0a) {
+        const nl = buf.indexOf(0x0a, off)
+        off = nl < 0 ? buf.length : nl + 1
+      }
+      const items = parseLines(buf.subarray(off).toString('utf8'), kind, s0 + off, home, ompTemplates.list, kind === 'omp' ? await ompCwd(file) : '')
+      // Start kept even when it moved to the next line: the client then sees a
+      // stale anchor (or another start) and reloads from the bottom.
+      r = { start: from, items, queue: items.queue || [], popped: items.popped || [], anchor: off === from - s0 ? anchorHash(above) : '' }
     } else {
       r = await readBackwards(file, size, kind)
+      r.anchor = await anchorAt(file, r.start)
     }
-    parseCache.set(key, { size, r })
+    parseCache.set(key, { size, gen, settled, r })
     if (parseCache.size > 16) parseCache.delete(parseCache.keys().next().value!)
     return r
   }
@@ -1036,7 +1158,9 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
   // opts.from  : re-read the bottom from this byte (continuity with older pages)
   // opts.before: load the older slice ending at this byte
   // opts.fresh : look for the file again if none was found lately (see locate)
-  async function chat(pane: TranscriptPane, opts: { since?: string, from?: number | null, before?: number | null, fresh?: boolean } = {}): Promise<ChatResponse> {
+  // opts.anchor: token as the client sent it, for the join check (anchorOf),
+  //              when `since` was dropped (list the server no longer knows)
+  async function chat(pane: TranscriptPane, opts: { since?: string, from?: number | null, before?: number | null, fresh?: boolean, anchor?: string } = {}): Promise<ChatResponse> {
     if (!hasTranscript(pane.agent)) return { available: false, reason: 'unsupported' }
     const loc = await locate(pane, Boolean(opts.fresh))
     if (!loc) return { available: false, reason: 'not_found' }
@@ -1060,25 +1184,55 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
       return { ...base, older: true, items: r.items, start: r.start }
     }
     const from = opts.from === undefined ? null : opts.from
-    const token = `${fileId}:${st.size}:${from}`
-    if (opts.since && opts.since === token) return { ...base, unchanged: true, token }
-    const r = await tail(loc.file, kind, st.size, from)
-    return { ...base, token, items: r.items, start: r.start, queue: r.queue || [] }
+    const gen = genOf(st)
+    const settled = await settledGen(loc.file, st, gen)
+    // Token: file, size, cursor, generation (unchanged as long as these are,
+    // once settled), then the anchor of the reply's start.
+    const head = `${fileId}:${st.size}:${from}:${gen}`
+    if (settled && opts.since && opts.since.split('/')[0] === head) return { ...base, unchanged: true, token: opts.since }
+    let r = await tail(loc.file, kind, st.size, gen, from, settled)
+    // The client's list starts at the cursor, and the file was rewritten
+    // above it: replaced by another file (inode), shorter, rewritten at the
+    // same size (appends always grow it), or other bytes just above the cursor
+    // (anchor), or no line start there any more. Read back from the end, and
+    // say so: the client starts again.
+    const sent = opts.anchor ?? opts.since
+    const at = anchorOf(sent)
+    const prev = headOf(sent)
+    const same = prev !== null && prev.file === fileId
+    // A list read before its state settled (whole-second mtimes): rewritten
+    // within that second if its part of the file changed since.
+    const rewritten = from !== null && from > 0 && at !== null && at.start === from && (r.anchor !== at.hash
+      || (same && prev.ino !== null && st.ino !== undefined && prev.ino !== st.ino)
+      || (same && st.size < prev.size)
+      || (same && st.size === prev.size && prev.gen !== gen)
+      || (same && prev.unsettled && !await stillThere(loc.file, prev)))
+    if (rewritten) r = await tail(loc.file, kind, st.size, gen, null, settled)
+    const mark = `${head}${settled ? '' : '!'}`
+    const token = r.anchor ? `${mark}/${r.start}.${r.anchor}` : mark
+    return { ...base, token, items: r.items, start: r.start, queue: r.queue || [], ...(r.popped?.length ? { popped: r.popped } : {}), ...(rewritten ? { rewritten: true } : {}) }
   }
 
   // Agent's last reply, for cards and notifications.
-  async function preview(pane: TranscriptPane): Promise<string | null> {
+  // A stable message identity lets notifications distinguish a new reply
+  // from another poll (or more streamed text in the same reply).
+  async function latestReply(pane: TranscriptPane): Promise<{ key: string, text: string } | null> {
     try {
       const r = await chat(pane, {})
       if (!r.available || !r.items) return null
       for (let i = r.items.length - 1; i >= 0; i--) {
         const it = r.items[i]!
-        if (it.role === 'assistant') {
-          return it.text.replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180)
+        if (it.role === 'assistant' && it.text.trim()) {
+          const text = it.text.replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180)
+          const key = replyKeys.get(it)
+          if (key) return { key, text }
         }
       }
     } catch { /* no preview */ }
     return null
+  }
+  async function preview(pane: TranscriptPane): Promise<string | null> {
+    return (await latestReply(pane))?.text ?? null
   }
 
   // Image no. `index` of the message at `ref` ("start:length"): we re-read
@@ -1229,7 +1383,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     claudeAskCache.delete(paneId)
   }
 
-  return { chat, preview, image, forget, locate, model, observe, wasActive: activity.was, search, pendingTool, pendingAsk, pendingClaudeQuestions }
+  return { chat, preview, latestReply, image, forget, locate, model, observe, wasActive: activity.was, search, pendingTool, pendingAsk, pendingClaudeQuestions }
 }
 
 export type Transcripts = ReturnType<typeof createTranscripts>

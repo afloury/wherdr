@@ -9,18 +9,20 @@ Publishing (`npm.yml`), and the tap uses the existing optional `HOMEBREW_TAP_TOK
 2. Set the same version in `package.json`, `package-lock.json` and `herdr-plugin.toml`.
    Move the Unreleased changelog into a dated version entry. Run tests, typecheck and leak
    checks; review and merge this version commit before tagging it.
-3. Create the GitHub release as a **draft**, with reviewed, nonempty English notes under New / Improved /
-   Fixed / Update. Push its version tag only after these notes are ready. The workflow fails
-   if this draft or its notes are missing; it never creates or publishes generated notes.
-4. The tag starts `release.yml` and `npm.yml` independently. `release.yml` builds a multiarch
-   Docker image and runs `npm pack` (prepack builds Nitro, includes `skills/wherdr`, resolves
-   linked packages). It attaches `wherdr-X.Y.Z.tgz` and `wherdr-X.Y.Z.tgz.sha256` to the draft.
-   After both jobs succeed, it publishes the release with `latest=false`. Docker and the
-   public GitHub package are now usable; native plugins compare the archive checksum. A failed
-   image or package job leaves the release draft; fix and rerun the failed jobs.
+3. Create the GitHub release as a **draft**, with reviewed English notes under one or more of New / Improved /
+   Fixed / Update. Write at least two readable sentences explaining what changed for users,
+   then link to the tagged CHANGELOG.md (see the example below). A link alone, including
+   "See CHANGELOG.md", is never sufficient. Push its version tag only after these notes are ready.
+   The workflow validates the draft before attaching the package and again immediately before
+   publication; missing or insufficient notes fail the job. It never generates stable release notes.
+4. The tag starts `release.yml` and `npm.yml` independently. `release.yml` runs `npm pack`
+   (prepack builds Nitro, includes `skills/wherdr`, resolves linked packages). It attaches
+   `wherdr-X.Y.Z.tgz` and `wherdr-X.Y.Z.tgz.sha256` to the draft. After the package job
+   succeeds, it publishes the release with `latest=false`. The public GitHub package is now
+   usable; native plugins compare the archive checksum. A failed package job leaves the
+   release draft; fix and rerun the failed job.
 5. The Homebrew job updates the formula URL and SHA from GitHub, without waiting for npm.
-   **The manual Homebrew step is MANDATORY while `HOMEBREW_TAP_TOKEN` is absent** (including
-   the current 1.3.3 preparation). Wait for `release.yml` to finish successfully first, so its
+   **The manual Homebrew step is MANDATORY while `HOMEBREW_TAP_TOKEN` is absent**. Wait for `release.yml` to finish successfully first, so its
    archive is public; then run `scripts/bump-homebrew.sh`. Otherwise the legacy update channel
    cannot advance even when npm is ready. A skipped Homebrew job does not complete this step.
    Homebrew still uses npm to install the local archive and fetch its third-party dependency;
@@ -57,7 +59,82 @@ marker is left alone. GitHub disables scheduled workflows in public repositories
 without repository activity. Check that `release-ready.yml` remains enabled; re-enable it and
 run it manually if needed. After re-enabling, workflow-completion and manual checks work too.
 
-## Commands for 1.3.3
+## herdr-projects tested version
+
+wherdr installs one herdr-projects release, and offers an update to it on machines with an older
+one: `PROJECTS_TESTED` in `shared/projectsPlugin.ts`. `PROJECTS_MIN` (1.2.1) is the oldest
+release wherdr still reads; it moves only when wherdr drops one.
+
+To move to a newer herdr-projects release:
+
+1. Download its binary from GitHub (`gh release download vX.Y.Z -R eliasstravik/herdr-projects`)
+   and check it against its `.sha256`. Run it with `HOME` set to an empty temporary folder and
+   Herdr unreachable. Record `version`, `list --json`, `list --json --archived`,
+   `details --json -- <id>`, `show --json -- <id>` and `coordinator --machine --json status`
+   into `tests/recordings/herdr-projects-X.Y.Z/` (no personal paths or machine names).
+   Also check that `tell`, `approve`, `after`, `archive`, `restore` and `coordinator … tell`
+   still take the same arguments.
+2. Set `PROJECTS_TESTED` to `X.Y.Z`, and point the recordings test in
+   `tests/projectsTasks.test.ts` at the new folder.
+3. If the release adds a feature worth naming, add it to `FEATURES` in
+   `app/components/ProjectsPluginSettings.vue` (the update's one-line summary, FR + EN).
+4. Run `npx vitest related --run shared/projectsPlugin.ts`: `tests/projectsPlugin.test.ts`
+   fails until the install commands in `docs/board.md`, `docs/herdr-projects-1x.md` and
+   `website/public/agent.md` name the new release.
+
+## Release notes checklist
+
+- Summarize the changes in English under `## New`, `## Improved`, `## Fixed` or `## Update`;
+  omit categories with no relevant changes. Use complete sentences, at least two in total
+  (at least twelve words), describing the user-visible behavior and any required upgrade action.
+- Put the full changelog link after the summary, using the release tag rather than `main`.
+- Review the text against that version's changelog. The automated check enforces structure
+  and minimum content; the reviewer checks accuracy and clarity.
+- Validate the exact draft text locally before pushing the tag:
+  `GITHUB_REPOSITORY=example/wherdr GITHUB_REF_NAME=vX.Y.Z node scripts/check-release-notes.mjs < /tmp/wherdr-X.Y.Z.md`.
+  If the workflow refuses the notes, edit the draft and rerun the failed jobs.
+
+Example (replace `example/wherdr` and the version, and describe the actual release):
+
+```markdown
+## Improved
+File downloads now work with the supported Node versions. Temporary download links
+are released after the browser saves the file, keeping repeated downloads reliable.
+
+[Full changelog](https://github.com/example/wherdr/blob/vX.Y.Z/CHANGELOG.md)
+```
+
+## Rolling v2 prerelease
+
+`v2-prerelease.yml` rebuilds one prerelease on every push to the `v2` branch, so a machine
+can install v2 from a prebuilt package (the plugin's GitHub download) and never compile it.
+It publishes the version of `herdr-plugin.toml` (for example `2.0.0-dev`, before the stable version bump) as `v<version>`:
+
+- the tag moves to the pushed commit; the release is a prerelease, never `latest`. The update
+  checks of every version, the legacy channel and `release-ready.yml` only read stable
+  `vX.Y.Z` releases, so none of them offers it;
+- `wherdr-<version>.tgz` and `.tgz.sha256` are made as in `release.yml` (`npm pack`,
+  `sha256sum`) and replaced; the archive must hold the built server, `bin` with
+  `bin/lib/install-skill.sh`, `package.json` and `skills/wherdr/SKILL.md`, and no native code
+  (`.node`, `binding.gyp`, `prebuilds`, ELF or Mach-O files): the same file runs on
+  linux-arm64 and x64;
+- `COMMIT` holds the full SHA of the packaged commit, also written in the notes. It is removed
+  before the archive is replaced and attached last: when `COMMIT` is there and names the
+  branch head, the archive is that commit's.
+
+Once the version is stable, the workflow skips packaging and publication; it must not create a stable tag.
+
+The rolling notes start with an Update summary of the first three top-level Unreleased
+changelog entries and a link to the changelog at the packaged commit, followed by build
+metadata. Keep these entries readable and current; packaging fails if they are absent or fail the same minimum-content check.
+
+`scripts/prerelease.sh` does the checks and the publication. It refuses a version without a
+prerelease suffix (`X.Y.Z-something`) and a release of that tag that is not a published
+prerelease: stable versions keep going through the steps above. The tag is moved with
+`GITHUB_TOKEN`, which starts neither `release.yml` nor `npm.yml`. The workflow runs from the
+`v2` branch: it acts once this file is on `v2`.
+
+## Commands for 2.0.0
 
 Run in a release checkout after explicit approval. These commands are documentation, not a
 request to publish. The version commit must go through the usual reviewed PR process.
@@ -65,33 +142,33 @@ request to publish. The version commit must go through the usual reviewed PR pro
 ```sh
 git switch main
 git pull --ff-only
-git switch -c release/1.3.3
-npm version 1.3.3 --no-git-tag-version
-sed -i.bak 's/^version = ".*"/version = "1.3.3"/' herdr-plugin.toml
+git switch -c release/2.0.0
+npm version 2.0.0 --no-git-tag-version
+sed -i.bak 's/^version = ".*"/version = "2.0.0"/' herdr-plugin.toml
 rm herdr-plugin.toml.bak
-# Move Unreleased notes to the dated 1.3.3 entry, run the project checks, then commit.
+# Move Unreleased notes to the dated 2.0.0 entry, run the project checks, then commit.
 git add package.json package-lock.json herdr-plugin.toml CHANGELOG.md
-git commit -m "Prepare release 1.3.3"
-git push -u origin release/1.3.3
-gh pr create --base main --head release/1.3.3 --title "Prepare release 1.3.3" --body "Prepare the reviewed 1.3.3 release versions and changelog."
+git commit -m "Prepare release 2.0.0"
+git push -u origin release/2.0.0
+gh pr create --base main --head release/2.0.0 --title "Prepare release 2.0.0" --body "Prepare the reviewed 2.0.0 release versions and changelog."
 # Open, review and merge the version PR; refresh main before continuing.
 git switch main
 git pull --ff-only
-# Write reviewed English New / Improved / Fixed / Update notes to /tmp/wherdr-1.3.3.md.
-gh release create v1.3.3 --target "$(git rev-parse HEAD)" --draft --title "wherdr 1.3.3" --notes-file /tmp/wherdr-1.3.3.md
-git tag v1.3.3
-git push origin v1.3.3
+# Use the reviewed notes committed with the version preparation.
+GITHUB_REPOSITORY="$(gh repo view --json nameWithOwner -q .nameWithOwner)" GITHUB_REF_NAME=v2.0.0 node scripts/check-release-notes.mjs < docs/release-notes-2.0.0.md
+gh release create v2.0.0 --target "$(git rev-parse HEAD)" --draft --title "wherdr 2.0.0" --notes-file docs/release-notes-2.0.0.md
+git tag v2.0.0
+git push origin v2.0.0
 release_run=$(gh run list --workflow release.yml --commit "$(git rev-parse HEAD)" --json databaseId --jq '.[0].databaseId')
 # If no run appears yet, wait for GitHub to register the tag and repeat the lookup.
 gh run watch "$release_run" --exit-status
 gh run list --workflow npm.yml --limit 3
 # MANDATORY while the tap secret is absent. Run only after release.yml succeeds:
-sh scripts/bump-homebrew.sh 1.3.3 "$(gh repo view --json owner -q .owner.login)"
+sh scripts/bump-homebrew.sh 2.0.0 "$(gh repo view --json owner -q .owner.login)"
 # Inspect the readiness workflow; optionally request an immediate check:
 gh workflow run release-ready.yml --ref main
 ```
 
-Use Node.js 22 for npm commands (on the project Pi, use Docker and the shared heavy-operation
-lock for installation/build/tests). Do not manually publish the draft or mark it latest ahead
+Use Node.js 22 for npm commands. Do not manually publish the draft or mark it latest ahead
 of these checks. A GitHub release created by `GITHUB_TOKEN` does not trigger other workflows;
 all publication work is driven by the pushed tag, not `release: published` events.

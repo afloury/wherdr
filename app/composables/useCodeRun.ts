@@ -1,8 +1,7 @@
-// Commands shown as code (an agent's replies, TASKS.md tasks) can be copied,
-// and run in the agent's own terminal, in its shell mode ("! cmd": Claude
-// Code's bash mode, Codex and omp likewise; utils/shellCommand.ts). Shared by
-// the conversation (ChatView.vue) and the task text of the Project panel and
-// the Board (TaskText.vue), so both run a command the same way.
+// Commands shown as code in an agent's replies can be copied, and run in the
+// agent's own terminal, in its shell mode ("! cmd": Claude Code's bash mode,
+// Codex and omp likewise; utils/shellCommand.ts). Used by the conversation
+// (ChatView.vue).
 import type { Pane, QueuedMessage } from '#shared/types'
 
 // The pane takes commands now: online, not stale, an agent with a shell mode.

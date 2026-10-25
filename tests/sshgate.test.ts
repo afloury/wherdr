@@ -70,6 +70,17 @@ describe('SessionGate', () => {
     expect(gate.stats().refusals).toBe(3)
   })
 
+  it('counts refusals in a row, and starts over once a session opens', async () => {
+    const streaks: number[] = []
+    const gate = new SessionGate({ retryDelays: [1, 1], onRefused: s => streaks.push(s.streak) })
+    await gate.run(async () => 'refused', v => v === 'refused')
+    expect(gate.stats().streak).toBe(3)
+    expect(gate.refused()).toBe(4)
+    await gate.run(async () => 'ok', v => v === 'refused')
+    expect(gate.stats().streak).toBe(0)
+    expect(streaks).toEqual([1, 2, 3, 4])
+  })
+
   it('shares an identical command already running, not a finished one', async () => {
     const gate = new SessionGate()
     const d = deferred<string>()
@@ -90,6 +101,18 @@ describe('SessionGate', () => {
     await expect(gate.run(async () => 'ok', () => false, 'k')).resolves.toBe('ok')
     expect(gate.stats().execs).toBe(0)
   })
+})
+
+it('releases non-replayable stream slots without clearing their refusal streak', async () => {
+  const gate = new SessionGate()
+  await gate.withSlot(async () => {
+    expect(gate.stats().execs).toBe(1)
+    gate.refused()
+  })
+  expect(gate.stats().execs).toBe(0)
+  expect(gate.stats().streak).toBe(1)
+  await expect(gate.withSlot(async () => { throw new Error('closed') })).rejects.toThrow('closed')
+  expect(gate.stats().execs).toBe(0)
 })
 
 describe('isRefused', () => {

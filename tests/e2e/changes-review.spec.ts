@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from './test'
 import { OMP_CHAT_PANE } from './scenario.mjs'
 
 // Review comments in Changes: on one line or on a block of lines, started from
@@ -45,7 +45,7 @@ async function comment(page: Page, mobile: boolean, f: Locator, from: string, to
   await expect(f.locator('.review-note textarea')).toBeFocused()
 }
 
-test('a block and a line go to the message draft without sending; drafts survive closing and reload', async ({ page, isMobile }, info) => {
+test('a block and a line go to the message draft without sending; drafts survive closing and reload', { tag: '@webkit-phone' }, async ({ page, isMobile }, info) => {
   // WebKit can spend seconds on each gesture on a slow runner. Closing,
   // reopening and reloading all verify persistence; keep every assertion's
   // normal timeout, but budget for the complete workflow on this project.
@@ -247,7 +247,7 @@ test('on a long diff the chosen block and its bar stay in reach while scrolling'
   await shot(page, info.project.name, 'long-block-editor')
 })
 
-test('mouse and keyboard: Shift+click extends, a block stops at its hunk, Escape keeps the window', async ({ page, isMobile }, info) => {
+test('mouse and keyboard: Shift+click extends, a block stops at its hunk, Escape keeps the window', { tag: '@chromium-desktop' }, async ({ page, isMobile }, info) => {
   test.skip(isMobile, 'desktop mouse and keyboard')
   await setup(page)
   await openChanges(page)
@@ -312,7 +312,7 @@ test('mouse and keyboard: Shift+click extends, a block stops at its hunk, Escape
   await expect(field(page)).toHaveValue('Please review these points:\n\nsrc/first.ts:11-12 (old line 8) — Keyboard review\n    -  return 1\n    +  const n = 2\n    +  return n')
 })
 
-test('a refresh arriving during a drag cancels it: no comment on rows that are gone', async ({ page, isMobile }) => {
+test('a refresh arriving during a drag cancels it: no comment on rows that are gone', { tag: '@chromium-desktop' }, async ({ page, isMobile }) => {
   test.skip(isMobile, 'mouse drag')
   await setup(page)
   await openChanges(page)

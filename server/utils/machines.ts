@@ -6,7 +6,8 @@
 // the others. So we connect to each one ourselves:
 //  - one SSH master connection per machine (ControlMaster, control socket
 //    in RUNTIME_DIR), which forwards the remote Herdr server's Unix socket
-//    to RUNTIME_DIR/<machine>.sock. The line-delimited JSON client (herdr.ts) uses
+//    to RUNTIME_DIR/<machine>.sock (native stdio bridges for Windows paths).
+//    The line-delimited JSON client (herdr.ts) uses
 //    it as is: snapshot every second, prompt, send_input, pane.read…
 //  - file reads (transcripts, folders) and the terminal go
 //    through sessions multiplexed over that same connection (no new
@@ -19,6 +20,7 @@
 // itself (name, localhost, or same ~/.cache/herdr-web/machine-id identifier
 // seen remotely) is ignored; two profiles to the same host and session
 // count as one.
+import { parseMachineDiagnostic, type MachineDiagnostic } from '../../shared/machineDiagnostics'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -29,11 +31,12 @@ import { parseSessionList, sessionKey, validSession } from '../../shared/session
 import { LOCAL, type MachineProfile, parseMachineList, parseStatusSocket, splitId } from '../../shared/ids'
 import {
   DATA_DIR, HERDR_BIN, HERDR_CHILD_ENV, HERDR_CLIENT_SOCK, HERDR_SESSION, HERDR_SOCK, HOME, HOST_LABEL, MACHINES_ENABLED, MACHINES_REFRESH_MS,
-  REMOTE_SESSION, REMOTE_UPLOAD_SUBDIR, RUNTIME_DIR, SELF_HOSTS, SESSION_ARGS, SSH_BIN, UPLOAD_TTL_MS, log, machineLabel,
+  REMOTE_SESSION, REMOTE_UPLOAD_SUBDIR, RUNTIME_DIR, SELF_HOSTS, SESSION_ARGS, SSH_BIN, UPLOAD_TTL_MS, log,
 } from './env'
 import { HerdrError, herdr, setSocketResolver } from './herdr'
-import { type ExecResult, type MachineFs, type ShellExec, createShellFs, localFs, remoteCommand, shq } from './fsx'
+import { type ExecResult, type MachineFs, type ShellExec, boundedOutput, createShellFs, localFs, remoteCommand, shq } from './fsx'
 import { SessionGate, isRefused } from './sshgate'
+import { SocketRelay, bridgeCommand, socketTransport } from './socketRelay'
 import { type Transcripts, createTranscripts } from './transcripts'
 import { fmt } from '../../shared/message'
 import { ATTACH_SUBDIR } from '../../shared/attachments'
@@ -46,20 +49,12 @@ function renamedLabel() {
   catch { return '' }
 }
 export const localMachineLabel = () => localMachine.label
-// The name Tailscale gives this machine (phone.ts reads it): shown instead of
-// the container's host name (machineLabel), unless the user renamed the machine.
 let tailnetLabel = ''
+// Tailnet aliases keep SSH profiles for this machine out of the remote list.
 export function adoptTailnetName(name: string | null | undefined) {
-  const label = machineLabel(name)
-  if (label === HOST_LABEL || label === tailnetLabel) return
-  tailnetLabel = label
-  if (renamedLabel() || localMachine.label === label) return
-  localMachine.label = label
-  for (const other of sessions.values()) if (!(other instanceof RemoteMachine)) other.label = label
-  log(`machine name: ${label} (from Tailscale)`)
-  changed()
+  const short = (name || '').split('.')[0]!.trim().slice(0, 40)
+  if (short) tailnetLabel = short
 }
-// Same names as `uname -s` (in Docker, the container's: Linux).
 export function localOs() {
   const p = os.platform()
   return p === 'darwin' ? 'Darwin' : p === 'linux' ? 'Linux' : p
@@ -135,8 +130,6 @@ export function localMachineId(): string {
   }
   return selfId
 }
-// Names of this machine (profiles to ignore): HOST_LABEL, host name, its
-// Tailscale name in a container, HERDR_WEB_SELF_HOSTS.
 export const selfNames = () => [HOST_LABEL, os.hostname(), tailnetLabel, ...SELF_HOSTS].filter(Boolean)
 
 export class SkipMachine extends Error {}
@@ -174,6 +167,34 @@ done; exit 0`
 const BACKOFF_MS = [1000, 2000, 5000, 10000, 20000, 30000]
 // Beyond this number of consecutive failures, the machine goes "offline".
 const FAILS_BEFORE_OFFLINE = 2
+// Refused sessions in a row before the master connection is reopened.
+const REFUSALS_BEFORE_RECONNECT = 3
+// Reopenings for refusals closer than this to the previous one wait longer.
+const RECOVERY_WINDOW_MS = 10 * 60 * 1000
+
+// Control socket of one master connection: `<key>.<pid>.<n>.ctl`, a new path
+// per connection. An ssh master removes its control path when it exits, so an
+// older master dying late (stopped slowly, or left behind by a previous
+// wherdr) must never share the path of the one in use: every multiplexed
+// session would then fail ("Connection closed by UNKNOWN port 65535") while
+// the machine still looked online.
+export const ctlName = (key: string, pid: number, n: number) => `${key}.${pid}.${n}.ctl`
+// Control sockets of earlier connections to remove (their master, if still
+// running, is asked to exit): those of wherdr processes no longer running,
+// and the old fixed `<key>.ctl`. A running wherdr's own are left alone.
+export function staleCtls(files: string[], key: string, alive: (pid: number) => boolean): string[] {
+  const esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`^${esc}(?:\\.(\\d+)\\.\\d+)?\\.ctl$`)
+  return files.filter((f) => {
+    const m = re.exec(f)
+    return Boolean(m && (!m[1] || !alive(Number(m[1]))))
+  })
+}
+const pidAlive = (pid: number) => {
+  if (pid === process.pid) return true
+  try { process.kill(pid, 0); return true }
+  catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM' }
+}
 
 function runFile(bin: string, args: string[], timeoutMs: number): Promise<ExecResult> {
   return new Promise((resolve) => {
@@ -201,10 +222,13 @@ export class RemoteMachine implements Machine {
   os = ''
   bin = ''
   remoteSock = ''
-  readonly ctl: string
+  // Control socket of the current master connection (see ctlName).
+  ctl: string
+  private ctlSeq = 0
   readonly fwd: string
   readonly fwdClient: string
   private clientFwd = false
+  private relays: SocketRelay[] = []
   fs: MachineFs
   transcripts: Transcripts
   exec: ShellExec
@@ -216,6 +240,10 @@ export class RemoteMachine implements Machine {
   private stopped = false
   private connecting = false
   private pollFails = 0
+  // Reopenings after refused sessions (growing delay), see sessionRefused.
+  private recoveries = 0
+  private lastRecovery = 0
+  private checking = false
   // Identity seen at connection (host name + remote socket): duplicates.
   ident = ''
   private onChange: () => void
@@ -223,7 +251,11 @@ export class RemoteMachine implements Machine {
   onOnline: (m: RemoteMachine) => void = () => {}
   // Session budget of the shared connection (sshd MaxSessions).
   readonly gate = new SessionGate({
-    onRefused: (s, attempt) => log(`machine ${this.label}: SSH session refused (attempt ${attempt}; open: ${s.execs} commands + ${s.streams} streams, ${s.queued} queued, peak ${s.peak})`),
+    onRefused: (s, attempt) => {
+      // Logged once per streak, then when the connection is reopened.
+      if (s.streak === 1) log(`machine ${this.label}: SSH session refused (attempt ${attempt}; open: ${s.execs} commands + ${s.streams} streams, ${s.queued} queued, peak ${s.peak})`)
+      void this.sessionRefused()
+    },
   })
 
   constructor(p: MachineProfile, onChange: () => void) {
@@ -233,7 +265,7 @@ export class RemoteMachine implements Machine {
     this.target = p.target
     this.profileSession = p.session
     this.onChange = onChange
-    this.ctl = path.join(RUNTIME_DIR, `${p.key}.ctl`)
+    this.ctl = path.join(RUNTIME_DIR, ctlName(p.key, process.pid, 0))
     this.fwd = path.join(RUNTIME_DIR, `${p.key}.sock`)
     this.fwdClient = path.join(RUNTIME_DIR, `${p.key}.client.sock`)
     this.exec = (script, args = [], opts = {}) => this.run(script, args, opts)
@@ -257,26 +289,26 @@ export class RemoteMachine implements Machine {
 
   // Short command over the shared connection, under the session budget;
   // the same read-only command already running is shared.
-  private run(script: string, args: string[], opts: { input?: Buffer, timeoutMs?: number }): Promise<ExecResult> {
+  private run(script: string, args: string[], opts: { input?: Buffer, timeoutMs?: number, maxBytes?: number }): Promise<ExecResult> {
     if (this.status !== 'online' && !this.connecting) {
       return Promise.resolve({ code: 255, stdout: Buffer.alloc(0), stderr: fmt('{machine} is unreachable', { machine: this.label }) })
     }
     const cmd = remoteCommand(script, args)
-    const key = opts.input ? undefined : `${opts.timeoutMs || 0}\n${cmd}`
+    const key = opts.input ? undefined : `${opts.timeoutMs || 0}\n${opts.maxBytes || 0}\n${cmd}`
     return this.gate.run(() => this.runOnce(cmd, opts), r => r.code === 255 && isRefused(r.stderr), key)
   }
 
-  private runOnce(cmd: string, opts: { input?: Buffer, timeoutMs?: number }): Promise<ExecResult> {
+  private runOnce(cmd: string, opts: { input?: Buffer, timeoutMs?: number, maxBytes?: number }): Promise<ExecResult> {
     return new Promise((resolve) => {
       const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, cmd], { stdio: ['pipe', 'pipe', 'pipe'] })
-      const out: Buffer[] = []
+      const out = boundedOutput(opts.maxBytes)
       let err = ''
       let done = false
       const finish = (code: number | null) => {
         if (done) return
         done = true
         clearTimeout(timer)
-        resolve({ code, stdout: Buffer.concat(out), stderr: err })
+        resolve({ code, stdout: out.take(), stderr: err })
       }
       const timer = setTimeout(() => {
         err += '\n'
@@ -284,7 +316,13 @@ export class RemoteMachine implements Machine {
         child.kill('SIGKILL')
         finish(124)
       }, opts.timeoutMs || 15000)
-      child.stdout.on('data', (b: Buffer) => out.push(b))
+      child.stdout.on('data', (b: Buffer) => {
+        if (out.push(b)) return
+        // Too long: stopped at once, nothing of it kept.
+        err += `\noutput longer than ${opts.maxBytes} bytes`
+        child.kill('SIGKILL')
+        finish(125)
+      })
       child.stderr.on('data', (b: Buffer) => { if (err.length < 4000) err += b.toString('utf8') })
       child.on('error', (e) => { err += e.message; finish(127) })
       child.on('close', code => finish(code))
@@ -297,20 +335,65 @@ export class RemoteMachine implements Machine {
   spawnHerdr(args: string[]): ChildProcessWithoutNullStreams {
     const sess = this.session && this.session !== 'default' ? ['--session', this.session] : []
     const cmd = `exec ${[this.bin || 'herdr', ...sess, ...args].map(shq).join(' ')}`
-    const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, cmd], { stdio: ['pipe', 'pipe', 'pipe'] })
-    const close = this.gate.openStream()
-    child.on('close', close)
-    child.on('error', close)
-    return child
+    return this.stream(cmd)
   }
 
   spawnShell(script: string, args: string[]): ChildProcessWithoutNullStreams | null {
     if (this.status !== 'online') return null
-    const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, remoteCommand(script, args)], { stdio: ['pipe', 'pipe', 'pipe'] })
-    const close = this.gate.openStream()
-    child.on('close', close)
+    return this.stream(remoteCommand(script, args))
+  }
+
+  // Long-lived session in the budget; a refused one counts in the streak
+  // (a terminal retrying alone must also bring the connection back), an
+  // accepted one ends it.
+  private stream(cmd: string, counted = true): ChildProcessWithoutNullStreams {
+    const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, cmd], { stdio: ['pipe', 'pipe', 'pipe'] })
+    const close = counted ? this.gate.openStream() : () => {}
+    let err = ''
+    let opened = false
+    child.stdout.once('data', () => {
+      opened = true
+      this.gate.accepted()
+    })
+    child.stderr.on('data', (b: Buffer) => { if (err.length < 4000) err += b.toString('utf8') })
+    child.on('close', (code) => {
+      close()
+      if (opened) return
+      // A session that ran (any end but ssh's own 255) was accepted too.
+      if (code === 255 && isRefused(err)) this.gate.refused()
+      else if (code !== null && code !== 255) this.gate.accepted()
+    })
     child.on('error', close)
     return child
+  }
+
+  // A session was refused. The master may be gone or its control socket
+  // removed (`-O check` fails): reopen at once. Otherwise reopen after
+  // REFUSALS_BEFORE_RECONNECT refusals in a row (sshd refusing every session
+  // on that connection), never in a burst: the delay grows with each
+  // reopening close to the previous one.
+  private async sessionRefused() {
+    if (this.stopped || this.status !== 'online' || this.connecting || this.checking) return
+    this.checking = true
+    const ctl = this.ctl
+    let reason: string | null = null
+    try {
+      const check = await runFile(SSH_BIN, ['-S', ctl, '-O', 'check', '--', this.target], 5000)
+      if (check.code !== 0) {
+        log(`machine ${this.label}: control socket check failed (${lastLine(check.stderr) || check.code})`)
+        reason = 'SSH control connection lost'
+      }
+      else if (this.gate.stats().streak >= REFUSALS_BEFORE_RECONNECT) reason = 'SSH sessions refused'
+    } finally { this.checking = false }
+    if (!reason || this.stopped || this.status !== 'online' || this.connecting || this.ctl !== ctl) return
+    const now = Date.now()
+    if (now - this.lastRecovery > RECOVERY_WINDOW_MS) this.recoveries = 0
+    this.lastRecovery = now
+    this.recoveries++
+    this.gate.accepted()
+    // fail() counts one more: the first reopening waits BACKOFF_MS[0], the next ones longer.
+    this.fails = this.recoveries - 1
+    this.restart(reason)
   }
 
   async putUpload(name: string, data: Buffer, kind: 'photo' | 'file' = 'photo'): Promise<string> {
@@ -342,6 +425,11 @@ export class RemoteMachine implements Machine {
     this.killMaster()
   }
 
+  retry() {
+    this.fails = 0
+    this.restart('manual retry')
+  }
+
   // Restarts the connection (target or session changed, silent remote server…).
   restart(reason: string) {
     if (this.stopped) return
@@ -356,6 +444,8 @@ export class RemoteMachine implements Machine {
     // Stop by exact PID: the ssh master process we started.
     if (m && m.exitCode === null) m.kill('SIGTERM')
     this.clientFwd = false
+    for (const relay of this.relays) relay.stop()
+    this.relays = []
     fsp.unlink(this.fwd).catch(() => {})
     fsp.unlink(this.fwdClient).catch(() => {})
   }
@@ -397,6 +487,8 @@ export class RemoteMachine implements Machine {
     this.timer = null
     try {
       await fsp.mkdir(RUNTIME_DIR, { recursive: true, mode: 0o700 })
+      await this.reapStaleMasters()
+      this.ctl = path.join(RUNTIME_DIR, ctlName(this.key, process.pid, ++this.ctlSeq))
       await fsp.unlink(this.ctl).catch(() => {})
       await fsp.unlink(this.fwd).catch(() => {})
       await fsp.unlink(this.fwdClient).catch(() => {})
@@ -422,7 +514,7 @@ export class RemoteMachine implements Machine {
         if (this.master !== child) return
         this.master = null
         const why = this.masterErr.filter(l => !/^Warning: Permanently added/.test(l)).pop() || fmt('SSH connection closed (code {code})', { code })
-        if (!this.connecting) this.fail(why)
+        if (!this.connecting) { this.killMaster(); this.fail(why) }
       })
 
       if (!(await this.waitControl(child, 20000))) {
@@ -432,6 +524,9 @@ export class RemoteMachine implements Machine {
       const probe = await this.exec(PROBE_SCRIPT, [this.session === 'default' ? '' : this.session], { timeoutMs: 15000 })
       const out = probe.stdout.toString('utf8')
       const kv = (k: string) => (new RegExp(`^${k}=(.*)$`, 'm').exec(out) || [])[1] || ''
+      if (!kv('home') && probe.code !== 255) {
+        throw new Error('Remote SSH shell must support POSIX commands. On Windows, set OpenSSH DefaultShell to Git Bash (see Machines documentation).')
+      }
       if (probe.code !== 0) throw new Error(lastLine(probe.stderr) || fmt('Probe failed (code {code})', { code: probe.code }))
       if (kv('self') && kv('self') === localMachineId()) throw new SkipMachine('this machine itself')
       if (kv('error')) throw new Error(fmt('{reason} on {machine}', { reason: kv('error'), machine: this.label }))
@@ -446,15 +541,37 @@ export class RemoteMachine implements Machine {
       this.remoteSock = sock
       this.ident = `${kv('host').toLowerCase()}|${sock}`
       this.transcripts = createTranscripts({ home: this.home, herdr, fs: this.fs })
-      // Transfert du socket Unix distant vers RUNTIME_DIR/<machine>.sock.
-      const fwd = await runFile(SSH_BIN, ['-S', this.ctl, '-O', 'forward', '-L', `${this.fwd}:${sock}`, '--', this.target], 10000)
-      if (fwd.code !== 0) throw new Error(fmt('Herdr socket forwarding failed: {reason}', { reason: lastLine(fwd.stderr) || fwd.code }))
-      // Client socket (notifications): optional, the machine stays usable without it.
-      const clientSock = path.posix.join(path.posix.dirname(sock), 'herdr-client.sock')
-      const fwdc = await runFile(SSH_BIN, ['-S', this.ctl, '-O', 'forward', '-L', `${this.fwdClient}:${clientSock}`, '--', this.target], 10000)
-      this.clientFwd = fwdc.code === 0
-      if (!this.clientFwd) log(`machine ${this.label}: herdr notifications unavailable (${lastLine(fwdc.stderr) || fwdc.code})`)
-      if (this.master !== child || child.exitCode !== null) throw new Error('SSH connection closed')
+      if (socketTransport(sock) === 'relay') {
+        const check = await this.runOnce(bridgeCommand(this.bin, this.session, false, true), { timeoutMs: 10000 })
+        if (check.code !== 0 || check.stdout.toString('utf8').trim() !== 'herdr-api-bridge-v1') {
+          throw new Error('Remote Herdr must provide remote-api-bridge (Herdr 0.9.3 or later).')
+        }
+        if (this.stopped || this.master !== child) throw new Error('SSH connection closed')
+        // API channels use the command budget, including time spent streaming.
+        // A consumed byte stream cannot be retried, so refusals are counted by stream().
+        const api = new SocketRelay(() => this.stream(bridgeCommand(this.bin, this.session), false),
+          run => this.gate.withSlot(run))
+        this.relays.push(api)
+        await api.listen(this.fwd)
+        const client = new SocketRelay(() => this.stream(bridgeCommand(this.bin, this.session, true)))
+        this.relays.push(client)
+        try {
+          await client.listen(this.fwdClient)
+          this.clientFwd = true
+        } catch (e) {
+          client.stop()
+          log(`machine ${this.label}: herdr notifications unavailable (${(e as Error).message})`)
+        }
+      } else {
+        // POSIX machines retain OpenSSH's native Unix socket forwarding.
+        const fwd = await runFile(SSH_BIN, ['-S', this.ctl, '-O', 'forward', '-L', `${this.fwd}:${sock}`, '--', this.target], 10000)
+        if (fwd.code !== 0) throw new Error(fmt('Herdr socket forwarding failed: {reason}', { reason: lastLine(fwd.stderr) || fwd.code }))
+        const clientSock = path.posix.join(path.posix.dirname(sock), 'herdr-client.sock')
+        const fwdc = await runFile(SSH_BIN, ['-S', this.ctl, '-O', 'forward', '-L', `${this.fwdClient}:${clientSock}`, '--', this.target], 10000)
+        this.clientFwd = fwdc.code === 0
+        if (!this.clientFwd) log(`machine ${this.label}: herdr notifications unavailable (${lastLine(fwdc.stderr) || fwdc.code})`)
+      }
+      if (this.stopped || this.master !== child || child.exitCode !== null) throw new Error('SSH connection closed')
       this.fails = 0
       this.pollFails = 0
       this.connecting = false
@@ -474,6 +591,18 @@ export class RemoteMachine implements Machine {
       this.fail((e as Error).message)
     } finally {
       this.connecting = false
+    }
+  }
+
+  // Masters left by a previous wherdr (crash, kill): asked to exit through
+  // their own control socket, then the socket file is removed.
+  private async reapStaleMasters() {
+    const files = await fsp.readdir(RUNTIME_DIR).catch(() => [] as string[])
+    for (const f of staleCtls(files, this.key, pidAlive)) {
+      const p = path.join(RUNTIME_DIR, f)
+      const r = await runFile(SSH_BIN, ['-S', p, '-O', 'exit', '--', this.target], 5000)
+      if (r.code === 0) log(`machine ${this.label}: stopped a leftover SSH connection (${f})`)
+      await fsp.unlink(p).catch(() => {})
     }
   }
 
@@ -643,6 +772,28 @@ async function readMachines() {
   remotes.clear()
   for (const [k, m] of sorted) remotes.set(k, m)
   if (dirty) changed()
+}
+
+// These commands address this host's saved profile, even for a named session.
+export async function machineDiagnostic(key: string): Promise<MachineDiagnostic> {
+  const machine = getMachine(key)
+  const base = machine && remotes.get((machine as RemoteMachine).baseKey ?? machine.key)
+  if (!base) throw new HerdrError('bad_machine', 'unknown remote machine')
+  const result = await runFile(HERDR_BIN, ['machine', 'status', base.profileId, '--json'], 30000)
+  const diagnostic = parseMachineDiagnostic(result.stdout.toString('utf8'), base.profileId)
+  if (diagnostic) return diagnostic
+  // Old CLI: only a rejected subcommand means unsupported. Operational failures
+  // must stay visible rather than being mistaken for an older Herdr version.
+  if (/unrecognized subcommand|unknown (?:command|subcommand)|Usage:[\s\S]*machine/i.test(result.stderr)) {
+    return { supported: false, status: null, error: null, reconnect: null }
+  }
+  throw new HerdrError('machine_status', lastLine(result.stderr) || 'Machine status unavailable')
+}
+
+export function retryMachine(key: string) {
+  const machine = getMachine(key)
+  if (!(machine instanceof RemoteMachine)) throw new HerdrError('bad_machine', 'unknown remote machine')
+  machine.retry()
 }
 
 export async function renameMachine(key: string, label: string) {

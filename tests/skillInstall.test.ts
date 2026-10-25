@@ -21,17 +21,7 @@ function fixture(mode: string) {
   cpSync(path.join(repo, 'herdr-plugin.toml'), path.join(root, 'herdr-plugin.toml'))
   const bin = path.join(home, 'tools')
   mkdirSync(bin)
-  // Emulate Docker extraction, never access a daemon or a real agent home.
-  writeFileSync(path.join(bin, 'docker'), `#!/bin/sh
-case "$1" in
-  create) echo skill-test-container ;;
-  cp) cp -R "$IMAGE_ROOT/\${2#*:/app/}" "$3" ;;
-  rm) echo removed >> "$HOME/docker-cleanup" ;;
-  compose) [ "$*" = "compose --project-directory $HOME/wherdr -f $HOME/wherdr/docker-compose.yml config --images herdr-web" ] || exit 1; echo test-image ;;
-  *) exit 1 ;;
-esac
-`, { mode: 0o755 })
-  const env = { ...process.env, HOME: home, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), WHERDR_DIR: path.join(home, 'wherdr'), WHERDR_MODE: mode === 'plugin-docker' ? 'docker' : 'native', IMAGE_ROOT: root, PATH: `${bin}:${process.env.PATH}` }
+  const env = { ...process.env, HOME: home, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), WHERDR_DIR: path.join(home, 'wherdr'), IMAGE_ROOT: root, PATH: `${bin}:${process.env.PATH}` }
   const source = path.join(root, 'skills/wherdr/SKILL.md')
   const run = () => {
     if (mode === 'npm' || mode === 'brew') {
@@ -39,14 +29,14 @@ esac
       const result = spawnSync(process.execPath, [path.join(root, 'bin/wherdr.mjs'), 'run'], { env, encoding: 'utf8' })
       expect(result.stderr).toContain('the server is missing')
     } else {
-      const script = mode === 'docker' ? 'bin/install-docker-skill.sh' : 'scripts/herdr-plugin.sh'
-      execFileSync('sh', [path.join(root, script), ...(mode === 'docker' ? ['test-image'] : ['skill', 'install'])], { env })
+      const script = 'scripts/herdr-plugin.sh'
+      execFileSync('sh', [path.join(root, script), 'skill', 'install'], { env })
     }
   }
   return { home, root, source, run, env, copy: path.join(home, 'wherdr/skills/wherdr'), link: path.join(home, '.claude/skills/wherdr') }
 }
 
-for (const mode of ['npm', 'brew', 'plugin-native', 'plugin-docker', 'docker']) {
+for (const mode of ['npm', 'brew', 'plugin-native']) {
   describe(`skill installation: ${mode}`, () => {
     it('installs for existing agents and refreshes the stable copy after an update', () => {
       const f = fixture(mode)
@@ -59,7 +49,6 @@ for (const mode of ['npm', 'brew', 'plugin-native', 'plugin-docker', 'docker']) 
       writeFileSync(f.source, 'updated release')
       f.run()
       expect(readFileSync(path.join(f.link, 'SKILL.md'), 'utf8')).toBe('updated release')
-      if (mode.includes('docker')) expect(readFileSync(path.join(f.home, 'docker-cleanup'), 'utf8').trim().split('\n')).toHaveLength(2)
     })
 
     it('preserves a foreign skill directory and a dangling foreign link', () => {
@@ -153,17 +142,19 @@ it.skipIf(process.platform !== 'linux')('keeps a custom Claude directory in the 
   mkdirSync(claude)
   mkdirSync(path.join(f.root, '.output/server'), { recursive: true })
   writeFileSync(path.join(f.root, '.output/server/index.mjs'), '')
-  // Write the unit but refuse activation, so no real service or server is started.
+  // Refuse activation, so no real service or server is started; keep a copy of
+  // the unit it was asked to enable (a failed install removes it).
   writeFileSync(path.join(f.home, 'tools/systemctl'), `#!/bin/sh
-case "$*" in '--user enable --now skill-test.service') exit 1 ;; esac
+case "$*" in '--user enable --now skill-test.service') cp "$XDG_CONFIG_HOME/systemd/user/skill-test.service" "$HOME/unit.seen"; exit 1 ;; esac
 exit 0
 `, { mode: 0o755 })
   const result = spawnSync(process.execPath, [path.join(f.root, 'bin/wherdr.mjs'), 'service', 'install', '--port', '7699'], {
     env: { ...f.env, CLAUDE_CONFIG_DIR: claude, WHERDR_SERVICE_NAME: 'skill-test', XDG_CONFIG_HOME: path.join(f.home, '.config') }, encoding: 'utf8', timeout: 10000,
   })
   expect(result.stderr).toContain('enable --now failed')
-  const unit = readFileSync(path.join(f.home, '.config/systemd/user/skill-test.service'), 'utf8')
+  const unit = readFileSync(path.join(f.home, 'unit.seen'), 'utf8')
   expect(unit).toContain(`CLAUDE_CONFIG_DIR=${claude}`)
+  expect(existsSync(path.join(f.home, '.config/systemd/user/skill-test.service'))).toBe(false)
 })
 
 
@@ -172,13 +163,13 @@ it.skipIf(process.platform !== 'linux')('normalizes a relative Claude config and
   mkdirSync(path.join(f.root, '.output/server'), { recursive: true })
   writeFileSync(path.join(f.root, '.output/server/index.mjs'), '')
   const tools = path.join(f.home, 'tools')
-  writeFileSync(path.join(tools, 'systemctl'), '#!/bin/sh\ncase "$*" in "--user enable --now skill-test.service") exit 1 ;; esac\nexit 0\n', { mode: 0o755 })
+  writeFileSync(path.join(tools, 'systemctl'), '#!/bin/sh\ncase "$*" in "--user enable --now skill-test.service") cp "$XDG_CONFIG_HOME/systemd/user/skill-test.service" "$HOME/unit.seen"; exit 1 ;; esac\nexit 0\n', { mode: 0o755 })
   const result = spawnSync(process.execPath, [path.join(f.root, 'bin/wherdr.mjs'), 'service', 'install', '--port', '7699'], {
     env: { ...f.env, CLAUDE_CONFIG_DIR: '.custom-claude', WHERDR_SKILL: 'off', WHERDR_SERVICE_NAME: 'skill-test', XDG_CONFIG_HOME: path.join(f.home, '.config') },
     encoding: 'utf8', timeout: 10000,
   })
   // Refuse activation after the unit is written; no real service is started.
-  const unit = readFileSync(path.join(f.home, '.config/systemd/user/skill-test.service'), 'utf8')
+  const unit = readFileSync(path.join(f.home, 'unit.seen'), 'utf8')
   expect(unit).toContain(`CLAUDE_CONFIG_DIR=${f.home}/.custom-claude`)
   expect(unit).toContain('WHERDR_SKILL=off')
   expect(existsSync(f.copy)).toBe(false)
@@ -186,7 +177,7 @@ it.skipIf(process.platform !== 'linux')('normalizes a relative Claude config and
 })
 
 
-for (const mode of ['npm', 'brew', 'plugin-native', 'plugin-docker', 'docker']) {
+for (const mode of ['npm', 'brew', 'plugin-native']) {
   it(`${mode}: WHERDR_SKILL=off neither installs nor refreshes`, () => {
     const f = fixture(mode)
     mkdirSync(path.join(f.home, '.claude'))
@@ -218,14 +209,14 @@ it('consumes the updater handoff without another refresh or leaking it to the se
   expect(existsSync(f.copy)).toBe(false)
 })
 
-for (const mode of ['plugin-native', 'plugin-docker', 'docker']) {
+for (const mode of ['plugin-native']) {
   it(`${mode}: automatic refresh preserves uninstall until explicit installation`, () => {
     const f = fixture(mode)
     mkdirSync(path.join(f.home, '.claude'))
     f.run()
     execFileSync('sh', [path.join(f.root, 'bin/lib/install-skill.sh'), 'uninstall'], { env: f.env })
-    const script = mode === 'docker' ? 'bin/install-docker-skill.sh' : 'scripts/herdr-plugin.sh'
-    execFileSync('sh', [path.join(f.root, script), ...(mode === 'docker' ? ['test-image', 'refresh'] : ['skill', 'refresh'])], { env: f.env })
+    const script = 'scripts/herdr-plugin.sh'
+    execFileSync('sh', [path.join(f.root, script), 'skill', 'refresh'], { env: f.env })
     expect(existsSync(f.link)).toBe(false)
     expect(existsSync(f.copy)).toBe(false)
     f.run()

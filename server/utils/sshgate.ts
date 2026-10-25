@@ -11,6 +11,10 @@
 // for long-lived streams (terminals), which are counted but never
 // queued: they follow a user's action. A refused command is retried after a
 // short delay; identical read-only commands already running are shared.
+//
+// The same refusal is printed when the master's control socket is gone (the
+// mux client then falls back to ProxyCommand=/bin/false): `streak` counts
+// consecutive refusals so the machine can check and reopen its connection.
 
 // sshd's default MaxSessions.
 export const SSH_MAX_SESSIONS = 10
@@ -23,13 +27,14 @@ export const RETRY_DELAYS_MS = [250, 750, 1500]
 const REFUSED_RE = /session open refused|session request failed|administratively prohibited|connection closed by unknown port 65535/i
 export const isRefused = (stderr: string) => REFUSED_RE.test(stderr)
 
-export interface GateStats { execs: number, streams: number, queued: number, peak: number, refusals: number }
+export interface GateStats { execs: number, streams: number, queued: number, peak: number, refusals: number, streak: number }
 
 export class SessionGate {
   private execs = 0
   private streams = 0
   private peak = 0
   private refusals = 0
+  private streak = 0
   private readonly waiting: (() => void)[] = []
   private readonly inflight = new Map<string, Promise<unknown>>()
 
@@ -43,7 +48,7 @@ export class SessionGate {
   }
 
   stats(): GateStats {
-    return { execs: this.execs, streams: this.streams, queued: this.waiting.length, peak: this.peak, refusals: this.refusals }
+    return { execs: this.execs, streams: this.streams, queued: this.waiting.length, peak: this.peak, refusals: this.refusals, streak: this.streak }
   }
 
   // A long-lived session (terminal) opens; call the result when it closes.
@@ -57,6 +62,24 @@ export class SessionGate {
       this.streams--
       this.wake()
     }
+  }
+
+  // A session (command or stream) was refused; returns the refusal streak.
+  refused(attempt = 1): number {
+    this.refusals++
+    this.streak++
+    this.opts.onRefused?.(this.stats(), attempt)
+    return this.streak
+  }
+
+  // A session was opened: the connection carries sessions again.
+  accepted() { this.streak = 0 }
+
+  // Reserve a command slot for a byte stream that cannot be replayed.
+  async withSlot<T>(run: () => Promise<T>): Promise<T> {
+    await this.acquire()
+    try { return await run() }
+    finally { this.execs--; this.wake() }
   }
 
   // Runs a short command under the budget; `refused` tells a refused session
@@ -85,9 +108,11 @@ export class SessionGate {
         this.execs--
         this.wake()
       }
-      if (!refused(r)) return r
-      this.refusals++
-      this.opts.onRefused?.(this.stats(), i + 1)
+      if (!refused(r)) {
+        this.accepted()
+        return r
+      }
+      this.refused(i + 1)
       if (i >= delays.length) return r
       const { promise: pause, resolve } = Promise.withResolvers<void>()
       setTimeout(resolve, delays[i])

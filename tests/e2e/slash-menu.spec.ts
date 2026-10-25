@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { CLAUDE_ASK_PANE, CLAUDE_PANE, OMP_CHAT_PANE } from './scenario.mjs'
 
 async function typeInField(page: Page, text: string) {
@@ -56,4 +56,21 @@ test('Claude Code: project folders macOS refuses to list are explained in the me
   await page.keyboard.type('/dai')
   await expect(page.locator('.slash-menu .slash-item', { hasText: '/daily-notes' })).toBeVisible()
   await expect(note).toBeVisible()
+})
+
+
+test('Claude Code: plugin skills and commands keep their namespace when selected', async ({ page }) => {
+  await page.goto(`/#/a/${CLAUDE_PANE}`)
+  await typeInField(page, '/circleci:')
+  const menu = page.locator('.slash-menu')
+  await expect(menu.locator('.slash-item', { hasText: '/circleci:build' })).toContainText('Inspect the CI build')
+  await expect(menu.locator('.slash-item', { hasText: '/circleci:config' })).toBeVisible()
+  await expect(menu.locator('.slash-item', { hasText: '/circleci:deploy' })).toContainText('Deploy the CI build')
+  await page.screenshot({ path: '.shots/slash-plugins-iphone13.png' })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.screenshot({ path: '.shots/slash-plugins-1440.png' })
+  await menu.locator('.slash-item', { hasText: '/circleci:build' }).click()
+  const field = page.locator('.prompt').locator('textarea, [contenteditable="true"]').first()
+  await expect(field).toHaveValue('/circleci:build ')
+  await expect(menu).toHaveCount(0)
 })

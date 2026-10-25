@@ -1,9 +1,9 @@
 import fs from 'node:fs'
 import { CHOICE_GUARD_MS } from '../../app/utils/compactCard'
-import { expect, test, type Page } from '@playwright/test'
-import { CLAUDE_ASK_PANE, CLAUDE_PANE, OMP_ASK_PANE, SPLIT_CHAT_PANE, fakeHerdr } from './scenario.mjs'
+import { expect, test, type Page } from './test'
+import { BASE_URL, CLAUDE_ASK_PANE, CLAUDE_PANE, OMP_ASK_PANE, SPLIT_CHAT_PANE, fakeHerdr } from './scenario.mjs'
 
-// Compact list (the default): the card of an agent waiting for an answer opens
+// Compact list (turned on here; 2.0's default is normal): the card of an agent waiting for an answer opens
 // on its question and the one-tap answers of the detailed card, and is one
 // line again once answered.
 const shot = (page: Page, name: string, project: string) =>
@@ -19,7 +19,9 @@ const answers = async (pane: string) => (await fakeHerdr('e2e.answers', { pane_i
 // Among the agents of this spec (other specs may leave one of theirs waiting).
 const opened = (page: Page) => page.locator(['.open', ':has(.card-more)'].flatMap(s => [OMP_ASK_PANE, CLAUDE_ASK_PANE, CLAUDE_PANE].map(p => `#home .card[data-pane="${p}"]${s}`)).join(', '))
 
-test.beforeEach(async () => {
+test.beforeEach(async ({ page }) => {
+  // Compact unless a test chooses normal (its own init script runs after this one).
+  await page.addInitScript(() => localStorage.setItem('compactListV2', '1'))
   await ask(OMP_ASK_PANE)
   await ask(CLAUDE_ASK_PANE)
 })
@@ -172,11 +174,13 @@ test('a space with several panes says which pane asks, as the detailed card does
     await ask(OMP_ASK_PANE, APPROVAL)
     await expect(card(page, OMP_ASK_PANE)).toHaveClass(/open/)
     await expect(card(page, OMP_ASK_PANE).locator('.card-where')).toHaveCount(0)
-    // The detailed card points at the same pane on its own mini-map.
-    await page.evaluate(() => localStorage.setItem('compactList', '0'))
+    // Normal mode keeps the same dense card and identifies the pane above its question.
+    // Kept on the server: changed there, as Settings does.
+    expect((await page.request.post(`${BASE_URL}/api/settings`, { headers: { Origin: BASE_URL }, data: { settings: { compactListV2: '0' } } })).ok()).toBe(true)
     await page.reload()
-    await expect(space).not.toHaveClass(/compact/)
-    expect(await space.locator('.space-avatar .tabmap i').first().evaluate(el => el.classList.contains('cur'))).toBe(true)
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('compactListV2'))).toBe('0')
+    await expect(space).toHaveClass(/compact/)
+    expect(await space.locator('.card-where .tabmap i').first().evaluate(el => el.classList.contains('cur'))).toBe(true)
   } finally { await ask(SPLIT_CHAT_PANE) }
 })
 
@@ -196,17 +200,19 @@ test('the answers open with a transition, off under reduced motion', async ({ pa
   expect(await duration()).toBe(0)
 })
 
-test('detailed list: a waiting agent keeps its detailed card and answers', async ({ page }, testInfo) => {
-  await page.addInitScript(() => localStorage.setItem('compactList', '0'))
+test('normal list: a waiting agent keeps its dense card and answers', async ({ page }, testInfo) => {
+  await page.addInitScript(() => localStorage.setItem('compactListV2', '0'))
   await ask(OMP_ASK_PANE, APPROVAL)
   await page.goto('/')
   const omp = card(page, OMP_ASK_PANE)
   await expect(omp.locator('.card-choices button .l')).toHaveText(['Approve', 'Deny'])
-  await expect(omp).not.toHaveClass(/compact|open/)
-  await expect(omp.locator('.card-meta')).toBeVisible()
-  // The answers stay under the title, as before.
-  const [title, choices] = await Promise.all([omp.locator('.card-title').boundingBox(), omp.locator('.card-choices').boundingBox()])
-  expect(Math.abs(choices!.x - title!.x)).toBeLessThanOrEqual(1)
+  await expect(omp).toHaveClass(/compact.*open/)
+  await expect(omp.locator('.card-main')).toHaveCount(0)
+  // Dense cards keep their answers below the header and inside the card.
+  const [title, choices, bounds] = await Promise.all([omp.locator('.card-title').boundingBox(), omp.locator('.card-choices').boundingBox(), omp.boundingBox()])
+  expect(choices!.y).toBeGreaterThanOrEqual(title!.y + title!.height)
+  expect(choices!.x).toBeGreaterThanOrEqual(bounds!.x)
+  expect(choices!.x + choices!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width)
   await shot(page, 'detailed-blocked', testInfo.project.name)
   await omp.locator('.card-choices button', { hasText: 'Deny' }).click()
   await expect.poll(() => answers(OMP_ASK_PANE)).toEqual([['down', 'enter']])

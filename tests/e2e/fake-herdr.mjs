@@ -38,6 +38,7 @@ const HALVES = [{ x: 0, y: 0, width: 60, height: 40 }, { x: 61, y: 0, width: 59,
 // the fake agent appends to when it receives a prompt; `shell`: a "!" prompt
 // starts a run that lasts until Escape, written nowhere, like a fresh omp).
 export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
+  const allWorkspaces = workspaces
   // `size`: the pane's PTY. No Herdr client is attached to this session: a
   // terminal control session resizes it, and it keeps that size afterwards.
   // `control`: the control session attached to the pane's terminal, if any.
@@ -45,11 +46,15 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     const rect = w.panes.length === 2 ? HALVES[i] : AREA
     return { ...p, workspace: w.id, size: { cols: rect.width, rows: rect.height }, control: null }
   }))
+  const allPanes = panes
   const paneById = id => panes.find(p => p.id === id)
 
   function snapshot() {
+    const gone = new Set(allPanes.filter(p => p.hidden).map(p => p.id))
+    const workspaces = allWorkspaces.map(w => ({ ...w, panes: w.panes.filter(p => !gone.has(p.id)) }))
+    const panes = allPanes.filter(p => !p.hidden)
     return {
-      version: 'e2e',
+      version: terminalVersion,
       workspaces: workspaces.map((w, i) => ({
         workspace_id: w.id, label: w.label, number: i + 1, focused: i === 0,
         agent_status: w.panes[0]?.status || 'unknown', active_tab_id: `${w.id}:t1`,
@@ -103,10 +108,41 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     return p
   }
 
+  // Apply an invocation reset at the start of a poll, never between its
+  // session snapshot and its process/transcript reads.
+  const snapshotActions = []
+  function resetUpdate(params) {
+    const p = need(params.pane_id)
+    p.agent = 'codex'; p.status = 'idle'; p.pid = (p.pid || 3000) + 1
+    p.updateOutput = params.session ? '' : '✨ Update available! 0.148.0 -> 0.162.1'; p.foreground = false; p.starts = []
+    p.processReads = 0
+    p.argv = null; p.writes = []; p.prompts = []
+    p.baseCwd ||= p.cwd
+    p.cwd = params.session ? p.baseCwd : `${p.baseCwd}/fresh`
+    p.session = params.session || null
+    return { pid: p.pid }
+  }
+
+  let terminalVersion = '0.9.1'
+  const terminalMouse = []
   let integrations = {}
   let plugins = []
   const methods = {
-    'session.snapshot': () => ({ snapshot: snapshot() }),
+    'e2e.terminal_version': params => {
+      if (params.version) { terminalVersion = params.version; terminalMouse.length = 0 }
+      return { version: terminalVersion }
+    },
+    'e2e.terminal_mouse': params => {
+      if (params.event) terminalMouse.push(params)
+      return { events: terminalMouse }
+    },
+    // Simulate a server that acknowledges a rename but leaves the name intact.
+    'workspace.rename': () => ({}),
+    'tab.rename': () => ({}),
+    'session.snapshot': () => {
+      for (const action of snapshotActions.splice(0)) action()
+      return { snapshot: snapshot() }
+    },
     'agent.prompt': prompt,
     'agent.get': (params) => {
       const p = paneById(params.target)
@@ -135,15 +171,10 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       return { process_info: { shell_pid: 2000, foreground_process_group_id: p?.foreground ? 4000 : p?.agent ? (p.pid || 2001) : 2000, foreground_processes: procs } }
     },
     'e2e.update_reset': params => {
-      const p = need(params.pane_id)
-      p.agent = 'codex'; p.status = 'idle'; p.pid = (p.pid || 3000) + 1
-      p.updateOutput = params.session ? '' : '✨ Update available! 0.148.0 -> 0.162.1'; p.foreground = false; p.starts = []
-      p.processReads = 0
-      p.argv = null; p.writes = []; p.prompts = []
-      p.baseCwd ||= p.cwd
-      p.cwd = params.session ? p.baseCwd : `${p.baseCwd}/fresh`
-      p.session = params.session || null
-      return { pid: p.pid }
+      need(params.pane_id)
+      return params.onSnapshot
+        ? new Promise(resolve => snapshotActions.push(() => resolve(resetUpdate(params))))
+        : resetUpdate(params)
     },
     'e2e.update_exit': params => {
       const p = need(params.pane_id)
@@ -162,6 +193,18 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     'e2e.integrations': params => { integrations = { ...(params.states || {}) }; return {} },
     'e2e.integration_states': () => ({ states: integrations }),
     'e2e.pane_status': params => { need(params.pane_id).status = params.status; return {} },
+    // Herdr closes the pane and opens another one for the same agent (same
+    // conversation, as herdr-projects restarting a coordinator): a new id.
+    'e2e.replace_pane': (params) => {
+      const p = need(params.pane_id)
+      const w = workspaces.find(x => x.id === p.workspace)
+      const at = w.panes.findIndex(x => x.id === p.id)
+      w.panes[at] = { ...w.panes[at], id: params.new_id }
+      p.id = params.new_id
+      return {}
+    },
+    // Herdr closes the pane for good (`hidden: false` brings it back).
+    'e2e.hide_pane': (params) => { need(params.pane_id).hidden = Boolean(params.hidden); return {} },
     'e2e.update_session': params => { need(params.pane_id).session = params.session; return {} },
     'e2e.update_draft': params => { need(params.pane_id).updateOutput += params.text; return {} },
     'e2e.update_foreground': params => { need(params.pane_id).foreground = true; return {} },
@@ -181,11 +224,21 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       const p = need(params.pane_id)
       p.starts = [...(p.starts || []), params]
       p.agent = params.kind; p.status = 'idle'; p.pid = (p.pid || 3000) + 1; p.updateOutput = params.kind === 'codex' ? '› ' : ''
+      // Only the screen given by the spec: no `updateOutput` left behind on this pane.
+      if (p.slowExit?.exiting) { p.customScreen = p.slowExit.after; p.updateOutput = undefined; p.slowExit = null }
       return { agent: { pane_id: p.id, agent: p.agent } }
     },
     'pane.send_input': (params) => {
       const p = paneById(params.pane_id)
       if (p) p.writes = [...(p.writes || []), params]
+      // `/exit` then Enter: the exit screen, the agent still reported for `ms`.
+      if (p?.slowExit && params.text === '/exit') p.slowExit.typed = true
+      if (p?.slowExit?.typed && (params.keys || []).includes('enter')) {
+        p.slowExit = { ...p.slowExit, typed: false, exiting: true }
+        p.customScreen = p.slowExit.screen
+        setTimeout(() => { p.agent = null; p.status = 'unknown' }, p.slowExit.ms)
+        return {}
+      }
       if (p?.run && (params.keys || []).includes('esc')) p.run = null
       if (p?.customScreen !== undefined && p.customScreen !== null) {
         p.sentKeys ||= []
@@ -201,6 +254,12 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
         p.answers = [...(p.answers || []), params.keys]
         p.ask = null; p.status = 'idle'
       }
+      return {}
+    },
+    // The agent quits slowly on `/exit`: Herdr keeps reporting it while its
+    // exit screen (`screen`) shows; `agent.start` then shows `after`.
+    'e2e.slow_exit': params => {
+      need(params.pane_id).slowExit = params.ms ? { ms: params.ms, screen: params.screen, after: params.after } : null
       return {}
     },
     'e2e.read_failure': params => { need(params.pane_id).readFailure = Boolean(params.fail); return {} },

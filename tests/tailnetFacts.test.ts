@@ -85,11 +85,9 @@ describe('Funnel protection through the real reader', () => {
     const other = JSON.stringify({ TCP: { 443: { TCPForward: '127.0.0.1:3000' } }, AllowFunnel: { [`${host}:443`]: true } })
     set(RUNNING, other)
     expect(await readAndDecide()).toEqual(OPEN)
-    // The reader still reports that some Funnel route exists (warned in Docker
-    // without WHERDR_DOCKER_LOOPBACK_ONLY, where the host's port is unknown).
-    expect(await tailnetFacts(7683, bin, null)).toMatchObject({ funnel: false, funnelAny: true })
+    expect(await tailnetFacts(7683, bin, null)).toMatchObject({ funnel: false })
     set(RUNNING, SERVE_ONLY)
-    expect(await tailnetFacts(7683, bin, null)).toMatchObject({ funnel: false, funnelAny: false })
+    expect(await tailnetFacts(7683, bin, null)).toMatchObject({ funnel: false })
   })
 
   it('serves this computer when Serve cannot be read at the first reading', async () => {

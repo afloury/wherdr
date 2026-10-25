@@ -26,21 +26,37 @@ d=$(cat)
 case "$d" in
   *'"rate_limits"'*)
     dir="$HOME/.cache/herdr-web"
-    f="$dir/claude-status.json"
-    mkdir -p "$dir" && printf '%s' "$d" > "$f.tmp" && mv "$f.tmp" "$f"
-    # Fingerprint: recomputed at most every 10 min (account change).
-    a="$dir/claude-account"
-    if [ -z "$(find "$a" -mmin -10 2>/dev/null)" ]; then
-      c="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
-      id=$([ -r "$c" ] && tr -d '\n' < "$c" \
-        | grep -o '"oauthAccount": *{[^}]*' | grep -o '"accountUuid": *"[^"]*"' | head -n 1 | sed 's/.*"\([^"]*\)"$/\1/')
-      if command -v sha256sum >/dev/null 2>&1; then sum=sha256sum; else sum='shasum -a 256'; fi
-      if [ -n "$id" ]; then
-        printf 'wherdr:%s' "$id" | $sum | cut -c1-16 > "$a.tmp" && mv "$a.tmp" "$a"
-      else
-        rm -f "$a"
-      fi
-    fi ;;
+    mkdir -p "$dir"
+    # Bind the fingerprint and timestamp to the payload in one atomic rename.
+    # No fingerprint TTL: a login change must affect the very next reading.
+    printf '%s' "$d" | python3 -c '
+import hashlib, json, os, sys, tempfile, time
+from pathlib import Path
+cache = Path(sys.argv[1])
+config = Path(os.environ.get("CLAUDE_CONFIG_DIR", os.environ["HOME"])) / ".claude.json"
+try:
+    account_id = json.loads(config.read_text()).get("oauthAccount", {}).get("accountUuid")
+except (OSError, ValueError, AttributeError):
+    account_id = None
+account = hashlib.sha256(("wherdr:" + account_id).encode()).hexdigest()[:16] if isinstance(account_id, str) and account_id else None
+status = json.load(sys.stdin)
+status["_wherdr"] = {"version": 1, "account": account, "at": int(time.time() * 1000)}
+def atomic(name, text):
+    fd, temp = tempfile.mkstemp(prefix=name + ".", dir=cache)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.replace(temp, cache / name)
+    finally:
+        if os.path.exists(temp):
+            os.unlink(temp)
+# Compatibility for older readers; new readers use only the embedded account.
+if account:
+    atomic("claude-account", account + "\n")
+else:
+    (cache / "claude-account").unlink(missing_ok=True)
+atomic("claude-status.json", json.dumps(status))
+' "$dir" ;;
 esac
 if [ -n "$1" ]; then printf '%s' "$d" | sh -c "$1"; exit $?; fi
 exit 0

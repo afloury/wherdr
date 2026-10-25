@@ -6,8 +6,8 @@ let curPaneOwner: symbol | null = null
 <script setup lang="ts">
 // Agent view: space tabs, header, then the pane (Conversation / Terminal
 // selector, blocking prompt, key bar, input bar).
-// Phone: no selector, header icons (terminal `>_`, Project)
-// toggle the pane's presentation. Computer: small selector in
+// Phone: no selector, a header icon (terminal `>_`)
+// toggles the pane's presentation. Computer: small selector in
 // the header (or in the cell's, side by side).
 // Pane of a tab with several panes: mini-map of the tab in the header
 // (back to the plan, or side-by-side view on a computer) and, on the phone,
@@ -19,14 +19,14 @@ let curPaneOwner: symbol | null = null
 import type { QueuedMessage } from '#shared/types'
 import type { PaneViewMode } from '~/composables/useHerdr'
 import { neighborPane } from '#shared/layout'
-import { prefillDraft } from '#shared/projectBoard'
 import { swipeAxis, swipeOffset, swipeStep } from '~/utils/swipe'
 import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 import { carriesFiles, dragDepth } from '~/utils/fileDrop'
 import { interactionWindowFor } from '~/utils/interactionWindow'
+import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
 
-const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean }>()
-const emit = defineEmits<{ activate: [] }>()
+const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
+const emit = defineEmits<{ activate: [], 'update:selectedMode': [mode: PaneViewMode] }>()
 const route = useRoute()
 const router = useRouter()
 
@@ -71,55 +71,10 @@ const viewMode = computed<PaneViewMode>({
 const mode = computed<PaneViewMode | null>(() => {
   const p = pane.value
   if (!p) return null
+  if (props.embedded && props.selectedMode) return props.selectedMode
   if (props.cell) return cellMode({ chat: hasChat(p), viewMode: viewMode.value, active: props.active })
-  // Project: phone tab only (right-hand column on a computer).
-  if (viewMode.value === 'project') return projectTab.value ? 'project' : hasChat(p) ? 'chat' : 'term'
   return hasChat(p) ? viewMode.value : 'term'
 })
-
-// "Project" panel (herdr-projects coordinator): tab on the phone,
-// collapsible right-hand column on a computer (projectSideOpen, shared with
-// Mod+Alt+P and the menus). Nothing without herdr-projects.
-//
-// Column width: handle on its left edge (drag; double-click =
-// default width), clamped (260 px, half the area), kept on the device.
-// The saved width is also clamped in CSS: the window may shrink.
-const sideWidth = ref(readSideWidth())
-const sideDrag = ref(false)
-const sideStyle = computed(() => (sideWidth.value ? { width: `${sideWidth.value}px` } : undefined))
-function onSideGrab(e: PointerEvent) {
-  if (e.button !== 0) return
-  const handle = e.currentTarget as HTMLElement
-  const panel = handle.nextElementSibling as HTMLElement | null
-  const area = handle.parentElement?.getBoundingClientRect().width || 0
-  if (!panel || !area) return
-  e.preventDefault()
-  const x0 = e.clientX
-  const w0 = panel.getBoundingClientRect().width
-  handle.setPointerCapture(e.pointerId)
-  sideDrag.value = true
-  const move = (ev: PointerEvent) => { sideWidth.value = clampSideWidth(w0 + x0 - ev.clientX, area) }
-  const up = () => {
-    handle.removeEventListener('pointermove', move)
-    handle.removeEventListener('pointerup', up)
-    handle.removeEventListener('pointercancel', up)
-    sideDrag.value = false
-    saveSideWidth(sideWidth.value)
-  }
-  handle.addEventListener('pointermove', move)
-  handle.addEventListener('pointerup', up)
-  handle.addEventListener('pointercancel', up)
-}
-function resetSideWidth() {
-  sideWidth.value = null
-  saveSideWidth(null)
-}
-
-const projectShown = () => !props.cell && (desk.value ? projectSideOpen.value : viewMode.value === 'project')
-const project = useProjectBoard(() => props.paneId, projectShown)
-const projectOk = computed(() => !props.cell && project.coordinator.value && project.available.value === true)
-const projectTab = computed(() => projectOk.value && !desk.value)
-const projectSide = computed(() => projectOk.value && desk.value)
 
 const banner = shallowRef<Banner | null>(null)
 const ctl = createTerminal(props.paneId, {
@@ -131,7 +86,7 @@ const ctl = createTerminal(props.paneId, {
 const chatRef = ref<{ scrollToEnd: (force: boolean) => void, reload: () => void, focusSearch: () => void, gotoUnanswered: () => void } | null>(null)
 // Questions of the agent's last message the draft does not answer yet (ChatView): the composer's reminder.
 const unanswered = ref(0)
-const composer = ref<{ focus: () => void, focusEnd: () => void, blur: () => void, addImages: (files: File[]) => Promise<void>, addFiles: (files: File[]) => Promise<number>, stop: () => boolean } | null>(null)
+const composer = ref<{ focus: () => void, focusEnd: () => void, focusAnswer: (at: number) => void, blur: () => void, addImages: (files: File[]) => Promise<void>, addFiles: (files: File[]) => Promise<number>, stop: () => boolean } | null>(null)
 const searchOpen = ref(typeof route.query.q === 'string' && typeof route.query.hit === 'string')
 
 // Pane closed while being viewed. A pane just created may be missing
@@ -161,14 +116,14 @@ watch(mode, (m, old) => {
 }, { immediate: true })
 
 function setMode(m: PaneViewMode) {
+  if (props.embedded) emit('update:selectedMode', m)
   if (props.cell) emit('activate')
   viewMode.value = m
   if (desk.value && m === 'term') nextTick(() => ctl.focus())
   haptic()
 }
-// Header icons (phone): one tap shows the terminal (or the Project
-// panel), a second one goes back to the conversation.
-function toggleMode(m: 'term' | 'project') {
+// Header icon (phone): one tap shows the terminal, a second one goes back to the conversation.
+function toggleMode(m: 'term') {
   setMode(toggleViewMode(mode.value, m))
 }
 function toggleSearch() {
@@ -198,14 +153,57 @@ usePaneShortcuts(() => props.paneId, () => live.value, {
   stop: () => mode.value === 'chat' && Boolean(composer.value?.stop()),
 })
 
-// "Problem" or "Question" on a task to test (Project panel): the message start goes
-// into the input field, cursor at the end; on the phone, back to the
-// conversation. Focus given within the gesture: the iPhone opens the keyboard.
 const draft = useDraft(props.paneId)
-function onPrefill(prefix: string) {
-  draft.text = prefillDraft(draft.text, prefix)
-  if (!desk.value && viewMode.value === 'project') viewMode.value = hasChat(pane.value) ? 'chat' : 'term'
-  composer.value?.focusEnd()
+
+// The same agent in another pane (utils/agentIdentity.ts). Herdr may close
+// this pane and open a new one for the same agent (herdr-projects restarting
+// a coordinator): the draft follows the agent, and the view moves to the new
+// pane. The keys are gathered while the pane is open; the board's links say
+// which coordinator or task it is.
+const boardLinks = useBoardLinks()
+// Seeded with the keys stored with the draft: after a reload on a pane already
+// closed, they are all that says who it was.
+const known = shallowRef<string[]>(draftOwnerKeys(props.paneId))
+const liveIds = computed(() => (herdrState.value.ok ? herdrState.value.panes.map(p => p.id).join(' ') : ''))
+watch([() => pane.value && agentKeys(pane.value, boardLinks.value).join(' '), liveIds], ([keys, ids]) => {
+  if (!keys || !ids) return
+  const add = keys.split(' ')
+  known.value = mergeKeys(known.value, add)
+  noteDraftOwner(props.paneId, add)
+  // A draft left by this agent's closed pane comes into this field.
+  if (adoptDrafts(props.paneId, add, new Set(ids.split(' ')))) {
+    toast(tl('Draft from the closed pane restored', 'Brouillon du pane fermé récupéré'))
+  }
+}, { immediate: true })
+const replacement = computed(() => (closed.value ? replacementPane(props.paneId, known.value, herdrState.value.panes, boardLinks.value) : null))
+watch(replacement, (r) => {
+  if (!r) return
+  moveDraft(props.paneId, r.id)
+  // A cell or the Board's panel follows its own layout: it offers the way.
+  if (props.cell || props.embedded) return
+  toast(tl('The agent restarted in a new pane: opened it', 'L’agent a redémarré dans un nouveau pane : il est ouvert'))
+  router.replace(panePath(r.id))
+}, { immediate: true })
+// Closed with no replacement yet: the board names the new pane within seconds.
+let linksTimer: ReturnType<typeof setInterval> | undefined
+watch(() => closed.value && !replacement.value, (waiting) => {
+  clearInterval(linksTimer)
+  linksTimer = undefined
+  if (!waiting) return
+  refreshBoardLinks()
+  let left = 20
+  linksTimer = setInterval(() => {
+    if (--left <= 0) { clearInterval(linksTimer); linksTimer = undefined }
+    if (pageVisible.value) refreshBoardLinks()
+  }, 3000)
+}, { immediate: true })
+onUnmounted(() => clearInterval(linksTimer))
+const hasDraft = computed(() => draftFilled(draft))
+async function copyDraft() {
+  try {
+    await navigator.clipboard.writeText(draftAsText(draft))
+    toast(tl('Draft copied', 'Brouillon copié'))
+  } catch { toast(t('Copy failed'), true) }
 }
 
 // Messages just sent (or still sending), shown without waiting for the next
@@ -311,11 +309,11 @@ async function sendFiles(files: File[]) {
 
 // Files dragged from the Finder / file explorer: conversation → photos of the
 // field (same path as the "+"); terminal → same send as "Attach a
-// file…". Elsewhere (Project panel, offline), nothing: app.vue only stops
+// file…". Elsewhere (offline), nothing: app.vue only stops
 // the browser from opening the file.
 const dropTarget = computed<'chat' | 'term' | null>(() => {
   if (canAttachTerminal.value) return 'term'
-  if (composerShown.value && mode.value !== 'project' && !offlineView.value) return 'chat'
+  if (composerShown.value && !offlineView.value) return 'chat'
   return null
 })
 const dropDepth = ref(0)
@@ -344,9 +342,10 @@ const dropHint = computed(() => pane.value?.agent === 'claude'
   : t('Images, text and code files'))
 
 // Agent menu: sheet on the phone, dropdown menu on a computer.
+useNotificationClock()
 const agentMenu = computed<MenuItem[]>(() => {
   const p = pane.value
-  const items: MenuItem[] = []
+  const items: MenuItem[] = p ? [notificationMenuItem(p)] : []
   if (canAttachTerminal.value) items.push({ label: t('Attach a file…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
   if (p) items.push({ label: t('View changes'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
   if (p) items.push({ label: t('Browse files'), icon: 'i-lucide-folder-tree', run: () => { filesOpen.value = true } })
@@ -361,10 +360,7 @@ const agentMenu = computed<MenuItem[]>(() => {
   // Split, move to another tab (never zoom or resize).
   if (p) items.push(...paneSpaceItems(p))
   if (p) items.push(copyPaneIdItem(p))
-  // herdr-projects entries of its own (Project panel, New project…), then the
-  // machine's other Herdr plugin actions that apply to a workspace / pane.
-  const projectItems = p ? projectMenuItems(p, live.value) : []
-  if (projectItems.length) items.push(...projectItems, { kind: 'separator' })
+  // The machine's Herdr plugin actions that apply to a workspace / pane.
   if (p && agentPluginActions(p.machine).length) {
     items.push({ label: t('Plugin actions'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ pane: p }) })
   }
@@ -406,7 +402,7 @@ function openAgentMenu() { openMenu(agentMenu.value) }
 watch(() => pane.value && (pane.value.machine || ''), (m) => { if (m !== undefined) loadPluginActions(m) }, { immediate: true })
 
 // Conversation / Terminal selector (computer): in the pane header
-// or in the side-by-side cell's. The Project panel is a column there.
+// or in the side-by-side cell's.
 // The icons replace the labels in a narrow cell (CSS).
 const tabs = computed(() => [
   { label: t('Conversation'), value: 'chat', icon: 'i-lucide-message-square' },
@@ -417,7 +413,11 @@ const tab = computed({
   get: () => (mode.value === 'term' ? 'term' : 'chat'),
   set: (v: string) => setMode(v === 'term' ? 'term' : 'chat'),
 })
-const controls = computed(() => viewControls({ desk: desk.value, cell: Boolean(props.cell), chat: hasChat(pane.value), live: live.value, project: projectTab.value }))
+// Terminal keys: under the terminal, and in the active side-by-side cell on a
+// touch screen (iPad without a hardware keyboard: Esc, arrows, ^C).
+const keybarShown = computed(() => mode.value === 'term' && (!props.cell || Boolean(coarse.value && props.active))
+  && eventsOpen.value && !offlineView.value && !machineDown.value)
+const controls = computed(() => viewControls({ desk: desk.value, cell: Boolean(props.cell), chat: hasChat(pane.value), live: live.value }))
 const headerAdd = computed(() => !props.cell && pane.value && spaceTabControls(spaceTabs(pane.value.workspace).length).headerAdd)
 
 watch(fontSize, n => ctl.setFontSize(n))
@@ -464,7 +464,8 @@ function scrollsSideways(el: EventTarget | null, root: HTMLElement) {
 // only scrolls vertically); not on the key bar or the input field.
 function onSwipeStart(e: TouchEvent) {
   axis = 'off'
-  if (desk.value || !inTab.value || e.touches.length !== 1) return
+  // A cell (side by side, the Board's panel) never swipes to its neighbours.
+  if (props.cell || desk.value || !inTab.value || e.touches.length !== 1) return
   const zone = (e.target as HTMLElement | null)?.closest?.('.swipe-area, .choices, #termWrap') as HTMLElement | null
   if (!zone || scrollsSideways(e.target, zone)) return
   sx = e.touches[0]!.clientX
@@ -535,7 +536,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
       <small>{{ dropTarget === 'term' ? t('The file path is sent to the terminal') : dropHint }}</small>
     </div>
     <SpaceTabs v-if="!cell && pane" :workspace="pane.workspace" :current="pane.tab" />
-    <HeaderMenu :items="() => agentMenu" :disabled="!pane">
+    <HeaderMenu v-if="!embedded" :items="() => agentMenu" :disabled="!pane">
       <header class="top bar agent-top">
         <span v-if="cell && grip" class="cell-grip" role="button" :aria-label="t('Drag to move the pane')" :title="t('Drag to move the pane')">
           <UIcon name="i-lucide-grip-vertical" />
@@ -545,7 +546,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
           :aria-label="t('Back')" @click="goBack"
         />
         <div class="agent-head">
-          <div class="agent-title">{{ headTitle }}</div>
+          <div class="agent-title">{{ headTitle }} <UIcon v-if="pane && paneNotificationsMuted(pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
           <div class="agent-meta">
             <StatusPill :pane="pane" kind />
             <span v-if="subtitle" class="agent-subtitle">{{ subtitle }}</span>
@@ -578,13 +579,6 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
               <TabMap :layout="tabEnt.layout" :panes="tabEnt.panes" :current="paneId" />
             </button>
           </UTooltip>
-          <UTooltip v-if="projectSide && !projectSideOpen" :text="t('Show the Project panel')" :kbds="live ? shortcutKbds('project-panel') : undefined">
-            <UButton icon="i-lucide-panel-right-open" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Show the Project panel')" @click="setProjectSideOpen(true)" />
-          </UTooltip>
-          <UButton
-            v-if="controls.project" icon="i-lucide-folder-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
-            :class="{ on: mode === 'project' }" :aria-label="t('Project')" :aria-pressed="mode === 'project'" @click="toggleMode('project')"
-          />
           <UButton
             v-if="controls.term" icon="i-lucide-square-terminal" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
             :class="{ on: mode === 'term' }" :aria-label="t('Terminal')" :aria-pressed="mode === 'term'" @click="toggleMode('term')"
@@ -607,9 +601,15 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
       <UIcon name="i-lucide-unplug" class="term-banner-icon" />
       <span>{{ machine.status === 'connecting' ? tl(`${machineName(machine.key)} unreachable — reconnecting…`, `${machineName(machine.key)} injoignable — reconnexion…`) : tl(`${machineName(machine.key)} offline`, `${machineName(machine.key)} hors ligne`) }}<small v-if="machine.error">{{ t(machine.error) }}</small></span>
     </div>
-    <div v-if="banner" class="term-banner">
+    <div v-if="banner === closedBanner && replacement" class="term-banner closed-banner">
+      <UIcon name="i-lucide-refresh-cw" class="term-banner-icon" />
+      <span>{{ tl('This agent continues in a new pane.', 'Cet agent continue dans un nouveau pane.') }}</span>
+      <UButton size="xs" color="warning" variant="outline" :to="panePath(replacement.id)">{{ tl('Open', 'Ouvrir') }}</UButton>
+    </div>
+    <div v-else-if="banner" class="term-banner" :class="{ 'closed-banner': banner === closedBanner }">
       <UIcon name="i-lucide-triangle-alert" class="term-banner-icon" />
-      <span>{{ banner.text }}</span>
+      <span>{{ banner === closedBanner && hasDraft ? tl('This pane has been closed. Your draft is kept below.', 'Ce pane a été fermé. Ton brouillon est gardé ci-dessous.') : banner.text }}</span>
+      <UButton v-if="banner === closedBanner && hasDraft" size="xs" color="warning" variant="outline" icon="i-lucide-copy" @click="copyDraft">{{ tl('Copy draft', 'Copier le brouillon') }}</UButton>
       <UButton size="xs" color="warning" variant="outline" @click="banner.fn()">{{ banner.btn }}</UButton>
     </div>
 
@@ -618,16 +618,12 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     >
       <ChatView
         ref="chatRef" v-model:search="searchOpen" :pane="pane" :local-queued="localQueued"
-        @goto-term="setMode('term')" @restored="composer?.focus()" @quote="composer?.focusEnd()" @unanswered="unanswered = $event" @sent="onSent"
+        @goto-term="setMode('term')" @restored="composer?.focus()" @quote="composer?.focusEnd()" @answered="composer?.focusAnswer($event)" @unanswered="unanswered = $event" @sent="onSent"
       />
     </div>
     <div v-else-if="mode === 'term' && (!eventsOpen || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal unavailable offline') }}</p></div>
     <TerminalView
       v-else-if="mode === 'term'" :ctl="ctl" :class="enter ? (enter > 0 ? 'enter-next' : 'enter-prev') : undefined" :style="swipeStyle"
-    />
-    <ProjectPanel
-      v-else-if="mode === 'project'" :pane-id="paneId" :board="project.board.value" :loading="project.loading.value" :error="project.error.value"
-      @reload="project.reload()" @sent="onSent" @prefill="onPrefill"
     />
     <div v-else class="chat" />
     <p v-if="pane?.agent && !hasChat(pane) && mode === 'term' && !cell" class="terminal-transcript-note">{{ tl('Conversation unavailable for this agent · follow it in the terminal', 'Conversation non disponible pour cet agent · suivi dans le terminal') }}</p>
@@ -638,18 +634,9 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     </button>
     <ChoicesPanel v-if="(prompt || screen) && !interactionOpen && !interactive && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" :keys="live" />
     <MenuPanel v-else-if="menu && !interactionOpen && !interactive && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :menu="menu" :keys="live" @terminal="setMode('term')" />
-    <Keybar v-if="mode === 'term' && !cell && eventsOpen && !offlineView && !machineDown" :ctl="ctl" />
-    <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
+    <Keybar v-if="keybarShown" :ctl="ctl" />
+    <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
     </div>
-    <div
-      v-if="projectSide && projectSideOpen" class="side-handle" :class="{ dragging: sideDrag }" role="separator" aria-orientation="vertical"
-      :aria-label="t('Project panel width')" :title="t('Drag to resize · double-click: default width')"
-      @pointerdown="onSideGrab" @dblclick="resetSideWidth"
-    />
-    <ProjectPanel
-      v-if="projectSide && projectSideOpen" side :style="sideStyle" :class="{ resizing: sideDrag }" :pane-id="paneId" :board="project.board.value" :loading="project.loading.value" :error="project.error.value"
-      @reload="project.reload()" @collapse="setProjectSideOpen(false)" @sent="onSent" @prefill="onPrefill"
-    />
     </div>
     <AppSheet v-model:open="changesOpen" :title="t('Changes')" wide full screen>
       <ChangesView v-if="changesOpen && pane" :pane-id="paneId" @review="onReview" />

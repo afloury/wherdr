@@ -1,20 +1,22 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { checkDocLinks } from '../scripts/check-doc-links.mjs'
 import { AGENT_PROMPT, REPO } from '../website/app/utils/site'
 
 // website/public/agent.md guides coding agents through an install: every
-// command, port and variable it cites must be one the README or the installer
+// command, port and variable it cites must be one the documentation or the installer
 // script really uses, so the guide cannot drift from them.
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
+const documentation = ['installation', 'networks', 'command', 'plugins', 'security', 'machines', 'board', 'troubleshooting'].map(page => read(`../docs/${page}.md`)).join('\n')
 const guide = read('../website/public/agent.md')
 // Shell line continuations joined, as in the guide's snippets below.
-const sources = (read('../README.md') + read('../website/public/install')).replace(/\\\n\s*/g, '')
+const sources = (documentation + read('../website/public/install')).replace(/\\\n\s*/g, '')
 const llms = read('../website/public/llms.txt')
 
-// Checks an agent runs to verify a step: not in the README, harmless, read-only.
-const CHECKS = ['curl -fsS http://127.0.0.1:7683', 'curl -fsS http://127.0.0.1:7683/manifest.webmanifest', 'curl -fsSL https://wherdr.dev/agent.md', 'docker compose ps', 'tailscale status', 'tailscale serve status', 'herdr plugin list', 'brew list wherdr', 'git --version', 'node --version']
+// Checks an agent runs to verify a step: not in the documentation, harmless, read-only.
+const CHECKS = ['curl -fsS http://127.0.0.1:7683', 'curl -fsS http://127.0.0.1:7683/manifest.webmanifest', 'curl -fsSL https://wherdr.dev/agent.md', 'tailscale status', 'tailscale serve status', 'herdr plugin list', 'brew list wherdr', 'git --version', 'node --version']
 // Placeholders and file paths the guide names, not commands.
-const PLAIN = /^(~\/[\w./-]+|\.env|plugin\.env|TASKS\.md|docker|url|herdr-projects (skill|doctor)|https:\/\/<machine>\.<tailnet>\.ts\.net:7683\/)$/
+const PLAIN = /^(~\/[\w./-]+|\.env|plugin\.env|TASKS\.md|url|herdr-projects (skill|doctor)|https:\/\/<machine>\.<tailnet>\.ts\.net:7683\/)$/
 // Quoted from wherdr's own output, checked against the code below.
 const OUTPUT = ['"reach":"ok"', '"pending"', 'First passkey: bootstrap token']
 
@@ -25,8 +27,8 @@ const snippets = [
 ]
 
 describe('agent.md', () => {
-  it.each(snippets.filter(s => !CHECKS.includes(s) && !OUTPUT.includes(s) && !PLAIN.test(s)))('`%s` is in the README or the installer', (snippet) => {
-    // The guide fills one placeholder; the README writes a sample address.
+  it.each(snippets.filter(s => !CHECKS.includes(s) && !OUTPUT.includes(s) && !PLAIN.test(s)))('`%s` is in the documentation or the installer', (snippet) => {
+    // The guide fills one placeholder; the documentation writes a sample address.
     const s = snippet.replace('https://<machine>.<tailnet>.ts.net:7683/', 'https://server.example.ts.net:7683/')
     expect(sources).toContain(s)
   })
@@ -52,22 +54,25 @@ describe('agent.md', () => {
     expect(guide.slice(0, 300)).toContain('curl -fsSL https://wherdr.dev/agent.md')
   })
 
+  it('keeps the passkey lock optional, as the documentation says', () => {
+    // wherdr answers only this computer and the tailnet; a passkey is an extra lock.
+    expect(documentation).toContain('The passkey lock is never required')
+    expect(guide).not.toMatch(/passkey[^\n]*\(required|\brequired\b[^\n]*passkey/i)
+    expect(guide).toMatch(/\*\*Passkey lock\*\* \(optional/)
+  })
+
   it('cites the Herdr version the installer requires', () => {
     const min = read('../website/public/install').match(/version_lt "\$\{HERDR_VERSION:-0\}" "([\d.]+)"/)![1]
     expect(guide).toContain(`Herdr ≥ ${min}`)
   })
 
-  it('README anchors it links exist', () => {
-    const anchors = new Set(read('../README.md').match(/^#+ .+$/gm)!
-      .map(h => h.replace(/^#+ /, '').toLowerCase().replace(/[^\w\s-]/g, '').trim().replace(/\s/g, '-')))
-    for (const [, a] of guide.matchAll(new RegExp(`${REPO.replace(/[./]/g, '\\$&')}#([\\w-]+)`, 'g'))) {
-      if (a !== 'readme') expect(anchors).toContain(a)
-    }
+  it('documentation links resolve to existing pages and anchors', () => {
+    expect(checkDocLinks()).toEqual([])
   })
 
   it('keeps the passkey lock optional, as the README says', () => {
     // wherdr answers only this computer and the tailnet; a passkey is an extra lock.
-    expect(read('../README.md')).toContain('The passkey lock is never required')
+    expect(read('../README.md')).toContain('optional passkey lock')
     expect(guide).not.toMatch(/passkey[^\n]*\(required|\brequired\b[^\n]*passkey/i)
     expect(guide).toMatch(/\*\*Passkey lock\*\* \(optional/)
   })
@@ -92,5 +97,21 @@ describe('llms.txt', () => {
     const [, repo, path] = url.match(/raw\.githubusercontent\.com\/([^/]+\/[^/]+)\/main\/(.+)$/)!
     expect(`https://github.com/${repo}`).toBe(REPO)
     expect(existsSync(new URL(`../${path}`, import.meta.url))).toBe(true)
+  })
+})
+
+describe('documentation entry points', () => {
+  it('keeps the README short and links to the topic index', () => {
+    const readme = read('../README.md')
+    expect(Buffer.byteLength(readme)).toBeLessThan(6000)
+    expect(readme).toContain('(docs/README.md)')
+    expect(readme).toContain('(docs/screenshots/desktop.png)')
+  })
+
+  it('indexes every documentation page', () => {
+    const index = read('../docs/README.md')
+    for (const file of readdirSync(new URL('../docs/', import.meta.url), { recursive: true })) {
+      if (typeof file === 'string' && file.endsWith('.md') && file !== 'README.md') expect(index).toContain(`](${file})`)
+    }
   })
 })

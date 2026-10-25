@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readHiddenAgents, selectedAgentKind, visibleAgentKinds } from '../app/utils/agentChoices'
+import { readHiddenAgents, selectedAgentKind, startAgentChoices, visibleAgentKinds } from '../app/utils/agentChoices'
 
 describe('choix des agents', () => {
   it('offers all installed agents by default, and keeps Terminal', () => {
@@ -24,5 +24,26 @@ describe('choix des agents', () => {
   it('ignores malformed preferences and never hides Terminal', () => {
     expect(readHiddenAgents('{')).toEqual([])
     expect(readHiddenAgents('["kimi","kimi","shell",4]')).toEqual(['kimi'])
+  })
+
+  describe('a task\'s Start row', () => {
+    const def = { value: 'codex/gpt-5.5', kind: 'codex' }
+    const ids = (c: ReturnType<typeof startAgentChoices>) => c.map(a => a.id ?? `default:${a.label}${a.hidden ? ' (hidden)' : ''}${a.usable ? '' : ' (missing)'}`)
+
+    it('drops unchecked agents but keeps the default first', () => {
+      expect(ids(startAgentChoices({ agent: def, agents: ['claude', 'codex', 'omp', 'kimi'] }, ['omp', 'kimi'], 'default')))
+        .toEqual(['default:codex/gpt-5.5', 'claude'])
+    })
+
+    it('shows an unchecked default, marked, still usable', () => {
+      expect(ids(startAgentChoices({ agent: def, agents: ['claude', 'codex', 'kimi'] }, ['codex', 'kimi'], 'default')))
+        .toEqual(['default:codex/gpt-5.5 (hidden)', 'claude'])
+    })
+
+    it('keeps the not-installed and unknown cases', () => {
+      expect(ids(startAgentChoices({ agent: def, agents: ['claude'] }, [], 'default'))).toEqual(['default:codex/gpt-5.5 (missing)', 'claude'])
+      expect(ids(startAgentChoices({ agent: def, agents: [] }, [], 'default'))).toEqual(['default:codex/gpt-5.5'])
+      expect(ids(startAgentChoices({ agent: null, agents: ['claude', 'kimi'] }, ['kimi'], 'default'))).toEqual(['default:default', 'claude'])
+    })
   })
 })

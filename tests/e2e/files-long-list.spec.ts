@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { OMP_CHAT_PANE } from './scenario.mjs'
 
 // A folder of 1500 files: the list scrolls in the Files window and its last
@@ -49,6 +49,7 @@ test('the last file of a 1500-file folder is reached by scrolling and opens', as
   await expect(last).toBeInViewport()
   if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${info.project.name}-files-1500-end.png` })
   await last.click()
-  await expect(page.locator('.files-text')).toHaveText('last file')
+  // A .md note opens formatted (Rendered is the default).
+  await expect(page.locator('.files-md')).toHaveText('last file')
   await expect(page.locator('.files-crumb.current')).toHaveText(name(COUNT))
 })

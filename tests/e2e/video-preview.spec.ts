@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { FAKE_MOV, OMP_IMAGE_PANE, SAMPLE_MP4, SAMPLE_WEBM, fixture } from './scenario.mjs'
 
 const inline = (file: string) => `/api/files/download?pane=${encodeURIComponent(OMP_IMAGE_PANE)}&path=${encodeURIComponent(file)}&inline=1`
@@ -11,7 +11,7 @@ async function openNotes(page: Page) {
   await page.locator('.files-entry', { hasText: 'notes' }).click()
 }
 
-test('a video plays in the Files preview, streamed in pieces', async ({ page }, info) => {
+test('a video plays in the Files preview, streamed in pieces', { tag: '@webkit-phone' }, async ({ page }, info) => {
   // Each media request: its Range header and the status it got.
   const answers: { range?: string, status: number }[] = []
   page.on('response', async (r) => {

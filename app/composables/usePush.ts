@@ -1,19 +1,6 @@
 // Web Push notifications: device subscription, test, notification language.
-import type { NotifyScope } from '../../server/utils/notificationPolicy'
 import { type Quiet, type QuietScope, quietActive } from '../../shared/quiet'
 
-const scopeKey = 'pushNotifyScope'
-function savedScope(): NotifyScope {
-  try { return localStorage.getItem(scopeKey) === 'all' ? 'all' : 'project_leads' }
-  catch { return 'project_leads' }
-}
-export const notifyScope = ref<NotifyScope>(import.meta.client ? savedScope() : 'project_leads')
-
-export async function setNotifyScope(scope: NotifyScope) {
-  notifyScope.value = scope
-  try { localStorage.setItem(scopeKey, scope) } catch { /* stockage indisponible */ }
-  await syncPushLanguage()
-}
 
 function urlB64ToUint8(b64: string) {
   const pad = '='.repeat((4 - (b64.length % 4)) % 4)
@@ -36,7 +23,7 @@ export async function syncPushLanguage(lang = language) {
   if (!('serviceWorker' in navigator) || !('Notification' in window) || Notification.permission !== 'granted') return
   const reg = await navigator.serviceWorker.ready
   const sub = await reg.pushManager.getSubscription()
-  if (sub) await api('/api/push/subscribe', { ...sub.toJSON(), lang, notifyScope: notifyScope.value, sessions: machineSessions.value })
+  if (sub) await api('/api/push/subscribe', { ...sub.toJSON(), lang, sessions: machineSessions.value })
 }
 
 const LAST_ENDPOINT = 'pushEndpoint'
@@ -62,7 +49,7 @@ export async function enablePush() {
     const previous = sub?.endpoint || readLastEndpoint()
     if (sub) await sub.unsubscribe().catch(() => {})
     sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key })
-    await api('/api/push/subscribe', { ...sub.toJSON(), previous, lang: language, notifyScope: notifyScope.value, sessions: machineSessions.value })
+    await api('/api/push/subscribe', { ...sub.toJSON(), previous, lang: language, sessions: machineSessions.value })
     try { localStorage.setItem(LAST_ENDPOINT, sub.endpoint) } catch { /* stockage indisponible */ }
     toast(t('Notifications enabled ✓'))
   } catch (err) {

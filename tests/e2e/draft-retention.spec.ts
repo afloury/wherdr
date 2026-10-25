@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { OMP_CHAT_PANE, OMP_IMAGE_PANE } from './scenario.mjs'
 
 test('persistent drafts release the DOM of unmounted conversations after GC', async ({ page, context, browserName }) => {

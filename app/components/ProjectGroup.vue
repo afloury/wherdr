@@ -1,155 +1,124 @@
 <script setup lang="ts">
-// herdr-projects project in the list: collapsible header (name, number
-// of agents, summarized state), then the coordinator and its threads (a space
-// card when the thread has several tabs or panes, `rowOf`).
-// Coordinator on another machine (`remote`): the threads stay under
-// their own, the header says where the project is coordinated from and links there.
-// Root terminal of the threads' repository (`roots`): small "Repository <name> ·
-// N worktrees" header above them: a click collapses it, its menu (right click on
-// a computer, long press on the phone) opens that terminal.
-import type { Pane } from '#shared/types'
-import type { ProjectGroup } from '#shared/projects'
-import type { RepoRoot, Row } from '#shared/spaces'
-import { projectCounts, projectSections, threadNumber } from '#shared/projects'
+// A repo's group on the home list, as Herdr's sidebar draws it with
+// herdr-projects. Its head row is its project coordinator, named after the
+// repo: the wherdr mark on the accent, "Coordinator", its state (no last
+// message; its question and one-tap answers when it asks one). Without a
+// local coordinator, a remote coordinator link heads the group if present;
+// otherwise the group starts with its task summary bar.
+// Under it, the group's bar: the fold button with a summary of the tasks
+// ("4 TASKS · 1 YOUR TURN · 1 LIMIT"), the branch, and the "…" menu of the
+// repo's space (its terminal, its actions; closing it closes the whole
+// worktree group: the confirmation names the tasks it stops). Then its tasks'
+// spaces, indented on a rule (id, title, progress, time on it, the board's
+// current line), most urgent first; they fold with the group (kept per
+// project on the device).
+// One row per task: its helpers (reviewer, planner, attempts, each in a tab
+// of the task's space) are part of it, the row says the stage ("Under review
+// · codex") and opens the helper's tab while it works.
+// Coordinator on another machine (`remote`): the tasks stay here, a line
+// says where the repo is coordinated from and opens that coordinator.
+import type { Row } from '#shared/spaces'
+import { type BoardCard, type ProjectSection } from '#shared/boardLinks'
 import type { MenuItem } from '~/composables/useUi'
-import { repoHeaderState, threadCountLabel } from '~/utils/terminalVisibility'
 import { longPress } from '~/utils/longPress'
+import { summaryParts, taskSummary } from '~/utils/projectSummary'
 
-const props = defineProps<{ group: ProjectGroup<Pane>, machine?: string, rowOf?: (p: Pane) => Row | undefined, remote?: Pane | null, roots?: RepoRoot[] }>()
-const sections = computed(() => projectSections(props.group, props.roots || []))
-function openRoot(r: RepoRoot) {
-  if (!showShells.value) return
-  openSpace(r.row.lead.workspace)
-}
-// Its terminal is open (computer: view to the right of the list).
-const isOpen = (r: RepoRoot) => (r.row.kind === 'space' ? r.row.panes : [r.row.pane]).some(p => p.id === curPane.value)
-const headerState = (r?: RepoRoot | null) => repoHeaderState(showShells.value, !!r && isOpen(r), !!r)
-function repoItems(r?: RepoRoot | null): MenuItem[] {
-  if (!r || !headerState(r).menu) return []
-  return [{ label: tl('Open terminal', 'Ouvrir le terminal'), icon: 'i-lucide-square-terminal', run: () => openRoot(r) }]
-}
-const repoMenuTitle = (name: string) => `${tl('Repo', 'Dépôt')} ${name}`
-let pressed: { root?: RepoRoot | null, name: string } | null = null
-const lp = longPress({
-  onPress: () => {
-    const items = repoItems(pressed?.root)
-    if (!pressed || !items.length) return
-    haptic()
-    openMenu(items, repoMenuTitle(pressed.name))
-  },
-})
-// Touch or narrow screen only: otherwise the floating context menu handles it.
-function repoDown(e: PointerEvent, root: RepoRoot | null | undefined, name: string) {
-  if (!sheetMenus.value) return
-  pressed = { root, name }
-  lp.down(e)
-}
-function repoClick(key: string) {
-  if (lp.swallowClick()) return
-  toggleRepo(key)
-}
-const worktreeCount = (n: number) => (n === 1 ? tl('1 worktree', '1 worktree') : tl(`${n} worktrees`, `${n} worktrees`))
-function openCoordinator() {
-  if (!props.remote) return
-  haptic()
-  navigateTo(panePath(props.remote.id))
-}
+const props = defineProps<{ group: ProjectSection, machine?: string }>()
+const g = computed(() => props.group)
 
-const id = computed(() => `${props.machine || ''}|${props.group.key}`)
-const collapsed = computed(() => collapsedProjects.value.includes(id.value))
-const repoId = (key: string) => `${id.value}|${key}`
-const repoCollapsed = (key: string) => collapsedRepos.value.includes(repoId(key))
-function toggleRepo(key: string) {
-  haptic()
-  const id = repoId(key)
-  const c = collapsedRepos.value
-  collapsedRepos.value = c.includes(id) ? c.filter(k => k !== id) : [...c, id]
-}
+const id = computed(() => `${props.machine || ''}|${g.value.id}`)
+const collapsed = computed(() => collapsedRepos.value.includes(id.value))
 function toggle() {
-  if (headLp.swallowClick()) return
+  if (barLp.swallowClick()) return
   haptic()
-  const c = collapsedProjects.value
-  collapsedProjects.value = c.includes(id.value) ? c.filter(k => k !== id.value) : [...c, id.value]
+  const c = collapsedRepos.value
+  collapsedRepos.value = c.includes(id.value) ? c.filter(k => k !== id.value) : [...c, id.value]
 }
-// A coordinator's space counts each of its tabs (a thread opened as a tab).
-const sum = computed(() => projectCounts(props.group.panes, props.rowOf))
-const ready = computed(() => sum.value.ready)
-const projectTitle = computed(() => {
-  const p = props.group.coordinator || props.remote
-  return p ? spaceTitle(p, herdrState.value.workspaces.find(w => w.id === p.workspace)) : props.group.name
+
+const spaceId = computed(() => {
+  const r = g.value.space
+  return r ? (r.kind === 'space' ? r.workspace.id : r.lead.workspace) : null
 })
-const tag = (p: Pane) => {
-  if (p === props.group.coordinator) return t('coordinator')
-  const n = threadNumber(p)
-  return n == null ? null : `t-${String(n).padStart(4, '0')}`
+function openRepo() {
+  const r = g.value.space
+  if (!r) return
+  haptic()
+  if (r.kind === 'space') openSpace(r.workspace.id, r.leadTab.tab.id)
+  else navigateTo(panePath(r.pane.id))
 }
-// The project's own menu (right click on its header on a computer, long press on
-// the phone): Project panel, pause, New project…, through its coordinator, else
-// the coordinating machine's, else its first agent. The title names the project.
-const headItems = computed(() => {
-  const p = props.group.coordinator || props.remote || props.group.panes[0]
-  return p ? projectMenuItems(p).filter(i => i.kind !== 'group') : []
-})
-const headLp = longPress({
+const repoLabel = computed(() => tl(`Open the terminal of ${g.value.repo}`, `Ouvrir le terminal de ${g.value.repo}`))
+const headItems = (): MenuItem[] => (spaceId.value
+  ? [{ label: repoLabel.value, icon: 'i-lucide-square-terminal', run: openRepo }, { kind: 'separator' }, ...workspaceItems(spaceId.value, true)]
+  : [])
+// Touch: a long press on the bar opens the same menu as "…".
+const barLp = longPress({
   onPress: () => {
-    if (!headItems.value.length) return
+    const items = headItems()
+    if (!items.length) return
     haptic()
-    openMenu(headItems.value, projectTitle.value)
+    openMenu(items, g.value.repo)
   },
 })
+
+// The tasks only: the coordinator has its own row and state above.
+const parts = computed(() => summaryParts(taskSummary(g.value.members), tl))
+const foldLabel = computed(() => (collapsed.value
+  ? tl(`Show the tasks of ${g.value.repo}`, `Afficher les tâches de ${g.value.repo}`)
+  : tl(`Hide the tasks of ${g.value.repo}`, `Masquer les tâches de ${g.value.repo}`)))
+
+const headTitle = computed(() => `${foldLabel.value}: ${parts.value.map(p => p.text).join(' · ')}`)
+
+const behind = computed(() => g.value.info?.behind || 0)
+const branchTitle = computed(() => {
+  const i = g.value.info
+  if (!i?.branch) return undefined
+  return behind.value ? tl(`${i.branch}: ${behind.value} commits behind its upstream`, `${i.branch} : ${behind.value} commits de retard sur sa branche distante`) : i.branch
+})
+
+// Only a local coordinator gets a head row; the repo terminal stays in the bar menu.
+const leadRow = computed(() => g.value.coordinator)
+const leadCard = computed<BoardCard>(() => ({ tag: '', name: g.value.repo, coordinator: true, lead: true }))
+const leadLabel = computed(() => coordinatorLabel({ kind: 'project', repo: g.value.repo }, ''))
+
+function openRemote() {
+  if (!g.value.remote) return
+  haptic()
+  showMachineInBar(g.value.remote.machine)
+  navigateTo(panePath(g.value.remote.pane))
+}
+const rowKey = (r: Row) => r.key
 </script>
 
 <template>
-  <section class="agent-group project" :class="{ collapsed, blocked: sum.blocked > 0 }" :data-project="group.key">
-    <UContextMenu :disabled="sheetMenus || !headItems.length" :items="sheetMenus ? [] : toDropdown(headItems)" :ui="{ content: 'hw-dropdown' }">
-      <button type="button" class="group-title project-head" :aria-expanded="!collapsed"
-        @pointerdown="sheetMenus && headLp.down($event)" @pointermove="headLp.move" @pointerup="headLp.cancel" @pointercancel="headLp.cancel"
-        @contextmenu="sheetMenus && $event.preventDefault()" @click="toggle">
-        <UIcon name="i-lucide-chevron-down" class="project-chev" />
-        <span class="project-name">{{ projectTitle }}</span>
-        <span class="count">{{ sum.total }}</span>
-        <span class="project-sum">
-          <span v-if="sum.blocked" class="blocked"><i />{{ sum.blocked }}<span class="project-sum-l">{{ t('your turn') }}</span></span>
-          <span v-if="sum.working" class="working"><i />{{ sum.working }}<span class="project-sum-l">{{ t('working') }}</span></span>
-          <span v-if="ready && (collapsed || !sum.blocked && !sum.working)" class="ready"><i />{{ ready }}<span class="project-sum-l">{{ t('ready') }}</span></span>
-        </span>
-      </button>
-    </UContextMenu>
-    <button v-if="remote" type="button" class="project-remote" @click="openCoordinator">
+  <section class="agent-group project" :class="[group.state, { collapsed }]" :data-repo="group.repo">
+    <div v-if="leadRow" class="card-list project-lead" role="group" :aria-label="leadLabel">
+      <AgentCard :key="leadRow.key" :pane="leadRow.lead" :row="leadRow" :board="leadCard" />
+    </div>
+    <button v-else-if="group.remote" type="button" class="project-remote" @click="openRemote">
       <UIcon name="i-lucide-radio-tower" class="project-remote-icon" />
-      <span>{{ tl('Coordinated from', 'Coordonné depuis') }} <b>{{ machineName(remote.machine) }}</b></span>
+      <span>{{ tl('Coordinated from', 'Coordonné depuis') }} <b>{{ machineName(group.remote.machine) }}</b></span>
       <span class="project-remote-go">{{ t('coordinator') }}<UIcon name="i-lucide-arrow-up-right" /></span>
     </button>
-    <template v-if="!collapsed">
-      <div v-if="sections.coordinator" class="card-list project-coordinator">
-        <AgentCard :pane="sections.coordinator" :tag="tag(sections.coordinator)" :row="rowOf?.(sections.coordinator)" />
-      </div>
-      <div v-for="repo in sections.repos" :key="repo.key" class="project-repo-group" :class="{ folded: repoCollapsed(repo.key) }">
-        <UContextMenu :disabled="sheetMenus || !repoItems(repo.root).length" :items="sheetMenus ? [] : toDropdown(repoItems(repo.root))" :ui="{ content: 'hw-dropdown' }">
-          <button type="button" class="project-repo" :class="{ sel: headerState(repo.root).selected }"
-            :aria-expanded="!repoCollapsed(repo.key)"
-            :aria-current="headerState(repo.root).selected ? 'page' : undefined"
-            :title="repo.root?.row.lead.cwd || undefined"
-            @pointerdown="repoDown($event, repo.root, repo.name)" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
-            @contextmenu="sheetMenus && $event.preventDefault()" @click="repoClick(repo.key)">
-            <UIcon name="i-lucide-chevron-down" class="project-repo-chev" />
-            <UIcon name="i-lucide-git-fork" class="project-repo-icon" />
-            <span class="project-repo-l">{{ tl('Repo', 'Dépôt') }}</span>
-            <b>{{ repo.name }}</b>
-            <span class="project-repo-n">· {{ worktreeCount(repo.worktrees) }}</span>
-            <span v-if="repoCollapsed(repo.key)" class="project-repo-summary" :class="repo.blocked ? 'blocked' : repo.working ? 'working' : 'ready'"
-              :title="threadCountLabel(repo.panes.length)"><i />{{ repo.panes.length }}<span>{{ repo.panes.length === 1 ? 'thread' : 'threads' }}</span></span>
-          </button>
-        </UContextMenu>
-        <div v-if="!repoCollapsed(repo.key)" class="project-repo-threads card-list">
-          <div v-for="p in repo.panes" :key="p.id" class="project-thread-item">
-            <AgentCard :pane="p" :tag="tag(p)" :row="rowOf?.(p)" />
-          </div>
-        </div>
-      </div>
-      <div v-if="sections.others.length" class="card-list project-others">
-        <AgentCard v-for="p in sections.others" :key="p.id" :pane="p" :tag="tag(p)" :row="rowOf?.(p)" />
-      </div>
-    </template>
+    <div class="project-bar">
+      <UContextMenu :disabled="sheetMenus || !spaceId" :items="sheetMenus || !spaceId ? [] : toDropdown(headItems())" :ui="{ content: 'hw-dropdown' }">
+        <button
+          type="button" class="project-head" :aria-expanded="!collapsed" :title="headTitle"
+          @pointerdown="sheetMenus && barLp.down($event)" @pointermove="barLp.move" @pointerup="barLp.cancel" @pointercancel="barLp.cancel"
+          @contextmenu="sheetMenus && $event.preventDefault()" @click="toggle"
+        >
+          <UIcon name="i-lucide-chevron-down" class="project-chev" />
+          <span class="sr-only">{{ foldLabel }}</span>
+          <span class="project-sum">
+            <!-- Keep the summary on one line; the button title retains every count on narrow screens. -->
+            <span v-for="(p, i) in parts" :key="p.key" class="project-sum-part"><span :class="`project-sum-${p.key}`">{{ p.text }}</span><span v-if="i < parts.length - 1" class="project-sum-sep" aria-hidden="true">·</span></span>
+          </span>
+        </button>
+      </UContextMenu>
+      <span v-if="group.info?.branch" class="project-branch" :title="branchTitle"><UIcon name="i-lucide-git-branch" /><span class="project-branch-name">{{ group.info.branch }}</span><b v-if="behind">↓{{ behind }}</b></span>
+      <SpaceMenu v-if="spaceId" :items="headItems" :title="group.repo" size="sm" :label="tl(`Options: ${group.repo}`, `Options : ${group.repo}`)" />
+    </div>
+    <div v-if="!collapsed && group.members.length" class="card-list project-tree">
+      <AgentCard v-for="m in group.members" :key="rowKey(m.row)" :pane="m.row.lead" :row="m.row" :board="memberCard(m)" />
+    </div>
   </section>
 </template>

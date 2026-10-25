@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FrameSplitter, decodeServerFrame, frame, helloFrame } from '../server/utils/herdrEndpoint'
-import {
-  NoticeDeduper, findThreadPane, forwardableNotice, noticeKey, projectThreadOfNotice, shouldNotifyNotice,
-} from '../server/utils/notificationPolicy'
+import { NoticeDeduper, forwardableNotice, noticeKey } from '../server/utils/notificationPolicy'
 
 // Frame captured on Herdr 0.9.1 (test session) after
 // `herdr notification show "Build terminé" --body "api · 3 tests" --sound done`.
@@ -63,32 +61,6 @@ describe('notifications herdr -> push', () => {
     expect(forwardableNotice(n('needs_attention', 'claude needs attention'))).toBe(false)
     expect(forwardableNotice(n('finished', 'codex finished'))).toBe(false)
     expect(forwardableNotice(n('custom', '  '))).toBe(false)
-  })
-
-  it('applies "Notify for" to herdr-projects threads', () => {
-    expect(projectThreadOfNotice('Wherdr · t-0015')).toEqual({ project: 'Wherdr', thread: 't-0015' })
-    expect(projectThreadOfNotice('Wherdr · gh')).toBeNull()
-    expect(projectThreadOfNotice('herdr-projects doctor')).toBeNull()
-    expect(shouldNotifyNotice(undefined, 'Wherdr · t-0015')).toBe(false)
-    expect(shouldNotifyNotice('project_leads', 'Wherdr · t-0015')).toBe(false)
-    expect(shouldNotifyNotice('all', 'Wherdr · t-0015')).toBe(true)
-    // Notifications of the project itself, of other plugins: for all.
-    expect(shouldNotifyNotice(undefined, 'Wherdr')).toBe(true)
-    expect(shouldNotifyNotice(undefined, 'Build terminé')).toBe(true)
-  })
-
-  it('finds the thread\'s pane for the link', () => {
-    const panes = [
-      { id: 'w1:p1', name: 'coordinator', cwd: '/home/user/.herdr-projects/wherdr' },
-      { id: 'w2:p1', name: null, cwd: '/home/user/.herdr/worktrees/herdr-web/hp-wherdr-t-0015-actions-des-plugins' },
-      { id: 'w3:p1', name: 'hp-demo-t-0015-other', cwd: '/tmp' },
-      { id: 'w4:p1', name: null, cwd: '/home/user/.herdr/worktrees/herdr-web/hp-wherdr-t-0150' },
-    ]
-    expect(findThreadPane(panes, 'Wherdr', 't-0015')?.id).toBe('w2:p1')
-    expect(findThreadPane(panes, 'Demo', 't-0015')?.id).toBe('w3:p1')
-    expect(findThreadPane(panes, 'Wherdr', 't-0099')).toBeNull()
-    // Humanized project name ("My App" for my-app).
-    expect(findThreadPane([{ id: 'a', name: 'hp-my-app-t-0002', cwd: null }], 'My App', 't-0002')?.id).toBe('a')
   })
 
   it('removes duplicates within the window', () => {

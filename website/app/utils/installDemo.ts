@@ -2,7 +2,7 @@ import { REPO } from './site'
 
 // What `curl -fsSL https://wherdr.dev/install | sh` prints on a Mac with Herdr
 // and Node.js (public/install, same wording and order: say / step / ok, plus
-// the lines the Herdr plugin writes to the terminal), replayed by
+// the lines the Herdr plugin and `wherdr service install` write), replayed by
 // InstallTerminal. Versions and the home folder are examples. `wait` is the
 // pause before the line shows, in ms (installing the plugin takes a while).
 export type InstallLine = { kind: 'blank' | 'title' | 'step' | 'ok' | 'say' | 'strong' | 'dim', text: string, wait: number }
@@ -39,6 +39,9 @@ export const INSTALL_OUTPUT: InstallLine[] = [
   { kind: 'dim', text: '  Herdr reloaded its config: no restart needed.', wait: 200 },
   { kind: 'ok', text: `Herdr plugin ${REPO.split('/').at(-2)}.wherdr installed`, wait: 900 },
   { kind: 'ok', text: `wherdr answers on http://localhost:${PORT}`, wait: 500 },
+  { kind: 'step', text: 'Configuring automatic startup', wait: 260 },
+  { kind: 'say', text: `  A LaunchAgent (${HOME}/Library/LaunchAgents/dev.wherdr.plist): wherdr starts at login and restarts if it stops.`, wait: 200 },
+  { kind: 'ok', text: 'Login service installed', wait: 1100 },
   { kind: 'blank', text: '', wait: 120 },
   { kind: 'strong', text: '✓ wherdr is running', wait: 60 },
   { kind: 'say', text: `  On this computer: http://localhost:${PORT}`, wait: 60 },
@@ -47,7 +50,7 @@ export const INSTALL_OUTPUT: InstallLine[] = [
   { kind: 'say', text: '  Phone: follow its Phone step to set up Tailscale (private network only).', wait: 60 },
   { kind: 'blank', text: '', wait: 60 },
   { kind: 'dim', text: 'Update: run this command again, or U in the wherdr panel.', wait: 60 },
-  { kind: 'dim', text: `Docs:   ${REPO}#readme`, wait: 60 },
+  { kind: 'dim', text: `Docs:   ${REPO}/blob/main/docs/installation.md`, wait: 60 },
 ]
 
 // The one command, on the Mac that runs Herdr.

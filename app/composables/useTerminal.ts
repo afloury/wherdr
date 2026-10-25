@@ -14,6 +14,7 @@ import { fmtBytes } from '~/utils/bytes'
 import { OSC52_MAX_BYTES, bindTerminalOsc52, copyAgentText } from '~/utils/terminalOsc52'
 import { uploadPhoto } from '~/utils/photoUpload'
 import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
+import { bindTerminalMouse } from '~/utils/terminalMouse'
 import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
 
 export interface Banner { text: string, btn: string, fn: () => void }
@@ -39,6 +40,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   let unbindOsc52: (() => void) | null = null
   let unbindFonts: (() => void) | null = null
   let links: TerminalLinks | null = null
+  let mouse: ReturnType<typeof bindTerminalMouse> | null = null
+  let mouseSupported = false
 
   const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
 
@@ -63,6 +66,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     fit = new FitAddon()
     term.loadAddon(fit)
     term.open(host)
+    mouse = bindTerminalMouse(term, () => mouseSupported && opts.input?.() !== false, event => sendTerm(event))
     // Selection of the visible text, copied on release or with ⌘C.
     unbindSelection = bindTerminalSelection(term, () => toast(t('Copied')))
     // OSC 8 hyperlinks and http(s) URLs, opened in a new tab.
@@ -221,6 +225,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     fitNow(false)
     const q = new URLSearchParams({ pane: paneId, cols: String(term.cols), rows: String(term.rows) })
     if (takeover) q.set('takeover', '1')
+    mouseSupported = false
     loading.value = true
     twsIntent = true
     let closedReason: string | null = null
@@ -237,7 +242,9 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       let m: any
       try { m = JSON.parse(e.data) }
       catch { return }
-      if (m.type === 'terminal.frame') {
+      if (m.type === 'web.capabilities') {
+        mouseSupported = m.mouse === true
+      } else if (m.type === 'terminal.frame') {
         if (!gotFrame) {
           gotFrame = true
           twsRetry = 0
@@ -246,7 +253,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         if (!term) return
         if (m.width && m.height && (m.width !== term.cols || m.height !== term.rows)) term.resize(m.width, m.height)
         const current = term
-        current.write(b64ToBytes(m.bytes || ''), () => selectionHint.refresh(current))
+        current.write(b64ToBytes(m.bytes || ''), () => selectionHint.refresh(current, mouseSupported))
       } else if (m.type === 'terminal.closed') {
         closedReason = terminalClosedText(m)
       } else if (m.type === 'herdr.stderr') {
@@ -258,6 +265,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     ws.onclose = () => {
       if (tws !== ws) return
       tws = null
+      mouseSupported = false
       loading.value = false
       if (!twsIntent || disposed) return
       if (closedReason && /already has an attached client/.test(closedReason)) {
@@ -280,6 +288,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   }
 
   function disconnect() {
+    mouseSupported = false
     twsIntent = false
     clearTimeout(twsTimer)
     if (tws) {
@@ -324,6 +333,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     unbindFonts = null
     unbindSelection = null
     unbindPaste = null
+    mouse?.dispose()
+    mouse = null
     links?.dispose()
     links = null
     webgl = null // term.dispose() destroys its addons
@@ -333,7 +344,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   return {
     mount, connect, disconnect, isConnected, sendTerm, sendKeys, fitNow, setFontSize,
-    reset, scroll, focus, blur, tapLink, hasFocus, rowHeight, pageRows, setVisible, dispose, loading, kbdOn,
+    reset, scroll, focus, blur, tapLink, tapMouse: (x: number, y: number) => mouse?.tap(x, y), hasFocus, rowHeight, pageRows, setVisible, dispose, loading, kbdOn,
     hasBanner: opts.hasBanner, selectionHint,
   }
 }

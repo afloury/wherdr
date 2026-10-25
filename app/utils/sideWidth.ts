@@ -1,30 +1,3 @@
-// Width of the "Project" column (computer), set with the handle and kept
-// on the device. null: default width (CSS).
-export const SIDE_MIN = 260
-export const SIDE_MAX_RATIO = 0.5
-const KEY = 'projectSideWidth'
-
-// Bounds: at least 260 px, at most half the area (the conversation keeps
-// the other half); area too narrow for both: the minimum wins.
-export function clampSideWidth(w: number, area: number): number {
-  const max = Math.max(SIDE_MIN, Math.floor(area * SIDE_MAX_RATIO))
-  return Math.round(Math.min(max, Math.max(SIDE_MIN, w)))
-}
-
-export function readSideWidth(): number | null {
-  try {
-    const v = Number(localStorage.getItem(KEY))
-    return Number.isFinite(v) && v >= SIDE_MIN ? Math.round(v) : null
-  } catch { return null }
-}
-
-export function saveSideWidth(w: number | null) {
-  try {
-    if (w === null) localStorage.removeItem(KEY)
-    else localStorage.setItem(KEY, String(w))
-  } catch { /* stockage indisponible */ }
-}
-
 // Width of the left sidebar (agent list, computer), set with
 // the handle on its right edge and kept on the device. null: 340 px (CSS).
 export const LIST_DEFAULT = 340
@@ -73,4 +46,28 @@ export function saveListCollapsed(collapsed: boolean) {
     if (collapsed) localStorage.setItem(RAIL_KEY, '1')
     else localStorage.removeItem(RAIL_KEY)
   } catch { /* stockage indisponible */ }
+}
+
+// Ticket panel: retain a usable Board alongside the navigation sidebar.
+export const PANEL_MIN = 320
+export const PANEL_MAX = 960
+export const BOARD_MIN = 280
+const PANEL_KEY = 'boardPanelWidth'
+export function clampPanelWidth(width: number, available: number): number {
+  return Math.round(Math.max(PANEL_MIN, Math.min(width, PANEL_MAX, available - BOARD_MIN)))
+}
+export function panelWidthCss(width: number | null): string {
+  return `clamp(${PANEL_MIN}px, ${width === null ? 'clamp(400px, 44vw, 720px)' : `${width}px`}, calc(100vw - var(--side) - ${BOARD_MIN}px))`
+}
+export function readPanelWidth(): number | null {
+  try {
+    const value = Number(localStorage.getItem(PANEL_KEY))
+    return Number.isFinite(value) && value >= PANEL_MIN && value <= PANEL_MAX ? Math.round(value) : null
+  } catch { return null }
+}
+export function savePanelWidth(width: number | null) {
+  try {
+    if (width === null) localStorage.removeItem(PANEL_KEY)
+    else localStorage.setItem(PANEL_KEY, String(width))
+  } catch { /* Storage unavailable. */ }
 }

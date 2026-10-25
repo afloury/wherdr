@@ -277,3 +277,12 @@ export function paneSpaceEntries(s: State, paneId: string): SpaceEntry[] {
     ...(simple ? [] : ['workspace.close'] as const),
   ]
 }
+
+// A successful RPC is insufficient: Herdr must report the requested name.
+export function verifySpaceRename(call: HerdrCall, snapshot: { tabs?: Record<string, unknown>[], workspaces?: Record<string, unknown>[] } | null | undefined): void {
+  const tab = call.method === 'tab.rename'
+  if (!tab && call.method !== 'workspace.rename') return
+  const key = tab ? 'tab_id' : 'workspace_id'
+  const target = (tab ? snapshot?.tabs : snapshot?.workspaces)?.find((x: Record<string, unknown>) => x[key] === call.params[key])
+  if (!target || target.label !== call.params.label) throw new SpaceActionError('rename_failed', 'Rename failed. The name was not changed.')
+}

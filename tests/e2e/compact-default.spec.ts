@@ -1,51 +1,56 @@
-import { expect, test, type Page } from '@playwright/test'
+// 2.0: the normal list is the default. A compact list turned on in 1.x
+// (localStorage `compactList`) goes back to normal once, on the first 2.0
+// load; compact turned on again afterwards is kept.
+import { BASE_URL } from './scenario.mjs'
+import { expect, test, type Page } from './test'
 
-// Records every card the list ever renders, from the first one: a detailed card
-// shown for an instant before the compact one would be caught here.
-async function watchCards(page: Page) {
-  await page.addInitScript(() => {
-    const seen = { compact: 0, detailed: 0 }
-    Object.assign(window, { __cards: seen })
-    const scan = () => {
-      for (const el of document.querySelectorAll('#home .card')) seen[el.classList.contains('compact') ? 'compact' : 'detailed']++
-    }
-    new MutationObserver(scan).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] })
-  })
-}
-const cards = (page: Page) => page.evaluate(() => (window as unknown as { __cards: { compact: number, detailed: number } }).__cards)
-
+const serverSettings = async (page: Page) => (await (await page.request.get('/api/settings')).json()).settings as Record<string, string>
 const compactSwitch = (page: Page) => page.locator('.settings-toggle', { hasText: 'Compact list' }).getByRole('switch')
 
-test('empty storage: the agent list is compact from the first render', async ({ page }) => {
-  await watchCards(page)
+test('new install: the normal list, Compact list off', async ({ page }) => {
   await page.goto('/')
-  await expect(page.locator('#home')).toHaveClass(/list-compact/)
-  await expect(page.locator('#home .card.compact').first()).toBeVisible()
-  await expect(page.locator('#home .card:not(.compact)')).toHaveCount(0)
-  const seen = await cards(page)
-  expect(seen.compact).toBeGreaterThan(0)
-  expect(seen.detailed).toBe(0)
-  // Never touched: nothing saved, so the setting keeps following the default.
-  expect(await page.evaluate(() => localStorage.getItem('compactList'))).toBeNull()
+  await expect(page.locator('#home .card').first()).toBeVisible()
+  await expect(page.locator('#home')).not.toHaveClass(/list-compact/)
+  await page.goto('/#/settings?section=appearance')
+  await expect(compactSwitch(page)).toHaveAttribute('aria-checked', 'false')
+  expect(await serverSettings(page)).not.toHaveProperty('compactListV2')
 })
 
-test('Compact list turned off stays off after a reload', async ({ page }) => {
+test('1.x compact list: normal once on the first 2.0 load, then compact turned on again is kept', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem('v1Fixture')) return
+    localStorage.setItem('v1Fixture', '1')
+    localStorage.setItem('compactList', '1')
+  })
+  await page.goto('/')
+  await expect(page.locator('#home .card').first()).toBeVisible()
+  await expect(page.locator('#home')).not.toHaveClass(/list-compact/)
+  // The 1.x value is gone from the browser and never reached the server.
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('compactList'))).toBeNull()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('syncedSettingsMigrated'))).toBe('1')
+  expect(await serverSettings(page)).not.toHaveProperty('compactList')
+
   await page.goto('/#/settings?section=appearance')
   const toggle = compactSwitch(page)
-  await expect(toggle).toHaveAttribute('aria-checked', 'true')
-  await toggle.click()
   await expect(toggle).toHaveAttribute('aria-checked', 'false')
-  expect(await page.evaluate(() => localStorage.getItem('compactList'))).toBe('0')
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-checked', 'true')
+  await expect.poll(() => serverSettings(page)).toMatchObject({ compactListV2: '1' })
 
-  await watchCards(page)
   await page.goto('/')
   await page.reload()
   await expect(page.locator('#home .card').first()).toBeVisible()
-  await expect(page.locator('#home')).not.toHaveClass(/list-compact/)
-  await expect(page.locator('#home .card.compact')).toHaveCount(0)
-  await expect(page.locator('#home .card .card-meta').first()).toBeVisible()
-  expect((await cards(page)).compact).toBe(0)
+  await expect(page.locator('#home')).toHaveClass(/list-compact/)
 
-  await page.goto('/#/settings?section=appearance')
-  await expect(compactSwitch(page)).toHaveAttribute('aria-checked', 'false')
+  // Another 1.x browser opening 2.0 for the first time follows the 2.0 choice.
+  const other = await page.context().browser()!.newContext({ baseURL: BASE_URL, viewport: page.viewportSize(), serviceWorkers: 'block' })
+  const b = await other.newPage()
+  await b.addInitScript(() => {
+    if (localStorage.getItem('v1Fixture')) return
+    localStorage.setItem('v1Fixture', '1')
+    localStorage.setItem('compactList', '0')
+  })
+  await b.goto('/')
+  await expect(b.locator('#home')).toHaveClass(/list-compact/)
+  await other.close()
 })

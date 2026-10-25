@@ -138,7 +138,7 @@ describe('quotas par compte', () => {
   it('without a fingerprint, compares the weekly reset time', () => {
     // Same account: same anchor, even read a week earlier.
     expect(sameAccount(q(1, null), q(2, null, 1790600400000 + WEEK))).toBe(true)
-    expect(sameAccount(q(1, 'aaaaaaaaaaaaaaaa'), q(2, null, 1790600400000 + 60000))).toBe(true)
+    expect(sameAccount(q(1, 'aaaaaaaaaaaaaaaa'), q(2, null, 1790600400000 + 60000))).toBe(false)
     // Autre compte : autre ancrage.
     expect(sameAccount(q(1, null), q(2, 'bbbbbbbbbbbbbbbb', 1790600400000 + 14 * H))).toBe(false)
     // Empreintes connues : elles priment.
@@ -146,6 +146,18 @@ describe('quotas par compte', () => {
     expect(sameAccount(q(1, 'aaaaaaaaaaaaaaaa'), q(2, 'aaaaaaaaaaaaaaaa', 1790600400000 + 3 * H))).toBe(true)
     // Nothing comparable: same account (previous display).
     expect(sameAccount({ ...q(1, null), week: null }, q(2, null, 1790600400000 + 3 * H))).toBe(true)
+  })
+
+  it('an unknown identity cannot replace or bridge known accounts', () => {
+    const out = mergeQuotas([
+      r('server', 'Server', q(1, 'aaaaaaaaaaaaaaaa')),
+      r('unknown', 'Unknown', q(100, null)),
+      r('laptop', 'Laptop', q(2, 'bbbbbbbbbbbbbbbb')),
+      r('desktop', 'Desktop', q(3, 'aaaaaaaaaaaaaaaa', 1790600400000, 98)),
+    ])
+    expect(out.claudeAccounts!.map(a => [a.machines.map(m => m.key), a.five!.used])).toEqual([
+      [['server', 'desktop'], 98], [['unknown'], 10], [['laptop'], 10],
+    ])
   })
 
   it('a machine without a reading (offline, unread) creates no block', () => {
@@ -180,23 +192,27 @@ describe('Claude status line set up?', () => {
     expect(claudeSetupState({ status, account: true, statusline: null, settings: null })).toBe('ok')
     expect(claudeSetupState({ status: { cwd: '/' }, account: false, statusline: null, settings: null })).toBe('ok')
   })
-  it('nothing, or old status line without a fingerprint: missing', () => {
+  it('nothing at all: missing', () => {
     expect(claudeSetupState({ status: null, account: false, statusline: null, settings: null })).toBe('missing')
-    expect(claudeSetupState({ status, account: false, statusline: '#!/bin/sh\n# ancienne', settings: wired })).toBe('missing')
     // Status line written but not wired into settings.json.
     expect(claudeSetupState({ status: null, account: false, statusline: ours, settings: '{}' })).toBe('missing')
+  })
+  it('regression: quotas read from an old status line are outdated, never "not set up"', () => {
+    expect(claudeSetupState({ status, account: false, statusline: '#!/bin/sh\n# ancienne', settings: wired })).toBe('outdated')
+    expect(claudeSetupState({ status, account: false, statusline: null, settings: null })).toBe('outdated')
   })
   it('installed, waiting for the next exchange: pending', () => {
     expect(claudeSetupState({ status: null, account: false, statusline: ours, settings: wired })).toBe('pending')
     // Up to date but unreadable fingerprint: nothing more to install.
     expect(claudeSetupState({ status, account: false, statusline: ours, settings: wired })).toBe('ok')
   })
-  it('mergeQuotas lists the machines to configure', () => {
+  it('mergeQuotas lists the state of every machine read', () => {
     const out = mergeQuotas([
-      { key: '', label: 'Server', claude: null, codex: null, setup: null },
-      { key: '0a1b2c3d', label: 'Laptop', claude: null, codex: null, setup: { key: '0a1b2c3d', state: 'missing', installable: true } },
+      { key: '', label: 'Server', claude: null, codex: null, setup: { key: '', state: 'ok', installable: true } },
+      { key: '1f2e3d4c', label: 'Offline', claude: null, codex: null, setup: null },
+      { key: '0a1b2c3d', label: 'Laptop', claude: null, codex: null, setup: { key: '0a1b2c3d', state: 'missing', installable: true, dismissed: true } },
     ])
-    expect(out.claudeSetup).toEqual([{ key: '0a1b2c3d', state: 'missing', installable: true }])
+    expect(out.claudeSetup).toEqual([{ key: '', state: 'ok', installable: true }, { key: '0a1b2c3d', state: 'missing', installable: true, dismissed: true }])
     expect(mergeQuotas([{ key: '', label: 'Server', claude: null, codex: null }])).toEqual({ claude: null, codex: null })
   })
 })
@@ -284,6 +300,22 @@ describe('readClaude over SSH', () => {
     return { code: r.status, stdout: r.stdout, stderr: r.stderr.toString('utf8') }
   }, { statTtlMs: 0 })
 
+  it('keeps legacy quotas readable and offers to update the old writer', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-legacy-'))
+    try {
+      const dir = path.join(home, '.cache/herdr-web')
+      fs.mkdirSync(dir, { recursive: true })
+      fs.mkdirSync(path.join(home, '.claude'), { recursive: true })
+      fs.writeFileSync(path.join(dir, 'claude-status.json'), JSON.stringify({ rate_limits: { five_hour: { used_percentage: 44 } } }))
+      fs.writeFileSync(path.join(dir, 'claude-account'), 'aaaaaaaaaaaaaaaa')
+      fs.writeFileSync(path.join(home, '.claude/wherdr-statusline.sh'), '# legacy claude-account writer')
+      const reading = await readClaude(localFs, home)
+      expect(reading.q).toMatchObject({ account: 'aaaaaaaaaaaaaaaa', five: { used: 44 } })
+      // Regression (WHR-48): its quotas show, so it is an update, not "not set up".
+      expect(reading.setup).toBe('outdated')
+    } finally { fs.rmSync(home, { recursive: true, force: true }) }
+  })
+
   it('reports a machine without the status line as missing', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-q-'))
     await expect(readClaude(shellFs(() => false), home)).resolves.toEqual({ q: null, setup: 'missing' })
@@ -300,5 +332,18 @@ describe('readClaude over SSH', () => {
     fs.writeFileSync(path.join(home, '.cache/herdr-web/claude-status.json'), '{}')
     let calls = 0
     await expect(readClaude(shellFs(() => ++calls > 1), home)).rejects.toMatchObject({ code: 'unreachable' })
+  })
+})
+
+describe('WHR-48 regression: quotas read never look "not set up"', () => {
+  it('any status file with quotas gives ok or outdated, whatever the status line', () => {
+    const status = { rate_limits: { five_hour: { used_percentage: 96 }, seven_day: { used_percentage: 57 } } }
+    for (const account of [true, false]) {
+      for (const statusline of [null, '# old', '# claude-account']) {
+        for (const settings of [null, '{}', '"wherdr-statusline.sh"']) {
+          expect(claudeSetupState({ status, account, statusline, settings })).not.toBe('missing')
+        }
+      }
+    }
   })
 })

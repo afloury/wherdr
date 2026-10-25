@@ -1,6 +1,5 @@
 // Types shared between the server (Nitro) and the app (Vue).
 import type { TabLayout } from './layout'
-import type { ProjectFolderKind } from './projectFolders'
 import type { CodexStatus } from './codexStatus'
 import type { MaxSessionDays } from './sessionLimit'
 import type { UsageLimit } from './usageLimit'
@@ -57,12 +56,13 @@ export interface InteractiveMenu {
 
 // state: held until a menu closes (server side), or failed to send.
 // reason 'busy': held or not sent because the agent's input field held other text.
+// reason 'turn': held until the agent's turn ends (typing it during the turn failed).
 // 'no_input': not sent because the input field was not found on a screen
 // showing no recognized menu (see queued.ts NO_INPUT_MS).
 // `pasted`: the long pasted texts its text holds (see server/utils/pastes.ts).
 // `back`: no agent will take it (see server/utils/queued.ts giveBackHeld): the
 // app puts its text back into the message field.
-export interface QueuedMessage { id: string, text: string, at?: number, state?: 'held' | 'failed', reason?: 'busy' | 'no_input', pasted?: string[], back?: boolean }
+export interface QueuedMessage { inputText?: string, id: string, text: string, at?: number, state?: 'held' | 'failed', reason?: 'busy' | 'no_input' | 'turn' | 'lost' | 'unseen', pasted?: string[], back?: boolean }
 
 // Claude Code's screen while working (see server/utils/claudeScreen.ts): the
 // "!" command running, the last message sent, the messages
@@ -91,6 +91,7 @@ export interface Workspace {
   // Git repository of the workspace (Herdr: `worktree.repo_key` / `repo_name`), shared
   // by the main checkout and its worktrees; missing outside a repository.
   repo?: string
+  path?: string // Herdr checkout path, when available
   repoName?: string
   branch?: string
 }
@@ -126,10 +127,6 @@ export interface Pane {
   title: string | null
   cwd: string | null
   agentSession: string | null
-  // Projet herdr-projects (jeton `hp_project` / `hp_group` du pane), see shared/projects.ts.
-  project?: string
-  // Open herdr-projects thread shown by this pane ("<slug>/t-NNNN"), see shared/threadLimits.ts.
-  hpThread?: string
   bornAt?: number
   // Number of the agent's last state change (Herdr's `state_change_seq`,
   // increasing on a machine): "recent" sort of Ready.
@@ -144,6 +141,9 @@ export interface Pane {
   screen?: WaitScreen
   // Menu interactif ouvert (agent au repos) : il remplace `prompt` et `screen`.
   menu?: InteractiveMenu
+  // A menu or panel no card shows hides the agent's input field while
+  // messages wait for it (see server/utils/queued.ts lookForLeftMenu).
+  menuLeftOpen?: boolean
   preview?: string
   model?: ModelInfo
   // Claude working, conversation shown: verb of its activity line ("Orbiting").
@@ -323,7 +323,13 @@ export interface ChatResponse {
   // whole bottom of the conversation.
   keep?: number
   start?: number
+  // The transcript was rewritten above the client's cursor (same size or
+  // shorter): the reply is a fresh bottom, the client starts again from it.
+  rewritten?: boolean
   queue?: ClaudeQueueEntry[]
+  // Claude: entries of the most recent window pulled back out of its queue
+  // into the input field and not queued again (see server/utils/queued.ts checkSent).
+  popped?: ClaudeQueueEntry[]
   model?: ModelInfo | null
 }
 
@@ -351,8 +357,7 @@ export interface HerdrThemeConfig {
 }
 
 // Machine offered in the "New" sheet: home folder and recent ones.
-// `projectDirs`: herdr-projects folders among `dirs` (shared/projectFolders.ts).
-export interface MachineConfig { key: string, label: string, local: boolean, home: string, dirs: string[], projectDirs?: Record<string, ProjectFolderKind>, online: boolean, kinds: string[] }
+export interface MachineConfig { key: string, label: string, local: boolean, home: string, dirs: string[], online: boolean, kinds: string[] }
 
 export interface AppConfig {
   hostLabel?: string
@@ -361,20 +366,16 @@ export interface AppConfig {
   kinds: string[]
   home: string
   os?: string // local machine, `uname -s` names
-  // wherdr in a container on a Mac with the "open on the host" SSH route set
-  // up: Reveal in Finder / Open / Mod+Alt+O work on local panes.
-  hostOpen?: boolean
   dirs: string[]
-  projectDirs?: Record<string, ProjectFolderKind>
   push: { enabled: boolean, key: string | null, devices: number }
   // WHERDR_TRUSTED_NETWORKS=any: wherdr accepts every network (warning banner).
   openNetwork?: boolean
 }
 
-export interface DirEntry { name: string, path: string, git: boolean, project?: ProjectFolderKind }
+export interface DirEntry { name: string, path: string, git: boolean }
 // `denied`: the folder exists but its content cannot be listed (`dirs` empty);
 // `remote`: listed over SSH (the macOS fix differs from the local one).
-export interface DirListing { path: string, parent: string | null, home: string, dirs: DirEntry[], project?: ProjectFolderKind, denied?: 'macos' | 'permission', remote?: boolean }
+export interface DirListing { path: string, parent: string | null, home: string, dirs: DirEntry[], denied?: 'macos' | 'permission', remote?: boolean }
 
 export interface AuthStatus {
   hostLabel?: string
@@ -422,10 +423,14 @@ export interface Quotas {
   // (missing: all configured).
   claudeSetup?: ClaudeSetup[]
 }
-// Claude quota status line of a machine: `missing` = to install,
-// `pending` = installed, waiting for the next exchange with a Claude.
+// Claude quota status line of each machine read: `ok` = set up, `pending` =
+// installed, waiting for the next exchange with a Claude, `outdated` = quotas
+// read but from an older status line (update offered), `missing` = to install.
 // `installable`: the server can install it itself (otherwise, a command to copy).
-export interface ClaudeSetup { key: string, state: 'missing' | 'pending', installable: boolean }
+// `dismissed`: the suggestion was declined or skipped (home menu, setup guide);
+// Settings still offers it.
+export type ClaudeSetupState = 'ok' | 'pending' | 'outdated' | 'missing'
+export interface ClaudeSetup { key: string, state: ClaudeSetupState, installable: boolean, dismissed?: boolean }
 
 // Git worktree linked to a repository (Herdr), for the cleanup list.
 export interface WorktreeInfo {

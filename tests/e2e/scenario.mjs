@@ -12,7 +12,7 @@ export const PORT = Number(process.env.E2E_PORT || 7699)
 export const BASE_URL = `http://127.0.0.1:${PORT}`
 
 // Path of the fake Herdr's socket, written by the launcher.
-export const SOCK_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../.e2e-tmp/herdr-sock')
+export const SOCK_FILE = path.join(process.env.E2E_TMP_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '../../.e2e-tmp'), 'herdr-sock')
 
 // A call to the fake Herdr from a spec (its state, e.g. `e2e.pane_size`).
 export function fakeHerdr(method, params = {}) {
@@ -76,6 +76,11 @@ export const OMP_FRENCH_PANE = 'w15:p1'
 export const OMP_OLD_TABLE_PANE = 'w16:p1'
 // One message with two decision tables whose first rows ask the same thing.
 export const OMP_TWO_TABLES_PANE = 'w17:p1'
+// Claude at rest with its grayed-out suggestion in the field: after two questions, then after none.
+export const CLAUDE_SUGGEST_ASK_PANE = 'w18:p1'
+export const CLAUDE_SUGGEST_PANE = 'w19:p1'
+export const SUGGEST_ASK = 'yes add the teardown and check both'
+export const SUGGEST_PLAIN = 'run the nightly build again'
 export const CODEX_UPDATE_SESSION = '00000000-0000-4000-8000-000000000288'
 
 // Unique markers of the long omp transcript (asserted on by the specs).
@@ -155,6 +160,18 @@ function claudeTranscript(home, cwd, sid, now) {
   ]))
 }
 
+// Claude Code's idle field holding its suggestion, as tests/fixtures/claude-suggestion.ansi.
+const CLAUDE_RULE = `\x1b[0m\x1b[38;2;136;136;136m${'─'.repeat(60)}\x1b[0m`
+const claudeSuggestionScreen = text => ['', CLAUDE_RULE, `❯\u00a0 \x1b[0m\x1b[2m${text}\x1b[0m`, CLAUDE_RULE, '  ? for shortcuts'].join('\r\n')
+function claudeChat(home, cwd, sid, now, turns) {
+  const file = path.join(home, '.claude/projects', cwd.replace(/[/.]/g, '-'), `${sid}.jsonl`)
+  const base = { isSidechain: false, cwd, sessionId: sid }
+  write(file, jsonl(turns.map(([role, text], i) => ({
+    ...base, type: role, timestamp: iso(now - 60000 + i * 10000),
+    message: role === 'user' ? { role, content: text } : { model: 'claude-opus-4-1', role, content: [{ type: 'text', text }] },
+  }))))
+}
+
 // omp: ~/.omp/agent/sessions/<encoded cwd>/<date>_<id>.jsonl.
 function ompTranscript(home, cwd, id, now, entries) {
   const enc = `-${cwd.replace(/^\//, '').replace(/[/.]/g, '-')}-`
@@ -217,9 +234,11 @@ export function writeScenario(home) {
   const french = path.join(home, 'projects/fusion')
   const oldTable = path.join(home, 'projects/earlier')
   const twoTables = path.join(home, 'projects/rollout')
+  const teardown = path.join(home, 'projects/teardown')
+  const nightly = path.join(home, 'projects/nightly')
   const codex = path.join(home, '.herdr-projects/codex-update')
   fs.mkdirSync(codex, { recursive: true })
-  for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions, split, release, billing, decisions, followup, french, oldTable, twoTables]) fs.mkdirSync(d, { recursive: true })
+  for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions, split, release, billing, decisions, followup, french, oldTable, twoTables, teardown, nightly]) fs.mkdirSync(d, { recursive: true })
 
   const claudeSid = '00000000-0000-4000-8000-000000000001'
   const codexFile = path.join(home, `.codex/sessions/${new Date().toISOString().slice(0, 10).replaceAll('-', '/')}/rollout-test-${CODEX_UPDATE_SESSION}.jsonl`)
@@ -229,6 +248,16 @@ export function writeScenario(home) {
     { type: 'response_item', timestamp: iso(now - 40000), payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'The build passes.' }] } },
   ]))
   claudeTranscript(home, api, claudeSid, now)
+  const teardownSid = '00000000-0000-4000-8000-000000000018'
+  claudeChat(home, teardown, teardownSid, now, [
+    ['user', 'The integration tests leave containers behind. Can you fix it?'],
+    ['assistant', 'The fixtures start a database but never stop it.\n\nShall I add a teardown to the shared fixture?\n\nShould I also check the two CI builds afterwards?'],
+  ])
+  const nightlySid = '00000000-0000-4000-8000-000000000019'
+  claudeChat(home, nightly, nightlySid, now, [
+    ['user', 'Why did the nightly build fail?'],
+    ['assistant', 'A flaky network test timed out; the rest passed.'],
+  ])
   const longFile = ompTranscript(home, docs, 'e2e-long', now, longContent)
   const chatFile = ompTranscript(home, demo, 'e2e-chat', now, msg => [
     msg({ role: 'user', content: [{ type: 'text', text: 'Are you ready?' }], attribution: 'user' }),
@@ -340,6 +369,15 @@ export function writeScenario(home) {
   write(path.join(api, '.claude/skills/daily-notes/SKILL.md'), '---\nname: daily-notes\ndescription: Write the daily notes of the project\n---\nSteps.\n')
   write(path.join(api, '.claude/commands/daily-check.md'), '# Check the daily build\n')
   write(path.join(demo, '.omp/commands/daily-sync.md'), '---\ndescription: Sync the daily branch\n---\nSync.\n')
+  const ciPlugin = path.join(home, '.claude/plugins/cache/market/circleci/1.0')
+  write(path.join(home, '.claude/settings.json'), JSON.stringify({ enabledPlugins: { 'circleci@market': true } }))
+  write(path.join(home, '.claude/plugins/installed_plugins.json'), JSON.stringify({ version: 2, plugins: {
+    'circleci@market': [{ scope: 'user', installPath: ciPlugin }],
+  } }))
+  write(path.join(ciPlugin, '.claude-plugin/plugin.json'), JSON.stringify({ skills: ['./custom/deploy'] }))
+  write(path.join(ciPlugin, 'custom/deploy/SKILL.md'), '---\ndescription: Deploy the CI build\nargument-hint: <target>\n---\n')
+  write(path.join(ciPlugin, 'skills/build/SKILL.md'), '---\nname: build\ndescription: Inspect the CI build\nargument-hint: <branch>\n---\n')
+  write(path.join(ciPlugin, 'commands/config.md'), '---\ndescription: Validate CI configuration\n---\n')
   // In the .claude/ of a parent folder: Claude Code offers it in every project below.
   write(path.join(home, 'projects/.claude/commands/team-standup.md'), '---\ndescription: Prepare the team standup\n---\nStandup.\n')
 
@@ -365,5 +403,7 @@ export function writeScenario(home) {
     { id: 'w15', label: 'fusion', panes: [{ id: OMP_FRENCH_PANE, agent: 'omp', status: 'idle', cwd: french, session: frenchFile }] },
     { id: 'w16', label: 'earlier', panes: [{ id: OMP_OLD_TABLE_PANE, agent: 'omp', status: 'idle', cwd: oldTable, session: oldTableFile }] },
     { id: 'w17', label: 'rollout', panes: [{ id: OMP_TWO_TABLES_PANE, agent: 'omp', status: 'idle', cwd: twoTables, session: twoTablesFile }] },
+    { id: 'w18', label: 'teardown', panes: [{ id: CLAUDE_SUGGEST_ASK_PANE, agent: 'claude', status: 'idle', cwd: teardown, session: teardownSid, customScreen: claudeSuggestionScreen(SUGGEST_ASK) }] },
+    { id: 'w19', label: 'nightly', panes: [{ id: CLAUDE_SUGGEST_PANE, agent: 'claude', status: 'idle', cwd: nightly, session: nightlySid, customScreen: claudeSuggestionScreen(SUGGEST_PLAIN) }] },
   ]
 }

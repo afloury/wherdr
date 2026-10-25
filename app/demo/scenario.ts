@@ -2,13 +2,10 @@
 // projects, four agents and a dev server. Everything here is fiction, in
 // English, with no real path, machine, person or conversation.
 import type { ChangesResponse, ChatItem, ModelInfo, OmpToolView, Pane, Quotas, SlashCommand, Tab, Workspace } from '#shared/types'
-import type { ProjectBoard } from '#shared/projectBoard'
-import { type MemoryFile, type ProjectSettings, memoryFiles } from '../../shared/projectDocs'
-import type { InboxItem, RoutineList } from '#shared/projectInbox'
-import type { ThreadDetail } from '#shared/projectThreads'
+import { type TaskRow, type TasksBoard, groupOf } from '../../shared/projectsTasks'
+import type { BoardLinks, LinkedTask, MachineLinks } from '../../shared/boardLinks'
 
 export const HOME = '/Users/demo'
-export const PROJECT = 'acme-api'
 const REPO = `${HOME}/code/acme-api`
 const WT = `${HOME}/.herdr/worktrees/acme-api`
 const WEB = `${HOME}/code/acme-web`
@@ -66,9 +63,9 @@ const pane = (p: Partial<Pane> & Pick<Pane, 'id' | 'workspace' | 'agent' | 'cwd'
 
 export function panes(now: number): Pane[] {
   return [
-    pane({ id: COORD, workspace: 'w1', agent: 'claude', cwd: `${HOME}/.herdr-projects/acme-api`, project: PROJECT, status: 'idle', model: MODELS.claude, stateSeq: 4, bornAt: now - 3600_000 }),
-    pane({ id: CODEX, workspace: 'w2', agent: 'codex', name: 'hp-acme-api-t-0012', cwd: `${WT}/hp-acme-api-t-0012-rate-limits`, project: PROJECT, hpThread: 'acme-api/t-0012', status: 'working', model: MODELS.codex, stateSeq: 7, bornAt: now - 1800_000 }),
-    pane({ id: OMP, workspace: 'w3', agent: 'omp', name: 'hp-acme-api-t-0013', cwd: `${WT}/hp-acme-api-t-0013-flaky-export`, project: PROJECT, hpThread: 'acme-api/t-0013', status: 'blocked', model: MODELS.omp, stateSeq: 9, bornAt: now - 1500_000, prompt: approval('npm test -- export.spec.ts --repeat 20') }),
+    pane({ id: COORD, workspace: 'w1', agent: 'claude', cwd: `${HOME}/.herdr-projects/data/coordinator/default/chat`, status: 'idle', model: MODELS.claude, stateSeq: 4, bornAt: now - 3600_000, preview: 'ACME-API-12 and ACME-API-13 are under way. I will tell you when one is ready to review.' }),
+    pane({ id: CODEX, workspace: 'w2', agent: 'codex', cwd: `${WT}/acme-api-12-rate-limits`, status: 'working', model: MODELS.codex, stateSeq: 7, bornAt: now - 1800_000 }),
+    pane({ id: OMP, workspace: 'w3', agent: 'omp', cwd: `${WT}/acme-api-13-flaky-export`, status: 'blocked', model: MODELS.omp, stateSeq: 9, bornAt: now - 1500_000, prompt: approval('npm test -- export.spec.ts --repeat 20') }),
     pane({ id: CLAUDE_WEB, workspace: 'w4', agent: 'claude', cwd: WEB, status: 'done', model: MODELS.claude, stateSeq: 8, bornAt: now - 2400_000 }),
     pane({ id: DEV_SERVER, workspace: 'w4', agent: null, cwd: WEB, command: 'npm run dev', status: null, agentSession: null }),
   ]
@@ -87,12 +84,12 @@ export function conversations(now: number): Record<string, ChatItem[]> {
   return {
     [COORD]: [
       { role: 'user', text: 'Plan the 2.3 release: per-key rate limits on the public API, and the CSV export test that fails one run in ten.', ts: at(62) },
-      { role: 'tool', name: 'Read', text: '~/.herdr-projects/acme-api/TASKS.md', ts: at(61) },
+      { role: 'tool', name: 'Bash', text: 'herdr-projects list', ts: at(61) },
       { role: 'tool', name: 'Grep', text: 'rateLimit · src/', ts: at(61) },
-      { role: 'assistant', text: 'Two independent pieces of work, touching different files, so they can run in parallel:\n\n1. **t-0012 — Rate limits** (Codex): a token bucket per API key in `src/middleware/rateLimit.ts`, `429` with `Retry-After`, limits read from the plan.\n2. **t-0013 — Flaky export test** (omp): `export.spec.ts` depends on the order of rows coming back from the database.\n\nI started both threads and moved the items to **In progress**.', ts: at(60) },
-      { role: 'tool', name: 'Bash', text: 'Start thread t-0012 (Codex)', ts: at(59) },
-      { role: 'tool', name: 'Bash', text: 'Start thread t-0013 (omp)', ts: at(59) },
-      { role: 'assistant', text: 'Both threads are running. I will review and merge each one as soon as it reports.', ts: at(58) },
+      { role: 'assistant', text: 'Two independent pieces of work, touching different files, so they can run in parallel:\n\n1. **ACME-API-12 — Rate limits** (Codex): a token bucket per API key in `src/middleware/rateLimit.ts`, `429` with `Retry-After`, limits read from the plan.\n2. **ACME-API-13 — Flaky export test** (omp): `export.spec.ts` depends on the order of rows coming back from the database.\n\nI added both tasks and put an agent on each.', ts: at(60) },
+      { role: 'tool', name: 'Bash', text: 'herdr-projects add "Per-key rate limits on the public API" --delegate', ts: at(59) },
+      { role: 'tool', name: 'Bash', text: 'herdr-projects add "Fix the flaky CSV export test" --delegate', ts: at(59) },
+      { role: 'assistant', text: 'Both agents are on it. Their work is reviewed when they finish, then waits for your approval on the Board.', ts: at(58) },
     ],
     [CODEX]: [
       { role: 'user', text: 'Add per-key rate limits to the public API: a token bucket per key, 429 with Retry-After, limits from the customer plan. Tests included.', ts: at(30) },
@@ -263,106 +260,68 @@ export const COMMANDS: Record<string, SlashCommand[]> = {
   ],
 }
 
-// herdr-projects board of the acme-api project (Project panel).
-export function board(now: number, threads: { codex: string, omp: string }): ProjectBoard {
-  const iso = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString()
-  const token = (s: string) => (s === 'blocked' ? 'waiting-on-you' : s === 'working' ? 'working' : 'ready-for-review')
-  const group = (s: string) => (s === 'blocked' ? 'Waiting on you' : s === 'working' ? 'Working' : 'Ready for review')
-  const rank = (s: string) => (s === 'blocked' ? 1 : s === 'working' ? 3 : 2)
-  return {
-    slug: PROJECT,
-    version: `${threads.codex}-${threads.omp}`,
-    slots: { used: 2, max: 3 },
-    lists: [
-      { title: 'To test', kind: 'test', tasks: [
-        { text: 'Webhook retries with exponential backoff', done: false, owner: 'me', thread: null, badges: [{ text: 'ready to test', color: 'green' }, { text: 't-0010', color: 'gray', thread: 't-0010' }] },
-      ] },
-      { title: 'To decide', kind: 'decide', tasks: [
-        { text: 'Rate limits: return 429 or queue the request for paid plans?', done: false, owner: 'me', thread: null },
-      ] },
-      { title: 'In progress', kind: 'doing', tasks: [
-        { text: 'Per-key rate limits on the public API', done: false, owner: 'agent → t-0012', thread: 't-0012', badges: [{ text: 't-0012', color: 'gray', thread: 't-0012' }] },
-        { text: 'Fix the flaky CSV export test', done: false, owner: 'agent → t-0013', thread: 't-0013', badges: [{ text: 'bug', color: 'red' }, { text: 't-0013', color: 'gray', thread: 't-0013' }] },
-      ] },
-      { title: 'In queue', kind: 'queue', tasks: [
-        { text: 'OpenAPI spec for the v2 endpoints', done: false, owner: 'agent', thread: null },
-      ] },
-      { title: 'Blocked', kind: 'blocked', tasks: [
-        { text: 'Publish the API changelog', done: false, owner: 'agent', thread: null, reason: 'review of the 429 behaviour' },
-      ] },
-      { title: 'Backlog', kind: 'backlog', tasks: [
-        { text: 'Redis store for the rate limiter', done: false, owner: null, thread: null },
-        { text: 'Audit log export', done: false, owner: null, thread: null },
-      ] },
-    ],
-    open: [
-      { id: 't-0013', title: 'Fix the flaky CSV export test', group: group(threads.omp), token: token(threads.omp), rank: rank(threads.omp), resolved: false, updated: iso(1), created: iso(25), agentName: 'hp-acme-api-t-0013', machine: '', profile: 'omp', stateLine: threads.omp === 'blocked' ? 'needs you · ~70%' : 'review · report', activity: threads.omp === 'blocked' ? 'Waiting for approval' : 'Reporting', percent: threads.omp === 'blocked' ? 70 : 100, pr: '', report: threads.omp !== 'blocked' },
-      { id: 't-0012', title: 'Per-key rate limits on the public API', group: group(threads.codex), token: token(threads.codex), rank: rank(threads.codex), resolved: false, updated: iso(2), created: iso(30), agentName: 'hp-acme-api-t-0012', machine: '', profile: 'codex', stateLine: threads.codex === 'working' ? 'working · ~75%' : 'review · report', activity: threads.codex === 'working' ? 'Writing tests' : 'Done', percent: threads.codex === 'working' ? 75 : 100, pr: '', report: threads.codex !== 'working' },
-    ],
-    resolved: [
-      { id: 't-0010', title: 'Webhook retries with exponential backoff', group: 'Done', token: 'resolved', rank: 6, resolved: true, updated: iso(90), created: iso(180), agentName: null, machine: '', profile: 'claude', stateLine: 'review · report', activity: '', percent: 100, pr: '', report: true },
-      { id: 't-0009', title: 'Paginate the invoices endpoint', group: 'Done', token: 'resolved', rank: 6, resolved: true, updated: iso(60 * 26), created: iso(60 * 30), agentName: null, machine: '', profile: 'codex', stateLine: 'review · report', activity: '', percent: 100, pr: 'https://github.com/owner/repo/pull/12', report: false },
-      { id: 't-0008', title: 'Dead-letter list in the dashboard', group: 'Done', token: 'resolved', rank: 6, resolved: true, updated: iso(60 * 50), created: iso(60 * 54), agentName: null, machine: '', profile: 'omp', stateLine: 'review · report', activity: '', percent: 100, pr: '', report: false },
-    ],
+// herdr-projects 1.x board of the demo (the Board), as `list --json` gives it
+// once parsed (shared/projectsTasks.ts). The two agents' tasks follow their panes.
+export function tasks(agents: { codex: string, omp: string }): TasksBoard {
+  const row = (r: Omit<TaskRow, 'repo' | 'group' | 'progress' | 'eta' | 'pr' | 'review' | 'reviewRound' | 'research' | 'archived' | 'queue' | 'kind' | 'app'> & Partial<TaskRow>): TaskRow => {
+    const full = { repo: 'acme-api', kind: '', app: '', progress: null, eta: null, pr: '', review: null, reviewRound: 0, research: false, archived: false, queue: null, ...r }
+    return { ...full, group: groupOf(full) }
   }
-}
-
-// Project panel › Inbox and Routines.
-export function inbox(now: number): InboxItem[] {
-  const iso = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString()
-  return [
-    { id: '20260101T090000Z-thread-state-t-0010-41', kind: 'thread-state', subject: 't-0010', event: 'resolved', summary: 't-0010 "Webhook retries with exponential backoff" was marked done: worktree removed and its workspace closed', created: iso(90), body: '' },
-    { id: '20260101T101500Z-routine-nightly-tests-42', kind: 'routine', subject: 'nightly-tests', event: 'due', summary: 'Routine nightly-tests is due', created: iso(35), body: 'Run the full test suite on main and open a thread for every new failure.' },
-    { id: '20260101T104800Z-thread-state-t-0013-43', kind: 'thread-state', subject: 't-0013', event: 'blocked on a prompt', summary: 't-0013 "Fix the flaky CSV export test" is waiting for an approval', created: iso(2), body: '' },
+  const of = (s: string, n: number, title: string, app: string, working: string, waiting: string) => s === 'working'
+    ? row({ id: `acme-api/${n}`, n, state: 'working', stage: 'working', title, msg: working, app, progress: 75 })
+    : s === 'blocked'
+      ? row({ id: `acme-api/${n}`, n, state: 'blocked', kind: 'permission', stage: 'asks', title, msg: waiting, app })
+      : row({ id: `acme-api/${n}`, n, state: 'blocked', kind: 'permission', stage: 'approval', title, msg: '', app, pr: `https://github.com/acme/acme-api/pull/${n + 30}`, review: { pass: true, tally: '1 minor', by: 'claude' }, reviewRound: 1 })
+  const list = [
+    of(agents.omp, 13, 'Fix the flaky CSV export test', 'omp', 'Repeating the spec', 'Asks to run npm test -- export.spec.ts'),
+    of(agents.codex, 12, 'Per-key rate limits on the public API', 'codex', 'Writing tests', 'Asks for your OK'),
+    row({ id: 'acme-api/14', n: 14, state: 'idle', stage: 'todo', title: 'OpenAPI spec for the v2 endpoints', msg: '' }),
+    row({ id: 'acme-api/15', n: 15, state: 'idle', stage: 'todo', title: 'Redis store for the rate limiter', msg: '' }),
+    row({ id: 'acme-api/10', n: 10, state: 'done', stage: 'done', title: 'Webhook retries with exponential backoff', msg: 'Merged', pr: 'https://github.com/acme/acme-api/pull/38' }),
+    row({ id: 'acme-api/9', n: 9, state: 'done', stage: 'done', title: 'Paginate the invoices endpoint', msg: 'Merged' }),
+    row({ id: 'acme-web/4', repo: 'acme-web', n: 4, state: 'idle', stage: 'todo', title: 'Show the rate limit headers on the API keys page', msg: '' }),
+    row({ id: 'acme-web/3', repo: 'acme-web', n: 3, state: 'done', stage: 'done', title: 'Dark mode for the dashboard', msg: 'Merged', pr: 'https://github.com/acme/acme-web/pull/21' }),
   ]
-}
-export const ROUTINES: RoutineList = {
-  routines: [
-    { name: 'nightly-tests', schedule: 'daily 02:30', enabled: true, kind: 'prompt only', when: ['last 2026-01-01 02:30', 'next 2026-01-02 02:30'] },
-    { name: 'pr-followup', schedule: 'on pr: checks-failed, review', enabled: true, kind: 'prompt only', when: [] },
-    { name: 'dependency-audit', schedule: 'every 7d', enabled: false, kind: 'command: approved', when: ['last 2025-12-28 09:00', 'next - (disabled)'] },
-  ],
-  broken: [],
+  return { version: `${agents.codex}-${agents.omp}`, machines: [{ machine: '', status: 'ready', version: '1.2.1', tasks: list }] }
 }
 
-// Project panel › Settings and Memory.
-export const SETTINGS: ProjectSettings = {
-  name: 'Acme API', goal: 'Ship the public API v2: rate limits, webhooks and a clean OpenAPI spec.',
-  coordinatorProfile: 'claude', threadProfile: 'codex', maxParallelThreads: 3, autoResolveDays: 7, nudge: true, mute: false,
-  repos: [{ path: `${HOME}/code/acme-api`, machine: '' }],
-  defaults: ['autoResolveDays', 'nudge', 'mute'],
+// What the board's files link (GET /api/tasks/links): the Coordinator is the
+// acme-api project coordinator, the two tasks follow their agents' spaces.
+export function boardLinks(now: number, agents: { codex: string, omp: string }): BoardLinks {
+  const task = (n: number, title: string, pane: string, progress: number, minutes: number, msg: string): LinkedTask => ({
+    id: `acme-api/${n}`, repo: 'acme-api', n, key: `ACME-API-${n}`, title, panes: [{ id: pane, role: 'worker' }],
+    workspace: pane.split(':')[0]!, stage: 'working', progress, msg, since: now - minutes * 60_000,
+  })
+  const machines: MachineLinks[] = [{
+    machine: '',
+    coordinators: [{ level: 'project', repo: 'acme-api', pane: COORD, workspace: 'w1' }],
+    tasks: [
+      task(12, 'Per-key rate limits on the public API', CODEX, agents.codex === 'working' ? 75 : 100, 30, agents.codex === 'working' ? 'Writing tests' : 'Ready for review'),
+      task(13, 'Fix the flaky CSV export test', OMP, 40, 25, agents.omp === 'blocked' ? 'Asks to run npm test -- export.spec.ts' : 'Repeating the spec'),
+    ],
+    repos: [{ repo: 'acme-api', root: REPO, branch: 'main', behind: 3 }],
+  }]
+  return { version: `links-${agents.codex}-${agents.omp}`, machines }
 }
-export const MEMORY: Record<string, string> = {
-  'MEMORY.md': '# Memory\n\nOne line per memory file: `- [title](memory/file.md): what it holds`.\n\n- [Release checklist](memory/release.md): what to check before tagging a version\n- [Rate limit decisions](memory/rate-limits.md): 429 with Retry-After, limits per API key\n',
-  'release.md': '# Release checklist\n\n1. `npm test` green on `main`.\n2. Changelog entry under **Unreleased**.\n3. Tag `vX.Y.Z`, then watch the publish workflow.\n',
-  'rate-limits.md': '# Rate limit decisions\n\n- Limits are **per API key**, not per user.\n- Over the limit: `429` with a `Retry-After` header.\n- Paid plans queue nothing; they get a higher bucket.\n',
-}
-export const memoryList = (): MemoryFile[] => memoryFiles(MEMORY['MEMORY.md']!, Object.keys(MEMORY).filter(n => n !== 'MEMORY.md'))
 
-// One thread's record (Project panel › Threads), as `thread show --json` gives it.
-const NEXT: Record<string, string[]> = {
-  't-0012': ['Merge the branch', 'Add a Redis store before running several instances'],
-  't-0013': ['Merge the branch'],
+// `details --json` of a demo task.
+const DESCRIPTIONS: Record<string, string> = {
+  'acme-api/12': 'A token bucket per API key in src/middleware/rateLimit.ts, 429 with Retry-After, limits read from the customer plan. Tests included.',
+  'acme-api/13': 'export.spec.ts fails one run in ten: the rows of the export come back in no defined order.',
+  'acme-api/10': 'Retry failed webhook deliveries with exponential backoff, then move them to the dead-letter list.',
 }
-export function threadDetail(b: ProjectBoard, id: string, acked: boolean): ThreadDetail | null {
-  const th = [...b.open, ...b.resolved].find(x => x.id === id)
-  if (!th) return null
-  const slug = th.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+// The agent's closing note, once it stopped.
+const SUMMARIES: Record<string, string> = {
+  'acme-api/12': 'Rate limiting is in: a token bucket per API key, limits from the customer plan, 429 with Retry-After. 14 new tests, all green.',
+}
+export function taskDetails(t: TaskRow) {
   return {
-    ...th,
-    note: th.resolved ? 'manual' : th.token === 'working' ? 'working' : th.token === 'waiting-on-you' ? 'needs you' : 'done',
-    error: '', kind: 'worktree', agent: th.profile,
-    branch: `hp/${PROJECT}/${th.id}-${slug}`, base: 'origin/main',
-    prState: th.pr ? 'merged' : '', prReview: th.pr ? 'approved' : '',
-    next: th.report && !th.resolved ? NEXT[th.id] || [] : [],
-    acked: th.resolved || acked, hasPane: !th.resolved, keptWorktree: false, resolvedReason: th.resolved ? 'manual' : '',
+    id: t.id, title: t.title, stage: t.stage, msg: t.msg, description: DESCRIPTIONS[t.id] || '',
+    agent: t.app, pr: t.pr, branch: t.group === 'todo' ? '' : `acme-api-${t.n}`, worktree: '', failure: '', failureStage: '', failureAuth: false,
+    review: t.review, reviewRounds: t.reviewRound, plan: '', research: false, archived: t.archived,
+    summary: t.group === 'working' ? '' : SUMMARIES[t.id] || '', report: null,
+    pane: t.n === 12 ? CODEX : t.n === 13 ? OMP : null,
   }
-}
-
-export const REPORTS: Record<string, string> = {
-  't-0010': '## Report\n\nWebhook deliveries now retry with exponential backoff (1 s, 4 s, 16 s, 1 min, 5 min), then go to the dead-letter list shown in the dashboard.\n\n- 14 new tests, all green.\n- Merged into `main`.\n\n## Next\nTest a failing endpoint from the dashboard',
-  't-0012': '## Report\n\nPer-key token bucket in `src/middleware/rateLimit.ts`, limits from the customer plan, `429` with `Retry-After`. 9 new tests; 162/162 pass.\n\n## Next\nMerge the branch\nAdd a Redis store before running several instances',
-  't-0013': '## Report\n\n`findInvoices` had no `ORDER BY`: the CSV rows came back in plan order. The export now sorts by `issued_at, id`. The spec passed 20 runs in a row.\n\n## Next\nMerge the branch',
 }
 
 // What an agent answers to a message typed in the demo: a short scripted
@@ -378,34 +337,10 @@ export interface ScriptedTurn {
 
 const has = (text: string, re: RegExp) => re.test(text.toLowerCase())
 
-// Task moves of the Board and the Project panel, English and French ("↳ Mark done: …", "✓ Tested: …").
-const TASK_MOVE = new RegExp(`^\\s*(?:↳ (?:${[
-  'launch now', 'launch', 'unblock', 'move to to do', 'mark blocked', 'mark done', 'move up', 'move down', 'queue', 'remove from queue', 'back to backlog',
-  'lancer maintenant', 'lancer', 'débloquer', 'passer en à faire', 'marquer bloqué', 'marquer fait', 'monter', 'descendre', 'mettre en file', 'retirer de la file', 'remettre au backlog',
-].join('|')})|✓ (?:tested|reviewed|testé|relu))\\s*:\\s*(.+)`, 'i')
-
 export function scriptFor(agent: string, text: string, n: number): ScriptedTurn {
   const shell = agent === 'codex' ? 'shell' : 'Bash'
   const tool = (name: string, target: string, view?: Partial<OmpToolView>) =>
     ({ name: agent === 'codex' && name !== 'apply_patch' ? 'shell' : name, text: target, omp: agent === 'omp' ? omp(name, target, view) : undefined })
-  // Project panel › Add info: the coordinator passes the text on to the thread.
-  const info = /^\s*↳ info (?:for|pour) (t-\d{4,})/i.exec(text)
-  if (info) {
-    return {
-      steps: [tool(shell, `herdr-projects thread prompt ${PROJECT} ${info[1]!.toLowerCase()}`, { exit: 0, ms: 300 })],
-      reply: `Passed on to **${info[1]!.toLowerCase()}** as is.`,
-      denied: '',
-    }
-  }
-  // The coordinator would edit TASKS.md; the demo board does not change.
-  const move = TASK_MOVE.exec(text)
-  if (move) {
-    return {
-      steps: [tool('Read', `~/.herdr-projects/${PROJECT}/TASKS.md`, { ms: 20 })],
-      reply: `Noted: **${move[1]!.trim()}**. In a real project I would edit TASKS.md now, and the card would move on the Board.`,
-      denied: '',
-    }
-  }
   // A question ("why…", "how…") is answered, even if it mentions tests; a request
   // phrased as one ("can you run the tests?") is a request.
   if (has(text, /^\s*(why|how|what|explain)\b/)) {

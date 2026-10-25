@@ -1,6 +1,6 @@
 // Global app state: live agents (WebSocket /ws/events), device
 // settings, lock, API calls. Module singletons (client app).
-import { DESK_QUERY, SLIM_MAX, provesHardwareKeyboard } from '~/utils/layoutMode'
+import { DESK_QUERY, SLIM_QUERY, TABLET_QUERY, provesHardwareKeyboard } from '~/utils/layoutMode'
 import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, NamedSession, Pane, Quotas } from '#shared/types'
 import { LOCAL, splitId } from '#shared/ids'
 import { clearOffline, readOffline, saveHome } from '~/utils/offlineCache'
@@ -17,11 +17,14 @@ import { checkNewVersion } from './useAppVersion'
 import { migrateContentWidth } from '~/utils/contentWidth'
 import { readQuotaDisplay } from '~/utils/quotas'
 import { readShowShells } from '~/utils/terminalVisibility'
-import { readCompactList } from '~/utils/compactCard'
+import { readHomeGrouping } from '~/utils/homeGrouping'
+import { COMPACT_LIST_KEY, LEGACY_COMPACT_LIST_KEY, readCompactList } from '~/utils/compactCard'
 import { paneFallback } from '~/utils/viewMode'
 import { menuAsSheet } from '~/utils/menuRoute'
 import { DEFAULT_QUOTE_MODE, QUOTE_MODE_KEY, migrateQuoteMode, type QuoteMode } from '~/utils/quoteTokens'
 import { parseReplyStyle } from '~/utils/questionReply'
+import { flag, settingsSync, syncedRef } from './useSyncedSettings'
+import type { SettingsMap } from '#shared/settings'
 import type { QuotaDisplay } from '~/utils/quotas'
 import type { ContentWidth } from '~/utils/contentWidth'
 
@@ -38,6 +41,9 @@ const ls = {
 
 export const herdrState = shallowRef<HerdrState>({ ok: false, workspaces: [], panes: [] })
 let fullState: HerdrState = herdrState.value
+// Every open session's state, as the server follows them (herdrState keeps
+// only the session each device shows): to find a pane in a session not shown.
+export const allSessionsState = shallowRef<HerdrState>(fullState)
 function loadSessionNames(): Record<string, string> {
   return readSessionSelection(ls.get('machineSessions'))
 }
@@ -97,28 +103,27 @@ export const curPane = ref<string | null>(null)
 export const pageVisible = ref(true)
 
 // Device settings.
-export const showShells = ref(readShowShells(ls.get('showShells')))
-watch(showShells, v => ls.set('showShells', v ? '1' : '0'))
-export const showCounters = ref(ls.get('showCounters') !== '0')
-watch(showCounters, v => ls.set('showCounters', v ? '1' : '0'))
-export const showQuotas = ref(ls.get('showQuotas') !== '0')
-watch(showQuotas, v => ls.set('showQuotas', v ? '1' : '0'))
+// Display preferences without anything specific to the device are kept on the
+// server and follow the user (shared/settings.ts, useSyncedSettings.ts); the
+// others stay on this device.
+export const showShells = syncedRef('showShells', readShowShells, flag.write)
+export const showCounters = syncedRef('showCounters', flag.read(true), flag.write)
+export const showQuotas = syncedRef('showQuotas', flag.read(true), flag.write)
+// Existing devices keep Machine.
+export const homeGrouping = syncedRef('homeGrouping', readHomeGrouping, v => v)
+
 // Compact list: one line per card (sidebar on a computer, home list on the phone).
-// The default; read before the first render, so the list never shows detailed first.
-export const compactList = ref(readCompactList(ls.get('compactList')))
-watch(compactList, v => ls.set('compactList', v ? '1' : '0'))
-export const autoReorderReady = ref(ls.get('autoReorderReady') !== '0')
-watch(autoReorderReady, v => ls.set('autoReorderReady', v ? '1' : '0'))
-// Sorting of Ready (see shared/spaces.ts sortReady), specific to the device.
-export const readySort = ref<ReadySort>((READY_SORTS as readonly string[]).includes(ls.get('readySort') || '') ? ls.get('readySort') as ReadySort : 'herdr')
-watch(readySort, v => ls.set('readySort', v))
-// Project panel: hide lists without items (device-specific setting).
-export const projectHideEmpty = ref(ls.get('projectHideEmpty') === '1')
-watch(projectHideEmpty, v => ls.set('projectHideEmpty', v ? '1' : '0'))
-export const quotaDisplay = ref<QuotaDisplay>(readQuotaDisplay(ls.get('quotaDisplay')))
-watch(quotaDisplay, v => ls.set('quotaDisplay', v))
-export const hiddenAgents = ref<string[]>(readHiddenAgents(ls.get('hiddenAgents')))
-watch(hiddenAgents, v => ls.set('hiddenAgents', JSON.stringify(v)))
+// Read before the first render, so the list never changes density after it.
+// Off by default; the 1.x value is dropped (see utils/compactCard.ts).
+export const compactList = syncedRef(COMPACT_LIST_KEY, readCompactList, flag.write)
+if (import.meta.client) {
+  try { localStorage.removeItem(LEGACY_COMPACT_LIST_KEY) } catch { /* storage unavailable */ }
+}
+export const autoReorderReady = syncedRef('autoReorderReady', flag.read(true), flag.write)
+// Sorting of Ready (see shared/spaces.ts sortReady).
+export const readySort = syncedRef<ReadySort>('readySort', raw => ((READY_SORTS as readonly string[]).includes(raw || '') ? raw as ReadySort : 'herdr'), v => v)
+export const quotaDisplay = syncedRef<QuotaDisplay>('quotaDisplay', readQuotaDisplay, v => v)
+export const hiddenAgents = syncedRef<string[]>('hiddenAgents', readHiddenAgents, v => JSON.stringify(v), { deep: true })
 // Content width on a computer; migration of the old preference.
 export const contentWidth = ref<ContentWidth>(migrateContentWidth(ls.get('contentWidth'), ls.get('chatWidth')))
 watch(contentWidth, (v) => {
@@ -136,10 +141,8 @@ if (import.meta.client) {
   ls.set('typewriterSpeed', savedTyping.speed)
   ls.set('encryptedText', savedTyping.encrypted ? '1' : '0')
 }
-export const typewriterSpeed = ref(savedTyping.speed)
-export const encryptedText = ref(savedTyping.encrypted)
-watch(typewriterSpeed, v => ls.set('typewriterSpeed', v))
-watch(encryptedText, v => ls.set('encryptedText', v ? '1' : '0'))
+export const typewriterSpeed = syncedRef('typewriterSpeed', raw => parseTypingSettings(raw, '0', null, null).speed, v => v)
+export const encryptedText = syncedRef('encryptedText', flag.read(true), flag.write)
 export const reducedMotion = ref(false)
 if (import.meta.client) {
   const mq = matchMedia('(prefers-reduced-motion: reduce)')
@@ -160,8 +163,7 @@ export const quoteMode = ref(savedQuoteMode())
 watch(quoteMode, v => ls.set(QUOTE_MODE_KEY, v))
 // How the questions and the points of an agent reply offer to be quoted
 // (utils/questionReply.ts): an icon by default.
-export const replyStyle = ref(parseReplyStyle(ls.get('replyStyle')))
-watch(replyStyle, v => ls.set('replyStyle', v))
+export const replyStyle = syncedRef('replyStyle', parseReplyStyle, v => v)
 // Account quotas (read by QuotaStrip, also shown in the machine headers).
 export const homeQuotas = ref<Quotas | null>(null)
 export const fontSize = ref(Number(ls.get('fontSize')) || 12)
@@ -207,7 +209,7 @@ if (import.meta.client) {
 // sticks); a pane without one follows the device default on a computer
 // (defaultViewMode, chosen in Settings › Desktop), the conversation on the
 // phone. A change of the default applies at once to the panes without one.
-export type PaneViewMode = 'chat' | 'term' | 'project'
+export type PaneViewMode = 'chat' | 'term'
 function loadViewModes(): Record<string, PaneViewMode> {
   try {
     const v = JSON.parse(ls.get('viewModes') || '{}')
@@ -215,10 +217,9 @@ function loadViewModes(): Record<string, PaneViewMode> {
   } catch { return {} }
 }
 const viewModes = reactive(loadViewModes())
-export const defaultViewMode = ref<'chat' | 'term'>(ls.get('defaultViewMode') === 'term' ? 'term' : 'chat')
-watch(defaultViewMode, v => ls.set('defaultViewMode', v))
+export const defaultViewMode = syncedRef<'chat' | 'term'>('defaultViewMode', raw => (raw === 'term' ? 'term' : 'chat'), v => v)
 export const paneViewMode = (id: string): PaneViewMode =>
-  (viewModes[id] === 'term' || viewModes[id] === 'project' || viewModes[id] === 'chat' ? viewModes[id] : paneFallback({ desk: desk.value, defaultMode: defaultViewMode.value }))
+  (viewModes[id] === 'term' || viewModes[id] === 'chat' ? viewModes[id] : paneFallback({ desk: desk.value, defaultMode: defaultViewMode.value }))
 export function setPaneViewMode(id: string, m: PaneViewMode) {
   viewModes[id] = m
   ls.set('viewModes', JSON.stringify(viewModes))
@@ -246,13 +247,14 @@ export const desk = ref(false)
 export const slim = ref(false)
 // Slim: the list opened over the agent (HomeView; backdrop in app.vue).
 export const listDrawer = ref(false)
-// Tablet (shortest side ≥ 700 px) and hardware keyboard seen (a key an
+// Tablet (shortest side ≥ 700 px, or a touch tablet's screen while the
+// on-screen keyboard shortens the window) and hardware keyboard seen (a key an
 // on-screen keyboard does not send); forgotten on a touch, when the message
 // field loses focus, or when the on-screen keyboard shows.
 export const tablet = ref(false)
 export const hardwareKeyboard = ref(false)
 if (import.meta.client) {
-  const tq = matchMedia('(min-width: 700px) and (min-height: 700px)')
+  const tq = matchMedia(TABLET_QUERY)
   tablet.value = tq.matches
   tq.addEventListener('change', () => { tablet.value = tq.matches })
   window.addEventListener('keydown', (e) => { if (provesHardwareKeyboard(e)) hardwareKeyboard.value = true }, true)
@@ -265,7 +267,7 @@ if (import.meta.client) {
 }
 if (import.meta.client) {
   const mq = matchMedia(DESK_QUERY)
-  const narrow = matchMedia(`(max-width: ${SLIM_MAX}px) and (min-width: 700px) and (min-height: 700px)`)
+  const narrow = matchMedia(SLIM_QUERY)
   const read = () => { desk.value = mq.matches; slim.value = mq.matches && narrow.matches }
   read()
   mq.addEventListener('change', read)
@@ -291,16 +293,9 @@ export const multiMachine = computed(() => machines.value.length > 1 || Boolean(
 export const machineInfo = (key: string | null | undefined) => machines.value.find(m => m.key === (key || ''))
 // `uname -s` of a pane's machine ('Darwin' = macOS); the local one from the config.
 export const machineOs = (key: string | null | undefined) => machineInfo(key)?.os || (key ? undefined : appConfig.value.os)
-// "Reveal in Finder" / "Open" / Mod+Alt+O apply to a pane: its machine is a
-// Mac, or wherdr runs in a container on a Mac with the "open on the host"
-// route set up (server: /api/config hostOpen — local panes only).
-export const canOpenOnMachine = (p: Pane | null | undefined) => {
-  if (!p || !p.cwd) return false
-  if (machineOs(p.machine) === 'Darwin') return true
-  // Local machine: its key is '' (missing from the state, like `machine` itself).
-  return Boolean(!(p.machine || '').trim() && appConfig.value.hostOpen)
-}
-// Machines offered by the "New agent" and "New project" sheets (null
+// Reveal and Open apply to panes on macOS.
+export const canOpenOnMachine = (p: Pane | null | undefined) => Boolean(p?.cwd && machineOs(p.machine) === 'Darwin')
+// Machines offered by the "New agent" sheet (null
 // with a single machine); online according to the live state (the config may
 // have been read before the connection).
 export const machineChoices = computed(() => (multiMachine.value ? (appConfig.value.machines || []).filter(m => machines.value.some(s => s.key === m.key)) : null))
@@ -315,21 +310,16 @@ export const paneStale = (p: Pane | null | undefined) => {
   const m = p ? machineInfo(p.machine) : undefined
   return Boolean(m && m.status !== 'online')
 }
-function readList(k: string): string[] {
+function readList(raw: string | null): string[] {
   try {
-    const v = JSON.parse(ls.get(k) || '[]')
+    const v = JSON.parse(raw || '[]')
     return Array.isArray(v) ? v.map(String) : []
   } catch { return [] }
 }
-// Collapsed machine sections (kept on the device).
-export const collapsedMachines = ref<string[]>(readList('collapsedMachines'))
-watch(collapsedMachines, v => ls.set('collapsedMachines', JSON.stringify(v)))
-// Collapsed herdr-projects projects ("<machine>|<project>", kept on the device).
-export const collapsedProjects = ref<string[]>(readList('collapsedProjects'))
-watch(collapsedProjects, v => ls.set('collapsedProjects', JSON.stringify(v)))
-// Collapsed repositories, by machine, project and repository path on this device.
-export const collapsedRepos = ref<string[]>(readList('collapsedRepos'))
-watch(collapsedRepos, v => ls.set('collapsedRepos', JSON.stringify(v)))
+// Collapsed machine sections (kept on the server, like the other home settings).
+export const collapsedMachines = syncedRef<string[]>('collapsedMachines', readList, v => JSON.stringify(v), { deep: true })
+// Collapsed repo groups of the home list, `<machine>|<group id>`.
+export const collapsedRepos = syncedRef<string[]>('collapsedRepos', readList, v => JSON.stringify(v.slice(-200)), { deep: true })
 // Last machine chosen in "New".
 export const lastMachine = ref(ls.get('lastMachine') || '')
 watch(lastMachine, v => ls.set('lastMachine', v))
@@ -340,7 +330,11 @@ let toaster: Toaster | null = null
 export function setToaster(t: Toaster) { toaster = t }
 // `detail`: an extra, smaller line (output of a plugin action…).
 export function clearToast() { toaster?.clear() }
-export function toast(msg: string, err = false, detail?: string) {
+// `action`: one button in it (Restore after Archive…), the toast then stays a
+// few seconds longer; a tap runs it and closes the toast.
+export interface ToastAction { label: string, icon?: string, run: () => void }
+export const ACTION_TOAST_MS = 6000
+export function toast(msg: string, err = false, detail?: string, action?: ToastAction) {
   if (!toaster) return
   toaster.clear()
   toaster.add({
@@ -349,8 +343,11 @@ export function toast(msg: string, err = false, detail?: string) {
     color: err ? 'error' : 'neutral',
     class: err ? 'hw-toast-error' : undefined,
     icon: err ? 'i-lucide-circle-alert' : undefined,
-    duration: (err ? 4200 : 2600) + (detail ? 2400 : 0),
+    duration: action ? ACTION_TOAST_MS : (err ? 4200 : 2600) + (detail ? 2400 : 0),
     close: false,
+    ...(action
+      ? { orientation: 'horizontal' as const, actions: [{ label: action.label, icon: action.icon, color: 'neutral' as const, variant: 'outline' as const, size: 'xs' as const, class: 'hw-toast-action', onClick: () => action.run() }] }
+      : {}),
   })
 }
 
@@ -393,8 +390,18 @@ export async function api<T = Record<string, unknown>>(path: string, body?: unkn
   if (r.status === 401 && data.code === 'locked' && !path.startsWith('/api/auth/')) confirmLock()
   // Erreurs de Herdr transmises telles quelles (en anglais) : message traduit par code.
   const known = data.code === 'agent_not_ready' ? 'The agent isn’t ready in this pane (stopped or still starting).' : null
+  // herdr-projects' own refusal (a wait in a circle, an unknown task…): its words as they are,
+  // never pieced together from the dictionary's templates.
+  if (!r.ok && data.code === 'projects_failed' && data.error) throw new ApiError(String(data.error), r.status, data.code)
   if (!r.ok) throw new ApiError(t(known || data.error || `HTTP ${r.status}`), r.status, data.code)
   return data as T
+}
+
+if (import.meta.client) {
+  settingsSync.setTransport({
+    get: async () => (await api<{ settings: SettingsMap }>('/api/settings')).settings,
+    post: async (patch, migrate) => (await api<{ settings: SettingsMap }>('/api/settings', { settings: patch, migrate })).settings,
+  })
 }
 
 // A file from the server saved on this device under `name` (/api/files/download):
@@ -492,10 +499,16 @@ export function connectEvents() {
     everOpen = true
     sendViewing()
     restoreMachineSessions()
+    // Settings kept on the server: changes made offline go out, then the
+    // server's values apply (the first time, this device's are sent).
+    settingsSync.load()
   }
   ws.onmessage = (e) => {
     try {
-      const got = normalize(JSON.parse(e.data)) as HerdrState
+      const data = JSON.parse(e.data)
+      // Settings changed on another device (or another tab).
+      if (data?.type === 'settings') { settingsSync.receive(data.settings || {}); return }
+      const got = normalize(data) as HerdrState
       // Server just restarted, state still partial: we keep the whole
       // display, the "reconnecting" banner stays in place.
       const state = settleState(lastStateAt ? fullState : null, got, Date.now() < settleUntil)
@@ -506,6 +519,7 @@ export function connectEvents() {
         return
       }
       fullState = state
+      allSessionsState.value = fullState
       herdrState.value = selectSessions(state, machineSessions.value)
       restoreMachineSessions()
       lastStateAt = Date.now()
@@ -532,9 +546,19 @@ export function retryEvents() {
   connectEvents()
 }
 
-// Tells the server which agent is on screen: it does not notify for that one.
+// Visible, focused and recently used: renew a 30-second server lease.
+let notificationActivityAt = Date.now()
+let notificationLastSentAt = 0
+let notificationLastVisible = false
+export function noteNotificationActivity() {
+  notificationActivityAt = Date.now()
+  if (!notificationLastVisible || notificationActivityAt - notificationLastSentAt >= 1000) sendViewing()
+}
 export function sendViewing() {
-  if (evWs && evWs.readyState === 1) evWs.send(JSON.stringify({ type: 'viewing', pane: curPane.value, visible: pageVisible.value }))
+  notificationLastSentAt = Date.now()
+  const visible = pageVisible.value && document.hasFocus() && Date.now() - notificationActivityAt < 120_000
+  notificationLastVisible = visible
+  if (evWs && evWs.readyState === 1) evWs.send(JSON.stringify({ type: 'viewing', pane: curPane.value, visible }))
 }
 watch(curPane, sendViewing)
 
@@ -587,6 +611,7 @@ export function showLock() {
   locked.value = true
   herdrState.value = { ok: false, workspaces: [], panes: [] }
   fullState = herdrState.value
+  allSessionsState.value = fullState
   cachedAt.value = null
   setOfflineAccess(null)
   clearOffline()
@@ -631,6 +656,7 @@ export async function start({ resume = false } = {}) {
     const saved = await readOffline()
     if (saved.home && !eventsOpen.value) {
       fullState = saved.home.state
+      allSessionsState.value = fullState
       herdrState.value = selectSessions(fullState, machineSessions.value)
       cachedAt.value = saved.home.at
     }

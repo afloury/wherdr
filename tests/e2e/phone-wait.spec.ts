@@ -1,5 +1,5 @@
 import http from 'node:http'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { BASE_URL, PORT } from './scenario.mjs'
 
 // Settings › Phone right after publishing: the address waits for Tailscale's
@@ -106,7 +106,7 @@ test('Settings › Phone on the tailnet address shows that address and its QR co
   await page.screenshot({ path: `.shots/phone-on-tailnet-${testInfo.project.name}.png` })
 })
 
-test('the guide’s Phone step on the tailnet address shows it too, not "open localhost"', async ({ page, isMobile }, testInfo) => {
+test('the guide’s Phone step on the tailnet address shows it too, not "open localhost"', { tag: '@chromium-desktop' }, async ({ page, isMobile }, testInfo) => {
   test.skip(isMobile, 'a phone on the tailnet address gets Add to Home Screen instead')
   const setDone = async (done: boolean) => {
     const response = await page.request.post(`${BASE_URL}/api/onboarding`, { headers: { Origin: BASE_URL }, data: { done } })

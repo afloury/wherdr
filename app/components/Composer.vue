@@ -22,11 +22,13 @@ import { rememberPastes } from '~/utils/sentPastes'
 import { enterSends as enterSendsFor } from '~/utils/layoutMode'
 import { kbOpen } from '~/composables/useViewport'
 import { PromptHistory, historyDirection } from '~/utils/promptHistory'
+import { createTouchTap } from '~/utils/touchTap'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
+// `termShown`: the terminal is on screen, so no notice offers to open it.
 // `takeBack`: conversation view; a prompt Claude puts back into its field on Stop
 // comes back here instead (never in the terminal view, where the user sees Claude's field).
-const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void>, conversation?: boolean, escStops?: boolean, takeBack?: boolean, unanswered?: number }>()
+const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void>, conversation?: boolean, escStops?: boolean, takeBack?: boolean, unanswered?: number, termShown?: boolean }>()
 const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [], showUnanswered: [] }>()
 
 // Claude Code update installed: the status line restarts the agent.
@@ -97,13 +99,28 @@ const readOnly = computed(() => Boolean(props.pane?.stopped || props.pane?.promp
 const shellRun = computed(() => Boolean(props.pane && props.pane.agent === 'omp' && props.pane.ompShell && props.pane.status !== 'working'))
 const stopMode = computed(() => Boolean(!readOnly.value && props.pane && props.pane.agent && (props.pane.status === 'working' || shellRun.value) && !canSend.value))
 // Claude Code's grayed-out suggestion (see parseClaudeSuggestion): placeholder of the
-// empty field; Tab (or the chip, on a touch screen) puts it in the field, without sending it.
+// empty field; Tab puts it in the field, without sending it. A touch screen has no Tab:
+// a "Use" button inside the field, on the right, does the same (`suggestTap`).
 const suggestion = computed(() => (!readOnly.value && !canSend.value && props.pane?.claudeSuggestion) || null)
+const suggestTap = computed(() => Boolean(suggestion.value && !enterSends.value))
 function useSuggestion() {
   const s = suggestion.value
   if (!s) return
   text.value = s
   focusEnd()
+}
+// The field's text stops before the button, whatever the language's label.
+const suggestBtn = ref<HTMLButtonElement | null>(null)
+const suggestRoom = ref(0)
+watch(suggestTap, () => nextTick(() => { suggestRoom.value = suggestBtn.value ? suggestBtn.value.offsetWidth + 16 : 0 }), { immediate: true })
+// The button keeps the keyboard as it is: up, the caret goes to the end of the text;
+// down, it stays down (a tap on the field opens it to edit).
+function tapSuggestion() {
+  const s = suggestion.value
+  if (!s) return
+  const typing = Boolean(ta.value && document.activeElement === ta.value)
+  text.value = s
+  if (typing) focusEnd()
 }
 const placeholder = computed(() => {
   const p = props.pane
@@ -177,6 +194,17 @@ function onSubmitClick(e: MouseEvent) {
   e.preventDefault()
   submit()
 }
+// "streaming" status (Stop) ignores :disabled, as UChatPromptSubmit does.
+const sendDisabled = computed(() => readOnly.value || (!canSend.value && !stopMode.value) || sending.value || interrupting.value === 'running')
+// A touch acts on its own, without the browser's click: on an iPhone with the
+// keyboard open, a tap that drifts a pixel becomes a pan and the click never
+// comes (utils/touchTap.ts). The field keeps the focus, the keyboard stays up.
+const sendPressed = ref(false)
+const sendTap = createTouchTap({
+  enabled: () => stopMode.value || !sendDisabled.value,
+  run: () => { if (stopMode.value) interrupt(); else submit() },
+  press: (on) => { sendPressed.value = on },
+})
 const hint = computed(() => desk.value && !stopMode.value)
 
 async function submit() {
@@ -370,7 +398,7 @@ function onPaste(e: ClipboardEvent) {
       return
     }
     // A pasted line that reads as a reference stays plain text: only the
-    // buttons of the conversation and of the Project panel write references.
+    // conversation's own buttons write references.
     const plain = unreference(s)
     if (plain === s) return // normal paste
     e.preventDefault()
@@ -545,19 +573,31 @@ async function runSlash(cmd: string, result = true) {
 // panel). The focus is given right away, within the gesture, so that the iPhone
 // opens the keyboard; the cursor is placed once the text is rendered.
 function focusEnd() {
+  focusAt(null)
+}
+function focusAt(at: number | null) {
   ta.value?.focus()
   nextTick(() => {
     const el = ta.value
     if (!el) return
     el.focus()
-    el.setSelectionRange(el.value.length, el.value.length)
-    el.scrollTop = el.scrollHeight
+    const pos = at === null ? el.value.length : Math.min(at, el.value.length)
+    el.setSelectionRange(pos, pos)
+    if (at === null) el.scrollTop = el.scrollHeight
   })
+}
+// A one-tap answer written in the field (ChatView's Yes / No / OK to all):
+// the caret right after it, so that Enter sends it. Only where Enter sends: on
+// a touch keyboard Enter adds a line, and the focus would only open the
+// keyboard over the next question.
+function focusAnswer(at: number) {
+  if (enterSends.value) focusAt(at)
 }
 
 defineExpose({
   focus: () => ta.value?.focus(),
   focusEnd,
+  focusAnswer,
   blur: () => ta.value?.blur(),
   addImages, addFiles, stop,
 })
@@ -568,7 +608,7 @@ defineExpose({
     <div v-if="interrupting" class="composer-notice restart" :class="{ failed: interrupting === 'failed' }" role="status">
       <template v-if="interrupting === 'failed'">
         <span class="restart-text">{{ stoppingShell ? tl('The command is still running.', 'La commande tourne encore.') : t('The agent is still working.') }}</span>
-        <button type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('View terminal') }}</button>
+        <button v-if="!termShown" type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('View terminal') }}</button>
         <button type="button" class="notice-btn" @click="interrupting = null">{{ t('Hide') }}</button>
       </template>
       <template v-else>
@@ -579,7 +619,7 @@ defineExpose({
     <div v-else-if="pane?.restart" class="composer-notice restart" :class="pane.restart.phase" role="status">
       <template v-if="pane.restart.phase === 'failed'">
         <span class="restart-text">{{ pane.restart.update ? t('Codex update failed') : t('Restart failed') }}{{ tl(': ', ' : ') }}{{ t(pane.restart.error || '') }}</span>
-        <button type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('View terminal') }}</button>
+        <button v-if="!termShown" type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('View terminal') }}</button>
         <button v-if="pane.restart.update" type="button" class="notice-btn" @click="copyUpdate"><UIcon name="i-lucide-copy" />{{ t('Copy command') }}</button>
         <button type="button" class="notice-btn" @click="dismissRestart(paneId)">{{ t('Hide') }}</button>
       </template>
@@ -603,13 +643,8 @@ defineExpose({
       <UIcon name="i-lucide-text-cursor-input" class="notice-icon" />
       <span class="restart-text" :title="codexFieldHint">{{ tl('In Codex’s field:', 'Dans le champ de Codex :') }} <code>{{ pane.codexField }}</code></span>
       <button type="button" class="notice-btn" :disabled="readOnly || clearingField" :title="codexFieldHint" @click="clearCodexField">{{ tl('Clear', 'Vider') }}</button>
-      <button type="button" class="notice-btn" @click="emit('showTerminal')"><UIcon name="i-lucide-terminal" /><span class="notice-label">{{ t('View terminal') }}</span></button>
+      <button v-if="!termShown" type="button" class="notice-btn" @click="emit('showTerminal')"><UIcon name="i-lucide-terminal" /><span class="notice-label">{{ t('View terminal') }}</span></button>
     </div>
-    <button
-      v-if="suggestion && !enterSends" type="button" class="composer-suggest" @mousedown.prevent @click="useSuggestion"
-    >
-      <UIcon name="i-lucide-corner-down-left" /> {{ t('Use suggestion') }}
-    </button>
     <div v-if="slashOpen" class="slash-menu" role="listbox" :aria-label="t('Commands')">
       <div v-if="slashMatches.length" ref="slashListEl" class="slash-list">
         <button
@@ -654,7 +689,7 @@ defineExpose({
       ref="promptRef" v-model="text" :disabled="Boolean(pane?.stopped)" :placeholder="pane?.stopped ? t('Restart Codex before sending a message') : readOnly ? t('Draft saved — sending unavailable offline') : placeholder" variant="outline" color="neutral"
       :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends && !slashOpen"
       :enterkeyhint="enterSends ? 'send' : 'enter'" autocapitalize="sentences"
-      class="prompt" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
+      class="prompt" :class="{ suggesting: suggestTap }" :style="suggestRoom ? { '--suggest-room': `${suggestRoom}px` } : undefined" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
       @submit="submit" @keydown="onKeydown" @paste="onPaste"
     >
       <template v-if="attachments.length" #header>
@@ -677,6 +712,13 @@ defineExpose({
         </div>
       </template>
       <template #footer>
+        <!-- Out of the footer's flow: top right of the field, over its first line. -->
+        <button
+          v-if="suggestTap" ref="suggestBtn" type="button" class="prompt-suggest" :aria-label="t('Use suggestion')"
+          @mousedown.prevent @click="tapSuggestion"
+        >
+          <UIcon name="i-lucide-corner-down-left" /><span>{{ tl('Use', 'Utiliser') }}</span>
+        </button>
         <UButton
           icon="i-lucide-plus" color="neutral" variant="outline" size="sm" class="prompt-plus" :disabled="readOnly"
           :aria-label="t('Photo, file, paste, commands')" @click="openPlus"
@@ -688,10 +730,11 @@ defineExpose({
         <span v-else-if="hint" class="prompt-hint"><UKbd value="enter" size="sm" /> {{ t('send') }} <span class="sep">·</span> <UKbd value="shift" size="sm" /><UKbd value="enter" size="sm" /> {{ t('new line') }}</span>
         <span v-else-if="desk && escStops && stopMode && interrupting !== 'running'" class="prompt-hint"><UKbd value="escape" size="sm" /> {{ tl('stop', 'arrêter') }}</span>
         <UChatPromptSubmit
-          :status="stopMode ? 'streaming' : 'ready'" :disabled="readOnly || (!canSend && !stopMode) || sending || interrupting === 'running'"
+          :status="stopMode ? 'streaming' : 'ready'" :disabled="sendDisabled"
           color="primary" variant="solid" streaming-color="neutral" streaming-variant="solid" streaming-icon="i-herdr-stop" size="sm"
-          class="prompt-send" :class="{ stop: stopMode }" :aria-label="stopMode && shellRun ? tl('Cancel the command', 'Annuler la commande') : t(stopMode ? 'Stop the agent' : 'Send')"
+          class="prompt-send" :class="{ stop: stopMode, pressed: sendPressed }" :aria-label="stopMode && shellRun ? tl('Cancel the command', 'Annuler la commande') : t(stopMode ? 'Stop the agent' : 'Send')"
           @mousedown.prevent @click="onSubmitClick" @stop="interrupt"
+          @touchstart="sendTap.start" @touchend="sendTap.end" @touchcancel="sendTap.cancel"
         />
       </template>
     </UChatPrompt>

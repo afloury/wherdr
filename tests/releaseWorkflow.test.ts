@@ -1,16 +1,19 @@
+import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'vitest'
+import { hasCommands } from './helpers/commands'
 
 const workflow = readFileSync('.github/workflows/release.yml', 'utf8')
 for (const job of ['package', 'publish-release']) {
-  it(`${job} refuses missing drafts/notes and never generates release notes`, () => {
+  it.skipIf(!hasCommands('bash') || (job === 'package' && !hasCommands('sha256sum')))(`${job} refuses missing drafts/notes and never generates release notes`, () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-draft-'))
     try {
       const bin = path.join(home, 'bin')
       mkdirSync(bin)
+      cpSync('scripts', path.join(home, 'scripts'), { recursive: true })
       writeFileSync(path.join(home, 'wherdr-1.3.3.tgz'), 'archive')
       writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
 case "$*" in
@@ -18,7 +21,7 @@ case "$*" in
     [ "$DRAFT_EXISTS" = 1 ] || exit 1
     case "$*" in
       *'--json isDraft'*) echo "$IS_DRAFT" ;;
-      *'--json body'*) printf '%s' "$DRAFT_NOTES" | tr -d '[:space:]' ;;
+      *'--json body'*) printf '%s' "$DRAFT_NOTES" ;;
     esac ;;
   *) printf '%s\\n' "$*" >> "$HOME/mutations" ;;
 esac
@@ -32,10 +35,11 @@ esac
         { exists: '1', draft: 'false', notes: 'Reviewed notes', ok: false },
         { exists: '1', draft: 'true', notes: '', ok: false },
         { exists: '1', draft: 'true', notes: ' \n\t ', ok: false },
-        { exists: '1', draft: 'true', notes: '## Fixed\nReviewed changes', ok: true },
+        { exists: '1', draft: 'true', notes: 'See CHANGELOG.md', ok: false },
+        { exists: '1', draft: 'true', notes: '## Fixed\nDownloads now work correctly on supported Node versions. Temporary download links are released after the browser saves the file.\n\n[Full changelog](https://github.com/example/wherdr/blob/v1.3.3/CHANGELOG.md)', ok: true },
       ]) {
         rmSync(path.join(home, 'mutations'), { force: true })
-        const run = spawnSync('sh', ['-e', '-c', script], { cwd: home, encoding: 'utf8', env: {
+        const run = spawnSync('bash', ['-e', '-c', script], { cwd: home, encoding: 'utf8', env: {
           ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}`, GITHUB_REF_NAME: 'v1.3.3',
           GITHUB_REPOSITORY: 'example/wherdr', DRAFT_EXISTS: scenario.exists,
           IS_DRAFT: scenario.draft, DRAFT_NOTES: scenario.notes,
@@ -75,7 +79,7 @@ it('uses one release tag for dispatch, checkout and concurrency, preserving OIDC
   expect(npmWorkflow).not.toMatch(/^\s+environment:/m)
 })
 
-it('rejects invalid or missing releases before checkout', () => {
+it.skipIf(!hasCommands('bash'))('rejects invalid or missing releases before checkout', () => {
   const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-npm-tag-'))
   try {
     writeFileSync(path.join(home, 'gh'), `#!/bin/sh
@@ -104,7 +108,8 @@ printf '%s\\n' "$*" >> "$HOME/requests"
   } finally { rmSync(home, { recursive: true, force: true }) }
 })
 
-it('checks tagged versions and downloads and publishes the requested local archive from main', () => {
+// Execute the real CI shell and checksum verifier only when they are installed.
+it.skipIf(!hasCommands('bash', 'sha256sum'))('checks tagged versions and downloads and publishes the requested local archive from main', () => {
   const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-npm-publish-'))
   try {
     const bin = path.join(home, 'bin')
@@ -113,7 +118,7 @@ it('checks tagged versions and downloads and publishes the requested local archi
 [ "$*" = 'release download v1.3.3 --pattern wherdr-1.3.3.tgz* --dir package --clobber' ] || exit 1
 mkdir -p package
 printf archive > package/wherdr-1.3.3.tgz
-(cd package && sha256sum wherdr-1.3.3.tgz > wherdr-1.3.3.tgz.sha256)
+printf '%s  wherdr-1.3.3.tgz\\n' '${createHash('sha256').update('archive').digest('hex')}' > package/wherdr-1.3.3.tgz.sha256
 `, { mode: 0o755 })
     writeFileSync(path.join(bin, 'npm'), `#!/bin/sh
 printf '%s\\n' "$@" > "$HOME/publish-args"

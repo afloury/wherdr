@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addAnswer, addQuote, answerOf, decisionRows, isClosedQuestion, isOpenQuestion, rowNumbers, rowRef, rowSettled, tableOf, tableRef, toggleOkAll, unansweredCount, isQuoted, questionsIn, quotesIn, removeQuote, tappedAnswer } from '../app/utils/questionReply'
+import { addAnswer, addQuote, answerEnd, answerOf, decisionRows, isClosedQuestion, isOpenQuestion, rowNumbers, rowRef, rowSettled, tableOf, tableRef, toggleOkAll, unansweredCount, isQuoted, questionsIn, quotesIn, removeQuote, tappedAnswer } from '../app/utils/questionReply'
 import { messageRef, parseRef, pointRef, refLine } from '../shared/reference'
 
 // A question or a point of the message of 11:37, as its button refers to it.
@@ -234,6 +234,21 @@ describe('one-tap answers', () => {
     expect(addAnswer(draft, pt(Q1), 'No')).toBeNull()
     expect(answerOf(draft, pt(Q1))).toBe('Yes, but after lunch.')
   })
+  it('puts the caret right after the answer a tap wrote', () => {
+    const one = addAnswer('', pt(Q1), 'Yes')!
+    expect(answerEnd(one, pt(Q1))).toBe(`${line(Q1)}\nYes`.length)
+    // An answer changed above another one: the caret stays on it.
+    const two = addAnswer(addAnswer(one, pt(Q2), 'Non')!, pt(Q1), 'No')!
+    expect(two).toBe(`${line(Q1)}\nNo\n${line(Q2)}\nNon\n`)
+    expect(answerEnd(two, pt(Q1))).toBe(`${line(Q1)}\nNo`.length)
+    expect(answerEnd(two, pt(Q2))).toBe(two.length - 1)
+    // The user's own words are left alone: the caret goes after them.
+    const own = `${line(Q1)}\nYes, but after lunch.\n\n${line(Q2)}\n`
+    expect(answerEnd(own, pt(Q1))).toBe(`${line(Q1)}\nYes, but after lunch.`.length)
+    // No reference (taken back): the end of the draft.
+    expect(answerEnd('Hello.', pt(Q1))).toBe('Hello.'.length)
+    expect(answerEnd('', pt(Q1))).toBe(0)
+  })
   it('reads which answer a tap wrote', () => {
     expect(['Yes', 'oui', 'OUI.', ' yes '].map(tappedAnswer)).toEqual(['yes', 'yes', 'yes', 'yes'])
     expect(['No', 'non', 'Non.'].map(tappedAnswer)).toEqual(['no', 'no', 'no'])
@@ -324,6 +339,8 @@ describe('answers to a decision table', () => {
     expect(both).toBe(`${withNo}${ALL}\nOK tout\n`)
     expect(isQuoted(both, ref)).toBe(true)
     expect(toggleOkAll(both, ref, 'OK tout')).toBe(withNo)
+    expect(answerEnd(both, ref)).toBe(both.length - 1)
+    expect(answerEnd(withNo, ref)).toBe(withNo.length)
     // An exception written after it stays.
     const exception = addAnswer(toggleOkAll('', ref, 'OK to all'), row(3), 'No')!
     expect(toggleOkAll(exception, ref, 'OK to all')).toBe('↳ Quote decision 11:37 #3 : Publish the notes? —\nNo\n')

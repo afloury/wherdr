@@ -18,8 +18,12 @@ export function nextTail(tail: ChatItem[], r: Pick<ChatResponse, 'items' | 'keep
 // became shorter than our start; the older pages would not join the new
 // bottom. Keeping them across a 24 MB jump would need each message's byte
 // position (left for later): the reading position is lost in that case.
-export function restartsTail(c: { file: string | null, tailStart: number | null }, r: Pick<ChatResponse, 'file' | 'start'>): boolean {
+// `rewritten`: the file was rewritten above our start (same size or shorter,
+// see anchorOf in server/utils/transcripts.ts), even if the new bottom happens
+// to start at the same byte.
+export function restartsTail(c: { file: string | null, tailStart: number | null }, r: Pick<ChatResponse, 'file' | 'start' | 'rewritten'>): boolean {
   return Boolean(c.file && r.file !== c.file)
+    || Boolean(c.file && r.rewritten)
     || (c.tailStart !== null && r.start !== undefined && r.start !== c.tailStart)
 }
 

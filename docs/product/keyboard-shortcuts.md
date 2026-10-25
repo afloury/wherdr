@@ -11,8 +11,8 @@ Status: **implemented** (2026-10-01). Code: `app/utils/shortcuts.ts` (table and 
 > same day: Firefox and Zen own ⌘⌥E (Network Monitor) on macOS, Zen also Ctrl+Alt+E
 > ("Forward workspace").
 
-> 2026-10-06: herdr-projects keys, on a machine with the plugin: Mod+Alt+P (the Project panel
-> of the current agent's project) and Mod+Alt+Shift+N (New project). Decision Q10.
+> 2026-10-06: herdr-projects keys Mod+Alt+P (Project panel) and Mod+Alt+Shift+N (New project),
+> decision Q10. Removed with herdr-projects 0.2 (wherdr 2.0).
 
 ## Capability
 
@@ -20,7 +20,7 @@ Someone using wherdr on a computer (≥ 900 px wide, hardware keyboard) can do t
 without the mouse: find an agent, move between agents, read and search its conversation, switch
 to its terminal, stop it, answer it, start a new agent or tab, and close a pane. The keys are the
 ones they would guess from Slack, VS Code or ChatGPT. None of them takes a key away from the
-program running in the terminal, apart from the documented exceptions in C1. This backs the README's
+program running in the terminal, apart from the documented exceptions in C1. This backs the [first-launch guide's](../quick-start.md)
 promise that wherdr "can replace the Herdr terminal client day to day".
 
 ## Shortcuts
@@ -34,15 +34,13 @@ promise that wherdr "can replace the Herdr terminal client day to day".
 | New agent in a new space: the "New agent" sheet, which creates the space (`workspace.create`) | Mod+Alt+N | Computer, online | Yes (caught before the terminal) |
 | New tab in the current pane's space: the "Start in a new tab" sheet | Mod+Alt+T | Computer, online, a pane being viewed | Yes (caught before the terminal) |
 | Close the current pane, through the same confirmation as the menu | Mod+Alt+W | Computer, online, a pane being viewed | Yes (caught before the terminal) |
-| The current agent's folder in its default editor, on the agent's machine | Mod+Alt+O | Computer, a pane with a folder, on a Mac (`machineOs`) — or a local pane when wherdr runs in Docker on a Mac with the host-open route (`/api/config` `hostOpen`) | Yes (caught before the terminal) |
-| The Project panel of the current agent's project: shown or collapsed on its coordinator (computer), the coordinator opened from a thread (`openProjectPanel`) | Mod+Alt+P | Computer, a pane in a herdr-projects project with a coordinator | Yes (caught before the terminal) |
-| New project: the "New project" sheet of the current agent's machine, whose Run confirms (`startProjectsAction`) | Mod+Alt+Shift+N | Computer, online, a pane on a machine with herdr-projects | Yes (caught before the terminal) |
+| The current agent's folder in its default editor, on the agent's machine | Mod+Alt+O | Computer, a pane with a folder, on a Mac (`machineOs`) | Yes (caught before the terminal) |
 | Search this conversation; if search is already open, focus and select its field | Mod+F | Agent in conversation mode | No: the browser keeps its Find there |
 | Switch between conversation and terminal | Ctrl+`` ` `` on every platform, by position (`Backquote`; on macOS also `IntlBackslash`, the key left of 1 on ISO keyboards) | Agent with a conversation, or the active cell | Yes (xterm sends nothing for it) |
 | Stop the working agent, same as the Stop button | Esc | Conversation mode, Stop shown, empty field, no conversation search open | No (Esc goes to the program) |
 | Settings | Mod+, | Computer | Yes |
 | Shortcut list | Mod+/, or `?` outside a field | Computer; also Settings › Computer | Mod+/ only |
-| Board: every project, thread, task and agent in four columns | `H` outside a field | Computer | No (the program gets the key) |
+| Board: the herdr-projects tasks of every machine | `H` outside a field | Computer | No (the program gets the key) |
 
 These existing shortcuts are unchanged and listed in the help sheet:
 
@@ -68,10 +66,6 @@ Where the keys are shown:
 - The Board button (header and collapsed rail of the list) shows `H` in its tooltip.
 - The agent menu's "Close this pane" entry shows Mod+Alt+W.
 - The agent menu's "Open in editor" entry shows Mod+Alt+O (on the agent's Mac).
-- The agent menu's Projects entries show Mod+Alt+P (Project panel) and Mod+Alt+Shift+N (New
-  project); the "Show the Project panel" button's tooltip shows Mod+Alt+P.
-- The help sheet lists the herdr-projects keys in a Projects group, only once the plugin is on
-  a machine.
 - The composer shows `Esc stop` while Stop is visible.
 - The help sheet lists everything.
 
@@ -191,17 +185,7 @@ The composer blurs itself on Esc. After a stop it gets the focus back.
   Monitor), Zen also Ctrl+Alt+E (Forward workspace) — the shortcut never reached wherdr. O is
   free in Firefox, Zen, Chromium and Safari (⌘O "Open File" needs no Alt). The agent menu gets
   an "Open in editor" entry, the help sheet a row.
-- **Q9.** wherdr in Docker on a Mac: the container is Linux with no `open`, so the folder
-  shortcut and Reveal/Open were dead there. `/api/reveal` gains an "open on the host" route:
-  with `HERDR_WEB_HOST_OPEN_TARGET` set, a local pane's checks run on the Mac over SSH, behind
-  a forced-command key (scripts/wherdr-open.sh, installed by scripts/install-host-open.sh).
-  Two macOS quirks shape it: (a) plain `open <folder>` gives the file manager, so a folder with
-  a configured editor app runs `open -a <editor>` (`~/.local/share/wherdr/editor`); (b) apps
-  can only be *launched* from the GUI session, and `open` from an SSH session starts nothing —
-  the wrapper hands the command to a per-user LaunchAgent (`dev.wherdr.open`, spool file +
-  kickstart) that lives in the GUI session and runs `open` there. The client gates on
-  `/api/config` `hostOpen` (`canOpenOnMachine`), not on the OS alone. Without the variable,
-  behaviour is unchanged.
+
 - **Q10.** herdr-projects keys, live only where the plugin is installed. Mod+Alt+P for the
   Project panel: VS Code's secondary side bar is ⌥⌘B, but Chrome on macOS binds ⌥⌘B to the
   Bookmark Manager; ⌥⌘P is unbound in Chrome, Firefox and Safari (Finder's path bar only)

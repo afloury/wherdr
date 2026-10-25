@@ -6,9 +6,7 @@ import type { HerdrState, Pane, Tab, Workspace } from '../../shared/types'
 import { LOCAL, joinId } from '../../shared/ids'
 import { reduceLayout } from '../../shared/layout'
 import { paneAgentKind } from '../../shared/agentKind'
-import { projectToken } from '../../shared/projects'
 import { cleanLabel } from '../../shared/displayTitles'
-import { threadOfPane } from '../../shared/threadLimits'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
@@ -23,6 +21,7 @@ export function reduceSnapshot(s: Json, machine = LOCAL, session = 'default'): H
     // Workspace open on a Git worktree (created by Herdr, often an agent branch).
     worktree: Boolean(w.worktree && w.worktree.is_linked_worktree),
     ...(w.worktree && w.worktree.repo_key ? { repo: String(w.worktree.repo_key), repoName: String(w.worktree.repo_name || '') } : {}),
+    ...(w.worktree?.checkout_path ? { path: String(w.worktree.checkout_path) } : {}),
     ...(w.worktree?.branch ? { branch: String(w.worktree.branch) } : {}),
   }))
   const layouts = new Map<string, Json>((s.layouts || []).filter((l: Json) => l && l.tab_id).map((l: Json) => [String(l.tab_id), l]))
@@ -58,9 +57,6 @@ export function reduceSnapshot(s: Json, machine = LOCAL, session = 'default'): H
       // Session identifier passed by the agent's Herdr integration
       // (herdr integration install codex): designates exactly its transcript.
       agentSession: p.agent_session && p.agent_session.value ? p.agent_session.value : null,
-      // Tokens set by the herdr-projects plugin on its panes.
-      ...(projectToken(p.tokens) ? { project: projectToken(p.tokens) } : {}),
-      ...(threadOfPane(p.tokens, p.name, p.agent) ? { hpThread: threadOfPane(p.tokens, p.name, p.agent)! } : {}),
       ...(Number.isFinite(p.state_change_seq) ? { stateSeq: Number(p.state_change_seq) } : {}),
     }
   })

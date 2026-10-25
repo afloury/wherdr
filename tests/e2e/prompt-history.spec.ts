@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { OMP_CHAT_PANE as pane, OMP_IMAGE_PANE, fakeHerdr } from './scenario.mjs'
 
 test.afterEach(async () => {
@@ -64,7 +64,7 @@ test('recalls sent texts, preserves the draft, and leaves middle-line arrows to 
   await expect(field).toHaveValue('Second history message')
 })
 
-test('slash suggestions and an active choice card own arrows before history', async ({ page }) => {
+test('slash suggestions and an active choice card own arrows before history', { tag: '@chromium-desktop' }, async ({ page }) => {
   test.skip(!test.info().project.name.includes('desktop'), 'Card keyboard navigation is desktop only')
   await page.goto(`/#/a/${pane}`)
   const field = page.locator('.prompt textarea')

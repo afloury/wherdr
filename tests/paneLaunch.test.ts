@@ -50,9 +50,16 @@ describe('new tab created only on confirmation', () => {
     expect(r).toEqual({ stage: 'create', error: 'workspace introuvable' })
   })
 
-  it('invalid agent name: refused before creating the tab', async () => {
+  it('typed agent name: converted to a valid one', async () => {
     const d = deps()
-    const r = await launchInNewPane(d, { ...tabReq, agent: { kind: 'claude', name: '9 revue' } })
+    const r = await launchInNewPane(d, { ...tabReq, agent: { kind: 'claude', name: 'Agent portal project' } })
+    expect(r.stage).toBe('done')
+    expect(d.agents).toHaveBeenCalledWith(expect.objectContaining({ name: 'agent-portal-project' }))
+  })
+
+  it('agent name with nothing usable: refused before creating the tab', async () => {
+    const d = deps()
+    const r = await launchInNewPane(d, { ...tabReq, agent: { kind: 'claude', name: '!!!' } })
     expect(d.calls).toEqual([])
     expect(r.stage).toBe('create')
   })

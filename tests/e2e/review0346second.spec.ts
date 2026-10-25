@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs'
-import {expect,test} from '@playwright/test'
+import {expect,test} from './test'
 import {OMP_CHAT_PANE as pane,fakeHerdr} from './scenario.mjs'
 const fx=(name:string)=>readFileSync(new URL(`../fixtures/${name}.txt`,import.meta.url),'utf8')
 const show=(text:string|null,agent='codex')=>fakeHerdr('e2e.interaction_screen',{pane_id:pane,text,agent,status:'blocked'})
@@ -58,7 +58,7 @@ test('S2 browser: a native menu click carries its identity and refuses a changed
  expect((await fakeHerdr('e2e.terminal_screen',{pane_id:pane})).keys).toEqual([])
 })
 
-test('S8 keyboard: a rapid arrow then Enter uses the displayed target identity',async({page})=>{
+test('S8 keyboard: a rapid arrow then Enter uses the displayed target identity',{ tag: '@chromium-desktop' },async({page})=>{
  test.skip(!test.info().project.name.includes('desktop'),'Keyboard navigation is a desktop control')
  const text=readFileSync(new URL('../fixtures/claude-resume.ansi',import.meta.url),'utf8')
  await show(text,'claude');await page.goto(`/#/a/${pane}`)

@@ -7,7 +7,7 @@
 // shared/queuedMatch.ts). Claude's queue only keeps "[Image #1]": an entry of
 // it gets the photos of wherdr's record of the same message, from the server
 // (`sent`, see server/utils/sentHistory.ts) or remembered here.
-import type { ChatItem, ClaudeQueueEntry, ClaudeScreen } from '../../shared/types'
+import type { ChatItem, ClaudeQueueEntry, ClaudeScreen, QueuedMessage } from '../../shared/types'
 import type { OutboxItem } from './outbox'
 import { type QueuedPhase, queuedPhases } from '../../shared/queuedPhase'
 import { photosLanded, photosOnly, uploadNames, withoutUploads } from '../../shared/queuedMatch'
@@ -25,7 +25,8 @@ export interface PendingMessage {
   // Never reached the server: Retry / Cancel act on the app's copy.
   local?: boolean
   // 'busy': waiting because the agent's input field holds other text.
-  reason?: 'busy' | 'no_input'
+  inputText?: string
+  reason?: QueuedMessage['reason']
   // Stored names of its photos.
   photos: string[]
   // Photos Claude's queue counts but whose files are unknown.
@@ -56,6 +57,8 @@ export function pendingQueue(o: {
   items: ChatItem[]
   screen: ClaudeScreen | null
   memory?: OutboxItem[]
+  // Agent idle with nothing holding it back: Claude has emptied its queue.
+  idle?: boolean
 }): PendingMessage[] {
   // Already in the conversation (the server has not noticed yet): we do not
   // show two copies. "! cmd" appears there as a command without "!" (omp:
@@ -77,7 +80,10 @@ export function pendingQueue(o: {
   const minePhases = queuedPhases(list.map(q => q.text), o.screen)
   let ownPhotos = list.filter((q, i) => photosOnly(q.text) && !q.state && minePhases[i] === 'queued').length
   const memPhotos = (o.memory || []).filter(m => photosOnly(m.text) && !mine.some(q => q.id === m.id))
-  for (const q of o.claude) {
+  // wherdr did not send these: shown only while Claude may still read them
+  // (never once idle), and not once in the conversation (a scheduled prompt
+  // shows there as a note).
+  for (const q of o.idle ? [] : o.claude) {
     const images = q.images || 0
     if (!q.text) {
       if (!images) continue
@@ -89,6 +95,7 @@ export function pendingQueue(o: {
       continue
     }
     if (!normText(q.text) || mine.some(x => holds(x.text, q.text))) continue
+    if (o.items.some(i => (!q.ts || !i.ts || i.ts >= q.ts) && (i.role === 'user' || i.role === 'notice') && holds(i.text, q.text))) continue
     const known = images ? q.sent || [...(o.memory || [])].reverse().find(m => holds(withoutUploads(m.text), q.text))?.text : null
     list.push({ id: `cc-${q.ts}`, text: known || q.text, missing: known ? 0 : images })
   }
@@ -101,6 +108,7 @@ export function pendingQueue(o: {
     phase: q.state ? 'queued' : phases[i]!,
     state: q.state || null,
     ...(q.local ? { local: true } : {}),
+    ...(q.inputText ? { inputText: q.inputText } : {}),
     ...(q.reason ? { reason: q.reason } : {}),
     photos: uploadNames(q.text),
     missing: q.missing || 0,

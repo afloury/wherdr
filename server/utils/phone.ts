@@ -1,17 +1,9 @@
-// The phone address: wherdr published on the tailnet by `tailscale serve`
-// (private to your devices). wherdr adopts it by itself (adoptServed: allowed
-// host and APP_URL, at startup, every TAILNET_REFRESH_MS and when an unknown
-// host knocks), and Settings › Phone publishes it, checks that it answers and
-// draws its QR code. Native mode runs the tailscale CLI; a container (Docker)
-// reads Tailscale's socket, mounted by docker-compose.yml, and the user runs
-// the publish command on the host. Without that socket, the address is typed
-// (or sent by the installer) and checked through Tailscale's DNS.
 import fs from 'node:fs'
-import { inspect, probe, publishArgs, publishCommand, runTailscale, serveError, tailnetDomain, tailnetUrl, tailscaleBin, tailscaledSocket, unpublishArgs } from '../../bin/lib/tailnet.mjs'
+import { inspect, probe, publishArgs, publishCommand, runTailscale, serveError, tailscaleBin, tailscaledSocket, unpublishArgs } from '../../bin/lib/tailnet.mjs'
 import { phoneReach } from '../../shared/phone'
 import { qrSvg } from '../../shared/qr'
 import type { PhoneError, PhoneResult, PhoneStatus } from '../../shared/phone'
-import { APP_URL_FILE, BOOT_APP_URL, DATA_DIR, ENV_APP_URL, IN_DOCKER, TAILNET_REFRESH_MS, log } from './env'
+import { APP_URL_FILE, BOOT_APP_URL, DATA_DIR, ENV_APP_URL, TAILNET_REFRESH_MS, log } from './env'
 import { setServedHosts } from './hosts'
 import { initVapid } from './push'
 
@@ -63,8 +55,6 @@ export function applyServed(served: string[] | null | undefined) {
   }
 }
 
-// Told the machine's Tailscale name at each reading (machines.ts shows it in
-// place of a container's host name).
 const nameListeners: ((name: string) => void)[] = []
 export function onTailnetName(f: (name: string) => void) { nameListeners.push(f) }
 function tellName(name: string | null | undefined) {
@@ -95,9 +85,6 @@ export function stopTailnetWatch() {
   watch = null
 }
 
-// Docker: the address the user typed (not saved until it answers), for a
-// container without Tailscale's socket or a port published another way.
-let typed = ''
 // When the wait for each address started (first check, or publishing):
 // transient failures before PHONE_GRACE_MS are shown as 'pending'.
 const waitSince = new Map<string, number>()
@@ -106,7 +93,7 @@ export async function phoneStatus(): Promise<PhoneStatus> {
   const bin = tailscaleBin()
   const socket = bin ? null : tailscaledSocket()
   const out: PhoneStatus = {
-    mode: bin ? 'native' : IN_DOCKER ? 'docker' : 'missing',
+    mode: bin ? 'native' : 'missing',
     platform: process.platform, port: PORT, connected: false, https: false, url: null, served: false, funnel: false, taken: false, suggested: null,
     command: publishCommand(PORT), reach: null, reachCause: null, reachStatus: null, checkedAt: null, appUrl: '', appUrlFromEnv: Boolean(ENV_APP_URL), qr: null,
   }
@@ -122,31 +109,8 @@ export async function phoneStatus(): Promise<PhoneStatus> {
     out.suggested = net.phone?.url ?? null
     out.url = out.served ? net.phone!.url : null
   }
-  if (out.mode === 'docker') {
-    if (!out.suggested) {
-      let resolv = ''
-      try { resolv = fs.readFileSync('/etc/resolv.conf', 'utf8') } catch { /* no DNS settings */ }
-      const domain = tailnetDomain(resolv)
-      // HOST_LABEL when it is set: the container's own host name is not the machine's.
-      const machine = (process.env.HOST_LABEL || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-')
-      out.suggested = domain && machine ? `https://${machine}.${domain}:${PORT}/` : null
-    }
-    // Nothing found in Tailscale (not readable, or published another way):
-    // the address typed by hand, or the one saved earlier.
-    if (!out.url) out.url = typed || tailnetUrl(process.env.APP_URL)
-    // An address on another HTTPS port (already published that way): the
-    // command shows that port, still pointing at wherdr's own.
-    const httpsPort = httpsPortOf(out.url || out.suggested)
-    if (httpsPort) out.command = publishCommand(PORT, httpsPort)
-  }
   if (out.url) {
-    let p = await probe(out.url, 5000)
-    // Typed by hand and it answers: APP_URL follows, unless the environment
-    // sets another one. (A published address was adopted above, or is refused: funnel.)
-    if (!out.served && (p.reach === 'ok' || p.reach === 'host') && !ENV_APP_URL) {
-      saveAppUrl(out.url)
-      if (p.reach === 'host') p = await probe(out.url, 5000)
-    }
+    const p = await probe(out.url, 5000)
     const since = waitSince.get(out.url) ?? Date.now()
     if (p.reach === 'ok') waitSince.delete(out.url)
     else waitSince.set(out.url, since)
@@ -160,23 +124,10 @@ export async function phoneStatus(): Promise<PhoneStatus> {
   return out
 }
 
-// The explicit port of an https:// address ('' when it is 443).
-export function httpsPortOf(url: string | null): string {
-  try { return url ? new URL(url).port : '' } catch { return '' }
-}
-
 const fail = async (error: PhoneError, more: { link?: string, detail?: string } = {}): Promise<PhoneResult> =>
   ({ ok: false, error, ...more, status: await phoneStatus() })
 
-// POST /api/phone: { action: 'publish' | 'unpublish' } (native) or
-// { action: 'address', url } (docker: the address `tailscale serve` printed).
 export async function phoneAction(body: { action?: unknown, url?: unknown }): Promise<PhoneResult> {
-  if (body.action === 'address') {
-    const url = tailnetUrl(body.url)
-    if (!url) return fail('address')
-    typed = url
-    return { ok: true, status: await phoneStatus() }
-  }
   if (body.action !== 'publish' && body.action !== 'unpublish') return fail('failed', { detail: 'Unknown action' })
   const bin = tailscaleBin()
   if (!bin) return fail('offline', { link: 'https://tailscale.com/download' })

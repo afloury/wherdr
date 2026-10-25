@@ -91,7 +91,7 @@ describe('all fixtures retain origin/main native recognition', () => {
 })
 
 // A push must contain the original question/options, not a fallback label.
-// Execute the unchanged notification function with both production pipelines.
+// Execute the notification body builder with delivery enabled.
 describe('question push parity', () => {
   for (const agent of ['claude', 'omp']) it(`${agent} retains the exact notification body`, async () => {
     const text = readFileSync(new URL(`./fixtures/${agent === 'claude' ? 'claude-ask-long' : 'omp-ask-single'}.txt`, import.meta.url), 'utf8')
@@ -101,8 +101,8 @@ describe('question push parity', () => {
       const output = await pipeline(source, modules, text)(pane, 1, false)
       expect(output.choices?.question).toBeTruthy()
       const notify = bindFunction(source, 'notifyPane', {
-        isViewed: () => false, state: { workspaces: [], panes: [pane] },
-        isProjectThread: () => false, notificationTitle: (t: string) => t,
+        notificationAllowed: async () => true, state: { workspaces: [], panes: [pane] },
+        notificationTitle: (t: string) => t,
         multiMachine: () => false, machineOfPane: () => null, getMachine: () => null,
         agentLabel: (a: string) => a, agentNotificationTitle: () => ({ title: 'Question', titleFr: 'Question' }),
         pushSend: async (payload: unknown) => { sent.push(payload); return 1 }, log: () => {},

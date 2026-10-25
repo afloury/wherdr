@@ -3,17 +3,17 @@
 > If your fetch tool summarizes, read the raw file with `curl -fsSL https://wherdr.dev/agent.md`.
 
 You are helping your user install **wherdr**: a self-hosted web app and phone PWA to drive the
-coding agents running in [Herdr](https://herdr.dev). It runs on **one** machine, where Herdr
-runs, as the same user, on `127.0.0.1:7683` only. Details: https://github.com/afloury/wherdr#readme.
+coding agents running in [Herdr](https://herdr.dev). It runs natively on **one** machine, where
+Herdr runs, as the same user, on `127.0.0.1:7683` only. Details: https://github.com/afloury/wherdr/blob/main/docs/installation.md.
 
 ## Rules
 
 1. **Security first.** wherdr is a remote shell on that machine. Never expose it: no port
    forwarding, no public proxy, no ngrok, no `tailscale funnel`, no plain HTTP on the local
    network. Other devices use `tailscale serve` only (private HTTPS inside the user's tailnet).
-   Another private network: https://github.com/afloury/wherdr#other-private-networks.
+   Another private network: https://github.com/afloury/wherdr/blob/main/docs/networks.md#other-private-networks.
 2. **Detect before you ask.** Never offer to install what is already there.
-3. **Ask before** installing anything (wherdr, Tailscale, Node.js, Docker) and before any `sudo`.
+3. **Ask before** installing anything (wherdr, Tailscale, Node.js) and before any `sudo`.
 4. Do not edit `~/.claude`, `~/.codex`, Herdr's config or wherdr's files (`plugin.env`, `.env`).
    Never run wherdr as root.
 5. Run every command on the machine where Herdr runs; if you are not on it, ask the user to
@@ -27,7 +27,7 @@ herdr status server      # its server must be running
 herdr plugin list        # afloury.wherdr: wherdr is installed; herdr-projects: see Extras
 curl -fsS http://127.0.0.1:7683/manifest.webmanifest   # answers: wherdr already runs
 brew list wherdr         # a Homebrew install
-node --version           # Node.js 22, needed by the install
+node --version           # Node.js 22
 tailscale status         # Tailscale connected?
 tailscale serve status   # an https://….ts.net address proxying to port 7683: already published
 ```
@@ -44,14 +44,12 @@ Skip it when wherdr already answers. Otherwise:
 curl -fsSL https://wherdr.dev/install | sh
 ```
 
-It installs the Herdr plugin into `~/wherdr`, starts wherdr and opens its setup guide in the
-browser, without sudo. It needs Node.js 22 (or Docker on Linux). Another port:
-`curl -fsSL https://wherdr.dev/install | WHERDR_PORT=7684 sh`, then use it instead of 7683 below.
+It installs the Herdr plugin in `~/wherdr`, runs wherdr as a login service and opens the setup
+guide, no sudo. No Node.js 22: it asks first (user agreed: `WHERDR_YES=1` before `sh`).
+Another port: `WHERDR_PORT=7684` before `sh`.
 
-**Check:** `curl -fsS http://127.0.0.1:7683` returns HTML.
-
-**Startup: nothing to add.** The plugin starts wherdr with Herdr. A Homebrew install uses
-`brew services start wherdr`. `wherdr service install` is for an npm install only.
+**Check:** `curl -fsS http://127.0.0.1:7683` returns HTML. If the install says lingering is off,
+give the user `sudo loginctl enable-linger $USER`.
 
 ## 3. Phone (Tailscale)
 
@@ -81,8 +79,7 @@ works on the address it was created on.**
 1. Open that address for the user, or give them the link.
 2. **Passkey lock** (optional, recommended if others share the tailnet): on that address,
    Settings › Security › **Enable passkey lock**. It asks for a bootstrap token: the last
-   `First passkey: bootstrap token` line of `~/wherdr/wherdr.log` (`wherdr logs` with Homebrew,
-   `docker compose logs` with Docker). Give the token to the user.
+   `First passkey: bootstrap token` line of `~/wherdr/wherdr.log` (`wherdr logs` with Homebrew). Give the token to the user.
 3. **On the phone**: open the address in Safari (Share › Add to Home Screen, then open wherdr
    from the Home Screen) or in Chrome on Android (menu › Install app), unlock it with the
    passkey if the lock is on, then Settings › **Enable notifications**.
@@ -94,8 +91,7 @@ passkey lock is on, and how to update (run the install command again).
 
 - **Only a terminal, no conversation**: `herdr integration install claude|codex|omp`.
 - **Agents on other computers**: Herdr only on them, registered with `herdr machine add`:
-  https://github.com/afloury/wherdr#several-machines-ssh.
-- **herdr-projects** (parallel threads): `herdr plugin install afloury/herdr-projects --ref v0.2.36 --yes`
-  (0.2; upstream's 1.x is not supported yet).
+  https://github.com/afloury/wherdr/blob/main/docs/machines.md#several-machines-ssh.
+- **herdr-projects** (task board): `herdr plugin install eliasstravik/herdr-projects --ref v1.2.21 --yes`.
 - **Something fails**: the **L** key (log) of the wherdr panel in Herdr, and
-  https://github.com/afloury/wherdr#troubleshooting.
+  https://github.com/afloury/wherdr/blob/main/docs/troubleshooting.md#troubleshooting.

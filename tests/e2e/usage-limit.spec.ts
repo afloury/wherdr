@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { OMP_CHAT_PANE as pane, fakeHerdr } from './scenario.mjs'
 const fx = (kind: string) => readFileSync(new URL(`../fixtures/claude-limit-${kind}.txt`, import.meta.url), 'utf8')
 const show = (text: string | null, status = 'blocked') => fakeHerdr('e2e.interaction_screen', { pane_id: pane, text, agent: 'claude', status })

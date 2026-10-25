@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { OMP_IMAGE_PANE, REVIEW_CSV, SAMPLE_PDF, SAMPLE_PDF_PAGES } from './scenario.mjs'
 import { pdfSession } from './pdfAuth.mjs'
 import { samplePdf } from './samplePdf.mjs'
 
 // Exercise real canvas rendering in Linux WebKit as well as Chromium.
-test('a PDF opens in the preview and stays a download', async ({ page }, info) => {
+test('a PDF opens in the preview and stays a download', { tag: '@webkit-phone' }, async ({ page }, info) => {
   if (process.env.E2E_PDF_AUTH) {
     const denied = await page.request.get(`/api/files/download?pane=${encodeURIComponent(OMP_IMAGE_PANE)}&path=${encodeURIComponent(SAMPLE_PDF)}&inline=1`)
     expect(denied.status()).toBe(401)
@@ -48,7 +48,8 @@ test('a PDF opens in the preview and stays a download', async ({ page }, info) =
   await pages.first().scrollIntoViewIfNeeded()
   await expect(pages.first().locator('canvas')).toBeVisible()
   await page.setViewportSize(originalViewport)
-  await expect.poll(async () => pages.first().locator('canvas').evaluate((c: HTMLCanvasElement) => Math.abs(c.clientWidth - c.parentElement!.clientWidth))).toBeLessThanOrEqual(1)
+  // The viewer may redraw meanwhile: a canvas taken out, or replaced, counts as not fitted yet.
+  await expect.poll(async () => pages.first().locator('canvas').evaluate((c: HTMLCanvasElement) => (c.parentElement ? Math.abs(c.clientWidth - c.parentElement.clientWidth) : Infinity)).catch(() => Infinity)).toBeLessThanOrEqual(1)
   const open = page.locator('.files-view').getByRole('link', { name: 'Open', exact: true })
   await expect(open).toHaveAttribute('href', src)
   await expect(open).toHaveAttribute('target', '_blank')

@@ -1,6 +1,6 @@
 // Actions on spaces, tabs and panes (new tab, split, rename,
 // close, move, reorder): the call goes to the machine of the target object.
-import { type HerdrStep, SpaceActionError, dropSteps, spaceCall, spaceResult, swapSteps } from '../../shared/spaceActions'
+import { type HerdrStep, SpaceActionError, dropSteps, spaceCall, spaceResult, swapSteps, verifySpaceRename } from '../../shared/spaceActions'
 import type { DropSide } from '../../shared/layout'
 import { HerdrError, herdrOn } from '../utils/herdr'
 import { log } from '../utils/env'
@@ -28,6 +28,10 @@ export default defineApi(async (_event, body) => {
     return { ok: true }
   }
   const r = await herdrOn(call.machine, call.method, call.params)
+  if (call.method === 'workspace.rename' || call.method === 'tab.rename') {
+    const snap = await herdrOn(call.machine, 'session.snapshot', {}, 5000)
+    stepsOf(() => { verifySpaceRename(call, snap?.snapshot || snap); return [] })
+  }
   log(`space: ${call.method}${call.machine ? ` (${call.machine})` : ''}`)
   poll()
   return { ok: true, ...spaceResult(call, r) }

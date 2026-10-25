@@ -99,23 +99,34 @@ describe('pendingClaudeAsk / completeClaudeAsk', () => {
 })
 
 describe('answerFree for Claude', () => {
-  // Fake pane: the screen follows the keys and the text received.
+  // Fake pane: the screen follows the keys and the text received. As seen
+  // with Claude Code 2.1.307: Enter in the field right after a backslash
+  // drops it and starts a new line (only the first line shows), anywhere
+  // else it submits and the box closes.
   function pane(screen: (cursor: number, typed: string) => string, start: { cursor: number, typed: string }) {
     const sent: unknown[] = []
-    const s = { ...start }
+    const s = { ...start, atEnd: true, submitted: null as string | null }
     let t = 0
     const call = async (method: string, p: Record<string, unknown>) => {
-      if (method === 'pane.read') return { read: { text: screen(s.cursor, s.typed) } }
+      if (method === 'pane.read') return { read: { text: s.submitted === null ? screen(s.cursor, s.typed.split('\n')[0]!) : '❯ ' } }
       sent.push(p.keys || { text: p.text })
       for (const k of (p.keys as string[] | undefined) || []) {
         if (k === 'down') s.cursor++
         else if (k === 'up') s.cursor--
-        else if (k === 'ctrl+u' && s.cursor === 3) s.typed = ''
+        else if (k === 'ctrl+u' && s.cursor === 3) {
+          // One line at a time: an empty last line goes, else its text.
+          const ls = s.typed.split('\n')
+          if (ls.length > 1 && !ls.at(-1)) ls.pop()
+          else ls[ls.length - 1] = ''
+          s.typed = ls.join('\n')
+        } else if (k === 'ctrl+a') s.atEnd = false
+        else if (k === 'enter' && s.atEnd && s.typed.endsWith('\\')) s.typed = `${s.typed.slice(0, -1)}\n`
+        else if (k === 'enter') s.submitted = s.typed
       }
-      if (typeof p.text === 'string' && s.cursor === 3) s.typed += p.text
+      if (typeof p.text === 'string' && s.cursor === 3) { s.typed += p.text; s.atEnd = true }
       return {}
     }
-    return { sent, d: { call, sleep: async () => { t += 100 }, now: () => t } }
+    return { sent, s, d: { call, sleep: async () => { t += 100 }, now: () => t } }
   }
   const labels = ['In-Memory Storage', 'File-Based Storage', 'Database']
   const screen = (cursor: number, typed: string) => [
@@ -133,6 +144,39 @@ describe('answerFree for Claude', () => {
     const c = parseChoices(screen(0, 'old draft'))! as Choices
     await answerFree(d, 'w1:p1', c, 3, 'Mixed\napproach', 'claude')
     expect(sent).toEqual([['down', 'down', 'down'], ['ctrl+u'], { text: 'Mixed approach' }, ['enter']])
+  })
+
+  it('submits an answer ending with a backslash with the cursor at the line start', async () => {
+    for (const answer of ['C:\\temp\\', 'D:\\\\', 'a regex: \\d+\\']) {
+      const { sent, s, d } = pane(screen, { cursor: 0, typed: '' })
+      await answerFree(d, 'w1:p1', parseChoices(screen(0, ''))!, 3, answer, 'claude')
+      expect(sent).toEqual([['down', 'down', 'down'], { text: answer }, ['ctrl+a'], ['enter']])
+      expect(s.submitted).toBe(answer)
+    }
+  })
+
+  it('leaves the cursor alone for an answer with a backslash inside only', async () => {
+    const { sent, s, d } = pane(screen, { cursor: 3, typed: '' })
+    await answerFree(d, 'w1:p1', parseChoices(screen(3, ''))!, 3, 'C:\\temp\\file.txt', 'claude')
+    expect(sent).toEqual([{ text: 'C:\\temp\\file.txt' }, ['enter']])
+    expect(s.submitted).toBe('C:\\temp\\file.txt')
+  })
+
+  it('reports an answer Claude kept in its field after Enter as not submitted', async () => {
+    // The old way (Enter right after the backslash): a line break, no answer.
+    const { s, d } = pane(screen, { cursor: 3, typed: '' })
+    const call = d.call
+    d.call = async (method, p) => call(method, (p.keys as string[] | undefined)?.[0] === 'ctrl+a' ? { ...p, keys: [] } : p)
+    await expect(answerFree(d, 'w1:p1', parseChoices(screen(3, ''))!, 3, 'C:\\temp\\', 'claude')).rejects.toThrow(/not submitted/)
+    expect(s.submitted).toBeNull()
+    expect(s.typed).toBe('C:\\temp\n')
+  })
+
+  it('clears a field left on two lines by an earlier answer, then submits', async () => {
+    const { sent, s, d } = pane(screen, { cursor: 3, typed: 'C:\\temp\n' })
+    await answerFree(d, 'w1:p1', parseChoices(screen(3, 'C:\\temp'))!, 3, 'C:\\temp\\', 'claude')
+    expect(sent.filter(k => JSON.stringify(k) === '["ctrl+u"]')).toHaveLength(2)
+    expect(s.submitted).toBe('C:\\temp\\')
   })
 
   it('submits nothing when the text does not show in the field', async () => {

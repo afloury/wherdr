@@ -17,9 +17,9 @@ if (!fs.existsSync(entry)) {
   process.exit(1)
 }
 
-// HOME and data under the repo (.e2e-tmp, git-ignored); the socket under the
-// system temp dir: a Unix socket path is limited to ~104 bytes.
-const tmp = path.join(root, '.e2e-tmp')
+// Keep test data in E2E_TMP_DIR when set, otherwise .e2e-tmp (git-ignored).
+// The socket uses the system temp dir: Unix socket paths have a size limit.
+const tmp = process.env.E2E_TMP_DIR || path.join(root, '.e2e-tmp')
 fs.rmSync(tmp, { recursive: true, force: true })
 // Keep fixture folders outside the checkout: project/thread names in a
 // worktree path must not leak into the app's titles or screenshots.
@@ -43,6 +43,10 @@ fs.writeFileSync(bin, `#!/bin/sh\nexec '${process.execPath}' '${cli}' '${sock}' 
 // Where the specs reach the fake Herdr (see fakeHerdr in scenario.mjs).
 fs.writeFileSync(SOCK_FILE, sock)
 
+// Agents "installed" in the fake HOME (~/.local/bin), so the Board's Start offers
+// the same choice on every machine that runs the suite. They never run.
+fs.mkdirSync(path.join(home, '.local/bin'), { recursive: true })
+for (const kind of ['claude', 'codex']) fs.writeFileSync(path.join(home, '.local/bin', kind), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
 const workspaces = writeScenario(home)
 const server = await startFakeHerdr({ sock, workspaces, log: m => console.log(m) })
 

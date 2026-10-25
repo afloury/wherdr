@@ -10,6 +10,22 @@ describe('titres du space', () => {
     expect(spaceTitle(p, w)).toBe('Customer Portal 2')
     expect(spaceTitle({ ...p, name: 'hp-demo-t-0001-task', label: 'Pane renommé' }, w)).toBe('Customer Portal 2')
   })
+  // herdr-projects 1.x (coordinator/co.rs): a coordinator's agent is named
+  // sw-coordinator[-machine|-<repo>], in a tab named after it, in the home
+  // folder's space ("~") or its repo's.
+  it('names a herdr-projects coordinator by what it coordinates, not by its space', () => {
+    const co = (name: string, tabLabel: string | null, space: string) => spaceTitle({ ...p, name, tabLabel }, { ...w, label: space })
+    expect(co('sw-coordinator', 'Coordinator', '~')).toBe('Coordinator')
+    expect(co('sw-coordinator-demo-app', 'demo-app coordinator', 'demo-app')).toBe('demo-app coordinator')
+    expect(co('sw-coordinator-machine', 'devbox coordinator', '~')).toBe('devbox coordinator')
+    expect(co('sw-coordinator-demo-app-2', 'demo-app coordinator', 'demo-app')).toBe('demo-app coordinator')
+    // Its tab renamed: from its agent's name.
+    expect(co('sw-coordinator', 'notes', '~')).toBe('Coordinator')
+    expect(co('sw-coordinator-machine', null, '~')).toBe('Machine coordinator')
+    expect(co('sw-coordinator-demo-app', null, 'demo-app')).toBe('demo-app coordinator')
+    // Any other agent: its space's name.
+    expect(co('claude', 'Coordinator', 'demo-app')).toBe('demo-app')
+  })
   it('garde le sujet de conversation en secondaire', () => {
     expect(conversationSubtitle(p, w)).toBe('Customer portal brief')
   })
