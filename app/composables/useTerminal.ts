@@ -10,6 +10,8 @@ import { bindTerminalSelection } from '~/utils/terminalSelection'
 import { bindTerminalLinks, type TerminalLinks } from '~/utils/terminalLinks'
 import { bindTerminalKeys } from '~/utils/terminalKeys'
 import { bindTerminalImagePaste } from '~/utils/terminalPaste'
+import { fmtBytes } from '~/utils/bytes'
+import { OSC52_MAX_BYTES, bindTerminalOsc52, copyAgentText } from '~/utils/terminalOsc52'
 import { uploadPhoto } from '~/utils/photoUpload'
 import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
 import { bindTerminalMouse } from '~/utils/terminalMouse'
@@ -35,6 +37,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   const selectionHint = useTerminalSelectionHint()
   let unbindSelection: (() => void) | null = null
   let unbindPaste: (() => void) | null = null
+  let unbindOsc52: (() => void) | null = null
   let unbindFonts: (() => void) | null = null
   let links: TerminalLinks | null = null
   let mouse: ReturnType<typeof bindTerminalMouse> | null = null
@@ -74,6 +77,21 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       upload: async f => (await uploadPhoto(paneId, f)).path,
       paste: text => sendTerm({ type: 'paste', text }),
       report: message => toast(message, true),
+    })
+    // OSC 52: what the agent copies lands in this device's clipboard. Refused
+    // without a gesture (iOS Safari): offered again on a tap.
+    unbindOsc52 = bindTerminalOsc52(term, {
+      enabled: () => agentClipboard.value,
+      write: text => copyAgentText(text, navigator.clipboard, {
+        copied: () => toast(t('The agent copied text')),
+        refused: refused => toastAction(t('The agent copied text — tap to copy'), t('Copy'), () => {
+          copyAgentText(refused, navigator.clipboard, { copied: () => toast(t('Copied')), refused: () => toast(t('Copy failed'), true) })
+        }),
+      }),
+      tooLarge: bytes => toast(tl(
+        `Agent copy ignored: ${fmtBytes(bytes)} (limit ${fmtBytes(OSC52_MAX_BYTES)})`,
+        `Copie de l’agent ignorée : ${fmtBytes(bytes)} (limite ${fmtBytes(OSC52_MAX_BYTES)})`,
+      )),
     })
     // The device's choice may change while the terminal stays mounted.
     setRenderer(terminalRenderer.value)
@@ -309,6 +327,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     disconnect()
     unbindSelection?.()
     unbindPaste?.()
+    unbindOsc52?.()
+    unbindOsc52 = null
     unbindFonts?.()
     unbindFonts = null
     unbindSelection = null

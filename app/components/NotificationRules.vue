@@ -1,144 +1,84 @@
 <script setup lang="ts">
-// Settings › Notifications: a default for everything, and exceptions to it.
-import { LEVEL_EVENTS, compareEvents, exceptionLive, levelOf, sameNotificationTarget, type NotificationEvent, type NotificationException, type NotificationTarget } from '#shared/notificationRules'
+import { COORDINATOR_EVENTS, NOTIFICATION_EVENTS, defaultNotifications, type NotificationEvent, type NotificationRule } from '#shared/notificationRules'
 useNotificationClock()
-useNotificationRekey()
 const boards = useBoardLinks()
-const rules = notificationRules
-const now = notificationClock
-
-function setDefault(patch: { events?: NotificationEvent[], subagents?: boolean }) {
-  saveNotificationRules({ ...rules.value, default: { ...rules.value.default, ...patch } })
+function setMuteSubagents(value: boolean) { saveNotificationRules({ ...notificationRules.value, muteSubagents: value }) }
+function resetRules() { saveNotificationRules(defaultNotifications()) }
+const active = computed(() => notificationRules.value.rules.filter(r => r.mode !== 'inherit' && (r.until === null || r.until > notificationClock.value)))
+const eventLabel = (e: NotificationEvent) => ({ 'needs-you': t('Needs you'), finished: t('Finished'), message: t('New message'), scheduled: t('Scheduled task') })[e]
+const sourceMachineName = (key: string) => machineName(key) || allSessionsState.value.machines?.find(m => m.key === key || m.baseKey === key)?.label || key || t('This machine')
+const scopeLabel = (r: NotificationRule) => r.scope === 'machine' ? t('Machine') : r.scope === 'project' ? t('Project') : t('Conversation')
+function defaults(value: string) {
+  saveNotificationRules({ ...notificationRules.value, defaults: value === 'all' ? [...NOTIFICATION_EVENTS] : value === 'coordinator' ? [...COORDINATOR_EVENTS] : [] })
 }
-const defaultEvents = computed(() => rules.value.default.events)
-
-// Exceptions, by machine then name (ended timed mutes that left nothing are gone).
-const exceptions = computed(() => rules.value.exceptions
-  .filter(e => exceptionLive(e, now.value) && !(e.kind === 'conversation' && taskPane(e.id)))
-  .map(e => ({ e, machine: notificationMachineName(e.machine), name: exceptionName(e) }))
-  .sort((a, b) => a.machine.localeCompare(b.machine) || a.name.localeCompare(b.name)))
-function exceptionName(e: NotificationTarget) {
-  return e.kind === 'coordinator' ? coordinatorNotificationLabel(e.machine, e.id) : livePaneTitle(e.id) || e.label
+const defaultMode = computed(() => !notificationRules.value.defaults.length ? 'muted' : notificationRules.value.defaults.length === 4 ? 'all' : 'coordinator')
+function changeMode(rule: NotificationRule, value: string) {
+  setNotificationRule(rule, value === 'muted' ? 'muted' : value === 'inherit' ? 'inherit' : 'on',
+    value === 'all' ? [...NOTIFICATION_EVENTS] : value === 'needs' ? ['needs-you'] : [...COORDINATOR_EVENTS])
 }
-// A conversation exception on a task agent (from older settings) is not shown: the Sub-agents switch decides.
-function taskPane(id: string) {
-  const p = herdrState.value.panes.find(x => x.id === id)
-  return p ? Boolean(notificationSource(p).subagent) : false
+function changeEvent(rule: NotificationRule, event: NotificationEvent, checked: boolean) {
+  setNotificationRule(rule, 'on', checked ? [...new Set([...rule.events, event])] : rule.events.filter(e => e !== event), rule.until)
 }
-const livePaneTitle = (id: string) => herdrState.value.panes.find(p => p.id === id)?.title || ''
-const mutedUntil = (e: NotificationException) => e.until !== null && e.until > now.value ? e.until : null
-const eventsOf = (e: NotificationException) => e.events ?? defaultEvents.value
-function difference(e: NotificationException) {
-  const base = defaultLevelLabel()
-  const until = mutedUntil(e)
-  if (until) return e.events === null
-    ? tl(`Muted until ${fmtDateTime(until)}, then back to the default (${base})`, `Muet jusqu’au ${fmtDateTime(until)}, puis retour au défaut (${base})`)
-    : tl(`Muted until ${fmtDateTime(until)}, then ${levelLabel(levelOf(e.events))}`, `Muet jusqu’au ${fmtDateTime(until)}, puis ${levelLabel(levelOf(e.events))}`)
-  const c = compareEvents(eventsOf(e), defaultEvents.value)
-  return c === 1 ? tl(`Louder than the default (${base})`, `Plus que le défaut (${base})`)
-    : c === -1 ? tl(`Quieter than the default (${base})`, `Moins que le défaut (${base})`)
-      : c === 0 ? tl(`Same as the default (${base})`, `Identique au défaut (${base})`)
-        : tl(`Different from the default (${base})`, `Différent du défaut (${base})`)
-}
-const kindLabel = (e: NotificationTarget) => e.kind === 'coordinator' ? t('Coordinator') : t('Conversation')
-
-// "Add an exception": a coordinator of a board, or a standalone agent
-// conversation, grouped by machine. Never task threads or sub-agents.
-const picking = ref(false)
-const candidates = computed(() => {
-  const groups = new Map<string, { machine: string, name: string, items: NotificationTarget[] }>()
-  const add = (t: NotificationTarget) => {
-    if (rules.value.exceptions.some(e => exceptionLive(e, now.value) && sameNotificationTarget(e, t))) return
-    const g = groups.get(t.machine) ?? { machine: t.machine, name: notificationMachineName(t.machine), items: [] }
-    if (!g.items.some(x => sameNotificationTarget(x, t))) g.items.push(t)
-    groups.set(t.machine, g)
-  }
-  const order = { top: 0, machine: 1, project: 2 }
-  for (const b of boards.value) {
-    for (const c of [...b.coordinators].sort((x, y) => order[x.level] - order[y.level] || (x.repo ?? '').localeCompare(y.repo ?? ''))) add(coordinatorTarget(b.machine, c))
-  }
-  for (const p of herdrState.value.panes) {
-    if (!p.agent) continue
-    const target = paneNotificationTarget(p)
-    if (target?.kind === 'conversation') add(target)
-  }
-  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))
-})
-function addException(t: NotificationTarget) {
-  // Start one step away from the default, so the exception does something.
-  const muted = levelOf(defaultEvents.value) === 'muted'
-  setException(t, { events: muted ? [...LEVEL_EVENTS.finished] : [], subagents: false, until: null })
-  picking.value = false
-}
-function removeAll() {
-  saveNotificationRules({ ...rules.value, exceptions: [] })
-  toast(tl(`All exceptions removed. Everything follows the default: ${defaultLevelLabel()}`, `Exceptions retirées. Tout suit le défaut : ${defaultLevelLabel()}`))
+function coordinatorsOnly() {
+  const top = boards.value.flatMap(b => b.coordinators.filter(c => c.level === 'top' && c.pane).map(c => ({ board: b, coordinator: c })))
+  if (!top.length) return
+  const machines = allSessionsState.value.machines || herdrState.value.machines || []
+  const bases = new Map(machines.map(m => [m.baseKey ?? m.key, m.label]))
+  for (const b of boards.value) if (!bases.has(b.machine)) bases.set(b.machine, sourceMachineName(b.machine))
+  saveNotificationRules({ defaults: [], muteSubagents: true, rules: [
+    ...[...bases].map(([key, label]) => ({
+      ...machineNotificationTarget(key, label), mode: 'muted' as const, events: [], until: null,
+    })),
+    ...top.map(({ board, coordinator }) => ({ scope: 'conversation' as const, machine: board.machine, id: coordinator.pane!,
+      label: t('Main coordinator'), mode: 'on' as const, events: [...COORDINATOR_EVENTS], until: null })),
+  ] })
 }
 </script>
 
 <template>
-  <div class="notification-rules" data-testid="notification-rules">
-    <div class="settings-group notification-default" data-testid="notification-default">
-      <h3>{{ t('Default (applies to everything)') }}</h3>
-      <NotificationLevel :events="defaultEvents" :label="t('Default level')" @change="events => setDefault({ events })" />
-      <label class="settings-toggle notification-subagents">
-        <span><b>{{ t('Sub-agents') }}</b><small>{{ rules.default.subagents
-          ? t('On: task agents (workers, reviewers, attempts) notify too, at the same level.')
-          : t('Off: only coordinators, standalone agents and board events notify. Task agents stay silent.') }}</small></span>
-        <USwitch color="success" size="xl" :model-value="rules.default.subagents" :aria-label="t('Sub-agents')" @update:model-value="v => setDefault({ subagents: v })" />
-      </label>
-      <p class="muted notification-help">{{ t('Visible conversations stay silent on every device. Push resumes after about 30 seconds away. Inactive tabs expire automatically.') }}</p>
-    </div>
-
-    <div class="settings-group notification-exceptions" data-testid="notification-exceptions">
-      <h3>{{ t('Exceptions') }}</h3>
-      <p v-if="!exceptions.length" class="muted">{{ t('No exceptions: everything follows the default. Add one for a coordinator or an agent, or use Notifications in its menu.') }}</p>
-      <article v-for="{ e, machine, name } in exceptions" :key="JSON.stringify([e.kind, e.machine, e.id])" class="notification-rule" data-testid="notification-exception">
-        <div class="notification-rule-head">
-          <small>{{ machine }} · {{ kindLabel(e) }}</small>
-          <b>{{ name }}</b>
-          <small class="notification-diff">{{ difference(e) }}</small>
-        </div>
-        <NotificationLevel :events="eventsOf(e)" :muted="!!mutedUntil(e)" :label="tl(`Notifications: ${name}`, `Notifications : ${name}`)" @change="events => setException(e, { events, until: null })" />
-        <label v-if="e.kind === 'coordinator'" class="settings-toggle notification-subagents">
-          <span><b>{{ t('Sub-agents') }}</b><small>{{ e.subagents
-            ? t('On: the task agents of this board follow this exception.')
-            : t('Off: only this coordinator. Its board’s task agents follow the default.') }}</small></span>
-          <USwitch color="success" size="lg" :model-value="e.subagents" :aria-label="tl(`Sub-agents: ${name}`, `Sous-agents : ${name}`)" @update:model-value="v => setException(e, { subagents: v })" />
-        </label>
-        <button type="button" class="settings-action" @click="removeException(e)">
-          <UIcon name="i-lucide-x" />{{ t('Remove exception') }}<small class="muted">{{ tl(`Back to the default: ${defaultLevelLabel()}`, `Retour au défaut : ${defaultLevelLabel()}`) }}</small>
-        </button>
-      </article>
-
-      <button type="button" class="settings-action solo notification-add" :aria-expanded="picking" @click="picking = !picking"><UIcon name="i-lucide-plus" />{{ t('Add an exception') }}</button>
-      <div v-if="picking" class="notification-picker" data-testid="notification-picker">
-        <p v-if="!candidates.length" class="muted">{{ t('No coordinator or agent conversation to add. Task agents follow the Sub-agents switch.') }}</p>
-        <div v-for="g in candidates" :key="g.machine" class="notification-picker-group">
-          <small>{{ g.name }}</small>
-          <button v-for="c in g.items" :key="c.kind + c.id" type="button" class="settings-action" @click="addException(c)">
-            <UIcon :name="c.kind === 'coordinator' ? 'i-lucide-message-square-text' : 'i-lucide-bot'" />{{ c.label }}
-          </button>
-        </div>
+  <div class="settings-group notification-rules" data-testid="notification-rules">
+    <h3>{{ t('Notification rules') }}</h3>
+    <p class="muted">{{ t('Quiet by default. The most specific rule wins: machine → project → conversation.') }}</p>
+    <label class="settings-toggle">
+      <span><b>{{ t('Default notifications') }}</b><small>{{ t('Coordinators notify for needs you and finished unless a rule overrides them.') }}</small></span>
+      <select :value="defaultMode" :aria-label="t('Default notifications')" @change="defaults(($event.target as HTMLSelectElement).value)">
+        <option value="muted">{{ t('Muted') }}</option><option value="coordinator">{{ t('Needs you and finished') }}</option><option value="all">{{ t('All activity') }}</option>
+      </select>
+    </label>
+    <label class="settings-toggle"><span><b>{{ t('Mute sub-agents') }}</b><small>{{ t('Workers, reviewers and attempts stay silent. Enable a conversation to override this preset.') }}</small></span>
+      <USwitch color="success" size="xl" :model-value="notificationRules.muteSubagents" :aria-label="t('Mute sub-agents')" @update:model-value="setMuteSubagents" />
+    </label>
+    <p class="muted">{{ t('Visible conversations stay silent on every device. Push resumes after about 30 seconds away. Inactive tabs expire automatically.') }}</p>
+    <button type="button" class="settings-action solo notification-preset" :disabled="!boards.some(b => b.coordinators.some(c => c.level === 'top' && c.pane))" @click="coordinatorsOnly"><UIcon name="i-lucide-message-square-text" />{{ t('Only main coordinators') }}</button>
+    <h3>{{ t('Active rules') }}</h3>
+    <p v-if="!active.length" class="muted">{{ t('No overrides. Use the Notifications menu on a machine, project or conversation.') }}</p>
+    <article v-for="rule in active" :key="JSON.stringify([rule.scope, rule.machine, rule.id])" class="notification-rule">
+      <div class="notification-rule-head"><div><small>{{ scopeLabel(rule) }} · {{ sourceMachineName(rule.machine) }}</small><b>{{ rule.label }}</b>
+        <small v-if="rule.until">{{ tl(`Muted until ${fmtDateTime(rule.until)}`, `Muet jusqu’au ${fmtDateTime(rule.until)}`) }}</small></div>
+        <select :value="rule.mode === 'muted' ? 'muted' : rule.events.length === 4 ? 'all' : rule.events.length === 1 && rule.events[0] === 'needs-you' ? 'needs' : rule.events.length === 2 && rule.events.includes('needs-you') && rule.events.includes('finished') ? 'coordinator' : 'custom'" :aria-label="tl(`Notifications: ${rule.label}`, `Notifications : ${rule.label}`)" @change="changeMode(rule, ($event.target as HTMLSelectElement).value)">
+          <option value="custom" disabled>{{ t('Custom events') }}</option><option value="coordinator">{{ t('Needs you and finished') }}</option><option value="all">{{ t('All activity') }}</option><option value="needs">{{ t('Only needs you') }}</option><option value="muted">{{ t('Muted') }}</option><option value="inherit">{{ t('Inherit notifications') }}</option>
+        </select>
       </div>
-      <button v-if="exceptions.length" type="button" class="settings-action solo notification-reset" @click="removeAll"><UIcon name="i-lucide-rotate-ccw" />{{ t('Remove all exceptions') }}</button>
-    </div>
+      <div v-if="rule.mode === 'on'" class="notification-events"><label v-for="event in NOTIFICATION_EVENTS" :key="event"><input type="checkbox" :checked="rule.events.includes(event)" @change="changeEvent(rule, event, ($event.target as HTMLInputElement).checked)"> {{ eventLabel(event) }}</label></div>
+      <button type="button" class="settings-action" @click="setNotificationRule(rule, 'inherit')">{{ t('Remove rule') }}</button>
+    </article>
+    <button type="button" class="settings-action solo notification-reset" @click="resetRules"><UIcon name="i-lucide-rotate-ccw" />{{ t('Reset notification rules') }}</button>
   </div>
 </template>
 
 <style scoped>
-.notification-rules .settings-toggle { gap:16px; }
-.notification-rules .settings-toggle > span { flex:1; min-width:0; }
-.notification-default > :deep(.notification-level) { margin-bottom:8px; }
-.notification-help { font-size:12px; margin:8px 0 0; }
-.notification-rule { border:1px solid var(--line); margin:12px 0; padding:14px; display:flex; flex-direction:column; gap:10px; min-width:0; }
-.notification-rule-head b,.notification-rule-head small { display:block; overflow-wrap:anywhere; }
-.notification-rule-head small { color:var(--muted); font:11px var(--mono); margin-bottom:4px; }
-.notification-rule-head .notification-diff { font:12px var(--sans, inherit); margin:4px 0 0; }
-.notification-rule .settings-action small { margin-left:auto; padding-left:8px; font-size:11px; }
-.notification-add { margin-top:12px; }
-.notification-picker { border:1px solid var(--line); padding:12px; margin-top:8px; display:flex; flex-direction:column; gap:12px; }
-.notification-picker-group { display:flex; flex-direction:column; gap:4px; }
-.notification-picker-group > small { color:var(--muted); font:11px var(--mono); }
+.notification-rules select { max-width:100%; min-height:44px; padding:8px; border:1px solid var(--line); border-radius:0; background:var(--bg); color:var(--text); font:inherit; }
+.notification-rules .settings-toggle { gap:16px; flex-wrap:wrap; }
+.notification-rules .settings-toggle > span { flex:1; min-width:180px; }
+.notification-rules > p { margin:12px 0 18px; }
+.notification-preset { margin-bottom:28px; }
+.notification-preset:disabled { opacity:.5; cursor:not-allowed; }
 .notification-reset { margin-top:16px; }
+.notification-rule { border:1px solid var(--line); margin:12px 0; padding:14px; }
+.notification-rule-head { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+.notification-rule-head b,.notification-rule-head small { display:block; overflow-wrap:anywhere; }
+.notification-rule-head small { color:var(--muted); font:11px var(--mono); margin-bottom:6px; }
+.notification-events { display:flex; flex-wrap:wrap; gap:12px 18px; margin:16px 0; }
+.notification-events label { display:flex; align-items:center; min-height:44px; gap:6px; }
+.notification-events input { accent-color:var(--accent); }
 </style>

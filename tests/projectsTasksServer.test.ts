@@ -1039,23 +1039,3 @@ describe('human attempt picks', () => {
     await expect(T.pickTask('remote', 'demo/11', 'A', true)).rejects.toThrow('Herdr did not answer')
   })
 })
-
-describe('read-only task settings', () => {
-  it('reads show on the selected machine, preserving an inherited value and a task override', async () => {
-    const machines: string[] = []
-    T.setRunner(async (m, _launcher, args) => {
-      machines.push(m.key)
-      calls.push(args)
-      return { code: 0, stdout: taskSettings('codex', args.at(-1) === 'demo/2' ? 'task' : 'repo', 'precise source'), stderr: '' }
-    })
-    expect((await T.taskSettings('remote', 'demo/1')).settings[0]).toMatchObject({ value: 'codex', place: 'repo', from: 'precise source' })
-    expect((await T.taskSettings('remote', 'demo/2')).settings[0]).toMatchObject({ value: 'codex', place: 'task' })
-    expect(machines).toEqual(['remote', 'remote'])
-    expect(calls).toEqual([['show', '--json', '--', 'demo/1'], ['show', '--json', '--', 'demo/2']])
-  })
-  it('propagates command failures and refuses invalid ids before running show', async () => {
-    await expect(T.taskSettings('', '--bad')).rejects.toThrow('Invalid task')
-    T.setRunner(async () => ({ code: 1, stdout: '', stderr: 'Machine unavailable' }))
-    await expect(T.taskSettings('remote', 'demo/1')).rejects.toThrow('Machine unavailable')
-  })
-})

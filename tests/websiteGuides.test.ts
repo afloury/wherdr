@@ -70,6 +70,13 @@ describe('agent.md', () => {
     expect(checkDocLinks()).toEqual([])
   })
 
+  it('keeps the passkey lock optional, as the README says', () => {
+    // wherdr answers only this computer and the tailnet; a passkey is an extra lock.
+    expect(read('../README.md')).toContain('optional passkey lock')
+    expect(guide).not.toMatch(/passkey[^\n]*\(required|\brequired\b[^\n]*passkey/i)
+    expect(guide).toMatch(/\*\*Passkey lock\*\* \(optional/)
+  })
+
   it('the install tab prompt points to it', () => {
     expect(AGENT_PROMPT).toContain('https://wherdr.dev/agent.md')
   })

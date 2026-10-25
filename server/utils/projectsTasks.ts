@@ -1,4 +1,3 @@
-import { parseTaskSettings } from '../../shared/taskSettings'
 // herdr-projects 1.x on every machine: its tasks (GET /api/tasks), one task's
 // details, and what the Board can do on a task (tell, approve, open its pane).
 //
@@ -451,12 +450,6 @@ export async function taskCommand(machine: unknown, id: unknown, action: unknown
 }
 
 const taskShow = (m: Machine, id: string) => command(m, ['show', '--json', '--', id], LIST_TIMEOUT_MS)
-
-// Pure read: unlike Start, this must never restore or modify an agent choice.
-export async function taskSettings(machine: unknown, id: unknown) {
-  const m = boardOf(machine)
-  return parseTaskSettings(await taskShow(m, checkId(id)))
-}
 
 // Puts back what the task had before an agent was picked for one start, while
 // its own worker.agent is still that pick (one set since by someone else stays).

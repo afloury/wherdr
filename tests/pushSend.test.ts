@@ -56,16 +56,4 @@ describe('envoi Web Push', () => {
     expect(got.en!.body).toBe('Run it?')
     expect(got.fr!.titleFr).toBeUndefined()
   })
-
-  it('Do not disturb drops every notification, whatever the notification rules allowed', async () => {
-    await push.writeSubs([sub('https://push.example/a'), { ...sub('https://push.example/b'), quiet: { until: null } }])
-    sendNotification.mockReset()
-    sendNotification.mockResolvedValue(undefined)
-    expect(await push.pushSend({ title: 't', body: 'b', tag: 'x', url: '/' })).toBe(1)
-    await push.writeGlobalQuiet({ until: null })
-    expect(await push.pushSend({ title: 't', body: 'b', tag: 'x', url: '/' })).toBe(0)
-    // The explicit test notification still goes through.
-    expect(await push.pushSend({ title: 't', body: 'b', tag: 'x', url: '/' }, undefined, true)).toBe(2)
-    await push.writeGlobalQuiet(null)
-  })
 })
