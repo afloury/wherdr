@@ -16,12 +16,12 @@ async function cancel() {
 <template>
   <div class="usage-limit-card composer-notice" role="status">
     <span class="restart-text">
-      {{ tl('Usage limit reached', 'Limite de quota atteinte') }}<template v-if="limit.resets"> · {{ tl('Resets', 'Réinitialisation') }} {{ limit.resets }}</template>
+      {{ tl('Provider quota reached', 'Quota fournisseur atteint') }}<template v-if="limit.resets"> · {{ tl('Resets', 'Réinitialisation') }} {{ limit.resets }}</template>
       <small v-if="limit.automatic">{{ tl('Will continue automatically', 'Reprise automatique') }}</small>
     </span>
     <button v-if="limit.automatic" type="button" class="notice-btn" :disabled="readOnly || busy" @click="cancel">{{ tl('Cancel wait', 'Annuler l’attente') }}</button>
     <button v-if="limit.credits" type="button" class="notice-btn" :disabled="readOnly || busy" @click="emit('credits')">/usage-credits</button>
-    <a v-if="limit.resetLink" class="notice-btn" href="https://clau.de/reset" target="_blank" rel="noopener noreferrer">{{ tl('Reset limit ↗', 'Réinitialiser ↗') }}</a>
+    <a v-if="limit.resetLink" class="notice-btn" href="https://clau.de/reset" target="_blank" rel="noopener noreferrer">{{ tl('Reset quota ↗', 'Réinitialiser le quota ↗') }}</a>
   </div>
 </template>
 
