@@ -314,9 +314,11 @@ test('a failed read says why, and keeps the last tasks marked with when they wer
   await page.route('**/api/tasks?*', route => route.fulfill(reply({ tasks: [row('demo/1')], at, stale: true, error: 'herdr-projects did not answer within 30 s' })))
   await page.route('**/api/tasks', route => route.fulfill(reply({ tasks: [row('demo/1')], at, stale: true, error: 'herdr-projects did not answer within 30 s' })))
   await page.goto('/#/board')
-  const note = page.locator('.board-note.error')
-  await expect(note).toContainText('herdr-projects did not answer within 30 s', { timeout: 15000 })
-  await expect(note).toContainText('tasks as read at')
+  const note = page.locator('.board-machine-error')
+  await expect(note).toContainText('unreachable', { timeout: 15000 })
+  await expect(note.locator('..')).toHaveAttribute('aria-label', 'herdr-projects did not answer within 30 s')
+  await expect(page.locator('.board-notes .error')).toHaveCount(0)
+  await expect(note).toContainText('read at')
   await expect(page.locator('.task-card.stale')).toContainText('Task demo/1')
   await page.screenshot({ path: `.shots/board-1x-error-${testInfo.project.name}.png` })
 })
@@ -324,8 +326,46 @@ test('a failed read says why, and keeps the last tasks marked with when they wer
 test('Herdr not answering for a machine: said, not five empty columns', async ({ page }) => {
   await page.route('**/api/tasks*', route => route.fulfill(reply({ status: 'error', tasks: [], error: 'Herdr did not answer' })))
   await page.goto('/#/board')
-  await expect(page.locator('.board-note.error')).toContainText('Herdr did not answer', { timeout: 15000 })
-  await expect(page.locator('.board-col')).toHaveCount(0)
+  await expect(page.locator('.board-machine-error')).toContainText('unreachable', { timeout: 15000 })
+  await expect(page.locator('.board-machine .board-fold')).toBeVisible()
+  await expect(page.locator('.board-notes .error')).toHaveCount(0)
+})
+
+test('unreachable machines follow the selection, with touch detail and empty headings', async ({ page }) => {
+  await page.route('**/api/tasks*', route => route.fulfill({ json: { version: 'offline-machines', machines: [
+    { machine: '', status: 'ready', version: '1.2.21', tasks: [] },
+    { machine: 'laptop', status: 'error', version: '', tasks: [], stale: true, at: Date.UTC(2026, 0, 2, 2, 33), error: 'Connection timed out' },
+  ] } }))
+  await page.goto('/#/board?machine=')
+  await expect(page.locator('.board-machine[data-machine="local"]')).toBeVisible()
+  await expect(page.locator('.board-machine-error')).toHaveCount(0)
+  await expect(page.locator('.board-notes .error')).toHaveCount(0)
+  await page.goto('/#/board?machine=laptop')
+  const heading = page.locator('.board-machine[data-machine="laptop"] .board-head.machine')
+  await expect(heading).toContainText('unreachable · read at 02:33')
+  const hint = heading.locator('.coordinator-hint').filter({ has: page.locator('.board-machine-error') })
+  await hint.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'touch', clientX: 80, clientY: 300 })
+  await expect(page.locator('.coordinator-tooltip')).toContainText('Connection timed out')
+  await hint.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'touch' })
+  await page.screenshot({ path: '.shots/board-unreachable-iphone.png' })
+  await heading.locator('.board-fold').click()
+  await expect(heading.locator('.board-machine-error')).toBeVisible()
+  await page.getByRole('button', { name: 'Global', exact: true }).click()
+  await expect(heading.locator('.board-machine-error')).toBeVisible()
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await expect(page.locator('.board-grid')).toHaveClass(/desk/)
+  const headBox = (await heading.boundingBox())!
+  const cellsBox = (await page.locator('.board-cols').boundingBox())!
+  expect(headBox.y + headBox.height).toBeLessThanOrEqual(cellsBox.y)
+  await page.screenshot({ path: '.shots/board-unreachable-desktop.png' })
+  await expect(page.locator('.board-notes .error')).toHaveCount(0)
+})
+
+test('an unreachable machine label is translated into French', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('herdrLanguage', 'fr'))
+  await page.route('**/api/tasks*', route => route.fulfill(reply({ status: 'error', tasks: [], at: Date.UTC(2026, 0, 2, 2, 33), error: 'Connection timed out' })))
+  await page.goto('/#/board')
+  await expect(page.locator('.board-machine-error')).toHaveText('injoignable · lu à 02:33')
 })
 
 // A board with a task for each action, in two repos.
