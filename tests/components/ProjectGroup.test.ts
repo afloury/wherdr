@@ -89,7 +89,7 @@ describe('a repo group on the home list', () => {
       expect(card.find('.home-task-line').exists()).toBe(!compact)
       if (!compact) {
         expect(card.find('.home-task-line').text()).toContain('Checking the layout')
-        expect(card.find('.home-task-stage.quota-limit').text()).toBe('Limit')
+        expect(card.find('.home-task-stage.quota-limit').text()).toBe('Quota')
         expect(card.find('.home-task-line').text()).toContain('Under review · codex')
       }
       w.unmount()
@@ -122,20 +122,20 @@ describe('a repo group on the home list', () => {
     w.unmount()
   })
 
-  it('the summary counts the tasks waiting for you, working and at their usage limit', async () => {
+  it('the summary counts the tasks waiting for you, working and at a provider quota', async () => {
     const asking = pane('w4:p1', { status: 'blocked' })
     const limited = pane('w5:p1', { status: 'idle', usageLimit: { text: 'limit' } as Pane['usageLimit'] })
     const more: Member[] = [asking, limited].map((p, i) => ({ row: row(p), task: task(i + 3, p), role: 'worker' }))
     herdrState.value = { ok: true, workspaces: [], panes: [coord, ...workers, asking, limited] }
     const w = await mountSuspended(ProjectGroup, { props: { group: section({ members: [...more, ...members] }) }, global: { stubs: { UContextMenu: { template: '<div><slot /></div>' } } } })
     const sum = w.find('.project-sum')
-    expect(sum.text()).toBe('4 tasks·1 your turn·2 working·1 limit')
+    expect(sum.text()).toBe('4 tasks·1 your turn·2 working·1 quota')
     expect(sum.find('.project-sum-blocked').text()).toBe('1 your turn')
-    expect(sum.find('.project-sum-limit').text()).toBe('1 limit')
+    expect(sum.find('.project-sum-limit').text()).toBe('1 quota')
     // Each part is whole, and the
     // fold button's title says the whole summary.
-    expect(sum.findAll('.project-sum-part').map(p => p.text())).toEqual(['4 tasks·', '1 your turn·', '2 working·', '1 limit'])
-    expect(w.find('.project-head').attributes('title')).toBe('Hide the tasks of shop: 4 tasks · 1 your turn · 2 working · 1 limit')
+    expect(sum.findAll('.project-sum-part').map(p => p.text())).toEqual(['4 tasks·', '1 your turn·', '2 working·', '1 quota'])
+    expect(w.find('.project-head').attributes('title')).toBe('Hide the tasks of shop: 4 tasks · 1 your turn · 2 working · 1 quota')
     w.unmount()
   })
 

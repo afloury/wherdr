@@ -525,7 +525,7 @@ export class RemoteMachine implements Machine {
       const out = probe.stdout.toString('utf8')
       const kv = (k: string) => (new RegExp(`^${k}=(.*)$`, 'm').exec(out) || [])[1] || ''
       if (!kv('home') && probe.code !== 255) {
-        throw new Error('Remote SSH shell must support POSIX commands. On Windows, set OpenSSH DefaultShell to Git Bash (see Machines documentation).')
+        throw new Error('Remote SSH shell must support POSIX commands. On Windows, set OpenSSH DefaultShell to Git Bash (docs/machines.md, “Windows remote machines”).')
       }
       if (probe.code !== 0) throw new Error(lastLine(probe.stderr) || fmt('Probe failed (code {code})', { code: probe.code }))
       if (kv('self') && kv('self') === localMachineId()) throw new SkipMachine('this machine itself')
