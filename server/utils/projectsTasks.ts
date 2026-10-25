@@ -1,4 +1,5 @@
 import { parseTaskSettings } from '../../shared/taskSettings'
+import { type BoardSettings, parseBoardSettings, settingArgs } from '../../shared/boardSettings'
 import { readSessionTimers } from './scheduledTranscript'
 // herdr-projects 1.x on every machine: its tasks (GET /api/tasks), one task's
 // details, and what the Board can do on a task (tell, approve, open its pane).
@@ -480,6 +481,43 @@ const taskShow = (m: Machine, id: string) => command(m, ['show', '--json', '--',
 export async function taskSettings(machine: unknown, id: unknown) {
   const m = boardOf(machine)
   return parseTaskSettings(await taskShow(m, checkId(id)))
+}
+
+// ------------------------------------------------------------ board settings
+// A machine's settings (Board › Board settings): the user's own (`show`), or
+// one repo's entry (`show --repo R`), with the agent programs installed there.
+function settingsRepo(repo: unknown): string {
+  const r = repo === undefined || repo === null ? '' : repo
+  if (typeof r !== 'string' || (r && (!cleanRepo(r) || r.startsWith('/') || r.startsWith('~')))) throw new HerdrError('bad_repo', 'Invalid repository')
+  return r
+}
+async function readBoardSettings(m: Machine, repo: string): Promise<BoardSettings> {
+  const [raw, agents] = await Promise.all([
+    command(m, ['show', '--json', ...(repo ? [`--repo=${repo}`] : [])], LIST_TIMEOUT_MS, true),
+    installedAgentKinds(m).catch(() => [] as string[]),
+  ])
+  let parsed
+  try { parsed = parseBoardSettings(raw) }
+  catch { throw new HerdrError('projects_failed', 'herdr-projects gave settings wherdr cannot read.') }
+  return { ...parsed, repo, agents }
+}
+export async function boardSettings(machine: unknown, repo: unknown): Promise<BoardSettings> {
+  return readBoardSettings(boardOf(machine), settingsRepo(repo))
+}
+// `set` or `unset` (for the user, or `--repo`), then the settings as
+// herdr-projects now has them: nothing assumed from what was asked. A refusal
+// is herdr-projects' own words (it names the nearest right value).
+export async function changeBoardSetting(machine: unknown, b: Record<string, unknown>): Promise<BoardSettings & { msg: string }> {
+  const m = boardOf(machine)
+  const repo = settingsRepo(b.repo)
+  let args: string[]
+  try { args = settingArgs({ name: b.name, value: b.value, unset: b.unset, repo }) }
+  catch (e) { throw new HerdrError('bad_value', (e as Error).message) }
+  const out = await command(m, args, ACTION_TIMEOUT_MS, true)
+  // board.agents and merge.* change what the Board shows next.
+  forget(m)
+  log(`herdr-projects ${args[0]} ${b.name}${repo ? ` --repo ${repo}` : ''}${m.local ? '' : ` on ${m.label}`}`)
+  return { ...await readBoardSettings(m, repo), msg: firstLine(out) }
 }
 
 // Puts back what the task had before an agent was picked for one start, while
