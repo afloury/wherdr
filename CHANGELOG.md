@@ -4,15 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [2.0.1] — Unreleased
+## [2.0.1] — 2026-10-26
 
 ### Added and improved
 
-- **The Board's machine selector follows the sidebar tab (#171).** Opening the Board, or changing the sidebar tab, sets the selector to that tab's machine, group or All machines. A scope chosen by hand stays through refreshes, page reloads and visits to the Board until another sidebar tab is chosen. With no tab, or no Board machine in it, the current scope is kept. Taken out of 2.0.0 because a page reload dropped the choice made by hand; it is now kept on the device with its tab.
+- **Provider quotas have a distinct name (#180).** Cards, compact rows, project summaries, chat status and Claude quota setup now use “Quota” in English and French. “Limit” / “Limite” remains reserved for task time and token ceilings; computations, actions and settings are unchanged.
+
+- **The Board's machine selector follows the sidebar tab (#181, restoring #171).** Opening the Board, or changing the sidebar tab, sets the selector to that tab's machine, group or All machines. A scope chosen by hand stays through refreshes, page reloads and visits to the Board until another sidebar tab is chosen. With no tab, or no Board machine in it, the current scope is kept. Taken out of 2.0.0 because a page reload dropped the choice made by hand; it is now kept on the device with its tab.
 
 ### Documentation
 
-- Documentation: prerequisites for Windows remote machines (#132). [docs/machines.md](docs/machines.md#windows-remote-machines) says to set Git Bash as the OpenSSH server's default shell, and the error shown when the remote shell is `cmd.exe` now names that section.
+- Documentation: prerequisites for Windows remote machines (#182, documenting #132). [docs/machines.md](docs/machines.md#windows-remote-machines) says to set Git Bash as the OpenSSH server's default shell, and the error shown when the remote shell is `cmd.exe` now names that section.
 
 ## [2.0.0] — 2026-10-25
 
