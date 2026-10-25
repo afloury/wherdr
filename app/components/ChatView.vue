@@ -1468,6 +1468,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
 
               <!-- omp: a console, "OMP · N ACTIONS · Σ time", one line per call. -->
               <div v-else-if="b.k === 'tools' && isOmpGroup(b.list)" class="tools omp-console" :class="{ live: b.live }">
+                <span class="fx-ring omp-ring" aria-hidden="true"><span class="fx-spin" /></span>
                 <div class="omp-console-head">
                   <span class="omp-console-title">omp</span>
                   <span>{{ b.list.length }} {{ t('actions') }}</span>

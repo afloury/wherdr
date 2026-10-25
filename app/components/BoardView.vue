@@ -476,7 +476,7 @@ function back() {
         />
         <!-- The board kept on this device, until the read answers: in this row, so nothing moves. -->
         <span v-if="cachedAt" class="cached-tag board-cached-tag" role="status" :title="tl(`Kept on this device, as read at ${readAt(cachedAt)}; being read again`, `Gardé sur cet appareil, lu à ${readAt(cachedAt)} ; relecture en cours`)">
-          <span class="cached-tag-word">{{ tl('Read at', 'Lu à') }}&#32;</span>{{ readAt(cachedAt) }}
+          <span class="cached-tag-word">{{ `${tl('Read at', 'Lu à')} ` }}</span>{{ readAt(cachedAt) }}
         </span>
         <div class="board-grouping" role="group" :aria-label="tl('View', 'Vue')">
           <button type="button" :class="{ on: grouping === 'global' }" :aria-pressed="grouping === 'global'" @click="pickGrouping('global')">{{ tl('Global', 'Global') }}</button>

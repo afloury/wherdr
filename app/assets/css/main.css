@@ -1848,10 +1848,8 @@ body.kb .composer { padding-bottom: 8px; }
    (.fx-ring: the 1 px border; .fx-halo: the glow): only `transform` is animated, which the
    compositor runs alone. Animating the gradient's angle instead recomputed the page's style
    on every frame (more than half of the main thread while the field had the focus). No JS,
-   and nothing runs while the field does not have the focus. omp's console below still turns
-   its angle (--fx-a): only while its last action runs. */
-@property --fx-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
-@keyframes fx-turn { to { --fx-a: 360deg; } }
+   and nothing runs while the field does not have the focus. omp's console below uses the
+   same ring while its last action runs. */
 .composer, .tools.omp-console {
   --fx-speed: 10s;                /* one full turn */
   --fx-glow: 8px;                 /* depth of the halo */
@@ -1861,11 +1859,9 @@ body.kb .composer { padding-bottom: 8px; }
   --fx-2: var(--blue);
 }
 /* The ring. The second color holds for a sixth of the turn, with a sixth of fade on each side:
-   on a wide box, a conic gradient's arc is short in the middle of the long sides. Declared on
-   omp's console itself: --fx-a does not inherit. */
-.fx-spin, .tools.omp-console::after {
-  --fx-ring: conic-gradient(from var(--fx-a),
-    var(--fx-1) 0deg, var(--fx-2) 60deg, var(--fx-2) 120deg, var(--fx-1) 180deg, var(--fx-1) 360deg);
+   on a wide box, a conic gradient's arc is short in the middle of the long sides. */
+.fx-spin {
+  --fx-ring: conic-gradient(var(--fx-1) 0deg, var(--fx-2) 60deg, var(--fx-2) 120deg, var(--fx-1) 180deg, var(--fx-1) 360deg);
 }
 .composer[data-agent="claude"] { --fx-base: var(--claude); --fx-2: var(--ring-2, var(--accent)); }
 .composer[data-agent="codex"] { --fx-base: var(--codex); --fx-2: var(--ring-2, var(--accent)); }
@@ -1891,19 +1887,13 @@ body.kb .composer { padding-bottom: 8px; }
 }
 @keyframes fx-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
 /* omp's console while its last action runs (ChatView `live`, only the last group): the same
-   ring, "border only" whatever the field's setting, and none with "off". On a pseudo-element
-   masked to the 1 px border so that it fades out when the group ends; the animation only
-   runs while the group is live. */
+   ring (.omp-ring), "border only" whatever the field's setting, and none with "off". Kept in
+   place so that it fades out when the group ends; it only turns while the group is live. */
 .tools.omp-console { position: relative; --fx-fill: var(--code-bg); }
-.tools.omp-console::after {
-  content: ''; position: absolute; inset: -1px; padding: 1px; pointer-events: none;
-  background: var(--fx-ring); opacity: 0; transition: opacity .4s ease;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-}
-:root:not([data-focus-border="off"]) .tools.omp-console.live::after {
-  opacity: 1; animation: fx-turn var(--fx-speed) linear infinite;
-}
+.tools.omp-console .omp-ring { display: block; opacity: 0; transition: opacity .4s ease; }
+.omp-ring .fx-spin { animation: none; }
+:root:not([data-focus-border="off"]) .tools.omp-console.live .omp-ring { opacity: 1; }
+:root:not([data-focus-border="off"]) .tools.omp-console.live .omp-ring .fx-spin { animation: fx-spin var(--fx-speed) linear infinite; }
 /* "halo": the same ring, faint and fading outward, under the field (its opaque background
    hides the inner part). A masked gradient, not a blur filter (cheap on an iPhone). */
 :root[data-focus-border="halo"] .composer { isolation: isolate; }
@@ -1917,8 +1907,7 @@ body.kb .composer { padding-bottom: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   /* Still colored all around, frozen. */
-  .fx-spin { animation: none; transform: translate(-50%, -50%) rotate(135deg); }
-  :root:not([data-focus-border="off"]) .tools.omp-console.live::after { animation: none; --fx-a: 135deg; }
+  .fx-spin, :root:not([data-focus-border="off"]) .tools.omp-console.live .omp-ring .fx-spin { animation: none; transform: translate(-50%, -50%) rotate(135deg); }
 }
 .prompt-body { padding: 0; }
 .prompt-input {
@@ -4245,7 +4234,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .chat-list.skeleton { flex: 1; justify-content: flex-end; }
 .chat-skel { display: flex; flex-direction: column; gap: 14px; }
 .chat-skel .skel-user { align-self: flex-end; width: min(70%, 420px); padding: 10px 14px; border: 1px solid var(--line); background: var(--surface-2); }
-.chat-skel .skel-user i { margin-left: auto; background: var(--line); }
+.chat-skel .skel-user i { background: var(--line); }
 .chat-skel .skel-who { width: 84px; height: 11px; margin-top: 10px; background: color-mix(in srgb, var(--text-3) 45%, transparent); }
 .chat-skel .skel-who.claude { background: color-mix(in srgb, var(--claude) 45%, transparent); }
 .chat-skel .skel-who.codex { background: color-mix(in srgb, var(--codex) 45%, transparent); }
