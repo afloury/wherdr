@@ -3,7 +3,7 @@
 import { DESK_QUERY, SLIM_QUERY, TABLET_QUERY, provesHardwareKeyboard } from '~/utils/layoutMode'
 import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, NamedSession, Pane, Quotas } from '#shared/types'
 import { LOCAL, splitId } from '#shared/ids'
-import { clearOffline, readOffline, saveHome } from '~/utils/offlineCache'
+import { clearOffline, readHome, saveHome } from '~/utils/offlineCache'
 import { leaseFromStatus, mayReadOffline, readOfflineAccess, setOfflineAccess, type OfflineAccess } from '~/utils/offlineAccess'
 import { activeTerminalRenderer, parseTerminalRenderer } from '~/utils/terminalRenderer'
 import type { ActiveTerminalRenderer } from '~/utils/terminalRenderer'
@@ -638,6 +638,9 @@ const STATUS_WAIT_MS = 3000
 // resume: see confirmLock.
 export async function start({ resume = false } = {}) {
   let access = readOfflineAccess()
+  // The last known state is read while the server is asked (it shows only once
+  // the answer allows it): one round trip less before the home list.
+  const early = mayReadOffline(access) ? readHome() : null
   try {
     const st = resume
       ? await api<AuthStatus>('/api/auth/status?resume=1', undefined, AbortSignal.timeout(STATUS_WAIT_MS))
@@ -653,12 +656,12 @@ export async function start({ resume = false } = {}) {
     if (access?.enabled && !mayReadOffline(access) && !eventsOpen.value) return showLock()
   }
   if (mayReadOffline(access)) {
-    const saved = await readOffline()
-    if (saved.home && !eventsOpen.value) {
-      fullState = saved.home.state
+    const saved = await (early || readHome())
+    if (saved && !eventsOpen.value) {
+      fullState = saved.state
       allSessionsState.value = fullState
       herdrState.value = selectSessions(fullState, machineSessions.value)
-      cachedAt.value = saved.home.at
+      cachedAt.value = saved.at
     }
   }
   boot()

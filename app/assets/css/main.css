@@ -1834,7 +1834,7 @@ body.kb .composer { padding-bottom: 8px; }
 .slash-denied-label .iconify { width: 14px; height: 14px; color: var(--ochre); flex: none; }
 .slash-denied .dir-denied-path { font-size: 11.5px; }
 .prompt {
-  padding: 4px 6px 6px; gap: 2px;
+  position: relative; padding: 4px 6px 6px; gap: 2px;
   background: var(--bg-2); border: 1px solid var(--input-line); box-shadow: none; backdrop-filter: none;
   transition: border-color .15s ease;
 }
@@ -1842,10 +1842,14 @@ body.kb .composer { padding-bottom: 8px; }
    data-focus-border on <html>). "off": the plain 1 px accent border. */
 .prompt:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, transparent); outline: none; }
 /* "border" and "halo" (default): the whole 1 px border takes the agent's color and a second
-   color glides slowly around it. A conic gradient whose start angle is the registered
-   --fx-a: no JS, and nothing runs while the field does not have the focus. The agent's color
-   is toned down a little toward the field's background so that the second color reads on it
-   (the herdr mauve on the Claude orange, for instance). */
+   color glides slowly around it. The agent's color is toned down a little toward the field's
+   background so that the second color reads on it (the herdr mauve on the Claude orange, for
+   instance). On the field, a conic gradient on a square (.fx-spin) turns under a fixed mask
+   (.fx-ring: the 1 px border; .fx-halo: the glow): only `transform` is animated, which the
+   compositor runs alone. Animating the gradient's angle instead recomputed the page's style
+   on every frame (more than half of the main thread while the field had the focus). No JS,
+   and nothing runs while the field does not have the focus. omp's console below still turns
+   its angle (--fx-a): only while its last action runs. */
 @property --fx-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 @keyframes fx-turn { to { --fx-a: 360deg; } }
 .composer, .tools.omp-console {
@@ -1856,10 +1860,10 @@ body.kb .composer { padding-bottom: 8px; }
   --fx-1: color-mix(in srgb, var(--fx-base) 70%, var(--fx-fill));
   --fx-2: var(--blue);
 }
-/* The ring, declared on the animated elements themselves: --fx-a does not inherit. The second
-   color holds for a sixth of the turn, with a sixth of fade on each side: on a wide box, a
-   conic gradient's arc is short in the middle of the long sides. */
-.prompt, .tools.omp-console::after {
+/* The ring. The second color holds for a sixth of the turn, with a sixth of fade on each side:
+   on a wide box, a conic gradient's arc is short in the middle of the long sides. Declared on
+   omp's console itself: --fx-a does not inherit. */
+.fx-spin, .tools.omp-console::after {
   --fx-ring: conic-gradient(from var(--fx-a),
     var(--fx-1) 0deg, var(--fx-2) 60deg, var(--fx-2) 120deg, var(--fx-1) 180deg, var(--fx-1) 360deg);
 }
@@ -1869,11 +1873,23 @@ body.kb .composer { padding-bottom: 8px; }
 /* omp themes: their accent is the omp magenta's neighbour; glide the cyan / blue instead. */
 :root[data-theme="omp"] :is(.composer[data-agent="omp"], .tools.omp-console) { --fx-2: var(--teal); }
 :root[data-theme="omp-light"] :is(.composer[data-agent="omp"], .tools.omp-console) { --fx-2: var(--blue); }
-:root:not([data-focus-border="off"]) .prompt:focus-within {
-  border-color: transparent;
-  background: linear-gradient(var(--bg-2), var(--bg-2)) padding-box, var(--fx-ring) border-box;
-  animation: fx-turn var(--fx-speed) linear infinite;
+:root:not([data-focus-border="off"]) .prompt:focus-within { border-color: transparent; }
+/* Both masks are as big as what they show (container units size the square): the square is
+   at least as wide as the diagonal, so it covers them whatever its angle. */
+.fx-ring, .fx-halo { display: none; position: absolute; pointer-events: none; overflow: hidden; container-type: size; }
+:root:not([data-focus-border="off"]) .prompt:focus-within .fx-ring { display: block; }
+.fx-ring {
+  inset: -1px; padding: 1px; z-index: 1;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
 }
+.fx-spin {
+  position: absolute; left: 50%; top: 50%; width: calc(100cqw + 100cqh); aspect-ratio: 1;
+  background: var(--fx-ring); will-change: transform;
+  transform: translate(-50%, -50%) rotate(0deg);
+  animation: fx-spin var(--fx-speed) linear infinite;
+}
+@keyframes fx-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
 /* omp's console while its last action runs (ChatView `live`, only the last group): the same
    ring, "border only" whatever the field's setting, and none with "off". On a pseudo-element
    masked to the 1 px border so that it fades out when the group ends; the animation only
@@ -1891,10 +1907,9 @@ body.kb .composer { padding-bottom: 8px; }
 /* "halo": the same ring, faint and fading outward, under the field (its opaque background
    hides the inner part). A masked gradient, not a blur filter (cheap on an iPhone). */
 :root[data-focus-border="halo"] .composer { isolation: isolate; }
-:root[data-focus-border="halo"] .prompt { position: relative; }
-:root[data-focus-border="halo"] .prompt:focus-within::before {
-  content: ''; position: absolute; inset: calc(-1px - var(--fx-glow)); z-index: -1; pointer-events: none;
-  background: var(--fx-ring); opacity: .32;
+:root[data-focus-border="halo"] .prompt:focus-within .fx-halo { display: block; }
+.fx-halo {
+  inset: calc(-1px - var(--fx-glow)); z-index: -1; opacity: .32;
   --fx-fade-y: linear-gradient(to bottom, transparent, #000 var(--fx-glow), #000 calc(100% - var(--fx-glow)), transparent);
   --fx-fade-x: linear-gradient(to right, transparent, #000 var(--fx-glow), #000 calc(100% - var(--fx-glow)), transparent);
   -webkit-mask: var(--fx-fade-y), var(--fx-fade-x); -webkit-mask-composite: source-in;
@@ -1902,7 +1917,7 @@ body.kb .composer { padding-bottom: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   /* Still colored all around, frozen. */
-  :root:not([data-focus-border="off"]) .prompt:focus-within,
+  .fx-spin { animation: none; transform: translate(-50%, -50%) rotate(135deg); }
   :root:not([data-focus-border="off"]) .tools.omp-console.live::after { animation: none; --fx-a: 135deg; }
 }
 .prompt-body { padding: 0; }
@@ -4216,3 +4231,36 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 
 /* A quiet source stays identifiable without competing with its state. */
 .notification-muted { color: var(--muted); width: 12px; height: 12px; flex-shrink: 0; }
+
+/* ------------------------------------------------------------ skeletons
+   Shown only with nothing kept on this device, after 300 ms (useDelayedFlag): the
+   shapes of what loads, at its size, square, static (no shimmer, no pulse). */
+.skel-card i, .chat-skel i { display: block; height: 11px; margin: 3px 0; background: var(--line-soft); }
+.board-card.skel-card { cursor: default; gap: 6px; }
+.board-card.skel-card:hover { border-color: var(--line-soft); background: var(--surface); }
+.board-skel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.board-skel .skel-tools { display: block; height: 34px; }
+.board-skel .board-seg-btn { cursor: default; }
+/* The conversation's: at the bottom, as the messages will be. */
+.chat-list.skeleton { flex: 1; justify-content: flex-end; }
+.chat-skel { display: flex; flex-direction: column; gap: 14px; }
+.chat-skel .skel-user { align-self: flex-end; width: min(70%, 420px); padding: 10px 14px; border: 1px solid var(--line); background: var(--surface-2); }
+.chat-skel .skel-user i { margin-left: auto; background: var(--line); }
+.chat-skel .skel-who { width: 84px; height: 11px; margin-top: 10px; background: color-mix(in srgb, var(--text-3) 45%, transparent); }
+.chat-skel .skel-who.claude { background: color-mix(in srgb, var(--claude) 45%, transparent); }
+.chat-skel .skel-who.codex { background: color-mix(in srgb, var(--codex) 45%, transparent); }
+.chat-skel .skel-who.omp { background: color-mix(in srgb, var(--omp) 45%, transparent); }
+.chat-skel .skel-tool { display: flex; align-items: center; gap: 10px; width: min(60%, 360px); padding: 7px 10px; border: 1px solid var(--line-soft); }
+.chat-skel .skel-tool span { flex: none; width: 12px; height: 12px; border: 1px solid var(--line); }
+.chat-skel .skel-tool i { margin: 0; }
+.chat-skel .skel-lines { width: min(88%, 640px); }
+.chat-skel .skel-lines i { height: 12px; margin: 0 0 10px; }
+/* Read from this device while the network catches up: "READ AT 14:02". */
+.cached-tag { display: inline-flex; align-items: center; gap: 6px; font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.cached-tag::before { content: ''; width: 6px; height: 6px; background: var(--muted); }
+.chat-cached { position: absolute; top: 8px; right: 16px; z-index: 3; padding: 5px 8px; background: var(--bg); border: 1px solid var(--line-soft); pointer-events: none; }
+.board-slow { display: flex; align-items: center; gap: 6px; }
+.board-retry { padding: 0; font: inherit; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.board-tools .board-cached-tag { min-width: 0; overflow: hidden; }
+.cached-tag-word { white-space: pre; }
+@media (max-width: 560px) { .board-tools .cached-tag-word { display: none; } }
