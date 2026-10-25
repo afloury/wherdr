@@ -127,3 +127,37 @@ for (const stopped of ['tokens', undefined]) {
     expect(posts).toEqual([{ machine: 'remote', id: 'demo/98', name: 'limit.tokens', value: '3m' }])
   })
 }
+
+test('a duration entered after a token stop never changes the time ceiling or closes the sheet', async ({ page }) => {
+  const row = { id: 'demo/98', repo: 'demo', n: 98, stage: 'stopped', state: 'blocked', group: 'needs', title: 'Garden', app: 'codex' }
+  const posts: Record<string, unknown>[] = []
+  let time = '2h'
+  await page.route('**/api/tasks**', route => {
+    const url = new URL(route.request().url())
+    if (url.pathname === '/api/tasks/limit') {
+      const body = route.request().postDataJSON()
+      posts.push(body)
+      // Reproduce the review failure if the UI ever picks the unrelated ceiling again:
+      // the CLI accepts that time setting, but the task stays stopped for tokens.
+      if (body.name === 'limit.time') {
+        time = body.value
+        return route.fulfill({ json: { ok: true } })
+      }
+      return route.fulfill({ status: 400, json: { error: 'Token limit needs a token count' } })
+    }
+    return route.fulfill({ json: url.pathname === '/api/tasks/details'
+      ? { ...row, limits: { time, timeUsed: '', tokens: '2m', tokensUsed: 2000000, stopped: 'tokens' } }
+      : { machines: [{ machine: 'remote', status: 'ready', tasks: [row] }] } })
+  })
+  await page.goto('/#/board?machine=remote&task=demo%2F98')
+  await page.locator('.task-needs').getByRole('button', { name: 'Raise limit', exact: true }).click()
+  await expect(page.locator('#task-limit-kind')).toContainText('tokens for the whole task')
+  await page.locator('#task-limit-value').fill('4h')
+  await page.getByRole('button', { name: 'Apply limit', exact: true }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'Token limit needs a token count' }).first()).toBeVisible()
+  await expect(page.locator('#task-limit-value')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Apply limit', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Resuming…', exact: true })).toHaveCount(0)
+  expect(time).toBe('2h')
+  expect(posts).toEqual([{ machine: 'remote', id: 'demo/98', name: 'limit.tokens', value: '4h' }])
+})
