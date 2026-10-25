@@ -1,4 +1,5 @@
 import { parseTaskSettings } from '../../shared/taskSettings'
+import { readSessionTimers } from './scheduledTranscript'
 // herdr-projects 1.x on every machine: its tasks (GET /api/tasks), one task's
 // details, and what the Board can do on a task (tell, approve, open its pane).
 //
@@ -14,6 +15,8 @@ import { parseTaskSettings } from '../../shared/taskSettings'
 //    command at a time per machine, a list reused for REUSE_MS, the last list
 //    kept (marked stale) when a read outlives READ_DEADLINE_MS.
 // Only where Herdr reports a 1.x from 1.2.1 on (shared/projectsPlugin.ts).
+import { autopilotNextAt, parseAutopilot, parseAutomations, type Scheduled } from '../../shared/scheduled'
+import { machineOfPane } from './machines'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
@@ -24,7 +27,11 @@ import {
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
   cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots,
 } from '../../shared/projectsTasks'
-import { parseProjectsVersion } from '../../shared/projectsPlugin'
+import {
+  AUTOPILOT_MIN, OFF, autopilotId, autopilotOnArgs, autopilotTargetArgs, coordinatorShowArgs, parseAutopilotList, parseCoordinatorSettings,
+  type AutopilotDetails, type AutopilotStatus,
+} from '../../shared/autopilot'
+import { parseProjectsVersion, versionAtLeast } from '../../shared/projectsPlugin'
 import { HERDR_BIN, HERDR_CHILD_ENV, log } from './env'
 import { USER_PATH_SH, userPath } from '../../bin/lib/userpath.mjs'
 import { HerdrError } from './herdr'
@@ -366,7 +373,7 @@ function forget(m: Machine) { lists.delete(m.key) }
 // Tests start from an empty cache.
 // `keepKeys`: the repos' keys stay (a later list without asking them again).
 export function resetTasksCache(keepKeys = false) {
-  lists.clear(); reading.clear(); queues.clear(); createdAt.clear()
+  lists.clear(); reading.clear(); queues.clear(); createdAt.clear(); versions.clear()
   if (!keepKeys) { repoKeys.clear(); keysReading.clear() }
 }
 
@@ -679,4 +686,118 @@ export async function pickTask(machine: unknown, id: unknown, letter: unknown, c
   const out = await command(m, ['pick', '--', tid, letter])
   forget(m)
   return { ok: true, msg: firstLine(out) }
+}
+
+// ---------------------------------------------------------------- autopilot
+// Autopilot runs on the same machine as the coordinator's commands. The state
+// shown is always read back from `autopilot --json`, never assumed.
+// The program's version, asked again after a while (it can be updated).
+const VERSION_TTL_MS = 5 * 60_000
+const versions = new Map<string, { version: string | null, at: number }>()
+async function needsAutopilot(m: Machine) {
+  let known = versions.get(m.key)
+  if (!known || Date.now() - known.at > VERSION_TTL_MS) {
+    known = { version: await projectsProgramVersion(m), at: Date.now() }
+    versions.set(m.key, known)
+  }
+  const version = known.version
+  if (!versionAtLeast(version, AUTOPILOT_MIN)) {
+    throw new HerdrError('projects_too_old', fmt('Autopilot needs herdr-projects {min} or later on {machine} (it has {version}).', { min: AUTOPILOT_MIN, machine: m.label, version: version ?? '?' }))
+  }
+}
+async function autopilotList(m: Machine): Promise<Record<string, AutopilotStatus>> {
+  try { return parseAutopilotList(await command(m, ['autopilot', '--json'], LIST_TIMEOUT_MS)) }
+  catch (e) {
+    if (e instanceof HerdrError) throw e
+    throw new HerdrError('projects_failed', 'herdr-projects gave an Autopilot status wherdr cannot read.')
+  }
+}
+
+// Every coordinator of a machine, by its autopilot id ("main", "machine", "project:<repo>").
+export async function autopilotStatuses(machine: unknown): Promise<Record<string, AutopilotStatus>> {
+  const m = boardOf(machine)
+  await needsAutopilot(m)
+  return autopilotList(m)
+}
+
+// One coordinator, with its saved goal and the values `on` falls back on.
+// `input`: turn it on ({ action: 'on', goal, every?, tasksPerDay?, tasksAtOnce? }) or off first.
+export async function coordinatorAutopilot(machine: unknown, to: unknown, input?: Record<string, unknown>): Promise<AutopilotDetails> {
+  const m = boardOf(machine)
+  const target = cleanTarget(to)
+  if (!target) throw new HerdrError('bad_target', 'Invalid coordinator')
+  let args: string[] | undefined
+  if (input) {
+    if (input.action !== 'on' && input.action !== 'off') throw new HerdrError('bad_action', 'Invalid Autopilot action.')
+    try { args = input.action === 'on' ? autopilotOnArgs(target, input) : ['autopilot', 'off', ...autopilotTargetArgs(target)] }
+    catch (e) { throw new HerdrError('bad_value', (e as Error).message) }
+  }
+  await needsAutopilot(m)
+  if (args) await command(m, args, ACTION_TIMEOUT_MS, true)
+  const status = (await autopilotList(m))[autopilotId(target)] ?? OFF
+  let saved = { goal: '', defaults: { every: '', tasksPerDay: '', tasksAtOnce: '' } }
+  try { saved = parseCoordinatorSettings(await command(m, ['show', ...coordinatorShowArgs(target), '--json'], LIST_TIMEOUT_MS)) }
+  catch { /* the status still stands without its saved settings */ }
+  return { ...status, goal: status.goal || saved.goal, defaults: saved.defaults }
+}
+
+// Read only, requested when the Scheduled disclosure opens or the board refreshes.
+export async function coordinatorScheduled(machine: unknown, to: unknown): Promise<Scheduled> {
+  const m = boardOf(machine)
+  const target = cleanTarget(to)
+  if (!target) throw new HerdrError('bad_target', 'Invalid coordinator')
+  const out: Scheduled = { autopilot: null, automations: [], timers: [], timezone: 'UTC', warnings: [] }
+  try {
+    if (m.local) out.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    else {
+      const r = await m.exec!('if [ -f /etc/timezone ]; then cat /etc/timezone; else readlink /etc/localtime; fi', [], { timeoutMs: 4000, maxBytes: 1024 })
+      const zone = r.stdout.toString('utf8').trim().replace(/^.*zoneinfo\//, '')
+      new Intl.DateTimeFormat('en', { timeZone: zone }).format()
+      out.timezone = zone
+    }
+  } catch { out.warnings.push('Machine time zone unavailable; using UTC') }
+  try { out.autopilot = parseAutopilot(await command(m, ['autopilot', '--json'], LIST_TIMEOUT_MS), target) }
+  catch { out.warnings.push('Autopilot unavailable') }
+  try {
+    out.automations = parseAutomations(await command(m, ['automations', '--json'], LIST_TIMEOUT_MS), target)
+    for (const automation of out.automations) {
+      if (!/^[a-f0-9]{8}$/.test(automation.id)) continue
+      try {
+        const file = path.posix.join(m.home, '.herdr-projects/data/automations/firings', `${automation.id}.jsonl`)
+        const stat = await m.fs.stat(file)
+        if (stat.size > 1024 * 1024) continue
+        const lines = (await m.fs.readFile(file)).trim().split('\n').slice(-5)
+        const tasks = lines.flatMap(line => {
+          try { const f = JSON.parse(line); return typeof f.task === 'string' && isTaskId(f.task) ? [f.task] : [] }
+          catch { return [] }
+        }).reverse()
+        automation.tasks = [...new Set(tasks)]
+      } catch { /* The list still carries the latest task on older installs. */ }
+    }
+  }
+  catch { out.warnings.push('Automations unavailable') }
+  try {
+    // Raw state supplements the human-readable CLI dates without changing it.
+    const folder = path.posix.join(m.home, '.herdr-projects/data/coordinator', m.session || 'default',
+      ...(target.kind === 'machine' ? ['machine'] : target.kind === 'project' ? ['projects', target.repo] : []))
+    const state = JSON.parse(await m.fs.readFile(path.posix.join(folder, 'state.json')))
+    if (out.autopilot?.on && state.autopilot) {
+      const p = state.autopilot
+      const next = autopilotNextAt(p.timerAt, out.autopilot)
+      if (next) out.autopilot.next = next
+      if (Array.isArray(p.wakes) && p.wakes.length) out.autopilot.last = Math.max(...p.wakes.map((w: { at?: number }) => w.at || 0)) || out.autopilot.last
+    }
+  } catch { /* Older board versions need only the CLI. */ }
+  try {
+    const status = await coordinatorPane(machine, target)
+    const pane = status.pane ? findPane(status.pane) : undefined
+    if (pane?.agent === 'claude') {
+      const owner = machineOfPane(pane.id)
+      const loc = owner && await owner.transcripts.locate(pane)
+      if (owner && loc) {
+        out.timers = await readSessionTimers(owner.fs, loc.file, Date.now(), out.timezone)
+      }
+    }
+  } catch { out.warnings.push('Session timers unavailable') }
+  return out
 }

@@ -39,6 +39,10 @@ This major release follows 1.3.4. Read the [migration guide](docs/herdr-projects
 
 - **Task keys** can be copied with a click or tap (#168).
 
+- **Coordinator Autopilot switch (#174).** The Board and each coordinator's panel (main, machine, project) show whether Autopilot is on, with its next wake. Turning it on asks for the goal (prefilled with the saved one) and optional frequency and limits; turning it off asks for confirmation. The state is always read back from herdr-projects (1.2.15 or later), and a board refusal is shown in its own words.
+
+- **Scheduled section in the coordinator panel (#173).** Each coordinator shows, read-only, its Autopilot wakes, its automations with the tasks they recently started, and its Claude timers.
+
 - **New agent and slash menu:** New opens an existing project coordinator or creates one; the slash menu includes plugin skills and MCP prompts (#130, #122).
 - **Messages waiting behind other text** explain why they cannot be sent and offer to clear the field (#131).
 - **Installation and documentation:** the README links to focused guides in `docs/`. Automatic startup is at login on macOS; on Linux it is at boot with lingering enabled, otherwise at login. The installer checks and reports the actual state (#136, #137).

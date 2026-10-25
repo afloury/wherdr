@@ -40,6 +40,9 @@ const FOLDS_KEY = 'boardFolds'
 const router = useRouter()
 const route = useRoute()
 const { board, error, reads, reload } = useTasksBoard()
+// Counts the Refresh button's clicks: the coordinator's Scheduled section reads
+// again then, not on every 15 s poll (it may scan a large transcript).
+const refreshes = ref(0)
 const projectLinks = useBoardLinks()
 
 const readStore = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
@@ -442,8 +445,15 @@ function back() {
           </UButton>
         </CoordinatorHint>
       </UDropdownMenu>
-      <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="lg" class="icon-btn board-filter" :aria-label="tl('Refresh', 'Actualiser')" :disabled="offlineView" @click="reload" />
+      <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="lg" class="icon-btn board-filter" :aria-label="tl('Refresh', 'Actualiser')" :disabled="offlineView" @click="refreshes++; reload()" />
     </header>
+    <!-- Each machine's main Coordinator: its Autopilot. -->
+    <div v-if="coordMachines.length && !offlineView" class="board-autopilots">
+      <div v-for="m in coordMachines" :key="m.machine">
+        <span v-if="coordMachines.length > 1" class="board-autopilots-machine">{{ machineLabel(m.machine) }}</span>
+        <CoordinatorAutopilot :machine="m.machine" :to="{ kind: 'main' }" :disabled="Boolean(coordWhy(m.machine))" />
+      </div>
+    </div>
     <div v-if="error" class="notice board-notice">{{ error }}</div>
     <p v-else-if="!board && !offlineView" class="board-empty board-loading">{{ t('Loading…') }}</p>
 
@@ -541,6 +551,7 @@ function back() {
                     {{ coordLabel(mg.machine, to) }}
                   </UButton>
                 </CoordinatorHint>
+                <CoordinatorAutopilot :machine="mg.machine" :to="{ kind: 'machine' }" :disabled="Boolean(coordWhy(mg.machine))" compact />
               </div>
             </div>
             <template v-if="!folds.has(`m:${mg.machine}`)">
@@ -559,6 +570,7 @@ function back() {
                         {{ coordLabel(mg.machine, { kind: 'project', repo: rg.repo }) }}
                       </UButton>
                     </CoordinatorHint>
+                    <CoordinatorAutopilot :machine="mg.machine" :to="{ kind: 'project', repo: rg.repo }" :disabled="Boolean(coordWhy(mg.machine))" compact />
                     <UButton
                       icon="i-lucide-plus" color="neutral" variant="outline" size="sm" class="board-head-add" :disabled="offlineView"
                       :aria-label="tl(`New task in ${rg.repo}`, `Nouvelle tâche dans ${rg.repo}`)" @click="newTask(mg.machine, rg.repo)"
@@ -605,7 +617,7 @@ function back() {
     </template>
     <BoardPanel
       v-if="panel" :key="panelKey" :target="panel" :task="panelTask"
-      :refresh="reload" :machine-label="machineLabel(panel.machine)" :reachable="ready.some(m => m.machine === panel!.machine)"
+      :refresh="reload" :refresh-key="refreshes" :machine-label="machineLabel(panel.machine)" :reachable="ready.some(m => m.machine === panel!.machine)"
       @archived="onArchived" @restored="onRestored" @changed="reload" @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent" @coordinator="askCoordinator"
     />
     <TaskSheet
@@ -615,3 +627,9 @@ function back() {
     <NewTaskSheet v-model:open="newOpen" :machines="ready.map(m => m.machine)" :repos="reposByMachine" :machine="newFor.machine" :repo="newFor.repo" @added="added" />
   </section>
 </template>
+
+<style scoped>
+.board-autopilots { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.board-autopilots > div { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.board-autopilots-machine { font: 500 10.5px/1.2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+</style>

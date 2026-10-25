@@ -27,7 +27,7 @@ const info = { status: 'ready', version: '1.2.1', launcher: '/plugins/herdr-proj
 let infoFails = false
 const infoAsked: boolean[] = []
 const panes: { id: string, machine?: string, agent?: string, cwd?: string, status?: string, name?: string }[] = []
-vi.mock('../server/utils/machines', () => ({ allMachines: () => [machine, session], baseMachines: () => [machine] }))
+vi.mock('../server/utils/machines', () => ({ allMachines: () => [machine, session], baseMachines: () => [machine], machineOfPane: () => ({ ...machine, transcripts: { locate: async () => ({ file: path.join(home, 'timer-transcript.jsonl') }) } }) }))
 vi.mock('../server/utils/actions', () => ({ machineFor: (k: unknown) => (k === session.key ? session : k === 'remote' ? remote : machine) }))
 vi.mock('../server/utils/projectsPlugin', () => ({ projectsPluginInfo: async (_m: unknown, fresh = false) => {
   infoAsked.push(fresh)
@@ -1099,4 +1099,115 @@ describe('read-only task settings', () => {
     T.setRunner(async () => ({ code: 1, stdout: '', stderr: 'Machine unavailable' }))
     await expect(T.taskSettings('remote', 'demo/1')).rejects.toThrow('Machine unavailable')
   })
+})
+
+describe('coordinator Autopilot', () => {
+  // A board that keeps each coordinator's state, as herdr-projects does.
+  function autopilotRunner(version = '1.2.21', refuse = '') {
+    const on = new Set<string>()
+    T.setRunner(async (_m, _launcher, args) => {
+      calls.push(args)
+      if (args[0] === 'version') return { code: 0, stdout: `herdr-projects ${version}`, stderr: '' }
+      if (args[0] === 'show') return { code: 0, stdout: JSON.stringify({ settings: [{ name: 'autopilot.goal', value: 'Keep the garden healthy' }, { name: 'autopilot.every', value: '6h' }] }), stderr: '' }
+      if (args[1] === 'on' || args[1] === 'off') {
+        if (refuse) return { code: 1, stdout: '', stderr: refuse }
+        const id = args[2] === '--project' ? `project:${args[3]}` : args[2] === '--machine' ? 'machine' : 'main'
+        if (args[1] === 'on') on.add(id)
+        else on.delete(id)
+        // Not a status: the state must be read again.
+        return { code: 0, stdout: 'Done', stderr: '' }
+      }
+      if (args[0] === 'autopilot' && args[1] === '--json') {
+        return { code: 0, stdout: JSON.stringify(['main', 'machine', 'project:demo'].map(c => on.has(c) ? { on: true, state: 'on', coordinator: c, goal: 'Grow', next: 'next in 2h' } : { on: false, coordinator: c })), stderr: '' }
+      }
+      return { code: 1, stdout: '', stderr: 'unexpected' }
+    })
+  }
+  it('turns a project coordinator on and reads its real state back', async () => {
+    autopilotRunner()
+    expect(await T.coordinatorAutopilot('remote', { kind: 'project', repo: 'demo' }, { action: 'on', goal: 'Grow', every: '2h' }))
+      .toMatchObject({ on: true, goal: 'Grow', next: 'next in 2h', defaults: { every: '6h' } })
+    expect(calls).toContainEqual(['autopilot', 'on', '--project', 'demo', '--goal', 'Grow', '--autopilot.every', '2h'])
+    expect(calls).toContainEqual(['autopilot', '--json'])
+    expect(calls).toContainEqual(['show', '--project-coordinator', 'demo', '--json'])
+  })
+  it('refuses an empty goal without running on', async () => {
+    autopilotRunner()
+    await expect(T.coordinatorAutopilot('', { kind: 'main' }, { action: 'on', goal: ' ' })).rejects.toThrow('goal is required')
+    expect(calls).toEqual([])
+  })
+  it('stops the machine coordinator and keeps its saved goal to show', async () => {
+    autopilotRunner()
+    await T.coordinatorAutopilot('', { kind: 'machine' }, { action: 'on', goal: 'Grow' })
+    expect(await T.coordinatorAutopilot('', { kind: 'machine' }, { action: 'off' })).toMatchObject({ on: false, goal: 'Keep the garden healthy' })
+    expect(calls).toContainEqual(['autopilot', 'off', '--machine'])
+  })
+  it('lists every coordinator of a machine', async () => {
+    autopilotRunner()
+    await T.coordinatorAutopilot('', { kind: 'project', repo: 'demo' }, { action: 'on', goal: 'Grow' })
+    const all = await T.autopilotStatuses('')
+    expect(all.main).toMatchObject({ on: false })
+    expect(all['project:demo']).toMatchObject({ on: true, next: 'next in 2h' })
+  })
+  it('passes the board refusal on, and refuses older versions', async () => {
+    autopilotRunner('1.2.21', 'Tell a coordinator its goal first.')
+    await expect(T.coordinatorAutopilot('', { kind: 'main' }, { action: 'on', goal: 'Grow' })).rejects.toThrow('Tell a coordinator its goal first.')
+    calls = []
+    T.resetTasksCache()
+    autopilotRunner('1.2.14')
+    await expect(T.autopilotStatuses('')).rejects.toThrow('herdr-projects 1.2.15 or later')
+    expect(calls).toEqual([['version']])
+  })
+})
+
+describe('scheduled coordinator reads', () => {
+  it('only issues read commands and keeps unavailable sources separate from an empty schedule', async () => {
+    const requested: string[][] = []
+    T.setRunner(async (_m, _launcher, args) => {
+      requested.push(args)
+      if (args[0] === 'autopilot') return { code: 1, stdout: '', stderr: 'not supported' }
+      if (args[0] === 'automations') return { code: 0, stdout: '[]', stderr: '' }
+      if (args[0] === 'coordinator') return { code: 0, stdout: '{"state":"none","pane":""}', stderr: '' }
+      throw new Error('Unexpected command')
+    })
+    const scheduled = await T.coordinatorScheduled('', { kind: 'main' })
+    expect(scheduled.autopilot).toBeNull()
+    expect(scheduled.automations).toEqual([])
+    expect(scheduled.timers).toEqual([])
+    expect(scheduled.warnings).toEqual(['Autopilot unavailable'])
+    expect(requested).toEqual([['autopilot', '--json'], ['automations', '--json'], ['coordinator', '--json', 'status']])
+  })
+
+  it('rejects an invalid project before accessing the board', async () => {
+    const runner = vi.fn()
+    T.setRunner(runner)
+    await expect(T.coordinatorScheduled('', { kind: 'project', repo: '../escape' })).rejects.toThrow('Invalid coordinator')
+    expect(runner).not.toHaveBeenCalled()
+  })
+})
+
+
+it.each([0, 25 * 1024 * 1024])('reads scheduled coordinator wake dates, recent firing tasks and a transcript with %i padding bytes', async (padding) => {
+  const dir = path.join(home, '.herdr-projects/data/coordinator/default/projects/demo')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(path.join(dir, 'state.json'), JSON.stringify({ autopilot: { timerAt: clock - 60000, wakes: [{ at: clock - 60000 }] } }))
+  const firings = path.join(home, '.herdr-projects/data/automations/firings')
+  mkdirSync(firings, { recursive: true })
+  writeFileSync(path.join(firings, '1234abcd.jsonl'), [{ task: 'demo/1' }, { skipped: 'busy' }, { task: 'demo/2' }].map(f => JSON.stringify(f)).join('\n'))
+  const transcript = [
+    { type: 'assistant', timestamp: new Date(clock - 1000).toISOString(), message: { content: [{ type: 'tool_use', id: 'tool1', name: 'CronCreate', input: { cron: '*/5 * * * *', prompt: 'Check build', recurring: true } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tool1', content: '{"id":"job1"}' }] } },
+  ].map(r => JSON.stringify(r)).join('\n')
+  writeFileSync(path.join(home, 'timer-transcript.jsonl'), transcript + '\n' + JSON.stringify({ message: { content: 'x'.repeat(padding) } }))
+  panes.push({ id: 'w1:p1', agent: 'claude' })
+  T.setRunner(async (_m, _launcher, args) => ({ code: 0, stderr: '', stdout: JSON.stringify(
+    args[0] === 'autopilot' ? [{ coordinator: 'project:demo', on: true, goal: 'Ship demo', next: 'next in 1m', settings: [{ label: 'Wakes', value: 'every 2m' }] }]
+      : args[0] === 'automations' ? [{ id: '1234abcd', name: 'Audit', repo: 'demo', on: true, trigger: 'daily 09:00' }]
+        : { state: 'idle', pane: 'w1:p1' },
+  ) }))
+  const scheduled = await T.coordinatorScheduled('', { kind: 'project', repo: 'demo' })
+  expect(scheduled.autopilot).toMatchObject({ next: clock + 60000, last: clock - 60000, goal: 'Ship demo' })
+  expect(scheduled.automations[0]?.tasks).toEqual(['demo/2', 'demo/1'])
+  expect(scheduled.timers).toMatchObject([{ id: 'job1', cron: '*/5 * * * *' }])
+  expect(scheduled.warnings).toEqual([])
 })
