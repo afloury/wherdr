@@ -37,6 +37,12 @@ test(`scheduled disclosure (${language}) is lazy, read only, compact on phone an
   await page.screenshot({ path: `.shots/coordinator-scheduled-desktop-${language}.png` })
   expect(await section.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
   empty = true
+  const beforeReopen = reads
+  await section.locator('summary').click()
+  await section.locator('summary').click()
+  await expect(section).toContainText(language === 'fr' ? 'Rien de programmé' : 'Nothing scheduled')
+  expect(reads).toBeGreaterThan(beforeReopen)
+  await expect(section).not.toContainText('Keep the demo build green')
   await page.getByRole('button', { name: language === 'fr' ? 'Actualiser' : 'Refresh', exact: true }).click()
   await expect(section).toContainText(language === 'fr' ? 'Rien de programmé' : 'Nothing scheduled')
   const before = reads

@@ -1109,17 +1109,18 @@ describe('scheduled coordinator reads', () => {
 })
 
 
-it('reads scheduled coordinator wake dates, recent firing tasks and the Claude transcript', async () => {
+it.each([0, 25 * 1024 * 1024])('reads scheduled coordinator wake dates, recent firing tasks and a transcript with %i padding bytes', async (padding) => {
   const dir = path.join(home, '.herdr-projects/data/coordinator/default/projects/demo')
   mkdirSync(dir, { recursive: true })
   writeFileSync(path.join(dir, 'state.json'), JSON.stringify({ autopilot: { timerAt: clock - 60000, wakes: [{ at: clock - 60000 }] } }))
   const firings = path.join(home, '.herdr-projects/data/automations/firings')
   mkdirSync(firings, { recursive: true })
   writeFileSync(path.join(firings, '1234abcd.jsonl'), [{ task: 'demo/1' }, { skipped: 'busy' }, { task: 'demo/2' }].map(f => JSON.stringify(f)).join('\n'))
-  writeFileSync(path.join(home, 'timer-transcript.jsonl'), [
+  const transcript = [
     { type: 'assistant', timestamp: new Date(clock - 1000).toISOString(), message: { content: [{ type: 'tool_use', id: 'tool1', name: 'CronCreate', input: { cron: '*/5 * * * *', prompt: 'Check build', recurring: true } }] } },
     { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tool1', content: '{"id":"job1"}' }] } },
-  ].map(r => JSON.stringify(r)).join('\n'))
+  ].map(r => JSON.stringify(r)).join('\n')
+  writeFileSync(path.join(home, 'timer-transcript.jsonl'), transcript + '\n' + JSON.stringify({ message: { content: 'x'.repeat(padding) } }))
   panes.push({ id: 'w1:p1', agent: 'claude' })
   T.setRunner(async (_m, _launcher, args) => ({ code: 0, stderr: '', stdout: JSON.stringify(
     args[0] === 'autopilot' ? [{ coordinator: 'project:demo', on: true, goal: 'Ship demo', next: 'next in 1m', settings: [{ label: 'Wakes', value: 'every 2m' }] }]

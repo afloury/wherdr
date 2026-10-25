@@ -21,8 +21,13 @@ async function load() {
   finally { if (n === generation) loading.value = false }
 }
 function toggle(event: Event) {
-  open.value = (event.target as HTMLDetailsElement).open
-  if (open.value && !data.value && !loading.value) load()
+  const nextOpen = (event.target as HTMLDetailsElement).open
+  if (nextOpen === open.value) return
+  open.value = nextOpen
+  if (open.value) {
+    data.value = null
+    load()
+  }
 }
 watch(() => [props.machine, JSON.stringify(props.target)], () => {
   generation++; data.value = null; error.value = ''; loading.value = false

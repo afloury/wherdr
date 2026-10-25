@@ -73,46 +73,57 @@ export function nextCron(cron: string, after: number, timezone = 'UTC'): number 
   return null
 }
 
-export function reconstructTimers(transcript: string, now = Date.now(), timezone = 'UTC'): SessionTimer[] {
+export function createTimerReconstruction(now = Date.now(), timezone = 'UTC') {
   const pending = new Map<string, { name: string, input: Record<string, any>, created: number }>()
   const timers = new Map<string, SessionTimer>()
   const seen = new Set<string>()
-  for (const line of transcript.split('\n')) {
-    let r: Record<string, any>
-    try { r = obj(JSON.parse(line)) } catch { continue }
-    const ts = Date.parse(r.timestamp) || 0
-    if (r.subtype === 'scheduled_task_fire' || r.scheduledTaskId) {
-      const id = str(r.taskId || r.scheduledTaskId)
-      if (timers.get(id)?.recurring === false) timers.delete(id)
-    }
-    const content = obj(r.message).content
-    if (!Array.isArray(content)) continue
-    for (const raw of content) {
-      const b = obj(raw)
-      if (b.type === 'tool_use' && ['CronCreate', 'CronDelete', 'ScheduleWakeup'].includes(b.name)) {
-        if (!seen.has(b.id)) { pending.set(b.id, { name: b.name, input: obj(b.input), created: ts }); seen.add(b.id) }
+  function read(lines: Iterable<string>) {
+    for (const line of lines) {
+      let r: Record<string, any>
+      try { r = obj(JSON.parse(line)) } catch { continue }
+      const ts = Date.parse(r.timestamp) || 0
+      if (r.subtype === 'scheduled_task_fire' || r.scheduledTaskId) {
+        const id = str(r.taskId || r.scheduledTaskId)
+        if (timers.get(id)?.recurring === false) timers.delete(id)
       }
-      if (b.type !== 'tool_result') continue
-      const call = pending.get(b.tool_use_id)
-      if (!call) continue
-      pending.delete(b.tool_use_id)
-      if (b.is_error) continue
-      const text = typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((v: any) => str(obj(v).text)).join('\n') : ''
-      let result = obj(b.content)
-      try { result = obj(JSON.parse(text)) } catch { /* CLI-style text result */ }
-      if (call.name === 'CronDelete') { timers.delete(str(call.input.id || call.input.taskId)); continue }
-      const id = str(result.id || result.taskId || result.task_id || result.job_id) || /\bID\s*[:=]?\s*([a-z0-9][\w-]*)/i.exec(text)?.[1] || /(?:\bjob\s+|\btask\s+)([a-z0-9][\w-]*)/i.exec(text)?.[1] || ''
-      if (!id || call.created <= 0 || now - call.created >= 7 * 86400000) continue
-      const cron = str(call.input.cron || call.input.cron_expression)
-      const recurring = call.input.recurring === true || (call.input.recurring !== false && call.name === 'CronCreate')
-      const wakeAt = result.nextRunAt || result.next_run_at || call.input.at || call.input.wake_at || call.input.time || call.input.timestamp
-      const explicit = at(wakeAt) || (Date.parse(wakeAt || '') || null)
-      const first = explicit || (cron ? nextCron(cron, call.created, timezone) : null)
-      if (!recurring && first && first <= now) continue
-      const next = explicit && explicit > now ? explicit : recurring ? (cron ? nextCron(cron, now, timezone) : null) : first
-      timers.set(id, { id, cron, recurring, next, prompt: str(call.input.prompt).replace(/\s+/g, ' ').slice(0, 180), created: call.created })
+      const content = obj(r.message).content
+      if (!Array.isArray(content)) continue
+      for (const raw of content) {
+        const b = obj(raw)
+        if (b.type === 'tool_use' && ['CronCreate', 'CronDelete', 'ScheduleWakeup'].includes(b.name)) {
+          if (!seen.has(b.id)) { pending.set(b.id, { name: b.name, input: obj(b.input), created: ts }); seen.add(b.id) }
+        }
+        if (b.type !== 'tool_result') continue
+        const call = pending.get(b.tool_use_id)
+        if (!call) continue
+        pending.delete(b.tool_use_id)
+        if (b.is_error) continue
+        const text = typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((v: any) => str(obj(v).text)).join('\n') : ''
+        let result = obj(b.content)
+        try { result = obj(JSON.parse(text)) } catch { /* CLI-style text result */ }
+        if (call.name === 'CronDelete') { timers.delete(str(call.input.id || call.input.taskId)); continue }
+        const id = str(result.id || result.taskId || result.task_id || result.job_id) || /\bID\s*[:=]?\s*([a-z0-9][\w-]*)/i.exec(text)?.[1] || /(?:\bjob\s+|\btask\s+)([a-z0-9][\w-]*)/i.exec(text)?.[1] || ''
+        if (!id || call.created <= 0 || now - call.created >= 7 * 86400000) continue
+        const cron = str(call.input.cron || call.input.cron_expression)
+        const recurring = call.input.recurring === true || (call.input.recurring !== false && call.name === 'CronCreate')
+        const wakeAt = result.nextRunAt || result.next_run_at || call.input.at || call.input.wake_at || call.input.time || call.input.timestamp
+        const explicit = at(wakeAt) || (Date.parse(wakeAt || '') || null)
+        const first = explicit || (cron ? nextCron(cron, call.created, timezone) : null)
+        if (!recurring && first && first <= now) continue
+        const next = explicit && explicit > now ? explicit : recurring ? (cron ? nextCron(cron, now, timezone) : null) : first
+        timers.set(id, { id, cron, recurring, next, prompt: str(call.input.prompt).replace(/\s+/g, ' ').slice(0, 180), created: call.created })
+      }
     }
   }
-  return [...timers.values()].filter(t => now - t.created < 7 * 86400000 && (t.recurring || !t.next || t.next > now))
-    .map(t => ({ ...t, next: t.next && t.next < t.created + 7 * 86400000 ? t.next : null }))
+  function finish(): SessionTimer[] {
+    return [...timers.values()].filter(t => now - t.created < 7 * 86400000 && (t.recurring || !t.next || t.next > now))
+      .map(t => ({ ...t, next: t.next && t.next < t.created + 7 * 86400000 ? t.next : null }))
+  }
+  return { read, finish }
+}
+
+export function reconstructTimers(transcript: string, now = Date.now(), timezone = 'UTC'): SessionTimer[] {
+  const reconstruction = createTimerReconstruction(now, timezone)
+  reconstruction.read(transcript.split('\n'))
+  return reconstruction.finish()
 }

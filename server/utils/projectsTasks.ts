@@ -1,3 +1,4 @@
+import { readSessionTimers } from './scheduledTranscript'
 // herdr-projects 1.x on every machine: its tasks (GET /api/tasks), one task's
 // details, and what the Board can do on a task (tell, approve, open its pane).
 //
@@ -13,7 +14,7 @@
 //    command at a time per machine, a list reused for REUSE_MS, the last list
 //    kept (marked stale) when a read outlives READ_DEADLINE_MS.
 // Only where Herdr reports a 1.x from 1.2.1 on (shared/projectsPlugin.ts).
-import { autopilotNextAt, parseAutopilot, parseAutomations, reconstructTimers, type Scheduled } from '../../shared/scheduled'
+import { autopilotNextAt, parseAutopilot, parseAutomations, type Scheduled } from '../../shared/scheduled'
 import { machineOfPane } from './machines'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -730,9 +731,7 @@ export async function coordinatorScheduled(machine: unknown, to: unknown): Promi
       const owner = machineOfPane(pane.id)
       const loc = owner && await owner.transcripts.locate(pane)
       if (owner && loc) {
-        const stat = await owner.fs.stat(loc.file)
-        if (stat.size > 24 * 1024 * 1024) out.warnings.push('Session transcript too large to reconstruct timers')
-        else out.timers = reconstructTimers(await owner.fs.readFile(loc.file), Date.now(), out.timezone)
+        out.timers = await readSessionTimers(owner.fs, loc.file, Date.now(), out.timezone)
       }
     }
   } catch { out.warnings.push('Session timers unavailable') }

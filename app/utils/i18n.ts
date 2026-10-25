@@ -6,7 +6,6 @@ const FR: Record<string, string> = {
   'Machine time zone unavailable; using UTC': 'Fuseau de la machine indisponible ; utilisation d’UTC',
   'Autopilot unavailable': 'Autopilot indisponible',
   'Automations unavailable': 'Automations indisponibles',
-  'Session transcript too large to reconstruct timers': 'Transcript de session trop volumineux pour reconstruire les minuteurs',
   'Session timers unavailable': 'Minuteurs de session indisponibles',
   'Invalid attempt choice': 'Choix d’essai invalide',
   'This attempt cannot be chosen': 'Cet essai ne peut pas être sélectionné',
