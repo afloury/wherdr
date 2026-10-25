@@ -391,6 +391,19 @@ export async function tellTask(machine: unknown, id: unknown, text: unknown): Pr
   return { ok: true, msg: firstLine(out) }
 }
 
+// Description is opaque data: preserve whitespace and pass it as one argv item.
+export async function describeTask(machine: unknown, id: unknown, text: unknown): Promise<{ ok: true, msg: string }> {
+  const m = boardOf(machine)
+  const tid = checkId(id)
+  if (!m.local && m.status !== 'online') throw new HerdrError('offline', fmt('{machine} is unreachable', { machine: m.label }))
+  if (typeof text !== 'string' || text.includes('\0')) throw new HerdrError('bad_action', 'Invalid description')
+  const file = await readTaskFile(m, tid)
+  if (file?.archivedAt || (await taskOf(m, tid))?.archived) throw new HerdrError('bad_action', 'Archived tasks are read-only')
+  const out = await command(m, ['describe', '--', tid, text], ACTION_TIMEOUT_MS, true)
+  forget(m)
+  return { ok: true, msg: firstLine(out) }
+}
+
 export async function approveTask(machine: unknown, id: unknown, anyway: unknown = false): Promise<{ ok: true, msg: string }> {
   const m = boardOf(machine)
   const tid = checkId(id)

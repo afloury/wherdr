@@ -41,6 +41,31 @@ const emit = defineEmits<{ changed: [], archived: [machine: string, task: TaskRo
 const open = defineModel<boolean>('open', { default: false })
 
 const details = ref<(TaskDetails & { pane: string | null }) | null>(null)
+const editingDescription = ref(false)
+const descriptionDraft = ref('')
+const descriptionError = ref('')
+const descriptionUnavailable = computed(() => busy.value || offlineView.value || props.reachable === false || archived.value || loading.value || !!error.value || !details.value)
+function editDescription() {
+  if (descriptionUnavailable.value) return
+  descriptionDraft.value = details.value?.description ?? ''
+  descriptionError.value = ''
+  editingDescription.value = true
+}
+async function saveDescription() {
+  const task = props.task
+  if (!task || !editingDescription.value || descriptionUnavailable.value) return
+  const g = gen
+  const text = descriptionDraft.value
+  busy.value = true
+  descriptionError.value = ''
+  try {
+    await api('/api/tasks/describe', { machine: props.machine, id: task.id, text })
+    if (g !== gen) return
+    editingDescription.value = false
+    await settle(g)
+  } catch (e) { if (g === gen) descriptionError.value = (e as Error).message }
+  finally { if (g === gen) busy.value = false }
+}
 const question = ref('')
 const asking = ref(false)
 const error = ref('')
@@ -238,6 +263,9 @@ const target = () => `${props.machine}|${props.task?.id ?? ''}`
 let gen = 0
 watch([open, target], ([o]) => {
   gen++
+  editingDescription.value = false
+  descriptionDraft.value = ''
+  descriptionError.value = ''
   limitOpen.value = false
   limitValue.value = ''
   limitNotice.value = ''
@@ -532,9 +560,21 @@ function chat() {
         <h4>{{ tl('Earlier failure', 'Échec précédent') }}<template v-if="details.failureAt"> · {{ new Date(details.failureAt).toLocaleString() }}</template></h4>
         <p class="task-sheet-text">{{ details.failureTitle || details.failure }}</p>
       </section>
-      <section v-if="details?.description" class="task-sheet-block">
-        <h4>{{ tl('Description', 'Description') }}</h4>
-        <p class="task-sheet-text">{{ details.description }}</p>
+      <section v-if="details" class="task-sheet-block task-description">
+        <h4 v-if="!editingDescription">{{ tl('Description', 'Description') }}</h4>
+        <form v-if="editingDescription" class="sheet-form task-question" @submit.prevent="saveDescription">
+          <label for="task-description" class="field-label">{{ tl('Description', 'Description') }}</label>
+          <UTextarea id="task-description" v-model="descriptionDraft" :disabled="busy || archived" :rows="6" class="w-full" />
+          <p v-if="descriptionError" class="board-note error" role="alert">{{ descriptionError }}</p>
+          <div class="task-sheet-actions">
+            <UButton type="submit" :loading="busy" :disabled="descriptionUnavailable">{{ t('Save') }}</UButton>
+            <UButton color="neutral" variant="outline" :disabled="busy" @click="editingDescription = false">{{ t('Cancel') }}</UButton>
+          </div>
+        </form>
+        <template v-else>
+          <p class="task-sheet-text">{{ details.description }}</p>
+          <UButton v-if="!archived" color="neutral" variant="outline" icon="i-lucide-pencil" :disabled="descriptionUnavailable" @click="editDescription">{{ t('Edit description') }}</UButton>
+        </template>
       </section>
       <TaskSettings v-if="!embedded" :machine="machine" :id="task.id" :active="open" :reachable="reachable" />
       <section v-if="details?.plan" class="task-sheet-block">
