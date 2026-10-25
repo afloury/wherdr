@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { reduceSnapshot } from '../server/utils/snapshot'
 import { spaceRows } from '../shared/spaces'
 import {
-  type MachineLinks, boardSections, coordinatorFromFile, countedPanes, elapsedLabel, linksFromTaskFile, memberStage, memberTag,
+  type MachineLinks, boardSections, coordinatorFromFile, countedPanes, socketSession, elapsedLabel, linksFromTaskFile, memberStage, memberTag,
   parseRepoGit, shownPane, tasksFromFiles, tasksIn,
 } from '../shared/boardLinks'
 import { taskActivity } from '../shared/taskActivity'
@@ -82,6 +82,16 @@ describe('reading the board\'s files', () => {
   it('carries worker takeover and review identity through Home grouping', () => {
     const file = linksFromTaskFile({ id: 'app/4', agent: 'claude', on: 'codex/gpt', stage: 'reviewing', handovers: [{ role: 'worker', from: 'claude', to: 'codex/gpt' }], link: { pane: 'w2:p3', reviewer: { pane: 'w2:p4', kind: 'omp' } } }, local)!
     expect(tasksFromFiles([file], {})[0]!.identity).toEqual({ agent: 'codex', reviewer: 'omp', from: 'claude' })
+  })
+
+  it('names the Herdr session of a task from its socket', () => {
+    expect(socketSession('/run/sessions/other/herdr.sock', 'default')).toBe('other')
+    expect(socketSession(SOCK, 'default')).toBe('default')
+    expect(socketSession(undefined, 'main')).toBe('main')
+    const name = (s: unknown) => socketSession(s, 'default')
+    const other = linksFromTaskFile({ id: 'shop/2', link: { socket: '/run/sessions/other/herdr.sock', pane: 'w2:p1' } }, () => 'abcd', name)!
+    expect(tasksFromFiles([other], {})[0]).toMatchObject({ session: 'other', panes: [{ id: 'abcd~w2:p1' }] })
+    expect(linksFromTaskFile({ id: 'shop/1', link: { pane: 'w2:p1' } }, local, name)!.session).toBe('default')
   })
 
   it('coordinator state files', () => {
@@ -379,4 +389,34 @@ describe('a watcher kept after its review', () => {
     expect(link.msg).toBe('Reviewing the result')
     expect(link.progress).toBe(90)
   })
+})
+
+describe('checkout path attachment after a repository move', () => {
+  it('preserves the checkout path from Herdr metadata', () => {
+    expect(snapshot().workspaces.find(w => w.id === 'w2')!.path).toBe('/home/u/dev/app')
+  })
+
+  for (const metadata of [false, true]) {
+    it(`attaches the checkout with ${metadata ? 'stale' : 'missing'} Git metadata without renaming the board`, () => {
+      const st = snapshot()
+      const w = st.workspaces.find(w => w.id === 'w2')!
+      w.label = 'renamed-folder'
+      w.repo = metadata ? '/old/checkout/.git' : undefined
+      w.path = undefined
+      st.panes.find(p => p.id === 'w2:p1')!.cwd = '/projects/renamed-folder/'
+      const board = links()
+      board.repos![0]!.root = '/projects/renamed-folder'
+      const result = boardSections(spaceRows(st), st.workspaces, [board], new Set(st.panes.map(p => p.id)))
+      expect(result.projects).toHaveLength(1)
+      expect(result.projects[0]!.repo).toBe('app')
+      expect(result.projects[0]!.space?.lead.id).toBe('w2:p1')
+      expect(result.others.some(r => r.lead.id === 'w2:p1')).toBe(false)
+      // A sibling or subdirectory must not be treated as the checkout.
+      st.panes.find(p => p.id === 'w2:p1')!.cwd = '/projects/renamed-folder/subdir'
+      expect(boardSections(spaceRows(st), st.workspaces, [board], new Set()).projects[0]!.space).toBeNull()
+      w.machine = 'another-machine'
+      st.panes.find(p => p.id === 'w2:p1')!.cwd = '/projects/renamed-folder'
+      expect(boardSections(spaceRows(st), st.workspaces, [board], new Set()).projects[0]!.space).toBeNull()
+    })
+  }
 })

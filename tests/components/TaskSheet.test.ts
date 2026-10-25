@@ -3,10 +3,11 @@ import { flushPromises } from '@vue/test-utils'
 import { readBody, setResponseStatus } from 'h3'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import TaskSheet from '~/components/TaskSheet.vue'
-import type { TaskRow } from '#shared/projectsTasks'
-import { hiddenAgents } from '~/composables/useHerdr'
+import type { TaskHandover, TaskRow } from '#shared/projectsTasks'
+import { cachedAt, hiddenAgents } from '~/composables/useHerdr'
 
-mockNuxtImport('askConfirm', () => async () => true)
+const confirmation = vi.hoisted(() => ({ accepted: true }))
+mockNuxtImport('askConfirm', () => async () => confirmation.accepted)
 
 // Each action's reply is held until the test lets it go.
 const held: Array<() => void> = []
@@ -21,9 +22,11 @@ registerEndpoint('/api/tasks/question', { method: 'POST', handler: async (event)
   return { ok: true }
 } })
 registerEndpoint('/api/tasks/approve', { method: 'POST', handler: hold })
+let actionBody: unknown
+let actionFails = false
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
 // What the details say, and how many times they were read.
-const shown: { stage: string, failure: string, failureStage: string, archived?: boolean, pane?: string | null } = { stage: 'approval', failure: '', failureStage: '' }
+const shown: { handovers?: TaskHandover[], stage: string, failure: string, failureStage: string, attempts?: { letter: string, agent: string, standing: string, stage: string, stat: string }[], archived?: boolean, pane?: string | null } = { stage: 'approval', failure: '', failureStage: '' }
 let detailsReads = 0
 // Start's agent: the task's default (worker.agent, where it comes from) and the installed ones.
 let startReply: unknown = { agent: { value: 'claude', kind: 'claude', place: 'repo', from: 'your entry for demo' }, agents: ['claude', 'codex', 'pi'] }
@@ -32,6 +35,18 @@ registerEndpoint('/api/tasks/start', () => {
   startReads++
   if (!startReply) throw createError({ statusCode: 502, data: { error: 'herdr-projects did not answer' } })
   return startReply
+})
+// `models <program>` on the task's machine, as the server reads it; null: it fails.
+const modelsAsked: string[] = []
+let modelsReply: ((program: string) => unknown) | null = program => ({
+  program, models: program === 'codex' ? ['gpt-6-sol', 'gpt-6-luna'] : ['opus', 'sonnet'],
+  efforts: ['low', 'high', 'ultra'], only: [{ models: ['gpt-6-luna'], levels: ['low', 'high'] }],
+})
+registerEndpoint('/api/tasks/models', (e) => {
+  const q = new URL(e.node.req.url || '', 'http://x').searchParams
+  modelsAsked.push(`${q.get('machine')}|${q.get('program')}`)
+  if (!modelsReply) throw createError({ statusCode: 502, data: { error: 'herdr-projects models: code 2' } })
+  return modelsReply(q.get('program') || '')
 })
 registerEndpoint('/api/tasks/details', () => {
   detailsReads++
@@ -402,6 +417,85 @@ describe('Start: the agent it starts with', () => {
     done(w)
   })
 
+  // The model and effort menus (ModelPicker, `launch`), and their items.
+  const modelButtons = () => [...document.querySelectorAll<HTMLButtonElement>('.task-start-model .model-pick')]
+  const menuItem = async (label: string) => {
+    let item: HTMLElement | undefined
+    await vi.waitFor(() => {
+      item = [...document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].find(i => i.textContent?.trim() === label)
+      expect(item, label).toBeTruthy()
+    })
+    return item!
+  }
+  const pickFrom = async (button: number, label: string) => {
+    // The menu before has closed first.
+    await vi.waitFor(() => expect(document.querySelector('[role="menuitemcheckbox"]')).toBeNull())
+    modelButtons()[button]!.click()
+    await flushPromises()
+    ;(await menuItem(label)).click()
+    await flushPromises()
+  }
+
+  it('a model and an effort after the program: none by default; picked, sent with it for this start', async () => {
+    modelsAsked.length = 0
+    const w = await open()
+    await vi.waitFor(() => expect(modelButtons()).toHaveLength(1))
+    expect(modelsAsked).toEqual(['a|claude'])
+    expect(modelButtons()[0]!.textContent?.trim()).toBe('Model')
+    // Codex: its own list, read for its machine and program; nothing picked for the user.
+    chips()[1]!.click()
+    await vi.waitFor(() => expect(modelsAsked).toEqual(['a|claude', 'a|codex']))
+    expect(startButton()!.textContent?.trim()).toBe('Start with codex')
+    await pickFrom(0, 'gpt-6-luna')
+    expect(startButton()!.textContent?.trim()).toBe('Start with codex/gpt-6-luna')
+    // The levels that model takes, none picked until asked.
+    await vi.waitFor(() => expect(modelButtons()).toHaveLength(2))
+    await pickFrom(1, 'high')
+    startButton()!.click()
+    await vi.waitFor(() => expect(sent).toHaveLength(1))
+    expect(sent[0]).toEqual({ machine: 'a', id: 'demo/1', action: 'delegate', agent: 'codex/gpt-6-luna', effort: 'high' })
+    done(w)
+  })
+
+  it('a model on the default program; back to the program\'s default sends nothing again', async () => {
+    const w = await open()
+    await vi.waitFor(() => expect(modelButtons()).toHaveLength(1))
+    await pickFrom(0, 'opus')
+    expect(startButton()!.textContent?.trim()).toBe('Start with claude/opus')
+    await pickFrom(0, 'Program’s default')
+    expect(modelButtons()).toHaveLength(1)
+    startButton()!.click()
+    await vi.waitFor(() => expect(sent).toHaveLength(1))
+    expect(sent[0]).toEqual({ machine: 'a', id: 'demo/1', action: 'delegate' })
+    done(w)
+  })
+
+  it('models that cannot be read, or none: Start with the program alone, said quietly', async () => {
+    for (const reply of [null, (program: string) => ({ program, models: [], efforts: [], only: [] })]) {
+      modelsReply = reply
+      const w = await open()
+      await vi.waitFor(() => expect(document.querySelector('.model-pick-none')?.textContent).toBe('Models could not be read: Start uses the program alone.'))
+      expect(modelButtons()).toHaveLength(0)
+      startButton()!.click()
+      await vi.waitFor(() => expect(sent).toHaveLength(1))
+      expect(sent[0]).toEqual({ machine: 'a', id: 'demo/1', action: 'delegate' })
+      w.unmount()
+      mounted = null
+    }
+    modelsReply = program => ({ program, models: ['opus'], efforts: [], only: [] })
+  })
+
+  it('a model the CLI refuses: its words, as they are, in the sheet', async () => {
+    const w = await open()
+    const said = 'unknown model claude/opus for worker.agent.\nAccepted: claude/sonnet, claude/haiku'
+    registerEndpoint('/api/tasks/action', { method: 'POST', handler: (e) => { setResponseStatus(e, 502); return { code: 'projects_failed', error: said } } })
+    await vi.waitFor(() => expect(modelButtons()).toHaveLength(1))
+    await pickFrom(0, 'opus')
+    startButton()!.click()
+    await vi.waitFor(() => expect(document.querySelector('.task-sheet-error')?.textContent).toBe(said))
+    done(w)
+  })
+
   it('the choice is per sheet: another task, or the sheet opened again, starts from its default', async () => {
     const w = await open()
     await vi.waitFor(() => expect(chips()).toHaveLength(3))
@@ -526,13 +620,13 @@ describe('Finish, and a failure the task moved on from', () => {
     Object.assign(shown, { stage: 'approval', failure: '', failureStage: '', failureStale: undefined, failureTitle: undefined, failureAt: undefined })
   })
 
-  it('a limit stop: Retry and Finish, what each does, and Finish sends finish', async () => {
+  it('a limit stop: Continue, Raise limit and Take as is; finish still sends finish', async () => {
     sent = []
     registerEndpoint('/api/tasks/action', { method: 'POST', handler: async (e) => { sent.push(await readBody(e)); return { ok: true, msg: 'demo/1: taking the work as it is' } } })
     Object.assign(shown, { stage: 'stopped', failure: '', failureStage: '' })
     const w = await mountSuspended(TaskSheet, { props: { task: stopped, machine: 'a', open: true } })
-    await vi.waitFor(() => expect(buttons()).toEqual(expect.arrayContaining(['Retry', 'Finish'])))
-    expect(document.querySelector('.task-finish-why')?.textContent).toContain('the same limit again')
+    await vi.waitFor(() => expect(buttons()).toEqual(expect.arrayContaining(['Continue', 'Raise limit', 'Take as is'])))
+    expect(document.querySelector('.task-finish-why')?.textContent).toContain('new allowance')
     await (w.vm as unknown as SheetVm).act('finish')
     await flushPromises()
     expect(sent).toEqual([{ machine: 'a', id: 'demo/1', action: 'finish' }])
@@ -750,4 +844,99 @@ it('opens coordinator replies in one tap without sending a question', async () =
   expect(w.emitted('coordinator')?.[0]).toEqual(['a', expect.objectContaining({ id: 'demo/1' })])
   expect(w.props('open')).toBe(false)
   w.unmount()
+})
+
+
+it('ends a waiting conversation on its machine and refreshes the sheet', async () => {
+  registerEndpoint('/api/tasks/action', { method: 'POST', handler: async event => {
+    actionBody = await readBody(event)
+    if (actionFails) { setResponseStatus(event, 502); return { error: 'Conversation is busy' } }
+    return hold()
+  } })
+  const { w, vm } = await sheet(true)
+  await w.setProps({ task: { ...task, chat: true, stage: 'asks', state: 'blocked' }, machine: 'remote' })
+  await flushPromises()
+  expect(w.find('.task-finish').text()).toBe('End conversation')
+  expect(w.text()).toContain('Conversation')
+  expect(w.text()).not.toContain('same limit')
+  const before = detailsReads
+  const done = vm.act('finish')
+  await flushPromises()
+  expect(actionBody).toEqual({ machine: 'remote', id: 'demo/1', action: 'finish' })
+  held.shift()!()
+  await done
+  await flushPromises()
+  expect(detailsReads).toBeGreaterThan(before)
+  actionFails = true
+  await vm.act('finish')
+  await flushPromises()
+  expect(w.text()).toContain('Conversation is busy')
+  actionFails = false
+  registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
+  w.unmount()
+})
+
+describe('attempt choices in the task sheet', () => {
+  it('requires confirmation and disables unpassed or unavailable attempts', async () => {
+    shown.stage = 'pick'
+    shown.attempts = [
+      { letter: 'A', agent: 'claude', standing: 'passed', stage: 'tried', stat: '' },
+      { letter: 'B', agent: 'codex', standing: 'out', stage: 'failed', stat: '' },
+    ]
+    const { w } = await sheet(true)
+    await w.setProps({ task: { ...task, stage: 'pick' } })
+    await flushPromises()
+    const buttons = () => w.findAll('.task-attempt button')
+    await vi.waitFor(() => expect(buttons()).toHaveLength(2))
+    await vi.waitFor(() => expect(buttons()[0]!.attributes('disabled')).toBeUndefined())
+    expect(buttons()[1]!.attributes('disabled')).toBeDefined()
+    confirmation.accepted = false
+    await buttons()[0]!.trigger('click')
+    await flushPromises()
+    expect(w.find('.task-sheet-error').exists()).toBe(false)
+    expect(buttons()[0]!.attributes('disabled')).toBeUndefined()
+    cachedAt.value = Date.now()
+    await flushPromises()
+    expect(buttons()[0]!.attributes('disabled')).toBeDefined()
+    cachedAt.value = null
+    await w.setProps({ reachable: false })
+    expect(buttons()[0]!.attributes('disabled')).toBeDefined()
+    confirmation.accepted = true
+    shown.stage = 'approval'
+    delete shown.attempts
+    w.unmount()
+  })
+})
+
+
+describe('handover history in the task sheet', () => {
+  afterEach(() => { delete shown.handovers })
+
+  it('omits history for older details replies', async () => {
+    delete shown.handovers
+    const { w } = await sheet(true)
+    expect(w.find('.task-handovers').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('renders roles, full identities, reasons and dates, omitting missing fields', async () => {
+    shown.handovers = [
+      { at: 1000, role: 'worker', from: 'claude/opus', to: 'codex/model', why: 'Out of allowance until tomorrow' },
+      { at: 2000, role: 'reviewer', from: 'codex/model', to: 'claude/opus', why: 'Review rounds exhausted' },
+      { at: null, role: '', from: '', to: 'pi', why: '' },
+    ]
+    const { w } = await sheet(true)
+    const history = w.get('.task-handovers')
+    const rows = history.findAll('li')
+    expect(rows).toHaveLength(3)
+    expect(rows[0]!.text()).toContain('claude/opus')
+    expect(rows[0]!.text()).toContain('codex/model')
+    expect(rows[0]!.text()).toContain('Out of allowance until tomorrow')
+    expect(rows[0]!.text()).toContain('Agent')
+    expect(rows[1]!.text()).toContain('Reviewer')
+    expect(history.findAll('time').map(t => t.attributes('datetime'))).toEqual(['1970-01-01T00:00:01.000Z', '1970-01-01T00:00:02.000Z'])
+    expect(rows[2]!.find('time').exists()).toBe(false)
+    expect(rows[2]!.findAll('p')).toHaveLength(1)
+    w.unmount()
+  })
 })

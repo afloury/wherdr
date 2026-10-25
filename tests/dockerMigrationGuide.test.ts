@@ -9,7 +9,8 @@ import { describe, expect, it } from 'vitest'
 const REPO = path.resolve(import.meta.dirname, '..')
 const read = (p: string) => readFileSync(path.join(REPO, p), 'utf8')
 const guide = read('docs/migrate-from-1.x-docker.md')
-const GUIDE_URL = '/wherdr/blob/main/docs/migrate-from-1.x-docker.md'
+// Stable release notes keep the guide from the same release; live installers use main.
+const RELEASE_GUIDE_URL = '/wherdr/blob/v2.0.0/docs/migrate-from-1.x-docker.md'
 
 describe('the 1.x Docker migration guide', () => {
   it('ends every step and the way back with a check', () => {
@@ -34,7 +35,9 @@ describe('the 1.x Docker migration guide', () => {
   })
 
   it('is linked from the release notes, the installer, the plugin and the docs', () => {
-    expect(read('docs/release-notes-2.0.0.md')).toContain(GUIDE_URL)
+    const notes = read('docs/release-notes-2.0.0.md')
+    expect(notes).toContain(RELEASE_GUIDE_URL)
+    expect(notes).not.toContain('/wherdr/blob/main/docs/migrate-from-1.x-docker.md')
     expect(read('website/public/install')).toContain('blob/main/docs/migrate-from-1.x-docker.md')
     expect(read('scripts/herdr-plugin.sh')).toContain('blob/main/docs/migrate-from-1.x-docker.md')
     for (const doc of ['README.md']) expect(read(doc)).toContain('(docs/migrate-from-1.x-docker.md)')

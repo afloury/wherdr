@@ -91,6 +91,7 @@ export interface Workspace {
   // Git repository of the workspace (Herdr: `worktree.repo_key` / `repo_name`), shared
   // by the main checkout and its worktrees; missing outside a repository.
   repo?: string
+  path?: string // Herdr checkout path, when available
   repoName?: string
   branch?: string
 }

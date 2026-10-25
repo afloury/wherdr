@@ -11,13 +11,16 @@ import { blockChoices, blockKind, blockKindLabel, offersAlways, permissionReply,
 import { reviewerWait } from '~/utils/reviewerWait'
 import { taskActivity } from '#shared/taskActivity'
 import { type PaneViewMode, allSessionsState, chooseMachineSession } from '~/composables/useHerdr'
+import { useAutopilot } from '~/composables/useAutopilot'
 
 export type PanelTarget =
   | { machine: string, kind: 'task', id: string, chat?: boolean }
   | { machine: string, kind: 'coordinator', to: CoordinatorTarget, freshProject?: boolean }
 
 // `reachable`: its machine's board answers now (a message waits while it does not).
-const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, reachable?: boolean, refresh?: () => Promise<unknown> }>()
+const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, reachable?: boolean, refresh?: () => Promise<unknown>, refreshKey?: number }>()
+// A switch's action: the Scheduled section reads the Autopilot again.
+const { actions: autopilotActions } = useAutopilot()
 const launchAgent = ref('__default')
 const launchModel = ref('')
 const launchEffort = ref('__default')
@@ -119,12 +122,19 @@ const toReviewer = computed(() => (details.value?.stage || props.task?.stage) ==
 const disabled = computed(() => Boolean(actionBusy.value || offlineView.value || !props.reachable || props.task?.stale))
 // Finish: a limit, no summary, or a row stuck at "Finishing" with its agent at rest.
 const finishKind = computed(() => (props.task ? finishCase(props.task) : null))
+const limitRequest = ref(0)
+async function openWorkLimit() {
+  choose('task')
+  await nextTick()
+  limitRequest.value++
+}
 const canFinish = computed(() => Boolean(props.task && taskPermissions.value?.finish && finishOffered(props.task, agentPane.value?.status ?? null)))
 const stuck = computed(() => canFinish.value && finishKind.value === 'stuck')
 const needs = computed(() => props.task?.group === 'needs')
 // Its failure, unless the task moved on since (a later stage, its agent started again).
 const failureNow = computed(() => (details.value && !details.value.failureStale ? details.value : null))
-const failureTitle = computed(() => failureNow.value?.failureTitle || details.value?.msg || props.task?.msg || agentPane.value?.prompt?.question || tl('Your answer is needed', 'Ta réponse est attendue'))
+const choosingAttempt = computed(() => props.task?.stage === 'pick')
+const failureTitle = computed(() => choosingAttempt.value ? tl('Choose an attempt', 'Choisis un essai') : failureNow.value?.failureTitle || details.value?.msg || props.task?.msg || agentPane.value?.prompt?.question || tl('Your answer is needed', 'Ta réponse est attendue'))
 const failureDetail = computed(() => failureNow.value?.failureDetail || failureNow.value?.failure || '')
 
 // ------------------------------------------------- the one-line "Needs you"
@@ -132,7 +142,7 @@ const failureDetail = computed(() => failureNow.value?.failureDetail || failureN
 // line (its kind, its words, folded) and the actions that answer that kind.
 // Only a sign-in keeps "Open terminal": a question or a permission is answered
 // by a message, in the field below or with one tap.
-const waitKind = computed(() => (needs.value && !failureNow.value?.failureTitle && !failureDetail.value ? blockKind(props.task?.kind) : null))
+const waitKind = computed(() => (needs.value && !choosingAttempt.value && !failureNow.value?.failureTitle && !failureDetail.value ? blockKind(props.task?.kind) : null))
 const waitText = computed(() => failureTitle.value)
 // The agent's own question (`report --state blocked`): a message answers it.
 const asks = computed(() => props.task?.stage === 'asks')
@@ -201,7 +211,7 @@ function severityLabel(s: string) {
 }
 
 function tabLabel(tab: TaskPanelTab) {
-  return tab === 'chat' ? t('Conversation') : tab === 'term' ? t('Terminal') : tab === 'reviewer' ? tl('Reviewer', 'Relecteur') : tl('Task', 'Tâche')
+  return tab === 'settings' ? tl('Settings', 'Réglages') : tab === 'chat' ? t('Conversation') : tab === 'term' ? t('Terminal') : tab === 'reviewer' ? tl('Reviewer', 'Relecteur') : tl('Task', 'Tâche')
 }
 
 // ------------------------------------------------- a reviewer that needs you
@@ -267,6 +277,7 @@ const views = computed(() => ({
   chat: Boolean(taskPane.value) || tellOnly.value || Boolean(failureDetail.value && !needs.value),
   term: Boolean(taskPane.value),
   reviewer: Boolean(reviewerPane.value),
+  settings: props.target.kind === 'task',
 }))
 const tabs = computed(() => taskPanelTabs(views.value))
 const selected = computed(() => taskPanelTab(views.value, choice.value))
@@ -304,7 +315,7 @@ async function taskAction(action: TaskCommand | 'approve' | 'anyway') {
   if (action === 'anyway' && !canAnyway.value) return
   if (action === 'fix' && !canFix.value) return
   if (action === 'review' && !canSendReview.value) return
-  if (action === 'finish' && (!canFinish.value || !await askConfirm(finishQuestion(props.task?.title || details.value?.title || ''), finishLabel(), 'primary'))) return
+  if (action === 'finish' && (!canFinish.value || !await askConfirm(finishQuestion(props.task?.title || details.value?.title || '', props.task?.chat), finishLabel(props.task?.chat), 'primary'))) return
   if ((action === 'approve' || action === 'anyway') && !await askConfirm(
     action === 'anyway' ? tl('Approve despite the failed review or checks? This merges the work.', 'Approuver malgré la relecture ou les contrôles en échec ? Cela fusionne le travail.') : tl('Approve this task?', 'Approuver cette tâche ?'),
     action === 'anyway' ? tl('Approve anyway', 'Approuver quand même') : tl('Approve', 'Approuver'), 'primary')) return
@@ -582,13 +593,14 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <p class="board-panel-name">
           <template v-if="target.kind === 'task'">
             <AgentAvatar :agent="identity.agent" :title="agentHint" />
-            <span class="task-key">{{ taskLabel }}</span><span class="board-panel-title" :title="details?.title || task?.title">{{ details?.title || task?.title }}</span><span v-if="task" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span><TaskActivityBadge :activity="activity" />
+            <TaskKey :value="taskLabel" /><span class="board-panel-title" :title="details?.title || task?.title">{{ details?.title || task?.title }}</span><span v-if="task" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span><TaskActivityBadge :activity="activity" />
           </template>
           <template v-else>
             <UIcon name="i-lucide-message-square-text" class="board-panel-coord-icon" />
             <span class="board-panel-title">{{ coordName }}</span>
           </template>
         </p>
+        <span v-if="target.kind === 'task' && task?.chat" class="task-chip">{{ tl('Conversation', 'Conversation') }}</span>
         <TaskAgentMark v-if="target.kind === 'task'" :identity="identity" />
         <p v-if="target.kind === 'coordinator'" class="board-panel-purpose">{{ coordinatorDescription(target.to) }}</p>
       </div>
@@ -602,8 +614,11 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       />
     </header>
 
+    <div v-if="target.kind === 'coordinator'" class="board-panel-autopilot">
+      <CoordinatorAutopilot :key="JSON.stringify(target)" :machine="target.machine" :to="target.to" :disabled="!reachable" />
+    </div>
     <nav v-if="target.kind === 'task' && settled" class="board-panel-tabs" :aria-label="tl('Task views', 'Vues de la tâche')">
-      <button v-for="tab in tabs" :key="tab" type="button" :class="{ on: selected === tab, 'board-panel-tab-reviewer': tab === 'reviewer', asks: tab === 'reviewer' && rvWait === 'open' }" :aria-pressed="selected === tab" :aria-label="tabLabel(tab)" :aria-description="tab === 'task' && newNote ? tl('New task details', 'Nouveaux détails de la tâche') : undefined" :title="tab === 'task' ? undefined : tab === 'reviewer' ? reviewerHint : agentHint" @click="choose(tab)">
+      <button v-for="tab in tabs" :key="tab" type="button" :class="{ on: selected === tab, 'board-panel-tab-reviewer': tab === 'reviewer', asks: tab === 'reviewer' && rvWait === 'open' }" :aria-pressed="selected === tab" :aria-label="tabLabel(tab)" :aria-description="tab === 'task' && newNote ? tl('New task details', 'Nouveaux détails de la tâche') : undefined" :title="tab === 'task' || tab === 'settings' ? undefined : tab === 'reviewer' ? reviewerHint : agentHint" @click="choose(tab)">
         {{ tabLabel(tab) }}<i v-if="tab === 'task' && newNote" class="task-new" aria-hidden="true" />
       </button>
     </nav>
@@ -639,9 +654,11 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       </div>
       <p v-if="canFinish && finishKind" class="task-finish-why">{{ finishHint(finishKind) }}</p>
       <div class="task-needs-actions">
+        <UButton v-if="choosingAttempt && selected !== 'task'" @click="choose('task')">{{ tl('Choose an attempt', 'Choisis un essai') }}</UButton>
         <UButton v-if="canSendReview" class="task-needs-review" color="primary" icon="i-lucide-undo-2" :disabled="disabled" @click="taskAction('review')">{{ tl('Send the review back to the agent', 'Renvoyer les remarques à l’agent') }}</UButton>
-        <UButton v-if="taskPermissions?.retry" :disabled="disabled" @click="taskAction('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
-        <UButton v-if="canFinish" class="task-finish" :title="finishTitle()" :aria-description="finishTitle()" :disabled="disabled" @click="taskAction('finish')">{{ finishLabel() }}</UButton>
+        <UButton v-if="taskPermissions?.retry" :disabled="disabled" @click="taskAction('retry')">{{ finishKind === 'limit' ? tl('Continue', 'Continuer') : tl('Retry', 'Réessayer') }}</UButton>
+        <UButton v-if="finishKind === 'limit'" :disabled="disabled" @click="openWorkLimit">{{ tl('Raise limit', 'Relever la limite') }}</UButton>
+        <UButton v-if="canFinish" class="task-finish" :title="finishTitle(task?.chat)" :aria-description="finishTitle(task?.chat)" :disabled="disabled" @click="taskAction('finish')">{{ finishKind === 'limit' && !task?.chat ? tl('Take as is', 'Prendre tel quel') : finishLabel(task?.chat) }}</UButton>
         <UButton v-if="canFix" :disabled="disabled" @click="taskAction('fix')">{{ tl('Send the error to the agent', 'Envoyer l’erreur à l’agent') }}</UButton>
         <UButton v-if="taskPermissions?.delegate" :disabled="disabled" @click="taskAction('delegate')">{{ tl('Start again', 'Relancer') }}</UButton>
         <template v-if="permissionTaps">
@@ -667,9 +684,13 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <p v-if="actionError" class="error">{{ actionError }}</p>
     </section>
 
+    <CoordinatorScheduled v-if="target.kind === 'coordinator'" :machine="target.machine" :target="target.to" :refresh-key="(refreshKey ?? 0) + autopilotActions" />
+
     <div class="board-panel-body">
       <p v-if="target.kind === 'task' && settled && failed && selected === 'task'" class="board-note error">{{ failed }}</p>
-      <TaskSheet v-if="target.kind === 'task' && settled && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :refresh="refreshTask" @chat="choose('chat')" @coordinator="(machine, task) => emit('coordinator', machine, task)" @archived="archivedTask" @restored="restoredTask" />
+      <TaskSettings v-if="target.kind === 'task' && settled" v-show="selected === 'settings'" :machine="target.machine" :id="target.id" :active="selected === 'settings'" :reachable="reachable" />
+      <TaskSheet :limit-request="limitRequest" v-if="target.kind === 'task' && settled && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :reachable="reachable" :refresh="refreshTask" @chat="choose('chat')" @coordinator="(machine, task) => emit('coordinator', machine, task)" @archived="archivedTask" @restored="restoredTask" />
+      <template v-else-if="selected === 'settings'" />
       <template v-else-if="target.kind === 'task' && selected === 'reviewer' && reviewerPane">
         <div class="board-panel-reviewer-bar">
           <span class="board-panel-reviewer-who">{{ tl('Reviewer', 'Relecteur') }}<template v-if="reviewerAgent"> · {{ statusLabel(reviewerAgent) }}</template></span>

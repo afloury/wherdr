@@ -238,8 +238,8 @@ describe('message held for the end of the turn', () => {
     expect(list[0]!.readySince).toBeUndefined()
   })
 
-  it('kept across a restart of wherdr, with the moment it was typed', () => {
-    expect(loadQueued({ 'w1:p1': [held()] }, T0 + 1000)).toEqual([['w1:p1', [held()]]])
+  it('requires explicit retry after restart when a previous attempt was uncertain', () => {
+    expect(loadQueued({ 'w1:p1': [held()] }, T0 + 1000)).toEqual([['w1:p1', [{ ...held(), held: undefined, failed: true }]]])
   })
 })
 

@@ -8,6 +8,7 @@ import { type Row, spaceRows } from '#shared/spaces'
 import { type LinkedTask, type Member, type ProjectSection, boardSections, linksFromTaskFile, tasksFromFiles } from '#shared/boardLinks'
 import { useBoardNow } from '~/composables/useBoardLinks'
 import { noteTab } from '~/composables/useWorkspaces'
+import { machineBarHidden, machineBarPick, machineBarSaved } from '~/composables/useMachineBar'
 
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigate)
@@ -88,7 +89,7 @@ describe('a repo group on the home list', () => {
       expect(card.find('.home-task-line').exists()).toBe(!compact)
       if (!compact) {
         expect(card.find('.home-task-line').text()).toContain('Checking the layout')
-        expect(card.find('.home-task-stage.quota-limit').text()).toBe('Limit')
+        expect(card.find('.home-task-stage.quota-limit').text()).toBe('Quota')
         expect(card.find('.home-task-line').text()).toContain('Under review · codex')
       }
       w.unmount()
@@ -121,48 +122,78 @@ describe('a repo group on the home list', () => {
     w.unmount()
   })
 
-  it('the summary counts the tasks waiting for you, working and at their usage limit', async () => {
+  it('the summary counts the tasks waiting for you, working and at a provider quota', async () => {
     const asking = pane('w4:p1', { status: 'blocked' })
     const limited = pane('w5:p1', { status: 'idle', usageLimit: { text: 'limit' } as Pane['usageLimit'] })
     const more: Member[] = [asking, limited].map((p, i) => ({ row: row(p), task: task(i + 3, p), role: 'worker' }))
     herdrState.value = { ok: true, workspaces: [], panes: [coord, ...workers, asking, limited] }
     const w = await mountSuspended(ProjectGroup, { props: { group: section({ members: [...more, ...members] }) }, global: { stubs: { UContextMenu: { template: '<div><slot /></div>' } } } })
     const sum = w.find('.project-sum')
-    expect(sum.text()).toBe('4 tasks·1 your turn·2 working·1 limit')
+    expect(sum.text()).toBe('4 tasks·1 your turn·2 working·1 quota')
     expect(sum.find('.project-sum-blocked').text()).toBe('1 your turn')
-    expect(sum.find('.project-sum-limit').text()).toBe('1 limit')
+    expect(sum.find('.project-sum-limit').text()).toBe('1 quota')
     // Each part is whole, and the
     // fold button's title says the whole summary.
-    expect(sum.findAll('.project-sum-part').map(p => p.text())).toEqual(['4 tasks·', '1 your turn·', '2 working·', '1 limit'])
-    expect(w.find('.project-head').attributes('title')).toBe('Hide the tasks of shop: 4 tasks · 1 your turn · 2 working · 1 limit')
+    expect(sum.findAll('.project-sum-part').map(p => p.text())).toEqual(['4 tasks·', '1 your turn·', '2 working·', '1 quota'])
+    expect(w.find('.project-head').attributes('title')).toBe('Hide the tasks of shop: 4 tasks · 1 your turn · 2 working · 1 quota')
     w.unmount()
   })
 
-  it('no coordinator here: the repo\'s space heads the group with its initial, no label', async () => {
+  it('a plain terminal has no head row and remains accessible from the bar menu', async () => {
     const shell = pane('w9:p1', { agent: null, status: null })
-    herdrState.value = { ok: true, workspaces: [], panes: [shell, ...workers] }
-    const w = await mountSuspended(ProjectGroup, { props: { group: section({ coordinator: null, space: row(shell) }) }, global: { stubs: { UContextMenu: { template: '<div><slot /></div>' } } } })
-    const card = w.find('.project-lead .card.home-lead')
-    expect(w.find('.project-lead').attributes('aria-label')).toBe('shop')
-    expect(card.find('.card-title').text()).toBe('shop')
-    expect(card.find('.lead-mark').text()).toBe('S')
-    expect(card.find('.lead-mark').classes()).not.toContain('coord')
-    expect(card.find('.lead-coord-tag').exists()).toBe(false)
-    // Its "…" menu is there (the terminal is in it); the tasks hang under the bar.
-    expect(w.find('.project-bar .space-menu').exists()).toBe(true)
+    const w = await mount(section({ coordinator: null, space: row(shell) }))
+    expect(w.find('.project-lead').exists()).toBe(false)
+    expect(w.find('.project-remote').exists()).toBe(false)
+    expect(w.element.firstElementChild?.classList.contains('project-bar')).toBe(true)
+    const menu = w.findComponent({ name: 'SpaceMenu' })
+    const items = menu.props('items')()
+    const terminal = items.find((item: { label: string }) => item.label === 'Open the terminal of shop')
+    expect(terminal).toBeDefined()
+    navigate.mockClear()
+    terminal.run()
+    expect(navigate).toHaveBeenCalledWith('/a/w9%3Ap1')
     expect(w.findAll('.project-tree .card')).toHaveLength(2)
     w.unmount()
   })
 
-  it('neither a coordinator nor the repo\'s space: the same head row, nothing to open', async () => {
+  it('without a repo space the bar comes first, with nothing to open (notifications are set per coordinator)', async () => {
     const w = await mount(section({ coordinator: null }))
-    const head = w.find('.project-lead .home-lead')
-    expect(head.find('.card-title').text()).toBe('shop')
-    expect(head.find('.lead-mark').text()).toBe('S')
-    expect(head.attributes('role')).toBeUndefined()
+    expect(w.find('.project-lead').exists()).toBe(false)
+    expect(w.element.firstElementChild?.classList.contains('project-bar')).toBe(true)
     expect(w.find('.project-bar .space-menu').exists()).toBe(false)
     expect(w.findAll('.project-tree .card')).toHaveLength(2)
     w.unmount()
+  })
+
+  it('a remote coordinator occupies the head position above the bar, also when folded', async () => {
+    const w = await mount(section({ coordinator: null, remote: { pane: 'abcd1234~w1:p1', machine: 'abcd1234' } }))
+    expect(w.find('.project-lead').exists()).toBe(false)
+    expect(w.element.firstElementChild?.classList.contains('project-remote')).toBe(true)
+    expect(w.find('.project-remote').text()).toContain('Coordinated from')
+    navigate.mockClear()
+    await w.find('.project-remote').trigger('click')
+    expect(navigate).toHaveBeenCalledWith('/a/abcd1234~w1%3Ap1')
+    await w.find('.project-head').trigger('click')
+    expect(w.find('.project-tree').exists()).toBe(false)
+    expect(w.find('.project-remote').exists()).toBe(true)
+    w.unmount()
+  })
+
+  it('a remote coordinator link switches the machine bar to its machine, shown again if hidden', async () => {
+    for (const hidden of [false, true]) {
+      const w = await mount(section({ coordinator: null, remote: { pane: 'abcd1234~w1:p1', machine: 'abcd1234' } }))
+      herdrState.value = { ...herdrState.value, machines: [
+        { key: '', label: 'Server', local: true, status: 'online', error: null },
+        { key: 'abcd1234', label: 'Build box', local: false, status: 'online', error: null }] }
+      machineBarHidden.value = hidden ? ['abcd1234'] : []
+      machineBarSaved.value = ''
+      expect(machineBarPick.value).toBe('')
+      await w.find('.project-remote').trigger('click')
+      expect(machineBarPick.value).toBe('abcd1234')
+      expect(machineBarHidden.value).toEqual([])
+      w.unmount()
+    }
+    machineBarSaved.value = '*'
   })
 
   it('a coordinator that asks something shows its question and answers in its row', async () => {

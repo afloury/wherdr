@@ -5,6 +5,8 @@
 // (screen-dependent widths, the last tab or filter, drafts, the session…).
 
 export const SYNCED_SETTINGS = [
+  // Notification policy follows the user across every device.
+  'notificationRules',
   // Appearance
   'theme', 'focusBorder', 'backdrop', 'backdropPackets',
   // Machine bar and groups

@@ -27,7 +27,7 @@ const info = { status: 'ready', version: '1.2.1', launcher: '/plugins/herdr-proj
 let infoFails = false
 const infoAsked: boolean[] = []
 const panes: { id: string, machine?: string, agent?: string, cwd?: string, status?: string, name?: string }[] = []
-vi.mock('../server/utils/machines', () => ({ allMachines: () => [machine, session], baseMachines: () => [machine] }))
+vi.mock('../server/utils/machines', () => ({ allMachines: () => [machine, session], baseMachines: () => [machine], machineOfPane: () => ({ ...machine, transcripts: { locate: async () => ({ file: path.join(home, 'timer-transcript.jsonl') }) } }) }))
 vi.mock('../server/utils/actions', () => ({ machineFor: (k: unknown) => (k === session.key ? session : k === 'remote' ? remote : machine) }))
 vi.mock('../server/utils/projectsPlugin', () => ({ projectsPluginInfo: async (_m: unknown, fresh = false) => {
   infoAsked.push(fresh)
@@ -46,11 +46,12 @@ vi.mock('../server/utils/agentAvailability', () => ({ installedAgentKinds: async
 // Each task's own worker.agent, as 1.x keeps it: `delegate --worker.agent` writes
 // it (1.2.1 start.rs delegate_with), `set`/`unset --task` change it.
 let own: Record<string, string> = {}
+let ownEffort: Record<string, string> = {}
 // `board.agents` in the same reply (how many work at once); null: left out.
 let boardAgents: number | null = null
-const taskSettings = (value: string, place: string, from: string) => JSON.stringify({ settings: [
+const taskSettings = (value: string, place: string, from: string, effortOf?: string) => JSON.stringify({ settings: [
   { name: 'worker.agent', kind: 'work', value, from, place, own: false, note: '' },
-  { name: 'worker.effort', kind: 'work', value: 'default', from: 'built in', place: 'builtin', own: false, note: '' },
+  { name: 'worker.effort', kind: 'work', ...(effortOf ? { value: effortOf, from: 'this task', place: 'task' } : { value: 'default', from: 'built in', place: 'builtin' }), own: false, note: '' },
   ...(boardAgents === null ? [] : [{ name: 'board.agents', kind: 'board', value: boardAgents, from: 'you', place: 'you', own: false, note: '' }]),
 ], problems: [] })
 
@@ -83,7 +84,9 @@ beforeEach(() => {
   coordStatus = {}
   installed = ['claude', 'codex']
   own = {}
+  ownEffort = {}
   boardAgents = null
+  T.resetModelsCache()
   rmSync(path.join(home, 'wherdr-data'), { recursive: true, force: true })
   SA.resetStartAgents()
   infoFails = false
@@ -96,12 +99,25 @@ beforeEach(() => {
     if (args[0] === 'show' && args[2] === '--') {
       calls.push(args)
       const mine = own[args[3]!]
-      return { code: 0, stdout: mine ? taskSettings(mine, 'task', 'this task') : taskSettings('claude', 'repo', 'your entry for demo'), stderr: '' }
+      const level = ownEffort[args[3]!]
+      return { code: 0, stdout: mine ? taskSettings(mine, 'task', 'this task', level) : taskSettings('claude', 'repo', 'your entry for demo', level), stderr: '' }
     }
     const id = args.at(-1)!
     if (args[0] === 'delegate' && args[1]?.startsWith('--worker.agent=')) own[id] = args[1].slice('--worker.agent='.length)
     if (args[0] === 'set' && args[3] === 'worker.agent') own[args[1]!.slice('--task='.length)] = args[4]!
     if (args[0] === 'unset' && args[3] === 'worker.agent') delete own[args[1]!.slice('--task='.length)]
+    const effortArg = args[0] === 'delegate' ? args.find(a => a.startsWith('--worker.effort=')) : undefined
+    if (effortArg) ownEffort[id] = effortArg.slice('--worker.effort='.length)
+    if (args[0] === 'set' && args[3] === 'worker.effort') ownEffort[args[1]!.slice('--task='.length)] = args[4]!
+    if (args[0] === 'unset' && args[3] === 'worker.effort') delete ownEffort[args[1]!.slice('--task='.length)]
+    // 1.x refuses a model it does not take, and names those it does.
+    if (args[0] === 'delegate' && args.includes('--worker.agent=codex/gpt-9')) return { code: 1, stdout: '', stderr: 'unknown model codex/gpt-9 for worker.agent.\nAccepted: codex/gpt-6-sol, codex/gpt-6-luna\n' }
+    if (args[0] === 'models') {
+      calls.push(args)
+      if (args[1] === 'codex') return { code: 0, stdout: 'Models for codex:\ncodex/gpt-6-sol\ncodex/gpt-6-luna\nEffort (worker.effort and the like): low, high, ultra; gpt-6-luna only low, high.\n', stderr: '' }
+      if (args[1] === 'claude') return { code: 0, stdout: '', stderr: '' }
+      return { code: 2, stdout: '', stderr: `error: unknown agent ${args[1]}` }
+    }
     if (args[0] === 'show') {
       shows.push(args)
       const repo = args[1]!.replace('--repo=', '')
@@ -527,6 +543,47 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     expect(calls.filter(c => c[0] === 'review')).toEqual([['review', '--', 'demo/13']])
   })
 
+  it.each([['limit.time', '4h'], ['limit.tokens', '3m'], ['limit.tokens', 'none']])('sets only the chosen %s on the target machine and invalidates the list', async (name, value) => {
+    const usedMachines: string[] = []
+    T.setRunner(async (m, _launcher, args) => {
+      calls.push(args)
+      usedMachines.push(m.key)
+      return { code: 0, stdout: args[0] === 'list' ? JSON.stringify([{ id: 'demo/10', stage: 'stopped', state: 'blocked' }]) : args[0] === 'details' ? JSON.stringify({ task: { id: 'demo/10' }, limits: { stopped: { what: name.slice(6) } } }) : 'Resuming', stderr: '' }
+    })
+    await T.raiseTaskLimit('remote', 'demo/10', name, value)
+    expect(calls.filter(c => c[0] === 'set')).toEqual([['set', name, value, '--task', 'demo/10']])
+    expect(calls.some(c => c[0] === 'retry')).toBe(false)
+    expect(usedMachines.every(m => m === 'remote')).toBe(true)
+    await T.taskCommand('remote', 'demo/10', 'retry')
+    expect(calls.filter(c => c[0] === 'list')).toHaveLength(2)
+  })
+
+  it.each(['tokens', undefined])('refuses a ceiling that cannot lift a %s stop before changing settings', async stopped => {
+    T.setRunner(async (_m, _launcher, args) => {
+      calls.push(args)
+      return { code: 0, stderr: '', stdout: args[0] === 'list'
+        ? JSON.stringify([{ id: 'demo/10', stage: 'stopped', state: 'blocked' }])
+        : JSON.stringify({ task: { id: 'demo/10' }, limits: { stopped: { what: stopped } } }) }
+    })
+    await expect(T.raiseTaskLimit('remote', 'demo/10', 'limit.time', '4h')).rejects.toThrow('Invalid settings')
+    expect(calls.some(c => c[0] === 'set' || c[0] === 'retry')).toBe(false)
+  })
+
+  it('exposes a CLI refusal and rejects unrelated settings and provider quota waits', async () => {
+    T.setRunner(async (_m, _launcher, args) => {
+      calls.push(args)
+      if (args[0] === 'details') return { code: 0, stdout: JSON.stringify({ task: { id: 'demo/10' }, limits: { stopped: { what: 'time' } } }), stderr: '' }
+      return args[0] === 'list'
+        ? { code: 0, stdout: JSON.stringify([{ id: 'demo/10', stage: 'stopped', state: 'blocked' }, { id: 'demo/11', stage: 'asks', state: 'blocked', msg: 'Provider quota' }]), stderr: '' }
+        : { code: 1, stdout: '', stderr: 'Invalid duration: choose 4h' }
+    })
+    await expect(T.raiseTaskLimit('', 'demo/10', 'limit.time', 'bad')).rejects.toThrow('Invalid duration: choose 4h')
+    await expect(T.raiseTaskLimit('', 'demo/11', 'limit.tokens', '3m')).rejects.toThrow()
+    await expect(T.raiseTaskLimit('', 'demo/10', 'merge.by', 'itself')).rejects.toThrow()
+    expect(calls.filter(c => c[0] === 'set')).toHaveLength(1)
+    expect(calls.some(c => c[0] === 'retry')).toBe(false)
+  })
+
   it('Finish takes the work as it is where 1.x finish does, and is refused elsewhere', async () => {
     listReply = { code: 0, stdout: JSON.stringify([
       { id: 'demo/10', state: 'blocked', app: 'claude', title: 'Limit', stage: 'stopped', msg: 'Stopped at its 2h limit' },
@@ -540,6 +597,24 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     await read()
     await expect(T.taskCommand('', 'demo/12', 'finish')).rejects.toThrow('This task has nothing to finish as it is')
     expect(calls.filter(c => c[0] === 'finish')).toEqual([['finish', '--', 'demo/10'], ['finish', '--', 'demo/11']])
+  })
+
+  it('finishes a waiting conversation on its own machine, without approval', async () => {
+    listReply = { code: 0, stdout: JSON.stringify([
+      { id: 'demo/20', chat: true, state: 'blocked', app: 'codex', stage: 'asks' },
+      { id: 'demo/21', chat: true, state: 'working', app: 'codex', stage: 'working' },
+      { id: 'demo/22', chat: true, state: 'done', app: 'codex', stage: 'done' },
+      { id: 'demo/23', chat: true, state: 'blocked', app: 'codex', stage: 'approval' },
+    ]), stderr: '' }
+    const sent: Array<{ machine: string, args: string[] }> = []
+    T.setRunner(async (m, _launcher, args) => {
+      sent.push({ machine: m.key, args })
+      return args[0] === 'list' ? listReply : { code: 0, stdout: 'Conversation ended', stderr: '' }
+    })
+    await T.taskCommand('remote', 'demo/20', 'finish')
+    expect(sent).toContainEqual({ machine: 'remote', args: ['finish', '--', 'demo/20'] })
+    for (const id of ['demo/21', 'demo/22']) await expect(T.taskCommand('remote', id, 'finish')).rejects.toThrow('nothing to finish')
+    await expect(T.approveTask('remote', 'demo/23')).rejects.toThrow('does not wait for approval')
   })
 
   // The task's worker.agent as 1.x resolves it now.
@@ -644,6 +719,61 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     await expect(T.taskCommand('', 'demo/5', 'delegate', { kind: 'codex' })).rejects.toThrow(/is not installed/)
     await expect(T.taskCommand('', 'demo/3', 'stop', 'codex')).rejects.toThrow(/Only Start takes an agent/)
     expect(calls).toEqual([])
+  })
+
+  it('Start with a model and an effort: both for this start only, put back once the run is over', async () => {
+    await read()
+    calls = []
+    await T.taskCommand('', 'demo/5', 'delegate', 'codex/gpt-6-sol', null, 'ultra')
+    expect(calls).toEqual([['show', '--json', '--', 'demo/5'], ['delegate', '--worker.agent=codex/gpt-6-sol', '--worker.effort=ultra', '--', 'demo/5']])
+    expect([own['demo/5'], ownEffort['demo/5']]).toEqual(['codex/gpt-6-sol', 'ultra'])
+    calls = []
+    expect(await resolved('demo/5')).toMatchObject({ value: 'claude', place: 'repo' })
+    expect([own['demo/5'], ownEffort['demo/5']]).toEqual([undefined, undefined])
+    // The program of a model is what must be installed; a malformed effort is refused first.
+    await read()
+    calls = []
+    await expect(T.taskCommand('', 'demo/5', 'delegate', 'pi/openai/gpt-5')).rejects.toThrow('pi is not installed on devbox')
+    await expect(T.taskCommand('', 'demo/5', 'delegate', 'codex/gpt-6-sol', null, '--now')).rejects.toThrow('Invalid effort')
+    await expect(T.taskCommand('', 'demo/3', 'stop', null, null, 'low')).rejects.toThrow('Invalid effort')
+    expect(calls).toEqual([])
+  })
+
+  it('a model the CLI does not take: its refusal, every line, as it says it', async () => {
+    await read()
+    await expect(T.taskCommand('', 'demo/5', 'delegate', 'codex/gpt-9')).rejects.toThrow('unknown model codex/gpt-9 for worker.agent.\nAccepted: codex/gpt-6-sol, codex/gpt-6-luna')
+  })
+
+  it('a model on another machine: the command runs there', async () => {
+    const sent: Array<{ machine: string, args: string[] }> = []
+    T.setRunner(async (m, _launcher, args) => {
+      sent.push({ machine: m.key, args })
+      if (args[0] === 'list') return { code: 0, stdout: board, stderr: '' }
+      if (args[0] === 'show') return { code: 0, stdout: taskSettings('claude', 'repo', 'x'), stderr: '' }
+      if (args[0] === 'models') return { code: 0, stdout: 'codex/gpt-6-sol\n', stderr: '' }
+      return { code: 0, stdout: 'started', stderr: '' }
+    })
+    await T.readTasksBoard()
+    expect((await T.taskStartModels('remote', 'codex')).models).toEqual(['gpt-6-sol'])
+    await T.taskCommand('remote', 'demo/5', 'delegate', 'codex/gpt-6-sol', null, 'high')
+    expect(sent).toContainEqual({ machine: 'remote', args: ['models', 'codex'] })
+    expect(sent).toContainEqual({ machine: 'remote', args: ['delegate', '--worker.agent=codex/gpt-6-sol', '--worker.effort=high', '--', 'demo/5'] })
+  })
+
+  it('models <program>: read once per machine and program, read again on demand; nothing read is not kept', async () => {
+    calls = []
+    const m = await T.taskStartModels('', 'codex')
+    expect(m).toEqual({ program: 'codex', models: ['gpt-6-sol', 'gpt-6-luna'], efforts: ['low', 'high', 'ultra'], only: [{ models: ['gpt-6-luna'], levels: ['low', 'high'] }] })
+    await T.taskStartModels('', 'codex')
+    expect(calls).toEqual([['models', 'codex']])
+    await T.taskStartModels('', 'codex', true)
+    expect(calls).toHaveLength(2)
+    expect((await T.taskStartModels('', 'claude')).models).toEqual([])
+    await T.taskStartModels('', 'claude')
+    expect(calls.filter(c => c[1] === 'claude')).toHaveLength(2)
+    await expect(T.taskStartModels('', 'gemini')).rejects.toThrow('error: unknown agent gemini')
+    await expect(T.taskStartModels('', '--now')).rejects.toThrow('Invalid agent')
+    await expect(T.taskStartModels('', 'codex/x')).rejects.toThrow('Invalid agent')
   })
 
   it('what Start offers: the task\'s worker.agent as show resolves it, and the installed agents', async () => {
@@ -918,4 +1048,166 @@ it('sends task questions through the owning remote machine launcher', async () =
   expect(owners).toEqual(['remote', 'remote'])
   expect(calls.at(-1)!.slice(0, 4)).toEqual(['coordinator', '--project=demo', '--', 'tell'])
   expect(calls.at(-1)![4]).toContain('Fix login redirect')
+})
+
+describe('human attempt picks', () => {
+  const recorded = () => readFileSync(path.join(import.meta.dirname, 'recordings/herdr-projects-1.2.16/details-pick.json'), 'utf8')
+  it('rechecks details and sends the exact letter to the owning remote machine', async () => {
+    const seen: string[] = []
+    T.setRunner(async (m, _launcher, args) => {
+      seen.push(m.key)
+      calls.push(args)
+      return { code: 0, stdout: args[0] === 'details' ? recorded() : 'Attempt A chosen', stderr: '' }
+    })
+    expect(await T.pickTask('remote', 'demo/11', 'A', true)).toEqual({ ok: true, msg: 'Attempt A chosen' })
+    expect(calls).toEqual([['details', '--json', '--', 'demo/11'], ['pick', '--', 'demo/11', 'A']])
+    expect(seen).toEqual(['remote', 'remote'])
+  })
+  it('refuses missing confirmation, invalid letters and non-selectable attempts', async () => {
+    detailsReply = recorded()
+    for (const [letter, confirmed] of [['B', false], ['', true], ['--help', true], ['C', true], ['D', true]] as const) await expect(T.pickTask('', 'demo/11', letter, confirmed)).rejects.toThrow()
+    expect(calls.some(a => a[0] === 'pick')).toBe(false)
+    detailsReply = recorded().replace('"stage": "pick"', '"stage": "reviewing"')
+    await expect(T.pickTask('', 'demo/11', 'A', true)).rejects.toThrow()
+  })
+  it('propagates CLI and unavailable-machine errors without falling back locally', async () => {
+    T.setRunner(async (m, _launcher, args) => {
+      expect(m.key).toBe('remote')
+      return args[0] === 'details' ? { code: 0, stdout: recorded(), stderr: '' } : { code: 1, stdout: '', stderr: 'Attempt A cannot be chosen now' }
+    })
+    await expect(T.pickTask('remote', 'demo/11', 'A', true)).rejects.toThrow('Attempt A cannot be chosen now')
+    infoFails = true
+    await expect(T.pickTask('remote', 'demo/11', 'A', true)).rejects.toThrow('Herdr did not answer')
+  })
+})
+
+describe('read-only task settings', () => {
+  it('reads show on the selected machine, preserving an inherited value and a task override', async () => {
+    const machines: string[] = []
+    T.setRunner(async (m, _launcher, args) => {
+      machines.push(m.key)
+      calls.push(args)
+      return { code: 0, stdout: taskSettings('codex', args.at(-1) === 'demo/2' ? 'task' : 'repo', 'precise source'), stderr: '' }
+    })
+    expect((await T.taskSettings('remote', 'demo/1')).settings[0]).toMatchObject({ value: 'codex', place: 'repo', from: 'precise source' })
+    expect((await T.taskSettings('remote', 'demo/2')).settings[0]).toMatchObject({ value: 'codex', place: 'task' })
+    expect(machines).toEqual(['remote', 'remote'])
+    expect(calls).toEqual([['show', '--json', '--', 'demo/1'], ['show', '--json', '--', 'demo/2']])
+  })
+  it('propagates command failures and refuses invalid ids before running show', async () => {
+    await expect(T.taskSettings('', '--bad')).rejects.toThrow('Invalid task')
+    T.setRunner(async () => ({ code: 1, stdout: '', stderr: 'Machine unavailable' }))
+    await expect(T.taskSettings('remote', 'demo/1')).rejects.toThrow('Machine unavailable')
+  })
+})
+
+describe('coordinator Autopilot', () => {
+  // A board that keeps each coordinator's state, as herdr-projects does.
+  function autopilotRunner(version = '1.2.21', refuse = '') {
+    const on = new Set<string>()
+    T.setRunner(async (_m, _launcher, args) => {
+      calls.push(args)
+      if (args[0] === 'version') return { code: 0, stdout: `herdr-projects ${version}`, stderr: '' }
+      if (args[0] === 'show') return { code: 0, stdout: JSON.stringify({ settings: [{ name: 'autopilot.goal', value: 'Keep the garden healthy' }, { name: 'autopilot.every', value: '6h' }] }), stderr: '' }
+      if (args[1] === 'on' || args[1] === 'off') {
+        if (refuse) return { code: 1, stdout: '', stderr: refuse }
+        const id = args[2] === '--project' ? `project:${args[3]}` : args[2] === '--machine' ? 'machine' : 'main'
+        if (args[1] === 'on') on.add(id)
+        else on.delete(id)
+        // Not a status: the state must be read again.
+        return { code: 0, stdout: 'Done', stderr: '' }
+      }
+      if (args[0] === 'autopilot' && args[1] === '--json') {
+        return { code: 0, stdout: JSON.stringify(['main', 'machine', 'project:demo'].map(c => on.has(c) ? { on: true, state: 'on', coordinator: c, goal: 'Grow', next: 'next in 2h' } : { on: false, coordinator: c })), stderr: '' }
+      }
+      return { code: 1, stdout: '', stderr: 'unexpected' }
+    })
+  }
+  it('turns a project coordinator on and reads its real state back', async () => {
+    autopilotRunner()
+    expect(await T.coordinatorAutopilot('remote', { kind: 'project', repo: 'demo' }, { action: 'on', goal: 'Grow', every: '2h' }))
+      .toMatchObject({ on: true, goal: 'Grow', next: 'next in 2h', defaults: { every: '6h' } })
+    expect(calls).toContainEqual(['autopilot', 'on', '--project', 'demo', '--goal', 'Grow', '--autopilot.every', '2h'])
+    expect(calls).toContainEqual(['autopilot', '--json'])
+    expect(calls).toContainEqual(['show', '--project-coordinator', 'demo', '--json'])
+  })
+  it('refuses an empty goal without running on', async () => {
+    autopilotRunner()
+    await expect(T.coordinatorAutopilot('', { kind: 'main' }, { action: 'on', goal: ' ' })).rejects.toThrow('goal is required')
+    expect(calls).toEqual([])
+  })
+  it('stops the machine coordinator and keeps its saved goal to show', async () => {
+    autopilotRunner()
+    await T.coordinatorAutopilot('', { kind: 'machine' }, { action: 'on', goal: 'Grow' })
+    expect(await T.coordinatorAutopilot('', { kind: 'machine' }, { action: 'off' })).toMatchObject({ on: false, goal: 'Keep the garden healthy' })
+    expect(calls).toContainEqual(['autopilot', 'off', '--machine'])
+  })
+  it('lists every coordinator of a machine', async () => {
+    autopilotRunner()
+    await T.coordinatorAutopilot('', { kind: 'project', repo: 'demo' }, { action: 'on', goal: 'Grow' })
+    const all = await T.autopilotStatuses('')
+    expect(all.main).toMatchObject({ on: false })
+    expect(all['project:demo']).toMatchObject({ on: true, next: 'next in 2h' })
+  })
+  it('passes the board refusal on, and refuses older versions', async () => {
+    autopilotRunner('1.2.21', 'Tell a coordinator its goal first.')
+    await expect(T.coordinatorAutopilot('', { kind: 'main' }, { action: 'on', goal: 'Grow' })).rejects.toThrow('Tell a coordinator its goal first.')
+    calls = []
+    T.resetTasksCache()
+    autopilotRunner('1.2.14')
+    await expect(T.autopilotStatuses('')).rejects.toThrow('herdr-projects 1.2.15 or later')
+    expect(calls).toEqual([['version']])
+  })
+})
+
+describe('scheduled coordinator reads', () => {
+  it('only issues read commands and keeps unavailable sources separate from an empty schedule', async () => {
+    const requested: string[][] = []
+    T.setRunner(async (_m, _launcher, args) => {
+      requested.push(args)
+      if (args[0] === 'autopilot') return { code: 1, stdout: '', stderr: 'not supported' }
+      if (args[0] === 'automations') return { code: 0, stdout: '[]', stderr: '' }
+      if (args[0] === 'coordinator') return { code: 0, stdout: '{"state":"none","pane":""}', stderr: '' }
+      throw new Error('Unexpected command')
+    })
+    const scheduled = await T.coordinatorScheduled('', { kind: 'main' })
+    expect(scheduled.autopilot).toBeNull()
+    expect(scheduled.automations).toEqual([])
+    expect(scheduled.timers).toEqual([])
+    expect(scheduled.warnings).toEqual(['Autopilot unavailable'])
+    expect(requested).toEqual([['autopilot', '--json'], ['automations', '--json'], ['coordinator', '--json', 'status']])
+  })
+
+  it('rejects an invalid project before accessing the board', async () => {
+    const runner = vi.fn()
+    T.setRunner(runner)
+    await expect(T.coordinatorScheduled('', { kind: 'project', repo: '../escape' })).rejects.toThrow('Invalid coordinator')
+    expect(runner).not.toHaveBeenCalled()
+  })
+})
+
+
+it.each([0, 25 * 1024 * 1024])('reads scheduled coordinator wake dates, recent firing tasks and a transcript with %i padding bytes', async (padding) => {
+  const dir = path.join(home, '.herdr-projects/data/coordinator/default/projects/demo')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(path.join(dir, 'state.json'), JSON.stringify({ autopilot: { timerAt: clock - 60000, wakes: [{ at: clock - 60000 }] } }))
+  const firings = path.join(home, '.herdr-projects/data/automations/firings')
+  mkdirSync(firings, { recursive: true })
+  writeFileSync(path.join(firings, '1234abcd.jsonl'), [{ task: 'demo/1' }, { skipped: 'busy' }, { task: 'demo/2' }].map(f => JSON.stringify(f)).join('\n'))
+  const transcript = [
+    { type: 'assistant', timestamp: new Date(clock - 1000).toISOString(), message: { content: [{ type: 'tool_use', id: 'tool1', name: 'CronCreate', input: { cron: '*/5 * * * *', prompt: 'Check build', recurring: true } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tool1', content: '{"id":"job1"}' }] } },
+  ].map(r => JSON.stringify(r)).join('\n')
+  writeFileSync(path.join(home, 'timer-transcript.jsonl'), transcript + '\n' + JSON.stringify({ message: { content: 'x'.repeat(padding) } }))
+  panes.push({ id: 'w1:p1', agent: 'claude' })
+  T.setRunner(async (_m, _launcher, args) => ({ code: 0, stderr: '', stdout: JSON.stringify(
+    args[0] === 'autopilot' ? [{ coordinator: 'project:demo', on: true, goal: 'Ship demo', next: 'next in 1m', settings: [{ label: 'Wakes', value: 'every 2m' }] }]
+      : args[0] === 'automations' ? [{ id: '1234abcd', name: 'Audit', repo: 'demo', on: true, trigger: 'daily 09:00' }]
+        : { state: 'idle', pane: 'w1:p1' },
+  ) }))
+  const scheduled = await T.coordinatorScheduled('', { kind: 'project', repo: 'demo' })
+  expect(scheduled.autopilot).toMatchObject({ next: clock + 60000, last: clock - 60000, goal: 'Ship demo' })
+  expect(scheduled.automations[0]?.tasks).toEqual(['demo/2', 'demo/1'])
+  expect(scheduled.timers).toMatchObject([{ id: 'job1', cron: '*/5 * * * *' }])
+  expect(scheduled.warnings).toEqual([])
 })

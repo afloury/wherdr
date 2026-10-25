@@ -76,3 +76,11 @@ describe('a Working card says what it is doing', () => {
     expect(slot.find('.task-activity').attributes('title')).toBe('Not started: waiting for a free slot, 2nd in the queue')
   })
 })
+
+it('labels conversation-only cards', async () => {
+  const w = await mountSuspended(TaskCard, { props: { task: row({ chat: true }) } })
+  expect(w.find('.task-chip').text()).toBe('Conversation')
+  await w.setProps({ task: row({ research: true }) })
+  expect(w.text()).not.toContain('Conversation')
+  w.unmount()
+})
