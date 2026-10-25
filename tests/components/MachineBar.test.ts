@@ -386,10 +386,13 @@ describe('a tab showing one machine', () => {
     const w = await mountHome()
     expect(w.findAll('.machine-row')).toHaveLength(1)
     await press(w.find('[data-bar-id="*group:solo"]').element)
-    expect(menuState.items.map(i => i.label)).toEqual(['Group settings'])
+    expect(menuState.items.map(i => i.label)).toEqual(['Group settings', 'Board settings'])
     navigate.mockClear()
     menuState.items[0]!.run!()
     expect(navigate).toHaveBeenCalledWith({ path: '/settings', query: { section: 'appearance', group: '*group:solo' } })
+    navigate.mockClear()
+    menuState.items.find(i => i.label === 'Board settings')!.run!()
+    expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { settings: '*group:solo' } })
     menuState.open = false
     // "All" has no menu.
     await press(w.find('[data-bar-id="*"]').element)

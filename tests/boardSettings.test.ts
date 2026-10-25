@@ -86,6 +86,8 @@ describe('confirmations', () => {
     expect(settingWarning('merge.checks', 'none')).toBe('mergeNoChecks')
     expect(settingWarning('review.when', 'never')).toBe('noReview')
     expect(settingWarning('board.agents', '8')).toBe('boardAgents')
+    expect(settingWarning('board.agents', null)).toBe('boardAgents')
+    expect(settingWarningText('boardAgents', '')).toContain('tasks in the queue may start at once')
     expect(settingWarning('worker.agent', 'codex')).toBeNull()
     expect(settingWarningText('mergeItself', '')).toContain('Tasks already reviewed will merge right away')
     expect(settingWarningText('mergeItself', 'demo')).toContain('in demo')

@@ -120,13 +120,14 @@ export function settingArgs(c: { name?: unknown, repo?: unknown, value?: unknown
 // turns into a sentence (app/utils/boardSettings.ts).
 export type SettingWarning = 'mergeItself' | 'mergeNoChecks' | 'noReview' | 'mayMergeItself' | 'boardAgents' | 'noCoordinator'
 export function settingWarning(name: string, value: string | null): SettingWarning | null {
+  // Capacity changes immediately, including when restoring the inherited value.
+  if (name === 'board.agents') return 'boardAgents'
   // `unset`: the inherited value applies at once; it may be the risky one.
   if (value === null) return name === 'merge.by' ? 'mayMergeItself' : null
   const v = value.trim()
   if (name === 'merge.by' && v === 'itself') return 'mergeItself'
   if (name === 'merge.checks' && v === 'none') return 'mergeNoChecks'
   if (name === 'review.when' && v === 'never') return 'noReview'
-  if (name === 'board.agents') return 'boardAgents'
   if (name === 'coordinator.agent' && v === 'none') return 'noCoordinator'
   return null
 }
