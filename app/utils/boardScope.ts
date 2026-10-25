@@ -62,3 +62,11 @@ export function boardScopeMachines(scope: string, groups: readonly MachineGroup[
 export function boardMachineLabel(machine: string, name: string, localName: string) {
   return name || (machine === LOCAL ? localName : machine)
 }
+
+// Board settings opened on a scope (the Board's filter, or a machine bar item):
+// the machines it covers that have a board, in the Board's order. One: its
+// settings open at once; several ("All", a group): the screen asks which.
+export function boardSettingsMachines(scope: string, machines: readonly string[], groups: readonly MachineGroup[]): string[] {
+  const only = boardScopeMachines(scope, groups)
+  return only === null ? [...machines] : machines.filter(m => only.includes(m))
+}

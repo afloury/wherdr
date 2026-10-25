@@ -190,7 +190,9 @@ function revealLater() {
   const run = () => {
     revealTimer = false
     if (unmounted || !hiddenBlocks.value) return
-    if (Date.now() - lastScroll < 400 || document.hidden) return revealLater()
+    // Keep the first visible commit small even when the skeleton's minimum
+    // duration outlasts the network response.
+    if (skeleton.value || Date.now() - lastScroll < 400 || document.hidden) return revealLater()
     revealMore(MORE_BLOCKS).then(() => { if (hiddenBlocks.value) revealLater() })
   }
   const idle = (globalThis as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }).requestIdleCallback

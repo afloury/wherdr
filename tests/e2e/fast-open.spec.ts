@@ -99,7 +99,16 @@ async function open(page: Page) {
 }
 
 test('a long conversation shows its end first, then the rest above without moving the bottom', async ({ page }) => {
-  await open(page)
+  let release!: () => void
+  const responseReady = new Promise<void>(resolve => { release = resolve })
+  await page.route('**/api/chat?*', async route => {
+    await responseReady
+    await route.continue().catch(() => {})
+  })
+  try {
+    await open(page)
+    await expect(page.locator('.chat-skel')).toBeVisible()
+  } finally { release() }
   const list = page.locator('.chat-list')
   await expect(list).toContainText('All steps done.', { timeout: 15000 })
   const first = await page.evaluate(() => (window as unknown as { firstUsers: number }).firstUsers)
@@ -129,12 +138,21 @@ test('a conversation: its shapes while nothing is kept, then the end kept at onc
   // "Read at" while the network is slow, gone once it answers.
   await page.waitForTimeout(3000)
   await page.unroute('**/api/chat?*')
-  await page.route('**/api/chat?*', later(2500))
-  await page.reload()
-  await expect(page.locator('.chat-list')).toContainText('All steps done.', { timeout: 2000 })
-  await expect(page.locator('.chat-skel')).toHaveCount(0)
-  await expect(page.locator('.chat-cached')).toContainText(/Read at \d/)
-  await shot(page, 'chat-cached', testInfo.project.name)
+  // Hold the re-read until the cache is observed. A fixed delay also times
+  // app startup, which can take longer than the delay on a busy CI runner.
+  let release!: () => void
+  const reread = new Promise<void>(resolve => { release = resolve })
+  await page.route('**/api/chat?*', async route => {
+    await reread
+    await route.continue().catch(() => {})
+  })
+  try {
+    await page.reload()
+    await expect(page.locator('.chat-list')).toContainText('All steps done.')
+    await expect(page.locator('.chat-skel')).toHaveCount(0)
+    await expect(page.locator('.chat-cached')).toContainText(/Read at \d/)
+    await shot(page, 'chat-cached', testInfo.project.name)
+  } finally { release() }
   await expect(page.locator('.chat-cached')).toHaveCount(0, { timeout: 6000 })
 })
 
