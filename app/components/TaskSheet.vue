@@ -511,6 +511,18 @@ function chat() {
           <dd>{{ details.agent }}</dd>
         </template>
       </dl>
+      <section v-if="details?.handovers?.length" class="task-sheet-block task-handovers">
+        <h4>{{ t('Handovers') }}</h4>
+        <ol class="task-handover-list">
+          <li v-for="(handover, index) in details.handovers" :key="index" class="task-sheet-text">
+            <p v-if="handover.role" class="task-handover-meta">{{ handover.role === 'worker' ? t('Agent') : handover.role === 'reviewer' ? t('Reviewer') : handover.role }}</p>
+            <p v-if="handover.from"><span>{{ t('Previous agent') }}: </span>{{ handover.from }}</p>
+            <p v-if="handover.to"><span>{{ t('Taken over by') }}: </span>{{ handover.to }}</p>
+            <p v-if="handover.why">{{ handover.why }}</p>
+            <time v-if="handover.at !== null" :datetime="new Date(handover.at).toISOString()" class="task-handover-meta">{{ new Date(handover.at).toLocaleString() }}</time>
+          </li>
+        </ol>
+      </section>
       <div v-if="details?.failure && !details.failureStale && !embedded" class="plugin-input-note warn">
         <UIcon name="i-lucide-triangle-alert" />
         <p>{{ details.failure }}</p>
