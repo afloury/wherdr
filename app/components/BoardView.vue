@@ -31,7 +31,7 @@ import type { SelectItem } from '@nuxt/ui'
 import type { PanelTarget } from './BoardPanel.vue'
 import type { SettingsTarget } from './BoardSettings.vue'
 // The home list's machine groups (Settings › Machine bar); `machineGroups` here is the Board's lanes.
-import { machineGroups as barGroups } from '~/composables/useMachineBar'
+import { machineGroups as barGroups, machineBarPick } from '~/composables/useMachineBar'
 
 const COLUMN_KEY = 'boardColumn'
 const SCOPE_KEY = 'boardMachine'
@@ -65,6 +65,10 @@ const boards = computed(() => (board.value?.machines || []).filter(m => m.status
 // The machine's key (the local one is ''), a machine group's ID (the home
 // list's groups, edited in Settings), or SCOPE_ALL.
 const scope = ref(boardScopeMachine(readStore(SCOPE_KEY)))
+watch([machineBarPick, boards, barGroups], () => {
+  const next = boardTabChoice.update(machineBarPick.value, boards.value.map(m => m.machine), barGroups.value)
+  if (next !== undefined) scope.value = next
+}, { immediate: true })
 // A machine that went away, or a group deleted: every machine again. A group
 // edited in Settings: its machines now.
 const shownScope = computed<string>(() => boardShownScope(scope.value, boards.value.map(m => m.machine), barGroups.value))
@@ -78,6 +82,7 @@ const scopeItems = computed<SelectItem[]>(() => boardScopeItems(boards.value.map
   barGroups.value, tl('Groups', 'Groupes'), tl('Machines', 'Machines')))
 function pickScope(v: string) {
   scope.value = boardScopeMachine(v)
+  boardTabChoice.manual(scope.value)
   writeStore(SCOPE_KEY, v)
 }
 const shownBoards = computed(() => boards.value.filter(m => inScope(m.machine)))

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SCOPE_ALL, SCOPE_LOCAL, boardMachineLabel, boardScopeItems, boardScopeMachine, boardScopeMachines, boardScopeValue, boardShownScope } from '../app/utils/boardScope'
+import { SCOPE_ALL, SCOPE_LOCAL, boardTabScope, boardMachineLabel, boardScopeItems, boardScopeMachine, boardScopeMachines, boardScopeValue, boardShownScope } from '../app/utils/boardScope'
 import type { MachineGroup } from '../app/utils/machineBar'
 
 const labels: Record<string, string> = { '': 'Server', laptop: 'Laptop', devbox: 'devbox' }
@@ -94,5 +94,59 @@ describe('Board machine names', () => {
     expect(boardMachineLabel('', '', 'Server')).toBe('Server')
     expect(boardMachineLabel('', 'This machine', 'Server')).toBe('This machine')
     expect(boardMachineLabel('mb', '', 'Server')).toBe('mb')
+  })
+})
+
+describe('Board scope follows the sidebar tab', () => {
+  const groups = [{ id: '*group:personal', name: 'Personal', machines: ['', 'laptop'] }]
+  const machines = ['', 'laptop', 'work']
+
+  it('opens with each tab, including the local machine and groups', () => {
+    for (const tab of ['', 'work', '*group:personal', SCOPE_ALL]) {
+      expect(boardTabScope().update(tab, machines, groups)).toBe(tab)
+    }
+  })
+
+  it('preserves manual choices during refreshes and resets on the next tab', () => {
+    const selection = boardTabScope()
+    expect(selection.update('*group:personal', machines, groups)).toBe('*group:personal')
+    selection.manual(SCOPE_ALL)
+    expect(selection.update('*group:personal', [...machines], [...groups])).toBe(SCOPE_ALL)
+    expect(selection.update('work', machines, groups)).toBe('work')
+    expect(selection.update('*group:personal', machines, groups)).toBe('*group:personal')
+  })
+
+  it('keeps the choice when the Board is opened again on the same tab', () => {
+    const selection = boardTabScope()
+    selection.update('work', machines, groups)
+    selection.manual('laptop')
+    // A new Board view reads the same tab again.
+    expect(selection.update('work', machines, groups)).toBe('laptop')
+  })
+
+  it('resets after tab changes while the Board is closed', () => {
+    const selection = boardTabScope()
+    selection.update('work', machines, groups)
+    selection.manual(SCOPE_ALL)
+    selection.followTab('*group:personal')
+    selection.followTab('work')
+    expect(selection.update('work', machines, groups)).toBe('work')
+  })
+
+  it('waits for known Board machines without overriding a manual choice', () => {
+    const selection = boardTabScope()
+    expect(selection.update('work', [], groups)).toBeUndefined()
+    expect(selection.update('work', machines, groups)).toBe('work')
+    const manual = boardTabScope()
+    manual.update('work', [], groups)
+    manual.manual('')
+    expect(manual.update('work', machines, groups)).toBe('')
+  })
+
+  it('keeps the existing scope for no tab or a tab without Board machines', () => {
+    const selection = boardTabScope()
+    for (const tab of [null, 'unknown', '*group:empty', '*group:personal']) {
+      expect(selection.update(tab, ['work'], [...groups, { id: '*group:empty', name: 'Empty', machines: [] }])).toBeUndefined()
+    }
   })
 })
