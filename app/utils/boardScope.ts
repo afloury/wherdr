@@ -18,6 +18,25 @@ export const boardScopeMachine = (value: string | null | undefined) => (value ==
 // Appearance › Machine bar). Group IDs start with `*group:`: never a machine key.
 export const isGroupScope = (scope: string) => scope.startsWith('*group:')
 
+// One automatic choice per visit/tab. A late Board response may supply the
+// matching machine, but polling must never replace a choice made by hand.
+export function boardTabScope() {
+  let tab: string | null | undefined
+  let settled = false
+  return {
+    manual() { settled = true },
+    update(pick: string | null, machines: readonly string[], groups: readonly MachineGroup[]): string | undefined {
+      if (pick !== tab) { tab = pick; settled = false }
+      if (settled || pick === null) return
+      const group = groups.find(g => g.id === pick)
+      if (pick === SCOPE_ALL || (group ? group.machines.some(m => machines.includes(m)) : machines.includes(pick))) {
+        settled = true
+        return pick
+      }
+    },
+  }
+}
+
 export type BoardScopeItem =
   | { label: string, value: string, icon?: string }
   | { type: 'label', label: string }
