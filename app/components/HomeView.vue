@@ -234,7 +234,13 @@ function barMachine(id: string): MachineInfo | null {
 // actions (those of its "…" menu), a group's settings. "All" has none.
 function barMenuItems(id: string): MenuItem[] {
   const group = machineGroups.value.find(g => g.id === id)
-  if (group) return [{ label: tl('Group settings', 'Réglages du groupe'), icon: 'i-lucide-settings-2', run: () => navigateTo({ path: '/settings', query: { section: 'appearance', group: group.id } }) }]
+  if (group) {
+    return [
+      { label: tl('Group settings', 'Réglages du groupe'), icon: 'i-lucide-settings-2', run: () => navigateTo({ path: '/settings', query: { section: 'appearance', group: group.id } }) },
+      // The Board settings of one of its machines: the screen asks which.
+      { label: tl('Board settings', 'Réglages du board'), icon: 'i-lucide-settings', run: () => navigateTo({ path: '/board', query: { settings: group.id } }) },
+    ]
+  }
   const m = barMachine(id)
   return m ? machineMenuItems(m) : []
 }
@@ -413,6 +419,7 @@ function machineMenuItems(m: MachineInfo): MenuItem[] {
   }
   // The Board, already filtered on this machine (its board is the base machine's).
   items.push({ label: t('Open the board'), icon: 'i-lucide-square-kanban', run: () => navigateTo({ path: '/board', query: { machine: baseKeyOf(m) } }) })
+  items.push({ label: tl('Board settings', 'Réglages du board'), icon: 'i-lucide-settings', run: () => navigateTo({ path: '/board', query: { settings: baseKeyOf(m) } }) })
   if (m.status === 'online' && awakeByMachine.value[m.key]?.supported) {
     items.push({ label: t('Keep awake'), icon: 'i-lucide-sun', run: () => openAwake(m) })
     if (awakeByMachine.value[m.key]?.platform === 'mac') items.push({ label: t('What prevents sleep'), icon: 'i-lucide-list-filter', run: () => openDiagnostic(m) })

@@ -29,6 +29,7 @@ import {
 } from '#shared/projectsTasks'
 import type { SelectItem } from '@nuxt/ui'
 import type { PanelTarget } from './BoardPanel.vue'
+import type { SettingsTarget } from './BoardSettings.vue'
 // The home list's machine groups (Settings › Machine bar); `machineGroups` here is the Board's lanes.
 import { machineGroups as barGroups } from '~/composables/useMachineBar'
 
@@ -414,6 +415,36 @@ function panelNoAgent() {
   panel.value = null
 }
 
+// ------------------------------------------------------------ board settings
+// Board settings (BoardSettings): from the ⚙ beside the machine filter (the
+// machines it shows; several: the screen asks which), a repo heading (that
+// repo's entry), or a link `#/board?settings=<machine or group>` (the home
+// list's machine bar). It takes the side panel's place.
+const settings = shallowRef<SettingsTarget | null>(null)
+function openSettings(scope: string, repo?: string) {
+  const machines = boardSettingsMachines(scope, ready.value.map(m => m.machine), barGroups.value)
+  settings.value = { machines, ...(repo ? { repo } : {}) }
+  panel.value = null
+  haptic()
+}
+watch(panel, (p) => { if (p) settings.value = null })
+// The link's scope, opened once the Board knows its machines.
+const settingsFor = ref<string | null>(null)
+watch(() => route.query.settings, (v) => {
+  if (v === undefined || Array.isArray(v)) return
+  settingsFor.value = v ?? ''
+  router.replace({ query: {} })
+}, { immediate: true })
+watch([settingsFor, board], ([scope, b]) => {
+  if (scope === null || !b) return
+  settingsFor.value = null
+  openSettings(scope)
+}, { immediate: true })
+// Each machine's repos: those of its tasks and those linked to its board.
+const settingsRepos = computed(() => Object.fromEntries(boards.value.map(m => [m.machine,
+  [...new Set([...m.tasks.map(t => t.repo), ...(projectLinks.value.find(b => b.machine === m.machine)?.repos || []).map(r => r.repo)])].filter(Boolean).sort()])))
+const settingsReachable = (machine: string) => ready.value.some(m => m.machine === machine)
+
 function back() {
   const from = (history.state as { back?: unknown } | null)?.back
   if (typeof from === 'string' && from.startsWith('/') && from !== '/board') router.back()
@@ -422,7 +453,7 @@ function back() {
 </script>
 
 <template>
-  <section id="board" ref="root" class="view board-view" :class="{ 'with-panel': panel && desk, narrow: !wide }">
+  <section id="board" ref="root" class="view board-view" :class="{ 'with-panel': (panel || settings) && desk, narrow: !wide }">
     <header class="top bar board-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Back')" @click="back" />
       <h2>{{ t('Board') }}</h2>
@@ -474,6 +505,10 @@ function back() {
         <USelect
           v-if="boards.length > 1" :model-value="boardScopeValue(shownScope)" :items="scopeItems" size="sm" class="board-scope" :aria-label="tl('Machines shown', 'Machines affichées')"
           @update:model-value="pickScope(String($event))"
+        />
+        <UButton
+          v-if="ready.length" icon="i-lucide-settings" color="neutral" variant="outline" size="sm" class="icon-btn board-settings-open" :class="{ on: settings && !settings.repo }"
+          :disabled="offlineView" :aria-label="tl('Board settings', 'Réglages du board')" :title="tl('Board settings', 'Réglages du board')" @click="openSettings(shownScope)"
         />
         <div class="board-grouping" role="group" :aria-label="tl('View', 'Vue')">
           <button type="button" :class="{ on: grouping === 'global' }" :aria-pressed="grouping === 'global'" @click="pickGrouping('global')">{{ tl('Global', 'Global') }}</button>
@@ -572,6 +607,10 @@ function back() {
                     </CoordinatorHint>
                     <CoordinatorAutopilot :machine="mg.machine" :to="{ kind: 'project', repo: rg.repo }" :disabled="Boolean(coordWhy(mg.machine))" compact />
                     <UButton
+                      icon="i-lucide-settings" color="neutral" variant="outline" size="sm" class="board-head-add board-repo-settings" :disabled="offlineView || !settingsReachable(mg.machine)"
+                      :aria-label="tl(`Repository settings: ${rg.repo}`, `Réglages du dépôt : ${rg.repo}`)" :title="tl('Repository settings', 'Réglages du dépôt')" @click="openSettings(mg.machine, rg.repo)"
+                    />
+                    <UButton
                       icon="i-lucide-plus" color="neutral" variant="outline" size="sm" class="board-head-add" :disabled="offlineView"
                       :aria-label="tl(`New task in ${rg.repo}`, `Nouvelle tâche dans ${rg.repo}`)" @click="newTask(mg.machine, rg.repo)"
                     />
@@ -619,6 +658,10 @@ function back() {
       v-if="panel" :key="panelKey" :target="panel" :task="panelTask"
       :refresh="reload" :refresh-key="refreshes" :machine-label="machineLabel(panel.machine)" :reachable="ready.some(m => m.machine === panel!.machine)"
       @archived="onArchived" @restored="onRestored" @changed="reload" @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent" @coordinator="askCoordinator"
+    />
+    <BoardSettings
+      v-if="settings && !panel" :key="JSON.stringify(settings)" :target="settings" :repos="settingsRepos" :machine-label="machineLabel"
+      :reachable="settingsReachable" @close="settings = null" @changed="reload()"
     />
     <TaskSheet
       v-model:open="sheetOpen" :task="pickedTask" :machine="picked?.machine ?? ''" :reachable="ready.some(m => m.machine === (picked?.machine ?? ''))"
