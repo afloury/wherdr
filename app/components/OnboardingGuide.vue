@@ -181,8 +181,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <!-- Claude quotas: optional -->
         <template v-else-if="step === 'quotas'">
           <p class="eyebrow onboarding-eyebrow">{{ tl('Quotas · optional', 'Quotas · facultatif') }}</p>
-          <h2 class="onboarding-title">{{ tl('See what is left of your Claude limits.', 'Vois ce qu’il reste de tes limites Claude.') }}</h2>
-          <p class="onboarding-lead">{{ tl('Claude Code only gives its usage limits to its status line. Install wherdr’s on each machine: it displays nothing and keeps the one you have. Skip this step if you like: it stays in Settings › Agents.', 'Claude Code ne donne ses limites d’usage qu’à sa barre d’état. Installe celle de wherdr sur chaque machine : elle n’affiche rien et garde la tienne. Passe cette étape si tu veux : elle reste dans Réglages › Agents.') }}</p>
+          <h2 class="onboarding-title">{{ tl('See what is left of your Claude quotas.', 'Vois ce qu’il reste de tes quotas Claude.') }}</h2>
+          <p class="onboarding-lead">{{ tl('Claude Code only gives its quotas to its status line. Install wherdr’s on each machine: it displays nothing and keeps the one you have. Skip this step if you like: it stays in Settings › Agents.', 'Claude Code ne donne ses quotas qu’à sa barre d’état. Installe celle de wherdr sur chaque machine : elle n’affiche rien et garde la tienne. Passe cette étape si tu veux : elle reste dans Réglages › Agents.') }}</p>
           <ClaudeQuotaSetup :intro="false" :declined="false" />
         </template>
 
