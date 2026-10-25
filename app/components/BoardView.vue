@@ -444,6 +444,13 @@ function back() {
       </UDropdownMenu>
       <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="lg" class="icon-btn board-filter" :aria-label="tl('Refresh', 'Actualiser')" :disabled="offlineView" @click="reload" />
     </header>
+    <!-- Each machine's main Coordinator: its Autopilot. -->
+    <div v-if="coordMachines.length && !offlineView" class="board-autopilots">
+      <div v-for="m in coordMachines" :key="m.machine">
+        <span v-if="coordMachines.length > 1" class="board-autopilots-machine">{{ machineLabel(m.machine) }}</span>
+        <CoordinatorAutopilot :machine="m.machine" :to="{ kind: 'main' }" :disabled="Boolean(coordWhy(m.machine))" />
+      </div>
+    </div>
     <div v-if="error" class="notice board-notice">{{ error }}</div>
     <p v-else-if="!board && !offlineView" class="board-empty board-loading">{{ t('Loading…') }}</p>
 
@@ -541,6 +548,7 @@ function back() {
                     {{ coordLabel(mg.machine, to) }}
                   </UButton>
                 </CoordinatorHint>
+                <CoordinatorAutopilot :machine="mg.machine" :to="{ kind: 'machine' }" :disabled="Boolean(coordWhy(mg.machine))" compact />
               </div>
             </div>
             <template v-if="!folds.has(`m:${mg.machine}`)">
@@ -559,6 +567,7 @@ function back() {
                         {{ coordLabel(mg.machine, { kind: 'project', repo: rg.repo }) }}
                       </UButton>
                     </CoordinatorHint>
+                    <CoordinatorAutopilot :machine="mg.machine" :to="{ kind: 'project', repo: rg.repo }" :disabled="Boolean(coordWhy(mg.machine))" compact />
                     <UButton
                       icon="i-lucide-plus" color="neutral" variant="outline" size="sm" class="board-head-add" :disabled="offlineView"
                       :aria-label="tl(`New task in ${rg.repo}`, `Nouvelle tâche dans ${rg.repo}`)" @click="newTask(mg.machine, rg.repo)"
@@ -615,3 +624,9 @@ function back() {
     <NewTaskSheet v-model:open="newOpen" :machines="ready.map(m => m.machine)" :repos="reposByMachine" :machine="newFor.machine" :repo="newFor.repo" @added="added" />
   </section>
 </template>
+
+<style scoped>
+.board-autopilots { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.board-autopilots > div { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.board-autopilots-machine { font: 500 10.5px/1.2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+</style>

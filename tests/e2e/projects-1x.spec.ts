@@ -39,6 +39,8 @@ case "$1" in
       elif [ -f "${told}/$co" ]; then echo '{"state":"starting","pane":""}'; else echo '{"state":"none","pane":""}'; fi ;;
     *) : > "${told}/$co"; echo "sent to the Coordinator" ;;
   esac ;;
+  # Autopilot (1.2.15+): every coordinator of the machine, all off.
+  autopilot) echo '[]' ;;
   add) echo "demo/7: added" ;;
   # delegate --worker.agent=X keeps X as the task's own setting, as 1.x does; set/unset --task change it.
   # A refusal the spec writes (a wait in a circle…) is said on stderr, as 1.x does.

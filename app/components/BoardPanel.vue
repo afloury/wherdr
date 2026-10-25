@@ -606,6 +606,9 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       />
     </header>
 
+    <div v-if="target.kind === 'coordinator'" class="board-panel-autopilot">
+      <CoordinatorAutopilot :key="JSON.stringify(target)" :machine="target.machine" :to="target.to" :disabled="!reachable" />
+    </div>
     <nav v-if="target.kind === 'task' && settled" class="board-panel-tabs" :aria-label="tl('Task views', 'Vues de la tâche')">
       <button v-for="tab in tabs" :key="tab" type="button" :class="{ on: selected === tab, 'board-panel-tab-reviewer': tab === 'reviewer', asks: tab === 'reviewer' && rvWait === 'open' }" :aria-pressed="selected === tab" :aria-label="tabLabel(tab)" :aria-description="tab === 'task' && newNote ? tl('New task details', 'Nouveaux détails de la tâche') : undefined" :title="tab === 'task' ? undefined : tab === 'reviewer' ? reviewerHint : agentHint" @click="choose(tab)">
         {{ tabLabel(tab) }}<i v-if="tab === 'task' && newNote" class="task-new" aria-hidden="true" />

@@ -52,6 +52,11 @@ const FR: Record<string, string> = {
   // herdr-projects 1.x tasks (server/utils/projectsTasks.ts)
   'herdr-projects 1.2.1 or later is not available on {machine}': 'herdr-projects 1.2.1 ou plus n’est pas disponible sur {machine}',
   'Invalid approval': 'Approbation invalide',
+  'Autopilot needs herdr-projects {min} or later on {machine} (it has {version}).': 'Autopilot nécessite herdr-projects {min} ou plus sur {machine} (version installée : {version}).',
+  'herdr-projects gave an Autopilot status wherdr cannot read.': 'herdr-projects a renvoyé un état Autopilot que wherdr ne sait pas lire.',
+  'An Autopilot goal is required (maximum 16000 characters).': 'Un objectif Autopilot est obligatoire (16000 caractères au plus).',
+  'Invalid Autopilot setting.': 'Réglage Autopilot invalide.',
+  'Invalid Autopilot action.': 'Action Autopilot invalide.',
   'This task cannot bypass approval checks': 'Cette tâche ne peut pas ignorer les contrôles d’approbation',
   'This failure needs the human first': 'Cet échec nécessite d’abord ton intervention',
   'Invalid task': 'Tâche invalide', 'Nothing to send': 'Rien à envoyer',
