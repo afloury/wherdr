@@ -97,7 +97,6 @@ describe('Board machine names', () => {
   })
 })
 
-
 describe('Board scope follows the sidebar tab', () => {
   const groups = [{ id: '*group:personal', name: 'Personal', machines: ['', 'laptop'] }]
   const machines = ['', 'laptop', 'work']
@@ -111,10 +110,18 @@ describe('Board scope follows the sidebar tab', () => {
   it('preserves manual choices during refreshes and resets on the next tab', () => {
     const selection = boardTabScope()
     expect(selection.update('*group:personal', machines, groups)).toBe('*group:personal')
-    selection.manual()
-    expect(selection.update('*group:personal', [...machines], [...groups])).toBeUndefined()
+    selection.manual(SCOPE_ALL)
+    expect(selection.update('*group:personal', [...machines], [...groups])).toBe(SCOPE_ALL)
     expect(selection.update('work', machines, groups)).toBe('work')
     expect(selection.update('*group:personal', machines, groups)).toBe('*group:personal')
+  })
+
+  it('keeps the choice when the Board is opened again on the same tab', () => {
+    const selection = boardTabScope()
+    selection.update('work', machines, groups)
+    selection.manual('laptop')
+    // A new Board view reads the same tab again.
+    expect(selection.update('work', machines, groups)).toBe('laptop')
   })
 
   it('waits for known Board machines without overriding a manual choice', () => {
@@ -123,8 +130,8 @@ describe('Board scope follows the sidebar tab', () => {
     expect(selection.update('work', machines, groups)).toBe('work')
     const manual = boardTabScope()
     manual.update('work', [], groups)
-    manual.manual()
-    expect(manual.update('work', machines, groups)).toBeUndefined()
+    manual.manual('')
+    expect(manual.update('work', machines, groups)).toBe('')
   })
 
   it('keeps the existing scope for no tab or a tab without Board machines', () => {

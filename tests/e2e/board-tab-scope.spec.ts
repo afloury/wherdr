@@ -31,6 +31,11 @@ test('Board follows the sidebar tab and keeps manual choices through refreshes',
   const before = reads
   await expect.poll(() => reads, { timeout: 20000 }).toBeGreaterThan(before)
   await expect(select).toContainText('All machines')
+  // Leaving the Board and coming back on the same tab keeps the choice.
+  await page.evaluate(() => { location.hash = '#/' })
+  await expect(page.locator('[data-bar-id="laptop"]')).toBeVisible()
+  await page.evaluate(() => { location.hash = '#/board' })
+  await expect(select).toContainText('All machines')
   await page.goto('/')
   await page.locator('[data-bar-id="laptop"]').click()
   await page.goto('/#/board')

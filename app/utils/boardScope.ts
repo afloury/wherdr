@@ -18,24 +18,27 @@ export const boardScopeMachine = (value: string | null | undefined) => (value ==
 // Appearance › Machine bar). Group IDs start with `*group:`: never a machine key.
 export const isGroupScope = (scope: string) => scope.startsWith('*group:')
 
-// One automatic choice per visit/tab. A late Board response may supply the
-// matching machine, but polling must never replace a choice made by hand.
+// The Board's scope follows the sidebar tab (the machine bar's pick): one
+// automatic choice per tab. A late Board read may still bring the tab's
+// machine; after that, and after a choice made by hand, refreshes and new
+// visits to the Board on the same tab keep what was chosen. The next tab
+// starts from its own selection.
 export function boardTabScope() {
   let tab: string | null | undefined
-  let settled = false
+  let chosen: string | undefined
   return {
-    manual() { settled = true },
+    manual(scope: string) { chosen = scope },
     update(pick: string | null, machines: readonly string[], groups: readonly MachineGroup[]): string | undefined {
-      if (pick !== tab) { tab = pick; settled = false }
-      if (settled || pick === null) return
+      if (pick !== tab) { tab = pick; chosen = undefined }
+      if (chosen !== undefined || pick === null) return chosen
       const group = groups.find(g => g.id === pick)
-      if (pick === SCOPE_ALL || (group ? group.machines.some(m => machines.includes(m)) : machines.includes(pick))) {
-        settled = true
-        return pick
-      }
+      if (pick === SCOPE_ALL || (group ? group.machines.some(m => machines.includes(m)) : machines.includes(pick))) return chosen = pick
     },
   }
 }
+
+// One per app, so that leaving the Board and coming back keeps the choice.
+export const boardTabChoice = boardTabScope()
 
 export type BoardScopeItem =
   | { label: string, value: string, icon?: string }

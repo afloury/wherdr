@@ -61,9 +61,8 @@ const boards = computed(() => (board.value?.machines || []).filter(m => m.status
 // The machine's key (the local one is ''), a machine group's ID (the home
 // list's groups, edited in Settings), or SCOPE_ALL.
 const scope = ref(boardScopeMachine(readStore(SCOPE_KEY)))
-const tabScope = boardTabScope()
 watch([machineBarPick, boards, barGroups], () => {
-  const next = tabScope.update(machineBarPick.value, boards.value.map(m => m.machine), barGroups.value)
+  const next = boardTabChoice.update(machineBarPick.value, boards.value.map(m => m.machine), barGroups.value)
   if (next !== undefined) scope.value = next
 }, { immediate: true })
 // A machine that went away, or a group deleted: every machine again. A group
@@ -78,8 +77,8 @@ const namesOnCards = computed(() => several.value && (scopeMachines.value === nu
 const scopeItems = computed<SelectItem[]>(() => boardScopeItems(boards.value.map(m => m.machine), machineLabel, tl('All machines', 'Toutes les machines'),
   barGroups.value, tl('Groups', 'Groupes'), tl('Machines', 'Machines')))
 function pickScope(v: string) {
-  tabScope.manual()
   scope.value = boardScopeMachine(v)
+  boardTabChoice.manual(scope.value)
   writeStore(SCOPE_KEY, v)
 }
 const shownBoards = computed(() => boards.value.filter(m => inScope(m.machine)))
