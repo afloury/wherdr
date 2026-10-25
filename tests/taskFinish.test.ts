@@ -95,3 +95,26 @@ describe('conversation-only tasks (CLI 1.2.16)', () => {
     }
   })
 })
+
+describe('work limit consumption from CLI details', () => {
+  it('reads the running time and cumulative tokens', () => {
+    const d = parseTaskDetails(JSON.stringify({ task: { id: 'demo/9' }, limits: { time: { limit: '2h', used: '1h12m' }, tokens: { limit: '2m', used: 1, total: 1500000 } } }))
+    expect(d.limits).toEqual({ time: '2h', timeUsed: '1h12m', tokens: '2m', tokensUsed: 1500000 })
+  })
+  it('reads stopped time in milliseconds without inventing a token stop duration', () => {
+    for (const [used, text] of [[7200000, '2h'], [7260000, '2h1m'], [61000, '1m1s'], [0, '0s']] as const) {
+      expect(parseTaskDetails(JSON.stringify({ task: { id: 'demo/9' }, limits: { stopped: { what: 'time', used } } })).limits?.timeUsed).toBe(text)
+    }
+    expect(parseTaskDetails(JSON.stringify({ task: { id: 'demo/9' }, limits: { stopped: { what: 'tokens', used: 2000000 } } })).limits?.timeUsed).toBe('')
+  })
+  it('preserves only a recognized stopped-limit dimension', () => {
+    for (const what of ['time', 'tokens', 'provider', undefined]) {
+      const d = parseTaskDetails(JSON.stringify({ task: { id: 'demo/9' }, limits: { stopped: { what } } }))
+      expect(d.limits?.stopped).toBe(what === 'time' || what === 'tokens' ? what : undefined)
+    }
+  })
+  it('keeps absent limits and missing usage unknown', () => {
+    expect(parseTaskDetails('{"task":{"id":"demo/9"}}').limits).toBeUndefined()
+    expect(parseTaskDetails('{"task":{"id":"demo/9"},"limits":{"time":{"limit":"none"},"tokens":{"limit":"none"}}}').limits).toEqual({ time: 'none', timeUsed: '', tokens: 'none', tokensUsed: null })
+  })
+})

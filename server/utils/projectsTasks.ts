@@ -449,6 +449,23 @@ export async function taskCommand(machine: unknown, id: unknown, action: unknown
   return { ok: true, msg: firstLine(out) }
 }
 
+// Raising a task limit resumes it in the CLI; never follow this with retry.
+export async function raiseTaskLimit(machine: unknown, id: unknown, name: unknown, value: unknown) {
+  const m = boardOf(machine)
+  const tid = checkId(id)
+  if ((name !== 'limit.time' && name !== 'limit.tokens') || typeof value !== 'string' || !value.trim() || value.length > 40 || /[\r\n\0]/.test(value)) {
+    throw new HerdrError('bad_action', 'Invalid settings')
+  }
+  const row = await taskOf(m, tid)
+  if (!row || row.archived || row.stage !== 'stopped' || row.state !== 'blocked') throw refused('retry')
+  const details = parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
+  if (!details.limits?.stopped || name !== `limit.${details.limits.stopped}`) throw new HerdrError('bad_action', 'Invalid settings')
+  // CLI validates units and refuses invalid values without changing the task.
+  const out = await command(m, ['set', name, value.trim(), '--task', tid])
+  forget(m)
+  return { ok: true, msg: firstLine(out) }
+}
+
 const taskShow = (m: Machine, id: string) => command(m, ['show', '--json', '--', id], LIST_TIMEOUT_MS)
 
 // Puts back what the task had before an agent was picked for one start, while

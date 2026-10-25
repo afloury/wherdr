@@ -543,6 +543,47 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     expect(calls.filter(c => c[0] === 'review')).toEqual([['review', '--', 'demo/13']])
   })
 
+  it.each([['limit.time', '4h'], ['limit.tokens', '3m'], ['limit.tokens', 'none']])('sets only the chosen %s on the target machine and invalidates the list', async (name, value) => {
+    const usedMachines: string[] = []
+    T.setRunner(async (m, _launcher, args) => {
+      calls.push(args)
+      usedMachines.push(m.key)
+      return { code: 0, stdout: args[0] === 'list' ? JSON.stringify([{ id: 'demo/10', stage: 'stopped', state: 'blocked' }]) : args[0] === 'details' ? JSON.stringify({ task: { id: 'demo/10' }, limits: { stopped: { what: name.slice(6) } } }) : 'Resuming', stderr: '' }
+    })
+    await T.raiseTaskLimit('remote', 'demo/10', name, value)
+    expect(calls.filter(c => c[0] === 'set')).toEqual([['set', name, value, '--task', 'demo/10']])
+    expect(calls.some(c => c[0] === 'retry')).toBe(false)
+    expect(usedMachines.every(m => m === 'remote')).toBe(true)
+    await T.taskCommand('remote', 'demo/10', 'retry')
+    expect(calls.filter(c => c[0] === 'list')).toHaveLength(2)
+  })
+
+  it.each(['tokens', undefined])('refuses a ceiling that cannot lift a %s stop before changing settings', async stopped => {
+    T.setRunner(async (_m, _launcher, args) => {
+      calls.push(args)
+      return { code: 0, stderr: '', stdout: args[0] === 'list'
+        ? JSON.stringify([{ id: 'demo/10', stage: 'stopped', state: 'blocked' }])
+        : JSON.stringify({ task: { id: 'demo/10' }, limits: { stopped: { what: stopped } } }) }
+    })
+    await expect(T.raiseTaskLimit('remote', 'demo/10', 'limit.time', '4h')).rejects.toThrow('Invalid settings')
+    expect(calls.some(c => c[0] === 'set' || c[0] === 'retry')).toBe(false)
+  })
+
+  it('exposes a CLI refusal and rejects unrelated settings and provider quota waits', async () => {
+    T.setRunner(async (_m, _launcher, args) => {
+      calls.push(args)
+      if (args[0] === 'details') return { code: 0, stdout: JSON.stringify({ task: { id: 'demo/10' }, limits: { stopped: { what: 'time' } } }), stderr: '' }
+      return args[0] === 'list'
+        ? { code: 0, stdout: JSON.stringify([{ id: 'demo/10', stage: 'stopped', state: 'blocked' }, { id: 'demo/11', stage: 'asks', state: 'blocked', msg: 'Provider quota' }]), stderr: '' }
+        : { code: 1, stdout: '', stderr: 'Invalid duration: choose 4h' }
+    })
+    await expect(T.raiseTaskLimit('', 'demo/10', 'limit.time', 'bad')).rejects.toThrow('Invalid duration: choose 4h')
+    await expect(T.raiseTaskLimit('', 'demo/11', 'limit.tokens', '3m')).rejects.toThrow()
+    await expect(T.raiseTaskLimit('', 'demo/10', 'merge.by', 'itself')).rejects.toThrow()
+    expect(calls.filter(c => c[0] === 'set')).toHaveLength(1)
+    expect(calls.some(c => c[0] === 'retry')).toBe(false)
+  })
+
   it('Finish takes the work as it is where 1.x finish does, and is refused elsewhere', async () => {
     listReply = { code: 0, stdout: JSON.stringify([
       { id: 'demo/10', state: 'blocked', app: 'claude', title: 'Limit', stage: 'stopped', msg: 'Stopped at its 2h limit' },

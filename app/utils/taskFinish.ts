@@ -8,8 +8,8 @@ export function finishHint(c: FinishCase): string {
   switch (c) {
     case 'conversation': return tl('End this conversation when you are done.', 'Termine cette conversation quand tu as fini.')
     case 'limit': return tl(
-      'Retry: the agent goes on, with the same limit again. Finish: the work is taken as it is, checked, then reviewed.',
-      'Réessayer : l’agent continue, avec la même limite. Terminer : le travail est pris tel quel, vérifié, puis relu.')
+      'Continue grants a new allowance. Raising the limit keeps usage and resumes automatically. Take as is: checks, then review. These work limits are separate from provider quotas.',
+      'Continuer accorde une nouvelle tranche. Relever la limite conserve la consommation et reprend automatiquement. Prendre tel quel : vérifications puis relecture. Ces limites de travail sont distinctes des quotas fournisseur.')
     case 'nosummary': return tl(
       'Retry: the agent goes on. Finish: the work is taken as it is, its screen as the summary, checked, then reviewed.',
       'Réessayer : l’agent continue. Terminer : le travail est pris tel quel, son écran comme résumé, vérifié, puis relu.')

@@ -259,8 +259,8 @@ describe('task panel', () => {
     expect(banner.text()).not.toContain('Finish again for a fresh review')
     // Its buttons would act on the old failure: not offered.
     expect(banner.text()).not.toContain('Send the error to the agent')
-    expect(banner.findAll('button').map(b => b.text())).toEqual(expect.arrayContaining(['Retry', 'Finish']))
-    expect(banner.find('.task-finish-why').text()).toContain('the same limit again')
+    expect(banner.findAll('button').map(b => b.text())).toEqual(expect.arrayContaining(['Continue', 'Raise limit', 'Take as is']))
+    expect(banner.find('.task-finish-why').text()).toContain('new allowance')
     w.unmount()
   })
   // WHR-13: the agent started again and asks something new.
@@ -447,7 +447,7 @@ describe('task panel', () => {
     stage = 'stopped'
     const task = { ...row(), stage, state: 'blocked', msg: 'Stopped at its token limit', group: 'needs' as const }
     const w = await panel({ task })
-    const finish = () => w.findAll('.task-needs button').find(b => b.text() === 'Finish')!
+    const finish = () => w.findAll('.task-needs button').find(b => b.text() === 'Take as is')!
     await vi.waitFor(() => expect(finish().attributes('disabled')).toBeUndefined())
     expect(finish().attributes('title')).toBe('Take the work as it is: checks, then review')
     decision.yes = false
