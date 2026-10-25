@@ -118,12 +118,16 @@ export function settingArgs(c: { name?: unknown, repo?: unknown, value?: unknown
 // Settings whose change acts at once on work already under way, across the
 // board (herdr-projects reads them right before the step). The key the caller
 // turns into a sentence (app/utils/boardSettings.ts).
-export type SettingWarning = 'mergeItself' | 'mergeNoChecks' | 'noReview' | 'mayMergeItself' | 'boardAgents' | 'noCoordinator'
+export type SettingWarning = 'mergeItself' | 'mergeNoChecks' | 'noReview' | 'mayMergeItself' | 'mayMergeNoChecks' | 'boardAgents' | 'noCoordinator'
 export function settingWarning(name: string, value: string | null): SettingWarning | null {
   // Capacity changes immediately, including when restoring the inherited value.
   if (name === 'board.agents') return 'boardAgents'
   // `unset`: the inherited value applies at once; it may be the risky one.
-  if (value === null) return name === 'merge.by' ? 'mayMergeItself' : null
+  if (value === null) {
+    if (name === 'merge.by') return 'mayMergeItself'
+    if (name === 'merge.checks') return 'mayMergeNoChecks'
+    return null
+  }
   const v = value.trim()
   if (name === 'merge.by' && v === 'itself') return 'mergeItself'
   if (name === 'merge.checks' && v === 'none') return 'mergeNoChecks'
