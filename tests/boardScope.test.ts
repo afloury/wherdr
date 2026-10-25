@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SCOPE_ALL, SCOPE_LOCAL, boardMachineLabel, boardScopeItems, boardScopeMachine, boardScopeMachines, boardScopeValue, boardShownScope } from '../app/utils/boardScope'
+import { SCOPE_ALL, SCOPE_LOCAL, boardTabScope as tabScope, boardMachineLabel, boardScopeItems, boardScopeMachine, boardScopeMachines, boardScopeValue, boardShownScope } from '../app/utils/boardScope'
 import type { MachineGroup } from '../app/utils/machineBar'
 
 const labels: Record<string, string> = { '': 'Server', laptop: 'Laptop', devbox: 'devbox' }
@@ -94,5 +94,111 @@ describe('Board machine names', () => {
     expect(boardMachineLabel('', '', 'Server')).toBe('Server')
     expect(boardMachineLabel('', 'This machine', 'Server')).toBe('This machine')
     expect(boardMachineLabel('mb', '', 'Server')).toBe('mb')
+  })
+})
+
+describe('Board scope follows the sidebar tab', () => {
+  // The device's storage, shared by the "page loads" of a test.
+  const device = () => {
+    let value: string | null = null
+    return { read: () => value, write: (v: string | null) => { value = v } }
+  }
+  const boardTabScope = (store = device()) => tabScope(store)
+  const groups = [{ id: '*group:personal', name: 'Personal', machines: ['', 'laptop'] }]
+  const machines = ['', 'laptop', 'work']
+
+  it('opens with each tab, including the local machine and groups', () => {
+    for (const tab of ['', 'work', '*group:personal', SCOPE_ALL]) {
+      expect(boardTabScope().update(tab, machines, groups)).toBe(tab)
+    }
+  })
+
+  it('preserves manual choices during refreshes and resets on the next tab', () => {
+    const selection = boardTabScope()
+    expect(selection.update('*group:personal', machines, groups)).toBe('*group:personal')
+    selection.manual(SCOPE_ALL)
+    expect(selection.update('*group:personal', [...machines], [...groups])).toBe(SCOPE_ALL)
+    // A tab tapped (useMachineBar.ts forgets the choice made by hand).
+    selection.forget()
+    expect(selection.update('work', machines, groups)).toBe('work')
+    expect(selection.update('*group:personal', machines, groups)).toBe('*group:personal')
+  })
+
+  it('keeps the choice when the Board is opened again on the same tab', () => {
+    const selection = boardTabScope()
+    selection.update('work', machines, groups)
+    selection.manual('laptop')
+    // A new Board view reads the same tab again.
+    expect(selection.update('work', machines, groups)).toBe('laptop')
+  })
+
+  it('resets after tab changes while the Board is closed', () => {
+    const selection = boardTabScope()
+    selection.update('work', machines, groups)
+    selection.manual(SCOPE_ALL)
+    selection.followTab('*group:personal')
+    selection.forget()
+    selection.followTab('work')
+    expect(selection.update('work', machines, groups)).toBe('work')
+  })
+
+  it('waits for known Board machines without overriding a manual choice', () => {
+    const selection = boardTabScope()
+    expect(selection.update('work', [], groups)).toBeUndefined()
+    expect(selection.update('work', machines, groups)).toBe('work')
+    const manual = boardTabScope()
+    manual.update('work', [], groups)
+    manual.manual('')
+    expect(manual.update('work', machines, groups)).toBe('')
+  })
+
+  it('keeps the existing scope for no tab or a tab without Board machines', () => {
+    const selection = boardTabScope()
+    for (const tab of [null, 'unknown', '*group:empty', '*group:personal']) {
+      expect(selection.update(tab, ['work'], [...groups, { id: '*group:empty', name: 'Empty', machines: [] }])).toBeUndefined()
+    }
+  })
+
+  it('keeps a choice made by hand through a page reload on the same tab', () => {
+    const store = device()
+    const before = boardTabScope(store)
+    before.update(SCOPE_ALL, machines, groups)
+    before.manual('')
+    // The reloaded page: the pick passes through All before the machines arrive.
+    const after = boardTabScope(store)
+    after.followTab(SCOPE_ALL)
+    expect(after.update(SCOPE_ALL, machines, groups)).toBe('')
+    // Another tab starts from its own selection: the choice belongs to the All tab.
+    expect(boardTabScope(store).update('laptop', machines, groups)).toBe('laptop')
+  })
+
+  it('restores the hand choice once a late tab arrives during the page load', () => {
+    const store = device()
+    const before = boardTabScope(store)
+    before.update('work', machines, groups)
+    before.manual(SCOPE_ALL)
+    const after = boardTabScope(store)
+    expect(after.update(SCOPE_ALL, [], groups)).toBe(SCOPE_ALL)
+    expect(after.update('work', machines, groups)).toBe(SCOPE_ALL)
+  })
+
+  it('drops the hand choice once another tab is chosen', () => {
+    const store = device()
+    const selection = boardTabScope(store)
+    selection.update('work', machines, groups)
+    selection.manual(SCOPE_ALL)
+    selection.followTab('laptop')
+    selection.forget()
+    selection.followTab('work')
+    expect(selection.update('work', machines, groups)).toBe('work')
+    expect(boardTabScope(store).update('work', machines, groups)).toBe('work')
+  })
+
+  it('ignores a stored value it did not write', () => {
+    const store = device()
+    store.write('not json')
+    expect(boardTabScope(store).update('work', machines, groups)).toBe('work')
+    store.write(JSON.stringify({ tab: 'work' }))
+    expect(boardTabScope(store).update('work', machines, groups)).toBe('work')
   })
 })
