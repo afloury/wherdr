@@ -571,7 +571,7 @@ const FR: Record<string, string> = {
   'Herdr server not responding': 'Serveur Herdr muet',
   'SSH connection closed (code {code})': 'Connexion SSH fermée (code {code})',
   'SSH connection failed (timed out)': 'Connexion SSH impossible (délai dépassé)',
-  'Remote SSH shell must support POSIX commands. On Windows, set OpenSSH DefaultShell to Git Bash (see Machines documentation).': 'Le shell SSH distant doit accepter les commandes POSIX. Sous Windows, configurez OpenSSH DefaultShell avec Git Bash (voir la documentation Machines).',
+  'Remote SSH shell must support POSIX commands. On Windows, set OpenSSH DefaultShell to Git Bash (docs/machines.md, “Windows remote machines”).': 'Le shell SSH distant doit accepter les commandes POSIX. Sous Windows, configurez OpenSSH DefaultShell avec Git Bash (docs/machines.md, « Windows remote machines »).',
   'Remote Herdr must provide remote-api-bridge (Herdr 0.9.3 or later).': 'Herdr distant doit fournir remote-api-bridge (Herdr 0.9.3 ou ultérieur).',
   'Probe failed (code {code})': 'Sonde échouée (code {code})',
   '{reason} on {machine}': '{reason} sur {machine}',
