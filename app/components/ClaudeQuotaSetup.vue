@@ -35,7 +35,7 @@ async function install(r: ClaudeSetupRow) {
 
 <template>
   <div class="claude-quotas">
-    <p v-if="intro" class="muted settings-lead">{{ tl('Claude Code only gives its usage limits to its status line. wherdr’s status line displays nothing and keeps the one you have; the quotas then show on the home screen after the next exchange with a Claude.', 'Claude Code ne donne ses limites d’usage qu’à sa barre d’état. Celle de wherdr n’affiche rien et garde la tienne ; les quotas apparaissent ensuite sur l’accueil après le prochain échange avec un Claude.') }}</p>
+    <p v-if="intro" class="muted settings-lead">{{ tl('Claude Code only gives its quotas to its status line. wherdr’s status line displays nothing and keeps the one you have; the quotas then show on the home screen after the next exchange with a Claude.', 'Claude Code ne donne ses quotas qu’à sa barre d’état. Celle de wherdr n’affiche rien et garde la tienne ; les quotas apparaissent ensuite sur l’accueil après le prochain échange avec un Claude.') }}</p>
     <p v-if="!rows.length" class="muted claude-quotas-empty">{{ tl('Claude Code is not installed on the online machines.', 'Claude Code n’est installé sur aucune machine en ligne.') }}</p>
     <div v-for="r in rows" :key="r.key" class="claude-quotas-machine" :data-machine="r.key || 'local'">
       <div class="claude-quotas-head">

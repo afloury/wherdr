@@ -23,7 +23,7 @@ export function taskSummary(members: Member[]): TaskSummary {
     const g = memberGroup(m)
     if (g ? g === 'needs' : rowGroup(m.row) === 'blocked') s.blocked++
     else if (g ? g === 'working' : rowGroup(m.row) === 'working') s.working++
-    // The pane the row shows: the one its card tags with "Limit".
+    // The pane the row shows: the one its card tags with "Quota" (a provider quota, not a task limit).
     if (m.row.lead.usageLimit) s.limit++
   }
   return s
@@ -40,6 +40,6 @@ export function summaryParts(s: TaskSummary, tl: (en: string, fr: string) => str
   }]
   if (s.blocked) parts.push({ key: 'blocked', text: tl(`${s.blocked} your turn`, `${s.blocked} à toi`) })
   if (s.working) parts.push({ key: 'working', text: tl(`${s.working} working`, `${s.working} en cours`) })
-  if (s.limit) parts.push({ key: 'limit', text: s.limit === 1 ? tl('1 limit', '1 limite') : tl(`${s.limit} limits`, `${s.limit} limites`) })
+  if (s.limit) parts.push({ key: 'limit', text: s.limit === 1 ? tl('1 quota', '1 quota') : tl(`${s.limit} quotas`, `${s.limit} quotas`) })
   return parts
 }

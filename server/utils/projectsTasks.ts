@@ -416,6 +416,19 @@ export async function tellTask(machine: unknown, id: unknown, text: unknown): Pr
   return { ok: true, msg: firstLine(out) }
 }
 
+// Description is opaque data: pass it unchanged as one argv item; the CLI owns normalization.
+export async function describeTask(machine: unknown, id: unknown, text: unknown): Promise<{ ok: true, msg: string }> {
+  const m = boardOf(machine)
+  const tid = checkId(id)
+  if (!m.local && m.status !== 'online') throw new HerdrError('offline', fmt('{machine} is unreachable', { machine: m.label }))
+  if (typeof text !== 'string' || text.includes('\0')) throw new HerdrError('bad_action', 'Invalid description')
+  const file = await readTaskFile(m, tid)
+  if (file?.archivedAt || (await taskOf(m, tid))?.archived) throw new HerdrError('bad_action', 'Archived tasks are read-only')
+  const out = await command(m, ['describe', '--', tid, text], ACTION_TIMEOUT_MS, true)
+  forget(m)
+  return { ok: true, msg: firstLine(out) }
+}
+
 export async function approveTask(machine: unknown, id: unknown, anyway: unknown = false): Promise<{ ok: true, msg: string }> {
   const m = boardOf(machine)
   const tid = checkId(id)
@@ -516,6 +529,18 @@ function settingsRepo(repo: unknown): string {
   if (typeof r !== 'string' || (r && (!cleanRepo(r) || r.startsWith('/') || r.startsWith('~')))) throw new HerdrError('bad_repo', 'Invalid repository')
   return r
 }
+// Bulk archive stays a single CLI operation: the CLI owns eligibility (including pins).
+export async function archiveDoneTasks(machine: unknown, repo: unknown) {
+  const m = boardOf(machine)
+  const r = settingsRepo(repo)
+  if (!r) throw new HerdrError('bad_repo', 'Invalid repository')
+  const launcher = await launcherOf(m)
+  try {
+    const result = await serial(m.key, () => runner(m, launcher, ['archive', '--done', '--repo', r], ACTION_TIMEOUT_MS))
+    return { ...result, machine: m.key }
+  } finally { forget(m) }
+}
+
 async function readBoardSettings(m: Machine, repo: string): Promise<BoardSettings> {
   const [raw, agents] = await Promise.all([
     command(m, ['show', '--json', ...(repo ? [`--repo=${repo}`] : [])], LIST_TIMEOUT_MS, true),
