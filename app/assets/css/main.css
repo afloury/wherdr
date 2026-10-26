@@ -1837,7 +1837,7 @@ body.kb .composer { padding-bottom: 8px; }
 .slash-denied-label .iconify { width: 14px; height: 14px; color: var(--ochre); flex: none; }
 .slash-denied .dir-denied-path { font-size: 11.5px; }
 .prompt {
-  padding: 4px 6px 6px; gap: 2px;
+  position: relative; padding: 4px 6px 6px; gap: 2px;
   background: var(--bg-2); border: 1px solid var(--input-line); box-shadow: none; backdrop-filter: none;
   transition: border-color .15s ease;
 }
@@ -1845,12 +1845,14 @@ body.kb .composer { padding-bottom: 8px; }
    data-focus-border on <html>). "off": the plain 1 px accent border. */
 .prompt:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, transparent); outline: none; }
 /* "border" and "halo" (default): the whole 1 px border takes the agent's color and a second
-   color glides slowly around it. A conic gradient whose start angle is the registered
-   --fx-a: no JS, and nothing runs while the field does not have the focus. The agent's color
-   is toned down a little toward the field's background so that the second color reads on it
-   (the herdr mauve on the Claude orange, for instance). */
-@property --fx-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
-@keyframes fx-turn { to { --fx-a: 360deg; } }
+   color glides slowly around it. The agent's color is toned down a little toward the field's
+   background so that the second color reads on it (the herdr mauve on the Claude orange, for
+   instance). On the field, a conic gradient on a square (.fx-spin) turns under a fixed mask
+   (.fx-ring: the 1 px border; .fx-halo: the glow): only `transform` is animated, which the
+   compositor runs alone. Animating the gradient's angle instead recomputed the page's style
+   on every frame (more than half of the main thread while the field had the focus). No JS,
+   and nothing runs while the field does not have the focus. omp's console below uses the
+   same ring while its last action runs. */
 .composer, .tools.omp-console {
   --fx-speed: 10s;                /* one full turn */
   --fx-glow: 8px;                 /* depth of the halo */
@@ -1859,12 +1861,10 @@ body.kb .composer { padding-bottom: 8px; }
   --fx-1: color-mix(in srgb, var(--fx-base) 70%, var(--fx-fill));
   --fx-2: var(--blue);
 }
-/* The ring, declared on the animated elements themselves: --fx-a does not inherit. The second
-   color holds for a sixth of the turn, with a sixth of fade on each side: on a wide box, a
-   conic gradient's arc is short in the middle of the long sides. */
-.prompt, .tools.omp-console::after {
-  --fx-ring: conic-gradient(from var(--fx-a),
-    var(--fx-1) 0deg, var(--fx-2) 60deg, var(--fx-2) 120deg, var(--fx-1) 180deg, var(--fx-1) 360deg);
+/* The ring. The second color holds for a sixth of the turn, with a sixth of fade on each side:
+   on a wide box, a conic gradient's arc is short in the middle of the long sides. */
+.fx-spin {
+  --fx-ring: conic-gradient(var(--fx-1) 0deg, var(--fx-2) 60deg, var(--fx-2) 120deg, var(--fx-1) 180deg, var(--fx-1) 360deg);
 }
 .composer[data-agent="claude"] { --fx-base: var(--claude); --fx-2: var(--ring-2, var(--accent)); }
 .composer[data-agent="codex"] { --fx-base: var(--codex); --fx-2: var(--ring-2, var(--accent)); }
@@ -1872,32 +1872,37 @@ body.kb .composer { padding-bottom: 8px; }
 /* omp themes: their accent is the omp magenta's neighbour; glide the cyan / blue instead. */
 :root[data-theme="omp"] :is(.composer[data-agent="omp"], .tools.omp-console) { --fx-2: var(--teal); }
 :root[data-theme="omp-light"] :is(.composer[data-agent="omp"], .tools.omp-console) { --fx-2: var(--blue); }
-:root:not([data-focus-border="off"]) .prompt:focus-within {
-  border-color: transparent;
-  background: linear-gradient(var(--bg-2), var(--bg-2)) padding-box, var(--fx-ring) border-box;
-  animation: fx-turn var(--fx-speed) linear infinite;
-}
-/* omp's console while its last action runs (ChatView `live`, only the last group): the same
-   ring, "border only" whatever the field's setting, and none with "off". On a pseudo-element
-   masked to the 1 px border so that it fades out when the group ends; the animation only
-   runs while the group is live. */
-.tools.omp-console { position: relative; --fx-fill: var(--code-bg); }
-.tools.omp-console::after {
-  content: ''; position: absolute; inset: -1px; padding: 1px; pointer-events: none;
-  background: var(--fx-ring); opacity: 0; transition: opacity .4s ease;
+:root:not([data-focus-border="off"]) .prompt:focus-within { border-color: transparent; }
+/* Both masks are as big as what they show (container units size the square): the square is
+   at least as wide as the diagonal, so it covers them whatever its angle. */
+.fx-ring, .fx-halo { display: none; position: absolute; pointer-events: none; overflow: hidden; container-type: size; }
+:root:not([data-focus-border="off"]) .prompt:focus-within .fx-ring { display: block; }
+.fx-ring {
+  inset: -1px; padding: 1px; z-index: 1;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
 }
-:root:not([data-focus-border="off"]) .tools.omp-console.live::after {
-  opacity: 1; animation: fx-turn var(--fx-speed) linear infinite;
+.fx-spin {
+  position: absolute; left: 50%; top: 50%; width: calc(100cqw + 100cqh); aspect-ratio: 1;
+  background: var(--fx-ring); will-change: transform;
+  transform: translate(-50%, -50%) rotate(0deg);
+  animation: fx-spin var(--fx-speed) linear infinite;
 }
+@keyframes fx-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+/* omp's console while its last action runs (ChatView `live`, only the last group): the same
+   ring (.omp-ring), "border only" whatever the field's setting, and none with "off". Kept in
+   place so that it fades out when the group ends; it only turns while the group is live. */
+.tools.omp-console { position: relative; --fx-fill: var(--code-bg); }
+.tools.omp-console .omp-ring { display: block; opacity: 0; transition: opacity .4s ease; }
+.omp-ring .fx-spin { animation: none; }
+:root:not([data-focus-border="off"]) .tools.omp-console.live .omp-ring { opacity: 1; }
+:root:not([data-focus-border="off"]) .tools.omp-console.live .omp-ring .fx-spin { animation: fx-spin var(--fx-speed) linear infinite; }
 /* "halo": the same ring, faint and fading outward, under the field (its opaque background
    hides the inner part). A masked gradient, not a blur filter (cheap on an iPhone). */
 :root[data-focus-border="halo"] .composer { isolation: isolate; }
-:root[data-focus-border="halo"] .prompt { position: relative; }
-:root[data-focus-border="halo"] .prompt:focus-within::before {
-  content: ''; position: absolute; inset: calc(-1px - var(--fx-glow)); z-index: -1; pointer-events: none;
-  background: var(--fx-ring); opacity: .32;
+:root[data-focus-border="halo"] .prompt:focus-within .fx-halo { display: block; }
+.fx-halo {
+  inset: calc(-1px - var(--fx-glow)); z-index: -1; opacity: .32;
   --fx-fade-y: linear-gradient(to bottom, transparent, #000 var(--fx-glow), #000 calc(100% - var(--fx-glow)), transparent);
   --fx-fade-x: linear-gradient(to right, transparent, #000 var(--fx-glow), #000 calc(100% - var(--fx-glow)), transparent);
   -webkit-mask: var(--fx-fade-y), var(--fx-fade-x); -webkit-mask-composite: source-in;
@@ -1905,8 +1910,7 @@ body.kb .composer { padding-bottom: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   /* Still colored all around, frozen. */
-  :root:not([data-focus-border="off"]) .prompt:focus-within,
-  :root:not([data-focus-border="off"]) .tools.omp-console.live::after { animation: none; --fx-a: 135deg; }
+  .fx-spin, :root:not([data-focus-border="off"]) .tools.omp-console.live .omp-ring .fx-spin { animation: none; transform: translate(-50%, -50%) rotate(135deg); }
 }
 .prompt-body { padding: 0; }
 .prompt-input {
@@ -2087,6 +2091,7 @@ body.kb .composer { padding-bottom: 8px; }
   display: flex; align-items: center; gap: 14px; text-align: left;
   padding: 14px 8px; font-size: 16px; color: var(--text);
 }
+.menu button:disabled { opacity: .5; cursor: default; }
 .menu button:active { background: var(--surface-2); }
 .menu button.danger { color: var(--rose); }
 .menu .menu-note { color: var(--muted); font-size: 13px; padding: 8px 8px 10px; line-height: 1.45; }
@@ -2147,6 +2152,11 @@ body.kb .composer { padding-bottom: 8px; }
 .name-note { margin: 8px 2px 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .name-note code { font-family: var(--mono); color: var(--text); }
 .form-error.name-note { color: var(--rose); }
+.project-folder { margin: 8px 2px 14px; font-size: 13px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+.project-folder code { font-family: var(--mono); color: var(--text); white-space: nowrap; }
+.form-error.project-folder { color: var(--rose); }
+.project-folder-tag { display: inline-block; margin-right: 6px; padding: 1px 6px; border: 1px solid currentColor; font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--text); vertical-align: 1px; }
+.project-folder-tag.new { color: var(--accent, var(--text)); }
 
 .segmented { display: grid; grid-template-columns: repeat(var(--segment-count), minmax(0, 1fr)); border: 1px solid var(--line); }
 .segmented button {
@@ -3815,7 +3825,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-notes { flex: none; display: flex; flex-direction: column; gap: 10px; margin: 12px 16px 0; }
 /* The side panel: one agent to talk to (a task's, a coordinator), in the agent
    view's side-by-side cell. Beside the Board on a computer, full screen on a phone. */
-:root { --board-panel-w: clamp(320px, clamp(400px, 44vw, 720px), calc(100vw - var(--side) - 280px)); }
+:root { --board-panel-w: clamp(320px, clamp(400px, 44vw, 720px), calc(100vw - var(--side) - 640px)); }
 @media (min-width: 900px), (min-width: 700px) and (min-height: 700px), (min-width: 700px) and (min-device-width: 700px) and (min-device-height: 700px) and (pointer: coarse) {
   .board-panel .panel-handle { left: auto; right: var(--board-panel-w); }
   body:has(.board-panel.resizing) { cursor: col-resize; user-select: none; }
@@ -3940,7 +3950,12 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 /* A Working task with no agent running (shared/taskActivity.ts): "CI 1/2" while
    the board waits for GitHub checks, "QUEUED · DEMO-3" while it waits its turn.
    Its Working tag goes quiet; nothing on it reads as running. */
-.task-activity { flex: none; padding: 3px 6px; border: 1px dashed currentColor; font: 600 9.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+.task-activity { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; padding: 3px 6px; border: 1px dashed currentColor; font: 600 9.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+/* Keep the task title on its own line, independent of the wait reference. */
+.board-panel-who > .task-activity { align-self: flex-start; flex: none; order: 3; }
+/* A one-line home row: the badge gives way first, the title keeps room to read. */
+.card.compact:not(.home-task-two) .task-activity { max-width: 45%; }
+.card.compact .card-title:has(~ .task-activity) { min-width: 8ch; }
 .task-activity[data-kind="ci"] { color: var(--blue); }
 .task-activity[data-kind="queued"] { color: var(--text-3); }
 .activity-ci .task-state.working, .activity-queued .task-state.working { color: var(--text-3); border-color: var(--line); }
@@ -3980,6 +3995,16 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-sheet-facts dd.pass { color: var(--green); }
 .task-sheet-facts dd.fail { color: var(--rose); }
 .task-sheet-facts a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
+/* Task limits: one thin gauge each, a 1 px rule filled in accent, red near the end. */
+.task-limits { display: flex; flex-direction: column; gap: 10px; }
+.task-limit-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 5px; }
+.task-limit-label { font: 600 10px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.task-limit-value { font: 500 12px/1.4 var(--mono); font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
+.task-limit-bar { position: relative; height: 3px; }
+.task-limit-bar::before { content: ''; position: absolute; left: 0; right: 0; top: 1px; height: 1px; background: var(--line-strong); }
+.task-limit-bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
+.task-limit.hot .task-limit-bar > i { background: var(--danger); }
+.task-limit.hot .task-limit-value { color: var(--danger); }
 .task-sheet-block h4 { margin: 0 0 6px; font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .task-sheet-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; color: var(--text-2); }
 .task-handover-list { list-style: none; padding: 0; margin: 0; }
@@ -4062,6 +4087,9 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-more:hover { border-color: var(--mauve); color: var(--mauve); }
 .board-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line-soft); background: var(--surface); text-align: left; cursor: pointer; }
 .board-card:hover { border-color: var(--line); background: var(--surface-2); }
+/* Its task open in the side panel: the sidebar's selection accent (mauve; rose when it needs you), on every size. */
+.board-card.sel, .board-card.sel:hover { border-color: var(--mauve); background: var(--surface-2); box-shadow: inset 2px 0 0 var(--mauve); }
+.board-card.sel.needs, .board-card.sel.needs:hover { border-color: var(--rose); box-shadow: inset 2px 0 0 var(--rose); }
 
 .board-card.stale { opacity: .55; }
 .board-card-head { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
@@ -4234,5 +4262,66 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-card .board-card-head { flex-wrap: wrap; }
 .board-panel[data-kind="task"] .board-panel-who > .task-agent-mark { order: 3; flex: 0 0 100%; }
 
+/* Raise the limit: one tap per preset, above the typed value. */
+.raise-limit-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); }
+.raise-limit-presets > button { border-radius: 0; flex-direction: column; justify-content: center; gap: 2px; min-height: 58px; box-shadow: none; border: 0; border-left: 1px solid var(--line); }
+.raise-limit-presets > button:first-child { border-left: 0; }
+.raise-limit-op { font: 600 13px/1.2 var(--mono); letter-spacing: .04em; }
+.raise-limit-to { font: 500 11px/1.2 var(--mono); color: var(--muted); }
+.task-limit.unset .task-limit-value { color: var(--muted); }
+.task-limit-total { margin: 0; font: 500 11px/1.4 var(--mono); color: var(--muted); }
 /* A quiet source stays identifiable without competing with its state. */
 .notification-muted { color: var(--muted); width: 12px; height: 12px; flex-shrink: 0; }
+
+/* ------------------------------------------------------------ skeletons
+   Shown only with nothing kept on this device, after 300 ms (useDelayedFlag): the
+   shapes of what loads, at its size, square, static (no shimmer, no pulse). */
+.skel-card i, .chat-skel i { display: block; height: 11px; margin: 3px 0; background: var(--line-soft); }
+.board-card.skel-card { cursor: default; gap: 6px; }
+.board-card.skel-card:hover { border-color: var(--line-soft); background: var(--surface); }
+.board-skel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.board-skel .skel-tools { display: block; height: 34px; }
+.board-skel .board-seg-btn { cursor: default; }
+/* The conversation's: at the bottom, as the messages will be. */
+.chat-list.skeleton { flex: 1; justify-content: flex-end; }
+/* A task's panel opened before its details are read (BoardPanel): its title, tabs and conversation. */
+.board-panel-title.skel-title { display: block; flex: 0 1 220px; height: 12px; background: var(--line-soft); }
+.board-panel-tabs.skel-tabs i { display: block; width: 92px; height: 36px; border-right: 1px solid var(--line); }
+.board-panel-tabs.skel-tabs i:first-child { border-bottom: 2px solid var(--line); }
+.board-panel-skel { flex: 1; min-height: 0; overflow: hidden; }
+.chat-skel { display: flex; flex-direction: column; gap: 14px; }
+.chat-skel .skel-user { align-self: flex-end; width: min(70%, 420px); padding: 10px 14px; border: 1px solid var(--line); background: var(--surface-2); }
+.chat-skel .skel-user i { background: var(--line); }
+.chat-skel .skel-who { width: 84px; height: 11px; margin-top: 10px; background: color-mix(in srgb, var(--text-3) 45%, transparent); }
+.chat-skel .skel-who.claude { background: color-mix(in srgb, var(--claude) 45%, transparent); }
+.chat-skel .skel-who.codex { background: color-mix(in srgb, var(--codex) 45%, transparent); }
+.chat-skel .skel-who.omp { background: color-mix(in srgb, var(--omp) 45%, transparent); }
+.chat-skel .skel-tool { display: flex; align-items: center; gap: 10px; width: min(60%, 360px); padding: 7px 10px; border: 1px solid var(--line-soft); }
+.chat-skel .skel-tool span { flex: none; width: 12px; height: 12px; border: 1px solid var(--line); }
+.chat-skel .skel-tool i { margin: 0; }
+.chat-skel .skel-lines { width: min(88%, 640px); }
+.chat-skel .skel-lines i { height: 12px; margin: 0 0 10px; }
+/* Read from this device while the network catches up: "READ AT 14:02". */
+.cached-tag { display: inline-flex; align-items: center; gap: 6px; font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.cached-tag::before { content: ''; width: 6px; height: 6px; background: var(--muted); }
+.chat-cached { position: absolute; top: 8px; right: 16px; z-index: 3; padding: 5px 8px; background: var(--bg); border: 1px solid var(--line-soft); pointer-events: none; }
+.board-slow { display: flex; align-items: center; gap: 6px; }
+.board-retry { padding: 0; font: inherit; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.board-tools .board-cached-tag { min-width: 0; overflow: hidden; }
+.cached-tag-word { white-space: pre; }
+@media (max-width: 560px) { .board-tools .cached-tag-word { display: none; } }
+/* Measure the panel's CSS width independently of its docking state. */
+.board-panel-sizer { position: fixed; width: var(--board-panel-w); height: 0; visibility: hidden; pointer-events: none; }
+/* Compact Board chrome follows its container, including a desktop sidebar. */
+.board-top > * { flex-shrink: 0; }
+.board-top .board-coord { white-space: nowrap; }
+.board-view.narrow .board-new-label, .board-view.narrow .board-coord-label { display: none; }
+.board-view.narrow .board-top .board-new, .board-view.narrow .board-top-coord { min-width: 36px; height: 36px; justify-content: center; }
+.board-view.narrow .board-tools { flex-wrap: wrap; }
+.board-view.narrow .board-head-name { flex-basis: calc(100% - 40px); }
+.board-view.narrow .board-head-actions { flex: 1 1 100%; justify-content: flex-start; padding-left: 32px; }
+.board-view.narrow .board-head-actions .board-coord { white-space: normal; overflow-wrap: anywhere; text-align: left; }
+
+/* Autopilot wakes retain the transcript text with a quiet system attribution. */
+.msg-autopilot { min-width: 0; margin: 6px 0; color: var(--text-2); }
+.msg-autopilot-body { border-left: 1px solid var(--line-soft); padding: 6px 12px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }

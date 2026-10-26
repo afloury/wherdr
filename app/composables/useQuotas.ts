@@ -2,7 +2,7 @@
 // when shown and the page is visible, kept offline; read by the top tables
 // and the machine ones (QuotaStrip) and by the Claude status line setup (Settings, setup guide, machine menu).
 import type { Quotas } from '#shared/types'
-import { readOffline, saveQuotas } from '~/utils/offlineCache'
+import { readQuotas, saveQuotas } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { claudeInstallCommand, claudeSetupRows, claudeSuggestion } from '~/utils/quotas'
 
@@ -21,7 +21,7 @@ export async function reloadQuotas() {
 export function useQuotaLoader() {
   let timer: ReturnType<typeof setInterval> | null = null
   onMounted(() => {
-    if (mayReadOffline(readOfflineAccess())) readOffline().then(s => { if (!homeQuotas.value) homeQuotas.value = s.home?.quotas || null })
+    if (mayReadOffline(readOfflineAccess())) readQuotas().then((q) => { if (!homeQuotas.value) homeQuotas.value = q })
     if (showQuotas.value) reloadQuotas()
     timer = setInterval(() => { if (pageVisible.value && showQuotas.value) reloadQuotas() }, 60000)
   })

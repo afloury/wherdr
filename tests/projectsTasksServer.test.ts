@@ -2,7 +2,7 @@
 // which commands run, one at a time per machine, how sparingly, in which
 // session and what a failure looks like.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -65,6 +65,7 @@ let keysOf: Record<string, string> = {}
 let active = 0
 let maxActive = 0
 let delay = 0
+let showDelay = 0
 let detailsReply: string | null = null
 let listReply: { code: number, stdout: string, stderr: string } | null = null
 // `coordinator [--machine | --project=R] status --json`, by its flag ('' for the Coordinator).
@@ -79,6 +80,7 @@ beforeEach(() => {
   keysOf = { demo: 'DEMO' }
   active = maxActive = 0
   delay = 0
+  showDelay = 0
   listReply = null
   detailsReply = null
   coordStatus = {}
@@ -120,6 +122,7 @@ beforeEach(() => {
     }
     if (args[0] === 'show') {
       shows.push(args)
+      await new Promise(r => setTimeout(r, showDelay))
       const repo = args[1]!.replace('--repo=', '')
       return { code: 0, stdout: JSON.stringify({ settings: [{ name: 'repo.key', value: keysOf[repo] ?? 'none', note: '' }], problems: [] }), stderr: '' }
     }
@@ -214,6 +217,50 @@ describe('a read that fails is said, with the last tasks dated and marked', () =
     const r = await read()
     expect(r.machines[0]).toMatchObject({ machine: '', status: 'error', error: 'Herdr did not answer', stale: true })
     expect(r.machines[0]!.tasks).toHaveLength(4)
+  })
+})
+
+describe('a slow read: never an empty Board, and the client asked to come back soon', () => {
+  afterEach(() => T.setReadWaits(null))
+  type Pending = Board['machines'][number] & { pending?: boolean }
+
+  it('a first read slower than the deadline is waited for, never answered empty', async () => {
+    T.setReadWaits({ deadline: 30, first: 3000 })
+    delay = 150
+    const m = (await read()).machines[0] as Pending
+    expect(m.tasks).toHaveLength(4)
+    expect(m.stale).toBeFalsy()
+  })
+
+  it('past the deadline with an earlier list: that list, stale and pending', async () => {
+    await read()
+    later(T.REUSE_MS + 1)
+    T.setReadWaits({ deadline: 30, first: 3000 })
+    delay = 300
+    const m = (await read()).machines[0] as Pending
+    expect(m).toMatchObject({ stale: true, pending: true })
+    expect(m.tasks).toHaveLength(4)
+  })
+
+  it('a first read slower than the longest wait: no tasks yet, pending', async () => {
+    T.setReadWaits({ deadline: 30, first: 100 })
+    delay = 400
+    const m = (await read()).machines[0] as Pending
+    expect(m).toMatchObject({ tasks: [], stale: true, pending: true })
+  })
+
+  it('repo keys slower than their short wait: the tasks first, pending, then named', async () => {
+    keysOf = { demo: 'APP' }
+    showDelay = 1500
+    const first = (await read()).machines[0] as Pending & { tasks: { repoKey?: string }[] }
+    expect(first.tasks).toHaveLength(4)
+    expect(first.pending).toBe(true)
+    expect(first.tasks.some(t => t.repoKey)).toBe(false)
+    await vi.waitFor(() => expect(T.repoKeyOf('', 'demo')).toBe('APP'), { timeout: 3000 })
+    T.resetTasksCache(true)
+    const next = (await read()).machines[0] as Pending & { tasks: { repoKey?: string }[] }
+    expect(next.pending).toBeUndefined()
+    expect(next.tasks.every(t => t.repoKey === 'APP')).toBe(true)
   })
 })
 
@@ -908,23 +955,109 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     ])
   })
 
-  it('sends an unknown repository path and configures only a coordinator that does not exist', async () => {
-    const to = { kind: 'project', repo: '~/repos/new demo' }
-    await T.tellCoordinator('', '--hello', { to, start: { agent: 'codex/demo-model', effort: 'high' } })
-    expect(calls).toEqual([
-      ['coordinator', '--project=~/repos/new demo', '--json', 'status'],
-      ['coordinator', '--project=~/repos/new demo', '--agent=codex/demo-model', '--effort=high', '--', 'new'],
-      ['coordinator', '--project=~/repos/new demo', '--', 'tell', '--hello'],
-    ])
-    for (const state of ['idle', 'starting', 'stopped']) {
-      calls = []
-      coordStatus['--project=~/repos/new demo'] = { state, pane: '' }
-      await T.tellCoordinator('', 'keep it', { to, start: { agent: 'claude' } })
-      expect(calls.some(c => c.includes('new'))).toBe(false)
+  // herdr-projects names a project coordinator by its repo's name on the board, never a path:
+  // a folder it does not know is added first (`automations add --repo`, removed at once: no task).
+  describe('a project coordinator on a folder', () => {
+    const reposFile = () => path.join(home, '.herdr-projects/data/repos.json')
+    const repos = (o: Record<string, string>) => { mkdirSync(path.dirname(reposFile()), { recursive: true }); writeFileSync(reposFile(), JSON.stringify(o)) }
+    const gitRepo = (name: string) => {
+      const dir = path.join(home, 'code', name)
+      mkdirSync(dir, { recursive: true })
+      execFileSync('git', ['init', '-q', dir])
+      return dir
     }
-    calls = []
-    await expect(T.tellCoordinator('', 'hello', { to, start: { agent: '--bad' } })).rejects.toThrow(/Invalid agent/)
-    expect(calls).toEqual([])
+    // `automations add --repo=<root>`: the repo named on first sight, as 1.2.26 does (store/repos.rs repo_of).
+    const automations = new Set<string>()
+    beforeEach(() => {
+      automations.clear()
+      T.setRunner(async (_m, _l, args) => {
+        calls.push(args)
+        if (args[0] === 'automations' && args[1] === 'add') {
+          const root = args.find(a => a.startsWith('--repo='))!.slice('--repo='.length)
+          const now = existsSync(reposFile()) ? JSON.parse(readFileSync(reposFile(), 'utf8')) : {}
+          now[path.basename(root).replace(/[^\w.+-]/g, '-')] = root
+          repos(now)
+          automations.add(args.at(-1)!)
+          return { code: 0, stdout: `Added the automation "${args.at(-1)}"\n`, stderr: '' }
+        }
+        if (args[0] === 'automations' && args[1] === 'remove') { automations.delete(args.at(-1)!); return { code: 0, stdout: 'Removed\n', stderr: '' } }
+        if (args[0] === 'coordinator' && args.at(-1) === 'status') return { code: 0, stdout: JSON.stringify({ state: 'none', pane: '' }), stderr: '' }
+        return { code: 0, stdout: 'sent\n', stderr: '' }
+      })
+    })
+
+    it('says whether a folder is on the board, new, missing or not Git', async () => {
+      const app = gitRepo('app')
+      const site = gitRepo('my site')
+      mkdirSync(path.join(app, 'src'), { recursive: true })
+      mkdirSync(path.join(home, 'notes'), { recursive: true })
+      repos({ app })
+      expect(await T.projectFolder('', path.join(app, 'src'))).toEqual({ state: 'known', repo: 'app', root: app })
+      expect(await T.projectFolder('', site)).toEqual({ state: 'new', repo: 'my-site', root: site })
+      expect(await T.projectFolder('', path.join(home, 'notes'))).toEqual({ state: 'notgit' })
+      expect(await T.projectFolder('', path.join(home, 'nowhere'))).toEqual({ state: 'missing' })
+      await expect(T.projectFolder('', 'app')).rejects.toThrow(/Invalid repo/)
+      expect(calls).toEqual([])
+    })
+
+    it('adds an unknown repo with no task, then starts its coordinator by name', async () => {
+      const hub = gitRepo('hub')
+      const r = await T.tellCoordinator('', '--hello', { to: { kind: 'project', repo: hub }, start: { agent: 'codex/demo-model', effort: 'high' } })
+      expect(r.repo).toBe('hub')
+      const name = calls[0]!.at(-1)!
+      expect(name).toMatch(/^wherdr-add-repo-[0-9a-f]{8}$/)
+      expect(calls).toEqual([
+        ['automations', 'add', '--prompt=Never runs: wherdr adds this repository to the board and removes this automation at once.', '--when=merged', `--repo=${hub}`, '--', name],
+        ['automations', 'remove', '--', name],
+        ['coordinator', '--project=hub', '--json', 'status'],
+        ['coordinator', '--project=hub', '--agent=codex/demo-model', '--effort=high', '--', 'new'],
+        ['coordinator', '--project=hub', '--', 'tell', '--hello'],
+      ])
+      // No task was made (no "added" event), and the automation is gone.
+      expect(calls.some(c => c[0] === 'add')).toBe(false)
+      expect(automations.size).toBe(0)
+      // Known now: nothing is added again.
+      calls = []
+      expect(await T.registerProject('', hub)).toEqual({ repo: 'hub', root: hub, added: false })
+      expect(calls).toEqual([])
+    })
+
+    it('refuses a missing or non-Git folder with a clear message, running nothing', async () => {
+      mkdirSync(path.join(home, 'plain'), { recursive: true })
+      await expect(T.registerProject('', path.join(home, 'plain'))).rejects.toThrow('This folder is not a Git repository')
+      await expect(T.tellCoordinator('', 'hi', { to: { kind: 'project', repo: path.join(home, 'gone') } })).rejects.toThrow('This folder does not exist on this machine.')
+      expect(calls).toEqual([])
+    })
+
+    it('says so when the automation that added it could not be removed', async () => {
+      const lib = gitRepo('lib')
+      T.setRunner(async (_m, _l, args) => {
+        calls.push(args)
+        if (args[1] === 'add') { repos({ lib }); return { code: 0, stdout: 'Added\n', stderr: '' } }
+        return { code: 1, stdout: '', stderr: 'no such automation' }
+      })
+      await expect(T.registerProject('', lib)).rejects.toThrow(/automation wherdr-add-repo-[0-9a-f]{8} that added it could not be removed: no such automation/)
+    })
+
+    it('says so when herdr-projects did not add it', async () => {
+      const odd = gitRepo('odd')
+      T.setRunner(async (_m, _l, args) => { calls.push(args); return { code: 0, stdout: 'ok\n', stderr: '' } })
+      await expect(T.registerProject('', odd)).rejects.toThrow('herdr-projects did not add the repository to the board.')
+    })
+
+    it('never resets an existing conversation of a known repo', async () => {
+      const to = { kind: 'project', repo: 'demo' }
+      for (const state of ['idle', 'starting', 'stopped']) {
+        calls = []
+        coordStatus['--project=demo'] = { state, pane: '' }
+        T.setRunner(async (_m, _l, args) => { calls.push(args); return { code: 0, stdout: args.at(-1) === 'status' ? JSON.stringify(coordStatus['--project=demo']) : 'sent\n', stderr: '' } })
+        await T.tellCoordinator('', 'keep it', { to, start: { agent: 'claude' } })
+        expect(calls.some(c => c.includes('new'))).toBe(false)
+      }
+      calls = []
+      await expect(T.tellCoordinator('', 'hello', { to, start: { agent: '--bad' } })).rejects.toThrow(/Invalid agent/)
+      expect(calls).toEqual([])
+    })
   })
 
   it('a coordinator\'s pane is the one herdr-projects keeps for it, never one found by name', async () => {
@@ -1210,4 +1343,87 @@ it.each([0, 25 * 1024 * 1024])('reads scheduled coordinator wake dates, recent f
   expect(scheduled.automations[0]?.tasks).toEqual(['demo/2', 'demo/1'])
   expect(scheduled.timers).toMatchObject([{ id: 'job1', cron: '*/5 * * * *' }])
   expect(scheduled.warnings).toEqual([])
+})
+
+describe('description writes', () => {
+  it('passes describe data through the fixed remote shell script without evaluation', () => {
+    const text = "--flag\nIt's $(printf altered); `printf altered` & | < > \\ \n"
+    const args = ['describe', '--', 'demo/1', text]
+    const output = execFileSync('sh', ['-c', T.REMOTE_TASKS_SCRIPT, 'tasks', 'herdr', '', process.execPath, '-e', 'process.stdout.write(JSON.stringify(process.argv.slice(1)))', ...args], { encoding: 'utf8' })
+    expect(JSON.parse(output)).toEqual(args)
+  })
+  it.each(['', session.key, 'remote'])('routes opaque multiline text to the owner of %s', async key => {
+    const text = "--title=literal\n\nIt's data: $(touch nope); `id` & < > | \\\nlast\r\n\r\n"
+    const seen: { machine: string, args: string[] }[] = []
+    T.setRunner(async (m, _launcher, args) => {
+      seen.push({ machine: m.key, args })
+      return { code: 0, stdout: args[0] === 'list' ? fixture('list.json') : args[0] === 'details'
+        ? JSON.stringify({ task: { id: 'demo/1', description: text.replace(/\r/g, '').trim() } }) : 'updated', stderr: '' }
+    })
+    await T.describeTask(key, 'demo/1', text)
+    expect(seen.at(-1)).toEqual({ machine: key === 'remote' ? 'remote' : '', args: ['describe', '--', 'demo/1', text] })
+    expect((await T.taskDetails(key, 'demo/1')).description).toBe(text.replace(/\r/g, '').trim())
+  })
+  it('refuses an archived file and an offline owner before writing', async () => {
+    taskFile('demo/1', { archivedAt: 123 })
+    await expect(T.describeTask('', 'demo/1', 'draft')).rejects.toThrow('read-only')
+    remote.status = 'offline'
+    try { await expect(T.describeTask('remote', 'demo/1', 'draft')).rejects.toThrow('unreachable') }
+    finally { remote.status = 'online' }
+    expect(calls.some(a => a[0] === 'describe')).toBe(false)
+  })
+  it('returns every line of a CLI refusal', async () => {
+    T.setRunner(async (_m, _l, args) => args[0] === 'describe'
+      ? { code: 1, stdout: '', stderr: 'Write refused\nTry again later' }
+      : { code: 0, stdout: fixture('list.json'), stderr: '' })
+    await expect(T.describeTask('', 'demo/1', 'draft')).rejects.toThrow('Write refused\nTry again later')
+  })
+})
+
+describe('archive completed repository tasks', () => {
+  it('runs exactly one bulk command on the owner of a named session, preserving CLI output', async () => {
+    const ran: { machine: string, args: string[] }[] = []
+    T.setRunner(async (m, _launcher, args) => {
+      ran.push({ machine: m.key, args })
+      return { code: 0, stdout: 'Archived 2 tasks. Kept 1 pinned task.\n', stderr: 'A CLI notice\n' }
+    })
+    expect(await T.archiveDoneTasks(session.key, 'demo')).toEqual({ machine: '', code: 0, stdout: 'Archived 2 tasks. Kept 1 pinned task.\n', stderr: 'A CLI notice\n' })
+    expect(ran).toEqual([{ machine: '', args: ['archive', '--done', '--repo', 'demo'] }])
+  })
+
+  it('runs on the remote owner and returns every line of a CLI error', async () => {
+    await T.readTasksBoard()
+    const ran: string[][] = []
+    T.setRunner(async (m, _launcher, args) => {
+      if (args[0] === 'archive') {
+        expect(m.key).toBe('remote')
+        ran.push(args)
+        return { code: 1, stdout: 'Archived 1 task\n', stderr: 'Cannot archive another task\nDetails\n' }
+      }
+      return { code: 0, stdout: fixture('list.json'), stderr: '' }
+    })
+    expect(await T.archiveDoneTasks('remote', 'demo')).toMatchObject({ code: 1, stdout: 'Archived 1 task\n', stderr: 'Cannot archive another task\nDetails\n' })
+    expect(ran).toEqual([['archive', '--done', '--repo', 'demo']])
+  })
+
+  it('invalidates the owner cache on success and failure', async () => {
+    for (const code of [0, 1]) {
+      await T.readTasksBoard()
+      const ran: string[][] = []
+      T.setRunner(async (_m, _launcher, args) => {
+        ran.push(args)
+        return { code: args[0] === 'archive' ? code : 0, stdout: args[0] === 'list' ? fixture('list.json') : '', stderr: '' }
+      })
+      await T.archiveDoneTasks(session.key, 'demo')
+      await T.readTasksBoard()
+      expect(ran.filter(args => args[0] === 'list')).toHaveLength(1)
+    }
+  })
+
+  it('rejects an absent or invalid repo without running any command', async () => {
+    const run = vi.fn()
+    T.setRunner(run)
+    for (const repo of ['', undefined, '/tmp/demo', '--done', {}]) await expect(T.archiveDoneTasks('', repo)).rejects.toThrow()
+    expect(run).not.toHaveBeenCalled()
+  })
 })

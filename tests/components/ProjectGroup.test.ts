@@ -258,7 +258,7 @@ describe('a repo group on the home list', () => {
     expect(card.find('.task-agent-reviewer .avatar').classes()).toContain('codex')
     navigate.mockClear()
     await card.trigger('click')
-    expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: '', task: 'shop/7' } })
+    expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: '', task: 'shop/7', now: '1' } })
     w.unmount()
   })
 

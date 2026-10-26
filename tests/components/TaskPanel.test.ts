@@ -262,7 +262,8 @@ describe('task panel', () => {
     // Its buttons would act on the old failure: not offered.
     expect(banner.text()).not.toContain('Send the error to the agent')
     expect(banner.findAll('button').map(b => b.text())).toEqual(expect.arrayContaining(['Continue', 'Raise limit', 'Take as is']))
-    expect(banner.find('.task-finish-why').text()).toContain('new allowance')
+    // The limit Continue grants once more, read from the board's line.
+    expect(banner.find('.task-finish-why').text()).toContain('new allowance (2 h a run)')
     w.unmount()
   })
   // WHR-13: the agent started again and asks something new.
@@ -486,20 +487,20 @@ describe('the task panel header says what a Working task is doing', () => {
   it('an agent running: no badge', async () => {
     stage = 'working'
     const w = await panel({ task: working('working', 'Writing tests') }, 'claude', 'working')
-    expect(w.find('.board-panel-name .task-activity').exists()).toBe(false)
+    expect(w.find('.board-panel-who > .task-activity').exists()).toBe(false)
     w.unmount()
   })
   it('waiting for GitHub checks: CI 1/2, the header marked', async () => {
     stage = 'merging'
     const w = await panel({ task: working('merging', 'Waiting for GitHub checks · 1 of 2 passed') }, 'claude')
-    expect(w.find('.board-panel-name .task-activity').text()).toBe('CI 1/2')
+    expect(w.find('.board-panel-who > .task-activity').text()).toBe('CI 1/2')
     expect(w.find('.board-panel-head').classes()).toContain('activity-ci')
     w.unmount()
   })
   it('queued: QUEUED with what it waits for', async () => {
     stage = 'after'
     const w = await panel({ task: working('after', 'queued after DEMO-70') })
-    expect(w.find('.board-panel-name .task-activity').text()).toBe('Queued · DEMO-70')
+    expect(w.find('.board-panel-who > .task-activity').text()).toBe('Queued · DEMO-70')
     expect(w.find('.board-panel-head').classes()).toContain('activity-queued')
     w.unmount()
   })

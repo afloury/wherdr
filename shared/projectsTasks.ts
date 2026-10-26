@@ -81,7 +81,13 @@ export interface TaskDetails {
   // history, not where the task stands.
   failureAt?: number | null
   failureStale?: boolean
-  limits?: { time: string, timeUsed: string, tokens: string, tokensUsed: number | null, stopped?: 'time' | 'tokens' }
+  // `details.limits` (1.2.16+): each limit as the board writes it (`2h`, `30m`
+  // tokens, `none`), the time this run has taken and the task's tokens, and
+  // which limit stopped it. For the gauges, when the CLI gives them:
+  // `timeUsedMs` (this run, or the run the time limit stopped), `tokensCounted`
+  // (the tokens counted against `limit.tokens`) and `stoppedUsed` (what was
+  // used at the stop: ms or tokens).
+  limits?: { time: string, timeUsed: string, tokens: string, tokensUsed: number | null, stopped?: 'time' | 'tokens', timeUsedMs?: number, tokensCounted?: number, stoppedUsed?: number }
   // `preexisting`: there before the task (1.x gate.rs), not what it must fix.
   findings?: { severity: string, title: string, detail: string, preexisting?: boolean }[]
   failureStage: string
@@ -155,6 +161,8 @@ export interface MachineTasks {
   at?: number
   error?: string
   stale?: boolean
+  // Still being read (the list past the deadline, or its repos' keys): ask again soon.
+  pending?: boolean
 }
 export interface TasksBoard { version: string, machines: MachineTasks[] }
 export type TasksReply = TasksBoard | { same: true, version: string }
@@ -306,7 +314,14 @@ function parseTaskLimits(v: unknown): TaskDetails['limits'] {
   const stoppedTime = seconds === null ? '' : seconds >= 3600
     ? `${Math.floor(seconds / 3600)}h${Math.floor(seconds % 3600 / 60) ? `${Math.floor(seconds % 3600 / 60)}m` : ''}`
     : seconds >= 60 ? `${Math.floor(seconds / 60)}m${seconds % 60 ? `${seconds % 60}s` : ''}` : `${seconds}s`
-  return { ...(stopped?.what === 'time' || stopped?.what === 'tokens' ? { stopped: stopped.what } : {}), time: str(time?.limit, 40), timeUsed: str(time?.used, 40) || stoppedTime, tokens: str(tokens?.limit, 40), tokensUsed: num(tokens?.total) ?? num(tokens?.used) }
+  const timeUsedMs = num(time?.usedMs) ?? usedMs
+  const tokensCounted = num(tokens?.used) ?? num(tokens?.total)
+  const stoppedUsed = stopped?.what === 'time' || stopped?.what === 'tokens' ? num(stopped.used) : null
+  return {
+    ...(stopped?.what === 'time' || stopped?.what === 'tokens' ? { stopped: stopped.what } : {}),
+    time: str(time?.limit, 40), timeUsed: str(time?.used, 40) || stoppedTime, tokens: str(tokens?.limit, 40), tokensUsed: num(tokens?.total) ?? num(tokens?.used),
+    ...(timeUsedMs === null ? {} : { timeUsedMs }), ...(tokensCounted === null ? {} : { tokensCounted }), ...(stoppedUsed === null ? {} : { stoppedUsed }),
+  }
 }
 function parseFindings(v: unknown): NonNullable<TaskDetails['findings']> {
   const review = obj(v)
@@ -346,7 +361,7 @@ export function parseTaskDetails(text: string): TaskDetails {
     attempts: parseTaskAttempts(d.attempts),
     comparison: parseTaskComparison(d.comparison),
     id: t.id,
-    title: str(t.title, 300), stage: str(t.stage, 30), msg: str(t.msg, 1000), description: str(t.description, 8000),
+    title: str(t.title, 300), stage: str(t.stage, 30), msg: str(t.msg, 1000), description: typeof t.description === 'string' ? t.description : '',
     agent: str(d.agent, 40),
     pr: cleanUrl(d.pr),
     branch: str(d.branch, 200),

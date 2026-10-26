@@ -633,6 +633,59 @@ describe('Finish, and a failure the task moved on from', () => {
     w.unmount()
   })
 
+  // #155: limits as gauges, and one tap per preset in the raise sheet.
+  it('shows each limit as a gauge, red past 90 %, and a limit not set as a word', async () => {
+    Object.assign(shown, { stage: 'stopped', failure: '', failureStage: '', limits: { time: '2h', timeUsed: '2m38s', timeUsedMs: 158_000, tokens: '30m', tokensUsed: 31_000_000, tokensCounted: 29_000_000 } })
+    const w = await mountSuspended(TaskSheet, { props: { task: stopped, machine: 'a', open: true } })
+    const value = (kind: string) => document.querySelector(`.task-limit[data-kind="${kind}"] .task-limit-value`)?.textContent?.replace(/\s+/g, ' ').trim()
+    await vi.waitFor(() => expect(value('time')).toBe('2 min 38 / 2 h'))
+    expect(value('tokens')).toBe('29 M / 30 M')
+    expect(document.querySelector('.task-limit[data-kind="tokens"]')!.classList).toContain('hot')
+    expect(document.querySelector('.task-limit[data-kind="time"]')!.classList).not.toContain('hot')
+    expect(document.querySelector('.task-limit-total')?.textContent).toContain('31 M')
+    expect(document.querySelectorAll('.task-limit-bar[role="meter"]')).toHaveLength(2)
+    w.unmount()
+    Object.assign(shown, { limits: { time: 'none', timeUsed: '', tokens: 'none', tokensUsed: 1200 } })
+    const n = await mountSuspended(TaskSheet, { props: { task: stopped, machine: 'a', open: true } })
+    await vi.waitFor(() => expect(value('time')).toBe('— / No limit'))
+    expect(value('tokens')).toBe('1.2 k / No limit')
+    expect(document.querySelectorAll('.task-limit-bar')).toHaveLength(0)
+    n.unmount()
+    delete (shown as Record<string, unknown>).limits
+  })
+
+  it('raises the limit that stopped it with one preset: set only, its value from the limit', async () => {
+    const limits: unknown[] = []
+    registerEndpoint('/api/tasks/limit', { method: 'POST', handler: async (e) => { limits.push(await readBody(e)); return { ok: true, msg: 'set' } } })
+    sent = []
+    registerEndpoint('/api/tasks/action', { method: 'POST', handler: async (e) => { sent.push(await readBody(e)); return { ok: true, msg: '' } } })
+    Object.assign(shown, { stage: 'stopped', failure: '', failureStage: '', limits: { time: '2h', timeUsed: '2h', tokens: 'none', tokensUsed: 0, stopped: 'time', stoppedUsed: 7_200_000 } })
+    const w = await mountSuspended(TaskSheet, { props: { task: stopped, machine: 'a', open: true } })
+    await vi.waitFor(() => expect(buttons()).toContain('Raise limit'))
+    ;[...document.querySelectorAll<HTMLButtonElement>('.task-sheet-actions button')].find(b => b.textContent?.trim() === 'Raise limit')!.click()
+    const presets = () => [...document.querySelectorAll<HTMLButtonElement>('.raise-limit-presets button')]
+    await vi.waitFor(() => expect(presets()).toHaveLength(3))
+    expect(presets().map(b => b.textContent?.replace(/\s+/g, ' ').trim())).toEqual(['+1 h3 h', '×24 h', 'No limit'])
+    presets()[0]!.click()
+    await vi.waitFor(() => expect(limits).toEqual([{ machine: 'a', id: 'demo/1', name: 'limit.time', value: '3h' }]))
+    expect(sent).toEqual([])
+    w.unmount()
+    delete (shown as Record<string, unknown>).limits
+  })
+
+  it('offers disabled a preset that would not go above what was used', async () => {
+    Object.assign(shown, { stage: 'stopped', failure: '', failureStage: '', limits: { time: 'none', timeUsed: '', tokens: '10m', tokensUsed: 25_000_000, tokensCounted: 25_000_000, stopped: 'tokens', stoppedUsed: 25_000_000 } })
+    const w = await mountSuspended(TaskSheet, { props: { task: { ...stopped, msg: 'stopped at 10m tokens' }, machine: 'a', open: true } })
+    await vi.waitFor(() => expect(buttons()).toContain('Raise limit'))
+    ;[...document.querySelectorAll<HTMLButtonElement>('.task-sheet-actions button')].find(b => b.textContent?.trim() === 'Raise limit')!.click()
+    const presets = () => [...document.querySelectorAll<HTMLButtonElement>('.raise-limit-presets button')]
+    await vi.waitFor(() => expect(presets()).toHaveLength(3))
+    expect(presets().map(b => b.textContent?.replace(/\s+/g, ' ').trim())).toEqual(['×220 M', '+10 M20 M', 'No limit'])
+    expect(presets().map(b => b.disabled)).toEqual([true, true, false])
+    w.unmount()
+    delete (shown as Record<string, unknown>).limits
+  })
+
   it('an old failure is shown as history, not as a warning', async () => {
     Object.assign(shown, { stage: 'stopped', failure: 'Review failed: no verdict', failureTitle: 'Review failed', failureStage: 'review', failureStale: true, failureAt: 1_792_500_000_000 })
     const w = await mountSuspended(TaskSheet, { props: { task: stopped, machine: 'a', open: true } })
@@ -938,5 +991,78 @@ describe('handover history in the task sheet', () => {
     expect(rows[2]!.find('time').exists()).toBe(false)
     expect(rows[2]!.findAll('p')).toHaveLength(1)
     w.unmount()
+  })
+})
+
+describe('description editor', () => {
+  let description = "Original\n\nIt's a task\n"
+  let writes: unknown[] = []
+  let refuses = false
+  registerEndpoint('/api/tasks/describe', { method: 'POST', handler: async e => {
+    const body = await readBody(e)
+    writes.push(body)
+    if (refuses) { setResponseStatus(e, 502); return { error: 'CLI refused the description' } }
+    // Match the installed CLI's describe contract.
+    description = body.text.replace(/\r/g, '').trim()
+    return { ok: true }
+  } })
+  async function editor() {
+    writes = []; refuses = false; description = "Original\n\nIt's a task\n"
+    registerEndpoint('/api/tasks/details', () => ({ ...task, pane: null, description }))
+    return (await sheet(true)).w
+  }
+  it('prefills, cancels without writing, and saves multiline text explicitly', async () => {
+    const w = await editor()
+    const block = () => w.get('.task-description')
+    await block().get('button').trigger('click')
+    expect(block().get('textarea').element.value).toBe(description)
+    await block().get('textarea').setValue('discard')
+    await block().findAll('button')[1]!.trigger('click')
+    expect(writes).toEqual([])
+    await block().get('button').trigger('click')
+    expect(block().get('textarea').element.value).toBe(description)
+    const text = "\n  It's $(data); `literal`\n\nFinal line\n\n"
+    await block().get('textarea').setValue(text)
+    expect(writes).toEqual([])
+    await block().get('form').trigger('submit')
+    await flushPromises()
+    expect(writes).toEqual([{ machine: 'a', id: 'demo/1', text }])
+    const stored = text.replace(/\r/g, '').trim()
+    await vi.waitFor(() => expect(block().get('.task-sheet-text').element.textContent).toBe(stored))
+    await block().get('button').trigger('click')
+    expect(block().get('textarea').element.value).toBe(stored)
+    w.unmount()
+  })
+  it('keeps the draft and CLI error after refusal, then retries', async () => {
+    const w = await editor()
+    await w.get('.task-description button').trigger('click')
+    await w.get('.task-description textarea').setValue('My draft\nkept')
+    refuses = true
+    await w.get('.task-description form').trigger('submit'); await flushPromises()
+    expect(w.get('.task-description textarea').element.value).toBe('My draft\nkept')
+    await vi.waitFor(() => expect(w.get('.task-description [role=alert]').text()).toContain('CLI refused'))
+    refuses = false
+    await w.get('.task-description form').trigger('submit'); await flushPromises()
+    await vi.waitFor(() => expect(w.find('.task-description textarea').exists()).toBe(false))
+    w.unmount()
+  })
+  it('blocks offline and archived tasks, including a disconnect during editing', async () => {
+    const w = await editor()
+    await w.get('.task-description button').trigger('click')
+    await w.get('.task-description textarea').setValue('draft')
+    await w.setProps({ reachable: false })
+    await w.get('.task-description form').trigger('submit'); await flushPromises()
+    expect(writes).toEqual([])
+    expect(w.get('.task-description textarea').element.value).toBe('draft')
+    await w.setProps({ task: { ...task, archived: true }, reachable: true })
+    await w.get('.task-description form').trigger('submit'); await flushPromises()
+    expect(writes).toEqual([])
+    w.unmount()
+    const other = await editor()
+    await other.setProps({ reachable: false })
+    expect(other.get('.task-description button').attributes('disabled')).toBeDefined()
+    await other.setProps({ task: { ...task, archived: true } })
+    expect(other.find('.task-description button').exists()).toBe(false)
+    other.unmount()
   })
 })
