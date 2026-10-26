@@ -27,6 +27,7 @@
 import {
   type CoordinatorTarget, TASK_GROUPS, type TaskGroup, type TaskRow, groupCounts, sortTasks, taskKey,
 } from '#shared/projectsTasks'
+import { boardLayout } from '~/utils/boardLayout'
 import type { SelectItem } from '@nuxt/ui'
 import type { PanelTarget } from './BoardPanel.vue'
 import type { SettingsTarget } from './BoardSettings.vue'
@@ -185,15 +186,27 @@ const reposByMachine = computed(() => Object.fromEntries(boards.value.map(m => [
 // Columns side by side need room: on a phone, or a Board narrowed by the side
 // panel, one group at a time (tabs), in both views.
 const root = ref<HTMLElement | null>(null)
+const panelSizer = ref<HTMLElement | null>(null)
 const width = ref(0)
+const sideBySide = ref(false)
 let sizes: ResizeObserver | null = null
 onMounted(() => {
   if (!root.value || typeof ResizeObserver === 'undefined') return
-  sizes = new ResizeObserver(([e]) => { width.value = e!.contentRect.width })
+  // Available space does not depend on whether the panel is currently docked:
+  // measuring only the shrunken Board would make docking oscillate.
+  sizes = new ResizeObserver(() => {
+    const board = root.value!
+    width.value = board.clientWidth
+    sideBySide.value = boardLayout(window.innerWidth - board.getBoundingClientRect().left,
+      panelSizer.value!.getBoundingClientRect().width).sideBySide
+  })
   sizes.observe(root.value)
+  sizes.observe(panelSizer.value!)
+  sizes.observe(document.documentElement)
 })
 onUnmounted(() => sizes?.disconnect())
-const wide = computed(() => desk.value && (!width.value || width.value >= 760))
+const dockPanel = computed(() => desk.value && sideBySide.value)
+const wide = computed(() => desk.value && boardLayout(width.value, 0).wide)
 
 // Phone: the group shown, kept on this device.
 function readColumn(): TaskGroup {
@@ -459,7 +472,8 @@ function back() {
 </script>
 
 <template>
-  <section id="board" ref="root" class="view board-view" :class="{ 'with-panel': (panel || settings) && desk, narrow: !wide }">
+  <section id="board" ref="root" class="view board-view" :class="{ 'with-panel': (panel || settings) && dockPanel, narrow: !wide }">
+    <div ref="panelSizer" class="board-panel-sizer" aria-hidden="true" />
     <header class="top bar board-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Back')" @click="back" />
       <h2>{{ t('Board') }}</h2>
@@ -470,15 +484,15 @@ function back() {
         <span class="board-new-label">{{ tl('New task', 'Nouvelle tâche') }}</span>
       </UButton>
       <CoordinatorHint v-if="coordMachines.length === 1" :text="coordHint(coordMachines[0]!.machine, { kind: 'main' })">
-        <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord"
+        <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord" :icon="!wide ? 'i-lucide-message-square-text' : undefined"
           :class="{ on: talking(coordMachines[0]!.machine, { kind: 'main' }) }" :disabled="Boolean(coordWhy(coordMachines[0]!.machine))"
           @click="talkTo(coordMachines[0]!.machine, { kind: 'main' })"
-        >{{ coordLabel(coordMachines[0]!.machine, { kind: 'main' }) }}</UButton>
+          :aria-label="coordLabel(coordMachines[0]!.machine, { kind: 'main' })"><span class="board-coord-label">{{ coordLabel(coordMachines[0]!.machine, { kind: 'main' }) }}</span></UButton>
       </CoordinatorHint>
       <UDropdownMenu v-else-if="coordMachines.length > 1" :items="coordItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown board-coord-menu', itemLabel: 'whitespace-normal', itemDescription: 'whitespace-normal' }">
         <CoordinatorHint :text="coordinatorDescription({ kind: 'main' })">
-          <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord" trailing-icon="i-lucide-chevron-down">
-            {{ coordinatorLabel({ kind: 'main' }, '') }}
+          <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord" :icon="!wide ? 'i-lucide-message-square-text' : undefined" :aria-label="coordinatorLabel({ kind: 'main' }, '')" trailing-icon="i-lucide-chevron-down">
+            <span class="board-coord-label">{{ coordinatorLabel({ kind: 'main' }, '') }}</span>
           </UButton>
         </CoordinatorHint>
       </UDropdownMenu>
@@ -662,12 +676,12 @@ function back() {
       </div>
     </template>
     <BoardPanel
-      v-if="panel" :key="panelKey" :target="panel" :task="panelTask"
+      v-if="panel" :key="panelKey" :overlay="!dockPanel" :target="panel" :task="panelTask"
       :refresh="reload" :refresh-key="refreshes" :machine-label="machineLabel(panel.machine)" :reachable="ready.some(m => m.machine === panel!.machine)"
       @archived="onArchived" @restored="onRestored" @changed="reload" @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent" @coordinator="askCoordinator"
     />
     <BoardSettings
-      v-if="settings && !panel" :key="JSON.stringify(settings)" :target="settings" :repos="settingsRepos" :machine-label="machineLabel"
+      v-if="settings && !panel" :overlay="!dockPanel" :key="JSON.stringify(settings)" :target="settings" :repos="settingsRepos" :machine-label="machineLabel"
       :reachable="settingsReachable" @close="settings = null" @changed="reload()"
     />
     <TaskSheet
