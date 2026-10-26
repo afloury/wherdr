@@ -545,10 +545,16 @@ export function cleanRepo(v: unknown): string | null {
   return null
 }
 
-export interface NewTask { title: string, description: string, repo: string, delegate: boolean }
+export type TaskType = 'work' | 'research' | 'chat'
+export function cleanTaskType(value: unknown): TaskType | null {
+  if (value === undefined) return 'work'
+  return value === 'work' || value === 'research' || value === 'chat' ? value : null
+}
+export interface NewTask { title: string, description: string, repo: string, delegate: boolean, type?: TaskType }
 // `add`: `--delegate` puts an agent on it at once.
 export function addArgs(t: NewTask): string[] {
   return ['add',
+    ...(t.type === 'research' ? ['--research'] : t.type === 'chat' ? ['--chat'] : []),
     ...(t.description ? [`--desc=${t.description}`] : []),
     ...(t.repo ? [`--repo=${t.repo}`] : []),
     ...(t.delegate ? ['--delegate'] : []),

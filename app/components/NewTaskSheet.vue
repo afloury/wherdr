@@ -3,7 +3,7 @@
 // then herdr-projects `add` on that machine (`--repo`; the home folder when
 // none). "Start now" adds `--delegate`: an agent is put on it at once.
 // Without it the task waits under "To do" (the backlog) until Start.
-import { TELL_MAX, TITLE_MAX, cleanRepo } from '#shared/projectsTasks'
+import { TELL_MAX, TITLE_MAX, cleanRepo, type TaskType } from '#shared/projectsTasks'
 
 // `machines`: the boards that take actions, `repos`: each one's repos as its tasks show them.
 const props = defineProps<{ machines: string[], repos: Record<string, string[]>, machine?: string, repo?: string }>()
@@ -19,6 +19,17 @@ const repoPick = ref(HOME) // HOME, a repo's name, or OTHER
 const other = ref('')
 const title = ref('')
 const description = ref('')
+const type = ref<TaskType>('work')
+const types = computed(() => [
+  { value: 'work' as const, label: t('Work') },
+  { value: 'research' as const, label: t('Research') },
+  { value: 'chat' as const, label: tl('Conversation', 'Conversation') },
+])
+const typeHelp = computed(() => type.value === 'research'
+  ? t('Produces a research report.')
+  : type.value === 'chat'
+    ? t('Discuss with an agent, without changing code.')
+    : t('An agent carries out the task in the repo.'))
 const start = ref(false)
 const busy = ref(false)
 const error = ref('')
@@ -38,6 +49,7 @@ watch(open, (o) => {
   other.value = ''
   title.value = ''
   description.value = ''
+  type.value = 'work'
   start.value = false
   error.value = ''
 }, { immediate: true })
@@ -50,7 +62,7 @@ async function add() {
   busy.value = true
   error.value = ''
   try {
-    const r = await api<{ msg: string }>('/api/tasks/add', { machine: machine.value, title: title.value, description: description.value, repo: repo.value, delegate: start.value })
+    const r = await api<{ msg: string }>('/api/tasks/add', { machine: machine.value, title: title.value, description: description.value, repo: repo.value, delegate: start.value, type: type.value })
     haptic()
     toast(r.msg || (start.value ? tl('Added, an agent is on it', 'Ajoutée, un agent s’en occupe') : tl('Added to To do', 'Ajoutée à À faire')))
     emit('added', machine.value)
@@ -79,6 +91,14 @@ async function add() {
         v-if="repoPick === OTHER" v-model="other" size="xl" class="w-full mono" autocapitalize="none" autocorrect="off" :spellcheck="false"
         :placeholder="tl('Repo name, or /path/to/folder', 'Nom du dépôt, ou /chemin/du/dossier')" maxlength="500" :aria-label="tl('Repo or folder', 'Dépôt ou dossier')"
       />
+
+      <span id="new-task-type-label" class="field-label">{{ t('Task type') }}</span>
+      <div class="segmented" role="group" aria-labelledby="new-task-type-label" aria-describedby="new-task-type-help" :style="{ '--segment-count': 3 }">
+        <button v-for="choice in types" :key="choice.value" type="button" :class="{ on: type === choice.value }" :aria-pressed="type === choice.value" :data-task-type="choice.value" @click="type = choice.value">
+          {{ choice.label }}
+        </button>
+      </div>
+      <p id="new-task-type-help" class="muted">{{ typeHelp }}</p>
 
       <label class="field-label" for="new-task-title">{{ tl('Title', 'Titre') }}</label>
       <UInput
