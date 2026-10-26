@@ -25,6 +25,7 @@
 // (`delegate --after`); a task that waits says for what, with "Stop waiting"
 // (`after --clear`), and one in the queue says its place.
 import { canPickAttempt, AFTER_MAX, TASK_QUESTION_MAX, NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, type TasksReply, finishCase, prNumber, startPlace, taskActions, taskKey } from '#shared/projectsTasks'
+import { taskActivity } from '#shared/taskActivity'
 import AppSheet from './AppSheet.vue'
 import ModelPicker from './ModelPicker.vue'
 import { type StartAgentChoice, startAgentChoices } from '~/utils/agentChoices'
@@ -142,6 +143,8 @@ async function raiseLimit() {
 }
 const pr = computed(() => details.value?.pr || props.task?.pr || '')
 const review = computed(() => details.value?.review || props.task?.review || null)
+// Working: an agent running, or the board waiting for CI or for its turn.
+const activity = computed(() => (props.task ? taskActivity(props.task) : null))
 const label = computed(() => (props.task ? taskKey(props.task.id, props.task.repoKey) : ''))
 // Offered when it has an agent to talk to (its pane, as its details name it),
 // or one herdr-projects takes a reply for (`tell`), pane or not.
@@ -495,6 +498,7 @@ function chat() {
       <p v-if="!embedded" class="task-sheet-meta">
         <TaskKey :value="label" />
         <span class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
+        <TaskActivityBadge :activity="activity" />
         <span v-if="archived" class="task-chip task-archived"><UIcon name="i-lucide-archive" />{{ tl('Archived', 'Archivée') }}</span>
         <span v-if="task.app" class="task-chip">{{ task.app }}</span>
         <span v-if="row?.chat" class="task-chip">{{ tl('Conversation', 'Conversation') }}</span>
@@ -502,7 +506,7 @@ function chat() {
         <span v-if="multiMachine && machine !== undefined" class="task-chip">{{ machineName(machine) }}</span>
       </p>
       <span v-if="embedded && row?.chat" class="task-chip">{{ tl('Conversation', 'Conversation') }}</span>
-      <p v-if="embedded && task.group === 'working' && task.progress !== null" class="task-sheet-msg">{{ tl('Progress', 'Avancement') }} · {{ task.progress }}%<template v-if="task.eta !== null"> · {{ tl(`${task.eta} min left`, `${task.eta} min restantes`) }}</template></p>
+      <p v-if="embedded && activity?.kind === 'running' && task.progress !== null" class="task-sheet-msg">{{ tl('Progress', 'Avancement') }} · {{ task.progress }}%<template v-if="task.eta !== null"> · {{ tl(`${task.eta} min left`, `${task.eta} min restantes`) }}</template></p>
       <p v-if="task.msg && !wait && queued === null" class="task-sheet-msg">{{ task.msg }}</p>
       <!-- Where a started task stands before an agent is on it: the queue, or what it waits for. -->
       <section v-if="queued !== null" class="task-sheet-block task-wait" role="status">
