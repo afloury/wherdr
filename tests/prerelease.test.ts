@@ -1,4 +1,4 @@
-// Rolling v2 prerelease: scripts/prerelease.sh and .github/workflows/v2-prerelease.yml.
+// Rolling develop prerelease: scripts/prerelease.sh and .github/workflows/develop-prerelease.yml.
 import { execFile, execFileSync, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
@@ -183,12 +183,12 @@ esac
 })
 
 describe('workflow', () => {
-  const wf = readFileSync('.github/workflows/v2-prerelease.yml', 'utf8')
+  const wf = readFileSync('.github/workflows/develop-prerelease.yml', 'utf8')
 
-  it('runs on pushes to v2 only, one at a time, never on tags', () => {
-    expect(wf).toMatch(/on:\n {2}push:\n {4}branches: \[v2\]\n {2}workflow_dispatch:\n\n/)
+  it('runs on pushes to develop only, one at a time, never on tags', () => {
+    expect(wf).toMatch(/on:\n {2}push:\n {4}branches: \[develop\]\n {2}workflow_dispatch:\n\n/)
     expect(wf).not.toMatch(/tags:/)
-    expect(wf).toContain("if: github.ref == 'refs/heads/v2'")
+    expect(wf).toContain("if: github.ref == 'refs/heads/develop'")
     expect(wf).toContain('cancel-in-progress: false')
     expect(wf).toMatch(/^permissions:\n {2}contents: read\n/m)
   })

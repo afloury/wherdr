@@ -104,10 +104,10 @@ are released after the browser saves the file, keeping repeated downloads reliab
 [Full changelog](https://github.com/example/wherdr/blob/vX.Y.Z/CHANGELOG.md)
 ```
 
-## Rolling v2 prerelease
+## Rolling develop prerelease
 
-`v2-prerelease.yml` rebuilds one prerelease on every push to the `v2` branch, so a machine
-can install v2 from a prebuilt package (the plugin's GitHub download) and never compile it.
+`develop-prerelease.yml` rebuilds one prerelease on every push to the `develop` branch (the
+integration branch; `main` only receives releases), so a machine can install develop from a prebuilt package (the plugin's GitHub download) and never compile it.
 It publishes the version of `herdr-plugin.toml` (for example `2.0.0-dev`, before the stable version bump) as `v<version>`:
 
 - the tag moves to the pushed commit; the release is a prerelease, never `latest`. The update

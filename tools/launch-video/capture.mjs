@@ -15,7 +15,7 @@ const generated = join(here, ".generated");
 const fps = 15;
 const git = (args) =>
   execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-// The branch the film is made from (origin/v2 while 2.0 is prepared there).
+// The branch the film is made from (origin/develop, the integration branch).
 const base = process.env.WHERDR_FILM_BASE || "origin/main";
 git(["diff", "--exit-code", base, "--", "app", "nuxt.config.ts"]);
 const provenance = {

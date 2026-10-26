@@ -23,7 +23,7 @@ flock /tmp/wherdr-heavy.lock nice -n 15 node tools/launch-video/render.mjs
 ```
 
 The script checks that `app/` and `nuxt.config.ts` match `origin/main` (another
-branch with `WHERDR_FILM_BASE`, e.g. `WHERDR_FILM_BASE=origin/v2`), builds
+branch with `WHERDR_FILM_BASE`, e.g. `WHERDR_FILM_BASE=origin/develop`), builds
 `npm run build:demo`, captures actual interactions, verifies every source PNG's
 SHA-256, then renders the HTML/GSAP stage with HyperFrames 0.8.169 (one worker,
 low-memory mode, no GPU). FFmpeg adds source metadata and makes the WebP.

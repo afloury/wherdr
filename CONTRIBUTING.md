@@ -86,7 +86,7 @@ end-to-end test when the regression crosses the built app, routing, transport or
 boundaries. Reuse an existing journey when it proves the same contract.
 
 Start with `npm run test:affected -- --base <target-branch> --dry-run`, review its selection,
-then run `npm run test:affected -- --base <target-branch>`. Use `origin/v2` when targeting v2.
+then run `npm run test:affected -- --base <target-branch>`. Use `origin/develop` when targeting develop (the integration branch; main only receives releases).
 The selector combines `vitest related --run` with the reviewed domain table in
 [`scripts/test-affected.mjs`](scripts/test-affected.mjs). The dry run prints changed paths
 (including both sides of renames), domain reasons, explicit tests and sources passed to

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rolling prerelease of the v2 branch (.github/workflows/v2-prerelease.yml).
+# Rolling prerelease of the develop branch (.github/workflows/develop-prerelease.yml).
 # The release v<version> (version of herdr-plugin.toml, e.g. 2.0.0-dev) is
 # rebuilt on every push: its tag moves to the pushed commit and its files are
 # replaced, so a machine can install v2 with fetch_prebuilt

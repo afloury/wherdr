@@ -1,6 +1,6 @@
 {
   "source": "Unmodified wherdr app, static app/demo build",
-  "base": "origin/v2",
+  "base": "origin/develop",
   "mainCommit": "5ab669462f2a419829b0953e83ba139d6a0e7dc2",
   "appTree": "0893076ed59e7d7a1630594d418a8830588f3023",
   "uiChanges": false,

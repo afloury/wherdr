@@ -1,6 +1,6 @@
-# Rolling prerelease of the v2 branch: on every push to v2, the release
+# Rolling prerelease of the develop branch: on every push to develop, the release
 # v<version of herdr-plugin.toml> (e.g. v2.0.0-dev) is rebuilt for the pushed
-# commit, so a machine installs v2 with the prebuilt package and never compiles.
+# commit, so a machine installs develop with the prebuilt package and never compiles.
 #   - the tag moves to the pushed commit; the release is a prerelease, never latest
 #     (1.x update checks only read stable vX.Y.Z releases);
 #   - files: wherdr-<version>.tgz and .tgz.sha256 (made like release.yml: npm pack,
@@ -8,11 +8,11 @@
 # Only a version with a prerelease suffix is published (scripts/prerelease.sh):
 # stable versions keep going through release.yml and its vX.Y.Z tags.
 # The tag is moved with GITHUB_TOKEN, so it starts neither release.yml nor npm.yml.
-name: v2 prerelease
+name: develop prerelease
 
 on:
   push:
-    branches: [v2]
+    branches: [develop]
   workflow_dispatch:
 
 permissions:
@@ -20,12 +20,12 @@ permissions:
 
 # One at a time, never cancelled halfway through replacing the files.
 concurrency:
-  group: v2-prerelease
+  group: develop-prerelease
   cancel-in-progress: false
 
 jobs:
   prerelease:
-    if: github.ref == 'refs/heads/v2'
+    if: github.ref == 'refs/heads/develop'
     permissions:
       contents: write
     runs-on: ubuntu-latest
