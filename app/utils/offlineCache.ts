@@ -122,7 +122,8 @@ const none = (): Pending => ({ chats: new Map(), used: new Map() })
 let pending = none()
 let timer: ReturnType<typeof setTimeout> | null = null
 let writing: Promise<void> = Promise.resolve()
-// Size of the home state and of the Board, as last written by this tab.
+// Size of the home state and of the Board, as last written by this tab (or,
+// before that, as another tab stored them: read in the write's transaction).
 let homeBytes = 0
 let boardBytes = 0
 
@@ -159,12 +160,17 @@ async function write(p: Pending) {
       // remembered: another tab (the installed app and a browser tab) writes
       // them too, and a record left out of the index would never be removed.
       const storedIndex = kv.get('index')
+      // Not written by this tab yet: their stored size counts toward MAX_BYTES too.
+      const storedHome = homeBytes ? null : kv.get('home')
+      const storedBoard = boardBytes ? null : kv.get('board')
       const storedKeys = chats.getAllKeys()
       storedKeys.onsuccess = () => {
         const keys = new Set(storedKeys.result.map(String))
         // Entries whose record is gone (cleared elsewhere) leave the index too.
         const stored = (Array.isArray(storedIndex.result) ? storedIndex.result as ChatEntry[] : []).filter(e => keys.has(e?.id))
         const next = mergeIndex(stored, new Map([...chatsIn].map(([id, c]) => [id, c.bytes])), p.used)
+        if (storedHome?.result) homeBytes = bytesOf(storedHome.result)
+        if (storedBoard?.result) boardBytes = bytesOf(storedBoard.result)
         const { keep } = pruneIndex(next, p.prune, homeBytes + boardBytes)
         const kept = new Set(keep.map(c => c.id))
         for (const [id, c] of chatsIn) if (kept.has(id)) chats.put(c.chat, id)
