@@ -633,6 +633,59 @@ describe('Finish, and a failure the task moved on from', () => {
     w.unmount()
   })
 
+  // #155: limits as gauges, and one tap per preset in the raise sheet.
+  it('shows each limit as a gauge, red past 90 %, and a limit not set as a word', async () => {
+    Object.assign(shown, { stage: 'stopped', failure: '', failureStage: '', limits: { time: '2h', timeUsed: '2m38s', timeUsedMs: 158_000, tokens: '30m', tokensUsed: 31_000_000, tokensCounted: 29_000_000 } })
+    const w = await mountSuspended(TaskSheet, { props: { task: stopped, machine: 'a', open: true } })
+    const value = (kind: string) => document.querySelector(`.task-limit[data-kind="${kind}"] .task-limit-value`)?.textContent?.replace(/\s+/g, ' ').trim()
+    await vi.waitFor(() => expect(value('time')).toBe('2 min 38 / 2 h'))
+    expect(value('tokens')).toBe('29 M / 30 M')
+    expect(document.querySelector('.task-limit[data-kind="tokens"]')!.classList).toContain('hot')
+    expect(document.querySelector('.task-limit[data-kind="time"]')!.classList).not.toContain('hot')
+    expect(document.querySelector('.task-limit-total')?.textContent).toContain('31 M')
+    expect(document.querySelectorAll('.task-limit-bar[role="meter"]')).toHaveLength(2)
+    w.unmount()
+    Object.assign(shown, { limits: { time: 'none', timeUsed: '', tokens: 'none', tokensUsed: 1200 } })
+    const n = await mountSuspended(TaskSheet, { props: { task: stopped, machine: 'a', open: true } })
+    await vi.waitFor(() => expect(value('time')).toBe('— / No limit'))
+    expect(value('tokens')).toBe('1.2 k / No limit')
+    expect(document.querySelectorAll('.task-limit-bar')).toHaveLength(0)
+    n.unmount()
+    delete (shown as Record<string, unknown>).limits
+  })
+
+  it('raises the limit that stopped it with one preset: set only, its value from the limit', async () => {
+    const limits: unknown[] = []
+    registerEndpoint('/api/tasks/limit', { method: 'POST', handler: async (e) => { limits.push(await readBody(e)); return { ok: true, msg: 'set' } } })
+    sent = []
+    registerEndpoint('/api/tasks/action', { method: 'POST', handler: async (e) => { sent.push(await readBody(e)); return { ok: true, msg: '' } } })
+    Object.assign(shown, { stage: 'stopped', failure: '', failureStage: '', limits: { time: '2h', timeUsed: '2h', tokens: 'none', tokensUsed: 0, stopped: 'time', stoppedUsed: 7_200_000 } })
+    const w = await mountSuspended(TaskSheet, { props: { task: stopped, machine: 'a', open: true } })
+    await vi.waitFor(() => expect(buttons()).toContain('Raise limit'))
+    ;[...document.querySelectorAll<HTMLButtonElement>('.task-sheet-actions button')].find(b => b.textContent?.trim() === 'Raise limit')!.click()
+    const presets = () => [...document.querySelectorAll<HTMLButtonElement>('.raise-limit-presets button')]
+    await vi.waitFor(() => expect(presets()).toHaveLength(3))
+    expect(presets().map(b => b.textContent?.replace(/\s+/g, ' ').trim())).toEqual(['+1 h3 h', '×24 h', 'No limit'])
+    presets()[0]!.click()
+    await vi.waitFor(() => expect(limits).toEqual([{ machine: 'a', id: 'demo/1', name: 'limit.time', value: '3h' }]))
+    expect(sent).toEqual([])
+    w.unmount()
+    delete (shown as Record<string, unknown>).limits
+  })
+
+  it('offers disabled a preset that would not go above what was used', async () => {
+    Object.assign(shown, { stage: 'stopped', failure: '', failureStage: '', limits: { time: 'none', timeUsed: '', tokens: '10m', tokensUsed: 25_000_000, tokensCounted: 25_000_000, stopped: 'tokens', stoppedUsed: 25_000_000 } })
+    const w = await mountSuspended(TaskSheet, { props: { task: { ...stopped, msg: 'stopped at 10m tokens' }, machine: 'a', open: true } })
+    await vi.waitFor(() => expect(buttons()).toContain('Raise limit'))
+    ;[...document.querySelectorAll<HTMLButtonElement>('.task-sheet-actions button')].find(b => b.textContent?.trim() === 'Raise limit')!.click()
+    const presets = () => [...document.querySelectorAll<HTMLButtonElement>('.raise-limit-presets button')]
+    await vi.waitFor(() => expect(presets()).toHaveLength(3))
+    expect(presets().map(b => b.textContent?.replace(/\s+/g, ' ').trim())).toEqual(['×220 M', '+10 M20 M', 'No limit'])
+    expect(presets().map(b => b.disabled)).toEqual([true, true, false])
+    w.unmount()
+    delete (shown as Record<string, unknown>).limits
+  })
+
   it('an old failure is shown as history, not as a warning', async () => {
     Object.assign(shown, { stage: 'stopped', failure: 'Review failed: no verdict', failureTitle: 'Review failed', failureStage: 'review', failureStale: true, failureAt: 1_792_500_000_000 })
     const w = await mountSuspended(TaskSheet, { props: { task: stopped, machine: 'a', open: true } })

@@ -3969,6 +3969,16 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-sheet-facts dd.pass { color: var(--green); }
 .task-sheet-facts dd.fail { color: var(--rose); }
 .task-sheet-facts a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
+/* Task limits: one thin gauge each, a 1 px rule filled in accent, red near the end. */
+.task-limits { display: flex; flex-direction: column; gap: 10px; }
+.task-limit-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 5px; }
+.task-limit-label { font: 600 10px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.task-limit-value { font: 500 12px/1.4 var(--mono); font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
+.task-limit-bar { position: relative; height: 3px; }
+.task-limit-bar::before { content: ''; position: absolute; left: 0; right: 0; top: 1px; height: 1px; background: var(--line-strong); }
+.task-limit-bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
+.task-limit.hot .task-limit-bar > i { background: var(--danger); }
+.task-limit.hot .task-limit-value { color: var(--danger); }
 .task-sheet-block h4 { margin: 0 0 6px; font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .task-sheet-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; color: var(--text-2); }
 .task-handover-list { list-style: none; padding: 0; margin: 0; }
@@ -4223,6 +4233,14 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-card .board-card-head { flex-wrap: wrap; }
 .board-panel[data-kind="task"] .board-panel-who > .task-agent-mark { order: 3; flex: 0 0 100%; }
 
+/* Raise the limit: one tap per preset, above the typed value. */
+.raise-limit-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); }
+.raise-limit-presets > button { border-radius: 0; flex-direction: column; justify-content: center; gap: 2px; min-height: 58px; box-shadow: none; border: 0; border-left: 1px solid var(--line); }
+.raise-limit-presets > button:first-child { border-left: 0; }
+.raise-limit-op { font: 600 13px/1.2 var(--mono); letter-spacing: .04em; }
+.raise-limit-to { font: 500 11px/1.2 var(--mono); color: var(--muted); }
+.task-limit.unset .task-limit-value { color: var(--muted); }
+.task-limit-total { margin: 0; font: 500 11px/1.4 var(--mono); color: var(--muted); }
 /* A quiet source stays identifiable without competing with its state. */
 .notification-muted { color: var(--muted); width: 12px; height: 12px; flex-shrink: 0; }
 

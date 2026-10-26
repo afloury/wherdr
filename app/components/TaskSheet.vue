@@ -30,6 +30,7 @@ import ModelPicker from './ModelPicker.vue'
 import { type StartAgentChoice, startAgentChoices } from '~/utils/agentChoices'
 import { finishHint, finishLabel, finishQuestion, finishTitle, finishOffered } from '~/utils/taskFinish'
 import { type WaitChoice, queuePlaceText, typedRef, waitChoices, waitName } from '~/utils/taskWait'
+import { type LimitPreset, formatLimit, limitStopOf, raisePresets } from '#shared/taskLimits'
 import { sawTasksBoard, seenTasksBoard } from '~/composables/useTasksBoard'
 
 // `refresh`: reads the Board again (its promise ends with the read); without
@@ -97,6 +98,28 @@ function openLimit() {
   limitNotice.value = ''
   limitValue.value = ''
   limitOpen.value = true
+}
+// One tap per preset (+1 h / ×2 / none for time, ×2 / +10 M / none for tokens):
+// the same `set` as a typed value. A preset not above what was already used
+// is offered disabled, since herdr-projects would not resume.
+const limitStop = computed(() => (limitStopped.value ? limitStopOf(failure.value?.limits, row.value?.msg) : null))
+const limitPresets = computed(() => {
+  const s = limitStop.value
+  return s && limitName.value === `limit.${s.kind}` ? raisePresets(s.kind, s.limit, s.used) : []
+})
+function presetLabel(p: LimitPreset): string {
+  switch (p.id) {
+    case 'plus1h': return '+1 h'
+    case 'plus10m': return '+10 M'
+    case 'double': return '×2'
+    default: return tl('No limit', 'Sans limite')
+  }
+}
+const presetTo = (p: LimitPreset) => (p.value === 'none' || !limitStop.value ? '' : formatLimit(limitStop.value.kind, p.value, language))
+function applyPreset(p: LimitPreset) {
+  if (!p.resumes) return
+  limitValue.value = p.value
+  void raiseLimit()
 }
 async function raiseLimit() {
   const task = props.task
@@ -596,12 +619,7 @@ function chat() {
         <h4>{{ tl('Review findings', 'Remarques de relecture') }}</h4>
         <p v-for="(f, i) in details.findings" :key="i" class="task-sheet-text">{{ f.severity }} · {{ f.title }}<template v-if="f.detail"> — {{ f.detail }}</template></p>
       </section>
-      <dl v-if="details?.limits" class="task-sheet-facts">
-        <dt>{{ tl('Time used · this run', 'Temps consommé · cette tranche') }}</dt><dd>{{ details.limits.timeUsed || tl('Not provided', 'Non renseigné') }}</dd>
-        <dt>{{ tl('Time limit', 'Plafond de temps') }}</dt><dd>{{ details.limits.time === 'none' ? tl('No limit', 'Aucune limite') : details.limits.time || tl('Not provided', 'Non renseigné') }}</dd>
-        <dt>{{ tl('Token limit', 'Limite de tokens') }}</dt><dd><span v-if="details.limits.tokens === 'none'">{{ tl('No limit', 'Aucune limite') }}</span><TokenCount v-else :value="details.limits.tokens" /></dd>
-        <dt>{{ tl('Tokens used · whole task', 'Jetons consommés · toute la tâche') }}</dt><dd><TokenCount :value="details.limits.tokensUsed" /></dd>
-      </dl>
+      <TaskLimitGauges v-if="details?.limits" :limits="details.limits" />
 
       <section v-if="!archived" class="task-sheet-block">
         <div class="task-sheet-actions">
@@ -662,6 +680,11 @@ function chat() {
         <form class="sheet-form task-question" @submit.prevent="raiseLimit">
           <p>{{ tl('Choose a total ceiling above usage for the limit that stopped this task. Usage is kept; the CLI resumes automatically when this limit is lifted. Enter none to explicitly remove it.', 'Choisis un plafond total supérieur à la consommation pour la limite qui a arrêté cette tâche. La consommation est conservée ; le CLI reprend automatiquement quand cette limite est levée. Saisis none pour la supprimer explicitement.') }}</p>
           <p id="task-limit-kind" class="field-label">{{ limitName === 'limit.time' ? tl('Reached limit: time per run', 'Limite atteinte : temps par tranche') : limitName === 'limit.tokens' ? tl('Reached limit: tokens for the whole task', 'Limite atteinte : jetons pour toute la tâche') : tl('The reached limit is not available. Refresh the task before changing a ceiling.', 'La limite atteinte n’est pas disponible. Actualise la tâche avant de modifier un plafond.') }}</p>
+          <div v-if="limitPresets.length" class="raise-limit-presets" role="group" :aria-label="tl('Quick choices', 'Choix rapides')">
+            <UButton v-for="p in limitPresets" :key="p.id" color="neutral" variant="outline" :data-preset="p.id" :disabled="busy || offlineView || reachable === false || !p.resumes" :title="p.resumes ? undefined : tl('Not above what it already used: it would not resume', 'Pas au-dessus de ce qu’elle a déjà utilisé : elle ne reprendrait pas')" @click="applyPreset(p)">
+              <span class="raise-limit-op">{{ presetLabel(p) }}</span><span v-if="presetTo(p)" class="raise-limit-to">{{ presetTo(p) }}</span>
+            </UButton>
+          </div>
           <label for="task-limit-value" class="field-label">{{ limitName === 'limit.time' ? tl('New duration (e.g. 4h, 90m, none)', 'Nouvelle durée (ex. 4h, 90m, none)') : tl('New token count (e.g. 3m, 500k, none)', 'Nouvelle quantité de jetons (ex. 3m, 500k, none)') }}</label>
           <UInput id="task-limit-value" v-model="limitValue" :disabled="busy || !limitName" :maxlength="40" />
           <p v-if="limitNotice" role="status">{{ limitNotice }}</p>
