@@ -2,6 +2,8 @@ import { expect, test } from './test'
 import { OMP_CHAT_PANE } from './scenario.mjs'
 
 test('dictation survives immediate clipboard restoration; diagnostics and images remain available', { tag: ['@chromium-phone', '@chromium-desktop', '@webkit-phone', '@webkit-desktop'] }, async ({ page }, info) => {
+  // Repeated clipboard races and two viewport captures can exceed 30s on mobile.
+  test.setTimeout(60_000)
   await page.goto('/#/settings?section=advanced')
   const section = page.locator('.settings-section:visible')
   await expect(section.getByRole('switch')).not.toBeChecked()
