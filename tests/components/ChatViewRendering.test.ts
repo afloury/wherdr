@@ -85,4 +85,30 @@ describe('conversation rendering', () => {
       expect(lightboxSet.value).toEqual([src])
     } finally { w.unmount() }
   })
+  it('keeps a scheduled prompt folded while rendering its Markdown on demand', async () => {
+    const idle = { ...pane, status: 'idle' as const }
+    herdrState.value = { ok: true, workspaces: [], panes: [idle] }
+    items = [
+      { role: 'notice', name: 'scheduled', text: '**Check deployment**', ts: '2026-01-01T00:00:00Z' },
+      { role: 'assistant', text: 'Deployment is green.', ts: '2026-01-01T00:00:01Z' },
+    ]
+    const w = await mountSuspended(ChatView, {
+      props: { pane: idle, localQueued: [] },
+      global: { stubs: { UTooltip: { template: '<slot />' } } },
+    })
+    try {
+      await expect.poll(() => w.find('.chat').text()).toContain('Deployment is green.')
+      const notice = w.find('.msg-notice.scheduled')
+      expect(notice.classes()).toContain('long')
+      expect(notice.classes()).not.toContain('open')
+      expect(notice.find('.msg-notice-body strong').text()).toBe('Check deployment')
+      expect(w.findAll('.msg-user-wrap')).toHaveLength(0)
+      const toggle = notice.find('button.msg-shell-more')
+      expect(toggle.attributes('aria-expanded')).toBe('false')
+      await toggle.trigger('click')
+      expect(toggle.attributes('aria-expanded')).toBe('true')
+      expect(notice.classes()).toContain('open')
+    } finally { w.unmount() }
+  })
+
 })

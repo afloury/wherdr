@@ -36,6 +36,8 @@ export function memberCard(m: Member): BoardCard | null {
     progress: task.progress,
     since: task.since,
     msg: task.msg,
-    onBoard: () => navigateTo({ path: '/board', query: { machine: m.board || '', task: task.id } }),
+    // The task it belongs to: selected while the Board's panel shows it.
+    taskRef: { machine: m.board || '', id: task.id },
+    onBoard: () => navigateTo({ path: '/board', query: { machine: m.board || '', task: task.id, now: '1' } }),
   }
 }

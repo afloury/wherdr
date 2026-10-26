@@ -4,12 +4,12 @@
 // progress, review). `status`: also its group, for lists that mix groups
 // (grouped by repo); `machine`: its machine's name, where several machines
 // share a list. The whole card opens the task; its pull request link opens
-// the pull request.
+// the pull request. `selected`: its task is open in the side panel.
 import { type TaskRow, prNumber, taskKey } from '#shared/projectsTasks'
 import { blockKind, blockKindLabel, prLink } from '~/utils/blockNotice'
 import { taskActivity } from '#shared/taskActivity'
 
-const props = defineProps<{ task: TaskRow, status?: boolean, machine?: string, stale?: boolean, readAt?: string }>()
+const props = defineProps<{ task: TaskRow, status?: boolean, machine?: string, stale?: boolean, readAt?: string, selected?: boolean }>()
 defineEmits<{ open: [] }>()
 
 const waitKind = computed(() => (props.task.group === 'needs' ? blockKind(props.task.kind) : null))
@@ -25,8 +25,8 @@ const staleTitle = computed(() => (props.stale
 </script>
 
 <template>
-  <div class="board-card task-card" :class="[task.group, { stale }, activity && activity.kind !== 'running' ? `activity-${activity.kind}` : '']" :title="staleTitle" :data-task="task.id">
-    <button type="button" class="task-card-open" :aria-label="`${taskKey(task.id, task.repoKey)} ${task.title}`" @click="$emit('open')" />
+  <div class="board-card task-card" :class="[task.group, { stale, sel: selected }, activity && activity.kind !== 'running' ? `activity-${activity.kind}` : '']" :title="staleTitle" :data-task="task.id">
+    <button type="button" class="task-card-open" :aria-current="selected ? 'true' : undefined" :aria-label="`${taskKey(task.id, task.repoKey)} ${task.title}`" @click="$emit('open')" />
     <span class="board-card-head">
       <TaskAgentMark :identity="task.identity || { agent: task.app, reviewer: '', from: '' }" primary />
       <TaskKey :value="taskKey(task.id, task.repoKey)" />

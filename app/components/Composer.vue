@@ -712,6 +712,10 @@ defineExpose({
         </div>
       </template>
       <template #footer>
+        <!-- The focused field's ring (main.css, "Focus border"): out of the footer's flow, over
+             the field's border; a turning square under a fixed mask, so only the compositor works. -->
+        <span class="fx-ring" aria-hidden="true"><span class="fx-spin" /></span>
+        <span class="fx-halo" aria-hidden="true"><span class="fx-spin" /></span>
         <!-- Out of the footer's flow: top right of the field, over its first line. -->
         <button
           v-if="suggestTap" ref="suggestBtn" type="button" class="prompt-suggest" :aria-label="t('Use suggestion')"

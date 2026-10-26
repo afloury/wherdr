@@ -20,8 +20,10 @@ registerEndpoint('/api/tasks/coordinator', { method: 'GET', handler: () => {
 // What was sent to it (a first message, Try again).
 const posted: unknown[] = []
 registerEndpoint('/api/tasks/coordinator', { method: 'POST', handler: async (event) => {
-  posted.push(await readBody(event))
-  return { ok: true, msg: 'done' }
+  const b = await readBody(event) as { to?: { kind: string, repo?: string } }
+  posted.push(b)
+  // A folder the board did not know: the server added it under a name.
+  return { ok: true, msg: 'done', ...(b.to?.repo === '/repos/new-demo' ? { repo: 'new-demo' } : {}) }
 } })
 
 const pane = (id: string): Pane => ({ id, workspace: id.split(':')[0]!, tab: `${id.split(':')[0]}:t1`, tabLabel: null, agent: 'claude', name: null, label: null, status: 'idle', title: null, cwd: '/tmp/demo', agentSession: null })
@@ -67,6 +69,8 @@ describe('the Board panel follows its coordinator', () => {
     vm.first = 'Plan this project'
     await vm.start()
     expect(posted).toEqual([{ machine: '', to: { kind: 'project', repo: '/repos/new-demo' }, text: 'Plan this project', start: { agent: 'codex/demo-model', effort: 'high' } }])
+    // From now on the coordinator is named by the repo's name on the board.
+    expect(w.emitted('retarget')).toEqual([[{ kind: 'project', repo: 'new-demo' }]])
     w.unmount()
   })
 
