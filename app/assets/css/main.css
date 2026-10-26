@@ -2152,6 +2152,11 @@ body.kb .composer { padding-bottom: 8px; }
 .name-note { margin: 8px 2px 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .name-note code { font-family: var(--mono); color: var(--text); }
 .form-error.name-note { color: var(--rose); }
+.project-folder { margin: 8px 2px 14px; font-size: 13px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+.project-folder code { font-family: var(--mono); color: var(--text); white-space: nowrap; }
+.form-error.project-folder { color: var(--rose); }
+.project-folder-tag { display: inline-block; margin-right: 6px; padding: 1px 6px; border: 1px solid currentColor; font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--text); vertical-align: 1px; }
+.project-folder-tag.new { color: var(--accent, var(--text)); }
 
 .segmented { display: grid; grid-template-columns: repeat(var(--segment-count), minmax(0, 1fr)); border: 1px solid var(--line); }
 .segmented button {
@@ -4065,6 +4070,9 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-more:hover { border-color: var(--mauve); color: var(--mauve); }
 .board-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line-soft); background: var(--surface); text-align: left; cursor: pointer; }
 .board-card:hover { border-color: var(--line); background: var(--surface-2); }
+/* Its task open in the side panel: the sidebar's selection accent (mauve; rose when it needs you), on every size. */
+.board-card.sel, .board-card.sel:hover { border-color: var(--mauve); background: var(--surface-2); box-shadow: inset 2px 0 0 var(--mauve); }
+.board-card.sel.needs, .board-card.sel.needs:hover { border-color: var(--rose); box-shadow: inset 2px 0 0 var(--rose); }
 
 .board-card.stale { opacity: .55; }
 .board-card-head { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
@@ -4259,6 +4267,11 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-skel .board-seg-btn { cursor: default; }
 /* The conversation's: at the bottom, as the messages will be. */
 .chat-list.skeleton { flex: 1; justify-content: flex-end; }
+/* A task's panel opened before its details are read (BoardPanel): its title, tabs and conversation. */
+.board-panel-title.skel-title { display: block; flex: 0 1 220px; height: 12px; background: var(--line-soft); }
+.board-panel-tabs.skel-tabs i { display: block; width: 92px; height: 36px; border-right: 1px solid var(--line); }
+.board-panel-tabs.skel-tabs i:first-child { border-bottom: 2px solid var(--line); }
+.board-panel-skel { flex: 1; min-height: 0; overflow: hidden; }
 .chat-skel { display: flex; flex-direction: column; gap: 14px; }
 .chat-skel .skel-user { align-self: flex-end; width: min(70%, 420px); padding: 10px 14px; border: 1px solid var(--line); background: var(--surface-2); }
 .chat-skel .skel-user i { background: var(--line); }

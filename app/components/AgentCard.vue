@@ -69,7 +69,14 @@ const twoLines = computed(() => lead.value ? false : taskCard.value ? !compactLi
 const subtitle = computed(() => conversationSubtitle(props.pane, ws.value))
 // Selection (computer): the pane being viewed, or for a space one of its panes / tabs.
 const route = useRoute()
+// A task's conversation also while the Board's side panel shows that task.
+const boardTaskOpen = computed(() => {
+  const r = props.board?.taskRef
+  const o = boardOpenTask.value
+  return Boolean(r && o && route.path === '/board' && r.machine === o.machine && r.id === o.id)
+})
 const selected = computed(() => {
+  if (boardTaskOpen.value) return true
   if (!space.value) return props.pane.id === curPane.value
   const tab = route.path.startsWith('/t/') ? String(route.params.tab || '') : null
   return space.value.panes.some(p => p.id === curPane.value || p.tab === tab)
@@ -204,6 +211,10 @@ function openInteraction() {
   navigateTo(panePath(props.pane.id))
 }
 watch(() => props.pane.prompt, () => { busy.value = false })
+// Its task opened on the Board (from here or a card there): brought into view in the sidebar.
+watch(boardTaskOpen, (on) => {
+  if (on && desk.value) nextTick(() => card.value?.scrollIntoView?.({ block: 'nearest' }))
+}, { immediate: true })
 const appear = list.shown()
 onMounted(list.mount)
 onUnmounted(list.unmount)

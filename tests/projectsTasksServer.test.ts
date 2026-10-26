@@ -2,7 +2,7 @@
 // which commands run, one at a time per machine, how sparingly, in which
 // session and what a failure looks like.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -955,23 +955,109 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     ])
   })
 
-  it('sends an unknown repository path and configures only a coordinator that does not exist', async () => {
-    const to = { kind: 'project', repo: '~/repos/new demo' }
-    await T.tellCoordinator('', '--hello', { to, start: { agent: 'codex/demo-model', effort: 'high' } })
-    expect(calls).toEqual([
-      ['coordinator', '--project=~/repos/new demo', '--json', 'status'],
-      ['coordinator', '--project=~/repos/new demo', '--agent=codex/demo-model', '--effort=high', '--', 'new'],
-      ['coordinator', '--project=~/repos/new demo', '--', 'tell', '--hello'],
-    ])
-    for (const state of ['idle', 'starting', 'stopped']) {
-      calls = []
-      coordStatus['--project=~/repos/new demo'] = { state, pane: '' }
-      await T.tellCoordinator('', 'keep it', { to, start: { agent: 'claude' } })
-      expect(calls.some(c => c.includes('new'))).toBe(false)
+  // herdr-projects names a project coordinator by its repo's name on the board, never a path:
+  // a folder it does not know is added first (`automations add --repo`, removed at once: no task).
+  describe('a project coordinator on a folder', () => {
+    const reposFile = () => path.join(home, '.herdr-projects/data/repos.json')
+    const repos = (o: Record<string, string>) => { mkdirSync(path.dirname(reposFile()), { recursive: true }); writeFileSync(reposFile(), JSON.stringify(o)) }
+    const gitRepo = (name: string) => {
+      const dir = path.join(home, 'code', name)
+      mkdirSync(dir, { recursive: true })
+      execFileSync('git', ['init', '-q', dir])
+      return dir
     }
-    calls = []
-    await expect(T.tellCoordinator('', 'hello', { to, start: { agent: '--bad' } })).rejects.toThrow(/Invalid agent/)
-    expect(calls).toEqual([])
+    // `automations add --repo=<root>`: the repo named on first sight, as 1.2.26 does (store/repos.rs repo_of).
+    const automations = new Set<string>()
+    beforeEach(() => {
+      automations.clear()
+      T.setRunner(async (_m, _l, args) => {
+        calls.push(args)
+        if (args[0] === 'automations' && args[1] === 'add') {
+          const root = args.find(a => a.startsWith('--repo='))!.slice('--repo='.length)
+          const now = existsSync(reposFile()) ? JSON.parse(readFileSync(reposFile(), 'utf8')) : {}
+          now[path.basename(root).replace(/[^\w.+-]/g, '-')] = root
+          repos(now)
+          automations.add(args.at(-1)!)
+          return { code: 0, stdout: `Added the automation "${args.at(-1)}"\n`, stderr: '' }
+        }
+        if (args[0] === 'automations' && args[1] === 'remove') { automations.delete(args.at(-1)!); return { code: 0, stdout: 'Removed\n', stderr: '' } }
+        if (args[0] === 'coordinator' && args.at(-1) === 'status') return { code: 0, stdout: JSON.stringify({ state: 'none', pane: '' }), stderr: '' }
+        return { code: 0, stdout: 'sent\n', stderr: '' }
+      })
+    })
+
+    it('says whether a folder is on the board, new, missing or not Git', async () => {
+      const app = gitRepo('app')
+      const site = gitRepo('my site')
+      mkdirSync(path.join(app, 'src'), { recursive: true })
+      mkdirSync(path.join(home, 'notes'), { recursive: true })
+      repos({ app })
+      expect(await T.projectFolder('', path.join(app, 'src'))).toEqual({ state: 'known', repo: 'app', root: app })
+      expect(await T.projectFolder('', site)).toEqual({ state: 'new', repo: 'my-site', root: site })
+      expect(await T.projectFolder('', path.join(home, 'notes'))).toEqual({ state: 'notgit' })
+      expect(await T.projectFolder('', path.join(home, 'nowhere'))).toEqual({ state: 'missing' })
+      await expect(T.projectFolder('', 'app')).rejects.toThrow(/Invalid repo/)
+      expect(calls).toEqual([])
+    })
+
+    it('adds an unknown repo with no task, then starts its coordinator by name', async () => {
+      const hub = gitRepo('hub')
+      const r = await T.tellCoordinator('', '--hello', { to: { kind: 'project', repo: hub }, start: { agent: 'codex/demo-model', effort: 'high' } })
+      expect(r.repo).toBe('hub')
+      const name = calls[0]!.at(-1)!
+      expect(name).toMatch(/^wherdr-add-repo-[0-9a-f]{8}$/)
+      expect(calls).toEqual([
+        ['automations', 'add', '--prompt=Never runs: wherdr adds this repository to the board and removes this automation at once.', '--when=merged', `--repo=${hub}`, '--', name],
+        ['automations', 'remove', '--', name],
+        ['coordinator', '--project=hub', '--json', 'status'],
+        ['coordinator', '--project=hub', '--agent=codex/demo-model', '--effort=high', '--', 'new'],
+        ['coordinator', '--project=hub', '--', 'tell', '--hello'],
+      ])
+      // No task was made (no "added" event), and the automation is gone.
+      expect(calls.some(c => c[0] === 'add')).toBe(false)
+      expect(automations.size).toBe(0)
+      // Known now: nothing is added again.
+      calls = []
+      expect(await T.registerProject('', hub)).toEqual({ repo: 'hub', root: hub, added: false })
+      expect(calls).toEqual([])
+    })
+
+    it('refuses a missing or non-Git folder with a clear message, running nothing', async () => {
+      mkdirSync(path.join(home, 'plain'), { recursive: true })
+      await expect(T.registerProject('', path.join(home, 'plain'))).rejects.toThrow('This folder is not a Git repository')
+      await expect(T.tellCoordinator('', 'hi', { to: { kind: 'project', repo: path.join(home, 'gone') } })).rejects.toThrow('This folder does not exist on this machine.')
+      expect(calls).toEqual([])
+    })
+
+    it('says so when the automation that added it could not be removed', async () => {
+      const lib = gitRepo('lib')
+      T.setRunner(async (_m, _l, args) => {
+        calls.push(args)
+        if (args[1] === 'add') { repos({ lib }); return { code: 0, stdout: 'Added\n', stderr: '' } }
+        return { code: 1, stdout: '', stderr: 'no such automation' }
+      })
+      await expect(T.registerProject('', lib)).rejects.toThrow(/automation wherdr-add-repo-[0-9a-f]{8} that added it could not be removed: no such automation/)
+    })
+
+    it('says so when herdr-projects did not add it', async () => {
+      const odd = gitRepo('odd')
+      T.setRunner(async (_m, _l, args) => { calls.push(args); return { code: 0, stdout: 'ok\n', stderr: '' } })
+      await expect(T.registerProject('', odd)).rejects.toThrow('herdr-projects did not add the repository to the board.')
+    })
+
+    it('never resets an existing conversation of a known repo', async () => {
+      const to = { kind: 'project', repo: 'demo' }
+      for (const state of ['idle', 'starting', 'stopped']) {
+        calls = []
+        coordStatus['--project=demo'] = { state, pane: '' }
+        T.setRunner(async (_m, _l, args) => { calls.push(args); return { code: 0, stdout: args.at(-1) === 'status' ? JSON.stringify(coordStatus['--project=demo']) : 'sent\n', stderr: '' } })
+        await T.tellCoordinator('', 'keep it', { to, start: { agent: 'claude' } })
+        expect(calls.some(c => c.includes('new'))).toBe(false)
+      }
+      calls = []
+      await expect(T.tellCoordinator('', 'hello', { to, start: { agent: '--bad' } })).rejects.toThrow(/Invalid agent/)
+      expect(calls).toEqual([])
+    })
   })
 
   it('a coordinator\'s pane is the one herdr-projects keeps for it, never one found by name', async () => {
