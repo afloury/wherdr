@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Long queued-task references stay within Board cards, home rows and task panels on mobile, with ellipsis and the full reference kept in the accessible hint. Panel titles retain their own line.
+
 ### Added and improved
 
 - **Working tasks say what they are doing (#154).** On the Board card, the home list row and the task panel header, a task whose agent has finished and that waits for GitHub checks shows a **CI 1/2** badge with its agent logo dimmed and no progress; a task waiting behind another task or for a free slot shows **QUEUED · DEMO-3** / **QUEUED · Q#2**, dimmed, with no progress. A task with an agent at work looks as before.

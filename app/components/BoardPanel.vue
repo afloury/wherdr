@@ -597,7 +597,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <p class="board-panel-name">
           <template v-if="target.kind === 'task'">
             <AgentAvatar :agent="identity.agent" :title="agentHint" />
-            <TaskKey :value="taskLabel" /><span class="board-panel-title" :title="details?.title || task?.title">{{ details?.title || task?.title }}</span><span v-if="task" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span><TaskActivityBadge :activity="activity" />
+            <TaskKey :value="taskLabel" /><span class="board-panel-title" :title="details?.title || task?.title">{{ details?.title || task?.title }}</span><span v-if="task" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
           </template>
           <template v-else>
             <UIcon name="i-lucide-message-square-text" class="board-panel-coord-icon" />
@@ -605,6 +605,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
           </template>
         </p>
         <span v-if="target.kind === 'task' && task?.chat" class="task-chip">{{ tl('Conversation', 'Conversation') }}</span>
+        <TaskActivityBadge v-if="target.kind === 'task'" :activity="activity" />
         <TaskAgentMark v-if="target.kind === 'task'" :identity="identity" />
         <p v-if="target.kind === 'coordinator'" class="board-panel-purpose">{{ coordinatorDescription(target.to) }}</p>
       </div>
