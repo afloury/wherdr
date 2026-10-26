@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added and improved
 
+- **A task opens at once from the sidebar.** Tapping a task's conversation in the sidebar opens the Board and the task's panel right away; while its details load, the panel shows the shapes of its header, tabs and conversation after 300 ms (none for a quick read). The open task is selected both in the sidebar and on the Board (its card gets the sidebar's accent, on phones too, and scrolls into view), and opening a task moves the sidebar's machine tab and the Board's machine filter to the machine that has it when they do not show it already.
+
+- **Faster Board and conversation opening (#178).** Show the device's cached Board and conversations while refreshing, render the last 30 conversation blocks first, and defer Markdown until needed. Empty loads show static skeletons after 300 ms; a slow Board offers Retry. Cache writes are grouped per conversation, focus rings use compositor transforms, and build assets and large API responses are compressed. The first Board read waits for tasks instead of returning an empty list while repository keys load.
+
 - **Task limit gauges and one-tap raises (#155).** The Task tab shows each limit as a thin gauge, **Time · this run 2 min 38 / 2 h** and **Tokens 3.4 M / 30 M**, red from 90 %; a limit not set says **No limit**, and the whole task's tokens stay shown when they differ from what the limit counts. At a limit stop, the hint names what **Continue** grants once more (`2 h a run`), and **Raise limit** (#167) offers presets above the typed value: +1 h / ×2 / none for time, ×2 / +10 M / none for tokens. Each preset runs the same `set` as a typed value; a preset not above what was already used is disabled, since herdr-projects would not resume. Durations and token counts read the same everywhere (`2 h`, `45 min`, `3.4 M`, `500 k`).
 
 ### Fixed

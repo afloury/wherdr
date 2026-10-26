@@ -73,6 +73,9 @@ async function loadTask(again = false) {
   }
 }
 watch(() => props.target.kind === 'task' ? `${props.target.machine}|${props.target.id}` : '', (k) => { if (k) loadTask() }, { immediate: true })
+// Its details still being read (opened at once from the sidebar): the shapes of
+// its header, tabs and conversation after 300 ms, none for a quick read.
+const skeleton = useDelayedFlag(computed(() => props.target.kind === 'task' && loading.value && !details.value))
 watch(() => (props.task ? `${props.task.stage}|${props.task.group}|${props.task.state}|${props.task.msg}` : ''), (k, was) => { if (k && was && k !== was) loadTask(true) })
 
 // A reply to a task with no pane: herdr-projects passes it on (`tell`). The
@@ -595,7 +598,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <p class="board-panel-name">
           <template v-if="target.kind === 'task'">
             <AgentAvatar :agent="identity.agent" :title="agentHint" />
-            <TaskKey :value="taskLabel" /><span class="board-panel-title" :title="details?.title || task?.title">{{ details?.title || task?.title }}</span><span v-if="task" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
+            <TaskKey :value="taskLabel" /><span v-if="details?.title || task?.title || !skeleton" class="board-panel-title" :title="details?.title || task?.title">{{ details?.title || task?.title }}</span><i v-else class="board-panel-title skel-title" aria-hidden="true" /><span v-if="task" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
           </template>
           <template v-else>
             <UIcon name="i-lucide-message-square-text" class="board-panel-coord-icon" />
@@ -624,6 +627,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         {{ tabLabel(tab) }}<i v-if="tab === 'task' && newNote" class="task-new" aria-hidden="true" />
       </button>
     </nav>
+    <div v-else-if="target.kind === 'task' && skeleton" class="board-panel-tabs skel-tabs" aria-hidden="true"><i /><i /><i /></div>
     <div v-if="target.kind === 'task' && reviewing && selected === 'chat'" class="task-review-context">
       <span>{{ tl(`This is ${kindLabel(identity.agent)}’s conversation. The review runs separately.`, `Conversation de ${kindLabel(identity.agent)}. La relecture tourne séparément.`) }}</span>
       <button v-if="reviewerAgent && !offlineView" type="button" @click="reviewerChoice = 'term'; choose('reviewer')">{{ tl('Open reviewer terminal', 'Ouvrir le terminal du relecteur') }}</button>
@@ -701,7 +705,9 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <AgentView :key="`reviewer-${reviewerPane}`" :pane-id="reviewerPane" cell active embedded :selected-mode="reviewerMode" @update:selected-mode="reviewerChoice = $event" />
       </template>
       <AgentView v-else-if="paneId && (target.kind === 'coordinator' || selected === 'term' || conversation)" :key="paneId" :pane-id="paneId" cell active :embedded="target.kind === 'task'" @update:selected-mode="choose($event)" :selected-mode="target.kind === 'task' ? (selected === 'term' ? 'term' : 'chat') : undefined" />
-      <p v-else-if="target.kind === 'task' && loading" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
+      <div v-else-if="target.kind === 'task' && loading" class="chat-list skeleton board-panel-skel" role="status" :aria-label="t('Loading…')">
+        <ChatSkeleton v-if="skeleton" :agent="identity.agent" />
+      </div>
       <p v-else-if="failed" class="board-note error board-panel-wait">{{ failed }}</p>
       <div v-else-if="target.kind === 'task'" class="board-panel-start task-setup">
         <h3>{{ details?.failureStage === 'setup' || details?.failureStage === 'start' ? tl('Setup output', 'Sortie du démarrage') : tl('No agent conversation yet', 'Pas encore de conversation avec l’agent') }}</h3>

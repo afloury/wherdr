@@ -129,3 +129,16 @@ export function boardSettingsMachines(scope: string, machines: readonly string[]
   const only = boardScopeMachines(scope, groups)
   return only === null ? [...machines] : machines.filter(m => only.includes(m))
 }
+
+// A task opened (from the sidebar or a card): the scope that shows its machine.
+// The scope shown already covers it: undefined, nothing changes. Otherwise the
+// sidebar tab (the machine bar's pick, already moved to the task's machine) if
+// it covers it, so that the Board and the sidebar match; else every machine.
+export function boardScopeFor(machine: string, shown: string, pick: string | null, groups: readonly MachineGroup[]): string | undefined {
+  const covers = (scope: string) => {
+    const only = boardScopeMachines(scope, groups)
+    return only === null || only.includes(machine)
+  }
+  if (covers(shown)) return undefined
+  return pick !== null && covers(pick) ? pick : SCOPE_ALL
+}

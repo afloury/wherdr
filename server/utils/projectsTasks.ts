@@ -14,7 +14,11 @@ import { readSessionTimers } from './scheduledTranscript'
 //    machine's own Herdr session. Each command also runs the board's upkeep, as
 //    any 1.x command does on that machine; wherdr calls it sparingly: one
 //    command at a time per machine, a list reused for REUSE_MS, the last list
-//    kept (marked stale) when a read outlives READ_DEADLINE_MS.
+//    kept (marked stale) when a read outlives READ_DEADLINE_MS. Without a last
+//    list, the read is waited for (up to FIRST_READ_MS) rather than answered
+//    empty; `pending` asks the client to come back soon (repo keys still read).
+//    The server reads the Board once at start (warmTasksBoard), so the first
+//    Board opened after a restart finds it read.
 // Only where Herdr reports a 1.x from 1.2.1 on (shared/projectsPlugin.ts).
 import { autopilotNextAt, parseAutopilot, parseAutomations, type Scheduled } from '../../shared/scheduled'
 import { machineOfPane } from './machines'
@@ -47,6 +51,10 @@ import { FOLDER_MISSING, FOLDER_NOT_GIT, PROJECT_FOLDER_SCRIPT, type ProjectFold
 
 export const REUSE_MS = 5000
 export const READ_DEADLINE_MS = 4000
+export const FIRST_READ_MS = 12_000
+// The two waits, shortened by the tests.
+let waits = { deadline: READ_DEADLINE_MS, first: FIRST_READ_MS }
+export function setReadWaits(w: { deadline: number, first: number } | null) { waits = w || { deadline: READ_DEADLINE_MS, first: FIRST_READ_MS } }
 const LIST_TIMEOUT_MS = 30_000
 const ACTION_TIMEOUT_MS = 60_000
 const OUTPUT_MAX = 8 * 1024 * 1024
@@ -221,13 +229,11 @@ function readList(m: Machine): Promise<Cached> {
       const last = lists.get(m.key)
       return { tasks: last?.tasks || [], at: Date.now(), readAt: last?.readAt ?? 0, error: e.message }
     })
-    .then(async (c: Cached) => {
+    .then((c: Cached) => {
       lists.set(m.key, c)
       if (c.error) return c
       void restoreFinished(m, c.tasks, started).catch(() => {})
-      // A repo never seen: its key is waited for a moment, so the first look names its tasks right.
-      const keys = readKeys(m, c.tasks.map(t => t.repo))
-      if (c.tasks.some(t => !repoKeys.get(m.key)?.has(t.repo))) await Promise.race([keys, new Promise(r => setTimeout(r, KEYS_WAIT_MS).unref?.())])
+      void readKeys(m, c.tasks.map(t => t.repo))
       return c
     })
     .finally(() => reading.delete(m.key))
@@ -242,9 +248,10 @@ function readList(m: Machine): Promise<Cached> {
 // and asked again after a while (a key can be changed).
 const KEYS_TTL_MS = 10 * 60_000
 const KEYS_RETRY_MS = 60_000
-const KEYS_WAIT_MS = 3_000
+const KEYS_WAIT_MS = 1_000
 const repoKeys = new Map<string, Map<string, { key: string, at: number }>>()
-const keysReading = new Set<string>()
+const keysReading = new Map<string, Promise<void>>()
+const keysMissing = (machine: string, c: Cached) => c.tasks.some(t => !repoKeys.get(machine)?.has(t.repo))
 
 export function repoKeyOf(machine: string, repo: string): string {
   return repoKeys.get(machine)?.get(repo)?.key || ''
@@ -254,21 +261,23 @@ const withKeys = (machine: string, tasks: TaskRow[]): TaskRow[] => {
   return known ? tasks.map((t) => { const key = known.get(t.repo)?.key; return key ? { ...t, repoKey: key } : t }) : tasks
 }
 
-async function readKeys(m: Machine, repos: string[]): Promise<void> {
-  if (keysReading.has(m.key)) return
+function readKeys(m: Machine, repos: string[]): Promise<void> {
+  const running = keysReading.get(m.key)
+  if (running) return running
   const known = repoKeys.get(m.key) ?? new Map<string, { key: string, at: number }>()
   const now = Date.now()
   const due = [...new Set(repos)].filter(r => (known.get(r)?.at ?? 0) <= now - KEYS_TTL_MS)
-  if (!due.length) return
-  keysReading.add(m.key)
-  try {
+  if (!due.length) return Promise.resolve()
+  const read = (async () => {
     for (const r of due) {
-      // A failed read is asked again sooner.
+      // A failed read is asked again sooner. Each key counts as soon as it is read.
       try { known.set(r, { key: parseRepoKey(await command(m, ['show', `--repo=${r}`, '--json'], LIST_TIMEOUT_MS)), at: Date.now() }) }
       catch { known.set(r, { key: known.get(r)?.key || '', at: Date.now() - KEYS_TTL_MS + KEYS_RETRY_MS }) }
+      repoKeys.set(m.key, known)
     }
-    repoKeys.set(m.key, known)
-  } finally { keysReading.delete(m.key) }
+  })().finally(() => keysReading.delete(m.key))
+  keysReading.set(m.key, read)
+  return read
 }
 
 // What a cached read says: its tasks, when they were read, and why they may be old.
@@ -278,7 +287,9 @@ function shown(machine: string, c: Cached): Pick<MachineTasks, 'tasks' | 'at' | 
 
 // `fresh`: the Board just opened (or asked to): check the plugin again rather
 // than trust the last answer, so an install or update shows at once.
+const after = (ms: number) => new Promise<null>(resolve => setTimeout(() => resolve(null), Math.max(0, ms)).unref?.())
 async function machineTasks(m: Machine, fresh = false): Promise<MachineTasks | null> {
+  const started = Date.now()
   const last = lists.get(m.key)
   if (!m.local && m.status !== 'online') {
     const error = fmt('{machine} is unreachable', { machine: m.label })
@@ -293,10 +304,24 @@ async function machineTasks(m: Machine, fresh = false): Promise<MachineTasks | n
   const base = { machine: m.key, status: info.status, version: info.version || '' }
   if (info.status !== 'ready') return { ...base, tasks: [] }
   if (last && Date.now() - last.at < REUSE_MS) return { ...base, ...shown(m.key, last) }
-  const deadline = new Promise<null>(resolve => setTimeout(() => resolve(null), READ_DEADLINE_MS).unref?.())
-  const c = await Promise.race([readList(m), deadline])
-  if (!c) return { ...base, tasks: withKeys(m.key, last?.tasks || []), ...(last?.readAt ? { at: last.readAt } : {}), stale: true }
-  return { ...base, ...shown(m.key, c) }
+  let c = await Promise.race([readList(m), after(waits.deadline)])
+  if (!c && last) return { ...base, tasks: withKeys(m.key, last.tasks), ...(last.readAt ? { at: last.readAt } : {}), stale: true, pending: true }
+  // Nothing read yet (a first read, or the list dropped after an action): an
+  // empty board would be wrong, so the list is waited for.
+  if (!c) c = await Promise.race([readList(m), after(waits.first - (Date.now() - started))])
+  if (!c) return { ...base, tasks: [], stale: true, pending: true }
+  // A repo never seen: its key is waited for a moment, so the first look names
+  // its tasks right; the others follow at the next read, soon (`pending`).
+  const keys = keysReading.get(m.key)
+  if (!c.error && keys && keysMissing(m.key, c)) await Promise.race([keys, after(Math.min(KEYS_WAIT_MS, started + waits.deadline - Date.now()))])
+  return { ...base, ...shown(m.key, c), ...(!c.error && keysReading.has(m.key) && keysMissing(m.key, c) ? { pending: true } : {}) }
+}
+
+// The Board read once when the server starts: herdr-projects' first read (its
+// list, then each repo's key) is slow, and the first Board opened after a
+// restart should not wait for it. Never fails.
+export function warmTasksBoard() {
+  readTasksBoard().catch(() => {})
 }
 
 // Every machine's tasks. `since`: the version the client has; `{ same: true }` when nothing changed.
