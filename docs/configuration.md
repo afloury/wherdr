@@ -37,3 +37,12 @@ In the app, **Settings** holds display preferences such as theme, typing effect 
 home screen shows; these follow you across devices through `settings.json`. Language,
 notifications, terminal text size and renderer remain device-specific. The passkey lock is
 managed under Settings › Security.
+
+## Paste diagnostics
+
+Enable **Settings → Advanced → Paste journal** on the device used for dictation.
+Paste into an agent's message field, then return to Advanced to inspect the last
+50 events: event kind, clipboard types, text length, default prevention, focus
+and whether the field or its attachments changed. Text content is never recorded.
+The journal stays in memory until reload; disabling the switch clears it.
+The switch is off by default and stays local to this browser.

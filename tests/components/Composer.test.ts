@@ -156,8 +156,10 @@ describe('Composer references', () => {
       el.dispatchEvent(e)
       return e.defaultPrevented
     }
-    // An ordinary paste is left to the browser.
-    expect(paste('plain words')).toBe(false)
+    // Ordinary dictation is captured before the clipboard can change.
+    expect(paste('plain words')).toBe(true)
+    expect(el.value).toBe('plain words')
+    await field.setValue('')
     expect(paste(`From the log:\n${REF}\nGo ahead.`)).toBe(true)
     await flushPromises()
     expect(el.value).toBe(`From the log:\n\\${REF}\nGo ahead.`)
@@ -168,3 +170,39 @@ describe('Composer references', () => {
 })
 
 
+
+
+describe('Composer dictation paste', () => {
+  it('snapshots short text, selection and HTML before clipboard restoration', async () => {
+    const { w, field } = await mount('dictation')
+    const el = field.element as HTMLTextAreaElement
+    for (const delay of [0, 10, 50]) {
+      for (let i = 0; i < 5; i++) {
+        await field.setValue('Before replace after')
+        el.setSelectionRange(7, 14)
+        let clipboard = `Dictation ${i}`
+        const event = new Event('paste', { bubbles: true, cancelable: true })
+        Object.defineProperty(event, 'clipboardData', { value: { items: [], types: ['text/plain'], getData: (type: string) => type === 'text/plain' ? clipboard : '' } })
+        el.dispatchEvent(event)
+        if (delay) await new Promise(r => setTimeout(r, delay))
+        clipboard = 'Old clipboard'
+        await flushPromises()
+        expect(el.value).toBe(`Before Dictation ${i} after`)
+        expect(event.defaultPrevented).toBe(true)
+      }
+    }
+    await field.setValue('')
+    const html = new Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(html, 'clipboardData', { value: { items: [], getData: (type: string) => type === 'text/html' ? '<b>HTML words</b>' : '' } })
+    el.dispatchEvent(html)
+    await flushPromises()
+    expect(el.value).toBe('HTML words')
+    await field.setValue('')
+    el.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertFromPaste', data: 'Input words', bubbles: true, cancelable: true }))
+    await flushPromises()
+    expect(el.value).toBe('Input words')
+    el.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertFromPaste', data: 'Native edit', bubbles: true, cancelable: false }))
+    expect(el.value).toBe('Input words') // The browser owns non-cancellable edits.
+    w.unmount()
+  })
+})

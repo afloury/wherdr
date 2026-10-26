@@ -3,6 +3,9 @@
 // checks that every key used in the code has one). The choice is saved on the device.
 
 const FR: Record<string, string> = {
+  'Advanced': 'Avancé',
+  'Paste journal': 'Journal du collage',
+  'Records the last 50 paste events on this device, without text content. Turning it off clears the journal.': 'Enregistre les 50 derniers événements de collage sur cet appareil, sans le contenu du texte. Le désactiver efface le journal.',
   'Autopilot': 'Autopilot',
   'Copy message': 'Copier le message',
   'Edit description': 'Modifier',
