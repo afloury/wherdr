@@ -100,6 +100,7 @@ const FR: Record<string, string> = {
   'Produces a research report.': 'Produit un rapport de recherche.',
   'Discuss with an agent, without changing code.': 'Échanger avec un agent, sans modifier le code.',
   'An agent carries out the task in the repo.': 'Un agent réalise le travail dans le dépôt.',
+  'Invalid plan approval': 'Validation du plan invalide',
   'Invalid task type': 'Type de tâche invalide',
   'Invalid task': 'Tâche invalide', 'Nothing to send': 'Rien à envoyer',
   'This task has no agent to talk to': 'Cette tâche n’a pas d’agent à qui parler',
