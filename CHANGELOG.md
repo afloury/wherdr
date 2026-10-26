@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-10-27
+
+### Added and improved
+
+- **Choose one task type (#200).** Work, research and conversation are exclusive choices when creating a task, making the intended kind of work explicit.
+
+- **Request plan approval when creating a task (#202).** Choose whether you or the reviewer approves the plan before the work starts, or keep the inherited setting.
+
+- **Conversations preload on agent card intent (#201).** Hovering over or showing intent to open an agent card preloads the conversation tail so its latest messages are ready sooner.
+
+### Fixed
+
+- **Dictated text survives pasting into the message field (#198).** Capture clipboard text synchronously to prevent Spokely dictation from being lost during paste, preserving paragraph and line boundaries in the HTML fallback. An optional Paste journal in Settings › Advanced records diagnostic events without recording text content.
+
 ## [2.1.0] — 2026-10-26
 
 ### Added and improved
