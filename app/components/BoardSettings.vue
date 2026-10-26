@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { desk as desktop } from '~/composables/useHerdr'
 // Board settings of one machine (herdr-projects 1.x `show`, `set`, `unset`), in
 // the Board's side panel on a computer and full screen on a phone, as a task's
 // panel. Opened from the Board's ⚙ (the machine shown, or a choice among the
@@ -15,7 +16,8 @@ import { boardSettingThemeLabel, boardSettingsTabHint, boardSettingsTabLabel, se
 import { panelWidthCss, readPanelWidth } from '~/utils/sideWidth'
 
 export interface SettingsTarget { machines: string[], repo?: string, machine?: string }
-const props = defineProps<{ target: SettingsTarget, repos: Record<string, string[]>, machineLabel: (machine: string) => string, reachable: (machine: string) => boolean }>()
+const props = defineProps<{ overlay?: boolean, target: SettingsTarget, repos: Record<string, string[]>, machineLabel: (machine: string) => string, reachable: (machine: string) => boolean }>()
+const desk = computed(() => desktop.value && !props.overlay)
 const emit = defineEmits<{ close: [], changed: [machine: string] }>()
 
 const machine = ref<string | null>(props.target.machine ?? (props.target.machines.length === 1 ? props.target.machines[0]! : null))
@@ -102,7 +104,7 @@ async function change(row: TaskSetting, value: string | null): Promise<boolean> 
 // ------------------------------------------------------------ panel
 const title = computed(() => (machine.value === null ? tl('Board settings', 'Réglages du board') : `${tl('Board settings', 'Réglages du board')} · ${props.machineLabel(machine.value)}`))
 function onKey(e: KeyboardEvent) {
-  if (e.key !== 'Escape' || !desk.value || e.defaultPrevented) return
+  if (e.key !== 'Escape' || !desktop.value || e.defaultPrevented) return
   if (document.querySelector('.hw-sheet')) return
   emit('close')
 }

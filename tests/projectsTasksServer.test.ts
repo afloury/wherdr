@@ -1211,3 +1211,86 @@ it.each([0, 25 * 1024 * 1024])('reads scheduled coordinator wake dates, recent f
   expect(scheduled.timers).toMatchObject([{ id: 'job1', cron: '*/5 * * * *' }])
   expect(scheduled.warnings).toEqual([])
 })
+
+describe('description writes', () => {
+  it('passes describe data through the fixed remote shell script without evaluation', () => {
+    const text = "--flag\nIt's $(printf altered); `printf altered` & | < > \\ \n"
+    const args = ['describe', '--', 'demo/1', text]
+    const output = execFileSync('sh', ['-c', T.REMOTE_TASKS_SCRIPT, 'tasks', 'herdr', '', process.execPath, '-e', 'process.stdout.write(JSON.stringify(process.argv.slice(1)))', ...args], { encoding: 'utf8' })
+    expect(JSON.parse(output)).toEqual(args)
+  })
+  it.each(['', session.key, 'remote'])('routes opaque multiline text to the owner of %s', async key => {
+    const text = "--title=literal\n\nIt's data: $(touch nope); `id` & < > | \\\nlast\r\n\r\n"
+    const seen: { machine: string, args: string[] }[] = []
+    T.setRunner(async (m, _launcher, args) => {
+      seen.push({ machine: m.key, args })
+      return { code: 0, stdout: args[0] === 'list' ? fixture('list.json') : args[0] === 'details'
+        ? JSON.stringify({ task: { id: 'demo/1', description: text.replace(/\r/g, '').trim() } }) : 'updated', stderr: '' }
+    })
+    await T.describeTask(key, 'demo/1', text)
+    expect(seen.at(-1)).toEqual({ machine: key === 'remote' ? 'remote' : '', args: ['describe', '--', 'demo/1', text] })
+    expect((await T.taskDetails(key, 'demo/1')).description).toBe(text.replace(/\r/g, '').trim())
+  })
+  it('refuses an archived file and an offline owner before writing', async () => {
+    taskFile('demo/1', { archivedAt: 123 })
+    await expect(T.describeTask('', 'demo/1', 'draft')).rejects.toThrow('read-only')
+    remote.status = 'offline'
+    try { await expect(T.describeTask('remote', 'demo/1', 'draft')).rejects.toThrow('unreachable') }
+    finally { remote.status = 'online' }
+    expect(calls.some(a => a[0] === 'describe')).toBe(false)
+  })
+  it('returns every line of a CLI refusal', async () => {
+    T.setRunner(async (_m, _l, args) => args[0] === 'describe'
+      ? { code: 1, stdout: '', stderr: 'Write refused\nTry again later' }
+      : { code: 0, stdout: fixture('list.json'), stderr: '' })
+    await expect(T.describeTask('', 'demo/1', 'draft')).rejects.toThrow('Write refused\nTry again later')
+  })
+})
+
+describe('archive completed repository tasks', () => {
+  it('runs exactly one bulk command on the owner of a named session, preserving CLI output', async () => {
+    const ran: { machine: string, args: string[] }[] = []
+    T.setRunner(async (m, _launcher, args) => {
+      ran.push({ machine: m.key, args })
+      return { code: 0, stdout: 'Archived 2 tasks. Kept 1 pinned task.\n', stderr: 'A CLI notice\n' }
+    })
+    expect(await T.archiveDoneTasks(session.key, 'demo')).toEqual({ machine: '', code: 0, stdout: 'Archived 2 tasks. Kept 1 pinned task.\n', stderr: 'A CLI notice\n' })
+    expect(ran).toEqual([{ machine: '', args: ['archive', '--done', '--repo', 'demo'] }])
+  })
+
+  it('runs on the remote owner and returns every line of a CLI error', async () => {
+    await T.readTasksBoard()
+    const ran: string[][] = []
+    T.setRunner(async (m, _launcher, args) => {
+      if (args[0] === 'archive') {
+        expect(m.key).toBe('remote')
+        ran.push(args)
+        return { code: 1, stdout: 'Archived 1 task\n', stderr: 'Cannot archive another task\nDetails\n' }
+      }
+      return { code: 0, stdout: fixture('list.json'), stderr: '' }
+    })
+    expect(await T.archiveDoneTasks('remote', 'demo')).toMatchObject({ code: 1, stdout: 'Archived 1 task\n', stderr: 'Cannot archive another task\nDetails\n' })
+    expect(ran).toEqual([['archive', '--done', '--repo', 'demo']])
+  })
+
+  it('invalidates the owner cache on success and failure', async () => {
+    for (const code of [0, 1]) {
+      await T.readTasksBoard()
+      const ran: string[][] = []
+      T.setRunner(async (_m, _launcher, args) => {
+        ran.push(args)
+        return { code: args[0] === 'archive' ? code : 0, stdout: args[0] === 'list' ? fixture('list.json') : '', stderr: '' }
+      })
+      await T.archiveDoneTasks(session.key, 'demo')
+      await T.readTasksBoard()
+      expect(ran.filter(args => args[0] === 'list')).toHaveLength(1)
+    }
+  })
+
+  it('rejects an absent or invalid repo without running any command', async () => {
+    const run = vi.fn()
+    T.setRunner(run)
+    for (const repo of ['', undefined, '/tmp/demo', '--done', {}]) await expect(T.archiveDoneTasks('', repo)).rejects.toThrow()
+    expect(run).not.toHaveBeenCalled()
+  })
+})

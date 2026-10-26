@@ -27,6 +27,7 @@
 import {
   type CoordinatorTarget, TASK_GROUPS, type TaskGroup, type TaskRow, groupCounts, sortTasks, taskKey,
 } from '#shared/projectsTasks'
+import { boardLayout } from '~/utils/boardLayout'
 import type { SelectItem } from '@nuxt/ui'
 import type { PanelTarget } from './BoardPanel.vue'
 import type { SettingsTarget } from './BoardSettings.vue'
@@ -50,8 +51,6 @@ const readStore = (k: string) => { try { return localStorage.getItem(k) } catch 
 const writeStore = (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* storage unavailable */ } }
 
 const ready = computed(() => (board.value?.machines || []).filter(m => m.status === 'ready'))
-// Machines whose last read failed, or whose tasks are an older read: said, with when.
-const troubles = computed(() => (board.value?.machines || []).filter(m => m.error || m.stale))
 const machineLabel = (key: string) => boardMachineLabel(key, machineName(key), hostLabel.value || t('This machine'))
 const readAt = (at?: number) => (at ? new Date(at).toLocaleTimeString(language === 'fr' ? 'fr-FR' : 'en-US', { hour: '2-digit', minute: '2-digit' }) : '')
 // Machines Herdr answers on but where the Board cannot read herdr-projects.
@@ -60,8 +59,8 @@ const disabled = computed(() => (board.value?.machines || []).filter(m => m.stat
 const several = computed(() => (board.value?.machines.length || 0) > 1)
 
 // ------------------------------------------------------------ what is shown
-// The machines with a board (or tasks from an earlier read), in Herdr's order.
-const boards = computed(() => (board.value?.machines || []).filter(m => m.status === 'ready' || m.tasks.length))
+// Keep failed reads selectable, even before a machine has returned any tasks.
+const boards = computed(() => (board.value?.machines || []).filter(m => m.status === 'ready' || m.status === 'error' || m.tasks.length || m.error || m.stale))
 // The machine's key (the local one is ''), a machine group's ID (the home
 // list's groups, edited in Settings), or SCOPE_ALL.
 const scope = ref(boardScopeMachine(readStore(SCOPE_KEY)))
@@ -166,6 +165,9 @@ const machineGroups = computed(() => shownBoards.value.map((m) => {
   const rows = m.tasks.filter(t => !t.archived && !archivedHere.value.has(`${m.machine}|${t.id}`))
   return {
     machine: m.machine,
+    trouble: Boolean(m.status === 'error' || m.error || m.stale),
+    error: m.error || tl('No answer yet', 'Pas encore de réponse'),
+    at: m.at,
     summary: summary(rows),
     repos: [...new Set([...rows.map(t => t.repo), ...(projectLinks.value.find(b => b.machine === m.machine)?.repos || []).map(r => r.repo)])].sort().map(repo => {
       const tasks = sortTasks(rows.filter(t => t.repo === repo))
@@ -184,15 +186,27 @@ const reposByMachine = computed(() => Object.fromEntries(boards.value.map(m => [
 // Columns side by side need room: on a phone, or a Board narrowed by the side
 // panel, one group at a time (tabs), in both views.
 const root = ref<HTMLElement | null>(null)
+const panelSizer = ref<HTMLElement | null>(null)
 const width = ref(0)
+const sideBySide = ref(false)
 let sizes: ResizeObserver | null = null
 onMounted(() => {
   if (!root.value || typeof ResizeObserver === 'undefined') return
-  sizes = new ResizeObserver(([e]) => { width.value = e!.contentRect.width })
+  // Available space does not depend on whether the panel is currently docked:
+  // measuring only the shrunken Board would make docking oscillate.
+  sizes = new ResizeObserver(() => {
+    const board = root.value!
+    width.value = board.clientWidth
+    sideBySide.value = boardLayout(window.innerWidth - board.getBoundingClientRect().left,
+      panelSizer.value!.getBoundingClientRect().width).sideBySide
+  })
   sizes.observe(root.value)
+  sizes.observe(panelSizer.value!)
+  sizes.observe(document.documentElement)
 })
 onUnmounted(() => sizes?.disconnect())
-const wide = computed(() => desk.value && (!width.value || width.value >= 760))
+const dockPanel = computed(() => desk.value && sideBySide.value)
+const wide = computed(() => desk.value && boardLayout(width.value, 0).wide)
 
 // Phone: the group shown, kept on this device.
 function readColumn(): TaskGroup {
@@ -458,7 +472,8 @@ function back() {
 </script>
 
 <template>
-  <section id="board" ref="root" class="view board-view" :class="{ 'with-panel': (panel || settings) && desk, narrow: !wide }">
+  <section id="board" ref="root" class="view board-view" :class="{ 'with-panel': (panel || settings) && dockPanel, narrow: !wide }">
+    <div ref="panelSizer" class="board-panel-sizer" aria-hidden="true" />
     <header class="top bar board-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Back')" @click="back" />
       <h2>{{ t('Board') }}</h2>
@@ -469,15 +484,15 @@ function back() {
         <span class="board-new-label">{{ tl('New task', 'Nouvelle tâche') }}</span>
       </UButton>
       <CoordinatorHint v-if="coordMachines.length === 1" :text="coordHint(coordMachines[0]!.machine, { kind: 'main' })">
-        <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord"
+        <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord" :icon="!wide ? 'i-lucide-message-square-text' : undefined"
           :class="{ on: talking(coordMachines[0]!.machine, { kind: 'main' }) }" :disabled="Boolean(coordWhy(coordMachines[0]!.machine))"
           @click="talkTo(coordMachines[0]!.machine, { kind: 'main' })"
-        >{{ coordLabel(coordMachines[0]!.machine, { kind: 'main' }) }}</UButton>
+          :aria-label="coordLabel(coordMachines[0]!.machine, { kind: 'main' })"><span class="board-coord-label">{{ coordLabel(coordMachines[0]!.machine, { kind: 'main' }) }}</span></UButton>
       </CoordinatorHint>
       <UDropdownMenu v-else-if="coordMachines.length > 1" :items="coordItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown board-coord-menu', itemLabel: 'whitespace-normal', itemDescription: 'whitespace-normal' }">
         <CoordinatorHint :text="coordinatorDescription({ kind: 'main' })">
-          <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord" trailing-icon="i-lucide-chevron-down">
-            {{ coordinatorLabel({ kind: 'main' }, '') }}
+          <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord" :icon="!wide ? 'i-lucide-message-square-text' : undefined" :aria-label="coordinatorLabel({ kind: 'main' }, '')" trailing-icon="i-lucide-chevron-down">
+            <span class="board-coord-label">{{ coordinatorLabel({ kind: 'main' }, '') }}</span>
           </UButton>
         </CoordinatorHint>
       </UDropdownMenu>
@@ -493,11 +508,8 @@ function back() {
     <div v-if="error" class="notice board-notice">{{ error }}</div>
     <p v-else-if="!board && !offlineView" class="board-empty board-loading">{{ t('Loading…') }}</p>
 
-    <div v-if="noCoordinator || notes.length || disabled.length || troubles.length" class="board-notes">
+    <div v-if="noCoordinator || notes.length || disabled.length" class="board-notes">
       <p v-if="noCoordinator" class="board-note" role="status">{{ tl('No Coordinator can be reached now. See each machine’s availability.', 'Aucun Coordinateur n’est joignable pour l’instant. Consulte la disponibilité de chaque machine.') }}</p>
-      <p v-for="m in troubles" :key="`e-${m.machine}`" class="board-note error" role="alert">
-        <b>{{ several ? machineLabel(m.machine) : tl('herdr-projects', 'herdr-projects') }}</b> · {{ m.error || tl('No answer yet', 'Pas encore de réponse') }}<template v-if="m.stale && m.at"> · {{ tl(`tasks as read at ${readAt(m.at)}`, `tâches lues à ${readAt(m.at)}`) }}</template>
-      </p>
       <ProjectsUpgradeNote
         v-for="m in notes" :key="m.machine" :status="m.status as 'missing' | 'old'" :version="m.version || null"
         :machine="several ? (machineName(m.machine) || hostLabel || t('This machine')) : undefined"
@@ -505,7 +517,7 @@ function back() {
       <p v-for="m in disabled" :key="m.machine" class="board-note">{{ tl(`herdr-projects is disabled in Herdr${several ? ` on ${machineName(m.machine)}` : ''}: herdr plugin enable herdr-projects`, `herdr-projects est désactivé dans Herdr${several ? ` sur ${machineName(m.machine)}` : ''} : herdr plugin enable herdr-projects`) }}</p>
     </div>
 
-    <template v-if="ready.length || cards.length">
+    <template v-if="boards.length">
       <div class="board-tools">
         <USelect
           v-if="boards.length > 1" :model-value="boardScopeValue(shownScope)" :items="scopeItems" size="sm" class="board-scope" :aria-label="tl('Machines shown', 'Machines affichées')"
@@ -560,28 +572,17 @@ function back() {
           </h3>
         </div>
 
-        <div v-if="grouping === 'global'" class="board-cols board-cells">
-          <section v-for="col in columns" v-show="wide || shownColumn === col.id" :key="col.id" class="board-col" :class="col.id" :aria-label="col.label">
-            <div class="board-col-body">
-              <TaskCard
-                v-for="c in col.cards" :key="c.key" :task="c.task" :machine="namesOnCards ? machineName(c.machine) : undefined"
-                :stale="c.stale" :read-at="readAt(c.readAt)" @open="openCard(c)"
-              />
-              <p v-if="!col.cards.length" class="board-empty">{{ t('Nothing here') }}</p>
-              <button v-if="col.hidden" type="button" class="board-more" @click="showAll = true">
-                {{ tl(`Show all (${col.hidden} more)`, `Tout afficher (${col.hidden} de plus)`) }}
-              </button>
-            </div>
-          </section>
-        </div>
-
-        <template v-else>
-          <section v-for="mg in machineGroups" :key="mg.machine || 'local'" class="board-machine" :data-machine="mg.machine || 'local'">
+        <template v-if="grouping === 'repo' || machineGroups.some(m => m.trouble)">
+          <section v-for="mg in machineGroups.filter(m => grouping === 'repo' || m.trouble)" :key="mg.machine || 'local'" class="board-machine" :data-machine="mg.machine || 'local'">
             <div class="board-head machine" :class="{ talking: talking(mg.machine, { kind: 'main' }) || talking(mg.machine, { kind: 'machine' }) }">
               <button type="button" class="board-fold" :aria-expanded="!folds.has(`m:${mg.machine}`)" :aria-label="tl('Fold', 'Replier')" @click="fold(`m:${mg.machine}`)">
                 <UIcon :name="folds.has(`m:${mg.machine}`) ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'" />
               </button>
-              <p class="board-head-name"><b>{{ machineLabel(mg.machine) }}</b><span class="board-head-sum">{{ mg.summary.main }}<span v-if="mg.summary.done" class="board-head-done">{{ mg.summary.main ? ' · ' : '' }}{{ mg.summary.done }}</span></span></p>
+              <p class="board-head-name"><b>{{ machineLabel(mg.machine) }}</b><span class="board-head-sum">{{ mg.summary.main }}<span v-if="mg.summary.done" class="board-head-done">{{ mg.summary.main ? ' · ' : '' }}{{ mg.summary.done }}</span></span>
+                <CoordinatorHint v-if="mg.trouble" :text="mg.error">
+                  <span class="board-machine-error" role="status">{{ mg.at ? tl(`unreachable · read at ${readAt(mg.at)}`, `injoignable · lu à ${readAt(mg.at)}`) : tl('unreachable', 'injoignable') }}</span>
+                </CoordinatorHint>
+              </p>
               <div class="board-head-actions">
                 <CoordinatorHint v-for="to in MACHINE_COORDS" :key="to.kind" :text="coordHint(mg.machine, to)">
                   <UButton
@@ -594,7 +595,7 @@ function back() {
                 <CoordinatorAutopilot :machine="mg.machine" :to="{ kind: 'machine' }" :disabled="Boolean(coordWhy(mg.machine))" compact />
               </div>
             </div>
-            <template v-if="!folds.has(`m:${mg.machine}`)">
+            <template v-if="grouping === 'repo' && !folds.has(`m:${mg.machine}`)">
               <section v-for="rg in mg.repos" :key="rg.repo" class="board-repo" :data-repo="rg.repo">
                 <div class="board-head repo" :class="{ talking: talking(mg.machine, { kind: 'project', repo: rg.repo }) }">
                   <button type="button" class="board-fold" :aria-expanded="!folds.has(`r:${mg.machine}|${rg.repo}`)" :aria-label="tl('Fold', 'Replier')" @click="fold(`r:${mg.machine}|${rg.repo}`)">
@@ -611,6 +612,9 @@ function back() {
                       </UButton>
                     </CoordinatorHint>
                     <CoordinatorAutopilot :machine="mg.machine" :to="{ kind: 'project', repo: rg.repo }" :disabled="Boolean(coordWhy(mg.machine))" compact />
+                    <RepoArchiveMenu :machine="mg.machine" :repo="rg.repo" :machine-label="machineLabel(mg.machine)"
+                      :tasks="boards.find(m => m.machine === mg.machine)?.tasks || []" :disabled="offlineView || !settingsReachable(mg.machine) || mg.trouble"
+                      @refresh="reload().then(loadArchived)" />
                     <UButton
                       icon="i-lucide-settings" color="neutral" variant="outline" size="sm" class="board-head-add board-repo-settings" :disabled="offlineView || !settingsReachable(mg.machine)"
                       :aria-label="tl(`Repository settings: ${rg.repo}`, `Réglages du dépôt : ${rg.repo}`)" :title="tl('Repository settings', 'Réglages du dépôt')" @click="openSettings(mg.machine, rg.repo)"
@@ -642,6 +646,21 @@ function back() {
           </section>
         </template>
 
+        <div v-if="grouping === 'global'" class="board-cols board-cells">
+          <section v-for="col in columns" v-show="wide || shownColumn === col.id" :key="col.id" class="board-col" :class="col.id" :aria-label="col.label">
+            <div class="board-col-body">
+              <TaskCard
+                v-for="c in col.cards" :key="c.key" :task="c.task" :machine="namesOnCards ? machineName(c.machine) : undefined"
+                :stale="c.stale" :read-at="readAt(c.readAt)" @open="openCard(c)"
+              />
+              <p v-if="!col.cards.length" class="board-empty">{{ t('Nothing here') }}</p>
+              <button v-if="col.hidden" type="button" class="board-more" @click="showAll = true">
+                {{ tl(`Show all (${col.hidden} more)`, `Tout afficher (${col.hidden} de plus)`) }}
+              </button>
+            </div>
+          </section>
+        </div>
+
         <!-- Archived tasks: each opens its sheet, read-only with Restore. -->
         <section v-if="showArchived" class="board-archived" :aria-label="tl('Archived tasks', 'Tâches archivées')">
           <h3 class="board-col-head archived"><span>{{ tl('Archived', 'Archivées') }}</span><span class="pp-count">{{ archivedCards.length }}</span></h3>
@@ -660,12 +679,12 @@ function back() {
       </div>
     </template>
     <BoardPanel
-      v-if="panel" :key="panelKey" :target="panel" :task="panelTask"
+      v-if="panel" :key="panelKey" :overlay="!dockPanel" :target="panel" :task="panelTask"
       :refresh="reload" :refresh-key="refreshes" :machine-label="machineLabel(panel.machine)" :reachable="ready.some(m => m.machine === panel!.machine)"
       @archived="onArchived" @restored="onRestored" @changed="reload" @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent" @coordinator="askCoordinator"
     />
     <BoardSettings
-      v-if="settings && !panel" :key="JSON.stringify(settings)" :target="settings" :repos="settingsRepos" :machine-label="machineLabel"
+      v-if="settings && !panel" :overlay="!dockPanel" :key="JSON.stringify(settings)" :target="settings" :repos="settingsRepos" :machine-label="machineLabel"
       :reachable="settingsReachable" @close="settings = null" @changed="reload()"
     />
     <TaskSheet
@@ -677,6 +696,9 @@ function back() {
 </template>
 
 <style scoped>
+.board-machine-error { display: inline-block; padding: 3px 5px; border: 1px solid currentColor; color: var(--rose); font: 500 10px/1.4 var(--mono); text-transform: uppercase; }
+.board-head.machine .board-head-name { flex-wrap: wrap; }
+
 .board-autopilots { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
 .board-autopilots > div { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 .board-autopilots-machine { font: 500 10.5px/1.2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }

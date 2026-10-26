@@ -9,6 +9,7 @@ export interface MenuItem {
   kind?: 'action' | 'command' | 'separator' | 'note' | 'group'
   label?: string
   icon?: string
+  disabled?: boolean
   danger?: boolean
   cmd?: string
   // Command: its description; action: line under the label.
@@ -170,7 +171,7 @@ export function closeCommandResult(dismiss = true) {
 // Same entries as a dropdown menu (computer): separate groups, destructive
 // actions in red, notes ignored.
 export function toDropdown(items: MenuItem[]) {
-  const groups: { label?: string, description?: string, icon?: string, color?: 'error', kbds?: string[], ui?: { itemDescription: string }, onSelect: () => void }[][] = [[]]
+  const groups: { label?: string, description?: string, icon?: string, disabled?: boolean, color?: 'error', kbds?: string[], ui?: { itemDescription: string }, onSelect: () => void }[][] = [[]]
   for (const it of items) {
     if (it.kind === 'separator' || it.kind === 'group') groups.push([])
     else if (it.kind === 'note') continue
@@ -180,9 +181,10 @@ export function toDropdown(items: MenuItem[]) {
         ...(it.kind !== 'command' && it.desc ? { description: it.desc } : {}),
         ...(it.mono ? { ui: { itemDescription: 'font-mono' } } : {}),
         icon: it.icon,
+        disabled: it.disabled,
         color: it.danger ? 'error' : undefined,
         kbds: it.kbds,
-        onSelect: () => it.run?.(),
+        onSelect: () => { if (!it.disabled) it.run?.() },
       })
     }
   }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { desk as desktop } from '~/composables/useHerdr'
 // Task panels own their compact header, three tabs and board failure banner.
 // The banner says where the task stands now: a failure it has moved on from
 // (failureStale) is history in the Task tab, never its title or its buttons.
@@ -6,7 +7,8 @@
 import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskPanes, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskActions, taskCanFix, taskCanApproveAnyway, taskCanSendReview, reviewFindingsBrief, taskKey, type TaskCommand, finishCase } from '#shared/projectsTasks'
 import { PANEL_MIN, PANEL_MAX, clampPanelWidth, panelWidthCss, readPanelWidth, savePanelWidth } from '~/utils/sideWidth'
 import { visibleAgentKinds } from '~/utils/agentChoices'
-import { finishHint, finishLabel, finishOffered, finishQuestion, finishTitle } from '~/utils/taskFinish'
+import { finishHint, finishLabel, finishOffered, finishQuestion, finishTitle, limitHint } from '~/utils/taskFinish'
+import { limitStopOf } from '#shared/taskLimits'
 import { blockChoices, blockKind, blockKindLabel, offersAlways, permissionReply, questionMessage } from '~/utils/blockNotice'
 import { reviewerWait } from '~/utils/reviewerWait'
 import { taskActivity } from '#shared/taskActivity'
@@ -18,7 +20,8 @@ export type PanelTarget =
   | { machine: string, kind: 'coordinator', to: CoordinatorTarget, freshProject?: boolean }
 
 // `reachable`: its machine's board answers now (a message waits while it does not).
-const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, reachable?: boolean, refresh?: () => Promise<unknown>, refreshKey?: number }>()
+const props = defineProps<{ overlay?: boolean, target: PanelTarget, task: TaskRow | null, machineLabel: string, reachable?: boolean, refresh?: () => Promise<unknown>, refreshKey?: number }>()
+const desk = computed(() => desktop.value && !props.overlay)
 // A switch's action: the Scheduled section reads the Autopilot again.
 const { actions: autopilotActions } = useAutopilot()
 const launchAgent = ref('__default')
@@ -130,6 +133,7 @@ async function openWorkLimit() {
 }
 const canFinish = computed(() => Boolean(props.task && taskPermissions.value?.finish && finishOffered(props.task, agentPane.value?.status ?? null)))
 const stuck = computed(() => canFinish.value && finishKind.value === 'stuck')
+const limitStop = computed(() => (finishKind.value === 'limit' ? limitStopOf(details.value?.limits, props.task?.msg) : null))
 const needs = computed(() => props.task?.group === 'needs')
 // Its failure, unless the task moved on since (a later stage, its agent started again).
 const failureNow = computed(() => (details.value && !details.value.failureStale ? details.value : null))
@@ -509,7 +513,7 @@ async function retry() {
 
 // Escape closes it on a computer, unless a sheet or a field has it.
 function onKey(e: KeyboardEvent) {
-  if (e.key !== 'Escape' || !desk.value || e.defaultPrevented) return
+  if (e.key !== 'Escape' || !desktop.value || e.defaultPrevented) return
   if (document.querySelector('.hw-sheet')) return
   emit('close')
 }
@@ -652,7 +656,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         </ul>
         <button v-if="reviewBrief.more" type="button" class="task-needs-findings-more" @click="choose('task')">{{ tl(`+${reviewBrief.more} more in Task`, `+${reviewBrief.more} de plus dans Tâche`) }}</button>
       </div>
-      <p v-if="canFinish && finishKind" class="task-finish-why">{{ finishHint(finishKind) }}</p>
+      <p v-if="canFinish && finishKind" class="task-finish-why">{{ finishKind === 'limit' ? limitHint(limitStop) : finishHint(finishKind) }}</p>
       <div class="task-needs-actions">
         <UButton v-if="choosingAttempt && selected !== 'task'" @click="choose('task')">{{ tl('Choose an attempt', 'Choisis un essai') }}</UButton>
         <UButton v-if="canSendReview" class="task-needs-review" color="primary" icon="i-lucide-undo-2" :disabled="disabled" @click="taskAction('review')">{{ tl('Send the review back to the agent', 'Renvoyer les remarques à l’agent') }}</UButton>

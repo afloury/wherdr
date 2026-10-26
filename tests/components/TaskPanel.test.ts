@@ -262,7 +262,8 @@ describe('task panel', () => {
     // Its buttons would act on the old failure: not offered.
     expect(banner.text()).not.toContain('Send the error to the agent')
     expect(banner.findAll('button').map(b => b.text())).toEqual(expect.arrayContaining(['Continue', 'Raise limit', 'Take as is']))
-    expect(banner.find('.task-finish-why').text()).toContain('new allowance')
+    // The limit Continue grants once more, read from the board's line.
+    expect(banner.find('.task-finish-why').text()).toContain('new allowance (2 h a run)')
     w.unmount()
   })
   // WHR-13: the agent started again and asks something new.
