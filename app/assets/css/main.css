@@ -4237,3 +4237,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-view.narrow .board-head-name { flex-basis: calc(100% - 40px); }
 .board-view.narrow .board-head-actions { flex: 1 1 100%; justify-content: flex-start; padding-left: 32px; }
 .board-view.narrow .board-head-actions .board-coord { white-space: normal; overflow-wrap: anywhere; text-align: left; }
+
+/* Autopilot wakes retain the transcript text with a quiet system attribution. */
+.msg-autopilot { min-width: 0; margin: 6px 0; color: var(--text-2); }
+.msg-autopilot-body { border-left: 1px solid var(--line-soft); padding: 6px 12px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }

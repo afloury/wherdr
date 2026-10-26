@@ -3,6 +3,8 @@
 // checks that every key used in the code has one). The choice is saved on the device.
 
 const FR: Record<string, string> = {
+  'Autopilot': 'Autopilot',
+  'Copy message': 'Copier le message',
   'Edit description': 'Modifier',
   'Invalid description': 'Description invalide',
   'Archived tasks are read-only': 'Les tâches archivées sont en lecture seule',
