@@ -150,7 +150,7 @@ jobs:
 
       - name: Use Ubuntu's public mirror for browser dependencies
         run: |
-          for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; do
+          for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list /etc/apt/apt-mirrors*.txt; do
             if [ -f "$source" ]; then sudo sed -i 's|azure.archive.ubuntu.com|archive.ubuntu.com|g' "$source"; fi
           done
 
