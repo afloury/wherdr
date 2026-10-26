@@ -3,6 +3,7 @@
 // notifications, security (passkey), computer, about.
 import type { ThemeDef, ThemeGroup } from '~/utils/themes'
 import type { TypingSpeed } from '~/utils/typewriter'
+import { pasteJournalEnabled, pasteJournal, setPasteJournal } from '~/utils/pasteJournal'
 import pkg from '../../package.json'
 import { SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
 import type { SettingsSection } from '~/utils/settingsNav'
@@ -23,11 +24,11 @@ const route = useRoute()
 const section = computed<SettingsSection | null>(() => (SETTINGS_SECTIONS as readonly string[]).includes(String(route.query.section)) ? route.query.section as SettingsSection : null)
 const sectionIcons: Record<SettingsSection, string> = {
   appearance: 'i-lucide-palette', conversation: 'i-lucide-message-square', terminal: 'i-lucide-square-terminal',
-  agents: 'i-lucide-bot', plugins: 'i-lucide-puzzle', phone: 'i-lucide-smartphone', notifications: 'i-lucide-bell', security: 'i-lucide-lock', desktop: 'i-lucide-monitor', about: 'i-lucide-info',
+  agents: 'i-lucide-bot', plugins: 'i-lucide-puzzle', phone: 'i-lucide-smartphone', notifications: 'i-lucide-bell', security: 'i-lucide-lock', desktop: 'i-lucide-monitor', advanced: 'i-lucide-bug', about: 'i-lucide-info',
 }
 const sectionLabels: Record<SettingsSection, string> = {
   appearance: 'Appearance', conversation: 'Conversation', terminal: 'Terminal', agents: 'Agents',
-  plugins: 'Plugins', phone: 'Phone', notifications: 'Notifications', security: 'Security', desktop: 'Desktop', about: 'About',
+  plugins: 'Plugins', phone: 'Phone', notifications: 'Notifications', security: 'Security', desktop: 'Desktop', advanced: 'Advanced', about: 'About',
 }
 const sections = computed(() => SETTINGS_SECTIONS
   .filter(id => id !== 'desktop' || desk.value)
@@ -533,6 +534,18 @@ onMounted(() => {
               <UIcon name="i-lucide-keyboard" />{{ tl('Show keyboard shortcuts', 'Voir les raccourcis clavier') }}
               <span class="settings-action-keys"><UKbd v-for="k in shortcutKbds('help')" :key="k" :value="k" /></span>
             </button>
+          </div>
+        </div>
+
+        <div v-show="activeSection === 'advanced'" class="settings-section">
+          <div class="settings-group">
+            <h3>{{ t('Paste journal') }}</h3>
+            <label class="settings-toggle">
+              <span>{{ t('Paste journal') }}</span>
+              <USwitch :model-value="pasteJournalEnabled" @update:model-value="setPasteJournal" />
+            </label>
+            <p class="muted settings-hint">{{ t('Records the last 50 paste events on this device, without text content. Turning it off clears the journal.') }}</p>
+            <pre class="mono paste-journal" style="white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px">{{ JSON.stringify(pasteJournal, null, 2) }}</pre>
           </div>
         </div>
 

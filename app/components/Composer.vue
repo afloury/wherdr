@@ -23,6 +23,8 @@ import { enterSends as enterSendsFor } from '~/utils/layoutMode'
 import { kbOpen } from '~/composables/useViewport'
 import { PromptHistory, historyDirection } from '~/utils/promptHistory'
 import { createTouchTap } from '~/utils/touchTap'
+import { tracePaste } from '~/utils/pasteJournal'
+import { pasteHtmlText } from '~/utils/pasteHtml'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
 // `termShown`: the terminal is on screen, so no notice offers to open it.
@@ -386,37 +388,46 @@ function onFiles(e: Event) {
 // Paste an image: straight into the field (Mac, iPad, and iPhone when
 // Safari offers it)…
 function onPaste(e: ClipboardEvent) {
-  const files = [...((e.clipboardData && e.clipboardData.items) || [])]
+  handlePaste(e, e.clipboardData)
+}
+function onBeforeInput(e: InputEvent) {
+  if (e.inputType === 'insertFromPaste') handlePaste(e, e.dataTransfer, e.data || '')
+}
+function handlePaste(e: Event, data: DataTransfer | null, fallback = '') {
+  const el = e.target as HTMLTextAreaElement
+  // Snapshot the event payload before returning control to a dictation tool.
+  // Never read the system clipboard here: it may already have been restored.
+  const raw = data?.getData('text/plain') || fallback
+    || pasteHtmlText(data?.getData('text/html') || '')
+  tracePaste(e, data, raw.length, el, () => attachments.value.length)
+  // Some IME beforeinput events cannot be cancelled; let their native edit run.
+  if (!e.cancelable) return
+  const files = [...(data?.items || [])]
     .filter(i => i.kind === 'file')
     .map(i => i.getAsFile()).filter((f): f is File => Boolean(f))
-  if (!files.length) {
-    // Long text: a "Pasted text" card instead of filling the field.
-    const s = (e.clipboardData?.getData('text/plain') || '').replace(/\r\n?/g, '\n')
-    if (isLongPaste(s)) {
-      e.preventDefault()
-      addPaste(s)
-      return
-    }
-    // A pasted line that reads as a reference stays plain text: only the
-    // conversation's own buttons write references.
-    const plain = unreference(s)
-    if (plain === s) return // normal paste
+  if (files.length) {
     e.preventDefault()
-    const el = e.target as HTMLTextAreaElement
-    const before = el.value
-    // As one undoable edit where the browser allows it.
-    const done = typeof document.execCommand === 'function' && document.execCommand('insertText', false, plain)
-    if (!done || el.value === before) {
-      const from = el.selectionStart ?? before.length
-      el.value = before.slice(0, from) + plain + before.slice(el.selectionEnd ?? from)
-      el.setSelectionRange(from + plain.length, from + plain.length)
-      el.dispatchEvent(new Event('input', { bubbles: true }))
-    }
+    addFiles(files)
+    haptic()
     return
   }
+  // Empty/absent event data: leave native beforeinput insertion available.
+  if (!raw) return
   e.preventDefault()
-  addFiles(files)
-  haptic()
+  const s = raw.replace(/\r\n?/g, '\n')
+  if (isLongPaste(s)) return addPaste(s)
+  const plain = unreference(s)
+  const before = el.value
+  // Preserve the native undo stack where supported, with a synchronous fallback.
+  const done = document.activeElement === el && typeof document.execCommand === 'function' && document.execCommand('insertText', false, plain)
+  if (!done) {
+    const from = el.selectionStart ?? before.length
+    el.value = before.slice(0, from) + plain + before.slice(el.selectionEnd ?? from)
+    el.setSelectionRange(from + plain.length, from + plain.length)
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  // Commit the draft in this tick too, before any reactive refresh.
+  text.value = el.value
 }
 // A card is sent as it was pasted, to the character: nothing reads it as the
 // user's words (it is not in the field, and shows as a card once sent).
@@ -690,7 +701,7 @@ defineExpose({
       :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends && !slashOpen"
       :enterkeyhint="enterSends ? 'send' : 'enter'" autocapitalize="sentences"
       class="prompt" :class="{ suggesting: suggestTap }" :style="suggestRoom ? { '--suggest-room': `${suggestRoom}px` } : undefined" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
-      @submit="submit" @keydown="onKeydown" @paste="onPaste"
+      @submit="submit" @keydown="onKeydown" @paste="onPaste" @beforeinput="onBeforeInput"
     >
       <template v-if="attachments.length" #header>
         <div class="attachments">
