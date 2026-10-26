@@ -252,6 +252,7 @@ const KEYS_WAIT_MS = 1_000
 const repoKeys = new Map<string, Map<string, { key: string, at: number }>>()
 const keysReading = new Map<string, Promise<void>>()
 const keysMissing = (machine: string, c: Cached) => c.tasks.some(t => !repoKeys.get(machine)?.has(t.repo))
+const keysPending = (machine: string, c: Cached): { pending?: true } => (!c.error && keysReading.has(machine) && keysMissing(machine, c) ? { pending: true } : {})
 
 export function repoKeyOf(machine: string, repo: string): string {
   return repoKeys.get(machine)?.get(repo)?.key || ''
@@ -303,7 +304,9 @@ async function machineTasks(m: Machine, fresh = false): Promise<MachineTasks | n
   }
   const base = { machine: m.key, status: info.status, version: info.version || '' }
   if (info.status !== 'ready') return { ...base, tasks: [] }
-  if (last && Date.now() - last.at < REUSE_MS) return { ...base, ...shown(m.key, last) }
+  // A list reused while its repos' keys are still read stays `pending`: the
+  // Board asks again soon rather than at its next poll (15 s later).
+  if (last && Date.now() - last.at < REUSE_MS) return { ...base, ...shown(m.key, last), ...keysPending(m.key, last) }
   let c = await Promise.race([readList(m), after(waits.deadline)])
   if (!c && last) return { ...base, tasks: withKeys(m.key, last.tasks), ...(last.readAt ? { at: last.readAt } : {}), stale: true, pending: true }
   // Nothing read yet (a first read, or the list dropped after an action): an
@@ -314,7 +317,7 @@ async function machineTasks(m: Machine, fresh = false): Promise<MachineTasks | n
   // its tasks right; the others follow at the next read, soon (`pending`).
   const keys = keysReading.get(m.key)
   if (!c.error && keys && keysMissing(m.key, c)) await Promise.race([keys, after(Math.min(KEYS_WAIT_MS, started + waits.deadline - Date.now()))])
-  return { ...base, ...shown(m.key, c), ...(!c.error && keysReading.has(m.key) && keysMissing(m.key, c) ? { pending: true } : {}) }
+  return { ...base, ...shown(m.key, c), ...keysPending(m.key, c) }
 }
 
 // The Board read once when the server starts: herdr-projects' first read (its

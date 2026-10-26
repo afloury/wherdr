@@ -262,6 +262,20 @@ describe('a slow read: never an empty Board, and the client asked to come back s
     expect(next.pending).toBeUndefined()
     expect(next.tasks.every(t => t.repoKey === 'APP')).toBe(true)
   })
+
+  it('a list reused while its keys are still read stays pending, so the Board asks again soon', async () => {
+    keysOf = { demo: 'APP' }
+    showDelay = 1500
+    expect(((await read()).machines[0] as Pending).pending).toBe(true)
+    // Within REUSE_MS: the same list, the keys still not read.
+    const again = (await read()).machines[0] as Pending & { tasks: { repoKey?: string }[] }
+    expect(again.pending).toBe(true)
+    expect(again.tasks.some(t => t.repoKey)).toBe(false)
+    await vi.waitFor(() => expect(T.repoKeyOf('', 'demo')).toBe('APP'), { timeout: 3000 })
+    const named = (await read()).machines[0] as Pending & { tasks: { repoKey?: string }[] }
+    expect(named.pending).toBeUndefined()
+    expect(named.tasks.every(t => t.repoKey === 'APP')).toBe(true)
+  })
 })
 
 describe('done tasks: when they were made', () => {
