@@ -13,6 +13,27 @@ registerEndpoint('/api/tasks/links', () => ({ version: '1', machines: [{ machine
 registerEndpoint('/api/isgit', () => ({ git: true }))
 registerEndpoint('/api/config', () => ({ kinds: ['claude', 'codex'], home: '/repos', dirs: ['/repos'], machines: [{ key: '', label: 'Local', local: true, online: true, home: '/repos', dirs: [], kinds: ['claude'] }, { key: 'remote', label: 'Remote', local: false, online: true, home: '/srv', dirs: [], kinds: ['codex'] }], push: { enabled: false, key: null, devices: 0 } }))
 
+// What the machine says of a folder (GET), and adding it to the board (POST).
+const folders: Record<string, Record<string, unknown>> = {
+  '|/repos/demo': { state: 'known', repo: 'demo', root: '/repos/demo' },
+  '|/repos/new-demo': { state: 'new', repo: 'new-demo', root: '/repos/new-demo' },
+  '|/repos/notes': { state: 'notgit' },
+  '|/repos/gone': { state: 'missing' },
+  'remote|/repos/new-demo': { state: 'new', repo: 'new-demo-2', root: '/repos/new-demo' },
+}
+const registered: unknown[] = []
+registerEndpoint('/api/tasks/project', async (event: { method?: string, node?: { req: { method?: string, url?: string } }, path?: string, _body?: unknown }) => {
+  const method = event.method || event.node?.req.method
+  const url = new URL(event.path || event.node?.req.url || '', 'http://x')
+  if (method === 'POST') {
+    const { readBody } = await import('h3')
+    const b = await readBody(event as never) as { machine: string, folder: string }
+    registered.push(b)
+    return { repo: folders[`${b.machine}|${b.folder}`]!.repo, root: b.folder, added: true }
+  }
+  return folders[`${url.searchParams.get('machine')}|${url.searchParams.get('folder')}`] ?? { state: 'missing' }
+})
+
 const stubs = {
   AppSheet: { template: '<section><slot /><slot name="footer" /></section>' },
   DirBrowser: { name: 'DirBrowser', props: ['machine'], emits: ['choose', 'cancel'], template: '<button class="choose-demo" @click="$emit(\'choose\', \'/repos/new-demo\')">Choose</button>' },
@@ -33,15 +54,30 @@ describe('New project coordinator', () => {
     expect(navigate).toHaveBeenLastCalledWith({ path: '/board', query: { machine: '', coordinator: 'demo' } })
     expect(w.find('#newPrompt').exists()).toBe(false)
     expect(w.find('#newName').exists()).toBe(false)
+    // Another folder already on the board: its coordinator, nothing added.
     vm.repoPick = '__other'
     vm.dir = '/repos/demo'
+    await vi.waitFor(() => expect(w.find('[data-testid="project-folder-state"]').attributes('data-state')).toBe('known'))
     expect(vm.project).toBe('demo')
-    await flushPromises()
+    expect(w.get('[data-testid="project-folder-state"]').text()).toContain('demo')
+    // Not a Git repository, or missing: said, and nothing opens.
+    for (const [dir, state, words] of [['/repos/notes', 'notgit', 'not a Git repository'], ['/repos/gone', 'missing', 'does not exist']] as const) {
+      vm.dir = dir
+      await vi.waitFor(() => expect(w.find('[data-testid="project-folder-state"]').attributes('data-state')).toBe(state))
+      expect(w.get('[data-testid="project-folder-state"]').text()).toContain(words)
+      expect(vm.project).toBe('')
+      expect(w.get('.launch-btn').attributes('disabled')).toBeDefined()
+    }
+    // A Git folder the board does not know: added first, then opened by its name.
     await w.get('.dir-pick').trigger('click')
     await w.get('.choose-demo').trigger('click')
-    expect(vm.project).toBe('/repos/new-demo')
+    await vi.waitFor(() => expect(w.find('[data-testid="project-folder-state"]').attributes('data-state')).toBe('new'))
+    expect(w.get('[data-testid="project-folder-state"]').text()).toContain('new-demo')
+    expect(w.get('.launch-btn').text()).toContain('Add and open')
+    registered.length = 0
     await vm.launch()
-    expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: '', coordinator: '/repos/new-demo' } })
+    expect(registered).toEqual([{ machine: '', folder: '/repos/new-demo' }])
+    expect(navigate).toHaveBeenLastCalledWith({ path: '/board', query: { machine: '', coordinator: 'new-demo' } })
     newAgentOpen.value = true
     await flushPromises()
     expect(w.find('.choose-demo').exists()).toBe(false)
@@ -68,8 +104,11 @@ describe('New project coordinator', () => {
     await w.get('.dir-pick').trigger('click')
     expect(w.findComponent({ name: 'DirBrowser' }).props('machine')).toBe('remote')
     await w.get('.choose-demo').trigger('click')
+    await vi.waitFor(() => expect(w.find('[data-testid="project-folder-state"]').attributes('data-state')).toBe('new'))
+    registered.length = 0
     await vm.launch()
-    expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: 'remote', coordinator: '/repos/new-demo' } })
+    expect(registered).toEqual([{ machine: 'remote', folder: '/repos/new-demo' }])
+    expect(navigate).toHaveBeenLastCalledWith({ path: '/board', query: { machine: 'remote', coordinator: 'new-demo-2' } })
     w.unmount()
   })
 

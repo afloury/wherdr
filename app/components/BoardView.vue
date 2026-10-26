@@ -682,6 +682,7 @@ function back() {
       v-if="panel" :key="panelKey" :overlay="!dockPanel" :target="panel" :task="panelTask"
       :refresh="reload" :refresh-key="refreshes" :machine-label="machineLabel(panel.machine)" :reachable="ready.some(m => m.machine === panel!.machine)"
       @archived="onArchived" @restored="onRestored" @changed="reload" @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent" @coordinator="askCoordinator"
+      @retarget="to => { if (panel?.kind === 'coordinator') panel = { machine: panel.machine, kind: 'coordinator', to } }"
     />
     <BoardSettings
       v-if="settings && !panel" :overlay="!dockPanel" :key="JSON.stringify(settings)" :target="settings" :repos="settingsRepos" :machine-label="machineLabel"
