@@ -6,7 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-10-26
+
 ### Added and improved
+
+- **Edit a task description from its task panel (#186).** Save the updated description without leaving the Board; errors keep your text available to retry.
+
+- **Archive completed repository tasks together (#188).** The repository menu offers bulk archiving with confirmation, keeping active tasks on the Board.
+
+- **Board and task panels fit narrow screens (#187).** Columns and overlay panels adapt to the available width, keeping task controls accessible.
 
 - **Working tasks say what they are doing (#154).** On the Board card, the home list row and the task panel header, a task whose agent has finished and that waits for GitHub checks shows a **CI 1/2** badge with its agent logo dimmed and no progress; a task waiting behind another task or for a free slot shows **QUEUED · DEMO-3** / **QUEUED · Q#2**, dimmed, with no progress. A task with an agent at work looks as before.
 
@@ -17,6 +25,10 @@ All notable changes to this project are documented here. The format follows
 - **Task limit gauges and one-tap raises (#155).** The Task tab shows each limit as a thin gauge, **Time · this run 2 min 38 / 2 h** and **Tokens 3.4 M / 30 M**, red from 90 %; a limit not set says **No limit**, and the whole task's tokens stay shown when they differ from what the limit counts. At a limit stop, the hint names what **Continue** grants once more (`2 h a run`), and **Raise limit** (#167) offers presets above the typed value: +1 h / ×2 / none for time, ×2 / +10 M / none for tokens. Each preset runs the same `set` as a typed value; a preset not above what was already used is disabled, since herdr-projects would not resume. Durations and token counts read the same everywhere (`2 h`, `45 min`, `3.4 M`, `500 k`).
 
 ### Fixed
+
+- **Autopilot wake messages are recognizable (#189).** Automatic coordinator wakes appear as distinct notes in the conversation instead of looking like messages you typed.
+
+- **Unreachable Board machines explain the failure (#185).** The selected machine heading shows its reachability error instead of leaving an unexplained empty Board.
 
 - **Long queued-task badges stay inside the row on mobile (#154).** On Board cards and home list rows a long reference ends in an ellipsis and the task title keeps room to read; in the task panel the badge moves to its own line under the title. The full reference stays in the badge’s hint.
 
