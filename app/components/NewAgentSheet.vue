@@ -13,6 +13,7 @@ import { AGENT_NAME_HINT, machineOf, toAgentName } from '#shared/ids'
 import { splitPreview } from '#shared/layout'
 import { selectedAgentKind, visibleAgentKinds } from '~/utils/agentChoices'
 import { type NewPanePlace, launchInNewPane } from '~/utils/paneLaunch'
+import type { ProjectFolder } from '#shared/projectFolder'
 
 const open = newAgentOpen
 const kind = ref<string>('')
@@ -39,9 +40,16 @@ const repoPick = ref('')
 const repos = computed(() => links.value.find(m => m.machine === machine.value)?.repos || [])
 // A known repo's name is its coordinator key; its root would name another coordinator.
 const repoItems = computed(() => [...repos.value.map(r => ({ label: r.repo, value: r.repo })), { label: tl('Other repository…', 'Autre dépôt…'), value: '__other' }])
-const project = computed(() => repoPick.value === '__other'
-  ? repos.value.find(r => r.root === dir.value)?.repo || dir.value
-  : repoPick.value)
+// Another folder: what its machine says of it (on the board by name, to be
+// added, missing, not Git), asked again as the folder or the machine changes.
+const folderInfo = ref<ProjectFolder | null>(null)
+const folderChecking = ref(false)
+const folderError = ref('')
+let folderAsk = 0
+// The coordinator's key: a known repo's name ('' while a folder is not usable).
+const project = computed(() => (repoPick.value === '__other'
+  ? (folderInfo.value?.state === 'known' || folderInfo.value?.state === 'new' ? folderInfo.value.repo : '')
+  : repoPick.value))
 const shell = computed(() => kind.value === 'shell')
 const canResume = computed(() => kind.value === 'claude' || kind.value === 'codex')
 
@@ -82,6 +90,19 @@ watch(newAgentOpen, (o) => {
 const machineList = machineChoices
 const machine = ref('')
 watch(machine, () => { repoPick.value = '' })
+watch(() => [coordinator.value && repoPick.value === '__other' ? dir.value : null, machine.value] as const, async ([d, mk]) => {
+  const n = ++folderAsk
+  folderInfo.value = null
+  folderError.value = ''
+  folderChecking.value = false
+  if (!d) return
+  folderChecking.value = true
+  try {
+    const r = await api<ProjectFolder>(`/api/tasks/project?${new URLSearchParams({ machine: mk, folder: d })}`)
+    if (n === folderAsk) folderInfo.value = r
+  } catch (e) { if (n === folderAsk) folderError.value = (e as Error).message }
+  finally { if (n === folderAsk) folderChecking.value = false }
+})
 const machineCfg = computed(() => (machineList.value ? machineList.value.find(m => m.key === machine.value) : undefined))
 const online = machineOnline
 const home = computed(() => (machineCfg.value ? machineCfg.value.home : appConfig.value.home))
@@ -219,8 +240,14 @@ async function launch() {
   try {
     if (coordinator.value) {
       if (!project.value) return
+      let repo = project.value
+      // Not on the board yet: added first, so its first message starts it.
+      if (repoPick.value === '__other' && folderInfo.value?.state === 'new') {
+        repo = (await api<{ repo: string }>('/api/tasks/project', { machine: machine.value, folder: dir.value })).repo
+        refreshBoardLinks()
+      }
       newAgentOpen.value = false
-      await navigateTo({ path: '/board', query: { machine: machine.value, coordinator: project.value } })
+      await navigateTo({ path: '/board', query: { machine: machine.value, coordinator: repo } })
       return
     }
     if (newTabSpace.value) return await launchNew({ kind: 'tab', workspaceId: newTabSpace.value, label: tabName.value })
@@ -288,6 +315,19 @@ async function launch() {
         <template v-if="repoPick === '__other'">
           <label class="field-label">{{ t('Folder') }}</label>
           <DirField :key="machine" v-model="dir" :recents="recents" @browse="browsing = true" />
+          <p v-if="folderChecking" class="muted project-folder" data-testid="project-folder-state" data-state="checking">{{ tl('Checking the folder…', 'Vérification du dossier…') }}</p>
+          <p v-else-if="folderError" class="form-error project-folder" data-testid="project-folder-state" data-state="error">{{ folderError }}</p>
+          <p v-else-if="folderInfo?.state === 'known'" class="project-folder" data-testid="project-folder-state" data-state="known">
+            <span class="project-folder-tag">{{ tl('On the board', 'Sur le board') }}</span>
+            {{ tl('Its project is', 'Son projet est') }} <code>{{ folderInfo.repo }}</code>{{ tl(': this opens its coordinator.', ' : ceci ouvre son coordinateur.') }}
+          </p>
+          <p v-else-if="folderInfo?.state === 'new'" class="project-folder" data-testid="project-folder-state" data-state="new">
+            <span class="project-folder-tag new">{{ tl('New project', 'Nouveau projet') }}</span>
+            {{ tl('Added to the board as', 'Ajouté au board sous le nom') }} <code>{{ folderInfo.repo }}</code>{{ tl(', with no task, when you open the conversation.', ', sans aucune tâche, à l’ouverture de la conversation.') }}
+          </p>
+          <p v-else-if="folderInfo" class="form-error project-folder" data-testid="project-folder-state" :data-state="folderInfo.state">
+            {{ folderInfo.state === 'missing' ? tl('This folder does not exist on this machine.', 'Ce dossier n’existe pas sur cette machine.') : tl('This folder is not a Git repository: a project coordinator needs one.', 'Ce dossier n’est pas un dépôt Git : un coordinateur de projet en demande un.') }}
+          </p>
         </template>
         <p class="muted">{{ tl('Open this project’s conversation. Your first message starts its coordinator.', 'Ouvrir la conversation du projet. Ton premier message lance son coordinateur.') }}</p>
       </template>
@@ -339,7 +379,7 @@ async function launch() {
       <div v-if="!browsing" class="sheet-form">
         <p v-if="error" class="form-error">{{ t(error) }}</p>
         <UButton block size="xl" color="primary" variant="solid" class="launch-btn hw-cta" icon="i-lucide-play" :loading="launching" :disabled="coordinator ? !project : !kind" @click="launch">
-          {{ coordinator ? tl('Open conversation', 'Ouvrir la conversation') : launching ? t('Starting…') : t('Launch') }}
+          {{ coordinator ? (repoPick === '__other' && folderInfo?.state === 'new' ? tl('Add and open conversation', 'Ajouter et ouvrir la conversation') : tl('Open conversation', 'Ouvrir la conversation')) : launching ? t('Starting…') : t('Launch') }}
         </UButton>
       </div>
     </template>

@@ -33,7 +33,7 @@ const launchChoices = computed(() => {
     ...visibleAgentKinds(cfg?.kinds || appConfig.value.kinds || [], hiddenAgents.value).filter(k => k !== 'shell').map(k => ({ label: kindLabel(k), value: k }))]
 })
 const effortChoices = computed(() => [{ label: tl('Default', 'Par défaut'), value: '__default' }, ...['low', 'medium', 'high', 'xhigh', 'max'].map(value => ({ label: value, value }))])
-const emit = defineEmits<{ coordinator: [machine: string, task: TaskRow], close: [], sheet: [], noAgent: [], changed: [], archived: [machine: string, task: TaskRow], restored: [machine: string, task: TaskRow] }>()
+const emit = defineEmits<{ retarget: [to: CoordinatorTarget], coordinator: [machine: string, task: TaskRow], close: [], sheet: [], noAgent: [], changed: [], archived: [machine: string, task: TaskRow], restored: [machine: string, task: TaskRow] }>()
 
 // ------------------------------------------------------------ a task's agent
 const taskPane = ref<string | null>(null)
@@ -468,12 +468,14 @@ async function start() {
   const g = gen
   starting.value = true
   try {
-    await api('/api/tasks/coordinator', { machine: t.machine, text, to: t.to, ...(t.freshProject && launchAgent.value !== '__default' ? { start: { agent: launchAgent.value + (launchModel.value.trim() ? `/${launchModel.value.trim()}` : ''), ...(launchEffort.value !== '__default' ? { effort: launchEffort.value } : {}) } } : {}) })
+    const r = await api<{ repo?: string }>('/api/tasks/coordinator', { machine: t.machine, text, to: t.to, ...(t.freshProject && launchAgent.value !== '__default' ? { start: { agent: launchAgent.value + (launchModel.value.trim() ? `/${launchModel.value.trim()}` : ''), ...(launchEffort.value !== '__default' ? { effort: launchEffort.value } : {}) } } : {}) })
     haptic()
     // Another coordinator is shown now: its field and its words stay as they are.
     if (g !== gen) return
     first.value = ''
     refreshBoardLinks()
+    // A folder the board did not know: added under a name, the coordinator's key from now on.
+    if (t.to.kind === 'project' && r.repo && r.repo !== t.to.repo) { emit('changed'); emit('retarget', { kind: 'project', repo: r.repo }); return }
     emit('changed')
     sent.value = true
     // herdr-projects queued the words and cleared any earlier failure.

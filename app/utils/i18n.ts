@@ -108,6 +108,10 @@ const FR: Record<string, string> = {
   'This task cannot be archived while an agent works on it': 'Cette tâche ne peut pas être archivée pendant qu’un agent y travaille',
   'Unknown action': 'Action inconnue', 'A task needs a title': 'Une tâche a besoin d’un titre',
   'Invalid repo': 'Dépôt invalide', 'Invalid agent': 'Agent invalide', 'Invalid effort': 'Effort invalide', 'Invalid coordinator': 'Coordinateur invalide',
+  'herdr-projects added the repository but gave no task id wherdr can read.': 'herdr-projects a ajouté le dépôt mais n’a donné aucun identifiant de tâche lisible par wherdr.',
+  'The repository is on the board now, but its first task {id} could not be cleared: {why}': 'Le dépôt est maintenant sur le board, mais sa première tâche {id} n’a pas pu être retirée : {why}',
+  'This folder does not exist on this machine.': 'Ce dossier n’existe pas sur cette machine.',
+  'This folder is not a Git repository: a project coordinator needs one.': 'Ce dossier n’est pas un dépôt Git : un coordinateur de projet en demande un.',
   'Move up': 'Monter', 'Move down': 'Descendre', 'Reset order': 'Réinitialiser l’ordre',
   
   

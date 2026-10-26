@@ -10,6 +10,10 @@ All notable changes to this project are documented here. The format follows
 
 - **Task limit gauges and one-tap raises (#155).** The Task tab shows each limit as a thin gauge, **Time · this run 2 min 38 / 2 h** and **Tokens 3.4 M / 30 M**, red from 90 %; a limit not set says **No limit**, and the whole task's tokens stay shown when they differ from what the limit counts. At a limit stop, the hint names what **Continue** grants once more (`2 h a run`), and **Raise limit** (#167) offers presets above the typed value: +1 h / ×2 / none for time, ×2 / +10 M / none for tokens. Each preset runs the same `set` as a typed value; a preset not above what was already used is disabled, since herdr-projects would not resume. Durations and token counts read the same everywhere (`2 h`, `45 min`, `3.4 M`, `500 k`).
 
+### Fixed
+
+- **New coordinator works on a Git folder the board does not know yet (WHR-134).** Choosing **Other repository…** and a folder now says at once where it stands: **On the board** with its project name, **New project** with the name it will get (`team-hub`, `team-hub-2` when taken), or a short error when the folder does not exist or is not a Git repository. **Add and open conversation** adds the repository to that machine's board first, remote machines included, so the first message starts its coordinator instead of failing with “No repo … on this machine”. herdr-projects 1.2.26 has no command that only adds a repository, so wherdr runs `add --repo <folder>` and clears that task at once: no task is left on the board. A coordinator is always named by its repository's name on the board, never by its folder.
+
 ## [2.0.1] — 2026-10-26
 
 ### Added and improved

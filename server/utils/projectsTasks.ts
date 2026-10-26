@@ -43,6 +43,7 @@ import { installedAgentKinds } from './agentAvailability'
 import { dropStartAgent, rememberStartAgent, startAgentKey, startAgentOf, startAgentsOf } from './startAgents'
 import { findPane } from './state'
 import { fmt } from '../../shared/message'
+import { FOLDER_MISSING, FOLDER_NOT_GIT, PROJECT_FOLDER_SCRIPT, type ProjectFolder, SEED_TITLE, isFolderRef, parseFolderLook, projectFolderOf, repoNameOf } from '../../shared/projectFolder'
 
 export const REUSE_MS = 5000
 export const READ_DEADLINE_MS = 4000
@@ -704,12 +705,56 @@ export async function restartCoordinator(machine: unknown, to: unknown): Promise
   return { ok: true, msg: firstLine(out) }
 }
 
-export async function tellCoordinator(machine: unknown, text: unknown, opts: { to?: unknown, delegate?: unknown, start?: unknown } = {}): Promise<{ ok: true, msg: string }> {
+// ---------------------------------------------------------------- a project's folder
+// What a machine says of a folder picked for a project coordinator: on its
+// board already (by name), to be added, missing, or not a Git repository.
+function lookFolder(m: Machine, folder: string): Promise<string> {
+  if (m.exec) return m.exec(PROJECT_FOLDER_SCRIPT, [folder], { timeoutMs: 10_000 }).then(r => r.stdout.toString('utf8'))
+  return new Promise((resolve, reject) => execFile('sh', ['-c', PROJECT_FOLDER_SCRIPT, 'sh', folder], { timeout: 10_000, maxBuffer: 64 * 1024 },
+    (e, out) => (e ? reject(e) : resolve(String(out || '')))))
+}
+async function readRepos(m: Machine): Promise<unknown> {
+  try { return JSON.parse(await m.fs.readFile(path.posix.join(m.home, '.herdr-projects/data/repos.json'))) }
+  catch (e) { if (missing(e)) return {}; throw e }
+}
+async function folderState(m: Machine, folder: string): Promise<ProjectFolder> {
+  const repo = cleanRepo(folder)
+  if (!repo || !isFolderRef(repo)) throw new HerdrError('bad_repo', 'Invalid repo')
+  return projectFolderOf(parseFolderLook(await lookFolder(m, repo)), await readRepos(m))
+}
+export async function projectFolder(machine: unknown, folder: unknown): Promise<ProjectFolder> {
+  return folderState(boardOf(machine), typeof folder === 'string' ? folder : '')
+}
+
+// A project coordinator's repo by its name on the board, the folder added to
+// the board first when it does not know it. herdr-projects 1.2.26 has no
+// command that only adds a repo: `add --repo <root>` names it on first sight,
+// and the task it made is cleared at once (`clear`), so none is left behind.
+export async function registerProject(machine: unknown, folder: unknown): Promise<{ repo: string, root: string, added: boolean }> {
+  const m = boardOf(machine)
+  const f = await folderState(m, typeof folder === 'string' ? folder : '')
+  if (f.state === 'missing') throw new HerdrError('folder_missing', FOLDER_MISSING)
+  if (f.state === 'notgit') throw new HerdrError('folder_not_git', FOLDER_NOT_GIT)
+  if (f.state === 'known') return { repo: f.repo, root: f.root, added: false }
+  const out = await command(m, ['add', '--json', `--repo=${f.root}`, '--', SEED_TITLE])
+  let id = ''
+  try { id = String((JSON.parse(out) as { id?: unknown }).id ?? '') } catch {}
+  if (!isTaskId(id)) throw new HerdrError('projects_failed', 'herdr-projects added the repository but gave no task id wherdr can read.')
+  forget(m)
+  try { await command(m, ['clear', '--', id]) }
+  catch (e) { throw new HerdrError('projects_failed', fmt('The repository is on the board now, but its first task {id} could not be cleared: {why}', { id, why: (e as Error).message })) }
+  log(`herdr-projects add + clear: repo ${id.split('/')[0]} added${m.local ? '' : ` on ${m.label}`}`)
+  return { repo: repoNameOf(await readRepos(m), f.root) || id.split('/')[0]!, root: f.root, added: true }
+}
+
+export async function tellCoordinator(machine: unknown, text: unknown, opts: { to?: unknown, delegate?: unknown, start?: unknown } = {}): Promise<{ ok: true, msg: string, repo?: string }> {
   const m = boardOf(machine)
   const words = cleanTell(text)
   if (!words) throw new HerdrError('empty', 'Nothing to send')
-  const to = cleanTarget(opts.to)
+  let to = cleanTarget(opts.to)
   if (!to) throw new HerdrError('bad_target', 'Invalid coordinator')
+  // A folder (an older New sheet, a link): its repo on the board, added first.
+  if (to.kind === 'project' && isFolderRef(to.repo)) to = { kind: 'project', repo: (await registerProject(m.key, to.repo)).repo }
   if (opts.start !== undefined) {
     const start = opts.start as { agent?: unknown, effort?: unknown } | null
     if (!start || typeof start.agent !== 'string' || !/^[a-z][a-z0-9-]*(?:\/[A-Za-z0-9._/-]+)?$/.test(start.agent) || start.agent.length > 160
@@ -726,7 +771,7 @@ export async function tellCoordinator(machine: unknown, text: unknown, opts: { t
   const out = await command(m, coordinatorArgs(to, words, opts.delegate === true))
   forget(m)
   log(`herdr-projects coordinator${to.kind === 'main' ? '' : ` (${to.kind === 'project' ? to.repo : 'machine'})`} tell${opts.delegate === true ? ' --delegate' : ''}${m.local ? '' : ` on ${m.label}`}`)
-  return { ok: true, msg: firstLine(out) }
+  return { ok: true, msg: firstLine(out), ...(to.kind === 'project' ? { repo: to.repo } : {}) }
 }
 
 // Questions only: target and context come from the task on its owning board.
