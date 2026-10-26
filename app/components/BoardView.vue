@@ -612,6 +612,9 @@ function back() {
                       </UButton>
                     </CoordinatorHint>
                     <CoordinatorAutopilot :machine="mg.machine" :to="{ kind: 'project', repo: rg.repo }" :disabled="Boolean(coordWhy(mg.machine))" compact />
+                    <RepoArchiveMenu :machine="mg.machine" :repo="rg.repo" :machine-label="machineLabel(mg.machine)"
+                      :tasks="boards.find(m => m.machine === mg.machine)?.tasks || []" :disabled="offlineView || !settingsReachable(mg.machine) || mg.trouble"
+                      @refresh="reload().then(loadArchived)" />
                     <UButton
                       icon="i-lucide-settings" color="neutral" variant="outline" size="sm" class="board-head-add board-repo-settings" :disabled="offlineView || !settingsReachable(mg.machine)"
                       :aria-label="tl(`Repository settings: ${rg.repo}`, `Réglages du dépôt : ${rg.repo}`)" :title="tl('Repository settings', 'Réglages du dépôt')" @click="openSettings(mg.machine, rg.repo)"
