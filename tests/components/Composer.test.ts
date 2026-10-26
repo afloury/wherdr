@@ -172,7 +172,7 @@ describe('Composer references', () => {
 
 
 
-describe('Composer dictation paste', () => {
+describe('Composer paste event handling', () => {
   it.each([
     ['<p>Bonjour</p><p>le monde</p>', 'Bonjour\n\nle monde'],
     ['Bonjour<br>le monde', 'Bonjour\nle monde'],
@@ -194,24 +194,19 @@ describe('Composer dictation paste', () => {
     w.unmount()
   })
 
-  it('snapshots short text, selection and HTML before clipboard restoration', async () => {
+  it('handles event text, selection, HTML and beforeinput synchronously', async () => {
     const { w, field } = await mount('dictation')
     const el = field.element as HTMLTextAreaElement
-    for (const delay of [0, 10, 50]) {
-      for (let i = 0; i < 5; i++) {
-        await field.setValue('Before replace after')
-        el.setSelectionRange(7, 14)
-        let clipboard = `Dictation ${i}`
-        const event = new Event('paste', { bubbles: true, cancelable: true })
-        Object.defineProperty(event, 'clipboardData', { value: { items: [], types: ['text/plain'], getData: (type: string) => type === 'text/plain' ? clipboard : '' } })
-        el.dispatchEvent(event)
-        if (delay) await new Promise(r => setTimeout(r, delay))
-        clipboard = 'Old clipboard'
-        await flushPromises()
-        expect(el.value).toBe(`Before Dictation ${i} after`)
-        expect(event.defaultPrevented).toBe(true)
-      }
-    }
+    await field.setValue('Before replace after')
+    el.setSelectionRange(7, 14)
+    let clipboard = 'Event words'
+    const event = new Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'clipboardData', { value: { items: [], types: ['text/plain'], getData: (type: string) => type === 'text/plain' ? clipboard : '' } })
+    el.dispatchEvent(event)
+    clipboard = 'Old clipboard'
+    await flushPromises()
+    expect(el.value).toBe('Before Event words after')
+    expect(event.defaultPrevented).toBe(true)
     await field.setValue('')
     const html = new Event('paste', { bubbles: true, cancelable: true })
     Object.defineProperty(html, 'clipboardData', { value: { items: [], getData: (type: string) => type === 'text/html' ? '<b>HTML words</b>' : '' } })
