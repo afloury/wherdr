@@ -1,19 +1,11 @@
 #!/usr/bin/env bash
 # Rolling prerelease of the develop branch (.github/workflows/develop-prerelease.yml).
-# The release v<version> (version of herdr-plugin.toml, e.g. 2.0.0-dev) is
-# rebuilt on every push: its tag moves to the pushed commit and its files are
-# replaced, so a machine can install v2 with fetch_prebuilt
-# (scripts/herdr-plugin.sh) and never compile it.
-#
-#   prerelease.sh version                 print the version, if it is a prerelease one
-#   prerelease.sh package <tgz> <sha>     check the npm pack archive, write <tgz>.sha256,
-#                                         COMMIT and prerelease-notes.md next to it
-#   prerelease.sh publish <tgz> <sha>     move the tag, update the release, upload the files
-#
-# publish needs gh with GH_REPO (owner/name) and a token that can write contents.
-# Safety: only a version with a prerelease suffix (X.Y.Z-something) is ever
-# published, and an existing release of that tag must be a published
-# prerelease: a stable vX.Y.Z tag or release is never moved or edited.
+# PRERELEASE_TAG=develop selects the fixed channel, including stable versions.
+# Without it, the historical suffix-only channel remains available.
+# Commands: version | package <tgz> <sha> | publish <tgz> <sha>
+# package checks the archive and writes its checksum, COMMIT and notes.
+# publish needs gh, GH_REPO and a token that can write contents.
+# Existing releases must be published prereleases; stable tags are never moved.
 set -euo pipefail
 
 die() { echo "prerelease: $*" >&2; exit 1; }
@@ -25,6 +17,12 @@ cmd_version() {
   version="$(plugin_version)"
   pkg="$(node -p "require('./package.json').version")"
   [ "$version" = "$pkg" ] || die "herdr-plugin.toml ($version) and package.json ($pkg) disagree"
+  [ "${PRERELEASE_TAG:-develop}" = develop ] || die "unsupported PRERELEASE_TAG"
+  if [ "${PRERELEASE_TAG:-}" = develop ]; then
+    [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || die "invalid version $version"
+    echo "$version"
+    return
+  fi
   [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]] \
     || die "version $version is not a prerelease (X.Y.Z-suffix): stable releases go through release.yml"
   echo "$version"
@@ -77,10 +75,15 @@ cmd_package() {
   # The format bin/lib/verify-release.mjs reads, as release.yml writes it.
   (cd "$dir" && sha256sum "$name" > "$name.sha256")
   printf '%s\n' "$sha" > "$dir/COMMIT"
+  if [ "${PRERELEASE_TAG:-}" = develop ]; then
+    # Release preparation can leave Unreleased empty; the channel still publishes.
+    printf '## Update\n\nThis package follows the develop branch at the commit below. Read CHANGELOG.md in the archive for the changes included in this build.\n' > "$dir/prerelease-notes.md"
+  else
   node "$(dirname "${BASH_SOURCE[0]}")/prerelease-summary.mjs" "$sha" > "$dir/prerelease-notes.md"
+  fi
   {
     echo
-    echo "Rolling prerelease of the \`v2\` branch, rebuilt on every push. Not a stable release: never marked latest, never offered as an update."
+    echo "Rolling prerelease of the \`develop\` branch, rebuilt on every push. Not a stable release: never marked latest, never offered as an update."
     echo
     echo "Commit: \`$sha\`"
     echo
@@ -95,7 +98,7 @@ cmd_publish() {
   local tgz="${1:?usage: prerelease.sh publish <tgz> <sha>}" sha="${2:?commit SHA}" version tag dir repo state assets exists
   check_sha "$sha"
   version="$(cmd_version)"
-  tag="v$version"
+  tag="${PRERELEASE_TAG:-v$version}"
   dir="$(dirname "$tgz")"
   repo="${GH_REPO:?GH_REPO is required}"
   for f in "$tgz" "$tgz.sha256" "$dir/COMMIT" "$dir/prerelease-notes.md"; do
@@ -128,6 +131,16 @@ cmd_publish() {
     gh release create "$tag" --verify-tag --prerelease --latest=false --title "wherdr $version" --notes-file "$dir/prerelease-notes.md"
   fi
   gh release upload "$tag" "$tgz" "$tgz.sha256" --clobber
+  # Keep exactly one archive and checksum on the fixed channel after version bumps.
+  if [ "$exists" = 1 ] && [ "$tag" = develop ]; then
+    while IFS= read -r asset; do
+      case "$asset" in
+        wherdr-*.tgz|wherdr-*.tgz.sha256)
+          [ "$asset" = "$(basename "$tgz")" ] || [ "$asset" = "$(basename "$tgz").sha256" ] \
+            || gh release delete-asset "$tag" "$asset" --yes ;;
+      esac
+    done <<< "$assets"
+  fi
   gh release upload "$tag" "$dir/COMMIT" --clobber
   echo "prerelease: $tag now at $sha"
 }
