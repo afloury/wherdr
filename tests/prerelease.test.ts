@@ -30,7 +30,7 @@ function archive(home: string, opts: { omit?: string, extra?: Record<string, str
     'bin/wherdr.mjs': '// cli',
     'bin/lib/install-skill.sh': '# skill',
     'bin/lib/verify-release.mjs': readFileSync('bin/lib/verify-release.mjs', 'utf8'),
-    'package.json': '{"name":"wherdr","version":"2.0.0-dev"}',
+    'package.json': readFileSync(path.join(home, 'package.json'), 'utf8'),
     'skills/wherdr/SKILL.md': 'skill',
     '.output/server/node_modules/web-push/package.json': '{"keywords":["binary"]}',
     ...opts.extra,
@@ -42,7 +42,8 @@ function archive(home: string, opts: { omit?: string, extra?: Record<string, str
   }
   const out = path.join(home, 'out')
   mkdirSync(out, { recursive: true })
-  const tgz = path.join(out, 'wherdr-2.0.0-dev.tgz')
+  const version = JSON.parse(readFileSync(path.join(home, 'package.json'), 'utf8')).version
+  const tgz = path.join(out, `wherdr-${version}.tgz`)
   execFileSync('tar', ['-czf', tgz, '-C', path.join(home, 'src'), 'package'])
   return tgz
 }
@@ -122,24 +123,25 @@ describe.skipIf(!hasCommands('bash', 'tar'))('package', () => {
 describe.skipIf(!hasCommands('bash', 'tar'))('publish', () => {
   // A fake gh: `state` is the existing release ("" = none), `tag` whether
   // the tag exists, `assets` the names already attached.
-  function publish(state: string, opts: { tag?: boolean, assets?: string[] } = {}) {
-    const home = workspace()
+  function publish(state: string, opts: { tag?: boolean, assets?: string[], rolling?: boolean } = {}) {
+    const home = workspace(opts.rolling ? '2.1.0' : '2.0.0-dev')
+    const tag = opts.rolling ? 'develop' : 'v2.0.0-dev'
     const tgz = archive(home)
-    expect(run(home, ['package', tgz, SHA]).status).toBe(0)
+    expect(run(home, ['package', tgz, SHA], { PRERELEASE_TAG: opts.rolling ? 'develop' : '' }).status).toBe(0)
     const bin = path.join(home, 'bin')
     mkdirSync(bin)
     writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
 case "$*" in
-  'release view v2.0.0-dev --json isPrerelease,isDraft '*) [ -n "$STATE" ] || exit 1; echo "$STATE" ;;
-  'release view v2.0.0-dev --json assets '*) printf '%s\\n' $ASSETS ;;
-  'api repos/example/wherdr/git/refs/tags/v2.0.0-dev') [ "$TAG" = 1 ] || exit 1; echo '{}' ;;
+  'release view ${tag} --json isPrerelease,isDraft '*) [ -n "$STATE" ] || exit 1; echo "$STATE" ;;
+  'release view ${tag} --json assets '*) printf '%s\\n' $ASSETS ;;
+  'api repos/example/wherdr/git/refs/tags/${tag}') [ "$TAG" = 1 ] || exit 1; echo '{}' ;;
   *) printf '%s\\n' "$*" >> "$CALLS" ;;
 esac
 `, { mode: 0o755 })
     const calls = path.join(home, 'calls')
     const r = run(home, ['publish', tgz, SHA], {
       PATH: `${bin}:${process.env.PATH}`, GH_REPO: 'example/wherdr', CALLS: calls,
-      STATE: state, TAG: opts.tag ? '1' : '0', ASSETS: (opts.assets ?? []).join(' '),
+      PRERELEASE_TAG: opts.rolling ? 'develop' : '', STATE: state, TAG: opts.tag ? '1' : '0', ASSETS: (opts.assets ?? []).join(' '),
     })
     const lines = existsSync(calls) ? readFileSync(calls, 'utf8').trim().split('\n') : []
     return { r, lines, tgz }
@@ -172,8 +174,29 @@ esac
       const { r, lines } = publish(state, { tag: true })
       expect(r.status).not.toBe(0)
       expect(lines).toEqual([])
+      const rolling = publish(state, { rolling: true, tag: true })
+      expect(rolling.r.status).not.toBe(0)
+      expect(rolling.lines).toEqual([])
     })
   }
+
+  it('publishes stable package versions only to the fixed develop channel', () => {
+    const { r, lines, tgz } = publish('', { rolling: true })
+    expect(r.status, r.stderr).toBe(0)
+    expect(lines[0]).toContain('ref=refs/tags/develop')
+    expect(lines[1]).toMatch(/^release create develop .*--prerelease --latest=false /)
+    expect(lines[2]).toBe(`release upload develop ${tgz} ${tgz}.sha256 --clobber`)
+    expect(lines[3]).toContain('COMMIT --clobber')
+    expect(lines.join('\n')).not.toContain('refs/tags/v2.1.0')
+  })
+
+  it('removes previous version assets before attaching COMMIT', () => {
+    const { r, lines } = publish('true false', { rolling: true, tag: true, assets: ['COMMIT', 'wherdr-2.0.1.tgz', 'wherdr-2.0.1.tgz.sha256'] })
+    expect(r.status, r.stderr).toBe(0)
+    expect(lines[0]).toBe('release delete-asset develop COMMIT --yes')
+    expect(lines.slice(-3, -1)).toEqual(['release delete-asset develop wherdr-2.0.1.tgz --yes', 'release delete-asset develop wherdr-2.0.1.tgz.sha256 --yes'])
+    expect(lines.at(-1)).toContain('COMMIT --clobber')
+  })
 
   it('refuses a stable version before calling gh', () => {
     const home = workspace('2.0.0')
@@ -202,34 +225,18 @@ describe('workflow', () => {
     expect(wf.match(/"\$GITHUB_SHA"/g)).toHaveLength(2)
   })
 
-  it('skips all packaging and publication for the stable version without creating a tag', () => {
-    const script = wf.match(/      - name: Version[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      -)/)![1]!
-      .split('\n').map(line => line.replace(/^          /, '')).join('\n')
-    const home = workspace('2.0.0')
-    const output = path.join(home, 'workflow-output')
-    const result = spawnSync('bash', ['-e', '-c', script], {
-      cwd: home, encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: output },
+  for (const version of ['2.1.0', '2.1.0-dev']) {
+    it(`packages ${version} unconditionally on the develop channel`, () => {
+      const home = workspace(version)
+      const tgz = archive(home)
+      writeFileSync(path.join(home, 'CHANGELOG.md'), '# Changelog\n## [Unreleased]\n')
+      const result = run(home, ['package', tgz, SHA], { PRERELEASE_TAG: 'develop' })
+      expect(result.status, result.stderr).toBe(0)
+      expect(wf).toContain('PRERELEASE_TAG: develop')
+      expect(wf).not.toContain("if: steps.v.outputs.version")
+      expect(wf).not.toContain('exit 0')
     })
-    expect(result.status).toBe(0)
-    expect(result.stdout).toContain('rolling prerelease is disabled')
-    expect(existsSync(output)).toBe(false)
-    expect(wf.match(/if: steps.v.outputs.version != ''/g)).toHaveLength(4)
-  })
-
-  it('enables packaging and publication for an isolated prerelease version', () => {
-    const script = wf.match(/      - name: Version[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      -)/)![1]!
-      .split('\n').map(line => line.replace(/^          /, '')).join('\n')
-    const home = workspace('2.0.1-dev')
-    mkdirSync(path.join(home, 'scripts'))
-    cpSync(SCRIPT, path.join(home, 'scripts/prerelease.sh'))
-    const output = path.join(home, 'workflow-output')
-    const result = spawnSync('bash', ['-e', '-c', script], {
-      cwd: home, encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: output },
-    })
-    expect(result.status, result.stderr).toBe(0)
-    expect(readFileSync(output, 'utf8')).toBe('version=2.0.1-dev\n')
-    expect(wf.match(/if: steps.v.outputs.version != ''/g)).toHaveLength(4)
-  })
+  }
 
   it('keeps the repository lockfile versions aligned with its package version', () => {
     const version = JSON.parse(readFileSync('package.json', 'utf8')).version

@@ -4,7 +4,11 @@ Publishing a version requires the user's explicit approval. Never republish a pa
 for npm review. No new secret is needed: GitHub uses `GITHUB_TOKEN`, npm uses OIDC Trusted
 Publishing (`npm.yml`), and the tap uses the existing optional `HOMEBREW_TAP_TOKEN`.
 
-1. Merge reviewed changes, including the release workflows, into `main`. The site workflow
+1. Prepare the version and notes in a PR targeting `develop`, the integration branch.
+   `main` only receives reviewed releases; `v2` is no longer an integration branch.
+   Require `checks` and `e2e` to be green on the exact preparation head, with the current
+   `develop` merged in. After explicit approval, open a release PR from `develop` to `main`
+   and require those checks again on its exact head before merging. The site workflow
    deploys relevant changes on pushes to `main`, independently of tags and npm.
 2. Set the same version in `package.json`, `package-lock.json` and `herdr-plugin.toml`.
    Move the Unreleased changelog into a dated version entry. Run tests, typecheck and leak
@@ -108,7 +112,9 @@ are released after the browser saves the file, keeping repeated downloads reliab
 
 `develop-prerelease.yml` rebuilds one prerelease on every push to the `develop` branch (the
 integration branch; `main` only receives releases), so a machine can install develop from a prebuilt package (the plugin's GitHub download) and never compile it.
-It publishes the version of `herdr-plugin.toml` (for example `2.0.0-dev`, before the stable version bump) as `v<version>`:
+It always publishes the fixed tag **`develop`**, including stable package versions.
+The package version stays unchanged; `COMMIT` identifies the build. Existing
+`vX.Y.Z-dev` prereleases are left alone.
 
 - the tag moves to the pushed commit; the release is a prerelease, never `latest`. The update
   checks of every version, the legacy channel and `release-ready.yml` only read stable
@@ -122,53 +128,59 @@ It publishes the version of `herdr-plugin.toml` (for example `2.0.0-dev`, before
   before the archive is replaced and attached last: when `COMMIT` is there and names the
   branch head, the archive is that commit's.
 
-Once the version is stable, the workflow skips packaging and publication; it must not create a stable tag.
+The Pi reads `releases/tags/develop`, never `releases/latest`. Download `COMMIT`,
+the single `wherdr-<version>.tgz` asset and `wherdr-<version>.tgz.sha256`.
+For 2.1.0 these are `wherdr-2.1.0.tgz` and `wherdr-2.1.0.tgz.sha256`.
+Verify the checksum and install the archive through the existing prebuilt-package
+installation path. Read `COMMIT` again after downloading and retry if it changed
+or is absent: publication can overlap a download. Previous version assets are removed.
 
-The rolling notes start with an Update summary of the first three top-level Unreleased
-changelog entries and a link to the changelog at the packaged commit, followed by build
-metadata. Keep these entries readable and current; packaging fails if they are absent or fail the same minimum-content check.
+The workflow sets `PRERELEASE_TAG=develop` for `scripts/prerelease.sh`. Its notes
+identify the branch and commit even when release preparation has emptied Unreleased.
+Without that setting, the script keeps the historical `vX.Y.Z-suffix` mode and its
+Unreleased summary requirement. Both modes refuse to edit a release unless it is
+a published prerelease. The fixed tag does not match stable version tags; its
+`GITHUB_TOKEN` update also starts neither `release.yml` nor `npm.yml`. Stable
+publishing, update checks and readiness workflows remain unchanged.
 
-`scripts/prerelease.sh` does the checks and the publication. It refuses a version without a
-prerelease suffix (`X.Y.Z-something`) and a release of that tag that is not a published
-prerelease: stable versions keep going through the steps above. The tag is moved with
-`GITHUB_TOKEN`, which starts neither `release.yml` nor `npm.yml`. The workflow runs from the
-`v2` branch: it acts once this file is on `v2`.
+## Publishing the prepared 2.1.0 release
 
-## Commands for 2.0.0
+The preparation PR targets `develop`. Version 2.1.0 includes new task description editing,
+bulk archiving and task limit controls as well as fixes, so it uses a minor increment from
+2.0.1 rather than the initially proposed 2.0.2 patch. It introduces no intended breaking
+change and needs no migration from 2.0.1.
 
-Run in a release checkout after explicit approval. These commands are documentation, not a
-request to publish. The version commit must go through the usual reviewed PR process.
+After explicit approval, merge the reviewed preparation PR into `develop`, then review a
+`develop` → `main` release PR. Require `checks` and `e2e` on the exact release head;
+run the full CI workflow manually on that head before publication (release tags also run
+full CI, but the publishing workflows do not wait for it). Do not tag or create even a
+GitHub draft until these checks and the publication approval are complete.
+
+In a clean checkout of the approved `main` commit, using Node.js 22:
 
 ```sh
-git switch main
-git pull --ff-only
-git switch -c release/2.0.0
-npm version 2.0.0 --no-git-tag-version
-sed -i.bak 's/^version = ".*"/version = "2.0.0"/' herdr-plugin.toml
-rm herdr-plugin.toml.bak
-# Move Unreleased notes to the dated 2.0.0 entry, run the project checks, then commit.
-git add package.json package-lock.json herdr-plugin.toml CHANGELOG.md
-git commit -m "Prepare release 2.0.0"
-git push -u origin release/2.0.0
-gh pr create --base main --head release/2.0.0 --title "Prepare release 2.0.0" --body "Prepare the reviewed 2.0.0 release versions and changelog."
-# Open, review and merge the version PR; refresh main before continuing.
-git switch main
-git pull --ff-only
-# Use the reviewed notes committed with the version preparation.
-GITHUB_REPOSITORY="$(gh repo view --json nameWithOwner -q .nameWithOwner)" GITHUB_REF_NAME=v2.0.0 node scripts/check-release-notes.mjs < docs/release-notes-2.0.0.md
-gh release create v2.0.0 --target "$(git rev-parse HEAD)" --draft --title "wherdr 2.0.0" --notes-file docs/release-notes-2.0.0.md
-git tag v2.0.0
-git push origin v2.0.0
-release_run=$(gh run list --workflow release.yml --commit "$(git rev-parse HEAD)" --json databaseId --jq '.[0].databaseId')
-# If no run appears yet, wait for GitHub to register the tag and repeat the lookup.
-gh run watch "$release_run" --exit-status
-gh run list --workflow npm.yml --limit 3
-# MANDATORY while the tap secret is absent. Run only after release.yml succeeds:
-sh scripts/bump-homebrew.sh 2.0.0 "$(gh repo view --json owner -q .owner.login)"
-# Inspect the readiness workflow; optionally request an immediate check:
+git fetch origin
+git merge --ff-only origin/main
+test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+test "$(node -p "require('./package.json').version")" = 2.1.0
+GITHUB_REPOSITORY="$(gh repo view --json nameWithOwner -q .nameWithOwner)" GITHUB_REF_NAME=v2.1.0 node scripts/check-release-notes.mjs < docs/release-notes-2.1.0.md
+git tag v2.1.0
+# Prepare the reviewed draft before the tag push starts publication.
+gh release create v2.1.0 --target "$(git rev-parse HEAD)" --draft --title "wherdr 2.1.0" --notes-file docs/release-notes-2.1.0.md
+git push origin v2.1.0
+```
+
+Verify that `release.yml`, `npm.yml` and full tag CI actually started on the approved SHA.
+If the existing tag push does not trigger them, stop and resolve the workflow trigger;
+never move the tag or publish a different build. `release.yml` has no manual trigger.
+Wait for packaging and publication to succeed, then perform the mandatory manual tap update
+when the optional tap secret is absent:
+
+```sh
+sh scripts/bump-homebrew.sh 2.1.0 "$(gh repo view --json owner -q .owner.login)"
 gh workflow run release-ready.yml --ref main
 ```
 
-Use Node.js 22 for npm commands. Do not manually publish the draft or mark it latest ahead
-of these checks. A GitHub release created by `GITHUB_TOKEN` does not trigger other workflows;
-all publication work is driven by the pushed tag, not `release: published` events.
+Do not manually publish the draft or mark it latest. npm publishes the attached archive
+with provenance; npm moderation can delay availability. Readiness advances the legacy
+channel only when npm and Homebrew are both ready. Never retry a successful npm publish.
