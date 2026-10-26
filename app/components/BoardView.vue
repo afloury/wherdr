@@ -244,7 +244,9 @@ function followTask(machine: string) {
   showMachineInBar(machine)
   const next = boardScopeFor(machine, shownScope.value, machineBarPick.value, barGroups.value)
   if (next === undefined && pick === machineBarPick.value) return
-  // Kept as a choice of this tab, so that the next read does not take it back.
+  // Kept as a choice of the tab now shown (the tracker sees it first), so that
+  // the next read does not take it back.
+  boardTabChoice.followTab(machineBarPick.value)
   scope.value = next ?? scope.value
   boardTabChoice.manual(scope.value)
   writeStore(SCOPE_KEY, boardScopeValue(scope.value))
