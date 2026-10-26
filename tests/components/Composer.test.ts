@@ -156,8 +156,10 @@ describe('Composer references', () => {
       el.dispatchEvent(e)
       return e.defaultPrevented
     }
-    // An ordinary paste is left to the browser.
-    expect(paste('plain words')).toBe(false)
+    // Ordinary dictation is captured before the clipboard can change.
+    expect(paste('plain words')).toBe(true)
+    expect(el.value).toBe('plain words')
+    await field.setValue('')
     expect(paste(`From the log:\n${REF}\nGo ahead.`)).toBe(true)
     await flushPromises()
     expect(el.value).toBe(`From the log:\n\\${REF}\nGo ahead.`)
@@ -168,3 +170,57 @@ describe('Composer references', () => {
 })
 
 
+
+
+describe('Composer paste event handling', () => {
+  it.each([
+    ['<p>Bonjour</p><p>le monde</p>', 'Bonjour\n\nle monde'],
+    ['Bonjour<br>le monde', 'Bonjour\nle monde'],
+    ['<div>Bonjour</div><div>le <b>monde</b></div>', 'Bonjour\nle monde'],
+    ['<p>Bonjour</p>\n<p>le monde</p>', 'Bonjour\n\nle monde'],
+    ['Bonjour<br><br><br>le monde', 'Bonjour\n\n\nle monde'],
+    ['<pre>Bonjour\n  le monde</pre>', 'Bonjour\n  le monde'],
+    ['<table><tr><td>Bonjour</td><td>le monde</td></tr></table>', 'Bonjour\nle monde'],
+    ['Bonjour<hr><aside>le monde</aside>', 'Bonjour\nle monde'],
+  ])('preserves HTML paste separators: %s', async (html, expected) => {
+    const { w, field } = await mount('html-separators')
+    await field.setValue('')
+    let clipboard = html
+    const event = new Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'clipboardData', { value: { items: [], getData: (type: string) => type === 'text/html' ? clipboard : '' } })
+    field.element.dispatchEvent(event)
+    clipboard = ''
+    await flushPromises()
+    expect(event.defaultPrevented).toBe(true)
+    expect((field.element as HTMLTextAreaElement).value).toBe(expected)
+    w.unmount()
+  })
+
+  it('handles event text, selection, HTML and beforeinput synchronously', async () => {
+    const { w, field } = await mount('dictation')
+    const el = field.element as HTMLTextAreaElement
+    await field.setValue('Before replace after')
+    el.setSelectionRange(7, 14)
+    let clipboard = 'Event words'
+    const event = new Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'clipboardData', { value: { items: [], types: ['text/plain'], getData: (type: string) => type === 'text/plain' ? clipboard : '' } })
+    el.dispatchEvent(event)
+    clipboard = 'Old clipboard'
+    await flushPromises()
+    expect(el.value).toBe('Before Event words after')
+    expect(event.defaultPrevented).toBe(true)
+    await field.setValue('')
+    const html = new Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(html, 'clipboardData', { value: { items: [], getData: (type: string) => type === 'text/html' ? '<b>HTML words</b>' : '' } })
+    el.dispatchEvent(html)
+    await flushPromises()
+    expect(el.value).toBe('HTML words')
+    await field.setValue('')
+    el.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertFromPaste', data: 'Input words', bubbles: true, cancelable: true }))
+    await flushPromises()
+    expect(el.value).toBe('Input words')
+    el.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertFromPaste', data: 'Native edit', bubbles: true, cancelable: false }))
+    expect(el.value).toBe('Input words') // The browser owns non-cancellable edits.
+    w.unmount()
+  })
+})

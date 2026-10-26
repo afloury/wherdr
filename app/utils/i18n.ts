@@ -3,6 +3,9 @@
 // checks that every key used in the code has one). The choice is saved on the device.
 
 const FR: Record<string, string> = {
+  'Advanced': 'Avancé',
+  'Paste journal': 'Journal du collage',
+  'Records the last 50 paste events on this device, without text content. Turning it off clears the journal.': 'Enregistre les 50 derniers événements de collage sur cet appareil, sans le contenu du texte. Le désactiver efface le journal.',
   'Autopilot': 'Autopilot',
   'Copy message': 'Copier le message',
   'Edit description': 'Modifier',
@@ -91,6 +94,14 @@ const FR: Record<string, string> = {
   'Invalid Autopilot action.': 'Action Autopilot invalide.',
   'This task cannot bypass approval checks': 'Cette tâche ne peut pas ignorer les contrôles d’approbation',
   'This failure needs the human first': 'Cet échec nécessite d’abord ton intervention',
+  'Work': 'Travail',
+  'Research': 'Recherche',
+  'Task type': 'Type de tâche',
+  'Produces a research report.': 'Produit un rapport de recherche.',
+  'Discuss with an agent, without changing code.': 'Échanger avec un agent, sans modifier le code.',
+  'An agent carries out the task in the repo.': 'Un agent réalise le travail dans le dépôt.',
+  'Invalid plan approval': 'Validation du plan invalide',
+  'Invalid task type': 'Type de tâche invalide',
   'Invalid task': 'Tâche invalide', 'Nothing to send': 'Rien à envoyer',
   'This task has no agent to talk to': 'Cette tâche n’a pas d’agent à qui parler',
   'This task has no failed review to send back': 'Cette tâche n’a pas de relecture échouée à renvoyer',

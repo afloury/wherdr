@@ -28,7 +28,7 @@ import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
   canPickAttempt, taskAgentIdentity, type MachineTasks, type TaskDetails, type TaskPanes, type TaskReviewer, REVIEW_STAGES, type TaskRow, type TasksBoard,
-  TASK_QUESTION_MAX, taskCanFix, taskCanApproveAnyway, taskCanSendReview, failureIsStale, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, isEffortName, isProgramName, agentKind, parseModels, type StartModels, parseWorkerAgent, parseWorkerEffort, restoreAgentArgs, runOver, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, isTaskCommand,
+  TASK_QUESTION_MAX, taskCanFix, taskCanApproveAnyway, taskCanSendReview, failureIsStale, type StartOptions, type TaskCommand, addArgs, cleanTaskType, isPlanApproval, delegateArgs, isAgentName, isEffortName, isProgramName, agentKind, parseModels, type StartModels, parseWorkerAgent, parseWorkerEffort, restoreAgentArgs, runOver, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
   cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots,
 } from '../../shared/projectsTasks'
@@ -690,13 +690,16 @@ export async function archivedTasks(machine: unknown): Promise<{ machine: string
 
 // A new task (`add`): in a repo the board knows (its name or its folder), or
 // in the home folder; `delegate` puts an agent on it at once.
-export async function addTask(machine: unknown, b: { title?: unknown, description?: unknown, repo?: unknown, delegate?: unknown }): Promise<{ ok: true, msg: string }> {
+export async function addTask(machine: unknown, b: { title?: unknown, description?: unknown, repo?: unknown, delegate?: unknown, type?: unknown, planApprove?: unknown }): Promise<{ ok: true, msg: string }> {
   const m = boardOf(machine)
   const title = cleanTitle(b.title)
   if (!title) throw new HerdrError('empty', 'A task needs a title')
   const repo = cleanRepo(b.repo)
   if (repo === null) throw new HerdrError('bad_repo', 'Invalid repo')
-  const out = await command(m, addArgs({ title, description: cleanTell(b.description), repo, delegate: b.delegate === true }))
+  const type = cleanTaskType(b.type)
+  if (type === null) throw new HerdrError('bad_type', 'Invalid task type')
+  if (b.planApprove !== undefined && !isPlanApproval(b.planApprove)) throw new HerdrError('bad_plan', 'Invalid plan approval')
+  const out = await command(m, addArgs({ planApprove: b.planApprove, type, title, description: cleanTell(b.description), repo, delegate: b.delegate === true }))
   forget(m)
   log(`herdr-projects add${b.delegate === true ? ' --delegate' : ''}${m.local ? '' : ` on ${m.label}`}`)
   return { ok: true, msg: firstLine(out) }

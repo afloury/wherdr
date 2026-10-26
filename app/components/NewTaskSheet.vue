@@ -3,7 +3,7 @@
 // then herdr-projects `add` on that machine (`--repo`; the home folder when
 // none). "Start now" adds `--delegate`: an agent is put on it at once.
 // Without it the task waits under "To do" (the backlog) until Start.
-import { TELL_MAX, TITLE_MAX, cleanRepo } from '#shared/projectsTasks'
+import { TELL_MAX, TITLE_MAX, cleanRepo, type PlanApproval, type TaskType } from '#shared/projectsTasks'
 
 // `machines`: the boards that take actions, `repos`: each one's repos as its tasks show them.
 const props = defineProps<{ machines: string[], repos: Record<string, string[]>, machine?: string, repo?: string }>()
@@ -19,6 +19,29 @@ const repoPick = ref(HOME) // HOME, a repo's name, or OTHER
 const other = ref('')
 const title = ref('')
 const description = ref('')
+const type = ref<TaskType>('work')
+const types = computed(() => [
+  { value: 'work' as const, label: t('Work') },
+  { value: 'research' as const, label: t('Research') },
+  { value: 'chat' as const, label: tl('Conversation', 'Conversation') },
+])
+const typeHelp = computed(() => type.value === 'research'
+  ? t('Produces a research report.')
+  : type.value === 'chat'
+    ? t('Discuss with an agent, without changing code.')
+    : t('An agent carries out the task in the repo.'))
+const planApprove = ref<PlanApproval | 'inherit'>('inherit')
+const optionsOpen = ref(false)
+const planChoices = computed(() => [
+  { value: 'inherit', label: tl('Inherited value', 'Valeur héritée') },
+  { value: 'you', label: tl('I approve', 'Je valide') },
+  { value: 'reviewer', label: tl('The reviewer approves', 'Le relecteur valide') },
+])
+const planHelp = computed(() => planApprove.value === 'inherit'
+  ? tl('Use inherited settings, which may already require a plan.', 'Suivre les réglages hérités, qui peuvent déjà demander un plan.')
+  : planApprove.value === 'you'
+    ? tl('You approve the plan before the task starts.', 'Tu valides le plan avant le début du travail.')
+    : tl('The reviewer approves the plan before the task starts.', 'Le relecteur valide le plan avant le début du travail.'))
 const start = ref(false)
 const busy = ref(false)
 const error = ref('')
@@ -38,6 +61,9 @@ watch(open, (o) => {
   other.value = ''
   title.value = ''
   description.value = ''
+  type.value = 'work'
+  planApprove.value = 'inherit'
+  optionsOpen.value = false
   start.value = false
   error.value = ''
 }, { immediate: true })
@@ -50,7 +76,7 @@ async function add() {
   busy.value = true
   error.value = ''
   try {
-    const r = await api<{ msg: string }>('/api/tasks/add', { machine: machine.value, title: title.value, description: description.value, repo: repo.value, delegate: start.value })
+    const r = await api<{ msg: string }>('/api/tasks/add', { machine: machine.value, title: title.value, description: description.value, repo: repo.value, delegate: start.value, type: type.value, ...(planApprove.value === 'inherit' ? {} : { planApprove: planApprove.value }) })
     haptic()
     toast(r.msg || (start.value ? tl('Added, an agent is on it', 'Ajoutée, un agent s’en occupe') : tl('Added to To do', 'Ajoutée à À faire')))
     emit('added', machine.value)
@@ -80,6 +106,14 @@ async function add() {
         :placeholder="tl('Repo name, or /path/to/folder', 'Nom du dépôt, ou /chemin/du/dossier')" maxlength="500" :aria-label="tl('Repo or folder', 'Dépôt ou dossier')"
       />
 
+      <span id="new-task-type-label" class="field-label">{{ t('Task type') }}</span>
+      <div class="segmented" role="group" aria-labelledby="new-task-type-label" aria-describedby="new-task-type-help" :style="{ '--segment-count': 3 }">
+        <button v-for="choice in types" :key="choice.value" type="button" :class="{ on: type === choice.value }" :aria-pressed="type === choice.value" :data-task-type="choice.value" @click="type = choice.value">
+          {{ choice.label }}
+        </button>
+      </div>
+      <p id="new-task-type-help" class="muted">{{ typeHelp }}</p>
+
       <label class="field-label" for="new-task-title">{{ tl('Title', 'Titre') }}</label>
       <UInput
         id="new-task-title" v-model="title" size="xl" class="w-full" :maxlength="TITLE_MAX" enterkeyhint="next"
@@ -91,6 +125,13 @@ async function add() {
         id="new-task-desc" v-model="description" :rows="4" autoresize :maxrows="12" size="xl" class="w-full" :maxlength="TELL_MAX"
         :placeholder="tl('What the agent needs to know: the goal, where to look, how to check it', 'Ce que l’agent doit savoir : le but, où regarder, comment vérifier')"
       />
+
+      <details :open="optionsOpen" @toggle="optionsOpen = ($event.target as HTMLDetailsElement).open">
+        <summary class="field-label">{{ tl('Options', 'Options') }}</summary>
+        <label class="field-label" for="new-task-plan">{{ tl('Plan before work', 'Plan avant le travail') }}</label>
+        <USelect id="new-task-plan" v-model="planApprove" :items="planChoices" size="xl" class="w-full" :ui="{ content: 'z-[30]' }" aria-describedby="new-task-plan-help" />
+        <p id="new-task-plan-help" class="muted">{{ planHelp }}</p>
+      </details>
 
       <label class="toggle-row">
         <span><b>{{ tl('Start now', 'Lancer tout de suite') }}</b><small>{{ start ? tl('an agent is put on it at once', 'un agent s’en occupe tout de suite') : tl('it waits under To do until you start it', 'elle attend dans À faire jusqu’à ce que tu la lances') }}</small></span>
@@ -111,3 +152,7 @@ async function add() {
     </template>
   </AppSheet>
 </template>
+
+<style scoped>
+.new-task summary { display: list-item; cursor: pointer; }
+</style>

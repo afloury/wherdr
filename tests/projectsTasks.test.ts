@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  NOTIFY_SETUP, NO_ACTIONS, addArgs, parseBoardAgents, agentKind, delegateArgs, effortsFor, isAgentName, isEffortName, parseModels, parseWorkerAgent, parseWorkerEffort, restoreAgentArgs, runOver, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
+  NOTIFY_SETUP, NO_ACTIONS, cleanTaskType, addArgs, parseBoardAgents, agentKind, delegateArgs, effortsFor, isAgentName, isEffortName, parseModels, parseWorkerAgent, parseWorkerEffort, restoreAgentArgs, runOver, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
   reviewFindingsBrief, rowFromTaskFile, stateFromTaskFile, taskCanSendReview, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
 } from '../shared/projectsTasks'
 import { PROJECTS_TESTED } from '../shared/projectsPlugin'
@@ -539,5 +539,30 @@ describe('editable description data', () => {
   it('preserves every newline and descriptions beyond the former display limit', () => {
     const description = "\nIt's $(literal); `data`\n\n" + 'long description\n'.repeat(600) + '\n'
     expect(parseTaskDetails(JSON.stringify({ task: { id: 'demo/1', description } })).description).toBe(description)
+  })
+})
+
+describe('new task types', () => {
+  it('defaults only an omitted type and rejects invalid values', () => {
+    expect(cleanTaskType(undefined)).toBe('work')
+    for (const value of [null, '', 'plan', '--chat', [], {}, true, 1]) expect(cleanTaskType(value)).toBeNull()
+  })
+  it('omits inherited plan settings and passes explicit approvals as one argument', () => {
+    for (const delegate of [false, true]) {
+      for (const planApprove of [undefined, 'you', 'reviewer'] as const) {
+        expect(addArgs({ title: '$(literal); `title`', description: '', repo: '', delegate, planApprove })).toEqual([
+          'add', ...(delegate ? ['--delegate'] : []), ...(planApprove ? [`--plan.approve=${planApprove}`] : []), '--', '$(literal); `title`',
+        ])
+      }
+    }
+  })
+  it.each(['work', 'research', 'chat'] as const)('%s has one mode flag with or without delegation', type => {
+    expect(cleanTaskType(type)).toBe(type)
+    for (const delegate of [false, true]) {
+      expect(addArgs({ type, title: '--title', description: 'Brief', repo: 'demo', delegate })).toEqual([
+        'add', ...(type === 'work' ? [] : [type === 'research' ? '--research' : '--chat']),
+        '--desc=Brief', '--repo=demo', ...(delegate ? ['--delegate'] : []), '--', '--title',
+      ])
+    }
   })
 })

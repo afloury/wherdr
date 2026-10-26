@@ -1066,3 +1066,21 @@ describe('description editor', () => {
     other.unmount()
   })
 })
+
+it('keeps research and conversation badges exclusive for typed tasks', async () => {
+  const w = await mountSuspended(TaskSheet, {
+    props: { task, machine: 'a', open: true },
+    global: { stubs: { AppSheet: { template: '<div><slot /></div>' } } },
+  })
+  await flushPromises()
+  await w.setProps({ task: { ...task, research: true, chat: false } })
+  expect(w.findAll('.task-chip').map(chip => chip.text())).toContain('research')
+  expect(w.findAll('.task-chip').map(chip => chip.text())).not.toContain('Conversation')
+  await w.setProps({ task: { ...task, research: false, chat: true } })
+  expect(w.findAll('.task-chip').map(chip => chip.text())).toContain('Conversation')
+  expect(w.findAll('.task-chip').map(chip => chip.text())).not.toContain('research')
+  await w.setProps({ task: { ...task, research: false, chat: false } })
+  expect(w.findAll('.task-chip').map(chip => chip.text())).not.toContain('research')
+  expect(w.findAll('.task-chip').map(chip => chip.text())).not.toContain('Conversation')
+  w.unmount()
+})

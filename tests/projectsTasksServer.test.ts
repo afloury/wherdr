@@ -939,6 +939,48 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     expect(calls).toEqual([])
   })
 
+  it.each(['', session.key, 'remote'])('routes all new task types to the owner of %s', async key => {
+    const seen: { machine: string, args: string[] }[] = []
+    T.setRunner(async (m, _launcher, args) => {
+      seen.push({ machine: m.key, args })
+      return { code: 0, stdout: 'Added', stderr: '' }
+    })
+    for (const type of ['work', 'research', 'chat']) {
+      await T.addTask(key, { title: 'Typed task', repo: 'demo', type, planApprove: 'reviewer', delegate: true })
+      expect(seen.at(-1)).toEqual({ machine: key === 'remote' ? 'remote' : '', args: ['add', ...(type === 'work' ? [] : [type === 'research' ? '--research' : '--chat']), '--repo=demo', '--delegate', '--plan.approve=reviewer', '--', 'Typed task'] })
+    }
+  })
+
+  it('passes only explicit plan approval settings, with every type and delegation mode', async () => {
+    for (const type of ['work', 'research', 'chat']) {
+      for (const delegate of [false, true]) {
+        for (const planApprove of [undefined, 'you', 'reviewer']) {
+          await T.addTask('', { title: 'Plan task', type, delegate, planApprove })
+          expect(calls.at(-1)).toEqual(['add', ...(type === 'work' ? [] : [type === 'research' ? '--research' : '--chat']), ...(delegate ? ['--delegate'] : []), ...(planApprove ? [`--plan.approve=${planApprove}`] : []), '--', 'Plan task'])
+        }
+      }
+    }
+    calls = []
+    for (const planApprove of [null, '', 'inherit', 'none', 'YOU', 'you; touch injected', [], {}, true, 42]) {
+      await expect(T.addTask('', { title: 'Invalid', planApprove })).rejects.toThrow('Invalid plan approval')
+    }
+    expect(calls).toEqual([])
+  })
+
+  it('validates task types before invoking add', async () => {
+    for (const type of ['work', 'research', 'chat']) {
+      for (const delegate of [false, true]) {
+        await T.addTask('', { title: 'Typed task', repo: 'demo', type, delegate })
+        expect(calls.at(-1)).toEqual(['add', ...(type === 'work' ? [] : [type === 'research' ? '--research' : '--chat']), '--repo=demo', ...(delegate ? ['--delegate'] : []), '--', 'Typed task'])
+      }
+    }
+    calls = []
+    for (const type of [null, '', 'plan', ['research', 'chat'], {}, false, 42]) {
+      await expect(T.addTask('', { title: 'Invalid', type })).rejects.toThrow('Invalid task type')
+    }
+    expect(calls).toEqual([])
+  })
+
   it('talks to the Coordinator, the machine coordinator or a project coordinator, with Send and start', async () => {
     await T.tellCoordinator('', 'plain')
     await T.tellCoordinator('', 'and start', { delegate: true })
