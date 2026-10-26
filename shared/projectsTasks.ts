@@ -346,7 +346,7 @@ export function parseTaskDetails(text: string): TaskDetails {
     attempts: parseTaskAttempts(d.attempts),
     comparison: parseTaskComparison(d.comparison),
     id: t.id,
-    title: str(t.title, 300), stage: str(t.stage, 30), msg: str(t.msg, 1000), description: str(t.description, 8000),
+    title: str(t.title, 300), stage: str(t.stage, 30), msg: str(t.msg, 1000), description: typeof t.description === 'string' ? t.description : '',
     agent: str(d.agent, 40),
     pr: cleanUrl(d.pr),
     branch: str(d.branch, 200),

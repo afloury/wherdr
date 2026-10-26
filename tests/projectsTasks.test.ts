@@ -534,3 +534,10 @@ describe('a failed review sent back to the agent', () => {
     expect(reviewFindingsBrief(undefined)).toEqual({ list: [], more: 0 })
   })
 })
+
+describe('editable description data', () => {
+  it('preserves every newline and descriptions beyond the former display limit', () => {
+    const description = "\nIt's $(literal); `data`\n\n" + 'long description\n'.repeat(600) + '\n'
+    expect(parseTaskDetails(JSON.stringify({ task: { id: 'demo/1', description } })).description).toBe(description)
+  })
+})

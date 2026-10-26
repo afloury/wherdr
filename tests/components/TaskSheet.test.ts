@@ -940,3 +940,76 @@ describe('handover history in the task sheet', () => {
     w.unmount()
   })
 })
+
+describe('description editor', () => {
+  let description = "Original\n\nIt's a task\n"
+  let writes: unknown[] = []
+  let refuses = false
+  registerEndpoint('/api/tasks/describe', { method: 'POST', handler: async e => {
+    const body = await readBody(e)
+    writes.push(body)
+    if (refuses) { setResponseStatus(e, 502); return { error: 'CLI refused the description' } }
+    // Match the installed CLI's describe contract.
+    description = body.text.replace(/\r/g, '').trim()
+    return { ok: true }
+  } })
+  async function editor() {
+    writes = []; refuses = false; description = "Original\n\nIt's a task\n"
+    registerEndpoint('/api/tasks/details', () => ({ ...task, pane: null, description }))
+    return (await sheet(true)).w
+  }
+  it('prefills, cancels without writing, and saves multiline text explicitly', async () => {
+    const w = await editor()
+    const block = () => w.get('.task-description')
+    await block().get('button').trigger('click')
+    expect(block().get('textarea').element.value).toBe(description)
+    await block().get('textarea').setValue('discard')
+    await block().findAll('button')[1]!.trigger('click')
+    expect(writes).toEqual([])
+    await block().get('button').trigger('click')
+    expect(block().get('textarea').element.value).toBe(description)
+    const text = "\n  It's $(data); `literal`\n\nFinal line\n\n"
+    await block().get('textarea').setValue(text)
+    expect(writes).toEqual([])
+    await block().get('form').trigger('submit')
+    await flushPromises()
+    expect(writes).toEqual([{ machine: 'a', id: 'demo/1', text }])
+    const stored = text.replace(/\r/g, '').trim()
+    await vi.waitFor(() => expect(block().get('.task-sheet-text').element.textContent).toBe(stored))
+    await block().get('button').trigger('click')
+    expect(block().get('textarea').element.value).toBe(stored)
+    w.unmount()
+  })
+  it('keeps the draft and CLI error after refusal, then retries', async () => {
+    const w = await editor()
+    await w.get('.task-description button').trigger('click')
+    await w.get('.task-description textarea').setValue('My draft\nkept')
+    refuses = true
+    await w.get('.task-description form').trigger('submit'); await flushPromises()
+    expect(w.get('.task-description textarea').element.value).toBe('My draft\nkept')
+    await vi.waitFor(() => expect(w.get('.task-description [role=alert]').text()).toContain('CLI refused'))
+    refuses = false
+    await w.get('.task-description form').trigger('submit'); await flushPromises()
+    await vi.waitFor(() => expect(w.find('.task-description textarea').exists()).toBe(false))
+    w.unmount()
+  })
+  it('blocks offline and archived tasks, including a disconnect during editing', async () => {
+    const w = await editor()
+    await w.get('.task-description button').trigger('click')
+    await w.get('.task-description textarea').setValue('draft')
+    await w.setProps({ reachable: false })
+    await w.get('.task-description form').trigger('submit'); await flushPromises()
+    expect(writes).toEqual([])
+    expect(w.get('.task-description textarea').element.value).toBe('draft')
+    await w.setProps({ task: { ...task, archived: true }, reachable: true })
+    await w.get('.task-description form').trigger('submit'); await flushPromises()
+    expect(writes).toEqual([])
+    w.unmount()
+    const other = await editor()
+    await other.setProps({ reachable: false })
+    expect(other.get('.task-description button').attributes('disabled')).toBeDefined()
+    await other.setProps({ task: { ...task, archived: true } })
+    expect(other.find('.task-description button').exists()).toBe(false)
+    other.unmount()
+  })
+})
