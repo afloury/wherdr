@@ -547,6 +547,15 @@ describe('new task types', () => {
     expect(cleanTaskType(undefined)).toBe('work')
     for (const value of [null, '', 'plan', '--chat', [], {}, true, 1]) expect(cleanTaskType(value)).toBeNull()
   })
+  it('omits inherited plan settings and passes explicit approvals as one argument', () => {
+    for (const delegate of [false, true]) {
+      for (const planApprove of [undefined, 'you', 'reviewer'] as const) {
+        expect(addArgs({ title: '$(literal); `title`', description: '', repo: '', delegate, planApprove })).toEqual([
+          'add', ...(delegate ? ['--delegate'] : []), ...(planApprove ? [`--plan.approve=${planApprove}`] : []), '--', '$(literal); `title`',
+        ])
+      }
+    }
+  })
   it.each(['work', 'research', 'chat'] as const)('%s has one mode flag with or without delegation', type => {
     expect(cleanTaskType(type)).toBe(type)
     for (const delegate of [false, true]) {

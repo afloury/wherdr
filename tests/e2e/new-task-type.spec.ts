@@ -20,6 +20,12 @@ test('new task types fit phone and desktop and produce exclusive requests', asyn
     await page.locator('[data-task-type="' + type + '"]').click()
     await expect(page.locator('[data-task-type][aria-pressed="true"]')).toHaveCount(1)
     await page.locator('#new-task-title').fill('Compare options')
+    await page.getByText('Options', { exact: true }).click()
+    await expect(page.locator('#new-task-plan')).toContainText('Inherited value')
+    if (index < 2) {
+      await page.locator('#new-task-plan').click()
+      await page.getByRole('option', { name: index === 0 ? 'I approve' : 'The reviewer approves', exact: true }).click()
+    }
     if (index === 0) {
       await page.screenshot({ path: '.shots/new-task-type-phone.png' })
       await page.setViewportSize({ width: 1440, height: 900 })
@@ -29,6 +35,7 @@ test('new task types fit phone and desktop and produce exclusive requests', asyn
     if (index === 2) await page.getByRole('switch').click()
     await page.getByRole('button', { name: index === 2 ? 'Add and start' : 'Add to To do', exact: true }).click()
     await expect.poll(() => calls.length).toBe(index + 1)
-    expect(calls[index]).toMatchObject({ machine: '', repo: '', type, delegate: index === 2 })
+    expect(calls[index]).toMatchObject({ machine: '', repo: '', type, delegate: index === 2, ...(index < 2 ? { planApprove: index === 0 ? 'you' : 'reviewer' } : {}) })
+    if (index === 2) expect(calls[index]).not.toHaveProperty('planApprove')
   }
 })

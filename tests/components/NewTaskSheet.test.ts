@@ -29,6 +29,30 @@ describe('new task type', () => {
     expect(w.find('[data-task-type="work"]').attributes('aria-pressed')).toBe('true')
     w.unmount()
   })
+  it('offers inherited settings and two approvers, resets on reopening, and sends only explicit choices', async () => {
+    for (const type of ['work', 'research', 'chat']) {
+      for (const delegate of [false, true]) {
+        for (const planApprove of ['inherit', 'you', 'reviewer']) {
+          calls.length = 0
+          const form = await sheet()
+          const plan = form.findAllComponents({ name: 'USelect' }).find(c => c.props('id') === 'new-task-plan')!
+          expect(plan.props('items').map((item: { value: string }) => item.value)).toEqual(['inherit', 'you', 'reviewer'])
+          await form.find('#new-task-title').setValue('Plan task')
+          await form.find('[data-task-type="' + type + '"]').trigger('click')
+          plan.vm.$emit('update:modelValue', planApprove)
+          if (delegate) await form.find('[role="switch"]').trigger('click')
+          await form.find('form').trigger('submit')
+          await flushPromises()
+          expect(calls).toEqual([{ machine: 'remote', repo: 'demo', title: 'Plan task', description: '', type, delegate, ...(planApprove === 'inherit' ? {} : { planApprove }) }])
+          await form.setProps({ open: false })
+          await form.setProps({ open: true })
+          expect(plan.props('modelValue')).toBe('inherit')
+          expect(form.find('#new-task-plan-help').text()).toContain('may already require a plan')
+          form.unmount()
+        }
+      }
+    }
+  })
   it.each(['work', 'research', 'chat'])('sends %s and preserves machine, repo and delegation', async type => {
     for (const delegate of [false, true]) {
       calls.length = 0

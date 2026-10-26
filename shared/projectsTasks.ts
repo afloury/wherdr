@@ -550,7 +550,13 @@ export function cleanTaskType(value: unknown): TaskType | null {
   if (value === undefined) return 'work'
   return value === 'work' || value === 'research' || value === 'chat' ? value : null
 }
-export interface NewTask { title: string, description: string, repo: string, delegate: boolean, type?: TaskType }
+// CLI 1.x flow/plan/build.rs begins the plan step for all types, including chat.
+// Inheritance omits the flag; never translate it to plan.approve=none.
+export type PlanApproval = 'you' | 'reviewer'
+export function isPlanApproval(value: unknown): value is PlanApproval {
+  return value === 'you' || value === 'reviewer'
+}
+export interface NewTask { title: string, description: string, repo: string, delegate: boolean, type?: TaskType, planApprove?: PlanApproval }
 // `add`: `--delegate` puts an agent on it at once.
 export function addArgs(t: NewTask): string[] {
   return ['add',
@@ -558,6 +564,7 @@ export function addArgs(t: NewTask): string[] {
     ...(t.description ? [`--desc=${t.description}`] : []),
     ...(t.repo ? [`--repo=${t.repo}`] : []),
     ...(t.delegate ? ['--delegate'] : []),
+    ...(t.planApprove ? [`--plan.approve=${t.planApprove}`] : []),
     '--', t.title]
 }
 
