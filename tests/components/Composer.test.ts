@@ -180,6 +180,8 @@ describe('Composer paste event handling', () => {
     ['<p>Bonjour</p>\n<p>le monde</p>', 'Bonjour\n\nle monde'],
     ['Bonjour<br><br><br>le monde', 'Bonjour\n\n\nle monde'],
     ['<pre>Bonjour\n  le monde</pre>', 'Bonjour\n  le monde'],
+    ['<table><tr><td>Bonjour</td><td>le monde</td></tr></table>', 'Bonjour\nle monde'],
+    ['Bonjour<hr><aside>le monde</aside>', 'Bonjour\nle monde'],
   ])('preserves HTML paste separators: %s', async (html, expected) => {
     const { w, field } = await mount('html-separators')
     await field.setValue('')

@@ -27,7 +27,7 @@ export function pasteHtmlText(html: string): string {
     if (['SCRIPT', 'STYLE', 'TEMPLATE'].includes(el.tagName)) return
     if (el.tagName === 'BR') { append('\n'); return }
     const lines = el.tagName === 'P' ? 2
-      : /^(DIV|SECTION|ARTICLE|HEADER|FOOTER|BLOCKQUOTE|PRE|LI|UL|OL|TR|H[1-6])$/.test(el.tagName) ? 1 : 0
+      : /^(ADDRESS|ARTICLE|ASIDE|BLOCKQUOTE|CAPTION|CENTER|DD|DETAILS|DIALOG|DIV|DL|DT|FIELDSET|FIGCAPTION|FIGURE|FOOTER|FORM|HEADER|HR|LI|MAIN|MENU|NAV|OL|PRE|SECTION|SUMMARY|TABLE|TBODY|TD|TFOOT|TH|THEAD|TR|UL|H[1-6])$/.test(el.tagName) ? 1 : 0
     if (lines) boundary(lines)
     for (const child of el.childNodes) visit(child, pre || el.tagName === 'PRE')
     if (lines) boundary(lines)
