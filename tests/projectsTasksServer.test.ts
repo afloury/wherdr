@@ -65,6 +65,7 @@ let keysOf: Record<string, string> = {}
 let active = 0
 let maxActive = 0
 let delay = 0
+let showDelay = 0
 let detailsReply: string | null = null
 let listReply: { code: number, stdout: string, stderr: string } | null = null
 // `coordinator [--machine | --project=R] status --json`, by its flag ('' for the Coordinator).
@@ -79,6 +80,7 @@ beforeEach(() => {
   keysOf = { demo: 'DEMO' }
   active = maxActive = 0
   delay = 0
+  showDelay = 0
   listReply = null
   detailsReply = null
   coordStatus = {}
@@ -120,6 +122,7 @@ beforeEach(() => {
     }
     if (args[0] === 'show') {
       shows.push(args)
+      await new Promise(r => setTimeout(r, showDelay))
       const repo = args[1]!.replace('--repo=', '')
       return { code: 0, stdout: JSON.stringify({ settings: [{ name: 'repo.key', value: keysOf[repo] ?? 'none', note: '' }], problems: [] }), stderr: '' }
     }
@@ -214,6 +217,50 @@ describe('a read that fails is said, with the last tasks dated and marked', () =
     const r = await read()
     expect(r.machines[0]).toMatchObject({ machine: '', status: 'error', error: 'Herdr did not answer', stale: true })
     expect(r.machines[0]!.tasks).toHaveLength(4)
+  })
+})
+
+describe('a slow read: never an empty Board, and the client asked to come back soon', () => {
+  afterEach(() => T.setReadWaits(null))
+  type Pending = Board['machines'][number] & { pending?: boolean }
+
+  it('a first read slower than the deadline is waited for, never answered empty', async () => {
+    T.setReadWaits({ deadline: 30, first: 3000 })
+    delay = 150
+    const m = (await read()).machines[0] as Pending
+    expect(m.tasks).toHaveLength(4)
+    expect(m.stale).toBeFalsy()
+  })
+
+  it('past the deadline with an earlier list: that list, stale and pending', async () => {
+    await read()
+    later(T.REUSE_MS + 1)
+    T.setReadWaits({ deadline: 30, first: 3000 })
+    delay = 300
+    const m = (await read()).machines[0] as Pending
+    expect(m).toMatchObject({ stale: true, pending: true })
+    expect(m.tasks).toHaveLength(4)
+  })
+
+  it('a first read slower than the longest wait: no tasks yet, pending', async () => {
+    T.setReadWaits({ deadline: 30, first: 100 })
+    delay = 400
+    const m = (await read()).machines[0] as Pending
+    expect(m).toMatchObject({ tasks: [], stale: true, pending: true })
+  })
+
+  it('repo keys slower than their short wait: the tasks first, pending, then named', async () => {
+    keysOf = { demo: 'APP' }
+    showDelay = 1500
+    const first = (await read()).machines[0] as Pending & { tasks: { repoKey?: string }[] }
+    expect(first.tasks).toHaveLength(4)
+    expect(first.pending).toBe(true)
+    expect(first.tasks.some(t => t.repoKey)).toBe(false)
+    await vi.waitFor(() => expect(T.repoKeyOf('', 'demo')).toBe('APP'), { timeout: 3000 })
+    T.resetTasksCache(true)
+    const next = (await read()).machines[0] as Pending & { tasks: { repoKey?: string }[] }
+    expect(next.pending).toBeUndefined()
+    expect(next.tasks.every(t => t.repoKey === 'APP')).toBe(true)
   })
 })
 

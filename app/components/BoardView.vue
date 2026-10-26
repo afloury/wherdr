@@ -41,7 +41,12 @@ const FOLDS_KEY = 'boardFolds'
 
 const router = useRouter()
 const route = useRoute()
-const { board, error, reads, reload } = useTasksBoard()
+const { board, cachedAt, error, reads, reload } = useTasksBoard()
+// Nothing kept on this device and herdr-projects still being read: the Board's
+// shapes after 300 ms (BoardSkeleton); past 10 s, said, with Retry.
+const loading = computed(() => !board.value && !error.value && !offlineView.value)
+const skeleton = useDelayedFlag(loading)
+const slow = useDelayedFlag(loading, 10000, 0)
 // Counts the Refresh button's clicks: the coordinator's Scheduled section reads
 // again then, not on every 15 s poll (it may scan a large transcript).
 const refreshes = ref(0)
@@ -472,7 +477,7 @@ function back() {
 </script>
 
 <template>
-  <section id="board" ref="root" class="view board-view" :class="{ 'with-panel': (panel || settings) && dockPanel, narrow: !wide }">
+  <section id="board" ref="root" class="view board-view" :class="{ 'with-panel': (panel || settings) && dockPanel, narrow: !wide, 'board-cached': cachedAt }">
     <div ref="panelSizer" class="board-panel-sizer" aria-hidden="true" />
     <header class="top bar board-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Back')" @click="back" />
@@ -506,7 +511,11 @@ function back() {
       </div>
     </div>
     <div v-if="error" class="notice board-notice">{{ error }}</div>
-    <p v-else-if="!board && !offlineView" class="board-empty board-loading">{{ t('Loading…') }}</p>
+    <p v-else-if="slow" class="board-empty board-slow" role="status">
+      {{ tl('herdr-projects is not answering', 'herdr-projects ne répond pas') }} ·
+      <button type="button" class="board-retry" @click="reload">{{ t('Retry') }}</button>
+    </p>
+    <BoardSkeleton v-else-if="skeleton" :wide="wide" :groups="columns.map(c => c.id)" />
 
     <div v-if="noCoordinator || notes.length || disabled.length" class="board-notes">
       <p v-if="noCoordinator" class="board-note" role="status">{{ tl('No Coordinator can be reached now. See each machine’s availability.', 'Aucun Coordinateur n’est joignable pour l’instant. Consulte la disponibilité de chaque machine.') }}</p>
@@ -517,12 +526,16 @@ function back() {
       <p v-for="m in disabled" :key="m.machine" class="board-note">{{ tl(`herdr-projects is disabled in Herdr${several ? ` on ${machineName(m.machine)}` : ''}: herdr plugin enable herdr-projects`, `herdr-projects est désactivé dans Herdr${several ? ` sur ${machineName(m.machine)}` : ''} : herdr plugin enable herdr-projects`) }}</p>
     </div>
 
-    <template v-if="boards.length">
+    <template v-if="boards.length && !skeleton">
       <div class="board-tools">
         <USelect
           v-if="boards.length > 1" :model-value="boardScopeValue(shownScope)" :items="scopeItems" size="sm" class="board-scope" :aria-label="tl('Machines shown', 'Machines affichées')"
           @update:model-value="pickScope(String($event))"
         />
+        <!-- The board kept on this device, until the read answers: in this row, so nothing moves. -->
+        <span v-if="cachedAt" class="cached-tag board-cached-tag" role="status" :title="tl(`Kept on this device, as read at ${readAt(cachedAt)}; being read again`, `Gardé sur cet appareil, lu à ${readAt(cachedAt)} ; relecture en cours`)">
+          <span class="cached-tag-word">{{ `${tl('Read at', 'Lu à')} ` }}</span>{{ readAt(cachedAt) }}
+        </span>
         <UButton
           v-if="ready.length" icon="i-lucide-settings" color="neutral" variant="outline" size="sm" class="icon-btn board-settings-open" :class="{ on: settings && !settings.repo }"
           :disabled="offlineView" :aria-label="tl('Board settings', 'Réglages du board')" :title="tl('Board settings', 'Réglages du board')" @click="openSettings(shownScope)"

@@ -161,6 +161,8 @@ export interface MachineTasks {
   at?: number
   error?: string
   stale?: boolean
+  // Still being read (the list past the deadline, or its repos' keys): ask again soon.
+  pending?: boolean
 }
 export interface TasksBoard { version: string, machines: MachineTasks[] }
 export type TasksReply = TasksBoard | { same: true, version: string }
