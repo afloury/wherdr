@@ -3,7 +3,7 @@
 # in Chromium and WebKit against a fake Herdr server.
 #
 # Two depths of browser tests (tests/e2e/scope.ts):
-# - light (E2E_SCOPE=light), for pull requests and pushes to main or v2: every test
+# - light (E2E_SCOPE=light), for pull requests and pushes to main or develop: every test
 #   on chromium-phone in two shards, plus the tests tagged for chromium-desktop
 #   (keyboard, split view), webkit-phone (Safari/iOS journeys) and webkit-desktop
 #   (iPad, desktop Safari);
@@ -17,11 +17,11 @@ name: ci
 
 on:
   push:
-    branches: [main, v2]
+    branches: [main, develop]
     # Release tags get the full suite.
     tags: ['v[0-9]+.[0-9]+.[0-9]+']
   pull_request:
-    branches: [main, v2]
+    branches: [main, develop]
   # Manual run: the full suite, on any branch.
   workflow_dispatch:
 

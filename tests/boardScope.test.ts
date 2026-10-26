@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SCOPE_ALL, SCOPE_LOCAL, boardTabScope as tabScope, boardMachineLabel, boardScopeItems, boardScopeMachine, boardScopeMachines, boardScopeValue, boardShownScope } from '../app/utils/boardScope'
+import { SCOPE_ALL, SCOPE_LOCAL, boardTabScope as tabScope, boardMachineLabel, boardScopeItems, boardScopeMachine, boardScopeMachines, boardScopeValue, boardShownScope, boardScopeFor } from '../app/utils/boardScope'
 import type { MachineGroup } from '../app/utils/machineBar'
 
 const labels: Record<string, string> = { '': 'Server', laptop: 'Laptop', devbox: 'devbox' }
@@ -200,5 +200,26 @@ describe('Board scope follows the sidebar tab', () => {
     expect(boardTabScope(store).update('work', machines, groups)).toBe('work')
     store.write(JSON.stringify({ tab: 'work' }))
     expect(boardTabScope(store).update('work', machines, groups)).toBe('work')
+  })
+})
+
+describe('Board scope for an opened task', () => {
+  const work: MachineGroup[] = [{ id: '*group:home', name: 'Home', machines: ['', 'laptop'] }]
+
+  it('changes nothing when the scope shown already covers its machine', () => {
+    expect(boardScopeFor('laptop', SCOPE_ALL, 'devbox', work)).toBeUndefined()
+    expect(boardScopeFor('laptop', '*group:home', '*group:home', work)).toBeUndefined()
+    expect(boardScopeFor('', '', null, work)).toBeUndefined()
+  })
+
+  it('takes the sidebar tab when it covers the machine, so both match', () => {
+    expect(boardScopeFor('laptop', 'devbox', '*group:home', work)).toBe('*group:home')
+    expect(boardScopeFor('laptop', 'devbox', 'laptop', work)).toBe('laptop')
+    expect(boardScopeFor('devbox', '*group:home', SCOPE_ALL, work)).toBe(SCOPE_ALL)
+  })
+
+  it('falls back to every machine when the tab does not cover it (or the bar is off)', () => {
+    expect(boardScopeFor('devbox', '*group:home', '*group:home', work)).toBe(SCOPE_ALL)
+    expect(boardScopeFor('devbox', 'laptop', null, work)).toBe(SCOPE_ALL)
   })
 })

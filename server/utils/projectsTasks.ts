@@ -14,12 +14,16 @@ import { readSessionTimers } from './scheduledTranscript'
 //    machine's own Herdr session. Each command also runs the board's upkeep, as
 //    any 1.x command does on that machine; wherdr calls it sparingly: one
 //    command at a time per machine, a list reused for REUSE_MS, the last list
-//    kept (marked stale) when a read outlives READ_DEADLINE_MS.
+//    kept (marked stale) when a read outlives READ_DEADLINE_MS. Without a last
+//    list, the read is waited for (up to FIRST_READ_MS) rather than answered
+//    empty; `pending` asks the client to come back soon (repo keys still read).
+//    The server reads the Board once at start (warmTasksBoard), so the first
+//    Board opened after a restart finds it read.
 // Only where Herdr reports a 1.x from 1.2.1 on (shared/projectsPlugin.ts).
 import { autopilotNextAt, parseAutopilot, parseAutomations, type Scheduled } from '../../shared/scheduled'
 import { machineOfPane } from './machines'
 import { execFile } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
@@ -43,9 +47,14 @@ import { installedAgentKinds } from './agentAvailability'
 import { dropStartAgent, rememberStartAgent, startAgentKey, startAgentOf, startAgentsOf } from './startAgents'
 import { findPane } from './state'
 import { fmt } from '../../shared/message'
+import { FOLDER_MISSING, FOLDER_NOT_GIT, PROJECT_FOLDER_SCRIPT, type ProjectFolder, REGISTER_PROMPT, isFolderRef, parseFolderLook, projectFolderOf, repoNameOf } from '../../shared/projectFolder'
 
 export const REUSE_MS = 5000
 export const READ_DEADLINE_MS = 4000
+export const FIRST_READ_MS = 12_000
+// The two waits, shortened by the tests.
+let waits = { deadline: READ_DEADLINE_MS, first: FIRST_READ_MS }
+export function setReadWaits(w: { deadline: number, first: number } | null) { waits = w || { deadline: READ_DEADLINE_MS, first: FIRST_READ_MS } }
 const LIST_TIMEOUT_MS = 30_000
 const ACTION_TIMEOUT_MS = 60_000
 const OUTPUT_MAX = 8 * 1024 * 1024
@@ -220,13 +229,11 @@ function readList(m: Machine): Promise<Cached> {
       const last = lists.get(m.key)
       return { tasks: last?.tasks || [], at: Date.now(), readAt: last?.readAt ?? 0, error: e.message }
     })
-    .then(async (c: Cached) => {
+    .then((c: Cached) => {
       lists.set(m.key, c)
       if (c.error) return c
       void restoreFinished(m, c.tasks, started).catch(() => {})
-      // A repo never seen: its key is waited for a moment, so the first look names its tasks right.
-      const keys = readKeys(m, c.tasks.map(t => t.repo))
-      if (c.tasks.some(t => !repoKeys.get(m.key)?.has(t.repo))) await Promise.race([keys, new Promise(r => setTimeout(r, KEYS_WAIT_MS).unref?.())])
+      void readKeys(m, c.tasks.map(t => t.repo))
       return c
     })
     .finally(() => reading.delete(m.key))
@@ -241,9 +248,11 @@ function readList(m: Machine): Promise<Cached> {
 // and asked again after a while (a key can be changed).
 const KEYS_TTL_MS = 10 * 60_000
 const KEYS_RETRY_MS = 60_000
-const KEYS_WAIT_MS = 3_000
+const KEYS_WAIT_MS = 1_000
 const repoKeys = new Map<string, Map<string, { key: string, at: number }>>()
-const keysReading = new Set<string>()
+const keysReading = new Map<string, Promise<void>>()
+const keysMissing = (machine: string, c: Cached) => c.tasks.some(t => !repoKeys.get(machine)?.has(t.repo))
+const keysPending = (machine: string, c: Cached): { pending?: true } => (!c.error && keysReading.has(machine) && keysMissing(machine, c) ? { pending: true } : {})
 
 export function repoKeyOf(machine: string, repo: string): string {
   return repoKeys.get(machine)?.get(repo)?.key || ''
@@ -253,21 +262,23 @@ const withKeys = (machine: string, tasks: TaskRow[]): TaskRow[] => {
   return known ? tasks.map((t) => { const key = known.get(t.repo)?.key; return key ? { ...t, repoKey: key } : t }) : tasks
 }
 
-async function readKeys(m: Machine, repos: string[]): Promise<void> {
-  if (keysReading.has(m.key)) return
+function readKeys(m: Machine, repos: string[]): Promise<void> {
+  const running = keysReading.get(m.key)
+  if (running) return running
   const known = repoKeys.get(m.key) ?? new Map<string, { key: string, at: number }>()
   const now = Date.now()
   const due = [...new Set(repos)].filter(r => (known.get(r)?.at ?? 0) <= now - KEYS_TTL_MS)
-  if (!due.length) return
-  keysReading.add(m.key)
-  try {
+  if (!due.length) return Promise.resolve()
+  const read = (async () => {
     for (const r of due) {
-      // A failed read is asked again sooner.
+      // A failed read is asked again sooner. Each key counts as soon as it is read.
       try { known.set(r, { key: parseRepoKey(await command(m, ['show', `--repo=${r}`, '--json'], LIST_TIMEOUT_MS)), at: Date.now() }) }
       catch { known.set(r, { key: known.get(r)?.key || '', at: Date.now() - KEYS_TTL_MS + KEYS_RETRY_MS }) }
+      repoKeys.set(m.key, known)
     }
-    repoKeys.set(m.key, known)
-  } finally { keysReading.delete(m.key) }
+  })().finally(() => keysReading.delete(m.key))
+  keysReading.set(m.key, read)
+  return read
 }
 
 // What a cached read says: its tasks, when they were read, and why they may be old.
@@ -277,7 +288,9 @@ function shown(machine: string, c: Cached): Pick<MachineTasks, 'tasks' | 'at' | 
 
 // `fresh`: the Board just opened (or asked to): check the plugin again rather
 // than trust the last answer, so an install or update shows at once.
+const after = (ms: number) => new Promise<null>(resolve => setTimeout(() => resolve(null), Math.max(0, ms)).unref?.())
 async function machineTasks(m: Machine, fresh = false): Promise<MachineTasks | null> {
+  const started = Date.now()
   const last = lists.get(m.key)
   if (!m.local && m.status !== 'online') {
     const error = fmt('{machine} is unreachable', { machine: m.label })
@@ -291,11 +304,27 @@ async function machineTasks(m: Machine, fresh = false): Promise<MachineTasks | n
   }
   const base = { machine: m.key, status: info.status, version: info.version || '' }
   if (info.status !== 'ready') return { ...base, tasks: [] }
-  if (last && Date.now() - last.at < REUSE_MS) return { ...base, ...shown(m.key, last) }
-  const deadline = new Promise<null>(resolve => setTimeout(() => resolve(null), READ_DEADLINE_MS).unref?.())
-  const c = await Promise.race([readList(m), deadline])
-  if (!c) return { ...base, tasks: withKeys(m.key, last?.tasks || []), ...(last?.readAt ? { at: last.readAt } : {}), stale: true }
-  return { ...base, ...shown(m.key, c) }
+  // A list reused while its repos' keys are still read stays `pending`: the
+  // Board asks again soon rather than at its next poll (15 s later).
+  if (last && Date.now() - last.at < REUSE_MS) return { ...base, ...shown(m.key, last), ...keysPending(m.key, last) }
+  let c = await Promise.race([readList(m), after(waits.deadline)])
+  if (!c && last) return { ...base, tasks: withKeys(m.key, last.tasks), ...(last.readAt ? { at: last.readAt } : {}), stale: true, pending: true }
+  // Nothing read yet (a first read, or the list dropped after an action): an
+  // empty board would be wrong, so the list is waited for.
+  if (!c) c = await Promise.race([readList(m), after(waits.first - (Date.now() - started))])
+  if (!c) return { ...base, tasks: [], stale: true, pending: true }
+  // A repo never seen: its key is waited for a moment, so the first look names
+  // its tasks right; the others follow at the next read, soon (`pending`).
+  const keys = keysReading.get(m.key)
+  if (!c.error && keys && keysMissing(m.key, c)) await Promise.race([keys, after(Math.min(KEYS_WAIT_MS, started + waits.deadline - Date.now()))])
+  return { ...base, ...shown(m.key, c), ...keysPending(m.key, c) }
+}
+
+// The Board read once when the server starts: herdr-projects' first read (its
+// list, then each repo's key) is slow, and the first Board opened after a
+// restart should not wait for it. Never fails.
+export function warmTasksBoard() {
+  readTasksBoard().catch(() => {})
 }
 
 // Every machine's tasks. `since`: the version the client has; `{ same: true }` when nothing changed.
@@ -388,6 +417,19 @@ export async function tellTask(machine: unknown, id: unknown, text: unknown): Pr
   const out = await command(m, ['tell', '--', tid, words])
   forget(m)
   log(`herdr-projects tell ${tid}${m.local ? '' : ` on ${m.label}`}`)
+  return { ok: true, msg: firstLine(out) }
+}
+
+// Description is opaque data: pass it unchanged as one argv item; the CLI owns normalization.
+export async function describeTask(machine: unknown, id: unknown, text: unknown): Promise<{ ok: true, msg: string }> {
+  const m = boardOf(machine)
+  const tid = checkId(id)
+  if (!m.local && m.status !== 'online') throw new HerdrError('offline', fmt('{machine} is unreachable', { machine: m.label }))
+  if (typeof text !== 'string' || text.includes('\0')) throw new HerdrError('bad_action', 'Invalid description')
+  const file = await readTaskFile(m, tid)
+  if (file?.archivedAt || (await taskOf(m, tid))?.archived) throw new HerdrError('bad_action', 'Archived tasks are read-only')
+  const out = await command(m, ['describe', '--', tid, text], ACTION_TIMEOUT_MS, true)
+  forget(m)
   return { ok: true, msg: firstLine(out) }
 }
 
@@ -491,6 +533,18 @@ function settingsRepo(repo: unknown): string {
   if (typeof r !== 'string' || (r && (!cleanRepo(r) || r.startsWith('/') || r.startsWith('~')))) throw new HerdrError('bad_repo', 'Invalid repository')
   return r
 }
+// Bulk archive stays a single CLI operation: the CLI owns eligibility (including pins).
+export async function archiveDoneTasks(machine: unknown, repo: unknown) {
+  const m = boardOf(machine)
+  const r = settingsRepo(repo)
+  if (!r) throw new HerdrError('bad_repo', 'Invalid repository')
+  const launcher = await launcherOf(m)
+  try {
+    const result = await serial(m.key, () => runner(m, launcher, ['archive', '--done', '--repo', r], ACTION_TIMEOUT_MS))
+    return { ...result, machine: m.key }
+  } finally { forget(m) }
+}
+
 async function readBoardSettings(m: Machine, repo: string): Promise<BoardSettings> {
   const [raw, agents] = await Promise.all([
     command(m, ['show', '--json', ...(repo ? [`--repo=${repo}`] : [])], LIST_TIMEOUT_MS, true),
@@ -679,12 +733,59 @@ export async function restartCoordinator(machine: unknown, to: unknown): Promise
   return { ok: true, msg: firstLine(out) }
 }
 
-export async function tellCoordinator(machine: unknown, text: unknown, opts: { to?: unknown, delegate?: unknown, start?: unknown } = {}): Promise<{ ok: true, msg: string }> {
+// ---------------------------------------------------------------- a project's folder
+// What a machine says of a folder picked for a project coordinator: on its
+// board already (by name), to be added, missing, or not a Git repository.
+function lookFolder(m: Machine, folder: string): Promise<string> {
+  if (m.exec) return m.exec(PROJECT_FOLDER_SCRIPT, [folder], { timeoutMs: 10_000 }).then(r => r.stdout.toString('utf8'))
+  return new Promise((resolve, reject) => execFile('sh', ['-c', PROJECT_FOLDER_SCRIPT, 'sh', folder], { timeout: 10_000, maxBuffer: 64 * 1024 },
+    (e, out) => (e ? reject(e) : resolve(String(out || '')))))
+}
+async function readRepos(m: Machine): Promise<unknown> {
+  try { return JSON.parse(await m.fs.readFile(path.posix.join(m.home, '.herdr-projects/data/repos.json'))) }
+  catch (e) { if (missing(e)) return {}; throw e }
+}
+async function folderState(m: Machine, folder: string): Promise<ProjectFolder> {
+  const repo = cleanRepo(folder)
+  if (!repo || !isFolderRef(repo)) throw new HerdrError('bad_repo', 'Invalid repo')
+  return projectFolderOf(parseFolderLook(await lookFolder(m, repo)), await readRepos(m))
+}
+export async function projectFolder(machine: unknown, folder: unknown): Promise<ProjectFolder> {
+  return folderState(boardOf(machine), typeof folder === 'string' ? folder : '')
+}
+
+// A project coordinator's repo by its name on the board, the folder added to
+// the board first when it does not know it. herdr-projects 1.2.26 has no
+// command that only adds a repo (`set --repo` refuses one it does not know).
+// `automations add --repo <root>` names it on first sight without making a
+// task (a task would be an "added" event other automations may fire on, and
+// take the repo's number 1); it is removed at once. Its trigger cannot fire in
+// between: a merge of a task of this repo, which has none.
+export async function registerProject(machine: unknown, folder: unknown): Promise<{ repo: string, root: string, added: boolean }> {
+  const m = boardOf(machine)
+  const f = await folderState(m, typeof folder === 'string' ? folder : '')
+  if (f.state === 'missing') throw new HerdrError('folder_missing', FOLDER_MISSING)
+  if (f.state === 'notgit') throw new HerdrError('folder_not_git', FOLDER_NOT_GIT)
+  if (f.state === 'known') return { repo: f.repo, root: f.root, added: false }
+  const name = `wherdr-add-repo-${randomBytes(4).toString('hex')}`
+  await command(m, ['automations', 'add', `--prompt=${REGISTER_PROMPT}`, '--when=merged', `--repo=${f.root}`, '--', name])
+  try { await command(m, ['automations', 'remove', '--', name]) }
+  catch (e) { throw new HerdrError('projects_failed', fmt('The repository is on the board now, but the automation {name} that added it could not be removed: {why}', { name, why: (e as Error).message })) }
+  forget(m)
+  const repo = repoNameOf(await readRepos(m), f.root)
+  if (!repo) throw new HerdrError('projects_failed', 'herdr-projects did not add the repository to the board.')
+  log(`herdr-projects: repo ${repo} added${m.local ? '' : ` on ${m.label}`}`)
+  return { repo, root: f.root, added: true }
+}
+
+export async function tellCoordinator(machine: unknown, text: unknown, opts: { to?: unknown, delegate?: unknown, start?: unknown } = {}): Promise<{ ok: true, msg: string, repo?: string }> {
   const m = boardOf(machine)
   const words = cleanTell(text)
   if (!words) throw new HerdrError('empty', 'Nothing to send')
-  const to = cleanTarget(opts.to)
+  let to = cleanTarget(opts.to)
   if (!to) throw new HerdrError('bad_target', 'Invalid coordinator')
+  // A folder (an older New sheet, a link): its repo on the board, added first.
+  if (to.kind === 'project' && isFolderRef(to.repo)) to = { kind: 'project', repo: (await registerProject(m.key, to.repo)).repo }
   if (opts.start !== undefined) {
     const start = opts.start as { agent?: unknown, effort?: unknown } | null
     if (!start || typeof start.agent !== 'string' || !/^[a-z][a-z0-9-]*(?:\/[A-Za-z0-9._/-]+)?$/.test(start.agent) || start.agent.length > 160
@@ -701,7 +802,7 @@ export async function tellCoordinator(machine: unknown, text: unknown, opts: { t
   const out = await command(m, coordinatorArgs(to, words, opts.delegate === true))
   forget(m)
   log(`herdr-projects coordinator${to.kind === 'main' ? '' : ` (${to.kind === 'project' ? to.repo : 'machine'})`} tell${opts.delegate === true ? ' --delegate' : ''}${m.local ? '' : ` on ${m.label}`}`)
-  return { ok: true, msg: firstLine(out) }
+  return { ok: true, msg: firstLine(out), ...(to.kind === 'project' ? { repo: to.repo } : {}) }
 }
 
 // Questions only: target and context come from the task on its owning board.

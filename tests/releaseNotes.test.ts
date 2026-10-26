@@ -53,3 +53,15 @@ it('validates the reviewed 2.0.0 release notes', () => {
   const repo = JSON.parse(readFileSync('package.json', 'utf8')).repository.url.replace('git+https://github.com/', '').replace(/\.git$/, '')
   expect(() => checkReleaseNotes(notes, repo, 'v2.0.0')).not.toThrow()
 })
+
+it('validates the prepared release notes and matching package metadata', () => {
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+  const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'))
+  const plugin = readFileSync('herdr-plugin.toml', 'utf8').match(/^version = "([^"]+)"$/m)?.[1]
+  expect(lock.version).toBe(pkg.version)
+  expect(lock.packages[''].version).toBe(pkg.version)
+  expect(plugin).toBe(pkg.version)
+  expect(readFileSync('CHANGELOG.md', 'utf8')).toContain(`## [${pkg.version}]`)
+  const repo = pkg.repository.url.replace('git+https://github.com/', '').replace(/\.git$/, '')
+  expect(() => checkReleaseNotes(readFileSync(`docs/release-notes-${pkg.version}.md`, 'utf8'), repo, `v${pkg.version}`)).not.toThrow()
+})

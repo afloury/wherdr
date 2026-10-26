@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import ChatView from '~/components/ChatView.vue'
 import { lightboxSet, lightboxSrc } from '~/composables/useUi'
@@ -11,6 +11,36 @@ registerEndpoint('/api/chat', () => ({ available: true, token: 'rendering', file
 
 describe('conversation rendering', () => {
   afterEach(() => { lightboxSrc.value = null; lightboxSet.value = []; herdrState.value = { ok: false, workspaces: [], panes: [] } })
+
+  it('attributes both wake formats to Autopilot and preserves their complete text and copy action', async () => {
+    const wakes = ['Autopilot: Check ready work.\nBoard context: no pending replies.  ', 'Autopilot woke: Check older work.']
+    const human = 'Please explain Autopilot: and Autopilot woke:.'
+    items = [
+      ...wakes.map((text): ChatItem => ({ role: 'user', text, ts: null })),
+      { role: 'user', text: human, ts: null },
+      { role: 'user', text: '> Autopilot: a quotation', ts: null },
+      { role: 'assistant', text: 'Autopilot: an assistant reply', ts: null },
+    ]
+    const original = structuredClone(items)
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    herdrState.value = { ok: true, workspaces: [], panes: [pane] }
+    const w = await mountSuspended(ChatView, { props: { pane, localQueued: [] } })
+    try {
+      await expect.poll(() => w.findAll('.msg-autopilot').length).toBe(2)
+      for (const [i, block] of w.findAll('.msg-autopilot').entries()) {
+        expect(block.find('.msg-system').text()).toBe('Autopilot')
+        expect(block.find('.msg-fold').element.textContent).toBe(wakes[i])
+        expect(block.find('.msg-user').exists()).toBe(false)
+        await block.find('button').trigger('click')
+        expect(writeText).toHaveBeenLastCalledWith(wakes[i])
+      }
+      expect(w.findAll('.msg-user')).toHaveLength(2)
+      expect(w.find('.msg-user .msg-fold').element.textContent).toBe(human)
+      expect(w.find('.msg-ai').text()).toContain('Autopilot: an assistant reply')
+      expect(items).toEqual(original)
+    } finally { w.unmount(); vi.unstubAllGlobals() }
+  })
 
   it('keeps an action awaiting approval live without a finished-turn line', async () => {
     herdrState.value = { ok: true, workspaces: [], panes: [pane] }
@@ -55,4 +85,30 @@ describe('conversation rendering', () => {
       expect(lightboxSet.value).toEqual([src])
     } finally { w.unmount() }
   })
+  it('keeps a scheduled prompt folded while rendering its Markdown on demand', async () => {
+    const idle = { ...pane, status: 'idle' as const }
+    herdrState.value = { ok: true, workspaces: [], panes: [idle] }
+    items = [
+      { role: 'notice', name: 'scheduled', text: '**Check deployment**', ts: '2026-01-01T00:00:00Z' },
+      { role: 'assistant', text: 'Deployment is green.', ts: '2026-01-01T00:00:01Z' },
+    ]
+    const w = await mountSuspended(ChatView, {
+      props: { pane: idle, localQueued: [] },
+      global: { stubs: { UTooltip: { template: '<slot />' } } },
+    })
+    try {
+      await expect.poll(() => w.find('.chat').text()).toContain('Deployment is green.')
+      const notice = w.find('.msg-notice.scheduled')
+      expect(notice.classes()).toContain('long')
+      expect(notice.classes()).not.toContain('open')
+      expect(notice.find('.msg-notice-body strong').text()).toBe('Check deployment')
+      expect(w.findAll('.msg-user-wrap')).toHaveLength(0)
+      const toggle = notice.find('button.msg-shell-more')
+      expect(toggle.attributes('aria-expanded')).toBe('false')
+      await toggle.trigger('click')
+      expect(toggle.attributes('aria-expanded')).toBe('true')
+      expect(notice.classes()).toContain('open')
+    } finally { w.unmount() }
+  })
+
 })

@@ -4,29 +4,33 @@
 // progress, review). `status`: also its group, for lists that mix groups
 // (grouped by repo); `machine`: its machine's name, where several machines
 // share a list. The whole card opens the task; its pull request link opens
-// the pull request.
+// the pull request. `selected`: its task is open in the side panel.
 import { type TaskRow, prNumber, taskKey } from '#shared/projectsTasks'
 import { blockKind, blockKindLabel, prLink } from '~/utils/blockNotice'
+import { taskActivity } from '#shared/taskActivity'
 
-const props = defineProps<{ task: TaskRow, status?: boolean, machine?: string, stale?: boolean, readAt?: string }>()
+const props = defineProps<{ task: TaskRow, status?: boolean, machine?: string, stale?: boolean, readAt?: string, selected?: boolean }>()
 defineEmits<{ open: [] }>()
 
 const waitKind = computed(() => (props.task.group === 'needs' ? blockKind(props.task.kind) : null))
 // One line: its words with their links kept (LinkedText shortens them).
 const line = computed(() => (props.task.msg || '').replace(/\s+/g, ' ').trim())
 const pr = computed(() => props.task.pr || prLink(props.task.msg || ''))
-const meta = computed(() => [props.task.progress !== null && props.task.group === 'working' ? `${props.task.progress}%` : ''].filter(Boolean))
+// Working: an agent running, or the board waiting for CI or for its turn.
+const activity = computed(() => taskActivity(props.task))
+const meta = computed(() => [props.task.progress !== null && activity.value?.kind === 'running' ? `${props.task.progress}%` : ''].filter(Boolean))
 const staleTitle = computed(() => (props.stale
   ? (props.readAt ? tl(`As read at ${props.readAt}: see the note above`, `Lue à ${props.readAt} : voir la note plus haut`) : tl('An older read: see the note above', 'Lecture plus ancienne : voir la note plus haut'))
   : undefined))
 </script>
 
 <template>
-  <div class="board-card task-card" :class="[task.group, { stale }]" :title="staleTitle" :data-task="task.id">
-    <button type="button" class="task-card-open" :aria-label="`${taskKey(task.id, task.repoKey)} ${task.title}`" @click="$emit('open')" />
+  <div class="board-card task-card" :class="[task.group, { stale, sel: selected }, activity && activity.kind !== 'running' ? `activity-${activity.kind}` : '']" :title="staleTitle" :data-task="task.id">
+    <button type="button" class="task-card-open" :aria-current="selected ? 'true' : undefined" :aria-label="`${taskKey(task.id, task.repoKey)} ${task.title}`" @click="$emit('open')" />
     <span class="board-card-head">
       <TaskAgentMark :identity="task.identity || { agent: task.app, reviewer: '', from: '' }" primary />
       <TaskKey :value="taskKey(task.id, task.repoKey)" />
+      <TaskActivityBadge :activity="activity" />
       <span v-if="status" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
       <span v-if="machine" class="board-card-label">{{ machine }}</span>
     </span>

@@ -1,5 +1,7 @@
 # Documentation
 
+**Updating to 2.1.0?** Read the [2.1.0 release notes](release-notes-2.1.0.md) for new task controls, Board improvements and fixes.
+
 **Upgrading to 2.0.0?** Read the [release notes](release-notes-2.0.0.md) for breaking changes and the 1.x migration checklist.
 
 Read only the page relevant to your task. Start with [Installation and updates](installation.md) for setup,

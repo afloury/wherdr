@@ -1,0 +1,54 @@
+# Fixed rolling develop channel, independent of the package version.
+name: develop prerelease
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One at a time, never cancelled halfway through replacing the files.
+concurrency:
+  group: develop-prerelease
+  cancel-in-progress: false
+
+jobs:
+  prerelease:
+    if: github.ref == 'refs/heads/develop'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PRERELEASE_TAG: develop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Version
+        id: v
+        run: |
+          version="$(bash scripts/prerelease.sh version)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - run: npm ci
+
+      - name: Package
+        run: |
+          mkdir -p "$RUNNER_TEMP/prerelease"
+          npm pack --pack-destination "$RUNNER_TEMP/prerelease"
+
+      - name: Check the package
+        run: bash scripts/prerelease.sh package "$RUNNER_TEMP/prerelease/wherdr-${{ steps.v.outputs.version }}.tgz" "$GITHUB_SHA"
+
+      - name: Publish the prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/prerelease.sh publish "$RUNNER_TEMP/prerelease/wherdr-${{ steps.v.outputs.version }}.tgz" "$GITHUB_SHA"

@@ -51,7 +51,7 @@ export function saveListCollapsed(collapsed: boolean) {
 // Ticket panel: retain a usable Board alongside the navigation sidebar.
 export const PANEL_MIN = 320
 export const PANEL_MAX = 960
-export const BOARD_MIN = 280
+export const BOARD_MIN = 640
 const PANEL_KEY = 'boardPanelWidth'
 export function clampPanelWidth(width: number, available: number): number {
   return Math.round(Math.max(PANEL_MIN, Math.min(width, PANEL_MAX, available - BOARD_MIN)))

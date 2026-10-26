@@ -5,7 +5,7 @@
 // Shown = older pages loaded on demand (`older`, up to
 // byte `olderCursor`) + bottom re-read continuously from byte `tailStart`.
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolView, Pane, QueuedMessage } from '#shared/types'
-import { readOffline, saveChat, touchChat } from '~/utils/offlineCache'
+import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { queueReason, canClearQueued } from '~/utils/queuedReason'
 import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
@@ -23,6 +23,7 @@ import { messageId, messageOf, messageRef, pointRef, type Reference } from '#sha
 import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
 import { duplicateImages } from '#shared/imageDupes'
+import { isAutopilotWake } from '~/utils/autopilotWake'
 import { stripPosition } from '#shared/filePaths'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
@@ -56,13 +57,20 @@ const rendered = ref(false)
 const olderBusy = ref(false)
 const savedAt = ref<number | null>(null)
 const readOnly = computed(() => offlineView.value || paneStale(props.pane))
+// The end kept on this device, still not read again after 600 ms: "Read at" over the list.
+const cachedTag = useDelayedFlag(computed(() => savedAt.value !== null && !readOnly.value && !netDown.value), 600, 0)
+// Nothing kept and the end still loading: its shapes, after 300 ms (ChatSkeleton).
+const skeleton = useDelayedFlag(computed(() => !rendered.value && !unavailable.value && !loadError.value))
 // Commands in the agent's replies can be run in its shell mode (Run buttons,
 // utils/shellCommand.ts); the replies carry `can-run` then.
 const canRun = computed(() => canRunIn(props.pane))
+// The end kept on this device, read while the network is asked (see onMounted):
+// shown only if it comes first.
 async function restoreChat() {
   if (!mayReadOffline(readOfflineAccess())) return
-  const saved = (await readOffline()).chats.find(c => c.id === props.pane.id)
-  if (!saved || items.value.length) return
+  const id = props.pane.id
+  const saved = await readChat(id)
+  if (!saved || synced || rendered.value || unavailable.value || id !== props.pane.id) return
   await apply(() => {
     chat.value = { ...fresh(), tail: saved.items }
     savedAt.value = saved.at
@@ -89,14 +97,20 @@ function scrollToEnd(force: boolean) {
 async function apply(update: () => void, keepScroll = false) {
   const wasNear = !held && (stick || nearEnd(120))
   const first = !rendered.value
+  const before = blocks.value.length
   update()
+  // Bottom first (see `shown`); what arrives below while blocks wait above stays shown.
+  if (first) shown.value = FIRST_BLOCKS
+  else if (shown.value !== Infinity) shown.value += Math.max(0, blocks.value.length - before)
   await nextTick()
   rendered.value = true
+  if (hiddenBlocks.value) revealLater()
   // Back to a conversation already read: same position (see readingPosition.ts),
-  // once its session is known.
+  // once its session is known; further up than what is shown: everything first.
   let restoreTop: number | null = null
   if (restoring && chat.value.file && box.value) {
     restoring = false
+    if (hiddenBlocks.value && restoredScrollTop(props.pane.id, chat.value.file, box.value.scrollHeight) === 0) await revealAll()
     restoreTop = restoredScrollTop(props.pane.id, chat.value.file, box.value.scrollHeight)
   }
   if (!jumping && searchOpen.value && search.q.length >= 2) applySearchMarks(false)
@@ -136,9 +150,55 @@ onUnmounted(() => ro?.disconnect())
 function onScroll() {
   const b = box.value
   if (!b) return
+  lastScroll = Date.now()
   codeMenu.open = false
   if (!held) stick = b.scrollHeight - b.scrollTop - b.clientHeight < 120
-  if (b.scrollTop < 400 && rendered.value) loadOlder() // infinite scrolling upwards
+  // Infinite scrolling upwards: the blocks not shown yet, then the older pages.
+  if (hiddenBlocks.value) { if (b.scrollTop < 1500) revealMore(MORE_BLOCKS * 2) }
+  else if (b.scrollTop < 400 && rendered.value) loadOlder()
+}
+
+// ------------------------------------------------------------ bottom first
+// A conversation opens with its last FIRST_BLOCKS blocks only: creating the ~160
+// blocks of a page at once held the main thread for a second or more, for 5 on
+// screen. The ones above follow a few at a time while the page is idle, or at
+// once when scrolling up to them; search, a search result and "show original"
+// show them all first. `shown` counts the blocks rendered from the bottom.
+const FIRST_BLOCKS = 30
+const MORE_BLOCKS = 10
+const shown = ref(Infinity)
+const hiddenBlocks = computed(() => Math.max(0, blocks.value.length - shown.value))
+const visibleBlocks = computed(() => (hiddenBlocks.value ? blocks.value.slice(hiddenBlocks.value) : blocks.value))
+let lastScroll = 0
+let revealTimer = false
+let unmounted = false
+onUnmounted(() => { unmounted = true })
+// More blocks above, the reading position kept.
+async function revealMore(n: number) {
+  if (!hiddenBlocks.value) return
+  const b = box.value
+  const fromBottom = b ? b.scrollHeight - b.scrollTop : 0
+  shown.value = n === Infinity ? Infinity : blocks.value.length - hiddenBlocks.value + n
+  await nextTick()
+  if (b) b.scrollTop = b.scrollHeight - fromBottom
+}
+const revealAll = () => revealMore(Infinity)
+// The next few, once the page is idle (not while scrolling: a block added above
+// would stop an iPhone's momentum).
+function revealLater() {
+  if (revealTimer || unmounted) return
+  revealTimer = true
+  const run = () => {
+    revealTimer = false
+    if (unmounted || !hiddenBlocks.value) return
+    // Keep the first visible commit small even when the skeleton's minimum
+    // duration outlasts the network response.
+    if (skeleton.value || Date.now() - lastScroll < 400 || document.hidden) return revealLater()
+    revealMore(MORE_BLOCKS).then(() => { if (hiddenBlocks.value) revealLater() })
+  }
+  const idle = (globalThis as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }).requestIdleCallback
+  if (idle) idle(run, { timeout: 3000 })
+  else setTimeout(run, 250)
 }
 function interruptThought() { activeThought.value = null }
 
@@ -256,6 +316,7 @@ async function loadOlder() {
     const b = box.value
     const fromBottom = b ? b.scrollHeight - b.scrollTop : 0
     await apply(() => {
+      shown.value = Infinity
       chat.value = {
         ...chat.value,
         older: (r.items || []).concat(chat.value.older),
@@ -274,7 +335,8 @@ async function loadOlder() {
 
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
-  restoreChat().then(loadChat).then(jumpToResult)
+  // The network at once, the kept end alongside (shown only if it comes first).
+  Promise.all([loadChat(), restoreChat()]).then(jumpToResult)
   timer = setInterval(() => { if (!document.hidden && !offlineView.value) loadChat() }, 1500)
 })
 onUnmounted(() => clearInterval(timer))
@@ -326,6 +388,7 @@ type Block =
   | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
+  | { k: 'autopilot', key: string, text: string }
   | { k: 'system', key: string, text: string }
   | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean, scheduled?: boolean }
   | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean }
@@ -362,6 +425,13 @@ const TOOL_THUMB_MAX = 6
 function hiddenToolImages(b: Block & { k: 'tools' }): string[][] {
   const shown: readonly ChatItem[] = isOmpGroup(b.list) ? ompRows(b).rows : b.list.length <= 3 || isOpen(b.key) ? b.list : []
   return b.list.filter(x => x.images && !shown.includes(x)).map(itemImageSrcs).filter(s => s.length)
+}
+
+// A block's HTML, rendered when first read: only the blocks shown (and the last
+// reply, for its questions) pay for their Markdown.
+function lazyHtml<T extends object>(b: T, render: () => string): T & { html: string } {
+  let html: string | undefined
+  return Object.defineProperty(b, 'html', { get: () => (html ??= render()), enumerable: true }) as T & { html: string }
 }
 
 const openTools = reactive(new Set<string>())
@@ -439,7 +509,9 @@ const blocks = computed<Block[]>(() => {
     }
     flush()
     const key = `${it.role}:${it.ts}:${i}`
-    if (it.role === 'user') {
+    if (isAutopilotWake(it)) {
+      out.push({ k: 'autopilot', key, text: it.text })
+    } else if (it.role === 'user') {
       const uploads = it.text.match(UPLOAD_RE) || []
       // Attached files (PDF, text…): a chip each, their line leaves the text.
       const files = it.text.split('\n').map(parseAttachmentLine).filter((f): f is { path: string, name: string } => Boolean(f))
@@ -455,11 +527,11 @@ const blocks = computed<Block[]>(() => {
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
-      lastReplyBlock = { k: 'assistant', key, id: replyId(it), rid: messageId(it), text: it.text, html: withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss'), yes: t('Yes'), no: t('No'), okAll: t('OK to all'), decisions: t('Decisions') }), time, endsTurn: false }
+      lastReplyBlock = lazyHtml({ k: 'assistant' as const, key, id: replyId(it), rid: messageId(it), text: it.text, time, endsTurn: false }, () => withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss'), yes: t('Yes'), no: t('No'), okAll: t('OK to all'), decisions: t('Decisions') }))
       out.push(lastReplyBlock)
       replies.push({ key, time, text: it.text, rid: lastReplyBlock.rid })
     } else if (it.role === 'thinking') {
-      out.push({ k: 'thinking', key, id: replyId(it), text: it.text, html: md(it.text), ms: it.ms })
+      out.push(lazyHtml({ k: 'thinking' as const, key, id: replyId(it), text: it.text, ms: it.ms }, () => md(it.text)))
     } else if (it.role === 'job' && it.job) {
       out.push({ k: 'job', key, id: it.job.id, tool: it.job.tool, out: it.job.out, ms: it.ms, error: Boolean(it.error) })
     } else if (it.role === 'bash' && it.omp) {
@@ -472,7 +544,7 @@ const blocks = computed<Block[]>(() => {
     } else if (it.role === 'notice') {
       const [label, icon] = NOTICE[it.name || ''] || [it.name || 'Note', 'i-lucide-info']
       // A scheduled prompt starts folded: it is not what the user wrote.
-      out.push({ k: 'notice', key, label: t(label), icon, html: md(it.text), scheduled: it.name === 'scheduled', long: it.name === 'scheduled' || it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 })
+      out.push(lazyHtml({ k: 'notice' as const, key, label: t(label), icon, scheduled: it.name === 'scheduled', long: it.name === 'scheduled' || it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 }, () => md(it.text)))
     } else {
       const effort = it.role === 'system' ? it.text.match(/^Effort : (low|medium|high|xhigh|max|ultracode) \(cette session\)$/) : null
       // Local "/" command: one-line system separator ("/cost → …").
@@ -628,7 +700,7 @@ function onPointClick(e: MouseEvent, target: HTMLElement) {
   pointTimer = setTimeout(() => { if (window.getSelection()?.isCollapsed !== false) quote(refOf(btn!)) }, 220)
 }
 onUnmounted(() => clearTimeout(pointTimer))
-watch([() => useDraft(props.pane.id).text, blocks], () => nextTick(syncQuoted), { flush: 'post' })
+watch([() => useDraft(props.pane.id).text, visibleBlocks], () => nextTick(syncQuoted), { flush: 'post' })
 const selReply = ref<{ text: string, time: string | null, id: string | null, sig: string, top: number, left: number } | null>(null)
 const selBtn = ref<HTMLElement | null>(null)
 const isTouch = () => window.matchMedia('(pointer: coarse)').matches
@@ -684,7 +756,8 @@ provide('gotoRef', (ref: Reference, el: HTMLElement) => {
   gotoOrigin(findReplyOrigin(replies, { time: ref.time || '', excerpt: ref.excerpt, id: ref.id && messageOf(ref.id) })?.key || null)
 })
 // Quote tapped: scrolls to the original message and highlights it.
-function gotoOrigin(key: string | null) {
+async function gotoOrigin(key: string | null) {
+  if (key && !msgEl(key) && hiddenBlocks.value) await revealAll()
   const el = key ? msgEl(key) : null
   if (!el) return toast(t('Original message not found (further up the conversation?)'), true)
   el.scrollIntoView({ block: 'center', behavior: 'smooth' })
@@ -1104,6 +1177,7 @@ async function runSearch() {
     await loadAllOlder()
     search.loading = false
   }
+  await revealAll()
   applySearchMarks(true)
 }
 async function jumpToResult() {
@@ -1122,7 +1196,7 @@ async function jumpToResult() {
       await loadOlder()
       if (chat.value.olderCursor >= before) break
     }
-    await nextTick()
+    await revealAll()
     const role = String(route.query.role || '')
     const ts = String(route.query.ts || '')
     const prefix = String(route.query.prefix || '')
@@ -1175,7 +1249,7 @@ function focusSearch() {
 // reminder as long as it may show, so answering moves nothing).
 const asked = computed(() => {
   if (readOnly.value || working.value || props.pane.status === 'blocked' || queuedList.value.length || liveShell.value) return null
-  const last = blocks.value.findLast(b => b.k === 'assistant' || b.k === 'user' || b.k === 'shell' || b.k === 'ompRun')
+  const last = blocks.value.findLast(b => b.k === 'assistant' || b.k === 'user' || b.k === 'autopilot' || b.k === 'shell' || b.k === 'ompRun')
   if (!last || last.k !== 'assistant' || typingAt(last.id) !== null) return null
   const targets = replyTargets(last.html)
   return targets.questions.length + targets.rows.length ? { key: last.key, time: last.time, rid: last.rid, targets } : null
@@ -1224,6 +1298,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
   <div class="chat-wrap">
     <OfflineNote v-if="readOnly || netDown" :label="readOnly ? t('Offline reading') : undefined" :at="savedAt" />
     <OfflineNote v-else-if="isStale(misses)" :label="t('Conversation not up to date — reconnecting…')" />
+    <!-- The end kept on this device while the network is slow to answer: said, over the list (nothing moves). -->
+    <span v-if="cachedTag && savedAt" class="cached-tag chat-cached" role="status">{{ tl(`Read at ${fmtTime(savedAt)}`, `Lu à ${fmtTime(savedAt)}`) }}</span>
     <div ref="box" class="chat" @scroll.passive="onScroll" @wheel.passive="onUserScroll" @touchmove.passive="onUserScroll">
       <UChatMessages
         :status="working ? 'streaming' : 'ready'" :should-auto-scroll="false"
@@ -1231,7 +1307,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         auto-scroll-icon="i-lucide-arrow-down"
         :ui="{ root: 'chat-msgs', viewport: 'hw-jump-vp', autoScroll: 'hw-jump' }"
       >
-        <div ref="listEl" class="chat-list" :class="[readOnly ? 'no-reply' : `rs-${replyStyle}`, { asking: asked }]" @click="onListClick" @keydown="onListKey">
+        <div ref="listEl" class="chat-list" :class="[readOnly ? 'no-reply' : `rs-${replyStyle}`, { asking: asked, skeleton }]" @click="onListClick" @keydown="onListKey">
           <div v-if="unavailable && waiting" class="chat-empty waiting">
             <UIcon name="i-lucide-square-terminal" class="chat-empty-icon" />
             <p>{{ waiting.text }}</p>
@@ -1258,18 +1334,27 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
           </div>
           <template v-else>
-            <div v-if="chat.olderCursor > 0" class="chat-more">
+            <ChatSkeleton v-if="skeleton" :agent="pane.agent" />
+            <!-- Blocks above not shown yet: no "Load earlier" before them. -->
+            <template v-else-if="hiddenBlocks" />
+            <div v-else-if="chat.olderCursor > 0" class="chat-more">
               <UButton size="xs" color="neutral" variant="outline" class="mono-btn" :loading="olderBusy" icon="i-lucide-arrow-up" @click="loadOlder">
                 {{ t('Load earlier messages') }}
               </UButton>
             </div>
             <div v-else-if="chat.older.length" class="chat-note">{{ t('Start of conversation') }}</div>
 
-            <template v-for="b in blocks" :key="b.key">
+            <template v-for="b in (skeleton ? [] : visibleBlocks)" :key="b.key">
               <div v-if="b.k === 'day'" class="day-sep"><span>{{ b.label }}</span></div>
 
               <div v-else-if="b.k === 'who'" class="msg-who" :class="pane.agent || ''">
                 <UIcon :name="agentIcon(pane.agent) || 'i-lucide-bot'" /><span>{{ kindLabel(pane.agent) }}</span>
+              </div>
+
+              <div v-else-if="b.k === 'autopilot'" class="msg-autopilot" :data-hit-key="b.key">
+                <div class="msg-system"><span>{{ t('Autopilot') }}</span></div>
+                <div class="msg-autopilot-body"><FoldText>{{ b.text }}</FoldText></div>
+                <UButton icon="i-lucide-copy" color="neutral" variant="ghost" size="xs" :aria-label="t('Copy message')" @click="copyText(b.text)" />
               </div>
 
               <div v-else-if="b.k === 'user'" class="msg-user-wrap" :data-hit-key="b.key">
@@ -1400,6 +1485,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
 
               <!-- omp: a console, "OMP · N ACTIONS · Σ time", one line per call. -->
               <div v-else-if="b.k === 'tools' && isOmpGroup(b.list)" class="tools omp-console" :class="{ live: b.live }">
+                <span class="fx-ring omp-ring" aria-hidden="true"><span class="fx-spin" /></span>
                 <div class="omp-console-head">
                   <span class="omp-console-title">omp</span>
                   <span>{{ b.list.length }} {{ t('actions') }}</span>

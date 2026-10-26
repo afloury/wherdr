@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatItem, HerdrState } from '../shared/types'
-import { MAX_BYTES, MAX_CHATS, MAX_MESSAGES, pruneSnapshot, trimChat, type Snapshot } from '../app/utils/offlineCache'
+import { CHAT_BYTES, MAX_BYTES, MAX_CHATS, MAX_MESSAGES, mergeIndex, pruneIndex, trimChat, type ChatEntry } from '../app/utils/offlineCache'
 import { leaseFromStatus, mayReadOffline } from '../app/utils/offlineAccess'
 
 const item = (text: string): ChatItem => ({ role: 'assistant', text, ts: null })
@@ -11,26 +11,36 @@ const state = (ids: string[], remoteOnline = true): HerdrState => ({
   machines: [{ key: '', label: 'Server', local: true, status: 'online', error: null },
     { key: 'abcd1234', label: 'Laptop', local: false, status: remoteOnline ? 'online' : 'offline', error: null }],
 })
-const snapshot = (ids: string[]): Snapshot => ({ home: null, chats: ids.map((id, used) => ({ id, used, at: 1, items: [item(id)] })) })
+const index = (ids: string[], bytes = 1000): ChatEntry[] => ids.map((id, used) => ({ id, used, bytes }))
 
 describe('cache hors ligne', () => {
-  it('bounds messages, bytes per conversation and number of conversations with LRU', () => {
-    expect(trimChat(Array.from({ length: 300 }, (_, i) => item(String(i))))).toHaveLength(MAX_MESSAGES)
-    expect(trimChat([item('x'.repeat(200_000)), item('fin')])).toEqual([item('fin')])
-    const s = pruneSnapshot(snapshot(Array.from({ length: 20 }, (_, i) => `w1:p${i}`)))
-    expect(s.chats).toHaveLength(MAX_CHATS)
-    expect(s.chats[0]?.id).toBe('w1:p19')
-    const huge = snapshot(Array.from({ length: 12 }, (_, i) => `w1:p${i}`))
-    huge.chats.forEach(c => { c.items = [item('x'.repeat(110_000))] })
-    expect(JSON.stringify(pruneSnapshot(huge)).length * 2).toBeLessThanOrEqual(MAX_BYTES)
+  it('bounds messages and bytes per conversation, keeping its end', () => {
+    expect(trimChat(Array.from({ length: 300 }, (_, i) => item(String(i)))).items).toHaveLength(MAX_MESSAGES)
+    const t = trimChat([item('x'.repeat(200_000)), item('fin')])
+    expect(t.items).toEqual([item('fin')])
+    expect(t.bytes).toBe(JSON.stringify(item('fin')).length * 2)
+    const many = trimChat(Array.from({ length: 100 }, (_, i) => item(`${i}`.padEnd(2000, '.'))))
+    expect(many.bytes).toBeLessThanOrEqual(CHAT_BYTES)
+    expect(many.items.at(-1)!.text.startsWith('99')).toBe(true)
+  })
+
+  it('keeps the most recently used conversations, within the count and the bytes', () => {
+    const r = pruneIndex(index(Array.from({ length: 20 }, (_, i) => `w1:p${i}`)), null, 0)
+    expect(r.keep).toHaveLength(MAX_CHATS)
+    expect(r.keep[0]?.id).toBe('w1:p19')
+    expect(r.drop.sort()).toEqual(Array.from({ length: 8 }, (_, i) => `w1:p${i}`).sort())
+    const big = pruneIndex(index(Array.from({ length: 12 }, (_, i) => `w1:p${i}`), 400_000), null, 1_000_000)
+    expect(big.keep.reduce((a, c) => a + c.bytes, 0) + 1_000_000).toBeLessThanOrEqual(MAX_BYTES)
+    expect(big.keep.map(c => c.id)).toEqual(['w1:p11', 'w1:p10', 'w1:p9', 'w1:p8', 'w1:p7', 'w1:p6', 'w1:p5'])
   })
 
   it('purges closed panes on reachable machines and keeps those of the offline computer', () => {
-    const s = snapshot(['w1:p1', 'w1:p2', 'abcd1234~w1:p1', 'abcd1234~w1:p2'])
-    expect(pruneSnapshot(s, state(['w1:p1', 'abcd1234~w1:p1'], false)).chats.map(c => c.id).sort())
+    const s = index(['w1:p1', 'w1:p2', 'abcd1234~w1:p1', 'abcd1234~w1:p2'])
+    expect(pruneIndex(s, state(['w1:p1', 'abcd1234~w1:p1'], false), 0).keep.map(c => c.id).sort())
       .toEqual(['abcd1234~w1:p1', 'abcd1234~w1:p2', 'w1:p1'])
-    expect(pruneSnapshot(s, state(['w1:p1', 'abcd1234~w1:p1'])).chats.map(c => c.id).sort())
-      .toEqual(['abcd1234~w1:p1', 'w1:p1'])
+    const online = pruneIndex(s, state(['w1:p1', 'abcd1234~w1:p1']), 0)
+    expect(online.keep.map(c => c.id).sort()).toEqual(['abcd1234~w1:p1', 'w1:p1'])
+    expect(online.drop.sort()).toEqual(['abcd1234~w1:p2', 'w1:p2'])
   })
 
   it('expires reading with the lease and refuses a missing or implausible one', () => {
@@ -61,5 +71,18 @@ describe('cache hors ligne', () => {
     expect(lease.deadline).toBe(client + 3600 * 1000)
     expect(mayReadOffline(lease, client + 3599 * 1000)).toBe(true)
     expect(mayReadOffline(lease, client + 3601 * 1000)).toBe(false)
+  })
+})
+
+describe('offline index merge', () => {
+  it('puts the conversations written now first, over what another tab stored', () => {
+    const stored: ChatEntry[] = [{ id: 'a', used: 5, bytes: 10 }, { id: 'b', used: 4, bytes: 20 }]
+    const next = mergeIndex(stored, new Map([['b', 99]]), new Map([['b', 50], ['a', 60]]), 1000)
+    expect(next).toEqual([{ id: 'b', used: 50, bytes: 99 }, { id: 'a', used: 60, bytes: 10 }])
+  })
+
+  it('keeps a stored entry this tab never saw, and dates a new one now', () => {
+    const next = mergeIndex([{ id: 'other-tab', used: 7, bytes: 30 }], new Map([['mine', 40]]), new Map(), 1000)
+    expect(next).toEqual([{ id: 'mine', used: 1000, bytes: 40 }, { id: 'other-tab', used: 7, bytes: 30 }])
   })
 })

@@ -258,7 +258,7 @@ describe('a repo group on the home list', () => {
     expect(card.find('.task-agent-reviewer .avatar').classes()).toContain('codex')
     navigate.mockClear()
     await card.trigger('click')
-    expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: '', task: 'shop/7' } })
+    expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: '', task: 'shop/7', now: '1' } })
     w.unmount()
   })
 
@@ -294,5 +294,48 @@ describe('a repo group on the home list', () => {
     // The tasks keep their activity line in the normal list.
     expect(w.find('.project-tree .card .home-task-line').text()).toContain('Doing 1')
     w.unmount()
+  })
+})
+
+describe('a task row on the home list says what it is doing', () => {
+  afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] }; compactList.value = true })
+  // From the task's file, as the home list reads it (file -> link -> row).
+  const rows = (stage: string, msg: string, watch: Record<string, unknown> = { progress: 40 }) => {
+    const [linked] = tasksFromFiles([linksFromTaskFile({ id: 'shop/1', title: 'Task 1', stage, msg, watch, link: { pane: 'w2:p1' } }, () => '')!], { shop: 'SHOP' })
+    return section({ members: [{ ...members[0]!, task: linked! }] })
+  }
+
+  it('an agent running: progress, no badge', async () => {
+    const w = await mount(rows('working', 'Writing tests'))
+    const card = w.find('.project-tree .card')
+    expect(card.find('.task-activity').exists()).toBe(false)
+    expect(card.find('.home-task-stats').text()).toContain('40%')
+  })
+  it('waiting for GitHub checks: a CI badge, no progress', async () => {
+    const w = await mount(rows('merging', 'Waiting for GitHub checks · 1 of 2 passed'))
+    const card = w.find('.project-tree .card')
+    expect(card.find('.task-activity').text()).toBe('CI 1/2')
+    expect(card.classes()).toContain('activity-ci')
+    // The badge takes the place of its Working label.
+    expect(card.find('.task-state').exists()).toBe(false)
+    expect(card.text()).not.toMatch(/\d+%/)
+  })
+  it('waiting for CI with the reviewer\'s watcher kept after its review: CI, the task\'s own line', async () => {
+    // The two-line list, which shows the task's line.
+    compactList.value = false
+    const w = await mount(rows('merging', 'Waiting for GitHub checks · 1 of 2 passed', { role: 'reviewer', msg: 'Reviewing the result', progress: 90 }))
+    const card = w.find('.project-tree .card')
+    expect(card.find('.task-activity').text()).toBe('CI 1/2')
+    expect(card.classes()).toContain('activity-ci')
+    expect(card.find('.home-task-line').text()).toContain('Waiting for GitHub checks · 1 of 2 passed')
+    expect(card.text()).not.toContain('Reviewing the result')
+    expect(card.text()).not.toMatch(/\d+%/)
+  })
+  it('queued: a QUEUED badge, the row dimmed, no progress', async () => {
+    const w = await mount(rows('after', 'queued after SHOP-7'))
+    const card = w.find('.project-tree .card')
+    expect(card.find('.task-activity').text()).toBe('Queued · SHOP-7')
+    expect(card.classes()).toContain('activity-queued')
+    expect(card.text()).not.toMatch(/\d+%/)
   })
 })

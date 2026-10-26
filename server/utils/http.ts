@@ -1,7 +1,8 @@
 // HTTP helpers shared by the routes: anti-CSRF guard, body reading, error
 // format identical to the old server.js ({ error, code } + 400/401/403/503).
 import type { H3Event, EventHandlerRequest } from 'h3'
-import { defineEventHandler, getRequestHeaders, readRawBody, setResponseHeader, setResponseStatus, getRequestURL } from 'h3'
+import { defineEventHandler, getRequestHeader, getRequestHeaders, readRawBody, setResponseHeader, setResponseStatus, getRequestURL } from 'h3'
+import { gzipBody } from './gzipJson'
 import { createAuth, type ReqLike } from './auth'
 import { DATA_DIR, PASSKEY_USER, log } from './env'
 import { HerdrError } from './herdr'
@@ -74,7 +75,7 @@ export function defineApi<T>(
         setResponseHeader(event, 'set-cookie', String(o.__cookie))
         delete o.__cookie
       }
-      return out
+      return gzipJson(event, out)
     } catch (e) {
       const err = e as Error & { code?: string }
       const known = e instanceof HerdrError || (url.pathname.startsWith('/api/auth/') && Boolean(err.code))
@@ -84,6 +85,16 @@ export function defineApi<T>(
       return sendError(event, status, { error: err.message, code })
     }
   })
+}
+
+// Large JSON answers gzipped when the browser takes it (gzipJson.ts).
+function gzipJson<T>(event: H3Event, out: T): T | Buffer {
+  const body = gzipBody(getRequestHeader(event, 'accept-encoding'), out)
+  setResponseHeader(event, 'vary', 'accept-encoding')
+  if (!body) return out
+  setResponseHeader(event, 'content-type', 'application/json')
+  setResponseHeader(event, 'content-encoding', 'gzip')
+  return body
 }
 
 // Binary image (conversation or sent photo).

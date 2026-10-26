@@ -35,6 +35,8 @@ const statePane = computed(() => props.pane)
 const lead = computed(() => Boolean(props.board?.lead))
 const cardStatus = computed(() => props.board?.group ? ({ needs: 'blocked', ready: 'done', working: 'working', todo: 'idle', done: 'idle' }[props.board.group]) : statusKey(statePane.value))
 const taskCard = computed(() => Boolean(props.board && !props.board.coordinator && !lead.value))
+// A Working task waiting for CI or for its turn (shared/taskActivity.ts).
+const notRunning = computed(() => Boolean(props.board?.activity && props.board.activity.kind !== 'running'))
 // Compact list: one line (avatar, title, tab dots or pane count, state dot);
 // while the agent waits for an answer, its question and one-tap answers open below.
 const compact = computed(() => compactMeta({ tabs: space.value?.tabs.length, panes: space.value?.panes.length }))
@@ -53,7 +55,8 @@ const boardNow = useBoardNow()
 const boardStats = computed(() => {
   const b = props.board
   if (!b) return ''
-  return [b.progress != null ? `${b.progress}%` : '', b.since ? elapsedLabel(boardNow.value - b.since) : ''].filter(Boolean).join(' ')
+  // Waiting for CI or its turn: no agent at work, so no progress.
+  return [b.progress != null && !notRunning.value ? `${b.progress}%` : '', b.since ? elapsedLabel(boardNow.value - b.since) : ''].filter(Boolean).join(' ')
 })
 // A coordinator: its last message, unless the card already shows it opened below.
 const leadInitial = computed(() => (title.value.trim()[0] || '?').toUpperCase())
@@ -69,7 +72,14 @@ const twoLines = computed(() => lead.value ? false : taskCard.value ? !compactLi
 const subtitle = computed(() => conversationSubtitle(props.pane, ws.value))
 // Selection (computer): the pane being viewed, or for a space one of its panes / tabs.
 const route = useRoute()
+// A task's conversation also while the Board's side panel shows that task.
+const boardTaskOpen = computed(() => {
+  const r = props.board?.taskRef
+  const o = boardOpenTask.value
+  return Boolean(r && o && route.path === '/board' && r.machine === o.machine && r.id === o.id)
+})
 const selected = computed(() => {
+  if (boardTaskOpen.value) return true
   if (!space.value) return props.pane.id === curPane.value
   const tab = route.path.startsWith('/t/') ? String(route.params.tab || '') : null
   return space.value.panes.some(p => p.id === curPane.value || p.tab === tab)
@@ -204,6 +214,10 @@ function openInteraction() {
   navigateTo(panePath(props.pane.id))
 }
 watch(() => props.pane.prompt, () => { busy.value = false })
+// Its task opened on the Board (from here or a card there): brought into view in the sidebar.
+watch(boardTaskOpen, (on) => {
+  if (on && desk.value) nextTick(() => card.value?.scrollIntoView?.({ block: 'nearest' }))
+}, { immediate: true })
 const appear = list.shown()
 onMounted(list.mount)
 onUnmounted(list.unmount)
@@ -212,7 +226,7 @@ onUnmounted(list.unmount)
 <template>
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      ref="card" class="card" :class="[cardStatus, { sel: selected, stale: paneStale(pane), 'space-card': space, compact: true, open: more, 'home-task': board && !lead, 'task-row': taskCard, 'home-coord': board?.coordinator && !lead, 'home-lead': lead, 'home-task-two': twoLines }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      ref="card" class="card" :class="[cardStatus, { sel: selected, stale: paneStale(pane), 'space-card': space, compact: true, open: more, 'home-task': board && !lead, 'task-row': taskCard, 'home-coord': board?.coordinator && !lead, 'home-lead': lead, 'home-task-two': twoLines }, taskCard && notRunning ? `activity-${board!.activity!.kind}` : '']" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
       role="button" tabindex="0" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
@@ -235,7 +249,8 @@ onUnmounted(list.unmount)
       <span v-if="machineBadge" class="card-tag card-origin" :title="machineBadge">{{ machineBadge }}</span>
       <span v-if="projectBadge" class="card-tag card-origin" :title="projectBadge">{{ projectBadge }}</span>
       <span v-if="boardStats" class="home-task-stats">{{ boardStats }}</span>
-      <span v-if="taskCard && board?.group" class="task-state" :class="board.group">{{ taskGroupLabel(board.group) }}</span>
+      <TaskActivityBadge v-if="taskCard && notRunning" :activity="board?.activity" />
+      <span v-else-if="taskCard && board?.group" class="task-state" :class="board.group">{{ taskGroupLabel(board.group) }}</span>
       <span v-if="statePane.usageLimit && !taskCard" class="card-tag quota-limit" :title="stateTitle">{{ tl('Quota', 'Quota') }}</span>
       <span v-if="!taskCard && compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
       <span v-else-if="!taskCard && compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>

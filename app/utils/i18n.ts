@@ -3,6 +3,11 @@
 // checks that every key used in the code has one). The choice is saved on the device.
 
 const FR: Record<string, string> = {
+  'Autopilot': 'Autopilot',
+  'Copy message': 'Copier le message',
+  'Edit description': 'Modifier',
+  'Invalid description': 'Description invalide',
+  'Archived tasks are read-only': 'Les tâches archivées sont en lecture seule',
   'Handovers': 'Reprises',
   'Reviewer': 'Relecteur',
   'Previous agent': 'Agent précédent',
@@ -103,6 +108,10 @@ const FR: Record<string, string> = {
   'This task cannot be archived while an agent works on it': 'Cette tâche ne peut pas être archivée pendant qu’un agent y travaille',
   'Unknown action': 'Action inconnue', 'A task needs a title': 'Une tâche a besoin d’un titre',
   'Invalid repo': 'Dépôt invalide', 'Invalid agent': 'Agent invalide', 'Invalid effort': 'Effort invalide', 'Invalid coordinator': 'Coordinateur invalide',
+  'herdr-projects did not add the repository to the board.': 'herdr-projects n’a pas ajouté le dépôt au board.',
+  'The repository is on the board now, but the automation {name} that added it could not be removed: {why}': 'Le dépôt est maintenant sur le board, mais l’automatisation {name} qui l’a ajouté n’a pas pu être supprimée : {why}',
+  'This folder does not exist on this machine.': 'Ce dossier n’existe pas sur cette machine.',
+  'This folder is not a Git repository: a project coordinator needs one.': 'Ce dossier n’est pas un dépôt Git : un coordinateur de projet en demande un.',
   'Move up': 'Monter', 'Move down': 'Descendre', 'Reset order': 'Réinitialiser l’ordre',
   
   

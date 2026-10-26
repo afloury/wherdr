@@ -47,6 +47,35 @@ it('keeps the worker logo with separate reviewer and takeover marks', async () =
   expect(w.find('.task-agent-from').text()).toContain('Took over from')
 })
 
+describe('a Working card says what it is doing', () => {
+  const working = (stage: string, msg: string, more: Record<string, unknown> = {}) => row({ state: 'working', kind: '', stage, msg, progress: 60, ...more })
+
+  it('an agent running: its logo and progress, no badge', async () => {
+    const w = await mountSuspended(TaskCard, { props: { task: working('working', 'Writing tests') } })
+    expect(w.find('.task-activity').exists()).toBe(false)
+    expect(w.classes()).not.toContain('activity-ci')
+    expect(w.find('.task-chips').text()).toContain('60%')
+  })
+  it('waiting for GitHub checks: a CI badge with its tally, no progress', async () => {
+    const w = await mountSuspended(TaskCard, { props: { task: working('merging', 'Waiting for GitHub checks · 1 of 2 passed') } })
+    const badge = w.find('.task-activity')
+    expect(badge.attributes('data-kind')).toBe('ci')
+    expect(badge.text()).toBe('CI 1/2')
+    expect(badge.attributes('title')).toBe('Agent done, waiting for GitHub checks: 1 of 2 passed')
+    expect(w.classes()).toContain('activity-ci')
+    expect(w.find('.task-chips').exists()).toBe(false)
+  })
+  it('queued behind a task or for a slot: a QUEUED badge with what it waits for, no progress', async () => {
+    const after = await mountSuspended(TaskCard, { props: { task: working('after', 'queued after DEMO-70') } })
+    expect(after.find('.task-activity').attributes('data-kind')).toBe('queued')
+    expect(after.find('.task-activity').text()).toBe('Queued · DEMO-70')
+    expect(after.classes()).toContain('activity-queued')
+    expect(after.find('.task-chips').exists()).toBe(false)
+    const slot = await mountSuspended(TaskCard, { props: { task: working('queued', 'waiting for a free slot, Q#2') } })
+    expect(slot.find('.task-activity').text()).toBe('Queued · Q#2')
+    expect(slot.find('.task-activity').attributes('title')).toBe('Not started: waiting for a free slot, 2nd in the queue')
+  })
+})
 
 it('labels conversation-only cards', async () => {
   const w = await mountSuspended(TaskCard, { props: { task: row({ chat: true }) } })
