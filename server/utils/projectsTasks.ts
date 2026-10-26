@@ -504,6 +504,18 @@ function settingsRepo(repo: unknown): string {
   if (typeof r !== 'string' || (r && (!cleanRepo(r) || r.startsWith('/') || r.startsWith('~')))) throw new HerdrError('bad_repo', 'Invalid repository')
   return r
 }
+// Bulk archive stays a single CLI operation: the CLI owns eligibility (including pins).
+export async function archiveDoneTasks(machine: unknown, repo: unknown) {
+  const m = boardOf(machine)
+  const r = settingsRepo(repo)
+  if (!r) throw new HerdrError('bad_repo', 'Invalid repository')
+  const launcher = await launcherOf(m)
+  try {
+    const result = await serial(m.key, () => runner(m, launcher, ['archive', '--done', '--repo', r], ACTION_TIMEOUT_MS))
+    return { ...result, machine: m.key }
+  } finally { forget(m) }
+}
+
 async function readBoardSettings(m: Machine, repo: string): Promise<BoardSettings> {
   const [raw, agents] = await Promise.all([
     command(m, ['show', '--json', ...(repo ? [`--repo=${repo}`] : [])], LIST_TIMEOUT_MS, true),
