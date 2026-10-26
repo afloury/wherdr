@@ -17,7 +17,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
-- Long queued-task references stay within Board cards, home rows and task panels on mobile, with ellipsis and the full reference kept in the accessible hint. Panel titles retain their own line.
+- **Long queued-task badges stay inside the row on mobile (#154).** On Board cards and home list rows a long reference ends in an ellipsis and the task title keeps room to read; in the task panel the badge moves to its own line under the title. The full reference stays in the badge’s hint.
 - **New coordinator works on a Git folder the board does not know yet (WHR-134).** Choosing **Other repository…** and a folder now says at once where it stands: **On the board** with its project name, **New project** with the name it will get (`team-hub`, `team-hub-2` when taken), or a short error when the folder does not exist or is not a Git repository. **Add and open conversation** adds the repository to that machine's board first, remote machines included, so the first message starts its coordinator instead of failing with “No repo … on this machine”. herdr-projects 1.2.26 has no command that only adds a repository, so wherdr adds a trigger-only automation for that folder (`automations add --repo <folder> --when merged`) and removes it at once: no task is made, so no “added” automation fires and the repository's first task keeps number 1. A coordinator is always named by its repository's name on the board, never by its folder.
 
 ## [2.0.1] — 2026-10-26

@@ -49,3 +49,37 @@ for (const lang of ['en', 'fr']) {
     }
   })
 }
+
+// Home list rows, one-line and two-line: the badge gives way, the title stays readable.
+for (const lang of ['en', 'fr']) {
+  for (const compact of [true, false]) {
+    test(`a long queued reference leaves the home row title readable (${compact ? 'compact' : 'two lines'}, ${lang})`, async ({ page }) => {
+      await page.addInitScript(({ l, c }) => {
+        localStorage.setItem('herdrLanguage', l)
+        localStorage.setItem('compactListV2', c ? '1' : '0')
+      }, { l: lang, c: compact })
+      await page.route('**/api/tasks/links**', route => route.fulfill({ json: {
+        version: 'activity-home', machines: [{ machine: '',
+          repos: [{ repo: 'demo', root: '/project' }],
+          coordinators: [],
+          tasks: [{ id: 'demo/10', repo: 'demo', n: 10, key: 'DEMO-10', title: task.title,
+            panes: [{ id: 'w1:p1', role: 'worker' }], workspace: 'w1', stage: 'after', group: 'working', msg: task.msg, activity: { kind: 'queued', after: dependency, place: null } }],
+        }],
+      } }))
+      await fs.mkdir('.shots', { recursive: true })
+      for (const width of [360, 390, 1440]) {
+        await page.setViewportSize({ width, height: width === 1440 ? 900 : 844 })
+        await page.goto('/')
+        const row = page.locator('.project-tree .card', { hasText: 'DEMO-10' })
+        if (compact) await expect(row).not.toHaveClass(/home-task-two/)
+        else await expect(row).toHaveClass(/home-task-two/)
+        await contained(row.locator('.task-activity'), row)
+        const title = row.locator('.card-title')
+        await expect(title).toHaveText(task.title)
+        expect((await title.boundingBox())!.width).toBeGreaterThan(50)
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+        await page.screenshot({ path: `.shots/activity-home-${compact ? 'compact' : 'two'}-${lang}-${width}.png` })
+      }
+    })
+  }
+}

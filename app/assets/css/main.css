@@ -3953,6 +3953,9 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-activity { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; padding: 3px 6px; border: 1px dashed currentColor; font: 600 9.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
 /* Keep the task title on its own line, independent of the wait reference. */
 .board-panel-who > .task-activity { align-self: flex-start; flex: none; order: 3; }
+/* A one-line home row: the badge gives way first, the title keeps room to read. */
+.card.compact:not(.home-task-two) .task-activity { max-width: 45%; }
+.card.compact .card-title:has(~ .task-activity) { min-width: 8ch; }
 .task-activity[data-kind="ci"] { color: var(--blue); }
 .task-activity[data-kind="queued"] { color: var(--text-3); }
 .activity-ci .task-state.working, .activity-queued .task-state.working { color: var(--text-3); border-color: var(--line); }
