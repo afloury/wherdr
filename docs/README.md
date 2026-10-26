@@ -1,5 +1,7 @@
 # Documentation
 
+**Updating to 2.2.0?** Read the [2.2.0 release notes](release-notes-2.2.0.md) for task types, plan approval, faster conversation opening and paste fixes.
+
 **Updating to 2.1.0?** Read the [2.1.0 release notes](release-notes-2.1.0.md) for new task controls, Board improvements and fixes.
 
 **Upgrading to 2.0.0?** Read the [release notes](release-notes-2.0.0.md) for breaking changes and the 1.x migration checklist.
