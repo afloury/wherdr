@@ -19,7 +19,7 @@ import { readSessionTimers } from './scheduledTranscript'
 import { autopilotNextAt, parseAutopilot, parseAutomations, type Scheduled } from '../../shared/scheduled'
 import { machineOfPane } from './machines'
 import { execFile } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
@@ -43,7 +43,7 @@ import { installedAgentKinds } from './agentAvailability'
 import { dropStartAgent, rememberStartAgent, startAgentKey, startAgentOf, startAgentsOf } from './startAgents'
 import { findPane } from './state'
 import { fmt } from '../../shared/message'
-import { FOLDER_MISSING, FOLDER_NOT_GIT, PROJECT_FOLDER_SCRIPT, type ProjectFolder, SEED_TITLE, isFolderRef, parseFolderLook, projectFolderOf, repoNameOf } from '../../shared/projectFolder'
+import { FOLDER_MISSING, FOLDER_NOT_GIT, PROJECT_FOLDER_SCRIPT, type ProjectFolder, REGISTER_PROMPT, isFolderRef, parseFolderLook, projectFolderOf, repoNameOf } from '../../shared/projectFolder'
 
 export const REUSE_MS = 5000
 export const READ_DEADLINE_MS = 4000
@@ -728,23 +728,26 @@ export async function projectFolder(machine: unknown, folder: unknown): Promise<
 
 // A project coordinator's repo by its name on the board, the folder added to
 // the board first when it does not know it. herdr-projects 1.2.26 has no
-// command that only adds a repo: `add --repo <root>` names it on first sight,
-// and the task it made is cleared at once (`clear`), so none is left behind.
+// command that only adds a repo (`set --repo` refuses one it does not know).
+// `automations add --repo <root>` names it on first sight without making a
+// task (a task would be an "added" event other automations may fire on, and
+// take the repo's number 1); it is removed at once. Its trigger cannot fire in
+// between: a merge of a task of this repo, which has none.
 export async function registerProject(machine: unknown, folder: unknown): Promise<{ repo: string, root: string, added: boolean }> {
   const m = boardOf(machine)
   const f = await folderState(m, typeof folder === 'string' ? folder : '')
   if (f.state === 'missing') throw new HerdrError('folder_missing', FOLDER_MISSING)
   if (f.state === 'notgit') throw new HerdrError('folder_not_git', FOLDER_NOT_GIT)
   if (f.state === 'known') return { repo: f.repo, root: f.root, added: false }
-  const out = await command(m, ['add', '--json', `--repo=${f.root}`, '--', SEED_TITLE])
-  let id = ''
-  try { id = String((JSON.parse(out) as { id?: unknown }).id ?? '') } catch {}
-  if (!isTaskId(id)) throw new HerdrError('projects_failed', 'herdr-projects added the repository but gave no task id wherdr can read.')
+  const name = `wherdr-add-repo-${randomBytes(4).toString('hex')}`
+  await command(m, ['automations', 'add', `--prompt=${REGISTER_PROMPT}`, '--when=merged', `--repo=${f.root}`, '--', name])
+  try { await command(m, ['automations', 'remove', '--', name]) }
+  catch (e) { throw new HerdrError('projects_failed', fmt('The repository is on the board now, but the automation {name} that added it could not be removed: {why}', { name, why: (e as Error).message })) }
   forget(m)
-  try { await command(m, ['clear', '--', id]) }
-  catch (e) { throw new HerdrError('projects_failed', fmt('The repository is on the board now, but its first task {id} could not be cleared: {why}', { id, why: (e as Error).message })) }
-  log(`herdr-projects add + clear: repo ${id.split('/')[0]} added${m.local ? '' : ` on ${m.label}`}`)
-  return { repo: repoNameOf(await readRepos(m), f.root) || id.split('/')[0]!, root: f.root, added: true }
+  const repo = repoNameOf(await readRepos(m), f.root)
+  if (!repo) throw new HerdrError('projects_failed', 'herdr-projects did not add the repository to the board.')
+  log(`herdr-projects: repo ${repo} added${m.local ? '' : ` on ${m.label}`}`)
+  return { repo, root: f.root, added: true }
 }
 
 export async function tellCoordinator(machine: unknown, text: unknown, opts: { to?: unknown, delegate?: unknown, start?: unknown } = {}): Promise<{ ok: true, msg: string, repo?: string }> {

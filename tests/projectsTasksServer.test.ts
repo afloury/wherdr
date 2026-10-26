@@ -909,7 +909,7 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
   })
 
   // herdr-projects names a project coordinator by its repo's name on the board, never a path:
-  // a folder it does not know is added first (`add --repo`, the task cleared at once).
+  // a folder it does not know is added first (`automations add --repo`, removed at once: no task).
   describe('a project coordinator on a folder', () => {
     const reposFile = () => path.join(home, '.herdr-projects/data/repos.json')
     const repos = (o: Record<string, string>) => { mkdirSync(path.dirname(reposFile()), { recursive: true }); writeFileSync(reposFile(), JSON.stringify(o)) }
@@ -919,21 +919,21 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
       execFileSync('git', ['init', '-q', dir])
       return dir
     }
-    // `add --json --repo=<root>`: the repo named on first sight, as 1.2.26 does (store/repos.rs repo_of).
-    let added = 0
+    // `automations add --repo=<root>`: the repo named on first sight, as 1.2.26 does (store/repos.rs repo_of).
+    const automations = new Set<string>()
     beforeEach(() => {
-      added = 0
+      automations.clear()
       T.setRunner(async (_m, _l, args) => {
         calls.push(args)
-        if (args[0] === 'add') {
+        if (args[0] === 'automations' && args[1] === 'add') {
           const root = args.find(a => a.startsWith('--repo='))!.slice('--repo='.length)
           const now = existsSync(reposFile()) ? JSON.parse(readFileSync(reposFile(), 'utf8')) : {}
-          const name = path.basename(root)
-          now[name] = root
+          now[path.basename(root).replace(/[^\w.+-]/g, '-')] = root
           repos(now)
-          return { code: 0, stdout: JSON.stringify({ id: `${name}/${++added}`, state: 'idle', title: args.at(-1) }), stderr: '' }
+          automations.add(args.at(-1)!)
+          return { code: 0, stdout: `Added the automation "${args.at(-1)}"\n`, stderr: '' }
         }
-        if (args[0] === 'clear') return { code: 0, stdout: `${args.at(-1)}: removed\n`, stderr: '' }
+        if (args[0] === 'automations' && args[1] === 'remove') { automations.delete(args.at(-1)!); return { code: 0, stdout: 'Removed\n', stderr: '' } }
         if (args[0] === 'coordinator' && args.at(-1) === 'status') return { code: 0, stdout: JSON.stringify({ state: 'none', pane: '' }), stderr: '' }
         return { code: 0, stdout: 'sent\n', stderr: '' }
       })
@@ -953,17 +953,22 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
       expect(calls).toEqual([])
     })
 
-    it('adds an unknown repo, clears the task that did it, then starts its coordinator by name', async () => {
+    it('adds an unknown repo with no task, then starts its coordinator by name', async () => {
       const hub = gitRepo('hub')
       const r = await T.tellCoordinator('', '--hello', { to: { kind: 'project', repo: hub }, start: { agent: 'codex/demo-model', effort: 'high' } })
       expect(r.repo).toBe('hub')
+      const name = calls[0]!.at(-1)!
+      expect(name).toMatch(/^wherdr-add-repo-[0-9a-f]{8}$/)
       expect(calls).toEqual([
-        ['add', '--json', `--repo=${hub}`, '--', 'wherdr: add this repository to the board'],
-        ['clear', '--', 'hub/1'],
+        ['automations', 'add', '--prompt=Never runs: wherdr adds this repository to the board and removes this automation at once.', '--when=merged', `--repo=${hub}`, '--', name],
+        ['automations', 'remove', '--', name],
         ['coordinator', '--project=hub', '--json', 'status'],
         ['coordinator', '--project=hub', '--agent=codex/demo-model', '--effort=high', '--', 'new'],
         ['coordinator', '--project=hub', '--', 'tell', '--hello'],
       ])
+      // No task was made (no "added" event), and the automation is gone.
+      expect(calls.some(c => c[0] === 'add')).toBe(false)
+      expect(automations.size).toBe(0)
       // Known now: nothing is added again.
       calls = []
       expect(await T.registerProject('', hub)).toEqual({ repo: 'hub', root: hub, added: false })
@@ -977,14 +982,20 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
       expect(calls).toEqual([])
     })
 
-    it('says so when the first task could not be cleared', async () => {
+    it('says so when the automation that added it could not be removed', async () => {
       const lib = gitRepo('lib')
       T.setRunner(async (_m, _l, args) => {
         calls.push(args)
-        if (args[0] === 'add') { repos({ lib }); return { code: 0, stdout: JSON.stringify({ id: 'lib/1' }), stderr: '' } }
-        return { code: 1, stdout: '', stderr: 'no such task' }
+        if (args[1] === 'add') { repos({ lib }); return { code: 0, stdout: 'Added\n', stderr: '' } }
+        return { code: 1, stdout: '', stderr: 'no such automation' }
       })
-      await expect(T.registerProject('', lib)).rejects.toThrow(/first task lib\/1 could not be cleared: no such task/)
+      await expect(T.registerProject('', lib)).rejects.toThrow(/automation wherdr-add-repo-[0-9a-f]{8} that added it could not be removed: no such automation/)
+    })
+
+    it('says so when herdr-projects did not add it', async () => {
+      const odd = gitRepo('odd')
+      T.setRunner(async (_m, _l, args) => { calls.push(args); return { code: 0, stdout: 'ok\n', stderr: '' } })
+      await expect(T.registerProject('', odd)).rejects.toThrow('herdr-projects did not add the repository to the board.')
     })
 
     it('never resets an existing conversation of a known repo', async () => {

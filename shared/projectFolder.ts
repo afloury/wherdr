@@ -61,5 +61,5 @@ export function newRepoName(repos: unknown, root: string): string {
 export const FOLDER_MISSING = 'This folder does not exist on this machine.'
 export const FOLDER_NOT_GIT = 'This folder is not a Git repository: a project coordinator needs one.'
 
-// The task `add` makes so the board learns the repo; cleared at once.
-export const SEED_TITLE = 'wherdr: add this repository to the board'
+// The automation that makes the board learn the repo; removed at once, never fires.
+export const REGISTER_PROMPT = 'Never runs: wherdr adds this repository to the board and removes this automation at once.'

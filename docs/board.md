@@ -105,8 +105,9 @@ What the Board shows and does:
   a repo the board knows, or **Other repository…** and a folder. The sheet says whether that
   folder is **On the board** (its project name), a **New project** (the name it will get), or
   missing or not Git. **Add and open conversation** adds a new one to that machine's board first:
-  herdr-projects has no command for that alone, so wherdr runs `add --repo <folder>` and clears the
-  task at once, leaving none behind. The coordinator is then named by the repo's name.
+  herdr-projects has no command for that alone, so wherdr adds an automation for that folder
+  (`automations add --repo <folder> --when merged`) and removes it at once. No task is made, so
+  no "added" automation fires. The coordinator is then named by the repo's name.
 - **Autopilot** (herdr-projects 1.2.15 or later): each coordinator has a switch, under the Board's
   bar for the main Coordinator, in each machine and repo heading, and at the top of its panel. It
   shows whether the board wakes that coordinator to work toward its goal, and when next. Turning it
