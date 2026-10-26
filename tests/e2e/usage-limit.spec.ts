@@ -20,7 +20,7 @@ test('quota waits stay in conversation with a usable draft and native actions', 
     return { status: p.status, interaction: p.interaction, prompt: p.prompt ?? null }
   }).toEqual({ status: 'idle', interaction: 'native', prompt: null })
   if ((page.viewportSize()?.width || 0) > 768) {
-    await expect(page.locator(`.card[data-pane="${pane}"] .quota-limit`)).toHaveText('Limit')
+    await expect(page.locator(`.card[data-pane="${pane}"] .quota-limit`)).toHaveText('Quota')
   }
   const field = page.locator('.composer textarea')
   await field.fill('Continue when available')

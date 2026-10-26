@@ -1,7 +1,8 @@
 // Finish (`herdr-projects finish`): the work is taken as it is, checked, then
 // reviewed. What the button says next to Retry, and what it asks first.
 import { type FinishCase, finishCase } from '../../shared/projectsTasks'
-import { tl } from './i18n'
+import { type LimitStop, formatLimit } from '../../shared/taskLimits'
+import { language, tl } from './i18n'
 
 // One line: what Retry does, what Finish does, for this case.
 export function finishHint(c: FinishCase): string {
@@ -30,4 +31,15 @@ export const finishQuestion = (title: string, chat = false) => chat ? tl(`End ‚Ä
 export function finishOffered(r: Parameters<typeof finishCase>[0], paneStatus: string | null): boolean {
   const c = finishCase(r)
   return c !== null && !(c === 'stuck' && (paneStatus === 'working' || paneStatus === 'blocked'))
+}
+
+// At a limit stop, the same line naming the limit Continue grants once more
+// (`2 h a run`, `30 M tokens`), when the stop is known.
+export function limitHint(stop: LimitStop | null): string {
+  if (!stop?.limit) return finishHint('limit')
+  const v = formatLimit(stop.kind, stop.limit, language)
+  const again = stop.kind === 'time' ? tl(`${v} a run`, `${v} par tranche`) : tl(`${v} tokens`, `${v} tokens`)
+  return tl(
+    `Continue grants a new allowance (${again}). Raising the limit keeps usage and resumes automatically. Take as is: checks, then review. These work limits are separate from provider quotas.`,
+    `Continuer accorde une nouvelle tranche (${again}). Relever la limite conserve la consommation et reprend automatiquement. Prendre tel quel : v√©rifications puis relecture. Ces limites de travail sont distinctes des quotas fournisseur.`)
 }

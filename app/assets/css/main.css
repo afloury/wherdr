@@ -2091,6 +2091,7 @@ body.kb .composer { padding-bottom: 8px; }
   display: flex; align-items: center; gap: 14px; text-align: left;
   padding: 14px 8px; font-size: 16px; color: var(--text);
 }
+.menu button:disabled { opacity: .5; cursor: default; }
 .menu button:active { background: var(--surface-2); }
 .menu button.danger { color: var(--rose); }
 .menu .menu-note { color: var(--muted); font-size: 13px; padding: 8px 8px 10px; line-height: 1.45; }
@@ -3819,7 +3820,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-notes { flex: none; display: flex; flex-direction: column; gap: 10px; margin: 12px 16px 0; }
 /* The side panel: one agent to talk to (a task's, a coordinator), in the agent
    view's side-by-side cell. Beside the Board on a computer, full screen on a phone. */
-:root { --board-panel-w: clamp(320px, clamp(400px, 44vw, 720px), calc(100vw - var(--side) - 280px)); }
+:root { --board-panel-w: clamp(320px, clamp(400px, 44vw, 720px), calc(100vw - var(--side) - 640px)); }
 @media (min-width: 900px), (min-width: 700px) and (min-height: 700px), (min-width: 700px) and (min-device-width: 700px) and (min-device-height: 700px) and (pointer: coarse) {
   .board-panel .panel-handle { left: auto; right: var(--board-panel-w); }
   body:has(.board-panel.resizing) { cursor: col-resize; user-select: none; }
@@ -3972,6 +3973,16 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-sheet-facts dd.pass { color: var(--green); }
 .task-sheet-facts dd.fail { color: var(--rose); }
 .task-sheet-facts a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
+/* Task limits: one thin gauge each, a 1 px rule filled in accent, red near the end. */
+.task-limits { display: flex; flex-direction: column; gap: 10px; }
+.task-limit-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 5px; }
+.task-limit-label { font: 600 10px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.task-limit-value { font: 500 12px/1.4 var(--mono); font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
+.task-limit-bar { position: relative; height: 3px; }
+.task-limit-bar::before { content: ''; position: absolute; left: 0; right: 0; top: 1px; height: 1px; background: var(--line-strong); }
+.task-limit-bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
+.task-limit.hot .task-limit-bar > i { background: var(--danger); }
+.task-limit.hot .task-limit-value { color: var(--danger); }
 .task-sheet-block h4 { margin: 0 0 6px; font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .task-sheet-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; color: var(--text-2); }
 .task-handover-list { list-style: none; padding: 0; margin: 0; }
@@ -4226,6 +4237,14 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-card .board-card-head { flex-wrap: wrap; }
 .board-panel[data-kind="task"] .board-panel-who > .task-agent-mark { order: 3; flex: 0 0 100%; }
 
+/* Raise the limit: one tap per preset, above the typed value. */
+.raise-limit-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); }
+.raise-limit-presets > button { border-radius: 0; flex-direction: column; justify-content: center; gap: 2px; min-height: 58px; box-shadow: none; border: 0; border-left: 1px solid var(--line); }
+.raise-limit-presets > button:first-child { border-left: 0; }
+.raise-limit-op { font: 600 13px/1.2 var(--mono); letter-spacing: .04em; }
+.raise-limit-to { font: 500 11px/1.2 var(--mono); color: var(--muted); }
+.task-limit.unset .task-limit-value { color: var(--muted); }
+.task-limit-total { margin: 0; font: 500 11px/1.4 var(--mono); color: var(--muted); }
 /* A quiet source stays identifiable without competing with its state. */
 .notification-muted { color: var(--muted); width: 12px; height: 12px; flex-shrink: 0; }
 
@@ -4261,3 +4280,18 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-tools .board-cached-tag { min-width: 0; overflow: hidden; }
 .cached-tag-word { white-space: pre; }
 @media (max-width: 560px) { .board-tools .cached-tag-word { display: none; } }
+/* Measure the panel's CSS width independently of its docking state. */
+.board-panel-sizer { position: fixed; width: var(--board-panel-w); height: 0; visibility: hidden; pointer-events: none; }
+/* Compact Board chrome follows its container, including a desktop sidebar. */
+.board-top > * { flex-shrink: 0; }
+.board-top .board-coord { white-space: nowrap; }
+.board-view.narrow .board-new-label, .board-view.narrow .board-coord-label { display: none; }
+.board-view.narrow .board-top .board-new, .board-view.narrow .board-top-coord { min-width: 36px; height: 36px; justify-content: center; }
+.board-view.narrow .board-tools { flex-wrap: wrap; }
+.board-view.narrow .board-head-name { flex-basis: calc(100% - 40px); }
+.board-view.narrow .board-head-actions { flex: 1 1 100%; justify-content: flex-start; padding-left: 32px; }
+.board-view.narrow .board-head-actions .board-coord { white-space: normal; overflow-wrap: anywhere; text-align: left; }
+
+/* Autopilot wakes retain the transcript text with a quiet system attribution. */
+.msg-autopilot { min-width: 0; margin: 6px 0; color: var(--text-2); }
+.msg-autopilot-body { border-left: 1px solid var(--line-soft); padding: 6px 12px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }

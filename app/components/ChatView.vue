@@ -23,6 +23,7 @@ import { messageId, messageOf, messageRef, pointRef, type Reference } from '#sha
 import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
 import { duplicateImages } from '#shared/imageDupes'
+import { isAutopilotWake } from '~/utils/autopilotWake'
 import { stripPosition } from '#shared/filePaths'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
@@ -387,6 +388,7 @@ type Block =
   | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
+  | { k: 'autopilot', key: string, text: string }
   | { k: 'system', key: string, text: string }
   | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean, scheduled?: boolean }
   | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean }
@@ -507,7 +509,9 @@ const blocks = computed<Block[]>(() => {
     }
     flush()
     const key = `${it.role}:${it.ts}:${i}`
-    if (it.role === 'user') {
+    if (isAutopilotWake(it)) {
+      out.push({ k: 'autopilot', key, text: it.text })
+    } else if (it.role === 'user') {
       const uploads = it.text.match(UPLOAD_RE) || []
       // Attached files (PDF, text…): a chip each, their line leaves the text.
       const files = it.text.split('\n').map(parseAttachmentLine).filter((f): f is { path: string, name: string } => Boolean(f))
@@ -1245,7 +1249,7 @@ function focusSearch() {
 // reminder as long as it may show, so answering moves nothing).
 const asked = computed(() => {
   if (readOnly.value || working.value || props.pane.status === 'blocked' || queuedList.value.length || liveShell.value) return null
-  const last = blocks.value.findLast(b => b.k === 'assistant' || b.k === 'user' || b.k === 'shell' || b.k === 'ompRun')
+  const last = blocks.value.findLast(b => b.k === 'assistant' || b.k === 'user' || b.k === 'autopilot' || b.k === 'shell' || b.k === 'ompRun')
   if (!last || last.k !== 'assistant' || typingAt(last.id) !== null) return null
   const targets = replyTargets(last.html)
   return targets.questions.length + targets.rows.length ? { key: last.key, time: last.time, rid: last.rid, targets } : null
@@ -1345,6 +1349,12 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
 
               <div v-else-if="b.k === 'who'" class="msg-who" :class="pane.agent || ''">
                 <UIcon :name="agentIcon(pane.agent) || 'i-lucide-bot'" /><span>{{ kindLabel(pane.agent) }}</span>
+              </div>
+
+              <div v-else-if="b.k === 'autopilot'" class="msg-autopilot" :data-hit-key="b.key">
+                <div class="msg-system"><span>{{ t('Autopilot') }}</span></div>
+                <div class="msg-autopilot-body"><FoldText>{{ b.text }}</FoldText></div>
+                <UButton icon="i-lucide-copy" color="neutral" variant="ghost" size="xs" :aria-label="t('Copy message')" @click="copyText(b.text)" />
               </div>
 
               <div v-else-if="b.k === 'user'" class="msg-user-wrap" :data-hit-key="b.key">

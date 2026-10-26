@@ -3,6 +3,11 @@
 // checks that every key used in the code has one). The choice is saved on the device.
 
 const FR: Record<string, string> = {
+  'Autopilot': 'Autopilot',
+  'Copy message': 'Copier le message',
+  'Edit description': 'Modifier',
+  'Invalid description': 'Description invalide',
+  'Archived tasks are read-only': 'Les tâches archivées sont en lecture seule',
   'Handovers': 'Reprises',
   'Reviewer': 'Relecteur',
   'Previous agent': 'Agent précédent',
@@ -571,7 +576,7 @@ const FR: Record<string, string> = {
   'Herdr server not responding': 'Serveur Herdr muet',
   'SSH connection closed (code {code})': 'Connexion SSH fermée (code {code})',
   'SSH connection failed (timed out)': 'Connexion SSH impossible (délai dépassé)',
-  'Remote SSH shell must support POSIX commands. On Windows, set OpenSSH DefaultShell to Git Bash (see Machines documentation).': 'Le shell SSH distant doit accepter les commandes POSIX. Sous Windows, configurez OpenSSH DefaultShell avec Git Bash (voir la documentation Machines).',
+  'Remote SSH shell must support POSIX commands. On Windows, set OpenSSH DefaultShell to Git Bash (docs/machines.md, “Windows remote machines”).': 'Le shell SSH distant doit accepter les commandes POSIX. Sous Windows, configurez OpenSSH DefaultShell avec Git Bash (docs/machines.md, « Windows remote machines »).',
   'Remote Herdr must provide remote-api-bridge (Herdr 0.9.3 or later).': 'Herdr distant doit fournir remote-api-bridge (Herdr 0.9.3 ou ultérieur).',
   'Probe failed (code {code})': 'Sonde échouée (code {code})',
   '{reason} on {machine}': '{reason} sur {machine}',
