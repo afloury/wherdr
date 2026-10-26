@@ -242,11 +242,14 @@ async function copyIntegration() {
 
 // One re-read at a time (utils/chatTail.ts): `false` = done, `true` = run
 // again at once, with the lock still held.
+const chatIntent = useChatIntent()
 async function loadStep(current: () => boolean): Promise<boolean> {
   const pane = props.pane.id
   const stale = () => !current() || pane !== props.pane.id
   try {
-    const r = await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`)
+    const ready = chat.value.tailStart === null ? await chatIntent.take(props.pane) : undefined
+    if (stale()) return false
+    const r = ready || await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`)
     if (stale()) return false
     if (!r.available) {
       const m = onUnavailable(misses.value, Boolean(chat.value.file) && items.value.length > 0)
@@ -292,6 +295,8 @@ async function loadStep(current: () => boolean): Promise<boolean> {
       noteReplies(c.tail)
     })
     saveChat(pane, items.value)
+    // Paint the prepared tail first, then revalidate using its token and cursor.
+    if (ready) return true
   } catch (err) {
     if (stale()) return false
     if (!items.value.length) loadError.value = (err as Error).message

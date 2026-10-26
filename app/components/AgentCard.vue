@@ -19,6 +19,7 @@ import { tabStates } from '#shared/spaces'
 import { type BoardCard, elapsedLabel } from '#shared/boardLinks'
 import type { MenuItem } from '~/composables/useUi'
 import { longPress } from '~/utils/longPress'
+import { chatHoverIntent } from '~/utils/chatIntent'
 import { interactionWindowFor } from '~/utils/interactionWindow'
 
 // `board`: the row is herdr-projects' (home list's project groups): named by
@@ -167,7 +168,17 @@ const lp = longPress({
     openMenu(menuItems.value, title.value)
   },
 })
+const chatIntent = useChatIntent()
+const intent = chatHoverIntent(() => {
+  // Space and Board cards have their own destinations; only warm direct opens.
+  if (!space.value && !taskCard.value && !selected.value) chatIntent.preload(props.pane)
+})
+onUnmounted(intent.cancel)
+function hover(e: PointerEvent) {
+  if (!(e.target as Element | null)?.closest?.('button, a')) intent.enter(e.pointerType)
+}
 function down(e: PointerEvent) {
+  if (e.button === 0 && !(e.target as Element | null)?.closest?.('button, a')) intent.down()
   pointerType = e.pointerType
   if (!sheetMenus.value || (e.target as Element | null)?.closest?.('button, a')) return
   lp.down(e)
@@ -175,6 +186,7 @@ function down(e: PointerEvent) {
 // Right click with a mouse (narrow window, tablet trackpad): the same sheet. A
 // finger's contextmenu (Android long press) is left to the long press.
 function onContext(e: MouseEvent) {
+  intent.cancel()
   if (!sheetMenus.value) return
   e.preventDefault()
   if (pointerType === 'mouse') openMenu(menuItems.value, title.value)
@@ -227,7 +239,7 @@ onUnmounted(list.unmount)
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
       ref="card" class="card" :class="[cardStatus, { sel: selected, stale: paneStale(pane), 'space-card': space, compact: true, open: more, 'home-task': board && !lead, 'task-row': taskCard, 'home-coord': board?.coordinator && !lead, 'home-lead': lead, 'home-task-two': twoLines }, taskCard && notRunning ? `activity-${board!.activity!.kind}` : '']" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
-      role="button" tabindex="0" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
+      role="button" tabindex="0" @pointerenter="hover" @pointerleave="intent.cancel" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel(); intent.cancel()"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
       <template v-if="lead">
