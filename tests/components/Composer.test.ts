@@ -173,6 +173,27 @@ describe('Composer references', () => {
 
 
 describe('Composer dictation paste', () => {
+  it.each([
+    ['<p>Bonjour</p><p>le monde</p>', 'Bonjour\n\nle monde'],
+    ['Bonjour<br>le monde', 'Bonjour\nle monde'],
+    ['<div>Bonjour</div><div>le <b>monde</b></div>', 'Bonjour\nle monde'],
+    ['<p>Bonjour</p>\n<p>le monde</p>', 'Bonjour\n\nle monde'],
+    ['Bonjour<br><br><br>le monde', 'Bonjour\n\n\nle monde'],
+    ['<pre>Bonjour\n  le monde</pre>', 'Bonjour\n  le monde'],
+  ])('preserves HTML paste separators: %s', async (html, expected) => {
+    const { w, field } = await mount('html-separators')
+    await field.setValue('')
+    let clipboard = html
+    const event = new Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'clipboardData', { value: { items: [], getData: (type: string) => type === 'text/html' ? clipboard : '' } })
+    field.element.dispatchEvent(event)
+    clipboard = ''
+    await flushPromises()
+    expect(event.defaultPrevented).toBe(true)
+    expect((field.element as HTMLTextAreaElement).value).toBe(expected)
+    w.unmount()
+  })
+
   it('snapshots short text, selection and HTML before clipboard restoration', async () => {
     const { w, field } = await mount('dictation')
     const el = field.element as HTMLTextAreaElement

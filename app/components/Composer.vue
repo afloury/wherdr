@@ -24,6 +24,7 @@ import { kbOpen } from '~/composables/useViewport'
 import { PromptHistory, historyDirection } from '~/utils/promptHistory'
 import { createTouchTap } from '~/utils/touchTap'
 import { tracePaste } from '~/utils/pasteJournal'
+import { pasteHtmlText } from '~/utils/pasteHtml'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
 // `termShown`: the terminal is on screen, so no notice offers to open it.
@@ -397,7 +398,7 @@ function handlePaste(e: Event, data: DataTransfer | null, fallback = '') {
   // Snapshot the event payload before returning control to a dictation tool.
   // Never read the system clipboard here: it may already have been restored.
   const raw = data?.getData('text/plain') || fallback
-    || (data?.getData('text/html') ? new DOMParser().parseFromString(data.getData('text/html'), 'text/html').body.textContent || '' : '')
+    || pasteHtmlText(data?.getData('text/html') || '')
   tracePaste(e, data, raw.length, el, () => attachments.value.length)
   // Some IME beforeinput events cannot be cancelled; let their native edit run.
   if (!e.cancelable) return

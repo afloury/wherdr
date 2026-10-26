@@ -32,6 +32,19 @@ test('dictation survives immediate clipboard restoration; diagnostics and images
       await expect(field).toHaveValue(`Before Dictation ${i} after`)
     }
   }
+  for (const [html, expected] of [
+    ['<p>Bonjour</p><p>le monde</p>', 'Bonjour\n\nle monde'],
+    ['Bonjour<br>le monde', 'Bonjour\nle monde'],
+  ]) {
+    await field.fill('')
+    await field.evaluate((el, html) => {
+      const data = new DataTransfer()
+      data.setData('text/html', html!)
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+      data.clearData()
+    }, html)
+    await expect(field).toHaveValue(expected!)
+  }
   // A beforeinput-only dictation tool supplies its text on InputEvent.
   await field.fill('')
   await field.evaluate(el => el.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertFromPaste', data: 'Input dictation', bubbles: true, cancelable: true })))
