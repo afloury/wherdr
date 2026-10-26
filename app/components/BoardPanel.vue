@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { desk as desktop } from '~/composables/useHerdr'
 // Task panels own their compact header, three tabs and board failure banner.
 // The banner says where the task stands now: a failure it has moved on from
 // (failureStale) is history in the Task tab, never its title or its buttons.
@@ -17,7 +18,8 @@ export type PanelTarget =
   | { machine: string, kind: 'coordinator', to: CoordinatorTarget, freshProject?: boolean }
 
 // `reachable`: its machine's board answers now (a message waits while it does not).
-const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, reachable?: boolean, refresh?: () => Promise<unknown>, refreshKey?: number }>()
+const props = defineProps<{ overlay?: boolean, target: PanelTarget, task: TaskRow | null, machineLabel: string, reachable?: boolean, refresh?: () => Promise<unknown>, refreshKey?: number }>()
+const desk = computed(() => desktop.value && !props.overlay)
 // A switch's action: the Scheduled section reads the Autopilot again.
 const { actions: autopilotActions } = useAutopilot()
 const launchAgent = ref('__default')
@@ -505,7 +507,7 @@ async function retry() {
 
 // Escape closes it on a computer, unless a sheet or a field has it.
 function onKey(e: KeyboardEvent) {
-  if (e.key !== 'Escape' || !desk.value || e.defaultPrevented) return
+  if (e.key !== 'Escape' || !desktop.value || e.defaultPrevented) return
   if (document.querySelector('.hw-sheet')) return
   emit('close')
 }
