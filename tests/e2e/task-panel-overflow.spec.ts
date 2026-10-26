@@ -101,12 +101,28 @@ async function check(page: Page, shot: string) {
   await page.screenshot({ path: `.shots/overflow-${shot}.png` })
 }
 
-test('the task panel never scrolls sideways with long paths, links and wide output', { tag: '@chromium-desktop' }, async ({ page }, testInfo) => {
+test('the task panel never scrolls sideways with long paths, links and wide output', { tag: '@chromium-desktop' }, async ({ page, request }, testInfo) => {
   writeTranscript()
   fs.mkdirSync(taskDir, { recursive: true })
   fs.writeFileSync(path.join(taskDir, 'task.json'), JSON.stringify({ ...task, link: { pane: CLAUDE_ASK_PANE } }))
   await fakeHerdr('e2e.update_session', { pane_id: CLAUDE_ASK_PANE, session: sid })
   await fakeHerdr('e2e.plugins', { plugins: [plugin] })
+  // Another spec can have installed a different fake launcher. Refresh its
+  // cached discovery before the instant task opening asks for details.
+  const installed = await request.get('/api/plugins/projects?machine=')
+  expect(installed.ok()).toBe(true)
+  // Herdr's next snapshot must also report the transcript we just installed.
+  await expect.poll(async () => {
+    const state = await (await request.get('/api/state')).json()
+    return state.panes.find((p: { id: string }) => p.id === CLAUDE_ASK_PANE)?.agentSession
+  }).toBe(sid)
+  // The previous fixture's list is reused for five seconds. A deep link to
+  // a task absent from that list would correctly look for it in the archive.
+  await expect.poll(async () => {
+    const board = await (await request.get('/api/tasks')).json()
+    return board.machines.find((m: { machine: string }) => m.machine === '')?.tasks
+      .map((t: { id: string }) => t.id)
+  }).toEqual(['demo/45'])
   const phone = page.viewportSize()!.width < 600
   const name = testInfo.project.name
 

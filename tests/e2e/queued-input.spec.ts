@@ -11,6 +11,9 @@ test.afterEach(async () => {
 test('a queued message explains the terminal draft and offers clear or terminal', async ({ page }, info) => {
   await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: screen('ns'), agent: 'claude', status: 'idle' })
   await page.goto(`/#/a/${pane}`)
+  // The server polls Herdr: the kept state can still name this pane as omp.
+  // Sending must use Claude's guarded input, after the app sees that change.
+  await expect(page.locator('.agent-top .pill-kind')).toHaveText('claude')
   await page.locator('.prompt').locator('textarea, [contenteditable="true"]').first().fill('Please update the release notes.')
   await page.locator('.prompt-send').click()
   const tag = page.locator('.queued-tag').filter({ hasText: 'already contains text' })
