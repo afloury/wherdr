@@ -112,7 +112,9 @@ are released after the browser saves the file, keeping repeated downloads reliab
 
 `develop-prerelease.yml` rebuilds one prerelease on every push to the `develop` branch (the
 integration branch; `main` only receives releases), so a machine can install develop from a prebuilt package (the plugin's GitHub download) and never compile it.
-It publishes the version of `herdr-plugin.toml` (for example `2.0.0-dev`, before the stable version bump) as `v<version>`:
+It always publishes the fixed tag **`develop`**, including stable package versions.
+The package version stays unchanged; `COMMIT` identifies the build. Existing
+`vX.Y.Z-dev` prereleases are left alone.
 
 - the tag moves to the pushed commit; the release is a prerelease, never `latest`. The update
   checks of every version, the legacy channel and `release-ready.yml` only read stable
@@ -126,17 +128,20 @@ It publishes the version of `herdr-plugin.toml` (for example `2.0.0-dev`, before
   before the archive is replaced and attached last: when `COMMIT` is there and names the
   branch head, the archive is that commit's.
 
-Once the version is stable, the workflow skips packaging and publication; it must not create a stable tag.
+The Pi reads `releases/tags/develop`, never `releases/latest`. Download `COMMIT`,
+the single `wherdr-<version>.tgz` asset and `wherdr-<version>.tgz.sha256`.
+For 2.1.0 these are `wherdr-2.1.0.tgz` and `wherdr-2.1.0.tgz.sha256`.
+Verify the checksum and install the archive through the existing prebuilt-package
+installation path. Read `COMMIT` again after downloading and retry if it changed
+or is absent: publication can overlap a download. Previous version assets are removed.
 
-The rolling notes start with an Update summary of the first three top-level Unreleased
-changelog entries and a link to the changelog at the packaged commit, followed by build
-metadata. Keep these entries readable and current; packaging fails if they are absent or fail the same minimum-content check.
-
-`scripts/prerelease.sh` does the checks and the publication. It refuses a version without a
-prerelease suffix (`X.Y.Z-something`) and a release of that tag that is not a published
-prerelease: stable versions keep going through the steps above. The tag is moved with
-`GITHUB_TOKEN`, which starts neither `release.yml` nor `npm.yml`. The workflow runs from the
-`develop` branch. A stable version deliberately disables rolling publication.
+The workflow sets `PRERELEASE_TAG=develop` for `scripts/prerelease.sh`. Its notes
+identify the branch and commit even when release preparation has emptied Unreleased.
+Without that setting, the script keeps the historical `vX.Y.Z-suffix` mode and its
+Unreleased summary requirement. Both modes refuse to edit a release unless it is
+a published prerelease. The fixed tag does not match stable version tags; its
+`GITHUB_TOKEN` update also starts neither `release.yml` nor `npm.yml`. Stable
+publishing, update checks and readiness workflows remain unchanged.
 
 ## Publishing the prepared 2.1.0 release
 

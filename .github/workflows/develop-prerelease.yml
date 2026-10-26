@@ -1,13 +1,4 @@
-# Rolling prerelease of the develop branch: on every push to develop, the release
-# v<version of herdr-plugin.toml> (e.g. v2.0.0-dev) is rebuilt for the pushed
-# commit, so a machine installs develop with the prebuilt package and never compiles.
-#   - the tag moves to the pushed commit; the release is a prerelease, never latest
-#     (1.x update checks only read stable vX.Y.Z releases);
-#   - files: wherdr-<version>.tgz and .tgz.sha256 (made like release.yml: npm pack,
-#     sha256sum) and COMMIT, the full SHA of the packaged commit, also in the notes.
-# Only a version with a prerelease suffix is published (scripts/prerelease.sh):
-# stable versions keep going through release.yml and its vX.Y.Z tags.
-# The tag is moved with GITHUB_TOKEN, so it starts neither release.yml nor npm.yml.
+# Fixed rolling develop channel, independent of the package version.
 name: develop prerelease
 
 on:
@@ -30,6 +21,8 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PRERELEASE_TAG: develop
     steps:
       - uses: actions/checkout@v4
 
@@ -41,29 +34,20 @@ jobs:
       - name: Version
         id: v
         run: |
-          version="$(node -p "require('./package.json').version")"
-          if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Stable version: rolling prerelease is disabled."
-            exit 0
-          fi
           version="$(bash scripts/prerelease.sh version)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - if: steps.v.outputs.version != ''
-        run: npm ci
+      - run: npm ci
 
       - name: Package
-        if: steps.v.outputs.version != ''
         run: |
           mkdir -p "$RUNNER_TEMP/prerelease"
           npm pack --pack-destination "$RUNNER_TEMP/prerelease"
 
       - name: Check the package
-        if: steps.v.outputs.version != ''
         run: bash scripts/prerelease.sh package "$RUNNER_TEMP/prerelease/wherdr-${{ steps.v.outputs.version }}.tgz" "$GITHUB_SHA"
 
       - name: Publish the prerelease
-        if: steps.v.outputs.version != ''
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
