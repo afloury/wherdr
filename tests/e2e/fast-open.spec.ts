@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { expect, test, type Page, type Route } from './test'
-import { CLAUDE_SUGGEST_PANE, SOCK_FILE } from './scenario.mjs'
+import { CLAUDE_PANE, CLAUDE_SUGGEST_PANE, OMP_CHAT_PANE, SOCK_FILE } from './scenario.mjs'
 
 // Opening the Board and a conversation fast: what this device kept shows at once
 // (with "Read at" while the network catches up), the shapes of what loads after
@@ -191,4 +191,35 @@ test('a fresh empty conversation wins over an older cache that arrives later', a
   await page.waitForTimeout(1800)
   await expect(page.locator('.chat-list')).not.toContainText('All steps done.')
   await expect(page.locator('.chat-cached')).toHaveCount(0)
+})
+
+// Two tabs of the app (the installed app and a browser tab) share one cache:
+// each conversation kept stays in the index that bounds it, whichever tab wrote last.
+test('two tabs keep one index of the conversations kept', async ({ page, context }) => {
+  const keep = (p: Page, pane: string, text: RegExp) => p.goto(`/#/a/${pane}`)
+    .then(() => expect(p.locator('.chat-list .msg-user-wrap, .chat-list .msg-who').first()).toBeVisible({ timeout: 15000 }))
+    .then(() => expect(p.locator('.chat-list')).toContainText(text))
+    // Written within WRITE_MS.
+    .then(() => p.waitForTimeout(2600))
+  await keep(page, CLAUDE_PANE, /\S/)
+  const other = await context.newPage()
+  await keep(other, OMP_CHAT_PANE, /\S/)
+  // The first tab writes again, after the other one did.
+  await keep(page, CLAUDE_SUGGEST_PANE, /All steps done\./)
+  const kept = await page.evaluate(() => new Promise<{ index: string[], records: string[] }>((resolve, reject) => {
+    const r = indexedDB.open('wherdr-offline')
+    r.onerror = () => reject(r.error)
+    r.onsuccess = () => {
+      const tx = r.result.transaction(['kv', 'chats'])
+      const index = tx.objectStore('kv').get('index')
+      const records = tx.objectStore('chats').getAllKeys()
+      tx.oncomplete = () => {
+        resolve({ index: (index.result || []).map((e: { id: string }) => e.id).sort(), records: records.result.map(String).sort() })
+        r.result.close()
+      }
+    }
+  }))
+  expect(kept.records).toEqual([CLAUDE_PANE, CLAUDE_SUGGEST_PANE, OMP_CHAT_PANE].sort())
+  expect(kept.index).toEqual(kept.records)
+  await other.close()
 })

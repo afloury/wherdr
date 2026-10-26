@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatItem, HerdrState } from '../shared/types'
-import { CHAT_BYTES, MAX_BYTES, MAX_CHATS, MAX_MESSAGES, pruneIndex, trimChat, type ChatEntry } from '../app/utils/offlineCache'
+import { CHAT_BYTES, MAX_BYTES, MAX_CHATS, MAX_MESSAGES, mergeIndex, pruneIndex, trimChat, type ChatEntry } from '../app/utils/offlineCache'
 import { leaseFromStatus, mayReadOffline } from '../app/utils/offlineAccess'
 
 const item = (text: string): ChatItem => ({ role: 'assistant', text, ts: null })
@@ -71,5 +71,18 @@ describe('cache hors ligne', () => {
     expect(lease.deadline).toBe(client + 3600 * 1000)
     expect(mayReadOffline(lease, client + 3599 * 1000)).toBe(true)
     expect(mayReadOffline(lease, client + 3601 * 1000)).toBe(false)
+  })
+})
+
+describe('offline index merge', () => {
+  it('puts the conversations written now first, over what another tab stored', () => {
+    const stored: ChatEntry[] = [{ id: 'a', used: 5, bytes: 10 }, { id: 'b', used: 4, bytes: 20 }]
+    const next = mergeIndex(stored, new Map([['b', 99]]), new Map([['b', 50], ['a', 60]]), 1000)
+    expect(next).toEqual([{ id: 'b', used: 50, bytes: 99 }, { id: 'a', used: 60, bytes: 10 }])
+  })
+
+  it('keeps a stored entry this tab never saw, and dates a new one now', () => {
+    const next = mergeIndex([{ id: 'other-tab', used: 7, bytes: 30 }], new Map([['mine', 40]]), new Map(), 1000)
+    expect(next).toEqual([{ id: 'mine', used: 1000, bytes: 40 }, { id: 'other-tab', used: 7, bytes: 30 }])
   })
 })

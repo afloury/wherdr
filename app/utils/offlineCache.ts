@@ -100,12 +100,21 @@ function get<T>(store: 'kv' | 'chats', key: string): Promise<T | undefined> {
   })).catch(() => undefined)
 }
 
+// The index as another tab may have left it, with this tab's waiting
+// conversations put first (`used`: when each was last opened here).
+export function mergeIndex(stored: ChatEntry[], chats: Map<string, number>, used: Map<string, number>, now = Date.now()): ChatEntry[] {
+  let next = stored.filter(e => typeof e?.id === 'string' && !chats.has(e.id))
+  next = next.map(e => (used.has(e.id) ? { ...e, used: used.get(e.id)! } : e))
+  return [...[...chats].map(([id, bytes]) => ({ id, used: used.get(id) || now, bytes })), ...next]
+}
+
 // ------------------------------------------------------------ waiting writes
 interface Pending {
   home?: { state: HerdrState, at: number }
   quotas?: Quotas
   board?: SavedBoard
-  chats: Map<string, { chat: SavedChat, bytes: number }>
+  // Trimmed when written (trimChat): a streaming conversation is saved at every read.
+  chats: Map<string, SavedChat>
   used: Map<string, number>
   prune?: HerdrState
 }
@@ -113,9 +122,9 @@ const none = (): Pending => ({ chats: new Map(), used: new Map() })
 let pending = none()
 let timer: ReturnType<typeof setTimeout> | null = null
 let writing: Promise<void> = Promise.resolve()
-// Index and size of the other records, as last written (null: not read yet).
-let index: ChatEntry[] | null = null
-let otherBytes = 0
+// Size of the home state and of the Board, as last written by this tab.
+let homeBytes = 0
+let boardBytes = 0
 
 function schedule() {
   if (timer) return
@@ -133,12 +142,12 @@ export function flushOffline(): Promise<void> {
 async function write(p: Pending) {
   try {
     const d = await db()
-    if (!index) index = (await get<ChatEntry[]>('kv', 'index')) || []
-    if (p.home) otherBytes = bytesOf(p.home)
-    let next = index.slice()
-    for (const [id, c] of p.chats) next = [{ id, used: p.used.get(id) || Date.now(), bytes: c.bytes }, ...next.filter(e => e.id !== id)]
-    for (const [id, used] of p.used) if (!p.chats.has(id)) next = next.map(e => (e.id === id ? { ...e, used } : e))
-    const { keep, drop } = pruneIndex(next, p.prune, otherBytes)
+    if (p.home) homeBytes = bytesOf(p.home)
+    if (p.board) boardBytes = bytesOf(p.board)
+    const chatsIn = new Map([...p.chats].map(([id, c]) => {
+      const t = trimChat(c.items)
+      return [id, { chat: { ...c, items: t.items }, bytes: t.bytes }] as const
+    }))
     await new Promise<void>((resolve, reject) => {
       const tx = d.transaction(['kv', 'chats'], 'readwrite')
       const kv = tx.objectStore('kv')
@@ -146,14 +155,26 @@ async function write(p: Pending) {
       if (p.home) kv.put(p.home, 'home')
       if (p.quotas) kv.put(p.quotas, 'quotas')
       if (p.board) kv.put(p.board, 'board')
-      for (const [id, c] of p.chats) if (!drop.includes(id)) chats.put(c.chat, id)
-      for (const id of drop) chats.delete(id)
-      kv.put(keep, 'index')
+      // The index and the kept conversations read in this transaction, not
+      // remembered: another tab (the installed app and a browser tab) writes
+      // them too, and a record left out of the index would never be removed.
+      const storedIndex = kv.get('index')
+      const storedKeys = chats.getAllKeys()
+      storedKeys.onsuccess = () => {
+        const keys = new Set(storedKeys.result.map(String))
+        // Entries whose record is gone (cleared elsewhere) leave the index too.
+        const stored = (Array.isArray(storedIndex.result) ? storedIndex.result as ChatEntry[] : []).filter(e => keys.has(e?.id))
+        const next = mergeIndex(stored, new Map([...chatsIn].map(([id, c]) => [id, c.bytes])), p.used)
+        const { keep } = pruneIndex(next, p.prune, homeBytes + boardBytes)
+        const kept = new Set(keep.map(c => c.id))
+        for (const [id, c] of chatsIn) if (kept.has(id)) chats.put(c.chat, id)
+        for (const k of storedKeys.result) if (!kept.has(String(k))) chats.delete(k)
+        kv.put(keep, 'index')
+      }
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
       tx.onabort = () => reject(tx.error)
     })
-    index = keep
   } catch { /* quota, private browsing, eviction: live reading kept */ }
 }
 if (typeof document !== 'undefined') {
@@ -174,7 +195,7 @@ export async function readQuotas(): Promise<Quotas | null> {
   return pending.quotas || (await get<Quotas>('kv', 'quotas')) || null
 }
 export async function readChat(id: string): Promise<SavedChat | null> {
-  const c = pending.chats.get(id)?.chat || await get<SavedChat>('chats', id)
+  const c = pending.chats.get(id) || await get<SavedChat>('chats', id)
   return c && Array.isArray(c.items) && Number.isFinite(c.at) ? c : null
 }
 export async function readBoard(): Promise<SavedBoard | null> {
@@ -197,8 +218,7 @@ export function saveBoard(board: TasksBoard) {
   schedule()
 }
 export function saveChat(id: string, items: ChatItem[]) {
-  const t = trimChat(items)
-  pending.chats.set(id, { chat: { id, items: t.items, at: Date.now() }, bytes: t.bytes })
+  pending.chats.set(id, { id, items, at: Date.now() })
   pending.used.set(id, Date.now())
   schedule()
 }
@@ -209,8 +229,8 @@ export function touchChat(id: string) {
 export async function clearOffline() {
   if (timer) { clearTimeout(timer); timer = null }
   pending = none()
-  index = []
-  otherBytes = 0
+  homeBytes = 0
+  boardBytes = 0
   writing = writing.then(async () => {
     try {
       const d = await db()
