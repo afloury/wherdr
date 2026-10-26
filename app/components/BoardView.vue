@@ -32,7 +32,7 @@ import type { SelectItem } from '@nuxt/ui'
 import type { PanelTarget } from './BoardPanel.vue'
 import type { SettingsTarget } from './BoardSettings.vue'
 // The home list's machine groups (Settings › Machine bar); `machineGroups` here is the Board's lanes.
-import { machineGroups as barGroups, machineBarPick } from '~/composables/useMachineBar'
+import { machineGroups as barGroups, machineBarPick, showMachineInBar } from '~/composables/useMachineBar'
 
 const COLUMN_KEY = 'boardColumn'
 const SCOPE_KEY = 'boardMachine'
@@ -227,18 +227,40 @@ function selectColumn(id: TaskGroup) {
 }
 
 // ------------------------------------------------------------ one task
+// Who the side panel talks to (BoardPanel): a task's agent or a coordinator.
+const panel = shallowRef<PanelTarget | null>(null)
 const picked = shallowRef<Card | null>(null)
 const sheetOpen = ref(false)
 function openSheet(c: Card) {
   picked.value = c
   sheetOpen.value = true
 }
+// A task opened (a card, the sidebar, a push): the sidebar and the Board show
+// its machine. The sidebar's tab moves to it if it does not show it
+// (showMachineInBar); the Board's scope too, then on the same tab or group as
+// the sidebar. A scope that already shows it stays as it is.
+function followTask(machine: string) {
+  const pick = machineBarPick.value
+  showMachineInBar(machine)
+  const next = boardScopeFor(machine, shownScope.value, machineBarPick.value, barGroups.value)
+  if (next === undefined && pick === machineBarPick.value) return
+  // Kept as a choice of this tab, so that the next read does not take it back.
+  scope.value = next ?? scope.value
+  boardTabChoice.manual(scope.value)
+  writeStore(SCOPE_KEY, boardScopeValue(scope.value))
+}
 // A card always opens the task panel. No agent yet: the panel explains
 // setup failures and keeps the task's details and actions reachable.
 function openCard(c: Card) {
   picked.value = c
-  panel.value = { machine: c.machine, kind: 'task', id: c.task.id }
+  openTaskPanel(c.machine, c.task.id)
   haptic()
+}
+function openTaskPanel(machine: string, id: string) {
+  const p = panel.value
+  // Already shown (opened at once from the sidebar): the same panel, nothing reloads.
+  if (!(p?.kind === 'task' && p.machine === machine && p.id === id)) panel.value = { machine, kind: 'task', id }
+  followTask(machine)
 }
 // The open task as the last read has it (its group or review may have moved on).
 const pickedTask = computed(() => {
@@ -265,9 +287,18 @@ watch(() => route.query, (q) => {
 }, { immediate: true })
 watch(() => route.query.task, (id) => {
   if (typeof id !== 'string' || !id) return
-  opening.value = { machine: typeof route.query.machine === 'string' ? route.query.machine : null, id }
+  const machine = typeof route.query.machine === 'string' ? route.query.machine : null
+  // `now`: from the sidebar, which knows the task is there.
+  const now = route.query.now === '1'
+  opening.value = { machine, id }
   waitNoted.value = false
   router.replace({ query: {} })
+  // Its panel opens now (from the sidebar, or a link to a task the kept board
+  // has), with its shapes while it loads: the read below only confirms it, or
+  // turns to the archived ones. Other links wait for that read.
+  const kept = allCards.value.filter(x => x.task.id === id && (machine === null || x.machine === machine))
+  if (kept.length === 1) openCard(kept[0]!)
+  else if (now && machine !== null) openTaskPanel(machine, id)
 }, { immediate: true })
 watch([opening, board, reads], () => {
   const want = opening.value
@@ -287,6 +318,9 @@ watch([opening, board, reads], () => {
   }
   opening.value = null
   // Not on the Board: maybe archived, whose sheet opens read-only with Restore.
+  // The panel opened at once for it closes.
+  const p = panel.value
+  if (p?.kind === 'task' && p.id === want.id && (want.machine === null || p.machine === want.machine)) panel.value = null
   openArchived(want)
 })
 async function openArchived(want: { machine: string | null, id: string }) {
@@ -361,8 +395,6 @@ function newTask(machine?: string, repo?: string) {
 function added() { setTimeout(reload, 1500) }
 
 // ------------------------------------------------------------ the panel
-// Who the side panel talks to (BoardPanel): a task's agent or a coordinator.
-const panel = shallowRef<PanelTarget | null>(null)
 function talkTo(machine: string, to: CoordinatorTarget) {
   if (coordWhy(machine)) return
   panel.value = { machine, kind: 'coordinator', to }
@@ -401,6 +433,24 @@ const panelTask = computed(() => {
   const p = panel.value
   return p?.kind === 'task' ? allCards.value.find(c => c.machine === p.machine && c.task.id === p.id)?.task || picked.value?.task || null : null
 })
+// The task open in the panel: its card is selected (and its conversation in
+// the sidebar, via boardOpenTask), and brought into view.
+// The panel covers the Board (phone, narrow window): once it closes, the card
+// of the task it showed stays marked, so the way back shows where it was.
+const lastTask = ref('')
+const openKey = computed(() => (panel.value?.kind === 'task' ? `${panel.value.machine}|${panel.value.id}` : ''))
+const markedKey = computed(() => openKey.value || (panel.value || dockPanel.value ? '' : lastTask.value))
+watch(panel, (p) => {
+  boardOpenTask.value = p?.kind === 'task' ? { machine: p.machine, id: p.id } : null
+  if (p) lastTask.value = openKey.value
+}, { immediate: true })
+onUnmounted(() => { boardOpenTask.value = null })
+watch(() => [markedKey.value, allCards.value.find(c => c.key === markedKey.value)?.task.group] as const, ([key, group]) => {
+  if (!key || !group) return
+  // Phone, or a Board narrowed by the panel: its group's tab (not kept on the device).
+  if (!wide.value && TASK_GROUPS.includes(group) && (group !== 'done' || showDone.value)) phoneColumn.value = group
+  nextTick(() => root.value?.querySelector<HTMLElement>('.task-card.sel')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }))
+}, { immediate: true })
 // Its machine left Herdr's list: the panel closes. One that does not answer
 // keeps it, with what is being written: nothing goes elsewhere on its own.
 watch(board, (b) => {
@@ -645,7 +695,7 @@ function back() {
                     :data-group="col.id" :aria-label="col.label"
                   >
                     <div class="board-repo-col-body">
-                      <TaskCard v-for="c in col.cards" :key="c.key" :task="c.task" :stale="c.stale" :read-at="readAt(c.readAt)" @open="openCard(c)" />
+                      <TaskCard v-for="c in col.cards" :key="c.key" :task="c.task" :stale="c.stale" :read-at="readAt(c.readAt)" :selected="c.key === markedKey" @open="openCard(c)" />
                       <p v-if="!wide && !col.total" class="board-empty">{{ t('Nothing here') }}</p>
                       <button v-if="col.hidden" type="button" class="board-more" @click="showAll = true">
                         {{ tl(`Show all (${col.hidden} more)`, `Tout afficher (${col.hidden} de plus)`) }}
@@ -664,7 +714,7 @@ function back() {
             <div class="board-col-body">
               <TaskCard
                 v-for="c in col.cards" :key="c.key" :task="c.task" :machine="namesOnCards ? machineName(c.machine) : undefined"
-                :stale="c.stale" :read-at="readAt(c.readAt)" @open="openCard(c)"
+                :stale="c.stale" :read-at="readAt(c.readAt)" :selected="c.key === markedKey" @open="openCard(c)"
               />
               <p v-if="!col.cards.length" class="board-empty">{{ t('Nothing here') }}</p>
               <button v-if="col.hidden" type="button" class="board-more" @click="showAll = true">

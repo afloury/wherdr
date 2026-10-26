@@ -18,6 +18,9 @@ let lastBoard: TasksBoard | null = null
 // picker and the names of the tasks it waits for).
 export const seenTasksBoard = shallowRef<TasksBoard | null>(null)
 export function sawTasksBoard(b: TasksBoard) { lastBoard = b; seenTasksBoard.value = b }
+// The task open in the Board's side panel (set by BoardView while it is shown):
+// its conversation in the sidebar is selected too (AgentCard).
+export const boardOpenTask = shallowRef<{ machine: string, id: string } | null>(null)
 
 export function useTasksBoard() {
   const board = shallowRef<TasksBoard | null>(lastBoard)

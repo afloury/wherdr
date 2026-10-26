@@ -489,7 +489,7 @@ export function tasksIn(spaces: string[], panes: Pick<Pane, 'id' | 'workspace'>[
 // `lead`: the head row of a repo group, named after the repo (its project
 // coordinator's, or the repo's own space when it has no coordinator here).
 // `icon`, `hint`: a coordinator's own icon and what it is for (coordinatorKind).
-export interface BoardCard { identity?: TaskAgentIdentity, group?: TaskGroup, tag: string, name?: string, progress?: number | null, since?: number | null, msg?: string, stage?: string, tab?: string, onBoard?: () => void, coordinator?: boolean, lead?: boolean, icon?: string, hint?: string }
+export interface BoardCard { identity?: TaskAgentIdentity, group?: TaskGroup, tag: string, name?: string, progress?: number | null, since?: number | null, msg?: string, stage?: string, tab?: string, onBoard?: () => void, taskRef?: { machine: string, id: string }, coordinator?: boolean, lead?: boolean, icon?: string, hint?: string }
 
 // What a member's card says before its title: `WHR-2`, `WHR-2 · review`, `WHR-2 · A`.
 export function memberTag(m: Pick<Member, 'task' | 'role' | 'letter'>, review: string): string {
