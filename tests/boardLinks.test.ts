@@ -392,6 +392,18 @@ describe('a watcher kept after its review', () => {
 })
 
 describe('checkout path attachment after a repository move', () => {
+  it('keeps the board name and key when the project coordinator is closed', () => {
+    const st = snapshot()
+    for (const w of st.workspaces) if (w.repo) w.repoName = 'feature-folder'
+    const board = links()
+    board.coordinators = []
+    const result = boardSections(spaceRows(st), st.workspaces, [board], new Set(st.panes.map(p => p.id)))
+    expect(result.projects).toHaveLength(1)
+    expect(result.projects[0]).toMatchObject({ repo: 'app', key: 'APP', coordinator: null, remote: null })
+    expect(result.projects[0]!.members.length).toBeGreaterThan(0)
+    expect(result.projects[0]!.space?.lead.id).toBe('w2:p1')
+  })
+
   it('preserves the checkout path from Herdr metadata', () => {
     expect(snapshot().workspaces.find(w => w.id === 'w2')!.path).toBe('/home/u/dev/app')
   })

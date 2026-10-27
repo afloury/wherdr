@@ -493,6 +493,27 @@ body.short-bottom { --safe-bottom: 0px; }
 .card.compact.home-lead .card-more-in { padding-left: 26px; }
 @media (pointer: coarse) { .card.compact.home-lead { min-height: 44px; } }
 
+/* Projects without a local coordinator have a light, noninteractive heading. */
+.project-identity {
+  display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 0 4px;
+  border-top: 1px solid var(--line);
+}
+.project-key {
+  display: grid; place-items: center; flex: none; min-width: 24px; height: 20px; padding: 0 4px;
+  background: var(--surface); border: 1px solid var(--line); color: var(--muted); font: 600 10px/1 var(--mono);
+}
+.project-key .iconify { width: 12px; height: 12px; }
+.project-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-2); font: 600 12px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+}
+.project-identity-summary {
+  margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--muted); font: 500 10px/1.2 var(--mono); text-transform: uppercase;
+}
+.project-identity .space-menu { flex: none; color: var(--dim); }
+@media (pointer: coarse) { .project-identity { min-height: 44px; } }
+
 .project-bar { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 0 0 5px; }
 .project-bar > :first-child { flex: 1 0 auto; width: max-content; min-width: 0; max-width: calc(100% - 44px); }
 .project-head {
