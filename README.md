@@ -6,7 +6,9 @@ wherdr is an unofficial, self-hosted web client for [Herdr](https://herdr.dev).
 Start coding agents on your computer, follow their work and reply from your phone or browser.
 It uses the same Herdr session, with live conversations, real terminals and a herdr-projects Board.
 
-![Compact agent list and a task conversation on desktop](docs/screenshots/desktop.png)
+<p align="center">
+  <img src="assets/wherdr-readme.webp" width="720" alt="Animated demonstration of the current wherdr interface: launch an agent on desktop, continue on a phone, approve its request, view project tasks and open the Board. Real app, fictional demo data.">
+</p>
 
 [Try the demo](https://wherdr.dev/demo/) · [Website](https://wherdr.dev) · [Launch film](assets/wherdr-launch.mp4)
 
