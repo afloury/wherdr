@@ -105,7 +105,19 @@ describe('documentation entry points', () => {
     const readme = read('../README.md')
     expect(Buffer.byteLength(readme)).toBeLessThan(6000)
     expect(readme).toContain('(docs/README.md)')
-    expect(readme).toContain('(docs/screenshots/desktop.png)')
+  })
+
+  it('presents the current demo as an animated README hero with alternative text', () => {
+    const readme = read('../README.md')
+    // The animated demo replaces the former static desktop screenshot.
+    const hero = readme.match(/<img\s+src="(assets\/wherdr-readme\.webp)"[^>]*\balt="([^"]+)"/)
+    expect(hero).not.toBeNull()
+    expect(hero![2]!.length).toBeGreaterThan(20)
+    const webp = readFileSync(new URL(`../${hero![1]}`, import.meta.url))
+    expect(webp.toString('ascii', 0, 4)).toBe('RIFF')
+    expect(webp.toString('ascii', 8, 12)).toBe('WEBP')
+    expect(webp.includes(Buffer.from('ANIM'))).toBe(true)
+    expect(webp.includes(Buffer.from('ANMF'))).toBe(true)
   })
 
   it('indexes every documentation page', () => {
