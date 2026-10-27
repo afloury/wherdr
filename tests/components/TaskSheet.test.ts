@@ -430,10 +430,16 @@ describe('Start: the agent it starts with', () => {
   const pickFrom = async (button: number, label: string) => {
     // The menu before has closed first.
     await vi.waitFor(() => expect(document.querySelector('[role="menuitemcheckbox"]')).toBeNull())
-    modelButtons()[button]!.click()
+    const trigger = modelButtons()[button]!
+    trigger.click()
     await flushPromises()
     ;(await menuItem(label)).click()
     await flushPromises()
+    // Closed, the menu hands focus back to its button, late (reka's FocusScope
+    // unmounts on a 0 ms timer). A menu opened before that sees the focus land
+    // outside it and closes: wait for it, whatever order Node runs that timer
+    // and flushPromises (setImmediate) in.
+    await vi.waitFor(() => expect(document.activeElement).toBe(trigger))
   }
 
   it('a model and an effort after the program: none by default; picked, sent with it for this start', async () => {
