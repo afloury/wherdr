@@ -67,8 +67,8 @@ function npmStep(name: string) {
 it('uses one release tag for dispatch, checkout and concurrency, preserving OIDC publishing', () => {
   expect(npmWorkflow).toMatch(/workflow_dispatch:\s+inputs:\s+version:/)
   expect(npmWorkflow).toMatch(/version:\s+description:.*\n\s+required: true\n\s+type: string/)
-  expect(npmWorkflow).toContain('RELEASE_TAG: ${{ inputs.version || github.ref_name }}')
-  expect(npmWorkflow).toContain('group: npm-${{ inputs.version || github.ref_name }}')
+  expect(npmWorkflow).toContain('RELEASE_TAG: ${{ inputs.version }}')
+  expect(npmWorkflow).toContain('group: npm-${{ inputs.version }}')
   expect(npmWorkflow).toContain('cancel-in-progress: false')
   expect(npmWorkflow).toContain('ref: refs/tags/${{ env.RELEASE_TAG }}')
   expect(npmWorkflow.indexOf('name: Validate release tag')).toBeLessThan(npmWorkflow.indexOf('uses: actions/checkout'))
@@ -77,6 +77,50 @@ it('uses one release tag for dispatch, checkout and concurrency, preserving OIDC
   expect(npmWorkflow).toContain('runs-on: ubuntu-latest')
   expect(npmWorkflow).not.toContain('GITHUB_REF_NAME')
   expect(npmWorkflow).not.toMatch(/^\s+environment:/m)
+})
+
+// A tag push used to start npm.yml beside release.yml, before the release had its package.
+it('starts npm only from release.yml, after publish-release, or by hand', () => {
+  const on = npmWorkflow.split('\non:\n')[1]!.split('\nenv:\n')[0]!
+  expect(on.split('\n')[0]).toBe('  workflow_dispatch:')
+  expect(on).not.toMatch(/^  (push|release|workflow_run):/m)
+  const job = workflow.split('\n  npm:\n')[1]!.split('\n\n')[0]!
+  expect(job).toContain('    needs: publish-release\n')
+  expect(job).toContain('      actions: write')
+  expect(job).toContain('run: gh workflow run npm.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f version="$GITHUB_REF_NAME"')
+  // Homebrew failing must not hold npm back: the dispatch depends on publish-release only.
+  expect(workflow.indexOf('\n  publish-release:\n')).toBeLessThan(workflow.indexOf('\n  npm:\n'))
+})
+
+it('skips every publishing step once the version is on npm', () => {
+  const steps = npmWorkflow.split('\n    steps:\n')[1]!.split('\n      - ').slice(1)
+  const after = steps.slice(steps.findIndex(step => step.includes('id: registry')) + 1)
+  expect(after.length).toBeGreaterThan(0)
+  for (const step of after) expect(step).toContain("if: steps.registry.outputs.published == 'false'")
+})
+
+it.skipIf(!hasCommands('bash'))('reads the registry: published skips, missing publishes, errors fail', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-npm-registry-'))
+  try {
+    writeFileSync(path.join(home, 'curl'), `#!/bin/sh
+printf '%s\\n' "$*" >> "$HOME/requests"
+printf '%s' "$HTTP_STATUS"
+`, { mode: 0o755 })
+    for (const [status, ok, published] of [['200', true, 'true'], ['404', true, 'false'], ['500', false, ''], ['000', false, '']] as const) {
+      rmSync(path.join(home, 'requests'), { force: true })
+      const output = path.join(home, 'output')
+      writeFileSync(output, '')
+      const run = spawnSync('bash', ['-e', '-c', npmStep('Check npm registry')], {
+        cwd: home, encoding: 'utf8', env: {
+          ...process.env, HOME: home, PATH: `${home}:${process.env.PATH}`,
+          RELEASE_TAG: 'v1.3.3', HTTP_STATUS: status, GITHUB_OUTPUT: output,
+        },
+      })
+      expect(run.status === 0, run.stderr).toBe(ok)
+      expect(readFileSync(path.join(home, 'requests'), 'utf8')).toContain('https://registry.npmjs.org/wherdr/1.3.3')
+      expect(readFileSync(output, 'utf8')).toBe(published ? `published=${published}\n` : '')
+    }
+  } finally { rmSync(home, { recursive: true, force: true }) }
 })
 
 it.skipIf(!hasCommands('bash'))('rejects invalid or missing releases before checkout', () => {
