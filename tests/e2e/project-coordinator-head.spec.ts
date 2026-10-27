@@ -27,8 +27,16 @@ for (const kind of ['local', 'remote', 'terminal'] as const) {
     await expect(project.locator('.project-tree .card')).toHaveCount(1)
     await expect(project.locator('.project-lead')).toHaveCount(kind === 'local' ? 1 : 0)
     await expect(project.locator('.project-remote')).toHaveCount(kind === 'remote' ? 1 : 0)
-    const headClass = kind === 'local' ? 'project-lead' : kind === 'remote' ? 'project-remote' : 'project-bar'
+    const headClass = kind === 'local' ? 'project-lead' : 'project-identity'
     await expect(project.locator(':scope > :first-child')).toHaveClass(new RegExp(headClass))
+    if (kind !== 'local') {
+      const identity = project.locator('.project-identity')
+      await expect(identity.locator('h2')).toHaveText('demo')
+      await expect(identity.locator('.project-key')).toHaveText('DEMO')
+      await expect(identity.locator('.card, .card-state, .lead-coord-tag')).toHaveCount(0)
+      await expect(identity.locator('.project-name')).toHaveCSS('text-transform', 'uppercase')
+      await expect(identity.locator('.space-menu')).toBeVisible()
+    }
     if (kind === 'local') await expect(project.locator('.lead-coord-tag')).toHaveText('Coordinator')
     if (kind === 'remote') await expect(project.locator('.project-remote')).toContainText('Coordinated from Build box')
     await fs.mkdir('.shots', { recursive: true })
@@ -36,6 +44,17 @@ for (const kind of ['local', 'remote', 'terminal'] as const) {
       await page.setViewportSize({ width, height })
       await expect(project).toBeVisible()
       expect(await project.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+      // Check the actual header and menu bounds too: a clipped ancestor must
+      // not hide an overflowing phone header or an unreachable options button.
+      const head = project.locator(`.${headClass}`)
+      expect(await head.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+      const bounds = (await project.boundingBox())!
+      for (const item of [head, project.getByRole('button', { name: 'Options: demo', exact: true })]) {
+        const box = (await item.boundingBox())!
+        expect(box.x).toBeGreaterThanOrEqual(bounds.x)
+        expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width)
+        expect(box.x + box.width).toBeLessThanOrEqual(width)
+      }
       await page.screenshot({ path: `.shots/project-head-${kind}-${width}.png` })
     }
     await project.locator('.project-head').click()
