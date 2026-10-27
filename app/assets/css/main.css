@@ -2564,7 +2564,16 @@ body.kb .composer { padding-bottom: 8px; }
 .settings-action .iconify { width: 18px; height: 18px; color: var(--muted); }
 .settings-action.danger, .settings-action.danger .iconify { color: var(--rose); }
 /* Worktrees: one line per checkout, removal on the right. */
-.wt-card { padding-top: 4px; }
+.wt-card { padding-top: 4px; min-width: 0; }
+.wt-machines { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.wt-machines button { max-width: 100%; overflow-wrap: anywhere; padding: 8px 12px; border: 1px solid var(--line); background: none; color: var(--muted); font: 500 11px/1.4 var(--mono); cursor: pointer; }
+.wt-machines button[aria-selected="true"] { color: var(--text); background: var(--line-soft); border-color: var(--text); }
+.wt-project-heading { width: 100%; display: flex; align-items: center; gap: 8px; padding: 12px 0; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); font: 600 12px/1.4 var(--mono); text-transform: uppercase; text-align: left; cursor: pointer; }
+.wt-project-heading > span:not(.iconify):not(.wt-count) { min-width: 0; overflow-wrap: anywhere; }
+.wt-project-heading .iconify { flex: none; }
+.wt-machines button:focus-visible, .wt-project-heading:focus-visible { outline: 1px solid var(--accent); outline-offset: -2px; }
+.wt-count { margin-left: auto; color: var(--muted); }
+.wt-meta { overflow-wrap: anywhere; }
 .wt-list { list-style: none; margin: 0; padding: 0; }
 .wt-list li { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line-soft); }
 .wt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
