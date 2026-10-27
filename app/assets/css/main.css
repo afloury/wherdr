@@ -468,7 +468,7 @@ body.short-bottom { --safe-bottom: 0px; }
 }
 
 /* herdr-projects on the home list (ProjectGroup): a repo's group. Its head
-   row is its coordinator (the wherdr mark on the accent, the repo's name in
+   row is its coordinator (the project key on the accent, the repo's name in
    the title face, COORDINATOR, its state), bold above its tasks; under it the
    group's bar (fold, summary of the tasks, branch, "…"); then the tasks,
    indented on a 1 px rule that starts at the fold chevron. */
@@ -480,6 +480,7 @@ body.short-bottom { --safe-bottom: 0px; }
   font: 700 13px/1 var(--mono); color: var(--text-2); background: var(--surface); border: 1px solid var(--line-strong);
 }
 .card.compact.home-lead .lead-mark.coord { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.card.compact.home-lead .lead-project-key { letter-spacing: 0; white-space: nowrap; }
 .card.compact.home-lead .lead-mark .app-logo { width: 14px; height: 6px; }
 .card.compact.home-lead .card-title.lead-name {
   font: 750 14px/1.2 var(--display); letter-spacing: -.02em; color: var(--text);

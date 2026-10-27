@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // A repo's group on the home list, as Herdr's sidebar draws it with
 // herdr-projects. Its head row is its project coordinator, named after the
-// repo: the wherdr mark on the accent, "Coordinator", its state (no last
+// repo: its project key on the accent, "Coordinator", its state (no last
 // message; its question and one-tap answers when it asks one). Without a
 // local coordinator, a static project identity heads the group, followed
 // by a remote coordinator link if present.
@@ -99,7 +99,7 @@ const rowKey = (r: Row) => r.key
 <template>
   <section class="agent-group project" :class="[group.state, { collapsed }]" :data-repo="group.repo">
     <div v-if="leadRow" class="card-list project-lead" role="group" :aria-label="leadLabel">
-      <AgentCard :key="leadRow.key" :pane="leadRow.lead" :row="leadRow" :board="leadCard" />
+      <AgentCard :key="leadRow.key" :pane="leadRow.lead" :row="leadRow" :board="leadCard" :project-key="group.key" />
     </div>
     <div v-else class="project-identity">
       <span class="project-key" aria-hidden="true"><template v-if="group.key">{{ group.key }}</template><UIcon v-else name="i-lucide-folder" /></span>

@@ -13,6 +13,7 @@ for (const language of ['en', 'fr']) {
     test(`board task density: ${compact ? 'compact' : 'normal'}, ${language}`, async ({ page }, info) => {
       await page.addInitScript(({ language, compact }) => {
         localStorage.setItem('herdrLanguage', language)
+        localStorage.setItem('theme', language === 'fr' ? 'catppuccin-latte' : 'wherdr-titanium')
         localStorage.setItem('compactListV2', compact ? '1' : '0')
       }, { language, compact })
       // Give the repo a main space so its real options menu shares the summary bar.
@@ -79,7 +80,24 @@ for (const language of ['en', 'fr']) {
         await page.setViewportSize({ width, height })
         await expect(lead).toBeVisible()
         expect((await lead.boundingBox())!.height).toBeLessThanOrEqual(44)
-        await expect(lead.locator('.lead-mark')).toHaveCSS('width', '18px')
+        const mark = lead.locator('.lead-mark')
+        await expect(mark).toHaveCSS('width', '18px')
+        await expect(mark).toHaveCSS('height', '18px')
+        await expect(mark).toHaveText('DEMO')
+        await expect(mark.locator('.app-logo')).toHaveCount(0)
+        const key = mark.locator('.lead-project-key')
+        expect(await key.evaluate(el => el.getBoundingClientRect().width)).toBeLessThanOrEqual(16)
+        expect(await key.evaluate(el => getComputedStyle(el).fontFamily)).toContain('JetBrains Mono')
+        expect(await mark.evaluate(el => {
+          const probe = document.createElement('span')
+          probe.style.color = 'var(--on-accent)'
+          probe.style.backgroundColor = 'var(--accent)'
+          el.append(probe)
+          const same = getComputedStyle(el).color === getComputedStyle(probe).color
+            && getComputedStyle(el).backgroundColor === getComputedStyle(probe).backgroundColor
+          probe.remove()
+          return same
+        })).toBe(true)
         await expect(lead.locator('.lead-name')).toHaveCSS('font-size', '14px')
         await expect(project.locator('.project-branch')).toHaveAttribute('title', /feature\/compact-project-header/)
         for (const row of [lead, bar]) expect(await row.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
