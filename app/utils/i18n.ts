@@ -637,7 +637,6 @@ const FR: Record<string, string> = {
   'Invalid message': 'Message invalide',
   'No agent in this pane': 'Pas d’agent dans ce pane',
   'This agent’s folder is unknown': 'Dossier de cet agent inconnu',
-  'Name: use at least one letter or digit': 'Nom : mets au moins une lettre ou un chiffre',
   
   'Uncommitted changes in this worktree': 'Modifications non commitées dans ce worktree',
   'This pane’s folder is unknown': 'Dossier de ce pane inconnu',

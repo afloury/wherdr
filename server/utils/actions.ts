@@ -8,7 +8,8 @@ import { panelOpen } from './choices'
 import { addQueued, findPane, pendingPrompts, poll } from './state'
 import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane } from './machines'
 import { type DirDenied, type DirEntryRaw, LIST_DIRS_SCRIPT, dirDeniedFromCode, dirDeniedFromError, listDirsLocal, parseDirList } from './fsx'
-import { AGENT_NAME_HINT, PANE_RE, joinId, toAgentName } from '../../shared/ids'
+import { PANE_RE, joinId, toAgentName } from '../../shared/ids'
+import { cleanLabel } from '../../shared/spaceActions'
 import { safeUploadExtension } from '../../shared/uploadName'
 import type { DirEntry, DirListing, MachineConfig } from '../../shared/types'
 import { installedAgentKinds } from './agentAvailability'
@@ -71,11 +72,12 @@ export async function createAgent(body: Json) {
     if (!(await m.fs.stat(cwd)).isDir) throw new Error()
   } catch { throw new HerdrError('bad_cwd', fmt('Folder not found: {path}', { path: cwd })) }
 
-  const typed = String(body.name || '').trim()
-  let name = toAgentName(typed)
-  if (typed && !name) throw new HerdrError('bad_name', AGENT_NAME_HINT)
-  if (!name) name = `${kind}-${crypto.randomBytes(2).toString('hex')}`
-  const label = String(body.label || '').trim().slice(0, 40) || px.basename(cwd) || '~'
+  // Typed name, kept as typed (spaces, capitals): it names the new space, or
+  // the pane in an existing space. Herdr's agent id must be a slug, so it is
+  // derived from it (random when nothing usable is left, e.g. only emoji).
+  const shown = cleanLabel(body.name)
+  const name = toAgentName(shown) || `${kind}-${crypto.randomBytes(2).toString('hex')}`
+  const label = cleanLabel(body.label) || shown || px.basename(cwd) || '~'
 
   // Worktree: the agent works on its own branch, in a separate folder
   // (~/.herdr/worktrees/<repo>/<branch>), without touching the original folder.
@@ -86,7 +88,7 @@ export async function createAgent(body: Json) {
     let branch = String(body.branch || '').trim()
     if (branch && !/^[\w][\w./-]{0,79}$/.test(branch)) throw new HerdrError('bad_branch', 'Invalid branch name')
     if (!branch) branch = `${kind === 'shell' ? 'shell' : kind}-${crypto.randomBytes(2).toString('hex')}`
-    const params = { cwd, branch, label: String(body.label || '').trim() || branch, focus: false, trust_repository: true }
+    const params = { cwd, branch, label: cleanLabel(body.label) || shown || branch, focus: false, trust_repository: true }
     try {
       created = await hx('worktree.create', params, 30000)
     } catch (e) {
@@ -146,6 +148,8 @@ export async function createAgent(body: Json) {
     if (!target) await herdr('workspace.close', { workspace_id: wsId }).catch(() => {})
     throw lastErr
   }
+  // An existing space keeps its name: the typed one goes on the pane.
+  if (target && shown) await herdr('pane.rename', { pane_id: paneId, label: shown }).catch(e => log(`pane.rename ${paneId}: ${(e as Error).message}`))
   // agent.start returns before the agent is ready (launch_pending), and it
   // may still stop on a prompt (folder trust). The first
   // message therefore waits its turn: it goes out on the first idle state.
