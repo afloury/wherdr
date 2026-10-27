@@ -169,3 +169,41 @@ test('notifications screenshots on phone and desktop, with no horizontal overflo
   await expect(page.getByRole('button', { name: 'Muet pendant 1 h', exact: true })).toBeVisible()
   await page.screenshot({ path: '.shots/notifications-menu-mobile.png' })
 })
+
+for (const desktop of [false, true]) {
+  test(`agent row notification menu on ${desktop ? 'desktop' : 'phone'}`, async ({ browser }) => {
+    const context = await browser.newContext({ baseURL: BASE_URL, viewport: desktop ? { width: 1440, height: 900 } : { width: 390, height: 844 }, isMobile: !desktop, hasTouch: !desktop, serviceWorkers: 'block' })
+    try {
+      const page = await context.newPage()
+      await seed(page, { version: 2, default: { events: ['needs-you', 'finished'], subagents: false }, exceptions: [] })
+      await page.goto('/#/')
+      const row = page.locator('.card[data-pane="w1:p1"]')
+      await expect(row).toBeVisible()
+      const originalClass = await row.getAttribute('class')
+      const open = async () => {
+        if (desktop) await row.click({ button: 'right' })
+        else {
+          await row.dispatchEvent('pointerdown', { pointerType: 'touch', button: 0, clientX: 30, clientY: 30 })
+          await page.waitForTimeout(750)
+          await row.dispatchEvent('pointerup', { pointerType: 'touch' })
+        }
+      }
+      const action = (name: string) => page.getByRole('menuitem', { name, exact: true }).or(page.getByRole('button', { name, exact: true }))
+      await open()
+      await action('Mute notifications').click()
+      await page.getByRole('button', { name: 'Muted', exact: true }).click()
+      await expect.poll(async () => (await stored(page))?.exceptions.find((e: { id: string }) => e.id === 'w1:p1')?.events).toEqual([])
+      await expect(row).toHaveAttribute('class', originalClass!)
+      await expect(page.locator('.card [class*="bell"]')).toHaveCount(0)
+      await fs.mkdir('.shots', { recursive: true })
+      await page.screenshot({ path: `.shots/notification-rows-${desktop ? 'desktop' : 'phone'}.png` })
+      await open()
+      await action('Unmute notifications').click()
+      await page.screenshot({ path: `.shots/notification-row-menu-${desktop ? 'desktop' : 'phone'}.png` })
+      await page.getByRole('button', { name: 'Needs you + finished', exact: true }).click()
+      await expect.poll(async () => (await stored(page))?.exceptions.find((e: { id: string }) => e.id === 'w1:p1')?.events).toEqual(['needs-you', 'finished'])
+      await open()
+      await expect(action('Mute notifications')).toBeVisible()
+    } finally { await context.close() }
+  })
+}
