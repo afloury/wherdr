@@ -43,9 +43,10 @@ describe('a repo group on the home list', () => {
     expect(lead.attributes('aria-label')).toBe('shop coordinator')
     const card = lead.find('.card')
     expect(card.classes()).toContain('home-lead')
-    // Its title is the repo, the wherdr mark on the accent, the COORDINATOR label, its state.
+    // Its title is the repo, its key on the accent, the COORDINATOR label, its state.
     expect(card.find('.card-title').text()).toBe('shop')
-    expect(card.find('.lead-mark.coord .app-logo').exists()).toBe(true)
+    expect(card.find('.lead-mark.coord').text()).toBe('SHOP')
+    expect(card.find('.lead-mark.coord .app-logo').exists()).toBe(false)
     expect(card.find('.lead-coord-tag').text()).toBe('Coordinator')
     expect(card.find('.card-state').exists()).toBe(true)
     // Its last message is not shown.
@@ -62,6 +63,22 @@ describe('a repo group on the home list', () => {
     const html = w.html()
     expect(html.indexOf('project-lead')).toBeLessThan(html.indexOf('project-bar'))
     expect(html.indexOf('project-bar')).toBeLessThan(html.indexOf('project-tree'))
+    w.unmount()
+  })
+
+  it.each(['AB', 'WHR', 'SHOP', 'ABCDE'])('shows project key %s in its coordinator header in both list modes', async (key) => {
+    for (const compact of [true, false]) {
+      compactList.value = compact
+      const w = await mount(section({ key }))
+      expect(w.find('.project-lead .lead-mark.coord').text()).toBe(key)
+      expect(w.find('.project-lead .app-logo').exists()).toBe(false)
+      w.unmount()
+    }
+  })
+
+  it('keeps the coordinator logo when no project key is available', async () => {
+    const w = await mount(section({ key: '' }))
+    expect(w.find('.project-lead .lead-mark.coord .app-logo').exists()).toBe(true)
     w.unmount()
   })
 

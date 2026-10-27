@@ -27,9 +27,9 @@ import { interactionWindowFor } from '~/utils/interactionWindow'
 // and current line, and a way to its task on the Board. A coordinator's
 // (`board.coordinator`) has its role's icon and its last message as that line.
 // `board.lead`: a repo group's head row (ProjectGroup): one line, larger, the
-// repo's name, the wherdr mark on the accent for a coordinator (an initial
+// repo's name, its project key on the accent for a coordinator (an initial
 // otherwise) and its state; no last message, only a question when it asks one.
-const props = defineProps<{ pane: Pane, row?: Row | null, board?: BoardCard | null, machineBadge?: string, projectBadge?: string }>()
+const props = defineProps<{ pane: Pane, row?: Row | null, board?: BoardCard | null, machineBadge?: string, projectBadge?: string, projectKey?: string }>()
 const space = computed(() => (props.row && props.row.kind === 'space' ? props.row : null))
 // Pane whose state the card shows.
 const statePane = computed(() => props.pane)
@@ -244,7 +244,8 @@ onUnmounted(list.unmount)
     >
       <template v-if="lead">
         <span class="avatar lead-mark" :class="{ coord: board?.coordinator }" :title="board?.coordinator && pane.agent ? kindLabel(pane.agent) : undefined" aria-hidden="true">
-          <AppLogo v-if="board?.coordinator" aria-hidden="true" /><template v-else>{{ leadInitial }}</template>
+          <span v-if="board?.coordinator && projectKey" class="lead-project-key" :style="{ fontSize: `${Math.min(10, 26 / projectKey.length)}px` }">{{ projectKey }}</span>
+          <AppLogo v-else-if="board?.coordinator" aria-hidden="true" /><template v-else>{{ leadInitial }}</template>
         </span>
         <span class="card-title lead-name">{{ title }}</span>
         <UIcon v-if="mutedNotifications" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" />
