@@ -61,6 +61,21 @@ jobs:
           gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq .body | node scripts/check-release-notes.mjs
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
 
+  # npm publishes only once the GitHub release and its package are public. npm.yml is
+  # dispatched rather than chained to the tag push or a `release` event: a release made
+  # public with GITHUB_TOKEN fires no event, and npm Trusted Publishing names npm.yml.
+  npm:
+    permissions:
+      actions: write
+    needs: publish-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Start npm publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run npm.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f version="$GITHUB_REF_NAME"
+
   homebrew:
     permissions: {}
     needs: publish-release
