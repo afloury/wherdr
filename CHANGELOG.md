@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **npm publishes after the GitHub release.** `release.yml` now starts `npm.yml` once the release and its package are public, instead of both starting on the tag and npm failing with "release not found". A version already on npm is not published again.
+
 ## [2.2.0] — 2026-10-27
 
 ### Added and improved
