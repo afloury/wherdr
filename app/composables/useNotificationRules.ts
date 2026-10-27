@@ -94,9 +94,10 @@ export function useNotificationRekey() {
   }, { immediate: true })
 }
 
-// Right-click → Notifications: the conversation's exception, the same as in Settings.
-export function notificationMenuItem(p: Pick<Pane, 'id' | 'workspace' | 'title'>): MenuItem {
-  return { label: t('Notifications'), icon: 'i-lucide-bell', run: () => openNotificationMenu(p) }
+// Row menus show the effective state; the settings panel keeps the same rules.
+export function notificationMenuItem(p: Pick<Pane, 'id' | 'workspace' | 'title'>, showState = false): MenuItem {
+  const label = showState ? (paneNotificationsMuted(p) ? t('Unmute notifications') : t('Mute notifications')) : t('Notifications')
+  return { label, icon: 'i-lucide-bell', run: () => openNotificationMenu(p) }
 }
 function openNotificationMenu(p: Pick<Pane, 'id' | 'workspace' | 'title'>) {
   const settings = { label: t('Notification settings'), icon: 'i-lucide-settings-2', run: () => navigateTo('/settings?section=notifications') }

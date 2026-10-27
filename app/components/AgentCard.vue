@@ -134,14 +134,13 @@ async function setRead(read: boolean) {
   } catch (err) { toast((err as Error).message, true) }
 }
 useNotificationClock()
-const mutedNotifications = computed(() => paneNotificationsMuted(props.pane))
 const menuItems = computed<MenuItem[]>(() => space.value ? [
-  notificationMenuItem(props.pane),
+  notificationMenuItem(props.pane, true),
   ...(boardItem.value ? [boardItem.value, { kind: 'separator' as const }] : []),
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
   ...workspaceItems(space.value.workspace.id, Boolean(props.board?.lead)),
 ] : [
-  notificationMenuItem(props.pane),
+  notificationMenuItem(props.pane, true),
   ...(boardItem.value ? [boardItem.value, { kind: 'separator' as const }] : []),
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
   ...paneSpaceItems(props.pane),
@@ -248,14 +247,12 @@ onUnmounted(list.unmount)
           <AppLogo v-else-if="board?.coordinator" aria-hidden="true" /><template v-else>{{ leadInitial }}</template>
         </span>
         <span class="card-title lead-name">{{ title }}</span>
-        <UIcon v-if="mutedNotifications" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" />
         <span v-if="board?.coordinator" class="card-tag lead-coord-tag">{{ t('Coordinator') }}</span>
         <span v-if="statePane.usageLimit" class="card-tag quota-limit" :title="stateTitle">{{ tl('Quota', 'Quota') }}</span>
         <span v-if="compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
         <span v-if="pane.agent" class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
       </template>
       <template v-else>
-      <UIcon v-if="mutedNotifications" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" />
       <AgentAvatar :agent="board?.identity ? board.identity.agent : pane.agent" :coordinator="board?.coordinator" :icon="board?.icon" />
       <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
       <span class="card-title" :title="board?.hint">{{ title }}</span>
