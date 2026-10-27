@@ -4,7 +4,8 @@ A silent 15-second marketing animation: big Archivo headlines, Titanium grid,
 zooming desktop screenshots, an animated PC-to-phone handoff, one-tap approval,
 the compact agent list with a project's tasks, Board, and a wherdr.dev end card. The square cut is 1080×1080; the
 wide cut reflows the composition to 1920×1080. Both are H.264 at 30 fps.
-The README uses an infinitely looping 720×720 animated WebP sampled at 15 fps.
+The original hero is an infinitely looping 720×720 animated WebP sampled at 15 fps.
+The current README has a separate refresh workflow below.
 
 Every app screen is an **unaltered Playwright screenshot of the real demo build**.
 There are no recreated app controls, hand or finger. A brief blue outline around
@@ -49,3 +50,21 @@ four full-resolution key images. Review the sheets and key images before publish
 
 Outputs replace `assets/wherdr-launch{,-wide}.mp4` and `assets/wherdr-launch.webp`.
 Sources use local fonts and assets; telemetry and update checks are disabled.
+
+## Refresh only the README animation
+
+The README has its own `assets/wherdr-readme.webp`, so refreshing it does not
+silently replace the archived launch videos. It keeps the same 15-second square
+stage, typography, framing and desktop-to-phone pacing, with fresh app captures.
+After installing the dependencies above and running `npm run build:demo`:
+
+```sh
+WHERDR_FILM_BASE=HEAD flock /tmp/wherdr-heavy.lock node tools/readme-shots/animate.mjs
+```
+
+This drives the existing capture script, samples the existing GSAP timeline at
+15 fps directly in Chromium, and encodes a looping 720×720 WebP (under 5 MiB).
+`assets/wherdr-readme.json` records the source revision, interactions and measured
+output properties. Temporary rendered PNGs go under `$TMPDIR`; use
+`--reuse-captures` to re-encode already captured demo screens. Inspect the phone
+approval, compact task list and desktop Board before committing the result.
