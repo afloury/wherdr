@@ -139,12 +139,15 @@ describe('a repo group on the home list', () => {
     w.unmount()
   })
 
-  it('a plain terminal has no head row and remains accessible from the bar menu', async () => {
+  it('a plain terminal has a static project header and remains accessible from the bar menu', async () => {
     const shell = pane('w9:p1', { agent: null, status: null })
     const w = await mount(section({ coordinator: null, space: row(shell) }))
     expect(w.find('.project-lead').exists()).toBe(false)
     expect(w.find('.project-remote').exists()).toBe(false)
-    expect(w.element.firstElementChild?.classList.contains('project-bar')).toBe(true)
+    expect(w.element.firstElementChild?.classList.contains('project-identity')).toBe(true)
+    expect(w.find('.project-identity h2').text()).toBe('shop')
+    expect(w.find('.project-key').text()).toBe('SHOP')
+    expect(w.find('.project-identity .card, .project-identity .card-state, .project-identity .lead-coord-tag').exists()).toBe(false)
     const menu = w.findComponent({ name: 'SpaceMenu' })
     const items = menu.props('items')()
     const terminal = items.find((item: { label: string }) => item.label === 'Open the terminal of shop')
@@ -156,19 +159,39 @@ describe('a repo group on the home list', () => {
     w.unmount()
   })
 
-  it('without a repo space the bar comes first, with nothing to open (notifications are set per coordinator)', async () => {
+  it('without a repo space the project header remains visible with nothing to open', async () => {
     const w = await mount(section({ coordinator: null }))
     expect(w.find('.project-lead').exists()).toBe(false)
-    expect(w.element.firstElementChild?.classList.contains('project-bar')).toBe(true)
+    expect(w.element.firstElementChild?.classList.contains('project-identity')).toBe(true)
+    expect(w.find('.project-identity h2').text()).toBe('shop')
+    expect(w.find('.project-key').text()).toBe('SHOP')
+    expect(w.find('.project-identity .card, .project-identity .card-state, .project-identity .lead-coord-tag').exists()).toBe(false)
     expect(w.find('.project-bar .space-menu').exists()).toBe(false)
     expect(w.findAll('.project-tree .card')).toHaveLength(2)
     w.unmount()
   })
 
-  it('a remote coordinator occupies the head position above the bar, also when folded', async () => {
+  it('a static project header cannot navigate and survives folding, with an icon when no key is known', async () => {
+    const w = await mount(section({ coordinator: null, key: '' }))
+    navigate.mockClear()
+    await w.find('.project-identity').trigger('click')
+    expect(navigate).not.toHaveBeenCalled()
+    expect(w.find('.project-key .iconify').exists()).toBe(true)
+    const start = w.findComponent({ name: 'SpaceMenu' }).props('items')().find((item: { label: string }) => item.label === 'Start coordinator')
+    expect(start).toBeDefined()
+    start.run()
+    expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: '', coordinator: 'shop' } })
+    await w.find('.project-head').trigger('click')
+    expect(w.find('.project-identity h2').text()).toBe('shop')
+    expect(w.find('.project-tree').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('a remote coordinator link follows the project identity above the bar, also when folded', async () => {
     const w = await mount(section({ coordinator: null, remote: { pane: 'abcd1234~w1:p1', machine: 'abcd1234' } }))
     expect(w.find('.project-lead').exists()).toBe(false)
-    expect(w.element.firstElementChild?.classList.contains('project-remote')).toBe(true)
+    expect(w.element.firstElementChild?.classList.contains('project-identity')).toBe(true)
+    expect(w.find('.project-identity h2').text()).toBe('shop')
     expect(w.find('.project-remote').text()).toContain('Coordinated from')
     navigate.mockClear()
     await w.find('.project-remote').trigger('click')
