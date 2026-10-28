@@ -3,6 +3,10 @@
 // checks that every key used in the code has one). The choice is saved on the device.
 
 const FR: Record<string, string> = {
+  'Run in split terminal': 'Lancer dans un terminal partagé',
+  'Command sent to split terminal': 'Commande envoyée au terminal partagé',
+  'Split terminal is busy. No command was sent.': 'Le terminal partagé est occupé. Aucune commande envoyée.',
+  'Expected a single shell command': 'Une commande shell sur une seule ligne est attendue',
   'Advanced': 'Avancé',
   'Paste journal': 'Journal du collage',
   'Records the last 50 paste events on this device, without text content. Turning it off clears the journal.': 'Enregistre les 50 derniers événements de collage sur cet appareil, sans le contenu du texte. Le désactiver efface le journal.',
