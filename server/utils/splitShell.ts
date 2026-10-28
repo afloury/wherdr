@@ -4,6 +4,7 @@ import { DATA_DIR, HERDR_BIN } from './env'
 import { getMachine, RemoteMachine } from './machines'
 import { HerdrError } from './herdr'
 
+export const SPLIT_TERMINAL_TOKEN = 'wherdr_split_terminal'
 export const SPLIT_PROMPT_TOKEN = 'wherdr_split_prompt'
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 

@@ -18,7 +18,7 @@ registerEndpoint('/api/split-command', { method: 'POST', handler: async event =>
 describe('chat command split terminal menu', () => {
   afterEach(() => { calls.length = 0; menuState.open = false; menuState.items = []; herdrState.value = { ok: false, workspaces: [], panes: [] } })
 
-  it.each(['free', 'busy', 'missing'])('sends the explicit split action for a %s sibling shell', async mode => {
+  it.each(['free', 'busy', 'missing', 'manual'])('sends the explicit split action for a %s sibling shell', async mode => {
     // Shell selection and readiness belong to the server; the component must
     // never send text through the agent or guess readiness from its cache.
     created = mode !== 'free'

@@ -68,7 +68,7 @@ describe.skipIf(!supported)('split shell prompt attestation', () => {
         expect(busy.procs).toEqual([busy.pid])
         expect(busy.token).toBe('')
         const call = vi.fn(async (_machine: string, method: string, params: Record<string, unknown>) => {
-          const pane = { pane_id: 'w1:p2', tab_id: 'w1:t1', tokens: { wherdr_split_prompt: busy.token } }
+          const pane = { pane_id: 'w1:p2', tab_id: 'w1:t1', agent: null, agent_status: 'unknown', tokens: { wherdr_split_terminal: '1', wherdr_split_prompt: busy.token } }
           if (method === 'session.snapshot') return { panes: [{ ...pane, pane_id: 'w1:p1', agent: 'claude', cwd: '/project' }, pane] }
           if (method === 'pane.get') return { pane }
           if (method === 'pane.process_info') return { process_info: { shell_pid: busy.pid, foreground_process_group_id: busy.group, foreground_processes: busy.procs.map((pid: number) => ({ pid })) } }

@@ -6,7 +6,7 @@ import { runSplitCommand } from '../server/utils/splitCommand'
 function setup(mode: 'free' | 'busy' | 'missing', options: { race?: boolean, unknown?: boolean } = {}) {
   let reads = 0
   const agent = { pane_id: 'w1:p1', workspace_id: 'w1', tab_id: 'w1:t1', agent: 'claude', cwd: '/project' }
-  const shell = { pane_id: 'w1:p2', workspace_id: 'w1', tab_id: 'w1:t1', tokens: { wherdr_split_prompt: '10' } }
+  const shell = { pane_id: 'w1:p2', workspace_id: 'w1', tab_id: 'w1:t1', agent: null, agent_status: 'unknown', tokens: { wherdr_split_terminal: '1', wherdr_split_prompt: '10' } }
   const call = vi.fn(async (_machine: string, method: string, params: Record<string, unknown>) => {
     if (method === 'session.snapshot') return { panes: [agent, ...(mode === 'missing' ? [] : [shell])] }
     if (method === 'pane.split') return { pane: { ...shell, pane_id: 'w1:p3' } }
@@ -20,7 +20,7 @@ function setup(mode: 'free' | 'busy' | 'missing', options: { race?: boolean, unk
   return call
 }
 
-describe('run command in a split shell', () => {
+describe('run command in a wherdr-managed split shell', () => {
   it.each(['free', 'busy', 'missing'] as const)('%s shell: executes only in a verified free pane on the agent machine', async mode => {
     const call = setup(mode)
     const r = await runSplitCommand('ab12~w1:p1', '! gcloud auth login', call)
@@ -32,15 +32,16 @@ describe('run command in a split shell', () => {
     ])
     if (mode !== 'free') expect(call).toHaveBeenCalledWith('ab12', 'pane.split', { target_pane_id: 'w1:p1', direction: 'right', cwd: '/project', focus: false, env: {} })
     else expect(call.mock.calls.some(c => c[1] === 'pane.split')).toBe(false)
+    if (mode !== 'free') expect(call).toHaveBeenCalledWith('ab12', 'pane.report_metadata', { pane_id: target, source: 'wherdr-split', tokens: { wherdr_split_terminal: '1' } })
     expect(call).toHaveBeenCalledWith('ab12', 'pane.focus', { pane_id: target })
     expect(call).toHaveBeenCalledWith('ab12', 'pane.report_metadata', { pane_id: target, source: 'wherdr-split', tokens: { wherdr_split_prompt: null } })
   })
 
-  it('does not trust an uninstrumented shell, even with identical idle-looking process information', async () => {
+  it.each([{}, { wherdr_split_prompt: '10' }])('opens a new split for a manually opened shell, even with prompt metadata %j', async tokens => {
     const base = setup('free')
     const call = vi.fn(async (machine: string, method: string, params: Record<string, unknown>) => {
       const r = await base(machine, method, params)
-      if (method === 'pane.get' && params.pane_id === 'w1:p2') return { pane: { ...r.pane, tokens: {} } }
+      if (method === 'pane.get' && params.pane_id === 'w1:p2') return { pane: { ...r.pane, tokens } }
       return r
     })
     const result = await runSplitCommand('w1:p1', 'echo SPLIT_COMMAND', call)
@@ -48,10 +49,10 @@ describe('run command in a split shell', () => {
     expect(call.mock.calls.filter(c => c[1] === 'pane.send_input').map(c => c[2].pane_id)).toEqual(['w1:p3'])
   })
 
-  it('does not type if the shell becomes busy before sending', async () => {
+  it('opens a new split if the managed shell becomes busy before sending', async () => {
     const call = setup('free', { race: true })
-    await expect(runSplitCommand('w1:p1', 'pwd', call)).rejects.toMatchObject({ code: 'busy_pane' })
-    expect(call.mock.calls.some(c => c[1] === 'pane.send_input')).toBe(false)
+    expect((await runSplitCommand('w1:p1', 'pwd', call)).pane_id).toBe('w1:p3')
+    expect(call.mock.calls.filter(c => c[1] === 'pane.send_input').map(c => c[2].pane_id)).toEqual(['w1:p3'])
   })
 
   it('serializes simultaneous requests that share the same shell', async () => {
