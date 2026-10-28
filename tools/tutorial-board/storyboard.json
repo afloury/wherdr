@@ -3,9 +3,9 @@
   "model": "elevenlabs/eleven-v4-turbo",
   "pronunciation": "where-der",
   "spoken": { "where-der": "wherdr", "weirder": "wherdr", "wierder": "wherdr", "herder": "herdr", "herd": "herdr" },
-  "pause": 0.22,
-  "lead_in": 0.12,
-  "tail": 0.3,
+  "pause": 0.2,
+  "lead_in": 0.08,
+  "tail": 0.2,
   "mark": "spotlight",
   "segments": [
     {
@@ -56,8 +56,8 @@
         { "to": "readyCard", "at": "open", "then": "ready-task" }
       ],
       "marks": [
-        { "on": "summary", "at": "summary" },
-        { "on": "facts", "at": "review" }
+        { "on": "summary", "at": "summary", "pad": 6 },
+        { "on": "facts", "at": "review", "pad": 6 }
       ]
     },
     {

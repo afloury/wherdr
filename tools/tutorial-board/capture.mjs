@@ -92,15 +92,17 @@ try {
   await capture('needs-task', { question: [page.locator('.task-sheet-msg'), 'content'],
     description: [page.locator('.task-description'), 'content'], close: [page.locator('.board-panel-close'), 'box'] });
   await page.locator('.board-panel-close').click();
+  await page.mouse.move(700, 800); // no hover state left on the panel's neighbours
   await capture('board-after', { readyCard: card(11) });
   await page.locator('.task-card[data-task="demo/11"] .task-card-open').click({ position: { x: 12, y: 12 } });
   await page.locator('.board-panel-tabs').getByRole('button', { name: 'Task', exact: true }).click();
   await page.locator('.task-description').waitFor();
   await fourColumns();
   provenance.actions.push('Inspect ready-to-approve task context; no approval sent');
-  await capture('ready-task', { facts: [page.locator('.task-sheet-facts'), 'content'],
-    summary: [page.locator('.task-sheet-block.board-panel-note'), 'content'], close: [page.locator('.board-panel-close'), 'box'] });
+  await capture('ready-task', { facts: [page.locator('.task-sheet-facts'), 'box'],
+    summary: [page.locator('.task-sheet-block.board-panel-note'), 'box'], close: [page.locator('.board-panel-close'), 'box'] });
   await page.locator('.board-panel-close').click();
+  await page.mouse.move(700, 800);
   await capture('board-closed', { workingCard: card(13), todoCard: card(14), todoHead: head(3) });
   await writeFile(join(output, 'capture.json'), JSON.stringify(provenance, null, 2));
 } finally { await browser.close(); }

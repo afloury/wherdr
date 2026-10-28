@@ -39,7 +39,7 @@ for shot in timeline['shots']:
         previous=event['end']
 words=sum(len(e['text'].split()) for s in timeline['shots'] for e in s['captions'])
 pace=words/timeline['duration']*60
-assert 145<=pace<=175, f'Narration pace {pace:.0f} words/min is outside the brief'
+assert 150<=pace<=175, f'Narration pace {pace:.0f} words/min is outside the brief'
 print(f'All {count} frame timestamps and measured caption intervals verified; pace {pace:.0f} words/min.')
 
 # Check muxed-audio placement against the original WAV waveform. This also catches

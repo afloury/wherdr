@@ -119,12 +119,18 @@ def pointer_at(t):
     # a moment after each click and returns, where it was, just before the next move.
     alpha = min(1, (t - moves[0]['start'] + .3) / .3, max(0, (card + .3 - t) / .3))
     last = max((m for m in moves if m['click'] <= t), key=lambda m: m['click'], default=None)
-    upcoming = next((m for m in moves if m['start'] > t), None)
+    upcoming = next((m for m in moves if m['click'] > t), None)   # includes the move in progress
     if last:
         hidden = min(1, max(0, (t - last['click'] - 1.0) / .3))
         if upcoming: hidden = min(hidden, max(0, (upcoming['start'] - t) / .3))
         alpha *= 1 - hidden
     return (position, alpha) if alpha > 0 else None
+
+# Every move must be seen from start to click, fully opaque from its first third.
+for m in moves:
+    for u in (.34, .5, .9, 1):
+        seen = pointer_at(m['start'] + u * (m['click'] - m['start']))
+        assert seen and seen[1] == 1, f"pointer hidden during the move at {m['start']:.2f} s"
 
 # --- Drawing ---------------------------------------------------------------------------
 Q = 4                                          # supersampling for the pointer

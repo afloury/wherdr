@@ -60,7 +60,7 @@ a click cross-fade over 7 frames; titles cross-fade between shots. `TUTORIAL_STI
 writes PNG stills instead of the film, for frame-level review.
 
 `verify.py` checks the encoded film: format, every frame timestamp, capture hashes, caption
-intervals, pace (145 to 175 words per minute), clipping, and cross-correlates the muxed audio
+intervals, pace (150 to 175 words per minute), clipping, and cross-correlates the muxed audio
 against each take to confirm its placement.
 
 Share the output only through a private review page; do not publish it.
