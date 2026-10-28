@@ -134,6 +134,23 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     })
   }
 
+  // Back from sleep: the OS suspends a socket rather than closing it, so
+  // readyState alone cannot tell a live connection from a zombie one. A
+  // ping/pong round trip can — reconnect immediately instead of waiting
+  // for TCP timeouts when the probe goes unanswered.
+  let pongWaiter: ((ok: boolean) => void) | null = null
+  function probeAlive(ms = 1600): Promise<boolean> {
+    return new Promise(resolve => {
+      pongWaiter?.(false)
+      pongWaiter = resolve
+      if (!tws || tws.readyState !== 1 || !sendTerm({ type: 'ping' })) {
+        pongWaiter = null
+        return resolve(false)
+      }
+      setTimeout(() => { if (pongWaiter === resolve) { pongWaiter = null; resolve(false) } }, ms)
+    })
+  }
+
   function sendTerm(obj: unknown): boolean {
     if (tws && tws.readyState === 1) {
       tws.send(JSON.stringify(obj))
@@ -254,6 +271,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         if (m.width && m.height && (m.width !== term.cols || m.height !== term.rows)) term.resize(m.width, m.height)
         const current = term
         current.write(b64ToBytes(m.bytes || ''), () => selectionHint.refresh(current, mouseSupported))
+      } else if (m.type === 'pong') {
+        pongWaiter?.(true); pongWaiter = null
       } else if (m.type === 'terminal.closed') {
         closedReason = terminalClosedText(m)
       } else if (m.type === 'herdr.stderr') {
@@ -267,6 +286,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       tws = null
       mouseSupported = false
       loading.value = false
+      pongWaiter?.(false); pongWaiter = null
       if (!twsIntent || disposed) return
       if (closedReason && /already has an attached client/.test(closedReason)) {
         return opts.setBanner({ text: t('This terminal is already open elsewhere.'), btn: t('Take control'), fn: () => { opts.setBanner(null); connect(true) } })
@@ -343,7 +363,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   }
 
   return {
-    mount, connect, disconnect, isConnected, sendTerm, sendKeys, fitNow, setFontSize,
+    mount, connect, disconnect, isConnected, sendTerm, sendKeys, fitNow, setFontSize, probeAlive,
     reset, scroll, focus, blur, tapLink, tapMouse: (x: number, y: number) => mouse?.tap(x, y), hasFocus, rowHeight, pageRows, setVisible, dispose, loading, kbdOn,
     hasBanner: opts.hasBanner, selectionHint,
   }

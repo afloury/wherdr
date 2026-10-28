@@ -481,6 +481,28 @@ function normalize(s: HerdrState): HerdrState {
   return s
 }
 
+// Suspended sockets look open (readyState 1) yet never deliver again. After
+// backgrounding, prove liveness with a ping before trusting the socket:
+// dead ones get recycled immediately instead of surfacing a TCP timeout.
+let evPong: ((ok: boolean) => void) | null = null
+export function probeEventsAlive(ms = 1600): Promise<boolean> {
+  return new Promise(resolve => {
+    evPong?.(false)
+    evPong = resolve
+    const ws = evWs
+    if (!ws || ws.readyState !== 1) { evPong = null; return resolve(false) }
+    try { ws.send(JSON.stringify({ type: 'ping' })) }
+    catch { evPong = null; return resolve(false) }
+    setTimeout(() => { if (evPong === resolve) { evPong = null; resolve(false) } }, ms)
+  })
+}
+export function reconnectEvents() {
+  clearTimeout(evTimer)
+  if (evWs) { try { evWs.onclose = null; evWs.close() } catch { /* ignore */ } evWs = null }
+  evRetry = 0
+  connectEvents()
+}
+
 export function connectEvents() {
   clearTimeout(evTimer)
   if (locked.value) return
@@ -506,6 +528,7 @@ export function connectEvents() {
   ws.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data)
+      if (data?.type === 'pong') { evPong?.(true); evPong = null; return }
       // Settings changed on another device (or another tab).
       if (data?.type === 'settings') { settingsSync.receive(data.settings || {}); return }
       const got = normalize(data) as HerdrState
@@ -532,6 +555,7 @@ export function connectEvents() {
     if (evWs !== ws) return
     evWs = null
     eventsOpen.value = false
+    evPong?.(false); evPong = null
     if (herdrState.value.ok && lastStateAt) cachedAt.value = lastStateAt
     // Refused because of the lock (session expired) rather than a network cut?
     confirmLock()

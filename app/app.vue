@@ -26,7 +26,8 @@ function onVisibility() {
   pageVisible.value = !document.hidden
   sendViewing()
   // iOS freezes the page in the background and cuts the sockets: we reconnect on return.
-  if (!document.hidden) connectEvents()
+  // A suspended socket still looks open: probe it, recycle it right away if dead.
+  if (!document.hidden) { connectEvents(); void probeEventsAlive().then(ok => { if (!ok) reconnectEvents() }) }
   // Back in the foreground: the server may end a session past its maximum duration.
   if (!document.hidden && !locked.value) {
     if (mayReadOffline(readOfflineAccess())) confirmLock({ resume: true })
