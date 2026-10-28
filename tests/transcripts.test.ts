@@ -198,6 +198,18 @@ describe('createTranscripts', () => {
     expect(img!.type).toBe('image/png')
   })
 
+  it('answers "no conversation" when the session path is a directory', async () => {
+    // A folder named like a rollout (or a Claude transcript): no EISDIR.
+    const id = '00000000-0000-4000-8000-0000000d1e00'
+    mkdirSync(path.join(codexDir, `rollout-2026-09-25T21-30-00-${id}.jsonl`))
+    mkdirSync(path.join(claudeDir, 'dir-789.jsonl'))
+    const codex = { id: 'w4:p1', agent: 'codex', cwd: '/x', agentSession: id }
+    expect(await t.chat(codex, {})).toEqual({ available: false, reason: 'not_found' })
+    const claudeDirPane = { id: 'w5:p1', agent: 'claude', cwd: '/home/x', agentSession: 'dir-789' }
+    const t2 = createTranscripts({ home, herdr: async () => ({ process_info: { foreground_processes: [] } }) })
+    expect(await t2.chat(claudeDirPane, {})).toEqual({ available: false, reason: 'not_found' })
+  })
+
   it('refuses an unsupported agent', async () => {
     expect(await t.chat({ id: 'w3:p1', agent: null, cwd: null }, {})).toEqual({ available: false, reason: 'unsupported' })
   })
