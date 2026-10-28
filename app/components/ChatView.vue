@@ -829,8 +829,8 @@ async function runCommand(cmd: string) {
 async function runInSplit(cmd: string) {
   if (readOnly.value) return
   try {
-    const r = await api<{ pane_id: string }>('/api/split-command', { pane_id: props.pane.id, command: cmd })
-    toast(t('Command sent to split terminal'))
+    const r = await api<{ pane_id: string, created?: boolean }>('/api/split-command', { pane_id: props.pane.id, command: cmd })
+    toast(r.created ? t('Command sent to a new split terminal') : t('Command sent to split terminal'))
     await navigateTo(desk.value ? { path: tabPath(props.pane.tab), query: { pane: r.pane_id } } : panePath(r.pane_id))
   } catch (err) { toast((err as Error).message, true) }
 }
