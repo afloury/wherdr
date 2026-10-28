@@ -3,63 +3,64 @@
 // the wheel -> terminal.scroll, the history lives in Herdr; never ↑/↓
 // sent to the agent; click = keyboard to the terminal).
 import '@xterm/xterm/css/xterm.css'
+import { createTerminalTouch, touchPreviewOffset } from '~/utils/terminalTouch'
 
 const props = defineProps<{ ctl: TerminalCtl }>()
 const host = ref<HTMLElement | null>(null)
 
-let lastY: number | null = null
-let lastX: number | null = null
-let acc = 0
-let pendingLines = 0
-let raf = 0
-let moved = false
-const flush = () => {
-  raf = 0
-  if (!pendingLines) return
-  props.ctl.scroll(pendingLines)
-  pendingLines = 0
+let legacyLastY: number | null = null
+let legacyLastX: number | null = null
+let legacyAcc = 0
+let legacyPendingLines = 0
+let legacyRaf = 0
+let legacyMoved = false
+const legacyFlush = () => {
+  legacyRaf = 0
+  if (!legacyPendingLines) return
+  props.ctl.scroll(legacyPendingLines)
+  legacyPendingLines = 0
 }
-const queue = (n: number) => {
-  pendingLines += n
-  if (!raf) raf = requestAnimationFrame(flush)
+const legacyQueue = (n: number) => {
+  legacyPendingLines += n
+  if (!legacyRaf) legacyRaf = requestAnimationFrame(legacyFlush)
 }
-function onTouchStart(e: TouchEvent) {
-  lastY = e.touches[0]!.clientY
-  lastX = e.touches[0]!.clientX
-  acc = 0
-  moved = false
+function legacyOnTouchStart(e: TouchEvent) {
+  legacyLastY = e.touches[0]!.clientY
+  legacyLastX = e.touches[0]!.clientX
+  legacyAcc = 0
+  legacyMoved = false
 }
-function onTouchMove(e: TouchEvent) {
+function legacyOnTouchMove(e: TouchEvent) {
   e.preventDefault()
-  if (lastY === null) return
+  if (legacyLastY === null) return
   const y = e.touches[0]!.clientY
   const x = e.touches[0]!.clientX
-  const dx = lastX === null ? 0 : x - lastX
-  const dy = y - lastY
-  lastX = x
+  const dx = legacyLastX === null ? 0 : x - legacyLastX
+  const dy = y - legacyLastY
+  legacyLastX = x
   const scroller = host.value?.querySelector('.xterm') as HTMLElement | null
   if (scroller && scroller.scrollWidth > scroller.clientWidth && Math.abs(dx) > Math.abs(dy)) {
     scroller.scrollLeft -= dx
-    lastY = y
-    moved = true
+    legacyLastY = y
+    legacyMoved = true
     return
   }
-  acc += dy
-  lastY = y
-  const { lines, rest } = takeLines(acc, props.ctl.rowHeight())
-  acc = rest
+  legacyAcc += dy
+  legacyLastY = y
+  const { lines, rest } = takeLines(legacyAcc, props.ctl.rowHeight())
+  legacyAcc = rest
   if (lines) {
-    moved = true
-    queue(lines)
+    legacyMoved = true
+    legacyQueue(lines)
   }
 }
-function onTouchEnd(e: TouchEvent) {
+function legacyOnTouchEnd(e: TouchEvent) {
   const t = e.changedTouches[0]
-  lastY = null
-  lastX = null
+  legacyLastY = null
+  legacyLastX = null
   // A tap on a link opens it; any simple tap closes the keyboard: the
   // terminal stays readable in full.
-  if (!moved) {
+  if (!legacyMoved) {
     // No keyboard for a link: cancels the mousedown that follows the tap.
     if (t) {
       if (props.ctl.tapLink(t.clientX, t.clientY)) e.preventDefault()
@@ -71,11 +72,11 @@ function onTouchEnd(e: TouchEvent) {
 }
 // The layer only receives the mouse on a touch screen (main.css): on a
 // computer, xterm receives it directly (selection, mouse mode).
-function onMouseDown() { props.ctl.focus() }
+function legacyOnMouseDown() { props.ctl.focus() }
 // Listened on the whole block, before xterm: on a computer the mouse reaches
 // xterm (selection), which would otherwise send the wheel to the program in mouse
 // mode. Herdr applies the application's mouse mode itself.
-function onWheel(e: WheelEvent) {
+function legacyOnWheel(e: WheelEvent) {
   e.preventDefault()
   e.stopPropagation()
   const scroller = host.value?.querySelector('.xterm') as HTMLElement | null
@@ -84,16 +85,154 @@ function onWheel(e: WheelEvent) {
     return
   }
   const h = props.ctl.rowHeight()
-  acc -= wheelPixels(e.deltaY, e.deltaMode, h, props.ctl.pageRows())
-  const { lines, rest } = takeLines(acc, h)
-  acc = rest
-  if (lines) queue(lines)
+  legacyAcc -= wheelPixels(e.deltaY, e.deltaMode, h, props.ctl.pageRows())
+  const { lines, rest } = takeLines(legacyAcc, h)
+  legacyAcc = rest
+  if (lines) legacyQueue(lines)
+}
+
+
+// Prediction is restricted to the grid and to one outstanding gesture. Epochs
+// in useTerminal prevent late acknowledgements from retiring a newer gesture.
+let acc = 0, pendingLines = 0, unconfirmed = 0, momentumAcc = 0
+let raf = 0, paintRaf = 0
+let settleTimer: ReturnType<typeof setTimeout> | undefined
+let scrollX = 0, scrollY = 0
+let lastTouchAt = -Infinity
+let hadScroll = false
+const screenEl = () => host.value?.querySelector('.xterm-screen') as HTMLElement | null
+const applyOffset = () => {
+  const el = screenEl()
+  if (!el) return
+  const px = smoothTouchScrolling.value ? touchPreviewOffset(acc + (pendingLines + unconfirmed) * props.ctl.rowHeight(), props.ctl.rowHeight()) : 0
+  el.style.willChange = px ? 'transform' : ''
+  el.style.transform = px ? `translate3d(0, ${px}px, 0)` : ''
+}
+function expirePreview() {
+  if (!hadScroll) return
+  clearTimeout(settleTimer)
+  // At an edge Herdr may send no frame. Clear once, never animate a spring.
+  settleTimer = setTimeout(() => {
+    unconfirmed = pendingLines = acc = 0
+    cancelAnimationFrame(raf); raf = 0
+    props.ctl.cancelTouchScroll()
+    applyOffset()
+  }, 180)
+}
+function flush() {
+  raf = 0
+  if (!pendingLines) return
+  const n = pendingLines
+  pendingLines = 0
+  if (props.ctl.scroll(n, scrollX, scrollY, 0, true)) unconfirmed += n
+  else unconfirmed = acc = 0
+  applyOffset()
+  expirePreview()
+}
+watch(props.ctl.scrollAck, (value, previous) => {
+  const n = value - previous
+  if (!n || !smoothTouchScrolling.value) return
+  if (Math.sign(n) === Math.sign(unconfirmed))
+    unconfirmed -= Math.sign(n) * Math.min(Math.abs(n), Math.abs(unconfirmed))
+  cancelAnimationFrame(paintRaf)
+  paintRaf = requestAnimationFrame(() => { paintRaf = 0; applyOffset() })
+}, { flush: 'sync' })
+const scroller = () => host.value?.querySelector('.xterm') as HTMLElement | null
+const touch = createTerminalTouch({
+  vertical(pixels, point) {
+    // Reversal abandons stale prediction and pending commands first.
+    if (unconfirmed && Math.sign(pixels) !== Math.sign(unconfirmed)) {
+      props.ctl.cancelTouchScroll()
+      unconfirmed = pendingLines = acc = 0
+    }
+    scrollX = point.x; scrollY = point.y
+    acc += pixels
+    const { lines, rest } = takeLines(acc, props.ctl.rowHeight())
+    acc = rest
+    pendingLines += lines
+    hadScroll = true
+    if (lines && !raf) raf = requestAnimationFrame(flush)
+    applyOffset()
+    expirePreview()
+  },
+  momentum(pixels, point) {
+    momentumAcc += pixels
+    const { lines, rest } = takeLines(momentumAcc, props.ctl.rowHeight())
+    momentumAcc = rest
+    // Momentum has no visual prediction; its acks must not pay finger debt.
+    if (lines) props.ctl.scroll(lines, point.x, point.y, 0, true, false)
+  },
+  horizontal(pixels) { const el = scroller(); if (el) el.scrollLeft -= pixels },
+  canHorizontal: () => { const el = scroller(); return !!el && el.scrollWidth > el.clientWidth },
+  maxMomentum: () => props.ctl.rowHeight() * props.ctl.pageRows() * 1.5,
+})
+function cancelTouch() {
+  touch.cancel()
+  cancelAnimationFrame(raf); raf = 0
+  cancelAnimationFrame(paintRaf); paintRaf = 0
+  clearTimeout(settleTimer)
+  pendingLines = unconfirmed = momentumAcc = acc = 0
+  if (hadScroll) props.ctl.cancelTouchScroll()
+  hadScroll = false
+  applyOffset()
+}
+watch(props.ctl.scrollInputVersion, cancelTouch)
+watch(pageVisible, visible => { if (!visible) cancelTouch() })
+watch(smoothTouchScrolling, () => {
+  cancelTouch()
+  cancelAnimationFrame(legacyRaf); legacyRaf = 0
+  legacyPendingLines = legacyAcc = 0
+  legacyLastX = legacyLastY = null
+}, { flush: 'sync' })
+function onTouchStart(e: TouchEvent) {
+  if (!smoothTouchScrolling.value) return legacyOnTouchStart(e)
+  lastTouchAt = performance.now()
+  cancelTouch()
+  if (e.touches.length === 1) touch.start(e.touches[0]!.clientX, e.touches[0]!.clientY)
+}
+function onTouchMove(e: TouchEvent) {
+  if (!smoothTouchScrolling.value) return legacyOnTouchMove(e)
+  e.preventDefault()
+  if (e.touches.length !== 1) { cancelTouch(); return }
+  touch.move(e.touches[0]!.clientX, e.touches[0]!.clientY)
+}
+function onTouchEnd(e: TouchEvent) {
+  if (!smoothTouchScrolling.value) return legacyOnTouchEnd(e)
+  lastTouchAt = performance.now()
+  const t = e.changedTouches[0]
+  if (touch.end()) {
+    if (t) {
+      if (props.ctl.tapLink(t.clientX, t.clientY)) e.preventDefault()
+      else props.ctl.tapMouse(t.clientX, t.clientY)
+    }
+    props.ctl.blur()
+    ;(document.activeElement as HTMLElement | null)?.blur?.()
+  } else e.preventDefault()
+  expirePreview()
+}
+// The layer only receives the mouse on a touch screen (main.css): on a
+// computer, xterm receives it directly (selection, mouse mode).
+function onMouseDown(e: MouseEvent) {
+  if (!smoothTouchScrolling.value) return legacyOnMouseDown()
+  const fromTouch = (e as MouseEvent & { sourceCapabilities?: { firesTouchEvents?: boolean } }).sourceCapabilities?.firesTouchEvents
+  // Ignore compatibility mouse events after a touch. Refocusing xterm here
+  // can reopen the IME, resize the remote TUI and lose the reading position.
+  if (fromTouch || (fromTouch === undefined && performance.now() - lastTouchAt < 700)) return
+  props.ctl.focus()
+}
+// Listened on the whole block, before xterm: on a computer the mouse reaches
+// xterm (selection), which would otherwise send the wheel to the program in mouse
+// mode. Herdr applies the application's mouse mode itself.
+function onWheel(e: WheelEvent) {
+  if (smoothTouchScrolling.value) cancelTouch()
+  legacyOnWheel(e)
 }
 
 let fitTimer: ReturnType<typeof setTimeout> | undefined
 // Throttle rather than debounce: long divider drags must keep fitting while
 // the pointer moves, without sending every intermediate pixel to Herdr.
 function scheduleFit() {
+  if (smoothTouchScrolling.value) cancelTouch()
   if (fitTimer) return
   fitTimer = setTimeout(() => {
     fitTimer = undefined
@@ -103,6 +242,7 @@ function scheduleFit() {
 watch(layoutTick, scheduleFit)
 let ro: ResizeObserver | null = null
 onMounted(() => {
+  document.addEventListener('pointerdown', cancelTouch, true)
   props.ctl.mount(host.value!)
   nextTick(() => {
     props.ctl.fitNow(false)
@@ -112,19 +252,21 @@ onMounted(() => {
   ro.observe(host.value!)
 })
 onUnmounted(() => {
+  document.removeEventListener('pointerdown', cancelTouch, true)
+  cancelTouch()
   ro?.disconnect()
   clearTimeout(fitTimer)
-  cancelAnimationFrame(raf)
+  cancelAnimationFrame(legacyRaf)
   props.ctl.dispose()
 })
 </script>
 
 <template>
-  <div id="termWrap" @wheel.capture="onWheel">
+  <div id="termWrap" :class="{ 'smooth-touch': smoothTouchScrolling }" @wheel.capture="onWheel">
     <div id="term" ref="host" />
     <div
       id="touch" aria-hidden="true"
-      @touchstart.passive="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd"
+      @touchstart.passive="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd" @touchcancel="cancelTouch"
       @mousedown.prevent="onMouseDown"
     />
     <div v-if="ctl.loading.value" class="term-loading"><span class="spinner" /></div>

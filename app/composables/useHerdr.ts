@@ -168,6 +168,10 @@ export const replyStyle = syncedRef('replyStyle', parseReplyStyle, v => v)
 export const homeQuotas = ref<Quotas | null>(null)
 export const fontSize = ref(Number(ls.get('fontSize')) || 12)
 watch(fontSize, v => ls.set('fontSize', String(v)))
+// Experimental touch physics is a device rendering preference, like the renderer.
+export const smoothTouchScrolling = ref(ls.get('smoothTouchScrolling') === '1')
+watch(smoothTouchScrolling, v => ls.set('smoothTouchScrolling', v ? '1' : '0'))
+
 export const terminalRenderer = ref(parseTerminalRenderer(ls.get('terminalRenderer')))
 watch(terminalRenderer, v => ls.set('terminalRenderer', v))
 // OSC 52 copies of the agents written to this device's clipboard (on by default).
@@ -198,6 +202,7 @@ export function refreshTerminalRenderStatus() {
 }
 if (import.meta.client) {
   window.addEventListener('storage', (event) => {
+    if (event.key === 'smoothTouchScrolling') smoothTouchScrolling.value = event.newValue === '1'
     if (event.key === 'terminalRenderer') {
       terminalRenderer.value = parseTerminalRenderer(event.newValue)
       refreshTerminalRenderStatus()

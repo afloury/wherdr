@@ -102,6 +102,7 @@ const typingItems = computed(() => [
   { label: t('Slow'), description: t('Three times as slow · 1.5 to 6 s.'), value: 'slow' },
 ])
 const renderer = terminalRenderer
+const smoothScrollingOn = smoothTouchScrolling
 const width = contentWidth
 const widthItems = computed(() => [
   { label: t('Normal'), description: t('760 px column · terminal fitted to width.'), value: 'normal' },
@@ -452,6 +453,12 @@ onMounted(() => {
             <label class="settings-toggle">
               <span><b>{{ t('Agent copies') }}</b><small>{{ t('Text an agent copies in the terminal (OSC 52) goes to this device’s clipboard. Never read from it. Saved on this device.') }}</small></span>
               <USwitch v-model="agentClipboardOn" color="success" size="xl" />
+            </label>
+          </div>
+          <div class="settings-group">
+            <label class="settings-toggle">
+              <span><b>{{ t('Smooth touch scrolling (beta)') }}</b><small>{{ t('Experimental finger tracking and inertia. Saved on this device.') }}</small></span>
+              <USwitch v-model="smoothScrollingOn" color="success" size="xl" />
             </label>
           </div>
           <div class="settings-group settings-renderer">

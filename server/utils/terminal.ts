@@ -20,6 +20,8 @@ import { machineOfPane, runHerdrCli } from './machines'
 import { type PaneHold, type PaneSize, cleanSavedSizes, createPaneSizes, parseSttySize } from './paneSizes'
 import { splitId } from '../../shared/ids'
 import { createScrollThrottle } from './scrollThrottle'
+import { terminalScrollPosition } from './scrollPosition'
+import { createTouchScrollPacer } from './touchScrollPacer'
 import { fmt } from '../../shared/message'
 
 export const clampInt = (v: unknown, lo: number, hi: number, dflt: number) => {
@@ -152,11 +154,20 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
     log(`term ${pane} opened ${cols}x${rows}${args.includes('--takeover') ? ' (takeover)' : ''}${machine!.local ? '' : ` on ${machine!.label}`}`)
 
     readline.createInterface({ input: c.stdout }).on('line', (line) => {
-      if (!attached && line.includes('"terminal.frame"')) {
+      const isFrame = line.includes('"terminal.frame"')
+      if (!attached && isFrame) {
         attached = true
         hold?.resized(size.cols, size.rows)
       }
-      if (ws.isOpen()) ws.send(line)
+      if (ws.isOpen()) {
+        ws.send(line)
+        if (isFrame) {
+          for (const [epoch, lines] of scrollDelivered)
+            ws.send(JSON.stringify({ type: 'scroll.ack', epoch, lines }))
+          scrollDelivered.clear()
+        }
+      } else scrollDelivered.clear()
+      if (isFrame) touchScroll?.frame()
     })
     readline.createInterface({ input: c.stderr }).on('line', (line) => {
       log(`term ${pane} stderr: ${line}`)
@@ -167,6 +178,8 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
       ws.close(4500, 'herdr error')
     })
     c.on('exit', (code) => {
+      scroll.dispose()
+      touchScroll?.dispose()
       termSessions.delete(sess)
       if (ws.isOpen()) ws.close(4000, `herdr exit ${code}`)
     })
@@ -176,7 +189,19 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
   }
 
   // Scrolls merged and rate-limited (see scrollThrottle.ts).
+  // Acknowledge sent rows after relaying the next frame. Herdr exposes no
+  // applied viewport delta or causal input sequence, so this is prediction.
+  const scrollDelivered = new Map<number, number>()
+  type TouchPosition = ReturnType<typeof terminalScrollPosition> & { epoch: number, preview: boolean }
+  let touchScroll: ReturnType<typeof createTouchScrollPacer<TouchPosition>> | undefined
+  // Preserve the legacy wire contract, and allocate no pacer for default clients.
   const scroll = createScrollThrottle((direction, lines) => toChild({ type: 'terminal.scroll', direction, lines }))
+  const pacedTouch = () => touchScroll ||= createTouchScrollPacer<TouchPosition>((direction, lines, position) => {
+    if (!position) return
+    const { epoch, preview, ...cell } = position
+    if (preview) scrollDelivered.set(epoch, (scrollDelivered.get(epoch) || 0) + (direction === 'up' ? lines : -lines))
+    toChild({ type: 'terminal.scroll', direction, lines, ...cell })
+  })
 
   // The pane's size is read before the control session resizes it (see paneSizes.ts).
   paneSizes().hold(pane).then(async (h) => {
@@ -199,15 +224,18 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
       catch { return }
       switch (m && m.type) {
         case 'terminal.input':
+          touchScroll?.cancel()
           if (typeof m.text === 'string' && m.text.length <= 65536) toChild({ type: 'terminal.input', text: m.text })
           else if (typeof m.bytes === 'string' && m.bytes.length <= 90000) toChild({ type: 'terminal.input', bytes: m.bytes })
           break
         case 'terminal.mouse': {
+          touchScroll?.cancel()
           const event = mouse && cleanTerminalMouse(m, size.cols, size.rows)
           if (event) toChild(event)
           break
         }
         case 'terminal.resize': {
+          touchScroll?.cancel()
           size = { cols: clampInt(m.cols, 10, 400, cols), rows: clampInt(m.rows, 5, 200, rows) }
           if (attached) hold?.resized(size.cols, size.rows)
           toChild({ type: 'terminal.resize', ...size })
@@ -215,10 +243,22 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
         }
         case 'terminal.scroll':
           if (m.direction === 'up' || m.direction === 'down') {
-            scroll.push(m.direction, clampInt(m.lines, 1, 500, 3))
+            if (m.source === 'touch') {
+              pacedTouch().push(m.direction, clampInt(m.lines, 1, 500, 3), {
+                ...terminalScrollPosition(m, size.cols, size.rows),
+                epoch: clampInt(m.epoch, 0, Number.MAX_SAFE_INTEGER, 0), preview: m.preview !== false,
+              })
+            }
+            else { touchScroll?.cancel(); scroll.push(m.direction, clampInt(m.lines, 1, 500, 3)) }
           }
           break
+        case 'touch.cancel':
+          if (m.disabled === true) { touchScroll?.dispose(); touchScroll = undefined }
+          else touchScroll?.cancel()
+          scrollDelivered.clear()
+          break
         case 'keys': // logical keys encoded by Herdr according to the terminal mode
+          touchScroll?.cancel()
           if (Array.isArray(m.keys) && m.keys.length <= 32 && m.keys.every((k: unknown) => typeof k === 'string' && k.length <= 24)) {
             herdr('pane.send_input', { pane_id: pane, keys: m.keys }).catch(e =>
               ws.isOpen() && ws.send(JSON.stringify({ type: 'web.error', code: e.code, message: e.message })))
@@ -228,6 +268,7 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
         // turns an image path into an image (typed through wherdr's xterm, which
         // never learns the program's bracketed paste mode, it stays text).
         case 'paste':
+          touchScroll?.cancel()
           if (typeof m.text === 'string' && m.text && m.text.length <= 65536) {
             herdr('pane.send_input', { pane_id: pane, text: m.text }).catch(e =>
               ws.isOpen() && ws.send(JSON.stringify({ type: 'web.error', code: e.code, message: e.message })))
@@ -235,12 +276,14 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
           break
         case 'visibility':
           sess.visible = Boolean(m.visible)
+          if (!sess.visible) touchScroll?.cancel()
           break
       }
     },
     onClose(clean = false) {
       closed = true
       scroll.dispose()
+      touchScroll?.dispose()
       termSessions.delete(sess)
       const c = child
       if (c) {
