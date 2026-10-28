@@ -1,10 +1,10 @@
 <script setup lang="ts">
 // A repo's group on the home list, as Herdr's sidebar draws it with
 // herdr-projects. Its head row is its project coordinator, named after the
-// repo: the wherdr mark on the accent, "Coordinator", its state (no last
+// repo: its project key on the accent, "Coordinator", its state (no last
 // message; its question and one-tap answers when it asks one). Without a
-// local coordinator, a remote coordinator link heads the group if present;
-// otherwise the group starts with its task summary bar.
+// local coordinator, a static project identity heads the group, followed
+// by a remote coordinator link if present.
 // Under it, the group's bar: the fold button with a summary of the tasks
 // ("4 TASKS · 1 YOUR TURN · 1 LIMIT"), the branch, and the "…" menu of the
 // repo's space (its terminal, its actions; closing it closes the whole
@@ -47,9 +47,16 @@ function openRepo() {
   else navigateTo(panePath(r.pane.id))
 }
 const repoLabel = computed(() => tl(`Open the terminal of ${g.value.repo}`, `Ouvrir le terminal de ${g.value.repo}`))
-const headItems = (): MenuItem[] => (spaceId.value
+const repoItems = (): MenuItem[] => (spaceId.value
   ? [{ label: repoLabel.value, icon: 'i-lucide-square-terminal', run: openRepo }, { kind: 'separator' }, ...workspaceItems(spaceId.value, true)]
   : [])
+const headItems = (): MenuItem[] => [
+  ...(!g.value.coordinator && !g.value.remote ? [{
+    label: tl('Start coordinator', 'Démarrer le coordinateur'), icon: 'i-lucide-message-square-plus',
+    run: () => navigateTo({ path: '/board', query: { machine: props.machine || '', coordinator: g.value.repo } }),
+  }] : []),
+  ...repoItems(),
+]
 // Touch: a long press on the bar opens the same menu as "…".
 const barLp = longPress({
   onPress: () => {
@@ -75,7 +82,7 @@ const branchTitle = computed(() => {
   return behind.value ? tl(`${i.branch}: ${behind.value} commits behind its upstream`, `${i.branch} : ${behind.value} commits de retard sur sa branche distante`) : i.branch
 })
 
-// Only a local coordinator gets a head row; the repo terminal stays in the bar menu.
+// The repo terminal stays in the bar menu; a missing coordinator gets a static head.
 const leadRow = computed(() => g.value.coordinator)
 const leadCard = computed<BoardCard>(() => ({ tag: '', name: g.value.repo, coordinator: true, lead: true }))
 const leadLabel = computed(() => coordinatorLabel({ kind: 'project', repo: g.value.repo }, ''))
@@ -92,9 +99,15 @@ const rowKey = (r: Row) => r.key
 <template>
   <section class="agent-group project" :class="[group.state, { collapsed }]" :data-repo="group.repo">
     <div v-if="leadRow" class="card-list project-lead" role="group" :aria-label="leadLabel">
-      <AgentCard :key="leadRow.key" :pane="leadRow.lead" :row="leadRow" :board="leadCard" />
+      <AgentCard :key="leadRow.key" :pane="leadRow.lead" :row="leadRow" :board="leadCard" :project-key="group.key" />
     </div>
-    <button v-else-if="group.remote" type="button" class="project-remote" @click="openRemote">
+    <div v-else class="project-identity">
+      <span class="project-key" aria-hidden="true"><template v-if="group.key">{{ group.key }}</template><UIcon v-else name="i-lucide-folder" /></span>
+      <h2 class="project-name">{{ group.repo }}</h2>
+      <span class="project-identity-summary">{{ parts.map(p => p.text).join(' · ') }}</span>
+      <SpaceMenu :items="headItems" :title="group.repo" size="sm" :label="tl(`Options: ${group.repo}`, `Options : ${group.repo}`)" />
+    </div>
+    <button v-if="!leadRow && group.remote" type="button" class="project-remote" @click="openRemote">
       <UIcon name="i-lucide-radio-tower" class="project-remote-icon" />
       <span>{{ tl('Coordinated from', 'Coordonné depuis') }} <b>{{ machineName(group.remote.machine) }}</b></span>
       <span class="project-remote-go">{{ t('coordinator') }}<UIcon name="i-lucide-arrow-up-right" /></span>
@@ -115,7 +128,7 @@ const rowKey = (r: Row) => r.key
         </button>
       </UContextMenu>
       <span v-if="group.info?.branch" class="project-branch" :title="branchTitle"><UIcon name="i-lucide-git-branch" /><span class="project-branch-name">{{ group.info.branch }}</span><b v-if="behind">↓{{ behind }}</b></span>
-      <SpaceMenu v-if="spaceId" :items="headItems" :title="group.repo" size="sm" :label="tl(`Options: ${group.repo}`, `Options : ${group.repo}`)" />
+      <SpaceMenu v-if="spaceId && leadRow" :items="headItems" :title="group.repo" size="sm" :label="tl(`Options: ${group.repo}`, `Options : ${group.repo}`)" />
     </div>
     <div v-if="!collapsed && group.members.length" class="card-list project-tree">
       <AgentCard v-for="m in group.members" :key="rowKey(m.row)" :pane="m.row.lead" :row="m.row" :board="memberCard(m)" />

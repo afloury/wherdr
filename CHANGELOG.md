@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-10-28
+
+### Added and improved
+
+- **Worktrees grouped by machine and project (#208).** Settings › Agents organizes worktrees into collapsible machine and project sections.
+
+- **Project headers without a coordinator (#205).** Projects keep a lightweight header even when they have no coordinator.
+
+- **Updated README animation (#206).** The introductory WebP animation shows the current interface.
+
+- **Notification state in row menus (#210).** Right-click or long-press a row to see Mute notifications or Unmute notifications; rows no longer show a muted bell, and card menus list the notification action only once.
+
+- **Project key on the coordinator header (#209).** The project's key appears on the coordinator header's accent square, with the logo kept when no key is known.
+
+### Fixed
+
+- **npm publishes after the GitHub release (#207).** `release.yml` now starts `npm.yml` once the release and its package are public, instead of both starting on the tag and npm failing with "release not found". A version already on npm is not published again.
+
+- **Deterministic TaskSheet menu test (#211).** The model and effort test waits for a closed menu to return focus before opening the next one, avoiding timing-dependent CI failures.
+
+- **New agents keep the typed name (#212).** The Name field labels the new space or the pane in an existing space as typed, including spaces. Thanks to [@SunnySydeUp](https://github.com/SunnySydeUp) for the contribution.
+
 ## [2.2.0] — 2026-10-27
 
 ### Added and improved

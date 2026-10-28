@@ -1,0 +1,39 @@
+{
+  "source": "Unmodified wherdr app, static app/demo build",
+  "commit": "9ffd8a5156484bb9972bb108bdb89fda2b51624d",
+  "appTree": "b425ccbfb0186f148217821bfff8727561248731",
+  "actions": [
+    {
+      "at": 1.2,
+      "action": "Click Launch in the real New agent sheet",
+      "route": "#/a/w5:p1"
+    },
+    {
+      "at": 2.4,
+      "action": "Resize the same live page to a phone; no reload or new session",
+      "route": "#/a/w5:p1"
+    },
+    {
+      "at": 4.8,
+      "action": "Approve once with the actual first Yes button",
+      "route": "#/a/w5:p1"
+    },
+    {
+      "at": 10,
+      "action": "Go back to the actual compact agent list: project coordinator and task rows",
+      "route": "#/"
+    },
+    {
+      "at": 12,
+      "action": "Return to desktop and open the real Board",
+      "route": "#/board"
+    }
+  ],
+  "width": 720,
+  "height": 720,
+  "frames": 225,
+  "durationMs": 14999,
+  "bytes": 1491360,
+  "loop": "infinite",
+  "actionsTimeline": "Source capture, before launch-film editing"
+}

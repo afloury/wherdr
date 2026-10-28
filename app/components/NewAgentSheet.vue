@@ -9,7 +9,7 @@
 // machine nor worktree.
 // On the phone it opens full screen, Launch pinned at the bottom.
 import type { MachineConfig } from '#shared/types'
-import { AGENT_NAME_HINT, machineOf, toAgentName } from '#shared/ids'
+import { machineOf } from '#shared/ids'
 import { splitPreview } from '#shared/layout'
 import { selectedAgentKind, visibleAgentKinds } from '~/utils/agentChoices'
 import { type NewPanePlace, launchInNewPane } from '~/utils/paneLaunch'
@@ -22,12 +22,9 @@ const worktree = ref(false)
 const branch = ref('')
 const resume = ref(false)
 const prompt = ref('')
+// Typed as the user wants it (spaces too): the new space's name, or the
+// pane's in an existing space. The server derives Herdr's agent id from it.
 const name = ref('')
-// Typed name converted to the one Herdr will really use; nothing usable
-// left (only symbols): the rule is shown instead.
-const agentName = computed(() => toAgentName(name.value))
-const nameShown = computed(() => (name.value.trim() && agentName.value !== name.value.trim() ? agentName.value : ''))
-const nameUnusable = computed(() => !!name.value.trim() && !agentName.value)
 const error = ref<string | null>(null)
 const launching = ref(false)
 const isGit = ref(false)
@@ -362,13 +359,8 @@ async function launch() {
           <label class="field-label" for="newName">{{ t('Name') }} <span class="muted">{{ t('(optional)') }}</span></label>
           <UInput
             id="newName" v-model="name" size="xl" class="w-full" autocapitalize="none" autocorrect="off"
-            :spellcheck="false" placeholder="reviewer" maxlength="80"
-            :aria-describedby="nameShown || nameUnusable ? 'newNameNote' : undefined"
+            :spellcheck="false" placeholder="reviewer" maxlength="60"
           />
-          <p v-if="nameUnusable" id="newNameNote" class="form-error name-note">{{ t(AGENT_NAME_HINT) }}</p>
-          <p v-else-if="nameShown" id="newNameNote" class="name-note" data-testid="agent-name-preview">
-            {{ tl('Will be launched as:', 'Sera lancé comme :') }} <code>{{ nameShown }}</code>
-          </p>
         </template>
       </template>
     </div>

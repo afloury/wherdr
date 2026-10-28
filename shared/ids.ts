@@ -111,7 +111,6 @@ export function parseStatusSocket(out: string): string | null {
 
 // Name of an agent launched from the app (normalized to lowercase).
 export const AGENT_NAME_RE = /^[a-z][a-z0-9_-]{0,31}$/
-export const AGENT_NAME_HINT = 'Name: use at least one letter or digit'
 
 // Letters NFKD does not split (sharp s, ae, oe, o slash, d bar, l slash, thorn).
 const LIGATURES: Record<string, string> = { '\u00df': 'ss', '\u00e6': 'ae', '\u0153': 'oe', '\u00f8': 'o', '\u0111': 'd', '\u0142': 'l', '\u00fe': 'th' }

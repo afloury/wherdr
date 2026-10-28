@@ -325,6 +325,8 @@ const FR: Record<string, string> = {
   'Agents offered wherever an agent is chosen. Terminal is always available.': 'Agents proposés partout où l’on choisit un agent. Terminal toujours disponible.',
   'No agents installed on online machines.': 'Aucun agent installé sur les machines en ligne.',
   'Choices follow you on every device.': 'Ces choix te suivent sur tous tes appareils.',
+  'Mute notifications': 'Couper les notifications',
+  'Unmute notifications': 'Réactiver les notifications',
   'Notifications': 'Notifications', 'Application': 'Application', 'Phone': 'Téléphone',
   'Show terminal spaces in the list, filed under Ready.': 'Montrer les spaces de terminal dans la liste, rangés dans Prêts.',
   'Show counters': 'Afficher les compteurs', 'Show agent counters on the home screen.': 'Afficher les compteurs d’agents sur l’accueil.',
@@ -637,7 +639,6 @@ const FR: Record<string, string> = {
   'Invalid message': 'Message invalide',
   'No agent in this pane': 'Pas d’agent dans ce pane',
   'This agent’s folder is unknown': 'Dossier de cet agent inconnu',
-  'Name: use at least one letter or digit': 'Nom : mets au moins une lettre ou un chiffre',
   
   'Uncommitted changes in this worktree': 'Modifications non commitées dans ce worktree',
   'This pane’s folder is unknown': 'Dossier de ce pane inconnu',

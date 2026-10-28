@@ -19,7 +19,7 @@ Publishing (`npm.yml`), and the tap uses the existing optional `HOMEBREW_TAP_TOK
    "See CHANGELOG.md", is never sufficient. Push its version tag only after these notes are ready.
    The workflow validates the draft before attaching the package and again immediately before
    publication; missing or insufficient notes fail the job. It never generates stable release notes.
-4. The tag starts `release.yml` and `npm.yml` independently. `release.yml` runs `npm pack`
+4. The tag starts `release.yml` (not `npm.yml`, see step 6). `release.yml` runs `npm pack`
    (prepack builds Nitro, includes `skills/wherdr`, resolves linked packages). It attaches
    `wherdr-X.Y.Z.tgz` and `wherdr-X.Y.Z.tgz.sha256` to the draft. After the package job
    succeeds, it publishes the release with `latest=false`. The public GitHub package is now
@@ -31,11 +31,18 @@ Publishing (`npm.yml`), and the tap uses the existing optional `HOMEBREW_TAP_TOK
    cannot advance even when npm is ready. A skipped Homebrew job does not complete this step.
    Homebrew still uses npm to install the local archive and fetch its third-party dependency;
    it does not need the new **wherdr version** to be available on npm.
-6. `npm.yml` waits for the attached archive (up to 30 minutes), verifies it, then publishes
-   that exact file with provenance. npm moderation may still delay registry availability.
-   If the assets were too slow to arrive, rerun the failed download job before any successful
-   publication; never retry a successful `npm publish` merely because moderation is pending.
-   To recover a workflow fix without moving a tag, run `gh workflow run npm.yml --ref main -f version=vX.Y.Z` after merging the fix; it checks out that tag and publishes its existing release archive.
+6. Once `publish-release` succeeds, the `npm` job of `release.yml` dispatches `npm.yml`
+   (`workflow_dispatch` on the tag, `version=vX.Y.Z`). The release and its archive are then
+   public, so `npm.yml` never runs ahead of them. It is dispatched rather than triggered by
+   the tag or by a `release: published` event: a release made public with `GITHUB_TOKEN`
+   starts no workflow, a dispatch does, and npm Trusted Publishing must keep naming `npm.yml`.
+   The `npm` job does not wait for Homebrew. `npm.yml` first asks the registry: if the
+   version is already on npm, it succeeds without publishing. Otherwise it checks out the
+   tag, checks the versions, downloads and verifies the attached archive, then publishes that
+   exact file with provenance. npm moderation may still delay registry availability; never
+   retry a successful `npm publish` merely because moderation is pending. The manual trigger
+   (`gh workflow run npm.yml --ref main -f version=vX.Y.Z`) stays only for recovery, e.g.
+   after merging a workflow fix; a second run of a published version is a no-op.
 7. `release-ready.yml` checks hourly and after npm/release workflow completion. Once npm's
    tarball and `latest` tag, and the Homebrew formula are ready, it marks the GitHub release
    `latest`. Existing 1.3.x apps read this marker and can then safely use their npm updater.
@@ -53,9 +60,9 @@ Replacing both defeats this check. npm fallback compares the archive to the SHA-
 in registry metadata, with the same limitation. There is no signature or build attestation check.
 
 npm provenance identifies the publishing workflow (`npm.yml`); the archive was built by
-`release.yml` in the same repository at the requested tagged commit. On a manual run from
-`main`, provenance identifies the workflow's `main` commit, while checkout and version checks
-use the requested tag. It does not independently attest that separate build workflow (M8);
+`release.yml` in the same repository at the requested tagged commit. The automatic dispatch
+runs `npm.yml` from the tag itself. On a manual recovery run from `main`, provenance
+identifies the workflow's `main` commit, while checkout and version checks use the requested tag. It does not independently attest that separate build workflow (M8);
 this limitation is intentionally retained.
 
 Readiness logs name each missing npm or Homebrew condition, and an already-current `latest`
@@ -170,7 +177,8 @@ gh release create v2.1.0 --target "$(git rev-parse HEAD)" --draft --title "wherd
 git push origin v2.1.0
 ```
 
-Verify that `release.yml`, `npm.yml` and full tag CI actually started on the approved SHA.
+Verify that `release.yml` and full tag CI actually started on the approved SHA; `npm.yml`
+starts later, from the `npm` job of `release.yml`, once the release is published.
 If the existing tag push does not trigger them, stop and resolve the workflow trigger;
 never move the tag or publish a different build. `release.yml` has no manual trigger.
 Wait for packaging and publication to succeed, then perform the mandatory manual tap update
