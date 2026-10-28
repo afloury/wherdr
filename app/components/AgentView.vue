@@ -441,7 +441,6 @@ const headerAdd = computed(() => !props.cell && pane.value && spaceTabControls(s
 watch(fontSize, n => ctl.setFontSize(n))
 watch(pageVisible, (v) => {
   ctl.setVisible(v)
-  if (v && mode.value === 'term' && !ctl.isConnected() && !banner.value) ctl.connect(false)
 })
 
 // ------------------------------------------------------------ onglet
