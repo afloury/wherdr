@@ -1,0 +1,42 @@
+{
+  "voice": "matilda",
+  "model": "elevenlabs/eleven-v4-turbo",
+  "pronunciation": "where-der",
+  "segments": [
+    {
+      "id": "intro",
+      "title": "Find what needs you",
+      "narration": "With where-der, you can see which tasks need you, without checking every agent."
+    },
+    {
+      "id": "board",
+      "title": "Open the Board",
+      "narration": "Open the Board. Tasks are grouped by what happens next: Needs you, Ready to approve, Working, and To do."
+    },
+    {
+      "id": "needs",
+      "title": "Start with Needs you",
+      "narration": "Start with Needs you. This task is waiting for a decision, so it is the first place to look."
+    },
+    {
+      "id": "details",
+      "title": "Open the task",
+      "narration": "Select the task to open its details. Read the description and the question, with the task status still in view."
+    },
+    {
+      "id": "context",
+      "title": "Keep the context",
+      "narration": "The Task tab keeps the context together: the latest summary, the review, and the pull request, when available."
+    },
+    {
+      "id": "working",
+      "title": "Check progress",
+      "narration": "Back on the Board, Working shows progress at a glance. Open a task whenever you need the full context."
+    },
+    {
+      "id": "outro",
+      "title": "Focus on the next step",
+      "narration": "Find what needs you, understand the next step, and let the rest keep moving."
+    }
+  ]
+}
