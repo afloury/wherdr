@@ -3,6 +3,7 @@
 import type { Pane, ChatResponse } from '../../shared/types'
 import { updatePrompt, updateShellSignature, type UpdateLaunch } from '../../shared/selfUpdate'
 import { paneForeground, type RestartDeps } from './restartSeq'
+import { readPassiveScreen } from './passiveScreen'
 
 interface LastAgent extends UpdateLaunch {
   pid: number
@@ -44,7 +45,7 @@ export function createSelfUpdates(d: SelfUpdateDeps, saved: [string, LastAgent][
     writtenAt = d.now()
     d.save?.([...records])
   }
-  const read = async (id: string) => String((await d.call('pane.read', { pane_id: id, source: 'recent_unwrapped', lines: 80 }, 4000))?.read?.text || '')
+  const read = (id: string) => readPassiveScreen(d.call, id)
   return {
     get: (id: string) => records.get(id),
     clear(id: string) { records.delete(id); persist() },
