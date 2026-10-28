@@ -1001,7 +1001,8 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
           for (const d of await sortDesc(path.join(root, y, m))) {
             const dir = path.join(root, y, m, d)
             const hit = (await sortDesc(dir)).find(n => n.endsWith(`-${id}.jsonl`))
-            if (hit) { found = path.join(dir, hit); break outer }
+            // A folder with that name is not a conversation.
+            if (hit && await exists(path.join(dir, hit))) { found = path.join(dir, hit); break outer }
           }
         }
       }
@@ -1169,6 +1170,10 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     catch (e) {
       // Failed read: an error (the client keeps what it shows), not an empty result.
       if (!isMissing(e)) throw e
+      st = null
+    }
+    // Gone, or a folder where the transcript was expected: no conversation.
+    if (!st || !st.isFile) {
       locCache.delete(pane.id)
       lastLoc.delete(pane.id)
       return { available: false, reason: 'not_found' }

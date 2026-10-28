@@ -52,6 +52,24 @@ const STATUS_SCREEN = `╭──────────────────
 › Ask Codex to do anything
 `
 
+// A low-quota /status card and the live footer can show different readings.
+const LOW_STATUS_SCREEN = `  >_ OpenAI Codex (v0.159.1)
+⚠ Heads up, you have less than 25% of your weekly limit left. Run /status for a breakdown.
+› /status
+╭──────────────────────────────────────────────────────────────────────╮
+│  >_ OpenAI Codex (v0.159.1)                                           │
+│  Model:               gpt-5.5 (reasoning medium)                       │
+│  Directory:           ~/demo                                         │
+│  5h limit:            [████████████████░░░░] 80% left (resets 15:33)   │
+│  Weekly limit:        [██░░░░░░░░░░░░░░░░░░] 12% left (resets 10:33 on 10 Oct) │
+╰──────────────────────────────────────────────────────────────────────╯
+
+                                      ⚠ weekly limit: 11% left · /status
+› Ask Codex to do anything
+
+  gpt-5.5 medium · ~/demo                  ⚠ 1 warning · f2 to view
+`
+
 describe('parseCodexScreen', () => {
   it('reads the update box, its command and the weekly gauge', () => {
     expect(parseCodexScreen(SCREEN)).toEqual({
@@ -92,6 +110,30 @@ describe('parseCodexScreen', () => {
 
   it('keeps the last TUI header (the pane restarted Codex)', () => {
     expect(parseCodexScreen('>_ OpenAI Codex (v0.158.0)\n…\n>_ OpenAI Codex (v0.160.0)').version).toBe('0.160.0')
+  })
+
+  it('keeps the complete /status reading when the footer also shows a warning', () => {
+    const weekly = parseCodexScreen(LOW_STATUS_SCREEN).weekly
+    expect(weekly).toEqual({ left: 12, exact: true, resets: '10:33 on 10 Oct' })
+    const now = new Date(2026, 9, 3, 10, 37).getTime()
+    expect(weekFromScreen(weekly, now)).toEqual({
+      used: 88, resetsAt: new Date(2026, 9, 10, 10, 33).getTime(), at: now, source: 'screen', account: null,
+    })
+    expect(codexWeeklyWarning(LOW_STATUS_SCREEN)).toEqual({ left: 11, lessThan: false })
+  })
+
+  it('keeps the latest complete card, including when it follows a footer gauge', () => {
+    const next = 'Weekly limit: [█░░░░] 9% left (resets 11:00 on 11 Oct)'
+    expect(parseCodexScreen(`${LOW_STATUS_SCREEN}\n${next}\n⚠ weekly limit: 8% left · /status`).weekly)
+      .toEqual({ left: 9, exact: true, resets: '11:00 on 11 Oct' })
+    expect(parseCodexScreen(`⚠ weekly limit: 11% left · /status\n${next}`).weekly)
+      .toEqual({ left: 9, exact: true, resets: '11:00 on 11 Oct' })
+  })
+
+  it('still reads the latest footer alone without inventing a reset', () => {
+    const weekly = parseCodexScreen('⚠ weekly limit: 12% left · /status\n⚠ weekly limit: 11% left · /status').weekly
+    expect(weekly).toEqual({ left: 11, exact: true })
+    expect(weekFromScreen(weekly, new Date(2026, 9, 3).getTime())).toBeNull()
   })
 })
 
