@@ -340,7 +340,7 @@ const FR: Record<string, string> = {
   'The agent copied text — tap to copy': 'L’agent a copié du texte — touche pour copier',
   'Rendering is saved on this device.': 'Le rendu est enregistré sur cet appareil.',
   'Typewriter': 'Machine à écrire',
-  'Desktop': 'Ordinateur', 'Normal': 'Normale', 'Wide': 'Large', 'Full width': 'Pleine largeur',
+  'Desktop': 'Ordinateur', 'Shortcuts': 'Raccourcis', 'Normal': 'Normale', 'Wide': 'Large', 'Full width': 'Pleine largeur',
   'Content width': 'Largeur du contenu', 'Appearance': 'Apparence', 'Home screen': 'Accueil',
   'Reorder automatically': 'Réorganiser automatiquement',
   'Unread': 'Non lus', 'Read': 'Lus',
