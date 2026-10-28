@@ -509,7 +509,14 @@ export function connectEvents() {
   if (evWs && evWs.readyState <= 1) return
   const ws = new WebSocket(`${wsBase()}/ws/events`)
   evWs = ws
+  // A CONNECTING socket fires nothing: no open, no close, no retry. If the
+  // network is not actually back yet, the handshake hangs and the app would
+  // sit offline forever -- close it on a deadline so onclose retries.
+  const handshake = setTimeout(() => {
+    if (evWs === ws && ws.readyState === 0) { try { ws.close() } catch { /* ignore */ } }
+  }, 6000)
   ws.onopen = () => {
+    clearTimeout(handshake)
     evRetry = 0
     eventsOpen.value = true
     if (everOpen) {
@@ -552,6 +559,7 @@ export function connectEvents() {
     catch { /* message illisible */ }
   }
   ws.onclose = () => {
+    clearTimeout(handshake)
     if (evWs !== ws) return
     evWs = null
     eventsOpen.value = false

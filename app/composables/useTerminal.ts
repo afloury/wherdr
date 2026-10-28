@@ -250,7 +250,14 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     let lastErr = ''
     const ws = new WebSocket(`${wsBase()}/ws/term?${q}`)
     tws = ws
+    // A CONNECTING socket fires nothing: if the handshake hangs (network not
+    // really back yet) nothing retries -- close it on a deadline so onclose
+    // schedules the next attempt.
+    const handshake = setTimeout(() => {
+      if (tws === ws && ws.readyState === 0) { try { ws.close() } catch { /* ignore */ } }
+    }, 6000)
     ws.onopen = () => {
+      clearTimeout(handshake)
       if (term) lastSize = { cols: term.cols, rows: term.rows }
       ws.send(JSON.stringify({ type: 'visibility', visible: !document.hidden }))
     }
@@ -282,6 +289,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       }
     }
     ws.onclose = () => {
+      clearTimeout(handshake)
       if (tws !== ws) return
       tws = null
       mouseSupported = false
@@ -297,8 +305,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       if (!currentPane.value && herdrState.value.ok) return // pane closed: the banner is already there
       if (document.hidden) return // we will reconnect on return
       // Repeated failures without a single frame: we stop and show the error
-      // rather than loop.
-      if (!gotFrame && twsRetry >= 3) {
+      // rather than loop -- but only for a real reason (the server closed it
+      // or reported an error). A transport that never connects deserves an
+      // open-ended retry while the page is visible: the tunnel just is not
+      // back yet.
+      if (!gotFrame && twsRetry >= 3 && (lastErr || closedReason)) {
         twsRetry = 0
         const why = lastErr || closedReason
         return opts.setBanner({ text: terminalUnavailableText(why), btn: t('Retry'), fn: () => { opts.setBanner(null); connect(false) } })
