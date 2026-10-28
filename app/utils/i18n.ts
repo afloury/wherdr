@@ -3,6 +3,8 @@
 // checks that every key used in the code has one). The choice is saved on the device.
 
 const FR: Record<string, string> = {
+  'Smooth touch scrolling (beta)': 'Défilement tactile fluide (bêta)',
+  'Experimental finger tracking and inertia. Saved on this device.': 'Suivi du doigt et inertie expérimentaux. Enregistré sur cet appareil.',
   'Run in split terminal': 'Lancer dans un terminal partagé',
   'Command sent to split terminal': 'Commande envoyée au terminal partagé',
   'Command sent to a new split terminal': 'Commande envoyée à un nouveau terminal partagé',
