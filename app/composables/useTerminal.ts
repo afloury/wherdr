@@ -1,6 +1,7 @@
 // Terminal of a pane: xterm.js connected to /ws/term (Herdr's ANSI frames).
 // Herdr keeps the history: no local scrollback, scrolling is
 // requested from the server (terminal.scroll).
+import { createSocketProbe } from '~/utils/socketProbe'
 import { DESK_QUERY } from '~/utils/layoutMode'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -134,6 +135,16 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     })
   }
 
+  const probe = createSocketProbe(() => tws)
+  let handshake: ReturnType<typeof setTimeout> | undefined
+  watch(socketWake, () => {
+    if (document.hidden || !twsIntent || disposed || opts.hasBanner()) return
+    if (!isConnected()) connect(false)
+    else void probe.recover(() => {
+      if (!disposed && twsIntent && !document.hidden && !opts.hasBanner()) connect(false)
+    })
+  })
+
   function sendTerm(obj: unknown): boolean {
     if (tws && tws.readyState === 1) {
       tws.send(JSON.stringify(obj))
@@ -217,6 +228,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   function connect(takeover: boolean) {
     if (disposed || !term) return
     clearTimeout(twsTimer)
+    clearTimeout(handshake)
+    probe.cancel()
     if (tws) {
       tws.onclose = null
       try { tws.close(1000) }
@@ -233,11 +246,20 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     let lastErr = ''
     const ws = new WebSocket(`${wsBase()}/ws/term?${q}`)
     tws = ws
+    // A CONNECTING socket fires nothing: if the handshake hangs (network not
+    // really back yet) nothing retries -- close it on a deadline so onclose
+    // schedules the next attempt.
+    handshake = setTimeout(() => {
+      if (tws === ws && ws.readyState === 0) { try { ws.close() } catch { /* ignore */ } }
+    }, 6000)
     ws.onopen = () => {
+      if (tws !== ws) return
+      clearTimeout(handshake)
       if (term) lastSize = { cols: term.cols, rows: term.rows }
       ws.send(JSON.stringify({ type: 'visibility', visible: !document.hidden }))
     }
     ws.onmessage = (e) => {
+      if (tws !== ws) return
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let m: any
       try { m = JSON.parse(e.data) }
@@ -254,6 +276,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         if (m.width && m.height && (m.width !== term.cols || m.height !== term.rows)) term.resize(m.width, m.height)
         const current = term
         current.write(b64ToBytes(m.bytes || ''), () => selectionHint.refresh(current, mouseSupported))
+      } else if (m.type === 'pong') {
+        probe.pong(ws)
       } else if (m.type === 'terminal.closed') {
         closedReason = terminalClosedText(m)
       } else if (m.type === 'herdr.stderr') {
@@ -264,9 +288,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     }
     ws.onclose = () => {
       if (tws !== ws) return
+      clearTimeout(handshake)
       tws = null
       mouseSupported = false
       loading.value = false
+      probe.cancel()
       if (!twsIntent || disposed) return
       if (closedReason && /already has an attached client/.test(closedReason)) {
         return opts.setBanner({ text: t('This terminal is already open elsewhere.'), btn: t('Take control'), fn: () => { opts.setBanner(null); connect(true) } })
@@ -277,8 +303,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       if (!currentPane.value && herdrState.value.ok) return // pane closed: the banner is already there
       if (document.hidden) return // we will reconnect on return
       // Repeated failures without a single frame: we stop and show the error
-      // rather than loop.
-      if (!gotFrame && twsRetry >= 3) {
+      // rather than loop -- but only for a real reason (the server closed it
+      // or reported an error). A transport that never connects deserves an
+      // open-ended retry while the page is visible: the tunnel just is not
+      // back yet.
+      if (!gotFrame && twsRetry >= 3 && (lastErr || closedReason)) {
         twsRetry = 0
         const why = lastErr || closedReason
         return opts.setBanner({ text: terminalUnavailableText(why), btn: t('Retry'), fn: () => { opts.setBanner(null); connect(false) } })
@@ -291,6 +320,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     mouseSupported = false
     twsIntent = false
     clearTimeout(twsTimer)
+    clearTimeout(handshake)
+    probe.cancel()
     if (tws) {
       const ws = tws
       tws = null
