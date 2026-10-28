@@ -28,7 +28,7 @@ await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true, executablePath: process.env.TUTORIAL_BROWSER });
 const provenance = { appCommit: process.env.TUTORIAL_SOURCE_REVISION || execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), session: state.session, source: 'Real wherdr UI; fictional Board fixtures', frames: [], actions: [] };
 try {
-  const context = await browser.newContext({ viewport: { width: 440, height: 720 }, deviceScaleFactor: 2,
+  const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1.5,
     locale: 'en-US', timezoneId: 'UTC', colorScheme: 'dark', reducedMotion: 'reduce', serviceWorkers: 'block' });
   await context.route('**/*', async route => {
     const request = route.request(), target = new URL(request.url());
@@ -47,29 +47,29 @@ try {
     await page.waitForTimeout(250);
     const image = await page.screenshot({ path: join(output, `${id}.png`) });
     const focus = target ? await target.boundingBox() : { x: 20, y: 140, width: 400, height: 300 };
-    provenance.frames.push({ id, sha256: createHash('sha256').update(image).digest('hex'), focus });
+    provenance.frames.push({ id, sha256: createHash('sha256').update(image).digest('hex'), focus: Object.fromEntries(Object.entries(focus).map(([k, v]) => [k, v * 1.5])) });
   };
   await page.goto(`${url}/#/board`);
   await page.locator('.task-card').first().waitFor();
   await page.evaluate(() => document.fonts.ready);
-  await capture('intro', page.locator('.board-seg'));
-  await capture('board', page.locator('.board-seg'));
+  await page.getByRole('button', { name: 'Collapse list', exact: true }).click();
+  await page.getByRole('button', { name: 'Global', exact: true }).click();
+  await capture('intro', page.locator('.board-col-head').first());
+  await capture('board', page.locator('.board-col-head').first());
   await capture('needs', page.locator('.task-card[data-task="demo/12"]'));
   await page.locator('.task-card[data-task="demo/12"] .task-card-open').click({ position: { x: 12, y: 12 } });
   provenance.actions.push('Open needs-you task');
   await page.locator('.board-panel-tabs').getByRole('button', { name: 'Task', exact: true }).click();
   await page.locator('.task-description').waitFor();
   await capture('details', page.locator('.task-description'));
-  await page.getByRole('button', { name: 'Back to the Board', exact: true }).click();
-  await page.locator('.board-seg-btn.ready').click();
+  await page.locator('.board-panel-close').click();
   await page.locator('.task-card[data-task="demo/11"] .task-card-open').click({ position: { x: 12, y: 12 } });
   await page.locator('.board-panel-tabs').getByRole('button', { name: 'Task', exact: true }).click();
   await page.locator('.task-description').waitFor();
   provenance.actions.push('Inspect ready-to-approve task context; no approval sent');
   await capture('context', page.locator('.task-sheet-facts'));
   provenance.frames.at(-1).secondary = await page.locator('.board-panel-note').boundingBox();
-  await page.getByRole('button', { name: 'Back to the Board', exact: true }).click();
-  await page.locator('.board-seg-btn.working').click();
+  await page.locator('.board-panel-close').click();
   await capture('working', page.locator('.task-card[data-task="demo/13"]'));
   await capture('outro', page.locator('.task-card[data-task="demo/13"]'));
   await page.setViewportSize({ width: 1440, height: 900 });
