@@ -14,7 +14,7 @@ import { fmtBytes } from '~/utils/bytes'
 import { OSC52_MAX_BYTES, bindTerminalOsc52, copyAgentText } from '~/utils/terminalOsc52'
 import { uploadPhoto } from '~/utils/photoUpload'
 import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
-import { bindTerminalMouse } from '~/utils/terminalMouse'
+import { bindTerminalMouse, terminalCell } from '~/utils/terminalMouse'
 import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
 
 export interface Banner { text: string, btn: string, fn: () => void }
@@ -34,6 +34,12 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   let disposed = false
   const loading = ref(false)
   const kbdOn = ref(false)
+  const scrollInputVersion = ref(0)
+  // Incremented once a frame has been written: touch scrolling counts it as
+  // confirmation of the scrolls in flight (see TerminalView's offset).
+  const frameTick = ref(0)
+  // Signed scroll lines the server delivered and a frame has now covered.
+  const scrollAck = ref(0)
   const selectionHint = useTerminalSelectionHint()
   let unbindSelection: (() => void) | null = null
   let unbindPaste: (() => void) | null = null
@@ -135,6 +141,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   }
 
   function sendTerm(obj: unknown): boolean {
+    if (['terminal.input', 'paste'].includes((obj as { type?: string })?.type || '')) {
+      scrollInputVersion.value++
+      cancelTouchScroll()
+    }
     if (tws && tws.readyState === 1) {
       tws.send(JSON.stringify(obj))
       return true
@@ -145,6 +155,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   // Logical keys (esc, up, shift+tab…), encoded by Herdr according to the terminal
   // mode: through the WebSocket if it is open, otherwise through the API.
   async function sendKeys(keys: string[]) {
+    scrollInputVersion.value++
+    cancelTouchScroll()
     if (sendTerm({ type: 'keys', keys })) return
     try {
       await api('/api/input', { pane_id: paneId, keys })
@@ -253,7 +265,9 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         if (!term) return
         if (m.width && m.height && (m.width !== term.cols || m.height !== term.rows)) term.resize(m.width, m.height)
         const current = term
-        current.write(b64ToBytes(m.bytes || ''), () => selectionHint.refresh(current, mouseSupported))
+        current.write(b64ToBytes(m.bytes || ''), () => { selectionHint.refresh(current, mouseSupported); frameTick.value++ })
+      } else if (m.type === 'scroll.ack') {
+        if (typeof m.lines === 'number') scrollAck.value += m.lines
       } else if (m.type === 'terminal.closed') {
         closedReason = terminalClosedText(m)
       } else if (m.type === 'herdr.stderr') {
@@ -309,12 +323,18 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   // Tap on the touch layer: opens the link under the finger, if any.
   const tapLink = (x: number, y: number) => links?.tap(x, y) ?? false
   const hasFocus = () => Boolean(term && document.activeElement === term.textarea)
-  const rowHeight = () => (term && term.rows && el ? el.clientHeight / term.rows : 16)
+  const rowHeight = () => {
+    const screen = el?.querySelector('.xterm-screen') as HTMLElement | null
+    return term?.rows && screen?.clientHeight ? screen.clientHeight / term.rows : 16
+  }
   const pageRows = () => term?.rows || 24
   // Scrolling requested from Herdr (the history lives there).
-  function scroll(lines: number): boolean {
-    return sendTerm({ type: 'terminal.scroll', direction: lines > 0 ? 'up' : 'down', lines: Math.abs(lines) })
+  function scroll(lines: number, x?: number, y?: number, modifiers = 0, touch = false): boolean {
+    const rect = term?.element?.querySelector('.xterm-screen')?.getBoundingClientRect()
+    const position = rect && term && x !== undefined && y !== undefined ? terminalCell(x, y, rect, term.cols, term.rows) : null
+    return sendTerm({ type: 'terminal.scroll', direction: lines > 0 ? 'up' : 'down', lines: Math.abs(lines), ...position, modifiers, ...(touch ? { source: 'touch' } : {}) })
   }
+  function cancelTouchScroll() { sendTerm({ type: 'touch.cancel' }) }
 
   function setVisible(visible: boolean) {
     sendTerm({ type: 'visibility', visible })
@@ -346,6 +366,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     mount, connect, disconnect, isConnected, sendTerm, sendKeys, fitNow, setFontSize,
     reset, scroll, focus, blur, tapLink, tapMouse: (x: number, y: number) => mouse?.tap(x, y), hasFocus, rowHeight, pageRows, setVisible, dispose, loading, kbdOn,
     hasBanner: opts.hasBanner, selectionHint,
+    cancelTouchScroll, scrollInputVersion, frameTick, scrollAck,
   }
 }
 

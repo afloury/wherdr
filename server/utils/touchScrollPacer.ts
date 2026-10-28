@@ -1,0 +1,54 @@
+// Herdr 0.9.5 ignores `lines` in mouse-report mode: one command is one
+// wheel tick. Preserve every requested tick instead of merging a fast drag
+// into a single command. Small batches avoid a long queue in the agent's TTY.
+export function createTouchScrollPacer(send: (direction: 'up' | 'down', lines: number) => void) {
+  let net = 0, inFlight = 0, last = -Infinity
+  let credit = 8, creditedAt = Date.now(), expiresAt = 0
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let disposed = false
+  const schedule = () => {
+    if (disposed || !net || timer) return
+    const now = Date.now()
+    if (now >= expiresAt) { net = 0; return }
+    credit = Math.min(8, credit + Math.max(0, now - creditedAt) * .064)
+    creditedAt = now
+    const wait = Math.max(0, last + (inFlight >= 6 ? 120 : 16) - now, (1 - credit) / .064)
+    if (wait > 0) {
+      timer = setTimeout(() => { timer = null; schedule() }, Math.ceil(Math.min(wait, expiresAt - now)))
+      return
+    }
+    const count = Math.min(Math.abs(net), Math.floor(credit), inFlight >= 6 ? 1 : 3)
+    const direction = net > 0 ? 'up' : 'down'
+    net -= Math.sign(net) * count
+    credit -= count
+    last = now
+    inFlight += count
+    for (let i = 0; i < count; i++) send(direction, 1)
+    schedule()
+  }
+  const cancel = () => {
+    net = 0; inFlight = 0; last = -Infinity
+    if (timer) clearTimeout(timer)
+    timer = null
+  }
+  return {
+    push(direction: 'up' | 'down', lines: number) {
+      if (disposed) return
+      const amount = direction === 'up' ? lines : -lines
+      // A reversal follows the finger now, rather than draining older input.
+      if (net && Math.sign(net) !== Math.sign(amount)) net = 0
+      net = Math.max(-80, Math.min(80, net + amount))
+      expiresAt = Date.now() + 300
+      schedule()
+    },
+    frame() {
+      if (disposed) return
+      inFlight = 0
+      if (timer) clearTimeout(timer)
+      timer = null
+      schedule()
+    },
+    cancel,
+    dispose() { cancel(); disposed = true },
+  }
+}
