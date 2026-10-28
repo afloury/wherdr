@@ -223,6 +223,9 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
       try { m = JSON.parse(raw) }
       catch { return }
       switch (m && m.type) {
+        case 'ping': // liveness probe after sleep/backgrounding
+          if (ws.isOpen()) ws.send(JSON.stringify({ type: 'pong' }))
+          break
         case 'terminal.input':
           touchScroll?.cancel()
           if (typeof m.text === 'string' && m.text.length <= 65536) toChild({ type: 'terminal.input', text: m.text })
