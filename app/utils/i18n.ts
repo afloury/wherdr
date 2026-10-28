@@ -5,6 +5,7 @@
 const FR: Record<string, string> = {
   'Run in split terminal': 'Lancer dans un terminal partagé',
   'Command sent to split terminal': 'Commande envoyée au terminal partagé',
+  'Cannot verify an idle shell prompt. No command was sent.': 'Impossible de vérifier que le shell est à son invite. Aucune commande envoyée.',
   'Split terminal is busy. No command was sent.': 'Le terminal partagé est occupé. Aucune commande envoyée.',
   'Expected a single shell command': 'Une commande shell sur une seule ligne est attendue',
   'Advanced': 'Avancé',

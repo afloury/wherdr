@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
+vi.mock('../server/utils/splitShell', async importOriginal => ({ ...await importOriginal<object>(), prepareSplitShell: async () => ({}) }))
+
 import { runSplitCommand } from '../server/utils/splitCommand'
 
 function setup(mode: 'free' | 'busy' | 'missing', options: { race?: boolean, unknown?: boolean } = {}) {
   let reads = 0
   const agent = { pane_id: 'w1:p1', workspace_id: 'w1', tab_id: 'w1:t1', agent: 'claude', cwd: '/project' }
-  const shell = { pane_id: 'w1:p2', workspace_id: 'w1', tab_id: 'w1:t1' }
+  const shell = { pane_id: 'w1:p2', workspace_id: 'w1', tab_id: 'w1:t1', tokens: { wherdr_split_prompt: '10' } }
   const call = vi.fn(async (_machine: string, method: string, params: Record<string, unknown>) => {
     if (method === 'session.snapshot') return { panes: [agent, ...(mode === 'missing' ? [] : [shell])] }
     if (method === 'pane.split') return { pane: { ...shell, pane_id: 'w1:p3' } }
@@ -28,9 +30,22 @@ describe('run command in a split shell', () => {
     expect(call.mock.calls.filter(c => c[1] === 'pane.send_input').map(c => c[2])).toEqual([
       { pane_id: target, text: 'gcloud auth login', keys: ['enter'] },
     ])
-    if (mode !== 'free') expect(call).toHaveBeenCalledWith('ab12', 'pane.split', { target_pane_id: 'w1:p1', direction: 'right', cwd: '/project', focus: false })
+    if (mode !== 'free') expect(call).toHaveBeenCalledWith('ab12', 'pane.split', { target_pane_id: 'w1:p1', direction: 'right', cwd: '/project', focus: false, env: {} })
     else expect(call.mock.calls.some(c => c[1] === 'pane.split')).toBe(false)
     expect(call).toHaveBeenCalledWith('ab12', 'pane.focus', { pane_id: target })
+    expect(call).toHaveBeenCalledWith('ab12', 'pane.report_metadata', { pane_id: target, source: 'wherdr-split', tokens: { wherdr_split_prompt: null } })
+  })
+
+  it('does not trust an uninstrumented shell, even with identical idle-looking process information', async () => {
+    const base = setup('free')
+    const call = vi.fn(async (machine: string, method: string, params: Record<string, unknown>) => {
+      const r = await base(machine, method, params)
+      if (method === 'pane.get' && params.pane_id === 'w1:p2') return { pane: { ...r.pane, tokens: {} } }
+      return r
+    })
+    const result = await runSplitCommand('w1:p1', 'echo SPLIT_COMMAND', call)
+    expect(result.pane_id).toBe('w1:p3')
+    expect(call.mock.calls.filter(c => c[1] === 'pane.send_input').map(c => c[2].pane_id)).toEqual(['w1:p3'])
   })
 
   it('does not type if the shell becomes busy before sending', async () => {
