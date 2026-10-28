@@ -1,52 +1,66 @@
 # Board tutorial, episode 01
 
-Private 60-second desktop tutorial, 1920×1080, constant 60 fps, H.264/AAC.
-Matilda's original English WAVs are preserved at their original speed. Synthesis says
-`where-der`; captions say `wherdr`. No secret is needed when reusing the WAVs.
+Private desktop tutorial of about one minute: 1920×1080, constant 60 fps, H.264/AAC.
+Voice: ElevenLabs Matilda (`eleven-v4-turbo`) through OpenRouter, saying `where-der`;
+captions write `wherdr`, `Herdr` and `herdr-projects`.
 
-Use Node 22, root npm dependencies / Playwright Chromium, Python 3, FFmpeg with libass,
-and a separate Python environment with `pip install -r tools/tutorial-board/requirements.txt`
-for local alignment.
-Build with `flock /tmp/wherdr-heavy.lock npm run build`. Set `TUTORIAL_OUT` to a private
-artifact directory and `TUTORIAL_BUILD` to the built checkout. Keep all caches and models
-in that private directory. Copy `storyboard.json` there and restore the original WAVs
-from the private review download. `TUTORIAL_BROWSER` optionally selects installed Chromium.
+What the film says: the Board, its tasks, coordinators and project management come from
+herdr-projects; wherdr displays that board and makes it easy to use, and also works with
+Herdr alone. Keep that attribution when editing `storyboard.json`.
+
+## Pipeline
+
+Use Node 22 with the root npm dependencies and Playwright Chromium, FFmpeg with libass,
+and a separate Python 3.12 environment with `pip install -r requirements.txt` (local
+speech alignment and frame composition). Build with `flock /tmp/wherdr-heavy.lock npm run build`.
+Set `TUTORIAL_OUT` to a private folder (copy `storyboard.json` there) and `TUTORIAL_BUILD`
+to the built checkout. `TUTORIAL_BROWSER` optionally selects an installed Chromium.
 
 ```sh
-flock /tmp/wherdr-heavy.lock python3 tools/tutorial-board/session.py
-python3 tools/tutorial-board/align.py
-flock /tmp/wherdr-heavy.lock python3 tools/tutorial-board/render.py
-python3 tools/tutorial-board/test_timing.py
-python3 tools/tutorial-board/verify.py
+flock /tmp/wherdr-heavy.lock python3 tools/tutorial-board/session.py   # captures
+python3 tools/tutorial-board/narrate.py                              # only for new narration
+python3 tools/tutorial-board/align.py                                # word timestamps
+flock /tmp/wherdr-heavy.lock python3 tools/tutorial-board/render.py    # the film
+python3 tools/tutorial-board/test_timing.py && python3 tools/tutorial-board/verify.py
 ```
 
-Capture owns and removes a disposable `hwtest-video-*` session, never the default session.
-Only fictional Board GET fixtures are substituted; writes and external browser requests
-are blocked. The actual desktop UI uses its collapsed list and Global grouping. The CSS
-viewport is 1280×720 at 1.5 device scale, producing native 1920×1080 PNGs. Source hashes
-are in `capture.json`. No personal task, conversation or credential enters the film.
+**Capture** (`session.py`, `capture.mjs`) starts a disposable `hwtest-video-*` Herdr session
+and wherdr instance, never the default session, and removes both afterwards. Only fictional
+read-only Board fixtures are served; writes and external requests are blocked. The CSS
+viewport is 1920×1080, wide enough for the Board to keep its four columns beside an open
+task (asserted), at 2× device scale for sharp 3840×2160 sources. Each screenshot records
+the boxes of its named targets in `capture.json`, with source hashes. `content` targets hug
+the visible text and controls, so marks keep an even margin.
 
-The camera is locked to eliminate drift and retain text clarity. One minimum-jerk curved
-cursor approach accompanies the task opening, with one brief click mark. The screen
-changes once at that click; the pointer fades out. Other shots use direct editorial cuts.
-Square rules, Archivo headings, Inter captions and JetBrains Mono labels match the app.
-The renderer stores downloaded Google Fonts and their OFL licenses in the artifact folder.
+**Narration** (`narrate.py`). Load the OpenRouter key only into that process environment at
+invocation; never print or persist it. The untouched take is kept as `<id>.raw.wav`; pauses
+longer than `pause` seconds are shortened in `<id>.wav`. Speech is never sped up or pitched
+(the model does not accept a speed setting). Delete a shot's `.raw.wav` to resynthesize it.
 
-`align.py` computes actual word timestamps locally with small.en. `alignment.json` is the
-editable alignment source: review it against the WAVs before rendering. Phrase boundaries
-preserve those timestamps; no proportional word-count timing is used. Captions have a
-solid dark backing, generous margins and a maximum phrase length of 50 characters.
-Set `TUTORIAL_SHOT=outro` to rerender only that shot when all other encoded shots exist.
-Audio uses constant gain with peak headroom, followed by explicit silence padding; no
-dynamic loudness filter can shift the measured waveform. Use `TUTORIAL_SHOT=audio` to
-rebuild only audio and remux the existing shots. The verifier cross-correlates the muxed
-audio against each original WAV to check actual caption placement within 10 ms.
-`timeline.json` records the narration lead-in and exact frame budgets.
+**Alignment** (`align.py`) measures word timestamps locally with faster-whisper `small.en`
+and puts them on the written `caption` text (`spoken` maps how names sound to how they are
+written). Captions break at phrases; no proportional word-count timing is used.
 
-For fresh narration, `narrate.py` still supports Matilda through OpenRouter. Load the key
-only into that process environment at invocation; never print or persist it. Delete only
-the WAV that needs replacing, then rerun alignment. Never change playback speed to fit.
+**Composition** (`render.py`) draws every frame in Python and pipes it to FFmpeg, which
+burns `captions.ass` and encodes. Shot length follows the narration (`lead_in` + take +
+`tail`). Actions in `storyboard.json` are tied to spoken words (exact spelling):
 
-Output: `wherdr-board-tutorial.mp4`. Review all decoded frames for text, cursor and cuts,
-and listen against the timed captions. Share only through a private review page; do not
-publish. Preserve the WAVs, alignment, captures, fonts and sources in its download bundle.
+- `cursor`: `{to, at, then}` moves the pointer to a target when the word `at` starts,
+  on a slight arc with a minimum-jerk speed profile and a Fitts-like duration, clicks
+  (brief press and a small ring), then shows the screen `then`. The pointer is a black
+  macOS-style arrow with a white keyline and soft shadow, drawn at 4× for subpixel motion.
+  It fades out a second after a click and returns where it was before the next move.
+- `marks`: `{on, at, until?, pad?}` highlights a target from `at` to `until` (or the shot's
+  end). Marks belong to the tutorial, not the app: a yellow rounded ring with a dark keyline
+  that draws itself on, and the rest of the UI dimmed (`mark: "spotlight"`; `ring` and
+  `marker` are the alternatives that were compared).
+
+The camera stays locked: the whole UI stays sharp and nothing drifts. Screen changes after
+a click cross-fade over 7 frames; titles cross-fade between shots. `TUTORIAL_STILLS=12.5,30`
+writes PNG stills instead of the film, for frame-level review.
+
+`verify.py` checks the encoded film: format, every frame timestamp, capture hashes, caption
+intervals, pace (145 to 175 words per minute), clipping, and cross-correlates the muxed audio
+against each take to confirm its placement.
+
+Share the output only through a private review page; do not publish it.

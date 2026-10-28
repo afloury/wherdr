@@ -28,7 +28,9 @@ await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true, executablePath: process.env.TUTORIAL_BROWSER });
 const provenance = { appCommit: process.env.TUTORIAL_SOURCE_REVISION || execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), session: state.session, source: 'Real wherdr UI; fictional Board fixtures', frames: [], actions: [] };
 try {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1.5,
+  // 1920×1080 CSS keeps the desktop Board on four columns beside an open task;
+  // the 2× device scale gives the compositor sharp 3840×2160 sources.
+  const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 2,
     locale: 'en-US', timezoneId: 'UTC', colorScheme: 'dark', reducedMotion: 'reduce', serviceWorkers: 'block' });
   await context.route('**/*', async route => {
     const request = route.request(), target = new URL(request.url());
@@ -43,36 +45,62 @@ try {
     return route.continue();
   });
   const page = await context.newPage();
-  const capture = async (id, target) => {
+  // A target's box in CSS pixels. 'content' hugs the visible text and controls, so a
+  // tutorial mark keeps an even margin around what it points at instead of the layout box.
+  const measure = (locator, mode = 'box') => locator.first().evaluate((el, mode) => {
+    const rects = [];
+    if (mode === 'content') {
+      const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      while (walk.nextNode()) {
+        if (!walk.currentNode.textContent.trim()) continue;
+        const range = document.createRange(); range.selectNodeContents(walk.currentNode);
+        rects.push(...range.getClientRects());
+      }
+      for (const e of el.querySelectorAll('button, input, textarea, svg, img')) rects.push(e.getBoundingClientRect());
+    }
+    if (!rects.length) rects.push(el.getBoundingClientRect());
+    const shown = rects.filter(r => r.width > 0 && r.height > 0);
+    const x = Math.min(...shown.map(r => r.left)), y = Math.min(...shown.map(r => r.top));
+    return { x, y, width: Math.max(...shown.map(r => r.right)) - x, height: Math.max(...shown.map(r => r.bottom)) - y };
+  }, mode);
+  const capture = async (id, targets = {}) => {
     await page.waitForTimeout(250);
     const image = await page.screenshot({ path: join(output, `${id}.png`) });
-    const focus = target ? await target.boundingBox() : { x: 20, y: 140, width: 400, height: 300 };
-    provenance.frames.push({ id, sha256: createHash('sha256').update(image).digest('hex'), focus: Object.fromEntries(Object.entries(focus).map(([k, v]) => [k, v * 1.5])) });
+    const boxes = {};
+    for (const [name, [locator, mode]] of Object.entries(targets)) boxes[name] = await measure(locator, mode);
+    provenance.frames.push({ id, sha256: createHash('sha256').update(image).digest('hex'), targets: boxes });
   };
+  const head = n => [page.locator('.board-col-head').nth(n).locator('span').first(), 'content'];
+  const card = n => [page.locator(`.task-card[data-task="demo/${n}"]`), 'box'];
+  const panelTab = name => [page.locator('.board-panel-tabs').getByRole('button', { name, exact: true }), 'box'];
+  const fourColumns = async () => assert.equal(await page.locator('.board-col:visible').count(), 4);
   await page.goto(`${url}/#/board`);
   await page.locator('.task-card').first().waitFor();
   await page.evaluate(() => document.fonts.ready);
   await page.getByRole('button', { name: 'Collapse list', exact: true }).click();
   await page.getByRole('button', { name: 'Global', exact: true }).click();
-  await capture('intro', page.locator('.board-col-head').first());
-  await capture('board', page.locator('.board-col-head').first());
-  await capture('needs', page.locator('.task-card[data-task="demo/12"]'));
+  await capture('board', { needsHead: head(0), readyHead: head(1), workingHead: head(2), todoHead: head(3),
+    needsCard: card(12), readyCard: card(11), workingCard: card(13), todoCard: card(14) });
   await page.locator('.task-card[data-task="demo/12"] .task-card-open').click({ position: { x: 12, y: 12 } });
   provenance.actions.push('Open needs-you task');
+  await page.locator('.board-grid.desk').waitFor();
+  await fourColumns();
+  await capture('needs-open', { taskTab: panelTab('Task') });
   await page.locator('.board-panel-tabs').getByRole('button', { name: 'Task', exact: true }).click();
   await page.locator('.task-description').waitFor();
-  await capture('details', page.locator('.task-description'));
+  await fourColumns();
+  await capture('needs-task', { question: [page.locator('.task-sheet-msg'), 'content'],
+    description: [page.locator('.task-description'), 'content'], close: [page.locator('.board-panel-close'), 'box'] });
   await page.locator('.board-panel-close').click();
+  await capture('board-after', { readyCard: card(11) });
   await page.locator('.task-card[data-task="demo/11"] .task-card-open').click({ position: { x: 12, y: 12 } });
   await page.locator('.board-panel-tabs').getByRole('button', { name: 'Task', exact: true }).click();
   await page.locator('.task-description').waitFor();
+  await fourColumns();
   provenance.actions.push('Inspect ready-to-approve task context; no approval sent');
-  await capture('context', page.locator('.task-sheet-facts'));
-  provenance.frames.at(-1).secondary = await page.locator('.board-panel-note').boundingBox();
+  await capture('ready-task', { facts: [page.locator('.task-sheet-facts'), 'content'],
+    summary: [page.locator('.task-sheet-block.board-panel-note'), 'content'], close: [page.locator('.board-panel-close'), 'box'] });
   await page.locator('.board-panel-close').click();
-  await capture('working', page.locator('.task-card[data-task="demo/13"]'));
-  await capture('outro', page.locator('.task-card[data-task="demo/13"]'));
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await capture('desktop');
+  await capture('board-closed', { workingCard: card(13), todoCard: card(14), todoHead: head(3) });
   await writeFile(join(output, 'capture.json'), JSON.stringify(provenance, null, 2));
 } finally { await browser.close(); }

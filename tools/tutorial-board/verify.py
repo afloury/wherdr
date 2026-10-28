@@ -5,16 +5,18 @@ probe=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_format',
 video=next(s for s in probe['streams'] if s['codec_type']=='video')
 audio=next(s for s in probe['streams'] if s['codec_type']=='audio')
 assert (video['codec_name'],video['width'],video['height'],video['pix_fmt'])==('h264',1920,1080,'yuv420p')
-assert video['r_frame_rate']=='60/1' and int(video['nb_frames'])==3600
-assert abs(float(probe['format']['duration'])-60)<.1 and audio['codec_name']=='aac'
+timeline=json.loads((root/'timeline.json').read_text());count=timeline['frames']
+assert video['r_frame_rate']=='60/1' and int(video['nb_frames'])==count
+assert 50<=timeline['duration']<=66, 'Keep the film about one minute'
+assert abs(float(probe['format']['duration'])-timeline['duration'])<.1 and audio['codec_name']=='aac'
 data=movie.read_bytes();assert data.index(b'moov')<data.index(b'mdat'), 'Missing fast-start metadata'
 plan=json.loads((root/'storyboard.json').read_text());assert plan['voice']=='matilda' and plan['pronunciation']=='where-der'
-timeline=json.loads((root/'timeline.json').read_text());end=0
+end=0
 for shot in timeline['shots']:
     assert abs(shot['start']-end)<.002
     assert shot['narration_start']+shot['narration_duration']<=shot['start']+shot['duration']
     end=shot['start']+shot['duration']
-assert abs(end-60)<.002
+assert abs(end-timeline['duration'])<.002
 capture=json.loads((root/'capture.json').read_text());assert capture['session'].startswith('hwtest')
 for frame in capture['frames']:
     assert hashlib.sha256((root/(frame['id']+'.png')).read_bytes()).hexdigest()==frame['sha256']
@@ -23,19 +25,22 @@ pcm=subprocess.check_output(['ffmpeg','-v','error','-i',str(movie),'-vn','-ar','
 samples=array.array('h',pcm);rms=math.sqrt(sum(x*x for x in samples)/len(samples))
 assert 20*math.log10(rms/32768)>-30, 'Missing or inaudible narration'
 assert max(abs(x) for x in samples)<32767, 'Clipped audio'
-print(json.dumps({'pass':True,'duration':probe['format']['duration'],'frames':3600,'size':len(data),'codec':'H.264/AAC','capture':'isolated hwtest session','rms_dbfs':round(20*math.log10(rms/32768),1)},indent=2))
+print(json.dumps({'pass':True,'duration':probe['format']['duration'],'frames':count,'size':len(data),'codec':'H.264/AAC','capture':'isolated hwtest session','rms_dbfs':round(20*math.log10(rms/32768),1)},indent=2))
 
 # Validate the presentation timestamp of every encoded frame, not just its header.
 frames=json.loads(subprocess.check_output(['ffprobe','-v','error','-select_streams','v:0',
     '-show_frames','-show_entries','frame=best_effort_timestamp_time','-of','json',str(movie)]))['frames']
-assert len(frames)==3600
+assert len(frames)==count
 assert all(abs(float(frame['best_effort_timestamp_time'])-i/60)<.000002 for i,frame in enumerate(frames))
 for shot in timeline['shots']:
     previous=0
     for event in shot['captions']:
         assert previous <= event['start'] < event['end'] <= shot['narration_duration']+.1
         previous=event['end']
-print('All 3600 frame timestamps and measured caption intervals verified.')
+words=sum(len(e['text'].split()) for s in timeline['shots'] for e in s['captions'])
+pace=words/timeline['duration']*60
+assert 145<=pace<=175, f'Narration pace {pace:.0f} words/min is outside the brief'
+print(f'All {count} frame timestamps and measured caption intervals verified; pace {pace:.0f} words/min.')
 
 # Check muxed-audio placement against the original WAV waveform. This also catches
 # an encoder delay or an accidental shift that a source-only alignment would miss.
