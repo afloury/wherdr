@@ -21,7 +21,7 @@ flock /tmp/wherdr-heavy.lock python3 tools/tutorial-board/session.py   # capture
 python3 tools/tutorial-board/narrate.py                              # only for new narration
 python3 tools/tutorial-board/align.py                                # word timestamps
 flock /tmp/wherdr-heavy.lock python3 tools/tutorial-board/render.py    # the film
-python3 tools/tutorial-board/test_timing.py && python3 tools/tutorial-board/verify.py
+python3 tools/tutorial-board/test_timing.py && python3 tools/tutorial-board/test_fontpin.py && python3 tools/tutorial-board/verify.py
 ```
 
 **Capture** (`session.py`, `capture.mjs`) starts a disposable `hwtest-video-*` Herdr session
@@ -62,5 +62,27 @@ writes PNG stills instead of the film, for frame-level review.
 `verify.py` checks the encoded film: format, every frame timestamp, capture hashes, caption
 intervals, pace (150 to 175 words per minute), clipping, and cross-correlates the muxed audio
 against each take to confirm its placement.
+
+## Fonts
+
+`render.py` uses Archivo, Inter and JetBrains Mono (variable TTFs, with their OFL licences)
+from [google/fonts](https://github.com/google/fonts), pinned in `fonts.json` to commit
+`9862abc066c9b83bf84c3e8ed1fc2d8d48f9bbf0`, never to `main`. `fontpin.py` downloads missing
+files into `tools/tutorial-board/fonts/` (git-ignored) and checks every cached or downloaded
+file against its SHA-256 in `fonts.json`; any mismatch stops the render.
+
+| Local file | google/fonts path | SHA-256 |
+|---|---|---|
+| `archivo.ttf` | `ofl/archivo/Archivo[wdth,wght].ttf` | `0e094a7d…b05053` |
+| `inter.ttf` | `ofl/inter/Inter[opsz,wght].ttf` | `29160a80…559031` |
+| `jetbrainsmono.ttf` | `ofl/jetbrainsmono/JetBrainsMono[wght].ttf` | `48715a42…3ffeda` |
+| `*-OFL.txt` | `ofl/<family>/OFL.txt` | see `fonts.json` |
+
+To update: pick a google/fonts commit (`git ls-remote https://github.com/google/fonts.git
+refs/heads/main`), download each file from
+`https://raw.githubusercontent.com/google/fonts/<commit>/ofl/<family>/<file>`, run
+`sha256sum` on it, and put the commit and the new hashes in `fonts.json`. Delete
+`tools/tutorial-board/fonts/`, re-render stills and review the typography before committing.
+`test_fontpin.py` checks the checksum logic offline.
 
 Share the output only through a private review page; do not publish it.
