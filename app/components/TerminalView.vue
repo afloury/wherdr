@@ -13,6 +13,11 @@ let acc = 0
 let pendingLines = 0
 let raf = 0
 let moved = false
+// A tap soon after scrolling is meant to end the gesture, not to click the
+// program: a forwarded terminal.mouse click resets Herdr's viewport to the
+// bottom and loses the reading position.
+let lastScrollAt = -Infinity
+const TAP_AFTER_SCROLL_MS = 450
 const flush = () => {
   raf = 0
   if (!pendingLines) return
@@ -42,6 +47,7 @@ function onTouchMove(e: TouchEvent) {
     scroller.scrollLeft -= dx
     lastY = y
     moved = true
+    lastScrollAt = performance.now()
     return
   }
   acc += dy
@@ -50,6 +56,7 @@ function onTouchMove(e: TouchEvent) {
   acc = rest
   if (lines) {
     moved = true
+    lastScrollAt = performance.now()
     queue(lines)
   }
 }
@@ -57,9 +64,10 @@ function onTouchEnd(e: TouchEvent) {
   const t = e.changedTouches[0]
   lastY = null
   lastX = null
+  const stopTap = !moved && performance.now() - lastScrollAt < TAP_AFTER_SCROLL_MS
   // A tap on a link opens it; any simple tap closes the keyboard: the
   // terminal stays readable in full.
-  if (!moved) {
+  if (!moved && !stopTap) {
     // No keyboard for a link: cancels the mousedown that follows the tap.
     if (t) {
       if (props.ctl.tapLink(t.clientX, t.clientY)) e.preventDefault()
@@ -67,11 +75,17 @@ function onTouchEnd(e: TouchEvent) {
     }
     props.ctl.blur()
     ;(document.activeElement as HTMLElement | null)?.blur?.()
-  }
+  } else if (stopTap) e.preventDefault()
 }
 // The layer only receives the mouse on a touch screen (main.css): on a
 // computer, xterm receives it directly (selection, mouse mode).
-function onMouseDown() { props.ctl.focus() }
+function onMouseDown(e: MouseEvent) {
+  // Compatibility mousedown after a touch scroll: refocusing xterm here opens
+  // the IME and resizes the remote TUI, which also loses the scroll position.
+  const fromTouch = (e as MouseEvent & { sourceCapabilities?: { firesTouchEvents?: boolean } }).sourceCapabilities?.firesTouchEvents
+  if (fromTouch || performance.now() - lastScrollAt < TAP_AFTER_SCROLL_MS) return
+  props.ctl.focus()
+}
 // Listened on the whole block, before xterm: on a computer the mouse reaches
 // xterm (selection), which would otherwise send the wheel to the program in mouse
 // mode. Herdr applies the application's mouse mode itself.
