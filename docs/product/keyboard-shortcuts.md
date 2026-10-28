@@ -2,7 +2,7 @@
 
 Status: **implemented** (2026-10-01). Code: `app/utils/shortcuts.ts` (table and matcher),
 `app/composables/useShortcuts.ts` (dispatcher and actions), `app/components/ShortcutsSheet.vue`
-(help sheet). Tests: `tests/shortcuts.test.ts`, `tests/cardKeys.test.ts`.
+(help sheet), `app/components/ShortcutsReference.vue` (shared with Settings › Shortcuts). Tests: `tests/shortcuts.test.ts`, `tests/cardKeys.test.ts`.
 `[INFERENCE]` marks claims nobody has tested on a device yet.
 
 > 2026-10-02: Mod+Alt+O (current agent folder in the default editor, via the existing
@@ -39,7 +39,7 @@ promise that wherdr "can replace the Herdr terminal client day to day".
 | Switch between conversation and terminal | Ctrl+`` ` `` on every platform, by position (`Backquote`; on macOS also `IntlBackslash`, the key left of 1 on ISO keyboards) | Agent with a conversation, or the active cell | Yes (xterm sends nothing for it) |
 | Stop the working agent, same as the Stop button | Esc | Conversation mode, Stop shown, empty field, no conversation search open | No (Esc goes to the program) |
 | Settings | Mod+, | Computer | Yes |
-| Shortcut list | Mod+/, or `?` outside a field | Computer; also Settings › Computer | Mod+/ only |
+| Shortcut list | Mod+/, or `?` outside a field | Computer; also Settings › Shortcuts | Mod+/ only |
 | Board: the herdr-projects tasks of every machine | `H` outside a field | Computer | No (the program gets the key) |
 
 These existing shortcuts are unchanged and listed in the help sheet:
