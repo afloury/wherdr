@@ -82,6 +82,38 @@ describe('terminal beta switch', () => {
     expect(frames.size).toBe(0)
     expect(r.ctl.cancelTouchScroll).toHaveBeenCalled()
   })
+  it('consumes the tap that stops a flick, including its compatibility mouse event', async () => {
+    const r = await mounted(true)
+    let time = 1000
+    vi.spyOn(performance, 'now').mockImplementation(() => time)
+    await r.send('touchstart', 100)
+    time += 16
+    await r.send('touchmove', 160)
+    await r.send('touchend', 160, 0)
+    // Real browsers dispatch pointerdown before touchstart. Cancellation must
+    // not forget that this next tap is stopping a scroll.
+    await r.w.get('#touch').trigger('pointerdown')
+    await r.send('touchstart', 160)
+    await r.send('touchend', 160, 0)
+    await r.w.get('#touch').trigger('mousedown')
+    expect(r.ctl.tapMouse).not.toHaveBeenCalled()
+    expect(r.ctl.tapLink).not.toHaveBeenCalled()
+    expect(r.ctl.focus).not.toHaveBeenCalled()
+    time += 701
+    await r.send('touchstart', 160)
+    await r.send('touchend', 160, 0)
+    await r.w.get('#touch').trigger('mousedown')
+    expect(r.ctl.tapMouse).toHaveBeenCalledOnce()
+    expect(r.ctl.focus).toHaveBeenCalledOnce()
+  })
+  it.each([false, true])('allows a normal tap to focus the terminal with beta=%s', async enabled => {
+    const r = await mounted(enabled)
+    await r.send('touchstart', 100)
+    await r.send('touchend', 100, 0)
+    await r.w.get('#touch').trigger('mousedown')
+    expect(r.ctl.tapMouse).toHaveBeenCalledOnce()
+    expect(r.ctl.focus).toHaveBeenCalledOnce()
+  })
   it('previews a small drag without inventing a full row at the gesture threshold', async () => {
     const r = await mounted(true)
     await r.send('touchstart', 100)

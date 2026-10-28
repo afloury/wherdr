@@ -99,6 +99,9 @@ let raf = 0, paintRaf = 0
 let settleTimer: ReturnType<typeof setTimeout> | undefined
 let scrollX = 0, scrollY = 0
 let lastTouchAt = -Infinity
+let lastScrollAt = -Infinity
+let stoppingScroll = false
+let allowTouchFocus = false
 let hadScroll = false
 const screenEl = () => host.value?.querySelector('.xterm-screen') as HTMLElement | null
 const applyOffset = () => {
@@ -140,6 +143,7 @@ watch(props.ctl.scrollAck, (value, previous) => {
 const scroller = () => host.value?.querySelector('.xterm') as HTMLElement | null
 const touch = createTerminalTouch({
   vertical(pixels, point) {
+    lastScrollAt = performance.now()
     // Reversal abandons stale prediction and pending commands first.
     if (unconfirmed && Math.sign(pixels) !== Math.sign(unconfirmed)) {
       props.ctl.cancelTouchScroll()
@@ -156,13 +160,14 @@ const touch = createTerminalTouch({
     expirePreview()
   },
   momentum(pixels, point) {
+    lastScrollAt = performance.now()
     momentumAcc += pixels
     const { lines, rest } = takeLines(momentumAcc, props.ctl.rowHeight())
     momentumAcc = rest
     // Momentum has no visual prediction; its acks must not pay finger debt.
     if (lines) props.ctl.scroll(lines, point.x, point.y, 0, true, false)
   },
-  horizontal(pixels) { const el = scroller(); if (el) el.scrollLeft -= pixels },
+  horizontal(pixels) { lastScrollAt = performance.now(); const el = scroller(); if (el) el.scrollLeft -= pixels },
   canHorizontal: () => { const el = scroller(); return !!el && el.scrollWidth > el.clientWidth },
   maxMomentum: () => props.ctl.rowHeight() * props.ctl.pageRows() * 1.5,
 })
@@ -187,6 +192,10 @@ watch(smoothTouchScrolling, () => {
 function onTouchStart(e: TouchEvent) {
   if (!smoothTouchScrolling.value) return legacyOnTouchStart(e)
   lastTouchAt = performance.now()
+  // Retain this across pointerdown cancellation, which precedes touchstart.
+  // A tap during or just after scrolling only stops the viewport.
+  stoppingScroll = lastTouchAt - lastScrollAt < 700
+  allowTouchFocus = false
   cancelTouch()
   if (e.touches.length === 1) touch.start(e.touches[0]!.clientX, e.touches[0]!.clientY)
 }
@@ -200,9 +209,11 @@ function onTouchEnd(e: TouchEvent) {
   if (!smoothTouchScrolling.value) return legacyOnTouchEnd(e)
   lastTouchAt = performance.now()
   const t = e.changedTouches[0]
-  if (touch.end()) {
+  const tapped = touch.end()
+  allowTouchFocus = tapped && !stoppingScroll
+  if (allowTouchFocus) {
     if (t) {
-      if (props.ctl.tapLink(t.clientX, t.clientY)) e.preventDefault()
+      if (props.ctl.tapLink(t.clientX, t.clientY)) { allowTouchFocus = false; e.preventDefault() }
       else props.ctl.tapMouse(t.clientX, t.clientY)
     }
     props.ctl.blur()
@@ -215,9 +226,10 @@ function onTouchEnd(e: TouchEvent) {
 function onMouseDown(e: MouseEvent) {
   if (!smoothTouchScrolling.value) return legacyOnMouseDown()
   const fromTouch = (e as MouseEvent & { sourceCapabilities?: { firesTouchEvents?: boolean } }).sourceCapabilities?.firesTouchEvents
-  // Ignore compatibility mouse events after a touch. Refocusing xterm here
-  // can reopen the IME, resize the remote TUI and lose the reading position.
-  if (fromTouch || (fromTouch === undefined && performance.now() - lastTouchAt < 700)) return
+  // Preserve keyboard access for an intentional tap, but never refocus after
+  // a drag, a link, or the tap that stopped inertia.
+  if ((fromTouch || (fromTouch === undefined && performance.now() - lastTouchAt < 700)) && !allowTouchFocus) return
+  allowTouchFocus = false
   props.ctl.focus()
 }
 // Listened on the whole block, before xterm: on a computer the mouse reaches

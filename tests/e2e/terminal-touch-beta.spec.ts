@@ -15,7 +15,20 @@ async function touch(page: Page, type: string, y: number, startY?: number) {
     }
     if (startY !== undefined) dispatch('touchstart', startY)
     dispatch(type, y)
-    return (el.parentElement?.querySelector('.xterm-screen') as HTMLElement)?.style.transform || ''
+    const screen = el.parentElement?.querySelector('.xterm-screen') as HTMLElement
+    if (screen?.style.transform) {
+      const clip = el.parentElement!.querySelector('#term')!.getBoundingClientRect()
+      const grid = screen.getBoundingClientRect()
+      const x = Math.max(clip.left, grid.left) + 5
+      // Hit-test the actual overflow strip while prediction is active. This
+      // fails if the grid paints outside #term even with an immobile frame.
+      const y = grid.top < clip.top - 2 ? clip.top - 2 : grid.bottom > clip.bottom + 2 ? clip.bottom + 2 : null
+      if (y !== null && document.elementsFromPoint(x, y).some(node => node === screen || screen.contains(node)))
+        throw new Error('Predicted terminal grid escapes its clipping boundary')
+      if (getComputedStyle(el.parentElement!.querySelector('#term')!).overflowY !== 'hidden')
+        throw new Error('Terminal prediction requires a clipped grid')
+    }
+    return screen?.style.transform || ''
   }, { type, y, startY })
 }
 
@@ -123,3 +136,13 @@ test('the beta preference is off by default and survives a reload on this device
   await page.reload()
   await expect(toggle).toHaveAttribute('aria-checked', 'true')
 })
+
+for (const enabled of [false, true]) {
+  test(`a normal terminal tap opens the keyboard with beta ${enabled ? 'on' : 'off'}`, { tag: '@webkit-phone' }, async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'Touch gestures use the phone viewport')
+    await fakeHerdr('e2e.touch_scroll', { pane_id: pane, reset: true, mouse: false })
+    await terminal(page, enabled)
+    await page.locator('#touch').tap()
+    await expect(page.locator('.xterm-helper-textarea')).toBeFocused()
+  })
+}
