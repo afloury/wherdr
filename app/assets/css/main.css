@@ -2170,10 +2170,6 @@ body.kb .composer { padding-bottom: 8px; }
 .sheet-form :is(input, textarea)[data-slot="base"]:focus, .rename input[data-slot="base"]:focus { box-shadow: inset 0 0 0 1px var(--mauve); outline: none; }
 .mono textarea, .mono input, textarea.mono, input.mono { font-family: var(--mono); font-size: 15px; }
 .form-error { color: var(--rose); font-size: 14px; margin: 14px 2px 0; }
-/* Agent name actually used, under the Name field of New agent. */
-.name-note { margin: 8px 2px 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
-.name-note code { font-family: var(--mono); color: var(--text); }
-.form-error.name-note { color: var(--rose); }
 .project-folder { margin: 8px 2px 14px; font-size: 13px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
 .project-folder code { font-family: var(--mono); color: var(--text); white-space: nowrap; }
 .form-error.project-folder { color: var(--rose); }
