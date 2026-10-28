@@ -45,6 +45,24 @@ onUnmounted(() => {
 })
 
 const pane = computed(() => herdrState.value.panes.find(p => p.id === props.paneId))
+// Remember this optional hint for the same agent on this device. A different
+// agent in a reused pane gets its own choice; hiding it never hides errors.
+const transcriptNoteKey = computed(() => {
+  const p = pane.value
+  if (!p?.agent) return ''
+  const machine = p.id.includes('~') ? p.id.split('~')[0] : 'local'
+  return `wherdr:transcript-note:hidden:${machine}:${p.agent}:${p.agentSession || p.id}`
+})
+const transcriptNoteHidden = ref(false)
+watch(transcriptNoteKey, key => {
+  transcriptNoteHidden.value = false
+  if (!key || typeof window === 'undefined') return
+  try { transcriptNoteHidden.value = localStorage.getItem(key) === '1' } catch { /* Storage may be disabled. */ }
+}, { immediate: true })
+function hideTranscriptNote() {
+  transcriptNoteHidden.value = true
+  try { if (transcriptNoteKey.value) localStorage.setItem(transcriptNoteKey.value, '1') } catch { /* Still hide it for this visit. */ }
+}
 const workspace = computed(() => herdrState.value.workspaces.find(w => w.id === pane.value?.workspace))
 // Several panes in the tab (cell or full screen): each pane carries its
 // own name; the space name stays in the tab header.
@@ -626,7 +644,10 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
       v-else-if="mode === 'term'" :ctl="ctl" :class="enter ? (enter > 0 ? 'enter-next' : 'enter-prev') : undefined" :style="swipeStyle"
     />
     <div v-else class="chat" />
-    <p v-if="pane?.agent && !hasChat(pane) && mode === 'term' && !cell" class="terminal-transcript-note">{{ tl('Conversation unavailable for this agent · follow it in the terminal', 'Conversation non disponible pour cet agent · suivi dans le terminal') }}</p>
+    <div v-if="pane?.agent && !hasChat(pane) && mode === 'term' && !cell && !transcriptNoteHidden" class="terminal-transcript-note dismissible-transcript-note">
+      <span>{{ tl('Conversation unavailable for this agent · follow it in the terminal', 'Conversation non disponible pour cet agent · suivi dans le terminal') }}</span>
+      <button type="button" :aria-label="t('Hide')" :title="t('Hide')" @click="hideTranscriptNote">×</button>
+    </div>
 
     <InteractiveTerminal v-if="interactionShown" :pane-id="paneId" :active="live" :title="headTitle" @close="closeInteraction" />
     <button v-else-if="(interactive || interactionOpen) && interactionAvailable" type="button" class="interactive-terminal-reopen" @click="reopenInteraction">
@@ -647,3 +668,10 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <input ref="attachInput" type="file" multiple hidden @change="attachFile">
   </section>
 </template>
+
+<style scoped>
+.dismissible-transcript-note { display: flex; flex: none; align-items: center; gap: 8px; padding: 0 4px 0 12px; }
+.dismissible-transcript-note > span { flex: 1; padding: 7px 0; }
+.dismissible-transcript-note > button { flex: none; align-self: stretch; min-width: 40px; min-height: 40px; color: var(--muted); font: 22px/1 var(--sans); border-radius: 6px; touch-action: manipulation; }
+.dismissible-transcript-note > button:hover, .dismissible-transcript-note > button:focus-visible { color: var(--text); background: var(--line-soft); }
+</style>
