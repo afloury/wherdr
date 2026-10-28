@@ -17,7 +17,7 @@ for (const desktop of [false, true]) {
       await page.route('**/api/split-command', route => {
         expect(route.request().postDataJSON()).toEqual({ pane_id: OMP_CHAT_PANE, command: 'gcloud auth login' })
         sent = true
-        return route.fulfill({ status: 409, json: { code: 'busy_pane', error: 'Split terminal is busy. No command was sent.' } })
+        return route.fulfill({ status: 409, json: { code: 'busy_pane', error: 'Cannot verify an idle shell prompt. No command was sent.' } })
       })
       await page.goto(`/#/a/${OMP_CHAT_PANE}`)
       const command = page.locator('.md-cmd').first()
@@ -30,7 +30,7 @@ for (const desktop of [false, true]) {
       await page.screenshot({ path: `.shots/chat-split-${desktop ? 'desktop' : 'phone'}.png` })
       await action.click()
       await expect.poll(() => sent).toBe(true)
-      await expect(page.getByText('Split terminal is busy. No command was sent.', { exact: true })).toBeVisible()
+      await expect(page.getByText('Cannot verify an idle shell prompt. No command was sent.', { exact: true })).toBeVisible()
     })
   })
 }

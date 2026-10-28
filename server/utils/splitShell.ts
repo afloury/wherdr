@@ -32,7 +32,7 @@ export async function prepareSplitShell(machine: string): Promise<Record<string,
   const zshrc = 'ZDOTDIR=$WHERDR_SPLIT_USER_ZDOTDIR\n[[ -f "$ZDOTDIR/.zshrc" ]] && source "$ZDOTDIR/.zshrc"\n' + hooks.zsh
   if (m.exec) {
     const r = await m.exec('umask 077; mkdir -p "$1" && printf %s "$2" > "$1/.zshenv" && printf %s "$3" > "$1/.zshrc" && printf %s "$4" > "$1/.zprofile"', [dir, zshenv, zshrc, zprofile], { timeoutMs: 5000 })
-    if (r.code !== 0) throw new HerdrError('busy_pane', 'Split terminal is busy. No command was sent.')
+    if (r.code !== 0) throw new HerdrError('split_failed', 'Could not prepare the split terminal. No command was sent.')
   } else {
     await fs.mkdir(dir, { recursive: true, mode: 0o700 })
     await fs.writeFile(path.join(dir, '.zshenv'), zshenv, { mode: 0o600 })

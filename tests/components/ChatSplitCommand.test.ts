@@ -19,7 +19,7 @@ let reply: { created: boolean } | 'refused' = { created: false }
 registerEndpoint('/api/chat', () => ({ available: true, token: 'split-command', file: '/project/chat.jsonl', items: [{ role: 'assistant', text: 'Try `! gcloud auth login`.', ts: null }] }))
 registerEndpoint('/api/split-command', { method: 'POST', handler: async event => {
   calls.push(await readBody(event))
-  if (reply === 'refused') throw createError({ statusCode: 409, data: { code: 'busy_pane', error: 'Split terminal is busy. No command was sent.' }, statusMessage: 'Split terminal is busy. No command was sent.' })
+  if (reply === 'refused') throw createError({ statusCode: 409, data: { code: 'busy_pane', error: 'Cannot verify an idle shell prompt. No command was sent.' }, statusMessage: 'Cannot verify an idle shell prompt. No command was sent.' })
   return { ok: true, pane_id: reply.created ? 'ab12~w1:p3' : 'ab12~w1:p2', created: reply.created }
 } })
 
