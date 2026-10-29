@@ -286,6 +286,7 @@ function retireHomeContent(el: Element) {
 const switchMachineConversation = useMachineConversation()
 function pickBar(id: string, event?: MouseEvent) {
   if (barLp.swallowClick()) return
+  if (id === machineBarPick.value) homeScroll.value?.scrollTo({ top: 0 })
   haptic()
   pickMachineBar(id)
   switchMachineConversation()
@@ -295,8 +296,8 @@ function pickBar(id: string, event?: MouseEvent) {
     const keys = machines.value.filter(m => selected.includes(baseKeyOf(m))).map(m => m.key)
     if (keys.some(k => collapsedMachines.value.includes(k))) collapsedMachines.value = collapsedMachines.value.filter(k => !keys.includes(k))
   }
-  void nextTick(() => homeScroll.value?.scrollTo({ top: 0 }))
-  ;(event?.currentTarget as HTMLElement | null ?? Array.from(homeRoot.value?.querySelectorAll<HTMLElement>('.machine-bar-item') ?? []).find(b => b.dataset.barId === id))?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  const button = event?.currentTarget as HTMLElement | null
+  requestAnimationFrame(() => (button ?? Array.from(homeRoot.value?.querySelectorAll<HTMLElement>('.machine-bar-item') ?? []).find(b => b.dataset.barId === id))?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }))
 }
 // A mouse wheel scrolls the bar sideways when it overflows (narrow sidebar).
 function onBarWheel(e: WheelEvent) {

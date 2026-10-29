@@ -1,4 +1,4 @@
-import { gestureAxis, gestureCommits, gestureTarget, wheelGesture, WHEEL_IDLE } from '~/utils/tabGesture'
+import { gestureAxis, gestureCommits, gestureTarget, wheelGesture } from '~/utils/tabGesture'
 
 // Recognize input only. Vue's keyed Transition owns the content animation.
 export function useHomeSwipe(root: Ref<HTMLElement | null>, ids: () => string[], current: () => string | null, commit: (id: string) => void) {
@@ -9,8 +9,8 @@ export function useHomeSwipe(root: Ref<HTMLElement | null>, ids: () => string[],
   let cleanup = () => {}
   onMounted(() => {
     const el = root.value!
-    let wheel = wheelGesture(), wheeling = false, dx = 0, wheelVelocity = 0, swallowed = -Infinity
-    let wheelTimer: ReturnType<typeof setTimeout> | undefined
+    const wheel = wheelGesture()
+    let dx = 0, swallowed = -Infinity
     let start: { x: number, y: number, at: number, lastX: number, lastAt: number, velocity: number } | null = null
     let axis: string | null = null
     const width = () => el.clientWidth
@@ -18,11 +18,6 @@ export function useHomeSwipe(root: Ref<HTMLElement | null>, ids: () => string[],
       const items = ids(), index = items.indexOf(current() ?? '')
       const target = gestureTarget(index, items.length, offset)
       if (index >= 0 && target !== index) commit(items[target]!)
-    }
-    function stopWheel() { clearTimeout(wheelTimer); wheeling = false }
-    function endWheel() {
-      if (wheeling && Math.abs(dx) >= 56 && gestureCommits(dx, wheelVelocity, width())) select(dx)
-      stopWheel()
     }
     function excluded(node: HTMLElement | null, wheel = false) {
       if (node?.closest('input, textarea, select, [contenteditable], [role="slider"]') || (!wheel && node?.closest('.machine-bar'))) return true
@@ -65,7 +60,7 @@ export function useHomeSwipe(root: Ref<HTMLElement | null>, ids: () => string[],
     function cancel() { start = null }
     function click(e: Event) {
       if (performance.now() - swallowed < 500) { e.preventDefault(); e.stopImmediatePropagation(); return }
-      stopWheel(); wheel = wheelGesture()
+      wheel.cancel()
     }
     function onWheel(e: WheelEvent) {
       if (e.ctrlKey || start) return
@@ -73,18 +68,16 @@ export function useHomeSwipe(root: Ref<HTMLElement | null>, ids: () => string[],
       const hit = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
       if (!hit?.closest('#home, #placeholder') || excluded(hit, true)) return
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerWidth : 1
-      const state = wheel(e.deltaX * unit, e.deltaY * unit, performance.now(), (e as WheelEvent & { momentum?: boolean }).momentum)
-      if (state.fresh && wheeling) endWheel()
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX) * 2.2) { stopWheel(); return }
+      // Source timestamps keep a render stall from splitting the input stream.
+      const state = wheel(e.deltaX * unit, e.deltaY * unit, e.timeStamp, (e as WheelEvent & { momentum?: boolean }).momentum, width())
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX) * 2.2) return
       // Claim horizontal input from its first cancellable packet, before axis lock.
       if (state.axis !== 'x') {
         if (!state.axis && Math.abs(e.deltaX) > Math.abs(e.deltaY) * 2.2) e.preventDefault()
         return
       }
       e.preventDefault()
-      wheeling = true; clearTimeout(wheelTimer)
-      dx = state.offset; wheelVelocity = state.velocity
-      wheelTimer = setTimeout(endWheel, WHEEL_IDLE)
+      if (state.step) select(state.step)
     }
     el.addEventListener('touchstart', down, { passive: true })
     el.addEventListener('touchmove', move, { passive: false })
@@ -96,7 +89,6 @@ export function useHomeSwipe(root: Ref<HTMLElement | null>, ids: () => string[],
       el.removeEventListener('touchstart', down); el.removeEventListener('touchmove', move)
       el.removeEventListener('touchend', up); el.removeEventListener('touchcancel', cancel)
       el.removeEventListener('click', click, true); window.removeEventListener('wheel', onWheel, true)
-      stopWheel()
     }
   })
   onBeforeUnmount(() => cleanup())

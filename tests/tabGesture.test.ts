@@ -24,19 +24,47 @@ describe('home tab gestures', () => {
   })
   it('tracks reversals, ignores jitter and locks vertical scrolling', () => {
     const wheel = wheelGesture()
-    expect(wheel(8, 0, 0).axis).toBeNull()
-    expect(wheel(40, 0, 16).offset).toBe(-48)
+    expect(wheel(8, 0, 0)).toMatchObject({ axis: null, step: 0 })
+    expect(wheel(40, 0, 16)).toMatchObject({ offset: -48, step: 0 })
     expect(wheel(-30, 0, 32).offset).toBe(-18)
-    expect(wheel(4, 80, 300).axis).toBe('y')
-    expect(wheel(80, 0, 316).axis).toBe('y')
+    expect(wheel(4, 80, 300)).toMatchObject({ axis: 'y', step: 0 })
+    expect(wheel(80, 0, 316)).toMatchObject({ axis: 'y', step: 0 })
   })
-  it('rearms after silence or renewed pressure without pointer movement', () => {
+  it('commits at the threshold, not after a two-second inertial tail', () => {
+    const wheel = wheelGesture(), changes: number[] = []
+    const trace = [4, 10, 18, 24, ...Array.from({ length: 120 }, (_, i) => Math.max(.1, 30 * .94 ** i))]
+    trace.forEach((dx, i) => { if (wheel(dx, 0, i * 16).step) changes.push(i * 16) })
+    expect(changes).toEqual([48]) // Threshold at 48 ms; no timer or tail delay.
+  })
+  it.each([1, -1])('rearms a new impulse in direction %s during the tail without a quiet gap', sign => {
+    const wheel = wheelGesture(), steps: number[] = []
+    const trace = [4, 10, 18, 24, 20, 4, 3, 2, 18 * sign, 18 * sign, 20 * sign, 4 * sign, 3 * sign, 2 * sign]
+    trace.forEach((dx, i) => { const s = wheel(dx, 0, i * 16).step; if (s) steps.push(s) })
+    expect(steps).toEqual([-56, -56 * sign])
+    expect(steps.reduce((index, s) => gestureTarget(index, 5, s), 2)).toBe(sign === 1 ? 4 : 2)
+  })
+  it('waits for deliberate distance when movement is slow', () => {
     const wheel = wheelGesture()
-    expect(wheel(60, 0, 0).offset).toBe(-60)
-    for (const [i, dx] of [20, 4, 3, 2].entries()) expect(wheel(dx, 0, 16 * (i + 1)).fresh).toBe(false)
-    expect(wheel(40, 0, 80)).toMatchObject({ fresh: true, offset: -40 })
-    expect(wheel(-60, 0, 300)).toMatchObject({ fresh: true, offset: 60 })
-    expect(wheel(-4, 0, 316, true).fresh).toBe(false)
-    expect(wheel(60, 0, 332, false)).toMatchObject({ fresh: true, offset: -60 })
+    expect([20, 20, 20, 20, 5].map((dx, i) => wheel(dx, 0, i * 64).step)).toEqual([0, 0, 0, 0, -85])
+  })
+  it('can cross the threshold on the first momentum packet, then consumes the rest', () => {
+    const wheel = wheelGesture()
+    expect(wheel(40, 0, 0, false).step).toBe(0)
+    expect(wheel(20, 0, 16, true).step).toBe(-60)
+    expect(wheel(120, 0, 600, true).step).toBe(0)
+  })
+  it('a click cancels the current gesture without letting its tail select again', () => {
+    const wheel = wheelGesture()
+    wheel(20, 0, 0); wheel.cancel()
+    expect(wheel(120, 0, 16).step).toBe(0)
+    expect(wheel(60, 0, 200).step).toBe(-60)
+  })
+  it('consumes boundary attempts and identified momentum, including delayed packets', () => {
+    const wheel = wheelGesture()
+    expect(gestureTarget(0, 3, wheel(-60, 0, 0).step)).toBe(0)
+    expect(wheel(120, 0, 16).step).toBe(0)
+    expect(wheel(120, 0, 500, true).step).toBe(0)
+    expect(wheel(60, 0, 516, false).step).toBe(-60)
+    expect(wheel(60, 0, 800).step).toBe(-60)
   })
 })

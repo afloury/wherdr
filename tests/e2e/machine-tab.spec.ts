@@ -124,7 +124,7 @@ test('home touch swipe changes on release and cancels short drags', async ({ pag
   await touch('touchEnd')
   await expect(local).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('.home-content > .scroll[class*="-active"]')).toHaveCount(0)
-  await page.screenshot({ path: '.shots/home-steps-phone.png' })
+  await page.screenshot({ path: '.shots/home-immediate-phone.png' })
   await touch('touchStart', 10)
   await touch('touchMove', 160)
   await touch('touchEnd')
@@ -139,6 +139,7 @@ test('home touch swipe changes on release and cancels short drags', async ({ pag
 })
 
 test('desktop steps keep tabs and New fixed and repeat without moving the pointer', async ({ browser }, info) => {
+  test.setTimeout(60_000)
   const desktop = await browser.newContext({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false,
     recordVideo: { dir: process.env.TMPDIR || info.outputDir, size: { width: 1440, height: 900 } } })
   const page = await desktop.newPage()
@@ -167,10 +168,8 @@ test('desktop steps keep tabs and New fixed and repeat without moving the pointe
       }
       sample()
     })
-    await page.mouse.wheel(12, 0) // Small first packet must not hand the gesture to browser history.
-    for (let i = 0; i < 8; i++) await page.mouse.wheel(60, 0)
+    await page.mouse.wheel(480, 0)
     await expect(neighbor).toHaveAttribute('aria-pressed', 'true')
-    await page.screenshot({ path: '.shots/home-steps-desktop-transition.png', scale: 'css' })
     await expect(page.locator('.home-content > .scroll[class*="-active"]')).toHaveCount(0)
     await page.mouse.wheel(480, 0)
     await expect(tabs.nth(2)).toHaveAttribute('aria-pressed', 'true')
@@ -183,6 +182,9 @@ test('desktop steps keep tabs and New fixed and repeat without moving the pointe
     await expect(tabs.nth(2)).toHaveAttribute('aria-pressed', 'true')
     await expect(page.locator('.home-content > .scroll[class*="-active"]')).toHaveCount(0)
     expect(await page.evaluate(() => (window as any).pointerMoves)).toBe(0)
+    const samples = await page.evaluate(() => { cancelAnimationFrame((window as any).stepFrame); return (window as any).stepSamples as { fixed: boolean, visible: boolean, gap: number, fade: number }[] })
+    expect(samples.length).toBeGreaterThan(5)
+    expect(samples.every(s => s.fixed && s.visible && s.gap < 1 && s.fade < .02)).toBe(true)
     await all.click() // A real click immediately after a wheel gesture stays usable.
     const box = (await page.locator('#placeholder').boundingBox())!
     const x = box.x + box.width / 2, y = 400
@@ -193,26 +195,59 @@ test('desktop steps keep tabs and New fixed and repeat without moving the pointe
         for (const deltaX of steps) document.dispatchEvent(new WheelEvent('wheel', { deltaX, clientX: x, clientY: y, bubbles: true, cancelable: true }))
       }, { steps, x, y })
     }
-    await burst([28, 28, -20, -20])
-    await expect(page.locator('.home-content > .scroll[class*="-active"]')).toHaveCount(0)
-    await expect(all).toHaveAttribute('aria-pressed', 'true')
-    await burst([20, 10])
+    await burst([18, 12, -10, -10])
     await expect(page.locator('.home-content > .scroll[class*="-active"]')).toHaveCount(0)
     await expect(all).toHaveAttribute('aria-pressed', 'true')
     await burst([40, 40])
     await all.click() // Clicking interrupts a pending wheel transition immediately.
     await expect(all).toHaveAttribute('aria-pressed', 'true')
-    await burst([25, 25, 25, 25, 4, 3, 2, 1])
-    await expect(neighbor).toHaveAttribute('aria-pressed', 'true')
     await expect(page.locator('.home-content > .scroll[class*="-active"]')).toHaveCount(0)
-    await page.screenshot({ path: '.shots/home-steps-desktop.png', scale: 'css' })
+    await page.waitForTimeout(180) // A distinct gesture after the explicit click.
+    const moves = await page.evaluate(() => (window as any).pointerMoves)
+    const pair = await page.evaluate(async ({ x, y }) => {
+      const active = () => document.querySelector('.machine-bar-item.on')?.getAttribute('data-bar-id')
+      const buttons = Array.from(document.querySelectorAll('.machine-bar-item')), set = Element.prototype.setAttribute
+      let selectedAt = 0
+      // Time the selected-tab mutation, not later list/layout work in Vue's flush.
+      for (const button of buttons) button.setAttribute = function(this: Element, name, value) { set.call(this, name, value); if (name === 'aria-pressed' && String(value) === 'true') selectedAt = performance.now() }
+      const packet = (deltaX: number, sourceTime?: number) => {
+        const e = new WheelEvent('wheel', { deltaX, clientX: x, clientY: y, bubbles: true, cancelable: true })
+        if (sourceTime !== undefined) Object.defineProperty(e, 'timeStamp', { value: sourceTime })
+        document.dispatchEvent(e)
+        return e.timeStamp
+      }
+      async function impulse(steps: number[], packetTime?: number) {
+        let at = 0, sourceTime = 0
+        selectedAt = 0
+        for (const [i, dx] of steps.entries()) { at = performance.now(); sourceTime = packet(dx, packetTime === undefined ? undefined : packetTime + i * 16) } // These traces cross the threshold on their last packet.
+        await Promise.resolve()
+        return { ms: selectedAt ? selectedAt - at : Infinity, active: active(), sourceTime }
+      }
+      const first = await impulse([25, 25, 25])
+      const tailClock = first.sourceTime + 16
+      for (let i = 0; i < 100; i++) {
+        packet(Math.max(.1, 20 * .94 ** i), tailClock + i * 16)
+        await new Promise(resolve => setTimeout(resolve, 16))
+      }
+      const afterTail = active(), second = await impulse([18, 18, 20], tailClock + 1600)
+      for (const button of buttons) button.setAttribute = set
+      return { first, afterTail, second }
+    }, { x, y }) // Source times model 60 Hz hardware packets, independent of timer/render stalls.
+    expect(pair.first.active).toBe(await neighbor.getAttribute('data-bar-id'))
+    expect(pair.afterTail).toBe(pair.first.active)
+    expect(pair.second.active).toBe(await tabs.nth(2).getAttribute('data-bar-id'))
+    expect(pair.first.ms).toBeLessThan(150)
+    expect(pair.second.ms).toBeLessThan(150)
+    expect(await page.evaluate(() => (window as any).pointerMoves)).toBe(moves)
+    console.log(`Threshold-to-selection: ${pair.first.ms.toFixed(1)} ms, ${pair.second.ms.toFixed(1)} ms`)
+    await expect(page.locator('.home-content > .scroll[class*="-active"]')).toHaveCount(0)
+    await page.screenshot({ path: '.shots/home-immediate-desktop.png', scale: 'css' })
+    await neighbor.click()
+    await expect(page.locator('.home-content > .scroll[class*="-active"]')).toHaveCount(0)
     await page.locator('.home-content > .scroll').hover()
     await page.mouse.wheel(0, 500)
     await expect.poll(() => page.locator('.home-content > .scroll').evaluate(e => e.scrollTop)).toBeGreaterThan(0)
     await expect(neighbor).toHaveAttribute('aria-pressed', 'true')
-    const samples = await page.evaluate(() => { cancelAnimationFrame((window as any).stepFrame); return (window as any).stepSamples as { fixed: boolean, visible: boolean, gap: number, fade: number }[] })
-    expect(samples.length).toBeGreaterThan(5)
-    expect(samples.every(s => s.fixed && s.visible && s.gap < 1 && s.fade < .02)).toBe(true)
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.waitForTimeout(180)
     await burst([-40, -40, -40])
@@ -226,5 +261,5 @@ test('desktop steps keep tabs and New fixed and repeat without moving the pointe
     await page.locator('#home .card').first().click()
     await expect(page).toHaveURL(/#\/[at]\//)
   }
-  finally { await desktop.close(); await page.video()?.saveAs('.shots/home-steps-desktop.webm') }
+  finally { await desktop.close(); await page.video()?.saveAs('.shots/home-immediate-desktop.webm') }
 })
