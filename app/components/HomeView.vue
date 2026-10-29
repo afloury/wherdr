@@ -693,6 +693,7 @@ function resetListWidth() {
           <b class="machine-bar-count">{{ b.n }}</b>
         </button>
       </UContextMenu>
+      <span class="machine-bar-indicator" aria-hidden="true" />
     </nav>
     <div class="home-content">
     <Transition :name="swipeDirection < 0 ? 'home-next' : 'home-prev'" @before-leave="retireHomeContent">

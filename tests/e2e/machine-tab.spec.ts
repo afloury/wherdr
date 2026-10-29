@@ -5,6 +5,8 @@
 import { expect, test, type Page } from './test'
 import fs from 'node:fs/promises'
 
+test.use({ video: { mode: 'on', size: { width: 390, height: 844 } } })
+
 const now = Date.now()
 const win = (used: number, minutes: number) => ({ used, resetsAt: now + 3600000, minutes })
 const account = (key: string, label: string, five: number, week: number) =>
@@ -112,18 +114,47 @@ test('home touch swipe changes on release and cancels short drags', async ({ pag
   await touch('touchMove', 255, 350)
   await touch('touchEnd')
   await expect(all).toHaveAttribute('aria-pressed', 'true')
+  const panelX = () => page.locator('.home-content > .scroll').evaluate(e => new DOMMatrixReadOnly(getComputedStyle(e).transform).m41)
+  const indicatorX = () => page.locator('.machine-bar-indicator').evaluate(e => new DOMMatrixReadOnly(getComputedStyle(e).transform).m41)
+  const initialIndicator = await indicatorX()
+  async function recordMotion() {
+    await page.evaluate(() => {
+      const frames = (window as any).touchFrames = [] as { x: number, indicator: number }[]
+      function frame() {
+        const x = (selector: string) => new DOMMatrixReadOnly(getComputedStyle(document.querySelector(selector)!).transform).m41
+        frames.push({ x: x('.home-content > .scroll'), indicator: x('.machine-bar-indicator') })
+        ;(window as any).touchFrame = requestAnimationFrame(frame)
+      }
+      frame()
+    })
+  }
+  const motion = () => page.evaluate(() => { cancelAnimationFrame((window as any).touchFrame); return (window as any).touchFrames as { x: number, indicator: number }[] })
   await touch('touchStart')
   await touch('touchMove', 215)
+  expect(await panelX()).toBeCloseTo(-45, 0)
+  expect(await indicatorX()).toBeGreaterThan(initialIndicator)
   await page.waitForTimeout(120)
+  await recordMotion()
   await touch('touchEnd')
   await expect(all).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(panelX).toBe(0)
+  expect((await motion()).some(f => f.x > -45 && f.x < 0)).toBe(true)
+  await expect.poll(indicatorX).toBe(initialIndicator)
   await touch('touchStart')
   await touch('touchMove', 200)
   await touch('touchMove', 100)
-  await expect(all).toHaveAttribute('aria-pressed', 'true') // Trigger on release; no content follows the finger.
+  await page.waitForTimeout(200)
+  await expect(all).toHaveAttribute('aria-pressed', 'true')
+  expect(await panelX()).toBeCloseTo(-160, 0)
+  const draggedIndicator = await indicatorX()
+  expect(draggedIndicator).toBeGreaterThan(initialIndicator)
+  await page.screenshot({ path: '.shots/home-touch-held.png' })
+  await recordMotion()
   await touch('touchEnd')
   await expect(local).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('.home-content > .scroll[class*="-active"]')).toHaveCount(0)
+  const destination = await local.evaluate(e => (e as HTMLElement).offsetLeft)
+  expect((await motion()).some(f => f.indicator > draggedIndicator && f.indicator < destination)).toBe(true)
   await page.screenshot({ path: '.shots/home-immediate-phone.png' })
   await touch('touchStart', 10)
   await touch('touchMove', 160)
@@ -132,10 +163,31 @@ test('home touch swipe changes on release and cancels short drags', async ({ pag
   // At the first tab an outward swipe leaves the selection unchanged.
   await page.waitForTimeout(550)
   await all.click()
+  await expect(page.locator('.home-content > .scroll[class*="-active"]')).toHaveCount(0)
   await touch('touchStart', 100)
   await touch('touchMove', 260)
   await touch('touchEnd')
   await expect(all).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(panelX).toBe(0)
+  // Reversing tracks the finger, and native cancellation restores the same panel.
+  await touch('touchStart')
+  await touch('touchMove', 160)
+  expect(await panelX()).toBeCloseTo(-100, 0)
+  await touch('touchMove', 220)
+  expect(await panelX()).toBeCloseTo(-40, 0)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] })
+  await expect.poll(panelX).toBe(0)
+  await expect(all).toHaveAttribute('aria-pressed', 'true')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await touch('touchStart')
+  await touch('touchMove', 100)
+  expect(await panelX()).toBe(0)
+  await touch('touchEnd')
+  await expect(local).toHaveAttribute('aria-pressed', 'true')
+  expect(await page.locator('.machine-bar-indicator').evaluate(e => getComputedStyle(e).transitionDuration)).toBe('0s')
+  const video = page.video()!
+  await page.close()
+  await video.saveAs('.shots/home-touch-review.webm')
 })
 
 test('desktop steps keep tabs and New fixed and repeat without moving the pointer', async ({ browser }, info) => {
@@ -153,13 +205,14 @@ test('desktop steps keep tabs and New fixed and repeat without moving the pointe
     await page.evaluate(() => {
       const home = document.querySelector<HTMLElement>('#home')!, bar = home.querySelector('.machine-bar')!, button = home.querySelector<HTMLElement>('.fab')!
       const fixed = [home, bar, button], rects = fixed.map(e => JSON.stringify(e.getBoundingClientRect()))
-      const samples = (window as any).stepSamples = [] as { fixed: boolean, visible: boolean, gap: number, fade: number }[]
+      const samples = (window as any).stepSamples = [] as { fixed: boolean, visible: boolean, gap: number, fade: number, indicatorMoving: boolean, incoming: number, outgoing: number, leave: string, timing: string }[]
       function sample() {
         const incoming = home.querySelector<HTMLElement>('.scroll[class*="-enter-active"]'), outgoing = home.querySelector<HTMLElement>('.scroll[class*="-leave-active"]')
         if (incoming && outgoing) {
           const r = button.getBoundingClientRect(), viewport = home.querySelector('.home-content')!.getBoundingClientRect()
           const tx = (e: HTMLElement) => new DOMMatrixReadOnly(getComputedStyle(e).transform).m41
-          samples.push({ fixed: fixed.every((e, i) => JSON.stringify(e.getBoundingClientRect()) === rects[i]),
+          const indicator = tx(home.querySelector<HTMLElement>('.machine-bar-indicator')!)
+          samples.push({ incoming: tx(incoming), outgoing: tx(outgoing), leave: outgoing.className, timing: getComputedStyle(outgoing).transition, indicatorMoving: indicator > 0 && indicator < home.querySelectorAll<HTMLElement>('.machine-bar-item')[1]!.offsetLeft, fixed: fixed.every((e, i) => JSON.stringify(e.getBoundingClientRect()) === rects[i]),
             visible: viewport.bottom <= r.top && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('.fab') === button,
             fade: Math.abs(Math.abs(tx(incoming)) / incoming.clientWidth + Number(getComputedStyle(incoming).opacity) - 1),
             gap: Math.abs(Math.abs(tx(incoming) - tx(outgoing)) - incoming.clientWidth) })
@@ -182,9 +235,10 @@ test('desktop steps keep tabs and New fixed and repeat without moving the pointe
     await expect(tabs.nth(2)).toHaveAttribute('aria-pressed', 'true')
     await expect(page.locator('.home-content > .scroll[class*="-active"]')).toHaveCount(0)
     expect(await page.evaluate(() => (window as any).pointerMoves)).toBe(0)
-    const samples = await page.evaluate(() => { cancelAnimationFrame((window as any).stepFrame); return (window as any).stepSamples as { fixed: boolean, visible: boolean, gap: number, fade: number }[] })
+    const samples = await page.evaluate(() => { cancelAnimationFrame((window as any).stepFrame); return (window as any).stepSamples as { fixed: boolean, visible: boolean, gap: number, fade: number, indicatorMoving: boolean, incoming: number, outgoing: number, leave: string, timing: string }[] })
     expect(samples.length).toBeGreaterThan(5)
-    expect(samples.every(s => s.fixed && s.visible && s.gap < 1 && s.fade < .02)).toBe(true)
+    expect(samples.some(s => s.indicatorMoving)).toBe(true)
+    expect(samples.filter(s => !s.fixed || !s.visible || s.gap >= 1 || s.fade >= .02)).toEqual([])
     await all.click() // A real click immediately after a wheel gesture stays usable.
     const box = (await page.locator('#placeholder').boundingBox())!
     const x = box.x + box.width / 2, y = 400

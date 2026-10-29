@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { gestureAxis, gestureCommits, gestureTarget, wheelGesture } from '../app/utils/tabGesture'
+import { gestureAxis, gestureCommits, gestureOffset, gestureTarget, wheelGesture } from '../app/utils/tabGesture'
 
 describe('home tab gestures', () => {
+  it('previews the finger position, reversals and boundary resistance within one page', () => {
+    expect(gestureOffset(1, 3, -160, 390)).toBe(-160)
+    expect(gestureOffset(1, 3, -40, 390)).toBe(-40)
+    expect(gestureOffset(1, 3, 0, 390)).toBe(0)
+    expect(gestureOffset(0, 3, 160, 390)).toBe(24)
+    expect(gestureOffset(2, 3, -160, 390)).toBe(-24)
+    expect(gestureOffset(1, 3, -500, 390)).toBe(-390)
+  })
   it('locks direction only after deliberate horizontal movement', () => {
     expect(gestureAxis(8, 2)).toBeNull()
     expect(gestureAxis(30, 10)).toBe('x')

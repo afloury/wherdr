@@ -3,6 +3,11 @@ export function gestureTarget(index: number, count: number, dx: number) {
   const target = index + (dx < 0 ? 1 : -1)
   return target >= 0 && target < count ? target : index
 }
+// Preview is bounded to one page, with resistance when there is no neighbor.
+export function gestureOffset(index: number, count: number, dx: number, width: number) {
+  const offset = gestureTarget(index, count, dx) === index ? dx * .15 : dx
+  return Math.sign(offset) * Math.min(Math.abs(offset), width)
+}
 export function gestureCommits(dx: number, velocity: number, width: number) {
   return Math.abs(dx) >= Math.min(100, width * .25)
     || (Math.abs(dx) >= 24 && Math.abs(velocity) >= .5 && Math.sign(dx) === Math.sign(velocity))
