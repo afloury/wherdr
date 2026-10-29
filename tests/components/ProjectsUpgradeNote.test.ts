@@ -15,6 +15,15 @@ describe('Shepherdr compatibility note', () => {
     expect(w.text()).not.toContain('wherdr@1.3.4')
     expect(w.find('a').attributes('href')).toContain('#shepherdr-2')
     expect(w.findAll('button')).toHaveLength(1)
+    expect(w.text()).toContain(fr ? 'Cette machine a Shepherdr 2.0.0' : 'This machine has Shepherdr 2.0.0')
+    w.unmount()
+  })
+
+  it.each([false, true])('names the machine (French: %s)', async (fr) => {
+    locale.fr = fr
+    const w = await mountSuspended(ProjectsUpgradeNote, { props: { status: 'shepherdr', version: '2.0.0', machine: 'devbox' } })
+    expect(w.text()).toContain(fr ? 'devbox a Shepherdr 2.0.0' : 'devbox has Shepherdr 2.0.0')
+    expect(w.text()).toContain(fr ? 'toi-même sur devbox.' : 'yourself on devbox.')
     w.unmount()
   })
 })

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import shepherdr from './fixtures/shepherdr-2.0.0.json'
+import shepherdr from './plugin-fixtures/shepherdr-2.0.0.json'
 import { describe, expect, it } from 'vitest'
 import { projectsPluginFromList } from '../server/utils/projectsPlugin'
 import {

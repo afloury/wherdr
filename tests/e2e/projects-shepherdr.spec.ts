@@ -2,7 +2,7 @@ import { expect, test } from './test'
 import { fakeHerdr } from './scenario.mjs'
 import fs from 'node:fs'
 
-const manifest = JSON.parse(fs.readFileSync(new URL('../fixtures/shepherdr-2.0.0.json', import.meta.url), 'utf8'))
+const manifest = JSON.parse(fs.readFileSync(new URL('../plugin-fixtures/shepherdr-2.0.0.json', import.meta.url), 'utf8'))
 
 test.afterEach(async () => { await fakeHerdr('e2e.plugins', { plugins: [] }) })
 

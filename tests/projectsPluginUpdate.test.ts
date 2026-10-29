@@ -2,7 +2,7 @@
 // of the tested release; Update only over a 1.x older than it.
 import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import shepherdr from './fixtures/shepherdr-2.0.0.json'
+import shepherdr from './plugin-fixtures/shepherdr-2.0.0.json'
 import { PROJECTS_TESTED } from '../shared/projectsPlugin'
 
 const plugins = vi.hoisted(() => ({ list: [] as unknown[] }))
