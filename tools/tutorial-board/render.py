@@ -6,21 +6,19 @@ tied to spoken words, so the pointer moves and marks appear as the narration nam
 Environment: TUTORIAL_OUT (artifact folder), TUTORIAL_STILLS="12.5,30" writes PNG stills
 at those seconds instead of the film, TUTORIAL_MARK overrides the mark style.
 """
-import array, bisect, hashlib, json, math, os, pathlib, re, subprocess, urllib.parse, urllib.request, wave
+import array, bisect, hashlib, json, math, os, pathlib, re, subprocess, wave
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from timing import plan_frames
+from fontpin import ensure_fonts
 
 root = pathlib.Path(os.environ['TUTORIAL_OUT']).resolve(); os.chdir(root)
 plan = json.loads((root / 'storyboard.json').read_text())
 provenance = json.loads((root / 'capture.json').read_text())
 for frame in provenance['frames']:
     assert hashlib.sha256((root / (frame['id'] + '.png')).read_bytes()).hexdigest() == frame['sha256']
-fonts = root / 'fonts'; fonts.mkdir(exist_ok=True)
-for family, name in [('archivo', 'Archivo[wdth,wght].ttf'), ('inter', 'Inter[opsz,wght].ttf'), ('jetbrainsmono', 'JetBrainsMono[wght].ttf')]:
-    for remote, local in [(name, family + '.ttf'), ('OFL.txt', family + '-OFL.txt')]:
-        if not (fonts / local).exists():
-            (fonts / local).write_bytes(urllib.request.urlopen('https://raw.githubusercontent.com/google/fonts/main/ofl/' + family + '/' + urllib.parse.quote(remote), timeout=30).read())
+fonts = ensure_fonts()  # pinned google/fonts commit, SHA-256 verified (fonts.json)
+assert "'" not in str(fonts), 'the fonts folder path must not contain a quote (FFmpeg filter)'
 
 FPS, W, H = 60, 1920, 1080
 SCALE, OX, OY = .9, 96, 54                     # the UI sits in a 1728×972 inset
@@ -291,7 +289,7 @@ for i, samples in enumerate(takes):
 with wave.open(str(root / 'narration.wav'), 'wb') as w:
     w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate); w.writeframes(np.clip(track, -32767, 32767).astype('<i2').tobytes())
 encoder = subprocess.Popen(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{W}x{H}', '-r', str(FPS), '-i', '-',
-    '-i', 'narration.wav', '-vf', 'ass=captions.ass:fontsdir=fonts,format=yuv420p', '-c:v', 'libx264', '-preset', 'medium', '-crf', '16', '-threads', '2',
+    '-i', 'narration.wav', '-vf', f"ass=captions.ass:fontsdir='{fonts}',format=yuv420p", '-c:v', 'libx264', '-preset', 'medium', '-crf', '16', '-threads', '2',
     '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', plan.get('output', 'wherdr-board-tutorial.mp4')], stdin=subprocess.PIPE)
 for n in range(sum(counts)):
     encoder.stdin.write(compose(n / FPS).tobytes())

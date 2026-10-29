@@ -53,7 +53,7 @@ export interface CodexScreenInfo {
   update?: { current: string, latest: string }
   // "Run <command> to update." (raw text, not validated)
   command?: string
-  // Last weekly reading on screen.
+  // Last weekly reading with a reset on screen, else the last gauge or heads-up.
   weekly?: CodexScreenWeekly
 }
 
@@ -83,10 +83,13 @@ export function parseCodexScreen(text: string | null | undefined): CodexScreenIn
       const m = /^(.*?)\s+to update\.?$/.exec(cmd)
       if (m) out.command = norm(m[1]!)
     }
-    // A gauge (footer, `/status`) is a real reading: the last one wins, and
-    // always over the heads-up message, printed once at startup.
+    // Prefer complete `/status` readings: a footer gauge must not discard
+    // their reset. Among equally complete gauges, the last one wins.
+    // Gauges always win over the heads-up printed once at startup.
     const w = WEEK_LEFT_RE.exec(l)
-    if (w) out.weekly = { left: clampPct(Number(w[1])), exact: true, ...(w[2] ? { resets: norm(w[2]) } : {}) }
+    if (w) {
+      if (w[2] || !out.weekly?.resets) out.weekly = { left: clampPct(Number(w[1])), exact: true, ...(w[2] ? { resets: norm(w[2]) } : {}) }
+    }
     else {
       const hu = WEEK_LESS_RE.exec(l)
       if (hu && !out.weekly?.exact) out.weekly = { left: clampPct(Number(hu[1])), exact: false }
