@@ -4361,3 +4361,8 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 /* Clip only the predicted grid; the terminal frame and composer stay fixed. */
 #termWrap.smooth-touch #term { overflow: hidden; }
 #termWrap.smooth-touch .xterm { overflow-y: hidden; overscroll-behavior: none; }
+
+/* The swipe snapshots stay inside the home viewport. */
+#home { overflow-x: clip; }
+.home-swiping .machine-bar-item.on { box-shadow: none; }
+.home-swipe-indicator { position: absolute; height: 2px; background: var(--accent); z-index: 4; pointer-events: none; }

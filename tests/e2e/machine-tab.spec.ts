@@ -98,3 +98,68 @@ test('an offline machine tab says so at the top', async ({ page }, info) => {
   await expect(page.locator('.machine-bar-item.offline', { hasText: 'Laptop' })).toBeVisible()
   await page.screenshot({ path: `.shots/machine-tab-offline-${info.project.name}.png` })
 })
+
+test('home swipe follows a finger and cancels short drags', async ({ page, context, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CDP supplies native touch input')
+  await setup(page)
+  const all = page.locator('[data-bar-id="*"]')
+  const local = page.locator('.machine-bar-item').nth(1)
+  const cdp = await context.newCDPSession(page)
+  async function touch(type: string, x = 260, y = 420) {
+    await cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] })
+  }
+  await touch('touchStart')
+  await touch('touchMove', 255, 350)
+  await touch('touchEnd')
+  await expect(all).toHaveAttribute('aria-pressed', 'true')
+  await touch('touchStart')
+  await touch('touchMove', 215)
+  await page.waitForTimeout(120)
+  await touch('touchEnd')
+  await expect(all).toHaveAttribute('aria-pressed', 'true')
+  await touch('touchStart')
+  await touch('touchMove', 200)
+  await touch('touchMove', 100)
+  await expect(page.locator('.home-swiping')).toHaveCount(1)
+  await page.screenshot({ path: '.shots/home-swipe-phone-drag.png' })
+  await touch('touchEnd')
+  await expect(local).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.home-swiping')).toHaveCount(0)
+  await page.screenshot({ path: '.shots/home-swipe-phone.png' })
+  await touch('touchStart', 10)
+  await touch('touchMove', 160)
+  await touch('touchEnd')
+  await expect(local).toHaveAttribute('aria-pressed', 'true')
+  // At the first tab an outward swipe leaves the selection unchanged.
+  await page.waitForTimeout(550)
+  await all.click()
+  await touch('touchStart', 100)
+  await touch('touchMove', 260)
+  await touch('touchEnd')
+  await expect(all).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('desktop tab swipe consumes trackpad inertia and respects reduced motion', async ({ browser }) => {
+  const desktop = await browser.newContext({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false })
+  try {
+    const page = await desktop.newPage()
+    await setup(page)
+    const all = page.locator('[data-bar-id="*"]')
+    const neighbor = page.locator('.machine-bar-item').nth(1)
+    await all.click()
+    await page.locator('.machine-bar').hover()
+    // Deliver one uninterrupted burst, independent of automation round-trip delays.
+    await page.locator('.machine-bar').evaluate(bar => {
+      for (const deltaX of [70, 30, 20, 10, 5]) bar.dispatchEvent(new WheelEvent('wheel', { deltaX, bubbles: true, cancelable: true }))
+    })
+    await expect(neighbor).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.home-swiping')).toHaveCount(0)
+    await page.screenshot({ path: '.shots/home-swipe-desktop.png', scale: 'css' })
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.waitForTimeout(250)
+    await page.mouse.wheel(-210, 0)
+    await expect(all).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.home-swipe-indicator')).toHaveCount(0)
+  }
+  finally { await desktop.close() }
+})

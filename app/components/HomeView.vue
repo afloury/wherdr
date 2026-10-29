@@ -276,9 +276,12 @@ const soloTab = computed(() => {
   return sections.value[0]!
 })
 const listQuotas = computed(() => (soloTab.value ? tabQuotaRows(topQuotas.value, soloTab.value.quotas) : topQuotas.value))
+const homeRoot = ref<HTMLElement | null>(null)
 const homeScroll = ref<HTMLElement | null>(null)
+useHomeSwipe(homeRoot, () => barEntries.value.map(b => b.id), () => machineBarPick.value,
+  pickMachineBar, id => pickBar(id))
 const switchMachineConversation = useMachineConversation()
-function pickBar(id: string, event: MouseEvent) {
+function pickBar(id: string, event?: MouseEvent) {
   if (barLp.swallowClick()) return
   haptic()
   pickMachineBar(id)
@@ -290,7 +293,7 @@ function pickBar(id: string, event: MouseEvent) {
     if (keys.some(k => collapsedMachines.value.includes(k))) collapsedMachines.value = collapsedMachines.value.filter(k => !keys.includes(k))
   }
   homeScroll.value?.scrollTo({ top: 0 })
-  ;(event.currentTarget as HTMLElement | null)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  ;(event?.currentTarget as HTMLElement | null ?? Array.from(homeRoot.value?.querySelectorAll<HTMLElement>('.machine-bar-item') ?? []).find(b => b.dataset.barId === id))?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
 }
 // A mouse wheel scrolls the bar sideways when it overflows (narrow sidebar).
 function onBarWheel(e: WheelEvent) {
@@ -609,7 +612,7 @@ function resetListWidth() {
 </script>
 
 <template>
-  <section id="home" class="view" :class="{ resizing: listDrag, rail, drawer, 'list-compact': compactList }" @click.capture="onDrawerPick">
+  <section ref="homeRoot" id="home" class="view" :class="{ resizing: listDrag, rail, drawer, 'list-compact': compactList }" @click.capture="onDrawerPick">
     <!-- Collapsed list (computer): narrow column, the rest of the list is hidden. -->
     <nav v-if="rail" class="home-rail" :aria-label="t('Agents')">
       <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" :title="conn.text" />
