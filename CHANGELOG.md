@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added and improved
+
+- **Optional individual-agent list.** Settings › Appearance can show standalone agents as separate rows, while workspace cards remain the default and Board task helpers stay grouped.
+
 ## [2.3.0] — 2026-10-28
 
 ### Added and improved
