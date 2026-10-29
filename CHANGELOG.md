@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added and improved
+
+- **Release distance in update notices.** The banner shows how many newer stable releases are available and a short version list, preserving the installation-specific update action.
+
 ## [2.3.0] — 2026-10-28
 
 ### Added and improved
