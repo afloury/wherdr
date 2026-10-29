@@ -22,7 +22,7 @@ const INPUT_KEYS: Record<string, string> = {
 // key or a recognized terminal key can consume an armed modifier. Composed
 // text and pastes remain text, never a sequence of shortcuts.
 export function virtualInputKey(data: string): string | null {
-  if (INPUT_KEYS[data]) return INPUT_KEYS[data]!
+  if (Object.hasOwn(INPUT_KEYS, data)) return INPUT_KEYS[data]!
   if (/^[!-~]$/.test(data)) return data === '+' ? 'plus' : data.toLowerCase()
   if (data.length === 1) {
     const code = data.charCodeAt(0)

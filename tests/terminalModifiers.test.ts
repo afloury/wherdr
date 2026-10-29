@@ -17,6 +17,7 @@ describe('one-shot terminal modifiers', () => {
     expect(virtualInputKey('你好')).toBeNull()
     expect(virtualInputKey('é')).toBeNull()
     expect(virtualInputKey('hello')).toBeNull()
+    for (const text of ['toString', 'constructor', '__proto__']) expect(virtualInputKey(text)).toBeNull()
     expect(virtualInputKey('\x1b[200~hello\x1b[201~')).toBeNull()
   })
 })
