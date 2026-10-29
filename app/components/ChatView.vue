@@ -1373,11 +1373,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <UIcon :name="agentIcon(pane.agent) || 'i-lucide-bot'" /><span>{{ kindLabel(pane.agent) }}</span>
               </div>
 
-              <div v-else-if="b.k === 'autopilot'" class="msg-autopilot" :data-hit-key="b.key">
-                <div class="msg-system"><span>{{ t('Autopilot') }}</span></div>
-                <div class="msg-autopilot-body"><FoldText>{{ b.text }}</FoldText></div>
-                <UButton icon="i-lucide-copy" color="neutral" variant="ghost" size="xs" :aria-label="t('Copy message')" @click="copyText(b.text)" />
-              </div>
+              <AutopilotMessage v-else-if="b.k === 'autopilot'" :text="b.text" :data-hit-key="b.key" @copy="copyText" />
 
               <div v-else-if="b.k === 'user'" class="msg-user-wrap" :data-hit-key="b.key">
                 <button v-if="b.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(b.origin)">
