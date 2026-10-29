@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+import shepherdr from './fixtures/shepherdr-2.0.0.json'
 import { describe, expect, it } from 'vitest'
 import { projectsPluginFromList } from '../server/utils/projectsPlugin'
 import {
@@ -25,7 +26,7 @@ describe('which herdr-projects wherdr reads', () => {
   it('reads 1.2.1 and later', () => {
     expect(projectsStatus(v1)).toBe('ready')
     expect(projectsStatus({ ...v1, version: '1.3.0' })).toBe('ready')
-    expect(projectsStatus({ ...v1, version: '2.0.0' })).toBe('ready')
+    expect(projectsStatus({ ...v1, version: '1.2.21' })).toBe('ready')
   })
 
   it('asks for an update on a 0.2, an older 1.x, or a manifest without its launcher', () => {
@@ -35,6 +36,14 @@ describe('which herdr-projects wherdr reads', () => {
     expect(projectsStatus({ ...v1, version: undefined })).toBe('old')
     expect(projectsStatus({ ...v1, version: 'next' })).toBe('old')
     expect(projectsStatus({ ...v1, actions: [], startup: [] })).toBe('old')
+  })
+
+  it('distinguishes Shepherdr by version or manifest, even when disabled', () => {
+    expect(projectsStatus(shepherdr)).toBe('shepherdr')
+    expect(projectsStatus({ ...v1, version: '2.0.0' })).toBe('shepherdr')
+    expect(projectsStatus({ ...shepherdr, version: undefined, enabled: false })).toBe('shepherdr')
+    expect(projectsStatus({ ...v1, actions: [{ command: ['bin/shepherdr'] }] })).toBe('shepherdr')
+    expect(projectsPluginFromList([shepherdr])).toEqual({ status: 'shepherdr', version: '2.0.0' })
   })
 
   it('missing, and disabled', () => {

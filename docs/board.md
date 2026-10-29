@@ -7,12 +7,19 @@ handle as the navigation list: arrow keys (Shift for a larger step), double-clic
 Home or Enter to restore the default width. The width is saved on this device;
 the Board keeps at least 280 px when space permits. Phone panels stay full screen.
 
+**Shepherdr 2.x is not supported by the Board**, even though its plugin id is still
+`herdr-projects`. wherdr shows a compatibility message and a manual command pinned
+to herdr-projects 1.2.21, without starting or migrating anything. Agents, terminal,
+files and machines remain available. See [returning from Shepherdr 2](herdr-projects-1x.md#shepherdr-2)
+for backups, reinstallation and configuration limitations. Do not use an unpinned
+plugin update to restore Board compatibility.
+
 ## Works great with herdr-projects
 
 [herdr-projects](https://github.com/eliasstravik/herdr-projects) is a work board for Herdr: one
 list of tasks, each handed to an ordinary agent in its own space, reviewed when it finishes and
 merged on your yes. wherdr shows it on the **Board** (the button next to Settings, or `H`), for
-every machine at once. It needs **herdr-projects 1.2.1 or later**; the plugin is optional.
+every machine at once. It needs **herdr-projects 1.x, from 1.2.1**; the plugin is optional.
 
 **Install herdr-projects** in **Settings → Plugins → herdr-projects**, or on the machine. wherdr
 installs the release it was tested with (1.2.21):

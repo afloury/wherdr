@@ -78,9 +78,10 @@ export function projectsLauncher(p: RawProjectsPlugin): string | null {
 // Where herdr-projects stands on a machine, as Herdr's plugin list says.
 // - missing: not installed;
 // - old: a 0.2, or a 1.x older than 1.2.1, or one without its launcher;
+// - shepherdr: unsupported Shepherdr 2.x;
 // - disabled: switched off in Herdr;
 // - ready: wherdr reads it.
-export type ProjectsStatus = 'missing' | 'old' | 'disabled' | 'ready'
+export type ProjectsStatus = 'missing' | 'old' | 'shepherdr' | 'disabled' | 'ready'
 
 const VERSION_RE = /^\d[\w.+-]{0,39}$/
 export function cleanVersion(v: unknown): string | null {
@@ -89,6 +90,14 @@ export function cleanVersion(v: unknown): string | null {
 
 export function projectsStatus(p: RawProjectsPlugin | null | undefined): ProjectsStatus {
   if (!p) return 'missing'
+  // Shepherdr keeps the plugin id, but has a different CLI and data contract.
+  // Inspect metadata only: never run its startup, CLI or migration.
+  const commands = [...(p.actions || []), ...(p.startup || []), ...(p.panes || [])]
+  if (versionAtLeast(cleanVersion(p.version), '2.0.0') || commands.some(c => {
+    const argv = Array.isArray(c?.command) ? c.command : []
+    return (argv[0] === 'sh' && argv[1] === 'scripts/need-bun.sh' && argv[2] === 'scripts/plugin.ts')
+      || argv[0] === 'bin/shepherdr' || (argv[0] === 'sh' && argv[1] === 'bin/shepherdr')
+  })) return 'shepherdr'
   if (!versionAtLeast(cleanVersion(p.version), PROJECTS_MIN) || !projectsLauncher(p)) return 'old'
   return p.enabled === false ? 'disabled' : 'ready'
 }
@@ -101,7 +110,7 @@ export function parseProjectsVersion(stdout: string): string | null {
   return m ? cleanVersion(m[1]) : null
 }
 
-// A herdr-projects wherdr reads (1.2.1 or later) that is older than the
+// A herdr-projects 1.x wherdr reads (1.2.1 or later) that is older than the
 // release wherdr was tested with: wherdr offers to update it.
 export function projectsBehind(version: string | null | undefined): boolean {
   return versionAtLeast(version, PROJECTS_MIN) && !versionAtLeast(version, PROJECTS_TESTED)
