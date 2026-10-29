@@ -278,8 +278,11 @@ const soloTab = computed(() => {
 const listQuotas = computed(() => (soloTab.value ? tabQuotaRows(topQuotas.value, soloTab.value.quotas) : topQuotas.value))
 const homeRoot = ref<HTMLElement | null>(null)
 const homeScroll = ref<HTMLElement | null>(null)
-useHomeSwipe(homeRoot, () => barEntries.value.map(b => b.id), () => machineBarPick.value,
-  pickMachineBar, id => pickBar(id))
+const swipeDirection = useHomeSwipe(homeRoot, () => barEntries.value.map(b => b.id), () => machineBarPick.value, id => pickBar(id))
+function retireHomeContent(el: Element) {
+  ;(el as HTMLElement).inert = true
+  el.setAttribute('aria-hidden', 'true')
+}
 const switchMachineConversation = useMachineConversation()
 function pickBar(id: string, event?: MouseEvent) {
   if (barLp.swallowClick()) return
@@ -292,7 +295,7 @@ function pickBar(id: string, event?: MouseEvent) {
     const keys = machines.value.filter(m => selected.includes(baseKeyOf(m))).map(m => m.key)
     if (keys.some(k => collapsedMachines.value.includes(k))) collapsedMachines.value = collapsedMachines.value.filter(k => !keys.includes(k))
   }
-  homeScroll.value?.scrollTo({ top: 0 })
+  void nextTick(() => homeScroll.value?.scrollTo({ top: 0 }))
   ;(event?.currentTarget as HTMLElement | null ?? Array.from(homeRoot.value?.querySelectorAll<HTMLElement>('.machine-bar-item') ?? []).find(b => b.dataset.barId === id))?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
 }
 // A mouse wheel scrolls the bar sideways when it overflows (narrow sidebar).
@@ -690,7 +693,9 @@ function resetListWidth() {
         </button>
       </UContextMenu>
     </nav>
-    <div ref="homeScroll" class="scroll">
+    <div class="home-content">
+    <Transition :name="swipeDirection < 0 ? 'home-next' : 'home-prev'" @before-leave="retireHomeContent">
+    <div :key="machineBarPick ?? BAR_ALL" ref="homeScroll" class="scroll">
       <OfflineNote v-if="(offlineView && cachedAt) || netDown" class="home-offline" :label="offlineView && cachedAt ? t('Last known state') : undefined" :at="cachedAt" date-style="medium" />
       <div v-if="eventsOpen && !st.ok" class="notice">
         {{ t('The Herdr server is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
@@ -874,6 +879,8 @@ function resetListWidth() {
           </div>
         </section>
       </template>
+    </div>
+    </Transition>
     </div>
 
     <div class="fab-wrap">
