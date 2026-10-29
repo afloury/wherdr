@@ -1367,8 +1367,10 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
 
               <div v-else-if="b.k === 'autopilot'" class="msg-autopilot" :data-hit-key="b.key">
                 <div class="msg-system"><span>{{ t('Autopilot') }}</span></div>
-                <div class="msg-autopilot-body"><FoldText>{{ b.text }}</FoldText></div>
-                <UButton icon="i-lucide-copy" color="neutral" variant="ghost" size="xs" :aria-label="t('Copy message')" @click="copyText(b.text)" />
+                <div class="msg-autopilot-body">
+                  <div class="msg-autopilot-text"><FoldText>{{ b.text }}</FoldText></div>
+                  <UButton class="msg-autopilot-copy" icon="i-lucide-copy" color="neutral" variant="ghost" size="xs" :aria-label="t('Copy message')" @click="copyText(b.text)" />
+                </div>
               </div>
 
               <div v-else-if="b.k === 'user'" class="msg-user-wrap" :data-hit-key="b.key">
