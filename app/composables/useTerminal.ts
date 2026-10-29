@@ -17,6 +17,7 @@ import { uploadPhoto } from '~/utils/photoUpload'
 import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
 import { bindTerminalMouse, terminalCell } from '~/utils/terminalMouse'
 import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
+import { toggleVirtualModifier, virtualChord, virtualInputKey, type VirtualModifier } from '~/utils/terminalModifiers'
 
 export interface Banner { text: string, btn: string, fn: () => void }
 
@@ -41,6 +42,9 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   // Cumulative signed rows acknowledged after xterm parses the next frame.
   const scrollAck = ref(0)
   let touchEpoch = 0
+  const virtualModifiers = ref<VirtualModifier[]>([])
+  const toggleModifier = (key: VirtualModifier) => { virtualModifiers.value = toggleVirtualModifier(virtualModifiers.value, key) }
+  const clearVirtualModifiers = () => { virtualModifiers.value = [] }
   const selectionHint = useTerminalSelectionHint()
   let unbindSelection: (() => void) | null = null
   let unbindPaste: (() => void) | null = null
@@ -54,6 +58,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   function mount(host: HTMLElement) {
     el = host
+    // Clear before xterm handles paste, including a one-character paste.
+    host.addEventListener('paste', clearVirtualModifiers, true)
     disposed = false
     twsRetry = 0
     term = new Terminal({
@@ -132,8 +138,16 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     // utils/terminalWheel.ts); TerminalView converts it to terminal.scroll.
     term.attachCustomWheelEventHandler(() => false)
     // Shift+Enter as a named key; Ctrl+V (outside Apple) and F12 left to the browser.
-    bindTerminalKeys(term, key => sendKeys([key]))
-    term.onData(d => { if (opts.input?.() !== false) sendTerm({ type: 'terminal.input', text: d }) })
+    bindTerminalKeys(term, key => sendVirtualKey(key))
+    term.onData(d => {
+      if (opts.input?.() === false) return
+      if (virtualModifiers.value.length) {
+        const key = virtualInputKey(d)
+        if (key) { void sendVirtualKey(key); return }
+        clearVirtualModifiers()
+      }
+      sendTerm({ type: 'terminal.input', text: d })
+    })
     term.onBinary((d) => {
       if (opts.input?.() === false) return
       const bytes = Uint8Array.from(d, c => c.charCodeAt(0) & 0xff)
@@ -152,6 +166,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   })
 
   function sendTerm(obj: unknown): boolean {
+    if ((obj as { type?: string })?.type === 'paste') clearVirtualModifiers()
     if (smoothTouchScrolling.value && ['terminal.input', 'paste'].includes((obj as { type?: string })?.type || '')) {
       scrollInputVersion.value++
       cancelTouchScroll()
@@ -172,6 +187,13 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       await api('/api/input', { pane_id: paneId, keys })
       haptic()
     } catch (err) { toast((err as Error).message, true) }
+  }
+
+  async function sendVirtualKey(key: string) {
+    if (opts.input?.() === false) return
+    const chord = virtualChord(key, virtualModifiers.value)
+    clearVirtualModifiers()
+    await sendKeys([chord])
   }
 
   function fitNow(send: boolean) {
@@ -341,6 +363,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   }
 
   function disconnect() {
+    clearVirtualModifiers()
     if (smoothTouchScrolling.value) { scrollInputVersion.value++; touchEpoch++ }
     mouseSupported = false
     twsIntent = false
@@ -399,6 +422,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   }
 
   function dispose() {
+    el?.removeEventListener('paste', clearVirtualModifiers, true)
     disposed = true
     stopSmoothWatch()
     disconnect()
@@ -424,6 +448,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     reset, scroll, focus, blur, tapLink, tapMouse: (x: number, y: number) => mouse?.tap(x, y), hasFocus, rowHeight, pageRows, setVisible, dispose, loading, kbdOn,
     hasBanner: opts.hasBanner, selectionHint,
     cancelTouchScroll, scrollInputVersion, frameTick, scrollAck,
+    virtualModifiers, toggleModifier, sendVirtualKey,
   }
 }
 
