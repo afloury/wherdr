@@ -23,6 +23,7 @@ async function mounted(enabled: boolean) {
     fitNow: vi.fn(), hasBanner: () => true, connect: vi.fn(), dispose: vi.fn(),
     focus: vi.fn(), blur: vi.fn(), tapLink: vi.fn(() => false), tapMouse: vi.fn(),
     cancelTouchScroll: vi.fn(), scrollInputVersion: ref(0), scrollAck: ref(0), frameTick: ref(0),
+    scrollback: ref(''), scrollbackVersion: ref(0), requestScrollback: vi.fn(),
     loading: ref(false), selectionHint: { visible: ref(false), dismiss: vi.fn() },
   }
   const w = await mountSuspended(TerminalView, { props: { ctl: ctl as unknown as TerminalCtl } })
@@ -113,6 +114,12 @@ describe('terminal beta switch', () => {
     await r.w.get('#touch').trigger('mousedown')
     expect(r.ctl.tapMouse).toHaveBeenCalledOnce()
     expect(r.ctl.focus).toHaveBeenCalledOnce()
+  })
+  it('keeps #touch in the rest-state gap so the overlay cannot intercept taps', async () => {
+    const r = await mounted(false)
+    const touch = r.w.get('#touch').element as HTMLElement
+    expect(touch.closest('.sb-gap')).toBeTruthy()
+    expect(touch.closest('#scrollback')).toBeTruthy()
   })
   it('previews a small drag without inventing a full row at the gesture threshold', async () => {
     const r = await mounted(true)

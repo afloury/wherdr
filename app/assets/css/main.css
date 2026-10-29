@@ -1162,7 +1162,10 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
   scrollbar-width: none; pointer-events: none; background: transparent; }
 #scrollback::-webkit-scrollbar { display: none; }
 #scrollback .sb-body { padding: 6px 4px 0 6px; white-space: pre-wrap; overflow-wrap: break-word; font-variant-ligatures: none; }
-#scrollback .sb-gap { height: 100%; }
+/* The gap never intercepts: #touch lives inside it and is the rest-state hit
+   target (keyboard). Pans still reach the parent scroller via pan-y. */
+#scrollback .sb-gap { position: relative; height: 100%; pointer-events: none; }
+@media (hover: none) and (pointer: coarse) { #scrollback #touch { touch-action: pan-y; } }
 .term-loading { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .term-loading.static { position: static; padding: 30px; }
 .xterm .xterm-viewport { background: transparent !important; overflow-y: hidden !important; }

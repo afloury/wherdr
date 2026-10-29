@@ -61,7 +61,7 @@ function legacyOnTouchEnd(e: TouchEvent) {
   legacyLastX = null
   // A tap on a link opens it; any simple tap closes the keyboard: the
   // terminal stays readable in full.
-  if (!legacyMoved) {
+  if (!legacyMoved && !gapPan) {
     // No keyboard for a link: cancels the mousedown that follows the tap.
     if (t) {
       if (props.ctl.tapLink(t.clientX, t.clientY)) e.preventDefault()
@@ -104,6 +104,10 @@ let lastScrollAt = -Infinity
 let stoppingScroll = false
 let allowTouchFocus = false
 let hadScroll = false
+// Rest-state #touch sits in the native scroller's gap. A trusted pan must
+// not preventDefault (the scroller needs the gesture) and is not a keyboard tap.
+let gapPan = false
+let gapAX = 0, gapAY = 0
 const screenEl = () => host.value?.querySelector('.xterm-screen') as HTMLElement | null
 const applyOffset = () => {
   const el = screenEl()
@@ -191,6 +195,9 @@ watch(smoothTouchScrolling, () => {
   legacyLastX = legacyLastY = null
 }, { flush: 'sync' })
 function onTouchStart(e: TouchEvent) {
+  gapPan = false
+  const p = e.touches[0]
+  if (p) { gapAX = p.clientX; gapAY = p.clientY }
   if (!smoothTouchScrolling.value) return legacyOnTouchStart(e)
   lastTouchAt = performance.now()
   // Retain this across pointerdown cancellation, which precedes touchstart.
@@ -201,6 +208,7 @@ function onTouchStart(e: TouchEvent) {
   if (e.touches.length === 1) touch.start(e.touches[0]!.clientX, e.touches[0]!.clientY)
 }
 function onTouchMove(e: TouchEvent) {
+  if (trustedOverlayPan(e)) return
   if (!smoothTouchScrolling.value) return legacyOnTouchMove(e)
   e.preventDefault()
   if (e.touches.length !== 1) { cancelTouch(); return }
@@ -210,7 +218,7 @@ function onTouchEnd(e: TouchEvent) {
   if (!smoothTouchScrolling.value) return legacyOnTouchEnd(e)
   lastTouchAt = performance.now()
   const t = e.changedTouches[0]
-  const tapped = touch.end()
+  const tapped = !gapPan && touch.end()
   allowTouchFocus = tapped && !stoppingScroll
   if (allowTouchFocus) {
     if (t) {
@@ -219,7 +227,7 @@ function onTouchEnd(e: TouchEvent) {
     }
     props.ctl.blur()
     ;(document.activeElement as HTMLElement | null)?.blur?.()
-  } else e.preventDefault()
+  } else if (!gapPan) e.preventDefault()
   expirePreview()
 }
 // The layer only receives the mouse on a touch screen (main.css): on a
@@ -252,6 +260,14 @@ function onWheel(e: WheelEvent) {
 const sbEl = ref<HTMLElement | null>(null)
 const sbBody = ref<HTMLElement | null>(null)
 const sbInteractive = typeof matchMedia !== 'undefined' && matchMedia('(hover: none) and (pointer: coarse)').matches
+// Real finger pans on the gap must native-scroll #scrollback. Synthetic
+// events (e2e dispatch on #touch) stay on the terminal.scroll path.
+function trustedOverlayPan(e: TouchEvent) {
+  if (!sbInteractive || !e.isTrusted) return false
+  const t = e.touches[0]
+  if (t && Math.hypot(t.clientX - gapAX, t.clientY - gapAY) > 10) gapPan = true
+  return true
+}
 // Distance from the bottom that still counts as the live gap. An empty
 // .sb-body keeps a few pixels of CSS padding, so a 2px slop would treat
 // rest as "into history" and drop taps on the transparent gap.
@@ -328,39 +344,6 @@ function onSbScroll() {
 }
 // Typing should land on the live terminal: pull the overlay back to the gap.
 watch(props.ctl.scrollInputVersion, () => { if (sbEl.value) sbEl.value.scrollTop = sbEl.value.scrollHeight })
-// Coarse-pointer: #scrollback sits above #touch with pointer-events auto,
-// so a rest-state tap never reaches onTouchEnd. Stationary touchend on the
-// gap is the same path as a tap on #touch; a drag keeps native momentum.
-let sbAX = 0, sbAY = 0
-let sbTouchSent = false
-function tapGap(x: number, y: number) {
-  const el = sbEl.value
-  // Only taps at the very bottom reach the pane; taps on history do nothing.
-  if (el && el.scrollHeight - el.scrollTop - el.clientHeight > sbRestPx) return false
-  if (!props.ctl.tapLink(x, y)) props.ctl.tapMouse(x, y)
-  props.ctl.blur()
-  ;(document.activeElement as HTMLElement | null)?.blur?.()
-  return true
-}
-function onGapTap(e: MouseEvent) {
-  if (sbTouchSent) { sbTouchSent = false; return }
-  tapGap(e.clientX, e.clientY)
-}
-function onSbTouchStart(e: TouchEvent) {
-  sbTouchSent = false
-  sbAX = e.touches[0]!.clientX
-  sbAY = e.touches[0]!.clientY
-}
-function onSbTouchEnd(e: TouchEvent) {
-  const t = e.changedTouches[0]
-  if (!t || Math.hypot(t.clientX - sbAX, t.clientY - sbAY) > 10) return
-  // History rows sit in .sb-body; only the transparent gap is the live pane.
-  if (!(e.target as HTMLElement | null)?.closest?.('.sb-gap')) return
-  if (tapGap(t.clientX, t.clientY)) {
-    sbTouchSent = true
-    e.preventDefault()
-  }
-}
 
 let fitTimer: ReturnType<typeof setTimeout> | undefined
 // Throttle rather than debounce: long divider drags must keep fitting while
@@ -398,23 +381,24 @@ onUnmounted(() => {
 <template>
   <div id="termWrap" :class="{ 'smooth-touch': smoothTouchScrolling }" @wheel.capture="onWheel">
     <div id="term" ref="host" />
-    <div
-      id="touch" aria-hidden="true"
-      @touchstart.passive="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd" @touchcancel="cancelTouch"
-      @mousedown.prevent="onMouseDown"
-    />
     <!-- Local scrollback: a real scroller like the chat view. Its lines fill
          the top, a transparent one-viewport gap sits at the bottom over the
-         live terminal -- scrolling up just reveals history, natively. -->
+         live terminal -- scrolling up just reveals history, natively.
+         #touch fills that gap so rest-state taps hit it (keyboard) instead
+         of the overlay intercepting them. -->
     <div
       id="scrollback" ref="sbEl"
       :style="{ pointerEvents: sbInteractive ? 'auto' : 'none' }"
       @scroll.passive="onSbScroll"
-      @touchstart.passive="onSbTouchStart"
-      @touchend="onSbTouchEnd"
     >
       <div ref="sbBody" class="sb-body" />
-      <div class="sb-gap" @click="onGapTap" />
+      <div class="sb-gap">
+        <div
+          id="touch" aria-hidden="true"
+          @touchstart.passive="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd" @touchcancel="cancelTouch"
+          @mousedown.prevent="onMouseDown"
+        />
+      </div>
     </div>
     <div v-if="ctl.loading.value" class="term-loading"><span class="spinner" /></div>
     <div v-if="ctl.selectionHint.visible.value" class="terminal-selection-hint">

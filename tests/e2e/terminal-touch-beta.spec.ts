@@ -15,9 +15,10 @@ async function touch(page: Page, type: string, y: number, startY?: number) {
     }
     if (startY !== undefined) dispatch('touchstart', startY)
     dispatch(type, y)
-    const screen = el.parentElement?.querySelector('.xterm-screen') as HTMLElement
+    const wrap = el.closest('#termWrap')
+    const screen = wrap?.querySelector('.xterm-screen') as HTMLElement
     if (screen?.style.transform) {
-      const clip = el.parentElement!.querySelector('#term')!.getBoundingClientRect()
+      const clip = wrap!.querySelector('#term')!.getBoundingClientRect()
       const grid = screen.getBoundingClientRect()
       const x = Math.max(clip.left, grid.left) + 5
       // Hit-test the actual overflow strip while prediction is active. This
@@ -25,7 +26,7 @@ async function touch(page: Page, type: string, y: number, startY?: number) {
       const y = grid.top < clip.top - 2 ? clip.top - 2 : grid.bottom > clip.bottom + 2 ? clip.bottom + 2 : null
       if (y !== null && document.elementsFromPoint(x, y).some(node => node === screen || screen.contains(node)))
         throw new Error('Predicted terminal grid escapes its clipping boundary')
-      if (getComputedStyle(el.parentElement!.querySelector('#term')!).overflowY !== 'hidden')
+      if (getComputedStyle(wrap!.querySelector('#term')!).overflowY !== 'hidden')
         throw new Error('Terminal prediction requires a clipped grid')
     }
     return screen?.style.transform || ''
@@ -142,6 +143,10 @@ for (const enabled of [false, true]) {
     test.skip(!isMobile, 'Touch gestures use the phone viewport')
     await fakeHerdr('e2e.touch_scroll', { pane_id: pane, reset: true, mouse: false })
     await terminal(page, enabled)
+    await expect.poll(async () => page.locator('#touch').evaluate(el => {
+      const r = el.getBoundingClientRect()
+      return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.id
+    })).toBe('touch')
     await page.locator('#touch').tap()
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused()
   })
