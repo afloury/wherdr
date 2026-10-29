@@ -1,4 +1,4 @@
-import { gestureAxis, gestureCommits, gestureTarget, wheelGesture } from '~/utils/tabGesture'
+import { gestureAxis, gestureCommits, gestureTarget, wheelGesture, WHEEL_IDLE } from '~/utils/tabGesture'
 
 // The outgoing list is an inert snapshot; the incoming list remains live.
 export function useHomeSwipe(root: Ref<HTMLElement | null>, ids: () => string[], current: () => string | null, preview: (id: string) => void, commit: (id: string) => void) {
@@ -6,7 +6,10 @@ export function useHomeSwipe(root: Ref<HTMLElement | null>, ids: () => string[],
   let disposed = false
   onMounted(() => {
     const el = root.value!
-    const wheel = wheelGesture()
+    let wheel = wheelGesture()
+    let wheelTimer: ReturnType<typeof setTimeout> | undefined
+    let wheeling = false, wheelVelocity = 0
+    let settling: (() => void) | null = null
     let start: { x: number, y: number, at: number, lastX: number, lastAt: number, velocity: number } | null = null
     let old = '', next = '', dx = 0, width = 1, direction = 0
     let snapshot: HTMLElement | null = null, list: HTMLElement | null = null
@@ -61,12 +64,19 @@ export function useHomeSwipe(root: Ref<HTMLElement | null>, ids: () => string[],
       busy = true
       preview(next)
       await nextTick()
-      draw(offset)
+      draw(dx)
       return true
     }
     async function finish(accept: boolean) {
       if (!busy) return
-      swallowed = performance.now()
+      if (settling) return
+      if (!wheeling) swallowed = performance.now()
+      const done = () => {
+        if (disposed) return
+        if (accept) commit(next); else preview(old)
+        animation?.cancel(); incoming?.cancel(); settling = null; reset()
+      }
+      settling = done
       const end = accept ? direction * width : 0
       if (!reduced() && list && snapshot) {
         const options = { duration: 200, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' as const }
@@ -76,22 +86,21 @@ export function useHomeSwipe(root: Ref<HTMLElement | null>, ids: () => string[],
         incoming = list.animate([{ transform: `translateX(${dx - direction * width}px)` }, { transform: `translateX(${end - direction * width}px)` }], options)
         await animation.finished.catch(() => {})
       }
-      if (disposed) return
-      if (accept) commit(next)
-      else preview(old)
-      animation?.cancel(); incoming?.cancel()
-      reset()
+      if (settling === done) done()
+    }
+    function excluded(node: HTMLElement | null, wheel = false) {
+      if (node?.closest('input, textarea, select, [contenteditable], [role="slider"]') || (!wheel && node?.closest('.machine-bar'))) return true
+      while (node && node !== document.body) {
+        if (!(wheel && node.classList.contains('machine-bar')) && node.scrollWidth > node.clientWidth + 2 && /auto|scroll/.test(getComputedStyle(node).overflowX)) return true
+        node = node.parentElement
+      }
+      return false
     }
     function down(e: TouchEvent) {
       if (busy || e.touches.length !== 1) { start = null; return }
       const t = e.touches[0]!
       if (t.clientX < 24 || t.clientX > innerWidth - 24) return
-      let node = e.target as HTMLElement | null
-      if (node?.closest('input, textarea, select, [contenteditable], .machine-bar, [role="slider"]')) return
-      while (node && node !== el) {
-        if (node.scrollWidth > node.clientWidth + 2 && /auto|scroll/.test(getComputedStyle(node).overflowX)) return
-        node = node.parentElement
-      }
+      if (excluded(e.target as HTMLElement)) return
       const at = performance.now()
       start = { x: t.clientX, y: t.clientY, at, lastX: t.clientX, lastAt: at, velocity: 0 }
       axis = null; dx = 0
@@ -121,25 +130,53 @@ export function useHomeSwipe(root: Ref<HTMLElement | null>, ids: () => string[],
       void finish(accept)
     }
     function cancel() { start = null; void finish(false) }
-    function click(e: Event) { if (busy || performance.now() - swallowed < 500) { e.preventDefault(); e.stopImmediatePropagation() } }
+    function endWheel() {
+      clearTimeout(wheelTimer)
+      void finish(Math.abs(dx) >= 56 && gestureCommits(dx, wheelVelocity, width))
+      wheeling = false
+    }
+    function click(e: Event) {
+      if (performance.now() - swallowed < 500) { e.preventDefault(); e.stopImmediatePropagation(); return }
+      wheel = wheelGesture()
+      if (wheeling || settling) { endWheel(); settling?.(); return }
+      if (busy) { e.preventDefault(); e.stopImmediatePropagation() }
+    }
     function onWheel(e: WheelEvent) {
-      if (!(e.target as HTMLElement)?.closest('.machine-bar') || e.ctrlKey || Math.abs(e.deltaX) <= Math.abs(e.deltaY) * 1.4) return
+      if (e.ctrlKey || start) return
+      // Wheel transactions can retain a stale target after the list changes.
+      const hit = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
+      if (!hit?.closest('#home, #placeholder') || excluded(hit, true)) return
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerWidth : 1
+      const state = wheel(e.deltaX * unit, e.deltaY * unit, performance.now(), (e as WheelEvent & { momentum?: boolean }).momentum)
+      if (state.fresh) { if (wheeling) endWheel(); settling?.() }
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX) * 2.2) {
+        if (wheeling) { void finish(false); settling?.(); wheeling = false; clearTimeout(wheelTimer) }
+        return
+      }
+      // Claim horizontal input from its first cancellable packet, before axis lock.
+      if (state.axis !== 'x') {
+        if (!state.axis && Math.abs(e.deltaX) > Math.abs(e.deltaY) * 2.2) e.preventDefault()
+        return
+      }
       e.preventDefault()
-      const offset = wheel(e.deltaX * (e.deltaMode === 1 ? 16 : 1), e.deltaY, performance.now())
-      if (!offset || busy) return
-      dx = 0
-      void begin(offset).then(ok => { if (ok) void finish(true) })
+      wheeling = true; clearTimeout(wheelTimer)
+      if (busy && state.offset * direction < 0) { void finish(false); settling?.() }
+      if (!busy && state.offset) void begin(state.offset)
+      dx = direction * Math.max(0, Math.min(width, state.offset * direction))
+      wheelVelocity = state.velocity; draw(dx)
+      wheelTimer = setTimeout(endWheel, WHEEL_IDLE)
     }
     el.addEventListener('touchstart', down, { passive: true })
     el.addEventListener('touchmove', move, { passive: false })
     el.addEventListener('touchend', up)
     el.addEventListener('touchcancel', cancel)
     el.addEventListener('click', click, true)
-    el.addEventListener('wheel', onWheel, { passive: false })
+    window.addEventListener('wheel', onWheel, { passive: false, capture: true })
     cleanup = () => {
       el.removeEventListener('touchstart', down); el.removeEventListener('touchmove', move)
       el.removeEventListener('touchend', up); el.removeEventListener('touchcancel', cancel)
-      el.removeEventListener('click', click, true); el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('click', click, true); window.removeEventListener('wheel', onWheel, true)
+      clearTimeout(wheelTimer)
       animation?.cancel(); incoming?.cancel(); reset()
     }
   })

@@ -139,27 +139,76 @@ test('home swipe follows a finger and cancels short drags', async ({ page, conte
   await expect(all).toHaveAttribute('aria-pressed', 'true')
 })
 
-test('desktop tab swipe consumes trackpad inertia and respects reduced motion', async ({ browser }) => {
-  const desktop = await browser.newContext({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false })
+test('desktop swipes track, reverse and repeat without moving the pointer', async ({ browser }, info) => {
+  const desktop = await browser.newContext({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false,
+    recordVideo: { dir: process.env.TMPDIR || info.outputDir, size: { width: 1440, height: 900 } } })
+  const page = await desktop.newPage()
   try {
-    const page = await desktop.newPage()
     await setup(page)
-    const all = page.locator('[data-bar-id="*"]')
-    const neighbor = page.locator('.machine-bar-item').nth(1)
+    const tabs = page.locator('.machine-bar-item'), all = tabs.nth(0), neighbor = tabs.nth(1)
     await all.click()
     await page.locator('.machine-bar').hover()
-    // Deliver one uninterrupted burst, independent of automation round-trip delays.
-    await page.locator('.machine-bar').evaluate(bar => {
-      for (const deltaX of [70, 30, 20, 10, 5]) bar.dispatchEvent(new WheelEvent('wheel', { deltaX, bubbles: true, cancelable: true }))
-    })
+    await page.evaluate(() => { (window as any).pointerMoves = 0; window.addEventListener('pointermove', () => (window as any).pointerMoves++) })
+    await page.mouse.wheel(12, 0) // Small first packet must not hand the gesture to browser history.
+    for (let i = 0; i < 8; i++) await page.mouse.wheel(60, 0)
+    await expect(neighbor).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.home-swiping')).toHaveCount(0)
+    await page.mouse.wheel(480, 0)
+    await expect(tabs.nth(2)).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.home-swiping')).toHaveCount(0)
+    await page.mouse.wheel(-480, 0)
+    await expect(neighbor).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.home-swiping')).toHaveCount(0)
+    const bar = (await page.locator('.machine-bar').boundingBox())!
+    await page.evaluate(({ x, y }) => document.dispatchEvent(new WheelEvent('wheel', { deltaX: 120, clientX: x, clientY: y, bubbles: true, cancelable: true })), { x: bar.x + bar.width / 2, y: bar.y + bar.height / 2 })
+    await expect(tabs.nth(2)).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.home-swiping')).toHaveCount(0)
+    expect(await page.evaluate(() => (window as any).pointerMoves)).toBe(0)
+    await all.click() // A real click immediately after a wheel gesture stays usable.
+    const box = (await page.locator('#placeholder').boundingBox())!
+    const x = box.x + box.width / 2, y = 400
+    await page.mouse.move(x, y)
+    // Target document deliberately: browsers can latch wheel targets across DOM changes.
+    async function burst(steps: number[]) {
+      return page.evaluate(({ steps, x, y }) => {
+        const offsets: number[] = []
+        for (const deltaX of steps) {
+          document.dispatchEvent(new WheelEvent('wheel', { deltaX, clientX: x, clientY: y, bubbles: true, cancelable: true }))
+          const outgoing = document.querySelector<HTMLElement>('#home > .scroll[aria-hidden]')
+          offsets.push(outgoing ? new DOMMatrixReadOnly(outgoing.style.transform).m41 : 0)
+        }
+        return offsets
+      }, { steps, x, y })
+    }
+    expect(await burst([28, 28, -20, -20])).toEqual([-28, -56, -36, -16])
+    await expect(page.locator('.home-swiping')).toHaveCount(0)
+    await expect(all).toHaveAttribute('aria-pressed', 'true')
+    await burst([20, 10])
+    await expect(page.locator('.home-swiping')).toHaveCount(0)
+    await expect(all).toHaveAttribute('aria-pressed', 'true')
+    await burst([40, 40])
+    await all.click() // Clicking interrupts a pending wheel transition immediately.
+    await expect(all).toHaveAttribute('aria-pressed', 'true')
+    await burst([25, 25, 25, 25, 4, 3, 2, 1])
     await expect(neighbor).toHaveAttribute('aria-pressed', 'true')
     await expect(page.locator('.home-swiping')).toHaveCount(0)
     await page.screenshot({ path: '.shots/home-swipe-desktop.png', scale: 'css' })
+    await page.locator('#home > .scroll').hover()
+    await page.mouse.wheel(0, 500)
+    await expect.poll(() => page.locator('#home > .scroll').evaluate(e => e.scrollTop)).toBeGreaterThan(0)
+    await expect(neighbor).toHaveAttribute('aria-pressed', 'true')
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    await page.waitForTimeout(250)
-    await page.mouse.wheel(-210, 0)
+    await page.waitForTimeout(180)
+    await burst([-40, -40, -40])
     await expect(all).toHaveAttribute('aria-pressed', 'true')
     await expect(page.locator('.home-swipe-indicator')).toHaveCount(0)
+    await page.locator('#placeholder').evaluate(e => e.insertAdjacentHTML('beforeend', '<div id="own-scroll" style="position:absolute;top:40px;left:40px;width:100px;overflow:auto"><div style="width:600px;height:40px"></div></div>'))
+    await page.locator('#own-scroll').hover()
+    await page.mouse.wheel(240, 0)
+    await expect.poll(() => page.locator('#own-scroll').evaluate(e => e.scrollLeft)).toBeGreaterThan(0)
+    await expect(all).toHaveAttribute('aria-pressed', 'true')
+    await page.locator('#home .card').first().click()
+    await expect(page).toHaveURL(/#\/[at]\//)
   }
-  finally { await desktop.close() }
+  finally { await desktop.close(); await page.video()?.saveAs('.shots/home-swipe-desktop.webm') }
 })
