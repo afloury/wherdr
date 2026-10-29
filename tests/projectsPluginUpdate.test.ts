@@ -2,6 +2,7 @@
 // of the tested release; Update only over a 1.x older than it.
 import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import shepherdr from './plugin-fixtures/shepherdr-2.0.0.json'
 import { PROJECTS_TESTED } from '../shared/projectsPlugin'
 
 const plugins = vi.hoisted(() => ({ list: [] as unknown[] }))
@@ -47,6 +48,14 @@ describe('Update herdr-projects', () => {
       await expect(updateProjectsPlugin(m, program)).rejects.toMatchObject({ code: 'up_to_date' })
       expect(runs).toEqual([])
     }
+  })
+
+  it('never installs or updates over Shepherdr, even with a stale 1.x program version', async () => {
+    plugins.list = [shepherdr]
+    const { m, runs } = machine()
+    await expect(installProjectsPlugin(m)).rejects.toMatchObject({ code: 'already_installed' })
+    await expect(updateProjectsPlugin(m, '1.2.16')).rejects.toMatchObject({ code: 'up_to_date' })
+    expect(runs).toEqual([])
   })
 
   it('Install stays for a machine without herdr-projects, with the same release', async () => {
