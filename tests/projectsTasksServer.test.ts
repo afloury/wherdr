@@ -184,10 +184,10 @@ describe('the Board read', () => {
     expect(infoAsked.slice(1).every(f => !f)).toBe(true)
   })
 
-  it('a machine without herdr-projects 1.2.1 runs nothing and says so', async () => {
-    info.status = 'old'
+  it.each(['old', 'shepherdr'])('an unavailable Board (%s) runs nothing and says so', async (status) => {
+    info.status = status
     const r = await read()
-    expect(r.machines[0]).toMatchObject({ status: 'old', tasks: [] })
+    expect(r.machines[0]).toMatchObject({ status, tasks: [] })
     expect(calls).toEqual([])
   })
 })

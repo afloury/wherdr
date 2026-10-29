@@ -2375,6 +2375,7 @@ body.kb .composer { padding-bottom: 8px; }
 .plugin-input-note.warn > .iconify { color: var(--ochre); }
 .plugin-input-note.reload { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .plugin-input-note kbd { font: 600 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--text); }
+.plugin-input-note a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .projects-plugin-reload { margin-top: 12px; }
 .plugin-result { display: grid; gap: 12px; min-width: 0; }
 
