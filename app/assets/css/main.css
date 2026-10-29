@@ -660,6 +660,7 @@ body.short-bottom { --safe-bottom: 0px; }
    "All" then each machine with its state square and count; the chosen cell
    takes the accent with a line under it. Scrolls sideways when it overflows. */
 .machine-bar {
+  position: relative;
   display: flex; flex: none; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
   margin: 0 16px 16px; border: 1px solid var(--line); background: var(--bg-2);
 }
@@ -676,7 +677,9 @@ body.short-bottom { --safe-bottom: 0px; }
 .machine-bar-item:last-child { border-right: 0; }
 .machine-bar-item:hover { color: var(--text); background: var(--surface); }
 .machine-bar-item:focus-visible { outline: 1px solid var(--accent); outline-offset: -3px; }
-.machine-bar-item.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); box-shadow: inset 0 -2px 0 var(--accent); }
+.machine-bar-item.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.machine-bar-indicator { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--accent); pointer-events: none; transition: transform 260ms cubic-bezier(.22,.68,0,1), width 260ms cubic-bezier(.22,.68,0,1); }
+#home:has(.home-dragging) .machine-bar-indicator { transition: none; }
 .machine-bar-label { max-width: 16ch; overflow: hidden; text-overflow: ellipsis; }
 .machine-bar-state { width: 6px; height: 6px; flex: none; background: var(--green); }
 .machine-bar-item.connecting .machine-bar-state { background: var(--ochre); animation: pulse 1.2s ease-in-out infinite; }
@@ -3058,7 +3061,7 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   body:has(#home.resizing) iframe, body:has(#home.resizing) .xterm { pointer-events: none; }
   #agent, #placeholder, #settings, #board, #tabview { left: var(--side); }
   /* Collapsed list: column of icons and state counters, the rest hidden (state kept). */
-  #home.rail > .home-top, #home.rail > .machine-bar, #home.rail > .scroll, #home.rail > .fab-wrap { display: none; }
+  #home.rail > .home-top, #home.rail > .machine-bar, #home.rail > .home-content, #home.rail > .fab-wrap { display: none; }
   /* Tablet in portrait: the list opened slides over the agent (drawer). */
   #home.drawer { width: min(360px, 86vw); z-index: 19; box-shadow: 1px 0 0 var(--line), 24px 0 48px rgb(0 0 0 / .35); animation: drawer-in .18s ease-out; }
   .list-scrim { position: fixed; inset: 0; z-index: 18; background: rgb(0 0 0 / .45); animation: scrim-in .18s ease-out; }
@@ -4362,3 +4365,22 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 /* Clip only the predicted grid; the terminal frame and composer stay fixed. */
 #termWrap.smooth-touch #term { overflow: hidden; }
 #termWrap.smooth-touch .xterm { overflow-y: hidden; overscroll-behavior: none; }
+
+/* Only tab content moves; the header and footer are outside this clipped viewport. */
+.home-content { position: relative; flex: 1; min-height: 0; overflow: hidden; isolation: isolate; background: inherit; }
+.home-content > .scroll { position: absolute; inset: 0; padding-bottom: 16px; background: inherit; }
+#home > .fab-wrap { position: static; flex: none; display: flex; justify-content: flex-end; padding: 12px 16px calc(var(--safe-bottom) + 18px); }
+.home-next-enter-active, .home-next-leave-active,
+.home-prev-enter-active, .home-prev-leave-active { transition-property: transform, opacity; transition-duration: 260ms; transition-timing-function: cubic-bezier(.22,.68,0,1); will-change: transform, opacity; }
+.home-next-enter-from { transform: translateX(calc(100% + var(--home-release, 0px))); opacity: 0; }
+.home-prev-enter-from { transform: translateX(calc(-100% + var(--home-release, 0px))); opacity: 0; }
+.home-next-leave-from, .home-prev-leave-from { transform: translateX(var(--home-release, 0px)); }
+.home-prev-leave-to { transform: translateX(100%); opacity: 0; }
+.home-next-leave-to { transform: translateX(-100%); opacity: 0; }
+.home-returning > .scroll:not([class*="-active"]) { transition: transform 260ms cubic-bezier(.22,.68,0,1); }
+.home-dragging > .scroll { transform: translateX(var(--home-touch)); transition: none !important; }
+.home-next-leave-active, .home-prev-leave-active { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .machine-bar-indicator { transition: none; }
+  .home-content > .scroll { transition: none !important; transform: none !important; opacity: 1 !important; }
+}

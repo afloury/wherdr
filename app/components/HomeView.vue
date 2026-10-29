@@ -276,10 +276,17 @@ const soloTab = computed(() => {
   return sections.value[0]!
 })
 const listQuotas = computed(() => (soloTab.value ? tabQuotaRows(topQuotas.value, soloTab.value.quotas) : topQuotas.value))
+const homeRoot = ref<HTMLElement | null>(null)
 const homeScroll = ref<HTMLElement | null>(null)
+const swipeDirection = useHomeSwipe(homeRoot, () => barEntries.value.map(b => b.id), () => machineBarPick.value, id => pickBar(id))
+function retireHomeContent(el: Element) {
+  ;(el as HTMLElement).inert = true
+  el.setAttribute('aria-hidden', 'true')
+}
 const switchMachineConversation = useMachineConversation()
-function pickBar(id: string, event: MouseEvent) {
+function pickBar(id: string, event?: MouseEvent) {
   if (barLp.swallowClick()) return
+  if (id === machineBarPick.value) homeScroll.value?.scrollTo({ top: 0 })
   haptic()
   pickMachineBar(id)
   switchMachineConversation()
@@ -289,8 +296,8 @@ function pickBar(id: string, event: MouseEvent) {
     const keys = machines.value.filter(m => selected.includes(baseKeyOf(m))).map(m => m.key)
     if (keys.some(k => collapsedMachines.value.includes(k))) collapsedMachines.value = collapsedMachines.value.filter(k => !keys.includes(k))
   }
-  homeScroll.value?.scrollTo({ top: 0 })
-  ;(event.currentTarget as HTMLElement | null)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  const button = event?.currentTarget as HTMLElement | null
+  requestAnimationFrame(() => (button ?? Array.from(homeRoot.value?.querySelectorAll<HTMLElement>('.machine-bar-item') ?? []).find(b => b.dataset.barId === id))?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }))
 }
 // A mouse wheel scrolls the bar sideways when it overflows (narrow sidebar).
 function onBarWheel(e: WheelEvent) {
@@ -609,7 +616,7 @@ function resetListWidth() {
 </script>
 
 <template>
-  <section id="home" class="view" :class="{ resizing: listDrag, rail, drawer, 'list-compact': compactList }" @click.capture="onDrawerPick">
+  <section ref="homeRoot" id="home" class="view" :class="{ resizing: listDrag, rail, drawer, 'list-compact': compactList }" @click.capture="onDrawerPick">
     <!-- Collapsed list (computer): narrow column, the rest of the list is hidden. -->
     <nav v-if="rail" class="home-rail" :aria-label="t('Agents')">
       <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" :title="conn.text" />
@@ -686,8 +693,11 @@ function resetListWidth() {
           <b class="machine-bar-count">{{ b.n }}</b>
         </button>
       </UContextMenu>
+      <span class="machine-bar-indicator" aria-hidden="true" />
     </nav>
-    <div ref="homeScroll" class="scroll">
+    <div class="home-content">
+    <Transition :name="swipeDirection < 0 ? 'home-next' : 'home-prev'" @before-leave="retireHomeContent">
+    <div :key="machineBarPick ?? BAR_ALL" ref="homeScroll" class="scroll">
       <OfflineNote v-if="(offlineView && cachedAt) || netDown" class="home-offline" :label="offlineView && cachedAt ? t('Last known state') : undefined" :at="cachedAt" date-style="medium" />
       <div v-if="eventsOpen && !st.ok" class="notice">
         {{ t('The Herdr server is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
@@ -871,6 +881,8 @@ function resetListWidth() {
           </div>
         </section>
       </template>
+    </div>
+    </Transition>
     </div>
 
     <div class="fab-wrap">
