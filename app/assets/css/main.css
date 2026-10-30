@@ -1026,6 +1026,9 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 /* The path moves to a hidden 2nd line if it does not have room for at least "· /pr…". */
 .agent-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 20px 8px; margin-top: 3px; min-width: 0; max-height: 16px; overflow: hidden; }
 .agent-meta .pill { font-size: 11px; }
+/* A long state ("quota reached · claude") shrinks: the agent kind ends with an ellipsis instead of being cut at the edge. */
+.agent-meta > .pill { flex: 0 1 auto; min-width: 0; }
+.agent-meta .pill-kind { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-meta .agent-subtitle { min-width: 0; max-width: 42%; font: 400 11px/1.2 var(--mono); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agent-meta .agent-subtitle::before { content: '· '; color: var(--dim); }
 .agent-meta .where { flex: 1 1 0; min-width: 6ch; font: 400 11px/1.2 var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
