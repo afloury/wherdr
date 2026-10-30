@@ -320,6 +320,7 @@ const FR: Record<string, string> = {
   'Notifications enabled ✓': 'Notifications activées ✓', 'Failed': 'Échec',
   'Notification sent': 'Notification envoyée',
   'No device accepted the notification': 'Aucun appareil n’a accepté la notification',
+  'Unknown device': 'Appareil inconnu',
   'Agents': 'Agents', 'Menu': 'Menu', 'No agents yet.': 'Aucun agent pour l’instant.',
   'Start one here, or from': 'Lance-en un ici, ou depuis', 'in a terminal.': 'dans un terminal.',
   'New': 'Nouveau', 'Options': 'Options', 'Conversation': 'Conversation',
