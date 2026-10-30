@@ -29,6 +29,7 @@ Read only the page relevant to your task. Start with [Installation and updates](
 - [Notifications](notifications.md) — Enable Web Push, relay Herdr notifications and configure Do not disturb.
 - [Board and coordinators](board.md) — Work with herdr-projects tasks, reviews, approvals and coordinators across machines.
 - [Security](security.md) — Understand remote-shell access, passkeys and network restrictions. Read this before enabling remote access.
+- [Design rules](design.md) — The single reference for interface styling, state indicators, controls and responsive checks.
 - [Development and tests](development.md) — Run from source and follow the contribution and agent test rules.
 - [Troubleshooting](troubleshooting.md) — Resolve startup, permissions, network, SSH and conversation problems.
 
