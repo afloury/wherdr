@@ -65,13 +65,13 @@ test('phone identity preserves agent and touch targets at 320, 360 and 412 px, i
   state.workspaces.find((w: { id: string }) => w.id === pane.workspace).label = 'phone'
   state.tabs.find((tab: { id: string }) => tab.id === pane.tab).label = 'phone-scrolling-多个智能体的长标题'
   pane.label = null
-  pane.agent = 'devin'
+  pane.agent = 'claude'
   pane.status = 'blocked'
   let update = () => {}
   await page.routeWebSocket('**/ws/events', ws => { update = () => ws.send(JSON.stringify(state)); update() })
   await page.reload()
   const identity = page.locator('.phone-identity')
-  await expect(identity.locator('.phone-identity-kind')).toHaveText('Devin')
+  await expect(identity.locator('.phone-identity-kind')).toHaveText('Claude')
   await expect(identity.locator('.phone-identity-title')).toHaveText('phone-scrolling-多个智能体的长标题')
   for (const width of [320, 360, 412]) {
     await page.setViewportSize({ width, height: 844 })
@@ -110,7 +110,7 @@ test('phone identity preserves agent and touch targets at 320, 360 and 412 px, i
   await identity.click()
   const details = page.locator('.phone-identity-details')
   await expect(details).toContainText('phone-scrolling-多个智能体的长标题')
-  await expect(details).toContainText('Devin')
+  await expect(details).toContainText('Claude')
   await expect(details.getByRole('button', { name: /^phone-review/ })).toBeVisible()
   await expect(page.getByText('Rename tab', { exact: true })).toBeVisible()
   await expect(page.getByText('New tab', { exact: true })).toBeVisible()
