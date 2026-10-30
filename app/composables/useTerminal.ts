@@ -7,6 +7,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { terminalPixelWidth } from '~/utils/terminalSize'
+import { guardWebglCanvasSize } from '~/utils/terminalRenderer'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
 import { bindTerminalLinks, type TerminalLinks } from '~/utils/terminalLinks'
 import { bindTerminalKeys } from '~/utils/terminalKeys'
@@ -214,6 +215,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
           fitNow(true)
         })
         term.loadAddon(addon)
+        // Backing store at CSS size × devicePixelRatio, whatever the browser reports.
+        guardWebglCanvasSize(addon)
         webgl = addon
         reportTerminalRenderer('webgl')
       } catch {

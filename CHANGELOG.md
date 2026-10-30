@@ -11,6 +11,10 @@ All notable changes to this project are documented here. The format follows
 - **Optional individual-agent list.** Settings › Appearance can show standalone agents as separate rows, while workspace cards remain the default and Board task helpers stay grouped.
 - **Release distance in update notices.** The banner shows how many newer stable releases are available and a short version list, preserving the installation-specific update action.
 
+### Fixed
+
+- **Sharp terminal at every pixel ratio.** On 2× and 3× screens, the WebGL terminal (demo included) no longer draws its text twice as large and cut off when the browser reports the canvas size in CSS pixels.
+
 ## [2.3.0] — 2026-10-28
 
 ### Added and improved
