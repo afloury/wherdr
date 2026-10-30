@@ -16,6 +16,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Sharp terminal at every pixel ratio.** On 2× and 3× screens, the WebGL terminal (demo included) no longer draws its text twice as large and cut off when the browser reports the canvas size in CSS pixels.
 - **omp 18.14 tool approvals show their card again.** omp 18.14 moved its approval prompt into the composer's place, with a one-row summary of the call, an "Approve <tool> for this session" choice and a new key legend. The conversation reads it again (framed or not, every symbol preset, grants, Ctrl+O details), answers with the arrows then Enter, and holds messages while it is open. The 18.4 dialog is still recognized.
 
 ## [2.3.0] — 2026-10-28
