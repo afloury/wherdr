@@ -56,6 +56,8 @@ test('phone keys default closed, preserve mobile keys, and work in conversation 
   // Reconnect once so the packet observer sees this terminal's socket.
   await page.reload()
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.locator('#term .xterm-rows')).toBeVisible()
+  await page.screenshot({ path: `.shots/${info.project.name}-phone-terminal-closed.png` })
   await toggle.click()
   await strip.getByRole('button', { name: 'Shift', exact: true }).click()
   await strip.getByRole('button', { name: 'Left arrow', exact: true }).click()
@@ -154,6 +156,7 @@ test('phone identity opens panes before tabs and switches in reading order witho
   await identity.click()
   const details = page.locator('.phone-identity-details')
   await expect(page.locator('.hw-sheet-close')).toHaveCount(0)
+  await expect(details.locator('.phone-identity-summary')).toHaveCSS('white-space', 'nowrap')
   await page.screenshot({ path: `.shots/${info.project.name}-phone-panes.png` })
   await expect(details.getByText('Panes in this tab', { exact: true })).toBeVisible()
   await expect(details.getByRole('button', { name: /^Tab overview/ })).toBeVisible()

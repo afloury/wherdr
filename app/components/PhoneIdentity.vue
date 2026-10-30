@@ -94,7 +94,7 @@ function tabStatus(e: typeof tabs.value[number]) {
 .phone-identity-meta .pill, .menu-sub .pill { font-size: 11px; }
 .phone-identity-position { flex: none; font: 500 .625rem/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
 .phone-identity-chevron, .phone-identity-muted { width: 12px; height: 12px; flex: none; color: var(--muted); }
-.phone-identity-summary { margin: 0 8px 12px; color: var(--muted); font-size: 12px; }
+.phone-identity-summary { margin: 0 8px 12px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .phone-identity-details .menu-text > span { overflow-wrap: anywhere; }
 .phone-identity-details button[aria-current="page"] { color: var(--accent); }
 @container phone-header (max-width: 22em) { .phone-identity { gap: 4px; } }
