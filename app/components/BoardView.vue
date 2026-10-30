@@ -255,11 +255,17 @@ function followTask(machine: string) {
 // A card always opens the task panel. No agent yet: the panel explains
 // setup failures and keeps the task's details and actions reachable.
 function openCard(c: Card) {
-  picked.value = c
   if (!desk.value && (route.query.task !== c.task.id || route.query.machine !== c.machine)) {
     void router.push({ path: '/board', query: { machine: c.machine, task: c.task.id } })
-  } else openTaskPanel(c.machine, c.task.id)
+  } else showTaskCard(c)
   haptic()
+}
+// Route/load watchers only resolve the requested card. In particular, a link
+// without `machine` must not push a canonical detail on top of itself: native
+// back would revisit the unresolved link and immediately push the detail again.
+function showTaskCard(c: Card) {
+  picked.value = c
+  openTaskPanel(c.machine, c.task.id)
 }
 function openTaskPanel(machine: string, id: string) {
   const p = panel.value
@@ -310,7 +316,7 @@ watch(() => [route.query.task, route.query.machine, route.query.view, route.quer
   // has), with its shapes while it loads: the read below only confirms it, or
   // turns to the archived ones. Other links wait for that read.
   const kept = allCards.value.filter(x => x.task.id === id && (machine === null || x.machine === machine))
-  if (kept.length === 1) openCard(kept[0]!)
+  if (kept.length === 1) showTaskCard(kept[0]!)
   else if (now && machine !== null) openTaskPanel(machine, id)
 }, { immediate: true })
 watch([opening, board, reads], () => {
@@ -319,7 +325,7 @@ watch([opening, board, reads], () => {
   const hits = allCards.value.filter(x => x.task.id === want.id && (want.machine === null || x.machine === want.machine))
   const fresh = (machine: string) => board.value!.machines.some(m => m.machine === machine && m.status === 'ready' && !m.error && !m.stale)
   if (hits.length === 1) {
-    openCard(hits[0]!)
+    showTaskCard(hits[0]!)
     opening.value = null
     return
   }

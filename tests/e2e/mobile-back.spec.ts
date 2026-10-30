@@ -1,4 +1,8 @@
-import { test, expect } from './test'
+import { test, expect, type Page } from './test'
+
+// A keyed machine-list replacement can briefly leave the old, hidden card in
+// the DOM. Select the visible fixture pane, rather than text in both lists.
+const homeTask = (page: Page) => page.locator('#home .project-tree .card[data-pane="w1:p1"]:visible', { hasText: 'DEMO-9' })
 
 const task = { id: 'demo/9', repo: 'demo', n: 9, state: 'working', kind: '', stage: 'working', title: 'Demo task', msg: '', app: 'claude', progress: null, eta: null, pr: '', review: null, reviewRound: 0, research: false, archived: false, queue: null, group: 'working' }
 
@@ -13,8 +17,9 @@ for (const origin of ['home', 'board']) {
     test(`${origin}: task returns with ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }, info) => {
       await page.goto(origin === 'home' ? '/' : '/#/board')
       let boardScroll = 0
-      if (origin === 'home') await page.locator('.project-tree .card', { hasText: 'DEMO-9' }).click()
+      if (origin === 'home') await homeTask(page).click()
       else {
+        await expect(page.locator('.task-card[data-task="demo/9"]')).toHaveCount(1)
         await page.locator('.board-seg-btn.working').click()
         await page.locator('.board-grid').evaluate(el => { (el as HTMLElement).style.paddingBottom = '1200px'; el.scrollTop = 50 })
         await page.locator('.task-card-open').scrollIntoViewIfNeeded()
@@ -55,23 +60,30 @@ for (const browser of [false, true]) {
   })
 }
 
-for (const browser of [false, true]) {
-  test(`cold task link defaults to Home with ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }) => {
-    await page.goto('/#/board?machine=&task=demo%2F9')
-    await expect(page.locator('.board-panel')).toBeVisible()
-    if (browser) await page.goBack()
-    else await page.locator('.board-panel-back').click()
-    await expect(page.locator('#home')).toBeVisible()
-    await expect(page).toHaveURL(/\/#?\/?$/)
-    await page.goForward()
-    await expect(page.locator('.board-panel')).toBeVisible()
-  })
+for (const machine of ['', 'machine=&']) {
+  for (const browser of [false, true]) {
+    test(`cold task link ${machine ? 'with machine' : 'without machine'} defaults to Home with ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }, info) => {
+      await page.goto(`/#/board?${machine}task=demo%2F9`)
+      await expect(page.locator('.board-panel')).toBeVisible()
+      await expect.poll(() => page.evaluate(() => history.state.back)).toBe('/')
+      expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).has('machine')).toBe(Boolean(machine))
+      if (browser) await page.goBack()
+      else await page.locator('.board-panel-back').click()
+      await expect(page.locator('#home')).toBeVisible()
+      await expect(page).toHaveURL(/\/#?\/?$/)
+      if (!machine) await page.screenshot({ path: `.shots/mobile-back-direct-without-machine-${info.project.name}.png` })
+      await page.goForward()
+      await expect(page.locator('.board-panel')).toBeVisible()
+      await page.goBack()
+      await expect(page.locator('#home')).toBeVisible()
+    })
+  }
 }
 
 test('desktop keeps the Board beside the task', async ({ page }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
-  await page.locator('.project-tree .card', { hasText: 'DEMO-9' }).click()
+  await homeTask(page).click()
   await expect(page.locator('#home')).toBeVisible()
   await expect(page.locator('#board')).toBeVisible()
   await expect(page.locator('.board-panel')).toBeVisible()
@@ -92,8 +104,11 @@ for (const browser of [false, true]) {
 
 test('Home keeps its active machine and scroll position', { tag: '@webkit-phone' }, async ({ page }) => {
   await page.goto('/')
-  await page.locator('[data-bar-id=""]').click()
-  const card = page.locator('.project-tree .card', { hasText: 'DEMO-9' })
+  const machine = page.locator('[data-bar-id=""]')
+  await machine.click()
+  await expect(machine).toHaveAttribute('aria-pressed', 'true')
+  const card = homeTask(page)
+  await expect(card).toHaveCount(1)
   await expect(card).toBeVisible()
   const scroll = page.locator('#home .scroll')
   await scroll.evaluate(el => { (el as HTMLElement).style.paddingBottom = '1200px'; el.scrollTop = 50 })
@@ -110,7 +125,7 @@ test('Home keeps its active machine and scroll position', { tag: '@webkit-phone'
 
 test('a notification in the open app returns to its previous screen', { tag: '@webkit-phone' }, async ({ page }) => {
   await page.goto('/')
-  await expect(page.locator('.project-tree .card', { hasText: 'DEMO-9' })).toBeVisible()
+  await expect(homeTask(page)).toBeVisible()
   await page.evaluate(() => navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data: {
     type: 'navigate', url: `${location.origin}/#/board?machine=&task=demo%2F9`,
   } })))
@@ -140,3 +155,27 @@ test('a task found by search returns to the screen hosting search', { tag: '@web
   await page.goBack()
   await expect(page.locator('#home')).toBeVisible()
 })
+
+for (const browser of [false, true]) {
+  test(`a machine-less task link with a cached Board returns using ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }) => {
+    await page.goto('/#/board')
+    await expect(page.locator('.task-card[data-task="demo/9"]')).toHaveCount(1)
+    await page.locator('.board-seg-btn.working').click()
+    await expect(page.locator('.task-card[data-task="demo/9"]')).toBeVisible()
+    await page.evaluate(() => { location.hash = '#/' })
+    await expect(page.locator('#home')).toBeVisible()
+    // This time the route watcher resolves a card from the kept Board, rather
+    // than waiting for the first load watcher to find it.
+    await page.evaluate(() => { location.hash = '#/board?task=demo%2F9' })
+    await expect(page.locator('.board-panel')).toBeVisible()
+    await expect.poll(() => page.evaluate(() => history.state.back)).toBe('/')
+    expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).has('machine')).toBe(false)
+    if (browser) await page.goBack()
+    else await page.locator('.board-panel-back').click()
+    await expect(page.locator('#home')).toBeVisible()
+    await page.goForward()
+    await expect(page.locator('.board-panel')).toBeVisible()
+    await page.goBack()
+    await expect(page.locator('#home')).toBeVisible()
+  })
+}
