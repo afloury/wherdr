@@ -1,7 +1,8 @@
 import { expect, test } from './test'
-import { SPLIT_SHELL_PANE } from './scenario.mjs'
+import { SPLIT_SHELL_PANE, fakeHerdr } from './scenario.mjs'
 
 test('closing an idle terminal does not show a process warning', async ({ page }) => {
+  await fakeHerdr('pane.report_metadata', { pane_id: SPLIT_SHELL_PANE, tokens: { wherdr_split_prompt: '2000' } })
   await page.goto(`/#/a/${SPLIT_SHELL_PANE}`)
   await expect(page.getByRole('button', { name: 'New tab', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Options', exact: true }).click()
@@ -15,4 +16,19 @@ test('closing an idle terminal does not show a process warning', async ({ page }
   await page.screenshot({ path: '.shots/close-terminal-desktop.png', animations: 'disabled', mask: [page.locator('.where')], maskColor: '#101419' })
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(dialog).toHaveCount(0)
+})
+
+test.afterEach(async () => {
+  await fakeHerdr('pane.report_metadata', { pane_id: SPLIT_SHELL_PANE, tokens: { wherdr_split_prompt: null } })
+})
+
+test('a lone shell without prompt attestation keeps the conditional warning', async ({ page }) => {
+  await fakeHerdr('pane.report_metadata', { pane_id: SPLIT_SHELL_PANE, tokens: { wherdr_split_prompt: null } })
+  await page.goto(`/#/a/${SPLIT_SHELL_PANE}`)
+  await expect(page.getByRole('button', { name: 'New tab', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Options', exact: true }).click()
+  await page.getByText('Close this terminal', { exact: true }).click()
+  const dialog = page.getByRole('dialog').filter({ hasText: 'Close the terminal in space' })
+  await expect(dialog).toContainText('Anything running in it will be stopped.')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
 })

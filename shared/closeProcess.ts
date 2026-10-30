@@ -6,12 +6,13 @@ interface ProcessInfo {
   foreground_processes?: { pid: number, argv?: string[], name?: string, cmdline?: string }[]
 }
 
-// Only a fresh process-group inspection can attest to an idle shell. Titles
-// and the card's cached command can outlive the command that produced them.
-export function closeProcess(info?: ProcessInfo | null): CloseProcess {
+// A lone shell may be executing a blocking builtin (read, read -e). Only
+// its preexec/prompt hooks can attest that it is actually at the prompt.
+export function closeProcess(info?: ProcessInfo | null, promptToken?: string | null): CloseProcess {
   const procs = info?.foreground_processes
   if (!info?.shell_pid || !Array.isArray(procs) || !procs.length) return { state: 'unknown' }
-  if (info.foreground_process_group_id === info.shell_pid && procs.every(p => p.pid === info.shell_pid)) return { state: 'idle' }
+  if (info.foreground_process_group_id === info.shell_pid && procs.every(p => p.pid === info.shell_pid)
+    && promptToken === String(info.shell_pid)) return { state: 'idle' }
   const p = procs.find(p => p.pid !== info.shell_pid)
   const argv = p?.argv?.length ? p.argv : [p?.cmdline || p?.name || '']
   const command = argv.join(' ').replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, 160)
