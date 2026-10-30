@@ -1,5 +1,5 @@
 import { expect, test } from './test'
-import { OMP_CHAT_PANE } from './scenario.mjs'
+import { OMP_CHAT_PANE, OMP_DECISIONS_PANE } from './scenario.mjs'
 
 test.beforeEach(async ({ page }) => {
   // Exercise the same two selectors as the reported Codex toolbar, including
@@ -41,6 +41,31 @@ test('touch composer expands only for editing or a kept draft', { tag: '@webkit-
   await field.fill('')
   await field.blur()
   await expect(prompt).not.toHaveClass(/expanded/)
+})
+
+test('blurring an empty touch editor keeps a pressed answer in place', { tag: '@webkit-phone' }, async ({ page }) => {
+  test.skip(!await page.evaluate(() => matchMedia('(pointer: coarse)').matches), 'Touch layout')
+  await page.goto(`/#/a/${OMP_DECISIONS_PANE}`)
+  const field = page.locator('.prompt textarea')
+  const prompt = page.locator('.prompt')
+  await field.fill('')
+  await expect(prompt).toHaveClass(/expanded/)
+  const answer = page.getByRole('button', { name: '1 · Yes: Tag the release today?', exact: true })
+  await answer.scrollIntoViewIfNeeded()
+  const box = (await answer.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  try {
+    // Keep the press down across layout frames, as a real finger can: a
+    // blur must not collapse the composer and move its target before release.
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    await expect(prompt).toHaveClass(/expanded/)
+    const held = (await answer.boundingBox())!
+    expect(held.y).toBeCloseTo(box.y, 0)
+  } finally { await page.mouse.up() }
+  await expect(field).toHaveValue(/Tag the release today\? —\nYes\n$/)
+  await expect(page.locator('.composer-ask')).toHaveText('4 questions unanswered')
+  await expect(field).not.toBeFocused()
 })
 
 test('the editor keeps its width and the toolbar fits with model and effort controls', {
