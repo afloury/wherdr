@@ -15,5 +15,8 @@ it('uses the pane name and the app state square in its two-line identity', async
     expect(wrapper.find('.phone-identity-kind').text()).toBe('omp')
     expect(wrapper.find('[class*=circle]').exists()).toBe(false)
     expect(wrapper.findComponent({ name: 'AppSheet' }).props('hideClose')).toBe(true)
+    await wrapper.setProps({ pane: { ...pane, agent: null } })
+    expect(wrapper.find('.phone-identity-meta').text()).toBe('Shell')
+    expect(wrapper.find('.phone-identity-kind').exists()).toBe(false)
   } finally { wrapper.unmount() }
 })

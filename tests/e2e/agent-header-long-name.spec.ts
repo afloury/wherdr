@@ -17,13 +17,13 @@ test('a long agent name and state truncate with an ellipsis in the header at 390
   await fakeHerdr('e2e.workspace_label', { workspace_id: 'w3', label: LONG_NAME })
   await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: quota, agent: 'claude', status: 'blocked' })
   await page.setViewportSize({ width: 390, height: 844 })
-  // The phone identity uses an explicit tab label before the workspace name.
+  // The phone identity shows the pane name independently of its tab name.
   await page.routeWebSocket('**/ws/events', ws => {
     const server = ws.connectToServer()
     server.onMessage(message => {
       const state = JSON.parse(message.toString())
-      const tab = state.tabs?.find((t: { workspace: string }) => t.workspace === 'w3')
-      if (tab) tab.label = LONG_NAME
+      const named = state.panes?.find((p: { id: string }) => p.id === pane)
+      if (named) named.label = LONG_NAME
       ws.send(JSON.stringify(state))
     })
   })

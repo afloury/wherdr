@@ -37,7 +37,10 @@ test('phone keys default closed, preserve mobile keys, and work in conversation 
     expect(g.w).toBeGreaterThanOrEqual(38); expect(g.h).toBe(36)
     expect(g.hitW).toBeGreaterThanOrEqual(44); expect(g.hitH).toBeGreaterThanOrEqual(44)
     expect(g.y).toBe(geometry[0]!.y)
-    if (i) expect(g.x - geometry[i - 1]!.x).toBeGreaterThanOrEqual(g.hitW)
+    if (i) {
+      const previous = geometry[i - 1]!
+      expect(previous.x + previous.w + (previous.hitW - previous.w) / 2).toBeLessThanOrEqual(g.x - (g.hitW - g.w) / 2)
+    }
   }
   await page.locator('.mode-btn').click()
   await expect(page.locator('#term .xterm-rows')).toBeVisible()
@@ -154,10 +157,12 @@ test('phone identity opens panes before tabs and switches in reading order witho
   await page.screenshot({ path: `.shots/${info.project.name}-phone-panes.png` })
   await expect(details.getByText('Panes in this tab', { exact: true })).toBeVisible()
   await expect(details.getByRole('button', { name: /^Tab overview/ })).toBeVisible()
+  await expect(details.locator('.menu > button').last()).toContainText('Tab overview')
   await details.getByRole('button').filter({ hasText: '2/2' }).click()
   await expect(page).toHaveURL(new RegExp(`${SPLIT_SHELL_PANE}$`))
   await expect(identity.locator('.phone-identity-position')).toHaveText('2/2')
-  await expect(identity.locator('.phone-identity-kind')).toHaveText('Shell')
+  await expect(identity.locator('.phone-identity-kind')).toHaveCount(0)
+  await expect(identity.locator('.phone-identity-meta')).toHaveText('Shell')
   expect(await page.locator('textarea:focus,input:focus').count()).toBe(0)
 })
 

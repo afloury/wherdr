@@ -18,7 +18,7 @@ const stateLabel = computed(() => disconnected.value
   ? (host.value?.status === 'connecting' ? t('Reconnecting…') : t('Offline')) : statusLabel(props.pane))
 const tone = computed(() => disconnected.value ? 'blocked' : statusKey(props.pane))
 const label = computed(() => [
-  tl('Switch pane or tab', 'Changer de panneau ou d’onglet'), title.value, kind.value, stateLabel.value,
+  tl('Switch pane or tab', 'Changer de panneau ou d’onglet'), title.value, props.pane.agent ? kind.value : null, stateLabel.value,
   ...(panes.value.length > 1 ? [`${t('Pane')} ${position.value}`] : []), props.workspace?.label, hostLabel.value,
 ].filter(Boolean).join(', '))
 const actions = computed(() => tabItems(props.pane.tab))
@@ -49,7 +49,7 @@ function tabStatus(e: typeof tabs.value[number]) {
   <button type="button" class="phone-identity" :aria-label="label" aria-haspopup="dialog" :aria-expanded="open" @click="open = true">
     <span class="phone-identity-copy" aria-hidden="true">
       <span class="phone-identity-title">{{ title }}</span>
-      <span class="phone-identity-meta"><span class="pill" :class="tone"><i />{{ stateLabel }}</span><span>·</span><span class="phone-identity-kind">{{ kind }}</span></span>
+      <span class="phone-identity-meta"><span class="pill" :class="tone"><i />{{ stateLabel }}</span><template v-if="pane.agent"><span>·</span><span class="phone-identity-kind">{{ kind }}</span></template></span>
     </span>
     <UIcon v-if="paneNotificationsMuted(pane)" name="i-lucide-bell-off" mode="svg" class="phone-identity-muted" aria-hidden="true" />
     <span v-if="panes.length > 1" class="phone-identity-position" aria-hidden="true">{{ position }}</span>
