@@ -1,5 +1,7 @@
 # Documentation
 
+**Updating to 2.4.0?** Read the [2.4.0 release notes](release-notes-2.4.0.md) for Shepherdr 2 protection, Board search, terminal controls and wake reconnection fixes.
+
 **Updating to 2.3.0?** Read the [2.3.0 release notes](release-notes-2.3.0.md) for grouped worktrees, project headers, notification menus and agent naming fixes.
 
 **Updating to 2.2.0?** Read the [2.2.0 release notes](release-notes-2.2.0.md) for task types, plan approval, faster conversation opening and paste fixes.
