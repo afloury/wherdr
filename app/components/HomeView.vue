@@ -18,7 +18,7 @@ import type { MachineInfo, NamedSession, Pane } from '#shared/types'
 import { type ReadySort, type Row, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
 import { spaceTitle } from '#shared/displayTitles'
 import { type BoardCard, type CoordinatorLevel, boardSections, countedPanes } from '#shared/boardLinks'
-import { claudeSuggestion, machineQuotaRows, quotaRows, tabQuotaRows } from '~/utils/quotas'
+import { claudeApiShown, claudeSuggestion, machineQuotaRows, quotaRows, tabQuotaRows } from '~/utils/quotas'
 import { longPress } from '~/utils/longPress'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
 import { headerFold } from '~/utils/headerFold'
@@ -111,6 +111,9 @@ const soloSelected = computed(() => machineBarSelection.value === null || machin
 const solo = computed(() => listOf(soloSelected.value ? spaceRows(st.value) : []))
 
 const topQuotas = computed(() => (showQuotas.value ? quotaRows(homeQuotas.value, hiddenAgents.value) : []))
+// Claude on API billing (no quota): a label instead of gauges.
+const topApi = computed(() => showQuotas.value && claudeApiShown(homeQuotas.value, null, hiddenAgents.value))
+const machineApi = (key: string) => showQuotas.value && claudeApiShown(homeQuotas.value, key, hiddenAgents.value)
 // Claude quotas to install or update on a machine: never a block in the list,
 // only two items in its "…" menu (Settings › Agents, or don't suggest again).
 function claudeHint(m: MachineInfo) {
@@ -176,6 +179,7 @@ const sections = computed(() => {
       waiting: c.filter(p => p.status === 'blocked').length,
       collapsed: collapsedMachines.value.includes(m.key),
       quotas: showQuotas.value && m.status === 'online' ? machineQuotaRows(homeQuotas.value, m.baseKey ?? m.key, hiddenAgents.value) : [],
+      api: m.status === 'online' && machineApi(m.baseKey ?? m.key),
     }
   })
 })
@@ -191,6 +195,7 @@ const stateMachineChips = computed(() => stateShown.value.online.map(m => ({
   awake: awakeByMachine.value[m.key]?.active ? awakeByMachine.value[m.key] : undefined,
   claude: claudeHint(m),
   quotas: showQuotas.value ? machineQuotaRows(homeQuotas.value, baseKeyOf(m), hiddenAgents.value) : [],
+  api: machineApi(baseKeyOf(m)),
 })))
 const stateAway = computed(() => stateShown.value.away.map(m => ({
   m, name: machineName(m.key) || m.label || t('This machine'), state: t(STATE_LABEL[m.status]),
@@ -276,6 +281,7 @@ const soloTab = computed(() => {
   return sections.value[0]!
 })
 const listQuotas = computed(() => (soloTab.value ? tabQuotaRows(topQuotas.value, soloTab.value.quotas) : topQuotas.value))
+const listApi = computed(() => topApi.value || Boolean(soloTab.value?.api))
 const homeRoot = ref<HTMLElement | null>(null)
 const homeScroll = ref<HTMLElement | null>(null)
 const swipeDirection = useHomeSwipe(homeRoot, () => barEntries.value.map(b => b.id), () => machineBarPick.value, id => pickBar(id))
@@ -728,7 +734,7 @@ function resetListWidth() {
           <span><i />{{ c.label }}</span>
         </div>
       </div>
-      <QuotaStrip :rows="listQuotas" :class="{ 'after-stats': showCounters && agents.length }" />
+      <QuotaStrip :rows="listQuotas" :api="listApi" :class="{ 'after-stats': showCounters && agents.length }" />
 
       <OpenNetworkBanner />
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
@@ -750,9 +756,9 @@ function resetListWidth() {
           </li>
         </ul>
         <template v-for="c in stateMachineChips" :key="`q-${c.m.key}`">
-          <div v-if="c.quotas.length" class="state-machine-quotas">
+          <div v-if="c.quotas.length || c.api" class="state-machine-quotas">
             <p class="state-machine-quotas-label">{{ c.name }}</p>
-            <QuotaStrip :rows="c.quotas" class="machine-quotas" />
+            <QuotaStrip :rows="c.quotas" :api="c.api" class="machine-quotas" />
           </div>
         </template>
         <section v-for="g in stateGroups" :key="g.key" class="agent-group state-group" :class="g.key">
@@ -854,7 +860,7 @@ function resetListWidth() {
           <p v-if="!soloTab && s.m.status !== 'online' && s.m.error" class="machine-error">{{ t(s.m.error) }}</p>
 
           <div v-if="soloTab || !s.collapsed" class="machine-body">
-            <QuotaStrip v-if="!soloTab" :rows="s.quotas" class="machine-quotas" />
+            <QuotaStrip v-if="!soloTab" :rows="s.quotas" :api="s.api" class="machine-quotas" />
             <section v-if="s.coordinators.length" class="agent-group coordinators">
               <h2 class="group-title"><span>{{ tl('Coordinators', 'Coordinateurs') }}</span><span class="count">{{ s.coordinators.length }}</span></h2>
               <div class="card-list">

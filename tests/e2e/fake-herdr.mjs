@@ -192,6 +192,8 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     // installed unless a spec says otherwise): { codex: 'missing' }…
     'e2e.integrations': params => { integrations = { ...(params.states || {}) }; return {} },
     'e2e.integration_states': () => ({ states: integrations }),
+    // Herdr renames a workspace (the real `workspace.rename` above leaves it intact).
+    'e2e.workspace_label': params => { allWorkspaces.find(w => w.id === params.workspace_id).label = params.label; return {} },
     'e2e.pane_status': params => { need(params.pane_id).status = params.status; return {} },
     // Herdr closes the pane and opens another one for the same agent (same
     // conversation, as herdr-projects restarting a coordinator): a new id.
