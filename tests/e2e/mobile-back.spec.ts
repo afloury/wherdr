@@ -1,0 +1,142 @@
+import { test, expect } from './test'
+
+const task = { id: 'demo/9', repo: 'demo', n: 9, state: 'working', kind: '', stage: 'working', title: 'Demo task', msg: '', app: 'claude', progress: null, eta: null, pr: '', review: null, reviewRound: 0, research: false, archived: false, queue: null, group: 'working' }
+
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/tasks/links**', r => r.fulfill({ json: { version: 'back', machines: [{ machine: '', repos: [{ repo: 'demo', root: '/project', branch: 'main', behind: 0 }], coordinators: [], tasks: [{ ...task, key: 'DEMO-9', panes: [{ id: 'w1:p1', role: 'worker' }], workspace: 'w1', since: Date.now() }] }] } }))
+  await page.route(/\/api\/tasks(\?.*)?$/, r => r.fulfill({ json: { version: 'back', machines: [{ machine: '', status: 'ready', version: '1.2.1', at: Date.now(), tasks: [task] }] } }))
+  await page.route('**/api/tasks/details**', r => r.fulfill({ json: { ...task, pane: null, agent: 'claude' } }))
+})
+
+for (const origin of ['home', 'board']) {
+  for (const browser of [false, true]) {
+    test(`${origin}: task returns with ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }, info) => {
+      await page.goto(origin === 'home' ? '/' : '/#/board')
+      let boardScroll = 0
+      if (origin === 'home') await page.locator('.project-tree .card', { hasText: 'DEMO-9' }).click()
+      else {
+        await page.locator('.board-seg-btn.working').click()
+        await page.locator('.board-grid').evaluate(el => { (el as HTMLElement).style.paddingBottom = '1200px'; el.scrollTop = 50 })
+        await page.locator('.task-card-open').scrollIntoViewIfNeeded()
+        boardScroll = await page.locator('.board-grid').evaluate(el => el.scrollTop)
+        await page.locator('.task-card-open').click()
+      }
+      await expect(page.locator('.board-panel')).toBeVisible()
+      if (browser) await page.goBack()
+      else await page.locator('.board-panel-back').click()
+      await expect(page.locator('.board-panel')).toHaveCount(0)
+      await expect(page.locator(origin === 'home' ? '#home' : '.board-view')).toBeVisible()
+      if (origin === 'board') {
+        await expect(page.locator('.board-seg-btn.working')).toHaveAttribute('aria-pressed', 'true')
+        await expect.poll(() => page.locator('.board-grid').evaluate(el => el.scrollTop)).toBe(boardScroll)
+      }
+      await expect(page).toHaveURL(origin === 'home' ? /\/#?\/?$/ : /#\/board$/)
+      await page.screenshot({ path: `.shots/mobile-back-after-${origin}-${info.project.name}.png` })
+      // Forward reopens exactly one detail; another back returns without a loop.
+      await page.goForward()
+      await expect(page.locator('.board-panel')).toBeVisible()
+      await page.goBack()
+      await expect(page.locator('.board-panel')).toHaveCount(0)
+    })
+  }
+}
+
+for (const browser of [false, true]) {
+  test(`home: chat returns with ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }) => {
+    await page.goto('/')
+    const card = page.locator('#home .card[data-pane]').filter({ hasNotText: 'DEMO-9' }).first()
+    await expect(card).toBeVisible()
+    await card.click()
+    await expect(page).toHaveURL(/#\/[at]\//)
+    if (browser) await page.goBack()
+    else await page.getByRole('button', { name: 'Back', exact: true }).first().click()
+    await expect(page.locator('#home')).toBeVisible()
+    await expect(page).toHaveURL(/\/#?\/?$/)
+  })
+}
+
+for (const browser of [false, true]) {
+  test(`cold task link defaults to Home with ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }) => {
+    await page.goto('/#/board?machine=&task=demo%2F9')
+    await expect(page.locator('.board-panel')).toBeVisible()
+    if (browser) await page.goBack()
+    else await page.locator('.board-panel-back').click()
+    await expect(page.locator('#home')).toBeVisible()
+    await expect(page).toHaveURL(/\/#?\/?$/)
+    await page.goForward()
+    await expect(page.locator('.board-panel')).toBeVisible()
+  })
+}
+
+test('desktop keeps the Board beside the task', async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/')
+  await page.locator('.project-tree .card', { hasText: 'DEMO-9' }).click()
+  await expect(page.locator('#home')).toBeVisible()
+  await expect(page.locator('#board')).toBeVisible()
+  await expect(page.locator('.board-panel')).toBeVisible()
+  await page.screenshot({ path: `.shots/mobile-back-desktop-${info.project.name}.png` })
+})
+
+for (const browser of [false, true]) {
+  test(`Board: coordinator returns with ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }) => {
+    await page.goto('/#/board')
+    await page.locator('.board-top-coord').click()
+    await expect(page.locator('.board-panel[data-kind="coordinator"]')).toBeVisible()
+    if (browser) await page.goBack()
+    else await page.locator('.board-panel-back').click()
+    await expect(page.locator('.board-panel')).toHaveCount(0)
+    await expect(page).toHaveURL(/#\/board$/)
+  })
+}
+
+test('Home keeps its active machine and scroll position', { tag: '@webkit-phone' }, async ({ page }) => {
+  await page.goto('/')
+  await page.locator('[data-bar-id=""]').click()
+  const card = page.locator('.project-tree .card', { hasText: 'DEMO-9' })
+  await expect(card).toBeVisible()
+  const scroll = page.locator('#home .scroll')
+  await scroll.evaluate(el => { (el as HTMLElement).style.paddingBottom = '1200px'; el.scrollTop = 50 })
+  await card.scrollIntoViewIfNeeded()
+  const before = await scroll.evaluate(el => el.scrollTop)
+  expect(before).toBeGreaterThan(0)
+  await card.click()
+  await expect(page.locator('.board-panel')).toBeVisible()
+  await page.goBack()
+  await expect(page.locator('#home')).toBeVisible()
+  await expect(page.locator('[data-bar-id=""]')).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(() => scroll.evaluate(el => el.scrollTop)).toBe(before)
+})
+
+test('a notification in the open app returns to its previous screen', { tag: '@webkit-phone' }, async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('.project-tree .card', { hasText: 'DEMO-9' })).toBeVisible()
+  await page.evaluate(() => navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data: {
+    type: 'navigate', url: `${location.origin}/#/board?machine=&task=demo%2F9`,
+  } })))
+  await expect(page.locator('.board-panel')).toBeVisible()
+  await page.goBack()
+  await expect(page.locator('#home')).toBeVisible()
+})
+
+test('a cold chat link keeps Home underneath it across reload', { tag: '@webkit-phone' }, async ({ page }) => {
+  await page.goto('/#/a/w1%3Ap1')
+  await expect(page.locator('.agent-head')).toBeVisible()
+  await page.reload()
+  await expect(page.locator('.agent-head')).toBeVisible()
+  await page.goBack()
+  await expect(page.locator('#home')).toBeVisible()
+  await page.goForward()
+  await expect(page.locator('.agent-head')).toBeVisible()
+})
+
+test('a task found by search returns to the screen hosting search', { tag: '@webkit-phone' }, async ({ page }) => {
+  await page.route(/\/api\/search\?/, r => r.fulfill({ json: { hits: [], limited: false, tasks: [{ machine: '', id: task.id, key: 'DEMO-9', repo: 'demo', title: task.title, stage: 'working', group: 'working', field: 'id' }] } }))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Search agents and conversations', exact: true }).first().click()
+  await page.getByRole('combobox', { name: 'Search agents and conversations' }).fill('DEMO-9')
+  await page.getByRole('group', { name: 'Tasks' }).getByRole('option').first().click()
+  await expect(page.locator('.board-panel')).toBeVisible()
+  await page.goBack()
+  await expect(page.locator('#home')).toBeVisible()
+})

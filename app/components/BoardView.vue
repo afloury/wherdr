@@ -41,6 +41,7 @@ const FOLDS_KEY = 'boardFolds'
 
 const router = useRouter()
 const route = useRoute()
+const backToOrigin = useViewBack()
 const { board, cachedAt, error, reads, reload } = useTasksBoard()
 // Nothing kept on this device and herdr-projects still being read: the Board's
 // shapes after 300 ms (BoardSkeleton); past 10 s, said, with Retry.
@@ -255,7 +256,9 @@ function followTask(machine: string) {
 // setup failures and keeps the task's details and actions reachable.
 function openCard(c: Card) {
   picked.value = c
-  openTaskPanel(c.machine, c.task.id)
+  if (!desk.value && (route.query.task !== c.task.id || route.query.machine !== c.machine)) {
+    void router.push({ path: '/board', query: { machine: c.machine, task: c.task.id } })
+  } else openTaskPanel(c.machine, c.task.id)
   haptic()
 }
 function openTaskPanel(machine: string, id: string) {
@@ -282,20 +285,27 @@ const waitNoted = ref(false)
 // `#/board?machine=<key>` alone (a machine's menu on the home list): the Board
 // filtered on that machine, as if picked here. The local machine is `machine=`.
 watch(() => route.query, (q) => {
-  if (q.coordinator || ('task' in q && q.task) || !('machine' in q)) return
+  if (q.coordinator || q.conversation || ('task' in q && q.task) || !('machine' in q)) return
   const m = q.machine
   if (typeof m === 'string' || m === null) pickScope(boardScopeValue(m ?? ''))
   router.replace({ query: {} })
 }, { immediate: true })
-watch(() => route.query.task, (id) => {
-  if (typeof id !== 'string' || !id) return
+watch(() => [route.query.task, route.query.machine, route.query.view, route.query.tab], ([id]) => {
+  if (typeof id !== 'string' || !id) {
+    if (!desk.value) {
+      opening.value = null
+      if (panel.value?.kind === 'task') panel.value = null
+    }
+    return
+  }
   const machine = typeof route.query.machine === 'string' ? route.query.machine : null
   // `now`: from the sidebar, which knows the task is there.
   const now = route.query.now === '1'
   const view = route.query.view ?? route.query.tab
   opening.value = { machine, id, mode: view === 'chat' || view === 'term' ? view : undefined }
   waitNoted.value = false
-  router.replace({ query: {} })
+  // Desktop keeps its existing local panel; phones keep a detail entry.
+  if (desk.value) void router.replace({ query: {} })
   // Its panel opens now (from the sidebar, or a link to a task the kept board
   // has), with its shapes while it loads: the read below only confirms it, or
   // turns to the archived ones. Other links wait for that read.
@@ -400,14 +410,23 @@ function added() { setTimeout(reload, 1500) }
 // ------------------------------------------------------------ the panel
 function talkTo(machine: string, to: CoordinatorTarget) {
   if (coordWhy(machine)) return
+  if (!desk.value) {
+    void router.push({ path: '/board', query: { machine, ...(to.kind === 'project' ? { coordinator: to.repo } : { conversation: to.kind }) } })
+    return
+  }
   panel.value = { machine, kind: 'coordinator', to }
   haptic()
 }
 // New opens the same panel, including an unregistered repository path.
-watch(() => route.query.coordinator, (repo) => {
-  if (typeof repo !== 'string' || !repo) return
-  panel.value = { machine: typeof route.query.machine === 'string' ? route.query.machine : '', kind: 'coordinator', to: { kind: 'project', repo }, freshProject: true }
-  router.replace({ query: {} })
+watch(() => [route.query.coordinator, route.query.conversation], ([repo, conversation]) => {
+  const to: CoordinatorTarget | null = typeof repo === 'string' && repo
+    ? { kind: 'project', repo } : conversation === 'main' || conversation === 'machine' ? { kind: conversation } : null
+  if (!to) {
+    if (!desk.value && panel.value?.kind === 'coordinator') panel.value = null
+    return
+  }
+  panel.value = { machine: typeof route.query.machine === 'string' ? route.query.machine : '', kind: 'coordinator', to, freshProject: to.kind === 'project' }
+  if (desk.value) void router.replace({ query: {} })
 }, { immediate: true })
 const coordLabel = (machine: string, to: CoordinatorTarget) => coordinatorLabel(to, machineLabel(machine))
 const MACHINE_COORDS: CoordinatorTarget[] = [{ kind: 'machine' }]
@@ -465,6 +484,10 @@ function askCoordinator(machine: string, task: TaskRow) {
 }
 // The task agent conversation, separate from its project coordinator.
 function chatWith(machine: string, task: TaskRow) {
+  if (!desk.value) {
+    void router.push({ path: '/board', query: { machine, task: task.id, view: 'chat' } })
+    return
+  }
   panel.value = { machine, kind: 'task', id: task.id, chat: true }
   haptic()
 }
@@ -521,6 +544,15 @@ watch([settingsFor, board], ([scope, b]) => {
 const settingsRepos = computed(() => Object.fromEntries(boards.value.map(m => [m.machine,
   [...new Set([...m.tasks.map(t => t.repo), ...(projectLinks.value.find(b => b.machine === m.machine)?.repos || []).map(r => r.repo)])].filter(Boolean).sort()])))
 const settingsReachable = (machine: string) => ready.value.some(m => m.machine === machine)
+
+function panelBackLabel() {
+  return !desk.value && (route.query.task || route.query.coordinator || route.query.conversation) && history.state?.back === '/' ? t('Back') : undefined
+}
+
+function closePanel() {
+  if (!desk.value && (route.query.task || route.query.coordinator || route.query.conversation)) backToOrigin()
+  else panel.value = null
+}
 
 function back() {
   const from = (history.state as { back?: unknown } | null)?.back
@@ -745,9 +777,9 @@ function back() {
       </div>
     </template>
     <BoardPanel
-      v-if="panel" :key="panelKey" :overlay="!dockPanel" :target="panel" :task="panelTask"
+      v-if="panel" :key="panelKey" :overlay="!dockPanel" :back-label="panelBackLabel()" :target="panel" :task="panelTask"
       :refresh="reload" :refresh-key="refreshes" :machine-label="machineLabel(panel.machine)" :reachable="ready.some(m => m.machine === panel!.machine)"
-      @archived="onArchived" @restored="onRestored" @changed="reload" @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent" @coordinator="askCoordinator"
+      @archived="onArchived" @restored="onRestored" @changed="reload" @close="closePanel" @sheet="panelSheet" @no-agent="panelNoAgent" @coordinator="askCoordinator"
       @retarget="to => { if (panel?.kind === 'coordinator') panel = { machine: panel.machine, kind: 'coordinator', to } }"
     />
     <BoardSettings
