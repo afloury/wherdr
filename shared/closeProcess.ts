@@ -20,8 +20,12 @@ export function closeProcess(info?: ProcessInfo | null, promptToken?: string | n
 }
 
 export function closeProcessMessage(p: { agent: string | null, stopped?: unknown }, process: CloseProcess, tl: (en: string, fr: string) => string): string {
-  if (p.agent && !p.stopped) return tl('The process will be stopped.', 'Le processus sera arrêté.')
-  if (process.state === 'idle') return ''
-  if (process.state === 'running') return tl(`The running command “${process.command}” will be stopped.`, `La commande en cours « ${process.command} » sera arrêtée.`)
-  return tl('Anything running in it will be stopped.', 'Tout ce qui y est en cours d’exécution sera arrêté.')
+  const message = p.agent && !p.stopped
+    ? { en: 'The process will be stopped.', fr: 'Le processus sera arrêté.' }
+    : process.state === 'running'
+      ? { en: `The running command “${process.command}” will be stopped.`, fr: `La commande en cours « ${process.command} » sera arrêtée.` }
+      : process.state === 'unknown'
+        ? { en: 'Anything running in it will be stopped.', fr: 'Tout ce qui y est en cours d’exécution sera arrêté.' }
+        : null
+  return message ? tl(message.en, message.fr) : ''
 }
