@@ -442,6 +442,8 @@ body.short-bottom { --safe-bottom: 0px; }
 .quota.hi .quota-top b { color: var(--rose); }
 .quota-reset { flex: 0 0 100%; display: flex; align-items: center; gap: 4px; font: 400 9.5px/1.2 var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .quota-reset .iconify { width: 9px; height: 9px; flex: none; }
+.quota-row.quota-api { grid-template-columns: 44px 1fr; min-height: 34px; }
+.quota-api-label { margin: 0; padding: 4px 10px; align-self: center; min-width: 0; font: 400 10px/1.3 var(--mono); letter-spacing: .04em; color: var(--dim); overflow-wrap: anywhere; }
 .quota-foot { margin: 6px 0 0; text-align: right; font: 400 9.5px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
 
 .agent-group { margin-bottom: 26px; }
