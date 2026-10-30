@@ -71,6 +71,42 @@ const text = toRef(draft, 'text')
 const promptRef = ref<{ textareaRef?: HTMLTextAreaElement } | null>(null)
 const ta = computed(() => promptRef.value?.textareaRef || null)
 const fieldFocused = ref(false)
+let pointerHeld = false
+let collapseAfterPress = false
+let collapseFrame = 0
+function fieldFocus() {
+  cancelAnimationFrame(collapseFrame)
+  collapseAfterPress = false
+  fieldFocused.value = true
+}
+function fieldBlur() {
+  // A press outside the empty editor blurs it before the click is delivered.
+  // Keep that press's target still; collapsing now can move an answer away
+  // from the finger and lose the first quote. Keyboard blur stays immediate.
+  if (coarse.value && pointerHeld) collapseAfterPress = true
+  else fieldFocused.value = false
+}
+function holdEditor() { pointerHeld = true }
+function releaseEditor() {
+  pointerHeld = false
+  if (!collapseAfterPress) return
+  collapseAfterPress = false
+  collapseFrame = requestAnimationFrame(() => {
+    collapseFrame = 0
+    fieldFocused.value = document.activeElement === ta.value
+  })
+}
+onMounted(() => {
+  document.addEventListener('pointerdown', holdEditor, true)
+  window.addEventListener('pointerup', releaseEditor, true)
+  window.addEventListener('pointercancel', releaseEditor, true)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', holdEditor, true)
+  window.removeEventListener('pointerup', releaseEditor, true)
+  window.removeEventListener('pointercancel', releaseEditor, true)
+  cancelAnimationFrame(collapseFrame)
+})
 // Android can dismiss the keyboard while leaving the textarea focused.
 watch(kbOpen, open => { if (!open) fieldFocused.value = false })
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -705,7 +741,7 @@ defineExpose({
       :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends && !slashOpen"
       :enterkeyhint="enterSends ? 'send' : 'enter'" autocapitalize="sentences"
       class="prompt" :class="{ suggesting: suggestTap, expanded }" :style="suggestRoom ? { '--suggest-room': `${suggestRoom}px` } : undefined" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
-      @focus="fieldFocused = true" @blur="fieldFocused = false"
+      @focus="fieldFocus" @blur="fieldBlur"
       @submit="submit" @keydown="onKeydown" @paste="onPaste" @beforeinput="onBeforeInput"
     >
       <template v-if="attachments.length" #header>
