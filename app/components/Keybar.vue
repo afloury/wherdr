@@ -3,6 +3,7 @@
 // mode (application cursor, etc.). Does not steal the focus from the input field.
 import { VIRTUAL_MODIFIERS, type VirtualModifier } from '~/utils/terminalModifiers'
 const props = defineProps<{ ctl: TerminalCtl, allDigits?: boolean, compact?: boolean, terminal?: boolean }>()
+const emit = defineEmits<{ keyboard: [] }>()
 const modifierLabels = { ctrl: 'Ctrl', alt: 'Alt', shift: 'Shift' }
 const selected = computed(() => props.ctl.virtualModifiers.value)
 function modifier(key: VirtualModifier) { haptic(); props.ctl.toggleModifier(key) }
@@ -28,7 +29,7 @@ function toggleKbd() {
 </script>
 
 <template>
-  <PhoneKeybar v-if="compact" :ctl="ctl" :all-digits="allDigits" :terminal="terminal" />
+  <PhoneKeybar v-if="compact" :ctl="ctl" :all-digits="allDigits" :terminal="terminal" @keyboard="emit('keyboard')" />
   <div v-else class="keybar" role="toolbar" :aria-label="t('Keys')">
     <button v-for="m in VIRTUAL_MODIFIERS" :key="m" type="button" class="key-modifier" :aria-label="t(modifierLabels[m])"
       :aria-pressed="selected.includes(m)" @pointerdown.prevent @click="modifier(m)">{{ t(modifierLabels[m]) }}</button>

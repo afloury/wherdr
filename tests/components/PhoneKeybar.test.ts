@@ -4,7 +4,7 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import PhoneKeybar from '~/components/PhoneKeybar.vue'
 import type { TerminalCtl } from '~/composables/useTerminal'
 
-it('hides terminal-only controls in Conversation and keeps named keys usable', async () => {
+it('keeps the complete ordered key strip usable in Conversation', async () => {
   const sendVirtualKey = vi.fn()
   const ctl = {
     virtualModifiers: ref([]), lastVirtualChord: ref(''), kbdOn: ref(false),
@@ -13,11 +13,16 @@ it('hides terminal-only controls in Conversation and keeps named keys usable', a
   const wrapper = await mountSuspended(PhoneKeybar, { props: { ctl, terminal: false } })
   try {
     const labels = () => wrapper.findAll('button').map(b => b.attributes('aria-label'))
-    for (const name of ['Home', 'End', 'PgUp', 'PgDn', 'Delete', 'Insert', 'Show or hide the phone keyboard']) expect(labels()).not.toContain(name)
-    await wrapper.findAll('button')[1]!.trigger('click')
+    expect(labels().slice(0, 16)).toEqual(['Show or hide the phone keyboard', 'Ctrl', 'Esc', 'Tab', 'Left arrow', 'Up arrow', 'Down arrow', 'Right arrow', 'Enter', 'Ctrl+C', 'Backspace', 'Home', 'End', 'PgUp', 'PgDn', 'Delete'])
+    await wrapper.findAll('button')[0]!.trigger('click')
+    expect(wrapper.emitted('keyboard')).toHaveLength(1)
+    expect(ctl.focus).not.toHaveBeenCalled()
+    await wrapper.findAll('button')[2]!.trigger('click')
     expect(sendVirtualKey).toHaveBeenCalledWith('esc')
     expect(wrapper.find('.vk-more').exists()).toBe(false)
     await wrapper.setProps({ terminal: true })
+    await wrapper.findAll('button')[0]!.trigger('click')
+    expect(ctl.focus).toHaveBeenCalledOnce()
     expect(labels().slice(0, 16)).toEqual(['Show or hide the phone keyboard', 'Ctrl', 'Esc', 'Tab', 'Left arrow', 'Up arrow', 'Down arrow', 'Right arrow', 'Enter', 'Ctrl+C', 'Backspace', 'Home', 'End', 'PgUp', 'PgDn', 'Delete'])
   } finally { wrapper.unmount() }
 })

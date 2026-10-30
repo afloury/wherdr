@@ -451,6 +451,10 @@ const keybarShown = computed(() => keysAvailable.value && (compactPhone.value ? 
   : mode.value === 'term' && (!props.cell || Boolean(coarse.value && props.active))))
 watch(keybarToggleShown, on => { if (!on) phoneKeysOpen.value = false })
 watch(phoneKeysOpen, on => { if (!on) ctl.clearVirtualModifiers() })
+function toggleComposerKeyboard() {
+  if (document.activeElement?.matches('.composer textarea')) composer.value?.blur()
+  else composer.value?.focus()
+}
 function togglePhoneKeys() {
   haptic()
   phoneKeysOpen.value = !phoneKeysOpen.value
@@ -679,7 +683,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
       <button type="button" class="phone-keybar-toggle" :class="{ on: phoneKeysOpen }" :aria-label="t('Show or hide terminal keys')" :aria-expanded="phoneKeysOpen" :aria-controls="keybarId"
         @pointerdown.prevent @mousedown.prevent @click.stop="togglePhoneKeys"><UIcon :name="phoneKeysOpen ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'" /></button>
     </div>
-    <Keybar v-if="keybarShown" :id="keybarId" :ctl="ctl" :compact="compactPhone" :terminal="termShown" />
+    <Keybar v-if="keybarShown" :id="keybarId" :ctl="ctl" :compact="compactPhone" :terminal="termShown" @keyboard="toggleComposerKeyboard" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
     </div>
     </div>

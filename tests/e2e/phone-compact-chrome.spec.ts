@@ -18,7 +18,7 @@ test('phone keys default closed, preserve mobile keys, and work in conversation 
   await expect(bar).toBeVisible()
   expect(await page.locator('.xterm-helper-textarea:focus').count()).toBe(0)
   const strip = bar.getByRole('toolbar', { name: 'Common keys and modifiers' })
-  expect(await strip.getByRole('button').evaluateAll(buttons => buttons.map(b => b.getAttribute('aria-label')))).toEqual(['Ctrl', 'Esc', 'Tab', 'Left arrow', 'Up arrow', 'Down arrow', 'Right arrow', 'Enter', 'Ctrl+C', 'Backspace', 'Alt', 'Shift', 'Y', 'N', ...Array.from({ length: 12 }, (_, i) => `F${i + 1}`)])
+  expect(await strip.getByRole('button').evaluateAll(buttons => buttons.map(b => b.getAttribute('aria-label')))).toEqual(['Show or hide the phone keyboard', 'Ctrl', 'Esc', 'Tab', 'Left arrow', 'Up arrow', 'Down arrow', 'Right arrow', 'Enter', 'Ctrl+C', 'Backspace', 'Home', 'End', 'PgUp', 'PgDn', 'Delete', 'Insert', 'Alt', 'Shift', 'Y', 'N', ...Array.from({ length: 12 }, (_, i) => `F${i + 1}`)])
   expect((await page.locator('.swipe-area').boundingBox())!.height).toBeLessThan(closed)
   const [keyToggle, send] = await Promise.all([toggle.boundingBox(), page.locator('.prompt-send').boundingBox()])
   expect(keyToggle!.y + keyToggle!.height).toBeLessThanOrEqual(send!.y)
@@ -26,9 +26,28 @@ test('phone keys default closed, preserve mobile keys, and work in conversation 
   const input = page.waitForRequest(r => r.url().endsWith('/api/input') && r.method() === 'POST')
   await strip.getByRole('button', { name: 'Esc', exact: true }).click()
   expect((await input).postDataJSON()).toMatchObject({ pane_id: OMP_CHAT_PANE, keys: ['esc'] })
-  for (const key of ['Home', 'End', 'PgUp', 'PgDn', 'Insert', 'Delete', 'Show or hide the phone keyboard']) {
-    await expect(bar.getByRole('button', { name: key, exact: true })).toHaveCount(0)
+  const keyboard = bar.getByRole('button', { name: 'Show or hide the phone keyboard', exact: true })
+  await keyboard.click()
+  await expect(page.locator('.composer textarea')).toBeFocused()
+  await keyboard.click()
+  await expect(page.locator('.composer textarea')).not.toBeFocused()
+  for (const [name, keys] of [
+    ['Home', ['esc', '[', 'shift+h']], ['End', ['esc', '[', 'shift+f']],
+    ['PgUp', ['esc', '[', '5', '~']], ['PgDn', ['esc', '[', '6', '~']],
+    ['Insert', ['esc', '[', '2', '~']], ['Delete', ['esc', '[', '3', '~']],
+  ] as const) {
+    const request = page.waitForRequest(r => r.url().endsWith('/api/input') && r.method() === 'POST')
+    await bar.getByRole('button', { name, exact: true }).click()
+    expect((await request).postDataJSON()).toEqual({ pane_id: OMP_CHAT_PANE, keys: [...keys] })
   }
+  await bar.getByRole('button', { name: 'Ctrl', exact: true }).click()
+  const modified = page.waitForRequest(r => r.url().endsWith('/api/input') && r.method() === 'POST')
+  await bar.getByRole('button', { name: 'Home', exact: true }).click()
+  expect((await modified).postDataJSON()).toEqual({ pane_id: OMP_CHAT_PANE, keys: ['esc', '[', '1', ';', '5', 'shift+h'] })
+  await expect(bar.getByRole('button', { name: 'Ctrl', exact: true })).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.locator('#term')).toHaveCount(0)
+  await strip.evaluate(el => { el.scrollLeft = 0 })
+  await page.screenshot({ path: `.shots/${info.project.name}-conversation-keys-complete.png` })
   const geometry = await strip.getByRole('button').evaluateAll(buttons => buttons.map(b => {
     const r = b.getBoundingClientRect(), hit = getComputedStyle(b, '::after')
     return { x: r.x, y: r.y, w: r.width, h: r.height, hitW: r.width - 2 - parseFloat(hit.left) - parseFloat(hit.right), hitH: r.height - 2 - parseFloat(hit.top) - parseFloat(hit.bottom) }

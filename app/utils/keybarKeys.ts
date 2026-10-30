@@ -1,3 +1,5 @@
+import { virtualInputKey } from './terminalModifiers'
+
 export function displayVirtualChord(chord: string): string {
   const names: Record<string, string> = {
     ctrl: 'Ctrl', alt: 'Alt', shift: 'Shift', super: 'Win/⌘',
@@ -19,4 +21,10 @@ export function virtualNavigationBytes(chord: string): string | null {
   const modifier = 1 + parts.reduce((mask, m) => mask | (bits[m] || 0), 0)
   if (modifier === 1) return `\x1b[${code}`
   return code.endsWith('~') ? `\x1b[${code.slice(0, -1)};${modifier}~` : `\x1b[1;${modifier}${code}`
+}
+
+// The named-key API can emit the same CSI bytes one key at a time. Keep
+// uppercase final bytes as Shift chords; text input would bracket-paste them.
+export function virtualNavigationKeys(chord: string): string[] {
+  return Array.from(virtualNavigationBytes(chord) || '', c => virtualInputKey(c)!)
 }

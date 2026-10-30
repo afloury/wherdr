@@ -15,3 +15,16 @@ describe('mobile function keys', () => {
     expect(displayVirtualChord('pageup')).toBe('PgUp')
   })
 })
+
+describe('navigation through the named-key API', () => {
+  it('preserves CSI case and modifiers without requiring a terminal connection', async () => {
+    const { virtualNavigationKeys } = await import('../app/utils/keybarKeys')
+    expect(virtualNavigationKeys('home')).toEqual(['esc', '[', 'shift+h'])
+    expect(virtualNavigationKeys('end')).toEqual(['esc', '[', 'shift+f'])
+    expect(virtualNavigationKeys('pageup')).toEqual(['esc', '[', '5', '~'])
+    expect(virtualNavigationKeys('pagedown')).toEqual(['esc', '[', '6', '~'])
+    expect(virtualNavigationKeys('insert')).toEqual(['esc', '[', '2', '~'])
+    expect(virtualNavigationKeys('delete')).toEqual(['esc', '[', '3', '~'])
+    expect(virtualNavigationKeys('ctrl+shift+end')).toEqual(['esc', '[', '1', ';', '6', 'shift+f'])
+  })
+})

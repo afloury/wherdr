@@ -44,9 +44,10 @@
   Long names ellipsize; multiple panes show their position. Search is in Options.
 - **Terminal function keys** start closed. The square chevron button above Send shows or hides
   one horizontally scrolling row in both Conversation and Terminal. It holds Ctrl, Esc, Tab,
-  arrows, Enter, Ctrl+C, Backspace and the remaining modifiers and function keys. In Terminal,
-  the phone-keyboard toggle comes first, and Home, End, PgUp, PgDn, Insert and Delete are also
-  available. These connection-dependent controls are hidden in Conversation.
+  arrows, Enter, Ctrl+C, Backspace and the remaining modifiers and function keys. The phone-keyboard
+  toggle comes first, and Home, End, PgUp, PgDn, Insert and Delete are available in both modes.
+  In Conversation the keyboard toggle focuses the message field, and navigation uses the
+  named-key API without opening a terminal connection.
   Select Shift then Tab for Shift+Tab. Closing the bar clears any armed modifier.
   The input stays on one row at rest and expands while editing. Desktop and tablet layouts
   keep their existing controls.
