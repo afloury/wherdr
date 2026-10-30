@@ -677,9 +677,9 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <MenuPanel v-else-if="menu && !interactionOpen && !interactive && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :menu="menu" :keys="live" @terminal="setMode('term')" />
     <div v-if="keybarToggleShown" class="phone-keybar-controls">
       <button type="button" class="phone-keybar-toggle" :class="{ on: phoneKeysOpen }" :aria-label="t('Show or hide terminal keys')" :aria-expanded="phoneKeysOpen" :aria-controls="keybarId"
-        @pointerdown.prevent @mousedown.prevent @click.stop="togglePhoneKeys"><UIcon name="i-lucide-keyboard" /></button>
+        @pointerdown.prevent @mousedown.prevent @click.stop="togglePhoneKeys"><UIcon :name="phoneKeysOpen ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'" /></button>
     </div>
-    <Keybar v-if="keybarShown" :id="keybarId" :ctl="ctl" :compact="compactPhone" />
+    <Keybar v-if="keybarShown" :id="keybarId" :ctl="ctl" :compact="compactPhone" :terminal="termShown" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
     </div>
     </div>

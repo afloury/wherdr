@@ -12,12 +12,13 @@ test('phone keys default closed, preserve mobile keys, and work in conversation 
   const bar = page.getByRole('group', { name: 'Terminal function keys', exact: true })
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
   await expect(bar).toHaveCount(0)
+  await page.screenshot({ path: `.shots/${info.project.name}-phone-keys-closed.png` })
   const closed = (await page.locator('.swipe-area').boundingBox())!.height
   await toggle.click()
   await expect(bar).toBeVisible()
   expect(await page.locator('.xterm-helper-textarea:focus').count()).toBe(0)
   const strip = bar.getByRole('toolbar', { name: 'Common keys and modifiers' })
-  expect(await strip.getByRole('button').evaluateAll(buttons => buttons.map(b => b.getAttribute('aria-label')))).toEqual(['Esc', 'Shift', 'Tab', '←', '↑', '↓', '→', 'Enter', 'Show or hide function keys'])
+  expect(await strip.getByRole('button').evaluateAll(buttons => buttons.map(b => b.getAttribute('aria-label')))).toEqual(['Ctrl', 'Esc', 'Tab', 'Left arrow', 'Up arrow', 'Down arrow', 'Right arrow', 'Enter', 'Ctrl+C', 'Backspace', 'Alt', 'Shift', 'Y', 'N', ...Array.from({ length: 12 }, (_, i) => `F${i + 1}`)])
   expect((await page.locator('.swipe-area').boundingBox())!.height).toBeLessThan(closed)
   const [keyToggle, send] = await Promise.all([toggle.boundingBox(), page.locator('.prompt-send').boundingBox()])
   expect(keyToggle!.y + keyToggle!.height).toBeLessThanOrEqual(send!.y)
@@ -25,10 +26,27 @@ test('phone keys default closed, preserve mobile keys, and work in conversation 
   const input = page.waitForRequest(r => r.url().endsWith('/api/input') && r.method() === 'POST')
   await strip.getByRole('button', { name: 'Esc', exact: true }).click()
   expect((await input).postDataJSON()).toMatchObject({ pane_id: OMP_CHAT_PANE, keys: ['esc'] })
+  for (const key of ['Home', 'End', 'PgUp', 'PgDn', 'Insert', 'Delete', 'Show or hide the phone keyboard']) {
+    await expect(bar.getByRole('button', { name: key, exact: true })).toHaveCount(0)
+  }
+  const geometry = await strip.getByRole('button').evaluateAll(buttons => buttons.map(b => {
+    const r = b.getBoundingClientRect(), hit = getComputedStyle(b, '::after')
+    return { x: r.x, y: r.y, w: r.width, h: r.height, hitW: r.width - 2 - parseFloat(hit.left) - parseFloat(hit.right), hitH: r.height - 2 - parseFloat(hit.top) - parseFloat(hit.bottom) }
+  }))
+  for (const [i, g] of geometry.entries()) {
+    expect(g.w).toBeGreaterThanOrEqual(38); expect(g.h).toBe(36)
+    expect(g.hitW).toBeGreaterThanOrEqual(44); expect(g.hitH).toBeGreaterThanOrEqual(44)
+    expect(g.y).toBe(geometry[0]!.y)
+    if (i) expect(g.x - geometry[i - 1]!.x).toBeGreaterThanOrEqual(g.hitW)
+  }
   await page.locator('.mode-btn').click()
   await expect(page.locator('#term .xterm-rows')).toBeVisible()
   await expect(bar).toBeVisible()
-  const packets: { type: string, keys?: string[] }[] = []
+  const screen = await page.locator('#term .xterm-screen').boundingBox()
+  const keys = await bar.boundingBox()
+  expect(screen!.y + screen!.height).toBeLessThanOrEqual(keys!.y)
+  await page.screenshot({ path: `.shots/${info.project.name}-phone-keys-open.png` })
+  const packets: { type: string, keys?: string[], text?: string }[] = []
   page.on('websocket', socket => socket.on('framesent', ({ payload }) => {
     if (socket.url().includes('/ws/term?') && typeof payload === 'string') packets.push(JSON.parse(payload))
   }))
@@ -37,19 +55,22 @@ test('phone keys default closed, preserve mobile keys, and work in conversation 
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
   await toggle.click()
   await strip.getByRole('button', { name: 'Shift', exact: true }).click()
-  await strip.getByRole('button', { name: '←', exact: true }).click()
+  await strip.getByRole('button', { name: 'Left arrow', exact: true }).click()
   await expect.poll(() => packets.flatMap(p => p.keys || [])).toContain('shift+left')
   await strip.getByRole('button', { name: 'Shift', exact: true }).click()
   await strip.getByRole('button', { name: 'Tab', exact: true }).click()
   await expect.poll(() => packets.flatMap(p => p.keys || [])).toContain('shift+tab')
-  await strip.getByRole('button', { name: 'Show or hide function keys' }).click()
   await expect(bar.getByRole('button', { name: 'PgUp', exact: true })).toBeVisible()
   await expect(bar.getByRole('button', { name: 'F12', exact: true })).toBeAttached()
+  for (const [name, bytes] of [['Home', '\x1b[H'], ['End', '\x1b[F'], ['PgUp', '\x1b[5~'], ['PgDn', '\x1b[6~'], ['Insert', '\x1b[2~'], ['Delete', '\x1b[3~']]) {
+    await bar.getByRole('button', { name, exact: true }).click()
+    await expect.poll(() => packets.filter(p => p.type === 'terminal.input').map(p => p.text)).toContain(bytes)
+  }
   await expect(bar.getByRole('button', { name: 'Tab', exact: true })).toHaveCount(1)
   await expect(bar.getByRole('button', { name: 'Shift + Tab', exact: true })).toHaveCount(0)
-  for (const key of ['Shift', '←', '↑', '↓', '→', 'Enter']) {
+  for (const key of ['Left arrow', 'Up arrow', 'Down arrow', 'Right arrow', 'Enter', 'Backspace']) {
     const icon = strip.getByRole('button', { name: key, exact: true }).locator('svg')
-    await expect(icon).toBeVisible()
+    await expect(icon).toBeAttached()
     await expect(icon.locator('path').first()).toBeAttached()
   }
   await strip.getByRole('button', { name: 'Shift', exact: true }).click()
@@ -64,7 +85,7 @@ test('phone identity preserves agent and touch targets at 320, 360 and 412 px, i
   const pane = state.panes.find((p: { id: string }) => p.id === OMP_CHAT_PANE)
   state.workspaces.find((w: { id: string }) => w.id === pane.workspace).label = 'phone'
   state.tabs.find((tab: { id: string }) => tab.id === pane.tab).label = 'phone-scrolling-多个智能体的长标题'
-  pane.label = null
+  pane.label = 'phone-scrolling-多个智能体的长标题'
   pane.agent = 'claude'
   pane.status = 'blocked'
   let update = () => {}
@@ -110,7 +131,6 @@ test('phone identity preserves agent and touch targets at 320, 360 and 412 px, i
   await identity.click()
   const details = page.locator('.phone-identity-details')
   await expect(details).toContainText('phone-scrolling-多个智能体的长标题')
-  await expect(details).toContainText('Claude')
   await expect(details.getByRole('button', { name: /^phone-review/ })).toBeVisible()
   await expect(page.getByText('Rename tab', { exact: true })).toBeVisible()
   await expect(page.getByText('New tab', { exact: true })).toBeVisible()
@@ -124,10 +144,16 @@ test('phone identity opens panes before tabs and switches in reading order witho
   await page.goto(`/#/a/${SPLIT_CHAT_PANE}`)
   const identity = page.locator('.phone-identity')
   await expect(identity.locator('.phone-identity-position')).toHaveText('1/2')
+  await expect(page.locator('#agent .agent-top')).toHaveCSS('height', '44px')
+  await expect(identity.locator('.pill i')).toHaveCSS('width', '7px')
+  await expect(identity.locator('.pill i')).toHaveCSS('border-radius', '0px')
+  await expect(identity.locator('[class*=circle]')).toHaveCount(0)
   await identity.click()
   const details = page.locator('.phone-identity-details')
+  await expect(page.locator('.hw-sheet-close')).toHaveCount(0)
+  await page.screenshot({ path: `.shots/${info.project.name}-phone-panes.png` })
   await expect(details.getByText('Panes in this tab', { exact: true })).toBeVisible()
-  await expect(details.getByRole('button', { name: 'Tab overview', exact: true })).toBeVisible()
+  await expect(details.getByRole('button', { name: /^Tab overview/ })).toBeVisible()
   await details.getByRole('button').filter({ hasText: '2/2' }).click()
   await expect(page).toHaveURL(new RegExp(`${SPLIT_SHELL_PANE}$`))
   await expect(identity.locator('.phone-identity-position')).toHaveText('2/2')

@@ -1007,10 +1007,11 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 #agent { overflow: hidden; }
 /* Phone chrome: the tab picker, title and state share one row. Extra
    actions remain in Options; the tab picker retains tab management. */
-.phone-chrome .agent-top { container: phone-header / inline-size; grid-template-columns: 44px minmax(0, 1fr) auto; grid-template-areas: "back head actions"; gap: 2px; padding: max(4px, var(--safe-top)) 4px 4px; min-height: 52px; }
+.phone-chrome .agent-top { container: phone-header / inline-size; grid-template-columns: 44px minmax(0, 1fr) auto; grid-template-areas: "back head actions"; gap: 2px; border-bottom: 0; box-shadow: inset 0 -1px var(--line-soft); padding: var(--safe-top) 4px 0; min-height: calc(44px + var(--safe-top)); }
 .phone-chrome .agent-top :is(.back, .agent-actions .icon-btn) { width: 44px; height: 44px; flex: none; }
 .phone-keybar-controls { position: relative; height: 0; flex: none; z-index: 5; }
-.phone-keybar-toggle { position: absolute; right: 12px; bottom: 8px; width: 40px; height: 36px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 18px; background: var(--bg-2); color: var(--muted); touch-action: manipulation; }
+.phone-keybar-toggle { position: absolute; right: 12px; bottom: 8px; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 0; background: var(--bg-2); color: var(--muted); touch-action: manipulation; }
+.phone-keybar-toggle::after { content: ''; position: absolute; inset: -5px; }
 .phone-keybar-toggle .iconify { width: 20px; height: 20px; }
 .phone-keybar-toggle.on { color: var(--accent); border-color: var(--accent); }
 .phone-keybar-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -4437,3 +4438,6 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
   .machine-bar-indicator { transition: none; }
   .home-content > .scroll { transition: none !important; transform: none !important; opacity: 1 !important; }
 }
+
+.phone-chrome .mode-btn { border: 1px solid transparent; border-radius: 0; }
+.phone-chrome .mode-btn.on { border-color: var(--accent); }

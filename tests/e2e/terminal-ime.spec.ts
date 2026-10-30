@@ -18,10 +18,7 @@ async function openTerminal(page: Page) {
   const phone = await toggle.count() > 0
   if (phone) await toggle.click()
   const bar = phone ? page.getByRole('group', { name: 'Terminal function keys', exact: true }) : page.getByRole('toolbar', { name: 'Keys', exact: true })
-  const more = bar.getByRole('button', { name: 'Show or hide function keys', exact: true })
-  if (phone) await more.click()
   await bar.getByRole('button', { name: phone ? 'Show or hide the phone keyboard' : 'Type in terminal', exact: true }).click()
-  if (phone) await more.click()
   const textarea = page.locator('.xterm-helper-textarea')
   await expect(textarea).toBeFocused()
   return { packets, bar, textarea }
