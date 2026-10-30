@@ -8,8 +8,10 @@ const open = ref(false)
 const entry = computed(() => tabOf(props.pane.tab))
 const panes = computed(() => entry.value?.panes || [props.pane])
 const tabs = computed(() => spaceTabs(props.pane.workspace))
-const title = computed(() => props.pane.label || props.pane.name || paneTitle(props.pane))
+const title = computed(() => props.pane.label || props.pane.name || paneOwnTitle(props.pane))
 const kind = computed(() => kindLabel(props.pane.agent))
+// No " · omp" under a pane already titled "omp".
+const showKind = computed(() => Boolean(props.pane.agent) && title.value.toLocaleLowerCase() !== kind.value.toLocaleLowerCase())
 const position = computed(() => `${panes.value.findIndex(p => p.id === props.pane.id) + 1}/${panes.value.length}`)
 const host = computed(() => machineInfo(props.pane.machine))
 const hostLabel = computed(() => machineName(props.pane.machine) || props.pane.machine || t('This machine'))
@@ -18,7 +20,7 @@ const stateLabel = computed(() => disconnected.value
   ? (host.value?.status === 'connecting' ? t('Reconnecting…') : t('Offline')) : statusLabel(props.pane))
 const tone = computed(() => disconnected.value ? 'blocked' : statusKey(props.pane))
 const label = computed(() => [
-  tl('Switch pane or tab', 'Changer de panneau ou d’onglet'), title.value, props.pane.agent ? kind.value : null, stateLabel.value,
+  tl('Switch pane or tab', 'Changer de panneau ou d’onglet'), title.value, showKind.value ? kind.value : null, stateLabel.value,
   ...(panes.value.length > 1 ? [`${t('Pane')} ${position.value}`] : []), props.workspace?.label, hostLabel.value,
 ].filter(Boolean).join(', '))
 const actions = computed(() => tabItems(props.pane.tab))
@@ -49,7 +51,7 @@ function tabStatus(e: typeof tabs.value[number]) {
   <button type="button" class="phone-identity" :aria-label="label" aria-haspopup="dialog" :aria-expanded="open" @click="open = true">
     <span class="phone-identity-copy" aria-hidden="true">
       <span class="phone-identity-title">{{ title }}</span>
-      <span class="phone-identity-meta"><span class="pill" :class="tone"><i />{{ stateLabel }}</span><template v-if="pane.agent"><span>·</span><span class="phone-identity-kind">{{ kind }}</span></template></span>
+      <span class="phone-identity-meta"><span class="pill" :class="tone"><i />{{ stateLabel }}</span><template v-if="showKind"><span>·</span><span class="phone-identity-kind">{{ kind }}</span></template></span>
     </span>
     <UIcon v-if="paneNotificationsMuted(pane)" name="i-lucide-bell-off" mode="svg" class="phone-identity-muted" aria-hidden="true" />
     <span v-if="panes.length > 1" class="phone-identity-position" aria-hidden="true">{{ position }}</span>
@@ -62,7 +64,7 @@ function tabStatus(e: typeof tabs.value[number]) {
         <p class="menu-group">{{ tl('Panes in this tab', 'Panneaux de cet onglet') }}</p>
         <button v-for="(p, i) in panes" :key="p.id" type="button" :aria-current="p.id === pane.id ? 'page' : undefined" @click="visit(p)">
           <UIcon :name="p.id === pane.id ? 'i-lucide-check' : 'i-lucide-panel-top'" class="menu-icon" />
-          <span class="menu-text"><span>{{ p.label || p.name || paneTitle(p) }}</span><span class="menu-sub"><span class="pill" :class="statusKey(p)"><i />{{ statusLabel(p) }}</span> · {{ i + 1 }}/{{ panes.length }}</span></span>
+          <span class="menu-text"><span>{{ p.label || p.name || paneOwnTitle(p) }}</span><span class="menu-sub"><span class="pill" :class="statusKey(p)"><i />{{ statusLabel(p) }}</span> · {{ i + 1 }}/{{ panes.length }}</span></span>
         </button>
         <p class="menu-group">{{ t('Tabs') }}</p>
         <button v-for="e in tabs" :key="e.tab.id" type="button" :aria-current="e.tab.id === pane.tab ? 'page' : undefined" @click="pickTab(e.tab.id)">

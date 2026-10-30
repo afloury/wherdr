@@ -20,3 +20,14 @@ it('uses the pane name and the app state square in its two-line identity', async
     expect(wrapper.find('.phone-identity-kind').exists()).toBe(false)
   } finally { wrapper.unmount() }
 })
+
+it('titles an unnamed agent pane by its agent id, without a capital or a repeated kind', async () => {
+  const unnamed = { ...pane, name: '' }
+  herdrState.value = { ok: true, panes: [unnamed], workspaces: [] }
+  const wrapper = await mountSuspended(PhoneIdentity, { props: { pane: unnamed } })
+  try {
+    expect(wrapper.find('.phone-identity-title').text()).toBe('omp')
+    expect(wrapper.find('.phone-identity-kind').exists()).toBe(false)
+    expect(wrapper.find('.phone-identity-meta').text()).not.toMatch(/omp/i)
+  } finally { wrapper.unmount() }
+})

@@ -15,9 +15,13 @@ const nav = [
   { key: 'enter', icon: 'i-lucide-corner-down-left', label: () => tl('Enter', 'Entrée') },
 ]
 const terminalKeys = [
-  { key: 'home', label: () => tl('Home', 'Début') }, { key: 'end', label: () => tl('End', 'Fin') },
-  { key: 'pageup', label: () => tl('PgUp', 'Page précédente') }, { key: 'pagedown', label: () => tl('PgDn', 'Page suivante') },
-  { key: 'delete', label: () => tl('Delete', 'Supprimer') }, { key: 'insert', label: () => tl('Insert', 'Insérer') },
+  // Short key caps keep the strip compact; screen readers get the full name.
+  { key: 'home', label: () => tl('Home', 'Début'), cap: () => tl('Home', 'Début') },
+  { key: 'end', label: () => tl('End', 'Fin'), cap: () => tl('End', 'Fin') },
+  { key: 'pageup', label: () => tl('PgUp', 'Page précédente'), cap: () => tl('PgUp', 'Pg préc') },
+  { key: 'pagedown', label: () => tl('PgDn', 'Page suivante'), cap: () => tl('PgDn', 'Pg suiv') },
+  { key: 'delete', label: () => tl('Delete', 'Supprimer'), cap: () => tl('Del', 'Suppr') },
+  { key: 'insert', label: () => tl('Insert', 'Insérer'), cap: () => tl('Ins', 'Inser') },
 ]
 const remaining = ['y', 'n', ...Array.from({ length: 12 }, (_, i) => `f${i + 1}`)]
 const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
@@ -45,7 +49,7 @@ function toggleKbd() {
       <button v-for="k in nav" :key="k.key" type="button" :aria-label="k.label()" @pointerdown.prevent @click="press(k.key)"><UIcon :name="k.icon" mode="svg" class="vk-key-icon" aria-hidden="true" /></button>
       <button type="button" class="danger" :aria-label="tl('Ctrl+C', 'Ctrl+C')" @pointerdown.prevent @click="press('ctrl+c')">^C</button>
       <button type="button" :aria-label="tl('Backspace', 'Retour arrière')" @pointerdown.prevent @click="press('backspace')"><UIcon name="i-lucide-delete" mode="svg" class="vk-key-icon" aria-hidden="true" /></button>
-      <button v-for="k in terminalKeys" :key="k.key" type="button" :aria-label="k.label()" @pointerdown.prevent @click="press(k.key)">{{ k.label() }}</button>
+      <button v-for="k in terminalKeys" :key="k.key" type="button" :aria-label="k.label()" @pointerdown.prevent @click="press(k.key)">{{ k.cap() }}</button>
       <button v-for="m in modifiers" :key="m.key" type="button" class="vk-mod" :class="{ selected: active.includes(m.key) }" :aria-pressed="active.includes(m.key)" :aria-label="t(m.label)" @pointerdown.prevent @click="modifier(m.key)">{{ t(m.label) }}</button>
       <button v-for="key in remaining" :key="key" type="button" :aria-label="key.toUpperCase()" @pointerdown.prevent @click="press(key)">{{ key.toUpperCase() }}</button>
       <template v-if="allDigits"><button v-for="d in digits" :key="d" type="button" :aria-label="d" @pointerdown.prevent @click="press(d)">{{ d }}</button></template>
@@ -54,9 +58,9 @@ function toggleKbd() {
 </template>
 
 <style scoped>
-.keybar.virtual-keyboard { display: block; flex: none; padding: 0 0 5px; border: 0; background: transparent; background-image: none; overflow: visible; }
+.keybar.virtual-keyboard { display: block; flex: none; padding: 0; border: 0; background: transparent; background-image: none; overflow: visible; }
 .keybar.virtual-keyboard::before { content: none; }
-.vk-strip { display: flex; gap: 6px; padding: 4px 11px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+.vk-strip { display: flex; gap: 6px; padding: 5px 11px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
 .vk-strip::-webkit-scrollbar { display: none; }
 .virtual-keyboard button { position: relative; display: grid; place-items: center; flex: none; min-width: 38px; height: 36px; margin: 0; padding: 0 3px; border: 1px solid var(--line-soft); border-radius: 0; background: var(--bg-2); color: var(--text-2); font: 500 12px/1 var(--mono); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
 .virtual-keyboard button::after { content: ''; position: absolute; top: -5px; bottom: -5px; left: -4px; right: -4px; }

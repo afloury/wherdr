@@ -1799,6 +1799,8 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
 .composer { flex: none; background: var(--bg); padding: 6px 12px max(10px, calc(var(--safe-bottom) - 6px)); }
 body.kb .composer { padding-bottom: 8px; }
 .composer { position: relative; }
+/* The open phone key strip already ends with 5 px under its keys (their touch zones). */
+.virtual-keyboard + .composer { padding-top: 0; }
 /* Claude Code status ("✔ Update installed · Restart to update"): small
    blue text on the right, just above the field, as in the terminal. */
 .composer-notice {

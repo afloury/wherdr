@@ -20,6 +20,8 @@ it('keeps the complete ordered key strip usable in Conversation', async () => {
     await wrapper.findAll('button')[2]!.trigger('click')
     expect(sendVirtualKey).toHaveBeenCalledWith('esc')
     expect(wrapper.find('.vk-more').exists()).toBe(false)
+    const caps = Object.fromEntries(wrapper.findAll('button').map(b => [b.attributes('aria-label'), b.text()]))
+    expect([caps.PgUp, caps.PgDn, caps.Delete, caps.Insert]).toEqual(['PgUp', 'PgDn', 'Del', 'Ins'])
     await wrapper.setProps({ terminal: true })
     await wrapper.findAll('button')[0]!.trigger('click')
     expect(ctl.focus).toHaveBeenCalledOnce()
