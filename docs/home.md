@@ -48,5 +48,14 @@
   first online machine), or the empty view. All always keeps the current conversation. Phones keep
   the list first and check the same rule when reopening a conversation through browser history.
   Explicit choices from search, cards or links open the chosen conversation. Unsent drafts stay saved.
+- **Global search** (magnifier, ⌘K) finds agents, conversations and Board tasks: a task's name
+  (`WHR-12`), title or description, with its machine, project and state. Choosing a task opens it on the Board.
 - **Named Herdr sessions**, **quotas** (remaining Claude and Codex usage limits), **Herdr plugin
   actions** in the menus, **passkey lock** (Face ID, Touch ID, Windows Hello, Android…).
+
+Settings › Appearance › Home screen › **Individual agents** expands standalone
+agent spaces into one row per pane, using their pane or tab labels. Workspace
+cards remain the default. Board tasks and repository headers keep their existing
+grouping, and **Show terminals** still controls plain terminal rows. The setting
+follows you across devices. Workspace drag reordering is disabled in this view;
+switch it off to reorder spaces.

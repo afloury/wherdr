@@ -59,7 +59,7 @@ const ready = computed(() => (board.value?.machines || []).filter(m => m.status 
 const machineLabel = (key: string) => boardMachineLabel(key, machineName(key), hostLabel.value || t('This machine'))
 const readAt = (at?: number) => (at ? new Date(at).toLocaleTimeString(language === 'fr' ? 'fr-FR' : 'en-US', { hour: '2-digit', minute: '2-digit' }) : '')
 // Machines Herdr answers on but where the Board cannot read herdr-projects.
-const notes = computed(() => (board.value?.machines || []).filter(m => m.status === 'missing' || m.status === 'old'))
+const notes = computed(() => (board.value?.machines || []).filter(m => m.status === 'missing' || m.status === 'old' || m.status === 'shepherdr'))
 const disabled = computed(() => (board.value?.machines || []).filter(m => m.status === 'disabled'))
 const several = computed(() => (board.value?.machines.length || 0) > 1)
 
@@ -261,7 +261,7 @@ function openCard(c: Card) {
 function openTaskPanel(machine: string, id: string) {
   const p = panel.value
   // Already shown (opened at once from the sidebar): the same panel, nothing reloads.
-  if (!(p?.kind === 'task' && p.machine === machine && p.id === id)) panel.value = { machine, kind: 'task', id }
+  if (!(p?.kind === 'task' && p.machine === machine && p.id === id) || opening.value?.mode) panel.value = { machine, kind: 'task', id, mode: opening.value?.id === id ? opening.value.mode : undefined }
   followTask(machine)
 }
 // The open task as the last read has it (its group or review may have moved on).
@@ -277,7 +277,7 @@ const pickedTask = computed(() => {
 // no machine: the one card with that id). The kept board may predate the task,
 // so nothing is concluded before a read of this visit; a machine that cannot be
 // read keeps the request until it answers.
-const opening = ref<{ machine: string | null, id: string } | null>(null)
+const opening = ref<{ machine: string | null, id: string, mode?: 'chat' | 'term' } | null>(null)
 const waitNoted = ref(false)
 // `#/board?machine=<key>` alone (a machine's menu on the home list): the Board
 // filtered on that machine, as if picked here. The local machine is `machine=`.
@@ -292,7 +292,8 @@ watch(() => route.query.task, (id) => {
   const machine = typeof route.query.machine === 'string' ? route.query.machine : null
   // `now`: from the sidebar, which knows the task is there.
   const now = route.query.now === '1'
-  opening.value = { machine, id }
+  const view = route.query.view ?? route.query.tab
+  opening.value = { machine, id, mode: view === 'chat' || view === 'term' ? view : undefined }
   waitNoted.value = false
   router.replace({ query: {} })
   // Its panel opens now (from the sidebar, or a link to a task the kept board
@@ -308,8 +309,8 @@ watch([opening, board, reads], () => {
   const hits = allCards.value.filter(x => x.task.id === want.id && (want.machine === null || x.machine === want.machine))
   const fresh = (machine: string) => board.value!.machines.some(m => m.machine === machine && m.status === 'ready' && !m.error && !m.stale)
   if (hits.length === 1) {
-    opening.value = null
     openCard(hits[0]!)
+    opening.value = null
     return
   }
   if (want.machine !== null && !fresh(want.machine)) {
@@ -572,7 +573,7 @@ function back() {
     <div v-if="noCoordinator || notes.length || disabled.length" class="board-notes">
       <p v-if="noCoordinator" class="board-note" role="status">{{ tl('No Coordinator can be reached now. See each machine’s availability.', 'Aucun Coordinateur n’est joignable pour l’instant. Consulte la disponibilité de chaque machine.') }}</p>
       <ProjectsUpgradeNote
-        v-for="m in notes" :key="m.machine" :status="m.status as 'missing' | 'old'" :version="m.version || null"
+        v-for="m in notes" :key="m.machine" :status="m.status as 'missing' | 'old' | 'shepherdr'" :version="m.version || null"
         :machine="several ? (machineName(m.machine) || hostLabel || t('This machine')) : undefined"
       />
       <p v-for="m in disabled" :key="m.machine" class="board-note">{{ tl(`herdr-projects is disabled in Herdr${several ? ` on ${machineName(m.machine)}` : ''}: herdr plugin enable herdr-projects`, `herdr-projects est désactivé dans Herdr${several ? ` sur ${machineName(m.machine)}` : ''} : herdr plugin enable herdr-projects`) }}</p>

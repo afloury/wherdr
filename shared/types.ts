@@ -1,4 +1,5 @@
 // Types shared between the server (Nitro) and the app (Vue).
+import type { TaskHit } from './taskSearch'
 import type { TabLayout } from './layout'
 import type { CodexStatus } from './codexStatus'
 import type { MaxSessionDays } from './sessionLimit'
@@ -78,7 +79,7 @@ export interface ShellRun {
   // omp's "$ code" (Python) rather than a "!" shell command.
   python?: boolean
 }
-export interface ClaudeScreen { shell: ShellRun | null, sent: string | null, queued: string[] }
+export interface ClaudeScreen { sendNow?: boolean, shell: ShellRun | null, sent: string | null, queued: string[] }
 
 export interface Workspace {
   id: string
@@ -343,7 +344,8 @@ export interface ConversationHit {
   ts: string | null
   offset: number
 }
-export interface ConversationSearchResponse { hits: ConversationHit[], limited: boolean }
+// `tasks`: the Board's tasks it matched (shared/taskSearch.ts), best first.
+export interface ConversationSearchResponse { hits: ConversationHit[], limited: boolean, tasks?: TaskHit[] }
 
 // Herdr theme (~/.config/herdr/config.toml, [theme] section), for "Follow Herdr".
 export interface HerdrThemeConfig {
@@ -415,7 +417,8 @@ export interface Quotas {
   claude: Quota | null
   codex: Quota | null
   // Only present when the online machines do not use the same account
-  // Claude: one block per account (at least two).
+  // Claude: one block per account (at least two, or one alongside machines
+  // on API billing, which have no quota block).
   claudeAccounts?: AccountQuota[]
   // Same for Codex (fingerprint taken from its conversations).
   codexAccounts?: AccountQuota[]
@@ -425,11 +428,13 @@ export interface Quotas {
 }
 // Claude quota status line of each machine read: `ok` = set up, `pending` =
 // installed, waiting for the next exchange with a Claude, `outdated` = quotas
-// read but from an older status line (update offered), `missing` = to install.
+// read but from an older status line (update offered), `missing` = to install,
+// `api` = set up, Claude Code runs on API billing (API key, Console credits):
+// usage without quota, nothing to install.
 // `installable`: the server can install it itself (otherwise, a command to copy).
 // `dismissed`: the suggestion was declined or skipped (home menu, setup guide);
 // Settings still offers it.
-export type ClaudeSetupState = 'ok' | 'pending' | 'outdated' | 'missing'
+export type ClaudeSetupState = 'ok' | 'pending' | 'outdated' | 'missing' | 'api'
 export interface ClaudeSetup { key: string, state: ClaudeSetupState, installable: boolean, dismissed?: boolean }
 
 // Git worktree linked to a repository (Herdr), for the cleanup list.

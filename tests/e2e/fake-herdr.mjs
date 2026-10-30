@@ -193,6 +193,8 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     // installed unless a spec says otherwise): { codex: 'missing' }…
     'e2e.integrations': params => { integrations = { ...(params.states || {}) }; return {} },
     'e2e.integration_states': () => ({ states: integrations }),
+    // Herdr renames a workspace (the real `workspace.rename` above leaves it intact).
+    'e2e.workspace_label': params => { allWorkspaces.find(w => w.id === params.workspace_id).label = params.label; return {} },
     'e2e.pane_status': params => { need(params.pane_id).status = params.status; return {} },
     // Herdr closes the pane and opens another one for the same agent (same
     // conversation, as herdr-projects restarting a coordinator): a new id.
@@ -274,11 +276,27 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       p.readDelayMs = params.readDelayMs || 0
       return {}
     },
+    // Explicit scroll fixture: mouse apps consume one tick per command;
+    // ordinary history consumes `lines`, matching Herdr's two paths.
+    'e2e.touch_scroll': params => {
+      const p = need(params.pane_id)
+      if (params.reset) p.touchScroll = { offset: 0, events: [], mouse: !!params.mouse }
+      if (params.clear) { p.touchScroll = null; return {} }
+      const state = p.touchScroll
+      if (!state) return {}
+      if (typeof params.offset === 'number') state.offset = Math.max(0, Math.min(80, params.offset))
+      if (params.event) {
+        state.events.push(params.event)
+        const n = state.mouse ? 1 : params.event.lines
+        state.offset = Math.max(0, Math.min(80, state.offset + (params.event.direction === 'up' ? n : -n)))
+      }
+      return { ...state, text: `History offset ${state.offset}\n` + Array.from({ length: Math.max(1, p.size.rows - 1) }, (_, i) => `History row ${100 - state.offset + i}`).join('\n') }
+    },
     'e2e.terminal_screen': params => {
       const p = need(params.pane_id)
       const osc = p.osc || []
       p.osc = []
-      return { text: p.customScreen || '', size: p.size, keys: p.sentKeys || [], osc }
+      return { text: p.touchScroll ? methods['e2e.touch_scroll'](params).text : p.customScreen || '', size: p.size, keys: p.sentKeys || [], osc }
     },
     // Raw sequences (OSC 52…) the control session writes once, after the screen.
     'e2e.terminal_osc': params => {

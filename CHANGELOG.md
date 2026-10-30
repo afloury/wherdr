@@ -9,6 +9,18 @@ All notable changes to this project are documented here. The format follows
 ### Fixed
 
 - **No false "command did not start" after a split or new tab.** Starting the command or agent right after creating a pane no longer fails with "Pane not found" when wherdr has not seen the new pane yet: the server polls that pane's machine afresh for up to 2 seconds. A pane that does not exist still gives "Pane not found", and a pane on an offline machine now says the machine is unreachable.
+### Added and improved
+
+- **One-shot terminal modifiers.** Ctrl, Alt and Shift can be armed for the next key-bar or phone-keyboard key. Existing shortcuts and digit buttons remain available; pastes and composed text stay text.
+- **Optional individual-agent list.** Settings › Appearance can show standalone agents as separate rows, while workspace cards remain the default and Board task helpers stay grouped.
+- **Board tasks in global search.** Search (⌘K) also finds herdr-projects tasks by name (`WHR-12`), title or description, shows their machine, project and state, and opens the chosen task on the Board.
+- **Claude on API billing.** A machine whose Claude Code runs on an API key or Console credits shows *Claude · API usage, no quota* on the home screen and **API usage (no quota)** in Settings › Agents › Claude quotas, instead of nothing or "not set up". Update the Claude status line on such machines.
+- **Release distance in update notices.** The banner shows how many newer stable releases are available and a short version list, preserving the installation-specific update action.
+
+### Fixed
+
+- **Sharp terminal at every pixel ratio.** On 2× and 3× screens, the WebGL terminal (demo included) no longer draws its text twice as large and cut off when the browser reports the canvas size in CSS pixels.
+- **omp 18.14 tool approvals show their card again.** omp 18.14 moved its approval prompt into the composer's place, with a one-row summary of the call, an "Approve <tool> for this session" choice and a new key legend. The conversation reads it again (framed or not, every symbol preset, grants, Ctrl+O details), answers with the arrows then Enter, and holds messages while it is open. The 18.4 dialog is still recognized.
 
 ## [2.3.0] — 2026-10-28
 

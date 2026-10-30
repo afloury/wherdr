@@ -44,6 +44,7 @@ import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane, ma
 import { READY_MAX_MS, serverReady } from '../../shared/stateReady'
 import { createCodexStatus, dirWritable } from './codexStatus'
 import { runLocal, setCodexKnownWeek } from './quotas'
+import { readPassiveScreen } from './passiveScreen'
 import { createSelfUpdates } from './agentSelfUpdate'
 import { pollQueue } from './pollQueue'
 
@@ -342,7 +343,7 @@ export const codexStatus = createCodexStatus({
       exec: exec ? (script, input, timeoutMs) => exec(script, [], { input, timeoutMs }) : null,
     }
   },
-  readScreen: id => herdr('pane.read', { pane_id: id, source: 'recent_unwrapped', lines: 300 }, 4000).then(r => String((r.read && r.read.text) || '')),
+  readScreen: id => readPassiveScreen(herdr, id),
   rolloutOf: async p => (await transcripts.locate(p))?.file || null,
   runLocal,
   writable: dirWritable,
