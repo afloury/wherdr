@@ -45,6 +45,8 @@
 - **Split tabs on a small screen**: a plan of the tab's panes in Herdr's proportions, then each
   pane full screen with a mini-map and swipe to its neighbours.
 - **Terminal key bar** (Esc, Enter, arrows, Shift+Tab, Ctrl+C…) and touch scrolling.
+  On iPhone and iPad a tap on the terminal does not open the on-screen keyboard: type in the
+  message field, or tap the key bar's keyboard button to type in the terminal.
 - **Offline reading** of the last known state and of recently opened conversations.
 
 ### On an iPad

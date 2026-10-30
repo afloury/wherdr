@@ -137,9 +137,10 @@ test('the beta preference is off by default and survives a reload on this device
   await expect(toggle).toHaveAttribute('aria-checked', 'true')
 })
 
+// Android engines keep tap-to-type; iOS WebKit does not (terminal-tap-keyboard.spec.ts).
 for (const enabled of [false, true]) {
-  test(`a normal terminal tap opens the keyboard with beta ${enabled ? 'on' : 'off'}`, { tag: '@webkit-phone' }, async ({ page, isMobile }) => {
-    test.skip(!isMobile, 'Touch gestures use the phone viewport')
+  test(`a normal terminal tap opens the keyboard on Chromium with beta ${enabled ? 'on' : 'off'}`, async ({ page, isMobile, browserName }) => {
+    test.skip(!isMobile || browserName !== 'chromium', 'Touch gestures use the phone viewport; WebKit keeps the keyboard closed')
     await fakeHerdr('e2e.touch_scroll', { pane_id: pane, reset: true, mouse: false })
     await terminal(page, enabled)
     await page.locator('#touch').tap()

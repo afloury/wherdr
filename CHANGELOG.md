@@ -74,6 +74,10 @@ All notable changes to this project are documented here. The format follows
 
 - **omp 18.14 tool approvals show their card again.** The conversation recognizes the new approval prompt, including grants and expanded details, answers with arrows then Enter, and holds messages while it is open. The 18.4 dialog remains supported.
 
+### Fixed
+
+- **No keyboard on a terminal tap on iOS.** On iPhone and iPad a tap on the terminal no longer opens the on-screen keyboard; the message field and the key bar's keyboard button still do. Android and computers keep tap or click to type.
+
 ## [2.3.0] — 2026-10-28
 
 ### Added and improved
