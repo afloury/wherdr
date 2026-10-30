@@ -22,6 +22,7 @@ export function coordinatorUnavailable(m: MachineTasks, offline = false): string
   if (offline) return tl('Offline: reconnect to open a Coordinator.', 'Hors ligne : reconnecte-toi pour ouvrir un Coordinateur.')
   if (m.status === 'error' || m.error || m.stale) return m.error || tl('Machine cannot be reached now.', 'Machine injoignable pour l’instant.')
   if (m.status === 'missing') return tl('herdr-projects is not installed.', 'herdr-projects n’est pas installé.')
+  if (m.status === 'shepherdr') return tl('Shepherdr 2 is not supported by wherdr’s Board.', 'Le Board de wherdr ne prend pas en charge Shepherdr 2.')
   if (m.status === 'old') return tl('Update herdr-projects to use its Coordinators.', 'Mets herdr-projects à jour pour utiliser ses Coordinateurs.')
   if (m.status === 'disabled') return tl('herdr-projects is disabled.', 'herdr-projects est désactivé.')
   return ''

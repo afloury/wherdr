@@ -1,5 +1,6 @@
 // Global app state: live agents (WebSocket /ws/events), device
 // settings, lock, API calls. Module singletons (client app).
+import { createSocketProbe } from '~/utils/socketProbe'
 import { DESK_QUERY, SLIM_QUERY, TABLET_QUERY, provesHardwareKeyboard } from '~/utils/layoutMode'
 import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, NamedSession, Pane, Quotas } from '#shared/types'
 import { LOCAL, splitId } from '#shared/ids'
@@ -101,6 +102,8 @@ export const hostLabel = ref('')
 export const brandLabel = computed(() => 'wherdr')
 export const curPane = ref<string | null>(null)
 export const pageVisible = ref(true)
+// Every visible wake, including pageshow/online with unchanged visibility.
+export const socketWake = ref(0)
 
 // Device settings.
 // Display preferences without anything specific to the device are kept on the
@@ -111,6 +114,8 @@ export const showCounters = syncedRef('showCounters', flag.read(true), flag.writ
 export const showQuotas = syncedRef('showQuotas', flag.read(true), flag.write)
 // Existing devices keep Machine.
 export const homeGrouping = syncedRef('homeGrouping', readHomeGrouping, v => v)
+// Workspace cards remain the default; Board tasks keep their own grouping.
+export const individualAgentList = syncedRef('individualAgentList', flag.read(false), flag.write)
 
 // Compact list: one line per card (sidebar on a computer, home list on the phone).
 // Read before the first render, so the list never changes density after it.
@@ -168,6 +173,10 @@ export const replyStyle = syncedRef('replyStyle', parseReplyStyle, v => v)
 export const homeQuotas = ref<Quotas | null>(null)
 export const fontSize = ref(Number(ls.get('fontSize')) || 12)
 watch(fontSize, v => ls.set('fontSize', String(v)))
+// Experimental touch physics is a device rendering preference, like the renderer.
+export const smoothTouchScrolling = ref(ls.get('smoothTouchScrolling') === '1')
+watch(smoothTouchScrolling, v => ls.set('smoothTouchScrolling', v ? '1' : '0'))
+
 export const terminalRenderer = ref(parseTerminalRenderer(ls.get('terminalRenderer')))
 watch(terminalRenderer, v => ls.set('terminalRenderer', v))
 // OSC 52 copies of the agents written to this device's clipboard (on by default).
@@ -198,6 +207,7 @@ export function refreshTerminalRenderStatus() {
 }
 if (import.meta.client) {
   window.addEventListener('storage', (event) => {
+    if (event.key === 'smoothTouchScrolling') smoothTouchScrolling.value = event.newValue === '1'
     if (event.key === 'terminalRenderer') {
       terminalRenderer.value = parseTerminalRenderer(event.newValue)
       refreshTerminalRenderStatus()
@@ -481,13 +491,38 @@ function normalize(s: HerdrState): HerdrState {
   return s
 }
 
+const eventProbe = createSocketProbe(() => evWs)
+let evHandshake: ReturnType<typeof setTimeout> | undefined
+export function recoverEvents() {
+  connectEvents()
+  return eventProbe.recover(() => { if (!document.hidden && !locked.value) reconnectEvents() })
+}
+export function reconnectEvents() {
+  eventProbe.cancel()
+  clearTimeout(evHandshake)
+  clearTimeout(evTimer)
+  if (evWs) { try { evWs.onclose = null; evWs.close() } catch { /* ignore */ } evWs = null }
+  evRetry = 0
+  connectEvents()
+}
+
 export function connectEvents() {
   clearTimeout(evTimer)
   if (locked.value) return
   if (evWs && evWs.readyState <= 1) return
+  clearTimeout(evHandshake)
+  eventProbe.cancel()
   const ws = new WebSocket(`${wsBase()}/ws/events`)
   evWs = ws
+  // A CONNECTING socket fires nothing: no open, no close, no retry. If the
+  // network is not actually back yet, the handshake hangs and the app would
+  // sit offline forever -- close it on a deadline so onclose retries.
+  evHandshake = setTimeout(() => {
+    if (evWs === ws && ws.readyState === 0) { try { ws.close() } catch { /* ignore */ } }
+  }, 6000)
   ws.onopen = () => {
+    if (evWs !== ws) return
+    clearTimeout(evHandshake)
     evRetry = 0
     eventsOpen.value = true
     if (everOpen) {
@@ -505,7 +540,9 @@ export function connectEvents() {
   }
   ws.onmessage = (e) => {
     try {
+      if (evWs !== ws) return
       const data = JSON.parse(e.data)
+      if (data?.type === 'pong') { eventProbe.pong(ws); return }
       // Settings changed on another device (or another tab).
       if (data?.type === 'settings') { settingsSync.receive(data.settings || {}); return }
       const got = normalize(data) as HerdrState
@@ -530,8 +567,10 @@ export function connectEvents() {
   }
   ws.onclose = () => {
     if (evWs !== ws) return
+    clearTimeout(evHandshake)
     evWs = null
     eventsOpen.value = false
+    eventProbe.cancel()
     if (herdrState.value.ok && lastStateAt) cachedAt.value = lastStateAt
     // Refused because of the lock (session expired) rather than a network cut?
     confirmLock()
@@ -616,6 +655,8 @@ export function showLock() {
   setOfflineAccess(null)
   clearOffline()
   // Nothing must talk to the server any more until it is unlocked.
+  eventProbe.cancel()
+  clearTimeout(evHandshake)
   const ws = evWs
   evWs = null
   if (ws) {

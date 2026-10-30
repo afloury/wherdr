@@ -184,10 +184,10 @@ describe('the Board read', () => {
     expect(infoAsked.slice(1).every(f => !f)).toBe(true)
   })
 
-  it('a machine without herdr-projects 1.2.1 runs nothing and says so', async () => {
-    info.status = 'old'
+  it.each(['old', 'shepherdr'])('an unavailable Board (%s) runs nothing and says so', async (status) => {
+    info.status = status
     const r = await read()
-    expect(r.machines[0]).toMatchObject({ status: 'old', tasks: [] })
+    expect(r.machines[0]).toMatchObject({ status, tasks: [] })
     expect(calls).toEqual([])
   })
 })
@@ -296,6 +296,21 @@ describe('done tasks: when they were made', () => {
     const again = await read()
     expect(calls.filter(c => c[0] === 'list').length).toBe(2)
     expect(again.machines[0]!.tasks.find(t => t.id === 'demo/9')!.created).toBe(5000)
+  })
+})
+
+describe('the global search source', () => {
+  it('the Board\'s list, its keys and each description from the task files, read once', async () => {
+    listReply = { code: 0, stdout: JSON.stringify([{ id: 'demo/4', state: 'idle', title: 'Login page', stage: 'todo' }, { id: 'demo/5', state: 'idle', title: 'Other', stage: 'todo' }]), stderr: '' }
+    taskFile('demo/4', { title: 'Login page', stage: 'todo', description: 'The session cookie expires too early.' })
+    const boards = await T.searchableBoards(5000)
+    expect(boards).toEqual([{ machine: '', tasks: [
+      { row: expect.objectContaining({ id: 'demo/4', repoKey: 'DEMO' }), description: 'The session cookie expires too early.' },
+      { row: expect.objectContaining({ id: 'demo/5' }), description: '' },
+    ] }])
+    // Within the Board's reuse window: no second read.
+    await T.searchableBoards(5000)
+    expect(calls.filter(c => c[0] === 'list')).toHaveLength(1)
   })
 })
 

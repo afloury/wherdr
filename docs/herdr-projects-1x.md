@@ -276,3 +276,31 @@ devices open keep working.
 
 Follow [Migrate a 1.x Docker install](migrate-from-1.x-docker.md): back up, stop the container,
 install the native service, check, and go back if needed. It is written so an AI agent can run it.
+
+## Shepherdr 2
+
+Shepherdr 2.x retains the `herdr-projects` plugin id but uses a different CLI and
+store. wherdr detects its version or manifest and reports **Shepherdr 2 detected:
+wherdr’s Board does not support it**, rather than asking for an update. Agents,
+terminal, files and machines remain available. wherdr never starts Shepherdr or
+migrates its data automatically.
+
+To return to the Board's supported herdr-projects 1.2.x release:
+
+1. Finish or stop ongoing work, then stop Shepherdr using its own controls.
+2. Back up both data stores (`~/.herdr-projects` and `~/.shepherdr`), worktrees and
+   Herdr configuration. Keep the takeover backup made by Shepherdr too.
+3. On the affected machine, reinstall the pinned release yourself:
+
+   ```sh
+   herdr plugin uninstall herdr-projects && herdr plugin install eliasstravik/herdr-projects --ref v1.2.21 --yes
+   ```
+
+4. Check Herdr configuration against the takeover backup; restore only the required
+   sidebar/configuration entries, preserving subsequent changes, then reload Herdr's
+   configuration and open the 1.x board. Refresh wherdr to check detection.
+
+Reinstalling the plugin does not import Shepherdr tasks, undo its configuration or
+network changes, or restore the state of ongoing agents. Keep the 2.x store and
+backups; do not delete them to make the Board work. Avoid an unpinned plugin update:
+it can replace 1.x with Shepherdr 2 again.

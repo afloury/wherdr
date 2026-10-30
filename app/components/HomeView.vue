@@ -18,7 +18,7 @@ import type { MachineInfo, NamedSession, Pane } from '#shared/types'
 import { type ReadySort, type Row, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
 import { spaceTitle } from '#shared/displayTitles'
 import { type BoardCard, type CoordinatorLevel, boardSections, countedPanes } from '#shared/boardLinks'
-import { claudeSuggestion, machineQuotaRows, quotaRows, tabQuotaRows } from '~/utils/quotas'
+import { claudeApiShown, claudeSuggestion, machineQuotaRows, quotaRows, tabQuotaRows } from '~/utils/quotas'
 import { longPress } from '~/utils/longPress'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
 import { headerFold } from '~/utils/headerFold'
@@ -28,6 +28,7 @@ import pkg from '../../package.json'
 import { dropMachineKey, shiftMachineKey } from '#shared/machineOrder'
 import { stateEntries, stateMachines } from '~/utils/homeGrouping'
 import { BAR_ALL } from '~/utils/machineBar'
+import { individualAgentRows, individualAgentTitle, isIndividualAgentRow } from '~/utils/homeAgentRows'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
 const emit = defineEmits<{ search: [] }>()
 useQuotaLoader()
@@ -73,7 +74,8 @@ function groupsOf(list: Row[], group = rowGroup) {
     { key: 'ready', title: tl('Ready', 'Prêts'), list: list.filter(r => group(r) === 'ready') },
   ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value).map(l => sortReady(l, readySort.value, rowTitle)) : [g.list] }))
 }
-const rowTitle = (r: Row) => spaceTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
+const rowTitle = (r: Row) => isIndividualAgentRow(r) ? individualAgentTitle(r.lead) : spaceTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
+const standaloneRows = (rows: Row[]) => individualAgentList.value ? individualAgentRows(rows) : rows
 // Sort menu of the Ready group; sorted other than in Herdr's order, the
 // list can no longer be reordered manually.
 const READY_SORT_LABELS: Record<ReadySort, [string, string]> = {
@@ -95,7 +97,7 @@ function listOf(rows: Row[]) {
   return {
     coordinators: b.coordinators,
     projects: b.projects,
-    groups: groupsOf(b.others.filter(r => r.lead.agent || showShells.value)),
+    groups: groupsOf(standaloneRows(b.others).filter(r => r.lead.agent || showShells.value)),
   }
 }
 // Each kind of coordinator with its own icon and label (coordinatorKind).
@@ -109,6 +111,9 @@ const soloSelected = computed(() => machineBarSelection.value === null || machin
 const solo = computed(() => listOf(soloSelected.value ? spaceRows(st.value) : []))
 
 const topQuotas = computed(() => (showQuotas.value ? quotaRows(homeQuotas.value, hiddenAgents.value) : []))
+// Claude on API billing (no quota): a label instead of gauges.
+const topApi = computed(() => showQuotas.value && claudeApiShown(homeQuotas.value, null, hiddenAgents.value))
+const machineApi = (key: string) => showQuotas.value && claudeApiShown(homeQuotas.value, key, hiddenAgents.value)
 // Claude quotas to install or update on a machine: never a block in the list,
 // only two items in its "…" menu (Settings › Agents, or don't suggest again).
 function claudeHint(m: MachineInfo) {
@@ -174,6 +179,7 @@ const sections = computed(() => {
       waiting: c.filter(p => p.status === 'blocked').length,
       collapsed: collapsedMachines.value.includes(m.key),
       quotas: showQuotas.value && m.status === 'online' ? machineQuotaRows(homeQuotas.value, m.baseKey ?? m.key, hiddenAgents.value) : [],
+      api: m.status === 'online' && machineApi(m.baseKey ?? m.key),
     }
   })
 })
@@ -189,6 +195,7 @@ const stateMachineChips = computed(() => stateShown.value.online.map(m => ({
   awake: awakeByMachine.value[m.key]?.active ? awakeByMachine.value[m.key] : undefined,
   claude: claudeHint(m),
   quotas: showQuotas.value ? machineQuotaRows(homeQuotas.value, baseKeyOf(m), hiddenAgents.value) : [],
+  api: machineApi(baseKeyOf(m)),
 })))
 const stateAway = computed(() => stateShown.value.away.map(m => ({
   m, name: machineName(m.key) || m.label || t('This machine'), state: t(STATE_LABEL[m.status]),
@@ -197,7 +204,7 @@ const stateAway = computed(() => stateShown.value.away.map(m => ({
 const stateCards = computed(() => {
   return stateShown.value.online.flatMap(m => {
     const b = boardSections(spaceRows(st.value, m.key), st.value.workspaces, boardLinks.value, livePanes.value, k => machineInfo(k)?.baseKey ?? k)
-    return stateEntries(b, showShells.value).map(e => ({
+    return stateEntries({ ...b, others: standaloneRows(b.others) }, showShells.value).map(e => ({
       ...e,
       machine: machineName(m.key) || m.label,
       board: e.member ? memberCard(e.member) : e.level ? coordinatorCard(e.level, m.local, machineName(m.key) || m.label, e.repo) : null,
@@ -274,10 +281,18 @@ const soloTab = computed(() => {
   return sections.value[0]!
 })
 const listQuotas = computed(() => (soloTab.value ? tabQuotaRows(topQuotas.value, soloTab.value.quotas) : topQuotas.value))
+const listApi = computed(() => topApi.value || Boolean(soloTab.value?.api))
+const homeRoot = ref<HTMLElement | null>(null)
 const homeScroll = ref<HTMLElement | null>(null)
+const swipeDirection = useHomeSwipe(homeRoot, () => barEntries.value.map(b => b.id), () => machineBarPick.value, id => pickBar(id))
+function retireHomeContent(el: Element) {
+  ;(el as HTMLElement).inert = true
+  el.setAttribute('aria-hidden', 'true')
+}
 const switchMachineConversation = useMachineConversation()
-function pickBar(id: string, event: MouseEvent) {
+function pickBar(id: string, event?: MouseEvent) {
   if (barLp.swallowClick()) return
+  if (id === machineBarPick.value) homeScroll.value?.scrollTo({ top: 0 })
   haptic()
   pickMachineBar(id)
   switchMachineConversation()
@@ -287,8 +302,8 @@ function pickBar(id: string, event: MouseEvent) {
     const keys = machines.value.filter(m => selected.includes(baseKeyOf(m))).map(m => m.key)
     if (keys.some(k => collapsedMachines.value.includes(k))) collapsedMachines.value = collapsedMachines.value.filter(k => !keys.includes(k))
   }
-  homeScroll.value?.scrollTo({ top: 0 })
-  ;(event.currentTarget as HTMLElement | null)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  const button = event?.currentTarget as HTMLElement | null
+  requestAnimationFrame(() => (button ?? Array.from(homeRoot.value?.querySelectorAll<HTMLElement>('.machine-bar-item') ?? []).find(b => b.dataset.barId === id))?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }))
 }
 // A mouse wheel scrolls the bar sideways when it overflows (narrow sidebar).
 function onBarWheel(e: WheelEvent) {
@@ -511,6 +526,8 @@ async function saveMachine() {
 
 // Reorder: connected, and the machine online.
 function canReorder(machine: string) {
+  // Dragging a pane must not silently reorder its whole workspace.
+  if (individualAgentList.value) return false
   if (offlineView.value || !eventsOpen.value || !st.value.ok) return false
   return !multiMachine.value || machines.value.some(m => m.key === machine && m.status === 'online')
 }
@@ -605,7 +622,7 @@ function resetListWidth() {
 </script>
 
 <template>
-  <section id="home" class="view" :class="{ resizing: listDrag, rail, drawer, 'list-compact': compactList }" @click.capture="onDrawerPick">
+  <section ref="homeRoot" id="home" class="view" :class="{ resizing: listDrag, rail, drawer, 'list-compact': compactList }" @click.capture="onDrawerPick">
     <!-- Collapsed list (computer): narrow column, the rest of the list is hidden. -->
     <nav v-if="rail" class="home-rail" :aria-label="t('Agents')">
       <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" :title="conn.text" />
@@ -682,8 +699,11 @@ function resetListWidth() {
           <b class="machine-bar-count">{{ b.n }}</b>
         </button>
       </UContextMenu>
+      <span class="machine-bar-indicator" aria-hidden="true" />
     </nav>
-    <div ref="homeScroll" class="scroll">
+    <div class="home-content">
+    <Transition :name="swipeDirection < 0 ? 'home-next' : 'home-prev'" @before-leave="retireHomeContent">
+    <div :key="machineBarPick ?? BAR_ALL" ref="homeScroll" class="scroll">
       <OfflineNote v-if="(offlineView && cachedAt) || netDown" class="home-offline" :label="offlineView && cachedAt ? t('Last known state') : undefined" :at="cachedAt" date-style="medium" />
       <div v-if="eventsOpen && !st.ok" class="notice">
         {{ t('The Herdr server is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
@@ -714,7 +734,7 @@ function resetListWidth() {
           <span><i />{{ c.label }}</span>
         </div>
       </div>
-      <QuotaStrip :rows="listQuotas" :class="{ 'after-stats': showCounters && agents.length }" />
+      <QuotaStrip :rows="listQuotas" :api="listApi" :class="{ 'after-stats': showCounters && agents.length }" />
 
       <OpenNetworkBanner />
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
@@ -736,9 +756,9 @@ function resetListWidth() {
           </li>
         </ul>
         <template v-for="c in stateMachineChips" :key="`q-${c.m.key}`">
-          <div v-if="c.quotas.length" class="state-machine-quotas">
+          <div v-if="c.quotas.length || c.api" class="state-machine-quotas">
             <p class="state-machine-quotas-label">{{ c.name }}</p>
-            <QuotaStrip :rows="c.quotas" class="machine-quotas" />
+            <QuotaStrip :rows="c.quotas" :api="c.api" class="machine-quotas" />
           </div>
         </template>
         <section v-for="g in stateGroups" :key="g.key" class="agent-group state-group" :class="g.key">
@@ -840,7 +860,7 @@ function resetListWidth() {
           <p v-if="!soloTab && s.m.status !== 'online' && s.m.error" class="machine-error">{{ t(s.m.error) }}</p>
 
           <div v-if="soloTab || !s.collapsed" class="machine-body">
-            <QuotaStrip v-if="!soloTab" :rows="s.quotas" class="machine-quotas" />
+            <QuotaStrip v-if="!soloTab" :rows="s.quotas" :api="s.api" class="machine-quotas" />
             <section v-if="s.coordinators.length" class="agent-group coordinators">
               <h2 class="group-title"><span>{{ tl('Coordinators', 'Coordinateurs') }}</span><span class="count">{{ s.coordinators.length }}</span></h2>
               <div class="card-list">
@@ -867,6 +887,8 @@ function resetListWidth() {
           </div>
         </section>
       </template>
+    </div>
+    </Transition>
     </div>
 
     <div class="fab-wrap">

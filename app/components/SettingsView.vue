@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Settings, in sections: appearance, conversation, terminal, agents,
-// notifications, security (passkey), computer, about.
+// notifications, security (passkey), shortcuts, about.
 import type { ThemeDef, ThemeGroup } from '~/utils/themes'
 import type { TypingSpeed } from '~/utils/typewriter'
 import { pasteJournalEnabled, pasteJournal, setPasteJournal } from '~/utils/pasteJournal'
@@ -13,25 +13,28 @@ import { DEFAULT_MAX_SESSION_DAYS, MAX_SESSION_DAYS, type MaxSessionDays } from 
 
 const appVersion = pkg.version
 const router = useRouter()
-// Computer section: opens the keyboard shortcuts (ShortcutsSheet).
-const shortcuts = shortcutsOpen
 // Sections: sidebar on a computer (one section shown), iOS Settings-style
 // list on the phone (a tap opens the section, Back returns to the list).
 // The section lives in the URL (`?section=plugins`):
 // on the phone, opening it adds a history entry, which the system Back button
 // pops like the header's; on a computer, it replaces the entry.
 const route = useRoute()
+watch(() => [route.path, route.query.section], () => {
+  if (route.query.section === 'desktop' || route.path === '/settings/desktop') {
+    router.replace({ path: '/settings', query: { ...route.query, section: 'conversation' } })
+  }
+}, { immediate: true })
 const section = computed<SettingsSection | null>(() => (SETTINGS_SECTIONS as readonly string[]).includes(String(route.query.section)) ? route.query.section as SettingsSection : null)
 const sectionIcons: Record<SettingsSection, string> = {
   appearance: 'i-lucide-palette', conversation: 'i-lucide-message-square', terminal: 'i-lucide-square-terminal',
-  agents: 'i-lucide-bot', plugins: 'i-lucide-puzzle', phone: 'i-lucide-smartphone', notifications: 'i-lucide-bell', security: 'i-lucide-lock', desktop: 'i-lucide-monitor', advanced: 'i-lucide-bug', about: 'i-lucide-info',
+  agents: 'i-lucide-bot', plugins: 'i-lucide-puzzle', phone: 'i-lucide-smartphone', notifications: 'i-lucide-bell', security: 'i-lucide-lock', shortcuts: 'i-lucide-keyboard', advanced: 'i-lucide-bug', about: 'i-lucide-info',
 }
 const sectionLabels: Record<SettingsSection, string> = {
   appearance: 'Appearance', conversation: 'Conversation', terminal: 'Terminal', agents: 'Agents',
-  plugins: 'Plugins', phone: 'Phone', notifications: 'Notifications', security: 'Security', desktop: 'Desktop', advanced: 'Advanced', about: 'About',
+  plugins: 'Plugins', phone: 'Phone', notifications: 'Notifications', security: 'Security', shortcuts: 'Shortcuts', advanced: 'Advanced', about: 'About',
 }
 const sections = computed(() => SETTINGS_SECTIONS
-  .filter(id => id !== 'desktop' || desk.value)
+  .filter(id => id !== 'shortcuts' || (desk.value && !coarse.value))
   .map(id => ({ id, label: t(sectionLabels[id]), icon: sectionIcons[id] })))
 const activeSection = computed<SettingsSection | null>(() => {
   if (section.value && sections.value.some(s => s.id === section.value)) return section.value
@@ -72,6 +75,7 @@ const shellsOn = showShells
 const countersOn = showCounters
 const quotasOn = showQuotas
 const homeGroup = homeGrouping
+const individualListOn = individualAgentList
 const homeGroupItems = computed(() => [{ value: 'machine', label: t('Machine') }, { value: 'state', label: t('State') }])
 const compactOn = compactList
 const autoReorderOn = autoReorderReady
@@ -99,13 +103,14 @@ const typingItems = computed(() => [
   { label: t('Slow'), description: t('Three times as slow · 1.5 to 6 s.'), value: 'slow' },
 ])
 const renderer = terminalRenderer
+const smoothScrollingOn = smoothTouchScrolling
 const width = contentWidth
 const widthItems = computed(() => [
   { label: t('Normal'), description: t('760 px column · terminal fitted to width.'), value: 'normal' },
   { label: t('Wide'), description: t('Up to 1100 px · terminal fitted to width.'), value: 'wide' },
   { label: t('Full width'), description: t('The whole width, terminal included.'), value: 'full' },
 ])
-// What an agent pane opens on (computer): the Conversation, or the Terminal.
+// What an agent pane opens on: the Conversation, or the Terminal.
 const defaultPane = defaultViewMode
 const defaultPaneItems = [
   { label: t('Conversation'), description: t('Read the transcript first.'), value: 'chat' },
@@ -346,6 +351,11 @@ onMounted(() => {
             <URadioGroup v-model="homeGroup" :items="homeGroupItems" aria-labelledby="home-group-label" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
 
             <label class="settings-toggle">
+              <span><b>{{ t('Individual agents') }}</b><small>{{ t('List standalone agents separately. Board tasks stay grouped. Follows you on every device.') }}</small></span>
+              <USwitch v-model="individualListOn" :aria-label="t('Individual agents')" color="success" size="xl" />
+            </label>
+
+            <label class="settings-toggle">
               <span><b>{{ t('Compact list') }}</b><small>{{ t('Tasks: one line in Compact, two in Normal with current activity and relevant labels. Details stay in the task sheet. Follows you on every device.') }}</small></span>
               <USwitch v-model="compactOn" color="success" size="xl" />
             </label>
@@ -395,6 +405,11 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'conversation'" class="settings-section">
+          <div class="settings-group">
+            <h3>{{ t('Default pane view') }}</h3>
+            <URadioGroup v-model="defaultPane" :items="defaultPaneItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <p class="muted settings-hint">{{ t('What an agent pane opens on. A pane you switched to Terminal stays there. Follows you on every device.') }}</p>
+          </div>
           <div class="settings-group settings-typing">
             <h3>{{ t('Typewriter') }}</h3>
             <URadioGroup v-model="typewriter" :items="typingItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" :disabled="reducedMotion" />
@@ -444,6 +459,12 @@ onMounted(() => {
             <label class="settings-toggle">
               <span><b>{{ t('Agent copies') }}</b><small>{{ t('Text an agent copies in the terminal (OSC 52) goes to this device’s clipboard. Never read from it. Saved on this device.') }}</small></span>
               <USwitch v-model="agentClipboardOn" color="success" size="xl" />
+            </label>
+          </div>
+          <div class="settings-group">
+            <label class="settings-toggle">
+              <span><b>{{ t('Smooth touch scrolling (beta)') }}</b><small>{{ t('Experimental finger tracking and inertia. Saved on this device.') }}</small></span>
+              <USwitch v-model="smoothScrollingOn" color="success" size="xl" />
             </label>
           </div>
           <div class="settings-group settings-renderer">
@@ -521,20 +542,8 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- Computer layout only (same threshold as the app: 900 px). -->
-        <div v-if="desk" v-show="activeSection === 'desktop'" class="settings-section">
-          <div class="settings-group">
-            <h3>{{ t('Default pane view') }}</h3>
-            <URadioGroup v-model="defaultPane" :items="defaultPaneItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
-            <p class="muted settings-hint">{{ t('What an agent pane opens on. A pane you switched to Terminal stays there. Follows you on every device.') }}</p>
-          </div>
-          <div class="settings-group">
-            <h3>{{ tl('Keyboard shortcuts', 'Raccourcis clavier') }}</h3>
-            <button type="button" class="settings-action solo" @click="shortcuts = true">
-              <UIcon name="i-lucide-keyboard" />{{ tl('Show keyboard shortcuts', 'Voir les raccourcis clavier') }}
-              <span class="settings-action-keys"><UKbd v-for="k in shortcutKbds('help')" :key="k" :value="k" /></span>
-            </button>
-          </div>
+        <div v-if="desk && !coarse" v-show="activeSection === 'shortcuts'" class="settings-section">
+          <ShortcutsReference />
         </div>
 
         <div v-show="activeSection === 'advanced'" class="settings-section">
