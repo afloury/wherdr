@@ -19,6 +19,32 @@ test('a long agent name and state truncate with an ellipsis in the header at 390
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(`/#/a/${pane}`)
   const top = page.locator('.agent-top')
+  const identity = top.locator('.phone-identity')
+  if (await identity.count()) {
+    await expect(identity.locator('.phone-identity-title')).toHaveText(LONG_NAME)
+    await expect(identity.locator('.phone-identity-kind')).toHaveText('Claude')
+    await expect(identity).toHaveAccessibleName(/quota reached/i)
+    const layout = await identity.evaluate(el => {
+      const title = el.querySelector<HTMLElement>('.phone-identity-title')!
+      const kind = el.querySelector<HTMLElement>('.phone-identity-kind')!
+      const style = getComputedStyle(title)
+      const r = el.getBoundingClientRect()
+      return {
+        ellipsis: title.scrollWidth > title.clientWidth && style.textOverflow === 'ellipsis',
+        kindFits: kind.scrollWidth <= kind.clientWidth,
+        left: r.left, right: r.right,
+        actionsLeft: el.parentElement!.querySelector('.agent-actions')!.getBoundingClientRect().left,
+      }
+    })
+    expect(layout.ellipsis).toBe(true)
+    expect(layout.kindFits).toBe(true)
+    expect(layout.left).toBeGreaterThanOrEqual(44)
+    expect(layout.right).toBeLessThanOrEqual(layout.actionsLeft)
+    await identity.click()
+    await expect(page.locator('.phone-identity-details')).toContainText(LONG_NAME)
+    await expect(page.locator('.phone-identity-details')).toContainText(/quota reached/i)
+    return
+  }
   await expect(top.locator('.agent-title')).toHaveText(LONG_NAME)
   await expect(top.locator('.agent-meta .pill')).toHaveText(/quota reached·claude/i)
 
