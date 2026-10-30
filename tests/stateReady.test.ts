@@ -36,9 +36,40 @@ describe('serverReady', () => {
 describe('settleState', () => {
   const prev = st(['w1:p1', `${REMOTE}~w1:p1`], { machines: machines('online') })
 
-  it('ignores a "not ready" state when a state is already shown', () => {
-    expect(settleState(prev, st([], { ready: false }), true)).toBeNull()
-    expect(settleState(prev, st([], { ready: false }), false)).toBeNull()
+  it('keeps the last state per machine while the server is not ready', () => {
+    // A restart still probing: nothing is answered for, so every pane and
+    // machine stays, marked connecting, until the probes land.
+    for (const settling of [true, false]) {
+      const r = settleState(prev, st([], { ready: false }), settling)!
+      expect(r.panes.map(p => p.id)).toEqual(['w1:p1', `${REMOTE}~w1:p1`])
+      expect(r.machines!.find(m => m.key === REMOTE)!.status).toBe('connecting')
+    }
+  })
+  it('a machine the "not ready" state answers for is authoritative', () => {
+    // The remote is already 'online' in the partial state: its (empty) pane
+    // list wins -- only the still-connecting machines keep their content.
+    const next = st(['w1:p1'], { ready: false, machines: machines('online') })
+    expect(settleState(prev, next, true)).toBe(next)
+  })
+  it('shows a recovered local pane immediately without dropping a slow remote', () => {
+    for (const settling of [true, false]) {
+      const next = st(['w2:p1'], { ready: false, machines: machines('connecting') })
+      const result = settleState(prev, next, settling)!
+      expect(result.panes.map(p => p.id)).toEqual(['w2:p1', `${REMOTE}~w1:p1`])
+      expect(result.workspaces.map(w => w.id)).toEqual(['w2', `${REMOTE}~w1`])
+      expect(result.machines!.find(m => m.key === REMOTE)!.status).toBe('connecting')
+    }
+  })
+  it('accepts an empty local result while a remote is still connecting', () => {
+    const result = settleState(prev, st([], { ready: false, machines: machines('connecting') }), false)!
+    expect(result.panes.map(p => p.id)).toEqual([`${REMOTE}~w1:p1`])
+  })
+  it('accepts a remote offline result instead of reviving removed panes', () => {
+    const next = st(['w2:p1'], { ready: false, machines: machines('offline') })
+    expect(settleState(prev, next, false)).toBe(next)
+  })
+  it('retains the last state for an empty unsuccessful restart response', () => {
+    expect(settleState(prev, st([], { ok: false, ready: false }), true)).toBeNull()
   })
   it('applies a "not ready" state on first load', () => {
     const next = st([], { ready: false })
