@@ -12,6 +12,10 @@ All notable changes to this project are documented here. The format follows
 - **Claude on API billing.** A machine whose Claude Code runs on an API key or Console credits shows *Claude · API usage, no quota* on the home screen and **API usage (no quota)** in Settings › Agents › Claude quotas, instead of nothing or "not set up". Update the Claude status line on such machines.
 - **Release distance in update notices.** The banner shows how many newer stable releases are available and a short version list, preserving the installation-specific update action.
 
+### Fixed
+
+- **omp 18.14 tool approvals show their card again.** omp 18.14 moved its approval prompt into the composer's place, with a one-row summary of the call, an "Approve <tool> for this session" choice and a new key legend. The conversation reads it again (framed or not, every symbol preset, grants, Ctrl+O details), answers with the arrows then Enter, and holds messages while it is open. The 18.4 dialog is still recognized.
+
 ## [2.3.0] — 2026-10-28
 
 ### Added and improved
