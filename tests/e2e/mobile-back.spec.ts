@@ -87,7 +87,7 @@ test('desktop keeps the Board beside the task', async ({ page }, info) => {
   await expect(page.locator('#home')).toBeVisible()
   await expect(page.locator('#board')).toBeVisible()
   await expect(page.locator('.board-panel')).toBeVisible()
-  await page.screenshot({ path: `.shots/mobile-back-desktop-${info.project.name}.png` })
+  await page.screenshot({ path: `.shots/mobile-back-desktop-${info.project.name}.png`, scale: 'css' })
 })
 
 for (const browser of [false, true]) {
@@ -111,6 +111,8 @@ test('Home keeps its active machine and scroll position', { tag: '@webkit-phone'
   await expect(card).toHaveCount(1)
   await expect(card).toBeVisible()
   const scroll = page.locator('#home .scroll')
+  // Picking a machine slides the Home content; wait until the leaving copy is gone.
+  await expect(scroll).toHaveCount(1)
   await scroll.evaluate(el => { (el as HTMLElement).style.paddingBottom = '1200px'; el.scrollTop = 50 })
   await card.scrollIntoViewIfNeeded()
   const before = await scroll.evaluate(el => el.scrollTop)
@@ -120,6 +122,7 @@ test('Home keeps its active machine and scroll position', { tag: '@webkit-phone'
   await page.goBack()
   await expect(page.locator('#home')).toBeVisible()
   await expect(page.locator('[data-bar-id=""]')).toHaveAttribute('aria-pressed', 'true')
+  await expect(scroll).toHaveCount(1)
   await expect.poll(() => scroll.evaluate(el => el.scrollTop)).toBe(before)
 })
 
