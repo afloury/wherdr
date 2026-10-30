@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **No false "command did not start" after a split or new tab.** Starting the command or agent right after creating a pane no longer fails with "Pane not found" when wherdr has not seen the new pane yet: the server polls that pane's machine afresh for up to 2 seconds. A pane that does not exist still gives "Pane not found", and a pane on an offline machine now says the machine is unreachable.
+
 ## [2.3.0] — 2026-10-28
 
 ### Added and improved
