@@ -4,6 +4,13 @@
 
 [Documentation](README.md) · [Project](../README.md)
 
+**Shepherdr 2.x is not supported by the Board**, even though its plugin id is still
+`herdr-projects`. wherdr shows a compatibility message and a manual command pinned
+to herdr-projects 1.2.21, without starting or migrating anything. Agents, terminal,
+files and machines remain available. See [returning from Shepherdr 2](herdr-projects-1x.md#shepherdr-2)
+for backups, reinstallation and configuration limitations. Do not use an unpinned
+plugin update to restore Board compatibility.
+
 ## Requirements
 
 - **Herdr ≥ 0.9.1** running on the server (`herdr` or `herdr server`), with its Claude Code /

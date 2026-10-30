@@ -1,0 +1,8 @@
+{
+  "plugin_id": "herdr-projects",
+  "enabled": true,
+  "version": "2.0.0",
+  "plugin_root": "/opt/plugins/shepherdr",
+  "startup": [{ "command": ["sh", "scripts/need-bun.sh", "scripts/plugin.ts", "startup"] }],
+  "actions": [{ "command": ["sh", "scripts/need-bun.sh", "scripts/plugin.ts", "open"] }]
+}

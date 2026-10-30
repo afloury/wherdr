@@ -59,7 +59,7 @@ const ready = computed(() => (board.value?.machines || []).filter(m => m.status 
 const machineLabel = (key: string) => boardMachineLabel(key, machineName(key), hostLabel.value || t('This machine'))
 const readAt = (at?: number) => (at ? new Date(at).toLocaleTimeString(language === 'fr' ? 'fr-FR' : 'en-US', { hour: '2-digit', minute: '2-digit' }) : '')
 // Machines Herdr answers on but where the Board cannot read herdr-projects.
-const notes = computed(() => (board.value?.machines || []).filter(m => m.status === 'missing' || m.status === 'old'))
+const notes = computed(() => (board.value?.machines || []).filter(m => m.status === 'missing' || m.status === 'old' || m.status === 'shepherdr'))
 const disabled = computed(() => (board.value?.machines || []).filter(m => m.status === 'disabled'))
 const several = computed(() => (board.value?.machines.length || 0) > 1)
 
@@ -573,7 +573,7 @@ function back() {
     <div v-if="noCoordinator || notes.length || disabled.length" class="board-notes">
       <p v-if="noCoordinator" class="board-note" role="status">{{ tl('No Coordinator can be reached now. See each machine’s availability.', 'Aucun Coordinateur n’est joignable pour l’instant. Consulte la disponibilité de chaque machine.') }}</p>
       <ProjectsUpgradeNote
-        v-for="m in notes" :key="m.machine" :status="m.status as 'missing' | 'old'" :version="m.version || null"
+        v-for="m in notes" :key="m.machine" :status="m.status as 'missing' | 'old' | 'shepherdr'" :version="m.version || null"
         :machine="several ? (machineName(m.machine) || hostLabel || t('This machine')) : undefined"
       />
       <p v-for="m in disabled" :key="m.machine" class="board-note">{{ tl(`herdr-projects is disabled in Herdr${several ? ` on ${machineName(m.machine)}` : ''}: herdr plugin enable herdr-projects`, `herdr-projects est désactivé dans Herdr${several ? ` sur ${machineName(m.machine)}` : ''} : herdr plugin enable herdr-projects`) }}</p>

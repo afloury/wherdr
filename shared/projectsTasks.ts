@@ -154,7 +154,7 @@ export interface MachineTasks {
   machine: string // the base machine's key
   // herdr-projects there (shared/projectsPlugin.ts): only `ready` has tasks.
   // `error`: Herdr did not answer, so it is not known.
-  status: 'missing' | 'old' | 'disabled' | 'ready' | 'error'
+  status: 'missing' | 'old' | 'shepherdr' | 'disabled' | 'ready' | 'error'
   version: string
   tasks: TaskRow[]
   // When `tasks` were read (ms). With `error` or `stale`: kept from that read.

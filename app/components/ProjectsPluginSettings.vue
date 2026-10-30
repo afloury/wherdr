@@ -104,6 +104,7 @@ function statusText(s: PluginState): string {
   if (behind(s)) return tl('Update available', 'Mise à jour disponible') + v
   if (s.status === 'ready') return tl('Installed', 'Installé') + v
   if (s.status === 'disabled') return tl('Disabled', 'Désactivé') + v
+  if (s.status === 'shepherdr') return tl('Shepherdr 2 unsupported', 'Shepherdr 2 non pris en charge') + v
   if (s.status === 'old') return tl('Update needed', 'Mise à jour nécessaire') + v
   return tl('Not installed', 'Non installé')
 }
@@ -137,8 +138,8 @@ function statusText(s: PluginState): string {
           <p v-else class="projects-plugin-note">{{ tl('By hand on this machine:', 'À la main sur cette machine :') }} <code>{{ PROJECTS_COMMAND }}</code></p>
         </template>
         <ProjectsUpgradeNote
-          v-if="states[machine.key]!.status === 'missing' || states[machine.key]!.status === 'old'"
-          :status="states[machine.key]!.status as 'missing' | 'old'" :version="states[machine.key]!.version"
+          v-if="states[machine.key]!.status === 'missing' || states[machine.key]!.status === 'old' || states[machine.key]!.status === 'shepherdr'"
+          :status="states[machine.key]!.status as 'missing' | 'old' | 'shepherdr'" :version="states[machine.key]!.version"
         />
         <p v-if="states[machine.key]!.status === 'disabled'" class="projects-plugin-note">{{ tl('The plugin is disabled in Herdr: herdr plugin enable herdr-projects', 'Le plugin est désactivé dans Herdr : herdr plugin enable herdr-projects') }}</p>
         <p v-if="states[machine.key]!.status === 'ready'" class="projects-plugin-note">
