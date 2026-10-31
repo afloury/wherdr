@@ -17,8 +17,45 @@ test('a long agent name and state truncate with an ellipsis in the header at 390
   await fakeHerdr('e2e.workspace_label', { workspace_id: 'w3', label: LONG_NAME })
   await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: quota, agent: 'claude', status: 'blocked' })
   await page.setViewportSize({ width: 390, height: 844 })
+  // The phone identity uses an explicit tab label before the workspace name.
+  await page.routeWebSocket('**/ws/events', ws => {
+    const server = ws.connectToServer()
+    server.onMessage(message => {
+      const state = JSON.parse(message.toString())
+      const tab = state.tabs?.find((t: { workspace: string }) => t.workspace === 'w3')
+      if (tab) tab.label = LONG_NAME
+      ws.send(JSON.stringify(state))
+    })
+  })
   await page.goto(`/#/a/${pane}`)
+  await expect(page.locator('.phone-identity-kind, .agent-meta .pill-kind')).toHaveText(/claude/i)
   const top = page.locator('.agent-top')
+  const identity = top.locator('.phone-identity')
+  if (await identity.count()) {
+    await expect(identity.locator('.phone-identity-title')).toHaveText(LONG_NAME)
+    await expect(identity.locator('.phone-identity-kind')).toHaveText('Claude')
+    await expect(identity).toHaveAccessibleName(/quota reached/i)
+    const layout = await identity.evaluate(el => {
+      const title = el.querySelector<HTMLElement>('.phone-identity-title')!
+      const kind = el.querySelector<HTMLElement>('.phone-identity-kind')!
+      const style = getComputedStyle(title)
+      const r = el.getBoundingClientRect()
+      return {
+        ellipsis: title.scrollWidth > title.clientWidth && style.textOverflow === 'ellipsis',
+        kindFits: kind.scrollWidth <= kind.clientWidth,
+        left: r.left, right: r.right,
+        actionsLeft: el.parentElement!.querySelector('.agent-actions')!.getBoundingClientRect().left,
+      }
+    })
+    expect(layout.ellipsis).toBe(true)
+    expect(layout.kindFits).toBe(true)
+    expect(layout.left).toBeGreaterThanOrEqual(44)
+    expect(layout.right).toBeLessThanOrEqual(layout.actionsLeft)
+    await identity.click()
+    await expect(page.locator('.phone-identity-details')).toContainText(LONG_NAME)
+    await expect(page.locator('.phone-identity-details')).toContainText(/quota reached/i)
+    return
+  }
   await expect(top.locator('.agent-title')).toHaveText(LONG_NAME)
   await expect(top.locator('.agent-meta .pill')).toHaveText(/quota reached·claude/i)
 

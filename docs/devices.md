@@ -38,6 +38,16 @@
 
 ### On a phone
 
+- **Compact agent header**: one row keeps the agent kind, state icon and a single title.
+  Tap the identity beside Back for the full machine, space, tab and pane details, pane/tab
+  switching and tab management. Long titles ellipsize; multiple panes show their position.
+  Search is in Options.
+- **Terminal function keys** start closed. The small keyboard button above Send shows or hides
+  them in both Conversation and Terminal. The common row is Esc, Shift, Tab, arrows and Enter;
+  More holds Ctrl, Alt, paging, navigation and function keys, plus the phone-keyboard toggle.
+  Select Shift then Tab for Shift+Tab; the extra row does not repeat that shortcut.
+  Closing the bar clears any armed modifier. The input stays on one row at rest and expands
+  while editing. Desktop and tablet layouts keep their existing controls.
 - **Installable app (PWA)** on iPhone and Android, with safe-area and keyboard handling.
 - **Web Push notifications** when an agent finishes or needs you (with its question), and for
   `herdr notification show` (plugins, scripts).

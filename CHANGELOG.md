@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added and improved
+
+- **More room on phones.** The agent header keeps its tabs, title and state on one row. Terminal function keys default to closed and open above Send in both conversation and terminal views, with the mobile key layout; the input stays compact at rest.
+
 ## [2.4.0] — 2026-10-31
 
 ### Added and improved
