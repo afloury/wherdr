@@ -38,3 +38,25 @@ for (const language of ['en', 'fr']) {
     await page.screenshot({ path: `.shots/home-coordinators-${language}-${info.project.name}.png` })
   })
 }
+
+// A coordinator's file keeps the pane and space it had when it started; once
+// Herdr closes that pane (Herdr or the agent restarted), only its conversation,
+// which Herdr reports on its new pane, says where it is. The home list still
+// shows it at the top, and a coordinator of another conversation takes nothing.
+test('home coordinators: found again by their conversation after their pane closed', async ({ page, request }) => {
+  const state = await (await request.get('/api/state')).json()
+  const conversation = (id: string) => state.panes.find((p: { id: string }) => p.id === id)?.agentSession as string
+  expect(conversation(COORDINATOR_PANE)).toBeTruthy()
+  await page.route('**/api/tasks/links**', route => route.fulfill({ json: {
+    version: 'stale-coordinators-fixture', machines: [{ machine: '', tasks: [], coordinators: [
+      { level: 'top', pane: 'w99:p9', workspace: 'w99', agentSession: conversation(COORDINATOR_PANE) },
+      // Closed too, and its old ids now name the demo agent: not a coordinator.
+      { level: 'machine', pane: OMP_CHAT_PANE, workspace: OMP_CHAT_PANE.split(':')[0], agentSession: '/home/user/.omp/agent/sessions/gone.jsonl' },
+    ] }],
+  } }))
+  await page.goto('/')
+  const section = page.locator('.agent-group.coordinators')
+  await expect(section.locator(`.card[data-pane="${COORDINATOR_PANE}"] .card-title`)).toHaveText('Coordinator')
+  await expect(section.locator('.card')).toHaveCount(1)
+  await expect(section.locator(`.card[data-pane="${OMP_CHAT_PANE}"]`)).toHaveCount(0)
+})

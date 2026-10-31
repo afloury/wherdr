@@ -13,7 +13,8 @@
 //    `comparing`: the reviewer compares the attempts (the Picker);
 //  - an attempt's `task.json` (data/tasks/<repo>/<n><letter>, `attemptOf`);
 //  - each coordinator's `state.json` (data/coordinator/<session>/state.json,
-//    `machine/state.json`, `projects/<repo>/state.json`): `pane`, `space`.
+//    `machine/state.json`, `projects/<repo>/state.json`): `pane`, `space`,
+//    and `session`, its conversation (resolveCoordinators: when the pane is gone).
 // Pure functions, tested in tests/boardLinks.test.ts.
 import { rowFromTaskFile, taskAgentIdentity, type TaskAgentIdentity, type TaskGroup } from './projectsTasks'
 import type { Pane, Workspace } from './types'
@@ -64,6 +65,9 @@ export interface LinkedCoordinator {
   session?: string
   pane: string | null // app id
   workspace: string | null // app id
+  // The conversation it resumes (its file's `session`): Herdr's integration
+  // reports the same on its pane (`agent_session`), whatever the pane's id.
+  agentSession?: string
 }
 // A repo of the board (data/repos.json) and its main checkout: its branch and
 // how many commits it is behind its upstream, as git last knew it (null: unknown).
@@ -178,10 +182,59 @@ export function coordinatorFromFile(level: CoordinatorLevel, s: unknown, session
   const pane = paneOf(key, r.pane)
   const workspace = spaceOf(key, r.space) || spaceOf(key, r.workspace)
   if (!pane && !workspace) return null
-  const named = session === undefined ? {} : { session: session.slice(0, 80) }
+  const conversation = str(r.session, 500)
+  const named = { ...(session === undefined ? {} : { session: session.slice(0, 80) }), ...(conversation ? { agentSession: conversation } : {}) }
   if (level !== 'project') return { level, pane, workspace, ...named }
   const repo = str(r.repo, 80) || folder
   return REPO_RE.test(repo) ? { level, repo, pane, workspace, ...named } : null
+}
+
+// A coordinator's file names the pane and space it had when it started. When
+// Herdr closes that pane (a restart of Herdr or of the agent), the ids it
+// wrote no longer say where it is, and may even name another agent's pane or
+// space. `panes`: what Herdr shows now. Each coordinator is found again by its
+// conversation (`agentSession`, the same on its pane): one pane of its machine
+// with that conversation, never one another coordinator's file rightly names.
+// Not found: a pane of another conversation is not its own, and its space is
+// kept only while no agent of another conversation is there (an ordinary
+// space never becomes a coordinator). Coordinators whose ids still hold, and
+// those without a conversation in their file, are left as they are.
+type LivePane = Pick<Pane, 'id' | 'workspace' | 'agent' | 'agentSession'>
+export function resolveCoordinators(machines: MachineLinks[], panes: readonly LivePane[]): MachineLinks[] {
+  const byId = new Map(panes.map(p => [p.id, p]))
+  const bySession = new Map<string, LivePane[]>()
+  for (const p of panes) if (p.agent && p.agentSession) bySession.set(p.agentSession, [...(bySession.get(p.agentSession) ?? []), p])
+  const fits = (c: LinkedCoordinator, p: LivePane) => !c.agentSession || !p.agentSession || p.agentSession === c.agentSession
+  const held = new Set<string>()
+  for (const m of machines) for (const c of m.coordinators) {
+    const p = c.pane ? byId.get(c.pane) : undefined
+    if (p && fits(c, p)) held.add(p.id)
+  }
+  // First each coordinator's conversation, then (the panes it found taken too) its space.
+  const found = new Map<LinkedCoordinator, LivePane>()
+  for (const m of machines) for (const c of m.coordinators) {
+    const now = c.pane ? byId.get(c.pane) : undefined
+    if ((now && fits(c, now)) || !c.agentSession) continue
+    const where = machineOf(c.pane ?? c.workspace)
+    const hits = (bySession.get(c.agentSession) ?? []).filter(p => machineOf(p.id) === where && !held.has(p.id))
+    if (hits.length === 1) found.set(c, hits[0]!)
+  }
+  for (const p of found.values()) held.add(p.id)
+  const resolve = (c: LinkedCoordinator): LinkedCoordinator => {
+    const hit = found.get(c)
+    if (hit) return { ...c, pane: hit.id, workspace: hit.workspace }
+    const now = c.pane ? byId.get(c.pane) : undefined
+    if ((now && fits(c, now)) || !c.agentSession) return c
+    const stranger = Boolean(c.workspace) && panes.some(p => p.workspace === c.workspace && p.agent && !held.has(p.id) && !fits(c, p))
+    const pane = now ? null : c.pane
+    const workspace = stranger ? null : c.workspace
+    return pane === c.pane && workspace === c.workspace ? c : { ...c, pane, workspace }
+  }
+  const out = machines.map((m) => {
+    const coordinators = m.coordinators.map(resolve)
+    return coordinators.some((c, i) => c !== m.coordinators[i]) ? { ...m, coordinators } : m
+  })
+  return out.some((m, i) => m !== machines[i]) ? out : machines
 }
 
 // ---------------------------------------------------------------- grouping
