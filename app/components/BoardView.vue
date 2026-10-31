@@ -491,7 +491,11 @@ function askCoordinator(machine: string, task: TaskRow) {
 // The task agent conversation, separate from its project coordinator.
 function chatWith(machine: string, task: TaskRow) {
   if (!desk.value) {
-    void router.push({ path: '/board', query: { machine, task: task.id, view: 'chat' } })
+    // Its panel already open (the sheet over it): switching to the chat stays the
+    // same detail entry, so one back still leaves the task.
+    const open = route.query.task === task.id && route.query.machine === machine
+    const to = { path: '/board', query: { machine, task: task.id, view: 'chat' } }
+    void (open ? router.replace(to) : router.push(to))
     return
   }
   panel.value = { machine, kind: 'task', id: task.id, chat: true }

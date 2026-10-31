@@ -102,6 +102,25 @@ for (const browser of [false, true]) {
   })
 }
 
+for (const browser of [false, true]) {
+  // The sheet's "Open the chat" switches the open task to its conversation: the same
+  // detail, so one back still leaves it rather than revisiting the task first.
+  test(`Board: a task switched to its chat returns with one ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }) => {
+    await page.goto('/#/board')
+    await page.locator('.board-seg-btn.working').click()
+    await page.locator('.task-card-open').click()
+    await expect(page.locator('.board-panel')).toBeVisible()
+    await page.locator('.board-panel-sheet').click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Open the chat' }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page).toHaveURL(/view=chat/)
+    if (browser) await page.goBack()
+    else await page.locator('.board-panel-back').click()
+    await expect(page.locator('.board-panel')).toHaveCount(0)
+    await expect(page).toHaveURL(/#\/board$/)
+  })
+}
+
 test('Home keeps its active machine and scroll position', { tag: '@webkit-phone' }, async ({ page }) => {
   await page.goto('/')
   const machine = page.locator('[data-bar-id=""]')
