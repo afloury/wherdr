@@ -45,6 +45,13 @@ describe('home counters', () => {
     expect(homeCounts(panes, l, cli(machine([readyToApprove, needsYou, exited, working, done])))).toEqual({ blocked: 3, working: 2, ready: 1 })
   })
 
+  it('a task to do or done is ready, whatever its terminal says; a lone agent keeps its own state', () => {
+    const l = [links([task(3, [{ id: 'w3:p1', role: 'worker' }], 'todo', 'todo'), task(4, [{ id: 'w4:p1', role: 'worker' }], 'done', 'done')])]
+    const panes = [pane('w3:p1', 'working'), pane('w4:p1', 'blocked'), pane('w99:p1', 'blocked', 'codex')]
+    expect(homeCounts(panes, l, null)).toEqual({ blocked: 2, working: 1, ready: 0 })
+    expect(homeCounts(panes, l, cli(machine([row(3, 'idle', 'todo'), row(4, 'done', 'done')])))).toEqual({ blocked: 1, working: 0, ready: 2 })
+  })
+
   it('a task with a reviewer (and attempts) counts once', () => {
     const l = [links([task(7, [{ id: 'w7:p1', role: 'worker' }, { id: 'w7:p2', role: 'reviewer', kind: 'codex' }, { id: 'w8:p1', role: 'attempt', letter: 'A' }])])]
     const panes = [pane('w7:p1', 'idle'), pane('w7:p2', 'working', 'codex'), pane('w8:p1', 'idle')]
