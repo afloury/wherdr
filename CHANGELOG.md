@@ -10,6 +10,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added and improved
 
+- **More room on phones.** The agent header keeps its tabs, title and state on one row. Terminal function keys default to closed and open above Send in both conversation and terminal views, with the mobile key layout; the input stays compact at rest.
+- **One-shot terminal modifiers.** Ctrl, Alt and Shift can be armed for the next key-bar or phone-keyboard key. Existing shortcuts and digit buttons remain available; pastes and composed text stay text.
+- **Optional individual-agent list.** Settings › Appearance can show standalone agents as separate rows, while workspace cards remain the default and Board task helpers stay grouped.
+- **Board tasks in global search.** Search (⌘K) also finds herdr-projects tasks by name (`WHR-12`), title or description, shows their machine, project and state, and opens the chosen task on the Board.
+- **Claude on API billing.** A machine whose Claude Code runs on an API key or Console credits shows *Claude · API usage, no quota* on the home screen and **API usage (no quota)** in Settings › Agents › Claude quotas, instead of nothing or "not set up". Update the Claude status line on such machines.
+- **Release distance in update notices.** The banner shows how many newer stable releases are available and a short version list, preserving the installation-specific update action.
 - **Shepherdr 2 protection (#243).** wherdr recognizes Shepherdr 2.x and clearly explains that the Board does not support it, instead of calling it too old. It refuses to install or update herdr-projects over it and provides a manual return to the supported 1.2.21 release; no data is migrated automatically.
 
 - **Board tasks in global search (#248).** Search (⌘K) finds tasks by key, title or description, shows their machine, project and state, and opens them on the Board.
