@@ -1,4 +1,4 @@
-import { expect, test } from './test'
+import { agentKind, expect, test } from './test'
 import { OMP_CHAT_PANE as pane, fakeHerdr } from './scenario.mjs'
 
 const rule = '─'.repeat(60)
@@ -13,7 +13,7 @@ test('a queued message explains the terminal draft and offers clear or terminal'
   await page.goto(`/#/a/${pane}`)
   // The server polls Herdr: the kept state can still name this pane as omp.
   // Sending must use Claude's guarded input, after the app sees that change.
-  await expect(page.locator('.agent-top .phone-identity-kind, .agent-top .pill-kind')).toHaveText(/^claude$/i)
+  await expect(agentKind(page, 'claude')).toBeVisible()
   await page.locator('.prompt').locator('textarea, [contenteditable="true"]').first().fill('Please update the release notes.')
   await page.locator('.prompt-send').click()
   const tag = page.locator('.queued-tag').filter({ hasText: 'already contains text' })

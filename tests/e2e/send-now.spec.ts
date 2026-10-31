@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { expect, test } from './test'
+import { agentKind, expect, test } from './test'
 import { OMP_CHAT_PANE as pane, fakeHerdr } from './scenario.mjs'
 
 const queued = readFileSync(new URL('../fixtures/claude-queued-turn.txt', import.meta.url), 'utf8')
@@ -16,7 +16,7 @@ test.afterEach(async () => {
 test('conversation sends the native queue now on phone and desktop, in EN and FR', async ({ page }) => {
   await setup()
   await page.goto(`/#/a/${pane}`)
-  await expect(page.locator('.agent-top .phone-identity-kind, .agent-top .pill-kind')).toHaveText(/^claude$/i)
+  await expect(agentKind(page, 'claude')).toBeVisible()
   // Add a wherdr message so the pending-list region is present even with a fake transcript.
   await page.locator('.prompt').locator('textarea, [contenteditable="true"]').first().fill('Also update the changelog.')
   await page.locator('.prompt-send').click()
@@ -40,7 +40,7 @@ test('conversation sends the native queue now on phone and desktop, in EN and FR
   await french.click()
   await expect(french).toHaveCount(0)
   await setup(queued, 'codex')
-  await expect(page.locator('.agent-top .phone-identity-kind, .agent-top .pill-kind')).toHaveText(/^codex$/i)
+  await expect(agentKind(page, 'codex')).toBeVisible()
   await expect(french).toHaveCount(0)
 })
 
