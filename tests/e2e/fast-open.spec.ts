@@ -8,6 +8,25 @@ import { CLAUDE_PANE, CLAUDE_SUGGEST_PANE, OMP_CHAT_PANE, SOCK_FILE } from './sc
 // 300 ms when nothing is kept, and a long conversation from its bottom first.
 const shot = (page: Page, name: string, project: string) => page.screenshot({ path: `.shots/fast-open-${name}-${project}.png` })
 const later = (ms: number) => (route: Route) => setTimeout(() => route.continue().catch(() => {}), ms)
+// What this device keeps (app/utils/offlineCache.ts): the keys of one store.
+const keptKeys = (page: Page, store: 'kv' | 'chats') => page.evaluate(async (store) => {
+  if (!(await indexedDB.databases()).some(d => d.name === 'wherdr-offline')) return []
+  return new Promise<string[]>((resolve, reject) => {
+    const r = indexedDB.open('wherdr-offline')
+    r.onerror = () => reject(r.error)
+    r.onsuccess = () => {
+      if (!r.result.objectStoreNames.contains(store)) { r.result.close(); return resolve([]) }
+      const keys = r.result.transaction(store).objectStore(store).getAllKeys()
+      keys.onsuccess = () => { resolve(keys.result.map(String)); r.result.close() }
+    }
+  })
+}, store)
+// Written within WRITE_MS (2 s): the fake clock (page.clock.install, before the
+// page opens) moves past it, then the record is waited for, not a fixed time.
+async function kept(page: Page, store: 'kv' | 'chats', key: string) {
+  await page.clock.fastForward(2500)
+  await expect.poll(() => keptKeys(page, store)).toContain(key)
+}
 
 // ------------------------------------------------------------ the Board
 const row = (id: string, group: string) => ({
@@ -19,6 +38,7 @@ const tasksAfter = (ms: number) => (route: Route) => setTimeout(() => route.fulf
 
 test('the Board: its shapes while nothing is kept, then the last board at once with when it was read', async ({ page }, testInfo) => {
   await page.route('**/api/tasks*', tasksAfter(1500))
+  await page.clock.install()
   await page.goto('/#/board')
   // Nothing kept: the column heads and empty cards, no "Loading…".
   const skel = page.locator('.board-skel')
@@ -30,7 +50,7 @@ test('the Board: its shapes while nothing is kept, then the last board at once w
   await expect(page.locator('.task-card', { hasText: 'Task demo/1' })).toHaveCount(1)
   await expect(skel).toHaveCount(0)
   // Kept on this device: shown at once after a reload, "Read at" until the read answers.
-  await page.waitForTimeout(2500)
+  await kept(page, 'kv', 'board')
   await page.unroute('**/api/tasks*')
   await page.route('**/api/tasks*', tasksAfter(2500))
   await page.reload()
@@ -126,6 +146,7 @@ test('a conversation: its shapes while nothing is kept, then the end kept at onc
     if (new URL(route.request().url()).searchParams.get('pane') === CLAUDE_SUGGEST_PANE) return later(1500)(route)
     return route.continue()
   })
+  await page.clock.install()
   await open(page)
   const skel = page.locator('.chat-skel')
   await expect(skel).toBeVisible()
@@ -136,7 +157,7 @@ test('a conversation: its shapes while nothing is kept, then the end kept at onc
   await expect(skel).toHaveCount(0)
   // Kept on this device (written within a few seconds): at once after a reload,
   // "Read at" while the network is slow, gone once it answers.
-  await page.waitForTimeout(3000)
+  await kept(page, 'chats', CLAUDE_SUGGEST_PANE)
   await page.unroute('**/api/chat?*')
   // Hold the re-read until the cache is observed. A fixed delay also times
   // app startup, which can take longer than the delay on a busy CI runner.
@@ -157,9 +178,10 @@ test('a conversation: its shapes while nothing is kept, then the end kept at onc
 })
 
 test('a fresh empty conversation wins over an older cache that arrives later', async ({ page }) => {
+  await page.clock.install()
   await open(page)
   await expect(page.locator('.chat-list')).toContainText('All steps done.')
-  await page.waitForTimeout(3000)
+  await kept(page, 'chats', CLAUDE_SUGGEST_PANE)
   await page.addInitScript(() => {
     const get = IDBObjectStore.prototype.get
     IDBObjectStore.prototype.get = function (key) {
@@ -188,7 +210,8 @@ test('a fresh empty conversation wins over an older cache that arrives later', a
   })
   await page.reload()
   await expect.poll(() => answered).toBe(true)
-  await page.waitForTimeout(1800)
+  // Past the cached record's late delivery (1.2 s, a page timer: on the fake clock).
+  await page.clock.fastForward(1800)
   await expect(page.locator('.chat-list')).not.toContainText('All steps done.')
   await expect(page.locator('.chat-cached')).toHaveCount(0)
 })
@@ -199,14 +222,15 @@ test('two tabs keep one index of the conversations kept', async ({ page, context
   const keep = (p: Page, pane: string, text: RegExp) => p.goto(`/#/a/${pane}`)
     .then(() => expect(p.locator('.chat-list .msg-user-wrap, .chat-list .msg-who').first()).toBeVisible({ timeout: 15000 }))
     .then(() => expect(p.locator('.chat-list')).toContainText(text))
-    // Written within WRITE_MS.
-    .then(() => p.waitForTimeout(2600))
+    .then(() => kept(p, 'chats', pane))
+  // One fake clock for the whole context: both tabs.
+  await page.clock.install()
   await keep(page, CLAUDE_PANE, /\S/)
   const other = await context.newPage()
   await keep(other, OMP_CHAT_PANE, /\S/)
   // The first tab writes again, after the other one did.
   await keep(page, CLAUDE_SUGGEST_PANE, /All steps done\./)
-  const kept = await page.evaluate(() => new Promise<{ index: string[], records: string[] }>((resolve, reject) => {
+  const stored = await page.evaluate(() => new Promise<{ index: string[], records: string[] }>((resolve, reject) => {
     const r = indexedDB.open('wherdr-offline')
     r.onerror = () => reject(r.error)
     r.onsuccess = () => {
@@ -219,7 +243,7 @@ test('two tabs keep one index of the conversations kept', async ({ page, context
       }
     }
   }))
-  expect(kept.records).toEqual([CLAUDE_PANE, CLAUDE_SUGGEST_PANE, OMP_CHAT_PANE].sort())
-  expect(kept.index).toEqual(kept.records)
+  expect(stored.records).toEqual([CLAUDE_PANE, CLAUDE_SUGGEST_PANE, OMP_CHAT_PANE].sort())
+  expect(stored.index).toEqual(stored.records)
   await other.close()
 })

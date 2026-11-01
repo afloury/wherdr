@@ -7,6 +7,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fakeHerdr } from './scenario.mjs'
+import { boardServes } from './waits'
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-limits-'))
 const calls = path.join(root, 'calls.log')
@@ -78,10 +79,11 @@ test.describe('English interface', () => {
     write('details.json', { task: { ...stopped, description: 'Make the search page easier to scan.' }, limits: limits({ stopped: { what: 'time', limit: '2h', used: 7_200_000, role: 'worker', line: stopped.msg } }) })
     write('after-set.json', [working])
     write('after-set-details.json', { task: { ...working, description: 'Make the search page easier to scan.' }, limits: limits({ time: { limit: '3h', used: '0s', usedMs: 0 } }) })
+    // The previous test's list (the same task, working) is reused for a few seconds.
+    await boardServes(page, rows => rows.some(r => r.stage === 'stopped'))
     await page.goto('/#/board?machine=&task=demo%2F9')
     const banner = page.locator('.task-needs')
-    // The previous test's list is reused for a few seconds (REUSE_MS).
-    await expect(banner).toContainText('stopped at its 2h limit', { timeout: 20_000 })
+    await expect(banner).toContainText('stopped at its 2h limit')
     await shot(page, `stopped-${lang}`)
     // The hint names the limit Continue grants once more.
     await expect(banner.locator('.task-finish-why')).toContainText('new allowance (2 h a run)')
@@ -93,7 +95,7 @@ test.describe('English interface', () => {
     // Only set: herdr-projects carries on by itself, so no retry follows.
     await expect.poll(callLog).toContain('set limit.time 3h --task demo/9')
     expect(callLog().some(c => c.startsWith('retry'))).toBe(false)
-    await expect(banner).toHaveCount(0, { timeout: 15_000 })
+    await expect(banner).toHaveCount(0)
     expect(callLog().some(c => c.startsWith('retry'))).toBe(false)
   })
 })
@@ -102,8 +104,9 @@ test('a refused raise shows herdr-projects’ words as they are', async ({ page 
   write('list.json', [{ ...stopped, msg: 'stopped at 30m tokens' }])
   write('details.json', { task: { ...stopped, msg: 'stopped at 30m tokens' }, limits: limits({ time: { limit: 'none' }, tokens: { limit: '30m', used: 31_000_000, total: 31_000_000 }, stopped: { what: 'tokens', limit: '30m', used: 31_000_000, role: 'worker' } }) })
   fs.writeFileSync(path.join(root, 'refuse'), 'demo/9 is busy. Try again in a moment.\n')
+  await boardServes(page, rows => rows.some(r => r.msg === 'stopped at 30m tokens'))
   await page.goto('/#/board?machine=&task=demo%2F9')
-  await page.locator('.task-needs').getByRole('button', { name: 'Raise limit', exact: true }).click({ timeout: 20_000 })
+  await page.locator('.task-needs').getByRole('button', { name: 'Raise limit', exact: true }).click()
   const presets = page.locator('.raise-limit-presets button')
   // ×2 is 60 M, above the 31 M used; +10 M is 40 M.
   await expect(presets).toHaveText(['×260 M', '+10 M40 M', 'No limit'])
