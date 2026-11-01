@@ -7,7 +7,6 @@ import { CLAUDE_PANE, CLAUDE_SUGGEST_PANE, OMP_CHAT_PANE, SOCK_FILE } from './sc
 // (with "Read at" while the network catches up), the shapes of what loads after
 // 300 ms when nothing is kept, and a long conversation from its bottom first.
 const shot = (page: Page, name: string, project: string) => page.screenshot({ path: `.shots/fast-open-${name}-${project}.png` })
-const later = (ms: number) => (route: Route) => setTimeout(() => route.continue().catch(() => {}), ms)
 // What this device keeps (app/utils/offlineCache.ts): the keys of one store.
 const keptKeys = (page: Page, store: 'kv' | 'chats') => page.evaluate(async (store) => {
   if (!(await indexedDB.databases()).some(d => d.name === 'wherdr-offline')) return []
@@ -35,9 +34,16 @@ const row = (id: string, group: string) => ({
 })
 const board = { version: 'v-fast', machines: [{ machine: '', status: 'ready', version: '1.2.1', at: Date.now(), tasks: [row('demo/1', 'working'), row('demo/2', 'todo')] }] }
 const tasksAfter = (ms: number) => (route: Route) => setTimeout(() => route.fulfill({ json: board }).catch(() => {}), ms)
+// A read held until the test has looked at what shows meanwhile (not a fixed delay).
+function held(answer: (route: Route) => Promise<unknown>) {
+  let release!: () => void
+  const open = new Promise<void>((resolve) => { release = resolve })
+  return { release, route: async (route: Route) => { await open; await answer(route).catch(() => {}) } }
+}
 
 test('the Board: its shapes while nothing is kept, then the last board at once with when it was read', async ({ page }, testInfo) => {
-  await page.route('**/api/tasks*', tasksAfter(1500))
+  const first = held(route => route.fulfill({ json: board }))
+  await page.route('**/api/tasks*', first.route)
   await page.clock.install()
   await page.goto('/#/board')
   // Nothing kept: the column heads and empty cards, no "Loading…".
@@ -46,19 +52,22 @@ test('the Board: its shapes while nothing is kept, then the last board at once w
   await expect(skel.locator('.skel-card').first()).toBeVisible()
   await expect(page.getByText('Loading…')).toHaveCount(0)
   await shot(page, 'board-skeleton', testInfo.project.name)
+  first.release()
   // (On a phone, one column at a time: the cards are there, not all in view.)
   await expect(page.locator('.task-card', { hasText: 'Task demo/1' })).toHaveCount(1)
   await expect(skel).toHaveCount(0)
   // Kept on this device: shown at once after a reload, "Read at" until the read answers.
   await kept(page, 'kv', 'board')
   await page.unroute('**/api/tasks*')
-  await page.route('**/api/tasks*', tasksAfter(2500))
+  const second = held(route => route.fulfill({ json: board }))
+  await page.route('**/api/tasks*', second.route)
   await page.reload()
   await expect(page.locator('.board-cached-tag')).toContainText(/Read at \d/)
   await expect(page.locator('.task-card')).toHaveCount(2)
   await expect(page.locator('.board-skel')).toHaveCount(0)
   await shot(page, 'board-cached', testInfo.project.name)
-  await expect(page.locator('.board-cached-tag')).toHaveCount(0, { timeout: 6000 })
+  second.release()
+  await expect(page.locator('.board-cached-tag')).toHaveCount(0)
 })
 
 test('a short Board read shows no skeleton at all', async ({ page }) => {
@@ -142,8 +151,9 @@ test('a long conversation shows its end first, then the rest above without movin
 })
 
 test('a conversation: its shapes while nothing is kept, then the end kept at once with when it was read', async ({ page }, testInfo) => {
+  const chat = held(route => route.continue())
   await page.route('**/api/chat?*', (route) => {
-    if (new URL(route.request().url()).searchParams.get('pane') === CLAUDE_SUGGEST_PANE) return later(1500)(route)
+    if (new URL(route.request().url()).searchParams.get('pane') === CLAUDE_SUGGEST_PANE) return chat.route(route)
     return route.continue()
   })
   await page.clock.install()
@@ -153,6 +163,7 @@ test('a conversation: its shapes while nothing is kept, then the end kept at onc
   // The field is real and usable meanwhile.
   await expect(page.locator('.prompt textarea').first()).toBeEditable()
   await shot(page, 'chat-skeleton', testInfo.project.name)
+  chat.release()
   await expect(page.locator('.chat-list')).toContainText('All steps done.', { timeout: 15000 })
   await expect(skel).toHaveCount(0)
   // Kept on this device (written within a few seconds): at once after a reload,
