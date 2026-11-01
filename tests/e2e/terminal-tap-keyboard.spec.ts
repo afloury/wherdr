@@ -30,7 +30,13 @@ for (const smooth of [false, true]) {
     await page.locator('#touch').tap()
     await expect(input).not.toBeFocused()
     // Also when it was typing: a tap closes the keyboard rather than keeping it.
-    await page.getByRole('button', { name: 'Type in terminal' }).tap()
+    await page.evaluate(() => {
+      document.addEventListener('touchend', () => {
+        document.documentElement.dataset.focusAtTouchend = String(document.activeElement?.classList.contains('xterm-helper-textarea'))
+      }, { once: true })
+    })
+    await page.getByRole('button', { name: 'Show or hide the phone keyboard' }).tap()
+    await expect(page.locator('html')).toHaveAttribute('data-focus-at-touchend', 'true')
     await expect(input).toBeFocused()
     await page.locator('#touch').tap()
     await expect(input).not.toBeFocused()

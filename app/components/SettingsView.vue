@@ -512,6 +512,7 @@ onMounted(() => {
           <div class="settings-group">
             <h3>{{ tl('This device’s notifications', 'Notifications de cet appareil') }}</h3>
             <PushCard detailed />
+            <PushDevices v-if="activeSection === 'notifications'" />
           </div>
         </div>
 

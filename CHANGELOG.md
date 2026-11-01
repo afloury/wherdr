@@ -6,9 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added and improved
+
+- **Per-device push delivery results.** Settings › Notifications lists every registered device with the result of its last push (delivered, expired, rejected, unreachable) and removes expired ones on request, instead of dropping them silently.
+
 ### Fixed
 
 - **No keyboard on a terminal tap on iOS.** On iPhone and iPad a tap on the terminal no longer opens the on-screen keyboard; the message field and the key bar's keyboard button still do. That button acts on the touch itself, so it opens the keyboard even when Safari drops the click. Android and computers keep tap or click to type.
+- **Images from your other tailnet machines in replies.** A Markdown image an agent links to on another machine or port of your tailnet (`https://<machine>.<tailnet>.ts.net:<port>/…`) now shows in the conversation; wherdr's security policy allows HTTPS images from the tailnet it is reached on, and nothing else. An image that is refused or cannot be loaded shows a note saying why, with a link to open it, instead of a broken icon.
 - **No image markers in Codex messages (#265).** A photo sent to Codex shows as its thumbnail only, without a bubble reading `</image>` or `[Image #1]`. Only the placeholders Codex declares as its own are removed: the text sent with photos stays whole, including a `[Image #1]` typed as text.
 - **No false Codex “Restart to update”.** The notice no longer appears when Codex already runs the installed version: the version written at the top of its conversation file (by the shared background server, or by the version that started a resumed conversation) is no longer taken as the version the session runs. The notice relies on what Codex itself shows on screen, remembered only for the same Codex process.
 - **omp errors in the conversation.** Provider errors that ended an omp turn (API usage limit, credit balance too low, stalled stream, exhausted retries) were missing from the chat although omp's terminal showed them. They now appear in place as an Error note, live and when the history loads; retried attempts follow omp (hidden once superseded, one line once recovered).
@@ -17,6 +22,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added and improved
 
+- **More room on phones.** The agent header keeps its tabs, title and state on one row. Tapping the agent identity opens the single place to switch, rename, split, move and close panes and tabs; Options keeps the agent's own actions, without duplicates. Closing is explicit: *Close this conversation* (or *terminal*) closes only the pane shown, *Close entire space…* is separate, a tab closes from its overview, and each confirmation names what stops and what stays open, asking again if the close grew meanwhile. Terminal function keys default to closed and open above Send in both conversation and terminal views, with the mobile key layout; the input stays compact at rest.
+- **One-shot terminal modifiers.** Ctrl, Alt and Shift can be armed for the next key-bar or phone-keyboard key. Existing shortcuts and digit buttons remain available; pastes and composed text stay text.
+- **Optional individual-agent list.** Settings › Appearance can show standalone agents as separate rows, while workspace cards remain the default and Board task helpers stay grouped.
+- **Board tasks in global search.** Search (⌘K) also finds herdr-projects tasks by name (`WHR-12`), title or description, shows their machine, project and state, and opens the chosen task on the Board.
+- **Claude on API billing.** A machine whose Claude Code runs on an API key or Console credits shows *Claude · API usage, no quota* on the home screen and **API usage (no quota)** in Settings › Agents › Claude quotas, instead of nothing or "not set up". Update the Claude status line on such machines.
+- **Release distance in update notices.** The banner shows how many newer stable releases are available and a short version list, preserving the installation-specific update action.
 - **Shepherdr 2 protection (#243).** wherdr recognizes Shepherdr 2.x and clearly explains that the Board does not support it, instead of calling it too old. It refuses to install or update herdr-projects over it and provides a manual return to the supported 1.2.21 release; no data is migrated automatically.
 
 - **Board tasks in global search (#248).** Search (⌘K) finds tasks by key, title or description, shows their machine, project and state, and opens them on the Board.

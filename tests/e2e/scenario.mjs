@@ -38,6 +38,17 @@ export const CLAUDE_PANE = 'w1:p1'
 export const OMP_LONG_PANE = 'w2:p1'
 export const OMP_CHAT_PANE = 'w3:p1'
 export const OMP_IMAGE_PANE = 'w4:p1'
+// Markdown images an agent reply links to, on other machines and ports of the
+// tailnet, outside it, unreachable, and on wherdr itself (markdown-images.spec.ts).
+export const MD_IMAGES = {
+  otherPort: 'https://box.example.ts.net:8807/screenshots/login.png',
+  otherMachine: 'https://desk.example.ts.net/captures/dashboard.png',
+  outside: 'https://images.example.com/banner.png',
+  otherTailnet: 'https://box.other-tailnet.ts.net/shot.png',
+  plainHttp: 'http://box.example.ts.net:8808/plain.png',
+  missing: 'https://box.example.ts.net:8807/screenshots/missing.png',
+  local: '/icons/icon-192.png?v=5',
+}
 // A file named in the image pane's last reply, in its folder (CRLF kept as is).
 export const REVIEW_CSV = 'notes/login-review.csv'
 export const REVIEW_CSV_TEXT = 'screen,issue\r\nlogin,clipped button\r\n'
@@ -98,7 +109,7 @@ export const LONG_END = 'End of the long build report.'
 const iso = ts => new Date(ts).toISOString()
 
 // A 240×150 gradient PNG: the image an omp `read` returns in the image scenario.
-function gradientPng(w = 240, h = 150) {
+export function gradientPng(w = 240, h = 150) {
   const crcTable = Array.from({ length: 256 }, (_, n) => {
     let c = n
     for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1
@@ -318,6 +329,27 @@ export function writeScenario(home) {
     ]),
     msg({ role: 'assistant', content: [{ type: 'text', text: `The login button is clipped.\n\nThe review is in \`${REVIEW_CSV}\`.` }], stopReason: 'stop' }),
   ])
+  // The same conversation, its reply showing Markdown images (MD_IMAGES):
+  // the pane switches to it with e2e.update_session (e2e.pane_field
+  // markdownImages gives its path).
+  const dot = gradientPng(8, 8).toString('base64')
+  const markdownImagesFile = ompTranscript(home, screens, 'e2e-markdown-images', now, msg => [
+    msg({ role: 'user', content: [{ type: 'text', text: 'Show me the captures.' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'toolCall', id: 'call-read', name: 'read', arguments: { i: 'Reading the screenshot', path: `${screens}/login.png` } }], stopReason: 'toolUse' }),
+    msg({ role: 'toolResult', toolCallId: 'call-read', toolName: 'read', content: [{ type: 'text', text: '' }, { type: 'image', mimeType: 'image/png', data: `blob:sha256:${hash}` }] }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: [
+      'Here are the captures.',
+      `![Login on another port](${MD_IMAGES.otherPort})`,
+      `![Dashboard on another machine](${MD_IMAGES.otherMachine})`,
+      `![Outside banner](${MD_IMAGES.outside})`,
+      `![Other tailnet](${MD_IMAGES.otherTailnet})`,
+      `![Plain HTTP](${MD_IMAGES.plainHttp})`,
+      `![Missing capture](${MD_IMAGES.missing})`,
+      `![App icon](${MD_IMAGES.local})`,
+      `![Inline dot](data:image/png;base64,${dot})`,
+      'End of the captures.',
+    ].join('\n\n') }], stopReason: 'stop' }),
+  ])
   // The file that reply names, previewed and downloaded from the conversation.
   write(path.join(screens, REVIEW_CSV), REVIEW_CSV_TEXT)
   write(path.join(screens, SAMPLE_PDF), samplePdf(SAMPLE_PDF_PAGES))
@@ -427,7 +459,7 @@ export function writeScenario(home) {
     { id: 'w1', label: 'acme-api', panes: [{ id: CLAUDE_PANE, agent: 'claude', status: 'idle', cwd: api, session: claudeSid }] },
     { id: 'w2', label: 'docs-site', panes: [{ id: OMP_LONG_PANE, agent: 'omp', status: 'idle', cwd: docs, session: longFile }] },
     { id: 'w3', label: 'demo', panes: [{ id: OMP_CHAT_PANE, agent: 'omp', status: 'idle', cwd: demo, session: chatFile, transcript: chatFile, reply: 'Got it.' }] },
-    { id: 'w4', label: 'screens', panes: [{ id: OMP_IMAGE_PANE, agent: 'omp', status: 'idle', cwd: screens, session: imageFile }] },
+    { id: 'w4', label: 'screens', panes: [{ id: OMP_IMAGE_PANE, agent: 'omp', status: 'idle', cwd: screens, session: imageFile, markdownImages: markdownImagesFile }] },
     { id: 'w5', label: 'approval', panes: [{ id: OMP_APPROVAL_PANE, agent: 'omp', status: 'blocked', cwd: approval, session: approvalFile }] },
     // A fresh omp (no transcript yet) that runs "!" commands.
     { id: 'w6', label: 'scratch', panes: [{ id: OMP_SHELL_PANE, agent: 'omp', status: 'idle', cwd: scratch, shell: true }] },
