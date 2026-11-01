@@ -16,6 +16,7 @@ import { paneTitle } from '../../shared/paneTitle'
 import { foregroundCommand, reduceSnapshot } from './snapshot'
 import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, agentPrompt, herdr, herdrOn, sleep } from './herdr'
+import { paneForeground } from './restartSeq'
 import { CHOICE_MS, keepReading, ScreenCache } from './screenCache'
 import { mapScreenPanes, screenRpcGate } from './screenGate'
 import { type AskChecks, completeClaudeAsk, completeOmpAsk, ompActiveTab, parseChoices, parseOmpPrompt } from './choices'
@@ -345,6 +346,7 @@ export const codexStatus = createCodexStatus({
   },
   readScreen: id => readPassiveScreen(herdr, id),
   rolloutOf: async p => (await transcripts.locate(p))?.file || null,
+  agentPid: async id => Number((await paneForeground({ call: herdr, sleep, now: Date.now }, id, 'codex')).agent?.pid) || null,
   runLocal,
   writable: dirWritable,
   onChange: () => poll(),

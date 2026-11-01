@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **No false Codex “Restart to update”.** The notice no longer appears when Codex already runs the installed version: the version written at the top of its conversation file (by the shared background server, or by the version that started a resumed conversation) is no longer taken as the version the session runs. The notice relies on what Codex itself shows on screen, remembered only for the same Codex process.
+- **omp errors in the conversation.** Provider errors that ended an omp turn (API usage limit, credit balance too low, stalled stream, exhausted retries) were missing from the chat although omp's terminal showed them. They now appear in place as an Error note, live and when the history loads; retried attempts follow omp (hidden once superseded, one line once recovered).
+
 ## [2.4.0] — 2026-10-31
 
 ### Added and improved

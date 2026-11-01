@@ -73,7 +73,7 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       })),
       panes: panes.map(p => ({
         pane_id: p.id, workspace_id: p.workspace, tab_id: `${p.workspace}:t1`,
-        agent: p.agent, agent_status: p.status, cwd: p.cwd, foreground_cwd: p.cwd, focused: false,
+        tokens: p.tokens || {}, agent: p.agent, agent_status: p.status, cwd: p.cwd, foreground_cwd: p.cwd, focused: false,
         terminal_title: p.agent || 'shell',
         terminal_id: `term_${p.id.replace(/\W/g, '')}`,
         scroll: { viewport_rows: p.size.rows, offset_from_bottom: 0, max_offset_from_bottom: 0 },
@@ -164,6 +164,11 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       // eslint-disable-next-line no-control-regex
       const text = params.format === 'ansi' ? raw : raw.replace(/\x1b\[[0-9;]*m|\r/g, '')
       return { read: { pane_id: params.pane_id, source: params.source || 'visible', text } }
+    },
+    'pane.report_metadata': params => {
+      const p = paneById(params.pane_id)
+      if (p) p.tokens = { ...p.tokens, ...params.tokens }
+      return {}
     },
     'pane.process_info': (params) => {
       const p = paneById(params.pane_id)

@@ -669,7 +669,8 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
           items.push(t)
         }
       }
-      if (m.stopReason === 'aborted' && /interrupt/i.test(String(m.errorMessage || ''))) items.push({ role: 'system', text: 'Interrupted', ts })
+      const end = ompTurnEnd(m)
+      if (end) items.push({ ...end, ts })
     } else if (m.role === 'bashExecution' || m.role === 'pythonExecution') {
       // "!cmd" / "$ code" typed in omp's input field: a user action, like
       // Claude's bash mode, drawn the way omp draws it.
@@ -690,6 +691,31 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
     }
   }
   return items
+}
+
+// How an omp assistant turn ended, when it failed: what omp's terminal shows
+// under it when it replays the session. A provider error (usage limit,
+// credit balance, stalled stream, "Retry budget exhausted…") is a turn with
+// `stopReason: "error"`, its `errorMessage` and often no content at all.
+// When omp retries, it later marks the failed attempt (`retryRecovery`, by
+// rewriting the file): "superseded" attempts are hidden, a "recovered" one
+// becomes a one-line note. Error ids carry omp's flags (pi-ai error/flags.ts).
+const OMP_SILENT_ABORT = 0x0200_0000
+const OMP_USER_INTERRUPT = 0x0400_0000
+const OMP_ABORT = 0x0800_0000
+function ompTurnEnd(m: Json): Pick<ChatItem, 'role' | 'text' | 'name' | 'error'> | null {
+  const status = m.retryRecovery && typeof m.retryRecovery === 'object' ? m.retryRecovery.status : null
+  if (status === 'superseded') return null
+  if (status === 'recovered') return { role: 'system', text: 'Retried after an error' }
+  const message = typeof m.errorMessage === 'string' ? m.errorMessage.trim() : ''
+  const id = Number.isInteger(m.errorId) ? m.errorId as number : 0
+  if (id & OMP_SILENT_ABORT || message === '__omp.silent_abort__') return null
+  if (id & OMP_USER_INTERRUPT || (m.stopReason === 'aborted' && /interrupt/i.test(message))) return { role: 'system', text: 'Interrupted' }
+  let text = ''
+  if (m.stopReason === 'error') text = message || 'Error'
+  else if (m.stopReason === 'aborted') text = id & OMP_ABORT || !message || message === 'Request was aborted' ? 'Operation aborted' : message
+  else text = message
+  return text ? { role: 'notice', name: 'error', text: clip(text), error: true } : null
 }
 
 // Text of an omp file command: "/name args". omp appends the arguments
