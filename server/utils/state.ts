@@ -16,6 +16,7 @@ import { paneTitle } from '../../shared/paneTitle'
 import { foregroundCommand, reduceSnapshot } from './snapshot'
 import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, agentPrompt, herdr, herdrOn, sleep } from './herdr'
+import { paneForeground } from './restartSeq'
 import { CHOICE_MS, keepReading, ScreenCache } from './screenCache'
 import { mapScreenPanes, screenRpcGate } from './screenGate'
 import { type AskChecks, completeClaudeAsk, completeOmpAsk, ompActiveTab, parseChoices, parseOmpPrompt } from './choices'
@@ -46,6 +47,7 @@ import { createCodexStatus, dirWritable } from './codexStatus'
 import { runLocal, setCodexKnownWeek } from './quotas'
 import { readPassiveScreen } from './passiveScreen'
 import { createSelfUpdates } from './agentSelfUpdate'
+import { pollQueue } from './pollQueue'
 
 const fsp = fs.promises
 
@@ -344,6 +346,7 @@ export const codexStatus = createCodexStatus({
   },
   readScreen: id => readPassiveScreen(herdr, id),
   rolloutOf: async p => (await transcripts.locate(p))?.file || null,
+  agentPid: async id => Number((await paneForeground({ call: herdr, sleep, now: Date.now }, id, 'codex')).agent?.pid) || null,
   runLocal,
   writable: dirWritable,
   onChange: () => poll(),
@@ -1349,17 +1352,13 @@ async function pollMachine(m: Machine) {
 
 // One poll at a time per machine; a request during a poll triggers
 // another one right after.
-const inflight = new Map<string, Promise<void>>()
-const again = new Set<string>()
-function pollOne(m: Machine): Promise<void> {
-  const cur = inflight.get(m.key)
-  if (cur) { again.add(m.key); return cur }
-  const run = pollMachine(m).catch(() => {}).finally(() => {
-    inflight.delete(m.key)
-    if (again.delete(m.key)) pollOne(m)
-  })
-  inflight.set(m.key, run)
-  return run
+const polls = pollQueue(pollMachine)
+const pollOne = polls.pollOne
+
+// Fresh poll of one machine (pane just created): see pollQueue.
+export async function pollFresh(m: Machine) {
+  await polls.pollFresh(m)
+  rebuild()
 }
 
 // Offline machines: no polling (their connection recovers on its own),
@@ -1390,7 +1389,7 @@ export function startPolling() {
   // polled at its own pace (pollOne does not restart a poll already in progress).
   const loop = () => {
     const ms = allMachines()
-    for (const m of ms) if (m.key !== LOCAL && m.status === 'online' && !inflight.has(m.key)) pollOne(m)
+    for (const m of ms) if (m.key !== LOCAL && m.status === 'online' && !polls.busy(m.key)) pollOne(m)
     pollOne(localMachineOf(ms)).finally(() => {
       if (!stopped) pollTimer = setTimeout(loop, POLL_MS)
     })
