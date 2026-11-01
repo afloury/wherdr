@@ -18,6 +18,21 @@ export function setServedHosts(urls: string[]) {
   servedHosts = urls.flatMap((url) => { try { return [new URL(url).hostname.toLowerCase()] } catch { return [] } })
 }
 
+// This machine's own tailnet name (machine.tailnet.ts.net), as Tailscale last
+// reported it (server/utils/phone.ts, onTailnetName). Kept when Tailscale stops
+// answering: it only widens which images a reply may show (server/utils/csp.ts).
+let tailnetSelf = ''
+export function setTailnetSelf(name: string | null | undefined) {
+  if (name) tailnetSelf = name.toLowerCase().replace(/\.$/, '')
+}
+
+// Names wherdr is reached on that may belong to a tailnet: the allowed hosts
+// (APP_URL, HERDR_WEB_ALLOWED_HOSTS, what `tailscale serve` publishes) and this
+// machine's tailnet name. Never read from a request.
+export function tailnetDomainHosts(names = allowedHosts(), self = tailnetSelf): string[] {
+  return self ? [...names, self] : [...names]
+}
+
 export function allowedHosts(appUrl = process.env.APP_URL || '', extra = process.env.HERDR_WEB_ALLOWED_HOSTS || '', interfaces = os.networkInterfaces(), served = servedHosts): Set<string> {
   const names = new Set(['localhost', '127.0.0.1', '::1', os.hostname().toLowerCase(), ...served])
   try { if (appUrl) names.add(new URL(appUrl).hostname.toLowerCase().replace(/^\[|\]$/g, '')) } catch { /* avertissement APP_URL ailleurs */ }

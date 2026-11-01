@@ -3276,6 +3276,13 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 
 /* Images in replies: clickable (large preview). */
 .md-body img { max-width: 100%; height: auto; cursor: zoom-in; border: 1px solid var(--line); }
+/* An image that cannot show (refused, unreachable): a note with its link (utils/imageFallback.ts). */
+.md-body img.md-img-broken { display: none; }
+.md-img-fallback { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 100%; margin: 4px 0; padding: 10px 12px; border: 1px solid var(--line); background: var(--bg-2); color: var(--text-3); font-size: .9em; line-height: 1.4; cursor: auto; }
+.md-img-fallback-tag { font: 600 10px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.md-img-fallback-alt { color: var(--text); }
+.md-body .md-img-fallback a { display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; }
+.md-img-fallback-url { font: 12px/1.4 var(--mono); color: var(--dim); overflow-wrap: anywhere; }
 
 /* Tabs of a space (at the top of its view): state dot for a tab with a
    single pane, mini-map otherwise. */
