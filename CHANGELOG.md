@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format follows
 ### Added and improved
 
 - **Per-device push delivery results.** Settings › Notifications lists every registered device with the result of its last push (delivered, expired, rejected, unreachable) and removes expired ones on request, instead of dropping them silently.
+- **English-only interface.** The interface is now always in English, including on a browser set to French or after choosing French earlier; Settings › Appearance no longer has a Language choice. Messages you and the agents write are unchanged, in any language.
 
 ### Fixed
 
