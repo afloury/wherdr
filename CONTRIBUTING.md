@@ -62,6 +62,12 @@ test) and they set the CI time, so each check goes to the fastest level that can
 When you remove an e2e test because a faster one covers it, name that test in a comment
 (for example `tests/e2e/codex-self-update.spec.ts`).
 
+An e2e test never sits through an app timer (a poll, a toast, a debounced write): it moves
+Playwright's fake clock past it (`page.clock.install()` before the page opens, then
+`page.clock.fastForward`), or waits for the state itself. `tests/e2e/waits.ts` has the
+common cases: `boardServes` (the server's list of this test, not the previous one's) and
+`skipToast`.
+
 `npx vitest run` runs the unit and component projects together. For the end-to-end tests,
 install the browsers once with `npx playwright install --with-deps chromium webkit`; a single
 project and spec run with `npm run test:e2e -- tests/e2e/<name>.spec.ts --project=webkit-phone`
