@@ -203,7 +203,17 @@ test('phone pane sheet and Options split pane management from agent actions, wit
     const identity = page.locator('.phone-identity')
     await expect(identity.locator('.phone-identity-chevron')).toBeVisible()
     await expect(identity.locator('.phone-identity-position')).toHaveCount(split ? 1 : 0)
+    // The chevron has the same button box and icon size as the terminal button next to it.
+    const box = async (sel: string) => (await page.locator(sel).boundingBox())!
+    const [toggle, term, chevron, termIcon] = await Promise.all([
+      box('.phone-identity-toggle'), box('.agent-actions .mode-btn'), box('.phone-identity-chevron'), box('.agent-actions .mode-btn .iconify'),
+    ])
+    expect([toggle.width, toggle.height]).toEqual([term.width, term.height])
+    expect(toggle.height).toBeGreaterThanOrEqual(44)
+    expect(toggle.y).toBe(term.y)
+    expect([chevron.width, chevron.height]).toEqual([termIcon.width, termIcon.height])
     await identity.click()
+    await expect(identity.locator('.phone-identity-toggle')).toHaveClass(/\bon\b/)
     await expect(page.locator('.hw-sheet .menu-group').filter({ hasText: 'Current pane' })).toBeVisible()
     const sheet = (await sheetItems(page)).map(x => x.trim())
     await page.screenshot({ path: `.shots/${info.project.name}-pane-sheet-${split ? 'split' : 'single'}.png`, fullPage: true })

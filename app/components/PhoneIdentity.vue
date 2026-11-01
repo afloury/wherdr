@@ -64,7 +64,8 @@ function tabStatus(e: typeof tabs.value[number]) {
     </span>
     <UIcon v-if="paneNotificationsMuted(pane)" name="i-lucide-bell-off" mode="svg" class="phone-identity-muted" aria-hidden="true" />
     <span v-if="panes.length > 1" class="phone-identity-position" aria-hidden="true">{{ position }}</span>
-    <UIcon name="i-lucide-chevron-down" mode="svg" class="phone-identity-chevron" aria-hidden="true" />
+    <!-- Drawn like the header's .icon-btn (terminal button): the whole identity stays the one tap target. -->
+    <span class="phone-identity-toggle icon-btn" :class="{ on: open }" aria-hidden="true"><UIcon name="i-lucide-chevron-down" mode="svg" class="phone-identity-chevron" /></span>
   </button>
   <AppSheet v-model:open="open" :title="tl('Panes and tabs', 'Panneaux et onglets')" hide-close>
     <div class="phone-identity-details">
@@ -98,7 +99,7 @@ function tabStatus(e: typeof tabs.value[number]) {
 </template>
 
 <style scoped>
-.phone-identity { grid-area: head; display: flex; align-items: center; gap: 6px; min-width: 0; width: 100%; height: 44px; padding: 0 3px; text-align: left; color: var(--text); border-radius: 0; }
+.phone-identity { grid-area: head; display: flex; align-items: center; gap: 6px; min-width: 0; width: 100%; height: 44px; padding: 0 0 0 3px; text-align: left; color: var(--text); border-radius: 0; }
 .phone-identity:active { background: var(--bg-2); }
 .phone-identity:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .phone-identity-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -106,7 +107,12 @@ function tabStatus(e: typeof tabs.value[number]) {
 .phone-identity-meta { display: flex; align-items: center; gap: 5px; color: var(--muted); font: 500 11px/1.2 var(--mono); white-space: nowrap; }
 .phone-identity-meta .pill, .menu-sub .pill { font-size: 11px; }
 .phone-identity-position { flex: none; font: 500 .625rem/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
-.phone-identity-chevron, .phone-identity-muted { width: 12px; height: 12px; flex: none; color: var(--muted); }
+.phone-identity-muted { width: 12px; height: 12px; flex: none; color: var(--muted); }
+.phone-identity-toggle { width: 44px; height: 44px; }
+.phone-identity-chevron { width: 20px; height: 20px; }
+.phone-identity:active .phone-identity-toggle { background: var(--surface-3); }
+@media (hover: hover) { .phone-identity:hover .phone-identity-toggle { background: var(--surface-2); color: var(--text); } }
+@media (max-width: 380px) { .phone-identity-toggle { width: 36px; } }
 .phone-identity-summary { margin: 0 8px 12px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .phone-identity-details .menu-text > span { overflow-wrap: anywhere; }
 .phone-identity-current { display: flex; flex-direction: column; gap: 3px; margin: -4px 8px 12px; }
