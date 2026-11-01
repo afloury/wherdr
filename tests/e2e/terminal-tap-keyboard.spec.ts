@@ -27,8 +27,18 @@ for (const smooth of [false, true]) {
   test(`a terminal tap keeps the keyboard closed with smooth scrolling ${smooth ? 'on' : 'off'}`, { tag: '@webkit-phone' }, async ({ page }) => {
     await terminal(page, smooth)
     const input = page.locator('.xterm-helper-textarea')
+    await page.evaluate(() => {
+      document.documentElement.dataset.tapFocusedTerminal = '0'
+      document.addEventListener('focusin', event => {
+        if ((event.target as Element).classList.contains('xterm-helper-textarea'))
+          document.documentElement.dataset.tapFocusedTerminal = '1'
+      })
+    })
     await page.locator('#touch').tap()
     await expect(input).not.toBeFocused()
+    await expect(page.locator('html')).toHaveAttribute('data-tap-focused-terminal', '0')
+    await page.getByRole('button', { name: 'Show or hide terminal keys', exact: true }).click()
+    if (!smooth) await page.screenshot({ path: '.shots/terminal-keyboard-webkit-phone.png' })
     // Also when it was typing: a tap closes the keyboard rather than keeping it.
     await page.evaluate(() => {
       document.addEventListener('touchend', () => {

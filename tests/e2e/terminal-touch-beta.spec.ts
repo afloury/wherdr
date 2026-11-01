@@ -188,11 +188,19 @@ for (const enabled of [false, true]) {
     await expect(page.locator('.xterm-rows')).toContainText('External link')
     const box = (await page.locator('.xterm-screen').boundingBox())!
     const rows = await page.locator('.xterm-rows > *').count()
+    await page.evaluate(() => {
+      document.documentElement.dataset.externalLinkFocus = '0'
+      document.addEventListener('focusin', event => {
+        if ((event.target as Element).classList.contains('xterm-helper-textarea'))
+          document.documentElement.dataset.externalLinkFocus = '1'
+      })
+    })
     const opened = page.waitForEvent('popup')
     await page.touchscreen.tap(box.x + 16, box.y + box.height / rows / 2)
     const popup = await opened
     await expect(popup).toHaveURL('https://example.org/')
     await expect(page.locator('.xterm-helper-textarea')).not.toBeFocused()
+    await expect(page.locator('html')).toHaveAttribute('data-external-link-focus', '0')
     await popup.close()
   })
 }
