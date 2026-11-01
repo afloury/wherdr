@@ -490,7 +490,7 @@ const FR: Record<string, string> = {
   'Counted from the last passkey unlock, used or not, for every device. Never in the middle of use: at the next opening of the app.': 'Compté depuis le dernier déverrouillage par clé d’accès, utilisée ou non, pour tous les appareils. Jamais en pleine utilisation : à la prochaine ouverture de l’app.',
   'The passkey will be asked again the next time the app opens.': 'La clé d’accès sera redemandée à la prochaine ouverture de l’app.',
   'Parent': 'Parent',
-  'Confirm': 'Confirmer', 'Close pane': 'Fermer le pane', 'Turn off': 'Désactiver',
+  'Confirm': 'Confirmer', 'Turn off': 'Désactiver',
   'Worktrees': 'Worktrees', 'Worktree not found': 'Worktree introuvable', 'No worktrees.': 'Aucun worktree.', 'folder missing': 'dossier disparu', 'closed': 'fermé', 'Delete': 'Supprimer', 'Force delete': 'Forcer la suppression', 'Delete this worktree': 'Supprimer ce worktree', 'Deleting a worktree removes its folder; the Git branch is kept.': 'Supprimer un worktree efface son dossier ; la branche Git est gardée.',
   'Preview': 'Aperçu', 'Replay': 'Rejouer',
   'Mark as read': 'Marquer comme lu', 'Mark as unread': 'Marquer comme non lu',
@@ -558,6 +558,7 @@ const FR: Record<string, string> = {
   // Spaces (workspaces, tabs, side-by-side panes)
   'Tab': 'Onglet', 'Tabs': 'Onglets', 'Pane': 'Panneau',
   'Current pane': 'Panneau actuel', 'Current tab': 'Onglet actuel',
+  'Close this conversation': 'Fermer cette conversation', 'Close entire space…': 'Fermer tout l’espace…',
   'Reconnecting…': 'Reconnexion…', 'Offline': 'Hors ligne',
   'This tab is unavailable.': 'Cet onglet est indisponible.',
   'Active pane in Herdr': 'Pane actif dans Herdr', 'A pane is zoomed in Herdr': 'Un pane est agrandi dans Herdr',

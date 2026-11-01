@@ -43,8 +43,14 @@
   Tap it (always available, even for a lone pane) for the machine/space context and everything
   that manages panes and tabs: switching (listed only when there are several; a lone pane shows its
   full name and state instead), then the current
-  pane (rename, split, move, swap, copy ID, close) and the current tab (rename, new tab, tab
-  overview, close). Long names ellipsize; multiple panes show their position, never 1/1.
+  pane (rename, split, move, swap, copy ID, then **Close this conversation** or **Close this
+  terminal**: only that pane, from either view) and the current tab (rename, new tab, tab
+  overview). **Close entire space…** stands apart, and only when the space holds other panes: a
+  lone pane has a single close, whose confirmation says the space closes too. A tab closes from its
+  overview, which says how many panes go. Every close confirmation names what stops, how many tabs
+  and panes go and what stays open; if the structure changes while it is open and the close would
+  now take more, the updated confirmation is shown again. Long names ellipsize; multiple panes
+  show their position, never 1/1.
   Options keeps the conversation, the agent and its tools: Terminal/Conversation, search,
   notifications, changes, files, plugin actions, take control, restart, reconnect and settings.
 - **Terminal function keys** start closed. The square chevron button above Send shows or hides

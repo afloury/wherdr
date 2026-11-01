@@ -32,6 +32,7 @@ const actions = computed<MenuItem[]>(() => [
   ...currentTabItems(props.pane.tab, panes.value.length > 1
     ? { label: t('Tab overview'), icon: 'i-lucide-panels-top-left', desc: tl('All panes of this tab side by side', 'Tous les panneaux de cet onglet côte à côte'), run: () => emit('overview') }
     : undefined),
+  ...currentSpaceItems(props.pane),
 ])
 watch(() => props.pane.tab, id => noteTab(id), { immediate: true })
 watch(() => props.pane.id, () => { open.value = false })

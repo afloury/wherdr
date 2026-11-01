@@ -182,7 +182,7 @@ test('phone identity opens panes before tabs and switches in reading order witho
   await page.screenshot({ path: `.shots/${info.project.name}-phone-panes.png` })
   await expect(details.getByText('Panes in this tab', { exact: true })).toBeVisible()
   await expect(details.getByRole('button', { name: /^Tab overview/ })).toBeVisible()
-  await expect(details.locator('.menu > button').last()).toContainText('Close tab')
+  await expect(details.locator('.menu > button').last()).toContainText('Close entire space…')
   await details.getByRole('button').filter({ hasText: '2/2' }).click()
   await expect(page).toHaveURL(new RegExp(`${SPLIT_SHELL_PANE}$`))
   await expect(identity.locator('.phone-identity-position')).toHaveText('2/2')
@@ -193,7 +193,7 @@ test('phone identity opens panes before tabs and switches in reading order witho
 
 // Each action has one place: the identity sheet manages panes and tabs, Options
 // keeps the conversation, the agent and its tools.
-const PANE_TAB_ACTIONS = ['Rename pane', 'Split right', 'Split down', 'Move to…', 'Rename tab', 'New tab', 'Tab overview', 'Close tab']
+const PANE_TAB_ACTIONS = ['Rename pane', 'Split right', 'Split down', 'Move to…', 'Rename tab', 'New tab', 'Tab overview', 'Close this conversation']
 const sheetItems = (page: Page) => page.locator('.hw-sheet .menu > button .menu-text > span:first-child, .hw-sheet .menu > button:not(:has(.menu-text))').allInnerTexts()
 
 test('phone pane sheet and Options split pane management from agent actions, without duplicates', { tag: '@webkit-phone' }, async ({ page }, info) => {
@@ -210,7 +210,7 @@ test('phone pane sheet and Options split pane management from agent actions, wit
     await page.keyboard.press('Escape')
     await expect(page.locator('.hw-sheet')).toHaveCount(0)
     for (const label of PANE_TAB_ACTIONS.filter(x => split || x !== 'Tab overview')) expect(sheet).toContain(label)
-    expect(sheet.some(x => x.startsWith('Close this pane'))).toBe(true)
+    expect(sheet).not.toContain('Close tab')
     expect(sheet.filter(x => x === 'Copy pane ID')).toHaveLength(1)
     await expect(page.locator('.menu-group').filter({ hasText: 'Panes in this tab' })).toHaveCount(0)
 
@@ -222,8 +222,8 @@ test('phone pane sheet and Options split pane management from agent actions, wit
     for (const label of ['Search', 'View changes', 'Browse files', 'Reconnect', 'Settings']) expect(options).toContain(label)
     expect(options.some(x => /^(Mute|Unmute|Notif)/.test(x))).toBe(true)
     expect(options.filter(x => sheet.includes(x))).toEqual([])
-    for (const label of [...PANE_TAB_ACTIONS, 'Copy pane ID']) expect(options).not.toContain(label)
-    expect(options.some(x => x.startsWith('Close this pane'))).toBe(false)
+    for (const label of [...PANE_TAB_ACTIONS, 'Copy pane ID', 'Close tab', 'Close entire space…']) expect(options).not.toContain(label)
+    expect(options.some(x => x.startsWith('Close'))).toBe(false)
   }
 })
 

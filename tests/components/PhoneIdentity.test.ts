@@ -59,8 +59,10 @@ it('keeps creation and renaming in the sheet of a lone pane, without a 1/1 count
     expect(items).not.toContain('Panes in this tab')
     expect(items).not.toContain('Tabs')
     expect(items).not.toContain('Tab overview')
-    expect(items.slice(0, 7)).toEqual(['Current pane', 'Rename pane', 'Split right', 'Split down', 'Move to…', expect.stringMatching(/^Copy pane ID/), 'Close this pane (stops omp)'])
-    expect(items.slice(7)).toEqual(['Current tab', 'Rename tab', 'New tab', 'Close tab'])
+    expect(items.slice(0, 7)).toEqual(['Current pane', 'Rename pane', 'Split right', 'Split down', 'Move to…', expect.stringMatching(/^Copy pane ID/), 'Close this conversation'])
+    // A single close action: closing the lone pane closes its space (said in the confirmation).
+    expect(items.slice(7)).toEqual(['Current tab', 'Rename tab', 'New tab'])
+    expect(items.filter(x => /close/i.test(x))).toEqual(['Close this conversation'])
   } finally { wrapper.unmount() }
 })
 
@@ -76,8 +78,22 @@ it('lists the panes and tabs to switch to, then the current pane and tab actions
     expect(items.indexOf('Panes in this tab')).toBe(0)
     expect(items.indexOf('Tabs')).toBeLessThan(items.indexOf('Current pane'))
     expect(items.indexOf('Current pane')).toBeLessThan(items.indexOf('Current tab'))
-    expect(items.slice(items.indexOf('Current tab'))).toEqual(['Current tab', 'Rename tab', 'New tab', expect.stringMatching(/^Tab overview/), 'Close tab'])
+    expect(items.slice(items.indexOf('Current tab'))).toEqual(['Current tab', 'Rename tab', 'New tab', expect.stringMatching(/^Tab overview/), 'Space “api”', 'Close entire space…2 tabs · 3 panes'])
+    // Closing the tab lives in its overview; the space close stands apart from the pane's.
+    expect(items).not.toContain('Close tab')
+    expect(items.filter(x => /^Close/.test(x))).toEqual(['Close this conversation', 'Close entire space…2 tabs · 3 panes'])
     for (const label of ['Rename pane', 'Rename tab', 'New tab', 'Split right', 'Move to…']) expect(items.filter(x => x === label)).toHaveLength(1)
     expect(items.filter(x => x.startsWith('Copy pane ID'))).toHaveLength(1)
+  } finally { wrapper.unmount() }
+})
+
+it('labels the close of a shell pane as its terminal, the same action in both views', async () => {
+  const sh = { ...solo, agent: null, name: 'build' }
+  const other = { ...pane, id: 'w1:p2', tab: 'w1:t2', name: 'docs' }
+  herdrState.value = { ok: true, panes: [sh, other], workspaces: [ws], tabs: [tab('w1:t1', 1, 'main'), tab('w1:t2', 2, 'notes')] }
+  const wrapper = await openSheet(sh)
+  try {
+    const items = sheetText(wrapper)
+    expect(items.filter(x => /^Close/.test(x))).toEqual(['Close this terminal', 'Close entire space…2 tabs · 2 panes'])
   } finally { wrapper.unmount() }
 })
