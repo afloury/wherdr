@@ -211,19 +211,21 @@ describe.skipIf(!hasCommands('bash', 'grep'))('gate', () => {
   // A fake gh answering the queries of cmd_gate. RUNS: ids of successful ci
   // runs for SHA; JOBS: names of their green jobs (JOBS1 for run 1); HEAD: develop's head;
   // PUBLISHED: what the develop tag names ("" = no tag); ONDEV / VSPUB: compare
-  // statuses of SHA against develop's head and against the published commit.
-  function gate(opts: { runs?: string, jobs?: string[], jobs1?: string[], head?: string, published?: string, onDev?: string, vsPub?: string } = {}) {
+  // statuses of SHA against develop's head and against the published commit;
+  // FAIL: a part of one call's arguments, that call then fails like an HTTP 503.
+  function gate(opts: { runs?: string, jobs?: string[], jobs1?: string[], head?: string, published?: string, onDev?: string, vsPub?: string, fail?: string } = {}) {
     const home = workspace('2.1.0')
     const bin = path.join(home, 'bin')
     mkdirSync(bin)
     writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
 printf '%s\\n' "$*" >> "$CALLS"
+case "$*" in *"$FAIL"*) [ -z "$FAIL" ] || { echo 'gh: HTTP 503' >&2; exit 1; } ;; esac
 case "$*" in
   'api repos/example/wherdr/actions/workflows/ci.yml/runs?head_sha=${SHA}&event=push&branch=develop&status=success&per_page=20 '*) printf '%s\\n' $RUNS ;;
   'api repos/example/wherdr/actions/runs/1/jobs?per_page=100 '*) printf '%s\\n' $JOBS1 ;;
   'api repos/example/wherdr/actions/runs/'*'/jobs?per_page=100 '*) printf '%s\\n' $JOBS ;;
   'api repos/example/wherdr/branches/develop --jq .commit.sha') echo "$HEAD" ;;
-  'api repos/example/wherdr/git/refs/tags/develop --jq .object.sha') [ -n "$PUBLISHED" ] || exit 1; echo "$PUBLISHED" ;;
+  'api repos/example/wherdr/git/matching-refs/tags/develop '*) [ -z "$PUBLISHED" ] || echo "$PUBLISHED" ;;
   "api repos/example/wherdr/compare/$HEAD...${SHA} --jq .status") echo "$ONDEV" ;;
   "api repos/example/wherdr/compare/$PUBLISHED...${SHA} --jq .status") echo "$VSPUB" ;;
   *) exit 1 ;;
@@ -235,7 +237,7 @@ esac
     const r = run(home, ['gate', SHA], {
       PATH: `${bin}:${process.env.PATH}`, GH_REPO: 'example/wherdr', GITHUB_OUTPUT: out, CALLS: calls,
       RUNS: opts.runs ?? '42', JOBS: (opts.jobs ?? ['checks', 'changes', 'e2e']).join(' '), JOBS1: (opts.jobs1 ?? []).join(' '),
-      HEAD: opts.head ?? HEAD, PUBLISHED: opts.published ?? PUBLISHED, ONDEV: opts.onDev ?? 'behind', VSPUB: opts.vsPub ?? 'ahead',
+      HEAD: opts.head ?? HEAD, PUBLISHED: opts.published ?? PUBLISHED, ONDEV: opts.onDev ?? 'behind', VSPUB: opts.vsPub ?? 'ahead', FAIL: opts.fail ?? '',
     })
     return { r, output: readFileSync(out, 'utf8'), calls: readFileSync(calls, 'utf8') }
   }
@@ -284,6 +286,27 @@ esac
     const { r, output } = gate({ runs: '1 2', jobs1: ['checks'], jobs: ['e2e'] })
     expect(r.status).not.toBe(0)
     expect(output).toBe('')
+  })
+
+  // An API error must never let an older commit through: a failed tag read
+  // could otherwise look like a missing tag.
+  for (const call of ['/ci.yml/runs?', '/actions/runs/42/jobs', '/branches/develop', '/git/matching-refs/tags/develop', `/compare/${HEAD}...`, `/compare/${PUBLISHED}...`]) {
+    it(`stops when the API fails on ${call}`, () => {
+      const { r, output, calls } = gate({ fail: call, vsPub: 'behind' })
+      expect(calls).toContain(call)
+      expect(r.status).not.toBe(0)
+      expect(output).toBe('')
+    })
+  }
+
+  it('refuses an unexpected comparison with the published commit', () => {
+    const { r, output } = gate({ vsPub: '' })
+    expect(r.status).not.toBe(0)
+    expect(output).toBe('')
+  })
+
+  it('publishes over a published commit develop no longer contains (rewritten history)', () => {
+    expect(gate({ vsPub: 'diverged' }).output).toBe('publish=true\n')
   })
 
   it('refuses a short SHA before calling gh', () => {

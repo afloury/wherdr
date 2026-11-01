@@ -133,6 +133,9 @@ checks through the API that:
 - the commit is not older than the one the `develop` tag already names. Runs can finish out
   of order: an older commit is then skipped, never published over a newer one.
 
+Any API error stops the gate and the run fails: an unreadable tag is never taken for a
+missing one.
+
 A manual run (`workflow_dispatch`, on `develop` only) builds the head of `develop` under the
 same gate, so it too needs a green CI run for that commit. Runs never overlap and are never
 cancelled halfway. GitHub reads `workflow_run` triggers from the default branch (`main`): a

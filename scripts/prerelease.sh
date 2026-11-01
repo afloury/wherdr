@@ -104,32 +104,42 @@ cmd_package() {
 # Writes publish=true|false to $GITHUB_OUTPUT. Fails when CI is not green or the
 # commit is not on develop; an older commit is skipped without failing.
 cmd_gate() {
-  local sha="${1:?usage: prerelease.sh gate <sha>}" repo run run_ok="" jobs head published status
+  local sha="${1:?usage: prerelease.sh gate <sha>}" repo runs run run_ok="" jobs head published status
   check_sha "$sha"
   repo="${GH_REPO:?GH_REPO is required}"
-  for run in $(gh api "repos/$repo/actions/workflows/ci.yml/runs?head_sha=$sha&event=push&branch=develop&status=success&per_page=20" \
-    --jq '.workflow_runs[] | select(.head_sha == "'"$sha"'" and .conclusion == "success") | .id'); do
-    jobs="$(gh api "repos/$repo/actions/runs/$run/jobs?per_page=100" --jq '.jobs[] | select(.conclusion == "success") | .name')"
+  # Every API call fails closed: an error stops the gate, never lets a commit through.
+  runs="$(gh api "repos/$repo/actions/workflows/ci.yml/runs?head_sha=$sha&event=push&branch=develop&status=success&per_page=20" \
+    --jq '.workflow_runs[] | select(.head_sha == "'"$sha"'" and .conclusion == "success") | .id')" \
+    || die "could not list the ci runs of $sha"
+  for run in $runs; do
+    jobs="$(gh api "repos/$repo/actions/runs/$run/jobs?per_page=100" --jq '.jobs[] | select(.conclusion == "success") | .name')" \
+      || die "could not read the jobs of ci run $run"
     if printf '%s\n' "$jobs" | grep -qx checks && printf '%s\n' "$jobs" | grep -qx e2e; then
       run_ok="$run"; break
     fi
   done
   [ -n "$run_ok" ] || die "no successful ci run (checks and e2e) on develop for $sha"
-  head="$(gh api "repos/$repo/branches/develop" --jq .commit.sha)"
+  head="$(gh api "repos/$repo/branches/develop" --jq .commit.sha)" || die "could not read the head of develop"
   check_sha "$head"
   if [ "$head" != "$sha" ]; then
-    status="$(gh api "repos/$repo/compare/$head...$sha" --jq .status)"
+    status="$(gh api "repos/$repo/compare/$head...$sha" --jq .status)" || die "could not compare $sha with develop"
     [ "$status" = behind ] || die "$sha is not on develop ($status relative to $head)"
   fi
-  if published="$(gh api "repos/$repo/git/refs/tags/develop" --jq .object.sha 2>/dev/null)" \
-    && [ -n "$published" ] && [ "$published" != "$sha" ]; then
+  # matching-refs answers an empty list when the tag does not exist yet, so a
+  # failed call is never mistaken for a missing tag.
+  published="$(gh api "repos/$repo/git/matching-refs/tags/develop" --jq '.[] | select(.ref == "refs/tags/develop") | .object.sha')" \
+    || die "could not read the develop tag"
+  if [ -n "$published" ] && [ "$published" != "$sha" ]; then
     check_sha "$published"
-    status="$(gh api "repos/$repo/compare/$published...$sha" --jq .status)"
-    if [ "$status" = behind ]; then
-      echo "prerelease: develop already names $published, newer than $sha: skipped"
-      [ -z "${GITHUB_OUTPUT:-}" ] || echo "publish=false" >> "$GITHUB_OUTPUT"
-      return
-    fi
+    status="$(gh api "repos/$repo/compare/$published...$sha" --jq .status)" || die "could not compare $sha with the published $published"
+    case "$status" in
+      behind)
+        echo "prerelease: develop already names $published, newer than $sha: skipped"
+        [ -z "${GITHUB_OUTPUT:-}" ] || echo "publish=false" >> "$GITHUB_OUTPUT"
+        return ;;
+      ahead|diverged) ;;
+      *) die "unexpected comparison of $sha with the published $published: $status" ;;
+    esac
   fi
   echo "prerelease: $sha passed ci run $run_ok and may be published"
   [ -z "${GITHUB_OUTPUT:-}" ] || echo "publish=true" >> "$GITHUB_OUTPUT"
