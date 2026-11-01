@@ -504,6 +504,38 @@ export function codexCommand(input: unknown): string {
   return firstLine(s)
 }
 
+// Codex writes an attached image as three content parts (codex-rs/protocol
+// models.rs): '<image name=[Image #1] path="…">' ('<image name=[Image #1]>' in
+// older versions, '<image>' for a remote one), the input_image, then '</image>'.
+// The user's text, after them, keeps the composer's "[Image #1]" placeholder.
+// Only parts right around an image are wrappers: the same text elsewhere is the user's.
+const CODEX_IMAGE_OPEN = /^<image(?: name=\[Image #\d+\][^\n]*)?>$/
+const CODEX_IMAGE_CLOSE = '</image>'
+function codexImageWrappers(content: Json[]): Set<number> {
+  const out = new Set<number>()
+  content.forEach((part, k) => {
+    if (part?.type !== 'input_image') return
+    const before = content[k - 1]
+    const after = content[k + 1]
+    if (before?.type === 'input_text' && CODEX_IMAGE_OPEN.test(String(before.text || '').trim())) out.add(k - 1)
+    if (after?.type === 'input_text' && String(after.text || '').trim() === CODEX_IMAGE_CLOSE) out.add(k + 1)
+  })
+  return out
+}
+// The text without the placeholder of image `n` (its first occurrence, the
+// one Codex's composer put there), and without the spaces or line it leaves.
+function dropImageLabel(text: string, n: number): string {
+  const label = `[Image #${n}]`
+  const i = text.indexOf(label)
+  if (i < 0) return text
+  let a = i
+  let b = i + label.length
+  while (text[b] === ' ' || text[b] === '\t') b++
+  if (b === text.length || text[b] === '\n') while (a > 0 && (text[a - 1] === ' ' || text[a - 1] === '\t')) a--
+  if ((a === 0 || text[a - 1] === '\n') && text[b] === '\n') b++
+  return text.slice(0, a) + text.slice(b)
+}
+
 export function parseCodex(lines: Lines): Parsed {
   const items: Parsed = []
   const calls = new Map<string, ChatItem>()
@@ -526,7 +558,12 @@ export function parseCodex(lines: Lines): Parsed {
     if (p.type === 'message' && (p.role === 'user' || p.role === 'assistant')) {
       let text = ''
       let images = 0
-      for (const part of p.content || []) {
+      const content: Json[] = Array.isArray(p.content) ? p.content : []
+      const wrappers = p.role === 'user' ? codexImageWrappers(content) : new Set<number>()
+      // Placeholders still to remove: one per image of the message.
+      let labels = p.role === 'user' ? content.filter(part => part?.type === 'input_image').map((_, k) => k + 1) : []
+      for (const [k, part] of content.entries()) {
+        if (wrappers.has(k)) continue
         // "!cmd" typed in Codex: run at once, written as
         // <user_shell_command><command>…</command><result>Exit code: N … Output:\n…</result>.
         const run = p.role === 'user' && part.type === 'input_text' ? /^\s*<user_shell_command>\s*<command>\s*([\s\S]*?)\s*<\/command>\s*(?:<result>([\s\S]*?)<\/result>)?/.exec(part.text || '') : null
@@ -535,6 +572,15 @@ export function parseCodex(lines: Lines): Parsed {
           const exit = /Exit code: (-?\d+)/.exec(result)
           const out = /(?:^|\n)Output:\n?([\s\S]*)$/.exec(result)
           items.push({ role: 'bash', text: clip(run[1]!, 2000), out: out ? out[1]!.replace(/\s+$/, '').slice(-MAX_OUT) : '', err: '', error: Boolean(exit && exit[1] !== '0'), ts })
+        } else if (part.type === 'input_text' && labels.length && part.text && !isNoise(part.text)) {
+          let s: string = part.text
+          labels = labels.filter((n) => {
+            const next = dropImageLabel(s, n)
+            if (next === s) return true
+            s = next
+            return false
+          })
+          if (s.trim()) text += (text ? '\n' : '') + s
         } else if ((part.type === 'input_text' || part.type === 'output_text') && part.text && !isNoise(part.text)) text += (text ? '\n' : '') + part.text
         else if (part.type === 'input_image') images++
       }
