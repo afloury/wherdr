@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added and improved
+
+- **Choose the order of the phone keys.** Settings › Terminal › Phone key bar reorders the keys of the phone key bar (drag a handle, or the up and down buttons), with a preview of the row and a reset to the default order. The same order applies in the Conversation and the Terminal; it is saved on the device. The default order is unchanged. Thanks to [@followcat](https://github.com/followcat) for the idea.
+
 ### Fixed
 
 - **No image markers in Codex messages (#265).** A photo sent to Codex shows as its thumbnail only, without a bubble reading `</image>` or `[Image #1]`. Only the placeholders Codex declares as its own are removed: the text sent with photos stays whole, including a `[Image #1]` typed as text.
