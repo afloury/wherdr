@@ -72,12 +72,20 @@ jobs:
     timeout-minutes: 5
     outputs:
       e2e: ${{ steps.filter.outputs.e2e }}
+      engine: ${{ steps.engine.outputs.engine }}
     steps:
       - uses: actions/checkout@v7
         with:
           # A pull request is checked out as its merge commit: the first
           # parent is the base branch.
           fetch-depth: 2
+
+      - name: Look for an engine input change
+        id: engine
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: node scripts/engine-changes.mjs
 
       - name: Look for a change that needs the browser tests
         id: filter
@@ -220,3 +228,23 @@ jobs:
             true) [ "$PROJECTS" = success ] ;;
             *) echo "unexpected browser-test decision: '$NEEDED'"; exit 1 ;;
           esac
+
+  engine:
+    needs: changes
+    if: needs.changes.outputs.engine == 'true'
+    uses: ./.github/workflows/engine-ci.yml
+
+  # Always present, including when the conditional Rust workflow is skipped.
+  engine-checks:
+    needs: [changes, engine]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Require the selected engine checks
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          NEEDED: ${{ needs.changes.outputs.engine }}
+          ENGINE: ${{ needs.engine.result }}
+        run: sh scripts/engine-result.sh

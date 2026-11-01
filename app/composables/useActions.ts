@@ -1,4 +1,5 @@
 // Agent actions shared between the list and the agent view.
+import { closeProcessMessage, type CloseProcess } from '#shared/closeProcess'
 import type { Pane, QueuedMessage, WaitAction } from '#shared/types'
 import { type RestartPreview, RESTARTABLE, restartNotice } from '#shared/restart'
 import { viaPrompt } from '#shared/sendRoute'
@@ -167,8 +168,14 @@ export async function closePane(p: Pane) {
   const what = p.agent
     ? tl(`${kindLabel(p.agent)} “${paneTitle(p)}”`, `${kindLabel(p.agent)} « ${paneTitle(p)} »`)
     : tl(`the terminal in space “${workspace?.label || paneTitle(p)}”`, `le terminal de l’espace « ${workspace?.label || paneTitle(p)} »`)
+  let process: CloseProcess = { state: 'unknown' }
+  if (!p.agent || p.stopped) {
+    try { process = await api<CloseProcess>(`/api/close-preview?pane=${encodeURIComponent(p.id)}`) }
+    catch { /* Unavailable inspection: keep the conditional warning. */ }
+  }
+  const warning = closeProcessMessage(p, process, tl)
   const plan = await confirmClose('pane', p.id,
-    tl(`Close ${what}? The process will be stopped.`, `Fermer ${what} ? Le processus sera arrêté.`),
+    [tl(`Close ${what}?`, `Fermer ${what} ?`), warning].filter(Boolean).join(' '),
     t('Close pane'),
   )
   if (!plan) return

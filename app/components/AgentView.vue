@@ -451,12 +451,8 @@ function openPlan() {
   if (desk.value) navigateTo({ path: tabPath(tabEnt.value.tab.id), query: { pane: props.paneId } })
   else backToTab(tabEnt.value.tab.id)
 }
-// Back: to the tab's plan or to the Board if we came from it, otherwise to the list.
-function goBack() {
-  const back = (history.state as { back?: string } | null)?.back
-  if (back === '/board' || (tabEnt.value && back === tabPath(tabEnt.value.tab.id))) router.back()
-  else navigateTo('/')
-}
+// Header and browser back share the same history entry.
+const goBack = useViewBack()
 
 // Swipe (phone, conversation): the conversation follows the finger, damped,
 // braked at the edge; far or fast enough, the neighbour replaces it (same
