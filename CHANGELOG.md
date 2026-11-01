@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added and improved
+
+- **Per-device push delivery results.** Settings › Notifications lists every registered device with the result of its last push (delivered, expired, rejected, unreachable) and removes expired ones on request, instead of dropping them silently.
+
 ### Fixed
 
 - **Images from your other tailnet machines in replies.** A Markdown image an agent links to on another machine or port of your tailnet (`https://<machine>.<tailnet>.ts.net:<port>/…`) now shows in the conversation; wherdr's security policy allows HTTPS images from the tailnet it is reached on, and nothing else. An image that is refused or cannot be loaded shows a note saying why, with a link to open it, instead of a broken icon.
