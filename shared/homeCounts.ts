@@ -44,12 +44,13 @@ export function withBoardGroups(links: MachineLinks[], board: TasksBoard | null 
 export type HomeStat = 'blocked' | 'working' | 'ready'
 export type HomeCounts = Record<HomeStat, number>
 
-// A task's counter: waiting for you (needs you, ready to approve, its agent
-// exited) is your turn; at work is working, unless the pane its row shows
-// asks something now (as its card says, utils/projectSummary memberGroup).
-export function taskStat(group: TaskGroup, paneStatus?: string | null): HomeStat {
+// A task's counter, from its group on the Board alone: waiting for you (needs
+// you, ready to approve, its agent exited) is your turn, at work is working,
+// to do or done is ready. Its panes' terminals do not change it, so the count
+// does not depend on which of its spaces comes first.
+export function taskStat(group: TaskGroup): HomeStat {
   if (group === 'needs' || group === 'ready') return 'blocked'
-  if (group === 'working') return paneStatus === 'blocked' ? 'blocked' : 'working'
+  if (group === 'working') return 'working'
   return 'ready'
 }
 // An agent alone (or a task the CLI does not list): its own state, as Herdr reads it.
@@ -85,7 +86,7 @@ export function homeCounts<P extends Pick<Pane, 'id' | 'agent' | 'status' | 'wor
     if (row && k) {
       if (seen.has(k)) continue
       seen.add(k)
-      out[taskStat(row.group, p.status)]++
+      out[taskStat(row.group)]++
       continue
     }
     const s = paneStat(p.status)

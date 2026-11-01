@@ -26,7 +26,6 @@ describe('home counters', () => {
   it('reads the groups as the Board does', () => {
     expect([readyToApprove, needsYou, exited, working, done].map(r => r.group)).toEqual(['ready', 'needs', 'needs', 'working', 'done'])
     expect(['needs', 'ready', 'working', 'todo', 'done'].map(g => taskStat(g as never))).toEqual(['blocked', 'blocked', 'working', 'ready', 'ready'])
-    expect(taskStat('working', 'blocked')).toBe('blocked')
   })
 
   it('without herdr-projects (Herdr alone): each agent by its own state', () => {
@@ -58,6 +57,20 @@ describe('home counters', () => {
     // In two spaces, the panes alone count it twice; the Board's state once.
     expect(homeCounts(panes, l, null)).toEqual({ blocked: 0, working: 1, ready: 1 })
     expect(homeCounts(panes, l, cli(machine([row(7, 'working', 'reviewing')])))).toEqual({ blocked: 0, working: 1, ready: 0 })
+  })
+
+  it('a working task counts as working whatever its panes say, in either order', () => {
+    // The worker in one space, its reviewer (asking something) in another.
+    const l = [links([task(7, [{ id: 'w7:p1', role: 'worker' }, { id: 'w8:p1', role: 'reviewer', kind: 'codex' }])])]
+    const worker = pane('w7:p1', 'working')
+    const reviewer = pane('w8:p1', 'blocked', 'codex')
+    const board = cli(machine([row(7, 'working', 'reviewing')]))
+    expect(homeCounts([worker, reviewer], l, board)).toEqual({ blocked: 0, working: 1, ready: 0 })
+    expect(homeCounts([reviewer, worker], l, board)).toEqual({ blocked: 0, working: 1, ready: 0 })
+    // One pane, asking: the Board's state still decides.
+    expect(homeCounts([pane('w7:p1', 'blocked')], l, board)).toEqual({ blocked: 0, working: 1, ready: 0 })
+    // Without herdr-projects, the terminals still count (each space once).
+    expect(homeCounts([reviewer, worker], l, null)).toEqual({ blocked: 1, working: 1, ready: 0 })
   })
 
   it('a task that waits for you counts with no agent pane left', () => {
