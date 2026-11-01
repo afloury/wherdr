@@ -45,6 +45,8 @@
 - **Split tabs on a small screen**: a plan of the tab's panes in Herdr's proportions, then each
   pane full screen with a mini-map and swipe to its neighbours.
 - **Terminal key bar** (Esc, Enter, arrows, Shift+Tab, Ctrl+C…) and touch scrolling.
+  Terminal links back to this app stay in the current window on a phone; external
+  links still open separately.
 - **Offline reading** of the last known state and of recently opened conversations.
 
 ### On an iPad
