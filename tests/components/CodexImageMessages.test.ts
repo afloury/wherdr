@@ -11,12 +11,27 @@ const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
 const text = (t: string) => ({ type: 'input_text', text: t })
 const local = (n: number) => [text(`<image name=[Image #${n}] path="/home/user/.cache/herdr-web/uploads/photo-${n}.jpg">`), { type: 'input_image', image_url: PNG }, text('</image>')]
 const line = (role: string, content: object[], ts: string) => JSON.stringify({ timestamp: ts, type: 'response_item', payload: { type: 'message', role, content } })
+// The event Codex writes after a message: its composer's "[Image #N]" placeholders as byte
+// ranges (here the last occurrence of each label: the composer's).
+const typed = (message: string, placeholders: string[], ts: string) => JSON.stringify({ timestamp: ts, type: 'event_msg', payload: {
+  type: 'user_message', message, images: [], local_images: [], text_elements: placeholders.map((label) => {
+    const start = Buffer.from(message).lastIndexOf(label)
+    return { byte_range: { start, end: start + Buffer.byteLength(label) }, placeholder: label }
+  }),
+} })
+const literal = 'Explique littéralement `[Image #1]` dans cet exemple.'
 const rollout = [
   line('user', [...local(1), text('[Image #1]')], '2026-01-01T00:00:00Z'),
+  typed('[Image #1]', ['[Image #1]'], '2026-01-01T00:00:00Z'),
   line('assistant', [{ type: 'output_text', text: 'A login page.' }], '2026-01-01T00:00:05Z'),
   line('user', [...local(1), ...local(2), text('Before [Image #1] and [Image #2] after.')], '2026-01-01T00:01:00Z'),
+  typed('Before [Image #1] and [Image #2] after.', ['[Image #1]', '[Image #2]'], '2026-01-01T00:01:00Z'),
   line('assistant', [{ type: 'output_text', text: 'Both differ.' }], '2026-01-01T00:01:05Z'),
   line('user', [text('Close a tag with `</image>`, label it [Image #1].')], '2026-01-01T00:02:00Z'),
+  line('assistant', [{ type: 'output_text', text: 'Noted.' }], '2026-01-01T00:02:05Z'),
+  // A photo with a typed literal marker; the composer's placeholder comes after it.
+  line('user', [...local(1), text(`${literal}\n[Image #1]`)], '2026-01-01T00:03:00Z'),
+  typed(`${literal}\n[Image #1]`, ['[Image #1]'], '2026-01-01T00:03:00Z'),
 ].join('\n') + '\n'
 
 const pane: Pane = { id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'codex', name: null, label: null, status: 'idle', title: null, cwd: '/home/user/acme-shop', agentSession: null }
@@ -28,8 +43,8 @@ describe('Codex messages with photos', () => {
     herdrState.value = { ok: true, workspaces: [], panes: [pane] }
     const w = await mountSuspended(ChatView, { props: { pane, localQueued: [] }, global: { stubs: { UTooltip: { template: '<slot />' } } } })
     try {
-      await expect.poll(() => w.findAll('.msg-user').length).toBe(3)
-      const [alone, mixed, literal] = w.findAll('.msg-user')
+      await expect.poll(() => w.findAll('.msg-user').length).toBe(4)
+      const [alone, mixed, typedMarkers, withPhoto] = w.findAll('.msg-user')
       // Photo only: its thumbnail, no bubble text.
       expect(alone!.classes()).toContain('msg-no-text')
       expect(alone!.findAll('img')).toHaveLength(1)
@@ -40,7 +55,10 @@ describe('Codex messages with photos', () => {
       expect(mixed!.findAll('img')).toHaveLength(2)
       expect(mixed!.find('.msg-fold').element.textContent).toBe('Before and after.')
       // Literal markers the user typed stay.
-      expect(literal!.find('.msg-fold').element.textContent).toBe('Close a tag with `</image>`, label it [Image #1].')
+      expect(typedMarkers!.find('.msg-fold').element.textContent).toBe('Close a tag with `</image>`, label it [Image #1].')
+      // A photo with a typed marker: the photo, the typed text whole.
+      expect(withPhoto!.findAll('img')).toHaveLength(1)
+      expect(withPhoto!.find('.msg-fold').element.textContent).toBe(literal)
       expect(w.find('.chat').text()).not.toMatch(/<\/image>\s*\[Image #1\]|path=/)
     } finally { w.unmount() }
   })

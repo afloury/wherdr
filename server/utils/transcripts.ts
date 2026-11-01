@@ -522,23 +522,79 @@ function codexImageWrappers(content: Json[]): Set<number> {
   })
   return out
 }
-// The text without the placeholder of image `n` (its first occurrence, the
-// one Codex's composer put there), and without the spaces or line it leaves.
-function dropImageLabel(text: string, n: number): string {
-  const label = `[Image #${n}]`
-  const i = text.indexOf(label)
-  if (i < 0) return text
-  let a = i
-  let b = i + label.length
-  while (text[b] === ' ' || text[b] === '\t') b++
-  if (b === text.length || text[b] === '\n') while (a > 0 && (text[a - 1] === ' ' || text[a - 1] === '\t')) a--
-  if ((a === 0 || text[a - 1] === '\n') && text[b] === '\n') b++
-  return text.slice(0, a) + text.slice(b)
+// The composer's placeholders are not told apart by their text: "[Image #1]"
+// typed by the user looks the same. Codex records them separately, as
+// `text_elements` (UTF-8 byte ranges) of the text it was given, in the event
+// written after the message: `user_message` (legacy rollouts) or
+// `item_completed` with a `UserMessage` item (paginated ones). Only those
+// ranges are removed. Without such an event (older Codex, or a page that cut
+// it off), a text is kept unless it holds nothing but the placeholders of the
+// message's own images, each once (a photo sent alone).
+type Spans = [number, number][]
+const IMAGE_LABEL = /^\[Image #(\d+)\]$/
+function imageSpans(text: string, elements: unknown): Spans {
+  if (!Array.isArray(elements)) return []
+  const bytes = Buffer.from(text)
+  const out: Spans = []
+  for (const el of elements as Json[]) {
+    const start = el?.byte_range?.start
+    const end = el?.byte_range?.end
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end > bytes.length || start >= end) continue
+    const slice = bytes.subarray(start, end).toString()
+    // The span must hold an image placeholder (not a mention or a paste).
+    if (!IMAGE_LABEL.test(slice) || (el.placeholder != null && el.placeholder !== slice)) continue
+    out.push([bytes.subarray(0, start).toString().length, bytes.subarray(0, end).toString().length])
+  }
+  return out
+}
+// Texts Codex declared with their image placeholders, from the turn events of
+// these lines; each event is used once (the same text may be sent twice).
+function codexPlaceholders(lines: Lines): Map<string, Spans[]> {
+  const out = new Map<string, Spans[]>()
+  const add = (text: unknown, elements: unknown) => {
+    if (typeof text !== 'string') return
+    // Kept even with no image span: the text is then known to be typed.
+    out.set(text, [...(out.get(text) || []), imageSpans(text, elements)])
+  }
+  for (const line of lines) {
+    if (!line || !line.includes('"event_msg"') || !line.includes('text_elements')) continue
+    let d: Json
+    try { d = JSON.parse(line) }
+    catch { continue }
+    const e = d?.payload
+    if (d?.type !== 'event_msg' || !e) continue
+    if (e.type === 'user_message') add(e.message, e.text_elements)
+    else if (e.type === 'item_completed' && e.item?.type === 'UserMessage' && Array.isArray(e.item.content)) {
+      for (const c of e.item.content) if (c?.type === 'text') add(c.text, c.text_elements)
+    }
+  }
+  return out
+}
+// The text without the [start, end) ranges, and without the spaces or line they leave.
+function dropSpans(text: string, spans: Spans): string {
+  for (const [start, end] of [...spans].sort((x, y) => y[0] - x[0])) {
+    let a = start
+    let b = end
+    while (text[b] === ' ' || text[b] === '\t') b++
+    if (b === text.length || text[b] === '\n') while (a > 0 && (text[a - 1] === ' ' || text[a - 1] === '\t')) a--
+    if ((a === 0 || text[a - 1] === '\n') && text[b] === '\n') b++
+    text = text.slice(0, a) + text.slice(b)
+  }
+  return text
+}
+// Nothing but the placeholders of the message's images, each once: "[Image #1]",
+// "[Image #1] [Image #2]"… (what the composer leaves when no text is typed).
+function onlyOwnLabels(text: string, images: number): boolean {
+  const t = text.trim()
+  if (!/^(?:\[Image #\d+\]\s*)+$/.test(t)) return false
+  const nums = [...t.matchAll(/\[Image #(\d+)\]/g)].map(m => Number(m[1]))
+  return nums.every(n => n >= 1 && n <= images) && new Set(nums).size === nums.length
 }
 
 export function parseCodex(lines: Lines): Parsed {
   const items: Parsed = []
   const calls = new Map<string, ChatItem>()
+  const placeholders = codexPlaceholders(lines)
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li]
     const ref = lines.refs ? lines.refs[li] : undefined
@@ -560,8 +616,7 @@ export function parseCodex(lines: Lines): Parsed {
       let images = 0
       const content: Json[] = Array.isArray(p.content) ? p.content : []
       const wrappers = p.role === 'user' ? codexImageWrappers(content) : new Set<number>()
-      // Placeholders still to remove: one per image of the message.
-      let labels = p.role === 'user' ? content.filter(part => part?.type === 'input_image').map((_, k) => k + 1) : []
+      const imageCount = content.filter(part => part?.type === 'input_image').length
       for (const [k, part] of content.entries()) {
         if (wrappers.has(k)) continue
         // "!cmd" typed in Codex: run at once, written as
@@ -572,15 +627,10 @@ export function parseCodex(lines: Lines): Parsed {
           const exit = /Exit code: (-?\d+)/.exec(result)
           const out = /(?:^|\n)Output:\n?([\s\S]*)$/.exec(result)
           items.push({ role: 'bash', text: clip(run[1]!, 2000), out: out ? out[1]!.replace(/\s+$/, '').slice(-MAX_OUT) : '', err: '', error: Boolean(exit && exit[1] !== '0'), ts })
-        } else if (part.type === 'input_text' && labels.length && part.text && !isNoise(part.text)) {
-          let s: string = part.text
-          labels = labels.filter((n) => {
-            const next = dropImageLabel(s, n)
-            if (next === s) return true
-            s = next
-            return false
-          })
-          if (s.trim()) text += (text ? '\n' : '') + s
+        } else if (p.role === 'user' && imageCount && part.type === 'input_text' && part.text && !isNoise(part.text)) {
+          const declared = placeholders.get(part.text)?.shift()
+          const kept: string = declared ? dropSpans(part.text, declared) : onlyOwnLabels(part.text, imageCount) ? '' : part.text
+          if (kept.trim()) text += (text ? '\n' : '') + kept
         } else if ((part.type === 'input_text' || part.type === 'output_text') && part.text && !isNoise(part.text)) text += (text ? '\n' : '') + part.text
         else if (part.type === 'input_image') images++
       }

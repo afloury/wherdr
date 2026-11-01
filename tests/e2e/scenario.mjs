@@ -87,6 +87,8 @@ export const CODEX_IMAGE_PANE = 'w20:p1'
 export const CODEX_IMAGE_SESSION = '00000000-0000-4000-8000-0000000001a9'
 export const CODEX_IMAGE_TEXT = 'Before and after the fix: which one is right?'
 export const CODEX_IMAGE_LITERAL = 'Close the tag with `</image>`, not [Image #1].'
+// Sent with a photo: the typed marker is text, the composer's placeholder is not.
+export const CODEX_IMAGE_TYPED = 'Explain `[Image #1]` literally in this example.'
 
 // Unique markers of the long omp transcript (asserted on by the specs).
 export const LONG_WORD = `Pneumono${'ultramicroscopicsilicovolcano'.repeat(12)}coniosis`
@@ -262,14 +264,29 @@ export function writeScenario(home) {
     { type: 'input_text', text: '</image>' },
   ]
   const codexMsg = (role, content, ago) => ({ type: 'response_item', timestamp: iso(now - ago), payload: { type: 'message', role, content } })
+  // Written by Codex after a message: its composer's placeholders as byte ranges
+  // (here the last occurrence of each label, the one the composer put there).
+  const codexTyped = (message, labels, ago) => ({ type: 'event_msg', timestamp: iso(now - ago), payload: {
+    type: 'user_message', message, images: [], local_images: [], text_elements: labels.map((label) => {
+      const start = Buffer.from(message).lastIndexOf(label)
+      return { byte_range: { start, end: start + Buffer.byteLength(label) }, placeholder: label }
+    }),
+  } })
+  const mixedText = 'Before and after the fix: [Image #1] [Image #2] which one is right?'
+  const typedText = `${CODEX_IMAGE_TYPED}\n[Image #1]`
   write(path.join(home, `.codex/sessions/${new Date().toISOString().slice(0, 10).replaceAll('-', '/')}/rollout-test-${CODEX_IMAGE_SESSION}.jsonl`), jsonl([
     { type: 'session_meta', payload: { id: CODEX_IMAGE_SESSION, cwd: codexImages, timestamp: iso(now - 90000), thread_source: 'user' } },
     codexMsg('user', [...codexPhoto(1), { type: 'input_text', text: '[Image #1]' }], 80000),
+    codexTyped('[Image #1]', ['[Image #1]'], 80000),
     codexMsg('assistant', [{ type: 'output_text', text: 'A login form with a clipped button.' }], 75000),
-    codexMsg('user', [...codexPhoto(1), ...codexPhoto(2), { type: 'input_text', text: 'Before and after the fix: [Image #1] [Image #2] which one is right?' }], 60000),
+    codexMsg('user', [...codexPhoto(1), ...codexPhoto(2), { type: 'input_text', text: mixedText }], 60000),
+    codexTyped(mixedText, ['[Image #1]', '[Image #2]'], 60000),
     codexMsg('assistant', [{ type: 'output_text', text: 'The second one.' }], 55000),
     codexMsg('user', [{ type: 'input_text', text: CODEX_IMAGE_LITERAL }], 40000),
     codexMsg('assistant', [{ type: 'output_text', text: 'Noted.' }], 35000),
+    codexMsg('user', [...codexPhoto(1), { type: 'input_text', text: typedText }], 30000),
+    codexTyped(typedText, ['[Image #1]'], 30000),
+    codexMsg('assistant', [{ type: 'output_text', text: 'It is a placeholder.' }], 25000),
   ]))
   claudeTranscript(home, api, claudeSid, now)
   const teardownSid = '00000000-0000-4000-8000-000000000018'
