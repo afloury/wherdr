@@ -254,8 +254,17 @@ function followTask(machine: string) {
 }
 // A card always opens the task panel. No agent yet: the panel explains
 // setup failures and keeps the task's details and actions reachable.
+// Phone: whether the current detail entry already shows this task. A link may
+// name no machine: then it is the machine its panel resolved the task on.
+function routeShowsTask(machine: string, id: string) {
+  if (route.query.task !== id) return false
+  const m = route.query.machine
+  if (typeof m === 'string') return m === machine
+  const p = panel.value
+  return p?.kind === 'task' && p.id === id && p.machine === machine
+}
 function openCard(c: Card) {
-  if (!desk.value && (route.query.task !== c.task.id || route.query.machine !== c.machine)) {
+  if (!desk.value && !routeShowsTask(c.machine, c.task.id)) {
     void router.push({ path: '/board', query: { machine: c.machine, task: c.task.id } })
   } else showTaskCard(c)
   haptic()
@@ -493,9 +502,8 @@ function chatWith(machine: string, task: TaskRow) {
   if (!desk.value) {
     // Its panel already open (the sheet over it): switching to the chat stays the
     // same detail entry, so one back still leaves the task.
-    const open = route.query.task === task.id && route.query.machine === machine
     const to = { path: '/board', query: { machine, task: task.id, view: 'chat' } }
-    void (open ? router.replace(to) : router.push(to))
+    void (routeShowsTask(machine, task.id) ? router.replace(to) : router.push(to))
     return
   }
   panel.value = { machine, kind: 'task', id: task.id, chat: true }

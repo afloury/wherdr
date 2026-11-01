@@ -121,6 +121,34 @@ for (const browser of [false, true]) {
   })
 }
 
+// A link without `machine` resolves to the one card with that id, local or on another
+// machine; the route keeps no machine. Switching that task to its chat is still the
+// same detail: one back returns to Home, not to the task.
+for (const machine of ['', 'host-a']) {
+  for (const browser of [false, true]) {
+    test(`a machine-less link to a ${machine ? 'remote' : 'local'} task switched to its chat returns Home with one ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }) => {
+      if (machine) {
+        await page.route(/\/api\/tasks(\?.*)?$/, r => r.fulfill({ json: { version: 'back', machines: [{ machine, status: 'ready', version: '1.2.1', at: Date.now(), tasks: [task] }] } }))
+      }
+      await page.goto('/')
+      await expect(page.locator('#home')).toBeVisible()
+      await page.evaluate(() => { location.hash = '#/board?task=demo%2F9' })
+      await expect(page.locator('.board-panel')).toBeVisible()
+      if (machine) await expect(page.locator('.board-panel-machine')).toHaveText(machine)
+      expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).has('machine')).toBe(false)
+      await page.locator('.board-panel-sheet').click()
+      await page.getByRole('dialog').getByRole('button', { name: 'Open the chat' }).click()
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+      await expect(page).toHaveURL(/view=chat/)
+      if (browser) await page.goBack()
+      else await page.locator('.board-panel-back').click()
+      await expect(page.locator('.board-panel')).toHaveCount(0)
+      await expect(page.locator('#home')).toBeVisible()
+      await expect(page).toHaveURL(/\/#?\/?$/)
+    })
+  }
+}
+
 test('Home keeps its active machine and scroll position', { tag: '@webkit-phone' }, async ({ page }) => {
   await page.goto('/')
   const machine = page.locator('[data-bar-id=""]')
