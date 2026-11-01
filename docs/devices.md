@@ -41,7 +41,8 @@
 - **Compact agent header**: a 44 px bar holds Back, one two-line identity, Terminal and Options.
   The identity shows the pane name, then its square state indicator, state label and agent kind.
   Tap it (always available, even for a lone pane) for the machine/space context and everything
-  that manages panes and tabs: switching (listed only when there are several), then the current
+  that manages panes and tabs: switching (listed only when there are several; a lone pane shows its
+  full name and state instead), then the current
   pane (rename, split, move, swap, copy ID, close) and the current tab (rename, new tab, tab
   overview, close). Long names ellipsize; multiple panes show their position, never 1/1.
   Options keeps the conversation, the agent and its tools: Terminal/Conversation, search,

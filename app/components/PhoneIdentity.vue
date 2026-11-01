@@ -68,6 +68,10 @@ function tabStatus(e: typeof tabs.value[number]) {
   <AppSheet v-model:open="open" :title="tl('Panes and tabs', 'Panneaux et onglets')" hide-close>
     <div class="phone-identity-details">
       <p class="phone-identity-summary">{{ hostLabel }} · {{ workspace?.label || pane.workspace }}</p>
+      <!-- A lone pane has no list to show it in: its full name and state stay readable here. -->
+      <p v-if="panes.length <= 1" class="phone-identity-current">
+        <span class="phone-identity-current-title">{{ title }}</span><span class="phone-identity-current-meta"><span class="pill" :class="tone"><i />{{ stateLabel }}</span><template v-if="showKind"> · {{ kind }}</template></span>
+      </p>
       <div class="menu">
         <p v-if="panes.length > 1" class="menu-group">{{ tl('Panes in this tab', 'Panneaux de cet onglet') }}</p>
         <button v-for="(p, i) in panes.length > 1 ? panes : []" :key="p.id" type="button" :aria-current="p.id === pane.id ? 'page' : undefined" @click="visit(p)">
@@ -104,6 +108,10 @@ function tabStatus(e: typeof tabs.value[number]) {
 .phone-identity-chevron, .phone-identity-muted { width: 12px; height: 12px; flex: none; color: var(--muted); }
 .phone-identity-summary { margin: 0 8px 12px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .phone-identity-details .menu-text > span { overflow-wrap: anywhere; }
+.phone-identity-current { display: flex; flex-direction: column; gap: 3px; margin: -4px 8px 12px; }
+.phone-identity-current-title { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+.phone-identity-current-meta { color: var(--text-3); font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.phone-identity-current-meta .pill { font-size: 11px; }
 .phone-identity-details button[aria-current="page"] { color: var(--accent); }
 @container phone-header (max-width: 22em) { .phone-identity { gap: 4px; } }
 @container phone-header (max-width: 18em) { .phone-identity-position { display: none; } }

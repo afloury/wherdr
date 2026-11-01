@@ -51,9 +51,15 @@ test('a long agent name and state truncate with an ellipsis in the header at 390
     expect(layout.kindFits).toBe(true)
     expect(layout.left).toBeGreaterThanOrEqual(44)
     expect(layout.right).toBeLessThanOrEqual(layout.actionsLeft)
+    // A lone pane has no pane list in the sheet: its own line keeps the full,
+    // unclipped name and the state (not the space name, which matches here).
     await identity.click()
-    await expect(page.locator('.phone-identity-details')).toContainText(LONG_NAME)
-    await expect(page.locator('.phone-identity-details')).toContainText(/quota reached/i)
+    const current = page.locator('.phone-identity-details .phone-identity-current')
+    await expect(current.locator('.phone-identity-current-title')).toHaveText(LONG_NAME)
+    await expect(current.locator('.pill')).toHaveText(/quota reached/i)
+    await expect(current).toContainText('Claude')
+    expect(await current.locator('.phone-identity-current-title').evaluate(el => el.scrollWidth <= el.clientWidth && getComputedStyle(el).textOverflow !== 'ellipsis')).toBe(true)
+    await page.screenshot({ path: `.shots/agent-header-long-name-sheet-${info.project.name}.png` })
     return
   }
   await expect(top.locator('.agent-title')).toHaveText(LONG_NAME)

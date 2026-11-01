@@ -52,6 +52,9 @@ it('keeps creation and renaming in the sheet of a lone pane, without a 1/1 count
     expect(wrapper.find('.phone-identity-position').exists()).toBe(false)
     expect(wrapper.find('.phone-identity-chevron').exists()).toBe(true)
     expect(wrapper.find('.phone-identity').attributes('aria-label')).not.toMatch(/1\/1/)
+    const current = document.querySelector('.phone-identity-details .phone-identity-current')!
+    expect(current.querySelector('.phone-identity-current-title')!.textContent).toBe('solo')
+    expect(current.querySelector('.pill.idle')).not.toBeNull()
     const items = sheetText(wrapper)
     expect(items).not.toContain('Panes in this tab')
     expect(items).not.toContain('Tabs')
@@ -68,6 +71,7 @@ it('lists the panes and tabs to switch to, then the current pane and tab actions
   const wrapper = await openSheet(solo)
   try {
     expect(wrapper.find('.phone-identity-position').text()).toBe('1/2')
+    expect(document.querySelector('.phone-identity-details .phone-identity-current')).toBeNull()
     const items = sheetText(wrapper)
     expect(items.indexOf('Panes in this tab')).toBe(0)
     expect(items.indexOf('Tabs')).toBeLessThan(items.indexOf('Current pane'))
