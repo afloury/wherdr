@@ -209,10 +209,10 @@ describe.skipIf(!hasCommands('bash', 'grep'))('gate', () => {
   const HEAD = 'b'.repeat(40)
   const PUBLISHED = 'c'.repeat(40)
   // A fake gh answering the queries of cmd_gate. RUNS: ids of successful ci
-  // runs for SHA; JOBS: names of their green jobs; HEAD: develop's head;
+  // runs for SHA; JOBS: names of their green jobs (JOBS1 for run 1); HEAD: develop's head;
   // PUBLISHED: what the develop tag names ("" = no tag); ONDEV / VSPUB: compare
   // statuses of SHA against develop's head and against the published commit.
-  function gate(opts: { runs?: string, jobs?: string[], head?: string, published?: string, onDev?: string, vsPub?: string } = {}) {
+  function gate(opts: { runs?: string, jobs?: string[], jobs1?: string[], head?: string, published?: string, onDev?: string, vsPub?: string } = {}) {
     const home = workspace('2.1.0')
     const bin = path.join(home, 'bin')
     mkdirSync(bin)
@@ -220,6 +220,7 @@ describe.skipIf(!hasCommands('bash', 'grep'))('gate', () => {
 printf '%s\\n' "$*" >> "$CALLS"
 case "$*" in
   'api repos/example/wherdr/actions/workflows/ci.yml/runs?head_sha=${SHA}&event=push&branch=develop&status=success&per_page=20 '*) printf '%s\\n' $RUNS ;;
+  'api repos/example/wherdr/actions/runs/1/jobs?per_page=100 '*) printf '%s\\n' $JOBS1 ;;
   'api repos/example/wherdr/actions/runs/'*'/jobs?per_page=100 '*) printf '%s\\n' $JOBS ;;
   'api repos/example/wherdr/branches/develop --jq .commit.sha') echo "$HEAD" ;;
   'api repos/example/wherdr/git/refs/tags/develop --jq .object.sha') [ -n "$PUBLISHED" ] || exit 1; echo "$PUBLISHED" ;;
@@ -233,7 +234,7 @@ esac
     const calls = path.join(home, 'calls')
     const r = run(home, ['gate', SHA], {
       PATH: `${bin}:${process.env.PATH}`, GH_REPO: 'example/wherdr', GITHUB_OUTPUT: out, CALLS: calls,
-      RUNS: opts.runs ?? '42', JOBS: (opts.jobs ?? ['checks', 'changes', 'e2e']).join(' '),
+      RUNS: opts.runs ?? '42', JOBS: (opts.jobs ?? ['checks', 'changes', 'e2e']).join(' '), JOBS1: (opts.jobs1 ?? []).join(' '),
       HEAD: opts.head ?? HEAD, PUBLISHED: opts.published ?? PUBLISHED, ONDEV: opts.onDev ?? 'behind', VSPUB: opts.vsPub ?? 'ahead',
     })
     return { r, output: readFileSync(out, 'utf8'), calls: readFileSync(calls, 'utf8') }
@@ -272,9 +273,17 @@ esac
   }
 
   it('looks at the second successful run when the first lacks a green job', () => {
-    const { r, calls } = gate({ runs: '1 2', jobs: ['checks', 'e2e'] })
+    const { r, output, calls } = gate({ runs: '1 2', jobs1: ['checks', 'changes'], jobs: ['checks', 'e2e'] })
     expect(r.status, r.stderr).toBe(0)
+    expect(output).toBe('publish=true\n')
     expect(calls).toContain('actions/runs/1/jobs')
+    expect(calls).toContain('actions/runs/2/jobs')
+  })
+
+  it('refuses when no successful run has both green jobs', () => {
+    const { r, output } = gate({ runs: '1 2', jobs1: ['checks'], jobs: ['e2e'] })
+    expect(r.status).not.toBe(0)
+    expect(output).toBe('')
   })
 
   it('refuses a short SHA before calling gh', () => {
