@@ -209,6 +209,8 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     // Herdr closes the pane for good (`hidden: false` brings it back).
     'e2e.hide_pane': (params) => { need(params.pane_id).hidden = Boolean(params.hidden); return {} },
     'e2e.update_session': params => { need(params.pane_id).session = params.session; return {} },
+    // A scenario field of the pane (an alternate transcript, for instance).
+    'e2e.pane_field': params => ({ value: need(params.pane_id)[params.field] ?? null }),
     'e2e.update_draft': params => { need(params.pane_id).updateOutput += params.text; return {} },
     'e2e.update_foreground': params => { need(params.pane_id).foreground = true; return {} },
     'e2e.update_starts': params => {
