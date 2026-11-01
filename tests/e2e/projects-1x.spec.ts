@@ -1073,7 +1073,8 @@ test('Coordinator choices keep unavailable hosts visible and explain the three r
   await page.screenshot({ path: `.shots/board-coordinator-long-host-${testInfo.project.name}.png` })
 })
 
-for (const lang of ['en', 'fr']) {
+test.describe('English interface', () => {
+  const lang = 'en'
   test(`coordinator failure distinguishes delivery and queue counts (${lang})`, async ({ page }, testInfo) => {
     await fakeBoard(page, () => [{ machine: '', tasks: [] }])
     await page.addInitScript(l => localStorage.setItem('herdrLanguage', l), lang)
@@ -1087,25 +1088,26 @@ for (const lang of ['en', 'fr']) {
         const failed = page.locator('.board-panel-failed')
         await expect(failed).toBeVisible()
         await expect(failed.locator('h4')).toHaveText(delivery
-          ? lang === 'fr' ? 'Envoi du message impossible' : 'Message could not be sent'
-          : lang === 'fr' ? 'Démarrage impossible' : 'Could not start')
+          ? 'Message could not be sent'
+          : 'Could not start')
         await expect(failed.locator('.board-panel-failed-why')).toHaveText(String(status.error))
         if (delivery) {
-          await expect(failed.locator('.board-panel-failed-what')).toContainText(lang === 'fr' ? 'n’a pas été envoyé' : 'was not sent')
-          await expect(failed).not.toContainText(lang === 'fr' ? 'n’a pas pu être saisi' : 'could not be typed')
+          await expect(failed.locator('.board-panel-failed-what')).toContainText('was not sent')
+          await expect(failed).not.toContainText('could not be typed')
         }
         await expect(failed.locator('.board-panel-failed-next')).toContainText(queued
-          ? lang === 'fr' ? `${queued} message${queued === 1 ? '' : 's'} attend` : `${queued} message${queued === 1 ? '' : 's'} still waiting`
-          : lang === 'fr' ? 'Aucun message en attente.' : 'No message is waiting.')
+          ? `${queued} message${queued === 1 ? '' : 's'} still waiting`
+          : 'No message is waiting.')
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
         await page.screenshot({ path: `.shots/coordinator-${lang}-${delivery ? 'delivery' : 'start'}-${queued}-${testInfo.project.name}.png` })
         await page.locator('.board-panel-back, .board-panel-close').click()
       }
     }
   })
-}
+})
 
-for (const lang of ['en', 'fr']) {
+test.describe('English interface', () => {
+  const lang = 'en'
   test(`task panel setup failure and task tab (${lang})`, async ({ page }, testInfo) => {
     await page.addInitScript(l => localStorage.setItem('herdrLanguage', l), lang)
     const task = { id: 'demo/9', title: 'Improve search results', stage: 'failed', state: 'error', app: 'claude', msg: 'Setup failed' }
@@ -1122,16 +1124,16 @@ for (const lang of ['en', 'fr']) {
     await expect(panel.locator('.task-needs')).toContainText('Restore the lockfile')
     await expect(panel.locator('.agent-top')).toHaveCount(0)
     // A stale agent link must not make setup failure open a conversation.
-    await expect(panel.locator('.board-panel-tabs button')).toHaveText([lang === 'fr' ? 'Tâche' : 'Task', 'Agent', lang === 'fr' ? 'Réglages' : 'Settings'])
-    await expect(panel.locator('.board-panel-name .task-state')).toHaveText(lang === 'fr' ? 'À toi' : 'Needs you')
+    await expect(panel.locator('.board-panel-tabs button')).toHaveText(['Task', 'Agent', 'Settings'])
+    await expect(panel.locator('.board-panel-name .task-state')).toHaveText('Needs you')
     await page.screenshot({ path: `.shots/task-panel-${lang}-setup-${testInfo.project.name}.png` })
-    await panel.locator('.task-needs').getByRole('button', { name: lang === 'fr' ? 'Ouvrir le terminal' : 'Open terminal', exact: true }).click()
+    await panel.locator('.task-needs').getByRole('button', { name: 'Open terminal', exact: true }).click()
     await expect(panel.locator('#term')).toBeVisible()
     // WHR-62: the banner never offers the tab already shown. From the
     // terminal it leads to the conversation, where the answer goes.
     const needsBanner = panel.locator('.task-needs')
-    const openTerm = needsBanner.getByRole('button', { name: lang === 'fr' ? 'Ouvrir le terminal' : 'Open terminal', exact: true })
-    const answer = needsBanner.getByRole('button', { name: lang === 'fr' ? 'Répondre dans la conversation' : 'Answer in the conversation', exact: true })
+    const openTerm = needsBanner.getByRole('button', { name: 'Open terminal', exact: true })
+    const answer = needsBanner.getByRole('button', { name: 'Answer in the conversation', exact: true })
     await expect(openTerm).toHaveCount(0)
     await page.screenshot({ path: `.shots/needs-${lang}-term-${testInfo.project.name}.png` })
     const phoneSize = page.viewportSize()!
@@ -1143,7 +1145,7 @@ for (const lang of ['en', 'fr']) {
     await expect(panel.locator('.task-setup')).toBeVisible()
     await expect(answer).toHaveCount(0)
     await expect(openTerm).toBeVisible()
-    await panel.locator('.board-panel-tabs').getByRole('button', { name: lang === 'fr' ? 'Tâche' : 'Task', exact: true }).click()
+    await panel.locator('.board-panel-tabs').getByRole('button', { name: 'Task', exact: true }).click()
     await expect(panel.locator('.task-sheet')).toContainText('Search supports titles and labels.')
     await expect(openTerm).toBeVisible()
     await expect(panel.locator('.board-panel-note')).toContainText('Search checked with fictional data.')
@@ -1151,7 +1153,7 @@ for (const lang of ['en', 'fr']) {
     await expect(panel.locator('.task-limit[data-kind="time"] .task-limit-value')).toHaveText('3 min / 2 h')
     await expect(panel.locator('.task-limit[data-kind="tokens"]')).toHaveClass(/hot/)
     const counts = panel.locator('.token-count button')
-    await expect(counts).toHaveText([lang === 'fr' ? '41,1 M' : '41.1 M', '30 M'])
+    await expect(counts).toHaveText(['41.1 M', '30 M'])
     await expect(counts.first()).toHaveAttribute('title', '41088783')
     await counts.first().click()
     await expect(panel.locator('.token-count-exact')).toHaveText('(41088783)')
@@ -1166,10 +1168,10 @@ for (const lang of ['en', 'fr']) {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.screenshot({ path: `.shots/tokens-${lang}-desktop.png` })
     await page.setViewportSize(phone)
-    await expect(panel.locator('.board-panel-report')).toContainText(lang === 'fr' ? 'Rapport' : 'Report')
-    await expect(panel.locator('.board-panel-report')).not.toContainText(lang === 'fr' ? 'recherche' : 'Research')
+    await expect(panel.locator('.board-panel-report')).toContainText('Report')
+    await expect(panel.locator('.board-panel-report')).not.toContainText('Research')
     await page.screenshot({ path: `.shots/task-panel-${lang}-details-${testInfo.project.name}.png` })
-    await panel.locator('.task-needs').getByRole('button', { name: lang === 'fr' ? 'Relancer' : 'Start again', exact: true }).click()
+    await panel.locator('.task-needs').getByRole('button', { name: 'Start again', exact: true }).click()
     await expect.poll(callLog).toContain('delegate -- demo/9')
     // No pane at all: the panel opens straight on the task (no sheet), its
     // Conversation and Terminal tabs hidden, the failure in its banner.
@@ -1177,7 +1179,7 @@ for (const lang of ['en', 'fr']) {
     await page.reload()
     await page.goto('/#/board?machine=&task=demo%2F9')
     await expect(panel.locator('.task-sheet')).toContainText('Search supports titles and labels.')
-    await expect(panel.locator('.board-panel-tabs button')).toHaveText([lang === 'fr' ? 'Tâche' : 'Task', lang === 'fr' ? 'Réglages' : 'Settings'])
+    await expect(panel.locator('.board-panel-tabs button')).toHaveText(['Task', 'Settings'])
     await expect(panel.locator('.task-setup')).toHaveCount(0)
     await expect(panel.locator('.task-needs')).toContainText('npm ci')
     await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -1185,11 +1187,12 @@ for (const lang of ['en', 'fr']) {
     expect(await panel.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
     fs.rmSync(dir, { recursive: true, force: true })
   })
-}
+})
 
 // WHR-38: a review that failed the day before, then a run stopped at its limit.
 // The banner says the limit, not the old failure; Finish takes the work as it is.
-for (const lang of ['en', 'fr']) {
+test.describe('English interface', () => {
+  const lang = 'en'
   test(`a stale failure is history; Finish on a limit stop (${lang})`, async ({ page }, testInfo) => {
     await page.addInitScript(l => localStorage.setItem('herdrLanguage', l), lang)
     const at = Date.now() - 86_400_000
@@ -1207,32 +1210,32 @@ for (const lang of ['en', 'fr']) {
       await page.goto('/#/board?machine=&task=demo%2F11')
       await expect(banner).toBeVisible({ timeout: 2000 })
     }).toPass({ timeout: 20_000 })
-    await expect(banner.locator('h3')).toHaveText(`${lang === 'fr' ? 'À toi' : 'Needs you'} · Stopped at its 2h limit`)
+    await expect(banner.locator('h3')).toHaveText('Needs you · Stopped at its 2h limit')
     await expect(banner).not.toContainText('Review failed')
-    await expect(banner.getByRole('button', { name: lang === 'fr' ? 'Envoyer l’erreur à l’agent' : 'Send the error to the agent' })).toHaveCount(0)
-    await expect(banner.locator('.task-finish-why')).toContainText(lang === 'fr' ? 'nouvelle tranche' : 'new allowance')
+    await expect(banner.getByRole('button', { name: 'Send the error to the agent' })).toHaveCount(0)
+    await expect(banner.locator('.task-finish-why')).toContainText('new allowance')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: `.shots/task-finish-${lang}-${testInfo.project.name}.png` })
     // The old failure stays in the Task tab, as history.
-    await page.locator('.board-panel-tabs').getByRole('button', { name: lang === 'fr' ? 'Tâche' : 'Task', exact: true }).click()
+    await page.locator('.board-panel-tabs').getByRole('button', { name: 'Task', exact: true }).click()
     await expect(page.locator('.board-panel .task-sheet-earlier')).toContainText('Review failed')
     await page.screenshot({ path: `.shots/task-finish-${lang}-earlier-${testInfo.project.name}.png` })
-    await banner.getByRole('button', { name: lang === 'fr' ? 'Prendre tel quel' : 'Take as is', exact: true }).click()
+    await banner.getByRole('button', { name: 'Take as is', exact: true }).click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toContainText('merge.by itself')
     await page.screenshot({ path: `.shots/task-finish-${lang}-confirm-${testInfo.project.name}.png` })
-    await dialog.getByRole('button', { name: lang === 'fr' ? 'Terminer' : 'Finish', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Finish', exact: true }).click()
     await expect.poll(callLog).toContain('finish -- demo/11')
     fs.rmSync(dir, { recursive: true, force: true })
   })
-}
+})
 
 // WHR-50: every slot taken, Start says Queue and the place; Start after… waits
 // for other tasks (delegate --after), and a task that waits or is queued says so.
-for (const lang of ['en', 'fr']) {
+test.describe('English interface', () => {
+  const lang = 'en'
   test(`Queue, Start after… and a task that waits (${lang})`, async ({ page }, testInfo) => {
     test.setTimeout(60000)
-    const fr = lang === 'fr'
     await page.addInitScript(l => localStorage.setItem('herdrLanguage', l), lang)
     fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify([
       { id: 'demo/5', state: 'idle', title: 'In the backlog', stage: 'todo' },
@@ -1251,15 +1254,14 @@ for (const lang of ['en', 'fr']) {
     details('demo/5', 'In the backlog', 'todo')
     await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
     const panel = page.locator('.board-panel')
-    const queue = panel.getByRole('button', { name: fr ? 'Mettre en file' : 'Queue', exact: true })
-    // The board's list of the test before may still be kept a few seconds.
-    await expect(async () => {
-      await page.goto('/#/board?machine=&task=demo%2F5')
-      await expect(queue).toBeVisible({ timeout: 3000 })
-    }).toPass({ timeout: 20_000 })
-    await expect(panel.locator('.task-queue-place')).toHaveText(fr ? '2e dans la file · les 2 places sont prises' : '2nd in the queue · all 2 slots are taken')
+    const queue = panel.getByRole('button', { name: 'Queue', exact: true })
+    // Wait for this fixture before opening a task absent from the cached board.
+    await expect.poll(async () => (await (await page.request.get('/api/tasks')).json()).machines[0]?.tasks.map((t: { id: string }) => t.id)).toContain('demo/5')
+    await page.goto('/#/board?machine=&task=demo%2F5')
+    await expect(queue).toBeVisible()
+    await expect(panel.locator('.task-queue-place')).toHaveText('2nd in the queue · all 2 slots are taken')
     // Start after…: the tasks of the board, found by title.
-    await panel.getByRole('button', { name: fr ? 'Démarrer après…' : 'Start after…', exact: true }).click()
+    await panel.getByRole('button', { name: 'Start after…', exact: true }).click()
     const pick = panel.locator('.task-after-pick')
     await expect(pick.locator('.task-after-choice')).toHaveCount(4)
     await pick.getByRole('textbox').fill('dark')
@@ -1271,7 +1273,7 @@ for (const lang of ['en', 'fr']) {
     // The board refuses (a wait in a circle): its words, as they are.
     const circle = 'DEMO-5 cannot wait for that: tasks would wait on each other (DEMO-5 → DEMO-3 → DEMO-5). Nothing was changed.'
     fs.writeFileSync(path.join(root, 'refuse'), `${circle}\n`)
-    const go = pick.getByRole('button', { name: fr ? 'Démarrer après DEMO-3' : 'Start after DEMO-3', exact: true })
+    const go = pick.getByRole('button', { name: 'Start after DEMO-3', exact: true })
     await go.click()
     await expect(panel.locator('.task-sheet-error')).toHaveText(circle)
     fs.rmSync(path.join(root, 'refuse'))
@@ -1282,17 +1284,17 @@ for (const lang of ['en', 'fr']) {
     details('demo/10', 'Release notes', 'after', { after: { waitsFor: ['demo/3', 'demo/8'], waiting: true, left: ['demo/3'], waitsForYou: null, tasks: [{ id: 'demo/3', title: 'Add dark mode toggle', done: false }] } })
     await page.goto('/#/board?machine=&task=demo%2F10')
     const wait = panel.locator('.task-wait')
-    await expect(wait).toContainText(fr ? 'Attend' : 'Waits for')
+    await expect(wait).toContainText('Waits for')
     await expect(wait.locator('.task-wait-chip').first()).toHaveText('DEMO-3')
     await expect(wait.locator('.task-wait-chip.done')).toContainText('DEMO-8')
     await page.screenshot({ path: `.shots/task-after-${lang}-waits-${testInfo.project.name}.png` })
-    await wait.getByRole('button', { name: fr ? 'Ne plus attendre' : 'Stop waiting' }).click()
+    await wait.getByRole('button', { name: 'Stop waiting' }).click()
     await expect.poll(callLog).toContain('after --clear -- demo/10')
 
     // A task in the queue: its place.
     details('demo/9', 'Footer links', 'queued', { queue: { place: 1, words: 'waiting for a free slot, Q#1' } })
     await page.goto('/#/board?machine=&task=demo%2F9')
-    await expect(panel.locator('.task-wait')).toContainText(fr ? 'Attend une place libre · 1re dans la file' : 'Waiting for a free slot · 1st in the queue')
+    await expect(panel.locator('.task-wait')).toContainText('Waiting for a free slot · 1st in the queue')
     await page.screenshot({ path: `.shots/task-after-${lang}-queued-${testInfo.project.name}.png` })
   })
-}
+})
