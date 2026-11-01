@@ -13,7 +13,7 @@ export async function boardServes(page: Page, has: (rows: Row[]) => boolean) {
   await expect.poll(async () => {
     const board = await (await page.request.get('/api/tasks')).json() as { machines: { tasks: Row[] }[] }
     return has(board.machines.flatMap(m => m.tasks))
-  }).toBe(true)
+  }, { intervals: [200] }).toBe(true)
 }
 
 // An action's toast (2.6 s, 4.2 s for an error) covers the taps under it on a
