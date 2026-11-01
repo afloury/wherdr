@@ -71,6 +71,17 @@ workflow and on release tags `vX.Y.Z`.
 locally; without `E2E_SCOPE`, a local run is the whole suite. CI retries a failed test once (it
 then shows as flaky); local runs never retry.
 
+Engine inputs are selected by `scripts/engine-changes.mjs` in the existing `changes`
+job. Ordinary interface PRs skip Rust entirely. Engine sources and build, Board
+integration or distribution inputs run the upstream full Linux check and its macOS
+platform selection through `engine-ci.yml`, from `engine/`. Renames count both paths;
+an unavailable diff selects Rust conservatively. Manual runs and release tags also
+select it. Rust caches use `engine/target`, OS, host target, compiler version and
+`engine/Cargo.lock`. The always-present `engine-checks` result passes when Rust was
+intentionally skipped and fails for failed or cancelled required checks. Existing
+`checks` and `e2e` check names remain unchanged. No publishing is performed here.
+
+
 ## Agent test rule
 
 Read the relevant [documentation page](docs/README.md), rather than the entire documentation.
@@ -153,6 +164,15 @@ both change the account's default model. wherdr itself only uses "this session" 
 - **Design**: follow the [design rules](docs/design.md) for every interface change.
 - **iOS**: keep `apple-mobile-web-app-status-bar-style` on `black` (with `black-translucent`,
   iOS 26 shortens the installed app from the bottom), and mind the keyboard and safe areas.
+- **Terminal input and IME**: xterm's `onData` does not distinguish a keystroke from
+  committed composition text, even a single ASCII character. Preserve the composition
+  lifecycle and the guard for the first data event after `compositionend`; a keydown with
+  `isComposing` or `keyCode === 229` must not clear it. Handle ordinary keydown in capture
+  on the terminal element before xterm emits data, so cancelling composition does not
+  swallow the next shortcut. Composition output and paste clear virtual modifiers and
+  stay text; ordinary keys still consume one-shot modifiers and preserve real Shift.
+  Keybar layout changes must preserve input focus and these contracts. The browser
+  regressions are in `tests/e2e/terminal-ime.spec.ts` and `terminal-modifiers.spec.ts`.
 - Server code lives in `server/` (Nitro), shared types and pure helpers in `shared/`, the
   client in `app/`.
 

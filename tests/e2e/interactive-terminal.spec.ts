@@ -65,7 +65,7 @@ test('the scrim covers the whole app; a click on it closes the window until it i
   expect(box.x).toBeGreaterThan(40)
   // Agent list, header and conversation: all under the scrim.
   for (const selector of ['#home', '.agent-top', '.swipe-area']) expect(await coveredAt(page, selector)).toBe(true)
-  await expect(page.getByRole('tab', { name: 'Terminal', exact: true }).click({ trial: true, timeout: 1000 })).rejects.toThrow()
+  await expect(page.getByRole('button', { name: 'Show terminal', exact: true }).click({ trial: true, timeout: 1000 })).rejects.toThrow()
   // The keys go to the terminal, and the focus cannot leave the window.
   await expect.poll(() => page.evaluate(() => Boolean(document.activeElement?.closest('.interactive-terminal .xterm')))).toBe(true)
   await page.locator('#home button').first().evaluate(el => (el as HTMLElement).focus())
@@ -131,7 +131,7 @@ test('rejects a stale native choice after the screen changes to an ambiguous men
 
 test('Terminal view after closing the window keeps one fitted terminal for the pane', async ({ page }, info) => {
   const toggle = info.project.name.includes('desktop')
-    ? (name: string) => page.getByRole('tab', { name, exact: true }).click()
+    ? (name: string) => page.getByRole('button', { name: `Show ${name.toLowerCase()}`, exact: true }).click()
     : () => page.getByRole('button', { name: 'Terminal', exact: true }).click()
   await expect(page.locator('.interactive-terminal .xterm')).toBeVisible()
   await page.getByRole('button', { name: 'Close terminal window' }).click()
