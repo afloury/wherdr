@@ -428,18 +428,6 @@ const dropdownItems = computed(() => toDropdown(agentMenu.value))
 function openAgentMenu() { openMenu(agentMenu.value) }
 watch(() => pane.value && (pane.value.machine || ''), (m) => { if (m !== undefined) loadPluginActions(m) }, { immediate: true })
 
-// Conversation / Terminal selector (computer): in the pane header
-// or in the side-by-side cell's.
-// The icons replace the labels in a narrow cell (CSS).
-const tabs = computed(() => [
-  { label: t('Conversation'), value: 'chat', icon: 'i-lucide-message-square' },
-  { label: t('Terminal'), value: 'term', icon: 'i-lucide-square-terminal' },
-])
-const tabsUi = { list: 'hw-tabs', trigger: 'hw-tab', indicator: 'hw-tab-ind', leadingIcon: 'hw-tab-icon', label: 'hw-tab-label' }
-const tab = computed({
-  get: () => (mode.value === 'term' ? 'term' : 'chat'),
-  set: (v: string) => setMode(v === 'term' ? 'term' : 'chat'),
-})
 // Terminal keys: under the terminal, and in the active side-by-side cell on a
 // touch screen (iPad without a hardware keyboard: Esc, arrows, ^C).
 const keysAvailable = computed(() => Boolean(pane.value) && live.value && eventsOpen.value && !offlineView.value && !machineDown.value)
@@ -594,15 +582,9 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
             <span v-if="where" class="where">{{ where }}</span>
           </div>
         </div>
-        <UTabs
-          v-if="controls.selector === 'cell'" v-model="tab" :items="tabs" :content="false" color="neutral" variant="pill" size="xs"
-          class="view-tabs" :ui="tabsUi"
-        />
+        <ViewToggle v-if="controls.selector === 'cell'" :mode="mode" @toggle="toggleMode('term')" />
         <div class="agent-actions">
-          <UTabs
-            v-if="controls.selector === 'header'" v-model="tab" :items="tabs" :content="false" color="neutral" variant="pill" size="xs"
-            class="view-tabs" :ui="tabsUi"
-          />
+          <ViewToggle v-if="controls.selector === 'header'" :mode="mode" @toggle="toggleMode('term')" />
           <UButton
             v-if="headerAdd && pane && !compactPhone" icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn"
             :aria-label="t('New tab')" :title="t('New tab')" :disabled="offlineView" @click="newTab(pane.workspace)"

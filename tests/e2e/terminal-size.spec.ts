@@ -6,10 +6,10 @@ import { OMP_CHAT_PANE, fakeHerdr } from './scenario.mjs'
 const ORIGINAL = { cols: 120, rows: 40 }
 const paneSize = () => fakeHerdr('e2e.pane_size', { pane_id: OMP_CHAT_PANE }) as Promise<{ cols: number, rows: number, attached: boolean }>
 
-// Phone: the terminal icon of the header toggles; computer: Conversation / Terminal tabs.
+// Phone: the terminal icon toggles; computer: the button names the opposite view.
 async function show(page: Page, view: 'Terminal' | 'Conversation') {
-  const tabs = page.locator('.view-tabs')
-  if (await tabs.count()) await tabs.getByRole('tab', { name: view }).click()
+  const tabs = page.locator('.view-toggle')
+  if (await tabs.count()) await page.getByRole('button', { name: `Show ${view.toLowerCase()}`, exact: true }).click()
   else await page.locator('button[aria-label="Terminal"]').first().click()
 }
 

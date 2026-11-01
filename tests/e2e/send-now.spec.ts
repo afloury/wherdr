@@ -48,7 +48,7 @@ test('conversation sends the native queue now on phone and desktop, in EN and FR
 test('terminal Ctrl+Enter reaches Herdr as a named key', { tag: '@chromium-desktop' }, async ({ page }, info) => {
   await setup()
   await page.goto(`/#/a/${pane}`)
-  await page.getByRole(info.project.name.includes('desktop') ? 'tab' : 'button', { name: 'Terminal', exact: true }).click()
+  await page.getByRole('button', { name: info.project.name.includes('desktop') ? 'Show terminal' : 'Terminal', exact: true }).click()
   const input = page.locator('.xterm-helper-textarea')
   await input.focus()
   await input.press('Control+Enter')
