@@ -27,8 +27,8 @@ test('the phone key order is chosen in Settings, survives a reload, applies to C
   await page.goto('/#/settings?section=terminal')
   const group = page.locator('.phone-key-order')
   await expect(group.getByRole('heading', { name: 'Phone key bar' })).toBeVisible()
-  expect(await settingsRows(page)).toEqual(DEFAULT)
-  expect(await previewKeys(page)).toEqual(DEFAULT)
+  await expect.poll(() => settingsRows(page)).toEqual(DEFAULT)
+  await expect.poll(() => previewKeys(page)).toEqual(DEFAULT)
   const reset = group.getByRole('button', { name: 'Reset to default order' })
   await expect(reset).toBeDisabled()
   await expect(group.getByRole('button', { name: 'Move Phone keyboard up' })).toBeDisabled()
@@ -48,18 +48,18 @@ test('the phone key order is chosen in Settings, survives a reload, applies to C
 
   const custom = ['enter', 'keyboard', 'ctrl', 'tab', 'esc', 'left', 'up', 'down', 'right', 'ctrl-c', 'backspace',
     'home', 'end', 'pageup', 'pagedown', 'delete', 'insert', 'shift', 'alt', 'y', 'n', ...DEFAULT.slice(21)]
-  expect(await settingsRows(page)).toEqual(custom)
-  expect(await previewKeys(page)).toEqual(custom)
+  await expect.poll(() => settingsRows(page)).toEqual(custom)
+  await expect.poll(() => previewKeys(page)).toEqual(custom)
   await expect(reset).toBeEnabled()
   await expect(group.locator('[aria-live="polite"]')).toHaveText('Esc: position 5 of 33')
   if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${info.project.name}-key-order-settings.png` })
 
   await page.reload()
-  expect(await settingsRows(page)).toEqual(custom)
+  await expect.poll(() => settingsRows(page)).toEqual(custom)
 
   await page.goto(`/#/a/${OMP_CHAT_PANE}`)
   await expect(page.locator('#term')).toHaveCount(0)
-  expect(await barKeys(page)).toEqual(custom)
+  await expect.poll(() => barKeys(page)).toEqual(custom)
   // The keys keep their behavior: Enter, now first, still sends enter.
   const input = page.waitForRequest(r => r.url().endsWith('/api/input') && r.method() === 'POST')
   await page.getByRole('toolbar', { name: 'Common keys and modifiers' }).getByRole('button').first().click()
@@ -68,20 +68,20 @@ test('the phone key order is chosen in Settings, survives a reload, applies to C
 
   await page.locator('.mode-btn').click()
   await expect(page.locator('#term .xterm-rows')).toBeVisible()
-  expect(await barKeys(page)).toEqual(custom)
+  await expect.poll(() => barKeys(page)).toEqual(custom)
 
   await page.goto('/#/settings?section=terminal')
   await reset.click()
   await expect(reset).toBeDisabled()
-  expect(await settingsRows(page)).toEqual(DEFAULT)
-  expect(await page.evaluate(() => localStorage.getItem('phoneKeyOrder'))).toBeNull()
+  await expect.poll(() => settingsRows(page)).toEqual(DEFAULT)
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('phoneKeyOrder'))).toBeNull()
   await page.goto(`/#/a/${OMP_CHAT_PANE}`)
-  expect(await barKeys(page)).toEqual(DEFAULT)
+  await expect.poll(() => barKeys(page)).toEqual(DEFAULT)
 })
 
 test('a saved order from another version keeps every key: unknown ids dropped, new keys last', async ({ page }, info) => {
   test.skip(!info.project.name.endsWith('phone'), 'Phone key bar')
   await page.addInitScript(() => localStorage.setItem('phoneKeyOrder', JSON.stringify(['esc', 'hyper', 'tab', 'esc'])))
   await page.goto(`/#/a/${OMP_CHAT_PANE}`)
-  expect(await barKeys(page)).toEqual(['esc', 'tab', ...DEFAULT.filter(k => k !== 'esc' && k !== 'tab')])
+  await expect.poll(() => barKeys(page)).toEqual(['esc', 'tab', ...DEFAULT.filter(k => k !== 'esc' && k !== 'tab')])
 })

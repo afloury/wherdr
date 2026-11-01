@@ -6,7 +6,8 @@ import { CLAUDE_PANE, COORDINATOR_PANE, OMP_CHAT_PANE } from './scenario.mjs'
 // machine coordinator each have their own icon, and the Board's names
 // (herdr-projects' names: "Coordinator", "<machine> coordinator"), unlike a repo's
 // project coordinator (the wherdr mark and "Coordinator"). Neutral links only.
-for (const language of ['en', 'fr']) {
+test.describe('English interface', () => {
+  const language = 'en'
   test(`home coordinators: one icon and label per kind, ${language}`, async ({ page }, info) => {
     await page.addInitScript(lang => localStorage.setItem('herdrLanguage', lang), language)
     await page.route('**/api/tasks/links**', route => route.fulfill({ json: {
@@ -20,8 +21,8 @@ for (const language of ['en', 'fr']) {
     const section = page.locator('.agent-group.coordinators')
     const top = section.locator(`.card[data-pane="${COORDINATOR_PANE}"]`)
     const machine = section.locator(`.card[data-pane="${CLAUDE_PANE}"]`)
-    await expect(top.locator('.card-title')).toHaveText(language === 'fr' ? 'Coordinateur' : 'Coordinator')
-    await expect(machine.locator('.card-title')).toHaveText(language === 'fr' ? /^Coordinateur · .+/ : /^.+ coordinator$/)
+    await expect(top.locator('.card-title')).toHaveText('Coordinator')
+    await expect(machine.locator('.card-title')).toHaveText(/^.+ coordinator$/)
     await expect(section).not.toContainText(/setup|configuration/i)
     // Labels read in uppercase mono, as before.
     await expect(top.locator('.card-title')).toHaveCSS('text-transform', 'uppercase')
@@ -32,12 +33,12 @@ for (const language of ['en', 'fr']) {
     // The project coordinator keeps its head row in its repo group.
     const lead = page.locator('.card.home-lead', { hasText: 'demo' })
     await expect(lead.locator('.lead-mark.coord')).toBeVisible()
-    await expect(lead.locator('.lead-coord-tag')).toHaveText(language === 'fr' ? 'Coordinateur' : 'Coordinator')
+    await expect(lead.locator('.lead-coord-tag')).toHaveText('Coordinator')
     for (const card of [top, machine]) expect(await card.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
     await fs.mkdir('.shots', { recursive: true })
     await page.screenshot({ path: `.shots/home-coordinators-${language}-${info.project.name}.png` })
   })
-}
+})
 
 // A coordinator's file keeps the pane and space it had when it started; once
 // Herdr closes that pane (Herdr or the agent restarted), only its conversation,

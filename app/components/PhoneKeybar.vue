@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createKeyboardTap } from '~/utils/keyboardTap'
 import type { VirtualModifier } from '~/utils/terminalModifiers'
 import { displayVirtualChord } from '~/utils/keybarKeys'
 import { PHONE_KEYS, type PhoneKey } from '~/utils/phoneKeys'
@@ -19,12 +20,15 @@ function toggleKbd() {
   if (props.ctl.hasFocus()) props.ctl.blur()
   else props.ctl.focus()
 }
+const keyboardTap = createKeyboardTap(toggleKbd)
+// The keyboard key acts on touchend (iOS opens the keyboard only from a user gesture); see utils/keyboardTap.ts.
+const isKbd = (k: PhoneKey) => k.kind === 'keyboard'
 function activate(k: PhoneKey) {
-  if (k.kind === 'keyboard') toggleKbd()
+  if (isKbd(k)) keyboardTap.click()
   else if (k.kind === 'modifier') modifier(k.modifier!)
   else press(k.send!)
 }
-const isOn = (k: PhoneKey) => k.kind === 'keyboard' ? Boolean(props.terminal && props.ctl.kbdOn.value) : k.kind === 'modifier' && active.value.includes(k.modifier!)
+const isOn = (k: PhoneKey) => isKbd(k) ? Boolean(props.terminal && props.ctl.kbdOn.value) : k.kind === 'modifier' && active.value.includes(k.modifier!)
 </script>
 
 <template>
@@ -36,6 +40,8 @@ const isOn = (k: PhoneKey) => k.kind === 'keyboard' ? Boolean(props.terminal && 
         :class="{ 'vk-mod': k.kind === 'modifier', danger: k.danger, selected: isOn(k) }"
         :aria-pressed="k.kind === 'modifier' ? isOn(k) : undefined" :aria-label="k.label()"
         @pointerdown.prevent @click="activate(k)"
+        @touchstart.passive="isKbd(k) && keyboardTap.start($event)" @touchmove.passive="isKbd(k) && keyboardTap.move($event)"
+        @touchend="isKbd(k) && keyboardTap.end($event)" @touchcancel="isKbd(k) && keyboardTap.cancel()"
       >
         <UIcon v-if="k.icon && k.kind === 'keyboard'" :name="k.icon" mode="svg" />
         <UIcon v-else-if="k.icon" :name="k.icon" mode="svg" class="vk-key-icon" aria-hidden="true" />

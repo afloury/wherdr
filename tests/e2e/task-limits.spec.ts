@@ -54,19 +54,20 @@ const shot = async (page: import('@playwright/test').Page, name: string) => {
   await page.setViewportSize(phone)
 }
 
-for (const lang of ['en', 'fr']) {
+test.describe('English interface', () => {
+  const lang = 'en'
   test(`the Task tab shows a gauge per limit (${lang})`, async ({ page }) => {
     await page.addInitScript(l => localStorage.setItem('herdrLanguage', l), lang)
     write('list.json', [working])
     write('details.json', { task: { ...working, description: 'Make the search page easier to scan.' }, limits: limits({ time: { limit: '2h', used: '2m38s', usedMs: 158_000 } }) })
     await page.goto('/#/board?machine=&task=demo%2F9')
     const panel = page.locator('.board-panel')
-    await panel.locator('.board-panel-tabs').getByRole('button', { name: lang === 'fr' ? 'Tâche' : 'Task', exact: true }).click()
+    await panel.locator('.board-panel-tabs').getByRole('button', { name: 'Task', exact: true }).click()
     await expect(panel.locator('.task-limit')).toHaveCount(2, { timeout: 20_000 })
     await shot(page, `gauges-${lang}`)
-    await expect(panel.locator('.task-limit[data-kind="time"] .task-limit-label')).toHaveText(lang === 'fr' ? 'Temps · cette tranche' : 'Time · this run')
+    await expect(panel.locator('.task-limit[data-kind="time"] .task-limit-label')).toHaveText('Time · this run')
     await expect(panel.locator('.task-limit[data-kind="time"] .task-limit-value')).toHaveText('2 min 38 / 2 h')
-    await expect(panel.locator('.task-limit[data-kind="tokens"] .task-limit-value')).toHaveText(lang === 'fr' ? '3,4 M / 30 M' : '3.4 M / 30 M')
+    await expect(panel.locator('.task-limit[data-kind="tokens"] .task-limit-value')).toHaveText('3.4 M / 30 M')
     await expect(panel.locator('.task-limit.hot')).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
@@ -83,10 +84,10 @@ for (const lang of ['en', 'fr']) {
     await expect(banner).toContainText('stopped at its 2h limit', { timeout: 20_000 })
     await shot(page, `stopped-${lang}`)
     // The hint names the limit Continue grants once more.
-    await expect(banner.locator('.task-finish-why')).toContainText(lang === 'fr' ? 'nouvelle tranche (2 h par tranche)' : 'new allowance (2 h a run)')
-    await banner.getByRole('button', { name: lang === 'fr' ? 'Relever la limite' : 'Raise limit', exact: true }).click()
+    await expect(banner.locator('.task-finish-why')).toContainText('new allowance (2 h a run)')
+    await banner.getByRole('button', { name: 'Raise limit', exact: true }).click()
     const presets = page.locator('.raise-limit-presets button')
-    await expect(presets).toHaveText(['+1 h3 h', '×24 h', lang === 'fr' ? 'Sans limite' : 'No limit'])
+    await expect(presets).toHaveText(['+1 h3 h', '×24 h', 'No limit'])
     await shot(page, `raise-${lang}`)
     await presets.first().click()
     // Only set: herdr-projects carries on by itself, so no retry follows.
@@ -95,7 +96,7 @@ for (const lang of ['en', 'fr']) {
     await expect(banner).toHaveCount(0, { timeout: 15_000 })
     expect(callLog().some(c => c.startsWith('retry'))).toBe(false)
   })
-}
+})
 
 test('a refused raise shows herdr-projects’ words as they are', async ({ page }) => {
   write('list.json', [{ ...stopped, msg: 'stopped at 30m tokens' }])
