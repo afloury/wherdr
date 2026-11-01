@@ -8,7 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
-- **No image markers in Codex messages.** A photo sent to Codex shows as its thumbnail only, without a bubble reading `</image>` or `[Image #1]`; the text sent with photos stays whole, and markers typed as text are kept.
+- **No image markers in Codex messages (#265).** A photo sent to Codex shows as its thumbnail only, without a bubble reading `</image>` or `[Image #1]`; the text sent with photos stays whole, and markers typed as text are kept.
 
 ## [2.4.0] — 2026-10-31
 
