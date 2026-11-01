@@ -460,6 +460,7 @@ onMounted(() => {
             <p class="muted settings-hint">{{ t('Rendering is saved on this device.') }}</p>
             <p class="settings-renderer-status" role="status">{{ rendererStatus }}</p>
           </div>
+          <PhoneKeyOrderSettings />
         </div>
 
         <div v-show="activeSection === 'agents'" class="settings-section">

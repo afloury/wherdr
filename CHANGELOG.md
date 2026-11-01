@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added and improved
 
+- **Choose the order of the phone keys.** Settings › Terminal › Phone key bar reorders the keys of the phone key bar (drag a handle, or the up and down buttons), with a preview of the row and a reset to the default order. The same order applies in the Conversation and the Terminal; it is saved on the device. The default order is unchanged. Thanks to [@followcat](https://github.com/followcat) for the idea.
 - **Per-device push delivery results.** Settings › Notifications lists every registered device with the result of its last push (delivered, expired, rejected, unreachable) and removes expired ones on request, instead of dropping them silently.
 - **English-only interface.** The interface is now always in English, including on a browser set to French or after choosing French earlier; Settings › Appearance no longer has a Language choice. Messages you and the agents write are unchanged, in any language.
 
