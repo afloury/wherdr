@@ -1,6 +1,5 @@
-// UI translations: the English text is the key and is shown as-is in English;
-// FR maps it to French. A missing French entry falls back to English (tests/i18n.test.ts
-// checks that every key used in the code has one). The choice is saved on the device.
+// Interface text uses English keys. Keep the inactive French dictionary for now;
+// new interface text does not require a French translation.
 
 const FR: Record<string, string> = {
   'Individual agents': 'Agents individuels',
@@ -706,22 +705,8 @@ const FR: Record<string, string> = {
 export type Lang = 'en' | 'fr'
 export const LANG_KEY = 'herdrLanguage'
 
-function readLang(): Lang {
-  try {
-    const saved = localStorage.getItem(LANG_KEY)
-    if (saved === 'fr' || saved === 'en') return saved
-    // The browser's first preferred language we speak wins (English when it comes first).
-    for (const l of navigator.languages ?? [navigator.language]) {
-      const code = l?.toLowerCase().slice(0, 2)
-      if (code === 'fr' || code === 'en') return code
-    }
-    return 'en'
-  }
-  catch { return 'en' }
-}
-
-// Changing the language reloads the app: no reactivity needed.
-export const language: Lang = import.meta.client ? readLang() : 'en'
+// English is the only active interface language. Ignore browser and saved preferences.
+export const language: Lang = 'en'
 
 // Keys with {name} placeholders (server messages built with fmt(), shared/message.ts),
 // compiled once into patterns that recover the values from the filled English text.
@@ -754,8 +739,8 @@ export function t(en: string): string {
   return language === 'fr' ? (french(en) ?? en) : en
 }
 
-// Sentence with variable parts: both versions written in full, English first.
-export function tl(en: string, fr: string): string {
+// Sentence with variable parts; the inactive French version is optional.
+export function tl(en: string, fr: string = en): string {
   return language === 'fr' ? fr : en
 }
 

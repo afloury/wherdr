@@ -381,7 +381,7 @@ function durationLabel(seconds: number) {
 }
 function extendLabel(state?: AwakeState) {
   if (!state?.until) return ''
-  const at = new Date(Math.max(state.until, Date.now()) + 3600000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const at = new Date(Math.max(state.until, Date.now()) + 3600000).toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' })
   return tl(`Until ${at}`, `Jusqu’à ${at}`)
 }
 function awakeLabel(state?: AwakeState) {

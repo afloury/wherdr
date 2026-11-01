@@ -178,12 +178,12 @@ test('an existing conversation can explicitly start fresh', async ({ page }) => 
   await expect.poll(async () => (await stats()).prompts.map((p: { text: string }) => p.text)).toEqual(['Held until fresh start'])
 })
 
-test('the restart card and both conversation choices are translated into French', async ({ page }, info) => {
+test('the restart card and both conversation choices are English with a legacy French preference', async ({ page }, info) => {
   await page.addInitScript(() => localStorage.setItem('herdrLanguage', 'fr'))
-  await stopAfterUpdate(page, true, 'Codex s’est mis à jour et s’est arrêté')
-  await expect(card(page).getByRole('button', { name: /Reprendre la conversation/ })).toBeVisible()
-  await expect(card(page).getByRole('button', { name: /Démarrer une nouvelle conversation/ })).toBeVisible()
-  await expect(card(page).getByRole('button', { name: 'Ignorer', exact: true })).toBeVisible()
+  await stopAfterUpdate(page, true, 'Codex updated itself and stopped')
+  await expect(card(page).getByRole('button', { name: /Resume conversation/ })).toBeVisible()
+  await expect(card(page).getByRole('button', { name: /Start fresh/ })).toBeVisible()
+  await expect(card(page).getByRole('button', { name: 'Dismiss', exact: true })).toBeVisible()
   if (info.project.name.startsWith('chromium')) await page.screenshot({ path: `.shots/codex-update-fr-${info.project.name}.png`, fullPage: true })
 })
 
