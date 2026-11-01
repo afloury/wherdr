@@ -15,7 +15,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added and improved
 
-- **More room on phones.** The agent header keeps its tabs, title and state on one row. Terminal function keys default to closed and open above Send in both conversation and terminal views, with the mobile key layout; the input stays compact at rest.
+- **More room on phones.** The agent header keeps its tabs, title and state on one row. Tapping the agent identity opens the single place to switch, rename, split, move and close panes and tabs; Options keeps the agent's own actions, without duplicates. Terminal function keys default to closed and open above Send in both conversation and terminal views, with the mobile key layout; the input stays compact at rest.
 - **One-shot terminal modifiers.** Ctrl, Alt and Shift can be armed for the next key-bar or phone-keyboard key. Existing shortcuts and digit buttons remain available; pastes and composed text stay text.
 - **Optional individual-agent list.** Settings › Appearance can show standalone agents as separate rows, while workspace cards remain the default and Board task helpers stay grouped.
 - **Board tasks in global search.** Search (⌘K) also finds herdr-projects tasks by name (`WHR-12`), title or description, shows their machine, project and state, and opens the chosen task on the Board.

@@ -20,10 +20,19 @@ const stateLabel = computed(() => disconnected.value
   ? (host.value?.status === 'connecting' ? t('Reconnecting…') : t('Offline')) : statusLabel(props.pane))
 const tone = computed(() => disconnected.value ? 'blocked' : statusKey(props.pane))
 const label = computed(() => [
-  tl('Switch pane or tab', 'Changer de panneau ou d’onglet'), title.value, showKind.value ? kind.value : null, stateLabel.value,
+  tl('Panes and tabs', 'Panneaux et onglets'), title.value, showKind.value ? kind.value : null, stateLabel.value,
   ...(panes.value.length > 1 ? [`${t('Pane')} ${position.value}`] : []), props.workspace?.label, hostLabel.value,
 ].filter(Boolean).join(', '))
-const actions = computed(() => tabItems(props.pane.tab))
+// Navigation lists only when there is somewhere to go; the actions are always
+// there (a single pane can still be renamed, split or get a new tab).
+const actions = computed<MenuItem[]>(() => [
+  { kind: 'group', label: t('Current pane') },
+  ...currentPaneItems(props.pane),
+  { kind: 'group', label: t('Current tab') },
+  ...currentTabItems(props.pane.tab, panes.value.length > 1
+    ? { label: t('Tab overview'), icon: 'i-lucide-panels-top-left', desc: tl('All panes of this tab side by side', 'Tous les panneaux de cet onglet côte à côte'), run: () => emit('overview') }
+    : undefined),
+])
 watch(() => props.pane.tab, id => noteTab(id), { immediate: true })
 watch(() => props.pane.id, () => { open.value = false })
 
@@ -40,7 +49,6 @@ function run(item: MenuItem) {
   open.value = false
   item.run?.()
 }
-function overview() { open.value = false; emit('overview') }
 function tabStatus(e: typeof tabs.value[number]) {
   const lead = leadPane(e.panes)
   return lead ? statusLabel(lead) : t('Closed')
@@ -61,26 +69,24 @@ function tabStatus(e: typeof tabs.value[number]) {
     <div class="phone-identity-details">
       <p class="phone-identity-summary">{{ hostLabel }} · {{ workspace?.label || pane.workspace }}</p>
       <div class="menu">
-        <p class="menu-group">{{ tl('Panes in this tab', 'Panneaux de cet onglet') }}</p>
-        <button v-for="(p, i) in panes" :key="p.id" type="button" :aria-current="p.id === pane.id ? 'page' : undefined" @click="visit(p)">
+        <p v-if="panes.length > 1" class="menu-group">{{ tl('Panes in this tab', 'Panneaux de cet onglet') }}</p>
+        <button v-for="(p, i) in panes.length > 1 ? panes : []" :key="p.id" type="button" :aria-current="p.id === pane.id ? 'page' : undefined" @click="visit(p)">
           <UIcon :name="p.id === pane.id ? 'i-lucide-check' : 'i-lucide-panel-top'" class="menu-icon" />
           <span class="menu-text"><span>{{ p.label || p.name || paneOwnTitle(p) }}</span><span class="menu-sub"><span class="pill" :class="statusKey(p)"><i />{{ statusLabel(p) }}</span> · {{ i + 1 }}/{{ panes.length }}</span></span>
         </button>
-        <p class="menu-group">{{ t('Tabs') }}</p>
-        <button v-for="e in tabs" :key="e.tab.id" type="button" :aria-current="e.tab.id === pane.tab ? 'page' : undefined" @click="pickTab(e.tab.id)">
+        <p v-if="tabs.length > 1" class="menu-group">{{ t('Tabs') }}</p>
+        <button v-for="e in tabs.length > 1 ? tabs : []" :key="e.tab.id" type="button" :aria-current="e.tab.id === pane.tab ? 'page' : undefined" @click="pickTab(e.tab.id)">
           <UIcon :name="e.tab.id === pane.tab ? 'i-lucide-check' : 'i-lucide-layers'" class="menu-icon" />
           <span class="menu-text"><span>{{ e.tab.label || e.tab.number }}</span><span class="menu-sub"><span class="pill" :class="leadPane(e.panes) ? statusKey(leadPane(e.panes)!) : 'inactive'"><i />{{ tabStatus(e) }}</span> · {{ e.panes.length === 1 ? tl('1 pane', '1 panneau') : tl(`${e.panes.length} panes`, `${e.panes.length} panneaux`) }}</span></span>
         </button>
-        <div class="menu-sep" />
         <template v-for="(item, i) in actions" :key="i">
           <div v-if="item.kind === 'separator'" class="menu-sep" />
+          <p v-else-if="item.kind === 'group'" class="menu-group">{{ item.label }}</p>
           <button v-else type="button" :class="{ danger: item.danger }" :disabled="item.disabled" @click="run(item)">
             <UIcon v-if="item.icon" :name="item.icon" class="menu-icon" />
-            <span class="menu-text"><span>{{ item.label }}</span><span v-if="item.desc" class="menu-sub">{{ item.desc }}</span></span>
+            <span class="menu-text"><span>{{ item.label }}</span><span v-if="item.desc" class="menu-sub" :class="{ 'font-mono': item.mono }">{{ item.desc }}</span></span>
           </button>
         </template>
-        <div class="menu-sep" />
-        <button type="button" @click="overview"><UIcon name="i-lucide-panels-top-left" class="menu-icon" /><span class="menu-text"><span>{{ t('Tab overview') }}</span><span class="menu-sub">{{ tl('All panes of this tab side by side', 'Tous les panneaux de cet onglet côte à côte') }}</span></span></button>
       </div>
     </div>
   </AppSheet>
@@ -101,5 +107,4 @@ function tabStatus(e: typeof tabs.value[number]) {
 .phone-identity-details button[aria-current="page"] { color: var(--accent); }
 @container phone-header (max-width: 22em) { .phone-identity { gap: 4px; } }
 @container phone-header (max-width: 18em) { .phone-identity-position { display: none; } }
-@container phone-header (max-width: 15em) { .phone-identity-chevron { display: none; } }
 </style>

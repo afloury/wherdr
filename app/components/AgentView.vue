@@ -374,7 +374,6 @@ const agentMenu = computed<MenuItem[]>(() => {
       { kind: 'separator' },
     )
   }
-  if (compactPhone.value && inTab.value) items.push({ label: t('Tab overview'), icon: 'i-lucide-panels-top-left', run: openPlan })
   if (canAttachTerminal.value) items.push({ label: t('Attach a file…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
   if (p) items.push({ label: t('View changes'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
   if (p) items.push({ label: t('Browse files'), icon: 'i-lucide-folder-tree', run: () => { filesOpen.value = true } })
@@ -385,10 +384,12 @@ const agentMenu = computed<MenuItem[]>(() => {
       kbds: live.value ? shortcutKbds('open-editor') : undefined, run: () => openFolderOnMachine(p),
     })
   }
-  if (p) items.push({ label: t('Rename pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } })
-  // Split, move to another tab (never zoom or resize).
-  if (p) items.push(...paneSpaceItems(p))
-  if (p) items.push(copyPaneIdItem(p))
+  // Rename, split, move to another tab (never zoom or resize), copy the ID.
+  // Phone: these live in the pane sheet of the header identity instead.
+  if (p && !compactPhone.value) {
+    items.push({ label: t('Rename pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } })
+    items.push(...paneSpaceItems(p), copyPaneIdItem(p))
+  }
   // The machine's Herdr plugin actions that apply to a workspace / pane.
   if (p && agentPluginActions(p.machine).length) {
     items.push({ label: t('Plugin actions'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ pane: p }) })
@@ -407,13 +408,10 @@ const agentMenu = computed<MenuItem[]>(() => {
   // or its title; new tab: the "+" of the header or of the tabs.
   if (!props.cell) items.push(...settingsMenuItems())
   if (p) {
-    items.push({ kind: 'separator' })
-    items.push({
-      label: p.agent ? tl(`Close this pane (stops ${kindLabel(p.agent)})`, `Fermer ce pane (arrête ${kindLabel(p.agent)})`) : t('Close this terminal'),
-      icon: 'i-lucide-trash-2', danger: true, kbds: live.value ? shortcutKbds('close-pane') : undefined, run: () => closePane(p),
-    })
-    // Pane in a worktree: remove the checkout (and close its workspace).
     const ws = herdrState.value.workspaces.find(w => w.id === p.workspace)
+    if (!compactPhone.value || ws?.worktree) items.push({ kind: 'separator' })
+    if (!compactPhone.value) items.push(closePaneItem(p, live.value ? shortcutKbds('close-pane') : undefined))
+    // Pane in a worktree: remove the checkout (and close its workspace).
     if (ws && ws.worktree) {
       items.push({ label: t('Delete this worktree'), icon: 'i-lucide-git-branch', danger: true, run: () => removeWorktreeOf(p.workspace) })
     }

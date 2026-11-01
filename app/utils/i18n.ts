@@ -557,6 +557,7 @@ const FR: Record<string, string> = {
   'Session unavailable: back to the default session': 'Session indisponible : retour à la session par défaut',
   // Spaces (workspaces, tabs, side-by-side panes)
   'Tab': 'Onglet', 'Tabs': 'Onglets', 'Pane': 'Panneau',
+  'Current pane': 'Panneau actuel', 'Current tab': 'Onglet actuel',
   'Reconnecting…': 'Reconnexion…', 'Offline': 'Hors ligne',
   'This tab is unavailable.': 'Cet onglet est indisponible.',
   'Active pane in Herdr': 'Pane actif dans Herdr', 'A pane is zoomed in Herdr': 'Un pane est agrandi dans Herdr',

@@ -31,3 +31,49 @@ it('titles an unnamed agent pane by its agent id, without a capital or a repeate
     expect(wrapper.find('.phone-identity-meta').text()).not.toMatch(/omp/i)
   } finally { wrapper.unmount() }
 })
+
+const ws = { id: 'w1', label: 'api', number: 1, status: null, worktree: false }
+const tab = (id: string, number: number, label: string) => ({ id, workspace: 'w1', label, number, layout: null })
+function sheetText(wrapper: Awaited<ReturnType<typeof mountSuspended>>) {
+  return [...document.querySelectorAll('.phone-identity-details .menu > *')].map(el => el.textContent!.trim())
+}
+async function openSheet(p: Pane) {
+  const wrapper = await mountSuspended(PhoneIdentity, { props: { pane: p, workspace: ws }, attachTo: document.body })
+  await wrapper.find('.phone-identity').trigger('click')
+  await new Promise(r => setTimeout(r, 0))
+  return wrapper
+}
+const solo = { ...pane, name: 'solo' }
+
+it('keeps creation and renaming in the sheet of a lone pane, without a 1/1 count or one-entry lists', async () => {
+  herdrState.value = { ok: true, panes: [solo], workspaces: [ws], tabs: [tab('w1:t1', 1, 'main')] }
+  const wrapper = await openSheet(solo)
+  try {
+    expect(wrapper.find('.phone-identity-position').exists()).toBe(false)
+    expect(wrapper.find('.phone-identity-chevron').exists()).toBe(true)
+    expect(wrapper.find('.phone-identity').attributes('aria-label')).not.toMatch(/1\/1/)
+    const items = sheetText(wrapper)
+    expect(items).not.toContain('Panes in this tab')
+    expect(items).not.toContain('Tabs')
+    expect(items).not.toContain('Tab overview')
+    expect(items.slice(0, 7)).toEqual(['Current pane', 'Rename pane', 'Split right', 'Split down', 'Move to…', expect.stringMatching(/^Copy pane ID/), 'Close this pane (stops omp)'])
+    expect(items.slice(7)).toEqual(['Current tab', 'Rename tab', 'New tab', 'Close tab'])
+  } finally { wrapper.unmount() }
+})
+
+it('lists the panes and tabs to switch to, then the current pane and tab actions once each', async () => {
+  const second = { ...pane, id: 'w1:p2', name: 'tests' }
+  const other = { ...pane, id: 'w1:p3', tab: 'w1:t2', name: 'docs' }
+  herdrState.value = { ok: true, panes: [solo, second, other], workspaces: [ws], tabs: [tab('w1:t1', 1, 'main'), tab('w1:t2', 2, 'notes')] }
+  const wrapper = await openSheet(solo)
+  try {
+    expect(wrapper.find('.phone-identity-position').text()).toBe('1/2')
+    const items = sheetText(wrapper)
+    expect(items.indexOf('Panes in this tab')).toBe(0)
+    expect(items.indexOf('Tabs')).toBeLessThan(items.indexOf('Current pane'))
+    expect(items.indexOf('Current pane')).toBeLessThan(items.indexOf('Current tab'))
+    expect(items.slice(items.indexOf('Current tab'))).toEqual(['Current tab', 'Rename tab', 'New tab', expect.stringMatching(/^Tab overview/), 'Close tab'])
+    for (const label of ['Rename pane', 'Rename tab', 'New tab', 'Split right', 'Move to…']) expect(items.filter(x => x === label)).toHaveLength(1)
+    expect(items.filter(x => x.startsWith('Copy pane ID'))).toHaveLength(1)
+  } finally { wrapper.unmount() }
+})

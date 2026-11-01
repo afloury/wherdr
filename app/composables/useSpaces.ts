@@ -240,6 +240,33 @@ export function tabItems(tabId: string): MenuItem[] {
     { label: t('Close tab'), icon: 'i-lucide-x', danger: true, run: () => closeTab(tabId) },
   ]
 }
+// Close a pane: stops its agent, or closes its terminal.
+export function closePaneItem(p: Pane, kbds?: string[]): MenuItem {
+  return {
+    label: p.agent ? tl(`Close this pane (stops ${kindLabel(p.agent)})`, `Fermer ce pane (arrête ${kindLabel(p.agent)})`) : t('Close this terminal'),
+    icon: 'i-lucide-trash-2', danger: true, kbds, run: () => closePane(p),
+  }
+}
+// Phone pane sheet (the header identity): everything that manages the pane
+// being viewed, then its tab. The Options menu keeps the agent's own actions.
+export function currentPaneItems(p: Pane): MenuItem[] {
+  return [
+    { label: t('Rename pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } },
+    ...paneSpaceItems(p),
+    copyPaneIdItem(p),
+    closePaneItem(p),
+  ]
+}
+export function currentTabItems(tabId: string, overview?: MenuItem): MenuItem[] {
+  const e = tabOf(tabId)
+  if (!e) return []
+  return [
+    { label: t('Rename tab'), icon: 'i-lucide-pencil', run: () => renameTab(tabId) },
+    newTabItem(e.tab.workspace),
+    ...(overview ? [overview] : []),
+    { label: t('Close tab'), icon: 'i-lucide-x', danger: true, run: () => closeTab(tabId) },
+  ]
+}
 export function workspaceItems(id: string, project = false): MenuItem[] {
   return [
     ...(!project ? [{ label: t('Rename space'), icon: 'i-lucide-pencil', run: () => renameWorkspace(id) }] : []),
@@ -270,10 +297,7 @@ export function paneItems(p: Pane): MenuItem[] {
     { label: t('Rename pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } },
     ...paneSpaceItems(p),
     { kind: 'separator' },
-    {
-      label: p.agent ? tl(`Close this pane (stops ${kindLabel(p.agent)})`, `Fermer ce pane (arrête ${kindLabel(p.agent)})`) : t('Close this terminal'),
-      icon: 'i-lucide-trash-2', danger: true, run: () => closePane(p),
-    },
+    closePaneItem(p),
   ]
 }
 // Menu of a tab's plan: the tab, then its space.

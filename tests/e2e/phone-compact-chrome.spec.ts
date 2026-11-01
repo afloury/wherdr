@@ -1,4 +1,4 @@
-import { expect, test } from './test'
+import { expect, test, type Page } from './test'
 import { OMP_CHAT_PANE, SPLIT_CHAT_PANE, SPLIT_SHELL_PANE } from './scenario.mjs'
 
 test.beforeEach(async ({ page }) => {
@@ -182,7 +182,7 @@ test('phone identity opens panes before tabs and switches in reading order witho
   await page.screenshot({ path: `.shots/${info.project.name}-phone-panes.png` })
   await expect(details.getByText('Panes in this tab', { exact: true })).toBeVisible()
   await expect(details.getByRole('button', { name: /^Tab overview/ })).toBeVisible()
-  await expect(details.locator('.menu > button').last()).toContainText('Tab overview')
+  await expect(details.locator('.menu > button').last()).toContainText('Close tab')
   await details.getByRole('button').filter({ hasText: '2/2' }).click()
   await expect(page).toHaveURL(new RegExp(`${SPLIT_SHELL_PANE}$`))
   await expect(identity.locator('.phone-identity-position')).toHaveText('2/2')
@@ -191,10 +191,71 @@ test('phone identity opens panes before tabs and switches in reading order witho
   expect(await page.locator('textarea:focus,input:focus').count()).toBe(0)
 })
 
+// Each action has one place: the identity sheet manages panes and tabs, Options
+// keeps the conversation, the agent and its tools.
+const PANE_TAB_ACTIONS = ['Rename pane', 'Split right', 'Split down', 'Move to…', 'Rename tab', 'New tab', 'Tab overview', 'Close tab']
+const sheetItems = (page: Page) => page.locator('.hw-sheet .menu > button .menu-text > span:first-child, .hw-sheet .menu > button:not(:has(.menu-text))').allInnerTexts()
+
+test('phone pane sheet and Options split pane management from agent actions, without duplicates', { tag: '@webkit-phone' }, async ({ page }, info) => {
+  test.skip(!info.project.name.endsWith('phone'), 'Phone-only chrome')
+  for (const [paneId, split] of [[OMP_CHAT_PANE, false], [SPLIT_CHAT_PANE, true]] as const) {
+    await page.goto(`/#/a/${paneId}`)
+    const identity = page.locator('.phone-identity')
+    await expect(identity.locator('.phone-identity-chevron')).toBeVisible()
+    await expect(identity.locator('.phone-identity-position')).toHaveCount(split ? 1 : 0)
+    await identity.click()
+    await expect(page.locator('.hw-sheet .menu-group').filter({ hasText: 'Current pane' })).toBeVisible()
+    const sheet = (await sheetItems(page)).map(x => x.trim())
+    await page.screenshot({ path: `.shots/${info.project.name}-pane-sheet-${split ? 'split' : 'single'}.png`, fullPage: true })
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.hw-sheet')).toHaveCount(0)
+    for (const label of PANE_TAB_ACTIONS.filter(x => split || x !== 'Tab overview')) expect(sheet).toContain(label)
+    expect(sheet.some(x => x.startsWith('Close this pane'))).toBe(true)
+    expect(sheet.filter(x => x === 'Copy pane ID')).toHaveLength(1)
+    await expect(page.locator('.menu-group').filter({ hasText: 'Panes in this tab' })).toHaveCount(0)
+
+    await page.getByRole('button', { name: 'Options', exact: true }).click()
+    await expect(page.locator('.hw-sheet').getByText('Reconnect', { exact: true })).toBeVisible()
+    const options = (await sheetItems(page)).map(x => x.trim())
+    await page.screenshot({ path: `.shots/${info.project.name}-options-${split ? 'split' : 'single'}.png`, fullPage: true })
+    await page.keyboard.press('Escape')
+    for (const label of ['Search', 'View changes', 'Browse files', 'Reconnect', 'Settings']) expect(options).toContain(label)
+    expect(options.some(x => /^(Mute|Unmute|Notif)/.test(x))).toBe(true)
+    expect(options.filter(x => sheet.includes(x))).toEqual([])
+    for (const label of [...PANE_TAB_ACTIONS, 'Copy pane ID']) expect(options).not.toContain(label)
+    expect(options.some(x => x.startsWith('Close this pane'))).toBe(false)
+  }
+})
+
+test('phone pane sheet renames the pane and the tab of a lone pane', { tag: '@webkit-phone' }, async ({ page }, info) => {
+  test.skip(!info.project.name.endsWith('phone'), 'Phone-only chrome')
+  const sent: Record<string, unknown>[] = []
+  await page.route('**/api/rename', route => { sent.push(route.request().postDataJSON()); return route.fulfill({ json: { ok: true } }) })
+  await page.route('**/api/space', route => { sent.push(route.request().postDataJSON()); return route.fulfill({ json: { ok: true } }) })
+  const identity = page.locator('.phone-identity')
+  await identity.click()
+  await page.locator('.hw-sheet').getByRole('button', { name: 'Rename pane', exact: true }).click()
+  await page.getByPlaceholder('Pane name (empty = automatic name)').fill('build notes')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect.poll(() => sent).toContainEqual({ pane_id: OMP_CHAT_PANE, label: 'build notes' })
+  await expect(page.getByPlaceholder('Pane name (empty = automatic name)')).toHaveCount(0)
+  await identity.click()
+  await page.locator('.hw-sheet').getByRole('button', { name: 'Rename tab', exact: true }).click()
+  await page.getByPlaceholder('Tab name').fill('review')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect.poll(() => sent).toContainEqual(expect.objectContaining({ op: 'tab.rename', label: 'review' }))
+})
+
 test('desktop retains its header tabs and terminal key bar', { tag: ['@chromium-desktop', '@webkit-desktop'] }, async ({ page }, info) => {
   test.skip(!info.project.name.endsWith('desktop'), 'Desktop layout')
   await expect(page.locator('#agent')).not.toHaveClass(/phone-chrome/)
   await expect(page.getByRole('button', { name: 'Show or hide terminal keys' })).toHaveCount(0)
   await page.locator('.view-tabs').getByRole('tab', { name: 'Terminal', exact: true }).click()
   await expect(page.getByRole('toolbar', { name: 'Keys', exact: true })).toBeVisible()
+  // The desktop Options menu keeps pane management (there is no pane sheet).
+  await page.locator('#agent .agent-actions').getByRole('button', { name: 'Options', exact: true }).click()
+  for (const label of ['Rename pane', 'Split right', 'Move to…', 'Copy pane ID', 'Reconnect']) {
+    await expect(page.getByRole('menuitem').filter({ hasText: label }).first()).toBeVisible()
+  }
+  await expect(page.getByRole('menuitem').filter({ hasText: /^Close this pane/ })).toBeVisible()
 })
