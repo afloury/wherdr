@@ -184,15 +184,21 @@ test('a notification in the open app returns to its previous screen', { tag: '@w
   await expect(page.locator('#home')).toBeVisible()
 })
 
+// The w1:p1 conversation once its pane is loaded, not the "—" header shown
+// before the state arrives: the phone identity names its space ("acme-api"),
+// the computer header shows it.
+const chatOpen = (page: Page) => page.locator('#agent .agent-top').getByRole('button', { name: /acme-api/ })
+  .or(page.locator('#agent .agent-head', { hasText: 'acme-api' }))
+
 test('a cold chat link keeps Home underneath it across reload', { tag: '@webkit-phone' }, async ({ page }) => {
   await page.goto('/#/a/w1%3Ap1')
-  await expect(page.locator('.agent-head')).toBeVisible()
+  await expect(chatOpen(page)).toBeVisible()
   await page.reload()
-  await expect(page.locator('.agent-head')).toBeVisible()
+  await expect(chatOpen(page)).toBeVisible()
   await page.goBack()
   await expect(page.locator('#home')).toBeVisible()
   await page.goForward()
-  await expect(page.locator('.agent-head')).toBeVisible()
+  await expect(chatOpen(page)).toBeVisible()
 })
 
 test('a task found by search returns to the screen hosting search', { tag: '@webkit-phone' }, async ({ page }) => {

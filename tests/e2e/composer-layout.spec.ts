@@ -46,11 +46,15 @@ test('touch composer expands only for editing or a kept draft', { tag: '@webkit-
 test('blurring an empty touch editor keeps a pressed answer in place', { tag: '@webkit-phone' }, async ({ page }) => {
   test.skip(!await page.evaluate(() => matchMedia('(pointer: coarse)').matches), 'Touch layout')
   await page.goto(`/#/a/${OMP_DECISIONS_PANE}`)
+  // A hash change keeps the previous pane's view (and its composer) until the
+  // route resolves: act only once the decisions pane is shown, not on the
+  // composer that is leaving.
+  const answer = page.getByRole('button', { name: '1 · Yes: Tag the release today?', exact: true })
+  await expect(answer).toBeVisible()
   const field = page.locator('.prompt textarea')
   const prompt = page.locator('.prompt')
   await field.fill('')
   await expect(prompt).toHaveClass(/expanded/)
-  const answer = page.getByRole('button', { name: '1 · Yes: Tag the release today?', exact: true })
   await answer.scrollIntoViewIfNeeded()
   const box = (await answer.boundingBox())!
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
