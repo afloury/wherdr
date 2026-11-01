@@ -37,7 +37,7 @@ test('S3 browser: repeated failed reads keep the draft disabled and Terminal sta
  await expect(draft).toBeDisabled();await expect(page.getByRole('status').filter({hasText:'Screen read failed'})).toBeVisible();await page.waitForTimeout(3500)
  await expect(draft).toBeDisabled();await expect(draft).toHaveValue('Keep my answer')
  await expect(page.locator('.interactive-terminal')).toHaveCount(0)
- const terminal=page.getByRole(test.info().project.name.includes('phone')?'button':'tab',{name:'Terminal',exact:true})
+ const terminal=page.getByRole('button',{name:test.info().project.name.includes('phone')?'Terminal':'Show terminal',exact:true})
  await expect(terminal).toBeEnabled();await terminal.click()
  await expect(page.locator('.xterm')).toBeVisible()
 })

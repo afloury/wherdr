@@ -38,8 +38,8 @@ async function terminal(page: Page, enabled: boolean, offset = 0) {
     if (enabled) localStorage.setItem('smoothTouchScrolling', '1')
   }, enabled)
   await page.goto(`/#/a/${pane}`)
-  const tabs = page.locator('.view-tabs')
-  if (await tabs.count()) await tabs.getByRole('tab', { name: 'Terminal' }).click()
+  const tabs = page.locator('.view-toggle')
+  if (await tabs.count()) await tabs.click()
   else await page.locator('button[aria-label="Terminal"]').first().click()
   await expect(page.locator('#term .xterm-rows')).toContainText(`History offset ${offset}`)
 }
@@ -50,6 +50,7 @@ test.beforeEach(async () => {
 
 test.afterEach(async () => {
   await fakeHerdr('e2e.touch_scroll', { pane_id: pane, clear: true })
+  await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: null })
 })
 
 for (const enabled of [false, true]) {
@@ -144,5 +145,25 @@ for (const enabled of [false, true]) {
     await terminal(page, enabled)
     await page.locator('#touch').tap()
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused()
+  })
+}
+
+for (const enabled of [false, true]) {
+  test(`a phone link back to the app keeps its window, touch beta ${enabled ? 'on' : 'off'}`, async ({ page, context, isMobile, baseURL }) => {
+    test.skip(!isMobile, 'Phone links open in place')
+    await fakeHerdr('e2e.touch_scroll', { pane_id: pane, reset: true, mouse: true })
+    await terminal(page, enabled)
+    await fakeHerdr('e2e.touch_scroll', { pane_id: pane, clear: true })
+    await page.evaluate(() => { document.documentElement.dataset.terminalLinkDocument = 'keep' })
+    const url = baseURL + '/'
+    await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: '\x1b]8;;' + url + '\x07Open app\x1b]8;;\x07' })
+    await expect(page.locator('.xterm-rows')).toContainText('Open app')
+    const pages = context.pages().length
+    const box = (await page.locator('.xterm-screen').boundingBox())!
+    const rows = await page.locator('.xterm-rows > *').count()
+    await page.touchscreen.tap(box.x + 16, box.y + box.height / rows / 2)
+    await expect(page).toHaveURL(/#\/$/)
+    expect(await page.locator('html').getAttribute('data-terminal-link-document')).toBe('keep')
+    expect(context.pages()).toHaveLength(pages)
   })
 }
