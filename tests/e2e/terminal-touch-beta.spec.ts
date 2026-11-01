@@ -38,8 +38,8 @@ async function terminal(page: Page, enabled: boolean, offset = 0) {
     if (enabled) localStorage.setItem('smoothTouchScrolling', '1')
   }, enabled)
   await page.goto(`/#/a/${pane}`)
-  const tabs = page.locator('.view-tabs')
-  if (await tabs.count()) await tabs.getByRole('tab', { name: 'Terminal' }).click()
+  const tabs = page.locator('.view-toggle')
+  if (await tabs.count()) await tabs.click()
   else await page.locator('button[aria-label="Terminal"]').first().click()
   await expect(page.locator('#term .xterm-rows')).toContainText(`History offset ${offset}`)
 }

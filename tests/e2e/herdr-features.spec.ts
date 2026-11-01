@@ -55,8 +55,8 @@ test('structured terminal mouse: touch tap, desktop drag, Shift selection and ol
     const output = page.locator('#term .xterm-rows')
     await expect(page.locator('.chat').getByText('Ready when you are.').or(output)).toBeVisible()
     if (!await output.isVisible()) {
-      const tabs = page.locator('.view-tabs')
-      if (await tabs.count()) await tabs.getByRole('tab', { name: 'Terminal' }).click()
+      const tabs = page.locator('.view-toggle')
+      if (await tabs.count()) await tabs.click()
       else await page.locator('button[aria-label="Terminal"]').first().click()
     }
     await expect(page.locator('#term .xterm-rows')).toContainText('fake terminal')

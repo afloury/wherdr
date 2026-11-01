@@ -250,7 +250,7 @@ test('desktop retains its header tabs and terminal key bar', { tag: ['@chromium-
   test.skip(!info.project.name.endsWith('desktop'), 'Desktop layout')
   await expect(page.locator('#agent')).not.toHaveClass(/phone-chrome/)
   await expect(page.getByRole('button', { name: 'Show or hide terminal keys' })).toHaveCount(0)
-  await page.locator('.view-tabs').getByRole('tab', { name: 'Terminal', exact: true }).click()
+  await page.locator('.view-toggle').click()
   await expect(page.getByRole('toolbar', { name: 'Keys', exact: true })).toBeVisible()
   // The desktop Options menu keeps pane management (there is no pane sheet).
   await page.locator('#agent .agent-actions').getByRole('button', { name: 'Options', exact: true }).click()

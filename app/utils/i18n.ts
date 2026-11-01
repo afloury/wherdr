@@ -246,6 +246,8 @@ const FR: Record<string, string> = {
   'Coordinator': 'Coordinateur',
   'review': 'revue',
   'Hide': 'Masquer',
+  'Show terminal': 'Afficher le terminal',
+  'Show conversation': 'Afficher la conversation',
   'Show terminals': 'Afficher les terminaux',
   'Compact list': 'Liste compacte',
   'Tasks: one line in Compact, two in Normal with current activity and relevant labels. Details stay in the task sheet. Follows you on every device.': 'Tâches : une ligne en compact, deux en normal avec l’activité et les étiquettes utiles. Les détails restent dans la fiche de la tâche. Te suit sur tous tes appareils.',
