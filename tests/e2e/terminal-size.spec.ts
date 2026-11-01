@@ -38,7 +38,10 @@ test('closing the terminal gives the pane its original size back', async ({ page
   await expect.poll(async () => (await paneSize()).rows).toBeLessThan(open.rows)
 
   await show(page, 'Conversation')
-  await expect(page.locator('.chat').getByText('Ready when you are.')).toBeVisible()
+  // The conversation is back. Not a given message: earlier specs add to this pane, and
+  // on the shortened screen its first message can lie above the loaded tail.
+  await expect(page.locator('#term')).toHaveCount(0)
+  await expect(page.locator('.chat .chat-list article').last()).toBeVisible()
   await expect.poll(paneSize, { timeout: 10_000 }).toEqual({ ...ORIGINAL, attached: false })
 })
 
