@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   CODEX_STANDALONE_COMMAND, type KnownWeek, codexUpdateState, codexWeekWindow, codexWeeklyWarning, knownUpdateCommand, loadKnownWeeks,
   parseCliVersion, parseCodexScreen, parsePackageVersion, parseResetTime, parseVersionFile, rememberWeek, rolloutCliVersion, runningVersion,
-  updateScript, weekFromScreen,
+  tuiVersion, updateScript, weekFromScreen,
 } from '../shared/codexStatus'
 import { type CodexMachine, createCodexStatus } from '../server/utils/codexStatus'
 import type { MachineFs } from '../server/utils/fsx'
@@ -183,6 +183,15 @@ describe('runningVersion', () => {
   })
 })
 
+describe('tuiVersion', () => {
+  it('is the TUI\'s own word, never the rollout\'s', () => {
+    expect(tuiVersion({ version: '0.160.0', update: { current: '0.159.1', latest: '0.160.0' } }, '0.158.0')).toBe('0.160.0')
+    expect(tuiVersion({ update: { current: '0.159.1', latest: '0.160.0' } })).toBe('0.159.1')
+    expect(tuiVersion({}, '0.159.1')).toBe('0.159.1')
+    expect(tuiVersion({})).toBeNull()
+  })
+})
+
 describe('codexUpdateState', () => {
   const base = { running: '0.159.1', latest: '0.160.0', installed: '0.159.1', standalone: true, screen: {}, canRun: true }
 
@@ -206,8 +215,20 @@ describe('codexUpdateState', () => {
   })
 
   it('offers a restart once installed', () => {
-    expect(codexUpdateState({ ...base, installed: '0.160.0' })).toMatchObject({ state: 'installed', latest: '0.160.0', current: '0.159.1' })
-    expect(codexUpdateState({ ...base, job: { phase: 'done', version: '0.160.0', at: 1 } })).toMatchObject({ state: 'installed' })
+    expect(codexUpdateState({ ...base, tui: '0.159.1', installed: '0.160.0' })).toMatchObject({ state: 'installed', latest: '0.160.0', current: '0.159.1' })
+    expect(codexUpdateState({ ...base, tui: '0.159.1', job: { phase: 'done', version: '0.160.0', at: 1 } })).toMatchObject({ state: 'installed' })
+  })
+
+  it('regression: no restart asked on the rollout\'s word alone (daemon or resumed conversation)', () => {
+    // 0.160.0 installed and run by the TUI, whose header scrolled away; the
+    // rollout's first line was written by 0.159.1.
+    const up = { ...base, running: '0.159.1', installed: '0.160.0', latest: '0.160.0' }
+    expect(codexUpdateState({ ...up, tui: null })).toBeNull()
+    expect(codexUpdateState(up)).toBeNull()
+    // The TUI says it runs the installed version: nothing either.
+    expect(codexUpdateState({ ...up, running: '0.160.0', tui: '0.160.0' })).toBeNull()
+    // The TUI says it runs an older one: restart.
+    expect(codexUpdateState({ ...up, tui: '0.159.1' })).toMatchObject({ state: 'installed', latest: '0.160.0', current: '0.159.1' })
   })
 
   it('offers the update to an agent started after the install of an older version', () => {
@@ -369,6 +390,7 @@ function fakeFs(files: Record<string, string>): MachineFs {
 function setup(o: {
   local?: boolean, writable?: boolean, exitCode?: number, hang?: boolean, screen?: string | Error, cliVersion?: string
   loadWeeks?: () => unknown, saveWeeks?: (w: Record<string, KnownWeek>) => void
+  pid?: number | null | Error
 } = {}) {
   const ts = '2026-01-01T10:00:00Z'
   const files = {
@@ -392,6 +414,10 @@ function setup(o: {
       return o.screen ?? SCREEN
     },
     rolloutOf: async () => ROLLOUT,
+    agentPid: async () => {
+      if (o.pid instanceof Error) throw o.pid
+      return o.pid ?? null
+    },
     runLocal,
     writable: async () => Boolean(o.writable),
     onChange: () => {},
@@ -422,6 +448,73 @@ describe('Codex status service', () => {
     expect(log.mock.calls[0]![0]).toMatch(/running=0\.159\.1 \(screen 0\.159\.1, rollout 0\.160\.0\).*-> available.*-> no weekly warning on screen/)
     await svc.compute(pane)
     expect(log).toHaveBeenCalledOnce() // only logged when the decision changes
+  })
+
+  // Real situation (fictional values): Codex 0.160.0 installed and running,
+  // its header scrolled off the screen; the rollout's first line was written
+  // by 0.159.1 (shared daemon, or a conversation resumed after the update).
+  const LATER_SCREEN = `• Done: the tests pass.
+
+› Ask Codex to do anything
+
+  gpt-5.5 medium · ~/demo
+`
+  const header = (v: string) => `  >_ OpenAI Codex (v${v})\n     ~/demo\n${LATER_SCREEN}`
+  const installed = (files: Record<string, string>, v: string) => {
+    files[`${HOME}/.codex/packages/standalone/current/codex-package.json`] = `{"version":"${v}"}`
+    files[`${HOME}/.codex/version.json`] = `{"latest_version":"${v}","dismissed_version":null}`
+  }
+
+  it('regression: no restart asked of a Codex already on the installed version', async () => {
+    const o = { screen: LATER_SCREEN, cliVersion: '0.159.1', pid: 42 as number | null }
+    const { svc, pane, files, log } = setup(o)
+    installed(files, '0.160.0')
+    expect((await svc.compute(pane))?.update).toBeUndefined()
+    expect(log.mock.calls[0]![0]).toMatch(/rollout 0\.159\.1\).*installed=0\.160\.0.*-> no update/)
+    // Header on screen: same answer.
+    o.screen = header('0.160.0')
+    expect((await svc.compute(pane))?.update).toBeUndefined()
+  })
+
+  it('asks for a restart while the old Codex runs, not once it runs the new one', async () => {
+    const o = { screen: header('0.159.1'), cliVersion: '0.159.1', pid: 42 as number | null }
+    const { svc, pane, files, tick } = setup(o)
+    installed(files, '0.159.1')
+    expect((await svc.compute(pane))?.update).toBeUndefined()
+    // 0.160.0 installed during the session (elsewhere than wherdr).
+    installed(files, '0.160.0')
+    tick(61000)
+    expect((await svc.compute(pane))?.update).toMatchObject({ state: 'installed', latest: '0.160.0', current: '0.159.1' })
+    // Its header scrolls away: still the same process, still the old version.
+    o.screen = LATER_SCREEN
+    expect((await svc.compute(pane))?.update).toMatchObject({ state: 'installed', current: '0.159.1' })
+    // Restarted on 0.160.0 (new process): the notice is gone, header shown or not.
+    o.pid = 43
+    expect((await svc.compute(pane))?.update).toBeUndefined()
+    o.screen = header('0.160.0')
+    expect((await svc.compute(pane))?.update).toBeUndefined()
+    o.screen = LATER_SCREEN
+    expect((await svc.compute(pane))?.update).toBeUndefined()
+  })
+
+  it('unknown version or failed detection: no restart asked', async () => {
+    for (const pid of [null, new Error('pane gone')]) {
+      const o = { screen: header('0.159.1') as string | Error, cliVersion: '0.159.1', pid }
+      const { svc, pane, files } = setup(o)
+      installed(files, '0.160.0')
+      expect((await svc.compute(pane))?.update).toMatchObject({ state: 'installed' })
+      // Header gone and process unknown: nothing remembered, nothing claimed.
+      o.screen = LATER_SCREEN
+      expect((await svc.compute(pane))?.update).toBeUndefined()
+      o.screen = new Error('invalid request')
+      expect((await svc.compute(pane))?.update).toBeUndefined()
+    }
+    // No screen, no rollout version.
+    const o = { screen: new Error('invalid request') as string | Error, pid: 42 }
+    const { svc, pane, files } = setup(o)
+    files[ROLLOUT] = '{"type":"event_msg"}\n'
+    installed(files, '0.160.0')
+    expect((await svc.compute(pane))?.update).toBeUndefined()
   })
 
   it('logs why the screen could not be read', async () => {
