@@ -1547,6 +1547,10 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
 /* Scheduled task prompt: one line until opened. */
 .msg-notice.scheduled:not(.open) .msg-notice-body { max-height: 1.6em; mask-image: none; -webkit-mask-image: none; white-space: nowrap; text-overflow: ellipsis; }
 .msg-notice.scheduled:not(.open) .msg-notice-body > * { margin: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Failed agent turn: the provider's message, as it came. */
+.msg-error { border-left-color: var(--danger); }
+.msg-error .msg-notice-head { color: var(--danger); }
+.msg-error-text { color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; font: 400 12.5px/1.5 var(--mono); }
 .msg-system, .day-sep {
   display: flex; align-items: center; gap: 12px; margin: 6px 0;
   font: 500 10.5px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--dim);
