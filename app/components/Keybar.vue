@@ -2,6 +2,7 @@
 // Key bar: logical keys, encoded by Herdr according to the terminal
 // mode (application cursor, etc.). Does not steal the focus from the input field.
 import { VIRTUAL_MODIFIERS, type VirtualModifier } from '~/utils/terminalModifiers'
+import { liftsOn } from '~/utils/touchTap'
 const props = defineProps<{ ctl: TerminalCtl, allDigits?: boolean }>()
 const modifierLabels = { ctrl: 'Ctrl', alt: 'Alt', shift: 'Shift' }
 const selected = computed(() => props.ctl.virtualModifiers.value)
@@ -25,6 +26,38 @@ function toggleKbd() {
   if (props.ctl.hasFocus()) props.ctl.blur()
   else props.ctl.focus()
 }
+// The keyboard button acts on the touch itself. On iOS a terminal tap no longer
+// opens the keyboard (utils/terminalTapFocus.ts): this button is the way to it,
+// and the click WebKit makes of a touch is not guaranteed (Safari drops it after
+// a pan; with pointerdown cancelled, WebKit may not make it at all). touchend
+// is a user gesture, so focusing there still opens the iOS keyboard. touchstart
+// is left alone so the bar still scrolls; a finger that moves is a scroll.
+let kbdTouch: { id: number, x: number, y: number } | null = null
+let kbdTouchAt = -Infinity
+function kbdTouchStart(e: TouchEvent) {
+  const t = e.changedTouches[0]
+  kbdTouch = e.touches.length === 1 && t ? { id: t.identifier, x: t.clientX, y: t.clientY } : null
+}
+function kbdTouchMove(e: TouchEvent) {
+  const t = kbdTouch && Array.from(e.changedTouches).find(c => c.identifier === kbdTouch!.id)
+  if (t && Math.hypot(t.clientX - kbdTouch!.x, t.clientY - kbdTouch!.y) > 10) kbdTouch = null
+}
+function kbdTouchEnd(e: TouchEvent) {
+  const t = kbdTouch && Array.from(e.changedTouches).find(c => c.identifier === kbdTouch!.id)
+  kbdTouch = null
+  if (!t) return
+  const el = e.currentTarget as Element | null
+  if (!el || !liftsOn(el.getBoundingClientRect(), t.clientX, t.clientY)) return
+  // No click after this touch; if a browser still makes one, it is ignored.
+  e.preventDefault()
+  kbdTouchAt = performance.now()
+  toggleKbd()
+}
+function kbdTouchCancel() { kbdTouch = null }
+function kbdClick() {
+  if (performance.now() - kbdTouchAt < 700) return
+  toggleKbd()
+}
 </script>
 
 <template>
@@ -32,7 +65,8 @@ function toggleKbd() {
     <button v-for="m in VIRTUAL_MODIFIERS" :key="m" type="button" class="key-modifier" :aria-label="t(modifierLabels[m])"
       :aria-pressed="selected.includes(m)" @pointerdown.prevent @click="modifier(m)">{{ t(modifierLabels[m]) }}</button>
     <button v-for="k in keys" :key="k.key" type="button" :class="k.cls" @pointerdown.prevent @click="press(k.key)">{{ k.label }}</button>
-    <button type="button" class="kbd" :class="{ on: ctl.kbdOn.value }" :aria-label="t('Type in terminal')" @pointerdown.prevent @click="toggleKbd">
+    <button type="button" class="kbd" :class="{ on: ctl.kbdOn.value }" :aria-label="t('Type in terminal')" @pointerdown.prevent @click="kbdClick"
+      @touchstart.passive="kbdTouchStart" @touchmove.passive="kbdTouchMove" @touchend="kbdTouchEnd" @touchcancel="kbdTouchCancel">
       <UIcon name="i-lucide-keyboard" />
     </button>
   </div>

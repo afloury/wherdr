@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **No keyboard on a terminal tap on iOS.** On iPhone and iPad a tap on the terminal no longer opens the on-screen keyboard; the message field and the key bar's keyboard button still do. That button acts on the touch itself, so it opens the keyboard even when Safari drops the click. Android and computers keep tap or click to type.
 - **No image markers in Codex messages (#265).** A photo sent to Codex shows as its thumbnail only, without a bubble reading `</image>` or `[Image #1]`. Only the placeholders Codex declares as its own are removed: the text sent with photos stays whole, including a `[Image #1]` typed as text.
 - **No false Codex “Restart to update”.** The notice no longer appears when Codex already runs the installed version: the version written at the top of its conversation file (by the shared background server, or by the version that started a resumed conversation) is no longer taken as the version the session runs. The notice relies on what Codex itself shows on screen, remembered only for the same Codex process.
 - **omp errors in the conversation.** Provider errors that ended an omp turn (API usage limit, credit balance too low, stalled stream, exhausted retries) were missing from the chat although omp's terminal showed them. They now appear in place as an Error note, live and when the history loads; retried attempts follow omp (hidden once superseded, one line once recovered).
@@ -79,10 +80,6 @@ All notable changes to this project are documented here. The format follows
 - **Updated CI runtimes (#232).** Actions use Node 24 majors and runners are pinned to Ubuntu 24.04.
 
 - **omp 18.14 tool approvals show their card again.** The conversation recognizes the new approval prompt, including grants and expanded details, answers with arrows then Enter, and holds messages while it is open. The 18.4 dialog remains supported.
-
-### Fixed
-
-- **No keyboard on a terminal tap on iOS.** On iPhone and iPad a tap on the terminal no longer opens the on-screen keyboard; the message field and the key bar's keyboard button still do. Android and computers keep tap or click to type.
 
 ## [2.3.0] — 2026-10-28
 
