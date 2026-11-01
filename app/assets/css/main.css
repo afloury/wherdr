@@ -2708,6 +2708,23 @@ body.kb .composer { padding-bottom: 8px; }
 .bar-pref-state.offline { background: var(--rose); }
 .bar-pref-reset { margin-top: 12px; border-radius: 0; }
 @media (prefers-reduced-motion: reduce) { .bar-pref-row { transition: none; } }
+/* Settings › Terminal › Phone key bar (PhoneKeyOrderSettings.vue). The preview
+   is as wide as a phone row and draws the keys like PhoneKeybar.vue. */
+.key-order-preview { display: flex; gap: 6px; max-width: 390px; padding: 5px 11px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; border: 1px solid var(--line); background: var(--bg); }
+.key-order-preview::-webkit-scrollbar { display: none; }
+.key-order-cap { display: grid; place-items: center; flex: none; min-width: 38px; height: 36px; padding: 0 3px; border: 1px solid var(--line-soft); background: var(--bg-2); color: var(--text-2); font: 500 12px/1 var(--mono); user-select: none; -webkit-user-select: none; }
+.key-order-cap.danger { color: var(--rose); border-color: var(--rose); }
+.key-order-cap svg { width: 19px; height: 19px; }
+.key-order-label { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0 10px 0 12px; }
+.key-order-label .key-order-cap { min-width: 34px; height: 30px; font-size: 11px; }
+.key-order-label .key-order-cap svg { width: 16px; height: 16px; }
+.key-order-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--text); }
+.key-order-step { flex: none; width: 44px; display: grid; place-items: center; border: 0; border-left: 1px solid var(--line-soft); border-radius: 0; background: none; color: var(--text-2); cursor: pointer; touch-action: manipulation; }
+.key-order-step svg { width: 18px; height: 18px; }
+.key-order-step:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
+.key-order-step:disabled { color: var(--dim); opacity: .45; cursor: default; }
+.key-order-step:focus-visible { outline: 1px solid var(--accent); outline-offset: -3px; }
+.key-order-announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 .settings-stepper { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; padding: 8px 12px 8px 16px; }
 .settings-stepper > span { font-size: 15px; }
 .settings-stepper > div { display: flex; align-items: center; border: 1px solid var(--line); }
