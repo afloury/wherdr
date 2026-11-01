@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createKeyboardTap } from '~/utils/keyboardTap'
 import type { VirtualModifier } from '~/utils/terminalModifiers'
 import { displayVirtualChord } from '~/utils/keybarKeys'
 
@@ -36,13 +37,15 @@ function toggleKbd() {
   if (props.ctl.hasFocus()) props.ctl.blur()
   else props.ctl.focus()
 }
+const keyboardTap = createKeyboardTap(toggleKbd)
 </script>
 
 <template>
   <div class="keybar virtual-keyboard" role="group" :aria-label="t('Terminal function keys')">
     <output class="vk-announcement" aria-live="polite">{{ preview }}</output>
     <div class="vk-strip" role="toolbar" :aria-label="t('Common keys and modifiers')">
-      <button type="button" :class="{ selected: terminal && ctl.kbdOn.value }" :aria-label="t('Show or hide the phone keyboard')" @pointerdown.prevent @click="toggleKbd"><UIcon name="i-lucide-keyboard" mode="svg" /></button>
+      <button type="button" :class="{ selected: terminal && ctl.kbdOn.value }" :aria-label="t('Show or hide the phone keyboard')" @pointerdown.prevent @click="keyboardTap.click"
+        @touchstart.passive="keyboardTap.start" @touchmove.passive="keyboardTap.move" @touchend="keyboardTap.end" @touchcancel="keyboardTap.cancel"><UIcon name="i-lucide-keyboard" mode="svg" /></button>
       <button type="button" class="vk-mod" :class="{ selected: active.includes('ctrl') }" :aria-pressed="active.includes('ctrl')" :aria-label="t('Ctrl')" @pointerdown.prevent @click="modifier('ctrl')">{{ t('Ctrl') }}</button>
       <button type="button" :aria-label="t('Esc')" @pointerdown.prevent @click="press('esc')">{{ t('Esc') }}</button>
       <button type="button" :aria-label="tl('Tab', 'Tabulation')" @pointerdown.prevent @click="press('tab')">{{ tl('Tab', 'Tab') }}</button>

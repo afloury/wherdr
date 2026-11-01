@@ -138,9 +138,10 @@ test('the beta preference is off by default and survives a reload on this device
   await expect(toggle).toHaveAttribute('aria-checked', 'true')
 })
 
+// Android engines keep tap-to-type; iOS WebKit does not (terminal-tap-keyboard.spec.ts).
 for (const enabled of [false, true]) {
-  test(`a normal terminal tap opens the keyboard with beta ${enabled ? 'on' : 'off'}`, { tag: '@webkit-phone' }, async ({ page, isMobile }) => {
-    test.skip(!isMobile, 'Touch gestures use the phone viewport')
+  test(`a normal terminal tap opens the keyboard on Chromium with beta ${enabled ? 'on' : 'off'}`, async ({ page, isMobile, browserName }) => {
+    test.skip(!isMobile || browserName !== 'chromium', 'Touch gestures use the phone viewport; WebKit keeps the keyboard closed')
     await fakeHerdr('e2e.touch_scroll', { pane_id: pane, reset: true, mouse: false })
     await terminal(page, enabled)
     await page.locator('#touch').tap()
@@ -149,12 +150,19 @@ for (const enabled of [false, true]) {
 }
 
 for (const enabled of [false, true]) {
-  test(`a phone link back to the app keeps its window, touch beta ${enabled ? 'on' : 'off'}`, async ({ page, context, isMobile, baseURL }) => {
+  test(`a phone link back to the app keeps its window, touch beta ${enabled ? 'on' : 'off'}`, { tag: '@webkit-phone' }, async ({ page, context, isMobile, baseURL }) => {
     test.skip(!isMobile, 'Phone links open in place')
     await fakeHerdr('e2e.touch_scroll', { pane_id: pane, reset: true, mouse: true })
     await terminal(page, enabled)
     await fakeHerdr('e2e.touch_scroll', { pane_id: pane, clear: true })
-    await page.evaluate(() => { document.documentElement.dataset.terminalLinkDocument = 'keep' })
+    await page.evaluate(() => {
+      document.documentElement.dataset.terminalLinkDocument = 'keep'
+      document.documentElement.dataset.terminalLinkFocus = '0'
+      document.addEventListener('focusin', event => {
+        if ((event.target as Element).classList.contains('xterm-helper-textarea'))
+          document.documentElement.dataset.terminalLinkFocus = '1'
+      })
+    })
     const url = baseURL + '/'
     await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: '\x1b]8;;' + url + '\x07Open app\x1b]8;;\x07' })
     await expect(page.locator('.xterm-rows')).toContainText('Open app')
@@ -165,5 +173,34 @@ for (const enabled of [false, true]) {
     await expect(page).toHaveURL(/#\/$/)
     expect(await page.locator('html').getAttribute('data-terminal-link-document')).toBe('keep')
     expect(context.pages()).toHaveLength(pages)
+    await expect(page.locator('html')).toHaveAttribute('data-terminal-link-focus', '0')
+  })
+}
+
+for (const enabled of [false, true]) {
+  test(`an external terminal link opens separately without the keyboard, touch beta ${enabled ? 'on' : 'off'}`, { tag: '@webkit-phone' }, async ({ page, context, isMobile }) => {
+    test.skip(!isMobile, 'Touch gestures use the phone viewport')
+    await context.route('https://example.org/**', route => route.fulfill({ body: 'External page' }))
+    await fakeHerdr('e2e.touch_scroll', { pane_id: pane, reset: true, mouse: true })
+    await terminal(page, enabled)
+    await fakeHerdr('e2e.touch_scroll', { pane_id: pane, clear: true })
+    await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: '\x1b]8;;https://example.org/\x07External link\x1b]8;;\x07' })
+    await expect(page.locator('.xterm-rows')).toContainText('External link')
+    const box = (await page.locator('.xterm-screen').boundingBox())!
+    const rows = await page.locator('.xterm-rows > *').count()
+    await page.evaluate(() => {
+      document.documentElement.dataset.externalLinkFocus = '0'
+      document.addEventListener('focusin', event => {
+        if ((event.target as Element).classList.contains('xterm-helper-textarea'))
+          document.documentElement.dataset.externalLinkFocus = '1'
+      })
+    })
+    const opened = page.waitForEvent('popup')
+    await page.touchscreen.tap(box.x + 16, box.y + box.height / rows / 2)
+    const popup = await opened
+    await expect(popup).toHaveURL('https://example.org/')
+    await expect(page.locator('.xterm-helper-textarea')).not.toBeFocused()
+    await expect(page.locator('html')).toHaveAttribute('data-external-link-focus', '0')
+    await popup.close()
   })
 }

@@ -114,6 +114,15 @@ describe('terminal beta switch', () => {
     expect(r.ctl.tapMouse).toHaveBeenCalledOnce()
     expect(r.ctl.focus).toHaveBeenCalledOnce()
   })
+  it.each([false, true])('keeps the keyboard closed after a tap on WebKit with beta=%s', async enabled => {
+    vi.spyOn(navigator, 'vendor', 'get').mockReturnValue('Apple Computer, Inc.')
+    const r = await mounted(enabled)
+    await r.send('touchstart', 100)
+    await r.send('touchend', 100, 0)
+    await r.w.get('#touch').trigger('mousedown')
+    expect(r.ctl.tapMouse).toHaveBeenCalledOnce()
+    expect(r.ctl.focus).not.toHaveBeenCalled()
+  })
   it('previews a small drag without inventing a full row at the gesture threshold', async () => {
     const r = await mounted(true)
     await r.send('touchstart', 100)
