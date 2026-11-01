@@ -496,7 +496,7 @@ const FR: Record<string, string> = {
   'Mark as read': 'Marquer comme lu', 'Mark as unread': 'Marquer comme non lu',
   'Commands': 'Commandes', 'Resets': 'Réinitialisation', 'left': 'restant', 'Week': 'Semaine', 'reset': 'réinitialisé', 'new window': 'fenêtre neuve', 'just now': 'à l’instant', 'Remaining quotas': 'Quotas restants', 'Install': 'Installer', 'Copy command': 'Copier la commande', 'this machine': 'cette machine', 'They will show after the next exchange with a Claude.': 'Ils apparaîtront après le prochain échange avec un Claude.', 'updated': 'mis à jour', 'used': 'utilisé',
   'Agent': 'Agent', 'Previous': 'Précédent', 'Next': 'Suivant',
-  'Conversation compacted': 'Conversation compactée', 'Conversation cleared': 'Conversation effacée', 'Interrupted': 'Interrompu',
+  'Conversation compacted': 'Conversation compactée', 'Conversation cleared': 'Conversation effacée', 'Interrupted': 'Interrompu', 'Retried after an error': 'Relancé après une erreur', 'Error': 'Erreur',
   'App is locked': 'app verrouillée', 'Origin refused': 'origine refusée', 'Not found': 'introuvable',
   'Waiting for your reply — details in the Terminal tab': 'En attente de ta réponse — détail dans l’onglet Terminal',
   'Copy': 'Copier', 'Reply': 'Répondre', 'Reply to this passage': 'Répondre à ce passage', 'Show original message': 'Voir le message d’origine', 'Original message not found (further up the conversation?)': 'Message d’origine introuvable (plus haut dans la conversation ?)', 'Copy reply': 'Copier la réponse', 'No output': 'Aucune sortie', 'Copied': 'Copié', 'Copy pane ID': 'Copier l’ID du pane', 'Copy failed': 'Copie impossible', 'Copy ID': 'Copier l’identifiant',
