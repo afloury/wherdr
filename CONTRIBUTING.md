@@ -47,6 +47,21 @@ sent request, a stored value), not the wiring.
 | Component | `tests/components/*.test.ts` | `npx vitest run --project components` | Vue components mounted in a Nuxt environment (auto-imports, Nuxt UI) on happy-dom, with `mountSuspended` and `registerEndpoint` from `@nuxt/test-utils/runtime`. |
 | End to end | `tests/e2e/*.spec.ts` | `npm run build && npm run test:e2e -- tests/e2e/<name>.spec.ts --project chromium-phone` | The built app in Chromium and WebKit (Safari's engine, for iOS bugs), at iPhone and desktop sizes, against a fake Herdr server with neutral data. |
 
+**Where a test goes.** Browser tests are slow (2-3 s each, against milliseconds for a unit
+test) and they set the CI time, so each check goes to the fastest level that can catch it:
+
+- **Unit**: anything that can be: parsers, pure logic, utilities, server routes and their
+  guards, state transitions, every combination of a matrix.
+- **Component**: anything about one component (what it renders for a state, what it emits,
+  its labels and translations).
+- **End to end**: only what nothing else can test: a real browser (layout, focus, scroll,
+  overlays), touch or the iOS/Android keyboard, navigation and reload, the built server with
+  the fake Herdr end to end, WebSockets. One e2e test covers a user journey, not a variant of
+  a label, a style or a matrix: test one case in the browser and the variants below it.
+
+When you remove an e2e test because a faster one covers it, name that test in a comment
+(for example `tests/e2e/codex-self-update.spec.ts`).
+
 `npx vitest run` runs the unit and component projects together. For the end-to-end tests,
 install the browsers once with `npx playwright install --with-deps chromium webkit`; a single
 project and spec run with `npm run test:e2e -- tests/e2e/<name>.spec.ts --project=webkit-phone`
@@ -61,7 +76,7 @@ Repeated runs of entire files can take tens of minutes on a small machine.
 
 GitHub Actions (`.github/workflows/ci.yml`) runs all of them, the type check and the leak check
 (gitleaks only: your `.leak-patterns` stays local). Pull requests and pushes run a light
-end-to-end set: every test on `chromium-phone` (two shards) and, on the other three projects,
+end-to-end set: every test on `chromium-phone` (four shards) and, on the other three projects,
 only the tests tagged with that project's name: `{ tag: '@webkit-phone' }` for a Safari/iOS
 journey, `'@chromium-desktop'` for a keyboard or split-view case, `'@webkit-desktop'` for iPad
 and desktop Safari. A test skipped on phones must carry one of these tags, or the run fails
