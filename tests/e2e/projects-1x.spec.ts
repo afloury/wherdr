@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { CLAUDE_PANE, COORDINATOR_PANE, SOCK_FILE, fakeHerdr } from './scenario.mjs'
+import { boardServes, skipToast } from './waits'
 
 // herdr-projects 1.x on the Board and in Settings. The plugin's launcher
 // (bin/run.sh) is a fake that answers with the real output of the 1.2.1
@@ -66,6 +67,8 @@ const manifest = (version: string, launcher = true) => ({
     : { startup: [{ command: ['target/release/herdr-projects', 'startup'] }] }),
 })
 const callLog = () => (fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8').trim().split('\n') : [])
+// A local file: read every 100 ms rather than at Playwright's growing intervals (up to 1 s).
+const often = { intervals: [100] }
 
 // The board links demo/1 to an agent pane of the scenario (its task.json, read only).
 const home = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8').trim()), 'home')
@@ -90,6 +93,7 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', { tag
   fs.mkdirSync(taskDir, { recursive: true })
   fs.writeFileSync(path.join(taskDir, 'task.json'), JSON.stringify({ id: 'demo/1', link: { pane: CLAUDE_PANE }, summary: 'Redirect fixed; a test covers the loop.' }))
   await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+  await page.clock.install()
   await page.goto('/#/board')
   const phone = testInfo.project.name.includes('phone')
   const card = (key: string) => page.locator('.task-card', { hasText: key })
@@ -155,7 +159,8 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', { tag
   fs.writeFileSync(path.join(root, 'after-approve.json'), JSON.stringify(listed.map(t => (t.id === 'demo/1' ? { ...t, state: 'working', kind: '', stage: 'merging' } : t))))
   await sheet.getByRole('button', { name: 'Approve', exact: true }).click()
   await page.getByRole('dialog').last().getByRole('button', { name: 'Approve and merge' }).click()
-  await expect.poll(callLog).toContain('approve -- demo/1')
+  await expect.poll(callLog, often).toContain('approve -- demo/1')
+  await skipToast(page)
   // Approved: the sheet stays, showing the task as the Board now reads it
   // (merging here), Approve no longer offered; the panel stays behind it.
   const approved = page.getByRole('dialog')
@@ -193,7 +198,8 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', { tag
   await panel.locator('#board-panel-tell').fill('--keep-a-changelog please')
   await page.screenshot({ path: `.shots/board-1x-tell-panel-${testInfo.project.name}.png` })
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
-  await expect.poll(callLog).toContain('tell -- demo/3 --keep-a-changelog please')
+  await expect.poll(callLog, often).toContain('tell -- demo/3 --keep-a-changelog please')
+  await skipToast(page)
   await closePanel(page, phone)
   await expect(page.locator('.board-panel')).toHaveCount(0)
   // No chat box on the Board: the top bar's Coordinator button opens it in the panel,
@@ -203,7 +209,7 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', { tag
   await expect(panel.locator('.board-panel-name')).toHaveText('Coordinator')
   await panel.locator('#board-panel-first').fill('Add a dark mode toggle')
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
-  await expect.poll(callLog).toContain('coordinator -- tell Add a dark mode toggle')
+  await expect.poll(callLog, often).toContain('coordinator -- tell Add a dark mode toggle')
   await expect(panel).toContainText('its conversation opens here')
 })
 
@@ -379,6 +385,7 @@ const actionBoard = [
 test('grouped by machine then repo: each heading opens its coordinator in the side panel', async ({ page }, testInfo) => {
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
   await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+  await page.clock.install()
   await page.goto('/#/board')
   const phone = testInfo.project.name.includes('phone')
   // Phone: one group at a time, in tabs; the lanes inside.
@@ -436,10 +443,14 @@ test('grouped by machine then repo: each heading opens its coordinator in the si
   await panel.locator('#board-panel-first').fill('--tidy up')
   await page.screenshot({ path: `.shots/board-1x-project-coord-${testInfo.project.name}.png` })
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
-  await expect.poll(callLog).toContain('coordinator --project=web -- tell --tidy up')
+  await expect.poll(callLog, often).toContain('coordinator --project=web -- tell --tidy up')
   // Once it runs (herdr-projects names its pane), the panel is its conversation.
   fs.writeFileSync(path.join(root, 'web-coordinator'), '')
-  await expect(panel.locator('.cell-view .agent-top')).toBeVisible({ timeout: 15000 })
+  // The panel asks again every 3 s (BoardPanel's lookCoordinator): the fake clock skips the wait.
+  await expect(async () => {
+    await page.clock.fastForward(3000)
+    await expect(panel.locator('.cell-view .agent-top')).toBeVisible({ timeout: 1000 })
+  }).toPass()
   await expect(panel.locator('.cell-view textarea')).toBeVisible()
   await expect(panel.locator('.board-panel-name')).toHaveText('web coordinator')
   await page.screenshot({ path: `.shots/board-1x-coord-panel-${testInfo.project.name}.png` })
@@ -451,7 +462,7 @@ test('grouped by machine then repo: each heading opens its coordinator in the si
   await expect(panel.locator('.board-panel-repo')).toHaveCount(0)
   await panel.locator('#board-panel-first').fill('plain')
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
-  await expect.poll(callLog).toContain('coordinator -- tell plain')
+  await expect.poll(callLog, often).toContain('coordinator -- tell plain')
   if (phone) await closePanel(page, phone)
   await machineHead.getByRole('button', { name: / coordinator$/ }).click()
   // Named once, after its machine: "<machine> coordinator".
@@ -460,7 +471,7 @@ test('grouped by machine then repo: each heading opens its coordinator in the si
   await expect(panel.locator('.board-panel-name')).toHaveText(`${host} coordinator`)
   await panel.locator('#board-panel-first').fill('for the machine')
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
-  await expect.poll(callLog).toContain('coordinator --machine -- tell for the machine')
+  await expect.poll(callLog, often).toContain('coordinator --machine -- tell for the machine')
   await closePanel(page, phone)
   await expect(panel).toHaveCount(0)
 
@@ -482,11 +493,12 @@ const doneBoard = [
 test('Done is hidden by default; its toggle shows the latest five, newest first, and is kept on the device', { tag: '@chromium-desktop' }, async ({ page }, testInfo) => {
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(doneBoard))
   await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+  await boardServes(page, rows => rows.length === doneBoard.length)
   await page.goto('/#/board')
   const phone = testInfo.project.name.includes('phone')
   await page.getByRole('button', { name: 'Global' }).click()
   const toggle = page.locator('.board-done-toggle')
-  await expect(toggle).toHaveAccessibleName('Show done tasks (7)', { timeout: 15000 })
+  await expect(toggle).toHaveAccessibleName('Show done tasks (7)')
   await expect(toggle).toHaveAttribute('aria-pressed', 'false')
   // Four columns (or tabs), none of them Done.
   if (phone) await expect(page.locator('.board-seg .board-seg-btn:not(.board-done-toggle)')).toHaveCount(4)
@@ -529,9 +541,11 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   test.setTimeout(60000)
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
   await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+  await boardServes(page, rows => rows.some(r => r.title === 'Add dark mode toggle'))
+  await page.clock.install()
   await page.goto('/#/board')
   const demo = page.locator('.board-repo[data-repo="demo"]')
-  await expect(demo).toContainText('In the backlog', { timeout: 15000 })
+  await expect(demo).toContainText('In the backlog')
 
   await page.getByRole('button', { name: 'New task in demo' }).click()
   const sheet = page.getByRole('dialog')
@@ -541,8 +555,9 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await sheet.getByRole('switch').click()
   await page.screenshot({ path: `.shots/board-1x-new-task-${testInfo.project.name}.png` })
   await sheet.getByRole('button', { name: 'Add and start' }).click()
-  await expect.poll(callLog).toContain('add --desc=--steps here --repo=demo --delegate -- Fix the footer')
+  await expect.poll(callLog, often).toContain('add --desc=--steps here --repo=demo --delegate -- Fix the footer')
   await expect(sheet).toHaveCount(0)
+  await skipToast(page)
   // From the header: the home folder by default, no agent; a repo picked, then the home folder again.
   const selectErrors: string[] = []
   page.on('console', (m) => { if (m.type() === 'error' && /Select/i.test(m.text())) selectErrors.push(m.text()) })
@@ -556,7 +571,8 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   expect(selectErrors).toEqual([])
   await page.getByRole('dialog').getByLabel('Title').fill('Home chores')
   await page.getByRole('dialog').getByRole('button', { name: 'Add to To do' }).click()
-  await expect.poll(callLog).toContain('add -- Home chores')
+  await expect.poll(callLog, often).toContain('add -- Home chores')
+  await skipToast(page)
 
   const card = (title: string) => page.locator('.task-card', { hasText: title })
   const task = page.getByRole('dialog')
@@ -572,7 +588,8 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await expect(agents.getByRole('radio', { name: /claude/ })).toHaveAttribute('aria-checked', 'true')
   await expect(agents).toContainText('Default from your settings for demo')
   await task.getByRole('button', { name: 'Start', exact: true }).click()
-  await expect.poll(callLog).toContain('delegate -- demo/5')
+  await expect.poll(callLog, often).toContain('delegate -- demo/5')
+  await skipToast(page)
   await page.keyboard.press('Escape')
   if (await page.locator('.board-panel').count()) await closePanel(page, testInfo.project.name.includes('phone'))
   // Another installed agent, for this start only: passed to delegate, no setting changed.
@@ -581,7 +598,8 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await agents.getByRole('radio', { name: /codex/ }).click()
   await expect(agents).toContainText('For this start only: the default stays.')
   await task.getByRole('button', { name: 'Start with codex', exact: true }).click()
-  await expect.poll(callLog).toContain('delegate --worker.agent=codex -- demo/5')
+  await expect.poll(callLog, often).toContain('delegate --worker.agent=codex -- demo/5')
+  await skipToast(page)
   await page.keyboard.press('Escape')
   if (await page.locator('.board-panel').count()) await closePanel(page, testInfo.project.name.includes('phone'))
   // That pick was for one start: the task's default is claude again (its own setting taken back).
@@ -589,7 +607,7 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await page.locator('.board-panel-sheet').click()
   await expect(agents.getByRole('radio', { name: /claude/ })).toHaveAttribute('aria-checked', 'true')
   await expect(agents).toContainText('Default from your settings for demo')
-  await expect.poll(callLog).toContain('unset --task=demo/5 -- worker.agent')
+  await expect.poll(callLog, often).toContain('unset --task=demo/5 -- worker.agent')
   expect(fs.existsSync(path.join(root, 'own-agent'))).toBe(false)
   await page.keyboard.press('Escape')
   if (await page.locator('.board-panel').count()) await closePanel(page, testInfo.project.name.includes('phone'))
@@ -600,7 +618,8 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await expect(task.getByRole('button', { name: 'Archive' })).toHaveCount(0)
   await task.getByRole('button', { name: 'Stop', exact: true }).click()
   await page.getByRole('dialog').last().getByRole('button', { name: 'Stop the agent' }).click()
-  await expect.poll(callLog).toContain('stop -- demo/3')
+  await expect.poll(callLog, often).toContain('stop -- demo/3')
+  await skipToast(page)
   await expect(page.getByRole('dialog')).toHaveCount(1)
   // The sheet stays open after a stop (to reply or retry): closed by its button.
   await task.locator('.hw-sheet-close').click()
@@ -613,9 +632,9 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await expect(task.getByRole('button', { name: 'Retry' })).toBeVisible()
   await page.screenshot({ path: `.shots/board-1x-task-actions-${testInfo.project.name}.png` })
   await task.getByRole('button', { name: 'Retry' }).click()
-  await expect.poll(callLog).toContain('retry -- demo/6')
+  await expect.poll(callLog, often).toContain('retry -- demo/6')
   await task.getByRole('button', { name: 'Archive' }).click()
-  await expect.poll(callLog).toContain('archive -- demo/6')
+  await expect.poll(callLog, often).toContain('archive -- demo/6')
   // Archived: the sheet closes, the card leaves the Board at once (the list read
   // again still has it here), and a toast offers Restore for a few seconds.
   await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -624,7 +643,7 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await expect(card('Broke on the tests')).toHaveCount(0)
   await page.screenshot({ path: `.shots/board-1x-archived-toast-${testInfo.project.name}.png` })
   await toastBox.getByRole('button', { name: 'Restore' }).click()
-  await expect.poll(callLog).toContain('restore -- demo/6')
+  await expect.poll(callLog, often).toContain('restore -- demo/6')
   await expect(card('Broke on the tests')).toBeVisible()
 })
 
@@ -703,7 +722,7 @@ test('Archived:the archived tasks, each one\'s sheet read-only with Restore', as
   // Restored: off the archived list, back on the Board, and its sheet offers Archive again.
   fs.writeFileSync(path.join(root, 'after-restore.json'), JSON.stringify([...actionBoard, { id: 'demo/2', state: 'done', title: 'Put away last week', msg: 'Merged', stage: 'done' }]))
   await sheet.getByRole('button', { name: 'Restore' }).click()
-  await expect.poll(callLog).toContain('restore -- demo/2')
+  await expect.poll(callLog, often).toContain('restore -- demo/2')
   await expect(sheet.locator('.task-archived')).toHaveCount(0)
   await expect(sheet.getByRole('button', { name: 'Archive' })).toBeVisible()
   await expect(archived.locator('.task-card')).toHaveCount(0)
@@ -743,6 +762,7 @@ async function fakeBoard(page: import('@playwright/test').Page, get: () => Fake[
 test('a push opens its own machine\'s task, never the same id on another machine', async ({ page }) => {
   let machines: Fake[] = [{ machine: 'ma', tasks: [] }, { machine: 'mb', tasks: [{ id: 'demo/1', title: 'On machine B' }] }]
   await fakeBoard(page, () => machines)
+  await page.clock.install()
   await page.goto('/#/board?machine=ma&task=demo%2F1')
   await expect(page.locator('.board-machine[data-machine="mb"]')).toContainText('On machine B', { timeout: 15000 })
   await expect(page.locator('.hw-toast-title', { hasText: 'That task is no longer on the Board' })).toBeVisible()
@@ -754,6 +774,7 @@ test('a push opens its own machine\'s task, never the same id on another machine
   await page.evaluate(() => { location.hash = '#/board?machine=ma&task=demo%2F1' })
   await expect(page.locator('.hw-toast-title', { hasText: /cannot be read now: its task opens once it answers/ })).toBeVisible({ timeout: 15000 })
   await expect(page.getByRole('dialog')).toHaveCount(0)
+  await skipToast(page)
   machines = [{ machine: 'ma', tasks: [{ id: 'demo/1', title: 'On machine A' }] }, machines[1]!]
   await page.locator('.board-filter').click()
   await expect(page.locator('.board-panel')).toContainText('On machine A', { timeout: 15000 })
@@ -1172,7 +1193,7 @@ test.describe('English interface', () => {
     await expect(panel.locator('.board-panel-report')).not.toContainText('Research')
     await page.screenshot({ path: `.shots/task-panel-${lang}-details-${testInfo.project.name}.png` })
     await panel.locator('.task-needs').getByRole('button', { name: 'Start again', exact: true }).click()
-    await expect.poll(callLog).toContain('delegate -- demo/9')
+    await expect.poll(callLog, often).toContain('delegate -- demo/9')
     // No pane at all: the panel opens straight on the task (no sheet), its
     // Conversation and Terminal tabs hidden, the failure in its banner.
     fs.writeFileSync(path.join(dir, 'task.json'), JSON.stringify({ ...task, summary: 'Search checked with fictional data.' }))
@@ -1205,11 +1226,9 @@ test.describe('English interface', () => {
     fs.writeFileSync(path.join(dir, 'task.json'), JSON.stringify({ ...task, at: at + 3_600_000, armedAt: at + 60_000, failure }))
     await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
     const banner = page.locator('.board-panel .task-needs')
-    // The board's list of the test before may still be kept a few seconds.
-    await expect(async () => {
-      await page.goto('/#/board?machine=&task=demo%2F11')
-      await expect(banner).toBeVisible({ timeout: 2000 })
-    }).toPass({ timeout: 20_000 })
+    await boardServes(page, rows => rows.some(r => r.id === task.id))
+    await page.goto('/#/board?machine=&task=demo%2F11')
+    await expect(banner).toBeVisible()
     await expect(banner.locator('h3')).toHaveText('Needs you · Stopped at its 2h limit')
     await expect(banner).not.toContainText('Review failed')
     await expect(banner.getByRole('button', { name: 'Send the error to the agent' })).toHaveCount(0)
@@ -1225,7 +1244,7 @@ test.describe('English interface', () => {
     await expect(dialog).toContainText('merge.by itself')
     await page.screenshot({ path: `.shots/task-finish-${lang}-confirm-${testInfo.project.name}.png` })
     await dialog.getByRole('button', { name: 'Finish', exact: true }).click()
-    await expect.poll(callLog).toContain('finish -- demo/11')
+    await expect.poll(callLog, often).toContain('finish -- demo/11')
     fs.rmSync(dir, { recursive: true, force: true })
   })
 })
@@ -1256,7 +1275,7 @@ test.describe('English interface', () => {
     const panel = page.locator('.board-panel')
     const queue = panel.getByRole('button', { name: 'Queue', exact: true })
     // Wait for this fixture before opening a task absent from the cached board.
-    await expect.poll(async () => (await (await page.request.get('/api/tasks')).json()).machines[0]?.tasks.map((t: { id: string }) => t.id)).toContain('demo/5')
+    await boardServes(page, rows => rows.some(r => r.id === 'demo/5'))
     await page.goto('/#/board?machine=&task=demo%2F5')
     await expect(queue).toBeVisible()
     await expect(panel.locator('.task-queue-place')).toHaveText('2nd in the queue · all 2 slots are taken')
@@ -1278,7 +1297,7 @@ test.describe('English interface', () => {
     await expect(panel.locator('.task-sheet-error')).toHaveText(circle)
     fs.rmSync(path.join(root, 'refuse'))
     await go.click()
-    await expect.poll(callLog).toContain('delegate --after=DEMO-3 -- demo/5')
+    await expect.poll(callLog, often).toContain('delegate --after=DEMO-3 -- demo/5')
 
     // A task that waits: for what, and Stop waiting.
     details('demo/10', 'Release notes', 'after', { after: { waitsFor: ['demo/3', 'demo/8'], waiting: true, left: ['demo/3'], waitsForYou: null, tasks: [{ id: 'demo/3', title: 'Add dark mode toggle', done: false }] } })
@@ -1289,7 +1308,7 @@ test.describe('English interface', () => {
     await expect(wait.locator('.task-wait-chip.done')).toContainText('DEMO-8')
     await page.screenshot({ path: `.shots/task-after-${lang}-waits-${testInfo.project.name}.png` })
     await wait.getByRole('button', { name: 'Stop waiting' }).click()
-    await expect.poll(callLog).toContain('after --clear -- demo/10')
+    await expect.poll(callLog, often).toContain('after --clear -- demo/10')
 
     // A task in the queue: its place.
     details('demo/9', 'Footer links', 'queued', { queue: { place: 1, words: 'waiting for a free slot, Q#1' } })
