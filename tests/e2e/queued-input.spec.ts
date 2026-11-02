@@ -30,10 +30,10 @@ test('a queued message explains the terminal draft and offers clear or terminal'
   }
   await page.evaluate(() => localStorage.setItem('herdrLanguage', 'fr'))
   await page.reload()
-  const french = page.locator('.queued-tag').filter({ hasText: 'Pas envoyé' })
-  await expect(french).toContainText('« ns »')
-  await expect(french.getByRole('button', { name: 'Vider et envoyer' })).toBeEnabled()
-  await expect(french.getByRole('button', { name: 'Ouvrir le terminal' })).toBeVisible()
+  const french = page.locator('.queued-tag').filter({ hasText: 'Not sent' })
+  await expect(french).toContainText('“ns”')
+  await expect(french.getByRole('button', { name: 'Clear and send' })).toBeEnabled()
+  await expect(french.getByRole('button', { name: 'Open terminal' })).toBeVisible()
   if (process.env.SHOTS) {
     await page.setViewportSize({ width: 390, height: 844 })
     await french.scrollIntoViewIfNeeded()
@@ -45,11 +45,11 @@ test('a queued message explains the terminal draft and offers clear or terminal'
   // A changed draft must not be erased by an action rendered for the old one.
   await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: screen('new draft'), agent: 'claude', status: 'working' })
   await expect(french).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Vider et envoyer' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Clear and send' })).toHaveCount(0)
   await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: screen('ns'), agent: 'claude', status: 'idle', transitions: { 'ctrl+u': screen('') } })
   await expect(french).toBeVisible()
   const cleared = page.waitForResponse(r => r.url().endsWith('/api/clear-queued-input'))
-  await french.getByRole('button', { name: 'Vider et envoyer' }).click()
+  await french.getByRole('button', { name: 'Clear and send' }).click()
   expect((await cleared).status()).toBe(200)
   expect((await fakeHerdr('e2e.terminal_screen', { pane_id: pane })).keys).toContain('ctrl+u')
 })

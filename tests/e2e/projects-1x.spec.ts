@@ -296,16 +296,16 @@ test('an older 1.x: Update to the tested release, from what the program itself s
   await expect(machine.locator('.projects-plugin-reload')).not.toContainText('first-run questions')
 })
 
-test('an older 1.x, in French: what the update adds', async ({ page }) => {
+test('an older 1.x, with a legacy French preference: what the update adds', async ({ page }) => {
   await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
   fs.writeFileSync(path.join(root, 'version'), 'herdr-projects 1.2.1 (/opt/herdr-projects/bin/herdr-projects-linux-x86_64)\n')
   await page.addInitScript(() => localStorage.setItem('herdrLanguage', 'fr'))
   await writableHerdr(page)
   await page.goto('/#/settings?section=plugins')
   const machine = page.locator('.projects-plugin-machine').first()
-  await expect(machine.locator('.projects-plugin-head')).toContainText('Mise à jour disponible · v1.2.1', { timeout: 15000 })
-  await expect(machine.locator('.projects-plugin-update')).toHaveText('Testé avec 1.2.21. Ajoute l’accès auto des agents, une page de réglages, les tâches conversation seule, l’archivage de tous les terminés d’un coup, l’autopilot, l’archivage d’un projet entier, et des corrections ; tes tâches et tes réglages restent.')
-  await expect(machine.getByRole('button', { name: 'Mettre à jour en 1.2.21', exact: true })).toBeVisible()
+  await expect(machine.locator('.projects-plugin-head')).toContainText('Update available · v1.2.1', { timeout: 15000 })
+  await expect(machine.locator('.projects-plugin-update')).toHaveText('Tested with 1.2.21. Adds auto access for agents, a settings page, chat-only tasks, archiving every done task at once, autopilot, archiving a whole project, and fixes; your tasks and settings stay.')
+  await expect(machine.getByRole('button', { name: 'Update to 1.2.21', exact: true })).toBeVisible()
 })
 
 // Replies of the server the Board must show as they are: a failed read.
@@ -367,11 +367,11 @@ test('unreachable machines follow the selection, with touch detail and empty hea
   await expect(page.locator('.board-notes .error')).toHaveCount(0)
 })
 
-test('an unreachable machine label is translated into French', async ({ page }) => {
+test('an unreachable machine label is English with a legacy French preference', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('herdrLanguage', 'fr'))
   await page.route('**/api/tasks*', route => route.fulfill(reply({ status: 'error', tasks: [], at: Date.UTC(2026, 0, 2, 2, 33), error: 'Connection timed out' })))
   await page.goto('/#/board')
-  await expect(page.locator('.board-machine-error')).toHaveText('injoignable · lu à 02:33')
+  await expect(page.locator('.board-machine-error')).toHaveText('unreachable · read at 02:33 AM')
 })
 
 // A board with a task for each action, in two repos.
@@ -1083,12 +1083,12 @@ test('Coordinator choices keep unavailable hosts visible and explain the three r
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.evaluate(() => localStorage.setItem('herdrLanguage', 'fr'))
   await page.reload()
-  await expect(top).toHaveText('Coordinateur')
-  await expect(page.getByRole('status').filter({ hasText: 'Aucun Coordinateur' })).toBeVisible()
+  await expect(top).toHaveText('Coordinator')
+  await expect(page.getByRole('status').filter({ hasText: 'No Coordinator can be reached' })).toBeVisible()
   await page.screenshot({ path: `.shots/board-no-coordinator-fr-${testInfo.project.name}.png` })
   machines = [{ machine: 'long-example-workstation-name', tasks: [] }]
   await page.locator('.board-filter').click()
-  await expect(top).toHaveText('Coordinateur')
+  await expect(top).toHaveText('Coordinator')
   expect(await top.evaluate(el => el.scrollHeight <= el.clientHeight)).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: `.shots/board-coordinator-long-host-${testInfo.project.name}.png` })

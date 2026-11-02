@@ -13,7 +13,7 @@ test.afterEach(async () => {
   await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: null, agent: 'omp', status: 'idle' })
 })
 
-test('conversation sends the native queue now on phone and desktop, in EN and FR', async ({ page }) => {
+test('conversation sends the native queue now on phone and desktop, with a legacy French preference', async ({ page }) => {
   await setup()
   await page.goto(`/#/a/${pane}`)
   // The unnamed phone identity uses the agent kind as its title, without a subtitle.
@@ -36,7 +36,7 @@ test('conversation sends the native queue now on phone and desktop, in EN and FR
   await page.evaluate(() => localStorage.setItem('herdrLanguage', 'fr'))
   await page.reload()
   await page.setViewportSize({ width: 390, height: 844 })
-  const french = page.getByRole('button', { name: 'Envoyer maintenant', exact: true })
+  const french = page.getByRole('button', { name: 'Send now', exact: true })
   await expect(french).toBeVisible()
   await french.click()
   await expect(french).toHaveCount(0)

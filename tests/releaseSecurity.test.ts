@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createAuth } from '../server/utils/auth'
-import { allowedHosts, crossSiteRequest, tailnetDomainHosts, hostAllowed, hostRefusalIsHtml, hostRefusedPage, phoneFixCommand, tailnetName } from '../server/utils/hosts'
+import { allowedHosts, crossSiteRequest, tailnetDomainHosts, hostAllowed, hostRefusalIsHtml, hostRefusedPage, networkRefusedPage, phoneFixCommand, tailnetName } from '../server/utils/hosts'
 import { cspForHtml, tailnetImageSources } from '../server/utils/csp'
 
 const req = (cookie = '') => ({ headers: { origin: 'http://localhost:7683', cookie } })
@@ -37,9 +37,19 @@ describe('allowed hosts', () => {
       const page = hostRefusedPage(install, host, '7690')
       expect(page).not.toMatch(/nas\.|192\.0|alert/)
       expect(page).toContain('This address isn\'t enabled yet.')
-      expect(page).toContain('Cette adresse n’est pas encore activée.')
+      expect(page).not.toContain('lang="fr"')
+      expect(page.match(/<h1/g)).toHaveLength(1)
       // The only address in it is the public installer's.
       expect(page.replaceAll('https://wherdr.dev/install', '')).not.toMatch(/<script|<form|ts\.net|https?:\/\/|APP_URL|localhost/i)
+    }
+  })
+  it('explains network refusals in English only', () => {
+    for (const why of [undefined, 'funnel'] as const) {
+      const page = networkRefusedPage(why)
+      expect(page).toContain('<html lang="en">')
+      expect(page).not.toContain('lang="fr"')
+      expect(page.match(/<h1/g)).toHaveLength(1)
+      expect(page).toContain(why ? 'Tailscale Funnel opens' : 'wherdr only answers')
     }
   })
   it('gives a command that works on a machine without a screen, for each kind of install', () => {
@@ -65,7 +75,7 @@ describe('allowed hosts', () => {
     const tailnet = hostRefusedPage('npm', 'box.example.ts.net')
     expect(tailnet).not.toContain('HERDR_WEB_ALLOWED_HOSTS')
     const lan = hostRefusedPage('npm', 'box.lan:7690')
-    expect(lan.match(/HERDR_WEB_ALLOWED_HOSTS/g)).toHaveLength(2)
+    expect(lan.match(/HERDR_WEB_ALLOWED_HOSTS/g)).toHaveLength(1)
     expect(lan).toContain('~/wherdr/wherdr.env')
     expect(lan).toContain('npx wherdr phone')
   })

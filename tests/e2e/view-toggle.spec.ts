@@ -39,12 +39,12 @@ for (const split of [false, true]) {
   })
 }
 
-test('the action is accessible in French', async ({ page }) => {
+test('the action is accessible with a legacy French preference', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.addInitScript(() => localStorage.setItem('herdrLanguage', 'fr'))
   await page.goto(`/#/a/${OMP_CHAT_PANE}`)
-  await page.getByRole('button', { name: 'Afficher le terminal', exact: true }).click()
+  await page.getByRole('button', { name: 'Show terminal', exact: true }).click()
   await expect(page.locator('#term .xterm')).toBeVisible()
-  await page.getByRole('button', { name: 'Afficher la conversation', exact: true }).click()
+  await page.getByRole('button', { name: 'Show conversation', exact: true }).click()
   await expect(page.locator('.chat')).toBeVisible()
 })

@@ -2,8 +2,7 @@
 // message and the restart. The edge cases are unit tests in
 // tests/agentSelfUpdate.test.ts: the fresh-start arguments (conversation choice),
 // another foreground program, continuation drafts, a replaced process, a failed
-// final transcript read and a guessed session; the French strings in
-// tests/i18n.test.ts.
+// final transcript read and a guessed session.
 import { expect, test, type Page } from './test'
 import fs from 'node:fs'
 import path from 'node:path'

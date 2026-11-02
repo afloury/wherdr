@@ -173,19 +173,18 @@ both change the account's default model. wherdr itself only uses "this session" 
 
 - **English everywhere developers look**: code, identifiers, comments, test names, server
   logs, commit messages, pull requests, issues and docs (README, CHANGELOG, CONTRIBUTING).
-- **The interface is bilingual (English / French)**: keys are written in English and the
-  French text lives in the `FR` dictionary of `app/utils/i18n.ts` (see Conventions below).
+- **The interface is English only**: text always goes through `t()` / `tl()` in
+  `app/utils/i18n.ts`. French translations are optional; the existing dictionary is inactive.
 - French only appears as data: translations, regular expressions matching French screens,
   and test fixtures reproducing real French text.
 
 ## Conventions
 
 - **Interface text** goes through `t()` / `tl()` (`app/utils/i18n.ts`). Write the English
-  text as the key, `t('Rename pane')`, and add its French translation to the `FR` dictionary
-  in the same file: it is required, `tests/i18n.test.ts` fails on a `t()` key without a French
-  entry and on an entry nothing uses. Text with variable parts uses `tl(en, fr)`, both written
-  in full: ``tl(`${n} agents`, `${n} agents`)``. A missing translation shows English, never
-  another language. Error messages the server sends to the UI are English keys too.
+  text as the key, `t('Rename pane')`. Text with variable parts uses `tl(en)`, written
+  in full: ``tl(`${n} agents`)``. No French translation is required. Keep the existing
+  French dictionary and optional second argument inactive. Error messages the server
+  sends to the UI are English keys too.
 - **Design**: follow the [design rules](docs/design.md) for every interface change.
 - **iOS**: keep `apple-mobile-web-app-status-bar-style` on `black` (with `black-translucent`,
   iOS 26 shortens the installed app from the bottom), and mind the keyboard and safe areas.
