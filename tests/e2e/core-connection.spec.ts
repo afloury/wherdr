@@ -110,10 +110,13 @@ test('core terminals use the normal home and agent navigation without legacy req
     await page.locator('.card').filter({ hasText: 'demo' }).first().click()
     await expect(page).toHaveURL(/#\/(a|t)\//)
     await expect(page.locator('.agent-top')).toBeVisible()
+    // An agent opens in its conversation; the terminal is one tap away.
+    const toTerminal = page.getByRole('button', { name: 'Terminal', exact: true })
+    if (await toTerminal.count() && await toTerminal.getAttribute('aria-pressed') === 'false') await toTerminal.click()
     // Live terminal: output is credited back once xterm wrote it; typing takes control (resize, then keys).
     await expect.poll(() => streamed.some(f => f.channel === 3 && f.kind === 1)).toBe(true)
     expect(rpc.find(r => r.method === 'terminal.attach' && r.params.terminal === fixture.inventory.terminals[0]!.address)?.params).toMatchObject({ cols: 80, rows: 24 })
-    expect(streamed.some(f => f.kind === 3)).toBe(false)
+    // (Since #298 the viewer fits the terminal on open, so a resize may already have been sent.)
     await page.locator('.xterm-helper-textarea').focus()
     await page.keyboard.type('ls')
     await expect.poll(() => streamed.filter(f => f.kind === 0).map(f => f.payload.toString()).join('')).toBe('ls')
@@ -125,6 +128,7 @@ test('core terminals use the normal home and agent navigation without legacy req
     // Shortcuts are off in core mode: Escape in the empty composer still stops the working agent.
     await expect(page.getByRole('button', { name: 'Stop the agent' })).toBeVisible()
     await field.press('Escape')
+    await field.press('Escape') // a second press confirms the stop
     await expect.poll(() => rpc.find(r => r.method === 'terminal.interrupt')?.params).toMatchObject({ terminal: fixture.inventory.terminals[0]!.address })
     await expect(page.getByRole('button', { name: 'Stop the agent' })).toHaveCount(0)
     expect(rpc.some(r => r.method === 'terminal.list')).toBe(true)
@@ -155,7 +159,9 @@ test('core terminals use the normal home and agent navigation without legacy req
     }
     await page.goto(`http://localhost:${port}/#/settings`)
     await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
-    await expect(page.getByText('Plugins', { exact: true })).toHaveCount(0)
+    // The Herdr Projects plugin is v2 only; the client plugins section remains.
+    await expect(page.locator('[data-wherdr="settings-plugins"]')).toHaveCount(1)
+    await expect(page.getByText('Herdr Projects', { exact: false })).toHaveCount(0)
     // Machines: listed, and one added over SSH (machine.add on the target, nothing else).
     await page.goto(`http://localhost:${port}/#/settings?section=agents`)
     await expect(page.getByTestId('core-machine')).toContainText('host-a')
@@ -168,7 +174,7 @@ test('core terminals use the normal home and agent navigation without legacy req
     await expect(page.locator('.agent-group.working .card')).toHaveCount(2)
     await new Promise<void>(resolve => core.close(() => resolve()))
     await expect(page.locator('.notice')).toContainText('Run hc server start for the configured core session.')
-    expect(requests.filter(p => !['/api/config', '/api/chat', '/api/settings', '/api/prompt', '/api/input', '/api/interrupt', '/api/agents', '/api/dirs', '/api/isgit', '/api/machine/add'].includes(p) && !p.startsWith('/api/auth/'))).toEqual([])
+    expect(requests.filter(p => !['/api/config', '/api/chat', '/api/search', '/api/quotas', '/api/settings', '/api/prompt', '/api/input', '/api/interrupt', '/api/agents', '/api/dirs', '/api/isgit', '/api/machine/add', '/api/client-plugins'].includes(p) && !p.startsWith('/api/auth/'))).toEqual([])
   } finally {
     if (server.exitCode === null) {
       server.kill('SIGTERM')

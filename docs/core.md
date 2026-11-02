@@ -31,9 +31,8 @@ The browser returns credit after xterm has written each chunk (core's 256 KiB wi
 bounds the relay) and scrolls the history it received locally.
 The composer sends with `terminal.send` (never retried), Stop calls
 `terminal.interrupt` and reports what core observed, keys use `terminal.keys`, and
-closing a pane ends its program with `terminal.kill`. Agents open in their terminal:
-conversation association and creation follow in later batches, and their
-controls are disabled or hidden until supported. Without
+closing a pane ends its program with `terminal.kill`. Controls that core does not support
+yet are disabled or hidden. Without
 `WHERDR_BACKEND=core`, the existing v2 application is unchanged.
 
 Reference: [published 0.1.16 protocol](https://github.com/herdrdev/herdr-core/blob/v0.1.16/schema/README.md).
@@ -41,6 +40,19 @@ Generation 1 and both advertised method lists must support the first v3 terminal
 milestone; later additive versions are accepted. Plain mode is used here;
 terminal streams negotiate framed mode on their own connection. Probe connections close
 after each reply and have a three-second deadline and a 16 MiB reply limit.
+
+## Conversations
+
+Claude Code and Codex terminals open in conversation mode, as in v2, with the same
+conversation view, search, queued messages and quotas. The conversation file is found
+the way v2 does for Herdr panes, from what core gives: `terminal.get` supplies the
+foreground process and pid (Claude Code's `~/.claude/sessions/<pid>.json` names its
+transcript), the process tree under the terminal's pid (`ps`, for an agent started by a
+shell), the folder and the start time (Codex claims the rollout created right after its
+terminal appeared). On a remote core machine the files are read with `machine.exec` on that
+machine. A terminal that is not an agent shows only its terminal. Claude Code must keep
+saving transcripts: a core started from inside a Claude Code session inherits
+`CLAUDE_CODE_CHILD_SESSION`, which turns saving off; start core from a plain shell.
 
 ## Creating terminals and agents, machines
 

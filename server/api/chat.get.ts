@@ -4,12 +4,12 @@ import { integrationStatus } from '../utils/integrations'
 import { multiMachine } from '../utils/machines'
 import { chatDelta } from '../utils/chatDelta'
 export default defineApi(async (event) => {
-  if (process.env.WHERDR_BACKEND === 'core') return { available: false, reason: 'unsupported' }
+  const core = process.env.WHERDR_BACKEND === 'core'
   const q = getQuery(event)
   const p = findPane(String(q.pane || ''))
   if (!p) throw new HerdrError('bad_pane', 'Pane not found')
   // Machine distante injoignable : ses transcriptions aussi (lues par SSH).
-  const m = machineOfPane(p.id)
+  const m = core ? undefined : machineOfPane(p.id)
   if (m && !m.local && m.status !== 'online') throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
   const num = (k: string) => (q[k] !== undefined ? Math.max(0, Number(q[k]) || 0) : null)
   // Messages taken back after a Stop (see interruptRestore.ts): hidden, and

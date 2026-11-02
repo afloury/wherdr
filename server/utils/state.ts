@@ -15,7 +15,7 @@ import { ompActivityOf, parseOmpActivity, parseOmpShell, parseOmpStatus } from '
 import { LOCAL, joinId, machineOf } from '../../shared/ids'
 import { paneTitle } from '../../shared/paneTitle'
 import { foregroundCommand, reduceSnapshot } from './snapshot'
-import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
+import { DATA_DIR, HERDR_SESSION, HOME, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, agentPrompt, herdr, herdrOn, sleep } from './herdr'
 import { paneForeground } from './restartSeq'
 import { CHOICE_MS, keepReading, ScreenCache } from './screenCache'
@@ -39,6 +39,8 @@ import { queuedPasted } from './pastes'
 import { type SentRecord, addSent, findSent, hasAttachments, lostPhotos } from './sentHistory'
 import { type GuardError, BASH_EMPTY, confirmSubmitted, guardedSend, submittable, withPaneLock } from './guardedSend'
 import { type TranscriptPane, sameMsg } from './transcripts'
+import { type CoreTranscripts, createCoreTranscripts } from './coreTranscripts'
+import { coreCall } from './core'
 import { chatDelta } from './chatDelta'
 import { agentNotificationTitle, pushSend, subWatchesSession } from './push'
 import { currentModel, forgetModel, noteScreen, modelControlBusy } from './modelctl'
@@ -52,8 +54,19 @@ import { pollQueue } from './pollQueue'
 
 const fsp = fs.promises
 
-// Transcriptions : celles de la machine du pane (disque local, ou SSH).
+// Transcripts: those of the pane's machine (local disk, or SSH). With herdr-core, the
+// agent's process and start come from core and a remote machine's disk through its exec.
+let coreTr: CoreTranscripts | null = null
+function coreTranscriptsOf(): CoreTranscripts {
+  return coreTr ||= createCoreTranscripts({
+    call: (method, params, timeout) => coreCall(process.env.HC_SOCKET || '', method, params, timeout),
+    pane: findPane,
+    localHome: HOME,
+  })
+}
+const isCore = () => process.env.WHERDR_BACKEND === 'core'
 function trFor(p: { id: string }) {
+  if (isCore()) return coreTranscriptsOf()
   const m = machineOfPane(p.id)
   if (!m) throw new HerdrError('unreachable', 'unknown machine')
   return m.transcripts
@@ -67,7 +80,8 @@ export const transcripts = {
   pendingTool: (p: TranscriptPane, tool?: string | null) => trFor(p).pendingTool(p, tool),
   pendingAsk: (p: TranscriptPane) => trFor(p).pendingAsk(p),
   pendingClaudeQuestions: (p: TranscriptPane) => trFor(p).pendingClaudeQuestions(p),
-  forget: (id: string) => machineOfPane(id)?.transcripts.forget(id),
+  search: (p: TranscriptPane, query: string, deadline: number) => trFor(p).search(p, query, deadline),
+  forget: (id: string) => (isCore() ? coreTranscriptsOf() : machineOfPane(id)?.transcripts)?.forget(id),
 }
 
 export { isUploadLine }
@@ -1362,6 +1376,7 @@ export async function pollFresh(m: Machine) {
 export async function poll() {
   if (process.env.WHERDR_BACKEND === 'core') {
     state = await readCoreState(state)
+    void coreTranscriptsOf().observe(state.panes)
     const json = JSON.stringify(state)
     if (json !== stateJson) { stateJson = json; broadcastState() }
     return
