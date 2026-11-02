@@ -11,6 +11,7 @@ const demo = process.env.VITE_WHERDR_DEMO === '1'
 
 export default defineNuxtConfig({
   ssr: false,
+  runtimeConfig: { public: { core: process.env.WHERDR_BACKEND === 'core' } },
   modules: demo ? ['@nuxt/ui'] : ['@nuxt/ui', '@vite-pwa/nuxt'],
   plugins: demo ? ['~/demo/plugin.client'] : [],
   // No server code in the demo build (nothing to prerender against, nothing that
