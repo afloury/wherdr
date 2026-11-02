@@ -13,8 +13,9 @@ test.beforeEach(async ({ page }) => {
 })
 
 for (const origin of ['home', 'board']) {
-  for (const browser of [false, true]) {
-    test(`${origin}: task returns with ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }, info) => {
+  // Header variants: tests/components/ViewBack.test.ts, 'header back traverses each internal predecessor'.
+  test.describe('browser back', () => {
+    test(`${origin}: task returns with browser back`, { tag: '@webkit-phone' }, async ({ page }, info) => {
       await page.goto(origin === 'home' ? '/' : '/#/board')
       let boardScroll = 0
       if (origin === 'home') await homeTask(page).click()
@@ -27,8 +28,7 @@ for (const origin of ['home', 'board']) {
         await page.locator('.task-card-open').click()
       }
       await expect(page.locator('.board-panel')).toBeVisible()
-      if (browser) await page.goBack()
-      else await page.locator('.board-panel-back').click()
+      await page.goBack()
       await expect(page.locator('.board-panel')).toHaveCount(0)
       await expect(page.locator(origin === 'home' ? '#home' : '.board-view')).toBeVisible()
       if (origin === 'board') {
@@ -40,35 +40,39 @@ for (const origin of ['home', 'board']) {
       // Forward reopens exactly one detail; another back returns without a loop.
       await page.goForward()
       await expect(page.locator('.board-panel')).toBeVisible()
-      await page.goBack()
+      await page.locator('.board-panel-back').click()
       await expect(page.locator('.board-panel')).toHaveCount(0)
     })
-  }
+  })
 }
 
-for (const browser of [false, true]) {
-  test(`home: chat returns with ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }) => {
+// Header variants: tests/components/ViewBack.test.ts, 'header back traverses each internal predecessor'.
+test.describe('browser back', () => {
+  test(`home: chat returns with browser back`, { tag: '@webkit-phone' }, async ({ page }) => {
     await page.goto('/')
     const card = page.locator('#home .card[data-pane]').filter({ hasNotText: 'DEMO-9' }).first()
     await expect(card).toBeVisible()
     await card.click()
     await expect(page).toHaveURL(/#\/[at]\//)
-    if (browser) await page.goBack()
-    else await page.getByRole('button', { name: 'Back', exact: true }).first().click()
+    await page.goBack()
     await expect(page.locator('#home')).toBeVisible()
     await expect(page).toHaveURL(/\/#?\/?$/)
+    await page.goForward()
+    await expect(page).toHaveURL(/#\/[at]\//)
+    await page.getByRole('button', { name: 'Back', exact: true }).first().click()
+    await expect(page.locator('#home')).toBeVisible()
   })
-}
+})
 
 for (const machine of ['', 'machine=&']) {
-  for (const browser of [false, true]) {
-    test(`cold task link ${machine ? 'with machine' : 'without machine'} defaults to Home with ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }, info) => {
+  // Header variants: tests/components/ViewBack.test.ts, 'header back traverses each internal predecessor'.
+  test.describe('browser back', () => {
+    test(`cold task link ${machine ? 'with machine' : 'without machine'} defaults to Home with browser back`, { tag: '@webkit-phone' }, async ({ page }, info) => {
       await page.goto(`/#/board?${machine}task=demo%2F9`)
       await expect(page.locator('.board-panel')).toBeVisible()
       await expect.poll(() => page.evaluate(() => history.state.back)).toBe('/')
       expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).has('machine')).toBe(Boolean(machine))
-      if (browser) await page.goBack()
-      else await page.locator('.board-panel-back').click()
+      await page.goBack()
       await expect(page.locator('#home')).toBeVisible()
       await expect(page).toHaveURL(/\/#?\/?$/)
       if (!machine) await page.screenshot({ path: `.shots/mobile-back-direct-without-machine-${info.project.name}.png` })
@@ -77,7 +81,7 @@ for (const machine of ['', 'machine=&']) {
       await page.goBack()
       await expect(page.locator('#home')).toBeVisible()
     })
-  }
+  })
 }
 
 test('desktop keeps the Board beside the task', async ({ page }, info) => {
@@ -90,22 +94,23 @@ test('desktop keeps the Board beside the task', async ({ page }, info) => {
   await page.screenshot({ path: `.shots/mobile-back-desktop-${info.project.name}.png`, scale: 'css' })
 })
 
-for (const browser of [false, true]) {
-  test(`Board: coordinator returns with ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }) => {
+// Header variants: tests/components/ViewBack.test.ts, 'header back traverses each internal predecessor'.
+test.describe('browser back', () => {
+  test(`Board: coordinator returns with browser back`, { tag: '@webkit-phone' }, async ({ page }) => {
     await page.goto('/#/board')
     await page.locator('.board-top-coord').click()
     await expect(page.locator('.board-panel[data-kind="coordinator"]')).toBeVisible()
-    if (browser) await page.goBack()
-    else await page.locator('.board-panel-back').click()
+    await page.goBack()
     await expect(page.locator('.board-panel')).toHaveCount(0)
     await expect(page).toHaveURL(/#\/board$/)
   })
-}
+})
 
-for (const browser of [false, true]) {
+// Header variants: tests/components/ViewBack.test.ts, 'header back traverses each internal predecessor'.
+test.describe('browser back', () => {
   // The sheet's "Open the chat" switches the open task to its conversation: the same
   // detail, so one back still leaves it rather than revisiting the task first.
-  test(`Board: a task switched to its chat returns with one ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }) => {
+  test(`Board: a task switched to its chat returns with one browser back`, { tag: '@webkit-phone' }, async ({ page }) => {
     await page.goto('/#/board')
     await page.locator('.board-seg-btn.working').click()
     await page.locator('.task-card-open').click()
@@ -114,19 +119,19 @@ for (const browser of [false, true]) {
     await page.getByRole('dialog').getByRole('button', { name: 'Open the chat' }).click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect(page).toHaveURL(/view=chat/)
-    if (browser) await page.goBack()
-    else await page.locator('.board-panel-back').click()
+    await page.goBack()
     await expect(page.locator('.board-panel')).toHaveCount(0)
     await expect(page).toHaveURL(/#\/board$/)
   })
-}
+})
 
 // A link without `machine` resolves to the one card with that id, local or on another
 // machine; the route keeps no machine. Switching that task to its chat is still the
 // same detail: one back returns to Home, not to the task.
 for (const machine of ['', 'host-a']) {
-  for (const browser of [false, true]) {
-    test(`a machine-less link to a ${machine ? 'remote' : 'local'} task switched to its chat returns Home with one ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }) => {
+  // Header variants: tests/components/ViewBack.test.ts, 'header back traverses each internal predecessor'.
+  test.describe('browser back', () => {
+    test(`a machine-less link to a ${machine ? 'remote' : 'local'} task switched to its chat returns Home with one browser back`, { tag: '@webkit-phone' }, async ({ page }) => {
       if (machine) {
         await page.route(/\/api\/tasks(\?.*)?$/, r => r.fulfill({ json: { version: 'back', machines: [{ machine, status: 'ready', version: '1.2.1', at: Date.now(), tasks: [task] }] } }))
       }
@@ -140,13 +145,12 @@ for (const machine of ['', 'host-a']) {
       await page.getByRole('dialog').getByRole('button', { name: 'Open the chat' }).click()
       await expect(page.getByRole('dialog')).toHaveCount(0)
       await expect(page).toHaveURL(/view=chat/)
-      if (browser) await page.goBack()
-      else await page.locator('.board-panel-back').click()
+      await page.goBack()
       await expect(page.locator('.board-panel')).toHaveCount(0)
       await expect(page.locator('#home')).toBeVisible()
       await expect(page).toHaveURL(/\/#?\/?$/)
     })
-  }
+  })
 }
 
 test('Home keeps its active machine and scroll position', { tag: '@webkit-phone' }, async ({ page }) => {
@@ -212,8 +216,9 @@ test('a task found by search returns to the screen hosting search', { tag: '@web
   await expect(page.locator('#home')).toBeVisible()
 })
 
-for (const browser of [false, true]) {
-  test(`a machine-less task link with a cached Board returns using ${browser ? 'browser' : 'header'} back`, { tag: '@webkit-phone' }, async ({ page }) => {
+// Header variants: tests/components/ViewBack.test.ts, 'header back traverses each internal predecessor'.
+test.describe('browser back', () => {
+  test(`a machine-less task link with a cached Board returns using browser back`, { tag: '@webkit-phone' }, async ({ page }) => {
     await page.goto('/#/board')
     await expect(page.locator('.task-card[data-task="demo/9"]')).toHaveCount(1)
     await page.locator('.board-seg-btn.working').click()
@@ -226,12 +231,11 @@ for (const browser of [false, true]) {
     await expect(page.locator('.board-panel')).toBeVisible()
     await expect.poll(() => page.evaluate(() => history.state.back)).toBe('/')
     expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).has('machine')).toBe(false)
-    if (browser) await page.goBack()
-    else await page.locator('.board-panel-back').click()
+    await page.goBack()
     await expect(page.locator('#home')).toBeVisible()
     await page.goForward()
     await expect(page.locator('.board-panel')).toBeVisible()
     await page.goBack()
     await expect(page.locator('#home')).toBeVisible()
   })
-}
+})

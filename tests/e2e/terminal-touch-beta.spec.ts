@@ -54,7 +54,12 @@ test.afterEach(async () => {
 })
 
 for (const enabled of [false, true]) {
-  for (const mouse of [false, true]) {
+  // Cross-product variants: TerminalTouchBeta.test.ts ('defaults to off and sends only legacy row scrolls',
+  // 'predicts only the grid'); SocketWake.test.ts ('shares wake probes while preserving touch beta');
+  // terminalTouchRelay.test.ts ('acks only commands preceding the frame, preserving each queued cell and epoch').
+  // Plain history and mouse applications each keep a real browser/transport journey.
+  test.describe(enabled ? 'mouse app' : 'plain history', () => {
+    const mouse = enabled
     test(`touch beta ${enabled ? 'on' : 'off'}, ${mouse ? 'mouse app' : 'plain history'}: fixed frame and scroll contract`, { tag: '@webkit-phone' }, async ({ page, isMobile }, info) => {
       test.skip(!isMobile, 'Touch gestures use the phone viewport')
       await fakeHerdr('e2e.touch_scroll', { pane_id: pane, reset: true, mouse })
@@ -65,6 +70,11 @@ for (const enabled of [false, true]) {
         socket.on('framereceived', ({ payload }) => { if (typeof payload === 'string') incoming.push(JSON.parse(payload)) })
       })
       await terminal(page, enabled)
+      // Reload is a browser contract; preference variants live in the component test.
+      if (enabled) {
+        await page.reload()
+        await expect(page.locator('#term .xterm-rows')).toContainText('History offset 0')
+      }
       const bounds = await page.locator('#termWrap').boundingBox()
       if (enabled) await expect(page.locator('#termWrap')).toHaveClass(/smooth-touch/)
       // Inspect prediction in the gesture's own event turn, before a frame or
@@ -101,7 +111,7 @@ for (const enabled of [false, true]) {
       await expect(page.locator('#termWrap')).toHaveCount(0)
       await expect(page.getByText('Smooth touch scrolling (beta)', { exact: true })).toBeVisible()
     })
-  }
+  })
 }
 
 // Give each edge a fresh session so a previous momentum tail cannot mutate
@@ -126,20 +136,14 @@ for (const edge of [0, 80]) {
   })
 }
 
-test('the beta preference is off by default and survives a reload on this device', { tag: '@webkit-phone' }, async ({ page }) => {
-  await page.goto('/#/settings?section=terminal')
-  const row = page.locator('.settings-toggle').filter({ hasText: 'Smooth touch scrolling (beta)' })
-  const toggle = row.getByRole('switch')
-  await expect(toggle).toHaveAttribute('aria-checked', 'false')
-  await expect(row).toContainText('Experimental')
-  await toggle.click()
-  await expect(toggle).toHaveAttribute('aria-checked', 'true')
-  await page.reload()
-  await expect(toggle).toHaveAttribute('aria-checked', 'true')
-})
+// Preference default, label and persistence: tests/components/TerminalTouchPreference.test.ts,
+// 'defaults to off and persists the switch across remounts'.
 
 // Android engines keep tap-to-type; iOS WebKit does not (terminal-tap-keyboard.spec.ts).
-for (const enabled of [false, true]) {
+// Beta variants: TerminalTouchBeta.test.ts, 'allows a normal tap to focus the terminal',
+// 'keeps the keyboard closed for links'; terminalLinks.test.ts, 'terminal link destinations'.
+test.describe('beta touch contracts', () => {
+  const enabled = true
   test(`a normal terminal tap opens the keyboard on Chromium with beta ${enabled ? 'on' : 'off'}`, async ({ page, isMobile, browserName }) => {
     test.skip(!isMobile || browserName !== 'chromium', 'Touch gestures use the phone viewport; WebKit keeps the keyboard closed')
     await fakeHerdr('e2e.touch_scroll', { pane_id: pane, reset: true, mouse: false })
@@ -147,9 +151,12 @@ for (const enabled of [false, true]) {
     await page.locator('#touch').tap()
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused()
   })
-}
+})
 
-for (const enabled of [false, true]) {
+// Beta variants: TerminalTouchBeta.test.ts, 'allows a normal tap to focus the terminal',
+// 'keeps the keyboard closed for links'; terminalLinks.test.ts, 'terminal link destinations'.
+test.describe('beta touch contracts', () => {
+  const enabled = true
   test(`a phone link back to the app keeps its window, touch beta ${enabled ? 'on' : 'off'}`, { tag: '@webkit-phone' }, async ({ page, context, isMobile, baseURL }) => {
     test.skip(!isMobile, 'Phone links open in place')
     await fakeHerdr('e2e.touch_scroll', { pane_id: pane, reset: true, mouse: true })
@@ -175,9 +182,12 @@ for (const enabled of [false, true]) {
     expect(context.pages()).toHaveLength(pages)
     await expect(page.locator('html')).toHaveAttribute('data-terminal-link-focus', '0')
   })
-}
+})
 
-for (const enabled of [false, true]) {
+// Beta variants: TerminalTouchBeta.test.ts, 'allows a normal tap to focus the terminal',
+// 'keeps the keyboard closed for links'; terminalLinks.test.ts, 'terminal link destinations'.
+test.describe('beta touch contracts', () => {
+  const enabled = true
   test(`an external terminal link opens separately without the keyboard, touch beta ${enabled ? 'on' : 'off'}`, { tag: '@webkit-phone' }, async ({ page, context, isMobile }) => {
     test.skip(!isMobile, 'Touch gestures use the phone viewport')
     await context.route('https://example.org/**', route => route.fulfill({ body: 'External page' }))
@@ -203,4 +213,4 @@ for (const enabled of [false, true]) {
     await expect(page.locator('html')).toHaveAttribute('data-external-link-focus', '0')
     await popup.close()
   })
-}
+})
