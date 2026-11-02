@@ -313,15 +313,15 @@ describe('known weekly window (survives restarts)', () => {
   const now = new Date(2026, 9, 3, 10, 37).getTime()
   const H = 3600000
   // Stale rollout: 12 % left, its window resets tomorrow at 03:46 (still to come).
-  const stale = { used: 88, resetsAt: new Date(2026, 9, 4, 3, 46).getTime(), at: now - 10 * H }
+  const stale = { account: 'aaaaaaaaaaaaaaaa', used: 88, resetsAt: new Date(2026, 9, 4, 3, 46).getTime(), at: now - 10 * H }
   // `/status` read before Codex restarted: early reset, 100 % left until 10 Oct.
-  const fresh: KnownWeek = { used: 0, resetsAt: new Date(2026, 9, 10, 10, 33).getTime(), at: now - H, source: 'screen' }
+  const fresh: KnownWeek = { account: 'aaaaaaaaaaaaaaaa', used: 0, resetsAt: new Date(2026, 9, 10, 10, 33).getTime(), at: now - H, source: 'screen' }
 
   it('regression: stale rollout + remembered /status window: the gauge stays full after the restart', () => {
     expect(codexWeekWindow({ week: stale, known: fresh, now })).toEqual({ left: 100, resetsAt: fresh.resetsAt, source: 'screen' })
   })
   it('a genuinely new low reading in the known window is kept', () => {
-    const low = { used: 81, resetsAt: fresh.resetsAt + 2 * 60000, at: now }
+    const low = { account: 'aaaaaaaaaaaaaaaa', used: 81, resetsAt: fresh.resetsAt + 2 * 60000, at: now }
     expect(codexWeekWindow({ week: low, known: fresh, now })).toEqual({ left: 19, resetsAt: low.resetsAt, source: 'rollout' })
     // Same window remembered with more usage than the rollout: the higher usage.
     expect(codexWeekWindow({ week: { ...low, used: 40 }, known: { ...fresh, used: 85 }, now })).toMatchObject({ left: 15, source: 'rollout' })
@@ -333,6 +333,18 @@ describe('known weekly window (survives restarts)', () => {
   it("ignores another account's window and an expired one", () => {
     expect(codexWeekWindow({ week: { ...stale, account: 'aaaa' }, known: { ...fresh, account: 'bbbb' }, now })).toMatchObject({ left: 12 })
     expect(codexWeekWindow({ week: stale, known: { ...fresh, resetsAt: now - 1 }, now })).toMatchObject({ left: 12 })
+    expect(codexWeekWindow({ week: stale, known: { ...fresh, account: 'aaaa' }, now })).toMatchObject({ left: 12 })
+    expect(codexWeekWindow({ week: { ...stale, account: 'aaaa' }, known: fresh, now })).toMatchObject({ left: 12 })
+  })
+
+  it.each([null, undefined, ''])('does not carry weekly usage between unidentified accounts (%s)', (account) => {
+    const previous: KnownWeek = { used: 90, resetsAt: fresh.resetsAt, at: now - 60000, source: 'rollout', account }
+    const current: KnownWeek = { used: 8, resetsAt: fresh.resetsAt, at: now, source: 'rollout', account }
+    expect(rememberWeek(previous, current, now)).toEqual(current)
+    expect(rememberWeek(previous, null, now)).toBeNull()
+    for (const resetsAt of [fresh.resetsAt, fresh.resetsAt + H]) {
+      expect(codexWeekWindow({ week: current, known: { ...previous, resetsAt }, now })).toMatchObject({ left: 92, source: 'rollout' })
+    }
   })
 
   it('rememberWeek keeps the latest window, and the higher usage within it', () => {
@@ -344,7 +356,8 @@ describe('known weekly window (survives restarts)', () => {
     expect(rememberWeek(fresh, later, now)).toMatchObject({ used: 7, resetsAt: later.resetsAt, at: now })
     expect(rememberWeek(later, { ...fresh, at: now + 1 }, now)).toMatchObject({ used: 7, at: now + 1 })
     expect(rememberWeek({ ...fresh, resetsAt: now - 1 }, null, now)).toBeNull()
-    expect(rememberWeek(fresh, { ...old, account: 'bbbb' }, now)).toEqual(fresh) // no fingerprint on the known one
+    expect(rememberWeek(fresh, { ...old, account: 'bbbb' }, now)).toEqual({ ...old, account: 'bbbb' })
+    expect(rememberWeek({ ...fresh, account: 'aaaa' }, old, now)).toEqual(old)
     expect(rememberWeek({ ...fresh, account: 'aaaa' }, { ...old, account: 'bbbb' }, now)).toMatchObject({ account: 'bbbb', used: 88 })
   })
   it('weekFromScreen: dated /status gauges only, no stale bare time', () => {
@@ -357,7 +370,7 @@ describe('known weekly window (survives restarts)', () => {
   })
   it('loadKnownWeeks keeps well-formed, running windows', () => {
     const raw = { a: fresh, b: { ...fresh, resetsAt: now - 1 }, c: { used: 'x' }, d: null, e: { ...fresh, source: 'other' } }
-    expect(loadKnownWeeks(raw, now)).toEqual([['a', { ...fresh, account: null }]])
+    expect(loadKnownWeeks(raw, now)).toEqual([['a', fresh]])
     expect(loadKnownWeeks(null, now)).toEqual([])
     expect(loadKnownWeeks([fresh], now)).toEqual([])
   })
@@ -566,12 +579,12 @@ describe('Codex status service', () => {
     const o = { screen: RESET_SCREEN as string, saveWeeks: (w: Record<string, KnownWeek>) => { saved.push(w) } }
     const { svc, pane, tick } = setup(o)
     const other = { id: 'w1:p2', agent: 'claude', status: 'idle' } as Pane
-    expect(await svc.knownWeek('mac', [pane, other])).toMatchObject({ used: 0, resetsAt: RESET_AT, source: 'screen' })
+    expect(await svc.knownWeek('mac', [pane, other], { used: 90, resetsAt: Date.parse('2026-01-02T10:00:00Z'), at: Date.parse('2026-01-01T10:00:00Z'), account: 'aaaaaaaaaaaaaaaa' })).toMatchObject({ used: 0, resetsAt: RESET_AT, source: 'screen' })
     expect(await svc.knownWeek('pi', [pane])).toBeNull()
     // Screen gone (Codex restarted): the window stays known, a stale rollout does not undo it.
     o.screen = SCREEN
     tick(60000)
-    const rolled = { used: 90, resetsAt: Date.parse('2026-01-02T10:00:00Z'), at: Date.parse('2026-01-01T10:00:00Z') }
+    const rolled = { account: 'aaaaaaaaaaaaaaaa', used: 90, resetsAt: Date.parse('2026-01-02T10:00:00Z'), at: Date.parse('2026-01-01T10:00:00Z') }
     expect(await svc.knownWeek('mac', [], rolled)).toMatchObject({ used: 0, resetsAt: RESET_AT })
     // Saved to data/ and read back after a wherdr restart.
     expect(saved.at(-1)).toEqual({ mac: expect.objectContaining({ used: 0, resetsAt: RESET_AT, source: 'screen' }) })
