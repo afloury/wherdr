@@ -204,14 +204,21 @@ test('phone pane sheet and Options split pane management from agent actions, wit
     await expect(identity.locator('.phone-identity-chevron')).toBeVisible()
     await expect(identity.locator('.phone-identity-position')).toHaveCount(split ? 1 : 0)
     // The chevron has the same button box and icon size as the terminal button next to it.
+    // Also on narrow phones (below 380 px), where the header buttons keep 44 px.
     const box = async (sel: string) => (await page.locator(sel).boundingBox())!
-    const [toggle, term, chevron, termIcon] = await Promise.all([
-      box('.phone-identity-toggle'), box('.agent-actions .mode-btn'), box('.phone-identity-chevron'), box('.agent-actions .mode-btn .iconify'),
-    ])
-    expect([toggle.width, toggle.height]).toEqual([term.width, term.height])
-    expect(toggle.height).toBeGreaterThanOrEqual(44)
-    expect(toggle.y).toBe(term.y)
-    expect([chevron.width, chevron.height]).toEqual([termIcon.width, termIcon.height])
+    const viewport = page.viewportSize()!
+    for (const width of [viewport.width, 320]) {
+      await page.setViewportSize({ width, height: viewport.height })
+      const [toggle, term, chevron, termIcon] = await Promise.all([
+        box('.phone-identity-toggle'), box('.agent-actions .mode-btn'), box('.phone-identity-chevron'), box('.agent-actions .mode-btn .iconify'),
+      ])
+      expect([toggle.width, toggle.height]).toEqual([term.width, term.height])
+      expect(toggle.width).toBeGreaterThanOrEqual(44)
+      expect(toggle.height).toBeGreaterThanOrEqual(44)
+      expect(toggle.y).toBe(term.y)
+      expect([chevron.width, chevron.height]).toEqual([termIcon.width, termIcon.height])
+    }
+    await page.setViewportSize(viewport)
     await identity.click()
     await expect(identity.locator('.phone-identity-toggle')).toHaveClass(/\bon\b/)
     await expect(page.locator('.hw-sheet .menu-group').filter({ hasText: 'Current pane' })).toBeVisible()

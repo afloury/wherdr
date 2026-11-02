@@ -112,7 +112,6 @@ function tabStatus(e: typeof tabs.value[number]) {
 .phone-identity-chevron { width: 20px; height: 20px; }
 .phone-identity:active .phone-identity-toggle { background: var(--surface-3); }
 @media (hover: hover) { .phone-identity:hover .phone-identity-toggle { background: var(--surface-2); color: var(--text); } }
-@media (max-width: 380px) { .phone-identity-toggle { width: 36px; } }
 .phone-identity-summary { margin: 0 8px 12px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .phone-identity-details .menu-text > span { overflow-wrap: anywhere; }
 .phone-identity-current { display: flex; flex-direction: column; gap: 3px; margin: -4px 8px 12px; }
