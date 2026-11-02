@@ -7,7 +7,6 @@
 import { leadPane } from '#shared/spaces'
 import { longPress } from '~/utils/longPress'
 
-const core = useRuntimeConfig().public.core
 const props = defineProps<{ workspace: string, current: string }>()
 const tabs = computed(() => spaceTabs(props.workspace).map((e) => {
   const lead = leadPane(e.panes)
@@ -55,7 +54,7 @@ function pick(id: string) {
         <span class="tab-chip-label">{{ e.label }}</span>
       </button>
     </UContextMenu>
-    <button v-if="!core" type="button" class="tab-chip tab-add" :title="t('New tab')" :aria-label="t('New tab')" :disabled="offlineView" @click="newTab(workspace)">
+    <button type="button" class="tab-chip tab-add" :title="t('New tab')" :aria-label="t('New tab')" :disabled="offlineView" @click="newTab(workspace)">
       <UIcon name="i-lucide-plus" />
     </button>
   </nav>

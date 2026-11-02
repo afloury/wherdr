@@ -10,6 +10,7 @@ export function coreAdminDeps(): CoreAdminDeps {
     call: d.call,
     machines: () => getState().machines ?? [],
     panes: () => getState().panes,
+    workspaces: () => getState().workspaces,
     settle: poll,
     recent: m => recentDirs({ local: m.local, key: m.key, profileId: null }),
     remember: (dir, m) => rememberDir(dir, { local: m.local, key: m.key, profileId: null }),

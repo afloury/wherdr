@@ -12,6 +12,8 @@ export interface CoreTerminal {
   state: string
   reason?: string | null
   status?: { state: string; app?: string; msg?: string } | null
+  // Shared with herdr-app: herdr.space / herdr.tab place the terminal (shared/coreLayout.ts).
+  labels?: Record<string, string>
 }
 export interface CoreInventory {
   terminals: CoreTerminal[]
