@@ -26,7 +26,8 @@ onMounted(check)
       <p v-else role="alert">{{ tl(status?.error || 'herdr-core is unavailable') }}</p>
       <p v-if="status?.hint">{{ t('Missing methods') }}: {{ status.hint }}</p>
     </div>
-    <UButton class="mono-btn" :disabled="pending" @click="check">{{ t('Retry connection') }}</UButton>
+    <CoreInventory v-if="status?.ok" @locked="needsUnlock = true" />
+    <UButton v-else class="mono-btn" :disabled="pending" @click="check">{{ t('Retry connection') }}</UButton>
   </main>
 </template>
 
