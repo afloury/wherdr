@@ -5,8 +5,8 @@
 // agent that exited is `error`, which a file at stage `working` cannot tell).
 // Without herdr-projects (Herdr alone), no rows: the agents' own state counts.
 // Pure functions, tested in tests/homeCounts.test.ts.
-import { type MachineLinks, countedPanes } from './boardLinks'
-import type { TaskGroup, TaskRow, TasksBoard } from './projectsTasks'
+import { type MachineLinks, type HomeStat, taskStat, taskLinks, countedPanes } from './boardLinks'
+import type { TaskRow, TasksBoard } from './projectsTasks'
 import type { Pane } from './types'
 
 const rowKey = (machine: string, id: string) => `${machine}|${id}`
@@ -41,19 +41,10 @@ export function withBoardGroups(links: MachineLinks[], board: TasksBoard | null 
   return any ? out : links
 }
 
-export type HomeStat = 'blocked' | 'working' | 'ready'
+export { taskStat, type HomeStat } from './boardLinks'
 export type HomeCounts = Record<HomeStat, number>
 
-// A task's counter, from its group on the Board alone: waiting for you (needs
-// you, ready to approve, its agent exited) is your turn, at work is working,
-// to do or done is ready. Its panes' terminals do not change it, so the count
-// does not depend on which of its spaces comes first.
-export function taskStat(group: TaskGroup): HomeStat {
-  if (group === 'needs' || group === 'ready') return 'blocked'
-  if (group === 'working') return 'working'
-  return 'ready'
-}
-// An agent alone (or a task the CLI does not list): its own state, as Herdr reads it.
+// An agent without a linked task: its own state, as Herdr reads it.
 function paneStat(status: string | null): HomeStat | null {
   if (status === 'blocked') return 'blocked'
   if (status === 'working') return 'working'
@@ -76,17 +67,17 @@ export function homeCounts<P extends Pick<Pane, 'id' | 'agent' | 'status' | 'wor
 ): HomeCounts {
   const out: HomeCounts = { blocked: 0, working: 0, ready: 0 }
   const rows = boardRows(board)
-  const taskOf = new Map<string, string>()
-  for (const m of links) for (const t of m.tasks) for (const p of t.panes) if (!taskOf.has(p.id)) taskOf.set(p.id, rowKey(m.machine, t.id))
+  const kept = panes.filter(p => p.agent && keepPane(p))
+  const taskOf = taskLinks(links, kept)
   const seen = new Set<string>()
-  for (const p of countedPanes(panes, links)) {
-    if (!keepPane(p)) continue
-    const k = taskOf.get(p.id)
-    const row = k ? rows.get(k) : undefined
-    if (row && k) {
+  for (const p of countedPanes(kept, links)) {
+    const link = taskOf(p)
+    const k = link ? rowKey(link.machine, link.task.id) : undefined
+    const group = (k ? rows.get(k)?.group : undefined) ?? link?.task.group
+    if (group && k) {
       if (seen.has(k)) continue
       seen.add(k)
-      out[taskStat(row.group)]++
+      out[taskStat(group)]++
       continue
     }
     const s = paneStat(p.status)
