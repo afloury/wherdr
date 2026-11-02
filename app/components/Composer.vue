@@ -434,6 +434,8 @@ async function addFiles(files: File[]) {
   return images.length + readable.length
 }
 async function uploadFile(f: File, kind: AttachKind) {
+  // herdr-core's terminal.put takes 8 MB at most: say so before sending anything.
+  if (useRuntimeConfig().public.core && f.size > 8 * 1024 * 1024) return toast(`${f.name} : ${t('File too large for herdr-core (8 MB max)')}`, true)
   const a = reactive<Att>({ url: '', path: null, file: { label: f.name, size: f.size, kind } })
   attachments.value.push(a)
   try {
