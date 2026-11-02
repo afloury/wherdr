@@ -1,29 +1,13 @@
 <script setup lang="ts">
+import { createKeyboardTap } from '~/utils/keyboardTap'
 import type { VirtualModifier } from '~/utils/terminalModifiers'
 import { displayVirtualChord } from '~/utils/keybarKeys'
+import { PHONE_KEYS, type PhoneKey } from '~/utils/phoneKeys'
 
 const props = defineProps<{ ctl: TerminalCtl, allDigits?: boolean, terminal?: boolean }>()
 const emit = defineEmits<{ keyboard: [] }>()
-const modifiers: { key: VirtualModifier, label: string }[] = [
-  { key: 'alt', label: 'Alt' }, { key: 'shift', label: 'Shift' },
-]
-const nav = [
-  { key: 'left', icon: 'i-lucide-arrow-left', label: () => tl('Left arrow', 'Flèche gauche') },
-  { key: 'up', icon: 'i-lucide-arrow-up', label: () => tl('Up arrow', 'Flèche haut') },
-  { key: 'down', icon: 'i-lucide-arrow-down', label: () => tl('Down arrow', 'Flèche bas') },
-  { key: 'right', icon: 'i-lucide-arrow-right', label: () => tl('Right arrow', 'Flèche droite') },
-  { key: 'enter', icon: 'i-lucide-corner-down-left', label: () => tl('Enter', 'Entrée') },
-]
-const terminalKeys = [
-  // Short key caps keep the strip compact; screen readers get the full name.
-  { key: 'home', label: () => tl('Home', 'Début'), cap: () => tl('Home', 'Début') },
-  { key: 'end', label: () => tl('End', 'Fin'), cap: () => tl('End', 'Fin') },
-  { key: 'pageup', label: () => tl('PgUp', 'Page précédente'), cap: () => tl('PgUp', 'Pg préc') },
-  { key: 'pagedown', label: () => tl('PgDn', 'Page suivante'), cap: () => tl('PgDn', 'Pg suiv') },
-  { key: 'delete', label: () => tl('Delete', 'Supprimer'), cap: () => tl('Del', 'Suppr') },
-  { key: 'insert', label: () => tl('Insert', 'Insérer'), cap: () => tl('Ins', 'Inser') },
-]
-const remaining = ['y', 'n', ...Array.from({ length: 12 }, (_, i) => `f${i + 1}`)]
+// The order chosen in Settings › Terminal (utils/keybarOrder.ts); the digits stay last.
+const keys = computed(() => phoneKeyOrder.value.map(id => PHONE_KEYS[id]))
 const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
 const active = computed(() => props.ctl.virtualModifiers.value)
 const preview = computed(() => active.value.length
@@ -36,22 +20,33 @@ function toggleKbd() {
   if (props.ctl.hasFocus()) props.ctl.blur()
   else props.ctl.focus()
 }
+const keyboardTap = createKeyboardTap(toggleKbd)
+// The keyboard key acts on touchend (iOS opens the keyboard only from a user gesture); see utils/keyboardTap.ts.
+const isKbd = (k: PhoneKey) => k.kind === 'keyboard'
+function activate(k: PhoneKey) {
+  if (isKbd(k)) keyboardTap.click()
+  else if (k.kind === 'modifier') modifier(k.modifier!)
+  else press(k.send!)
+}
+const isOn = (k: PhoneKey) => isKbd(k) ? Boolean(props.terminal && props.ctl.kbdOn.value) : k.kind === 'modifier' && active.value.includes(k.modifier!)
 </script>
 
 <template>
   <div class="keybar virtual-keyboard" role="group" :aria-label="t('Terminal function keys')">
     <output class="vk-announcement" aria-live="polite">{{ preview }}</output>
     <div class="vk-strip" role="toolbar" :aria-label="t('Common keys and modifiers')">
-      <button type="button" :class="{ selected: terminal && ctl.kbdOn.value }" :aria-label="t('Show or hide the phone keyboard')" @pointerdown.prevent @click="toggleKbd"><UIcon name="i-lucide-keyboard" mode="svg" /></button>
-      <button type="button" class="vk-mod" :class="{ selected: active.includes('ctrl') }" :aria-pressed="active.includes('ctrl')" :aria-label="t('Ctrl')" @pointerdown.prevent @click="modifier('ctrl')">{{ t('Ctrl') }}</button>
-      <button type="button" :aria-label="t('Esc')" @pointerdown.prevent @click="press('esc')">{{ t('Esc') }}</button>
-      <button type="button" :aria-label="tl('Tab', 'Tabulation')" @pointerdown.prevent @click="press('tab')">{{ tl('Tab', 'Tab') }}</button>
-      <button v-for="k in nav" :key="k.key" type="button" :aria-label="k.label()" @pointerdown.prevent @click="press(k.key)"><UIcon :name="k.icon" mode="svg" class="vk-key-icon" aria-hidden="true" /></button>
-      <button type="button" class="danger" :aria-label="tl('Ctrl+C', 'Ctrl+C')" @pointerdown.prevent @click="press('ctrl+c')">^C</button>
-      <button type="button" :aria-label="tl('Backspace', 'Retour arrière')" @pointerdown.prevent @click="press('backspace')"><UIcon name="i-lucide-delete" mode="svg" class="vk-key-icon" aria-hidden="true" /></button>
-      <button v-for="k in terminalKeys" :key="k.key" type="button" :aria-label="k.label()" @pointerdown.prevent @click="press(k.key)">{{ k.cap() }}</button>
-      <button v-for="m in modifiers" :key="m.key" type="button" class="vk-mod" :class="{ selected: active.includes(m.key) }" :aria-pressed="active.includes(m.key)" :aria-label="t(m.label)" @pointerdown.prevent @click="modifier(m.key)">{{ t(m.label) }}</button>
-      <button v-for="key in remaining" :key="key" type="button" :aria-label="key.toUpperCase()" @pointerdown.prevent @click="press(key)">{{ key.toUpperCase() }}</button>
+      <button
+        v-for="k in keys" :key="k.id" type="button" :data-key="k.id"
+        :class="{ 'vk-mod': k.kind === 'modifier', danger: k.danger, selected: isOn(k) }"
+        :aria-pressed="k.kind === 'modifier' ? isOn(k) : undefined" :aria-label="k.label()"
+        @pointerdown.prevent @click="activate(k)"
+        @touchstart.passive="isKbd(k) && keyboardTap.start($event)" @touchmove.passive="isKbd(k) && keyboardTap.move($event)"
+        @touchend="isKbd(k) && keyboardTap.end($event)" @touchcancel="isKbd(k) && keyboardTap.cancel()"
+      >
+        <UIcon v-if="k.icon && k.kind === 'keyboard'" :name="k.icon" mode="svg" />
+        <UIcon v-else-if="k.icon" :name="k.icon" mode="svg" class="vk-key-icon" aria-hidden="true" />
+        <template v-else>{{ k.cap!() }}</template>
+      </button>
       <template v-if="allDigits"><button v-for="d in digits" :key="d" type="button" :aria-label="d" @pointerdown.prevent @click="press(d)">{{ d }}</button></template>
     </div>
   </div>

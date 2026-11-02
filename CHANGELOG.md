@@ -8,10 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added and improved
 
+- **Choose the order of the phone keys.** Settings › Terminal › Phone key bar reorders the keys of the phone key bar (drag a handle, or the up and down buttons), with a preview of the row and a reset to the default order. The same order applies in the Conversation and the Terminal; it is saved on the device. The default order is unchanged. Thanks to [@followcat](https://github.com/followcat) for the idea.
 - **Per-device push delivery results.** Settings › Notifications lists every registered device with the result of its last push (delivered, expired, rejected, unreachable) and removes expired ones on request, instead of dropping them silently.
 
 ### Fixed
 
+- **No keyboard on a terminal tap on iOS.** On iPhone and iPad a tap on the terminal no longer opens the on-screen keyboard; the message field and the key bar's keyboard button still do. That button acts on the touch itself, so it opens the keyboard even when Safari drops the click. Android and computers keep tap or click to type.
 - **Images from your other tailnet machines in replies.** A Markdown image an agent links to on another machine or port of your tailnet (`https://<machine>.<tailnet>.ts.net:<port>/…`) now shows in the conversation; wherdr's security policy allows HTTPS images from the tailnet it is reached on, and nothing else. An image that is refused or cannot be loaded shows a note saying why, with a link to open it, instead of a broken icon.
 - **No image markers in Codex messages (#265).** A photo sent to Codex shows as its thumbnail only, without a bubble reading `</image>` or `[Image #1]`. Only the placeholders Codex declares as its own are removed: the text sent with photos stays whole, including a `[Image #1]` typed as text.
 - **No false Codex “Restart to update”.** The notice no longer appears when Codex already runs the installed version: the version written at the top of its conversation file (by the shared background server, or by the version that started a resumed conversation) is no longer taken as the version the session runs. The notice relies on what Codex itself shows on screen, remembered only for the same Codex process.
