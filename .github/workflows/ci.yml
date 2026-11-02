@@ -13,11 +13,11 @@ name: ci
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, v3]
     # Release tags get the full suite.
     tags: ['v[0-9]+.[0-9]+.[0-9]+']
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, v3]
   # Manual run: the full suite, on any branch.
   workflow_dispatch:
   # GitHub schedules run from the default branch; check out develop explicitly.
