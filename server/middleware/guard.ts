@@ -55,7 +55,7 @@ export default defineEventHandler(async (event) => {
       return sendError(event, 401, { error: 'App is locked', code: 'locked' })
   }
   if (process.env.WHERDR_BACKEND === 'core' && path.startsWith('/api/')
-    && !/^\/api\/(auth(?:\/|$)|core(?:\/|$)|state$|config$|chat$|settings$|health$|prompt$|input$|interrupt$|close$|agents$|dirs$|isgit$|client-plugins(?:\/|$)|machine\/(?:add|connect)$)/.test(path)) {
+    && !/^\/api\/(auth(?:\/|$)|core(?:\/|$)|state$|config$|chat$|settings$|health$|prompt$|input$|interrupt$|close$|agents$|dirs$|isgit$|client-plugins(?:\/|$)|quotas$|claude-statusline$|claude-setup$|machine\/(?:add|connect)$)/.test(path)) {
     return sendError(event, 503, { error: 'Unavailable with herdr-core' })
   }
   const renewed = auth.renew(req)
