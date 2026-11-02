@@ -3,6 +3,7 @@
 // (agent, settings), windows, lock screen, network banner.
 import { en, fr } from '@nuxt/ui/locale'
 
+const core = useRuntimeConfig().public.core
 setToaster(useToast())
 const route = useRoute()
 const router = useRouter()
@@ -57,6 +58,7 @@ function blockFileDrop(e: DragEvent) {
 
 // Keyboard (computer): Escape closes the open window (handled by the modals).
 onMounted(() => {
+  if (core) return
   installViewport()
   notificationHeartbeat = setInterval(sendViewing, 10000)
   for (const event of ['pointerdown', 'keydown', 'wheel', 'touchstart']) window.addEventListener(event, noteNotificationActivity, { passive: true })
@@ -108,6 +110,8 @@ onUnmounted(() => {
 
 <template>
   <UApp :locale="language === 'fr' ? fr : en" :toaster="{ position: desk ? 'top-right' : 'top-center', max: 1, progress: false }">
+    <CoreConnection v-if="core" />
+    <template v-else>
     <HomeView v-show="desk || isHome" @search="openSearch" />
     <div v-if="desk && slim && listDrawer" class="list-scrim" aria-hidden="true" @click="closeListDrawer" />
     <GlobalSearch v-model:open="searchOpen" />
@@ -124,5 +128,6 @@ onUnmounted(() => {
     <NewVersionBanner v-if="!locked" />
     <SelfUpdateScreen v-if="selfUpdate.open" />
     <LockScreen v-if="locked" />
+    </template>
   </UApp>
 </template>
