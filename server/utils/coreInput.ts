@@ -31,11 +31,13 @@ function target(deps: CoreInputDeps, id: unknown) {
 }
 
 // Core's stable error kinds, as the interface's messages.
-function failure(e: unknown): never {
+export function failure(e: unknown): never {
   if (e instanceof HerdrError) throw e
   const kind = e instanceof CoreError ? e.kind : 'internal'
   if (kind === 'not_found' || kind === 'finished') throw new HerdrError('stale', 'This terminal has ended')
   if (kind === 'blocked') throw new HerdrError('blocked', 'The agent is waiting for an answer: reply in the terminal')
+  if (kind === 'name_taken') throw new HerdrError('name_taken', 'A terminal with this name already exists')
+  if (kind === 'spawn_failed') throw new HerdrError('spawn_failed', 'The program could not start: check the folder and that it is installed')
   if (kind === 'timeout') throw new HerdrError('timeout', 'herdr-core did not confirm in time: check the terminal before sending again')
   if (kind === 'unreachable' || kind === 'machine_unknown') throw new HerdrError('unreachable', 'The machine of this terminal is unreachable')
   if (kind === 'unavailable' || kind === 'disconnected') throw new HerdrError('unreachable', 'herdr-core is unreachable')
