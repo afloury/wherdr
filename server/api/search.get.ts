@@ -15,8 +15,9 @@ export default defineApi(async (event): Promise<ConversationSearchResponse> => {
   if (query.length < 2) return { hits: [], limited: false }
   // Read once for this search, alongside the conversations.
   const tasks = searchableBoards(TASKS_DEADLINE_MS).then(boards => searchTasks(boards, query).hits, () => [])
+  const core = process.env.WHERDR_BACKEND === 'core'
   const panes = getState().panes.filter(p => hasTranscript(p.agent) &&
-    (!machineOfPane(p.id) || machineOfPane(p.id)?.status === 'online'))
+    (core ? getState().machines?.find(m => m.key === p.machine)?.status === 'online' : (!machineOfPane(p.id) || machineOfPane(p.id)?.status === 'online')))
   const deadline = Date.now() + SEARCH_DEADLINE_MS
   const hits: ConversationHit[] = []
   let limited = false
@@ -24,12 +25,11 @@ export default defineApi(async (event): Promise<ConversationSearchResponse> => {
   async function worker() {
     while (next < panes.length && hits.length < SEARCH_MAX_RESULTS && Date.now() < deadline) {
       const p = panes[next++]!
-      const machine = machineOfPane(p.id)
-      if (!machine) continue
+      if (!core && !machineOfPane(p.id)) continue
       try {
         let timer: ReturnType<typeof setTimeout> | undefined
         const result = await Promise.race([
-          machine.transcripts.search(p, query, deadline),
+          transcripts.search(p, query, deadline),
           new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), Math.max(0, deadline - Date.now())) }),
         ]).finally(() => clearTimeout(timer))
         if (!result) { limited = true; break }
