@@ -65,6 +65,26 @@ describe('openCoreTerm', () => {
     expect(resizes(t.sent).at(-1)).toEqual([50, 20])
   })
 
+  it('watches at the real size, fits on "Fit to this screen", follows resizes, and yields to another viewer without a fight', async () => {
+    const size = (cols: number, rows: number) => Buffer.from(JSON.stringify({ jsonrpc: '2.0', method: 'event', params: { type: 'size', terminal: 'm/t7', data: { cols, rows } } }) + '\n')
+    const t = setup()
+    await tick()
+    expect(resizes(t.sent)).toEqual([])
+    t.sess.onMessage(JSON.stringify({ type: 'terminal.resize', cols: 60, rows: 30 }))
+    t.sess.onMessage(JSON.stringify({ type: 'take.control' }))
+    expect(resizes(t.sent)).toEqual([[60, 30]])
+    t.sess.onMessage(JSON.stringify({ type: 'terminal.resize', cols: 70, rows: 30 }))
+    expect(resizes(t.sent)).toEqual([[60, 30], [70, 30]])
+    // The echo of our own size is not another viewer's.
+    t.streams.get(2)!(FRAME.DATA, size(70, 30))
+    expect(t.out.at(-1)).not.toEqual({ type: 'terminal.control', on: false })
+    // Another viewer fits: this one follows and stops imposing its size.
+    t.streams.get(2)!(FRAME.DATA, size(100, 40))
+    expect(t.out.at(-1)).toEqual({ type: 'terminal.control', on: false })
+    t.sess.onMessage(JSON.stringify({ type: 'terminal.resize', cols: 71, rows: 30 }))
+    expect(resizes(t.sent)).toHaveLength(2)
+  })
+
   it('relays output with its credit and returns no more credit than was sent', async () => {
     const t = setup()
     await tick()
