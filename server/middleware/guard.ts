@@ -7,6 +7,7 @@
 import type { H3Event } from 'h3'
 import { crossSiteRequest, hostAllowed, hostRefusalIsHtml, hostRefusedPage, networkRefusedPage } from '../utils/hosts'
 import { checkRequestClient, ensureFresh, gateDecision, networkReady } from '../utils/network'
+import { coreRouteAllowed } from '../../shared/coreRoutes'
 import { adoptServed } from '../utils/phone'
 const HOST_RECHECK_MS = 3000
 const HTTP_FRESH_MS = 2000
@@ -54,8 +55,7 @@ export default defineEventHandler(async (event) => {
     case 'locked':
       return sendError(event, 401, { error: 'App is locked', code: 'locked' })
   }
-  if (process.env.WHERDR_BACKEND === 'core' && path.startsWith('/api/')
-    && !/^\/api\/(auth(?:\/|$)|core(?:\/|$)|state$|config$|chat(?:\/image)?$|search$|settings$|health$|prompt$|input$|interrupt$|close$|agents$|dirs$|isgit$|client-plugins(?:\/|$)|quotas$|claude-statusline$|claude-setup$|machine\/(?:add|connect)$)/.test(path)) {
+  if (process.env.WHERDR_BACKEND === 'core' && path.startsWith('/api/') && !coreRouteAllowed(path)) {
     return sendError(event, 503, { error: 'Unavailable with herdr-core' })
   }
   const renewed = auth.renew(req)

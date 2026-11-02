@@ -17,6 +17,7 @@ let curPaneOwner: symbol | null = null
 // click in a cell activates it) receives keyboard input. Every terminal
 // stays connected and fitted to its own cell regardless of focus.
 import type { Pane, QueuedMessage } from '#shared/types'
+import { coreAgentMenu } from '~/utils/coreAgentMenu'
 import type { PaneViewMode } from '~/composables/useHerdr'
 import { neighborPane } from '#shared/layout'
 import { swipeAxis, swipeOffset, swipeStep } from '~/utils/swipe'
@@ -380,13 +381,13 @@ function onComposerKey(e: KeyboardEvent) {
   if (composer.value?.stop() !== false) { e.preventDefault(); e.stopPropagation() }
 }
 function coreMenuItems(p: Pane | undefined): MenuItem[] {
-  const items: MenuItem[] = [
-    { label: t('Take control of this terminal'), icon: 'i-lucide-arrow-left-right', run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => ctl.connect(true)) } },
-    { label: t('Reconnect'), icon: 'i-lucide-refresh-cw', run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => { ctl.reset(); ctl.connect(false) }) } },
-  ]
-  if (!props.cell) items.push(...settingsMenuItems())
-  if (p && !compactPhone.value) items.push({ kind: 'separator' }, closePaneItem(p, live.value ? shortcutKbds('close-pane') : undefined))
-  return items
+  return coreAgentMenu({
+    pane: p,
+    takeControl: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => ctl.connect(true)) },
+    reconnect: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => { ctl.reset(); ctl.connect(false) }) },
+    settings: props.cell ? [] : settingsMenuItems(),
+    close: p && !compactPhone.value ? closePaneItem(p, live.value ? shortcutKbds('close-pane') : undefined) : undefined,
+  })
 }
 const agentMenu = computed<MenuItem[]>(() => {
   const p = pane.value

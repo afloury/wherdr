@@ -5,6 +5,7 @@ import { DESK_QUERY, SLIM_QUERY, TABLET_QUERY, provesHardwareKeyboard } from '~/
 import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, NamedSession, Pane, Quotas } from '#shared/types'
 import { LOCAL, splitId } from '#shared/ids'
 import { clearOffline, readHome, saveHome } from '~/utils/offlineCache'
+import { coreRouteAllowed } from '#shared/coreRoutes'
 import { leaseFromStatus, mayReadOffline, readOfflineAccess, setOfflineAccess, type OfflineAccess } from '~/utils/offlineAccess'
 import { activeTerminalRenderer, parseTerminalRenderer } from '~/utils/terminalRenderer'
 import type { ActiveTerminalRenderer } from '~/utils/terminalRenderer'
@@ -402,7 +403,7 @@ export class ApiError extends Error {
 }
 
 export async function api<T = Record<string, unknown>>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
-  if (useRuntimeConfig().public.core && !/^\/api\/(auth(?:\/|$)|state(?:\?|$)|config$|chat(?:\/image)?(?:\?|$)|search(?:\?|$)|settings(?:\?|$)|prompt$|input$|interrupt$|close$|agents$|dirs(?:\?|$)|isgit(?:\?|$)|client-plugins$|quotas$|claude-statusline$|claude-setup$|machine\/(?:add|connect)$)/.test(path)) throw new Error('Unavailable with herdr-core')
+  if (useRuntimeConfig().public.core && !coreRouteAllowed(path)) throw new Error('Unavailable with herdr-core')
   const opts: RequestInit = body === undefined
     ? { signal }
     : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal }
