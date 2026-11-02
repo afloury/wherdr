@@ -450,7 +450,17 @@ export function boardSections(
       const far = machines.flatMap(m => m.coordinators).find(c => c.level === 'project' && c.repo === g.repo && c.pane && live.has(c.pane) && !mine.has(c.pane))
       if (far?.pane) g.remote = { pane: far.pane, machine: machineOf(far.pane) }
     }
-    for (const r of [...(g.space ? [g.space] : []), ...(g.coordinator ? [g.coordinator] : []), ...g.members.map(m => m.row)]) {
+    const seen = new Set<string>()
+    for (const m of g.members) {
+      if (m.task) {
+        if (seen.has(m.task.id)) continue
+        seen.add(m.task.id)
+      }
+      if (!hasAgent(m.row)) continue
+      g.sum.total++
+      g.sum[m.task?.group ? taskStat(m.task.group) : rowGroup(m.row)]++
+    }
+    for (const r of [...(g.space ? [g.space] : []), ...(g.coordinator ? [g.coordinator] : [])]) {
       if (!hasAgent(r)) continue
       g.sum.total++
       g.sum[rowGroup(r)]++
@@ -498,18 +508,37 @@ function relead(row: Row, lead: Pane): Row {
   return { ...row, lead, leadTab: row.tabs.find(e => e.panes.some(p => p.id === lead.id)) ?? row.leadTab }
 }
 
-// The agents the list's counters count (summary, machine heading): a task's
-// helpers count once, as its row does (the pane it shows). Once per space it
-// is open in, as the rows (a reviewer an older board put in a space of its own).
+// Pane IDs can change while a kept task workspace stays open. Explicit pane
+// ownership wins; workspace fallback mirrors boardSections, including remote IDs.
+export function taskLinks(machines: MachineLinks[]) {
+  const panes = new Map<string, { task: LinkedTask, machine: string }>()
+  const spaces = new Map<string, { task: LinkedTask, machine: string }>()
+  for (const m of machines) for (const task of m.tasks) {
+    const link = { task, machine: m.machine }
+    for (const p of task.panes) if (!panes.has(p.id)) panes.set(p.id, link)
+    if (task.workspace && !spaces.has(task.workspace)) spaces.set(task.workspace, link)
+  }
+  return (p: Pick<Pane, 'id' | 'workspace'>) => panes.get(p.id) ?? spaces.get(p.workspace)
+}
+
+export type HomeStat = 'blocked' | 'working' | 'ready'
+
+// WORKING means the Board's working group (including reviews and checks).
+export function taskStat(group: TaskGroup): HomeStat {
+  if (group === 'needs' || group === 'ready') return 'blocked'
+  return group === 'working' ? 'working' : 'ready'
+}
+
+// One representative pane per task, including helpers in separate spaces.
 export function countedPanes<P extends Pick<Pane, 'id' | 'agent' | 'status' | 'workspace'>>(panes: P[], machines: MachineLinks[]): P[] {
-  const taskOf = new Map<string, LinkedTask>()
-  for (const m of machines) for (const t of m.tasks) for (const p of t.panes) if (!taskOf.has(p.id)) taskOf.set(p.id, t)
+  const taskOf = taskLinks(machines)
   const byTask = new Map<string, { t: LinkedTask, list: P[] }>()
   const out: P[] = []
   for (const p of panes) {
-    const t = taskOf.get(p.id)
-    if (!t) { out.push(p); continue }
-    const k = `${t.id}|${p.workspace}`
+    const link = taskOf(p)
+    if (!link) { out.push(p); continue }
+    const t = link.task
+    const k = `${link.machine}|${t.id}`
     const e = byTask.get(k)
     if (e) e.list.push(p)
     else byTask.set(k, { t, list: [p] })
