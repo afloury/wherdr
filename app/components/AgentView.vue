@@ -20,6 +20,7 @@ import type { Pane, QueuedMessage } from '#shared/types'
 import { coreAgentMenu } from '~/utils/coreAgentMenu'
 import type { PaneViewMode } from '~/composables/useHerdr'
 import { neighborPane } from '#shared/layout'
+import { spaceMapLayout } from '#shared/coreTabMap'
 import { swipeAxis, swipeOffset, swipeStep } from '~/utils/swipe'
 import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 import { carriesFiles, dragDepth } from '~/utils/fileDrop'
@@ -488,6 +489,25 @@ function openPlan() {
   if (desk.value) navigateTo({ path: tabPath(tabEnt.value.tab.id), query: { pane: props.paneId } })
   else backToTab(tabEnt.value.tab.id)
 }
+// herdr-core: map of the space's terminals (each one a tab, no layout) -> list to switch.
+const core = useRuntimeConfig().public.core
+const spaceMap = computed(() => {
+  if (!core || props.cell || !pane.value) return null
+  const tabs = spaceTabs(pane.value.workspace)
+  if (tabs.length < 2) return null
+  const panes = tabs.map(e => e.panes[0]!)
+  return { layout: spaceMapLayout(pane.value.workspace, panes.map(p => p.id)), panes, tabs }
+})
+function openSpaceMap() {
+  const m = spaceMap.value
+  if (!m || !pane.value) return
+  const ws = pane.value.workspace
+  openMenu([
+    ...m.tabs.map(e => ({ label: e.tab.label || String(e.tab.number), icon: e.panes[0]!.id === props.paneId ? 'i-lucide-check' : 'i-lucide-square-terminal', desc: paneTitle(e.panes[0]!), run: () => switchSpaceTab(e.tab.id) })),
+    { kind: 'separator' as const },
+    newTabItem(ws),
+  ], t('Tabs of this space'))
+}
 // Header and browser back share the same history entry.
 const goBack = useViewBack()
 
@@ -616,6 +636,9 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
             v-if="headerAdd && pane && !compactPhone" icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn"
             :aria-label="t('New tab')" :title="t('New tab')" :disabled="offlineView" @click="newTab(pane.workspace)"
           />
+          <button v-if="spaceMap" type="button" class="map-btn" data-testid="space-map" :aria-label="t('Tab map')" :title="t('Tab map')" @click="openSpaceMap">
+            <TabMap :layout="spaceMap.layout" :panes="spaceMap.panes" :current="paneId" />
+          </button>
           <UTooltip v-if="cell" :text="t('Open alone')">
             <UButton icon="i-lucide-maximize-2" color="neutral" variant="ghost" size="md" class="icon-btn cell-extra" :aria-label="t('Open alone')" :to="panePath(paneId)" />
           </UTooltip>
