@@ -1,6 +1,9 @@
 // Terminal of a pane: xterm.js connected to /ws/term (Herdr's ANSI frames).
 // Herdr keeps the history: no local scrollback, scrolling is
 // requested from the server (terminal.scroll).
+// herdr-core (`web.capabilities.core`): the raw stream, with its history, is
+// kept and scrolled by xterm; the server owns the size and gets credit back
+// once xterm has written each frame (see server/utils/coreTerm.ts).
 import { createSocketProbe } from '~/utils/socketProbe'
 import { DESK_QUERY } from '~/utils/layoutMode'
 import { Terminal } from '@xterm/xterm'
@@ -20,6 +23,8 @@ import { bindTerminalMouse, terminalCell } from '~/utils/terminalMouse'
 import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
 import { virtualNavigationBytes, virtualNavigationKeys } from '~/utils/keybarKeys'
 import { createCompositionTracker, toggleVirtualModifier, virtualChord, virtualInputKey, type VirtualModifier } from '~/utils/terminalModifiers'
+
+const CORE_SCROLLBACK = 5000
 
 export interface Banner { text: string, btn: string, fn: () => void }
 
@@ -57,6 +62,43 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   let links: TerminalLinks | null = null
   let mouse: ReturnType<typeof bindTerminalMouse> | null = null
   let mouseSupported = false
+  let coreStream = false
+  // herdr-core: whether this viewer's size is the terminal's (see coreTerm.ts).
+  let coreControl = true
+  let sizeBanner: Banner | null = null
+  // Asked before the stream was attached (composer focused on arrival): sent once it is.
+  let controlPending = false
+  function takeControl() {
+    if (coreStream && sendTerm({ type: 'take.control' })) controlPending = false
+    else controlPending = true
+  }
+  // Watching a terminal taller than this screen: shift it so the cursor row,
+  // where the newest output is, stays in view.
+  function followCursor() {
+    const screen = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
+    if (!term || !screen || !el) return
+    const shown = el.clientHeight - (screen.offsetTop || 0)
+    const over = coreStream && !coreControl ? (term.buffer.active.cursorY + 1) * (screen.offsetHeight / term.rows) - shown : 0
+    screen.style.transform = over > 0 ? `translateY(${-Math.ceil(over)}px)` : ''
+  }
+  function offerFit() {
+    followCursor()
+    const fits = !term || !fit || (() => {
+      const p = fit!.proposeDimensions()
+      return !p || (p.cols === term!.cols && p.rows === term!.rows)
+    })()
+    if (!coreStream || coreControl || fits) {
+      if (sizeBanner) { sizeBanner = null; opts.setBanner(null) }
+      return
+    }
+    if (sizeBanner || opts.hasBanner()) return
+    sizeBanner = {
+      text: tl('Shown at the size of another screen.', 'Affiché à la taille d’un autre écran.'),
+      btn: tl('Fit to this screen', 'Adapter à cet écran'),
+      fn: () => { sizeBanner = null; opts.setBanner(null); takeControl() },
+    }
+    opts.setBanner(sizeBanner)
+  }
 
   const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
 
@@ -228,10 +270,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     const p = fit.proposeDimensions()
     if (!p || !p.cols || !p.rows) return
     const d = { cols: p.cols, rows: p.rows }
-    if (d.cols !== term.cols || d.rows !== term.rows) term.resize(d.cols, d.rows)
+    if (!coreStream && (d.cols !== term.cols || d.rows !== term.rows)) term.resize(d.cols, d.rows)
     if (send && (d.cols !== lastSize.cols || d.rows !== lastSize.rows)) {
       if (sendTerm({ type: 'terminal.resize', cols: d.cols, rows: d.rows })) lastSize = { cols: d.cols, rows: d.rows }
     }
+    if (coreStream) offerFit()
   }
 
   // Theme change while the terminal is shown.
@@ -326,6 +369,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       catch { return }
       if (m.type === 'web.capabilities') {
         mouseSupported = m.mouse === true
+        coreStream = m.core === true
+        if (term) term.options.scrollback = coreStream ? CORE_SCROLLBACK : 0
       } else if (m.type === 'terminal.frame') {
         if (!gotFrame) {
           gotFrame = true
@@ -336,9 +381,23 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         if (m.width && m.height && (m.width !== term.cols || m.height !== term.rows)) {
           if (smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
           term.resize(m.width, m.height)
+          if (coreStream) offerFit()
         }
         const current = term
-        current.write(b64ToBytes(m.bytes || ''), () => { selectionHint.refresh(current, mouseSupported); if (smoothTouchScrolling.value) frameTick.value++ })
+        // Core repaints the screen and its history on each attach.
+        if (coreStream && m.full) current.reset()
+        const credit = coreStream && Number.isInteger(m.credit) && m.credit > 0 ? m.credit : 0
+        current.write(b64ToBytes(m.bytes || ''), () => {
+          if (credit && tws === ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'credit', bytes: credit }))
+          if (coreStream && !coreControl) followCursor()
+          selectionHint.refresh(current, mouseSupported)
+          if (smoothTouchScrolling.value) frameTick.value++
+        })
+      } else if (m.type === 'terminal.control') {
+        coreControl = m.on === true
+        if (controlPending && !coreControl) takeControl()
+        else controlPending = false
+        offerFit()
       } else if (m.type === 'scroll.ack') {
         if (smoothTouchScrolling.value && m.epoch === touchEpoch && Number.isFinite(m.lines) && term) {
           // Queue behind the covering frame, including when write's callback
@@ -362,6 +421,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       clearTimeout(handshake)
       tws = null
       mouseSupported = false
+      coreStream = false
+      coreControl = true
+      followCursor()
+      if (sizeBanner) { sizeBanner = null; opts.setBanner(null) }
       loading.value = false
       probe.cancel()
       if (!twsIntent || disposed) return
@@ -421,6 +484,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   const pageRows = () => term?.rows || 24
   // Scrolling requested from Herdr (the history lives there).
   function scroll(lines: number, x?: number, y?: number, modifiers = 0, touch = false, preview = true): boolean {
+    if (coreStream && term) {
+      term.scrollLines(-lines)
+      if (touch && preview && smoothTouchScrolling.value) scrollAck.value += lines
+      return true
+    }
     if (!smoothTouchScrolling.value || !touch) return sendTerm({ type: 'terminal.scroll', direction: lines > 0 ? 'up' : 'down', lines: Math.abs(lines) })
     const screen = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
     const rect = screen?.getBoundingClientRect()
@@ -469,7 +537,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   }
 
   return {
-    mount, connect, disconnect, isConnected, sendTerm, sendKeys, fitNow, setFontSize,
+    mount, connect, disconnect, takeControl, isConnected, sendTerm, sendKeys, fitNow, setFontSize,
     reset, scroll, focus, blur, tapLink, tapMouse: (x: number, y: number) => mouse?.tap(x, y), hasFocus, rowHeight, pageRows, setVisible, dispose, loading, kbdOn,
     hasBanner: opts.hasBanner, selectionHint,
     cancelTouchScroll, scrollInputVersion, frameTick, scrollAck,
