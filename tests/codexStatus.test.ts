@@ -333,6 +333,8 @@ describe('known weekly window (survives restarts)', () => {
   it("ignores another account's window and an expired one", () => {
     expect(codexWeekWindow({ week: { ...stale, account: 'aaaa' }, known: { ...fresh, account: 'bbbb' }, now })).toMatchObject({ left: 12 })
     expect(codexWeekWindow({ week: stale, known: { ...fresh, resetsAt: now - 1 }, now })).toMatchObject({ left: 12 })
+    expect(codexWeekWindow({ week: stale, known: { ...fresh, account: 'aaaa' }, now })).toMatchObject({ left: 12 })
+    expect(codexWeekWindow({ week: { ...stale, account: 'aaaa' }, known: fresh, now })).toMatchObject({ left: 12 })
   })
 
   it('rememberWeek keeps the latest window, and the higher usage within it', () => {
@@ -344,7 +346,8 @@ describe('known weekly window (survives restarts)', () => {
     expect(rememberWeek(fresh, later, now)).toMatchObject({ used: 7, resetsAt: later.resetsAt, at: now })
     expect(rememberWeek(later, { ...fresh, at: now + 1 }, now)).toMatchObject({ used: 7, at: now + 1 })
     expect(rememberWeek({ ...fresh, resetsAt: now - 1 }, null, now)).toBeNull()
-    expect(rememberWeek(fresh, { ...old, account: 'bbbb' }, now)).toEqual(fresh) // no fingerprint on the known one
+    expect(rememberWeek(fresh, { ...old, account: 'bbbb' }, now)).toEqual({ ...old, account: 'bbbb' })
+    expect(rememberWeek({ ...fresh, account: 'aaaa' }, old, now)).toEqual(old)
     expect(rememberWeek({ ...fresh, account: 'aaaa' }, { ...old, account: 'bbbb' }, now)).toMatchObject({ account: 'bbbb', used: 88 })
   })
   it('weekFromScreen: dated /status gauges only, no stale bare time', () => {
