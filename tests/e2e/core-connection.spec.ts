@@ -97,6 +97,7 @@ test('core terminals use the normal home and agent navigation without legacy req
     await expect(page.locator('.agent-group.ready .card')).toHaveCount(1)
     await expect(page.locator('.stat.working')).toContainText('2')
     await expect(page.locator('.stat.done')).toContainText('1')
+    await expect(page.locator('.home-version')).toHaveText(/^wherdr v3 · herdr-core$/i)
     await expect(page.getByRole('button', { name: 'New', exact: true })).toBeEnabled()
     await expect(page.getByRole('button', { name: 'Board', exact: true })).toHaveCount(0)
     // New terminal in a folder: terminal.run without parent, then it opens.
