@@ -28,8 +28,7 @@ import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
 const emit = defineEmits<{ activate: [], 'update:selectedMode': [mode: PaneViewMode] }>()
 const core = useRuntimeConfig().public.core
-// herdr-core: no conversation view yet, agents open in their terminal.
-const paneChat = (p: Pane | null | undefined) => !core && hasChat(p)
+const paneChat = (p: Pane | null | undefined) => hasChat(p)
 const route = useRoute()
 const router = useRouter()
 
@@ -303,7 +302,7 @@ function reopenInteraction() {
 // A modal window over the whole app: only the pane in use shows it, never under the
 // lock screen. Another cell of a split keeps its "Open" button until it is activated.
 const interactionShown = computed(() => interactionOpen.value && interactionAvailable.value && live.value && !locked.value)
-// herdr-core on a computer: agents have no conversation view yet, the composer stays under their terminal.
+// herdr-core on a computer: the composer stays under the terminal of an agent.
 const coreDeskComposer = computed(() => core && desk.value && live.value && !props.cell && Boolean(pane.value?.agent))
 const composerShown = computed(() => (coreDeskComposer.value || showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) })) && !(menu.value && mode.value !== 'term') && !(mode.value === 'chat' && interactionOpen.value))
 const canAttachTerminal = computed(() => terminalAttachment({
