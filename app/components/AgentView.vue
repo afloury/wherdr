@@ -371,6 +371,15 @@ const dropHint = computed(() => pane.value?.agent === 'claude'
 useNotificationClock()
 // herdr-core: using the composer (tap or key, not its automatic focus) makes this screen's size the terminal's.
 function takeTerminalControl() { if (core) ctl.takeControl() }
+// herdr-core: the app shortcuts are off, so the composer's "Esc stop" is handled here
+// (same rule as the v2 shortcut: no modifier, empty field).
+function onComposerKey(e: KeyboardEvent) {
+  takeTerminalControl()
+  if (!core || e.key !== 'Escape' || e.isComposing || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+  const field = e.target as HTMLTextAreaElement | null
+  if (field?.value) return
+  if (composer.value?.stop() !== false) e.preventDefault()
+}
 function coreMenuItems(p: Pane | undefined): MenuItem[] {
   const items: MenuItem[] = [
     { label: t('Take control of this terminal'), icon: 'i-lucide-arrow-left-right', run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => ctl.connect(true)) } },
@@ -678,7 +687,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         @pointerdown.prevent @mousedown.prevent @click.stop="togglePhoneKeys"><UIcon :name="phoneKeysOpen ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'" /></button>
     </div>
     <Keybar v-if="keybarShown" :id="keybarId" :ctl="ctl" :compact="compactPhone" :terminal="termShown" @keyboard="toggleComposerKeyboard" />
-    <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @pointerdown="takeTerminalControl" @keydown="takeTerminalControl" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
+    <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @pointerdown="takeTerminalControl" @keydown="onComposerKey" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
     </div>
     </div>
     <AppSheet v-model:open="changesOpen" :title="t('Changes')" wide full screen>

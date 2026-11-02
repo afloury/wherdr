@@ -69,7 +69,11 @@ test('core terminals use the normal home and agent navigation without legacy req
     const result = r.method === 'hello' ? fixture.hello
       : r.method === 'terminal.list' ? { ...fixture.inventory, terminals }
       : r.method === 'machine.list' ? { machines: [{ name: 'host-a', state: 'connected' }] }
-      : r.method === 'terminal.send' ? { started: null, turn: 0 } : fixture.discover
+      : r.method === 'terminal.send' ? { started: true, turn: 0 }
+      : r.method === 'terminal.interrupt' ? { outcome: 'stopped', key: 'esc' } : fixture.discover
+    // The agent works after a message, until it is interrupted.
+    if (r.method === 'terminal.send') terminals[0] = { ...terminals[0]!, status: { state: 'working' } }
+    if (r.method === 'terminal.interrupt') terminals[0] = { ...terminals[0]!, status: { state: 'idle' } }
     socket.end(JSON.stringify({ jsonrpc: '2.0', id: r.id, result }) + '\n')
   }))
   const requests: string[] = []
@@ -102,6 +106,11 @@ test('core terminals use the normal home and agent navigation without legacy req
     await field.fill('run the tests')
     await page.getByRole('button', { name: 'Send', exact: true }).click()
     await expect.poll(() => rpc.find(r => r.method === 'terminal.send')?.params).toEqual({ terminal: fixture.inventory.terminals[0]!.address, text: 'run the tests' })
+    // Shortcuts are off in core mode: Escape in the empty composer still stops the working agent.
+    await expect(page.getByRole('button', { name: 'Stop the agent' })).toBeVisible()
+    await field.press('Escape')
+    await expect.poll(() => rpc.find(r => r.method === 'terminal.interrupt')?.params).toMatchObject({ terminal: fixture.inventory.terminals[0]!.address })
+    await expect(page.getByRole('button', { name: 'Stop the agent' })).toHaveCount(0)
     expect(rpc.some(r => r.method === 'terminal.list')).toBe(true)
     expect(rpc.some(r => r.method === 'machine.list')).toBe(true)
     // The protocol journey also runs on WebKit; virtual passkeys use Chromium CDP.
@@ -135,7 +144,7 @@ test('core terminals use the normal home and agent navigation without legacy req
     await expect(page.locator('.agent-group.working .card')).toHaveCount(2)
     await new Promise<void>(resolve => core.close(() => resolve()))
     await expect(page.locator('.notice')).toContainText('Run hc server start for the configured core session.')
-    expect(requests.filter(p => !['/api/config', '/api/chat', '/api/settings', '/api/prompt', '/api/input'].includes(p) && !p.startsWith('/api/auth/'))).toEqual([])
+    expect(requests.filter(p => !['/api/config', '/api/chat', '/api/settings', '/api/prompt', '/api/input', '/api/interrupt'].includes(p) && !p.startsWith('/api/auth/'))).toEqual([])
   } finally {
     if (server.exitCode === null) {
       server.kill('SIGTERM')
