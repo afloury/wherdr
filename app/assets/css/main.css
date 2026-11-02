@@ -4459,3 +4459,4 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 
 .phone-chrome .mode-btn { border: 1px solid transparent; border-radius: 0; }
 .phone-chrome .mode-btn.on { border-color: var(--accent); }
+.composer-actions { display: contents; }

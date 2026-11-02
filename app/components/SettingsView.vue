@@ -35,7 +35,6 @@ const sectionLabels: Record<SettingsSection, string> = {
   plugins: 'Plugins', phone: 'Phone', notifications: 'Notifications', security: 'Security', shortcuts: 'Shortcuts', advanced: 'Advanced', about: 'About',
 }
 const sections = computed(() => SETTINGS_SECTIONS
-  .filter(id => !core || id !== 'plugins')
   .filter(id => id !== 'shortcuts' || (desk.value && !coarse.value))
   .map(id => ({ id, label: t(sectionLabels[id]), icon: sectionIcons[id] })))
 const activeSection = computed<SettingsSection | null>(() => {
@@ -272,7 +271,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <section id="settings" class="view settings-view">
+  <section id="settings" data-wherdr="settings" class="view settings-view">
     <header class="top bar settings-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Back')" @click="back" />
       <h2>{{ desk ? t('Settings') : activeLabel }}</h2>
@@ -508,6 +507,7 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'plugins'" class="settings-section">
+          <ClientPlugins data-wherdr="settings-plugins" />
           <ProjectsPluginSettings v-if="!core" :machines="appConfig.machines || [{ key: '', label: hostLabel || t('This machine'), local: true, home: '', dirs: [], online: true, kinds: [] }]" />
         </div>
 
