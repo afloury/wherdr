@@ -4,6 +4,7 @@ import { closeTrailingMention } from '../../shared/attachments'
 import { isSlashCommand } from '../../shared/queuedMatch'
 
 export default defineApi(async (event, b) => {
+  if (process.env.WHERDR_BACKEND === 'core') return coreSend(coreInputDeps(), b)
   if (typeof b.client_id === 'string' && /^w-[a-z0-9]{1,32}$/.test(b.client_id) && PANE_RE.test(b.pane_id || '')) {
     return promptOnce(b.pane_id, b.client_id, String(b.text || ''), async () => await submitPrompt(event, b))
   }

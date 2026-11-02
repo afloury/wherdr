@@ -16,7 +16,7 @@ let curPaneOwner: symbol | null = null
 // live: the conversation, or the terminal. Only the active cell (`active`, a
 // click in a cell activates it) receives keyboard input. Every terminal
 // stays connected and fitted to its own cell regardless of focus.
-import type { QueuedMessage } from '#shared/types'
+import type { Pane, QueuedMessage } from '#shared/types'
 import type { PaneViewMode } from '~/composables/useHerdr'
 import { neighborPane } from '#shared/layout'
 import { swipeAxis, swipeOffset, swipeStep } from '~/utils/swipe'
@@ -28,6 +28,8 @@ import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
 const emit = defineEmits<{ activate: [], 'update:selectedMode': [mode: PaneViewMode] }>()
 const core = useRuntimeConfig().public.core
+// herdr-core: no conversation view yet, agents open in their terminal.
+const paneChat = (p: Pane | null | undefined) => !core && hasChat(p)
 const route = useRoute()
 const router = useRouter()
 
@@ -94,8 +96,8 @@ const mode = computed<PaneViewMode | null>(() => {
   const p = pane.value
   if (!p) return null
   if (props.embedded && props.selectedMode) return props.selectedMode
-  if (props.cell) return cellMode({ chat: hasChat(p), viewMode: viewMode.value, active: props.active })
-  return hasChat(p) ? viewMode.value : 'term'
+  if (props.cell) return cellMode({ chat: paneChat(p), viewMode: viewMode.value, active: props.active })
+  return paneChat(p) ? viewMode.value : 'term'
 })
 
 const banner = shallowRef<Banner | null>(null)
@@ -160,13 +162,13 @@ function toggleSearch() {
 // selector. Escape: the Stop button, not while searching.
 usePaneShortcuts(() => props.paneId, () => live.value, {
   searchChat() {
-    if (!pane.value || !hasChat(pane.value) || mode.value !== 'chat') return false
+    if (!pane.value || !paneChat(pane.value) || mode.value !== 'chat') return false
     if (searchOpen.value) chatRef.value?.focusSearch()
     else searchOpen.value = true
     return true
   },
   toggleTerm() {
-    if (!pane.value || !hasChat(pane.value) || !mode.value) return false
+    if (!pane.value || !paneChat(pane.value) || !mode.value) return false
     const back = mode.value !== 'chat'
     setMode(back ? 'chat' : 'term')
     if (back) nextTick(() => composer.value?.focus())
@@ -301,7 +303,9 @@ function reopenInteraction() {
 // A modal window over the whole app: only the pane in use shows it, never under the
 // lock screen. Another cell of a split keeps its "Open" button until it is activated.
 const interactionShown = computed(() => interactionOpen.value && interactionAvailable.value && live.value && !locked.value)
-const composerShown = computed(() => !core && showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }) && !(menu.value && mode.value !== 'term') && !(mode.value === 'chat' && interactionOpen.value))
+// herdr-core on a computer: agents have no conversation view yet, the composer stays under their terminal.
+const coreDeskComposer = computed(() => core && desk.value && live.value && !props.cell && Boolean(pane.value?.agent))
+const composerShown = computed(() => (coreDeskComposer.value || showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) })) && !(menu.value && mode.value !== 'term') && !(mode.value === 'chat' && interactionOpen.value))
 const canAttachTerminal = computed(() => terminalAttachment({
   desk: desk.value, live: live.value, mode: mode.value,
   available: Boolean(pane.value && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value)),
@@ -365,16 +369,38 @@ const dropHint = computed(() => pane.value?.agent === 'claude'
 
 // Agent menu: sheet on the phone, dropdown menu on a computer.
 useNotificationClock()
+// herdr-core: using the composer (tap or key, not its automatic focus) makes this screen's size the terminal's.
+function takeTerminalControl() { if (core) ctl.takeControl() }
+// herdr-core: the app shortcuts are off, so the composer's "Esc stop" is handled here
+// (same rule as the v2 shortcut: no modifier, empty field).
+function onComposerKey(e: KeyboardEvent) {
+  takeTerminalControl()
+  if (!core || e.key !== 'Escape' || e.isComposing || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+  const field = e.target as HTMLTextAreaElement | null
+  if (field?.value) return
+  if (composer.value?.stop() !== false) e.preventDefault()
+}
+function coreMenuItems(p: Pane | undefined): MenuItem[] {
+  const items: MenuItem[] = [
+    { label: t('Take control of this terminal'), icon: 'i-lucide-arrow-left-right', run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => ctl.connect(true)) } },
+    { label: t('Reconnect'), icon: 'i-lucide-refresh-cw', run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => { ctl.reset(); ctl.connect(false) }) } },
+  ]
+  if (!props.cell) items.push(...settingsMenuItems())
+  if (p && !compactPhone.value) items.push({ kind: 'separator' }, closePaneItem(p, live.value ? shortcutKbds('close-pane') : undefined))
+  return items
+}
 const agentMenu = computed<MenuItem[]>(() => {
   const p = pane.value
   const items: MenuItem[] = p ? [notificationMenuItem(p)] : []
-  if (compactPhone.value && hasChat(p)) {
+  if (compactPhone.value && paneChat(p)) {
     items.unshift(
       { label: mode.value === 'term' ? t('Conversation') : t('Terminal'), icon: mode.value === 'term' ? 'i-lucide-message-square' : 'i-lucide-square-terminal', run: () => toggleMode('term') },
       { label: t('Search'), icon: 'i-lucide-search', run: toggleSearch },
       { kind: 'separator' },
     )
   }
+  // herdr-core: terminal, input and close only (files, renames and restarts come later).
+  if (core) return coreMenuItems(p)
   if (canAttachTerminal.value) items.push({ label: t('Attach a file…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
   if (p) items.push({ label: t('View changes'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
   if (p) items.push({ label: t('Browse files'), icon: 'i-lucide-folder-tree', run: () => { filesOpen.value = true } })
@@ -446,7 +472,7 @@ function togglePhoneKeys() {
   haptic()
   phoneKeysOpen.value = !phoneKeysOpen.value
 }
-const controls = computed(() => viewControls({ desk: desk.value, cell: Boolean(props.cell), chat: hasChat(pane.value), live: live.value }))
+const controls = computed(() => viewControls({ desk: desk.value, cell: Boolean(props.cell), chat: paneChat(pane.value), live: live.value }))
 const headerAdd = computed(() => !core && !props.cell && pane.value && spaceTabControls(spaceTabs(pane.value.workspace).length).headerAdd)
 
 watch(fontSize, n => ctl.setFontSize(n))
@@ -602,7 +628,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
             v-if="controls.term" icon="i-lucide-square-terminal" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
             :class="{ on: mode === 'term' }" :aria-label="t('Terminal')" :aria-pressed="mode === 'term'" @click="toggleMode('term')"
           />
-          <UTooltip v-if="hasChat(pane) && (live || cell) && !compactPhone" :text="t('Search')" :kbds="mode === 'chat' ? shortcutKbds('search-chat') : undefined" :disabled="!desk">
+          <UTooltip v-if="paneChat(pane) && (live || cell) && !compactPhone" :text="t('Search')" :kbds="mode === 'chat' ? shortcutKbds('search-chat') : undefined" :disabled="!desk">
             <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn cell-extra" :class="{ on: searchOpen }" :aria-label="t('Search')" @click="toggleSearch" />
           </UTooltip>
           <UDropdownMenu v-if="!sheetMenus" :items="dropdownItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
@@ -640,13 +666,12 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         @goto-term="setMode('term')" @restored="composer?.focus()" @quote="composer?.focusEnd()" @answered="composer?.focusAnswer($event)" @unanswered="unanswered = $event" @sent="onSent"
       />
     </div>
-    <div v-else-if="core" class="chat-empty"><p>{{ t('Terminal streaming is not available yet.') }}</p></div>
     <div v-else-if="mode === 'term' && (!eventsOpen || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal unavailable offline') }}</p></div>
     <TerminalView
       v-else-if="mode === 'term'" :ctl="ctl" :class="enter ? (enter > 0 ? 'enter-next' : 'enter-prev') : undefined" :style="swipeStyle"
     />
     <div v-else class="chat" />
-    <div v-if="pane?.agent && !hasChat(pane) && mode === 'term' && !cell && !transcriptNoteHidden" class="terminal-transcript-note dismissible-transcript-note">
+    <div v-if="pane?.agent && !paneChat(pane) && mode === 'term' && !cell && !transcriptNoteHidden" class="terminal-transcript-note dismissible-transcript-note">
       <span>{{ tl('Conversation unavailable for this agent · follow it in the terminal', 'Conversation non disponible pour cet agent · suivi dans le terminal') }}</span>
       <button type="button" :aria-label="t('Hide')" :title="t('Hide')" @click="hideTranscriptNote">×</button>
     </div>
@@ -662,7 +687,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         @pointerdown.prevent @mousedown.prevent @click.stop="togglePhoneKeys"><UIcon :name="phoneKeysOpen ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'" /></button>
     </div>
     <Keybar v-if="keybarShown" :id="keybarId" :ctl="ctl" :compact="compactPhone" :terminal="termShown" @keyboard="toggleComposerKeyboard" />
-    <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
+    <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @pointerdown="takeTerminalControl" @keydown="onComposerKey" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
     </div>
     </div>
     <AppSheet v-model:open="changesOpen" :title="t('Changes')" wide full screen>
