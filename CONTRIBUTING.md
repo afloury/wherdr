@@ -82,12 +82,16 @@ Repeated runs of entire files can take tens of minutes on a small machine.
 
 GitHub Actions (`.github/workflows/ci.yml`) runs all of them, the type check and the leak check
 (gitleaks only: your `.leak-patterns` stays local). Pull requests and pushes run a light
-end-to-end set: every test on `chromium-phone` (four shards) and, on the other three projects,
-only the tests tagged with that project's name: `{ tag: '@webkit-phone' }` for a Safari/iOS
+end-to-end set: every test on `chromium-phone` (six shards) and, on the other three projects,
+only the tests tagged with that project's name (two shards for `webkit-phone`): `{ tag: '@webkit-phone' }` for a Safari/iOS
 journey, `'@chromium-desktop'` for a keyboard or split-view case, `'@webkit-desktop'` for iPad
 and desktop Safari. A test skipped on phones must carry one of these tags, or the run fails
-(`tests/e2e/scope.ts`). The whole suite on all four projects runs only on a manual run of the
-workflow and on release tags `vX.Y.Z`.
+(`tests/e2e/scope.ts`). The whole suite on all four projects also runs nightly on develop (18:17 UTC), on a manual
+run of the workflow and on release tags `vX.Y.Z`. GitHub loads schedules from the default
+branch, so the schedule becomes active once this workflow reaches main; each nightly job
+checks out the same resolved develop commit. Browser jobs cache downloaded apt packages by
+Ubuntu release, Playwright version and browser; apt still installs and validates dependencies
+on each fresh runner.
 `E2E_SCOPE=light npm run test:e2e -- --project=webkit-phone` reproduces the light selection
 locally; without `E2E_SCOPE`, a local run is the whole suite. CI retries a failed test once (it
 then shows as flaky); local runs never retry.
