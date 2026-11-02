@@ -316,7 +316,7 @@ export function codexWeekWindow(o: WeekInputs): WeekWindow | null {
   }
   // Another account's window says nothing about this one.
   const k = o.known
-  if (k && k.resetsAt > o.now && !(k.account && s?.account && k.account !== s.account)) {
+  if (k?.account && k.resetsAt > o.now && k.account === s?.account) {
     later(Math.round(Math.max(0, 100 - k.used)), k.resetsAt, k.source)
   }
   return out
@@ -332,11 +332,12 @@ export interface KnownWeek { used: number, resetsAt: number, at: number, source:
 // `known` updated with a reading: a later window replaces it, an earlier one
 // is stale and ignored; the same window keeps the higher usage (it only
 // grows). An expired window is forgotten; a reading without a future reset
-// teaches nothing. Another account (both fingerprints known): replaced.
+// teaches nothing. Only matching known fingerprints can reuse a previous window;
+// an unidentified reading is kept on its own and is never reused later.
 export function rememberWeek(known: KnownWeek | null | undefined, r: KnownWeek | null | undefined, now: number): KnownWeek | null {
-  const k = known && known.resetsAt > now ? known : null
+  const k = known?.account && known.resetsAt > now ? known : null
   if (!r || !(r.resetsAt > now) || !Number.isFinite(r.used)) return k
-  if (!k || (r.account && k.account && r.account !== k.account) || r.resetsAt - k.resetsAt > SAME_WINDOW_MS) return { ...r }
+  if (!k || !r.account || r.account !== k.account || r.resetsAt - k.resetsAt > SAME_WINDOW_MS) return { ...r }
   if (k.resetsAt - r.resetsAt > SAME_WINDOW_MS) return k
   const base = r.at >= k.at ? r : k
   return { ...base, used: Math.max(k.used, r.used), at: Math.max(k.at, r.at), account: base.account ?? k.account ?? r.account ?? null }
