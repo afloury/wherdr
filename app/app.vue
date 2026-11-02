@@ -58,7 +58,6 @@ function blockFileDrop(e: DragEvent) {
 
 // Keyboard (computer): Escape closes the open window (handled by the modals).
 onMounted(() => {
-  if (core) return
   installViewport()
   notificationHeartbeat = setInterval(sendViewing, 10000)
   for (const event of ['pointerdown', 'keydown', 'wheel', 'touchstart']) window.addEventListener(event, noteNotificationActivity, { passive: true })
@@ -82,7 +81,7 @@ onMounted(() => {
   }
   start({ resume: true })
   // First launch: the setup guide, until finished or skipped (saved by the server).
-  watch(locked, (l) => { if (!l) checkOnboarding() }, { immediate: true })
+  if (!core) watch(locked, (l) => { if (!l) checkOnboarding() }, { immediate: true })
   // Local lease over: ask the server rather than locking on the browser's own
   // clock. Only the lease counts here: the deadline never locks the app while
   // it is open.
@@ -110,24 +109,21 @@ onUnmounted(() => {
 
 <template>
   <UApp :locale="language === 'fr' ? fr : en" :toaster="{ position: desk ? 'top-right' : 'top-center', max: 1, progress: false }">
-    <CoreConnection v-if="core" />
-    <template v-else>
     <HomeView v-show="desk || isHome" @search="openSearch" />
     <div v-if="desk && slim && listDrawer" class="list-scrim" aria-hidden="true" @click="closeListDrawer" />
     <GlobalSearch v-model:open="searchOpen" />
     <NuxtPage />
-    <NewAgentSheet />
+    <NewAgentSheet v-if="!core" />
     <MenuSheet />
     <RenameSheet />
     <CommandResultSheet />
     <ConfirmSheet />
-    <PluginResultSheet />
+    <PluginResultSheet v-if="!core" />
     <ImageLightbox />
     <ShortcutsSheet />
-    <OnboardingGuide v-if="onboardingOpen && !locked" />
+    <OnboardingGuide v-if="!core && onboardingOpen && !locked" />
     <NewVersionBanner v-if="!locked" />
     <SelfUpdateScreen v-if="selfUpdate.open" />
     <LockScreen v-if="locked" />
-    </template>
   </UApp>
 </template>

@@ -27,6 +27,7 @@ import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
 
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
 const emit = defineEmits<{ activate: [], 'update:selectedMode': [mode: PaneViewMode] }>()
+const core = useRuntimeConfig().public.core
 const route = useRoute()
 const router = useRouter()
 
@@ -300,7 +301,7 @@ function reopenInteraction() {
 // A modal window over the whole app: only the pane in use shows it, never under the
 // lock screen. Another cell of a split keeps its "Open" button until it is activated.
 const interactionShown = computed(() => interactionOpen.value && interactionAvailable.value && live.value && !locked.value)
-const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }) && !(menu.value && mode.value !== 'term') && !(mode.value === 'chat' && interactionOpen.value))
+const composerShown = computed(() => !core && showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }) && !(menu.value && mode.value !== 'term') && !(mode.value === 'chat' && interactionOpen.value))
 const canAttachTerminal = computed(() => terminalAttachment({
   desk: desk.value, live: live.value, mode: mode.value,
   available: Boolean(pane.value && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value)),
@@ -446,7 +447,7 @@ function togglePhoneKeys() {
   phoneKeysOpen.value = !phoneKeysOpen.value
 }
 const controls = computed(() => viewControls({ desk: desk.value, cell: Boolean(props.cell), chat: hasChat(pane.value), live: live.value }))
-const headerAdd = computed(() => !props.cell && pane.value && spaceTabControls(spaceTabs(pane.value.workspace).length).headerAdd)
+const headerAdd = computed(() => !core && !props.cell && pane.value && spaceTabControls(spaceTabs(pane.value.workspace).length).headerAdd)
 
 watch(fontSize, n => ctl.setFontSize(n))
 watch(pageVisible, (v) => {
@@ -639,6 +640,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         @goto-term="setMode('term')" @restored="composer?.focus()" @quote="composer?.focusEnd()" @answered="composer?.focusAnswer($event)" @unanswered="unanswered = $event" @sent="onSent"
       />
     </div>
+    <div v-else-if="core" class="chat-empty"><p>{{ t('Terminal streaming is not available yet.') }}</p></div>
     <div v-else-if="mode === 'term' && (!eventsOpen || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal unavailable offline') }}</p></div>
     <TerminalView
       v-else-if="mode === 'term'" :ctl="ctl" :class="enter ? (enter > 0 ? 'enter-next' : 'enter-prev') : undefined" :style="swipeStyle"

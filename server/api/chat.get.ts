@@ -4,6 +4,7 @@ import { integrationStatus } from '../utils/integrations'
 import { multiMachine } from '../utils/machines'
 import { chatDelta } from '../utils/chatDelta'
 export default defineApi(async (event) => {
+  if (process.env.WHERDR_BACKEND === 'core') return { available: false, reason: 'unsupported' }
   const q = getQuery(event)
   const p = findPane(String(q.pane || ''))
   if (!p) throw new HerdrError('bad_pane', 'Pane not found')

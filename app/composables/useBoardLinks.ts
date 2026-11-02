@@ -12,7 +12,7 @@ let poll: ReturnType<typeof setInterval> | undefined
 let seq = 0
 
 async function load() {
-  if (offlineView.value) return
+  if (useRuntimeConfig().public.core || offlineView.value) return
   const id = ++seq
   try {
     const since = links.value ? `?since=${encodeURIComponent(links.value.version)}` : ''

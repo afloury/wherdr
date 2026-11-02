@@ -120,11 +120,11 @@ export const STATUS: Record<string, { label: string, order: number }> = {
 }
 
 export function statusKey(p: Pane) {
-  return p.agent ? p.status || 'unknown' : 'shell'
+  return (p.coreAddress || p.agent) ? p.status || 'unknown' : 'shell'
 }
 export function statusLabel(p: Pane) {
   const s = statusKey(p)
-  if (!p.agent) return 'Shell'
+  if (!p.agent && !p.coreAddress) return 'Shell'
   if (p.usageLimit) return tl('Quota reached', 'Quota atteint')
   if (p.restart && p.restart.phase !== 'failed') return t('Restarting')
   if (s === 'unknown' && p.pendingPrompt) return t('Starting')
