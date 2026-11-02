@@ -508,7 +508,7 @@ const FR: Record<string, string> = {
   'Copy': 'Copier', 'Reply': 'Répondre', 'Reply to this passage': 'Répondre à ce passage', 'Show original message': 'Voir le message d’origine', 'Original message not found (further up the conversation?)': 'Message d’origine introuvable (plus haut dans la conversation ?)', 'Copy reply': 'Copier la réponse', 'No output': 'Aucune sortie', 'Copied': 'Copié', 'Copy pane ID': 'Copier l’ID du pane', 'Copy failed': 'Copie impossible', 'Copy ID': 'Copier l’identifiant',
   'Quoted': 'Citée', 'Discuss': 'Discuter', 'Yes': 'Oui', 'No': 'Non', 'OK to all': 'Ok tout', 'Decisions': 'Décisions', 'Quoted questions': 'Citations', 'Remove quote': 'Retirer la citation',
   '⌘+click to open': '⌘+clic pour ouvrir', 'Ctrl+click to open': 'Ctrl+clic pour ouvrir',
-  'Enter': 'Entrée', 'send': 'envoyer', 'suggestion': 'suggestion', 'Use suggestion': 'Utiliser la suggestion', 'new line': 'nouvelle ligne',
+  'Enter': 'Entrée', 'send': 'envoyer', 'suggestion': 'suggestion', 'Use suggestion': 'Utiliser la suggestion', 'new line': 'nouvelle ligne', 'again to stop': 'encore pour arrêter', 'Already sent': 'Déjà envoyé',
   'Image not found': 'image introuvable', 'Invalid JSON': 'JSON invalide', 'Request too large': 'requête trop grosse',
   // Model
   'Model': 'Modèle', 'Unknown model': 'Modèle inconnu',

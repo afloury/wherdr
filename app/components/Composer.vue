@@ -24,6 +24,7 @@ import { kbOpen } from '~/composables/useViewport'
 import { PromptHistory, historyDirection } from '~/utils/promptHistory'
 import { createTouchTap } from '~/utils/touchTap'
 import { tracePaste } from '~/utils/pasteJournal'
+import { ESC_CONFIRM_MS, type EscapeArm, pressEscape } from '~/utils/escapeStop'
 import { pasteHtmlText } from '~/utils/pasteHtml'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
@@ -262,6 +263,14 @@ async function submit() {
   const body = messageBody(typed, pastes, paths)
   const msg = body
   if (!msg || sending.value) return
+  // The same text sent here a moment ago: an echo (a dictation app pressing
+  // Enter again while the page lags), not a new message. Its copy goes.
+  if (!claimSend(props.paneId, msg)) {
+    text.value = ''
+    clearAttachments()
+    toast(t('Already sent'))
+    return
+  }
   const p = props.pane
   // omp question with "Other": the message is its free answer.
   const prompt = p && p.status === 'blocked' ? p.prompt : null
@@ -282,14 +291,25 @@ async function submit() {
   sending.value = true
   // Before the send: it tells the server where they sit (see sendMessage).
   rememberPastes(pastes)
+  // The field empties before the request: another Enter while it runs finds
+  // nothing to send. Not sent: the message comes back.
+  const atts = attachments.value
+  text.value = ''
+  attachments.value = []
+  const giveBack = () => {
+    releaseSend(props.paneId, msg)
+    if (!text.value && !attachments.value.length) {
+      text.value = typed
+      attachments.value = atts
+    } else restoreDraft(draft, msg, pastes)
+  }
   try {
     let queued: QueuedMessage | null = null
     if (prompt && free >= 0) {
-      if (!(await choose(props.paneId, free, prompt.options[free]!.label, prompt.identity, { text: msg, question: prompt.question }))) return
+      if (!(await choose(props.paneId, free, prompt.options[free]!.label, prompt.identity, { text: msg, question: prompt.question }))) return giveBack()
     } else queued = await sendMessage(p, props.paneId, msg)
     rememberSent(typed)
-    text.value = ''
-    clearAttachments()
+    for (const a of atts) if (a.url) URL.revokeObjectURL(a.url)
     haptic()
     emit('sent', queued)
     // "/" command: its result (terminal screen), as from the + menu.
@@ -300,6 +320,7 @@ async function submit() {
       showCommandResult(props.paneId, cmd, listed.some(c => c.source === 'builtin' && `/${c.name}` === cmd))
     }
   } catch (err) {
+    giveBack()
     toast((err as Error).message, true)
   } finally {
     sending.value = false
@@ -343,13 +364,22 @@ async function interrupt() {
 watch(() => props.pane?.status, s => { if (interrupting.value === 'failed' && !stoppingShell.value && s !== 'working') interrupting.value = null })
 watch(shellRun, on => { if (interrupting.value === 'failed' && stoppingShell.value && !on) interrupting.value = null })
 // Escape (composables/useShortcuts.ts): the Stop button, only while it is shown and
-// clickable. The field blurs itself on Escape: it gets the focus back for what comes next.
+// clickable, on the second press within a moment (utils/escapeStop.ts): one stray
+// Escape from another app must not stop the agent. The field blurs itself on
+// Escape: it gets the focus back for what comes next.
+const escArm: EscapeArm = { at: null }
+const escArmed = ref(false)
+let escTimer: ReturnType<typeof setTimeout> | undefined
 function stop() {
   if (!props.escStops || !stopMode.value || sending.value || interrupting.value === 'running') return false
-  interrupt()
+  clearTimeout(escTimer)
+  escArmed.value = !pressEscape(escArm, Date.now())
+  if (escArmed.value) escTimer = setTimeout(() => { escArmed.value = false }, ESC_CONFIRM_MS)
+  else interrupt()
   ta.value?.focus()
   return true
 }
+onBeforeUnmount(() => clearTimeout(escTimer))
 
 // ------------------------------------------------------------ photos
 function clearAttachments() {
@@ -786,7 +816,10 @@ defineExpose({
         </div>
         <span v-if="hint && suggestion" class="prompt-hint"><UKbd value="tab" size="sm" /> {{ t('suggestion') }} <span class="sep">·</span> <UKbd value="enter" size="sm" /> {{ t('send') }}</span>
         <span v-else-if="hint" class="prompt-hint"><UKbd value="enter" size="sm" /> {{ t('send') }} <span class="sep">·</span> <UKbd value="shift" size="sm" /><UKbd value="enter" size="sm" /> {{ t('new line') }}</span>
-        <span v-else-if="desk && escStops && stopMode && interrupting !== 'running'" class="prompt-hint"><UKbd value="escape" size="sm" /> {{ tl('stop', 'arrêter') }}</span>
+        <span v-else-if="desk && escStops && stopMode && interrupting !== 'running'" class="prompt-hint" :class="{ armed: escArmed }" data-testid="esc-hint">
+          <template v-if="escArmed"><UKbd value="escape" size="sm" /> {{ t('again to stop') }}</template>
+          <template v-else><UKbd value="escape" size="sm" /><UKbd value="escape" size="sm" /> {{ tl('stop', 'arrêter') }}</template>
+        </span>
         <UChatPromptSubmit
           :status="stopMode ? 'streaming' : 'ready'" :disabled="sendDisabled"
           color="primary" variant="solid" streaming-color="neutral" streaming-variant="solid" streaming-icon="i-herdr-stop" size="sm"
