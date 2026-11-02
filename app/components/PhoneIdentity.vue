@@ -63,9 +63,9 @@ function tabStatus(e: typeof tabs.value[number]) {
       <span class="phone-identity-meta"><span class="pill" :class="tone"><i />{{ stateLabel }}</span><template v-if="showKind"><span>·</span><span class="phone-identity-kind">{{ kind }}</span></template></span>
     </span>
     <UIcon v-if="paneNotificationsMuted(pane)" name="i-lucide-bell-off" mode="svg" class="phone-identity-muted" aria-hidden="true" />
-    <span v-if="panes.length > 1" class="phone-identity-position" aria-hidden="true">{{ position }}</span>
-    <!-- Drawn like the header's .icon-btn (terminal button): the whole identity stays the one tap target. -->
-    <span class="phone-identity-toggle icon-btn" :class="{ on: open }" aria-hidden="true"><UIcon name="i-lucide-chevron-down" mode="svg" class="phone-identity-chevron" /></span>
+    <!-- Drawn like the header's .icon-btn (terminal button): the whole identity stays the one tap target.
+         With several panes, the position (1/2) shares the chevron's box. -->
+    <span class="phone-identity-toggle icon-btn" :class="{ on: open, 'has-position': panes.length > 1 }" aria-hidden="true"><span v-if="panes.length > 1" class="phone-identity-position">{{ position }}</span><UIcon name="i-lucide-chevron-down" mode="svg" class="phone-identity-chevron" /></span>
   </button>
   <AppSheet v-model:open="open" :title="tl('Panes and tabs', 'Panneaux et onglets')" hide-close>
     <div class="phone-identity-details">
@@ -109,7 +109,8 @@ function tabStatus(e: typeof tabs.value[number]) {
 .phone-identity-position { flex: none; font: 500 .625rem/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
 .phone-identity-muted { width: 12px; height: 12px; flex: none; color: var(--muted); }
 .phone-identity-toggle { width: 44px; height: 44px; }
-.phone-identity-chevron { width: 20px; height: 20px; }
+.phone-identity-toggle.has-position { width: auto; min-width: 44px; display: flex; align-items: center; justify-content: center; gap: 3px; padding: 0 10px 0 9px; }
+.phone-identity-chevron { width: 20px; height: 20px; flex: none; }
 .phone-identity:active .phone-identity-toggle { background: var(--surface-3); }
 @media (hover: hover) { .phone-identity:hover .phone-identity-toggle { background: var(--surface-2); color: var(--text); } }
 .phone-identity-summary { margin: 0 8px 12px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
