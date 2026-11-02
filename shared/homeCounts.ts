@@ -67,9 +67,10 @@ export function homeCounts<P extends Pick<Pane, 'id' | 'agent' | 'status' | 'wor
 ): HomeCounts {
   const out: HomeCounts = { blocked: 0, working: 0, ready: 0 }
   const rows = boardRows(board)
-  const taskOf = taskLinks(links)
+  const kept = panes.filter(p => p.agent && keepPane(p))
+  const taskOf = taskLinks(links, kept)
   const seen = new Set<string>()
-  for (const p of countedPanes(panes.filter(p => p.agent && keepPane(p)), links)) {
+  for (const p of countedPanes(kept, links)) {
     const link = taskOf(p)
     const k = link ? rowKey(link.machine, link.task.id) : undefined
     const group = (k ? rows.get(k)?.group : undefined) ?? link?.task.group

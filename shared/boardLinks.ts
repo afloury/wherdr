@@ -510,7 +510,7 @@ function relead(row: Row, lead: Pane): Row {
 
 // Pane IDs can change while a kept task workspace stays open. Explicit pane
 // ownership wins; workspace fallback mirrors boardSections, including remote IDs.
-export function taskLinks(machines: MachineLinks[]) {
+export function taskLinks(machines: MachineLinks[], live: Pick<Pane, 'id' | 'workspace'>[]) {
   const panes = new Map<string, { task: LinkedTask, machine: string }>()
   const spaces = new Map<string, { task: LinkedTask, machine: string }>()
   for (const m of machines) for (const task of m.tasks) {
@@ -518,7 +518,18 @@ export function taskLinks(machines: MachineLinks[]) {
     for (const p of task.panes) if (!panes.has(p.id)) panes.set(p.id, link)
     if (task.workspace && !spaces.has(task.workspace)) spaces.set(task.workspace, link)
   }
-  return (p: Pick<Pane, 'id' | 'workspace'>) => panes.get(p.id) ?? spaces.get(p.workspace)
+  // boardSections splits a workspace with several explicitly linked tasks:
+  // unlinked agents remain independent. With one task, its whole row belongs
+  // to it, even when only its pane (rather than its workspace) was linked.
+  const liveSpaces = new Map<string, { task: LinkedTask, machine: string } | null>()
+  for (const p of live) {
+    const link = panes.get(p.id)
+    if (!link) continue
+    if (!liveSpaces.has(p.workspace)) liveSpaces.set(p.workspace, link)
+    else if (liveSpaces.get(p.workspace)?.task !== link.task) liveSpaces.set(p.workspace, null)
+  }
+  return (p: Pick<Pane, 'id' | 'workspace'>) => panes.get(p.id)
+    ?? (liveSpaces.has(p.workspace) ? liveSpaces.get(p.workspace) ?? undefined : spaces.get(p.workspace))
 }
 
 export type HomeStat = 'blocked' | 'working' | 'ready'
@@ -531,7 +542,7 @@ export function taskStat(group: TaskGroup): HomeStat {
 
 // One representative pane per task, including helpers in separate spaces.
 export function countedPanes<P extends Pick<Pane, 'id' | 'agent' | 'status' | 'workspace'>>(panes: P[], machines: MachineLinks[]): P[] {
-  const taskOf = taskLinks(machines)
+  const taskOf = taskLinks(machines, panes)
   const byTask = new Map<string, { t: LinkedTask, list: P[] }>()
   const out: P[] = []
   for (const p of panes) {

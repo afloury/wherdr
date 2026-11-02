@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { LinkedTask, MachineLinks } from '../shared/boardLinks'
+import { countedPanes, type LinkedTask, type MachineLinks } from '../shared/boardLinks'
 import { homeCounts, taskStat, withBoardGroups } from '../shared/homeCounts'
 import { type MachineTasks, type TasksBoard, parseTaskRow } from '../shared/projectsTasks'
 
@@ -90,6 +90,19 @@ describe('home counters', () => {
     const panes = [pane('w7:p1', 'working'), worker, reviewer]
     expect(homeCounts(panes, l, board)).toEqual({ blocked: 0, working: 1, ready: 1 })
     expect(homeCounts(panes, l, board, p => p.id === worker.id, m => m === 'abcd1234')).toEqual({ blocked: 0, working: 1, ready: 0 })
+  })
+
+  it.each(['', 'abcd1234'])('keeps an unlinked working agent independent in a shared workspace (%s)', (key) => {
+    const prefix = key ? `${key}~` : ''
+    const panes = [pane(`${prefix}w1:p1`, 'working'), pane(`${prefix}w1:p2`, 'working'), pane(`${prefix}w1:p3`, 'working')]
+    const tasks: LinkedTask[] = [1, 2].map(n => ({ ...task(n, [{ id: `${prefix}w1:p${n}`, role: 'worker' }], 'done', 'done'), workspace: `${prefix}w1` }))
+    const l = [links(tasks, key)]
+    const board = cli(machine([row(1, 'done', 'done'), row(2, 'done', 'done')], key))
+    expect(countedPanes(panes, l).map(p => p.id).sort()).toEqual(panes.map(p => p.id))
+    expect(homeCounts(panes, l, board)).toEqual({ blocked: 0, working: 1, ready: 2 })
+    // Explicit pane ownership can identify shared tasks even without workspace links.
+    tasks.forEach(t => { t.workspace = null })
+    expect(homeCounts(panes, l, board)).toEqual({ blocked: 0, working: 1, ready: 2 })
   })
 
   it('a task that waits for you counts with no agent pane left', () => {

@@ -70,3 +70,34 @@ test('home cards and counters follow the Board\'s task state', async ({ page }, 
   await expect(page.getByRole('button', { name: 'Ready to approve 1', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Working 1', exact: true })).toBeVisible()
 })
+
+test('an independent working agent in a shared task workspace stays in the counter', async ({ page }) => {
+  await expect.poll(async () => (await (await page.request.get('/api/state')).json()).ok).toBe(true)
+  const base = await (await page.request.get('/api/state')).json()
+  const template = base.panes.find((p: { id: string }) => p.id === 'w1:p1')
+  const state = { ...base,
+    workspaces: base.workspaces.filter((w: { id: string }) => w.id === 'w1'),
+    tabs: base.tabs.filter((t: { id: string }) => t.id === template.tab),
+    panes: [1, 2, 3].map(n => ({ ...template, id: `w1:p${n}`, status: 'working',
+      name: n === 3 ? 'Independent worker' : `Finished worker ${n}`, prompt: undefined, screen: undefined, menu: undefined })),
+  }
+  const tasks = [1, 2].map(n => ({ id: `demo/${n}`, repo: 'demo', n, key: `DEMO-${n}`, title: `Finished task ${n}`,
+    panes: [{ id: `w1:p${n}`, role: 'worker' }], workspace: 'w1', stage: 'done', group: 'done', progress: null, msg: '', since: null }))
+  await page.routeWebSocket('**/ws/events', ws => ws.send(JSON.stringify(state)))
+  await page.route('**/api/tasks/links**', route => route.fulfill({ json: {
+    version: 'shared-workspace', machines: [{ machine: '', coordinators: [], tasks }],
+  } }))
+  await page.route(url => url.pathname === '/api/tasks', route => route.fulfill({ json: {
+    version: 'shared-workspace', machines: [{ machine: '', status: 'ready', version: '1.2.21', tasks: [] }],
+  } }))
+  await page.addInitScript(() => localStorage.setItem('herdrLanguage', 'en'))
+  await page.goto('/')
+  await expect(page.locator('.project-tree .task-state')).toHaveText(['Done', 'Done'])
+  await expect(page.locator('.agent-group.working .card[data-pane="w1:p3"]')).toBeVisible()
+  await expect(page.locator('.stats .stat.working b')).toHaveText('1')
+  await expect(page.locator('.project-sum-working')).toHaveCount(0)
+  await fs.mkdir('.shots', { recursive: true })
+  await page.screenshot({ path: '.shots/home-shared-workspace-phone.png' })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.screenshot({ path: '.shots/home-shared-workspace-desktop.png' })
+})
