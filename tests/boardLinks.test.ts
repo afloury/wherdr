@@ -127,9 +127,9 @@ describe('the home list follows Herdr\'s worktree groups', () => {
     expect(g.members.map(m => [m.row.key, m.row.lead.id, m.task?.key ?? null])).toEqual([
       ['w3', 'w3:p9', 'APP-1'], ['w4:p1', 'w4:p1', 'APP-2'],
     ])
-    // Tasks, not tabs: the project coordinator (at work) and the two tasks.
-    expect(g.sum).toEqual({ blocked: 2, working: 1, ready: 0, total: 3 })
-    expect(g.state).toBe('blocked')
+    // The project coordinator and both tasks are in the working group.
+    expect(g.sum).toEqual({ blocked: 0, working: 3, ready: 0, total: 3 })
+    expect(g.state).toBe('working')
   })
 
   it('a worker and its reviewer in one space: one row, led by the reviewer', () => {
@@ -231,6 +231,15 @@ describe('one row per task, whatever helpers its space holds', () => {
     expect(g.sum).toEqual({ blocked: 0, working: 1, ready: 0, total: 1 })
   })
 
+  it('project totals follow task groups despite leftover working terminals', () => {
+    const st = session([...reviewTabs, ['w8:t1', 'Agent', 'w8:p1', 'codex', 'working'], ['w9:t1', 'Agent', 'w9:p1', 'codex', 'working']])
+    const b = board([reviewing,
+      { id: 'app/8', stage: 'done', link: { pane: 'w8:p1', workspace: 'w8', ownsWorkspace: true } },
+      { id: 'app/9', stage: 'todo', link: { pane: 'w9:p1', workspace: 'w9', ownsWorkspace: true } },
+    ])
+    expect(groupOf(st, b).sum).toEqual({ blocked: 0, working: 1, ready: 2, total: 3 })
+  })
+
   it('the review over: its tab closed, the task\'s own agent again', () => {
     const done = { ...reviewing, stage: 'approval', link: { ...reviewing.link, reviewer: null } }
     const g = groupOf(session([reviewTabs[0]!]), board([done]))
@@ -313,11 +322,11 @@ describe('one row per task, whatever helpers its space holds', () => {
     const st = session([...reviewTabs, ['w5:t1', '1', 'w5:p1', 'claude', 'done']])
     const counted = countedPanes(st.panes.filter(p => p.agent), [board([reviewing])])
     expect(counted.map(p => p.id).sort()).toEqual(['w5:p1', 'w7:p2'])
-    // A reviewer an older board put in a space of its own: two rows, counted twice.
+    // A reviewer in its own space still belongs to the same task.
     const apart = session([reviewTabs[0]!, ['w6:t1', 'Reviewer', 'w6:p2', 'codex', 'working']])
     const far = board([{ ...reviewing, link: { ...reviewing.link, reviewer: { pane: 'w6:p2', kind: 'codex' } } }])
-    expect(groupOf(apart, far).sum.total).toBe(2)
-    expect(countedPanes(apart.panes.filter(p => p.agent), [far])).toHaveLength(2)
+    expect(groupOf(apart, far).sum.total).toBe(1)
+    expect(countedPanes(apart.panes.filter(p => p.agent), [far])).toHaveLength(1)
     // Without the board, every agent counts.
     expect(countedPanes(st.panes.filter(p => p.agent), [])).toHaveLength(3)
   })
