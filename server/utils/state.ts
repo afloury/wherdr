@@ -1376,6 +1376,7 @@ export async function pollFresh(m: Machine) {
 export async function poll() {
   if (process.env.WHERDR_BACKEND === 'core') {
     state = await readCoreState(state)
+    await coreScreens().enrich(state.panes).catch(() => {})
     void coreTranscriptsOf().observe(state.panes)
     const json = JSON.stringify(state)
     if (json !== stateJson) { stateJson = json; broadcastState() }
