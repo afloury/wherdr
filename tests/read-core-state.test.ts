@@ -3,6 +3,8 @@ import { coreCall } from '../server/utils/core'
 import { readCoreState } from '../server/utils/readCoreState'
 vi.mock('../server/utils/core', () => ({ coreCall: vi.fn() }))
 afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks() })
+import { clearCoreDocs } from '../server/utils/readCoreDocs'
+afterEach(clearCoreDocs)
 it('reads core machines and terminals without legacy discovery', async () => {
   vi.stubEnv('HC_SOCKET', '/test/core.sock')
   vi.mocked(coreCall).mockImplementation(async (_endpoint, method) => method === 'terminal.list'
@@ -10,7 +12,7 @@ it('reads core machines and terminals without legacy discovery', async () => {
   const state = await readCoreState({ ok: false, panes: [], workspaces: [] })
   expect(state.ok).toBe(true)
   expect(state.panes[0]?.status).toBe('unknown')
-  expect(vi.mocked(coreCall).mock.calls.map(c => c[1])).toEqual(['terminal.list', 'machine.list'])
+  expect(vi.mocked(coreCall).mock.calls.map(c => c[1])).toEqual(['terminal.list', 'machine.list', 'doc.get'])
   vi.mocked(coreCall).mockRejectedValue(new Error('Disconnected'))
   const offline = await readCoreState(state)
   expect(offline.ok).toBe(false)

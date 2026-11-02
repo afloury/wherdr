@@ -12,7 +12,16 @@ the existing state WebSocket. The old Herdr poller, Board discovery and TUI
 notifications are disabled. Network and passkey guards remain active; legacy
 control routes are unavailable in core mode.
 
-Terminals are grouped by machine and cwd, with one tab and pane per terminal.
+The home has one machine-bar item per machine (this core and each `machine.list`
+entry, online or offline) with its counters. Terminals are placed like herdr-app
+places them: by their `herdr.space` / `herdr.tab` labels, else by the tab of the
+machine's `herdr-app` document whose layout holds them; the document (read only,
+never written) gives the space and tab names and the tab order. Terminals with no
+such placement are grouped by machine and cwd, one tab and pane per terminal.
+"+" in a space's tab row starts a new terminal or agent in it: it carries that
+space's `herdr.space`, a new `herdr.tab` and `herdr.seen=0`, so it also appears in
+herdr-app. Terminals made from the "New" sheet get the space whose folder holds
+their cwd, else a new one. Rename, close, split and move stay in herdr-app.
 Each pane preserves its full core address behind a stable interface identifier.
 Agent identity uses core's `agent` field when supplied, otherwise recognised
 application/template/command names. Identity does not gate status: OSC 7501

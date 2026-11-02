@@ -13,12 +13,14 @@ import { LIST_DIRS_SCRIPT, dirDeniedFromCode, parseDirList } from './fsx'
 import { toAgentName } from '../../shared/ids'
 import { cleanLabel } from '../../shared/spaceActions'
 import { fmt } from '../../shared/message'
-import type { DirEntry, DirListing, MachineConfig, MachineInfo, Pane } from '../../shared/types'
+import { placementLabels } from '../../shared/coreLayout'
+import type { DirEntry, DirListing, MachineConfig, MachineInfo, Pane, Workspace } from '../../shared/types'
 
 export interface CoreAdminDeps {
   call: <T>(method: string, params: object, timeout: number) => Promise<T>
   machines: () => MachineInfo[]
   panes: () => Pane[]
+  workspaces: () => Workspace[]
   settle: () => Promise<unknown> // fresh inventory, published
   recent: (m: MachineInfo) => Promise<string[]>
   remember: (dir: string, m: MachineInfo) => Promise<unknown>
@@ -104,7 +106,18 @@ export async function coreMachineConfigs(deps: CoreAdminDeps): Promise<MachineCo
   }))
 }
 
-export interface CreateBody { kind?: unknown, machine?: unknown, cwd?: unknown, name?: unknown }
+export interface CreateBody { kind?: unknown, machine?: unknown, cwd?: unknown, name?: unknown, workspace?: unknown }
+
+const newId = (prefix: string) => prefix + crypto.randomBytes(16).toString('hex')
+// herdr-app placement: a new tab of the given space, else of the space holding the
+// folder, else of a new space. A folder-grouped workspace ("workspace" without a herdr-app
+// space) keeps its terminal unlabelled so that it stays beside the others.
+export function creationLabels(deps: CoreAdminDeps, m: MachineInfo, cwd: string, workspace: unknown) {
+  const mine = deps.workspaces().filter(w => (w.machine || '') === m.key)
+  const target = workspace ? mine.find(w => w.id === String(workspace)) : undefined
+  if (workspace && !target?.coreSpace) return {}
+  return placementLabels(mine.filter(w => w.coreSpace).map(w => ({ id: w.coreSpace!, folder: w.path })), cwd, newId, target?.coreSpace)
+}
 
 // Creates a terminal ('shell') or an agent CLI in a folder. The result is only
 // "uncertain" (never a blind second launch) when core did not answer in time and the
@@ -124,7 +137,7 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
   const request = crypto.randomBytes(8).toString('hex')
   const params = {
     cwd, ...(on ? { on } : {}), ...(name ? { name } : {}), no_parent: true, wait: false,
-    labels: { [REQUEST_LABEL]: request }, ...(kind === 'shell' ? {} : { line: `${PATH_SETUP}; exec ${kind}` }),
+    labels: { [REQUEST_LABEL]: request, ...creationLabels(deps, m, cwd, body.workspace) }, ...(kind === 'shell' ? {} : { line: `${PATH_SETUP}; exec ${kind}` }),
   }
   let address: string
   try {
@@ -133,7 +146,7 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
     const kindOf = e instanceof CoreError ? e.kind : ''
     if (!['timeout', 'disconnected', 'protocol'].includes(kindOf)) return failure(e)
     // The program may exist: look for the request's label before saying anything.
-    const found = await deps.call<{ terminals: { address: string, labels?: Record<string, string> }[] }>('terminal.list', { labels: true }, 8000)
+    const found = await deps.call<{ terminals: { address: string, labels?: Record<string, string> }[] }>('terminal.list', {}, 8000)
       .then(r => r.terminals.find(t => t.labels?.[REQUEST_LABEL] === request)?.address, () => undefined)
     if (!found) throw new HerdrError('uncertain', 'herdr-core did not confirm: check the list before creating it again')
     address = found
