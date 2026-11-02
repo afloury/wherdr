@@ -113,7 +113,7 @@ onUnmounted(() => {
     <div v-if="desk && slim && listDrawer" class="list-scrim" aria-hidden="true" @click="closeListDrawer" />
     <GlobalSearch v-model:open="searchOpen" />
     <NuxtPage />
-    <NewAgentSheet v-if="!core" />
+    <NewAgentSheet />
     <MenuSheet />
     <RenameSheet />
     <CommandResultSheet />

@@ -45,6 +45,8 @@ test('core terminals use the normal home and agent navigation without legacy req
     head.writeUInt32LE(payload.length, 5)
     return Buffer.concat([head, payload])
   }
+  const machineList = [{ name: 'host-a', state: 'connected' }]
+  const execOut = (script: string) => script.startsWith('printf') ? '/workspace' : script.includes('command -v') ? 'claude\n' : ''
   const core = createServer(socket => socket.once('data', data => {
     const r = JSON.parse(data.toString().split('\n')[0]!)
     rpc.push(r)
@@ -68,9 +70,15 @@ test('core terminals use the normal home and agent navigation without legacy req
     }
     const result = r.method === 'hello' ? fixture.hello
       : r.method === 'terminal.list' ? { ...fixture.inventory, terminals }
-      : r.method === 'machine.list' ? { machines: [{ name: 'host-a', state: 'connected' }] }
+      : r.method === 'machine.list' ? { machines: machineList }
       : r.method === 'terminal.send' ? { started: true, turn: 0 }
+      : r.method === 'machine.exec' ? { code: 0, timed_out: false, stdout: Buffer.from(execOut(r.params.argv[2])).toString('base64') }
+      : r.method === 'terminal.run' ? { address: 'te1' }
+      : r.method === 'machine.add' ? { name: 'box' }
       : r.method === 'terminal.interrupt' ? { outcome: 'stopped', key: 'esc' } : fixture.discover
+    // A new terminal joins the inventory; a new machine joins the machine list.
+    if (r.method === 'terminal.run') terminals.push({ address: 'te1', cwd: r.params.cwd, state: 'live' })
+    if (r.method === 'machine.add') machineList.push({ name: r.params.name, state: 'connected' })
     // The agent works after a message, until it is interrupted.
     if (r.method === 'terminal.send') terminals[0] = { ...terminals[0]!, status: { state: 'working' } }
     if (r.method === 'terminal.interrupt') terminals[0] = { ...terminals[0]!, status: { state: 'idle' } }
@@ -89,14 +97,21 @@ test('core terminals use the normal home and agent navigation without legacy req
     await expect(page.locator('.agent-group.ready .card')).toHaveCount(1)
     await expect(page.locator('.stat.working')).toContainText('2')
     await expect(page.locator('.stat.done')).toContainText('1')
-    await expect(page.getByRole('button', { name: 'New', exact: true })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'New', exact: true })).toBeEnabled()
     await expect(page.getByRole('button', { name: 'Board', exact: true })).toHaveCount(0)
+    // New terminal in a folder: terminal.run without parent, then it opens.
+    await page.getByRole('button', { name: 'New', exact: true }).click()
+    await page.locator('[data-kind="shell"]').click()
+    await page.getByRole('button', { name: /launch/i }).click()
+    await expect.poll(() => rpc.find(r => r.method === 'terminal.run')?.params).toMatchObject({ cwd: '/workspace', no_parent: true, wait: false })
+    await expect(page).toHaveURL(/#\/a\//)
+    await page.goto(`http://localhost:${port}`)
     await page.locator('.card').filter({ hasText: 'demo' }).first().click()
     await expect(page).toHaveURL(/#\/(a|t)\//)
     await expect(page.locator('.agent-top')).toBeVisible()
     // Live terminal: output is credited back once xterm wrote it; typing takes control (resize, then keys).
     await expect.poll(() => streamed.some(f => f.channel === 3 && f.kind === 1)).toBe(true)
-    expect(rpc.find(r => r.method === 'terminal.attach')?.params).toMatchObject({ terminal: fixture.inventory.terminals[0]!.address, cols: 80, rows: 24 })
+    expect(rpc.find(r => r.method === 'terminal.attach' && r.params.terminal === fixture.inventory.terminals[0]!.address)?.params).toMatchObject({ cols: 80, rows: 24 })
     expect(streamed.some(f => f.kind === 3)).toBe(false)
     await page.locator('.xterm-helper-textarea').focus()
     await page.keyboard.type('ls')
@@ -140,11 +155,19 @@ test('core terminals use the normal home and agent navigation without legacy req
     await page.goto(`http://localhost:${port}/#/settings`)
     await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
     await expect(page.getByText('Plugins', { exact: true })).toHaveCount(0)
+    // Machines: listed, and one added over SSH (machine.add on the target, nothing else).
+    await page.goto(`http://localhost:${port}/#/settings?section=agents`)
+    await expect(page.getByTestId('core-machine')).toContainText('host-a')
+    await page.getByLabel('SSH target').fill('me@10.0.0.9')
+    await page.getByLabel(/^Name/).fill('box')
+    await page.getByRole('button', { name: 'Add machine' }).click()
+    await expect(page.getByTestId('core-machine').filter({ hasText: 'box' })).toBeVisible()
+    expect(rpc.find(r => r.method === 'machine.add')?.params).toEqual({ target: 'me@10.0.0.9', name: 'box' })
     await page.goto(`http://localhost:${port}`)
     await expect(page.locator('.agent-group.working .card')).toHaveCount(2)
     await new Promise<void>(resolve => core.close(() => resolve()))
     await expect(page.locator('.notice')).toContainText('Run hc server start for the configured core session.')
-    expect(requests.filter(p => !['/api/config', '/api/chat', '/api/settings', '/api/prompt', '/api/input', '/api/interrupt'].includes(p) && !p.startsWith('/api/auth/'))).toEqual([])
+    expect(requests.filter(p => !['/api/config', '/api/chat', '/api/settings', '/api/prompt', '/api/input', '/api/interrupt', '/api/agents', '/api/dirs', '/api/isgit', '/api/machine/add'].includes(p) && !p.startsWith('/api/auth/'))).toEqual([])
   } finally {
     if (server.exitCode === null) {
       server.kill('SIGTERM')

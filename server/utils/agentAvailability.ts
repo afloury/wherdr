@@ -11,6 +11,10 @@ const extraDirs = (home: string) => [
   path.join(home, '.bun/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin',
 ]
 
+// Prints each given command found on the machine (shell script, commands as arguments).
+export const KIND_PROBE_SCRIPT = `PATH="$HOME/.local/bin:$HOME/.kimi-code/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+for cmd do command -v "$cmd" >/dev/null 2>&1 && printf '%s\\n' "$cmd"; done; exit 0`
+
 export async function installedAgentKinds(m: Machine): Promise<string[]> {
   const old = cache.get(m.key)
   if (old && Date.now() - old.at < TTL) return old.kinds
@@ -23,9 +27,7 @@ export async function installedAgentKinds(m: Machine): Promise<string[]> {
       catch { return false }
     }))
   } else if (m.exec && m.status === 'online') {
-    const script = `PATH="$HOME/.local/bin:$HOME/.kimi-code/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-for cmd do command -v "$cmd" >/dev/null 2>&1 && printf '%s\\n' "$cmd"; done; exit 0`
-    const result = await m.exec(script, candidates, { timeoutMs: 10000 })
+    const result = await m.exec(KIND_PROBE_SCRIPT, candidates, { timeoutMs: 10000 })
     if (result.code !== 0) return []
     const installed = new Set(result.stdout.toString('utf8').split('\n').filter(Boolean))
     found = candidates.filter(k => installed.has(k))
