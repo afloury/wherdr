@@ -116,7 +116,7 @@ test('core terminals use the normal home and agent navigation without legacy req
     // Live terminal: output is credited back once xterm wrote it; typing takes control (resize, then keys).
     await expect.poll(() => streamed.some(f => f.channel === 3 && f.kind === 1)).toBe(true)
     expect(rpc.find(r => r.method === 'terminal.attach' && r.params.terminal === fixture.inventory.terminals[0]!.address)?.params).toMatchObject({ cols: 80, rows: 24 })
-    expect(streamed.some(f => f.kind === 3)).toBe(false)
+    // (Since #298 the viewer fits the terminal on open, so a resize may already have been sent.)
     await page.locator('.xterm-helper-textarea').focus()
     await page.keyboard.type('ls')
     await expect.poll(() => streamed.filter(f => f.kind === 0).map(f => f.payload.toString()).join('')).toBe('ls')
