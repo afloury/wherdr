@@ -58,6 +58,11 @@ test('core home: one bar item per machine, spaces and tabs of herdr-app, new tab
     await expect(page.locator('[data-bar-id]')).toHaveText([/ALL\s*4/i, /LOCAL\s*3/i, /BOX\s*1/i])
     // The three terminals of the "Shop" space make one workspace row.
     await expect(page.locator('.card').filter({ hasText: 'Shop' })).toHaveCount(1)
+    // A single-tab space has its "+" in the header on a computer (as in v2.5).
+    if (!page.viewportSize() || page.viewportSize()!.width > 800) {
+      await page.locator('.card').filter({ hasText: 'srv' }).first().click()
+      await expect(page.getByRole('button', { name: 'New tab' })).toBeVisible()
+    }
     await page.locator('.card').filter({ hasText: 'Shop' }).first().click()
     await expect(page.locator('.space-tabs .tab-chip')).toHaveText([/MAIN/i, /LOGS/i, ''])
     const spaceUrl = page.url()
