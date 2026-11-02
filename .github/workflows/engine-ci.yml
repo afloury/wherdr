@@ -2,6 +2,10 @@
 name: Engine
 on:
   workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ''
 permissions:
   contents: read
 jobs:
@@ -22,6 +26,8 @@ jobs:
       GIT_COMMITTER_EMAIL: ci@example.com
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
       - name: Install Rust
         id: rust
         run: |
