@@ -9,7 +9,7 @@ import { notificationAllowed } from './notificationRules'
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { ChatItem, Choices, ClaudeQueueEntry, ClaudeScreen, HerdrState, InteractiveMenu, WaitScreen, MachineInfo, ModelInfo, OmpActivity, OmpStatus, Pane, QueuedMessage, ShellRun } from '../../shared/types'
+import type { ChatItem, Choices, ClaudeQueueEntry, ClaudeScreen, HerdrState, InteractiveMenu, WaitScreen, ModelInfo, OmpActivity, OmpStatus, Pane, QueuedMessage, ShellRun } from '../../shared/types'
 import { ompActivityOf, parseOmpActivity, parseOmpShell, parseOmpStatus } from './ompScreen'
 import { LOCAL, joinId, machineOf } from '../../shared/ids'
 import { paneTitle } from '../../shared/paneTitle'
@@ -41,7 +41,7 @@ import { chatDelta } from './chatDelta'
 import { agentNotificationTitle, pushSend, subWatchesSession } from './push'
 import { currentModel, forgetModel, noteScreen, modelControlBusy } from './modelctl'
 import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane, machinesListed, multiMachine, onMachinesChange, remoteMachines } from './machines'
-import { READY_MAX_MS, serverReady } from '../../shared/stateReady'
+import { READY_MAX_MS, publishedMachine, serverReady } from '../../shared/stateReady'
 import { createCodexStatus, dirWritable } from './codexStatus'
 import { runLocal, setCodexKnownWeek } from './quotas'
 import { readPassiveScreen } from './passiveScreen'
@@ -1215,6 +1215,7 @@ function rebuild() {
   for (const k of mstates.keys()) if (!getMachine(k)) mstates.delete(k)
   const loc = mstates.get(LOCAL) || { ok: false, error: 'starting…', workspaces: [], panes: [] }
   const next: HerdrState = { ...loc, workspaces: [...loc.workspaces], tabs: [...(loc.tabs || [])], panes: [...loc.panes] }
+  const ready = isReady()
   if (multiMachine()) {
     for (const m of machines) {
       if (m.key === LOCAL) continue
@@ -1224,15 +1225,9 @@ function rebuild() {
       next.tabs!.push(...(ms.tabs || []))
       next.panes.push(...ms.panes)
     }
-    next.machines = machines.map((m): MachineInfo => {
-      const ms = mstates.get(m.key)
-      const info = m.info()
-      // Machine connected but Herdr server silent: "attention".
-      if (info.status === 'online' && ms && !ms.ok) return { ...info, status: 'offline', error: ms.error || null, version: ms.version }
-      return { ...info, version: ms && ms.version }
-    })
+    next.machines = machines.map(m => publishedMachine(m.info(), mstates.get(m.key), ready))
   }
-  if (!isReady()) next.ready = false
+  if (!ready) next.ready = false
   const json = JSON.stringify(next)
   if (json === stateJson) return
   state = next
