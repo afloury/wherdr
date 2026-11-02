@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CoreError } from '../server/utils/core'
 import { coreAddMachine, coreCreate, coreIsGit, coreListDirs, type CoreAdminDeps } from '../server/utils/coreCreate'
-import type { MachineInfo, Pane } from '../shared/types'
+import type { MachineInfo, Pane, Workspace } from '../shared/types'
 
 const b64 = (s: string) => Buffer.from(s).toString('base64')
 const machines: MachineInfo[] = [
@@ -9,6 +9,7 @@ const machines: MachineInfo[] = [
   { key: '7667', label: 'vps', local: false, status: 'online', error: null },
   { key: '6f66', label: 'off', local: false, status: 'offline', error: null },
 ]
+let workspaces: Workspace[] = []
 function setup(reply: (method: string, params: any) => unknown = () => ({})) {
   const calls: [string, any][] = []
   const deps: CoreAdminDeps = {
@@ -20,6 +21,7 @@ function setup(reply: (method: string, params: any) => unknown = () => ({})) {
     },
     machines: () => machines,
     panes: () => [{ id: 'w1:p1', workspace: 'w1', coreAddress: 'vps/t7' } as Pane, { id: 'w2:p2', workspace: 'w2', coreAddress: 't3' } as Pane],
+    workspaces: () => workspaces,
     settle: async () => {},
     recent: async () => [],
     remember: async () => {},
@@ -36,6 +38,31 @@ function setup(reply: (method: string, params: any) => unknown = () => ({})) {
 }
 
 describe('core creation', () => {
+  it('labels a new terminal for herdr-app: a new tab of the space holding the folder', async () => {
+    workspaces = [{ id: 'ws1', label: 'App', coreSpace: 'spapp', path: '/home/u/app', number: 1, status: null, worktree: false },
+      { id: 'ws2', label: 'x', path: '/home/u/app/deep', number: 2, status: null, worktree: false }]
+    const t = setup(() => ({ address: 't3' }))
+    await coreCreate(t.deps, { kind: 'shell', cwd: '/home/u/app/src' })
+    const l = t.runs()[0]![1].labels
+    expect(l['herdr.space']).toBe('spapp')
+    expect(l['herdr.tab']).toMatch(/^tb[0-9a-f]{32}$/)
+    expect(l['herdr.seen']).toBe('0')
+  })
+  it('puts a "new tab" in the space it was asked for, and in a new space when no folder matches', async () => {
+    workspaces = [{ id: 'ws1', label: 'App', coreSpace: 'spapp', path: '/elsewhere', number: 1, status: null, worktree: false },
+      { id: 'ws2', label: 'Dir', path: '/home/u', number: 2, status: null, worktree: false }]
+    let t = setup(() => ({ address: 't3' }))
+    await coreCreate(t.deps, { kind: 'shell', cwd: '/home/u', workspace: 'ws1' })
+    expect(t.runs()[0]![1].labels['herdr.space']).toBe('spapp')
+    t = setup(() => ({ address: 't3' }))
+    await coreCreate(t.deps, { kind: 'shell', cwd: '/home/u' })
+    expect(t.runs()[0]![1].labels['herdr.space']).toMatch(/^sp[0-9a-f]{32}$/)
+    // A folder-grouped workspace: no herdr label, the terminal stays beside the others.
+    t = setup(() => ({ address: 't3' }))
+    await coreCreate(t.deps, { kind: 'shell', cwd: '/home/u', workspace: 'ws2' })
+    expect(Object.keys(t.runs()[0]![1].labels)).toEqual(['wherdr-request'])
+  })
+
   it('runs a terminal without parent, with a correlation label, on a machine', async () => {
     const t = setup(() => ({ address: 'vps/t7' }))
     const r = await coreCreate(t.deps, { kind: 'shell', machine: '7667', cwd: '/home/u/app', name: 'My Shell' })

@@ -95,6 +95,8 @@ export interface Workspace {
   path?: string // Herdr checkout path, when available
   repoName?: string
   branch?: string
+  // herdr-core: the herdr-app space this workspace stands for (creation labels).
+  coreSpace?: string
 }
 
 // Tab of a Herdr workspace and its layout (real splits, see shared/layout.ts).

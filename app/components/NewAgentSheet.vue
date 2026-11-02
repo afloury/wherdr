@@ -249,6 +249,19 @@ async function launch() {
       await navigateTo({ path: '/board', query: { machine: machine.value, coordinator: repo } })
       return
     }
+    if (newTabSpace.value && core) {
+      // herdr-core: a new tab is a new terminal labelled for that space (no layout call).
+      const r = await api<{ pane_id: string }>('/api/agents', {
+        ...(machine.value ? { machine: machine.value } : {}),
+        kind: kind.value, cwd: dir.value, name: name.value.trim(), workspace: newTabSpace.value,
+      })
+      resetForm()
+      newAgentOpen.value = false
+      haptic()
+      navigateTo(panePath(r.pane_id))
+      loadConfig()
+      return
+    }
     if (newTabSpace.value) return await launchNew({ kind: 'tab', workspaceId: newTabSpace.value, label: tabName.value })
     if (newSplit.value) return await launchNew({ kind: 'split', ...newSplit.value })
     const r = await api<{ pane_id: string }>('/api/agents', {
@@ -285,7 +298,7 @@ async function launch() {
           <small>{{ [targetWs?.label, newSplit ? (newSplit.direction === 'right' ? tl('Split right', 'Division à droite') : tl('Split down', 'Division en bas')) : null, machineList ? machineName(machine) : null].filter(Boolean).join(' · ') }}</small>
         </span>
       </div>
-      <template v-if="newTabSpace">
+      <template v-if="newTabSpace && !core">
         <label class="field-label" for="newTabName">{{ t('Tab name') }} <span class="muted">{{ t('(optional)') }}</span></label>
         <UInput
           id="newTabName" v-model="tabName" size="xl" class="w-full" autocapitalize="none" autocorrect="off" enterkeyhint="done"

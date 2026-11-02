@@ -235,9 +235,13 @@ export function paneSpaceItems(p: Pane): MenuItem[] {
     ...paneSwapItems(p),
   ]
 }
+// herdr-core: rename, close, split and move act on herdr-app's layout document, which
+// wherdr does not write; a new tab (a new terminal in the space) is all there is.
+const coreMode = () => useRuntimeConfig().public.core
 export function tabItems(tabId: string): MenuItem[] {
   const e = tabOf(tabId)
   if (!e) return []
+  if (coreMode()) return [newTabItem(e.tab.workspace)]
   return [
     { label: t('Rename tab'), icon: 'i-lucide-pencil', run: () => renameTab(tabId) },
     newTabItem(e.tab.workspace),
@@ -295,6 +299,7 @@ export function currentSpaceItems(p: Pane): MenuItem[] {
   ]
 }
 export function workspaceItems(id: string, project = false): MenuItem[] {
+  if (coreMode()) return [newTabItem(id)]
   return [
     ...(!project ? [{ label: t('Rename space'), icon: 'i-lucide-pencil', run: () => renameWorkspace(id) }] : []),
     newTabItem(id),
@@ -305,7 +310,7 @@ export function workspaceItems(id: string, project = false): MenuItem[] {
 // group, new tab first.
 export function paneWorkspaceItems(p: Pane, project = false): MenuItem[] {
   const ws = herdrState.value.workspaces.find(w => w.id === p.workspace)
-  const entries = paneSpaceEntries(herdrState.value, p.id)
+  const entries = coreMode() ? ['tab.create' as const] : paneSpaceEntries(herdrState.value, p.id)
   if (!ws || !entries.length) return []
   const item: Record<SpaceEntry, MenuItem> = {
     'tab.create': newTabItem(ws.id),
