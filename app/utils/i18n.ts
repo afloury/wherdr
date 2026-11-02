@@ -293,6 +293,7 @@ const FR: Record<string, string> = {
   'Programs and binary files cannot be read by the agent': 'L’agent ne lit pas les programmes ni les fichiers binaires',
   'Binary files cannot be read by the agent': 'L’agent ne lit pas les fichiers binaires',
   'This agent cannot read PDFs: only Claude Code can': 'Cet agent ne lit pas les PDF : seul Claude Code les lit',
+  'File too large for herdr-core (8 MB max)': 'Fichier trop gros pour herdr-core (8 Mo max)',
   'File too large for the agent': 'Fichier trop gros pour l’agent', 'File too large (30 MB max)': 'Fichier trop gros (30 Mo max)',
   'Images go through the photo upload': 'Les images passent par l’envoi de photos', 'Invalid file name': 'Nom de fichier invalide',
   'Clipboard unavailable here — paste into the message field.': 'Presse-papiers inaccessible ici — colle dans le champ de message.',
