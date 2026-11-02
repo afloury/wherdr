@@ -201,7 +201,7 @@ const SWAP_CODES: Record<string, PaneDirection> = {
 }
 export function swapShortcut(e: KeyboardEvent): boolean {
   const d = SWAP_CODES[e.code]
-  if (!d || !e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey || !desk.value) return false
+  if (!d || !e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey || !desk.value || useRuntimeConfig().public.core) return false
   const el = e.target as HTMLElement | null
   if (el?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], .xterm, [role="dialog"], [role="menu"]')) return false
   const p = herdrState.value.panes.find(x => x.id === curPane.value)

@@ -370,14 +370,14 @@ const dropHint = computed(() => pane.value?.agent === 'claude'
 useNotificationClock()
 // herdr-core: using the composer (tap or key, not its automatic focus) makes this screen's size the terminal's.
 function takeTerminalControl() { if (core) ctl.takeControl() }
-// herdr-core: the app shortcuts are off, so the composer's "Esc stop" is handled here
-// (same rule as the v2 shortcut: no modifier, empty field).
+// herdr-core: Esc in the empty composer stops the agent here as well, so that it also works
+// without the app shortcuts (phone layout); stopPropagation keeps the v2 shortcut from stopping twice.
 function onComposerKey(e: KeyboardEvent) {
   takeTerminalControl()
   if (!core || e.key !== 'Escape' || e.isComposing || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
   const field = e.target as HTMLTextAreaElement | null
   if (field?.value) return
-  if (composer.value?.stop() !== false) e.preventDefault()
+  if (composer.value?.stop() !== false) { e.preventDefault(); e.stopPropagation() }
 }
 function coreMenuItems(p: Pane | undefined): MenuItem[] {
   const items: MenuItem[] = [
