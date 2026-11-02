@@ -35,7 +35,8 @@ week, with reset times), for every online machine.
   conversation or machine. A new conversation identifies an account switch even before it
   logs limits; until a reading for that account is available, no Codex gauge is shown. Failed reads do not
   reuse an older machine snapshot, and remembered weekly limits cannot cross account
-  identities. Session files are read from `~/.codex/sessions`.
+  identities. Without a known fingerprint, remembered weekly corrections are not reused,
+  even on the same machine. Session files are read from `~/.codex/sessions`.
 - **Claude Code** only gives them to its status line. On each machine, install wherdr's
   invisible status line (it displays nothing, and chains to your existing status line if you
   have one):

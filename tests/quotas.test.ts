@@ -343,10 +343,10 @@ describe('quotas Codex par compte', () => {
 describe('Codex week checked against /status', () => {
   const now = new Date(2026, 9, 3, 10, 37).getTime()
   // A `/status` gauge on screen, as remembered for the machine.
-  const applyCodexScreen = (q: Quota, w: CodexScreenWeekly | null) => applyCodexKnown(q, weekFromScreen(w, now), now)
+  const applyCodexScreen = (q: Quota & { account?: string | null }, w: CodexScreenWeekly | null) => applyCodexKnown(q, weekFromScreen(w, now, q.account ?? null), now)
   const H = 3600000
   // Last conversation: 10 h old, 88 % of the week used, reset in 17 h.
-  const stale: Quota = { five: { used: 30, resetsAt: now - 5 * H, minutes: 300 }, week: { used: 88, resetsAt: now + 17 * H, minutes: 10080 }, at: now - 10 * H }
+  const stale: Quota & { account: string } = { account: 'aaaaaaaaaaaaaaaa', five: { used: 30, resetsAt: now - 5 * H, minutes: 300 }, week: { used: 88, resetsAt: now + 17 * H, minutes: 10080 }, at: now - 10 * H }
   it('regression: stale rollout + /status at 100 % after an early reset: the screen wins', () => {
     const q = applyCodexScreen(stale, { left: 100, exact: true, resets: '10:33 on 10 Oct' })
     expect(q.week).toEqual({ used: 0, resetsAt: new Date(2026, 9, 10, 10, 33).getTime(), minutes: 10080 })
@@ -359,6 +359,14 @@ describe('Codex week checked against /status', () => {
     const q = { ...stale, account }
     const known = { used: 99, resetsAt: now + 18 * H, at: now, source: 'screen' as const, account: previous }
     expect(applyCodexKnown(q, known, now)).toBe(q)
+  })
+
+  it.each([null, undefined, ''])('does not replace an unidentified account’s 8 percent with a previous 90 percent (%s)', (account) => {
+    const q = { ...stale, account, week: { ...stale.week!, used: 8 } }
+    for (const resetsAt of [q.week.resetsAt!, q.week.resetsAt! + H]) {
+      const known = { used: 90, resetsAt, at: now - 60000, source: 'rollout' as const, account }
+      expect(applyCodexKnown(q, known, now)).toBe(q)
+    }
   })
 
   it('same window: the higher usage wins', () => {

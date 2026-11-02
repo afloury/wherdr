@@ -300,7 +300,7 @@ export async function readCodex(fs: MachineFs, home: string): Promise<CodexAccou
 // earlier one is ignored. The 5-hour window and the reading's age stay those
 // of the conversations.
 export function applyCodexKnown<Q extends Quota & { account?: string | null }>(q: Q, known: KnownWeek | null | undefined, now: number): Q {
-  if (!known || !q.week || (q.account ?? null) !== (known.account ?? null)) return q
+  if (!known || !q.week || !q.account || q.account !== known.account) return q
   const w = codexWeekWindow({ week: { used: q.week.used, resetsAt: q.week.resetsAt, at: q.at, account: q.account ?? null }, known, now })
   if (!w) return q
   const used = 100 - w.left
