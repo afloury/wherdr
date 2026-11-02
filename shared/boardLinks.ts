@@ -458,12 +458,14 @@ export function boardSections(
       }
       if (!hasAgent(m.row)) continue
       g.sum.total++
-      g.sum[m.task?.group ? taskStat(m.task.group) : rowGroup(m.row)]++
+      const group = m.task?.group ? taskStat(m.task.group) : rowGroup(m.row)
+      if (group !== 'unknown') g.sum[group]++
     }
     for (const r of [...(g.space ? [g.space] : []), ...(g.coordinator ? [g.coordinator] : [])]) {
       if (!hasAgent(r)) continue
       g.sum.total++
-      g.sum[rowGroup(r)]++
+      const group = rowGroup(r)
+      if (group !== 'unknown') g.sum[group]++
     }
     g.state = g.sum.blocked ? 'blocked' : g.sum.working ? 'working' : 'ready'
   }

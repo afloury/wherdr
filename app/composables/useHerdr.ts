@@ -566,7 +566,7 @@ export function connectEvents() {
       const state = settleState(lastStateAt ? fullState : null, got, Date.now() < settleUntil)
       if (!state) return
       setNetDown(false)
-      if (!state.ok && herdrState.value.ok && lastStateAt) {
+      if (!useRuntimeConfig().public.core && !state.ok && herdrState.value.ok && lastStateAt) {
         cachedAt.value = lastStateAt
         return
       }

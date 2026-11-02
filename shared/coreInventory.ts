@@ -1,6 +1,7 @@
 import type { AgentStatus } from './types'
 // Deliberately independent of legacy panes, desktop layouts and conversation IDs.
 export interface CoreTerminal {
+  agent?: string | null
   argv?: string[]
   foreground?: { argv: string[]; name?: string; cwd?: string } | null
   address: string

@@ -447,7 +447,7 @@ function togglePhoneKeys() {
   phoneKeysOpen.value = !phoneKeysOpen.value
 }
 const controls = computed(() => viewControls({ desk: desk.value, cell: Boolean(props.cell), chat: hasChat(pane.value), live: live.value }))
-const headerAdd = computed(() => !props.cell && pane.value && spaceTabControls(spaceTabs(pane.value.workspace).length).headerAdd)
+const headerAdd = computed(() => !core && !props.cell && pane.value && spaceTabControls(spaceTabs(pane.value.workspace).length).headerAdd)
 
 watch(fontSize, n => ctl.setFontSize(n))
 watch(pageVisible, (v) => {

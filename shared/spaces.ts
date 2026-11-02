@@ -9,12 +9,13 @@ type State = Pick<HerdrState, 'workspaces' | 'panes'> & Partial<Pick<HerdrState,
 
 // Urgency of a pane (smaller = more urgent): your turn, working,
 // finished unread, ready, unknown; a terminal without an agent comes after.
+// Core status is authoritative even when no agent identity is known.
 const RANK: Record<string, number> = { blocked: 0, working: 1, done: 2, idle: 3, unknown: 4 }
-export const urgency = (p: Pick<Pane, 'agent' | 'status'>) => (p.agent ? RANK[p.status || 'unknown'] ?? 4 : 9)
+export const urgency = (p: Pick<Pane, 'agent' | 'status' | 'coreAddress'>) => ((p.coreAddress || p.agent) ? RANK[p.status || 'unknown'] ?? 4 : 9)
 
 // Pane representing the space: the most urgent, the first in reading
 // order on a tie (tabs in order, then panes of each tab).
-export function leadPane<P extends Pick<Pane, 'agent' | 'status'>>(panes: P[]): P | null {
+export function leadPane<P extends Pick<Pane, 'agent' | 'status' | 'coreAddress'>>(panes: P[]): P | null {
   let best: P | null = null
   for (const p of panes) if (!best || urgency(p) < urgency(best)) best = p
   return best
@@ -41,7 +42,7 @@ export function spaceRows(s: State, machine?: string): Row[] {
     const panes = tabs.flatMap(e => e.panes)
     const lead = leadPane(panes)!
     if (tabs.length === 1 && panes.length === 1) return { kind: 'pane', key: lead.id, pane: lead, lead }
-    const n = (st: string) => panes.filter(p => p.agent && p.status === st).length
+    const n = (st: string) => panes.filter(p => (p.coreAddress || p.agent) && p.status === st).length
     return {
       kind: 'space',
       key: w.workspace.id,
@@ -58,11 +59,12 @@ export function spaceRows(s: State, machine?: string): Row[] {
 // Group in the list: that of its representative pane. A shell space
 // (no agent) is sorted as an idle space, in Ready, as in Herdr's
 // first list.
-export type RowGroup = 'blocked' | 'working' | 'ready'
+export type RowGroup = 'blocked' | 'working' | 'ready' | 'unknown'
 export const isShellRow = (r: Row) => !r.lead.agent
-export function paneGroup(p: Pick<Pane, 'agent' | 'status'>): RowGroup {
-  if (p.agent && p.status === 'blocked') return 'blocked'
-  if (p.agent && p.status === 'working') return 'working'
+export function paneGroup(p: Pick<Pane, 'agent' | 'status' | 'coreAddress'>): RowGroup {
+  if (p.coreAddress && (!p.status || p.status === 'unknown')) return 'unknown'
+  if ((p.coreAddress || p.agent) && p.status === 'blocked') return 'blocked'
+  if ((p.coreAddress || p.agent) && p.status === 'working') return 'working'
   return 'ready'
 }
 export const rowGroup = (r: Row): RowGroup => paneGroup(r.lead)
@@ -219,6 +221,6 @@ export function tabStates(row: Row): string[] {
   if (row.kind !== 'space') return []
   return row.tabs.map((e) => {
     const p = leadPane(e.panes)
-    return p?.agent ? p.status || 'unknown' : 'shell'
+    return (p?.coreAddress || p?.agent) ? p.status || 'unknown' : 'shell'
   })
 }

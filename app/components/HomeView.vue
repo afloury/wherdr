@@ -18,6 +18,7 @@ import type { MachineInfo, NamedSession, Pane } from '#shared/types'
 import { type ReadySort, type Row, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
 import { spaceTitle } from '#shared/displayTitles'
 import { type BoardCard, type CoordinatorLevel, boardSections, countedPanes } from '#shared/boardLinks'
+import { coreRowCounts } from '#shared/coreState'
 import { homeCounts, withBoardGroups } from '#shared/homeCounts'
 import { claudeApiShown, claudeSuggestion, machineQuotaRows, quotaRows, tabQuotaRows } from '~/utils/quotas'
 import { longPress } from '~/utils/longPress'
@@ -40,7 +41,7 @@ const everOpen = ref(false)
 watch(eventsOpen, (v) => { if (v) everOpen.value = true })
 
 const st = herdrState
-const agents = computed(() => st.value.panes.filter(p => p.agent))
+const agents = computed(() => st.value.panes.filter(p => core || p.agent))
 const fileLinks = useBoardLinks()
 // The Board's own list (herdr-projects' CLI): where each task stands, for its
 // card and the counters, as the Board shows it (shared/homeCounts.ts).
@@ -56,6 +57,7 @@ const baseOfPane = (p: Pane) => { const m = machineInfo(p.machine); return m ? m
 // A board task counts by its state on the Board, once; other agents by their own.
 const counts = computed(() => {
   const sel = machineBarSelection.value
+  if (core) return coreRowCounts(standaloneRows(spaceRows(st.value)), r => !paneStale(r.lead) && (sel === null || sel.includes(baseOfPane(r.lead))))
   return homeCounts(agents.value, boardLinks.value, tasksBoard.value,
     p => !paneStale(p) && (sel === null || sel.includes(baseOfPane(p))),
     m => sel === null || sel.includes(m))
@@ -64,7 +66,7 @@ const counts = computed(() => {
 const conn = computed(() => {
   if (offlineView.value) return { ok: false, text: t('offline'), idle: false }
   if (!eventsOpen.value) return { ok: false, text: everOpen.value ? t('offline — reconnecting…') : t('connecting…'), idle: !everOpen.value }
-  if (!st.value.ok) return { ok: false, text: t('Herdr unavailable'), idle: false }
+  if (!st.value.ok) return { ok: false, text: t(core ? 'herdr-core unavailable' : 'Herdr unavailable'), idle: false }
   // Server version (update check), the app's own until it answers.
   return { ok: true, text: `wherdr ${updateInfo.value?.current || pkg.version} · herdr ${st.value.version || ''}`.trim(), idle: false }
 })
@@ -83,6 +85,7 @@ function groupsOf(list: Row[], group = rowGroup) {
     { key: 'blocked', title: t('Your turn'), list: list.filter(r => group(r) === 'blocked') },
     { key: 'working', title: t('Working'), list: list.filter(r => group(r) === 'working') },
     { key: 'ready', title: tl('Ready', 'Prêts'), list: list.filter(r => group(r) === 'ready') },
+    { key: 'unknown', title: t('Unknown'), list: list.filter(r => group(r) === 'unknown') },
   ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value).map(l => sortReady(l, readySort.value, rowTitle)) : [g.list] }))
 }
 const rowTitle = (r: Row) => isIndividualAgentRow(r) ? individualAgentTitle(r.lead) : spaceTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
@@ -215,7 +218,7 @@ const stateAway = computed(() => stateShown.value.away.map(m => ({
 const stateCards = computed(() => {
   return stateShown.value.online.flatMap(m => {
     const b = boardSections(spaceRows(st.value, m.key), st.value.workspaces, boardLinks.value, livePanes.value, k => machineInfo(k)?.baseKey ?? k)
-    return stateEntries({ ...b, others: standaloneRows(b.others) }, showShells.value).map(e => ({
+    return stateEntries({ ...b, others: standaloneRows(b.others) }, core || showShells.value).map(e => ({
       ...e,
       machine: machineName(m.key) || m.label,
       board: e.member ? memberCard(e.member) : e.level ? coordinatorCard(e.level, m.local, machineName(m.key) || m.label, e.repo) : null,
@@ -644,7 +647,7 @@ function resetListWidth() {
         <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
       </UTooltip>
       <UTooltip :text="t('New')" :kbds="shortcutKbds('new-space')" :content="{ side: 'right' }">
-        <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="!eventsOpen || offlineView" @click="newAgent" />
+        <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="core || !eventsOpen || offlineView" @click="newAgent" />
       </UTooltip>
       <UTooltip v-if="!core" :text="t('Board')" :kbds="shortcutKbds('board')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Board')" to="/board" />
@@ -717,8 +720,9 @@ function resetListWidth() {
     <div :key="machineBarPick ?? BAR_ALL" ref="homeScroll" class="scroll">
       <OfflineNote v-if="(offlineView && cachedAt) || netDown" class="home-offline" :label="offlineView && cachedAt ? t('Last known state') : undefined" :at="cachedAt" date-style="medium" />
       <div v-if="eventsOpen && !st.ok" class="notice">
-        {{ t('The Herdr server is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
-        {{ hostLabel ? tl(`Run herdr on ${hostLabel} to start it.`, `Lance herdr sur ${hostLabel} pour le démarrer.`) : tl('Run herdr on the server to start it.', 'Lance herdr sur le serveur pour le démarrer.') }}
+        {{ t(core ? 'herdr-core is not responding' : 'The Herdr server is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
+        <template v-if="core">{{ t('Run hc server start for the configured core session.') }}</template>
+        <template v-else>{{ hostLabel ? tl(`Run herdr on ${hostLabel} to start it.`, `Lance herdr sur ${hostLabel} pour le démarrer.`) : tl('Run herdr on the server to start it.', 'Lance herdr sur le serveur pour le démarrer.') }}</template>
       </div>
       <!-- A tab showing one machine: no header, so its state and session stay here. -->
       <div v-if="soloTab && (soloTab.m.status !== 'online' || (soloTab.m.session && soloTab.m.session !== 'default') || awakeByMachine[soloTab.m.key]?.active)" class="machine-tab-info">
@@ -903,7 +907,7 @@ function resetListWidth() {
     </div>
 
     <div class="fab-wrap">
-      <UButton class="fab hw-cta" icon="i-lucide-plus" color="primary" variant="solid" size="xl" :disabled="!eventsOpen || offlineView" @click="newAgent">
+      <UButton class="fab hw-cta" icon="i-lucide-plus" color="primary" variant="solid" size="xl" :disabled="core || !eventsOpen || offlineView" @click="newAgent">
         {{ t('New') }}
       </UButton>
     </div>

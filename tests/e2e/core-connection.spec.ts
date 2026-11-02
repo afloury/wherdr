@@ -27,12 +27,20 @@ test('core terminals use the normal home and agent navigation without legacy req
     env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', DATA_DIR: data,
       WHERDR_BACKEND: 'core', NUXT_PUBLIC_CORE: 'true', HC_SOCKET: socketPath, HERDR_WEB_MACHINES: 'off' }, stdio: 'ignore',
   })
+  const terminals = [fixture.inventory.terminals[0],
+    { address: 'host-a/t8', cwd: '/workspace/delta', state: 'live', agent: 'custom-worker', status: { state: 'working' } },
+    { address: 'host-a/t9', cwd: '/workspace/beta', state: 'live', template: 'codex', status: { state: 'idle' } },
+    { address: 'host-a/ta', cwd: '/workspace/beta', state: 'live', status: { state: 'working' } },
+    { address: 'host-a/tb', cwd: '/workspace/gamma', state: 'live' },
+    { address: 'host-a/tc', cwd: '/workspace/epsilon', state: 'live', template: 'claude' },
+    { address: 'host-a/td', cwd: '/workspace/alpha', state: 'live', template: 'codex', status: { state: 'idle' } },
+  ]
   const rpc: { method: string; params: any }[] = []
   const core = createServer(socket => socket.once('data', data => {
     const r = JSON.parse(data.toString())
     rpc.push(r)
     const result = r.method === 'hello' ? fixture.hello
-      : r.method === 'terminal.list' ? fixture.inventory
+      : r.method === 'terminal.list' ? { ...fixture.inventory, terminals }
       : r.method === 'machine.list' ? { machines: [{ name: 'host-a', state: 'connected' }] } : fixture.discover
     socket.end(JSON.stringify({ jsonrpc: '2.0', id: r.id, result }) + '\n')
   }))
@@ -44,6 +52,12 @@ test('core terminals use the normal home and agent navigation without legacy req
     await page.goto(`http://localhost:${port}`)
     await new Promise<void>(resolve => core.listen(socketPath, resolve))
     await expect(page.locator('.card').filter({ hasText: 'demo' }).first()).toBeVisible()
+    await expect(page.locator('.agent-group.working .card.working')).toHaveCount(2)
+    await expect(page.locator('.agent-group.unknown .card.unknown')).toHaveCount(3)
+    await expect(page.locator('.agent-group.ready .card')).toHaveCount(1)
+    await expect(page.locator('.stat.working')).toContainText('2')
+    await expect(page.locator('.stat.done')).toContainText('1')
+    await expect(page.getByRole('button', { name: 'New', exact: true })).toBeDisabled()
     await expect(page.getByRole('button', { name: 'Board', exact: true })).toHaveCount(0)
     await page.locator('.card').filter({ hasText: 'demo' }).first().click()
     await expect(page).toHaveURL(/#\/(a|t)\//)
@@ -78,6 +92,10 @@ test('core terminals use the normal home and agent navigation without legacy req
     await page.goto(`http://localhost:${port}/#/settings`)
     await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
     await expect(page.getByText('Plugins', { exact: true })).toHaveCount(0)
+    await page.goto(`http://localhost:${port}`)
+    await expect(page.locator('.agent-group.working .card')).toHaveCount(2)
+    await new Promise<void>(resolve => core.close(() => resolve()))
+    await expect(page.locator('.notice')).toContainText('Run hc server start for the configured core session.')
     expect(requests.filter(p => !['/api/config', '/api/chat', '/api/settings'].includes(p) && !p.startsWith('/api/auth/'))).toEqual([])
   } finally {
     if (server.exitCode === null) {

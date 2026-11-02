@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { coreState } from '../shared/coreState'
+import { coreRowCounts, coreState } from '../shared/coreState'
 import type { CoreTerminal } from '../shared/coreInventory'
 const terminal = (address: string, extra = {}): CoreTerminal => ({ address, cwd: '/workspace/demo', state: 'live', ...extra })
 describe('core state for the existing interface', () => {
@@ -19,4 +19,23 @@ describe('core state for the existing interface', () => {
     expect(state.panes[0]).toMatchObject({ agent: 'claude', status: 'blocked' })
     expect(state.machines?.[1]?.status).toBe('offline')
   })
+})
+
+it('groups every reported program by status and lifts mixed workspaces', async () => {
+  const { spaceRows, rowGroup, tabStates } = await import('../shared/spaces')
+  const state = coreState([
+    terminal('t1', { cwd: '/workspace/delta', agent: 'delta-worker', status: { state: 'working' } }),
+    terminal('t2', { cwd: '/workspace/beta', template: 'codex', status: { state: 'idle' } }),
+    terminal('t3', { cwd: '/workspace/beta', status: { state: 'working' } }),
+    terminal('t4', { cwd: '/workspace/gamma' }),
+    terminal('t5', { cwd: '/workspace/epsilon', template: 'claude' }),
+    terminal('t6', { cwd: '/workspace/alpha', status: { state: 'idle' } }),
+    terminal('t7', { cwd: '/workspace/zeta', status: { state: 'blocked' } }),
+  ], [])
+  expect(state.panes[0]?.agent).toBe('delta-worker')
+  const rows = spaceRows(state)
+  expect(rows.map(rowGroup)).toEqual(['working', 'working', 'unknown', 'unknown', 'ready', 'blocked'])
+  expect(coreRowCounts(rows)).toEqual({ working: 2, blocked: 1, ready: 1, unknown: 2 })
+  expect(rows[1]?.lead.coreAddress).toBe('t3')
+  expect(tabStates(rows[1]!)).toEqual(['idle', 'working'])
 })

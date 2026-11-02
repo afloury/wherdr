@@ -1,3 +1,4 @@
+import { rowGroup, type Row } from './spaces'
 import type { CoreTerminal } from './coreInventory'
 import { coreActivity, coreTitle } from './coreInventory'
 import type { HerdrState, MachineInfo, Pane } from './types'
@@ -24,7 +25,7 @@ export function coreState(terminals: CoreTerminal[], machines: CoreMachine[]): H
     const tab = `${workspace}:t${id}`
     const activity = coreActivity(terminal)
     const commands = [terminal.template, terminal.status?.app, ...(terminal.foreground?.argv ?? []), ...(terminal.argv ?? [])]
-    const agent = commands.map(c => c?.split('/').pop()?.replace(/^claude-code$/, 'claude').replace(/^gemini-cli$/, 'gemini')).find(c => c && ['claude', 'codex', 'omp', 'opencode', 'gemini', 'aider'].includes(c)) ?? null
+    const agent = terminal.agent || (commands.map(c => c?.split('/').pop()?.replace(/^claude-code$/, 'claude').replace(/^gemini-cli$/, 'gemini')).find(c => c && ['claude', 'codex', 'omp', 'opencode', 'gemini', 'aider'].includes(c)) ?? null)
     result.tabs!.push({ id: tab, workspace, machine, label: coreTitle(terminal), number: result.tabs!.length + 1, layout: null })
     const pane: Pane = { id: `${workspace}:p${id}`, coreAddress: terminal.address, machine, workspace, tab, tabLabel: coreTitle(terminal),
       agent, name: terminal.name ?? null, label: terminal.name ?? null, title: terminal.title ?? null, cwd, agentSession: null,
@@ -32,4 +33,11 @@ export function coreState(terminals: CoreTerminal[], machines: CoreMachine[]): H
     result.panes.push(pane)
   }
   return result
+}
+
+// Core counters count the same workspace (or individual) rows as the headings.
+export function coreRowCounts(rows: Row[], keep: (row: Row) => boolean = () => true) {
+  const counts = { blocked: 0, working: 0, ready: 0, unknown: 0 }
+  for (const row of rows) if (keep(row)) counts[rowGroup(row)]++
+  return counts
 }
