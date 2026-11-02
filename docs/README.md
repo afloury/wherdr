@@ -25,7 +25,8 @@ Read only the page relevant to your task. Start with [Installation and updates](
 - [Installation and updates](installation.md) — Requirements, native installer, agent PATH, updates and migration from Docker.
 - [Phone access and private networks](networks.md) — Set up Tailscale or another private network with HTTPS. Includes always-on servers and keep-awake.
 - [The wherdr command](command.md) — Install through npm or Homebrew and manage the native service from the command line.
-- [Herdr plugins](plugins.md) — Install and configure the wherdr plugin, its panel key and plugin actions.
+- [Herdr plugins](plugins.md) — Install and configure the wherdr plugin, its panel key and plugin actions.  
+  [wherdr plugins](plugins.md#wherdr-plugins) (v3: optional page plugins, `data-wherdr` markers).
 - [Install as an app](phone.md) — Add wherdr to your home screen on a phone or install it in a desktop browser.
 - [Settings and configuration](configuration.md) — Configure the service through environment variables and the app through shared and device-specific preferences.
 - [Machines and SSH](machines.md) — Register remote machines and use their agents through SSH. Includes sessions and connection troubleshooting.
