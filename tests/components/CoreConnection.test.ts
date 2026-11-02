@@ -28,3 +28,12 @@ it('explains incompatible capabilities', async () => {
     expect(w.get('[role="alert"]').text()).toContain('missing required capabilities')
   } finally { w.unmount() }
 })
+it('offers passkey unlock when the server returns 401', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 401, json: async () => ({ code: 'locked' }) }))
+  const w = await mountSuspended(CoreConnection)
+  try {
+    await flushPromises()
+    expect(w.text()).toContain('wherdr is locked')
+    expect(w.findAll('button').some(b => b.text() === 'Unlock')).toBe(true)
+  } finally { w.unmount() }
+})

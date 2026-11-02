@@ -9,8 +9,8 @@ The browser cannot choose the endpoint or issue arbitrary RPC calls.
 
 The preview replaces the legacy application shell and disables its background
 poller, Board warm-up and TUI notifications. Existing network and passkey guards
-still protect `/api/core`; a locked app reports its locked state. Unlock controls,
-inventory and actions follow in the next batches. Without `WHERDR_BACKEND=core`,
+still protect `/api/core`; a locked app uses the existing passkey screen and
+rechecks core after authentication. Inventory and actions follow in the next batches. Without `WHERDR_BACKEND=core`,
 the existing v2 application is unchanged.
 
 Reference: [published 0.1.16 protocol](https://github.com/herdrdev/herdr-core/blob/v0.1.16/schema/README.md).

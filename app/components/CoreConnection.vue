@@ -1,11 +1,14 @@
 <script setup lang="ts">
 const pending = ref(false)
+const needsUnlock = ref(false)
 const status = ref<{ ok: boolean; version?: string; error?: string; hint?: string }>()
 async function check() {
   pending.value = true
+  needsUnlock.value = false
   try {
     const response = await fetch('/api/core', { cache: 'no-store' })
     const body = await response.json()
+    needsUnlock.value = response.status === 401
     status.value = response.status === 401 ? { ok: false, error: 'App is locked' } : body
   } catch { status.value = { ok: false, error: 'Cannot reach the wherdr server' } }
   finally { pending.value = false }
@@ -14,7 +17,8 @@ onMounted(check)
 </script>
 
 <template>
-  <main class="core-connection">
+  <LockScreen v-if="needsUnlock" :after-unlock="check" />
+  <main v-else class="core-connection">
     <h1>{{ t('herdr-core connection') }}</h1>
     <div role="status" aria-live="polite">
       <p v-if="pending">{{ t('Checking herdr-core…') }}</p>
