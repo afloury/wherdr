@@ -41,3 +41,19 @@ Generation 1 and both advertised method lists must support the first v3 terminal
 milestone; later additive versions are accepted. Plain mode is used here;
 terminal streams negotiate framed mode on their own connection. Probe connections close
 after each reply and have a three-second deadline and a 16 MiB reply limit.
+
+## Creating terminals and agents, machines
+
+New opens the usual sheet. A terminal or an agent CLI (Claude, Codex…) is started with
+`terminal.run` in the chosen folder, on this machine or on a core machine (`on`), with no
+inherited parent, `wait: false` and a request label. Agents run through the machine's shell
+with the usual user bin folders on `PATH`. Home, folders (browser, Git detection) and
+installed agents of any machine come from `machine.exec`; folders must stay under the
+machine's home. When core does not answer in time, the inventory is searched for the label:
+found means created, not found is shown as "not confirmed" and is never relaunched blindly.
+Board, worktree, resume and first message are not offered with core.
+
+Settings › Agents › Machines lists core's machines with their state, reconnects one
+(`machine.connect`) and adds one over SSH (`machine.add` with a target and an optional name,
+like `hc machine add`). The target must already accept this host's SSH login: wherdr never
+asks for a password, installs core on the machine, or accepts a `via` command.

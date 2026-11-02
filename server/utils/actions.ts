@@ -176,12 +176,13 @@ async function readDirsFile(): Promise<{ dirs?: string[], machines?: Record<stri
   try { return JSON.parse(await fsp.readFile(DIRS_FILE, 'utf8')) || {} }
   catch { return {} }
 }
-const dirsKey = (m: Machine) => m.profileId || m.key
-export async function recentDirs(m: Machine = getMachine('')!): Promise<string[]> {
+const dirsKey = (m: DirsOwner) => m.profileId || m.key
+export type DirsOwner = Pick<Machine, 'local' | 'key' | 'profileId'>
+export async function recentDirs(m: DirsOwner = getMachine('')!): Promise<string[]> {
   const f = await readDirsFile()
   return (m.local ? f.dirs : f.machines && f.machines[dirsKey(m)]) || []
 }
-async function rememberDir(d: string, m: Machine) {
+export async function rememberDir(d: string, m: DirsOwner) {
   const f = await readDirsFile()
   const dirs = [d, ...(await recentDirs(m)).filter(x => x !== d)].slice(0, 30)
   if (m.local) f.dirs = dirs

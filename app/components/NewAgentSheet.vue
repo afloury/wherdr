@@ -16,6 +16,8 @@ import { type NewPanePlace, launchInNewPane } from '~/utils/paneLaunch'
 import type { ProjectFolder } from '#shared/projectFolder'
 
 const open = newAgentOpen
+// herdr-core: a terminal or an agent in a folder; no board, worktree, resume or first message.
+const core = useRuntimeConfig().public.core
 const kind = ref<string>('')
 const dir = ref<string | null>(null)
 const worktree = ref(false)
@@ -301,7 +303,7 @@ async function launch() {
         <button v-for="k in kinds" :key="k" type="button" :class="{ on: !coordinator && k === kind }" :data-kind="k" @click="pickKind(k)">
           <AgentAvatar :agent="k === 'shell' ? null : k" /><span>{{ k === 'shell' ? 'Terminal' : kindLabel(k) }}</span>
         </button>
-        <button v-if="!fixedMachine" type="button" :class="{ on: coordinator }" data-kind="coordinator" @click="coordinator = true; repoPick ||= repoItems[0]?.value || '__other'">
+        <button v-if="!fixedMachine && !core" type="button" :class="{ on: coordinator }" data-kind="coordinator" @click="coordinator = true; repoPick ||= repoItems[0]?.value || '__other'">
           <UIcon name="i-lucide-message-square-text" /><span>{{ tl('Coordinator', 'Coordinateur') }}</span>
         </button>
       </div>
@@ -332,7 +334,7 @@ async function launch() {
         <label class="field-label">{{ t('Folder') }}</label>
         <DirField :key="machine" v-model="dir" :recents="recents" @browse="browsing = true" />
 
-        <label v-if="isGit && !fixedMachine" class="toggle-row">
+        <label v-if="isGit && !fixedMachine && !core" class="toggle-row">
           <span><b>{{ t('Separate worktree') }}</b><small>{{ t('new branch, leaves the original folder untouched') }}</small></span>
           <USwitch v-model="worktree" color="success" size="xl" />
         </label>
@@ -344,14 +346,14 @@ async function launch() {
           />
         </div>
 
-        <label v-if="canResume" class="toggle-row">
+        <label v-if="canResume && !core" class="toggle-row">
           <span><b>{{ t('Resume the last conversation') }}</b><small>{{ t('for this agent in this folder') }}</small></span>
           <USwitch v-model="resume" color="success" size="xl" />
         </label>
 
-        <label class="field-label" for="newPrompt">{{ t(shell ? 'Command to run' : 'First message') }} <span class="muted">{{ t('(optional)') }}</span></label>
+        <label v-if="!core" class="field-label" for="newPrompt">{{ t(shell ? 'Command to run' : 'First message') }} <span class="muted">{{ t('(optional)') }}</span></label>
         <UTextarea
-          id="newPrompt" v-model="prompt" :rows="2" autoresize size="xl" class="w-full" :class="{ mono: shell }"
+          v-if="!core" id="newPrompt" v-model="prompt" :rows="2" autoresize size="xl" class="w-full" :class="{ mono: shell }"
           :placeholder="t(shell ? 'E.g. npm run dev' : 'E.g. Summarize the project TODOs')"
         />
 
