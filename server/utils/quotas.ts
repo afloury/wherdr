@@ -26,9 +26,16 @@ import type { AccountQuota, ClaudeSetup, ClaudeSetupState, Quota, QuotaWindow, Q
 import { readDismissed } from './claudeSetup'
 import type { ExecResult, MachineFs } from './fsx'
 import { HerdrError } from './herdr'
-import { allMachines, type Machine } from './machines'
+import { allMachines, getMachine, type Machine } from './machines'
+import { coreQuotaMachines } from './coreQuotaMachines'
 import { fmt } from '../../shared/message'
 import { type KnownWeek, type WeekReading, codexWeekWindow } from '../../shared/codexStatus'
+
+// What a quota reading needs of a machine (v2 machines, or core's).
+export type QuotaMachine = Pick<Machine, 'key' | 'label' | 'local' | 'status' | 'home' | 'fs' | 'exec'>
+
+// Lazy: coreAdminDeps reaches state.ts, which itself registers into this module.
+const coreMachines = async () => coreQuotaMachines((await import('./coreAdminDeps')).coreAdminDeps())
 
 const TTL = 30000
 let cache: { at: number, q: Quotas } | null = null
@@ -392,7 +399,7 @@ export function mergeQuotas(readings: { key: string, label: string, claude: Clau
   return out
 }
 
-async function canInstall(m: Machine): Promise<boolean> {
+async function canInstall(m: QuotaMachine): Promise<boolean> {
   if (!m.local) return Boolean(m.exec)
   for (const d of [path.join(m.home, '.claude'), m.home]) {
     try {
@@ -408,7 +415,7 @@ async function canInstall(m: Machine): Promise<boolean> {
 // recovers a refused multiplexed session without hiding the machine's gauge.
 // Never substitute the last successful reading: that cache had no expiry and
 // could mask a newer file indefinitely, independently of the 30-second TTL.
-async function readMachineClaude(m: Machine): Promise<ClaudeMachineReading | null> {
+async function readMachineClaude(m: QuotaMachine): Promise<ClaudeMachineReading | null> {
   for (let attempt = 1; attempt <= 2; attempt++) {
     try { return await readClaude(m.fs, m.home) }
     catch (error) {
@@ -427,7 +434,10 @@ async function readMachineClaude(m: Machine): Promise<ClaudeMachineReading | nul
 export async function readQuotas(force = false): Promise<Quotas> {
   if (!force && cache && Date.now() - cache.at < TTL) return cache.q
   const version = ++readVersion
-  const online = allMachines().filter(m => m.home && !m.info().baseKey && (m.local || m.status === 'online'))
+  const all: QuotaMachine[] = process.env.WHERDR_BACKEND === 'core'
+    ? await coreMachines()
+    : allMachines().filter(m => !m.info().baseKey)
+  const online = all.filter(m => m.home && (m.local || m.status === 'online'))
   const dismissed = readDismissed()
   const readings = await Promise.all(online.map(async (m) => {
     const [claude, { q: rolled, seen: codexSeen }] = await Promise.all([
@@ -449,6 +459,12 @@ export async function readQuotas(force = false): Promise<Quotas> {
   // A slow older poll must not replace a newer completed snapshot.
   if (version === readVersion) cache = { at: Date.now(), q }
   return q
+}
+
+// The machine of a key (install route), on v2 or core.
+export async function quotaMachine(key: string): Promise<QuotaMachine | undefined> {
+  if (process.env.WHERDR_BACKEND === 'core') return (await coreMachines()).find(m => m.key === key)
+  return getMachine(key)
 }
 
 // Next read starts afresh (install, suggestion dismissed).
@@ -485,7 +501,7 @@ export function runLocal(input: string, home: string, timeoutMs = 60000): Promis
 
 // Installs (or updates) the status line on an online machine; returns the
 // last line of the script ("status line added: …", "already installed: …").
-export async function installClaudeStatusline(m: Machine): Promise<string> {
+export async function installClaudeStatusline(m: QuotaMachine): Promise<string> {
   if (!m.local && m.status !== 'online') throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
   if (!(await canInstall(m))) throw new HerdrError('read_only', fmt('Home folder is read-only here: copy the command and paste it into a terminal on {machine}', { machine: m.label }))
   const script = await installerScript()
