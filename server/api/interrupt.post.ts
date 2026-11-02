@@ -6,6 +6,7 @@
 import { interruptAgent } from '../utils/interruptSeq'
 
 export default defineApi(async (event, b) => {
+  if (process.env.WHERDR_BACKEND === 'core') return coreInterrupt(coreInputDeps(), b)
   if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
   // Keep Escape, verification and draft recovery together with other pane writes.
   return withPaneLock(b.pane_id, async () => {

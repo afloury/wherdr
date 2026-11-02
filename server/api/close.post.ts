@@ -1,4 +1,5 @@
 export default defineApi(async (event, b) => {
+  if (process.env.WHERDR_BACKEND === 'core') return coreKill(coreInputDeps(), b)
   if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
   if (b.close_group === true) {
     await herdr('workspace.close', { workspace_id: String(b.pane_id).split(':')[0], close_group: true })

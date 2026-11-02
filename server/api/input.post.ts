@@ -2,6 +2,7 @@ import { usesTerminalException } from '../../shared/interactiveScreen'
 import { isSlashCommand } from '../../shared/queuedMatch'
 
 export default defineApi(async (event, b) => {
+  if (process.env.WHERDR_BACKEND === 'core') return coreInput(coreInputDeps(), b)
   if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
   // Text then keys, in two calls: in a single one, Herdr sends the keys first.
   // Not in the middle of another send of wherdr's (see guardedSend.ts).

@@ -1,0 +1,69 @@
+import { describe, expect, it } from 'vitest'
+import { CoreError } from '../server/utils/core'
+import { coreInput, coreInterrupt, coreKill, coreSend, type CoreInputDeps } from '../server/utils/coreInput'
+import type { Pane } from '../shared/types'
+
+const pane = (id: string, extra: Partial<Pane> = {}) => ({ id, workspace: 'w1', coreAddress: `m/${id}`, agent: 'claude', ...extra }) as Pane
+function deps(reply: (method: string, params: any) => unknown = () => ({})) {
+  const calls: [string, any, number][] = []
+  let refreshed = 0
+  const panes = [pane('t1'), pane('t2'), pane('t3', { workspace: 'w2' })]
+  const d: CoreInputDeps = {
+    call: async (method, params, timeout) => {
+      calls.push([method, params, timeout])
+      const r = reply(method, params)
+      if (r instanceof Error) throw r
+      return r as never
+    },
+    pane: id => panes.find(p => p.id === id),
+    panes: () => panes,
+    refresh: () => { refreshed++ },
+  }
+  return { d, calls, refreshed: () => refreshed }
+}
+
+describe('core input routes', () => {
+  it('sends a message once with terminal.send on the full address', async () => {
+    const t = deps(() => ({ started: true, turn: 3 }))
+    expect(await coreSend(t.d, { pane_id: 't1', text: 'fix the bug' })).toEqual({ ok: true, started: true })
+    expect(t.calls).toEqual([['terminal.send', { terminal: 'm/t1', text: 'fix the bug' }, 30000]])
+    expect(t.refreshed()).toBe(1)
+    await expect(coreSend(t.d, { pane_id: 't1', text: '  ' })).rejects.toMatchObject({ code: 'empty' })
+    await expect(coreSend(t.d, { pane_id: 'nope', text: 'x' })).rejects.toMatchObject({ code: 'bad_pane' })
+  })
+
+  it('maps core errors to stable messages and never retries', async () => {
+    for (const [kind, code] of [['blocked', 'blocked'], ['timeout', 'timeout'], ['not_found', 'stale'], ['unavailable', 'unreachable'], ['unreachable', 'unreachable']]) {
+      const t = deps(() => new CoreError(kind!, 'x'))
+      await expect(coreSend(t.d, { pane_id: 't1', text: 'hi' })).rejects.toMatchObject({ code })
+      expect(t.calls).toHaveLength(1)
+    }
+  })
+
+  it('routes text + Enter as a message and named keys through terminal.keys', async () => {
+    const t = deps()
+    await coreInput(t.d, { pane_id: 't1', text: 'ls', keys: ['enter'] })
+    await coreInput(t.d, { pane_id: 't1', keys: ['esc', 'shift+tab'] })
+    expect(t.calls.map(c => [c[0], c[1]])).toEqual([
+      ['terminal.send', { terminal: 'm/t1', text: 'ls' }],
+      ['terminal.keys', { terminal: 'm/t1', keys: ['esc', 'shift+tab'] }],
+    ])
+    await expect(coreInput(t.d, { pane_id: 't1', text: 'raw' })).rejects.toMatchObject({ code: 'unsupported' })
+    await expect(coreInput(t.d, { pane_id: 't1', keys: ['esc;x'] })).rejects.toMatchObject({ code: 'bad_keys' })
+  })
+
+  it('reports what interrupt observed without escalating', async () => {
+    for (const [outcome, stopped] of [['stopped', true], ['exited', true], ['still_working', false], ['unknown', false]] as const) {
+      const t = deps(() => ({ outcome, key: 'esc' }))
+      expect(await coreInterrupt(t.d, { pane_id: 't1' })).toMatchObject({ ok: true, outcome, stopped })
+      expect(t.calls.map(c => c[0])).toEqual(['terminal.interrupt'])
+    }
+  })
+
+  it('kills one terminal, or each terminal of its group', async () => {
+    const t = deps()
+    await coreKill(t.d, { pane_id: 't1' })
+    await coreKill(t.d, { pane_id: 't1', close_group: true })
+    expect(t.calls.map(c => c[1].terminal)).toEqual(['m/t1', 'm/t1', 'm/t2'])
+  })
+})

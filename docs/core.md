@@ -22,12 +22,22 @@ For online machines, the three home counters count the same rows as their respec
 A mixed workspace follows its most urgent terminal. On connection loss the last
 inventory stays visible offline; subsequent polls reconcile it with core.
 
-Conversation association, creation and terminal streaming follow in later batches.
-Creation controls are disabled or hidden until supported. Without
+Opening a terminal attaches to it through `terminal.attach` on a framed connection,
+one per viewer, so several viewers (phone, computer, herdr desktop) work at once.
+A viewer attaches at the terminal's current size and does not resize it until the
+user takes control: typing in the terminal or the composer, a key of the keybar, or
+"Fit to this screen". When another viewer then sets its size, the banner returns.
+The browser returns credit after xterm has written each chunk (core's 256 KiB window
+bounds the relay) and scrolls the history it received locally.
+The composer sends with `terminal.send` (never retried), Stop calls
+`terminal.interrupt` and reports what core observed, keys use `terminal.keys`, and
+closing a pane ends its program with `terminal.kill`. Agents open in their terminal:
+conversation association and creation follow in later batches, and their
+controls are disabled or hidden until supported. Without
 `WHERDR_BACKEND=core`, the existing v2 application is unchanged.
 
 Reference: [published 0.1.16 protocol](https://github.com/herdrdev/herdr-core/blob/v0.1.16/schema/README.md).
 Generation 1 and both advertised method lists must support the first v3 terminal
 milestone; later additive versions are accepted. Plain mode is used here;
-terminal streaming will negotiate framed mode separately. Probe connections close
+terminal streams negotiate framed mode on their own connection. Probe connections close
 after each reply and have a three-second deadline and a 16 MiB reply limit.
