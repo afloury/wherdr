@@ -3,17 +3,19 @@
 // (utils/shortcuts.ts) and those a component owns, grouped by place.
 const mac = /Macintosh|Mac OS X|iPhone|iPad/.test(navigator.userAgent)
 const ARROWS = ['arrowleft', 'arrowright', 'arrowup', 'arrowdown']
-type Group = { title: string, rows: { label: string, keys: string[][] }[] }
-const groups: Group[] = [
+type Group = { title: string, rows: { label: string, keys: string[][], v2?: true }[] }
+// herdr-core (v3): the rows marked v2 (Board, tabs, editor, swap) are not offered yet.
+const core = useRuntimeConfig().public.core
+const allGroups: Group[] = [
   { title: tl('Anywhere', 'Partout'), rows: [
     { label: tl('Search agents and conversations', 'Rechercher agents et conversations'), keys: [shortcutKbds('search-all')] },
     { label: tl('Previous / next agent in the list', 'Agent précédent / suivant de la liste'), keys: [shortcutKbds('prev-agent'), shortcutKbds('next-agent')] },
     { label: tl('New agent, in a new space', 'Nouvel agent, dans un nouvel espace'), keys: [shortcutKbds('new-space')] },
-    { label: tl('New tab in this space', 'Nouvel onglet dans cet espace'), keys: [shortcutKbds('new-tab')] },
+    { label: tl('New tab in this space', 'Nouvel onglet dans cet espace'), keys: [shortcutKbds('new-tab')], v2: true },
     { label: tl('Close this pane', 'Fermer ce pane'), keys: [shortcutKbds('close-pane')] },
-    { label: tl('Current agent folder in the editor', 'Dossier de l’agent dans l’éditeur'), keys: [shortcutKbds('open-editor')] },
+    { label: tl('Current agent folder in the editor', 'Dossier de l’agent dans l’éditeur'), keys: [shortcutKbds('open-editor')], v2: true },
     { label: t('Settings'), keys: [shortcutKbds('settings')] },
-    { label: t('Board'), keys: [shortcutKbds('board')] },
+    { label: t('Board'), keys: [shortcutKbds('board')], v2: true },
     { label: tl('Keyboard shortcuts', 'Raccourcis clavier'), keys: [shortcutKbds('help'), ['?']] },
   ] },
   { title: tl('Agent', 'Agent'), rows: [
@@ -26,7 +28,7 @@ const groups: Group[] = [
   ] },
   { title: tl('Side by side', 'Côte à côte'), rows: [
     { label: tl('Focus the neighbouring pane', 'Passer au pane voisin'), keys: [['meta', 'alt', ...ARROWS]] },
-    { label: tl('Swap with the neighbouring pane', 'Échanger avec le pane voisin'), keys: [['alt', 'shift', ...ARROWS]] },
+    { label: tl('Swap with the neighbouring pane', 'Échanger avec le pane voisin'), keys: [['alt', 'shift', ...ARROWS]], v2: true },
   ] },
   { title: tl('“Your turn” card', 'Carte « À toi »'), rows: [
     { label: tl('Choose an option', 'Choisir une option'), keys: [['1–9']] },
@@ -38,6 +40,7 @@ const groups: Group[] = [
     { label: tl('New line for the agent', 'Nouvelle ligne pour l’agent'), keys: [['shift', 'enter']] },
   ] },
 ]
+const groups = allGroups.map(g => ({ ...g, rows: core ? g.rows.filter(r => !r.v2) : g.rows }))
 </script>
 
 <template>

@@ -100,6 +100,11 @@ test('core terminals use the normal home and agent navigation without legacy req
     await expect(page.locator('.home-version')).toHaveText(/^wherdr v3 · herdr-core$/i)
     await expect(page.getByRole('button', { name: 'New', exact: true })).toBeEnabled()
     await expect(page.getByRole('button', { name: 'Board', exact: true })).toHaveCount(0)
+    // Search is back: the button (and Ctrl+K on a computer) opens the global search, which asks /api/search.
+    await page.getByRole('button', { name: 'Search agents and conversations' }).first().click()
+    await page.keyboard.type('zz')
+    await expect.poll(() => requests.includes('/api/search')).toBe(true)
+    await page.keyboard.press('Escape')
     // New terminal in a folder: terminal.run without parent, then it opens.
     await page.getByRole('button', { name: 'New', exact: true }).click()
     await page.locator('[data-kind="shell"]').click()
@@ -125,7 +130,7 @@ test('core terminals use the normal home and agent navigation without legacy req
     await field.fill('run the tests')
     await page.getByRole('button', { name: 'Send', exact: true }).click()
     await expect.poll(() => rpc.find(r => r.method === 'terminal.send')?.params).toEqual({ terminal: fixture.inventory.terminals[0]!.address, text: 'run the tests' })
-    // Shortcuts are off in core mode: Escape in the empty composer still stops the working agent.
+    // Escape in the empty composer still stops the working agent.
     await expect(page.getByRole('button', { name: 'Stop the agent' })).toBeVisible()
     await field.press('Escape')
     await field.press('Escape') // a second press confirms the stop

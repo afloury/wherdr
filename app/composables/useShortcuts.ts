@@ -43,6 +43,8 @@ function run(id: Exclude<ShortcutId, 'search-all'>, overlay: boolean): boolean {
   const p = herdrState.value.panes.find(x => x.id === curPane.value)
   // Same conditions as the buttons: nothing is created or closed offline.
   const writable = eventsOpen.value && !offlineView.value
+  // herdr-core (v3): no Board, tabs or editor opening yet; the other shortcuts work as in v2.
+  if (useRuntimeConfig().public.core && (id === 'board' || id === 'new-tab' || id === 'open-editor')) return false
   switch (id) {
     case 'search-chat': return view?.searchChat() ?? false
     case 'toggle-term': return view?.toggleTerm() ?? false
