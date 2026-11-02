@@ -4,11 +4,11 @@
 #
 # Two depths of browser tests (tests/e2e/scope.ts):
 # - light (E2E_SCOPE=light), for pull requests and pushes to main or develop: every test
-#   on chromium-phone in two shards, plus the tests tagged for chromium-desktop
+#   on chromium-phone in four shards, plus the tests tagged for chromium-desktop
 #   (keyboard, split view), webkit-phone (Safari/iOS journeys) and webkit-desktop
 #   (iPad, desktop Safari);
 # - full, on a manual run or a release tag vX.Y.Z: every test on all four projects.
-# The same five jobs run in both cases; only their selection changes.
+# The same seven jobs run in both cases; only their selection changes.
 #
 # The branch protection requires the checks named `checks` and `e2e`: `e2e` is the
 # last job, green only when every browser job is. After a failure, "Re-run failed
@@ -124,10 +124,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Four shards: chromium-phone holds most of the suite and sets the
+          # wall time (about 20 min of tests in one worker).
           - project: chromium-phone
-            shard: 1/2
+            shard: 1/4
           - project: chromium-phone
-            shard: 2/2
+            shard: 2/4
+          - project: chromium-phone
+            shard: 3/4
+          - project: chromium-phone
+            shard: 4/4
           - project: chromium-desktop
           - project: webkit-phone
           - project: webkit-desktop
@@ -205,7 +211,7 @@ jobs:
 
   # The required check. `always()`: a skipped job would count as a success, so
   # this one runs whatever happened and reads the results itself. The matrix
-  # result is `success` only when all five browser jobs passed: a failed,
+  # result is `success` only when all seven browser jobs passed: a failed,
   # cancelled or skipped one turns it red.
   e2e:
     needs: [changes, e2e-project]
