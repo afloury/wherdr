@@ -60,13 +60,16 @@ test('core home: one bar item per machine, spaces and tabs of herdr-app, new tab
     await expect(page.locator('.card').filter({ hasText: 'Shop' })).toHaveCount(1)
     await page.locator('.card').filter({ hasText: 'Shop' }).first().click()
     await expect(page.locator('.space-tabs .tab-chip')).toHaveText([/MAIN/i, /LOGS/i, ''])
+    const spaceUrl = page.url()
     // "+": a new terminal labelled for the same space, in a new tab.
     await page.locator('.tab-add').click()
     await page.locator('[data-kind="shell"]').click()
     await page.getByRole('button', { name: /launch/i }).click()
     await expect.poll(() => rpc.find(r => r.method === 'terminal.run')?.params.labels).toMatchObject({ 'herdr.space': 'sp1', 'herdr.seen': '0' })
+    await expect(page).toHaveURL(/#\/a\//)
+    await page.goto(spaceUrl)
     await expect(page.locator('.space-tabs .tab-chip')).toHaveCount(4)
-    await expect.poll(() => rpc.filter(r => r.method === 'terminal.run').length).toBe(1)
+    expect(rpc.filter(r => r.method === 'terminal.run')).toHaveLength(1)
   } finally {
     core.close()
     server.kill()
