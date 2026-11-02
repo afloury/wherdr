@@ -11,12 +11,18 @@ test.afterEach(async () => { await show(null) })
 // Fixture recognition is covered by tests/nativeScreenParity.test.ts,
 // "all fixtures retain origin/main native recognition"; rendering variants by
 // tests/components/NativeScreenCards.test.ts. Keep one built-app card journey.
-test('a native question keeps its card in conversation', async ({ page }, info) => {
+test('a native question keeps its card and the effort screen keeps the composer', async ({ page }, info) => {
   await show('claude-ask-long.txt', 'claude', 'blocked')
   await page.goto(`/#/a/${pane}`)
   await expect(page.locator('.choices-list')).toBeVisible()
   await expect(page.locator('.interactive-terminal')).toHaveCount(0)
   await page.screenshot({ path: `.shots/native-question-${info.project.name}.png` })
+  // AgentView must keep the composer for this recognized kind=other screen;
+  // parser parity and ChoicesPanel mounts cannot prove this rendering rule.
+  await show('claude-effort-medium.txt', 'claude', 'idle')
+  await expect(page.locator('.choices-list')).toHaveCount(0)
+  await expect(page.locator('.composer')).toBeVisible()
+  await expect(page.locator('.interactive-terminal')).toHaveCount(0)
 })
 
 test('Claude usage keeps the immediate loading sheet and native settings tabs', async ({ page }) => {
