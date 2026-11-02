@@ -107,16 +107,23 @@ test('manual close releases the pane without Escape and does not reopen the same
   await expect(window).toBeVisible()
   await window.getByRole('button', { name: 'Close terminal window' }).click()
   await expect(window).toHaveCount(0)
-  await expect.poll(size, { timeout: 15_000 }).toEqual(original)
-  expect((await fakeHerdr('e2e.terminal_screen', { pane_id: pane }) as { keys: string[] }).keys).toEqual([])
-  // More than a screen re-read interval; cursor motion is still the same episode.
+  const fake = async () => await fakeHerdr('e2e.terminal_screen', { pane_id: pane }) as { keys: string[], detectionReads: number }
+  // Changing the screen clears the fake's key log: check it now and at the end.
+  expect((await fake()).keys).toEqual([])
+  // Cursor motion is still the same episode. Its server re-reads (3 s cache,
+  // real time) overlap the detach. After the second read, the first one's
+  // state is published; then run the client's input/terminal debounces.
   await screen(usage.replace('› 1.', '  1.').replace('  2.', '› 2.'))
-  await page.clock.fastForward(3500)
+  await expect.poll(size, { timeout: 15_000 }).toEqual(original)
+  await expect.poll(async () => (await fake()).detectionReads, { timeout: 10_000 }).toBeGreaterThanOrEqual(2)
+  await page.clock.fastForward(1000)
   await expect(window).toHaveCount(0)
+  expect((await fake()).keys).toEqual([])
   await page.getByRole('button', { name: 'Open interactive terminal' }).click()
   await expect(window).toBeVisible()
-  await window.getByRole('button', { name: 'esc', exact: true }).click()
-  await expect(window).toHaveCount(0)
+  // Closing the reopened window on a stable field: tests/interactionWindow.test.ts
+  // "a window reopened after a manual close still closes on a stable field";
+  // the esc key and its close in the browser: the first test of this file.
 })
 
 // Ambiguous-menu choice rejection moved to tests/review0346.test.ts

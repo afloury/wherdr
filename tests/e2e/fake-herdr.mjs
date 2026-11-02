@@ -159,6 +159,8 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       const p = paneById(params.pane_id)
       if (p?.readFailure && params.source === 'detection') throw Object.assign(new Error('Transient detection read failure'), { code: 'timeout' })
       if (p?.readDelayMs) await new Promise(r => setTimeout(r, p.readDelayMs))
+      // Server state reads of the current fixture, so a test can wait for them.
+      if (p && params.source === 'detection') p.detectionReads = (p.detectionReads || 0) + 1
       const raw = screen(p)
       // Herdr detection/visible reads are plain unless ANSI was requested.
       // eslint-disable-next-line no-control-regex
@@ -275,6 +277,7 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       p.sentKeys = []
       p.screenTransitions = params.transitions || null
       p.readDelayMs = params.readDelayMs || 0
+      p.detectionReads = 0
       return {}
     },
     // Explicit scroll fixture: mouse apps consume one tick per command;
@@ -297,7 +300,7 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       const p = need(params.pane_id)
       const osc = p.osc || []
       p.osc = []
-      return { text: p.touchScroll ? methods['e2e.touch_scroll'](params).text : p.customScreen || '', size: p.size, keys: p.sentKeys || [], osc }
+      return { text: p.touchScroll ? methods['e2e.touch_scroll'](params).text : p.customScreen || '', size: p.size, keys: p.sentKeys || [], osc, detectionReads: p.detectionReads || 0 }
     },
     // Raw sequences (OSC 52…) the control session writes once, after the screen.
     'e2e.terminal_osc': params => {
