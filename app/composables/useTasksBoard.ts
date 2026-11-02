@@ -23,6 +23,7 @@ export function sawTasksBoard(b: TasksBoard) { lastBoard = b; seenTasksBoard.val
 export const boardOpenTask = shallowRef<{ machine: string, id: string } | null>(null)
 
 export function useTasksBoard() {
+  const core = useRuntimeConfig().public.core
   const board = shallowRef<TasksBoard | null>(lastBoard)
   const cachedAt = ref<number | null>(null)
   const error = ref('')
@@ -32,7 +33,7 @@ export function useTasksBoard() {
   let soon: ReturnType<typeof setTimeout> | undefined
 
   async function load(fresh = false) {
-    if (stopped || offlineView.value) return
+    if (core || stopped || offlineView.value) return
     const id = ++seq
     try {
       const since = !fresh && board.value ? `?since=${encodeURIComponent(board.value.version)}` : ''
@@ -57,7 +58,7 @@ export function useTasksBoard() {
   let poll: ReturnType<typeof setInterval> | undefined
   onMounted(() => {
     load()
-    if (!board.value && mayReadOffline(readOfflineAccess())) {
+    if (!core && !board.value && mayReadOffline(readOfflineAccess())) {
       readBoard().then((s) => {
         if (s && !board.value && !stopped) { board.value = s.board; cachedAt.value = s.at }
       })

@@ -11,6 +11,7 @@ import { type QuietDuration, type QuietScope, quietUntil } from '#shared/quiet'
 import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
 import { DEFAULT_MAX_SESSION_DAYS, MAX_SESSION_DAYS, type MaxSessionDays } from '#shared/sessionLimit'
 
+const core = useRuntimeConfig().public.core
 const appVersion = pkg.version
 const router = useRouter()
 // Sections: sidebar on a computer (one section shown), iOS Settings-style
@@ -34,6 +35,7 @@ const sectionLabels: Record<SettingsSection, string> = {
   plugins: 'Plugins', phone: 'Phone', notifications: 'Notifications', security: 'Security', shortcuts: 'Shortcuts', advanced: 'Advanced', about: 'About',
 }
 const sections = computed(() => SETTINGS_SECTIONS
+  .filter(id => !core || id !== 'plugins')
   .filter(id => id !== 'shortcuts' || (desk.value && !coarse.value))
   .map(id => ({ id, label: t(sectionLabels[id]), icon: sectionIcons[id] })))
 const activeSection = computed<SettingsSection | null>(() => {
@@ -505,7 +507,7 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'plugins'" class="settings-section">
-          <ProjectsPluginSettings :machines="appConfig.machines || [{ key: '', label: hostLabel || t('This machine'), local: true, home: '', dirs: [], online: true, kinds: [] }]" />
+          <ProjectsPluginSettings v-if="!core" :machines="appConfig.machines || [{ key: '', label: hostLabel || t('This machine'), local: true, home: '', dirs: [], online: true, kinds: [] }]" />
         </div>
 
         <div v-show="activeSection === 'phone'" class="settings-section">

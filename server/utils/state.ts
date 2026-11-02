@@ -1,3 +1,4 @@
+import { readCoreState } from './readCoreState'
 import { DeliveryLedger, writeDeliveryFile } from './deliveryLedger'
 import type { NotificationEvent } from '../../shared/notificationRules'
 import { notificationAllowed } from './notificationRules'
@@ -1359,6 +1360,12 @@ export async function pollFresh(m: Machine) {
 // Offline machines: no polling (their connection recovers on its own),
 // but their state is republished with the right status.
 export async function poll() {
+  if (process.env.WHERDR_BACKEND === 'core') {
+    state = await readCoreState(state)
+    const json = JSON.stringify(state)
+    if (json !== stateJson) { stateJson = json; broadcastState() }
+    return
+  }
   const ms = allMachines()
   for (const m of ms) {
     if (!m.local && m.status !== 'online' && mstates.get(m.key)?.ok) mstates.set(m.key, { ...mstates.get(m.key)!, ok: false, error: m.error || undefined })
@@ -1372,6 +1379,14 @@ let stopped = false
 let viewedTimer: ReturnType<typeof setTimeout> | null = null
 export function startPolling() {
   stopped = false
+  if (process.env.WHERDR_BACKEND === 'core') {
+    const loop = async () => {
+      await poll()
+      if (!stopped) pollTimer = setTimeout(loop, POLL_MS)
+    }
+    void loop()
+    return
+  }
   focusScreenGate()
   if (viewedTimer) clearTimeout(viewedTimer)
   const views = () => {

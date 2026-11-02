@@ -2,7 +2,11 @@
 // keys, notifications from `herdr notification show`, the phone address
 // `tailscale serve` publishes (server/utils/phone.ts), purge of photos and attached files older than 7 days, and of the pasted texts kept for 30 days.
 export default defineNitroPlugin((nitroApp) => {
-  if (process.env.WHERDR_BACKEND === 'core') return
+  if (process.env.WHERDR_BACKEND === 'core') {
+    startPolling()
+    nitroApp.hooks.hook('close', stopPolling)
+    return
+  }
   initVapid()
   startMachines()
   startPolling()

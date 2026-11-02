@@ -31,6 +31,7 @@ import { stateEntries, stateMachines } from '~/utils/homeGrouping'
 import { BAR_ALL } from '~/utils/machineBar'
 import { individualAgentRows, individualAgentTitle, isIndividualAgentRow } from '~/utils/homeAgentRows'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
+const core = useRuntimeConfig().public.core
 const emit = defineEmits<{ search: [] }>()
 useQuotaLoader()
 onMounted(loadUpdate)
@@ -107,7 +108,7 @@ function listOf(rows: Row[]) {
   return {
     coordinators: b.coordinators,
     projects: b.projects,
-    groups: groupsOf(standaloneRows(b.others).filter(r => r.lead.agent || showShells.value)),
+    groups: groupsOf(standaloneRows(b.others).filter(r => core || r.lead.agent || showShells.value)),
   }
 }
 // Each kind of coordinator with its own icon and label (coordinatorKind).
@@ -506,7 +507,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => titleRowObserver?.disconnect())
 // First to fold first.
-const headerFoldable = ['settings', 'board']
+const headerFoldable = core ? ['settings'] : ['settings', 'board']
 const headerFolded = computed(() => {
   if (!titleRowWidth.value) return new Set<string>()
   const total = headerFoldable.length + 1 + (desk.value ? 1 : 0)
@@ -645,7 +646,7 @@ function resetListWidth() {
       <UTooltip :text="t('New')" :kbds="shortcutKbds('new-space')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="!eventsOpen || offlineView" @click="newAgent" />
       </UTooltip>
-      <UTooltip :text="t('Board')" :kbds="shortcutKbds('board')" :content="{ side: 'right' }">
+      <UTooltip v-if="!core" :text="t('Board')" :kbds="shortcutKbds('board')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Board')" to="/board" />
       </UTooltip>
       <UTooltip :text="t('Settings')" :kbds="shortcutKbds('settings')" :content="{ side: 'right' }">
@@ -674,7 +675,7 @@ function resetListWidth() {
           <UTooltip :text="tl('Search agents and conversations', 'Rechercher agents et conversations')" :kbds="shortcutKbds('search-all')" :disabled="!desk">
             <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
           </UTooltip>
-          <UTooltip v-if="!headerFolded.has('board')" :text="t('Board')" :kbds="shortcutKbds('board')" :disabled="!desk">
+          <UTooltip v-if="!core && !headerFolded.has('board')" :text="t('Board')" :kbds="shortcutKbds('board')" :disabled="!desk">
             <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Board')" to="/board" />
           </UTooltip>
           <UTooltip v-if="!headerFolded.has('settings')" :text="t('Settings')" :kbds="shortcutKbds('settings')" :disabled="!desk">

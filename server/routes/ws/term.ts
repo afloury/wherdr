@@ -5,6 +5,7 @@ const sessions = new Map<string, TermSession>()
 export default defineWebSocketHandler({
   upgrade: request => checkUpgrade(request),
   open(peer) {
+    if (process.env.WHERDR_BACKEND === 'core') { peer.close(1008, 'Terminal streaming is not available yet'); return }
     watchPeer(peer)
     const url = new URL(peer.request?.url || '/', 'http://x')
     const sess = openTerm({

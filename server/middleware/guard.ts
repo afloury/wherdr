@@ -54,6 +54,10 @@ export default defineEventHandler(async (event) => {
     case 'locked':
       return sendError(event, 401, { error: 'App is locked', code: 'locked' })
   }
+  if (process.env.WHERDR_BACKEND === 'core' && path.startsWith('/api/')
+    && !/^\/api\/(auth(?:\/|$)|core(?:\/|$)|state$|config$|chat$|settings$|health$)/.test(path)) {
+    return sendError(event, 503, { error: 'Unavailable with herdr-core' })
+  }
   const renewed = auth.renew(req)
   if (renewed) appendResponseHeader(event, 'set-cookie', renewed.cookie)
 })

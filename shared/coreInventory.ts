@@ -1,5 +1,8 @@
+import type { AgentStatus } from './types'
 // Deliberately independent of legacy panes, desktop layouts and conversation IDs.
 export interface CoreTerminal {
+  argv?: string[]
+  foreground?: { argv: string[]; name?: string; cwd?: string } | null
   address: string
   name?: string | null
   title?: string
@@ -14,9 +17,9 @@ export interface CoreInventory {
   machines: { name: string; state: string }[]
   hidden_finished: number
 }
-export function coreActivity(terminal: CoreTerminal) {
+export function coreActivity(terminal: CoreTerminal): AgentStatus | 'error' {
   const state = terminal.status?.state
-  return state && ['idle', 'working', 'blocked', 'done', 'error'].includes(state) ? state : 'unknown'
+  return state && ['idle', 'working', 'blocked', 'done', 'error'].includes(state) ? state as AgentStatus | 'error' : 'unknown'
 }
 export function coreTitle(terminal: CoreTerminal) {
   return terminal.name || terminal.title || terminal.address

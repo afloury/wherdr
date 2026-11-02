@@ -1,14 +1,14 @@
 import { test, expect } from '@playwright/test'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:net'
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pdfAuthDb, pdfSession } from './pdfAuth.mjs'
 import fixture from '../fixtures/core-0.1.16.json' with { type: 'json' }
 
 // Own isolated server: the normal e2e launcher remains on the v2 backend.
-test('core preview reports connection failures and retries without legacy requests', async ({ page, browserName }) => {
+test('core terminals use the normal home and agent navigation without legacy requests', async ({ page, browserName }) => {
   const data = await mkdtemp(join(tmpdir(), 'core-preview-'))
   const socketPath = join(data, 'core.sock')
   await writeFile(join(data, 'auth.json'), JSON.stringify(pdfAuthDb))
@@ -27,15 +27,13 @@ test('core preview reports connection failures and retries without legacy reques
     env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', DATA_DIR: data,
       WHERDR_BACKEND: 'core', NUXT_PUBLIC_CORE: 'true', HC_SOCKET: socketPath, HERDR_WEB_MACHINES: 'off' }, stdio: 'ignore',
   })
-  const terminal = fixture.inventory.terminals[0]
   const rpc: { method: string; params: any }[] = []
-  let compatible = false
   const core = createServer(socket => socket.once('data', data => {
     const r = JSON.parse(data.toString())
     rpc.push(r)
-    const result = r.method === 'hello' ? { ...fixture.hello, generation: compatible ? 1 : 2 }
+    const result = r.method === 'hello' ? fixture.hello
       : r.method === 'terminal.list' ? fixture.inventory
-      : r.method === 'terminal.get' ? terminal : fixture.discover
+      : r.method === 'machine.list' ? { machines: [{ name: 'host-a', state: 'connected' }] } : fixture.discover
     socket.end(JSON.stringify({ jsonrpc: '2.0', id: r.id, result }) + '\n')
   }))
   const requests: string[] = []
@@ -44,33 +42,15 @@ test('core preview reports connection failures and retries without legacy reques
     await expect.poll(async () => { try { return (await fetch(`http://127.0.0.1:${port}/api/health`)).ok } catch { return false } }).toBe(true)
     await page.context().addCookies([{ name: 'hw_session', value: pdfSession(), url: `http://localhost:${port}` }])
     await page.goto(`http://localhost:${port}`)
-    await expect(page.getByRole('alert')).toContainText('Cannot connect to herdr-core')
-    await mkdir('.shots', { recursive: true })
-    await page.screenshot({ path: '.shots/core-phone.png' })
     await new Promise<void>(resolve => core.listen(socketPath, resolve))
-    await page.getByRole('button', { name: 'Retry connection' }).click()
-    await expect(page.getByRole('alert')).toContainText('Incompatible herdr-core')
-    await page.setViewportSize({ width: 1440, height: 900 })
-    await page.screenshot({ path: '.shots/core-desktop.png' })
-    compatible = true
-    await page.getByRole('button', { name: 'Retry connection' }).click()
-    await expect(page.getByRole('status').filter({ hasText: 'Connected to herdr-core' })).toContainText('Connected to herdr-core · 0.1.16')
-    await expect(page.getByRole('button', { name: /review-agent/ })).toContainText('Unknown')
-    await page.setViewportSize({ width: 390, height: 844 })
-    const statusBox = await page.locator('.core-card .card-state').boundingBox()
-    expect(statusBox!.width).toBeGreaterThan(40)
-    expect(statusBox!.height).toBeLessThan(25)
-    expect((await page.locator('.core-inventory .agent-top').boundingBox())!.height).toBe(44)
-    await page.screenshot({ path: '.shots/core-inventory-phone.png', scale: 'css' })
-    await page.setViewportSize({ width: 1440, height: 900 })
-    await page.screenshot({ path: '.shots/core-inventory-desktop.png', scale: 'css' })
-    await page.getByRole('button', { name: /review-agent/ }).click()
-    await expect(page.getByText('Conversation unavailable')).toBeVisible()
-    expect(rpc.find(r => r.method === 'terminal.get')?.params).toEqual({ terminal: 'host-a/t7' })
-    await page.screenshot({ path: '.shots/core-detail-desktop.png', scale: 'css' })
-    await page.setViewportSize({ width: 390, height: 844 })
-    await page.screenshot({ path: '.shots/core-detail-phone.png', scale: 'css' })
-    await page.getByRole('button', { name: 'Back', exact: true }).click()
+    await expect(page.locator('.card').filter({ hasText: 'demo' }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Board', exact: true })).toHaveCount(0)
+    await page.locator('.card').filter({ hasText: 'demo' }).first().click()
+    await expect(page).toHaveURL(/#\/(a|t)\//)
+    await expect(page.locator('.agent-top')).toBeVisible()
+    await expect(page.getByText('Conversation unavailable for this agent.')).toBeVisible()
+    expect(rpc.some(r => r.method === 'terminal.list')).toBe(true)
+    expect(rpc.some(r => r.method === 'machine.list')).toBe(true)
     // The protocol journey also runs on WebKit; virtual passkeys use Chromium CDP.
     if (browserName === 'chromium') {
       const cdp = await page.context().newCDPSession(page)
@@ -92,10 +72,13 @@ test('core preview reports connection failures and retries without legacy reques
       await page.setViewportSize({ width: 1440, height: 900 })
       await page.screenshot({ path: '.shots/core-locked-desktop.png' })
       await page.getByRole('button', { name: 'Unlock', exact: true }).click()
-      await expect(page.getByRole('status').filter({ hasText: 'Connected to herdr-core' })).toContainText('Connected to herdr-core · 0.1.16')
+      await expect(page.locator('.agent-top')).toBeVisible()
       await expect(page.getByRole('button', { name: 'Unlock', exact: true })).toHaveCount(0)
     }
-    expect(requests.filter(p => p !== '/api/core' && p !== '/api/core/terminals' && !p.startsWith('/api/auth/'))).toEqual([])
+    await page.goto(`http://localhost:${port}/#/settings`)
+    await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
+    await expect(page.getByText('Plugins', { exact: true })).toHaveCount(0)
+    expect(requests.filter(p => !['/api/config', '/api/chat', '/api/settings'].includes(p) && !p.startsWith('/api/auth/'))).toEqual([])
   } finally {
     if (server.exitCode === null) {
       server.kill('SIGTERM')

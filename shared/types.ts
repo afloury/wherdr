@@ -110,6 +110,7 @@ export interface Tab {
 }
 
 export interface Pane {
+  coreAddress?: string // Authoritative hc address; interface IDs are presentation only.
   // w1:p1 (local) ou <machine>~w1:p1 (distant, see shared/ids.ts).
   id: string
   // Remote machine (short key); missing for the local machine.

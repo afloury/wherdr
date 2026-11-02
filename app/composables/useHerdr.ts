@@ -402,6 +402,7 @@ export class ApiError extends Error {
 }
 
 export async function api<T = Record<string, unknown>>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  if (useRuntimeConfig().public.core && !/^\/api\/(auth(?:\/|$)|state(?:\?|$)|config$|chat(?:\?|$)|settings(?:\?|$))/.test(path)) throw new Error('Unavailable with herdr-core')
   const opts: RequestInit = body === undefined
     ? { signal }
     : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal }
@@ -547,7 +548,7 @@ export function connectEvents() {
     }
     everOpen = true
     sendViewing()
-    restoreMachineSessions()
+    if (!useRuntimeConfig().public.core) restoreMachineSessions()
     // Settings kept on the server: changes made offline go out, then the
     // server's values apply (the first time, this device's are sent).
     settingsSync.load()
@@ -572,7 +573,7 @@ export function connectEvents() {
       fullState = state
       allSessionsState.value = fullState
       herdrState.value = selectSessions(state, machineSessions.value)
-      restoreMachineSessions()
+      if (!useRuntimeConfig().public.core) restoreMachineSessions()
       lastStateAt = Date.now()
       cachedAt.value = null
       if (state.ok && mayReadOffline(readOfflineAccess())) saveHome(herdrState.value)
@@ -656,7 +657,7 @@ export function boot() {
   booted = true
   locked.value = false
   connectEvents()
-  sessionsTimer ||= setInterval(checkSelectedSessions, 30000)
+  if (!useRuntimeConfig().public.core) sessionsTimer ||= setInterval(checkSelectedSessions, 30000)
   loadConfig()
   syncPushLanguage().catch(() => {})
 }
