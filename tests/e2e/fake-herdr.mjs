@@ -114,7 +114,7 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
   function resetUpdate(params) {
     const p = need(params.pane_id)
     p.agent = 'codex'; p.status = 'idle'; p.pid = (p.pid || 3000) + 1
-    p.updateOutput = params.session ? '' : '✨ Update available! 0.148.0 -> 0.162.1'; p.foreground = false; p.starts = []
+    p.updateOutput = params.session ? '' : '✨ Update available! 0.148.0 -> 0.162.1'; p.starts = []
     p.processReads = 0
     p.argv = null; p.writes = []; p.prompts = []
     p.baseCwd ||= p.cwd
@@ -174,7 +174,7 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       const p = paneById(params.pane_id)
       if (p) p.processReads = (p.processReads || 0) + 1
       const procs = p?.agent ? [{ pid: p.pid || 2001, name: p.agent, argv: p.argv || [p.agent, ...(p.agent === 'codex' ? ['--profile', 'work', '-m', 'gpt-x'] : [])] }] : [{ pid: 2000, name: 'zsh' }]
-      return { process_info: { shell_pid: 2000, foreground_process_group_id: p?.foreground ? 4000 : p?.agent ? (p.pid || 2001) : 2000, foreground_processes: procs } }
+      return { process_info: { shell_pid: 2000, foreground_process_group_id: p?.agent ? (p.pid || 2001) : 2000, foreground_processes: procs } }
     },
     'e2e.update_reset': params => {
       need(params.pane_id)
@@ -188,11 +188,6 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       // `plain`: Codex simply left (/exit), no update.
       p.updateOutput = (params.plain ? '' : 'Codex CLI 0.162.1 installed successfully.\n\n🎉 Update ran successfully! Please restart Codex.\n\n') + 'user@host project % ' + (params.draft || '')
       return {}
-    },
-    'e2e.update_replace': params => {
-      const p = need(params.pane_id)
-      p.pid++; p.argv = params.argv
-      return { pid: p.pid }
     },
     // Herdr integrations as `herdr integration status` reports them (all
     // installed unless a spec says otherwise): { codex: 'missing' }…
@@ -217,7 +212,6 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     // A scenario field of the pane (an alternate transcript, for instance).
     'e2e.pane_field': params => ({ value: need(params.pane_id)[params.field] ?? null }),
     'e2e.update_draft': params => { need(params.pane_id).updateOutput += params.text; return {} },
-    'e2e.update_foreground': params => { need(params.pane_id).foreground = true; return {} },
     'e2e.update_starts': params => {
       const p = need(params.pane_id)
       return { starts: p.starts || [], reads: p.processReads || 0, writes: p.writes || [], prompts: p.prompts || [] }
