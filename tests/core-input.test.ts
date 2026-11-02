@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CoreError } from '../server/utils/core'
-import { coreInput, coreInterrupt, coreKill, coreSend, type CoreInputDeps } from '../server/utils/coreInput'
+import { coreInput, coreInterrupt, coreKeepGet, coreKeepSet, coreKill, coreSend, type CoreInputDeps } from '../server/utils/coreInput'
 import type { Pane } from '../shared/types'
 
 const pane = (id: string, extra: Partial<Pane> = {}) => ({ id, workspace: 'w1', coreAddress: `m/${id}`, agent: 'claude', ...extra }) as Pane
@@ -65,5 +65,19 @@ describe('core input routes', () => {
     await coreKill(t.d, { pane_id: 't1' })
     await coreKill(t.d, { pane_id: 't1', close_group: true })
     expect(t.calls.map(c => c[1].terminal)).toEqual(['m/t1', 'm/t1', 'm/t2'])
+  })
+})
+
+describe('keep after restart', () => {
+  it('reads the flag with terminal.get and sets it with terminal.keep on the full address', async () => {
+    const t = deps(m => m === 'terminal.get' ? { keep: true } : {})
+    expect(await coreKeepGet(t.d, 't1')).toEqual({ keep: true })
+    expect(await coreKeepSet(t.d, { pane_id: 't1', keep: false })).toEqual({ keep: false })
+    expect(t.calls.map(c => [c[0], c[1]])).toEqual([['terminal.get', { terminal: 'm/t1' }], ['terminal.keep', { terminal: 'm/t1', keep: false }]])
+  })
+  it('refuses a missing pane and a non-boolean value', async () => {
+    const t = deps()
+    await expect(coreKeepSet(t.d, { pane_id: 'nope', keep: true })).rejects.toMatchObject({ code: 'bad_pane' })
+    await expect(coreKeepSet(t.d, { pane_id: 't1', keep: 'yes' })).rejects.toMatchObject({ code: 'bad_keep' })
   })
 })

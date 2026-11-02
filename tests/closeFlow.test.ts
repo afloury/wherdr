@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkoutMessage, planClose, widerClose } from '../app/utils/closeFlow'
+import { agentsClosing, checkoutMessage, planClose, widerClose } from '../app/utils/closeFlow'
 import { spaceCall } from '../shared/spaceActions'
 import type { HerdrState, Pane, Workspace } from '../shared/types'
 
@@ -83,5 +83,15 @@ describe('close scope', () => {
     expect(widerClose(space, planClose({ ...two, panes: two.panes.slice(0, 2), tabs: [two.tabs![0]!] }, 'workspace', 'w9'))).toBe(false)
     // A worktree group appearing is always wider.
     expect(widerClose({ ...shown, group: false }, { ...shown, group: true })).toBe(true)
+  })
+})
+
+describe('agents interrupted by a close', () => {
+  const tl = (en: string) => en
+  const agent = (id: string, status: Pane['status']): Pane => ({ ...pane(id, 'w1'), agent: 'claude', status })
+  it('counts every agent of the plan, whatever its status', () => {
+    expect(agentsClosing({ panes: [pane('w1:p1', 'w1')] }, tl)).toBe('')
+    expect(agentsClosing({ panes: [agent('w1:p1', 'working')] }, tl)).toBe('⚠ 1 agent will be interrupted.')
+    expect(agentsClosing({ panes: [agent('w1:p1', 'working'), agent('w1:p2', 'unknown'), pane('w1:p3', 'w1'), agent('w1:p4', null)] }, tl)).toBe('⚠ 3 agents will be interrupted.')
   })
 })

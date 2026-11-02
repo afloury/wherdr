@@ -89,3 +89,22 @@ export async function coreKill(deps: CoreInputDeps, b: { pane_id?: unknown, clos
     return { ok: true }
   } catch (e) { failure(e) } finally { deps.refresh() }
 }
+
+// "Keep after restart": a kept terminal comes back as a shell when core restarts or loses it.
+// terminal.list does not carry the flag, so it is read on demand with terminal.get.
+export async function coreKeepGet(deps: CoreInputDeps, id: unknown) {
+  const p = target(deps, id)
+  try {
+    const t = await deps.call<{ keep?: boolean }>('terminal.get', { terminal: p.coreAddress }, 5000)
+    return { keep: t.keep === true }
+  } catch (e) { failure(e) }
+}
+
+export async function coreKeepSet(deps: CoreInputDeps, b: { pane_id?: unknown, keep?: unknown }) {
+  if (typeof b.keep !== 'boolean') throw new HerdrError('bad_keep', 'Invalid value')
+  const p = target(deps, b.pane_id)
+  try {
+    await deps.call('terminal.keep', { terminal: p.coreAddress, keep: b.keep }, 5000)
+    return { keep: b.keep }
+  } catch (e) { failure(e) }
+}
