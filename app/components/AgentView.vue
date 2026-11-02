@@ -490,9 +490,9 @@ function openPlan() {
   else backToTab(tabEnt.value.tab.id)
 }
 // herdr-core: map of the space's terminals (each one a tab, no layout) -> list to switch.
-const core = useRuntimeConfig().public.core
+const isCore = core
 const spaceMap = computed(() => {
-  if (!core || props.cell || !pane.value) return null
+  if (!isCore || props.cell || !pane.value) return null
   const tabs = spaceTabs(pane.value.workspace)
   if (tabs.length < 2) return null
   const panes = tabs.map(e => e.panes[0]!)
