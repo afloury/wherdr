@@ -478,7 +478,7 @@ onMounted(() => {
             <p v-else class="muted agent-pref-intro">{{ t('No agents installed on online machines.') }}</p>
             <p class="muted agent-pref-note">{{ t('Choices follow you on every device.') }}</p>
           </div>
-          <div v-if="!core" id="claude-quotas" class="settings-group">
+          <div id="claude-quotas" class="settings-group">
             <h3>{{ tl('Claude quotas', 'Quotas Claude') }}</h3>
             <ClaudeQuotaSetup v-if="activeSection === 'agents'" />
           </div>

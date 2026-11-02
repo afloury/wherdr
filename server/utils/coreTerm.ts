@@ -2,10 +2,12 @@
 // so several viewers (phone, computer, herdr desktop) watch the same program.
 // The browser keeps the legacy wire messages (terminal.frame, terminal.input…).
 //
-// Size: the viewer attaches at the terminal's current size, so opening it never
-// resizes the program. Its own size reaches core only once it takes control
-// (it types, presses a key, or asks to take control). When another viewer then
-// sets another size, this one stops imposing its own until it types again.
+// Size: like v2, a viewer fits the terminal to its screen as soon as it opens
+// (and follows its window resizes) while it is in control, so the program fills
+// the width. When another viewer then sets another size, this one stops imposing
+// its own until it types, presses a key or asks to take control again: the latest
+// active viewer wins, and two viewers never resize each other in a loop.
+// `takeover=0` opens a watch-only viewer that keeps the terminal's current size.
 // Flow control: core grants 256 KiB; the browser returns credit after xterm has
 // written the bytes, so the WebSocket queue stays bounded by that window.
 import { CoreError } from './core'
@@ -60,7 +62,7 @@ export function openCoreTerm(ws: WsLike, url: URL, deps: CoreTermDeps): TermSess
   let want: Size = { cols: clamp(url.searchParams.get('cols'), 10, 400, 80), rows: clamp(url.searchParams.get('rows'), 5, 200, 24) }
   let size: Size | null = null
   // Whether this viewer imposes its size (see the header).
-  let control = url.searchParams.get('takeover') === '1'
+  let control = url.searchParams.get('takeover') !== '0'
   let core: FramedCore | null = null
   let channel = -1
   let done = false
