@@ -27,10 +27,15 @@ test('core preview reports connection failures and retries without legacy reques
     env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', DATA_DIR: data,
       WHERDR_BACKEND: 'core', NUXT_PUBLIC_CORE: 'true', HC_SOCKET: socketPath, HERDR_WEB_MACHINES: 'off' }, stdio: 'ignore',
   })
+  const terminal = fixture.inventory.terminals[0]
+  const rpc: { method: string; params: any }[] = []
   let compatible = false
   const core = createServer(socket => socket.once('data', data => {
     const r = JSON.parse(data.toString())
-    const result = r.method === 'hello' ? { ...fixture.hello, generation: compatible ? 1 : 2 } : fixture.discover
+    rpc.push(r)
+    const result = r.method === 'hello' ? { ...fixture.hello, generation: compatible ? 1 : 2 }
+      : r.method === 'terminal.list' ? fixture.inventory
+      : r.method === 'terminal.get' ? terminal : fixture.discover
     socket.end(JSON.stringify({ jsonrpc: '2.0', id: r.id, result }) + '\n')
   }))
   const requests: string[] = []
@@ -49,7 +54,23 @@ test('core preview reports connection failures and retries without legacy reques
     await page.screenshot({ path: '.shots/core-desktop.png' })
     compatible = true
     await page.getByRole('button', { name: 'Retry connection' }).click()
-    await expect(page.getByRole('status')).toContainText('Connected to herdr-core · 0.1.16')
+    await expect(page.getByRole('status').filter({ hasText: 'Connected to herdr-core' })).toContainText('Connected to herdr-core · 0.1.16')
+    await expect(page.getByRole('button', { name: /review-agent/ })).toContainText('Unknown')
+    await page.setViewportSize({ width: 390, height: 844 })
+    const statusBox = await page.locator('.core-card .card-state').boundingBox()
+    expect(statusBox!.width).toBeGreaterThan(40)
+    expect(statusBox!.height).toBeLessThan(25)
+    expect((await page.locator('.core-inventory .agent-top').boundingBox())!.height).toBe(44)
+    await page.screenshot({ path: '.shots/core-inventory-phone.png', scale: 'css' })
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.screenshot({ path: '.shots/core-inventory-desktop.png', scale: 'css' })
+    await page.getByRole('button', { name: /review-agent/ }).click()
+    await expect(page.getByText('Conversation unavailable')).toBeVisible()
+    expect(rpc.find(r => r.method === 'terminal.get')?.params).toEqual({ terminal: 'host-a/t7' })
+    await page.screenshot({ path: '.shots/core-detail-desktop.png', scale: 'css' })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.screenshot({ path: '.shots/core-detail-phone.png', scale: 'css' })
+    await page.getByRole('button', { name: 'Back', exact: true }).click()
     // The protocol journey also runs on WebKit; virtual passkeys use Chromium CDP.
     if (browserName === 'chromium') {
       const cdp = await page.context().newCDPSession(page)
@@ -71,10 +92,10 @@ test('core preview reports connection failures and retries without legacy reques
       await page.setViewportSize({ width: 1440, height: 900 })
       await page.screenshot({ path: '.shots/core-locked-desktop.png' })
       await page.getByRole('button', { name: 'Unlock', exact: true }).click()
-      await expect(page.getByRole('status')).toContainText('Connected to herdr-core · 0.1.16')
+      await expect(page.getByRole('status').filter({ hasText: 'Connected to herdr-core' })).toContainText('Connected to herdr-core · 0.1.16')
       await expect(page.getByRole('button', { name: 'Unlock', exact: true })).toHaveCount(0)
     }
-    expect(requests.filter(p => p !== '/api/core' && !p.startsWith('/api/auth/'))).toEqual([])
+    expect(requests.filter(p => p !== '/api/core' && p !== '/api/core/terminals' && !p.startsWith('/api/auth/'))).toEqual([])
   } finally {
     if (server.exitCode === null) {
       server.kill('SIGTERM')

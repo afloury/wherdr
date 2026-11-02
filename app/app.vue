@@ -46,7 +46,7 @@ function onVisibility() {
   }
 }
 // Keyboard shortcuts (computer): utils/shortcuts.ts, composables/useShortcuts.ts.
-useShortcuts(searchOpen)
+if (!core) useShortcuts(searchOpen)
 
 // File dropped outside a drop zone: the browser would open it instead
 // of the app. The zones (agent view) take it first; here, we refuse the rest.

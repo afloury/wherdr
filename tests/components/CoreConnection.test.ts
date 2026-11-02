@@ -7,6 +7,7 @@ afterEach(() => vi.unstubAllGlobals())
 it('shows an unavailable core, then retries to show a compatible core', async () => {
   const fetch = vi.fn().mockResolvedValueOnce({ status: 503, json: async () => ({ ok: false, error: 'Cannot connect to herdr-core' }) })
     .mockResolvedValueOnce({ status: 200, json: async () => ({ ok: true, version: '0.1.16' }) })
+    .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ terminals: [], machines: [], hidden_finished: 0 }) })
   vi.stubGlobal('fetch', fetch)
   const w = await mountSuspended(CoreConnection)
   try {
@@ -16,6 +17,9 @@ it('shows an unavailable core, then retries to show a compatible core', async ()
     await flushPromises()
     expect(w.text()).toContain('Connected to herdr-core · 0.1.16')
     expect(fetch).toHaveBeenCalledWith('/api/core', { cache: 'no-store' })
+    // Connected: the inventory replaces the retry button.
+    expect(w.text()).toContain('No live terminals')
+    expect(fetch).toHaveBeenLastCalledWith('/api/core/terminals', { cache: 'no-store' })
   } finally { w.unmount() }
 })
 it('explains incompatible capabilities', async () => {
