@@ -5,7 +5,7 @@ import { openCoreTerm } from '../server/utils/coreTerm'
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0))
 
-function setup(opts: { terminal?: object | null, attachError?: CoreError, takeover?: boolean } = {}) {
+function setup(opts: { terminal?: object | null, attachError?: CoreError, watch?: boolean } = {}) {
   const sent: { channel: number, kind: number, payload: Buffer }[] = []
   const calls: { method: string, params: any }[] = []
   const streams = new Map<number, StreamHandler>()
@@ -26,15 +26,15 @@ function setup(opts: { terminal?: object | null, attachError?: CoreError, takeov
   const out: any[] = []
   let wsClosed: number | undefined
   const ws = { send: (d: string) => out.push(JSON.parse(d)), close: (code?: number) => { wsClosed = code }, isOpen: () => wsClosed === undefined }
-  const url = new URL(`http://x/ws/term?pane=p1&cols=40&rows=20${opts.takeover ? '&takeover=1' : ''}`)
+  const url = new URL(`http://x/ws/term?pane=p1&cols=40&rows=20${opts.watch ? '&takeover=0' : ''}`)
   const sess = openCoreTerm(ws, url, { endpoint: '/sock', address: id => (id === 'p1' ? 'm/t7' : null), connect: async () => core })
   return { sess: sess!, sent, calls, streams, out, wsClosed: () => wsClosed, closed: () => closed, lose: () => closeFn?.() }
 }
 const resizes = (sent: { kind: number, payload: Buffer }[]) => sent.filter(f => f.kind === FRAME.RESIZE).map(f => [f.payload.readUInt16LE(0), f.payload.readUInt16LE(2)])
 
 describe('openCoreTerm', () => {
-  it('attaches at the terminal size, by its full address, and only resizes once the viewer takes control', async () => {
-    const t = setup()
+  it('a watch-only viewer attaches at the terminal size, by its full address, and only resizes once it takes control', async () => {
+    const t = setup({ watch: true })
     await tick()
     expect(t.calls.map(c => c.method)).toEqual(['events.subscribe', 'terminal.attach'])
     expect(t.calls[0]!.params).toEqual({ terminal: 'm/t7' })
@@ -52,8 +52,8 @@ describe('openCoreTerm', () => {
     expect(resizes(t.sent)).toEqual([[60, 30], [61, 30]])
   })
 
-  it('takes control at once with takeover, and gives it up when another viewer sets the size', async () => {
-    const t = setup({ takeover: true })
+  it('fits the terminal to the screen on open, and gives control up when another viewer sets the size', async () => {
+    const t = setup()
     await tick()
     expect(resizes(t.sent)).toEqual([[40, 20]])
     t.streams.get(2)!(FRAME.DATA, Buffer.from(JSON.stringify({ jsonrpc: '2.0', method: 'event', params: { type: 'size', terminal: 'm/t7', data: { cols: 120, rows: 40 } } }) + '\n'))
@@ -65,11 +65,30 @@ describe('openCoreTerm', () => {
     expect(resizes(t.sent).at(-1)).toEqual([50, 20])
   })
 
+  it('fits on open, follows resizes, and yields to another viewer without a fight', async () => {
+    const size = (cols: number, rows: number) => Buffer.from(JSON.stringify({ jsonrpc: '2.0', method: 'event', params: { type: 'size', terminal: 'm/t7', data: { cols, rows } } }) + '\n')
+    const t = setup()
+    await tick()
+    expect(resizes(t.sent)).toEqual([[40, 20]])
+    t.sess.onMessage(JSON.stringify({ type: 'terminal.resize', cols: 60, rows: 30 }))
+    expect(resizes(t.sent)).toEqual([[40, 20], [60, 30]])
+    t.sess.onMessage(JSON.stringify({ type: 'terminal.resize', cols: 70, rows: 30 }))
+    expect(resizes(t.sent)).toEqual([[40, 20], [60, 30], [70, 30]])
+    // The echo of our own size is not another viewer's.
+    t.streams.get(2)!(FRAME.DATA, size(70, 30))
+    expect(t.out.at(-1)).not.toEqual({ type: 'terminal.control', on: false })
+    // Another viewer fits: this one follows and stops imposing its size.
+    t.streams.get(2)!(FRAME.DATA, size(100, 40))
+    expect(t.out.at(-1)).toEqual({ type: 'terminal.control', on: false })
+    t.sess.onMessage(JSON.stringify({ type: 'terminal.resize', cols: 71, rows: 30 }))
+    expect(resizes(t.sent)).toHaveLength(3)
+  })
+
   it('relays output with its credit and returns no more credit than was sent', async () => {
     const t = setup()
     await tick()
     t.streams.get(3)!(FRAME.DATA, Buffer.from('hello'))
-    expect(t.out.at(-1)).toEqual({ type: 'terminal.frame', encoding: 'ansi', width: 200, height: 50, bytes: Buffer.from('hello').toString('base64'), credit: 5 })
+    expect(t.out.at(-1)).toEqual({ type: 'terminal.frame', encoding: 'ansi', width: 40, height: 20, bytes: Buffer.from('hello').toString('base64'), credit: 5 })
     t.sess.onMessage(JSON.stringify({ type: 'credit', bytes: 1000 }))
     t.sess.onMessage(JSON.stringify({ type: 'credit', bytes: 5 }))
     const credits = t.sent.filter(f => f.channel === 3 && f.kind === FRAME.CREDIT)

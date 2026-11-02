@@ -68,6 +68,7 @@ const conn = computed(() => {
   if (!eventsOpen.value) return { ok: false, text: everOpen.value ? t('offline — reconnecting…') : t('connecting…'), idle: !everOpen.value }
   if (!st.value.ok) return { ok: false, text: t(core ? 'herdr-core unavailable' : 'Herdr unavailable'), idle: false }
   // Server version (update check), the app's own until it answers.
+  if (core) return { ok: true, text: 'wherdr v3 · herdr-core', idle: false }
   return { ok: true, text: `wherdr ${updateInfo.value?.current || pkg.version} · herdr ${st.value.version || ''}`.trim(), idle: false }
 })
 
