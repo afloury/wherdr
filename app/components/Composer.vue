@@ -67,6 +67,8 @@ async function copyUpdate() {
 }
 
 // Conversation draft (text + photos), kept when switching conversations.
+// The model picker needs /api/models and friends: hidden with herdr-core.
+const core = useRuntimeConfig().public.core
 const draft = useDraft(props.paneId)
 const text = toRef(draft, 'text')
 const promptRef = ref<{ textareaRef?: HTMLTextAreaElement } | null>(null)
@@ -811,7 +813,7 @@ defineExpose({
         />
         <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="onFiles">
         <input ref="anyFileInput" type="file" multiple hidden data-testid="attach-any" @change="onFiles">
-        <div v-if="pane && (pane.agent === 'claude' || pane.agent === 'codex' || pane.agent === 'omp')" class="prompt-models">
+        <div v-if="!core && pane && (pane.agent === 'claude' || pane.agent === 'codex' || pane.agent === 'omp')" class="prompt-models">
           <ModelPicker :pane="pane" />
         </div>
         <!-- Public marker (docs/plugins.md): plugins append their buttons here, before Send. -->
