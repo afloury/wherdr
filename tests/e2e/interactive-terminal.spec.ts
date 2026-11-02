@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from './test'
-import { screenChoices } from '../../server/utils/choices'
 import { OMP_CHAT_PANE, SPLIT_CHAT_PANE, SPLIT_SHELL_PANE, SPLIT_TAB, fakeHerdr } from './scenario.mjs'
 
 const pane = OMP_CHAT_PANE
@@ -17,6 +16,7 @@ const coveredAt = (page: Page, selector: string) => page.locator(selector).first
 const bodyBlocked = (page: Page) => page.evaluate(() => getComputedStyle(document.body).pointerEvents === 'none')
 
 test.beforeEach(async ({ page }) => {
+  await page.clock.install()
   await expect.poll(size, { timeout: 15_000 }).toEqual(original)
   await screen(usage)
   await page.addInitScript(() => localStorage.setItem('terminalRenderer', 'html'))
@@ -80,7 +80,7 @@ test('the scrim covers the whole app; a click on it closes the window until it i
   // Same episode: it stays closed, with its button to open it again.
   const reopen = page.getByRole('button', { name: 'Open interactive terminal' })
   await expect(reopen).toBeVisible()
-  await page.waitForTimeout(3500)
+  await page.clock.fastForward(3500)
   await expect(window).toHaveCount(0)
   await expect(reopen).toBeVisible()
   await reopen.click()
@@ -111,7 +111,7 @@ test('manual close releases the pane without Escape and does not reopen the same
   expect((await fakeHerdr('e2e.terminal_screen', { pane_id: pane }) as { keys: string[] }).keys).toEqual([])
   // More than a screen re-read interval; cursor motion is still the same episode.
   await screen(usage.replace('› 1.', '  1.').replace('  2.', '› 2.'))
-  await page.waitForTimeout(3500)
+  await page.clock.fastForward(3500)
   await expect(window).toHaveCount(0)
   await page.getByRole('button', { name: 'Open interactive terminal' }).click()
   await expect(window).toBeVisible()
@@ -119,15 +119,8 @@ test('manual close releases the pane without Escape and does not reopen the same
   await expect(window).toHaveCount(0)
 })
 
-test('rejects a stale native choice after the screen changes to an ambiguous menu', async ({ page }) => {
-  await expect(page.locator('.interactive-terminal')).toBeVisible()
-  const response = await page.request.post('/api/choose', {
-    headers: { Origin: new URL(page.url()).origin },
-    data: { pane_id: pane, index: 0, label: 'View analytics  Usage history', identity: screenChoices(usage, 'codex')!.identity },
-  })
-  expect(response.ok()).toBe(false)
-  expect((await fakeHerdr('e2e.terminal_screen', { pane_id: pane }) as { keys: string[] }).keys).toEqual([])
-})
+// Ambiguous-menu choice rejection moved to tests/review0346.test.ts
+// "an ambiguous terminal menu refuses a stale native choice".
 
 test('Terminal view after closing the window keeps one fitted terminal for the pane', async ({ page }, info) => {
   const toggle = info.project.name.includes('desktop')
@@ -162,7 +155,7 @@ test('in a split, only the cell in use opens the window; another one keeps its b
   await expect(shell.locator('.xterm-rows')).toContainText('fake terminal')
   const reopen = chat.getByRole('button', { name: 'Open interactive terminal' })
   await expect(reopen).toBeVisible()
-  await page.waitForTimeout(1500)
+  await page.clock.fastForward(1500)
   await expect(page.locator('.interactive-terminal')).toHaveCount(0)
   await expect(page.locator('.hw-scrim')).toHaveCount(0)
   expect((await sizeOf()).attached).toBe(false)
