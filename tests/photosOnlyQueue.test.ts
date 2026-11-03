@@ -2,7 +2,6 @@
 // as a text message, matched by its photos, gone once it lands, never twice.
 import { describe, expect, it } from 'vitest'
 import { isSlashCommand, photosLanded, photosOnly, uploadNames } from '../shared/queuedMatch'
-import { loadQueued, queuedDone } from '../server/utils/queued'
 import { queuedPhase } from '../shared/queuedPhase'
 import { parseLines } from '../server/utils/transcripts'
 import { pendingQueue, rememberSent } from '../app/utils/pendingQueue'
@@ -37,29 +36,6 @@ describe('photos alone: what the message is', () => {
     expect(photosLanded(photos, { role: 'user', text: A })).toBe(true)
     expect(photosLanded(photos, { role: 'user', text: 'other' })).toBe(false)
     expect(photosLanded(photos, { role: 'assistant', text: '', images: 1 })).toBe(false)
-  })
-})
-
-describe('server: record taken by the agent', () => {
-  const q = { text: photos, at: T0 }
-  it('still waiting while no message with its photos appears', () => {
-    const items: ChatItem[] = [{ role: 'user', text: 'earlier', ts: iso(T0 - 60000) }, { role: 'assistant', text: 'ok', ts: iso(T0 + 1000) }]
-    expect(queuedDone(q, items, false, T0 + 5000)).toBe(false)
-  })
-  it('taken: images without text after sending', () => {
-    expect(queuedDone(q, [{ role: 'user', text: '', images: 2, ts: iso(T0 + 3000) }], false, T0 + 5000)).toBe(true)
-  })
-  it('an older message with images does not count', () => {
-    expect(queuedDone(q, [{ role: 'user', text: '', images: 1, ts: iso(T0 - 60000) }], false, T0 + 5000)).toBe(false)
-  })
-  it('records read back after a restart: well-formed only, an old one as not seen', () => {
-    const raw = {
-      'w1:p1': [{ id: 'a1', text: photos, at: T0, held: true }, { id: 'old', text: 'x', at: T0 - 2 * 3600 * 1000 }, { id: 5 }],
-      'w1:p2': 'nope',
-    }
-    expect(loadQueued(raw, T0 + 1000)).toEqual([['w1:p1', [{ id: 'a1', text: photos, at: T0, held: true },
-      { id: 'old', text: 'x', at: T0 - 2 * 3600 * 1000, failed: true, unseen: true }]]])
-    expect(loadQueued(null, T0)).toEqual([])
   })
 })
 

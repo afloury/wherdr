@@ -6,15 +6,29 @@ export interface CoreEvent { type: string; terminal?: string; seq?: number; data
 export type CoreTerminals = Map<string, CoreTerminal>
 
 const isObject = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
+// The event's own time when core sends one, else the time it arrived.
+const stamp = (data: Record<string, unknown>, now: number) => typeof data.status_ms === 'number' ? data.status_ms : now
+const ended = (state: unknown) => state === 'finished' || state === 'lost'
+
+// The live terminals of a snapshot, a `missed` resync or a `terminal.list`: core lists a
+// remote machine's finished terminals too, and wherdr shows only live ones.
+export function liveTerminals(list: CoreTerminal[]): CoreTerminals {
+  return new Map(list.filter(t => t && typeof t.address === 'string' && !ended(t.state)).map(t => [t.address, t]))
+}
 
 // Returns what changed: 'terminal' (a terminal fact), 'doc' (a shared document changed),
 // or null (unknown type, unknown terminal or heartbeat: ignored).
-export function applyCoreEvent(terminals: CoreTerminals, event: CoreEvent): 'terminal' | 'doc' | null {
+// Core's `status` and `turn` events carry no `status_ms`: a new state or turn stamps it with
+// `now`, so the card order and the preview (both keyed on it) follow the live terminal.
+export function applyCoreEvent(terminals: CoreTerminals, event: CoreEvent, now: number = Date.now()): 'terminal' | 'doc' | null {
   const data = isObject(event.data) ? event.data : {}
   if (event.type === 'doc') return 'doc'
   if (!event.terminal) return null
   if (event.type === 'created' || event.type === 'restarted') {
     if (typeof data.address !== 'string') return null
+    // Core re-announces a remote machine's terminals (after a rename or a reconnect),
+    // finished ones included: those must not come back as live terminals.
+    if (ended(data.state)) return terminals.delete(event.terminal) ? 'terminal' : null
     terminals.set(event.terminal, { ...terminals.get(event.terminal), ...data } as CoreTerminal)
     return 'terminal'
   }
@@ -26,11 +40,12 @@ export function applyCoreEvent(terminals: CoreTerminals, event: CoreEvent): 'ter
     case 'status': {
       // `{status:{state}}` (core 0.1.16); a bare `{state}` is read too.
       const status = isObject(data.status) ? data.status : typeof data.state === 'string' ? data : null
-      terminals.set(event.terminal, { ...t, status: status as CoreTerminal['status'] })
+      const changed = (status?.state ?? null) !== (t.status?.state ?? null)
+      terminals.set(event.terminal, { ...t, status: status as CoreTerminal['status'], ...(changed ? { status_ms: stamp(data, now) } : {}) })
       return 'terminal'
     }
     case 'turn':
-      if (typeof data.turn === 'number') terminals.set(event.terminal, { ...t, turn: data.turn })
+      if (typeof data.turn === 'number') terminals.set(event.terminal, { ...t, turn: data.turn, ...(data.turn !== t.turn ? { status_ms: stamp(data, now) } : {}) })
       return 'terminal'
     case 'title': if (typeof data.title === 'string') terminals.set(event.terminal, { ...t, title: data.title }); return 'terminal'
     case 'labels': if (isObject(data.labels)) terminals.set(event.terminal, { ...t, labels: data.labels as Record<string, string> }); return 'terminal'

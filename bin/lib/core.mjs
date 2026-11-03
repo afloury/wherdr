@@ -111,7 +111,7 @@ export function serverEnv(opts, env, home = os.homedir(), bin = BIN) {
   // Open WebSockets do not hold Ctrl+C for 30 s; clients reconnect on their own.
   out.NITRO_SHUTDOWN_TIMEOUT ??= '1500'
   // Update command, or one-tap update, offered in the app (shared/updates.ts):
-  // the package to replace and the folder of its state and log (server/utils/selfupdate.ts).
+  // the package to replace and the folder of its state and log (bin/lib/updater.mjs).
   out.WHERDR_INSTALL = installKind(bin, dir)
   out.WHERDR_ROOT = path.resolve(bin, '..', '..')
   out.WHERDR_DIR = dir

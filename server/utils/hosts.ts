@@ -110,11 +110,17 @@ pre{margin:0;padding:10px 12px;border:1px solid #3a3f47;background:#15181d;white
 
 // A client outside this computer and the tailnet (server/utils/network.ts),
 // or any connection while wherdr may be exposed (`why`: Tailscale Funnel
-// exposes wherdr's port): the page
-// says why and what to do, without echoing any address.
-export function networkRefusedPage(why?: 'funnel'): string {
+// exposes wherdr's port; 'foreign': a tailnet device that is not the owner's,
+// without a passkey): the page says why and what to do, without echoing any
+// address.
+export function networkRefusedPage(why?: 'funnel' | 'foreign'): string {
   const opt = '<code>WHERDR_TRUSTED_NETWORKS</code>'
-  const copy = why === 'funnel'
+  const copy = why === 'foreign'
+    ? {
+        title: 'This device is not one of the owner\'s.',
+        body: '<p>It is on the tailnet, but Tailscale lists it as another user\'s device or a node shared in from another tailnet. Without a passkey, wherdr only answers its owner\'s own devices.</p><p>The owner can set up a passkey (Settings › Security, from one of their devices): other tailnet devices then reach the lock screen and need that passkey.</p>',
+      }
+    : why === 'funnel'
     ? {
         title: 'Tailscale Funnel opens wherdr to the Internet.',
         body: '<p>Funnel relays connections from anywhere to this computer, where wherdr cannot tell them from yours, so wherdr refuses every connection while it lasts.</p><p>On the computer that runs wherdr, turn Funnel off for wherdr\'s port (<code>tailscale funnel status</code>, then <code>tailscale funnel … off</code>), then reload. To reach wherdr from your devices, use <code>tailscale serve</code>, which stays inside your tailnet.</p>',

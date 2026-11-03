@@ -4,8 +4,7 @@ import { paneTitle } from '../../shared/paneTitle'
 
 export type IndividualAgentRow = PaneRow & { individual: true }
 
-// Apply after Board grouping: task helpers and checkout rows keep their
-// existing meaning. Shell siblings are retained for Show terminals.
+// One row per agent pane; a space without agents (shells only) stays one row.
 export function individualAgentRows(rows: Row[]): Row[] {
   return rows.flatMap(row => {
     const panes = row.kind === 'space' ? row.panes : [row.pane]

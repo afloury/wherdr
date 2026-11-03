@@ -7,7 +7,6 @@ import { notificationRules } from '~/composables/useNotificationRules'
 import { menuState } from '~/composables/useUi'
 import { defaultNotifications } from '#shared/notificationRules'
 import type { Pane } from '#shared/types'
-import type { BoardCard } from '#shared/boardLinks'
 
 const pane: Pane = { id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'claude', name: null, label: null, status: 'blocked', title: 'Example agent', cwd: '/tmp/demo', agentSession: null }
 afterEach(() => {
@@ -19,14 +18,12 @@ afterEach(() => {
 })
 
 for (const desktop of [false, true]) {
-  for (const kind of ['terminal', 'coordinator', 'project', 'task']) {
-    it(`${kind}: ${desktop ? 'desktop' : 'phone'} menu exposes mute state without changing the row`, async () => {
+    it(`${desktop ? 'desktop' : 'phone'} menu exposes mute state without changing the row`, async () => {
       desk.value = desktop
       coarse.value = !desktop
       herdrState.value = { ok: true, panes: [pane], workspaces: [] }
       notificationRules.value = { version: 2, default: { events: ['needs-you', 'finished'], subagents: false }, exceptions: [] }
-      const board = kind === 'terminal' ? undefined : { name: 'Example', coordinator: kind !== 'task', lead: kind === 'project', group: 'needs' } as BoardCard
-      const w = await mountSuspended(AgentCard, { props: { pane, board } })
+      const w = await mountSuspended(AgentCard, { props: { pane } })
       try {
         const before = w.find('.card').html()
         const open = async () => {
@@ -58,5 +55,4 @@ for (const desktop of [false, true]) {
         expect(menuState.items[0]?.label).toBe('Mute notifications')
       } finally { w.unmount() }
     })
-  }
 }

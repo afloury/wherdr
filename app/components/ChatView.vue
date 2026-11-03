@@ -8,8 +8,7 @@
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolView, Pane, QueuedMessage } from '#shared/types'
 import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
-import { queueReason, canClearQueued } from '~/utils/queuedReason'
-import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
+import { restoreDraft } from '~/utils/queuedCancel'
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
@@ -24,7 +23,6 @@ import { messageId, messageOf, messageRef, pointRef, type Reference } from '#sha
 import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
 import { duplicateImages } from '#shared/imageDupes'
-import { isAutopilotWake } from '~/utils/autopilotWake'
 import { stripPosition } from '#shared/filePaths'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
@@ -394,7 +392,6 @@ type Block =
   | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
-  | { k: 'autopilot', key: string, text: string }
   | { k: 'system', key: string, text: string }
   | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean, scheduled?: boolean }
   // The agent's turn failed (omp: usage limit, credit balance, stalled stream…).
@@ -542,9 +539,7 @@ const blocks = computed<Block[]>(() => {
     }
     flush()
     const key = `${it.role}:${it.ts}:${i}`
-    if (isAutopilotWake(it)) {
-      out.push({ k: 'autopilot', key, text: it.text })
-    } else if (it.role === 'user') {
+    if (it.role === 'user') {
       const uploads = it.text.match(UPLOAD_RE) || []
       // Attached files (PDF, text…): a chip each, their line leaves the text.
       const files = it.text.split('\n').map(parseAttachmentLine).filter((f): f is { path: string, name: string } => Boolean(f))
@@ -855,18 +850,9 @@ async function runCommand(cmd: string) {
   const queued = await runInAgent(props.pane.id, cmd)
   if (queued !== false) emit('sent', queued)
 }
-async function runInSplit(cmd: string) {
-  if (readOnly.value) return
-  try {
-    const r = await api<{ pane_id: string, created?: boolean }>('/api/split-command', { pane_id: props.pane.id, command: cmd })
-    toast(r.created ? t('Command sent to a new split terminal') : t('Command sent to split terminal'))
-    await navigateTo(desk.value ? { path: tabPath(props.pane.tab), query: { pane: r.pane_id } } : panePath(r.pane_id))
-  } catch (err) { toast((err as Error).message, true) }
-}
 function cmdMenuItems(cmd: string, runnable: boolean): MenuItem[] {
   const items: MenuItem[] = []
   if (runnable) items.push({ label: tl('Run…', 'Lancer…'), icon: 'i-lucide-play', run: () => runCommand(cmd) })
-  if (!readOnly.value) items.push({ label: t('Run in split terminal'), icon: 'i-lucide-columns-2', run: () => runInSplit(cmd) })
   items.push({ label: t('Copy command'), icon: 'i-lucide-copy', desc: cmd, mono: true, run: () => copyText(cmd) })
   return items
 }
@@ -878,8 +864,8 @@ function openCmdMenu(el: HTMLElement) {
 
 // ------------------------------------------------------------ file paths
 // Inline code that looks like a path (utils/markdown.ts): Preview (in a sheet,
-// FilesView) and Download from the agent's machine, wherever it runs; Reveal
-// in Finder and Open there when it is a Mac; Copy path everywhere.
+// FilesView) and Download from the agent's machine, wherever it runs; Copy
+// path everywhere.
 // Paths and commands: dropdown at the code on a computer, sheet on the phone.
 const codeMenu = reactive({ open: false, x: 0, y: 0, w: 0, h: 0 })
 const codeMenuDropdown = ref<ReturnType<typeof toDropdown>>([])
@@ -902,12 +888,6 @@ function pathMenuItems(p: string): MenuItem[] {
     items.push(
       { label: t('Preview'), icon: 'i-lucide-eye', run: () => previewFile(p) },
       { label: t('Download'), icon: 'i-lucide-download', run: () => downloadFile(p) },
-    )
-  }
-  if (canOpenOnMachine(props.pane) && !offlineView.value) {
-    items.push(
-      { label: t('Reveal in Finder'), icon: 'i-lucide-folder-search', run: () => revealOnMachine(p, 'reveal') },
-      { label: t('Open'), icon: 'i-lucide-external-link', run: () => revealOnMachine(p, 'open') },
     )
   }
   items.push({ label: t('Copy path'), icon: 'i-lucide-copy', desc: p, mono: true, run: () => copyText(p) })
@@ -934,17 +914,6 @@ function onListKey(e: KeyboardEvent) {
   if (el.classList.contains('md-cmd')) openCmdMenu(el)
   else openPathMenu(el)
 }
-async function revealOnMachine(p: string, mode: 'reveal' | 'open') {
-  try {
-    const r = await api<{ machine: string }>('/api/reveal', { pane_id: props.pane.id, path: p, mode })
-    toast(mode === 'reveal'
-      ? tl(`Shown in Finder on ${r.machine}`, `Affiché dans le Finder sur ${r.machine}`)
-      : tl(`Opened in the editor on ${r.machine}`, `Ouvert dans l’éditeur sur ${r.machine}`))
-  } catch (err) {
-    toast((err as Error).message, true)
-  }
-}
-
 // ------------------------------------------------------------ queued
 // Messages sent but not yet taken by the agent: dotted bubbles
 // below the conversation, until they appear in its transcript.
@@ -954,6 +923,12 @@ async function revealOnMachine(p: string, mode: 'reveal' | 'open') {
 // "!" command at the end; the screen already says it is running, and which
 // messages were sent or are still in its queue (see shared/queuedPhase.ts).
 // omp: only the "!" / "$" command it runs (it stays idle meanwhile).
+// What a message waits on before the agent reads it.
+function waitingOn(p: Pane): 'stopped' | 'question' | 'working' | 'sending' {
+  if (!p.agent) return 'stopped'
+  if (p.prompt || p.status === 'blocked') return 'question'
+  return p.status === 'working' ? 'working' : 'sending'
+}
 const screen = computed<ClaudeScreen | null>(() => {
   if (readOnly.value) return null
   const p = props.pane
@@ -963,12 +938,11 @@ const screen = computed<ClaudeScreen | null>(() => {
 const liveShell = computed(() => (screen.value && screen.value.shell) || null)
 const queuedList = computed(() => {
   const p = props.pane
-  // A record the server gives back is on its way to the message field (see utils/givenBack.ts).
-  const mine = withOutbox(readOnly.value ? [] : (p.queued || []).filter(q => !q.back), props.localQueued)
+  const mine = withOutbox([], readOnly.value ? [] : props.localQueued)
   const memory = rememberSent(p.id, mine)
   const replies = blocks.value.filter(b => b.k === 'assistant')
   // Agent idle, nothing holding it: Claude's own queue is empty by now.
-  const idle = queueReason(p, {}) === 'sending'
+  const idle = waitingOn(p) === 'sending'
   return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle }).map((q) => {
     const lines = q.raw.split('\n')
     const text = lines.filter(l => !isUploadLine(l) && !isAttachmentLine(l)).join('\n').trim()
@@ -984,14 +958,6 @@ const queuedList = computed(() => {
     }
   })
 })
-const sendingNow = ref(false)
-async function sendNow() {
-  if (sendingNow.value) return
-  sendingNow.value = true
-  try { await api('/api/send-now', { pane_id: props.pane.id }) }
-  catch (err) { toast((err as Error).message, true) }
-  finally { sendingNow.value = false }
-}
 // Same parts as a message in the conversation: thumbnails above the bubble,
 // so nothing moves when it lands.
 const pendingParts = (q: { srcs: string[], missing: number, body: string, files: unknown[] }) => [
@@ -999,97 +965,37 @@ const pendingParts = (q: { srcs: string[], missing: number, body: string, files:
   ...Array.from({ length: q.missing }, () => ({ type: 'file' as const, mediaType: 'image/jpeg', url: '' })),
   ...(q.body || q.files.length ? [{ type: 'text' as const, text: q.body || ' ' }] : []),
 ]
-// "Cancel": the message leaves the agent's queue and comes back into the input
-// field. Already read in the meantime: the server refuses, we say so.
-const canCancel = computed(() => !readOnly.value && canCancelQueued(props.pane))
-const cancelling = ref<string | null>(null)
-async function cancelQueued(q: { id: string, raw: string, mine: boolean, local?: boolean, pasted?: string[] }) {
-  if (cancelling.value) return
-  // Never reached the server: the app's copy goes back into the field.
-  if (q.local) {
-    restoreDraft(useDraft(props.pane.id), outboxDrop(props.pane.id, q.id) || q.raw)
-    emit('restored')
-    return
-  }
-  cancelling.value = q.id
-  haptic()
-  try {
-    const r = await api<{ text: string, lost?: number }>('/api/unqueue', { pane_id: props.pane.id, text: q.raw, id: q.mine ? q.id : undefined })
-    restoreDraft(useDraft(props.pane.id), r.text || q.raw, q.pasted)
-    emit('restored')
-    // Photos Claude queued itself, whose files wherdr never had: said, not silently dropped.
-    if (r.lost) toast(t('Removed from the queue'), true, lostPhotosText(r.lost))
-    else toast(t('Removed from the queue'))
-    setTimeout(loadChat, 400)
-  } catch (err) {
-    toast((err as Error).message, true)
-  } finally {
-    cancelling.value = null
-  }
+// A message the server never got: "Cancel" puts the app's copy back into the
+// field, "Retry" sends it again.
+function cancelQueued(q: { id: string, raw: string }) {
+  restoreDraft(useDraft(props.pane.id), outboxDrop(props.pane.id, q.id) || q.raw)
+  emit('restored')
 }
-// "Retry" on a message that could not be sent: held again by the server.
 const retrying = ref<string | null>(null)
-async function retryQueued(q: { id: string, local?: boolean }) {
+async function retryQueued(q: { id: string }) {
   if (retrying.value) return
   retrying.value = q.id
   haptic()
   try {
-    if (q.local) await outboxRetry(props.pane, props.pane.id, q.id)
-    else await api('/api/requeue', { pane_id: props.pane.id, id: q.id })
+    await outboxRetry(props.pane, props.pane.id, q.id)
   } catch (err) {
     toast((err as Error).message, true)
   } finally {
     retrying.value = null
   }
 }
-// Menu left open on the agent's screen (see server/utils/queued.ts
-// lookForLeftMenu): closed with Escape, or closed and the messages typed now.
-const menuLeftShown = computed(() => Boolean(props.pane.menuLeftOpen) && queuedList.value.some(q => q.phase === 'queued'))
-const menuLeftBusy = ref<'close' | 'send' | null>(null)
-async function menuLeft(action: 'close' | 'send') {
-  if (menuLeftBusy.value) return
-  menuLeftBusy.value = action
-  haptic()
-  try {
-    await api('/api/menu-left', { pane_id: props.pane.id, action })
-  } catch (err) {
-    toast((err as Error).message, true)
-  } finally {
-    menuLeftBusy.value = null
-  }
-}
-// Why a message is marked not sent (see server/utils/queued.ts).
-function failedText(reason: QueuedMessage['reason'] | undefined) {
-  if (reason === 'busy') return t('Not sent — the agent’s input contains text')
-  if (reason === 'no_input') return t('Not sent — the agent’s input field was not found on its screen')
-  if (reason === 'lost') return t('Not sent — it was taken out of the agent’s queue before being read')
-  if (reason === 'unseen') return t('Not sent — still not in the conversation after an hour')
-  return t('Not sent')
-}
-const clearing = ref<string | null>(null)
-async function clearAndSend(q: { id: string, inputText?: string }) {
-  if (clearing.value) return
-  clearing.value = q.id
-  try { await api('/api/clear-queued-input', { pane_id: props.pane.id, id: q.id, input_text: q.inputText }) }
-  catch (err) { toast((err as Error).message, true) }
-  finally { clearing.value = null }
-}
-function queuedLabel(q: { reason?: QueuedMessage['reason'], inputText?: string, state: string | null }) {
+function queuedLabel(q: { state: string | null }) {
   if (q.state === 'sending') return t('Queued · ') + t('sending…')
-  switch (queueReason(props.pane, q)) {
-    case 'busy': return q.inputText
-      ? tl(`Not sent: the agent’s input already contains text (“${q.inputText}”)`, `Pas envoyé : la saisie de l’agent contient déjà du texte (« ${q.inputText} »)`)
-      : t('Not sent — the agent’s input contains text')
+  switch (waitingOn(props.pane)) {
     case 'stopped': return t('Queued · ') + t('agent stopped')
     case 'question': return t('Queued · ') + t('after you answer the question')
-    case 'dialog': return t('Queued · ') + t('will be sent when the menu closes')
-    case 'starting': return t('Queued · ') + t('agent starting')
     case 'working': return t('Queued')
     default: return t('Queued · ') + t('sending…')
   }
 }
 watch(() => queuedList.value.map(q => `${q.id}:${q.phase}`).join(','), () => nextTick(() => scrollToEnd(false)))
 watch(() => liveShell.value && liveShell.value.lines.join('\n'), () => nextTick(() => scrollToEnd(false)))
+watch(() => props.pane.draft?.text, () => nextTick(() => scrollToEnd(false)))
 
 // No conversation yet but a waiting screen (key legend):
 // the agent is waiting for an action. Recognized screen: details and buttons in the
@@ -1287,7 +1193,7 @@ function focusSearch() {
 // reminder as long as it may show, so answering moves nothing).
 const asked = computed(() => {
   if (readOnly.value || working.value || blocked.value || queuedList.value.length || liveShell.value) return null
-  const last = blocks.value.findLast(b => b.k === 'assistant' || b.k === 'user' || b.k === 'autopilot' || b.k === 'shell' || b.k === 'ompRun')
+  const last = blocks.value.findLast(b => b.k === 'assistant' || b.k === 'user' || b.k === 'shell' || b.k === 'ompRun')
   if (!last || last.k !== 'assistant' || typingAt(last.id) !== null) return null
   const targets = replyTargets(last.html)
   return targets.questions.length + targets.rows.length ? { key: last.key, time: last.time, rid: last.rid, targets } : null
@@ -1399,7 +1305,6 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <UIcon :name="agentIcon(pane.agent) || 'i-lucide-bot'" /><span>{{ kindLabel(pane.agent) }}</span>
               </div>
 
-              <AutopilotMessage v-else-if="b.k === 'autopilot'" :text="b.text" :data-hit-key="b.key" @copy="copyText" />
 
               <div v-else-if="b.k === 'user'" class="msg-user-wrap" :data-hit-key="b.key">
                 <button v-if="b.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(b.origin)">
@@ -1583,10 +1488,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
           </button>
         </Teleport>
-        <div v-if="queuedList.length || liveShell || screen?.sendNow" class="queued-list">
-          <div v-if="!readOnly && screen?.sendNow" class="queued-tag">
-            <button type="button" class="queued-cancel" :disabled="sendingNow" @click="sendNow">{{ t('Send now') }}</button>
-          </div>
+        <div v-if="queuedList.length || liveShell || (!readOnly && (pane.draft || pane.queueSendNow))" class="queued-list">
           <!-- Already sent (visible as sent on screen), not yet in the transcript. -->
           <div v-for="q in queuedList.filter(x => x.phase === 'sent')" :key="q.id" class="msg-user-wrap">
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
@@ -1644,37 +1546,20 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               </template>
             </UChatMessage>
             <div v-if="q.state === 'failed'" class="queued-tag failed" role="alert">
-              <UIcon name="i-lucide-circle-alert" /><span>{{ failedText(q.reason) }}</span>
+              <UIcon name="i-lucide-circle-alert" /><span>{{ t('Not sent') }}</span>
               <button type="button" class="queued-cancel" :disabled="Boolean(retrying)" @click="retryQueued(q)">
                 <UIcon :name="retrying === q.id ? 'i-lucide-loader-circle' : 'i-lucide-rotate-cw'" :class="{ spin: retrying === q.id }" />{{ t('Retry') }}
               </button>
-              <button type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
-                <UIcon :name="cancelling === q.id ? 'i-lucide-loader-circle' : 'i-lucide-undo-2'" :class="{ spin: cancelling === q.id }" />{{ t('Cancel') }}
+              <button type="button" class="queued-cancel" @click="cancelQueued(q)">
+                <UIcon name="i-lucide-undo-2" />{{ t('Cancel') }}
               </button>
             </div>
             <div v-else class="queued-tag">
               <UIcon name="i-lucide-clock" /><span>{{ queuedLabel(q) }}</span>
-              <button v-if="canClearQueued(pane, q)" type="button" class="queued-cancel" :disabled="Boolean(clearing)" @click="clearAndSend(q)">{{ t('Clear and send') }}</button>
-              <button v-if="q.state === 'held' && queueReason(pane, q) !== 'working'" type="button" class="queued-cancel" @click="emit('gotoTerm')">{{ t('Open terminal') }}</button>
-              <button v-if="q.state !== 'sending' && (canCancel || q.state === 'held') && q.raw" type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
-                <UIcon :name="cancelling === q.id ? 'i-lucide-loader-circle' : 'i-lucide-undo-2'" :class="{ spin: cancelling === q.id }" />{{ t('Cancel') }}
-              </button>
             </div>
           </div>
-          <!-- A menu left open in the agent's terminal (no card shows it) holds the messages back. -->
-          <div v-if="menuLeftShown" class="menu-left" role="status">
-            <p class="menu-left-text">
-              <UIcon name="i-lucide-square-terminal" /><span>{{ t('A menu is still open in the agent’s terminal. Your messages wait for it to close.') }}</span>
-            </p>
-            <div class="menu-left-actions">
-              <button type="button" class="queued-cancel" :disabled="Boolean(menuLeftBusy)" @click="menuLeft('close')">
-                <UIcon :name="menuLeftBusy === 'close' ? 'i-lucide-loader-circle' : 'i-lucide-x'" :class="{ spin: menuLeftBusy === 'close' }" />{{ t('Close menu') }}
-              </button>
-              <button type="button" class="queued-cancel" :disabled="Boolean(menuLeftBusy)" @click="menuLeft('send')">
-                <UIcon :name="menuLeftBusy === 'send' ? 'i-lucide-loader-circle' : 'i-lucide-send'" :class="{ spin: menuLeftBusy === 'send' }" />{{ t('Send anyway') }}
-              </button>
-            </div>
-          </div>
+          <!-- herdr-core: text left unsent in Claude's own input box, Claude's queue. -->
+          <UnsentInput v-if="!readOnly && (pane.draft || pane.queueSendNow)" :pane="pane" />
         </div>
 
         <div v-if="status" class="chat-status" :class="{ typing: status.typing, waiting: !status.typing }">

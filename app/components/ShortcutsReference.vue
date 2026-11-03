@@ -4,8 +4,7 @@
 const mac = /Macintosh|Mac OS X|iPhone|iPad/.test(navigator.userAgent)
 const ARROWS = ['arrowleft', 'arrowright', 'arrowup', 'arrowdown']
 type Group = { title: string, rows: { label: string, keys: string[][], v2?: true }[] }
-// herdr-core (v3): the rows marked v2 (Board, tabs, editor, swap) are not offered yet.
-const core = useRuntimeConfig().public.core
+// herdr-core (v3): the rows marked v2 (tabs, editor, swap) are not offered yet.
 const allGroups: Group[] = [
   { title: tl('Anywhere', 'Partout'), rows: [
     { label: tl('Search agents and conversations', 'Rechercher agents et conversations'), keys: [shortcutKbds('search-all')] },
@@ -15,7 +14,6 @@ const allGroups: Group[] = [
     { label: tl('Close this pane', 'Fermer ce pane'), keys: [shortcutKbds('close-pane')] },
     { label: tl('Current agent folder in the editor', 'Dossier de l’agent dans l’éditeur'), keys: [shortcutKbds('open-editor')], v2: true },
     { label: t('Settings'), keys: [shortcutKbds('settings')] },
-    { label: t('Board'), keys: [shortcutKbds('board')], v2: true },
     { label: tl('Keyboard shortcuts', 'Raccourcis clavier'), keys: [shortcutKbds('help'), ['?']] },
   ] },
   { title: tl('Agent', 'Agent'), rows: [
@@ -40,7 +38,7 @@ const allGroups: Group[] = [
     { label: tl('New line for the agent', 'Nouvelle ligne pour l’agent'), keys: [['shift', 'enter']] },
   ] },
 ]
-const groups = allGroups.map(g => ({ ...g, rows: core ? g.rows.filter(r => !r.v2) : g.rows }))
+const groups = allGroups.map(g => ({ ...g, rows: g.rows.filter(r => !r.v2) }))
 </script>
 
 <template>

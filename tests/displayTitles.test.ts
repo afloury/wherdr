@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Pane, Workspace } from '../shared/types'
-import { cleanLabel, conversationSubtitle, desktopHeaderTitle, phoneHeaderTitle, spaceTitle } from '../shared/displayTitles'
+import { cleanLabel, conversationSubtitle, coreOwnName, homeTitle, desktopHeaderTitle, phoneHeaderTitle, spaceTitle } from '../shared/displayTitles'
 
 const p: Pane = { id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: 'agent', agent: 'claude', name: 'claude', label: null, status: 'idle', title: 'Customer portal brief', cwd: '/tmp/demo', agentSession: null }
 const w: Workspace = { id: 'w1', label: 'Customer Portal 2', number: 1, status: null, worktree: false }
@@ -70,5 +70,23 @@ describe('desktop header title', () => {
   })
   it('keeps the space name when the pane was not renamed', () => {
     expect(desktopHeaderTitle(p, w, false)).toBe('Customer Portal 2')
+  })
+})
+
+describe('coreOwnName', () => {
+  it('keeps a given name and drops a name that is only the hc address', () => {
+    expect(coreOwnName({ coreAddress: 'box/t2', label: 'Parser-agent-5' })).toBe('Parser-agent-5')
+    expect(coreOwnName({ coreAddress: 't2', label: 't2' })).toBe('')
+    expect(coreOwnName({ coreAddress: 'box/t3', label: 't3' })).toBe('')
+    expect(coreOwnName({ coreAddress: undefined, label: 'legacy' })).toBe('')
+  })
+})
+
+describe('homeTitle', () => {
+  it('is the own name of a core terminal, else its space', () => {
+    const core = { ...p, coreAddress: 'box/t4', label: 'Parser-agent-5' }
+    expect(homeTitle(core, w)).toBe('Parser-agent-5')
+    expect(homeTitle({ ...core, label: 't4' }, w)).toBe('Customer Portal 2')
+    expect(homeTitle({ ...p, label: 'legacy' }, w)).toBe('Customer Portal 2')
   })
 })

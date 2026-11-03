@@ -11,7 +11,8 @@ const demo = process.env.VITE_WHERDR_DEMO === '1'
 
 export default defineNuxtConfig({
   ssr: false,
-  runtimeConfig: { public: { core: process.env.WHERDR_BACKEND === 'core' } },
+  // Server and app run on herdr-core only (the demo answers the API itself).
+  runtimeConfig: { public: { core: !demo } },
   modules: demo ? ['@nuxt/ui'] : ['@nuxt/ui', '@vite-pwa/nuxt'],
   plugins: demo ? ['~/demo/plugin.client'] : [],
   // No server code in the demo build (nothing to prerender against, nothing that
@@ -121,7 +122,7 @@ export default defineNuxtConfig({
         compressPublicAssets: { gzip: true, brotli: true },
         // Scripts handed to machines (Claude status line installer):
         // bundled, the repository is not in the image.
-        serverAssets: [{ baseName: 'scripts', dir: '../scripts' }],
+        serverAssets: [{ baseName: 'scripts', dir: '../scripts', pattern: 'install-claude-statusline.sh' }],
       },
 
   // App code always revalidated (otherwise an iPhone keeps the old version

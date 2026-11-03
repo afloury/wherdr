@@ -10,32 +10,10 @@ const env = process.env
 export const HOME = env.HOME || os.homedir()
 // On the host, the user's real PATH (bin/lib/userpath.mjs): a login service
 // starts wherdr with a short system PATH, and what wherdr runs (herdr-projects,
-// git, gh, tailscale) must find the agents and tools in user folders. Set
-// before HERDR_CHILD_ENV below copies the environment. The runtime that runs
-// wherdr stays first, as the login service puts it.
+// git, gh, tailscale) must find the agents and tools in user folders. The
+// runtime that runs wherdr stays first, as the login service puts it.
 env.PATH = userPath({ env, home: HOME, first: [path.dirname(process.execPath)] })
 export const DATA_DIR = env.DATA_DIR || path.join(process.cwd(), 'data')
-// herdr.dev installer: ~/.local/bin; otherwise (Homebrew…) the one on the PATH.
-const LOCAL_HERDR = path.join(HOME, '.local/bin/herdr')
-export const HERDR_BIN = env.HERDR_BIN || (fs.existsSync(LOCAL_HERDR) ? LOCAL_HERDR : 'herdr')
-// Named session for tests (`herdr --session hwtest server`); empty = default session,
-// the one the `herdr` client also attaches to.
-// (Not `HERDR_SESSION`: Herdr reads that variable itself, and refuses to start when it is empty.)
-export const HERDR_SESSION = env.HERDR_WEB_SESSION || ''
-export const HERDR_SOCK = env.HERDR_SOCK || (HERDR_SESSION
-  ? path.join(HOME, '.config/herdr/sessions', HERDR_SESSION, 'herdr.sock')
-  : path.join(HOME, '.config/herdr/herdr.sock'))
-// Client socket (attached herdr, shell clients): next to the API socket.
-// wherdr connects to it as a passive client to receive `herdr notification show`.
-export const HERDR_CLIENT_SOCK = env.HERDR_CLIENT_SOCK || path.join(path.dirname(HERDR_SOCK), 'herdr-client.sock')
-// HERDR_WEB_HERDR_NOTIFICATIONS=off: do not relay these notifications as push.
-export const NOTICES_ENABLED = !/^(0|off|false|no|non)$/i.test((env.HERDR_WEB_HERDR_NOTIFICATIONS || '').trim())
-export const SESSION_ARGS = HERDR_SESSION ? ['--session', HERDR_SESSION] : []
-// The herdr CLI is also configured by HERDR_* variables: we pass it
-// none, the session is chosen explicitly with --session.
-export const HERDR_CHILD_ENV: NodeJS.ProcessEnv = Object.fromEntries(
-  Object.entries(env).filter(([k]) => !k.startsWith('HERDR_')),
-)
 export const AGENT_KINDS = (env.AGENT_KINDS || 'pi,claude,codex,gemini,cursor,devin,agy,cline,omp,mastracode,opencode,copilot,kimi,kiro,droid,amp,grok,hermes,kilo,qodercli,qwen,letta,maki,muse').split(',').map(s => s.trim()).filter(Boolean)
 // Public address of the app. Push only uses HTTPS URLs as the VAPID subject.
 // An HTTPS APP_URL in the environment wins; otherwise the phone address saved
@@ -77,23 +55,5 @@ export const RESUME_ARGS: Record<string, string[]> = { claude: ['--continue'], c
 // Herdr identifiers: w1…w9, wA, wB… (not only digits), prefixed with
 // "<machine>~" for a remote machine (see shared/ids.ts).
 export const PANE_RE = SHARED_PANE_RE
-
-// ---------------------------------------------------------------- multi-machine
-// Remote machines: Herdr SSH profiles (`herdr machine list`), re-read
-// periodically. HERDR_WEB_MACHINES=off to stick to the local machine.
-export const MACHINES_ENABLED = !/^(0|off|false|no|non)$/i.test((env.HERDR_WEB_MACHINES || '').trim())
-export const MACHINES_REFRESH_MS = Number(env.MACHINES_REFRESH_MS || 30000)
-// Herdr session targeted on remote machines instead of the profile's
-// (tests: `hwtest`). Empty = the profile's (usually `default`).
-export const REMOTE_SESSION = (env.HERDR_WEB_REMOTE_SESSION || '').trim()
-export const SSH_BIN = env.SSH_BIN || 'ssh'
-// Other names / addresses of this machine (e.g. its Tailscale IP): Herdr profiles
-// pointing at it are ignored (in addition to HOST_LABEL, localhost…).
-export const SELF_HOSTS = (env.HERDR_WEB_SELF_HOSTS || '').split(',').map(s => s.trim()).filter(Boolean)
-// SSH sockets (ControlMaster masters, forwarded Herdr sockets): writable, short folder
-// (a Unix socket path is limited to ~104 bytes).
-export const RUNTIME_DIR = env.WHERDR_RUNTIME_DIR || '/tmp/wherdr'
-// Photo store on remote machines, relative to their $HOME.
-export const REMOTE_UPLOAD_SUBDIR = '.cache/herdr-web/uploads'
 
 export const log = (...a: unknown[]) => console.log(new Date().toISOString(), ...a)

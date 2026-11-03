@@ -193,10 +193,10 @@ const FR: Record<string, string> = {
   // Lock
   'Security': 'Sécurité', 'wherdr is locked': 'wherdr est verrouillé',
   'Unlock with your passkey (Face ID, Touch ID, Windows Hello…) to reach your agents.': 'Déverrouille avec ta clé d’accès (Face ID, Touch ID, Windows Hello…) pour accéder à tes agents.',
-  'Unlock': 'Déverrouiller', 'Unlock cancelled': 'Déverrouillage annulé', 'Device': 'Appareil',
+  'Unlock': 'Déverrouiller', 'Unlock cancelled': 'Déverrouillage annulé', 'Too many attempts, wait a minute': 'Trop de tentatives, attends une minute', 'Device': 'Appareil',
   'Lock enabled on this device ✓': 'Verrouillage activé sur cet appareil ✓', 'Registration cancelled': 'Enregistrement annulé',
   'This device is already registered': 'Cet appareil est déjà enregistré',
-  'Optional: wherdr already answers only this computer and your tailnet. A passkey adds a lock on each device, with Face ID, Touch ID, Windows Hello…': 'Facultatif : wherdr ne répond déjà qu’à cet ordinateur et à ton tailnet. Une passkey ajoute un verrou sur chaque appareil, avec Face ID, Touch ID, Windows Hello…',
+  'Optional: wherdr already answers only this computer and your own tailnet devices. If you want one, a passkey adds an automatic lock on each device, with Face ID, Touch ID, Windows Hello…': 'Facultatif : wherdr ne répond déjà qu’à cet ordinateur et à tes propres appareils du tailnet. Si tu veux, une passkey ajoute un verrou automatique sur chaque appareil, avec Face ID, Touch ID, Windows Hello…',
   'This browser does not support passkeys.': 'Ce navigateur ne gère pas les clés d’accès.',
   'Registered keys:': 'Clés enregistrées :',
   'Turn off lock': 'Désactiver le verrouillage',
@@ -382,7 +382,7 @@ const FR: Record<string, string> = {
   'Command copied: paste it into a terminal on the server, in the wherdr folder.': 'Commande copiée : colle-la dans un terminal du serveur, dans le dossier de wherdr.',
   'Then restart wherdr.': 'Puis relance wherdr.', 'Release notes': 'Notes',
   'Stop wherdr first, then run this command.': 'Arrête d’abord wherdr, puis lance cette commande.',
-  // One-tap update (SelfUpdateScreen.vue, server/utils/selfupdate.ts)
+  // One-tap update (bin/lib/updater.mjs)
   'wherdr update': 'Mise à jour de wherdr', 'Updating…': 'Mise à jour…', 'Reloading…': 'Rechargement…',
   'Update failed': 'Échec de la mise à jour', 'Going back to the previous version…': 'Retour à la version précédente…',
   'Restarting wherdr': 'Redémarrage de wherdr', 'Checking the new version': 'Vérification de la nouvelle version',
@@ -697,6 +697,8 @@ const FR: Record<string, string> = {
   'space on another machine': 'espace d’une autre machine', 'invalid split': 'split invalide', 'invalid ratio': 'ratio invalide',
   'no pane on that side': 'aucun pane de ce côté', 'a pane is zoomed in this tab': 'un pane est agrandi dans cet onglet',
   'Not sent': 'Non envoyé', 'will be sent when the menu closes': 'partira quand le menu sera fermé',
+  'Not sent — still in Claude’s input': 'Non envoyé — toujours dans la saisie de Claude', 'Clear': 'Effacer',
+  'Sent, but Claude has not started yet — check the terminal.': 'Envoyé, mais Claude n’a pas encore démarré — vérifie le terminal.',
   'A menu is still open in the agent’s terminal. Your messages wait for it to close.': 'Un menu est resté ouvert dans le terminal de l’agent. Vos messages attendent qu’il se ferme.',
   'Close menu': 'Fermer le menu', 'Send anyway': 'Envoyer quand même',
   'No menu to close': 'Aucun menu à fermer',

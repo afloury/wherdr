@@ -27,7 +27,7 @@ import { carriesFiles, dragDepth } from '~/utils/fileDrop'
 import { interactionWindowFor } from '~/utils/interactionWindow'
 import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
 
-const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
+const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
 const emit = defineEmits<{ activate: [], 'update:selectedMode': [mode: PaneViewMode] }>()
 const core = useRuntimeConfig().public.core
 const paneChat = (p: Pane | null | undefined) => hasChat(p)
@@ -188,17 +188,14 @@ usePaneShortcuts(() => props.paneId, () => live.value, {
 
 const draft = useDraft(props.paneId)
 
-// The same agent in another pane (utils/agentIdentity.ts). Herdr may close
-// this pane and open a new one for the same agent (herdr-projects restarting
-// a coordinator): the draft follows the agent, and the view moves to the new
-// pane. The keys are gathered while the pane is open; the board's links say
-// which coordinator or task it is.
-const boardLinks = useBoardLinks()
+// The same agent in another pane (utils/agentIdentity.ts): the draft follows
+// the agent, and the view moves to the new pane. The keys are gathered while
+// the pane is open.
 // Seeded with the keys stored with the draft: after a reload on a pane already
 // closed, they are all that says who it was.
 const known = shallowRef<string[]>(draftOwnerKeys(props.paneId))
 const liveIds = computed(() => (herdrState.value.ok ? herdrState.value.panes.map(p => p.id).join(' ') : ''))
-watch([() => pane.value && agentKeys(pane.value, boardLinks.value).join(' '), liveIds], ([keys, ids]) => {
+watch([() => pane.value && agentKeys(pane.value).join(' '), liveIds], ([keys, ids]) => {
   if (!keys || !ids) return
   const add = keys.split(' ')
   known.value = mergeKeys(known.value, add)
@@ -208,7 +205,7 @@ watch([() => pane.value && agentKeys(pane.value, boardLinks.value).join(' '), li
     toast(tl('Draft from the closed pane restored', 'Brouillon du pane fermé récupéré'))
   }
 }, { immediate: true })
-const replacement = computed(() => (closed.value ? replacementPane(props.paneId, known.value, herdrState.value.panes, boardLinks.value) : null))
+const replacement = computed(() => (closed.value ? replacementPane(props.paneId, known.value, herdrState.value.panes) : null))
 watch(replacement, (r) => {
   if (!r) return
   moveDraft(props.paneId, r.id)
@@ -217,20 +214,6 @@ watch(replacement, (r) => {
   toast(tl('The agent restarted in a new pane: opened it', 'L’agent a redémarré dans un nouveau pane : il est ouvert'))
   router.replace(panePath(r.id))
 }, { immediate: true })
-// Closed with no replacement yet: the board names the new pane within seconds.
-let linksTimer: ReturnType<typeof setInterval> | undefined
-watch(() => closed.value && !replacement.value, (waiting) => {
-  clearInterval(linksTimer)
-  linksTimer = undefined
-  if (!waiting) return
-  refreshBoardLinks()
-  let left = 20
-  linksTimer = setInterval(() => {
-    if (--left <= 0) { clearInterval(linksTimer); linksTimer = undefined }
-    if (pageVisible.value) refreshBoardLinks()
-  }, 3000)
-}, { immediate: true })
-onUnmounted(() => clearInterval(linksTimer))
 const hasDraft = computed(() => draftFilled(draft))
 async function copyDraft() {
   try {
@@ -251,10 +234,7 @@ function onSent(q: QueuedMessage | null) {
 watch(pane, p => outboxPrune(props.paneId, p?.queued || []))
 
 const prompt = computed(() => (pane.value && pane.value.status === 'blocked' && pane.value.prompt && pane.value.prompt.options ? pane.value.prompt : null))
-const screen = computed(() => knownScreen(pane.value))
-// Menu interactif de Claude Code ouvert (/resume…), agent au repos.
-const menu = computed(() => (pane.value && pane.value.menu && pane.value.status !== 'working' && !prompt.value && !screen.value ? pane.value.menu : null))
-watch(() => JSON.stringify([prompt.value, screen.value, menu.value]), () => nextTick(() => chatRef.value?.scrollToEnd(false)))
+watch(() => JSON.stringify(prompt.value), () => nextTick(() => chatRef.value?.scrollToEnd(false)))
 
 const where = computed(() => {
   const p = pane.value
@@ -263,19 +243,9 @@ const where = computed(() => {
 // Several machines: the agent's, in its metadata.
 const machine = computed(() => (multiMachine.value && pane.value ? machineInfo(pane.value.machine) : undefined))
 const machineDown = computed(() => Boolean(machine.value && machine.value.status !== 'online'))
-function onReview(text: string) {
-  draft.text = draft.text ? `${draft.text}\n\n${text}` : text
-  changesOpen.value = false
-  setMode('chat')
-  nextTick(() => composer.value?.focusEnd())
-}
-const changesOpen = ref(false)
 const filesOpen = ref(false)
-const attachInput = ref<HTMLInputElement | null>(null)
-// Interactive menu open (conversation view): what would be typed would go into its
-// search; the menu card has its own field.
-// Terminal shown: the prompt, waiting screen or
-// menu are already there, and the key bar answers them; no duplicate "Your turn" card.
+// Terminal shown: the prompt is already there, and the key bar answers it;
+// no duplicate "Your turn" card.
 const termShown = computed(() => mode.value === 'term')
 const interactionWindow = interactionWindowFor(props.paneId)
 const interactionOpen = ref(interactionWindow.resume(pane.value?.interaction || 'unknown'))
@@ -292,12 +262,8 @@ function syncInteraction() {
   interactionOpen.value = interactionWindow.update(pane.value?.interaction || 'unknown', now)
   const due = interactionWindow.deadline()
   if (due !== null && pageVisible.value) interactionTimer = setTimeout(syncInteraction, Math.max(0, due - now))
-  // A late native card owns the interaction too: an earlier text snapshot
-  // must never cover its controls or swallow its keyboard shortcuts.
-  if ((interactive.value || interactionOpen.value || prompt.value || menu.value || screen.value)
-    && commandResult.open && commandResult.pane === props.paneId) closeCommandResult(false)
 }
-watch([() => pane.value?.interaction, prompt, menu, screen, () => commandResult.open, () => commandResult.pane, pageVisible], syncInteraction, { immediate: true })
+watch([() => pane.value?.interaction, pageVisible], syncInteraction, { immediate: true })
 const unsubscribeInteraction = interactionWindow.subscribe(syncInteraction)
 onUnmounted(() => {
   clearTimeout(interactionTimer)
@@ -314,18 +280,12 @@ function reopenInteraction() {
 const interactionShown = computed(() => interactionOpen.value && interactionAvailable.value && live.value && !locked.value)
 // herdr-core on a computer: the composer stays under the terminal of an agent.
 const coreDeskComposer = computed(() => core && desk.value && live.value && !props.cell && Boolean(pane.value?.agent))
-const composerShown = computed(() => (coreDeskComposer.value || showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) })) && !(menu.value && mode.value !== 'term') && !(mode.value === 'chat' && interactionOpen.value))
+const composerShown = computed(() => (coreDeskComposer.value || showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) })) && !(mode.value === 'chat' && interactionOpen.value))
 const canAttachTerminal = computed(() => terminalAttachment({
   desk: desk.value, live: live.value, mode: mode.value,
   available: Boolean(pane.value && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value)),
 }))
 
-function attachFile(e: Event) {
-  const input = e.target as HTMLInputElement
-  const files = [...(input.files || [])]
-  input.value = ''
-  sendFiles(files)
-}
 async function sendFiles(files: File[]) {
   if (!canAttachTerminal.value || !pane.value) return
   for (const file of files) {
@@ -413,71 +373,9 @@ function coreMenuItems(p: Pane | undefined): MenuItem[] {
     close: p && !compactPhone.value ? closePaneItem(p, live.value ? shortcutKbds('close-pane') : undefined) : undefined,
   })
 }
-const agentMenu = computed<MenuItem[]>(() => {
-  const p = pane.value
-  const items: MenuItem[] = p ? [notificationMenuItem(p)] : []
-  if (compactPhone.value && paneChat(p)) {
-    items.unshift(
-      { label: mode.value === 'term' ? t('Conversation') : t('Terminal'), icon: mode.value === 'term' ? 'i-lucide-message-square' : 'i-lucide-square-terminal', run: () => toggleMode('term') },
-      { label: t('Search'), icon: 'i-lucide-search', run: toggleSearch },
-      { kind: 'separator' },
-    )
-  }
-  // herdr-core: terminal, input and close only (files, renames and restarts come later).
-  if (core) return coreMenuItems(p)
-  if (canAttachTerminal.value) items.push({ label: t('Attach a file…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
-  if (p) items.push({ label: t('View changes'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
-  if (p) items.push({ label: t('Browse files'), icon: 'i-lucide-folder-tree', run: () => { filesOpen.value = true } })
-  // Current agent folder in its default editor, on the agent's Mac (Mod+Alt+O).
-  if (p && canOpenOnMachine(p)) {
-    items.push({
-      label: t('Open in editor'), icon: 'i-lucide-external-link',
-      kbds: live.value ? shortcutKbds('open-editor') : undefined, run: () => openFolderOnMachine(p),
-    })
-  }
-  // Rename, split, move to another tab (never zoom or resize), copy the ID.
-  // Phone: these live in the pane sheet of the header identity instead.
-  if (p && !compactPhone.value) {
-    items.push({ label: t('Rename pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } })
-    items.push(...paneSpaceItems(p), copyPaneIdItem(p))
-  }
-  // The machine's Herdr plugin actions that apply to a workspace / pane.
-  if (p && agentPluginActions(p.machine).length) {
-    items.push({ label: t('Plugin actions'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ pane: p }) })
-  }
-  items.push({
-    label: t('Take control of this terminal'), icon: 'i-lucide-arrow-left-right',
-    run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => ctl.connect(true)) },
-  })
-  // Relaunch Claude / Codex / omp in this pane, on the same conversation.
-  if (p && canRestart(p) && !p.restart) items.push({ label: t('Restart agent'), icon: 'i-lucide-rotate-cw', run: () => restartAgent(p) })
-  items.push({
-    label: t('Reconnect'), icon: 'i-lucide-refresh-cw',
-    run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => { ctl.reset(); ctl.connect(false) }) },
-  })
-  // Tab and space: long press (right click) on the tab, the space card
-  // or its title; new tab: the "+" of the header or of the tabs.
-  if (!props.cell) items.push(...settingsMenuItems())
-  if (p) {
-    const ws = herdrState.value.workspaces.find(w => w.id === p.workspace)
-    if (!compactPhone.value || ws?.worktree) items.push({ kind: 'separator' })
-    if (!compactPhone.value) items.push(closePaneItem(p, live.value ? shortcutKbds('close-pane') : undefined))
-    // Pane in a worktree: remove the checkout (and close its workspace).
-    if (ws && ws.worktree) {
-      items.push({ label: t('Delete this worktree'), icon: 'i-lucide-git-branch', danger: true, run: () => removeWorktreeOf(p.workspace) })
-    }
-  }
-  return items
-})
-async function removeWorktreeOf(workspace: string) {
-  await loadWorktrees()
-  const w = (worktrees.value || []).find(x => x.workspace === workspace)
-  if (!w) return toast(t('Worktree not found'), true)
-  if (await removeWorktreeFlow(w)) navigateTo('/')
-}
+const agentMenu = computed<MenuItem[]>(() => coreMenuItems(pane.value))
 const dropdownItems = computed(() => toDropdown(agentMenu.value))
 function openAgentMenu() { openMenu(agentMenu.value) }
-watch(() => pane.value && (pane.value.machine || ''), (m) => { if (m !== undefined) loadPluginActions(m) }, { immediate: true })
 
 // Terminal keys: under the terminal, and in the active side-by-side cell on a
 // touch screen (iPad without a hardware keyboard: Esc, arrows, ^C).
@@ -513,9 +411,8 @@ function openPlan() {
   else backToTab(tabEnt.value.tab.id)
 }
 // herdr-core: map of the space's terminals (each one a tab, no layout) -> list to switch.
-const isCore = core
 const spaceMap = computed(() => {
-  if (!isCore || props.cell || !pane.value) return null
+  if (!core || props.cell || !pane.value) return null
   const tabs = spaceTabs(pane.value.workspace)
   if (tabs.length < 2) return null
   const panes = tabs.map(e => e.panes[0]!)
@@ -607,7 +504,7 @@ watch(() => props.active, (a, was) => {
 // focus, which falls to the page and loses the next keystrokes. Back to the view.
 function refocus(e: MouseEvent) {
   const el = e.target as Element | null
-  if (!props.cell || !desk.value || !el?.closest?.('.agent-top') || el.closest('button, a, input, [role="tab"], .cell-grip')) return
+  if (!props.cell || !desk.value || !el?.closest?.('.agent-top') || el.closest('button, a, input, [role="tab"]')) return
   if (document.activeElement && document.activeElement !== document.body) return
   (mode.value === 'term' ? ctl : composer.value)?.focus()
 }
@@ -618,7 +515,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
 
 <template>
   <section
-    :id="cell ? undefined : 'agent'" :class="[cell ? ['cell-view', { active, gripped: grip }] : 'view', { 'phone-chrome': compactPhone }]" :style="cell ? undefined : viewStyle" :data-pane="cell ? paneId : undefined"
+    :id="cell ? undefined : 'agent'" :class="[cell ? ['cell-view', { active }] : 'view', { 'phone-chrome': compactPhone }]" :style="cell ? undefined : viewStyle" :data-pane="cell ? paneId : undefined"
     @touchstart="onSwipeStart" @touchmove="onSwipeMove" @touchend="onSwipeEnd" @touchcancel="onSwipeEnd"
     @pointerdown.capture="cell && emit('activate')" @focusin="cell && emit('activate')" @click="refocus"
     @dragenter="onDrag" @dragover="onDrag" @dragleave="onDrag" @drop="onDrop"
@@ -631,9 +528,6 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <SpaceTabs v-if="!cell && pane && !compactPhone" :workspace="pane.workspace" :current="pane.tab" />
     <HeaderMenu v-if="!embedded" :items="() => agentMenu" :disabled="!pane">
       <header class="top bar agent-top">
-        <span v-if="cell && grip" class="cell-grip" role="button" :aria-label="t('Drag to move the pane')" :title="t('Drag to move the pane')">
-          <UIcon name="i-lucide-grip-vertical" />
-        </span>
         <UButton
           v-if="!cell" id="btnBack" icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back"
           :aria-label="t('Back')" @click="goBack"
@@ -726,8 +620,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <button v-else-if="(interactive || interactionOpen) && interactionAvailable" type="button" class="interactive-terminal-reopen" @click="reopenInteraction">
       <UIcon name="i-lucide-square-terminal" />{{ tl('Open interactive terminal', 'Ouvrir le terminal interactif') }}
     </button>
-    <ChoicesPanel v-if="(prompt || screen) && !interactionOpen && !interactive && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" :keys="live" />
-    <MenuPanel v-else-if="menu && !interactionOpen && !interactive && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :menu="menu" :keys="live" @terminal="setMode('term')" />
+    <ChoicesPanel v-if="prompt && !interactionOpen && !interactive && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :keys="live" />
     <div v-if="keybarToggleShown" class="phone-keybar-controls">
       <button type="button" class="phone-keybar-toggle" :class="{ on: phoneKeysOpen }" :aria-label="t('Show or hide terminal keys')" :aria-expanded="phoneKeysOpen" :aria-controls="keybarId"
         @pointerdown.prevent @mousedown.prevent @click.stop="togglePhoneKeys"><UIcon :name="phoneKeysOpen ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'" /></button>
@@ -736,13 +629,9 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @pointerdown="takeTerminalControl" @keydown="onComposerKey" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
     </div>
     </div>
-    <AppSheet v-model:open="changesOpen" :title="t('Changes')" wide full screen>
-      <ChangesView v-if="changesOpen && pane" :pane-id="paneId" @review="onReview" />
-    </AppSheet>
     <AppSheet v-model:open="filesOpen" :title="t('Files')" wide full screen>
       <FilesView v-if="filesOpen && pane" :pane-id="paneId" />
     </AppSheet>
-    <input ref="attachInput" type="file" multiple hidden @change="attachFile">
   </section>
 </template>
 

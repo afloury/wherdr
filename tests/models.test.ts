@@ -1,12 +1,11 @@
-// Agent models: labels, reading from transcripts (Claude, Codex)
-// and real /model menus captured in the test session (Claude Code v2.1.282,
-// Codex v0.156.1).
+// Agent models: labels, reading from transcripts (Claude, Codex) and from
+// the agent's screen.
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  claudeEffortCommand, claudeEffortLevels, claudeModelLabel, codexCachedEfforts, codexConfigModel, codexFooterModel, codexModelLabel, effortMatches, effortValue, lastModel, modelFromLine, parseClaudeEffortSlider, parseClaudeEffortScreen, claudeScreenEffort, claudeScreenModel, parseModelMenu, sameModel, switchConfirmKeys,
+  claudeModelLabel, codexConfigModel, codexFooterModel, codexModelLabel, lastModel, modelFromLine, claudeScreenEffort, claudeScreenModel, sameModel,
 } from '../server/utils/models'
 import { createTranscripts, parseLines } from '../server/utils/transcripts'
 import { type MachineFs, localFs } from '../server/utils/fsx'
@@ -165,36 +164,7 @@ describe('transcripts.model()', () => {
   })
 })
 
-describe('menu /model', () => {
-  it('offers Claude efforts per model and builds a valid command', () => {
-    expect(claudeEffortLevels('Opus 5.5')).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultracode'])
-    expect(claudeEffortLevels('Sonnet 4.6')).toEqual(['low', 'medium', 'high', 'max'])
-    expect(claudeEffortLevels('Opus 5.5 (1M)')).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultracode'])
-    expect(claudeEffortLevels('Haiku 4.5')).toEqual([])
-    expect(claudeEffortLevels('autre')).toEqual([])
-    expect(claudeEffortCommand('max', 'Opus 5.5')).toBe('/effort')
-    expect(claudeEffortCommand('max', 'Haiku 4.5')).toBeNull()
-    expect(claudeEffortCommand('high\n/clear', 'Opus 5.5')).toBeNull()
-    expect(parseClaudeEffortSlider('● High effort\ns to use this session only')).toBe('high')
-  })
-  it('reads Claude 2.1.283\'s /effort slider (▲ above the current label)', () => {
-    const all = ['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']
-    for (const level of ['low', 'medium', 'max', 'ultracode']) {
-      expect(parseClaudeEffortScreen(fx(`claude-effort-${level}.txt`))).toEqual({ current: level, levels: all })
-    }
-    expect(claudeEffortCommand('ultracode', 'Opus 5.5')).toBe('/effort')
-    expect(claudeEffortCommand('ultracode', 'Haiku 4.5')).toBeNull()
-  })
-  it('ignores a closed slider and stays compatible with the old screen', () => {
-    const text = fx('claude-effort-medium.txt')
-    expect(parseClaudeEffortScreen(text.replace(/.*Esc to cancel.*\n?/, ''))).toBeNull()
-    expect(parseClaudeEffortScreen(fx('claude-idle.txt'))).toBeNull()
-    expect(parseClaudeEffortScreen('◐ Medium effort (default) ←/→ to adjust\nEnter to confirm · s to use this session only · Esc to cancel'))
-      .toEqual({ current: 'medium', levels: [] })
-    // Narrow screen: tight labels, ▲ between two words → the closest.
-    const narrow = ' Effort\n  ───────────▲─┊──\n  low medium high xhigh max ultracode\n ←/→ · s for this session only · Esc'
-    expect(parseClaudeEffortSlider(narrow)).toBe('high')
-  })
+describe('model on screen', () => {
   it('reads Claude\'s current effort on the banner or the /effort output', () => {
     expect(claudeScreenEffort(fx('claude-effort-low.txt'))).toBe('medium')
     expect(claudeScreenEffort(' Opus 5.5 with low effort · Claude Pro')).toBe('low')
@@ -214,69 +184,5 @@ describe('menu /model', () => {
   })
   it('reads a new Codex\'s model on its status line', () => {
     expect(codexFooterModel('\n› Write tests\n\n  GPT-5.6-Terra medium · ~/projets/demo')).toMatchObject({ label: 'GPT-5.6-Terra', effort: 'medium' })
-  })
-  it('reads the levels offered by the Codex menu', () => {
-    const menu = parseModelMenu(fx('codex-model-2.txt'))
-    expect(menu?.options.map(o => effortValue(o.label)).filter(Boolean)).toEqual(['low', 'medium', 'high', 'xhigh'])
-    expect(effortValue('More reasoning…')).toBeNull()
-  })
-  it('reads the levels available in the Codex catalog for the active model', () => {
-    const json = JSON.stringify({ models: [{ slug: 'gpt-6-sol', supported_reasoning_levels: [{ effort: 'low' }, { effort: 'max' }, { effort: 'ultra' }] }] })
-    expect(codexCachedEfforts(json, 'GPT-6-Sol')).toEqual(['low', 'max', 'ultra'])
-  })
-  it('Claude: 10 visible options, scrolling, check mark, descriptions, effort, "s" confirmation', () => {
-    const m = parseModelMenu(fx('claude-model-1.txt'))!
-    expect(m.kind).toBe('model')
-    expect(m.cursor).toBe(1)
-    expect(m.options.map(o => o.label)).toEqual(['Default (recommended)', 'Opus 5.5', 'Fable 5.1', 'Sonnet 5', 'Haiku 4.5', 'Opus 5', 'Fable 5', 'Opus 4.8', 'Opus 4.7', 'Opus 4.6'])
-    expect(m.options[0]).toMatchObject({ current: true, hint: 'Sonnet 5 · Efficient for routine tasks' })
-    expect(m.options[1]).toMatchObject({ current: false, hint: 'Most capable for ambitious work' })
-    expect(m.scrollDown).toBe(true) // "↓ 10." and "… +1 model"
-    expect(m.sessionKey).toBe(true)
-    expect(m.enterSelects).toBe(false) // Enter = save as default: never
-    expect(m.effort).toBe('high')
-    expect(effortValue(m.effort || '')).toBe('high')
-  })
-
-  it('Claude : page suivante (↑ 2. … ❯ 11.)', () => {
-    const m = parseModelMenu(fx('claude-model-2.txt'))!
-    expect(m.cursor).toBe(11)
-    expect(m.options[0]!.n).toBe(2)
-    expect(m.options[m.options.length - 1]).toMatchObject({ n: 11, label: 'Sonnet 4.6' })
-  })
-
-  it('Codex: model (default, current), then effort', () => {
-    const m = parseModelMenu(fx('codex-model-1.txt'))!
-    expect(m.kind).toBe('model')
-    expect(m.options.map(o => o.label)).toEqual(['GPT-6-Astra', 'GPT-6-Sol', 'GPT-6-Luna', 'GPT-5.6-Sol', 'GPT-5.6-Terra', 'GPT-5.6-Luna', 'GPT-5.5'])
-    expect(m.options[0]!.isDefault).toBe(true)
-    expect(m.options[1]!.current).toBe(true)
-    expect(m.cursor).toBe(2)
-    expect(m.scrollDown).toBe(false)
-    expect(m.enterSelects).toBe(true)
-    expect(m.sessionKey).toBe(false)
-
-    const e = parseModelMenu(fx('codex-model-2.txt'))!
-    expect(e.kind).toBe('effort')
-    expect(e.options.map(o => o.label)).toEqual(['Low', 'Medium', 'High', 'Extra high', 'More reasoning…'])
-    expect(e.cursor).toBe(2)
-    expect(e.sessionKey).toBe(true)
-    expect(e.enterSelects).toBe(false)
-    expect(effortMatches('Extra high', 'xhigh')).toBe(true)
-    expect(effortMatches('Medium (default)', 'medium')).toBe(true)
-  })
-
-  it('Claude: "Switch model?" confirmation mid-conversation (only for that model)', () => {
-    const text = fx('claude-model-confirm.txt')
-    expect(parseModelMenu(text)).toBeNull()
-    expect(switchConfirmKeys(text, 'Sonnet 4.6')).toEqual(['enter'])
-    expect(switchConfirmKeys(text, 'Opus 5.5')).toBeNull()
-    expect(switchConfirmKeys(fx('claude-ask.txt'), 'Sonnet 4.6')).toBeNull()
-  })
-
-  it('no menu: idle screen, or menu closed', () => {
-    expect(parseModelMenu(fx('claude-idle.txt'))).toBeNull()
-    expect(parseModelMenu(fx('codex-idle.txt'))).toBeNull()
-    expect(parseModelMenu(fx('codex-model-1.txt').replace('enter select · esc back', ''))).toBeNull()
   })
 })

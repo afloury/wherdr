@@ -1,7 +1,6 @@
 // Messages shown in the conversation from the tap on Send, before the server
 // answers (see composables/useOutbox.ts). Each one has an id made here
-// ("w-…"), which the server keeps for its own record of the message (see
-// server/utils/state.ts addQueued): the bubble keeps its identity from the tap
+// ("w-…"), which the server keeps for its own record of the message: the bubble keeps its identity from the tap
 // until it lands in the transcript, with no duplicate and no jump.
 import type { QueuedMessage } from '../../shared/types'
 

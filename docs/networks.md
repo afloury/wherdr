@@ -25,7 +25,10 @@ tailscale serve --bg --https=7683 http://127.0.0.1:7683
 ```
 
 Tailscale Serve listens on HTTPS port 7683 of your tailnet name, with a valid certificate, and
-forwards to wherdr's local HTTP port. Only devices of your tailnet can reach it.
+forwards to wherdr's local HTTP port. Only devices of your tailnet can reach it, and wherdr
+answers only **your own** devices among them: another user's device in a team tailnet, a node
+shared in from another tailnet or a tagged node is refused until you set up a passkey (see
+[Your own devices only](security.md#own-devices)).
 
 **wherdr enables that address by itself**, on a server without a screen too: at startup, every
 30 seconds, and when an address it does not know yet is opened, it reads what `tailscale serve`
@@ -55,9 +58,11 @@ Settings → **Enable notifications**. **On the computer:** use the same address
 **5. Passkey lock** (optional): Settings → Security → **Enable passkey lock**. The
 first passkey asks for a bootstrap token, printed in the server's output (`npm start`, or your
 service's log); it changes on each restart and is only needed for that first passkey. Add a passkey on each of
-your devices after that (see [New device](security.md#new-device)). Without one, every device of your
-tailnet can control your agents: enough when the tailnet is yours alone, a passkey adds a lock
-on each device when someone else shares the tailnet or your devices.
+your devices after that (see [New device](security.md#new-device)). Without one, wherdr
+answers this computer and your own tailnet devices; devices of other people on your tailnet are
+always refused (with a passkey, they reach the lock screen). A passkey adds an automatic lock on
+each device if you want one, for example on a computer other people log in to (see
+[Shared computers](security.md#shared-computers)).
 
 **6. More machines** (optional): add your other computers to hc over SSH, from Settings › Agents ›
 Machines or with `hc machine add` (see [Several machines (SSH)](machines.md#several-machines-ssh)).

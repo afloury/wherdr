@@ -6,7 +6,6 @@
 // conversation / terminal, Stop (usePaneShortcuts, AgentView).
 import type { Ref } from 'vue'
 import { type ShortcutContext, type ShortcutFocus, type ShortcutId, matchShortcut } from '~/utils/shortcuts'
-import { openFolderOnMachine } from './useHerdr'
 import { describeFocus } from '~/utils/cardKeys'
 
 export interface PaneShortcuts {
@@ -43,8 +42,8 @@ function run(id: Exclude<ShortcutId, 'search-all'>, overlay: boolean): boolean {
   const p = herdrState.value.panes.find(x => x.id === curPane.value)
   // Same conditions as the buttons: nothing is created or closed offline.
   const writable = eventsOpen.value && !offlineView.value
-  // herdr-core (v3): no Board, tabs or editor opening yet; the other shortcuts work as in v2.
-  if (useRuntimeConfig().public.core && (id === 'board' || id === 'new-tab' || id === 'open-editor')) return false
+  // herdr-core (v3): no tab or editor opening yet; the other shortcuts work as in v2.
+  if (id === 'new-tab' || id === 'open-editor') return false
   switch (id) {
     case 'search-chat': return view?.searchChat() ?? false
     case 'toggle-term': return view?.toggleTerm() ?? false
@@ -56,29 +55,13 @@ function run(id: Exclude<ShortcutId, 'search-all'>, overlay: boolean): boolean {
       haptic()
       newAgentOpen.value = true
       return true
-    case 'new-tab':
-      if (!writable || !p || paneStale(p)) return false
-      newTab(p.workspace)
-      return true
     case 'close-pane':
       // Confirmation first (closePane), as from the menu.
       if (!writable || !p || paneStale(p)) return false
       closePane(p)
       return true
-    case 'open-editor': {
-      // The agent's folder in its default editor, on the agent's machine: menu
-      // entry "Open" with the folder path (openFolderOnMachine toasts errors).
-      if (!p || !canOpenOnMachine(p)) return false
-      haptic()
-      openFolderOnMachine(p)
-      return true
-    }
     case 'settings':
       navigateTo('/settings')
-      return true
-    // On the Board already, the router ignores the identical navigation.
-    case 'board':
-      navigateTo('/board')
       return true
     case 'help':
       // Over another window: no (the help only closes itself).
@@ -127,10 +110,7 @@ export function useShortcuts(searchOpen: Ref<boolean>) {
     e.stopPropagation()
   }
   const onCapture = (e: KeyboardEvent) => onKey(e, 'capture')
-  function onBubble(e: KeyboardEvent) {
-    if (!locked.value && swapShortcut(e)) return
-    onKey(e, 'bubble')
-  }
+  const onBubble = (e: KeyboardEvent) => onKey(e, 'bubble')
   onMounted(() => {
     loadLayout()
     window.addEventListener('focus', loadLayout)

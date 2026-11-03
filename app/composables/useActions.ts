@@ -1,8 +1,7 @@
 // Agent actions shared between the list and the agent view.
 import type { CloseProcess } from '#shared/closeProcess'
 import { paneCloseConfirm } from '~/utils/spaceConfirm'
-import type { Pane, QueuedMessage, WaitAction } from '#shared/types'
-import { type RestartPreview, RESTARTABLE, restartNotice } from '#shared/restart'
+import type { Pane, QueuedMessage } from '#shared/types'
 import { viaPrompt } from '#shared/sendRoute'
 import { pasteRanges, splitPasted } from '#shared/pastedText'
 import { sentPastes } from '~/utils/sentPastes'
@@ -16,46 +15,6 @@ export async function choose(paneId: string, index: number, label: string, ident
     await api('/api/choose', { pane_id: paneId, index, label, identity, ...free })
     const said = free && free.text.replace(/\s+/g, ' ').slice(0, 60)
     toast(`✓ ${said ? tl(`“${said}”`, `« ${said} »`) : label}`)
-    return true
-  } catch (err) {
-    toast((err as Error).message, true)
-    return false
-  }
-}
-
-// "Dismiss" on the card of a Codex stopped by its update: the pane is a plain
-// shell again, as if wherdr had not seen the update.
-export async function dismissStopped(paneId: string): Promise<boolean> {
-  haptic()
-  try {
-    await api('/api/dismiss-stopped', { pane_id: paneId })
-    return true
-  } catch (err) {
-    toast((err as Error).message, true)
-    return false
-  }
-}
-
-// omp "Ask" box with tabs: show question `index` (or Submit).
-export async function askTab(paneId: string, index: number, label: string): Promise<boolean> {
-  // herdr-core refuses this route: the tabs of an omp box are answered in the terminal.
-  if (useRuntimeConfig().public.core) return false
-  haptic()
-  try {
-    await api('/api/ask-tab', { pane_id: paneId, index, label })
-    return true
-  } catch (err) {
-    toast((err as Error).message, true)
-    return false
-  }
-}
-
-// Press a key from the legend of a waiting screen (the server re-checks the screen).
-export async function pressScreenKey(paneId: string, a: WaitAction, identity?: string): Promise<boolean> {
-  haptic()
-  try {
-    await api('/api/screen-key', { pane_id: paneId, key: a.key, label: a.label, identity })
-    toast(`✓ ${screenActionLabel(a)}`)
     return true
   } catch (err) {
     toast((err as Error).message, true)
@@ -121,57 +80,23 @@ export const STATUS: Record<string, { label: string, order: number }> = {
   unknown: { label: 'Unknown', order: 4 },
 }
 
+// herdr-core: a terminal without a status reads as the home lists it (#320): an agent is
+// Ready, a plain shell has no state.
+const unknownCore = (p: Pane) => Boolean(p.coreAddress) && (!p.status || p.status === 'unknown')
 export function statusKey(p: Pane) {
+  if (unknownCore(p)) return p.agent ? 'idle' : 'shell'
   return (p.coreAddress || p.agent) ? p.status || 'unknown' : 'shell'
 }
 export function statusLabel(p: Pane) {
-  const s = statusKey(p)
   if (!p.agent && !p.coreAddress) return 'Shell'
-  if (p.usageLimit) return tl('Quota reached', 'Quota atteint')
-  if (p.restart && p.restart.phase !== 'failed') return t('Restarting')
-  if (s === 'unknown' && p.pendingPrompt) return t('Starting')
+  const s = statusKey(p)
+  if (s === 'shell') return ''
   return t((STATUS[s] || STATUS.unknown!).label)
 }
 
-// Restart the agent in its pane (update installed…) while resuming its
-// conversation. Confirmation only if there is something to say: agent
-// working or waiting, launch options not found, empty
-// conversation. The progress then shows above the field (pane.restart).
-export async function restartAgent(p: Pane) {
-  if (!p.agent || !canRestart(p)) return
-  const who = kindLabel(p.agent)
-  let pv: RestartPreview
-  try {
-    pv = await api<RestartPreview>(`/api/restart?pane=${encodeURIComponent(p.id)}`)
-  } catch (err) { return toast((err as Error).message, true) }
-  const n = restartNotice(p.status, pv)
-  if (n.confirm) {
-    const lines: string[] = []
-    if (n.busy) lines.push(tl(`${who} is working: restarting it will interrupt what it is doing.`, `${who} est en train de travailler : le redémarrer interrompra son travail en cours.`))
-    else lines.push(tl(`Restart ${who}? It will resume the same conversation.`, `Redémarrer ${who} ? Il reprendra la même conversation.`))
-    if (n.fresh) lines.push(tl('This conversation is still empty: the agent will start a new one.', 'Cette conversation est encore vide : l’agent repartira sur une conversation neuve.'))
-    if (n.defaults) lines.push(tl('Launch options not found: the agent will restart with your default settings (model, effort, permissions).', 'Options de lancement introuvables : l’agent repartira avec tes réglages par défaut (modèle, effort, permissions).'))
-    else if (n.dropped.length) lines.push(tl(`Options not kept, the agent will use your defaults for: ${n.dropped.join(' ')}`, `Options non reprises, l’agent repartira avec tes réglages par défaut pour : ${n.dropped.join(' ')}`))
-    const ok = await askConfirm(lines.join('\n\n'), n.busy ? t('Restart anyway') : t('Restart'), n.busy ? 'error' : 'primary')
-    if (!ok) return
-  }
-  haptic()
-  try {
-    await api('/api/restart', { pane_id: p.id })
-  } catch (err) { toast((err as Error).message, true) }
-}
-export const canRestart = (p: Pane) => Boolean(p.agent && !p.stopped && RESTARTABLE.has(p.agent))
-export async function dismissRestart(paneId: string) {
-  try { await api('/api/restart', { pane_id: paneId, dismiss: true }) }
-  catch (err) { toast((err as Error).message, true) }
-}
-
 export async function closePane(p: Pane) {
-  let process: CloseProcess = { state: 'unknown' }
-  if (!p.agent || p.stopped) {
-    try { process = await api<CloseProcess>(`/api/close-preview?pane=${encodeURIComponent(p.id)}`) }
-    catch { /* Unavailable inspection: keep the conditional warning. */ }
-  }
+  // herdr-core does not say what runs in a pane: the warning stays conditional.
+  const process: CloseProcess = { state: 'unknown' }
   // Written from the state at the time it is shown (asked again if it grew).
   const plan = await confirmClose('pane', p.id, (plan) => {
     const s = herdrState.value
@@ -191,10 +116,10 @@ export async function closePane(p: Pane) {
   if (!plan) return
   // Closed from its view: its tab if panes remain there, otherwise the neighbouring
   // tab, otherwise the list. Closed from the plan: we stay there.
-  const done = prepareClose(plan.group ? { workspace: p.workspace } : { pane: p.id }, plan.group ? plan.workspaces.map(w => w.id) : [])
+  const done = prepareClose({ pane: p.id })
   try {
-    await api('/api/close', { pane_id: p.id, close_group: plan.group })
-    toast(plan.group ? tl('Group closed', 'Groupe fermé') : t('Pane closed'))
+    await api('/api/close', { pane_id: p.id })
+    toast(t('Pane closed'))
     done(true)
   } catch (err) {
     done(false)

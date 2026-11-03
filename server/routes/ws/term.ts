@@ -1,5 +1,5 @@
-// WS /ws/term?pane=…&cols=…&rows=…[&takeover=1]: terminal stream of the pane,
-// `herdr terminal session control` relayed as is (herdr-core: see coreTerm.ts).
+// WS /ws/term?pane=…&cols=…&rows=…[&takeover=1]: terminal stream of the pane
+// (see coreTerm.ts).
 const sessions = new Map<string, TermSession>()
 
 export default defineWebSocketHandler({
@@ -12,9 +12,7 @@ export default defineWebSocketHandler({
       close: (code?: number, reason?: string) => peer.close(code, reason),
       isOpen: () => isOpen(peer),
     }
-    const sess = process.env.WHERDR_BACKEND === 'core'
-      ? openCoreTerm(ws, url, { endpoint: process.env.HC_SOCKET, address: pane => findPane(pane)?.coreAddress, log })
-      : openTerm(ws, url)
+    const sess = openCoreTerm(ws, url, { endpoint: process.env.HC_SOCKET, address: pane => findPane(pane)?.coreAddress, log })
     if (sess) sessions.set(peer.id, sess)
   },
   message(peer, message) {

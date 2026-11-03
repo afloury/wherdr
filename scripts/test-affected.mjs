@@ -11,10 +11,10 @@ export const domains = [
   { name: 'references', source: /(?:reference|Composer|ChatMarkdown|QuotedText|UserText)/i, tests: /(?:reference|Composer|ChatMarkdown|QuotedText|UserText|quote)/i, e2e: ['reference', 'send-message'], reason: 'References cross templates, composer state and the send boundary.' },
   { name: 'guards', source: /(?:server\/api\/(?:prompt|input|choose|menu|nav)|Identity|guardedSend)/i, tests: /(?:guard|Identity|stoppedAgent|agentPrompt|menuRoute)/i, e2e: ['pane-replaced', 'question-reply'], reason: 'Identity and stale actions must be checked through transport.' },
   { name: 'terminal', source: /terminal|server\/routes\/.*ws/i, tests: /terminal/i, e2e: ['interactive-terminal', 'terminal-size'], reason: 'Terminal rendering and websocket lifecycle cross the built app.' },
-  { name: 'board', source: /board|machine|TaskPanel|TaskSheet|ProjectGroup/i, tests: /board|machine|TaskPanel|TaskSheet|ProjectGroup/i, e2e: ['machine-groups', 'projects-1x'], reason: 'Board auto-imports and cross-machine navigation need explicit coverage.' },
+  { name: 'board', source: /board|machine|TaskPanel|TaskSheet|ProjectGroup/i, tests: /board|machine|TaskPanel|TaskSheet|ProjectGroup/i, e2e: ['machine-groups'], reason: 'Board auto-imports and cross-machine navigation need explicit coverage.' },
   { name: 'startup', source: /router|app\.vue|onboarding|app\/plugins/i, tests: /onboarding|directRoute|stateReady/i, e2e: ['startup-hash', 'onboarding'], reason: 'Startup and routing depend on Nuxt registration.' },
   { name: 'appearance', source: /app\/assets\/|themes?\.|font/i, tests: /layout|sheet|CompactDefault|ChatViewRendering|SettingsTyping|Composer|BoardPanel/i, e2e: ['theme', 'sheet-close'], reason: 'CSS and themes affect layout and overlays without import edges.' },
-  { name: 'chat-rendering', source: /ChatView|OmpTool|Settings/i, tests: /ChatViewRendering|CompactDefault|SettingsTyping|OmpTool|settings/i, e2e: ['settings-tabs', 'tool-images'], reason: 'Rendering assertions moved from e2e to components; retain integration boundaries.' },
+  { name: 'chat-rendering', source: /ChatView|OmpTool|Settings/i, tests: /ChatViewRendering|CompactDefault|SettingsTyping|OmpTool|settings/i, e2e: ['tool-images'], reason: 'Rendering assertions moved from e2e to components; retain integration boundaries.' },
 ]
 const doc = p => /\.(md|rst)$/.test(p) || /^docs\//.test(p)
 const test = p => /\.test\.[cm]?[jt]s$/.test(p)
@@ -64,8 +64,6 @@ export function select(files, available, warning) {
   let broad = Boolean(warning)
   const add = (map, p, reason) => map.set(p, [...new Set([...(map.get(p) || []), reason])])
   for (const file of files) {
-    // Rust tests are selected by the conditional engine workflow, not Vitest.
-    if (file.startsWith('engine/')) continue
     if (doc(file)) continue
     if ((test(file) || e2e(file)) && available.includes(file)) {
       add(e2e(file) ? browser : unit, file, 'Changed test: run explicitly.'); continue
@@ -88,7 +86,7 @@ export function select(files, available, warning) {
     const smoke = 'tests/e2e/startup-hash.spec.ts'
     if (available.includes(smoke)) add(browser, smoke, reason)
   }
-  if (files.some(p => !doc(p) && !p.startsWith('engine/')) && !unit.size && !browser.size) throw new Error('Unexpected empty selection; update the domain table.')
+  if (files.some(p => !doc(p)) && !unit.size && !browser.size) throw new Error('Unexpected empty selection; update the domain table.')
   return { files, domains: Object.fromEntries(selectedDomains), related: broad ? [] : related, tests: Object.fromEntries(unit), e2e: Object.fromEntries(browser), broad, warning }
 }
 function assertFocusedE2E(specs) {
@@ -127,7 +125,7 @@ export async function main(args = process.argv.slice(2)) {
   console.log(JSON.stringify({ ...plan, project }, null, 2))
   if (plan.broad) console.log('CI must run the complete reduced suite. Local fallback adds all Vitest tests and a startup e2e smoke; review additional journeys manually.')
   if (!plan.files.length && !plan.warning) console.log('No changed files.')
-  else if (!Object.keys(plan.tests).length && !Object.keys(plan.e2e).length) console.log('Documentation or engine only: no JS tests or browser required.')
+  else if (!Object.keys(plan.tests).length && !Object.keys(plan.e2e).length) console.log('Documentation only: no JS tests or browser required.')
   if (dry) return
   assertFocusedE2E(Object.keys(plan.e2e))
   const tests = Object.keys(plan.tests)

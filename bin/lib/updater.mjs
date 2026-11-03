@@ -1,4 +1,4 @@
-// One-tap update (Update button of the app, server/utils/selfupdate.ts): runs
+// One-tap update (Update button of the app): runs
 // detached from the server it replaces, so it outlives the restart. Installs
 // the new version, restarts wherdr, waits for /api/health to report the new
 // version, and goes back to the previous one when it does not. Progress goes

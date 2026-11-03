@@ -8,8 +8,7 @@ import type { H3Event } from 'h3'
 import { getQuery, getRequestHeader, setResponseHeader, setResponseStatus } from 'h3'
 import { attachmentHeader, isPdf, readFileBytes, readWrittenBytes, videoType } from './files'
 import { HerdrError } from './herdr'
-import { machineFor } from './actions'
-import { filesMachine } from './coreFilesMachine'
+import { coreFilesMachine } from './coreFilesMachine'
 import { defineApi } from './http'
 import { findPane } from './state'
 import { answer, cutOnError, openVideo, openWrittenVideo } from './videoStream'
@@ -17,7 +16,7 @@ import { answer, cutOnError, openVideo, openWrittenVideo } from './videoStream'
 import type { Pane } from '../../shared/types'
 
 async function serveVideo(event: H3Event, p: Pane, q: Record<string, unknown>, type: string) {
-  const m = await filesMachine(p.machine, machineFor)
+  const m = await coreFilesMachine(p.machine)
   const res = event.node.res
   // The browser drops a request (seek, closed player): the read stops with
   // it, from the start: while the file opens too.
@@ -69,8 +68,8 @@ export const fileDownload = defineApi(async (event) => {
   const video = q.inline === '1' ? videoType(String(q.path || '')) : undefined
   if (video) return serveVideo(event, p, q, video)
   const f = q.from === 'chat'
-    ? await readWrittenBytes(await filesMachine(p.machine, machineFor), p.cwd, q.path)
-    : await readFileBytes(await filesMachine(p.machine, machineFor), p.cwd!, q.path)
+    ? await readWrittenBytes(await coreFilesMachine(p.machine), p.cwd, q.path)
+    : await readFileBytes(await coreFilesMachine(p.machine), p.cwd!, q.path)
   setResponseHeader(event, 'x-content-type-options', 'nosniff')
   if (q.inline === '1' && isPdf(f.name, f.body)) {
     // Only ever a PDF (nosniff): the browser hands it to its PDF viewer, which

@@ -141,7 +141,8 @@ describe('the machine bar on the home list', () => {
     const w = await mountHome()
     const items = w.findAll('.machine-bar-item')
     expect(items.map(i => i.find('.machine-bar-label').text())).toEqual(['All', 'Server', 'Laptop', 'Devbox'])
-    expect(items.map(i => i.find('.machine-bar-count').text())).toEqual(['4', '2', '1', '1'])
+    // An offline machine's agents are stale: the counts leave them out.
+    expect(items.map(i => i.find('.machine-bar-count').text())).toEqual(['3', '2', '1', '0'])
     expect(items[0]!.classes()).toContain('on')
     expect(items[0]!.find('.machine-bar-state').exists()).toBe(false)
     expect(items[1]!.classes()).toContain('online')
@@ -202,26 +203,6 @@ describe('the machine bar on the home list', () => {
     hostLabel.value = ''
   })
 
-  it('a single machine\'s menu opens its board', async () => {
-    herdrState.value = { ok: true, workspaces: workspaces.slice(0, 2), panes: panes.slice(0, 2) } as never
-    const w = await mountHome()
-    navigate.mockClear()
-    await w.find('.solo-machine-options').trigger('click')
-    await vi.waitFor(() => expect(document.body.textContent).toContain('Open the board'))
-    const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(e => e.textContent?.includes('Open the board'))!
-    item.click()
-    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: '' } }))
-  })
-
-  it('every machine\'s menu opens its board, filtered on it', async () => {
-    const w = await mountHome()
-    navigate.mockClear()
-    await w.findAll('.machine-options')[1]!.trigger('click')
-    await vi.waitFor(() => expect(document.body.textContent).toContain('Open the board'))
-    const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(e => e.textContent?.includes('Open the board'))!
-    item.click()
-    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: 'laptop' } }))
-  })
 })
 
 describe('Settings › Machine bar', () => {
@@ -337,7 +318,7 @@ describe('a tab showing one machine', () => {
     el.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'touch', bubbles: true }))
   }
 
-  it('drops the machine header; the tab carries its actions', async () => {
+  it('drops the machine header; the tab has no machine actions', async () => {
     machineBarSaved.value = 'laptop'
     const w = await mountHome()
     expect(w.findAll('section.machine').map(s => s.attributes('data-machine'))).toEqual(['laptop'])
@@ -345,12 +326,7 @@ describe('a tab showing one machine', () => {
     expect(w.find('.machine-tab-offline').exists()).toBe(false)
     expect(w.findAll('section.machine .card')).toHaveLength(1)
     await press(w.find('[data-bar-id="laptop"]').element)
-    expect(menuState.open).toBe(true)
-    expect(menuState.title).toBe('Laptop')
-    expect(menuState.items.map(i => i.label)).toEqual(expect.arrayContaining(['Herdr sessions', 'Rename', 'Connection status', 'Open the board']))
-    navigate.mockClear()
-    menuState.items.find(i => i.label === 'Open the board')!.run!()
-    expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: 'laptop' } })
+    expect(menuState.open).toBe(false)
   })
 
   it('the local machine (key \'\') drops its header too', async () => {
@@ -358,9 +334,6 @@ describe('a tab showing one machine', () => {
     const w = await mountHome()
     expect(w.findAll('section.machine').map(s => s.attributes('data-machine'))).toEqual(['local'])
     expect(w.find('.machine-row').exists()).toBe(false)
-    await press(w.find('[data-bar-id=""]').element)
-    expect(menuState.title).toBe('Server')
-    expect(menuState.items.map(i => i.label)).toEqual(expect.arrayContaining(['Herdr sessions', 'Open the board']))
   })
 
   it('State mode keeps its own machine chip and quotas', async () => {
@@ -386,13 +359,10 @@ describe('a tab showing one machine', () => {
     const w = await mountHome()
     expect(w.findAll('.machine-row')).toHaveLength(1)
     await press(w.find('[data-bar-id="*group:solo"]').element)
-    expect(menuState.items.map(i => i.label)).toEqual(['Group settings', 'Board settings'])
+    expect(menuState.items.map(i => i.label)).toEqual(['Group settings'])
     navigate.mockClear()
     menuState.items[0]!.run!()
     expect(navigate).toHaveBeenCalledWith({ path: '/settings', query: { section: 'appearance', group: '*group:solo' } })
-    navigate.mockClear()
-    menuState.items.find(i => i.label === 'Board settings')!.run!()
-    expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { settings: '*group:solo' } })
     menuState.open = false
     // "All" has no menu.
     await press(w.find('[data-bar-id="*"]').element)

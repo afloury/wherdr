@@ -59,7 +59,7 @@ describe('enrich', () => {
   }
   it('fills prompt, interaction and status; skips shells and working agents', async () => {
     const { screens, reads } = setup({ 'm/a': bash, 'm/b': input })
-    const a = pane('a'), b = pane('b'), shell = pane('s', { agent: null }), busy = pane('w', { status: 'working' })
+    const a = pane('a'), b = pane('b'), shell = pane('s', { agent: null }), busy = pane('w', { status: 'working', agent: 'codex' })
     await screens.enrich([a, b, shell, busy])
     expect(reads.sort()).toEqual(['m/a', 'm/b'])
     expect(a).toMatchObject({ status: 'blocked', interaction: 'native' })
@@ -67,6 +67,14 @@ describe('enrich', () => {
     expect(b).toMatchObject({ status: 'idle', interaction: 'input' })
     expect(shell.interaction).toBeUndefined()
     expect(busy.status).toBe('working')
+  })
+  it('reads a working Claude only while its conversation is open (queue "send now")', async () => {
+    const open = setup({ 'm/w': input })
+    await open.screens.enrich([pane('w', { status: 'working' })])
+    expect(open.reads).toEqual(['m/w'])
+    const closed = setup({ 'm/w': input }, () => false)
+    await closed.screens.enrich([pane('w', { status: 'working' })])
+    expect(closed.reads).toEqual([])
   })
   it('caches reads per viewed / background pace and re-applies them', async () => {
     const { screens, reads, tick } = setup({ 'm/a': bash }, () => false)
@@ -77,6 +85,33 @@ describe('enrich', () => {
     expect(reads.length).toBe(1)
     expect(again.status).toBe('blocked')
     tick(4000)
+    await screens.enrich([pane('a')])
+    expect(reads.length).toBe(2)
+  })
+  it('shows a new Claude\'s trust box as Your turn at the next poll, not at the background pace', async () => {
+    const texts: Record<string, string> = { 'm/a': '' }
+    const { screens, reads, tick } = setup(texts, () => false)
+    const a = pane('a')
+    await screens.enrich([a])
+    expect(a.status).toBe('unknown')
+    texts['m/a'] = fx('claude-trust-folder.txt')
+    tick(1500)
+    const next = pane('a')
+    await screens.enrich([next])
+    expect(reads.length).toBe(2)
+    expect(next).toMatchObject({ status: 'blocked', interaction: 'native' })
+    expect(next.prompt?.options.map(o => o.label)).toContain('Yes, I trust this folder')
+    // Once the screen says something, the background pace is back.
+    tick(1500)
+    await screens.enrich([pane('a')])
+    expect(reads.length).toBe(2)
+  })
+  it('reads an undetermined screen at the background pace after the startup window', async () => {
+    const { screens, reads, tick } = setup({ 'm/a': 'loading' }, () => false)
+    await screens.enrich([pane('a')])
+    tick(31_000)
+    await screens.enrich([pane('a')])
+    tick(1500)
     await screens.enrich([pane('a')])
     expect(reads.length).toBe(2)
   })

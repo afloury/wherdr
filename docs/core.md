@@ -48,8 +48,8 @@ Each pane preserves its full core address behind a stable interface identifier.
 Agent identity uses core's `agent` field when supplied, otherwise recognised
 application/template/command names. Identity does not gate status: OSC 7501
 Working and Blocked lift any program's workspace into Working or Your turn.
-Idle and Done appear in Ready; absent or unrecognised status appears in Unknown.
-For online machines, the home counters (your turn, working, ready, unknown) count the same rows as their headings, and the machine tabs count rows too. The Herdr sessions row is hidden; `/api/phone` and a read-only `GET /api/update` (no one-tap update) answer.
+Idle and Done appear in Ready; absent or unrecognised status also appears in Ready (as in v2.5).
+For online machines, the three home counters (your turn, working, ready) count the same rows as their headings, and the machine tabs count rows too. The Herdr sessions row is hidden; `/api/phone` and a read-only `GET /api/update` (no one-tap update) answer.
 A mixed workspace follows its most urgent terminal. On connection loss the last
 inventory stays visible offline; subsequent polls reconcile it with core.
 
@@ -84,6 +84,14 @@ terminal appeared). On a remote core machine the files are read with `machine.ex
 machine. A terminal that is not an agent shows only its terminal. Claude Code must keep
 saving transcripts: a core started from inside a Claude Code session inherits
 `CLAUDE_CODE_CHILD_SESSION`, which turns saving off; start core from a plain shell.
+
+Text left unsent in Claude Code's own input box (a draft or paste never submitted, or the
+prompt Claude puts back after an interrupt) shows at the end of the conversation as
+**Not sent** once it has stayed unchanged for two seconds and the colored screen (the first
+paint of a passive `terminal.attach`) confirms it is typed text, not Claude's gray suggestion, with **Send now** (Enter, then a
+check that the box emptied and a turn started) and **Clear**. When Claude's queue offers
+"ctrl+enter to send now", the conversation offers **Send now** too. Each action re-reads the
+screen first and refuses a box that changed (`server/utils/coreDraft.ts`).
 
 ## Creating terminals and agents, machines
 

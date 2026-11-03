@@ -35,9 +35,15 @@ export function coreActivity(terminal: CoreTerminal): AgentStatus | 'error' {
 // Name chosen in an interface (herdr-app's `herdr.title` label), else the name given at creation.
 export const TITLE_LABEL = 'herdr.title'
 export const SEEN_LABEL = 'herdr.seen'
-export const ownTitle = (terminal: Pick<CoreTerminal, 'name' | 'labels'>) => terminal.labels?.[TITLE_LABEL]?.trim() || terminal.name || null
+// A name that only repeats the address ("t2" for "box/t2") is no name.
+export const addressOnly = (name: string | null | undefined, address: string | null | undefined) =>
+  Boolean(name && address && [address, address.split('/').pop()].includes(name.trim()))
+export const ownTitle = (terminal: Pick<CoreTerminal, 'name' | 'labels' | 'address'>) => {
+  const name = terminal.labels?.[TITLE_LABEL]?.trim() || terminal.name?.trim() || null
+  return name && !addressOnly(name, terminal.address) ? name : null
+}
 export function coreTitle(terminal: CoreTerminal) {
-  return ownTitle(terminal) || terminal.title || terminal.address
+  return ownTitle(terminal) || terminal.title || terminal.cwd?.split('/').filter(Boolean).pop() || terminal.address
 }
 // herdr-app's contract: `herdr.seen` holds the last turn somebody looked at. A terminal that
 // never got the label is not tracked (absent is not 0): it is never unread.

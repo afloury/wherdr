@@ -2,7 +2,7 @@
 // settings, lock, API calls. Module singletons (client app).
 import { createSocketProbe } from '~/utils/socketProbe'
 import { DESK_QUERY, SLIM_QUERY, TABLET_QUERY, provesHardwareKeyboard } from '~/utils/layoutMode'
-import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, NamedSession, Pane, Quotas } from '#shared/types'
+import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, Pane, Quotas } from '#shared/types'
 import { LOCAL, splitId } from '#shared/ids'
 import { clearOffline, readHome, saveHome } from '~/utils/offlineCache'
 import { coreRouteAllowed } from '#shared/coreRoutes'
@@ -12,7 +12,6 @@ import type { ActiveTerminalRenderer } from '~/utils/terminalRenderer'
 import { settleState } from '#shared/stateReady'
 import { READY_SORTS, type ReadySort } from '#shared/spaces'
 import { DEADLINE_WARNING_MS } from '#shared/sessionLimit'
-import { readSessionSelection, selectSessions, writeSessionSelection } from '~/utils/sessionSelection'
 import { effectiveTypingSpeed, encryptedTextActive, parseTypingSettings } from '~/utils/typewriter'
 import { readHiddenAgents } from '~/utils/agentChoices'
 import { checkNewVersion } from './useAppVersion'
@@ -48,55 +47,8 @@ const ls = {
 
 export const herdrState = shallowRef<HerdrState>({ ok: false, workspaces: [], panes: [] })
 let fullState: HerdrState = herdrState.value
-// Every open session's state, as the server follows them (herdrState keeps
-// only the session each device shows): to find a pane in a session not shown.
+// Every open session's state, as the server follows them.
 export const allSessionsState = shallowRef<HerdrState>(fullState)
-function loadSessionNames(): Record<string, string> {
-  return readSessionSelection(ls.get('machineSessions'))
-}
-export const machineSessions = ref<Record<string, string>>(loadSessionNames())
-function setSessionNames(names: Record<string, string>) {
-  machineSessions.value = names
-  ls.set('machineSessions', writeSessionSelection(names))
-  herdrState.value = selectSessions(fullState, names)
-}
-export async function listMachineSessions(baseKey: string): Promise<NamedSession[]> {
-  return (await api<{ sessions: NamedSession[] }>(`/api/sessions?machine=${encodeURIComponent(baseKey)}`)).sessions
-}
-export async function chooseMachineSession(baseKey: string, name: string) {
-  const chosen = await api<{ session: NamedSession }>('/api/sessions', { machine: baseKey, name })
-  setSessionNames({ ...machineSessions.value, [baseKey]: name })
-  lastMachine.value = chosen.session.key
-  syncPushLanguage().catch(() => {})
-  await loadConfig()
-}
-const sessionTries = new Map<string, number>()
-async function restoreMachineSessions() {
-  for (const [baseKey, name] of Object.entries(machineSessions.value)) {
-    if (!name || fullState.machines?.some(m => m.key === baseKey && m.session === name)) continue
-    if (fullState.machines?.some(m => m.baseKey === baseKey && m.session === name)) continue
-    const now = Date.now()
-    if (now - (sessionTries.get(baseKey) || 0) < 10000) continue
-    sessionTries.set(baseKey, now)
-    api('/api/sessions', { machine: baseKey, name }).catch(() => {})
-  }
-}
-async function checkSelectedSessions() {
-  for (const [baseKey, name] of Object.entries(machineSessions.value)) {
-    if (!name || fullState.machines?.some(m => m.key === baseKey && m.session === name)) continue
-    try {
-      const rows = await listMachineSessions(baseKey)
-      if (!rows.some(s => s.name === name && s.running)) {
-        const next = { ...machineSessions.value }
-        delete next[baseKey]
-        setSessionNames(next)
-        syncPushLanguage().catch(() => {})
-        if (lastMachine.value && !fullState.machines?.some(m => m.key === lastMachine.value && !m.baseKey)) lastMachine.value = baseKey
-        toast(t('Session unavailable: back to the default session'))
-      }
-    } catch { /* machine temporarily unreachable */ }
-  }
-}
 export const eventsOpen = ref(false)
 export const netDown = ref(false)
 export const cachedAt = ref<number | null>(null)
@@ -120,8 +72,6 @@ export const showCounters = syncedRef('showCounters', flag.read(true), flag.writ
 export const showQuotas = syncedRef('showQuotas', flag.read(true), flag.write)
 // Existing devices keep Machine.
 export const homeGrouping = syncedRef('homeGrouping', readHomeGrouping, v => v)
-// Workspace cards remain the default; Board tasks keep their own grouping.
-export const individualAgentList = syncedRef('individualAgentList', flag.read(false), flag.write)
 
 // Compact list: one line per card (sidebar on a computer, home list on the phone).
 // Read before the first render, so the list never changes density after it.
@@ -317,9 +267,6 @@ export const machines = computed<MachineInfo[]>(() => herdrState.value.machines 
 export const multiMachine = computed(() => machines.value.length > 1 || Boolean(machines.value[0]?.baseKey))
 export const machineInfo = (key: string | null | undefined) => machines.value.find(m => m.key === (key || ''))
 // `uname -s` of a pane's machine ('Darwin' = macOS); the local one from the config.
-export const machineOs = (key: string | null | undefined) => machineInfo(key)?.os || (key ? undefined : appConfig.value.os)
-// Reveal and Open apply to panes on macOS.
-export const canOpenOnMachine = (p: Pane | null | undefined) => Boolean(p?.cwd && machineOs(p.machine) === 'Darwin')
 // Machines offered by the "New agent" sheet (null
 // with a single machine); online according to the live state (the config may
 // have been read before the connection).
@@ -450,18 +397,6 @@ export async function saveFile(path: string, name: string) {
   setTimeout(() => URL.revokeObjectURL(href), 60_000)
 }
 
-// Current agent folder in its default editor, on the agent's machine (the
-// "Open" action of /api/reveal with the folder path; macOS only, checked
-// server-side). Shared by ChatView's "Open" menu and the Mod+Alt+O shortcut.
-export async function openFolderOnMachine(pane: Pane) {
-  try {
-    const r = await api<{ machine: string }>('/api/reveal', { pane_id: pane.id, path: pane.cwd, mode: 'open' })
-    toast(tl(`Opened in the editor on ${r.machine}`, `Ouvert dans l’éditeur sur ${r.machine}`))
-  } catch (err) {
-    toast((err as Error).message, true)
-  }
-}
-
 export async function loadConfig() {
   try {
     appConfig.value = await api<AppConfig>('/api/config')
@@ -571,10 +506,11 @@ export function connectEvents() {
       // Reconnection = often a redeployment: we check right away whether
       // a new version is served ("Reload" banner).
       checkNewVersion()
+      // Push subscriptions dropped meanwhile (lock turned off): post this device's again.
+      syncPushLanguage().catch(() => {})
     }
     everOpen = true
     sendViewing()
-    if (!useRuntimeConfig().public.core) restoreMachineSessions()
     // Settings kept on the server: changes made offline go out, then the
     // server's values apply (the first time, this device's are sent).
     settingsSync.load()
@@ -586,20 +522,17 @@ export function connectEvents() {
       if (data?.type === 'pong') { eventProbe.pong(ws); return }
       // Settings changed on another device (or another tab).
       if (data?.type === 'settings') { settingsSync.receive(data.settings || {}); return }
+      // Lock turned off: the server dropped every push subscription, this device posts its own again.
+      if (data?.type === 'push-resubscribe') { syncPushLanguage().catch(() => {}); return }
       const got = paneReuse.reuse(normalize(data) as HerdrState)
       // Server just restarted, state still partial: we keep the whole
       // display, the "reconnecting" banner stays in place.
       const state = settleState(lastStateAt ? fullState : null, got, Date.now() < settleUntil)
       if (!state) return
       setNetDown(false)
-      if (!useRuntimeConfig().public.core && !state.ok && herdrState.value.ok && lastStateAt) {
-        cachedAt.value = lastStateAt
-        return
-      }
       fullState = state
       allSessionsState.value = fullState
-      herdrState.value = selectSessions(state, machineSessions.value)
-      if (!useRuntimeConfig().public.core) restoreMachineSessions()
+      herdrState.value = state
       lastStateAt = Date.now()
       cachedAt.value = null
       if (state.ok && mayReadOffline(readOfflineAccess())) saveHome(herdrState.value)
@@ -677,13 +610,11 @@ function warnDeadline(access: OfflineAccess) {
 
 // ---------------------------------------------------------------- verrouillage
 let booted = false
-let sessionsTimer: ReturnType<typeof setInterval> | undefined
 export function boot() {
   if (booted) return
   booted = true
   locked.value = false
   connectEvents()
-  if (!useRuntimeConfig().public.core) sessionsTimer ||= setInterval(checkSelectedSessions, 30000)
   loadConfig()
   syncPushLanguage().catch(() => {})
 }
@@ -743,7 +674,7 @@ export async function start({ resume = false } = {}) {
     if (saved && !eventsOpen.value) {
       fullState = saved.state
       allSessionsState.value = fullState
-      herdrState.value = selectSessions(fullState, machineSessions.value)
+      herdrState.value = fullState
       cachedAt.value = saved.at
     }
   }

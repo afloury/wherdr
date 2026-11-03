@@ -3,7 +3,6 @@
 // (agent, settings), windows, lock screen, network banner.
 import { en, fr } from '@nuxt/ui/locale'
 
-const core = useRuntimeConfig().public.core
 setToaster(useToast())
 const route = useRoute()
 const router = useRouter()
@@ -80,8 +79,6 @@ onMounted(() => {
     })
   }
   start({ resume: true })
-  // First launch: the setup guide, until finished or skipped (saved by the server).
-  if (!core) watch(locked, (l) => { if (!l) checkOnboarding() }, { immediate: true })
   // Local lease over: ask the server rather than locking on the browser's own
   // clock. Only the lease counts here: the deadline never locks the app while
   // it is open.
@@ -116,14 +113,10 @@ onUnmounted(() => {
     <NewAgentSheet />
     <MenuSheet />
     <RenameSheet />
-    <CommandResultSheet />
     <ConfirmSheet />
-    <PluginResultSheet v-if="!core" />
     <ImageLightbox />
     <ShortcutsSheet />
-    <OnboardingGuide v-if="!core && onboardingOpen && !locked" />
     <NewVersionBanner v-if="!locked" />
-    <SelfUpdateScreen v-if="selfUpdate.open" />
     <LockScreen v-if="locked" />
   </UApp>
 </template>

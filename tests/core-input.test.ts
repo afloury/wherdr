@@ -66,6 +66,12 @@ describe('core input routes', () => {
     await expect(coreInput(t.d, { pane_id: 't1', keys: ['esc;x'] })).rejects.toMatchObject({ code: 'bad_keys' })
   })
 
+  it('passes the key bar navigation keys to core by name', async () => {
+    const t = deps()
+    for (const k of ['home', 'end', 'pageup', 'pagedown', 'insert', 'delete', 'ctrl+shift+end']) await coreInput(t.d, { pane_id: 't1', keys: [k] })
+    expect(t.calls.map(c => (c[1] as { keys: string[] }).keys[0])).toEqual(['home', 'end', 'pageup', 'pagedown', 'insert', 'delete', 'ctrl+shift+end'])
+  })
+
   it('reports what interrupt observed without escalating', async () => {
     for (const [outcome, stopped] of [['stopped', true], ['exited', true], ['still_working', false], ['unknown', false]] as const) {
       const t = deps(() => ({ outcome, key: 'esc' }))
