@@ -1435,21 +1435,38 @@ export function startPolling() {
 // poll comes back to POLL_MS while the connection is down.
 let coreSession: CoreSession | null = null
 let coreAlerts: ReturnType<typeof createCoreAlerts> | null = null
-let corePoll: ReturnType<typeof setTimeout> | null = null
-let coreBusy = false
-let coreAgain = false
-function scheduleCorePoll() {
-  if (corePoll || stopped) return
-  corePoll = setTimeout(async () => {
-    corePoll = null
-    if (coreBusy) { coreAgain = true; return }
-    coreBusy = true
-    try { await poll() } finally {
-      coreBusy = false
-      if (coreAgain) { coreAgain = false; scheduleCorePoll() }
-    }
-  }, 50)
+// Core events come in bursts (a streaming agent, a resize): each poll is still
+// debounced by `debounceMs`, and two event polls start at least `gapMs` apart,
+// so a burst does not broadcast the whole state many times a second. One poll
+// at a time; an event during a poll asks for another one after it.
+export function corePollGate(run: () => Promise<void>, { debounceMs = 50, gapMs = 400, now = Date.now, active = (): boolean => true }: { debounceMs?: number, gapMs?: number, now?: () => number, active?: () => boolean } = {}) {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let busy = false
+  let again = false
+  let last = -Infinity
+  function schedule() {
+    if (timer || !active()) return
+    if (busy) { again = true; return }
+    timer = setTimeout(async () => {
+      timer = null
+      if (busy) { again = true; return }
+      busy = true
+      last = now()
+      try { await run() } finally {
+        busy = false
+        if (again) { again = false; schedule() }
+      }
+    }, Math.max(debounceMs, last + gapMs - now()))
+  }
+  function cancel() {
+    if (timer) clearTimeout(timer)
+    timer = null
+    again = false
+  }
+  return { schedule, cancel }
 }
+const corePolls = corePollGate(() => poll(), { active: () => !stopped })
+const scheduleCorePoll = corePolls.schedule
 function startCoreEvents() {
   const endpoint = process.env.HC_SOCKET
   if (endpoint) {
@@ -1474,8 +1491,7 @@ function stopCoreEvents() {
   coreSession = null
   coreAlerts = null
   useCoreSession(null)
-  if (corePoll) clearTimeout(corePoll)
-  corePoll = null
+  corePolls.cancel()
 }
 async function notifyCorePane(address: string, kind: CoreAlertKind) {
   const p = state.panes.find(x => x.coreAddress === address)
