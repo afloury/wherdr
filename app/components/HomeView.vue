@@ -72,11 +72,14 @@ const conn = computed(() => {
   return { ok: true, text: `wherdr ${updateInfo.value?.current || pkg.version} · herdr ${st.value.version || ''}`.trim(), idle: false }
 })
 
-// "Dashboard"-style counters: always all three, zeros dimmed.
+// "Dashboard"-style counters: always all three, zeros dimmed. With herdr-core a
+// fourth counts the rows without a status (the Unknown group), so the counters
+// add up to the lines below.
 const stats = computed(() => ([
   ['blocked', counts.value.blocked, t('your turn')],
   ['working', counts.value.working, t('working')],
   ['done', counts.value.ready, t('ready')],
+  ...(core ? [['unknown', (counts.value as { unknown?: number }).unknown ?? 0, t('unknown')]] : []),
 ] as [string, number, string][]).map(([s, n, label]) => ({ s, n, label })))
 
 // Herdr's order stays that of each repository list. The Ready group may
@@ -233,17 +236,20 @@ const stateGroups = computed(() => groupsOf(stateCards.value.map(c => c.row), r 
 }))
 // Machine bar: "All", then each machine (a named session counts as its machine),
 // with its state and the number of agents the list counts.
+// With herdr-core a tab counts the rows of the list, not the terminals.
+const coreRows = computed(() => core ? standaloneRows(spaceRows(st.value)).filter(r => !paneStale(r.lead)) : [])
 const barEntries = computed(() => machineBarShown.value.map((id) => {
-  if (id === BAR_ALL) return { id, label: t('All'), status: null, title: undefined, n: counted.value.length }
+  const total = (keep: (p: Pane) => boolean) => core ? coreRows.value.filter(r => keep(r.lead)).length : counted.value.filter(keep).length
+  if (id === BAR_ALL) return { id, label: t('All'), status: null, title: undefined, n: total(() => true) }
   const group = machineGroups.value.find(g => g.id === id)
-  if (group) return { id, label: group.name, status: null, title: group.name, n: counted.value.filter(p => group.machines.includes(baseOfPane(p))).length }
+  if (group) return { id, label: group.name, status: null, title: group.name, n: total(p => group.machines.includes(baseOfPane(p))) }
   // A single machine Herdr's state does not list: the one shown in the session row.
   const listed = machines.value.filter(m => baseKeyOf(m) === id)
   const mine = listed.length ? listed : id === soloMachine.value.key ? [soloMachine.value] : []
   const keys = new Set(mine.map(m => m.key))
   const status: MachineInfo['status'] = mine.some(m => m.status === 'online') ? 'online' : mine.some(m => m.status === 'connecting') ? 'connecting' : 'offline'
   const label = (listed.length ? machineName(listed[0]!.key) : mine[0]?.label) || id || t('This machine')
-  return { id, label, status, title: `${label} · ${t(STATE_LABEL[status])}`, n: counted.value.filter(p => keys.has(p.machine || '')).length }
+  return { id, label, status, title: `${label} · ${t(STATE_LABEL[status])}`, n: total(p => keys.has(p.machine || '')) }
 }))
 // The machine a bar item stands for (a named session counts as its machine):
 // the base machine itself when Herdr lists it, else its first session.
@@ -435,7 +441,7 @@ const connectionMachine = ref<MachineInfo | null>(null)
 const connectionInfo = computed(() => machines.value.find(m => m.key === connectionMachine.value?.key) ?? connectionMachine.value)
 const connectionOpen = computed({ get: () => !!connectionMachine.value, set: (v: boolean) => { if (!v) connectionMachine.value = null } })
 function machineMenuItems(m: MachineInfo): MenuItem[] {
-  const items: MenuItem[] = [{ label: t('Herdr sessions'), icon: 'i-lucide-layers', run: () => openSessions(m) }, { label: t('Rename'), icon: 'i-lucide-pencil', run: () => {
+  const items: MenuItem[] = [...core ? [] : [{ label: t('Herdr sessions'), icon: 'i-lucide-layers', run: () => openSessions(m) }], { label: t('Rename'), icon: 'i-lucide-pencil', run: () => {
     renamingMachine.value = m
     machineLabel.value = m.label
   } }]
@@ -737,7 +743,7 @@ function resetListWidth() {
           <span v-if="awakeByMachine[soloTab.m.key]?.active" class="machine-awake"><UIcon name="i-lucide-sun" />{{ awakeLabel(awakeByMachine[soloTab.m.key]) }}</span>
         </p>
       </div>
-      <div v-if="homeGrouping === 'machine' && !multiMachine && soloSelected" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Herdr sessions')" @click="openSessions(soloMachine)">
+      <div v-if="!core && homeGrouping === 'machine' && !multiMachine && soloSelected" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Herdr sessions')" @click="openSessions(soloMachine)">
         <span><UIcon name="i-lucide-layers" />{{ soloMachine.label }}</span>
         <b>{{ soloMachine.session || 'default' }}<UIcon name="i-lucide-chevron-right" /></b>
       </button><UDropdownMenu :items="machineMenu(soloMachine)" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="t('Options')" class="solo-machine-options" /></UDropdownMenu></div>

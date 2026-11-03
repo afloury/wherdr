@@ -402,7 +402,7 @@ body.short-bottom { --safe-bottom: 0px; }
 
 /* Counters: thin-line cells, big Archivo digits. */
 .stats {
-  display: grid; grid-template-columns: repeat(3, 1fr);
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
   border: 1px solid var(--line); margin: 0 0 26px;
 }
 .stat { padding: 12px 12px 11px; min-width: 0; }
@@ -417,6 +417,10 @@ body.short-bottom { --safe-bottom: 0px; }
 .stat.blocked span i { background: var(--blocked); }
 .stat.working span i { background: var(--working); }
 .stat.done span i { background: var(--done); }
+.stat.unknown span i { background: var(--dim); }
+/* Four cells (herdr-core adds Unknown): tighter so the labels still fit. */
+.stats:has(.stat.unknown) .stat { padding-inline: 6px; }
+.stats:has(.stat.unknown) .stat span { gap: 4px; letter-spacing: .02em; }
 .stat.zero b { color: var(--dim); }
 .stat.blocked:not(.zero) b { color: var(--rose); }
 

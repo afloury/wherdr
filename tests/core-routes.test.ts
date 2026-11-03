@@ -13,6 +13,14 @@ describe('coreRouteAllowed', () => {
     '/api/models', '/api/model', '/api/effort', '/api/restart', '/api/codex-update', '/api/tasks/1',
     '/api/statex', '/api/authx', '/api/machine', '/api/machine/remove', '/api/chat/other', '/api/stat', '/state',
   ])('refuses %s', (p) => { expect(coreRouteAllowed(p)).toBe(false) })
+  it('allows the phone address and reads the version, but never the self-update', () => {
+    expect(coreRouteAllowed('/api/phone')).toBe(true)
+    expect(coreRouteAllowed('/api/phone', 'POST')).toBe(true)
+    expect(coreRouteAllowed('/api/update?x=1')).toBe(true)
+    expect(coreRouteAllowed('/api/update', 'GET')).toBe(true)
+    expect(coreRouteAllowed('/api/update', 'POST')).toBe(false)
+    expect(coreRouteAllowed('/api/update/status')).toBe(false)
+  })
   it('answers the file browser routes', () => {
     for (const r of ['/api/files?pane=x', '/api/files/read?pane=x&path=a', '/api/files/download?pane=x']) expect(coreRouteAllowed(r)).toBe(true)
   })
