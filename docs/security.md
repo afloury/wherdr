@@ -31,9 +31,19 @@ only the routes listed in `shared/coreRoutes.ts` answer.
 
   A network error or a server restart never locks the app. **Lock all devices** (Settings →
   Security, for a lost or stolen device) ends every session, this one included, and keeps the
-  passkeys: each device unlocks again with its own. Turning the lock off removes the passkeys and
-  invalidates every session. Lost passkey: delete `data/auth.json` on the server; the app is open
-  again to whoever can reach it.
+  passkeys: each device unlocks again with its own. It draws a new signing secret and a new random
+  session generation, so even a cookie forged by someone who once read `data/auth.json` stops
+  working; open WebSockets close at once, and every push subscription is removed (a device
+  subscribes again by itself once unlocked; its own quiet setting is reset). Turning the lock off
+  does the same and removes the passkeys; every open app then posts its push subscription again
+  at once, and an app that was closed or asleep does so when it opens or reconnects. The first start after upgrading to this version ends the open
+  sessions once (the old numeric generation is replaced); the passkeys stay. Lost passkey: delete
+  `data/auth.json` on the server; the app is open again to whoever can reach it.
+- **Protected files**: the file browser and the file paths shown in conversations never preview,
+  download or stream wherdr's data folder (`DATA_DIR`, with `auth.json`, the push keys and
+  subscriptions), `~/.ssh` or `~/.config/herdr`, on any machine, even through a symlink or inside
+  a browsed project. Agents themselves can still read them: the lock protects the app, not the
+  machine.
 - <a id="new-device"></a>**New device**: it can only get in with an existing passkey. Unlock it
   with a passkey synced by your password manager (iCloud Keychain, Google Password Manager,
   1Password…), or with the passkey of another device through the browser's "use a phone or
