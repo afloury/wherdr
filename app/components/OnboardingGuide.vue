@@ -4,7 +4,8 @@
 // agents found), the phone (Tailscale, PhoneSetup.vue) or Add to Home Screen
 // on a phone already on the tailnet address, Claude quotas when a machine has
 // them to set up (optional: leaving the step stops suggesting them), then
-// passkey lock and notifications. On localhost, once the tailnet address answers, a button
+// notifications. The passkey is not proposed here: it stays optional, in
+// Settings › Security. On localhost, once the tailnet address answers, a button
 // continues at the same step on that address. Skip is always there; finishing or skipping is saved by the
 // server (useOnboarding.ts).
 import { type OnboardingStep, mobileOs, onAddress, onboardingSteps, setupHash, stepIndex } from '~/utils/onboarding'
@@ -49,7 +50,8 @@ const STEP_LABELS: Record<OnboardingStep, [string, string]> = {
   phone: ['Phone', 'Téléphone'],
   homescreen: ['Home Screen', 'Écran d’accueil'],
   quotas: ['Quotas', 'Quotas'],
-  security: ['Security', 'Sécurité'],
+  // Still `security` in #/setup?step=… links; it now holds the notifications.
+  security: ['Alerts', 'Alertes'],
 }
 const label = (s: OnboardingStep) => tl(...STEP_LABELS[s])
 const counter = computed(() => `${String(index.value + 1).padStart(2, '0')} / ${String(steps.value.length).padStart(2, '0')}`)
@@ -78,7 +80,7 @@ const agentsText = computed(() => {
 })
 function newAgent() { newAgentOpen.value = true }
 
-// Security: the lock and the notifications, as in Settings.
+// Last step: the notifications, as in Settings.
 onMounted(() => {
   if (!homeQuotas.value) reloadQuotas()
   refreshAuthStatus()
@@ -113,7 +115,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       </ol>
     </nav>
 
-    <a v-if="tailnet && step !== 'security'" class="onboarding-tailnet" :href="onAddress(tailnet.url, setupHash(step))">
+    <a v-if="tailnet" class="onboarding-tailnet" :href="onAddress(tailnet.url, setupHash(step))">
       <span class="onboarding-tailnet-label">{{ tl('Published on your tailnet', 'Publié sur ton tailnet') }}</span>
       <span class="onboarding-tailnet-go"><span>{{ tl('Continue on', 'Continuer sur') }} <b>{{ tailnet.name }}</b></span><UIcon name="i-lucide-arrow-right" /></span>
     </a>
@@ -186,18 +188,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           <ClaudeQuotaSetup :intro="false" :declined="false" />
         </template>
 
-        <!-- Security and notifications -->
+        <!-- Notifications -->
         <template v-else>
-          <p class="eyebrow onboarding-eyebrow">{{ tl('Security and notifications', 'Sécurité et notifications') }}</p>
-          <h2 class="onboarding-title">{{ tl('Lock it if you like, and get notified.', 'Verrouille-le si tu veux, et sois prévenu.') }}</h2>
+          <p class="eyebrow onboarding-eyebrow">{{ tl('Notifications', 'Notifications') }}</p>
+          <h2 class="onboarding-title">{{ tl('Get notified.', 'Sois prévenu.') }}</h2>
           <div class="settings-group">
-            <h3>{{ appConfig.openNetwork ? tl('Passkey lock · recommended here', 'Verrou passkey · conseillé ici') : tl('Passkey lock · optional', 'Verrou passkey · facultatif') }}</h3>
-            <p class="onboarding-why">{{ appConfig.openNetwork ? tl('wherdr accepts every network here (WHERDR_TRUSTED_NETWORKS=any): without a lock, anyone who can reach this machine can control your agents. Over HTTPS, a passkey adds that lock.', 'wherdr accepte ici tous les réseaux (WHERDR_TRUSTED_NETWORKS=any) : sans verrou, toute personne qui joint cette machine peut piloter tes agents. En HTTPS, une passkey ajoute ce verrou.') : tl('wherdr already answers only this computer and your tailnet. A passkey adds a lock on each device, with Face ID, Touch ID or Windows Hello: useful if someone else uses your tailnet or your devices, or if a proxy or tunnel on this computer relays wherdr.', 'wherdr ne répond déjà qu’à cet ordinateur et à ton tailnet. Une passkey ajoute un verrou sur chaque appareil, avec Face ID, Touch ID ou Windows Hello : utile si quelqu’un d’autre utilise ton tailnet ou tes appareils, ou si un proxy ou un tunnel sur cet ordinateur relaie wherdr.') }}</p>
-            <PasskeyCard :continue-hash="setupHash('security')" />
-            <NetworkTips />
-          </div>
-          <div class="settings-group">
-            <h3>{{ tl('Notifications', 'Notifications') }}</h3>
             <p class="onboarding-why">{{ tl('Know when an agent needs your answer or finishes, even with the app closed.', 'Sache quand un agent attend ta réponse ou a fini, même app fermée.') }}</p>
             <PushCard />
           </div>

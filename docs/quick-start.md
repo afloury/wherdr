@@ -38,15 +38,16 @@ the checks), and [the `wherdr` command](command.md#the-wherdr-command) from npm 
 new release for up to two days; the installer gets it from GitHub at once).
 
 At first launch, wherdr opens a **setup guide**: the Herdr agents it found, your phone
-(Tailscale), then the passkey lock and notifications. Skip it any time; finishing or skipping is
+(Tailscale), then notifications. Skip it any time; finishing or skipping is
 saved on the server (`data/onboarding.json`), so your other devices do not show it again. Reopen
 it from Settings › About › **Setup guide**. On a phone that already opens wherdr through its
 tailnet address, the phone step becomes Add to Home Screen.
 
-**Passkeys are tied to the address they are created on.** Once wherdr's tailnet address is
-published and answers, the guide opened on `localhost` shows **Continue on
-<machine>.<tailnet>.ts.net**, which reopens it at the same step on that address, and its Security
-step (like Settings › Security) sends the passkey lock there. Nothing redirects on its own:
+Once wherdr's tailnet address is published and answers, the guide opened on `localhost` shows
+**Continue on <machine>.<tailnet>.ts.net**, which reopens it at the same step on that address
+(notifications and the installed app need it). The guide does not propose a passkey: the
+optional passkey lock is in Settings › Security, which also sends it to that address, since
+**passkeys are tied to the address they are created on**. Nothing redirects on its own:
 `localhost` stays valid on the computer. The installer, the Herdr plugin and `wherdr open` open
 that address too when it is already published.
 
