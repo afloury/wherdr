@@ -54,6 +54,9 @@ const integration = ref<ChatResponse['integration'] | null>(null)
 const loadError = ref<string | null>(null)
 const misses = shallowRef<ChatMisses>(noMisses()) // missed polls, view kept
 const rendered = ref(false)
+// The first message typed in the New sheet, shown until the conversation exists.
+const firstPrompt = computed(() => firstPromptOf(props.pane.id))
+watch(() => items.value.length, (n) => { if (n) forgetFirstPrompt(props.pane.id) })
 const olderBusy = ref(false)
 const savedAt = ref<number | null>(null)
 const readOnly = computed(() => offlineView.value || paneStale(props.pane))
@@ -1335,7 +1338,17 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         :ui="{ root: 'chat-msgs', viewport: 'hw-jump-vp', autoScroll: 'hw-jump' }"
       >
         <div ref="listEl" class="chat-list" :class="[readOnly ? 'no-reply' : `rs-${replyStyle}`, { asking: asked, skeleton }]" @click="onListClick" @keydown="onListKey">
-          <div v-if="unavailable && waiting" class="chat-empty waiting">
+          <div v-if="unavailable === 'not_found' && firstPrompt" class="msg-user-wrap" data-testid="first-prompt">
+            <UChatMessage
+              id="first-prompt" role="user" side="right" variant="soft" :parts="[{ type: 'text', text: firstPrompt }]"
+              :ui="{ root: 'msg msg-user msg-pending', container: 'msg-c', content: 'msg-bubble' }"
+            >
+              <template #content>
+                <UserText :text="firstPrompt" />
+              </template>
+            </UChatMessage>
+          </div>
+          <div v-else-if="unavailable && waiting" class="chat-empty waiting">
             <UIcon name="i-lucide-square-terminal" class="chat-empty-icon" />
             <p>{{ waiting.text }}</p>
             <pre v-if="waiting.lines.length" class="choices-screen-text">{{ waiting.lines.join('\n') }}</pre>

@@ -233,6 +233,15 @@ async function launchNew(place: NewPanePlace) {
   loadConfig()
 }
 
+// herdr-core answers once the first message was typed ('sent') or not ('skipped': a dialog
+// to answer, a blocked or busy program). Sent: the chat shows it at once; else say so.
+function afterFirstMessage(r: { pane_id: string, first_message?: string | null }, text: string) {
+  if (r.first_message === 'sent') rememberFirstPrompt(r.pane_id, text)
+  else if (r.first_message === 'skipped') {
+    toast(tl('The first message was not sent: answer the prompt in the terminal, then send it again.', 'Le premier message n’est pas parti : réponds à la question dans le terminal, puis renvoie-le.'), true)
+  }
+}
+
 async function launch() {
   launching.value = true
   error.value = null
@@ -251,11 +260,13 @@ async function launch() {
     }
     if (newTabSpace.value && core) {
       // herdr-core: a new tab is a new terminal labelled for that space (no layout call).
-      const r = await api<{ pane_id: string }>('/api/agents', {
+      const sent = prompt.value
+      const r = await api<{ pane_id: string, first_message?: string | null }>('/api/agents', {
         ...(machine.value ? { machine: machine.value } : {}),
         kind: kind.value, cwd: dir.value, name: name.value.trim(), workspace: newTabSpace.value,
         prompt: prompt.value, resume: resume.value && canResume.value,
       })
+      afterFirstMessage(r, sent)
       resetForm()
       newAgentOpen.value = false
       haptic()
@@ -265,7 +276,8 @@ async function launch() {
     }
     if (newTabSpace.value) return await launchNew({ kind: 'tab', workspaceId: newTabSpace.value, label: tabName.value })
     if (newSplit.value) return await launchNew({ kind: 'split', ...newSplit.value })
-    const r = await api<{ pane_id: string }>('/api/agents', {
+    const sent = prompt.value
+    const r = await api<{ pane_id: string, first_message?: string | null }>('/api/agents', {
       ...(machine.value ? { machine: machine.value } : {}),
       kind: kind.value,
       cwd: dir.value,
@@ -274,6 +286,7 @@ async function launch() {
       resume: resume.value && canResume.value,
       ...(core ? {} : { worktree: isGit.value && worktree.value, branch: branch.value.trim() }),
     })
+    afterFirstMessage(r, sent)
     resetForm()
     newAgentOpen.value = false
     haptic()

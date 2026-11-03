@@ -172,7 +172,7 @@ describe('core creation', () => {
 
 describe('resume and first message', () => {
   const idle = (extra: object = {}) => (method: string) => method === 'terminal.run' ? { address: 't3' }
-    : method === 'terminal.get' ? { state: 'live', status: 'idle' } : method === 'terminal.read' ? { text: '> ' } : extra
+    : method === 'terminal.get' ? { state: 'live', status: { app: 'x', state: 'idle' } } : method === 'terminal.read' ? { text: '> ' } : extra
   it('resumes through the CLI argv, only for the agents that have one and only when asked', async () => {
     let t = setup(() => ({ address: 't3' }))
     await coreCreate(t.deps, { kind: 'claude', cwd: '/home/u', resume: true })
@@ -187,11 +187,11 @@ describe('resume and first message', () => {
   it('sends the first message once, after the answer, when the agent is idle', async () => {
     const t = setup(idle())
     const r = await coreCreate(t.deps, { kind: 'claude', cwd: '/home/u', prompt: '  hello  ' })
-    expect(r.first_message).toBe('queued')
-    await vi.waitFor(() => expect(t.calls.filter(c => c[0] === 'terminal.send')).toEqual([['terminal.send', { terminal: 't3', text: 'hello' }]]))
+    expect(r.first_message).toBe('sent')
+    expect(t.calls.filter(c => c[0] === 'terminal.send')).toEqual([['terminal.send', { terminal: 't3', text: 'hello' }]])
   })
   it('never types into a blocked program, a dialog or a finished terminal', async () => {
-    for (const reply of [{ state: 'live', status: 'blocked' }, { state: 'finished' }]) {
+    for (const reply of [{ state: 'live', status: { state: 'blocked' } }, { state: 'finished' }]) {
       const t = setup(() => ({}))
       expect(await sendFirstMessage({ ...t.deps, call: async (m) => (m === 'terminal.get' ? reply : { text: '> ' }) as never, pollMs: 1, readyWatchMs: 50 }, 't3', 'x')).toBe('skipped')
     }
@@ -200,12 +200,26 @@ describe('resume and first message', () => {
     expect(await sendFirstMessage(deps, 't3', 'x')).toBe('skipped')
     expect(t.calls.some(c => c[0] === 'terminal.send')).toBe(false)
   })
+  it('reports a first message that was not typed', async () => {
+    const t = setup((m: string) => m === 'terminal.run' ? { address: 't3' } : m === 'terminal.get' ? { state: 'live' } : m === 'terminal.read' ? { text: '› 1. Trust and continue\n  2. Back\n  enter continue · esc back' } : {})
+    const r = await coreCreate({ ...t.deps, pollMs: 1, readyWatchMs: 50 }, { kind: 'codex', cwd: '/home/u', prompt: 'hi' })
+    expect(r.first_message).toBe('skipped')
+    expect(t.calls.some(c => c[0] === 'terminal.send')).toBe(false)
+  })
+  it('does not type into a Codex composer shown before its status exists', async () => {
+    // Composer first, no status; the trust dialog replaces it a moment later.
+    const t = setup()
+    let n = 0
+    const deps = { ...t.deps, call: (async (m: string, p: object) => { t.calls.push([m, p]); return m === 'terminal.read' ? { text: n++ < 3 ? '› Ask Codex to do anything' : '› 1. Trust and continue\n  enter continue · esc back' } : { state: 'live', status: null } }) as never, pollMs: 1, readyWatchMs: 200 }
+    expect(await sendFirstMessage(deps, 't3', 'x')).toBe('skipped')
+    expect(t.calls.some(c => c[0] === 'terminal.send')).toBe(false)
+  })
   it('waits for a stable screen when the program reports no status, and gives up at the deadline', async () => {
     const t = setup()
     let n = 0
     const deps = { ...t.deps, call: (async (m: string, p: object) => { t.calls.push([m, p]); return m === 'terminal.read' ? { text: n++ < 2 ? `boot ${n}` : 'ready' } : { state: 'live', status: null } }) as never, pollMs: 1, readyWatchMs: 2000 }
     expect(await sendFirstMessage(deps, 't3', 'x')).toBe('sent')
-    expect(n).toBeGreaterThanOrEqual(5)
+    expect(n).toBeGreaterThanOrEqual(7)
     let k = 0
     const busy = { ...deps, call: (async (m: string) => m === 'terminal.read' ? { text: String(k++) } : { state: 'live', status: null }) as never, readyWatchMs: 30 }
     expect(await sendFirstMessage(busy, 't3', 'x')).toBe('skipped')
