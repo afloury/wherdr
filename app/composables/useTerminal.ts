@@ -294,7 +294,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     lastVirtualChord.value = chord
     const bytes = virtualNavigationBytes(chord)
     if (bytes) {
-      if (!sendTerm({ type: 'terminal.input', text: bytes })) await sendKeys(virtualNavigationKeys(chord))
+      if (!sendTerm({ type: 'terminal.input', text: bytes })) await sendKeys(virtualNavigationKeys(chord, useRuntimeConfig().public.core === true))
       return
     }
     await sendKeys([chord])
