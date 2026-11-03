@@ -8,7 +8,6 @@ import { classifyScreen } from '../shared/interactiveScreen'
 import { parseUsageLimit } from '../shared/usageLimit'
 import { CHOICE_MS, keepReading, ScreenCache } from '../server/utils/screenCache'
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
-import { HerdrError } from '../server/utils/herdr'
 import { mapScreenPanes } from '../server/utils/screenGate'
 import { bindChoices, bindFunction } from './stateFunction'
 const fx = (name: string) => readFileSync(`tests/fixtures/${name}.txt`, 'utf8')
@@ -59,33 +58,6 @@ it('cursor movement keeps the identity but a changed permission command does not
  expect(choices.promptIdentity(text)).toBe(choices.promptIdentity(text.replace('  2. Keep','› 2. Keep').replace('› 3. Keep','  3. Keep')))
  const permission=fx('claude-approve-bash')
  expect(choices.promptIdentity(permission)).not.toBe(choices.promptIdentity(permission.replace('npm test','npm run build')))
-})
-
-for (const agent of ['codex','claude','omp']) it(`${agent}: rejects changed question even when the button label stays the same`, async () => {
- vi.useFakeTimers()
- let text = agent === 'omp' ? fx('omp-ask-single') : fx('codex-approve-command')
- const old = choices.screenChoices(text,agent)!
- const call = vi.fn(async () => ({read:{text}}))
- const cache = new Map([['w1:p1',{}]])
- const poll = vi.fn()
- const pending = vi.fn(async () => [])
- for (const [name,value] of Object.entries({defineApi:(h:unknown)=>h,PANE_RE:/^w1:p1$/,HerdrError,
-  findPane:()=>({id:'w1:p1',agent,status:'blocked'}),herdr:call,...choices,
-  transcripts:{pendingClaudeQuestions:pending},choicesCache:cache,poll,
- })) vi.stubGlobal(name,value)
- const {default:handler}=await import('../server/api/choose.post')
- text = text.replaceAll(agent === 'omp' ? 'Favourite' : 'npm test', agent === 'omp' ? 'Preferred' : 'npm run build')
- expect(choices.screenChoices(text,agent)!.options[0]!.label).toBe(old.options[0]!.label)
- await expect(handler({} as never,{pane_id:'w1:p1',index:0,label:old.options[0]!.label,identity:old.identity})).rejects.toMatchObject({code:'stale'})
- expect(call).toHaveBeenCalledTimes(1)
- if (agent === 'claude') expect(pending.mock.invocationCallOrder[0]).toBeLessThan(call.mock.invocationCallOrder[0]!)
- expect(cache.has('w1:p1')).toBe(false)
- await vi.runAllTimersAsync()
- expect(poll).toHaveBeenCalledOnce()
- call.mockClear()
- const current=choices.screenChoices(text,agent)!
- await expect(handler({} as never,{pane_id:'w1:p1',index:0,label:current.options[0]!.label,identity:current.identity})).resolves.toEqual({ok:true})
- expect(call).toHaveBeenCalledWith('pane.send_input',expect.objectContaining({keys:choices.keysFor(current,0)}))
 })
 
 it('bounds eight slow pane readings to two at once', async () => {

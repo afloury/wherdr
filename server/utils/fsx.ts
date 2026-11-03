@@ -3,7 +3,6 @@
 // multiplexed SSH connection (see machines.ts). Same operations on both sides,
 // in POSIX sh + BSD (macOS) or GNU (Linux) stat.
 import fs from 'node:fs'
-import path from 'node:path'
 import { createHash } from 'node:crypto'
 
 const fsp = fs.promises
@@ -208,28 +207,7 @@ done`
 // Exit code of LIST_DIRS_SCRIPT → refusal (null: listed, or not a folder).
 export const dirDeniedFromCode = (code: number | null): DirDenied | null => code === 3 ? 'macos' : code === 2 ? 'permission' : null
 
-// Local `readdir` error → refusal (EPERM is macOS privacy protection there).
-export function dirDeniedFromError(err: unknown, platform: string = process.platform): DirDenied | null {
-  const code = (err as { code?: unknown } | null)?.code
-  if (code === 'EPERM' && platform === 'darwin') return 'macos'
-  return code === 'EACCES' || code === 'EPERM' ? 'permission' : null
-}
-
 export function parseDirList(out: string): DirEntryRaw[] {
   return String(out || '').split('\n').filter(l => /^[gd] ./.test(l)).map(l => ({ name: l.slice(2), git: l[0] === 'g' }))
 }
 
-export async function listDirsLocal(dir: string): Promise<DirEntryRaw[]> {
-  const entries = await fsp.readdir(dir, { withFileTypes: true })
-  const out: DirEntryRaw[] = []
-  for (const e of entries) {
-    if (!e.isDirectory() || e.name.startsWith('.') || e.name === 'node_modules') continue
-    let git = false
-    try {
-      await fsp.access(path.join(dir, e.name, '.git'))
-      git = true
-    } catch { /* not a repository */ }
-    out.push({ name: e.name, git })
-  }
-  return out
-}

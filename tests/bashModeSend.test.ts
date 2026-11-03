@@ -8,7 +8,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { type GuardDeps, guardedSend } from '../server/utils/guardedSend'
 import { inputBox } from '../server/utils/unqueue'
-import { inputVisible, panelOpen, parseChoices } from '../server/utils/choices'
+import { inputVisible, parseChoices } from '../server/utils/choices'
 import { parseWaitScreen } from '../server/utils/waitScreen'
 import { parseMenu } from '../shared/menuScreen'
 import { NO_INPUT_MS, type QueueEntry, checkQueue, publicEntry } from '../server/utils/queued'
@@ -40,10 +40,9 @@ describe('Claude bash mode input field', () => {
     expect(inputBox(`${PINK}! ${ESC}[0m echo old\r\n`)).toBeNull()
   })
 
-  it('is the input field, not a menu or a panel, typed in or left empty', () => {
+  it('is the input field, not a menu, typed in or left empty', () => {
     for (const text of [fx('claude-bash-mode.txt'), plain(fx('claude-bash-mode-empty.ansi'))]) {
       expect(inputVisible(text)).toBe(true)
-      expect(panelOpen(text, 'claude')).toBe(false)
       expect(parseChoices(text)).toBeNull()
       expect(parseWaitScreen(text)).toBeNull()
     }

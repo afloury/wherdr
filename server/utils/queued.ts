@@ -159,14 +159,6 @@ export interface QueueEntry {
   unseen?: boolean
 }
 
-// Hold a new message instead of typing it now?
-export function shouldHold(agent: string | null | undefined, status: string | null | undefined, input: boolean, earlierHeld: boolean): boolean {
-  if (!agent || !HOLD_AGENTS.has(agent)) return false
-  // Keep the order: behind a held message, everything waits.
-  if (earlierHeld) return true
-  return INPUT_STATES.has(status || '') && !input
-}
-
 // Next held message to deliver: the oldest one, and only when nothing older
 // is still held (a failed one is skipped: it waits for Retry or Cancel).
 export function nextHeld(list: QueueEntry[]): QueueEntry | null {

@@ -2,15 +2,13 @@ import type { ConversationHit, ConversationSearchResponse } from '../../shared/t
 import { hasTranscript } from '../../shared/agentKind'
 import { SEARCH_DEADLINE_MS, SEARCH_MAX_RESULTS } from '../utils/conversationSearch'
 import { getState } from '../utils/state'
-import { machineOfPane } from '../utils/machines'
 import { spaceTitle } from '../../shared/displayTitles'
 
 export default defineApi(async (event): Promise<ConversationSearchResponse> => {
   const query = String(getQuery(event).q || '').trim().slice(0, 100)
   if (query.length < 2) return { hits: [], limited: false }
-  const core = process.env.WHERDR_BACKEND === 'core'
   const panes = getState().panes.filter(p => hasTranscript(p.agent) &&
-    (core ? getState().machines?.find(m => m.key === p.machine)?.status === 'online' : (!machineOfPane(p.id) || machineOfPane(p.id)?.status === 'online')))
+    getState().machines?.find(m => m.key === p.machine)?.status === 'online')
   const deadline = Date.now() + SEARCH_DEADLINE_MS
   const hits: ConversationHit[] = []
   let limited = false
@@ -18,7 +16,6 @@ export default defineApi(async (event): Promise<ConversationSearchResponse> => {
   async function worker() {
     while (next < panes.length && hits.length < SEARCH_MAX_RESULTS && Date.now() < deadline) {
       const p = panes[next++]!
-      if (!core && !machineOfPane(p.id)) continue
       try {
         let timer: ReturnType<typeof setTimeout> | undefined
         const result = await Promise.race([
