@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CoreError } from '../server/utils/core'
-import { coreAddMachine, coreForgetMachine, coreRenameMachine, coreStatus, versionAtLeast, coreCreate, sendFirstMessage, coreIsGit, coreListDirs, type CoreAdminDeps } from '../server/utils/coreCreate'
+import { coreAddMachine, coreForgetMachine, coreRenameMachine, coreStatus, versionAtLeast, coreCreate, sendFirstMessage, sendAfterDialog, coreIsGit, coreListDirs, type CoreAdminDeps } from '../server/utils/coreCreate'
 import type { MachineInfo, Pane, Workspace } from '../shared/types'
 
 const b64 = (s: string) => Buffer.from(s).toString('base64')
@@ -191,27 +191,49 @@ describe('resume and first message', () => {
     expect(t.calls.filter(c => c[0] === 'terminal.send')).toEqual([['terminal.send', { terminal: 't3', text: 'hello' }]])
   })
   it('never types into a blocked program, a dialog or a finished terminal', async () => {
-    for (const reply of [{ state: 'live', status: { state: 'blocked' } }, { state: 'finished' }]) {
+    for (const [reply, out] of [[{ state: 'live', status: { state: 'blocked' } }, 'dialog'], [{ state: 'finished' }, 'skipped']] as const) {
       const t = setup(() => ({}))
-      expect(await sendFirstMessage({ ...t.deps, call: async (m) => (m === 'terminal.get' ? reply : { text: '> ' }) as never, pollMs: 1, readyWatchMs: 50 }, 't3', 'x')).toBe('skipped')
+      expect(await sendFirstMessage({ ...t.deps, call: async (m) => (m === 'terminal.get' ? reply : { text: '> ' }) as never, pollMs: 1, readyWatchMs: 50 }, 't3', 'x')).toBe(out)
     }
     const t = setup(idle())
     const deps = { ...t.deps, call: (async (m: string, p: object) => { t.calls.push([m, p]); return m === 'terminal.read' ? { text: 'Yes, I trust this folder\nEnter to confirm' } : { state: 'live', status: 'idle' } }) as never, pollMs: 1, readyWatchMs: 50 }
-    expect(await sendFirstMessage(deps, 't3', 'x')).toBe('skipped')
+    expect(await sendFirstMessage(deps, 't3', 'x')).toBe('dialog')
     expect(t.calls.some(c => c[0] === 'terminal.send')).toBe(false)
   })
   it('reports a first message that was not typed', async () => {
     const t = setup((m: string) => m === 'terminal.run' ? { address: 't3' } : m === 'terminal.get' ? { state: 'live' } : m === 'terminal.read' ? { text: '› 1. Trust and continue\n  2. Back\n  enter continue · esc back' } : {})
     const r = await coreCreate({ ...t.deps, pollMs: 1, readyWatchMs: 50 }, { kind: 'codex', cwd: '/home/u', prompt: 'hi' })
-    expect(r.first_message).toBe('skipped')
+    expect(r.first_message).toBe('queued')
     expect(t.calls.some(c => c[0] === 'terminal.send')).toBe(false)
+  })
+  it('sends a queued first message once the trust dialog has been answered', async () => {
+    let answered = false
+    const t = setup((m) => {
+      if (m === 'terminal.run') return { address: 't3' }
+      if (m === 'terminal.read') return { text: answered ? 'ready' : 'Yes, I trust this folder\nEnter to confirm' }
+      if (m === 'terminal.get') return { state: 'live', status: answered ? { state: 'idle' } : null }
+      return {}
+    })
+    const deps = { ...t.deps, pollMs: 1, readyWatchMs: 200, queueWatchMs: 2000 }
+    let watch: Promise<unknown> = Promise.resolve()
+    const r = await coreCreate({ ...deps, onQueued: (w) => { watch = w } }, { kind: 'claude', cwd: '/home/u', prompt: 'hello' })
+    expect(r.first_message).toBe('queued')
+    expect(t.calls.some(c => c[0] === 'terminal.send')).toBe(false)
+    answered = true
+    expect(await watch).toBe('sent')
+    expect(t.calls.filter(c => c[0] === 'terminal.send')).toEqual([['terminal.send', { terminal: 't3', text: 'hello' }]])
+  })
+  it('gives up on a queued first message that is never answered', async () => {
+    const t = setup()
+    const deps = { ...t.deps, call: (async (m: string) => (m === 'terminal.read' ? { text: 'Enter to confirm' } : { state: 'live', status: null })) as never, pollMs: 1, readyWatchMs: 20, queueWatchMs: 30 }
+    expect(await sendAfterDialog(deps, 't3', 'x')).toBe('skipped')
   })
   it('does not type into a Codex composer shown before its status exists', async () => {
     // Composer first, no status; the trust dialog replaces it a moment later.
     const t = setup()
     let n = 0
     const deps = { ...t.deps, call: (async (m: string, p: object) => { t.calls.push([m, p]); return m === 'terminal.read' ? { text: n++ < 3 ? '› Ask Codex to do anything' : '› 1. Trust and continue\n  enter continue · esc back' } : { state: 'live', status: null } }) as never, pollMs: 1, readyWatchMs: 200 }
-    expect(await sendFirstMessage(deps, 't3', 'x')).toBe('skipped')
+    expect(await sendFirstMessage(deps, 't3', 'x')).toBe('dialog')
     expect(t.calls.some(c => c[0] === 'terminal.send')).toBe(false)
   })
   it('waits for a stable screen when the program reports no status, and gives up at the deadline', async () => {

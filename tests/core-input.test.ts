@@ -32,6 +32,20 @@ describe('core input routes', () => {
     await expect(coreSend(t.d, { pane_id: 'nope', text: 'x' })).rejects.toMatchObject({ code: 'bad_pane' })
   })
 
+  it('presses Enter once when a multi-line send was left in the input (no turn started)', async () => {
+    const t = deps((m) => m === 'terminal.send' ? { started: false } : m === 'terminal.get' ? { status: 'idle' } : {})
+    t.d.settleMs = 1
+    expect(await coreSend(t.d, { pane_id: 't1', text: 'see\n@/f/a.txt' })).toEqual({ ok: true, started: true })
+    expect(t.calls.map(c => c[0])).toEqual(['terminal.send', 'terminal.get', 'terminal.keys'])
+    expect(t.calls[2]![1]).toEqual({ terminal: 'm/t1', keys: ['enter'] })
+    // Already working, or a one-line message: no extra Enter.
+    const w = deps((m) => m === 'terminal.send' ? { started: false } : { status: { state: 'working' } })
+    w.d.settleMs = 1
+    await coreSend(w.d, { pane_id: 't1', text: 'a\nb' })
+    await coreSend(w.d, { pane_id: 't1', text: 'one line' })
+    expect(w.calls.filter(c => c[0] === 'terminal.keys')).toHaveLength(0)
+  })
+
   it('maps core errors to stable messages and never retries', async () => {
     for (const [kind, code] of [['blocked', 'blocked'], ['timeout', 'timeout'], ['not_found', 'stale'], ['unavailable', 'unreachable'], ['unreachable', 'unreachable']]) {
       const t = deps(() => new CoreError(kind!, 'x'))

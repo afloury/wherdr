@@ -237,7 +237,9 @@ async function launchNew(place: NewPanePlace) {
 // to answer, a blocked or busy program). Sent: the chat shows it at once; else say so.
 function afterFirstMessage(r: { pane_id: string, first_message?: string | null }, text: string) {
   if (r.first_message === 'sent') rememberFirstPrompt(r.pane_id, text)
-  else if (r.first_message === 'skipped') {
+  else if (r.first_message === 'queued') {
+    toast(tl('The first message will be sent once you have answered the prompt.', 'Le premier message partira dès que tu auras répondu à la question.'))
+  } else if (r.first_message === 'skipped') {
     toast(tl('The first message was not sent: answer the prompt in the terminal, then send it again.', 'Le premier message n’est pas parti : réponds à la question dans le terminal, puis renvoie-le.'), true)
   }
 }

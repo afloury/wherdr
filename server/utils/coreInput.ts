@@ -6,7 +6,7 @@ import { HerdrError } from './herdr'
 import type { Pane } from '../../shared/types'
 
 type Call = <T>(method: string, params: object, timeout: number) => Promise<T>
-export interface CoreInputDeps { call: Call, pane: (id: string) => Pane | undefined, panes: () => Pane[], refresh: () => void }
+export interface CoreInputDeps { call: Call, pane: (id: string) => Pane | undefined, panes: () => Pane[], refresh: () => void, settleMs?: number }
 
 const KEY_RE = /^[a-z0-9+\-]{1,24}$/i
 const MAX_TEXT = 256 * 1024
@@ -52,7 +52,19 @@ export async function coreSend(deps: CoreInputDeps, b: { pane_id?: unknown, text
   if (text.length > MAX_TEXT) throw new HerdrError('too_large', 'Message too large')
   try {
     const r = await deps.call<{ started?: boolean | null }>('terminal.send', { terminal: p.coreAddress, text }, 30000)
-    return { ok: true, started: r?.started ?? null }
+    let started = r?.started ?? null
+    // Claude takes a multi-line send (text + "\n@file") as a paste and leaves it in its
+    // input: core reports no turn started. One more Enter submits it; on an empty input it is harmless.
+    if (started === false && text.includes('\n')) {
+      await new Promise(res => setTimeout(res, deps.settleMs ?? 400))
+      const t = await deps.call<{ status?: string | { state?: string } | null }>('terminal.get', { terminal: p.coreAddress }, 3000).catch(() => null)
+      const state = typeof t?.status === 'string' ? t.status : t?.status?.state
+      if (state !== 'working') {
+        await deps.call('terminal.keys', { terminal: p.coreAddress, keys: ['enter'] }, 10000)
+        started = true
+      }
+    }
+    return { ok: true, started }
   } catch (e) { failure(e) } finally { deps.refresh() }
 }
 
