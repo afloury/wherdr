@@ -26,7 +26,10 @@ tailscale serve --bg --https=7683 http://127.0.0.1:7683
 ```
 
 Tailscale Serve listens on HTTPS port 7683 of your tailnet name, with a valid certificate, and
-forwards to wherdr's local HTTP port. Only devices of your tailnet can reach it.
+forwards to wherdr's local HTTP port. Only devices of your tailnet can reach it, and wherdr
+answers only **your own** devices among them: another user's device in a team tailnet, a node
+shared in from another tailnet or a tagged node is refused until you set up a passkey (see
+[Your own devices only](security.md#own-devices)).
 
 **wherdr enables that address by itself**, on a server without a screen too: at startup, every
 30 seconds, and when an address it does not know yet is opened, it reads what `tailscale serve`
@@ -56,12 +59,14 @@ there.
 Settings → **Enable notifications**. **On the computer:** use the same address in a browser; the
 desktop layout can replace the Herdr terminal client for daily work.
 
-**5. Passkey lock** (optional): Settings → Security → **Enable passkey lock**. The
+**5. Passkey lock** (recommended over HTTPS): Settings → Security → **Enable passkey lock**. The
 first passkey asks for a bootstrap token, printed in the server log (`~/wherdr/wherdr.log`,
 **L** in the wherdr panel); it changes on each restart and is only needed for that first passkey. Add a passkey on each of
-your devices after that (see [New device](security.md#new-device)). Without one, every device of your
-tailnet can control your agents: enough when the tailnet is yours alone, a passkey adds a lock
-on each device when someone else shares the tailnet or your devices.
+your devices after that (see [New device](security.md#new-device)). Without one, each of your own
+devices, and anyone who uses this computer (other OS users included, see
+[Shared computers](security.md#shared-computers)), can control your agents. Devices of other
+people on your tailnet are refused; with a passkey they reach the lock screen. Set one up as
+soon as you use the HTTPS address, and always on a computer other people log in to.
 
 **6. More machines** (optional): register your other computers in Herdr over SSH
 (`herdr machine add`, see [Several machines (SSH)](machines.md#several-machines-ssh)). Their agents show

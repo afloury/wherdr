@@ -37,8 +37,8 @@ describe('trusted networks', () => {
 
 describe('tailnet: what Tailscale itself reports', () => {
   it('reads running state, own and peer addresses from `tailscale status --json`', () => {
-    const json = JSON.stringify({ BackendState: 'Running', Self: { TailscaleIPs: ['100.90.1.2'] }, Peer: { a: { TailscaleIPs: ['100.101.102.103', 'fd7a:115c:a1e0::5'] } } })
-    expect(tailnetPeers(json)).toEqual({ readable: true, state: 'Running', running: true, selfIps: ['100.90.1.2'], peerIps: ['100.101.102.103', 'fd7a:115c:a1e0::5'] })
+    const json = JSON.stringify({ BackendState: 'Running', Self: { UserID: 7, TailscaleIPs: ['100.90.1.2'] }, Peer: { a: { UserID: 7, TailscaleIPs: ['100.101.102.103', 'fd7a:115c:a1e0::5'] } } })
+    expect(tailnetPeers(json)).toEqual({ readable: true, state: 'Running', running: true, selfIps: ['100.90.1.2'], peerIps: ['100.101.102.103', 'fd7a:115c:a1e0::5'], otherIps: [] })
     expect(tailnetPeers('{"BackendState":"Stopped"}')).toMatchObject({ readable: true, running: false })
     // A failed read is unknown, not "stopped".
     expect(tailnetPeers('')).toMatchObject({ readable: false, running: false })

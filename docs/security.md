@@ -10,7 +10,7 @@ wherdr drives Herdr, so **it can run anything as your user**.
   network** (Tailscale or [equivalent](networks.md#other-private-networks)). Never add a public route
   (port forwarding, public reverse proxy, ngrok…); the only exception is a Cloudflare Tunnel
   behind Cloudflare Access, with its risks (it needs `WHERDR_TRUSTED_NETWORKS=any`).
-- It answers only this computer and the tailnet: see [Network access](security.md#network-access).
+- It answers only this computer and your own tailnet devices: see [Network access](security.md#network-access).
 - Requests are accepted only for `localhost`, loopback addresses, the runtime's hostname, the
   hostname in `APP_URL`, the tailnet name `tailscale serve` publishes for wherdr's own port
   (read from Tailscale on the machine, never from a request, and only while it is published),
@@ -36,8 +36,10 @@ wherdr drives Herdr, so **it can run anything as your user**.
   with a passkey synced by your password manager (iCloud Keychain, Google Password Manager,
   1Password…), or with the passkey of another device through the browser's "use a phone or
   tablet" QR code, then Settings → Security → **Add this device** to give it its own passkey.
-- Without a passkey, **anyone who can reach the address can control your agents**: every device
-  on your tailnet, and every user of your tailnet if you share it.
+- Without a passkey, **anyone who can use this computer or one of your tailnet devices can
+  control your agents**, other OS users of this computer included (see
+  [Shared computers](security.md#shared-computers)). Devices of other people on your tailnet are
+  refused until a passkey is set up, then they reach the lock screen.
 - Writes require `Content-Type: application/json` (or `image/*` for photos, `application/octet-stream` for attached files) and an `Origin`
   matching the host, WebSockets included. API reads sent from another site (links, images,
   `no-cors` fetches, reported by the browser's `Sec-Fetch-Site`) are refused too.
@@ -58,17 +60,20 @@ See [SECURITY.md](../SECURITY.md) to report a vulnerability.
 
 ### Network access
 
-wherdr answers **this computer and your tailnet only**. A device on any other network (a coffee shop
+wherdr answers **this computer and your own tailnet devices only**. A device on any other network (a coffee shop
 Wi-Fi, an office LAN, the Internet) gets HTTP 403 (`network`), with a page that says why, even
-when it knows the address and the port. The passkey lock is never required, on any network: it
-is an extra lock on top, and it needs HTTPS (or `localhost`).
+when it knows the address and the port. Your own devices never need the passkey: it is an extra
+lock on top, and it needs HTTPS (or `localhost`). Other people's tailnet devices get in only
+once a passkey is set up (see below).
 
 **Good practices**
 
 - Prefer **Tailscale** (`tailscale serve`): a private HTTPS address, only for your devices.
 - A network you add **without HTTPS** gets no passkey, no installed app and no notifications, and
   any device on that network can control your agents.
-- **Create a passkey** as soon as wherdr is reached over HTTPS.
+- **Create a passkey** as soon as wherdr is reached over HTTPS: without one, whoever picks up one
+  of your devices, or uses this computer, controls your agents. Settings › Security says so on
+  an HTTPS address.
 
 How a request is judged, before anything else (WebSockets included):
 
@@ -81,6 +86,15 @@ How a request is judged, before anything else (WebSockets included):
     reads that from Tailscale every 10 seconds (the CLI or Tailscale's socket); an
     interface address in that range proves nothing, since a LAN may use it too. When Tailscale is
     stopped, missing or unreadable for 30 seconds, no direct connection counts as tailnet.
+  - <a id="own-devices"></a>*Your own devices only*: a peer counts when Tailscale lists it under
+    the same user as this machine (`UserID`) and not as a node shared in from another tailnet
+    (`ShareeNode`). Every other peer is refused with HTTP 403 (`network`, `why: foreign`) while
+    no passkey is set up: another user's device in a team tailnet, a machine someone
+    [shared](https://tailscale.com/kb/1084/sharing) with you, a tagged node (tagged devices
+    belong to no user, your own tagged servers included). The same applies to the client
+    `tailscale serve` names in `X-Forwarded-For`. Those addresses are remembered from the last
+    valid reading, so a failed reading does not let them in. Once a passkey is set up, they are
+    let through to the lock screen and need that passkey like any device.
 - **Proxy headers**, only when the peer is this computer (a proxy on the machine, such as
   `tailscale serve`): every address in `X-Forwarded-For`, `Forwarded`, `X-Real-IP`,
   `CF-Connecting-IP` must be loopback, the tailnet or a trusted range too. They can only refuse
@@ -105,6 +119,13 @@ How a request is judged, before anything else (WebSockets included):
 - **The listening address**: wherdr refuses to start on anything else than
   loopback or this machine's tailnet address as Tailscale reports it, with Tailscale running
   (`HOST=0.0.0.0`, a LAN address), and says how to fix it.
+
+> [!IMPORTANT]
+> <a id="shared-computers"></a>**Every user of this computer counts as this computer.** Loopback
+> connections are not tied to an OS user: on a machine where other people have an account (a
+> shared server, a lab machine), any of them can open `http://127.0.0.1:7683/` and control
+> your agents. wherdr keeps loopback open so you can always reach it on your own machine; on a
+> shared machine, **create a passkey**: it then locks loopback too.
 
 > [!IMPORTANT]
 > **A relay on this computer counts as this computer.** A reverse proxy or TCP forward you run
