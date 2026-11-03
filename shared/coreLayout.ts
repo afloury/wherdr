@@ -10,7 +10,8 @@ export type CoreDocs = Record<string, CoreAppDoc | null | undefined>
 
 export const SPACE_LABEL = 'herdr.space'
 export const TAB_LABEL = 'herdr.tab'
-export const SEEN_LABEL = 'herdr.seen'
+export { SEEN_LABEL } from './coreInventory'
+import { SEEN_LABEL } from './coreInventory'
 
 // A document of unknown shape, reduced to what we read (anything else is dropped).
 export function cleanDoc(raw: unknown): CoreAppDoc | null {

@@ -403,7 +403,7 @@ export class ApiError extends Error {
 }
 
 export async function api<T = Record<string, unknown>>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
-  if (useRuntimeConfig().public.core && !coreRouteAllowed(path)) throw new Error('Unavailable with herdr-core')
+  if (useRuntimeConfig().public.core && !coreRouteAllowed(path, body === undefined ? 'GET' : 'POST')) throw new Error('Unavailable with herdr-core')
   const opts: RequestInit = body === undefined
     ? { signal }
     : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal }

@@ -244,7 +244,7 @@ const FR: Record<string, string> = {
   'The agent isn’t ready in this pane (stopped or still starting).': 'L’agent n’est pas prêt dans ce pane (arrêté ou en cours de démarrage).',
   'Your turn': 'À toi', 'Done': 'Terminé', 'Working': 'Au travail', 'Ready': 'Prêt',
   'Unknown': 'Inconnu', 'Starting': 'Démarrage', 'Closed': 'Fermé',
-  'your turn': 'à toi', 'working': 'au travail', 'ready': 'prêts',
+  'your turn': 'à toi', 'working': 'au travail', 'ready': 'prêts', 'unknown': 'inconnus',
   'coordinator': 'coordinateur',
   'Coordinator': 'Coordinateur',
   'review': 'revue',
