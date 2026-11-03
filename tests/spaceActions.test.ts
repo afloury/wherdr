@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { closeSummary, moveTargets, paneSpaceEntries, spaceCall, spaceResult, verifySpaceRename } from '../shared/spaceActions'
-import { reduceSnapshot } from '../server/utils/snapshot'
+import { reduceSnapshot } from './helpers/snapshot'
 import layouts from './fixtures/snapshot-layouts.json'
 import { closeConfirm, paneCloseConfirm } from '../app/utils/spaceConfirm'
 

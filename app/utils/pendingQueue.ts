@@ -6,7 +6,7 @@
 // Photos alone have no text: their record is matched by its photos (see
 // shared/queuedMatch.ts). Claude's queue only keeps "[Image #1]": an entry of
 // it gets the photos of wherdr's record of the same message, from the server
-// (`sent`, see server/utils/sentHistory.ts) or remembered here.
+// (`sent`) or remembered here.
 import type { ChatItem, ClaudeQueueEntry, ClaudeScreen } from '../../shared/types'
 import type { OutboxItem } from './outbox'
 import { type QueuedPhase, queuedPhases } from '../../shared/queuedPhase'

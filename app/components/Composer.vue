@@ -283,7 +283,7 @@ async function submit() {
 
 // ------------------------------------------------------------ Stop
 // The server sends Escape, sends it again if the agent is still working, stops
-// Claude's background tasks (see server/utils/interruptSeq.ts) then says whether the agent
+// Claude's background tasks then says whether the agent
 // stopped. Otherwise: lasting message with access to the terminal.
 // A message sent while the agent was busy waits in its queue (the screen does not always say so).
 const sentWhileWorking = ref(false)

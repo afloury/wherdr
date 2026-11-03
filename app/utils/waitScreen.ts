@@ -1,4 +1,4 @@
-// Agents' waiting screens (see server/utils/waitScreen.ts): what the app
+// Agents' waiting screens: what the app
 // shows of them. Keys are only sent on a user's button press.
 import type { InteractiveMenu, Pane, WaitAction, WaitKind, WaitScreen } from '../../shared/types'
 import { language } from './i18n'

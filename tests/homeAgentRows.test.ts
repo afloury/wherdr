@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { individualAgentRows, individualAgentTitle } from '../app/utils/homeAgentRows'
 import { spaceRows, sortReady } from '../shared/spaces'
-import { reduceSnapshot } from '../server/utils/snapshot'
+import { reduceSnapshot } from './helpers/snapshot'
 
 const state = reduceSnapshot({
   workspaces: [{ workspace_id: 'w1', label: 'Shared space', number: 1 }, { workspace_id: 'w2', label: 'Shells', number: 2 }],

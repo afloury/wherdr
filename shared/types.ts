@@ -31,15 +31,15 @@ export interface PromptDetail {
 export interface Choices { identity?: string, unavailable?: boolean, question: string | null, cursor: number, options: ChoiceOption[], kind?: 'self-update', detail?: PromptDetail, multi?: boolean, typing?: boolean, tabs?: string[], tab?: number }
 
 // Waiting screen of an agent (Codex at startup: hooks, folder trust,
-// login…), see server/utils/waitScreen.ts. `other`: unrecognized screen,
+// login…). `other`: unrecognized screen,
 // only shown while there is no conversation.
 export type WaitKind = 'hooks' | 'trust' | 'login' | 'update' | 'other'
 // Key from the screen's legend ("t trust all" → { key: 't', label: 'trust all' }).
 export interface WaitAction { key: string, label: string }
 export interface WaitScreen { identity?: string, unavailable?: boolean, kind: WaitKind, title: string | null, lines: string[], actions: WaitAction[] }
 
-// Claude Code's full-screen interactive menu (/resume, /model, /mcp…), see
-// shared/menuScreen.ts. `header`: group header, not an entry; `search`:
+// Claude Code's full-screen interactive menu (/resume, /model, /mcp…).
+// `header`: group header, not an entry; `search`:
 // text of the search field (null: no search); `more`: "19 more below".
 export interface MenuEntry { identity?: string, label: string, hint: string | null, header?: boolean, cursor?: boolean }
 export interface InteractiveMenu {
@@ -58,9 +58,9 @@ export interface InteractiveMenu {
 // reason 'busy': held or not sent because the agent's input field held other text.
 // reason 'turn': held until the agent's turn ends (typing it during the turn failed).
 // 'no_input': not sent because the input field was not found on a screen
-// showing no recognized menu (see queued.ts NO_INPUT_MS).
+// showing no recognized menu.
 // `pasted`: the long pasted texts its text holds (see server/utils/pastes.ts).
-// `back`: no agent will take it (see server/utils/queued.ts giveBackHeld): the
+// `back`: no agent will take it: the
 // app puts its text back into the message field.
 export interface QueuedMessage { inputText?: string, id: string, text: string, at?: number, state?: 'held' | 'failed', reason?: 'busy' | 'no_input' | 'turn' | 'lost' | 'unseen', pasted?: string[], back?: boolean }
 
@@ -150,7 +150,7 @@ export interface Pane {
   // Menu interactif ouvert (agent au repos) : il remplace `prompt` et `screen`.
   menu?: InteractiveMenu
   // A menu or panel no card shows hides the agent's input field while
-  // messages wait for it (see server/utils/queued.ts lookForLeftMenu).
+  // messages wait for it.
   menuLeftOpen?: boolean
   preview?: string
   // herdr-core, Claude: text left unsent in its own input box (see server/utils/coreDraft.ts).
@@ -166,7 +166,7 @@ export interface Pane {
   claudeScreen?: ClaudeScreen
   // Claude Code status near the input field ("✔ Update installed · Restart to update").
   claudeNotice?: string
-  // Restart requested from wherdr (see server/utils/restart.ts): the agent
+  // Restart requested from wherdr: the agent
   // quits then comes back, the pane is briefly without an agent. `update`:
   // Codex update typed into its terminal between the two (the command).
   restart?: { phase: 'stopping' | 'updating' | 'starting' | 'failed', agent: string, error?: string, update?: string }
@@ -179,7 +179,7 @@ export interface Pane {
   // Codex shown: update available and weekly-limit warning (see shared/codexStatus.ts).
   codexStatus?: CodexStatus
   // Codex resting, conversation shown: first line of the text left in its
-  // input field (see server/utils/state.ts, refreshCodexField).
+  // input field.
   codexField?: string
   // omp shown: its status line (model, folder, branch) and its gauges (context, quotas).
   ompStatus?: OmpStatus
@@ -225,10 +225,6 @@ export interface ModelInfo {
   effortResolved?: string | null
   at?: string | null
 }
-// Option of an agent's /model menu.
-export interface ModelOption { label: string, hint: string | null, current?: boolean, isDefault?: boolean }
-export interface ModelList { agent: string, options: ModelOption[], at: number }
-export interface EffortList { levels: string[], current: string | null }
 
 // A machine (local, or Herdr SSH profile) and the state of its connection.
 export interface MachineInfo {
@@ -246,8 +242,6 @@ export interface MachineInfo {
   // this machine's state has been read since the server started.
   polled?: boolean
 }
-
-export interface NamedSession { name: string, running: boolean, key: string }
 
 export interface HerdrState {
   ok: boolean
@@ -317,7 +311,7 @@ export interface OmpToolView {
 }
 // `images`: photos of the entry ("[Image #1]" tags, removed from `text`).
 // `sent`: the message as wherdr sent it (photo and file paths included), when
-// the entry is one of wherdr's messages with photos (see server/utils/sentHistory.ts).
+// the entry is one of wherdr's messages with photos.
 export interface ClaudeQueueEntry { text: string, ts: string | null, images?: number, sent?: string }
 
 export interface ChatResponse {
@@ -345,7 +339,7 @@ export interface ChatResponse {
   rewritten?: boolean
   queue?: ClaudeQueueEntry[]
   // Claude: entries of the most recent window pulled back out of its queue
-  // into the input field and not queued again (see server/utils/queued.ts checkSent).
+  // into the input field and not queued again.
   popped?: ClaudeQueueEntry[]
   model?: ModelInfo | null
 }
@@ -453,45 +447,6 @@ export interface Quotas {
 // Settings still offers it.
 export type ClaudeSetupState = 'ok' | 'pending' | 'outdated' | 'missing' | 'api'
 export interface ClaudeSetup { key: string, state: ClaudeSetupState, installable: boolean, dismissed?: boolean }
-
-// Git worktree linked to a repository (Herdr), for the cleanup list.
-export interface WorktreeInfo {
-  machine: string // machine key ('' = local)
-  repo: string
-  repoRoot: string
-  path: string
-  branch: string | null
-  workspace: string | null // open workspace (app ID), otherwise closed
-  agents: number
-  panes: number
-  prunable: boolean // folder gone
-}
-
-// Action of a Herdr plugin (`[[actions]]` of herdr-plugin.toml), as
-// wherdr offers it: in an agent's menu (workspace/tab/pane contexts,
-// run with the agent's pane) or in its machine's menu (global context).
-export interface PluginAction {
-  plugin: string // plugin_id
-  pluginName: string
-  id: string // action_id (local au plugin)
-  title: string
-  label: string // title without the plugin name as prefix (menu grouped by plugin)
-  description: string | null
-  agent: boolean // offered in an agent's menu
-  machine: boolean // offered in the machine's menu
-  confirm: boolean // asks for confirmation (may change something)
-  inHerdr: boolean // opens a pane or popup in Herdr, not in wherdr
-}
-export interface PluginActionList { actions: PluginAction[] }
-// Result of an action: Herdr runs it in the background, we wait a while for it to finish.
-export interface PluginActionResult {
-  status: 'succeeded' | 'failed' | 'running'
-  exitCode: number | null
-  output: string // end of the output (stdout, otherwise stderr), short
-  // herdr-projects "Check setup": what wherdr uses, then the full output.
-  setup?: { key: 'version' | 'binary' | 'home' | 'config', value: string, warn?: boolean }[]
-  full?: string
-}
 
 // Read-only file browser of an agent's folder (Git root, or the folder itself).
 export interface FileEntry { name: string, kind: 'dir' | 'file' | 'other', size: number | null, link: boolean }

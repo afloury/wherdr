@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { reduceSnapshot } from '../server/utils/snapshot'
+import { reduceSnapshot } from './helpers/snapshot'
 import { tabEntry, tabSummary, workspaceTree } from '../shared/workspaces'
 import type { Pane } from '../shared/types'
 import layouts from './fixtures/snapshot-layouts.json'

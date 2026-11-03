@@ -3,8 +3,7 @@ import { defaultNotifications, type NotificationSettings } from '../shared/notif
 
 const deps = vi.hoisted(() => ({ readSettings: vi.fn(), pushSend: vi.fn(), allowed: vi.fn(), findPane: vi.fn() }))
 vi.mock('../server/utils/settings', () => ({ readSettings: deps.readSettings }))
-vi.mock('../server/utils/machines', () => ({ getMachine: () => undefined, machineOfPane: () => undefined,
-  allMachines: () => [], multiMachine: () => false, onMachinesChange: () => {} }))
+vi.mock('../server/utils/machines', () => ({ getMachine: () => undefined, machineOfPane: () => undefined }))
 
 import { notificationAllowed, notificationPresence } from '../server/utils/notificationRules'
 

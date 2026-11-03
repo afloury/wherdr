@@ -1,15 +1,15 @@
-// Herdr's `session.snapshot` reduced to what the app shows: workspaces,
-// tabs (and their layout), panes. Pure: no state or disk access.
-// We remove the fields that change with every output byte (revision, scroll…)
-// so only real changes are pushed.
+// Test helper: a Herdr `session.snapshot` (tests/fixtures/snapshot-layouts.json)
+// reduced to the app's state (workspaces, tabs and their layout, panes), as the
+// former Herdr backend did. Builds the input of the layout, spaces and workspaces tests.
 import type { HerdrState, Pane, Tab, Workspace } from '../../shared/types'
-import { LOCAL, joinId } from '../../shared/ids'
+import { LOCAL, SEP } from '../../shared/ids'
 import { reduceLayout } from '../../shared/layout'
 import { paneAgentKind } from '../../shared/agentKind'
 import { cleanLabel } from '../../shared/displayTitles'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
+const joinId = (machine: string, local: string) => (machine ? `${machine}${SEP}${local}` : local)
 
 // `machine`: key of the remote machine (prefixed IDs), '' for the local one;
 // `session`: name of the local Herdr session shown.
@@ -61,17 +61,4 @@ export function reduceSnapshot(s: Json, machine = LOCAL, session = 'default'): H
     }
   })
   return { ok: true, version: s.version, session: machine ? undefined : session, workspaces, tabs, panes }
-}
-
-const SHELL_NAMES = new Set(['sh', 'bash', 'zsh', 'fish', 'dash', 'ksh', 'tcsh', 'csh', 'nu', 'pwsh', 'login'])
-// `pane.process_info`: foreground command ("pnpm dev"), empty when the
-// shell is waiting at the prompt. Executable path reduced to its name, 60 characters max.
-export function foregroundCommand(info: Json): string {
-  const procs: Json[] = (info && info.foreground_processes) || []
-  const p = procs.find(x => x && x.pid !== info.shell_pid) || procs[0]
-  if (!p || p.pid === info.shell_pid) return ''
-  const argv: string[] = Array.isArray(p.argv) && p.argv.length ? p.argv.map(String) : String(p.cmdline || p.name || '').split(/\s+/)
-  const name = (argv[0] || '').split('/').pop()!.replace(/^-/, '')
-  if (!name || SHELL_NAMES.has(name)) return ''
-  return [name, ...argv.slice(1)].join(' ').replace(/\s+/g, ' ').trim().slice(0, 60)
 }
