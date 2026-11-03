@@ -5,6 +5,7 @@
 // inside. A single machine: the previous list, without a header.
 // Quotas: those shared by all machines at the top; the Claude account specific
 // to a machine (different accounts) and its install banner under its header.
+// Core mode: one row per agent terminal (individualAgentRows), as in v2.5.
 // One row per Herdr space (shared/spaces.ts): a space with a single tab and
 // a single pane keeps its agent's card; otherwise a space card, sorted
 // by its most urgent pane.
@@ -91,7 +92,7 @@ function groupsOf(list: Row[], rawGroup = rowGroup) {
   ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value).map(l => sortReady(l, readySort.value, rowTitle)) : [g.list] }))
 }
 const rowTitle = (r: Row) => isIndividualAgentRow(r) ? individualAgentTitle(r.lead) : spaceTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
-const standaloneRows = (rows: Row[]) => individualAgentList.value ? individualAgentRows(rows) : rows
+const standaloneRows = (rows: Row[]) => (core || individualAgentList.value) ? individualAgentRows(rows) : rows
 // Sort menu of the Ready group; sorted other than in Herdr's order, the
 // list can no longer be reordered manually.
 const READY_SORT_LABELS: Record<ReadySort, [string, string]> = {
@@ -547,7 +548,7 @@ async function saveMachine() {
 // Reorder: connected, and the machine online.
 function canReorder(machine: string) {
   // Dragging a pane must not silently reorder its whole workspace.
-  if (individualAgentList.value) return false
+  if (core || individualAgentList.value) return false
   if (offlineView.value || !eventsOpen.value || !st.value.ok) return false
   return !multiMachine.value || machines.value.some(m => m.key === machine && m.status === 'online')
 }
