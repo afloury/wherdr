@@ -7,6 +7,7 @@ import { usesTerminalException } from '../../shared/interactiveScreen'
 import { updateChoices, updateRestartPlan, UPDATE_LABELS } from '../../shared/selfUpdate'
 
 export default defineApi(async (event, b) => {
+  if (process.env.WHERDR_BACKEND === 'core') return coreChoose(coreChooseDeps(), b)
   if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
   if (findPane(b.pane_id)?.stopped) {
     return withPaneLock(b.pane_id, async () => {
