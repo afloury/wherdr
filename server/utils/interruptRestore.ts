@@ -85,7 +85,7 @@ export async function takeBackInterrupted(d: RestoreDeps): Promise<ChatItem | nu
     await d.keys(clearKeys(lines))
     await d.sleep(150)
     box = inputBox(await d.screen().catch(() => '')) || ''
-    if (empty(box)) return answeredAfter(await d.chat().catch(() => []), mine) ? null : mine
+    if (empty(box)) return mine
   }
   return null
 }
@@ -93,13 +93,5 @@ export async function takeBackInterrupted(d: RestoreDeps): Promise<ChatItem | nu
 // The conversation without the messages taken back (same text, same time).
 export function withoutTakenBack(items: ChatItem[], hidden: { text: string, ts: string | null }[]): ChatItem[] {
   if (!hidden.length) return items
-  // A message Claude went on to answer was not given back after all (queued
-  // message run after a double Esc): it stays in the conversation.
-  return items.filter((i, n) => !(i.role === 'user' && hidden.some(h => h.ts === (i.ts || null) && h.text === i.text) && !items.slice(n + 1).some(x => x.role === 'assistant')))
-}
-
-// Does a reply of Claude follow this message in the conversation?
-function answeredAfter(items: ChatItem[], mine: ChatItem): boolean {
-  const n = items.findIndex(i => i.role === 'user' && i.text === mine.text && (i.ts || null) === (mine.ts || null))
-  return n >= 0 && items.slice(n + 1).some(x => x.role === 'assistant')
+  return items.filter(i => !(i.role === 'user' && hidden.some(h => h.ts === (i.ts || null) && h.text === i.text)))
 }

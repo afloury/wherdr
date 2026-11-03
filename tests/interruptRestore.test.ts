@@ -174,10 +174,10 @@ describe('withoutTakenBack', () => {
   it('hides only the message taken back (same text, same time)', () => {
     const items: ChatItem[] = [
       { role: 'user', text: 'same', ts: '1' },
-      { role: 'assistant', text: 'same', ts: '2' },
       { role: 'user', text: 'same', ts: '2' },
+      { role: 'assistant', text: 'same', ts: '2' },
     ]
-    expect(withoutTakenBack(items, [{ text: 'same', ts: '2' }])).toEqual([items[0], items[1]])
+    expect(withoutTakenBack(items, [{ text: 'same', ts: '2' }])).toEqual([items[0], items[2]])
     expect(withoutTakenBack(items, [])).toBe(items)
   })
 })
@@ -194,25 +194,5 @@ describe('taken back with an attached file', () => {
     expect(draft.text).toBe('fictional question about the notes')
     expect(draft.atts).toHaveLength(1)
     expect(draft.atts[0]).toMatchObject({ path: FILE, name: '2026-01-01T00-00-00-000Z-abc123-notes.md', ref: `@${FILE}` })
-  })
-})
-
-describe('queued message run after an interrupt', () => {
-  it('keeps the bubble of a message Claude went on to answer', () => {
-    const items: ChatItem[] = [
-      { role: 'user', text: 'first', ts: '1' },
-      { role: 'system', text: 'Interrupted', ts: '2' },
-      { role: 'user', text: 'queued one', ts: '3' },
-      { role: 'assistant', text: 'answer', ts: '4' },
-    ]
-    expect(withoutTakenBack(items, [{ text: 'queued one', ts: '3' }])).toEqual(items)
-  })
-})
-
-describe('takeBackInterrupted: queued message already answered', () => {
-  it('gives nothing back when a reply follows the message', async () => {
-    const q: ChatItem = { role: 'user', text: MSG, ts: '3' }
-    const p = pane(MSG, [{ role: 'system', text: 'Interrupted', ts: '2' }, q, { role: 'assistant', text: 'answer', ts: '4' }])
-    expect(await takeBackInterrupted(p.deps)).toBeNull()
   })
 })
