@@ -43,6 +43,7 @@ import { type GuardError, BASH_EMPTY, confirmSubmitted, guardedSend, submittable
 import { type TranscriptPane, sameMsg } from './transcripts'
 import { type CoreTranscripts, createCoreTranscripts } from './coreTranscripts'
 import { coreCall } from './core'
+import { createCorePreviews } from './corePreview'
 import { chatDelta } from './chatDelta'
 import { agentNotificationTitle, pushSend, subWatchesSession } from './push'
 import { currentModel, forgetModel, noteScreen, modelControlBusy } from './modelctl'
@@ -66,6 +67,11 @@ function coreTranscriptsOf(): CoreTranscripts {
     localHome: HOME,
   })
 }
+let coreSubtitles: ReturnType<typeof createCorePreviews> | null = null
+const corePreviews = () => coreSubtitles ||= createCorePreviews({
+  reply: p => coreTranscriptsOf().latestReply(p),
+  read: async address => (await coreCall<{ text?: string }>(process.env.HC_SOCKET || '', 'terminal.read', { terminal: address }, 4000)).text || '',
+})
 const isCore = () => process.env.WHERDR_BACKEND === 'core'
 function trFor(p: { id: string }) {
   if (isCore()) return coreTranscriptsOf()
@@ -1381,6 +1387,7 @@ export async function poll() {
     state = await readCoreState(state)
     await coreScreens().enrich(state.panes).catch(() => {})
     void coreTranscriptsOf().observe(state.panes)
+    corePreviews().apply(state.panes)
     const json = JSON.stringify(state)
     if (json !== stateJson) { stateJson = json; broadcastState() }
     return

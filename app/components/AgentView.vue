@@ -49,6 +49,14 @@ onUnmounted(() => {
 })
 
 const pane = computed(() => herdrState.value.panes.find(p => p.id === props.paneId))
+// herdr-core: opening a finished agent reads it (herdr.seen), once per turn, while the page is visible.
+const pageVisible = ref(true)
+const syncVisible = () => { pageVisible.value = document.visibilityState !== 'hidden' }
+onMounted(() => { syncVisible(); document.addEventListener('visibilitychange', syncVisible) })
+onUnmounted(() => document.removeEventListener('visibilitychange', syncVisible))
+watch(() => (core && live.value && pageVisible.value && pane.value?.agent && pane.value.status === 'done' ? pane.value.id : null), (id) => {
+  if (id) api('/api/seen', { pane_id: id, read: true }).catch(() => {})
+}, { immediate: true })
 const compactPhone = computed(() => !desk.value && !tablet.value && !props.cell)
 const phoneKeysOpen = ref(false)
 watch(() => props.paneId, () => { phoneKeysOpen.value = false })
@@ -397,6 +405,7 @@ function coreMenuItems(p: Pane | undefined): MenuItem[] {
     pane: p,
     keep: p && kept.value !== null ? { on: kept.value, toggle: () => toggleKeep(p) } : undefined,
     takeControl: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => ctl.connect(true)) },
+    rename: (id) => { renameTarget.value = id },
     reconnect: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => { ctl.reset(); ctl.connect(false) }) },
     browseFiles: () => { filesOpen.value = true },
     settings: props.cell ? [] : settingsMenuItems(),
