@@ -95,7 +95,13 @@ function herdrVersion(m: Machine): Promise<ExecResult | null> {
   const hit = versionCache.get(m.key)
   if (hit && hit.serverVersion === serverVersion && Date.now() - hit.at < VERSION_TTL_MS) return hit.p
   const p = runHerdrCli(m, ['--version'], 4000).catch(() => null)
-  versionCache.set(m.key, { at: Date.now(), serverVersion, p })
+  const entry = { at: Date.now(), serverVersion, p }
+  versionCache.set(m.key, entry)
+  // Share an in-flight read, but do not pin a transient CLI/SSH failure for
+  // five minutes. A newer probe must not be evicted by an older completion.
+  void p.then(result => {
+    if ((!result || result.code !== 0) && versionCache.get(m.key) === entry) versionCache.delete(m.key)
+  })
   return p
 }
 
