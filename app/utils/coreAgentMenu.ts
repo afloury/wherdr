@@ -14,6 +14,8 @@ export interface CoreMenuContext {
   /** Take control of the terminal / reconnect it (they live in AgentView). */
   takeControl: () => void
   reconnect: () => void
+  /** Opens the file browser of the agent's folder. */
+  browseFiles: () => void
   /** Settings entries (not in a side-by-side cell), already built. */
   settings: MenuItem[]
   /** Close entry, absent on the compact phone. */
