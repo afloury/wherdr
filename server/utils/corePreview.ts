@@ -19,9 +19,12 @@ const FOOTER = /^(?:[⏵▶►]{1,2}\s|←\s+for agents|\?\s+for shortcuts|auto 
 const PLACEHOLDER = /^[›❯]\s+(?:Ask \S+ to do anything|Try "[^"]*"|Type a message)\s*$/iu
 const MODEL_LINE = /^(?:[◐◑◒◓○●◔◕]\s+)?(?:\S+\s+)?(?:minimal|low|medium|high|xhigh|max)\s+·\s/iu
 
+// Claude's turn summary under a finished answer: '✻ Worked for 2s · done 5:11 PM', '✻ Churned for 1m 3s'.
+const DURATION = /^[✻✶✳✢·*]\s+\S+(?:\s+\S+)?\s+for\s+\d+\s*(?:ms|[smh])\b.*$/u
+
 export function lastLine(text: string): string | null {
-  const lines = text.split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim() && !RULE.test(l) && !PROMPT.test(l.trim()) && !FOOTER.test(l.trim()) && !PLACEHOLDER.test(l.trim()) && !MODEL_LINE.test(l.trim()))
-  const line = lines.at(-1)?.trim()
+  const lines = text.split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim() && !RULE.test(l) && !PROMPT.test(l.trim()) && !FOOTER.test(l.trim()) && !PLACEHOLDER.test(l.trim()) && !MODEL_LINE.test(l.trim()) && !DURATION.test(l.trim()))
+  const line = lines.at(-1)?.trim().replace(/^⏺\s+/u, '')
   if (!line) return null
   return line.length > MAX ? `${line.slice(0, MAX - 1)}…` : line
 }
