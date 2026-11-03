@@ -1,10 +1,40 @@
-# Machines and SSH
+# Machines
 
 [Documentation](README.md) · [Project](../README.md)
 
-- **Several machines**: agents of the SSH machines registered in Herdr (`herdr machine add`)
-  appear in their own section; everything works the same on a remote agent.
 ## Several machines (SSH)
+
+With herdr-core, other machines are **core machines**: hc reaches them over SSH and runs their
+terminals there (`hc machine add`). wherdr shows what `machine.list` returns; it opens no SSH
+connection of its own.
+
+- **On the home screen**, each machine is a tab of the machine bar, online or offline, with its
+  count of rows ([Machines as tabs](home.md#machines-as-tabs)). When a machine goes offline, its
+  last terminals stay visible, marked offline, until core reaches it again.
+- **New** starts a terminal or an agent on any online machine (`terminal.run` with `on`). Home,
+  folders, Git detection and installed agents of that machine come from `machine.exec`; folders
+  must stay under the machine's home.
+- **Conversations, files and quotas** of a core machine are read through `machine.exec` on that
+  machine ([herdr-core](core.md#conversations), [Files](files.md), [quotas](quotas.md)).
+
+**Settings › Agents › Machines** shows the core's version and uptime, this machine, and each core
+machine with its state (connected, connecting…, offline) and last error:
+
+- **Add machine**: an **SSH target** (`user@host`, a `~/.ssh/config` host, or `user@host:port`
+  with herdr-core 0.1.17 or newer) and an optional **Name** (a-z, 0-9, `-`, `_`, `.`, 32 at most),
+  like `hc machine add`. The target must already accept this host's SSH login with a key, and
+  herdr-core must be installed there: wherdr never asks for a password, never installs core on
+  the machine and never accepts a `via` command.
+- **Reconnect** an offline machine (`machine.connect`).
+- **Rename** (`machine.rename`).
+- **Forget** (`machine.rm`): its terminals keep running there, and the machine can be added again
+  later.
+
+## v2 only: machines registered in Herdr
+
+Everything below applies to wherdr v2 on Herdr, where wherdr opens its own SSH connection to
+each machine registered with `herdr machine add`.
+
 
 wherdr also shows the agents of the **SSH machines registered in Herdr** — the ones the Herdr
 terminal client shows in its sidebar. It opens one SSH master connection per machine, forwards
@@ -43,6 +73,7 @@ Use **Shift + drag** to select text, and Ctrl/⌘+click to open links. Older or 
 versions keep the existing terminal keyboard, selection and scrolling behavior.
 
 ### Windows remote machines
+
 
 The wherdr host must support Unix sockets and OpenSSH multiplexing (for example,
 Linux/WSL or macOS). On the **remote Windows machine**, install Git Bash and set
