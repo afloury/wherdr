@@ -198,7 +198,7 @@ const boardLinks = useBoardLinks()
 // closed, they are all that says who it was.
 const known = shallowRef<string[]>(draftOwnerKeys(props.paneId))
 const liveIds = computed(() => (herdrState.value.ok ? herdrState.value.panes.map(p => p.id).join(' ') : ''))
-watch([() => pane.value && agentKeys(pane.value, boardLinks.value).join(' '), liveIds], ([keys, ids]) => {
+watch([() => pane.value && agentKeys(pane.value).join(' '), liveIds], ([keys, ids]) => {
   if (!keys || !ids) return
   const add = keys.split(' ')
   known.value = mergeKeys(known.value, add)
@@ -208,7 +208,7 @@ watch([() => pane.value && agentKeys(pane.value, boardLinks.value).join(' '), li
     toast(tl('Draft from the closed pane restored', 'Brouillon du pane fermé récupéré'))
   }
 }, { immediate: true })
-const replacement = computed(() => (closed.value ? replacementPane(props.paneId, known.value, herdrState.value.panes, boardLinks.value) : null))
+const replacement = computed(() => (closed.value ? replacementPane(props.paneId, known.value, herdrState.value.panes) : null))
 watch(replacement, (r) => {
   if (!r) return
   moveDraft(props.paneId, r.id)

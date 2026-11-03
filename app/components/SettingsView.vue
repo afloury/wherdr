@@ -4,15 +4,12 @@
 import type { ThemeDef, ThemeGroup } from '~/utils/themes'
 import type { TypingSpeed } from '~/utils/typewriter'
 import { pasteJournalEnabled, pasteJournal, setPasteJournal } from '~/utils/pasteJournal'
-import pkg from '../../package.json'
 import { SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
 import type { SettingsSection } from '~/utils/settingsNav'
 import { type QuietDuration, type QuietScope, quietUntil } from '#shared/quiet'
 import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
 import { DEFAULT_MAX_SESSION_DAYS, MAX_SESSION_DAYS, type MaxSessionDays } from '#shared/sessionLimit'
 
-const core = useRuntimeConfig().public.core
-const appVersion = pkg.version
 const router = useRouter()
 // Sections: sidebar on a computer (one section shown), iOS Settings-style
 // list on the phone (a tap opens the section, Back returns to the list).
@@ -70,7 +67,6 @@ const shellsOn = showShells
 const countersOn = showCounters
 const quotasOn = showQuotas
 const homeGroup = homeGrouping
-const individualListOn = individualAgentList
 const homeGroupItems = computed(() => [{ value: 'machine', label: t('Machine') }, { value: 'state', label: t('State') }])
 const compactOn = compactList
 const autoReorderOn = autoReorderReady
@@ -261,7 +257,6 @@ const deadlineText = computed(() => {
   return tl(`This device asks for the passkey again at the first opening after ${when}.`, `Cet appareil redemandera la clé d’accès à la première ouverture après le ${when}.`)
 })
 
-onMounted(loadUpdate)
 onMounted(() => {
   refreshTerminalRenderStatus()
   loadConfig() // Herdr theme up to date for "Follow Herdr"
@@ -338,13 +333,8 @@ onMounted(() => {
             <h4 id="home-group-label">{{ t('Group by') }}</h4>
             <URadioGroup v-model="homeGroup" :items="homeGroupItems" aria-labelledby="home-group-label" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
 
-            <label v-if="!core" class="settings-toggle">
-              <span><b>{{ t('Individual agents') }}</b><small>{{ (core ? t('List standalone agents separately. Follows you on every device.') : t('List standalone agents separately. Board tasks stay grouped. Follows you on every device.')) }}</small></span>
-              <USwitch v-model="individualListOn" :aria-label="t('Individual agents')" color="success" size="xl" />
-            </label>
-
             <label class="settings-toggle">
-              <span><b>{{ t('Compact list') }}</b><small>{{ (core ? t('Cards: one line in Compact, two in Normal with current activity. Follows you on every device.') : t('Tasks: one line in Compact, two in Normal with current activity and relevant labels. Details stay in the task sheet. Follows you on every device.')) }}</small></span>
+              <span><b>{{ t('Compact list') }}</b><small>{{ t('Cards: one line in Compact, two in Normal with current activity. Follows you on every device.') }}</small></span>
               <USwitch v-model="compactOn" color="success" size="xl" />
             </label>
             <label class="settings-toggle">
@@ -465,7 +455,7 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'agents'" class="settings-section">
-          <CoreMachines v-if="core" />
+          <CoreMachines />
           <div class="settings-group">
             <h3>{{ t('Offered agents') }}</h3>
             <p class="muted agent-pref-intro">{{ t('Agents offered wherever an agent is chosen. Terminal is always available.') }}</p>
@@ -482,7 +472,6 @@ onMounted(() => {
             <h3>{{ tl('Claude quotas', 'Quotas Claude') }}</h3>
             <ClaudeQuotaSetup v-if="activeSection === 'agents'" />
           </div>
-          <WorktreesSection v-if="!core" />
         </div>
 
         <div v-show="activeSection === 'notifications'" class="settings-section">
@@ -508,7 +497,6 @@ onMounted(() => {
 
         <div v-show="activeSection === 'plugins'" class="settings-section">
           <ClientPlugins data-wherdr="settings-plugins" />
-          <ProjectsPluginSettings v-if="!core" :machines="appConfig.machines || [{ key: '', label: hostLabel || t('This machine'), local: true, home: '', dirs: [], online: true, kinds: [] }]" />
         </div>
 
         <div v-show="activeSection === 'phone'" class="settings-section">
@@ -553,11 +541,8 @@ onMounted(() => {
         <div v-show="activeSection === 'about'" class="settings-section">
           <div class="settings-group">
             <h3>{{ t('Application') }}</h3>
-            <p class="settings-version">wherdr · {{ core ? 'v3 · herdr-core' : `v${appVersion}` }}</p>
-            <UpdateBanner v-if="!core && updateInfo?.latest" :info="updateInfo" />
-            <p v-else-if="!core && updateInfo?.checked" class="muted settings-hint">{{ t('This is the latest version.') }}</p>
+            <p class="settings-version">wherdr · v3 · herdr-core</p>
             <button type="button" class="settings-action solo" @click="reloadApp"><UIcon name="i-lucide-refresh-cw" />{{ t('Reload app') }}</button>
-            <button v-if="!core" type="button" class="settings-action solo" @click="openOnboarding"><UIcon name="i-lucide-compass" />{{ tl('Setup guide', 'Guide de démarrage') }}</button>
           </div>
         </div>
       </div>

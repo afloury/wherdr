@@ -1,5 +1,4 @@
 // Types shared between the server (Nitro) and the app (Vue).
-import type { TaskHit } from './taskSearch'
 import type { TabLayout } from './layout'
 import type { CodexStatus } from './codexStatus'
 import type { MaxSessionDays } from './sessionLimit'
@@ -361,8 +360,7 @@ export interface ConversationHit {
   ts: string | null
   offset: number
 }
-// `tasks`: the Board's tasks it matched (shared/taskSearch.ts), best first.
-export interface ConversationSearchResponse { hits: ConversationHit[], limited: boolean, tasks?: TaskHit[] }
+export interface ConversationSearchResponse { hits: ConversationHit[], limited: boolean }
 
 // Herdr theme (~/.config/herdr/config.toml, [theme] section), for "Follow Herdr".
 export interface HerdrThemeConfig {
