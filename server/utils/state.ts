@@ -71,6 +71,7 @@ let coreSubtitles: ReturnType<typeof createCorePreviews> | null = null
 const corePreviews = () => coreSubtitles ||= createCorePreviews({
   reply: p => coreTranscriptsOf().latestReply(p),
   read: async address => (await coreCall<{ text?: string }>(process.env.HC_SOCKET || '', 'terminal.read', { terminal: address }, 4000)).text || '',
+  wake: () => scheduleCorePoll(),
 })
 const isCore = () => process.env.WHERDR_BACKEND === 'core'
 function trFor(p: { id: string }) {

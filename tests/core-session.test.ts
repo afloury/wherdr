@@ -107,6 +107,26 @@ it('applies each event type and ignores unknown ones', () => {
   expect(m.size).toBe(0)
 })
 
+it('a finished turn advances stateSeq and the preview key (status events carry no status_ms)', async () => {
+  const { coreState } = await import('../shared/coreState')
+  // Snapshot as core sends it: status_ms set once.
+  const m: CoreTerminals = new Map([['t1', { address: 't1', cwd: '/w', state: 'live', agent: 'claude', status: { state: 'idle' }, status_ms: 1000, turn: 0 }]])
+  const seq = () => coreState([...m.values()], []).panes[0]!.stateSeq
+  expect(seq()).toBe(1000)
+  applyCoreEvent(m, { type: 'status', terminal: 't1', data: { status: { app: 'claude-code', state: 'working' } } }, 2000)
+  expect(seq()).toBe(2000)
+  // Same state again (a message update): no new stamp.
+  applyCoreEvent(m, { type: 'status', terminal: 't1', data: { status: { app: 'claude-code', state: 'working', msg: 'x' } } }, 2500)
+  expect(seq()).toBe(2000)
+  applyCoreEvent(m, { type: 'status', terminal: 't1', data: { status: { app: 'claude-code', state: 'done' } } }, 3000)
+  expect(seq()).toBe(3000)
+  applyCoreEvent(m, { type: 'turn', terminal: 't1', data: { state: 'done', turn: 1 } }, 3010)
+  expect(m.get('t1')).toMatchObject({ turn: 1, status_ms: 3010 })
+  // A time sent by core wins.
+  applyCoreEvent(m, { type: 'status', terminal: 't1', data: { status: { state: 'working' }, status_ms: 4200 } }, 9999)
+  expect(seq()).toBe(4200)
+})
+
 function alerts() {
   const held = new Map<string, CoreTerminal>()
   const sent: string[] = []
