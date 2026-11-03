@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { spawn } from 'node:child_process'
-import { createServer } from 'node:net'
+import { createServer, type Socket } from 'node:net'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -38,32 +38,39 @@ test('conversation key bar: Home, End, PgUp, PgDn, Delete and Insert reach core'
   }
   const terminal = fixture.inventory.terminals[0]!
   const keys: string[][] = []
-  const core = createServer(socket => socket.once('data', (first) => {
-    const r = JSON.parse(first.toString().split('\n')[0]!)
-    if (r.method === 'hello' && r.params?.framed) {
-      socket.write(JSON.stringify({ jsonrpc: '2.0', id: r.id, result: { ...fixture.hello, framed: true } }) + '\n')
-      let buf = Buffer.alloc(0)
-      socket.on('data', (chunk) => {
-        buf = Buffer.concat([buf, chunk])
-        while (buf.length >= 9 && buf.length >= 9 + buf.readUInt32LE(5)) {
-          const channel = buf.readUInt32LE(0)
-          const payload = buf.subarray(9, 9 + buf.readUInt32LE(5))
-          buf = buf.subarray(9 + payload.length)
-          if (channel) continue
-          const call = JSON.parse(payload.toString())
-          const result = call.method === 'events.subscribe' ? { channel: 2, seq: 1, terminals: [{ ...terminal, cols: 80, rows: 24 }] } : { channel: 3 }
-          socket.write(frame(0, Buffer.from(JSON.stringify({ jsonrpc: '2.0', id: call.id, result }))))
-        }
-      })
-      return
-    }
-    if (r.method === 'terminal.keys') keys.push(r.params.keys)
-    const result = r.method === 'hello' ? fixture.hello
-      : r.method === 'terminal.list' ? fixture.inventory
-      : r.method === 'terminal.keys' ? { status: null, turn: 0 }
-      : r.method === 'machine.list' ? { machines: [{ name: 'host-a', state: 'connected' }] } : fixture.discover
-    socket.end(JSON.stringify({ jsonrpc: '2.0', id: r.id, result }) + '\n')
-  }))
+  // The server's SIGTERM in teardown can reset a socket: not a test failure.
+  const sockets = new Set<Socket>()
+  const core = createServer((socket) => {
+    sockets.add(socket)
+    socket.on('error', () => {})
+    socket.once('close', () => sockets.delete(socket))
+    socket.once('data', (first) => {
+      const r = JSON.parse(first.toString().split('\n')[0]!)
+      if (r.method === 'hello' && r.params?.framed) {
+        socket.write(JSON.stringify({ jsonrpc: '2.0', id: r.id, result: { ...fixture.hello, framed: true } }) + '\n')
+        let buf = Buffer.alloc(0)
+        socket.on('data', (chunk) => {
+          buf = Buffer.concat([buf, chunk])
+          while (buf.length >= 9 && buf.length >= 9 + buf.readUInt32LE(5)) {
+            const channel = buf.readUInt32LE(0)
+            const payload = buf.subarray(9, 9 + buf.readUInt32LE(5))
+            buf = buf.subarray(9 + payload.length)
+            if (channel) continue
+            const call = JSON.parse(payload.toString())
+            const result = call.method === 'events.subscribe' ? { channel: 2, seq: 1, terminals: [{ ...terminal, cols: 80, rows: 24 }] } : { channel: 3 }
+            socket.write(frame(0, Buffer.from(JSON.stringify({ jsonrpc: '2.0', id: call.id, result }))))
+          }
+        })
+        return
+      }
+      if (r.method === 'terminal.keys') keys.push(r.params.keys)
+      const result = r.method === 'hello' ? fixture.hello
+        : r.method === 'terminal.list' ? fixture.inventory
+        : r.method === 'terminal.keys' ? { status: null, turn: 0 }
+        : r.method === 'machine.list' ? { machines: [{ name: 'host-a', state: 'connected' }] } : fixture.discover
+      socket.end(JSON.stringify({ jsonrpc: '2.0', id: r.id, result }) + '\n')
+    })
+  })
   try {
     await expect.poll(async () => { try { return (await fetch(`http://127.0.0.1:${port}/api/health`)).ok } catch { return false } }).toBe(true)
     await page.context().addCookies([{ name: 'hw_session', value: pdfSession(), url: `http://localhost:${port}` }])
@@ -87,6 +94,7 @@ test('conversation key bar: Home, End, PgUp, PgDn, Delete and Insert reach core'
       server.kill('SIGTERM')
       await new Promise<void>(resolve => server.once('exit', () => resolve()))
     }
+    for (const socket of sockets) socket.destroy()
     if (core.listening) await new Promise<void>(resolve => core.close(() => resolve()))
     await rm(data, { recursive: true, force: true })
   }
