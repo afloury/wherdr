@@ -20,6 +20,7 @@ import { createActivity } from '../../shared/integrations'
 const WINDOW_BYTES = 2 * 1024 * 1024
 const MAX_READ_BYTES = 24 * 1024 * 1024 // per request
 const PAGE_ITEMS = 120
+const PREVIEW_BYTES = 256 * 1024 // card previews read this much first (latestReply)
 const MAX_TEXT = 20000
 
 export interface TranscriptPane {
@@ -970,6 +971,8 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   const locCache = new Map<string, { at: number, loc: Loc | null, session?: string | null }>()
   const lastLoc = new Map<string, Loc>() // last file found, fallback if a lookup fails
   const parseCache = new Map<string, { size: number, gen: string, settled: boolean, r: TailResult }>()
+  const tailReads = new Map<string, Promise<TailResult>>()
+  const previewCache = new Map<string, { size: number, gen: string, reply: { key: string, text: string } }>()
   const metaCache = new Map<string, Json>()
   // omp file commands of this machine (see parseOmp), re-read every 5 min.
   let ompTemplates: { at: number, list: CommandTemplate[] } = { at: 0, list: [] }
@@ -1261,11 +1264,24 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   // Bottom of the conversation: from `from` (already shown on the phone) or,
   // on first load, the last PAGE_ITEMS messages. Cached by
   // (file, kind, size, generation, from), when read once the state settled.
+  // Reads in progress are shared: several devices on one pane cost one read
+  // and one parse per change.
   async function tail(file: string, kind: string | null, size: number, gen: string, from: number | null, settled = true): Promise<TailResult> {
     const key = `${file}|${kind}|${from}`
     const c = parseCache.get(key)
     if (c && c.settled && c.size === size && c.gen === gen) return c.r
-    let r: TailResult
+    const flight = `${key}|${size}|${gen}`
+    let read = tailReads.get(flight)
+    if (!read) {
+      read = readTail(file, kind, size, from).finally(() => { tailReads.delete(flight) })
+      tailReads.set(flight, read)
+    }
+    const r = await read
+    parseCache.set(key, { size, gen, settled, r })
+    if (parseCache.size > 16) parseCache.delete(parseCache.keys().next().value!)
+    return r
+  }
+  async function readTail(file: string, kind: string | null, size: number, from: number | null): Promise<TailResult> {
     if (from !== null && from <= size && size - from <= MAX_READ_BYTES) {
       // One read for the anchor above `from` and the bottom (as readRange: a
       // `from` in the middle of a line skips to the next line start).
@@ -1280,13 +1296,10 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
       const items = parseLines(buf.subarray(off).toString('utf8'), kind, s0 + off, home, ompTemplates.list, kind === 'omp' ? await ompCwd(file) : '')
       // Start kept even when it moved to the next line: the client then sees a
       // stale anchor (or another start) and reloads from the bottom.
-      r = { start: from, items, queue: items.queue || [], popped: items.popped || [], anchor: off === from - s0 ? anchorHash(above) : '' }
-    } else {
-      r = await readBackwards(file, size, kind)
-      r.anchor = await anchorAt(file, r.start)
+      return { start: from, items, queue: items.queue || [], popped: items.popped || [], anchor: off === from - s0 ? anchorHash(above) : '' }
     }
-    parseCache.set(key, { size, gen, settled, r })
-    if (parseCache.size > 16) parseCache.delete(parseCache.keys().next().value!)
+    const r = await readBackwards(file, size, kind)
+    r.anchor = await anchorAt(file, r.start)
     return r
   }
 
@@ -1366,19 +1379,49 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   // Agent's last reply, for cards and notifications.
   // A stable message identity lets notifications distinguish a new reply
   // from another poll (or more streamed text in the same reply).
+  // Previews refresh every few seconds per working agent: the last
+  // PREVIEW_BYTES are read first (cached by size and generation once settled),
+  // the bottom of the conversation (chat) only if they hold no reply.
   async function latestReply(pane: TranscriptPane): Promise<{ key: string, text: string } | null> {
     try {
+      const short = await tailReply(pane)
+      if (short) return short
       const r = await chat(pane, {})
       if (!r.available || !r.items) return null
-      for (let i = r.items.length - 1; i >= 0; i--) {
-        const it = r.items[i]!
-        if (it.role === 'assistant' && it.text.trim()) {
-          const text = it.text.replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180)
-          const key = replyKeys.get(it)
-          if (key) return { key, text }
-        }
-      }
+      return lastReplyOf(r.items)
     } catch { /* no preview */ }
+    return null
+  }
+  async function tailReply(pane: TranscriptPane): Promise<{ key: string, text: string } | null> {
+    if (!hasTranscript(pane.agent)) return null
+    const loc = await locate(pane)
+    if (!loc) return null
+    const st = await fs.stat(loc.file).catch(() => null)
+    // Missing (chat forgets the location) or short enough for one read anyway.
+    if (!st || !st.isFile || st.size <= PREVIEW_BYTES) return null
+    const kind = transcriptKind(loc.file) || pane.agent
+    const gen = genOf(st)
+    const key = `${loc.file}|${kind}`
+    const c = previewCache.get(key)
+    if (c && c.size === st.size && c.gen === gen) return c.reply
+    const settled = await settledGen(loc.file, st, gen)
+    if (kind === 'omp') await refreshOmpTemplates()
+    const r = await readRange(loc.file, st.size - PREVIEW_BYTES, st.size)
+    const reply = lastReplyOf(parseLines(r.text, kind, r.start, home, ompTemplates.list, kind === 'omp' ? await ompCwd(loc.file) : ''))
+    previewCache.delete(key)
+    if (settled && reply) previewCache.set(key, { size: st.size, gen, reply })
+    if (previewCache.size > 64) previewCache.delete(previewCache.keys().next().value!)
+    return reply
+  }
+  function lastReplyOf(items: ChatItem[]): { key: string, text: string } | null {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i]!
+      if (it.role === 'assistant' && it.text.trim()) {
+        const text = it.text.replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180)
+        const key = replyKeys.get(it)
+        if (key) return { key, text }
+      }
+    }
     return null
   }
   async function preview(pane: TranscriptPane): Promise<string | null> {

@@ -6,6 +6,13 @@ export interface CoreEvent { type: string; terminal?: string; seq?: number; data
 export type CoreTerminals = Map<string, CoreTerminal>
 
 const isObject = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
+const ended = (state: unknown) => state === 'finished' || state === 'lost'
+
+// The live terminals of a snapshot, a `missed` resync or a `terminal.list`: core lists a
+// remote machine's finished terminals too, and wherdr shows only live ones.
+export function liveTerminals(list: CoreTerminal[]): CoreTerminals {
+  return new Map(list.filter(t => t && typeof t.address === 'string' && !ended(t.state)).map(t => [t.address, t]))
+}
 
 // Returns what changed: 'terminal' (a terminal fact), 'doc' (a shared document changed),
 // or null (unknown type, unknown terminal or heartbeat: ignored).
@@ -15,6 +22,9 @@ export function applyCoreEvent(terminals: CoreTerminals, event: CoreEvent): 'ter
   if (!event.terminal) return null
   if (event.type === 'created' || event.type === 'restarted') {
     if (typeof data.address !== 'string') return null
+    // Core re-announces a remote machine's terminals (after a rename or a reconnect),
+    // finished ones included: those must not come back as live terminals.
+    if (ended(data.state)) return terminals.delete(event.terminal) ? 'terminal' : null
     terminals.set(event.terminal, { ...terminals.get(event.terminal), ...data } as CoreTerminal)
     return 'terminal'
   }
