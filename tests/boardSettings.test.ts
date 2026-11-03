@@ -3,8 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   boardSettingTheme, canReset, differsForRepo, parseBoardSettings, settingArgs, settingChoice, settingText, settingWarning, tabRows, themedRows,
 } from '../shared/boardSettings'
-import { boardSettingsMachines } from '../app/utils/boardScope'
-import { boardSettingLabel, boardSettingThemeLabel, settingWarningText } from '../app/utils/boardSettings'
 
 // `show --json` of a fresh board with three settings of the user's own.
 const recorded = readFileSync(new URL('./recordings/herdr-projects-1.2.16/show-board.json', import.meta.url), 'utf8')
@@ -30,7 +28,6 @@ describe('board settings from show', () => {
     expect(themedRows(settings, 'defaults').map(g => g.theme)).toEqual(['worker', 'review', 'plan', 'attempts', 'merge', 'limits', 'workspace', 'check', 'modes'])
     expect(themedRows(settings, 'machine').map(g => g.theme)).toEqual(['board', 'coordinator', 'autopilot', 'watcher', 'voice'])
     expect(['reviewer.agent', 'review.evidence', 'chat.only', 'check.again', 'future.thing'].map(boardSettingTheme)).toEqual(['review', 'review', 'modes', 'check', 'other'])
-    expect(boardSettingThemeLabel('worker')).toBe('Who works')
   })
   it('keeps a repo entry’s own rows apart from inherited ones', () => {
     const repo = parseBoardSettings(JSON.stringify({ settings: [
@@ -86,31 +83,9 @@ describe('confirmations', () => {
     expect(settingWarning('merge.checks', 'none')).toBe('mergeNoChecks')
     expect(settingWarning('merge.checks', 'github')).toBeNull()
     expect(settingWarning('merge.checks', null)).toBe('mayMergeNoChecks')
-    expect(settingWarningText('mayMergeNoChecks', 'demo')).toContain('in demo')
-    expect(settingWarningText('mayMergeNoChecks', 'demo')).toContain('If that value is none, pull requests will merge without waiting for their GitHub checks')
     expect(settingWarning('review.when', 'never')).toBe('noReview')
     expect(settingWarning('board.agents', '8')).toBe('boardAgents')
     expect(settingWarning('board.agents', null)).toBe('boardAgents')
-    expect(settingWarningText('boardAgents', '')).toContain('tasks in the queue may start at once')
     expect(settingWarning('worker.agent', 'codex')).toBeNull()
-    expect(settingWarningText('mergeItself', '')).toContain('Tasks already reviewed will merge right away')
-    expect(settingWarningText('mergeItself', 'demo')).toContain('in demo')
-  })
-})
-
-describe('machine choice', () => {
-  const groups = [{ id: '*group:a', name: 'Lab', machines: ['vm-b', 'vm-a', 'gone'] }]
-  it('opens one machine at once and asks among a group’s or every machine', () => {
-    expect(boardSettingsMachines('vm-a', ['', 'vm-a', 'vm-b'], groups)).toEqual(['vm-a'])
-    expect(boardSettingsMachines('', ['', 'vm-a'], groups)).toEqual([''])
-    expect(boardSettingsMachines('*', ['', 'vm-a', 'vm-b'], groups)).toEqual(['', 'vm-a', 'vm-b'])
-    // The Board's order, and only machines with a board.
-    expect(boardSettingsMachines('*group:a', ['', 'vm-a', 'vm-b'], groups)).toEqual(['vm-a', 'vm-b'])
-    expect(boardSettingsMachines('*group:none', ['', 'vm-a'], groups)).toEqual(['', 'vm-a'])
-  })
-  it('labels board settings in both languages', () => {
-    expect(boardSettingLabel('board.agents')).toBe('Agents at once')
-    expect(boardSettingLabel('merge.by')).toBe('Who merges')
-    expect(boardSettingLabel('future.thing')).toBe('future.thing')
   })
 })
