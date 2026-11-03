@@ -22,6 +22,11 @@ export function phoneHeaderTitle(p: Pane, workspace: Workspace | null | undefine
     || (paneCount > 1 ? paneTitle(p) : spaceTitle(p, workspace))
 }
 
+// Desktop header: a renamed pane shows its own name, like the phone header.
+export function desktopHeaderTitle(p: Pane, workspace: Workspace | null | undefined, ownTitle: boolean): string {
+  return p.label?.trim() || (ownTitle ? paneTitle(p) : spaceTitle(p, workspace))
+}
+
 export function conversationSubtitle(p: Pane, workspace?: Workspace | null): string {
   const title = cleanTitle(p.title).replace(/\s*\|\s*\S+$/, '').trim()
   if (!title || /^\S+@\S+:/.test(title)) return ''

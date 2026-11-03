@@ -341,10 +341,15 @@ async function interrupt() {
   haptic()
   interrupting.value = 'running'
   stoppingShell.value = shellRun.value
+  // A queued message starts as soon as Escape interrupts the turn: the agent is
+  // then "still working" on that message, which is not a failure.
+  const hadQueued = Boolean(props.pane?.queued?.length)
   try {
     const r = await api<{ stopped: boolean, background: number, shell?: boolean, restored?: string, lost?: number }>('/api/interrupt', { pane_id: props.paneId, restore: Boolean(props.takeBack) })
-    interrupting.value = r.stopped ? null : 'failed'
+    const nextStarted = !r.stopped && !r.shell && hadQueued
+    interrupting.value = r.stopped || nextStarted ? null : 'failed'
     stoppingShell.value = Boolean(r.shell)
+    if (nextStarted) { toast(tl('Interrupted, next message started', 'Interrompu, message suivant lancé')); return }
     if (r.shell) {
       if (r.stopped) toast(tl('Command cancelled', 'Commande annulée'))
       return
