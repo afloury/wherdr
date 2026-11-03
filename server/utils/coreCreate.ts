@@ -25,7 +25,7 @@ export interface CoreAdminDeps {
   recent: (m: MachineInfo) => Promise<string[]>
   remember: (dir: string, m: MachineInfo) => Promise<unknown>
   launchWatchMs?: number // how long a new agent is watched for an immediate failure (default 2 s)
-  readyWatchMs?: number // how long the first message waits for the program to be ready (default 45 s)
+  readyWatchMs?: number // how long the first message waits for the program to be ready (default 15 s)
   pollMs?: number // readiness polling step (default 500 ms)
 }
 
@@ -129,24 +129,31 @@ async function launchFailure(deps: CoreAdminDeps, address: string, ms: number): 
 }
 
 const MAX_FIRST = 64 * 1024
-// A dialog the program waits on (trust a folder, confirm): nothing is typed into it.
-const DIALOG_RE = /Enter to confirm|Esc to cancel|\(y\/n\)|\[y\/N\]/i
+// A dialog the program waits on (trust a folder, confirm, a numbered menu): nothing is typed into it.
+const DIALOG_RE = /Enter to confirm|Esc to cancel|\(y\/n\)|\[y\/N\]|enter continue|esc back|trust (this|the) folder|^\s*[›>❯]\s*1\.\s/im
+// A program that reports no status at all is trusted once its screen has been still this long.
+const STILL_POLLS = 6
 
-// Sends the first message once, when the program looks ready: its status says idle, or its
-// screen has not changed for three polls. Never retried or replayed: a program that blocks,
-// ends, shows a dialog or stays busy past the deadline simply gets nothing.
+// Sends the first message once, when the program is ready: core says it is idle and its
+// screen is still, else (no status reported) the screen has been still for a few seconds.
+// Codex shows its composer for ~2 s before the folder trust dialog, and core reports no
+// state until the dialog is answered: a still screen alone is not enough when a status exists.
+// Never retried or replayed: a program that blocks, ends, shows a dialog or stays busy
+// past the deadline simply gets nothing ('skipped').
 export async function sendFirstMessage(deps: CoreAdminDeps, address: string, text: string): Promise<'sent' | 'skipped'> {
   const step = deps.pollMs ?? 500
-  const end = Date.now() + (deps.readyWatchMs ?? 45000)
-  let last = '', stable = 0
+  const end = Date.now() + (deps.readyWatchMs ?? 15000)
+  let last = '', stable = 0, sawStatus = false
   while (Date.now() < end) {
-    const t = await deps.call<CoreFacts & { status?: string | null }>('terminal.get', { terminal: address }, 3000).catch(() => null)
-    if (!t || t.state === 'finished' || t.status === 'blocked') return 'skipped'
+    const t = await deps.call<CoreFacts & { status?: string | { state?: string } | null }>('terminal.get', { terminal: address }, 3000).catch(() => null)
+    const state = typeof t?.status === 'string' ? t.status : t?.status?.state
+    if (!t || t.state === 'finished' || state === 'blocked') return 'skipped'
+    if (state) sawStatus = true
     const screen = String((await deps.call<{ text?: string }>('terminal.read', { terminal: address, lines: 40 }, 3000).catch(() => null))?.text || '')
     if (DIALOG_RE.test(screen)) return 'skipped'
     stable = screen.trim() && screen === last ? stable + 1 : 0
     last = screen
-    if (t.status === 'idle' ? screen.trim() : stable >= 3) {
+    if (state === 'idle' ? stable >= 2 : !sawStatus && stable >= STILL_POLLS) {
       try { await deps.call('terminal.send', { terminal: address, text }, 30000); return 'sent' } catch { return 'skipped' }
     }
     await new Promise(r => setTimeout(r, step))
@@ -206,9 +213,10 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
   if (failed) throw new HerdrError('launch_failed', fmt('{kind} stopped right after starting (exit code {code}). Last output:\n{lines}', { kind, code: failed.code, lines: failed.lines || '(none)' }))
   const pane = deps.panes().find(p => p.coreAddress === address)
   if (!pane) throw new HerdrError('uncertain', 'Created, but not in the list yet: check the list before creating it again')
-  // After the answer: the program needs time to start, and a failure here must not undo the creation.
-  if (first) void sendFirstMessage(deps, address, first).catch(() => {})
-  return { pane_id: pane.id, workspace_id: pane.workspace, name: kind === 'shell' ? null : name || kind, first_message: first ? 'queued' : null }
+  // The program needs time to start: wait for it so that the sheet can say when nothing was
+  // typed. A failure here must not undo the creation.
+  const sent = first ? await sendFirstMessage(deps, address, first).catch(() => 'skipped' as const) : null
+  return { pane_id: pane.id, workspace_id: pane.workspace, name: kind === 'shell' ? null : name || kind, first_message: sent }
 }
 
 // Adds a machine over SSH (like `hc machine add <target>`): no command (`via`) and no
