@@ -535,8 +535,6 @@ export function connectEvents() {
   eventProbe.cancel()
   const ws = new WebSocket(`${wsBase()}/ws/events`)
   evWs = ws
-  const t0 = Date.now() // staged timing: open, then first real packet
-  let proved = false
   // A CONNECTING socket fires nothing: no open, no close, no retry. If the
   // network is not actually back yet, the handshake hangs and the app would
   // sit offline forever -- close it on a deadline so onclose retries.
@@ -573,7 +571,6 @@ export function connectEvents() {
       if (data?.type === 'pong') { eventProbe.pong(ws); return }
       // Real traffic (state or settings): the socket proved itself live.
       clearTimeout(evFirst)
-      if (!proved) { proved = true; console.debug(`[events] first +${Date.now() - t0}ms`) }
       if (data?.type === 'settings') { settingsSync.receive(data.settings || {}); return }
       // Lock turned off: the server dropped every push subscription, this device posts its own again.
       if (data?.type === 'push-resubscribe') { syncPushLanguage().catch(() => {}); return }
@@ -647,6 +644,9 @@ watch(herdrState, (s) => {
 // A status read that never answers (phone on a tailnet whose wherdr host is
 // gone) counts as unreachable past this delay; see `start` for the unlock path.
 const STATUS_WAIT_MS = 3000
+// Explicit unlock, registration and Settings checks need room for a slow link
+// to deliver the fresh offline lease before a later suspend.
+const AUTH_STATUS_WAIT_MS = 10000
 
 // Shows the lock screen only when the server itself says the session is
 // invalid; a network error or an odd answer leaves the app as it is.
@@ -654,7 +654,8 @@ const STATUS_WAIT_MS = 3000
 // the server end a session past its maximum duration (never in the middle of use).
 export async function confirmLock({ resume = false } = {}) {
   try {
-    const st = await api<AuthStatus>(resume ? '/api/auth/status?resume=1' : '/api/auth/status', undefined, AbortSignal.timeout(STATUS_WAIT_MS))
+    const st = await api<AuthStatus>(resume ? '/api/auth/status?resume=1' : '/api/auth/status', undefined,
+      AbortSignal.timeout(resume ? STATUS_WAIT_MS : AUTH_STATUS_WAIT_MS))
     if (st.enabled && !st.unlocked) return showLock()
     const access = leaseFromStatus(st)
     setOfflineAccess(access)
@@ -709,8 +710,8 @@ export function showLock() {
 
 // App opening or back in the foreground: a server that accepts the connection
 // but never answers counts as unreachable past STATUS_WAIT_MS, so the last
-// known state shows and the live connection keeps retrying. Unlock and
-// Settings wait for the answer.
+// known state shows and the live connection keeps retrying. Explicit unlock,
+// registration and Settings checks allow AUTH_STATUS_WAIT_MS for the answer.
 
 // resume: see confirmLock.
 export async function start({ resume = false } = {}) {
@@ -719,9 +720,8 @@ export async function start({ resume = false } = {}) {
   // the answer allows it): one round trip less before the home list.
   const early = mayReadOffline(access) ? readHome() : null
   try {
-    const st = resume
-      ? await api<AuthStatus>('/api/auth/status?resume=1', undefined, AbortSignal.timeout(STATUS_WAIT_MS))
-      : await api<AuthStatus>('/api/auth/status', undefined, AbortSignal.timeout(STATUS_WAIT_MS))
+    const st = await api<AuthStatus>(resume ? '/api/auth/status?resume=1' : '/api/auth/status', undefined,
+      AbortSignal.timeout(resume ? STATUS_WAIT_MS : AUTH_STATUS_WAIT_MS))
     if (st.hostLabel !== undefined) hostLabel.value = st.hostLabel
     if (st.enabled && !st.unlocked) return showLock()
     access = leaseFromStatus(st)

@@ -311,7 +311,6 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     if (smoothTouchScrolling.value) scrollInputVersion.value++
     const ws = new WebSocket(`${wsBase()}/ws/term?${q}`)
     tws = ws
-    const t0 = Date.now() // staged timing: open, then first frame (devtools)
     // A CONNECTING socket fires nothing: if the handshake hangs (network not
     // really back yet) nothing retries -- close it on a deadline so onclose
     // schedules the next attempt.
@@ -329,7 +328,6 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         try { ws.close() } catch { /* already closed */ }
       }, 12000)
       if (term) lastSize = { cols: term.cols, rows: term.rows }
-      console.debug(`[term ${paneId}] open +${Date.now() - t0}ms`)
       ws.send(JSON.stringify({ type: 'visibility', visible: !document.hidden }))
     }
     ws.onmessage = (e) => {
@@ -345,7 +343,6 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
           gotFrame = true
           twsRetry = 0
           clearTimeout(frameWait)
-          console.debug(`[term ${paneId}] frame +${Date.now() - t0}ms`)
         }
         loading.value = false
         if (!term) return
