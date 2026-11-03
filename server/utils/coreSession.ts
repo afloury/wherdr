@@ -1,11 +1,13 @@
 import { createConnection, type Socket } from 'node:net'
-import { applyCoreEvent, type CoreEvent, type CoreTerminals } from '../../shared/coreEvents'
+import { applyCoreEvent, liveTerminals, type CoreEvent, type CoreTerminals } from '../../shared/coreEvents'
 import type { CoreTerminal } from '../../shared/coreInventory'
 
 // One durable `events.subscribe` connection to herdr-core (like Shepherdr's CoreSession):
 // a snapshot, then numbered events. A gap in `seq`, a `missed` event or silence for
 // longer than the watchdog (core sends a heartbeat every 15 s) reconnects with a new
 // snapshot; reconnects back off from 250 ms to 30 s. Never retries an incompatible core.
+// Core sends `missed` with every terminal as of its `seq` when it resyncs a machine
+// (e.g. a remote core restarted): that list replaces the held one.
 export interface CoreSessionOptions {
   endpoint: string
   watchdogMs?: number
@@ -16,6 +18,7 @@ export interface CoreSessionOptions {
   onChange?: (what: 'terminal' | 'doc' | 'snapshot') => void
   onStatus?: (connected: boolean) => void
 }
+interface Resync { resync: true; seq: number; terminals: CoreTerminal[] }
 const MAX_LINE = 16 * 1024 * 1024
 const MAX_BUFFER = 4096
 
@@ -72,10 +75,17 @@ export class CoreSession {
     let buf = ''
     let snapshotSeq: number | null = null
     let last = 0
-    const queue: CoreEvent[] = []
+    const queue: (CoreEvent | Resync)[] = []
     const fresh = () => this.socket === socket
     this.watch(socket)
-    const live = (event: CoreEvent) => {
+    const resync = ({ seq, terminals }: Resync) => {
+      if (seq < last) return // we already hold newer facts (a snapshot taken after it)
+      last = seq
+      this.terminals = liveTerminals(terminals)
+      this.opts.onChange?.('snapshot')
+    }
+    const live = (event: CoreEvent | Resync) => {
+      if ('resync' in event) return resync(event)
       if (typeof event.seq === 'number') {
         if (event.seq <= last) return // already in the snapshot
         if (event.seq !== last + 1) return this.reconnect() // a gap: take a new snapshot
@@ -90,21 +100,26 @@ export class CoreSession {
       this.opts.onChange?.(what)
     }
     const line = (text: string) => {
-      let m: { id?: number; method?: string; params?: CoreEvent; result?: { seq?: number; terminals?: CoreTerminal[] }; error?: { data?: { kind?: string } } }
+      let m: { id?: number; method?: string; params?: CoreEvent & { terminals?: CoreTerminal[] }; result?: { seq?: number; terminals?: CoreTerminal[] }; error?: { data?: { kind?: string } } }
       try { m = JSON.parse(text) } catch { return this.reconnect() }
       if (m.id === 1) {
         if (m.error) return this.reconnect(m.error.data?.kind === 'unsupported_generation' || m.error.data?.kind === 'incompatible')
         const result = m.result
         if (!Array.isArray(result?.terminals) || typeof result.seq !== 'number') return this.reconnect()
         snapshotSeq = last = result.seq
-        this.terminals = new Map(result.terminals.filter(t => t && typeof t.address === 'string' && t.state !== 'finished' && t.state !== 'lost').map(t => [t.address, t]))
+        this.terminals = liveTerminals(result.terminals)
         this.ready = true
         this.delay = 250
         this.opts.onStatus?.(true)
         this.opts.onChange?.('snapshot')
         for (const event of queue.splice(0)) live(event)
-      } else if (m.method === 'event' && m.params) {
-        if (snapshotSeq === null) { if (queue.length >= MAX_BUFFER) return this.reconnect(); queue.push(m.params) } else live(m.params)
+      } else if ((m.method === 'event' || m.method === 'missed') && m.params) {
+        let item: CoreEvent | Resync = m.params
+        if (m.method === 'missed') {
+          if (typeof m.params.seq !== 'number' || !Array.isArray(m.params.terminals)) return this.reconnect()
+          item = { resync: true, seq: m.params.seq, terminals: m.params.terminals }
+        }
+        if (snapshotSeq === null) { if (queue.length >= MAX_BUFFER) return this.reconnect(); queue.push(item) } else live(item)
       }
     }
     socket.on('connect', () => socket.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'events.subscribe', params: {} }) + '\n'))
