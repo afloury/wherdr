@@ -418,7 +418,9 @@ body.short-bottom { --safe-bottom: 0px; }
 .stat.working span i { background: var(--working); }
 .stat.done span i { background: var(--done); }
 .stat.zero b { color: var(--dim); }
-.stat.blocked:not(.zero) b { color: var(--rose); }
+.stat.blocked:not(.zero) b { color: var(--blocked); }
+.stat.working:not(.zero) b { color: var(--working); }
+.stat.done:not(.zero) b { color: var(--done); }
 
 /* Remaining quotas (Claude, Codex): same grid as the counters, below them. */
 .quotas { margin: 0 0 26px; }
@@ -835,6 +837,8 @@ body.short-bottom { --safe-bottom: 0px; }
 .card::before { content: ''; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 2px; background: transparent; }
 .card:active { background: var(--surface-2); }
 .card.blocked::before { background: var(--rose); }
+/* A task ready to approve: the user's turn (the home counters), in its colour. */
+.card.turn-approve::before { background: var(--blocked); }
 /* Unread (finished, not looked at yet): line and title marked, like an email. */
 .card.done::before { background: var(--done); }
 .card.done .card-title { font-weight: 700; }
@@ -3139,7 +3143,9 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .rail-stat.working i { background: var(--working); }
   .rail-stat.done i { background: var(--done); }
   .rail-stat.zero b { color: var(--dim); }
-  .rail-stat.blocked:not(.zero) b { color: var(--rose); }
+  .rail-stat.blocked:not(.zero) b { color: var(--blocked); }
+  .rail-stat.working:not(.zero) b { color: var(--working); }
+  .rail-stat.done:not(.zero) b { color: var(--done); }
   /* Quiet mode in the rail: a small ochre mark under the counters (a tap opens the settings). */
   .rail-quiet { display: flex; justify-content: center; width: 100%; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line-soft); color: var(--ochre); }
   .rail-quiet svg { width: 14px; height: 14px; }
@@ -3161,6 +3167,7 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .card.sel { background: var(--surface-2); }
   .card.sel::before { background: var(--mauve); }
   .card.sel.blocked::before { background: var(--rose); }
+  .card.sel.turn-approve::before { background: var(--blocked); }
   .card-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 14.5px; }
   .card-preview { font-size: 13px; margin-left: 50px; }
   .empty { margin: 0 -12px; }
@@ -3766,6 +3773,8 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 /* Waiting for an answer: the line stays loud (tint + rose title). */
 .card.compact.blocked { background: color-mix(in srgb, var(--rose) 8%, var(--bg-2)); }
 .card.compact.blocked .card-title { color: var(--rose); }
+.card.compact.blocked.turn-approve { background: color-mix(in srgb, var(--blocked) 8%, var(--bg-2)); }
+.card.compact.blocked.turn-approve .card-title { color: var(--blocked); }
 /* Touch: keep a usable target. */
 @media (pointer: coarse) { .card.compact { min-height: 38px; } }
 /* :has: the line keeps its wrap while the answers fold back. */
@@ -4091,6 +4100,8 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-state.working { color: var(--working); }
 .task-state.done { color: var(--done); }
 .task-state.todo { color: var(--text-3); }
+/* On the home list, ready to approve is the user's turn, as its counter says. */
+.card .task-state.ready.turn { color: var(--blocked); }
 .task-sheet-msg { margin: 0; font: 12px/1.45 var(--mono); color: var(--text-2); overflow-wrap: anywhere; }
 .task-sheet-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; margin: 0; padding: 12px; border: 1px solid var(--line); }
 .task-sheet-facts dt { font: 500 10px/1.5 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }

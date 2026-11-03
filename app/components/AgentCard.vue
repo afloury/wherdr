@@ -16,7 +16,7 @@ const list = createListShown()
 import type { Pane } from '#shared/types'
 import type { Row } from '#shared/spaces'
 import { tabStates } from '#shared/spaces'
-import { type BoardCard, elapsedLabel } from '#shared/boardLinks'
+import { type BoardCard, elapsedLabel, taskStat } from '#shared/boardLinks'
 import type { MenuItem } from '~/composables/useUi'
 import { longPress } from '~/utils/longPress'
 import { chatHoverIntent } from '~/utils/chatIntent'
@@ -35,7 +35,10 @@ const space = computed(() => (props.row && props.row.kind === 'space' ? props.ro
 // Pane whose state the card shows.
 const statePane = computed(() => props.pane)
 const lead = computed(() => Boolean(props.board?.lead))
-const cardStatus = computed(() => props.board?.group ? ({ needs: 'blocked', ready: 'done', working: 'working', todo: 'idle', done: 'idle' }[props.board.group]) : statusKey(statePane.value))
+// A task's row reads as the counters count it (taskStat): needs you and ready
+// to approve are the user's turn, to do and done are ready.
+const boardStat = computed(() => props.board?.group ? taskStat(props.board.group) : null)
+const cardStatus = computed(() => boardStat.value ? (boardStat.value === 'ready' ? 'idle' : boardStat.value) : statusKey(statePane.value))
 const taskCard = computed(() => Boolean(props.board && !props.board.coordinator && !lead.value))
 // A Working task waiting for CI or for its turn (shared/taskActivity.ts).
 const notRunning = computed(() => Boolean(props.board?.activity && props.board.activity.kind !== 'running'))
@@ -238,7 +241,7 @@ onUnmounted(list.unmount)
 <template>
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      ref="card" class="card" :class="[cardStatus, { sel: selected, stale: paneStale(pane), 'space-card': space, compact: true, open: more, 'home-task': board && !lead, 'task-row': taskCard, 'home-coord': board?.coordinator && !lead, 'home-lead': lead, 'home-task-two': twoLines }, taskCard && notRunning ? `activity-${board!.activity!.kind}` : '']" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      ref="card" class="card" :class="[cardStatus, { sel: selected, stale: paneStale(pane), 'space-card': space, compact: true, open: more, 'home-task': board && !lead, 'task-row': taskCard, 'home-coord': board?.coordinator && !lead, 'home-lead': lead, 'home-task-two': twoLines, 'turn-approve': board?.group === 'ready' && !board.coordinator }, taskCard && notRunning ? `activity-${board!.activity!.kind}` : '']" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
       role="button" tabindex="0" @pointerenter="hover" @pointerleave="intent.cancel" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel(); intent.cancel()"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
@@ -261,7 +264,7 @@ onUnmounted(list.unmount)
       <span v-if="projectBadge" class="card-tag card-origin" :title="projectBadge">{{ projectBadge }}</span>
       <span v-if="boardStats" class="home-task-stats">{{ boardStats }}</span>
       <TaskActivityBadge v-if="taskCard && notRunning" :activity="board?.activity" />
-      <span v-else-if="taskCard && board?.group" class="task-state" :class="board.group">{{ taskGroupLabel(board.group) }}</span>
+      <span v-else-if="taskCard && board?.group" class="task-state" :class="[board.group, { turn: boardStat === 'blocked' }]">{{ taskGroupLabel(board.group) }}</span>
       <span v-if="statePane.usageLimit && !taskCard" class="card-tag quota-limit" :title="stateTitle">{{ tl('Quota', 'Quota') }}</span>
       <span v-if="!taskCard && compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
       <span v-else-if="!taskCard && compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>
