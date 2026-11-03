@@ -15,8 +15,9 @@
   reports its session. Same-directory sessions are never selected by recency. The reader
   follows `DEVIN_SESSIONS_DIR`, then `XDG_DATA_HOME/devin/cli`, otherwise
   `~/.local/share/devin/cli`. No export flag is needed: Devin writes the JSON file next
-  to its CLI data. New text appears when Devin saves it, which may be less frequent than
-  the terminal's streaming display. Cloud sessions are not supported by this reader.
+  to its CLI data, after each turn. A turn's messages — the prompt it took included —
+  appear here only when the turn ends, which can be well behind the terminal's
+  streaming display on a long turn. Cloud sessions are not supported by this reader.
 - **Interactive agent screens**: in a conversation, an uncertain menu or panel opens the
   pane's real terminal in a modal window, with arrows, Enter, Escape, Tab, digits and y/n.
   The rest of the app waits behind a scrim (the window fills the screen on a phone); in a

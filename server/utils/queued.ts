@@ -112,6 +112,11 @@ export function landed(q: { text: string, at: number, typedAt?: number }, items:
 // staying "sending…" forever.
 export const HOLD_TTL_MS = 10 * 60 * 1000
 export const LOST_MS = 60 * 1000
+// Devin saves a turn to its ATIF transcript only when the turn ends: a
+// message it took can outlast a plain ready read by a whole turn, and a
+// ready-looking pause mid-turn means nothing. It is reported not sent only
+// after the agent has rested this much longer than a plain read lag needs.
+export const DEVIN_LAND_MS = 5 * 60 * 1000
 // Held while the agent is ready and no menu, question or panel is recognized
 // on its screen: nothing will close, the input field is just not found
 // (unknown screen). Reported as not sent, with that reason, instead of
@@ -187,7 +192,7 @@ export function lookForLeftMenu(p: Pick<Pane, 'agent' | 'status' | 'stopped' | '
 // Updates timers in place on each poll; true when an entry just failed.
 // `menu`: a menu, question or panel recognized on the agent's screen (or a
 // restart running): something a held message legitimately waits for.
-export function checkQueue(list: QueueEntry[], status: string | null | undefined, now: number, menu = true): boolean {
+export function checkQueue(list: QueueEntry[], status: string | null | undefined, now: number, menu = true, agent?: string | null): boolean {
   let changed = false
   const ready = status === 'idle' || status === 'done'
   for (const q of list) {
@@ -209,7 +214,10 @@ export function checkQueue(list: QueueEntry[], status: string | null | undefined
     }
     if (!ready) { delete q.readySince; continue }
     q.readySince ??= now
-    if (now - Math.max(q.readySince, q.at) > LOST_MS) {
+    // A message inside a Devin turn lands with the turn (see DEVIN_LAND_MS):
+    // the idle grace is counted against it, not a plain transcript read lag.
+    const grace = agent === 'devin' && q.turnSeen ? DEVIN_LAND_MS : LOST_MS
+    if (now - Math.max(q.readySince, q.at) > grace) {
       q.failed = true
       // Known to be pulled back out of Claude's queue (see checkSent): said so.
       if (q.popped) q.lost = true
@@ -255,7 +263,11 @@ export function checkSent(list: QueueEntry[], o: { agent: string | null | undefi
     const inQueue = Boolean(c && c.queue.some(isIt))
     if (inQueue) { delete q.popped; delete q.lostSince }
     else if (c && c.popped.some(isIt)) q.popped = true
-    if (!inQueue && o.now - q.at > QUEUED_TTL_MS) {
+    // Devin exports its ATIF transcript per turn: a message it took is written
+    // only when the turn ends, however long that is. A message the agent worked
+    // on after it was typed is inside such a turn, not unseen.
+    const devinTurn = o.agent === 'devin' && q.turnSeen
+    if (!inQueue && !devinTurn && o.now - q.at > QUEUED_TTL_MS) {
       q.failed = true
       q.unseen = true
       changed = true

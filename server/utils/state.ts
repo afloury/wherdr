@@ -1084,7 +1084,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string, publish?: (
       const menu = Boolean(before && (before.menu || before.prompt || before.screen || before.interaction === 'terminal')) || restarting(p.id)
       // omp running the user's "!" command: idle for Herdr, but busy.
       if (list && TURN.has(p.status || '')) for (const q of list) if (!q.held && !q.failed) q.turnSeen = true
-      if (list && checkQueue(list, before?.ompShell ? 'working' : p.status, Date.now(), menu)) log(`message not sent on ${p.id}`)
+      if (list && checkQueue(list, before?.ompShell ? 'working' : p.status, Date.now(), menu, p.agent)) log(`message not sent on ${p.id}`)
       if (list) deliverHeld(p)
       if (list && list.length) p.queued = list.map(q => queuedPasted(publicEntry(q)))
     }
