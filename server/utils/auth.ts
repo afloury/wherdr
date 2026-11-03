@@ -38,6 +38,11 @@ const COOKIE_MS = Math.max(...MAX_SESSION_DAYS) * DAY_MS + OVERRUN_MS
 // Earlier versions: 12 h sliding cookies (exp = last renewal + 12 h).
 const LEGACY_SLIDE_MS = 12 * 3600 * 1000
 const CHALLENGE_MS = 5 * 60 * 1000
+// Challenges waiting for an answer: past this, the oldest is dropped (the
+// unlock route is public, it must not grow memory without bound).
+const CHALLENGE_MAX = 100
+// Unlock attempts per client and per minute.
+const LOGIN_PER_MINUTE = 10
 export const AUTH_COOKIE = 'hw_session'
 const CHALLENGE_COOKIE = 'hw_challenge'
 
@@ -179,6 +184,8 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   const issueChallenge = (req: ReqLike, kind: 'reg' | 'auth', value: string) => {
     const client = crypto.randomBytes(24).toString('base64url')
     for (const [key, challenge] of challenges) if (challenge.exp < Date.now()) challenges.delete(key)
+    // A Map iterates in insertion order: the first key is the oldest.
+    while (challenges.size >= CHALLENGE_MAX) challenges.delete(challenges.keys().next().value!)
     challenges.set(challengeKey(kind, client), { value, exp: Date.now() + CHALLENGE_MS })
     return `${CHALLENGE_COOKIE}=${client}; Path=/api/auth/; HttpOnly; SameSite=Strict; Max-Age=${CHALLENGE_MS / 1000}${secure(req)}`
   }
@@ -199,7 +206,8 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
       rpName: 'wherdr', rpID, userName: passkeyUser, userDisplayName: passkeyUser,
       attestationType: 'none',
       excludeCredentials: db.credentials.map(c => ({ id: c.id, transports: c.transports })),
-      authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },
+      // Discoverable: unlocking never needs to list the registered keys.
+      authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
     })
     return { ...opts, __cookie: issueChallenge(req, 'reg', opts.challenge) }
   }
@@ -227,12 +235,13 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     return { ok: true, __cookie: sessionCookie(req) }
   }
 
-  async function loginOptions(req: ReqLike) {
+  // Public (the lock screen asks it): no key id is given out, the device
+  // offers its own passkey for this site (discoverable credential).
+  const attempts = createRateLimit(LOGIN_PER_MINUTE, 60_000)
+  async function loginOptions(req: ReqLike, client = '', now = Date.now()) {
+    if (!attempts.take(client, now)) throw new AuthError('rate_limited', 'Too many attempts, wait a minute')
     const { rpID } = relying(req)
-    const opts = await generateAuthenticationOptions({
-      rpID, userVerification: 'required',
-      allowCredentials: db.credentials.map(c => ({ id: c.id, transports: c.transports })),
-    })
+    const opts = await generateAuthenticationOptions({ rpID, userVerification: 'required' })
     return { ...opts, __cookie: issueChallenge(req, 'auth', opts.challenge) }
   }
 
@@ -287,8 +296,9 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     if (!enabled()) return { enabled: false, unlocked: true, devices }
     const s = session(req, now)
     const deadline = s ? s.since + maxSessionMs() : 0
+    // Locked: only what the lock screen needs (no key names, dates or clock).
     if (!s || (resume && now >= deadline)) {
-      return { enabled: true, unlocked: false, expiresAt: null, now, devices, ...(s ? { __cookie: clearCookie(req) } : {}) }
+      return { enabled: true, unlocked: false, expiresAt: null, devices: [], ...(s ? { __cookie: clearCookie(req) } : {}) }
     }
     const renewed = renew(req, now)
     return {
@@ -310,7 +320,30 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     _db: () => db,
     _bootstrapToken: () => bootstrapToken,
     _takeChallenge: takeChallenge,
+    _challengeCount: () => challenges.size,
   }
 }
 
 export type Auth = ReturnType<typeof createAuth>
+
+// At most `limit` calls per `windowMs` for each client key. The table of
+// clients is itself bounded: expired entries go first, then the oldest.
+export function createRateLimit(limit: number, windowMs: number, maxClients = 1000) {
+  const hits = new Map<string, { n: number, reset: number }>()
+  return {
+    take(key: string, now = Date.now()): boolean {
+      let h = hits.get(key)
+      if (!h || h.reset <= now) {
+        hits.delete(key)
+        if (hits.size >= maxClients) {
+          for (const [k, v] of hits) if (v.reset <= now) hits.delete(k)
+          while (hits.size >= maxClients) hits.delete(hits.keys().next().value!)
+        }
+        h = { n: 0, reset: now + windowMs }
+        hits.set(key, h)
+      }
+      return ++h.n <= limit
+    },
+    _size: () => hits.size,
+  }
+}
