@@ -1366,6 +1366,12 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
 }
 .msg-system::before, .msg-system::after, .day-sep::before, .day-sep::after { content: ''; flex: 1; height: 1px; background: var(--line-soft); }
 .day-sep { color: var(--muted); }
+/* Local "/" command with more output: the line opens it (see ChatView). */
+.msg-cmd > button.msg-system { width: 100%; background: none; border: 0; padding: 0; cursor: pointer; color: var(--dim); }
+.msg-cmd > button.msg-system > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-cmd > button.msg-system:hover, .msg-cmd.open > button.msg-system { color: var(--text-2); }
+.msg-cmd-chev { flex: none; width: 12px; height: 12px; }
+.msg-cmd > .msg-shell-out { border: 1px solid var(--line-soft); margin: 2px 0 10px; }
 .turn-end { display: flex; align-items: center; gap: 6px; font: 400 11px/1 var(--mono); color: var(--dim); letter-spacing: .04em; margin: -6px 0 6px -6px; min-height: 28px; }
 .turn-end > span { padding-left: 6px; }
 .turn-copy { color: var(--dim); width: 28px; height: 28px; justify-content: center; }

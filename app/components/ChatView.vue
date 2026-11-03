@@ -392,7 +392,7 @@ type Block =
   | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
-  | { k: 'system', key: string, text: string }
+  | { k: 'system', key: string, text: string, full?: string }
   | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean, scheduled?: boolean }
   // The agent's turn failed (omp: usage limit, credit balance, stalled stream…).
   | { k: 'error', key: string, text: string, long: boolean }
@@ -578,10 +578,12 @@ const blocks = computed<Block[]>(() => {
       out.push(lazyHtml({ k: 'notice' as const, key, label: t(label), icon, scheduled: it.name === 'scheduled', long: it.name === 'scheduled' || it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 }, () => md(it.text)))
     } else {
       const effort = it.role === 'system' ? it.text.match(/^Effort : (low|medium|high|xhigh|max|ultracode) \(cette session\)$/) : null
-      // Local "/" command: one-line system separator ("/cost → …").
+      // Local "/" command: one-line system separator ("/cost → …"); a tap
+      // opens its full output when it has more to say (/context…).
+      const full = it.role === 'cmd' ? [it.err, it.out].filter(Boolean).join('\n') : ''
       out.push({ k: 'system', key, text: effort
         ? tl(`Effort: ${effort[1]} (this session)`, `Effort : ${effort[1]} (cette session)`)
-        : it.role === 'system' ? t(it.text) : it.text })
+        : it.role === 'system' ? t(it.text) : it.text, ...(full ? { full } : {}) })
     }
   })
   flush()
@@ -1394,6 +1396,12 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   <span>{{ tl('You ran', 'Lancé par toi') }}</span>
                 </div>
                 <OmpTool :tool="b.tool" run />
+              </div>
+              <div v-else-if="b.k === 'system' && b.full" class="msg-cmd" :class="{ open: isOpen(b.key) }">
+                <button type="button" class="msg-system" :aria-expanded="isOpen(b.key)" :title="isOpen(b.key) ? t('Collapse') : t('Show all')" @click="setOpen(b.key, !isOpen(b.key))">
+                  <span>{{ b.text }}</span><UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="msg-cmd-chev" />
+                </button>
+                <pre v-if="isOpen(b.key)" class="msg-shell-out">{{ b.full }}</pre>
               </div>
               <div v-else-if="b.k === 'system'" class="msg-system"><span>{{ b.text }}</span></div>
               <div v-else-if="b.k === 'error'" class="msg-notice msg-error" :class="{ long: b.long, open: isOpen(b.key) }">

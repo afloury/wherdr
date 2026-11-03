@@ -164,7 +164,7 @@ function onKeydown(e: KeyboardEvent) {
     submit()
   }
 }
-// Bubble on window, after useCardKeys on document: the active card owns
+// Bubble on window, after useCardKeys (capture on document): the active card owns
 // arrows in an empty field.
 const history = new PromptHistory()
 function onHistoryKey(e: KeyboardEvent) {

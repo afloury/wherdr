@@ -20,7 +20,7 @@ describe('bash-input / bash-stdout / bash-stderr entries', () => {
     expect(cmds).toEqual([
       { role: 'bash', text: 'git status --short', out: ' M src/demo.ts\n?? notes.txt', err: '' },
       { role: 'bash', text: 'ls /introuvable', out: '', err: 'ls: /introuvable: No such file or directory' },
-      { role: 'cmd', text: '/context → 12.3k/200k tokens (6%)' },
+      { role: 'cmd', text: '/context → 12.3k/200k tokens (6%)', out: ' Context Usage\n12.3k/200k tokens (6%)' },
       { role: 'bash', text: 'echo tableau', out: 'tableau', err: '' },
       { role: 'bash', text: 'true', out: undefined, err: undefined },
     ])

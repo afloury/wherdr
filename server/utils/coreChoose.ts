@@ -51,3 +51,19 @@ export async function coreChoose(deps: CoreChooseDeps, b: Body) {
     return { ok: true }
   } catch (e) { failure(e) } finally { deps.refresh() }
 }
+
+// Keyboard on a "Your turn" card (↑ ↓ Enter Esc, ←/→ between omp tabs): the
+// keys go to the terminal only while the same question is on screen.
+const NAV_KEYS = new Set(['up', 'down', 'enter', 'esc', 'left', 'right'])
+export async function coreNav(deps: CoreChooseDeps, b: { pane_id?: unknown, keys?: unknown, identity?: unknown }) {
+  const p = typeof b.pane_id === 'string' ? deps.pane(b.pane_id) : undefined
+  if (!p?.coreAddress) throw new HerdrError('bad_pane', 'Pane not found')
+  const keys = Array.isArray(b.keys) ? b.keys : []
+  if (!keys.length || keys.length > 8 || !keys.every(k => typeof k === 'string' && NAV_KEYS.has(k))) throw new HerdrError('bad_keys', 'Invalid keys')
+  try {
+    const now = readCoreScreen(await deps.read(p), p.agent, p.status)
+    if (!now.choices || now.interaction !== 'native' || now.choices.identity !== b.identity) throw stale()
+    await deps.call('terminal.keys', { terminal: p.coreAddress, keys }, 10000)
+    return { ok: true }
+  } catch (e) { failure(e) } finally { deps.refresh() }
+}

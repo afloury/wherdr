@@ -55,11 +55,8 @@ These existing shortcuts are unchanged and listed in the help sheet:
   Editing a recalled text does not change stored entries.
 - In the terminal: Shift+Enter and the copy keys (⌘C or Ctrl+Shift+C copy the on-screen selection,
   which releasing the mouse button also copies).
-- On a "Your turn" card: ↑ ↓ Enter Esc, 1–9 and ← →.
-- On an interactive menu card, the Ctrl+letters of its legend (/resume: Ctrl+A, all projects or
-  the current one) press the matching button. Ctrl on every platform, as in the terminal; ⌘A
-  keeps "select all" on macOS. Not taken in a field with text (select all), in the terminal
-  (it sends the key itself), or for Ctrl+W/N/T (the browser keeps them).
+- On a "Your turn" card: ↑ ↓ Enter Esc, 1–9 and ← →. The card takes them before the focused
+  empty message field; the server sends a key only while the same question is on screen.
 - In the lightbox, conversation search and global search: their own keys.
 
 Where the keys are shown:

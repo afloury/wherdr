@@ -95,7 +95,8 @@ export function describeFocus(el: Element | null): FocusInfo {
 }
 
 // Listens to the keyboard while `active()`: a single card at a time (the active
-// view; side by side, the active cell).
+// view; side by side, the active cell). Capture phase: the card goes before the
+// focused field's own handlers (the empty message field takes Enter to send).
 export function useCardKeys(active: () => boolean, opts: () => CardKeyOpts & { own?: Element | null }, run: (k: CardKey) => void) {
   function onKey(e: KeyboardEvent) {
     if (!active()) return
@@ -107,6 +108,6 @@ export function useCardKeys(active: () => boolean, opts: () => CardKeyOpts & { o
     e.stopPropagation()
     run(k)
   }
-  onMounted(() => document.addEventListener('keydown', onKey))
-  onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
+  onMounted(() => document.addEventListener('keydown', onKey, true))
+  onBeforeUnmount(() => document.removeEventListener('keydown', onKey, true))
 }
