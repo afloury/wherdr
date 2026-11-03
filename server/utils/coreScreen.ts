@@ -7,6 +7,7 @@ import { classifyScreen, confirmedInput } from '../../shared/interactiveScreen'
 import { codexError } from '../../shared/codexError'
 import { hasTranscript } from '../../shared/agentKind'
 import { parseChoices, parseOmpPrompt, promptIdentity, completeClaudeAsk, type ClaudeAsked } from './choices'
+import { queueSendNow, readDraft } from './coreDraft'
 
 const WORKING = /\besc(?:ape)? to interrupt\b/i
 // Claude's folder-trust box: unnumbered options, so it needs the non-strict reading
@@ -48,11 +49,14 @@ export interface CoreScreenDeps {
 const VIEWED_MS = 1000
 const IDLE_MS = 5000
 const MAX_READS = 6
+// A draft is shown once it stayed the same this long: not while someone types it.
+const DRAFT_MS = 2000
 
 export function createCoreScreens(deps: CoreScreenDeps) {
   const now = deps.now ?? Date.now
   const cache = new Map<string, { at: number, text: string }>()
   const failed = new Set<string>()
+  const drafts = new Map<string, { text: string, since: number }>()
   const read = async (p: Pane) => {
     try {
       const r = await deps.call('terminal.read', { terminal: p.coreAddress, lines: 0 }, 3000)
@@ -68,9 +72,11 @@ export function createCoreScreens(deps: CoreScreenDeps) {
       return String(r?.text ?? '')
     },
     // Fills the agents of one state (in place). Working agents whose status core
-    // reports are not read: normal activity is not a question.
+    // reports are not read: normal activity is not a question. An open Claude
+    // conversation still is, for its queue's "send now".
     async enrich(panes: Pane[]): Promise<void> {
-      const agents = panes.filter(p => p.coreAddress && p.agent && hasTranscript(p.agent) && p.status !== 'working')
+      const agents = panes.filter(p => p.coreAddress && p.agent && hasTranscript(p.agent)
+        && (p.status !== 'working' || (p.agent === 'claude' && deps.viewed(p.id))))
       const due = agents.filter(p => {
         const c = cache.get(p.id)
         return !c || now() - c.at >= (deps.viewed(p.id) ? VIEWED_MS : IDLE_MS)
@@ -78,6 +84,7 @@ export function createCoreScreens(deps: CoreScreenDeps) {
       await Promise.all(due.map(read))
       const alive = new Set(panes.map(p => p.id))
       for (const id of cache.keys()) if (!alive.has(id)) cache.delete(id)
+      for (const id of drafts.keys()) if (!alive.has(id)) drafts.delete(id)
       for (const p of agents) {
         const c = cache.get(p.id)
         if (!c) continue
@@ -90,6 +97,12 @@ export function createCoreScreens(deps: CoreScreenDeps) {
         else delete p.error
         p.interaction = failed.has(p.id) ? 'unknown' : r.interaction
         if (choices && r.interaction === 'native') p.prompt = choices
+        if (queueSendNow(c.text, p.agent)) p.queueSendNow = true
+        const draft = !failed.has(p.id) && r.interaction === 'input' && p.status !== 'working' ? readDraft(c.text, p.agent) : null
+        const seen = drafts.get(p.id)
+        if (!draft) drafts.delete(p.id)
+        else if (seen?.text !== draft.text) drafts.set(p.id, { text: draft.text, since: c.at })
+        else if (c.at - seen.since >= DRAFT_MS) p.draft = draft
       }
     },
   }

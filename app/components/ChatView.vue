@@ -1090,6 +1090,7 @@ function queuedLabel(q: { reason?: QueuedMessage['reason'], inputText?: string, 
 }
 watch(() => queuedList.value.map(q => `${q.id}:${q.phase}`).join(','), () => nextTick(() => scrollToEnd(false)))
 watch(() => liveShell.value && liveShell.value.lines.join('\n'), () => nextTick(() => scrollToEnd(false)))
+watch(() => props.pane.draft?.text, () => nextTick(() => scrollToEnd(false)))
 
 // No conversation yet but a waiting screen (key legend):
 // the agent is waiting for an action. Recognized screen: details and buttons in the
@@ -1583,7 +1584,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
           </button>
         </Teleport>
-        <div v-if="queuedList.length || liveShell || screen?.sendNow" class="queued-list">
+        <div v-if="queuedList.length || liveShell || screen?.sendNow || (!readOnly && (pane.draft || pane.queueSendNow))" class="queued-list">
           <div v-if="!readOnly && screen?.sendNow" class="queued-tag">
             <button type="button" class="queued-cancel" :disabled="sendingNow" @click="sendNow">{{ t('Send now') }}</button>
           </div>
@@ -1661,6 +1662,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               </button>
             </div>
           </div>
+          <!-- herdr-core: text left unsent in Claude's own input box, Claude's queue. -->
+          <UnsentInput v-if="!readOnly && (pane.draft || pane.queueSendNow)" :pane="pane" />
           <!-- A menu left open in the agent's terminal (no card shows it) holds the messages back. -->
           <div v-if="menuLeftShown" class="menu-left" role="status">
             <p class="menu-left-text">

@@ -111,6 +111,11 @@ export interface Tab {
   layout: TabLayout | null
 }
 
+export interface CoreDraft {
+  text: string
+  lines: number
+}
+
 export interface Pane {
   coreAddress?: string // Authoritative hc address; interface IDs are presentation only.
   // w1:p1 (local) ou <machine>~w1:p1 (distant, see shared/ids.ts).
@@ -149,6 +154,10 @@ export interface Pane {
   // messages wait for it (see server/utils/queued.ts lookForLeftMenu).
   menuLeftOpen?: boolean
   preview?: string
+  // herdr-core, Claude: text left unsent in its own input box (see server/utils/coreDraft.ts).
+  draft?: CoreDraft
+  // herdr-core, Claude: its queue offers "ctrl+enter to send now".
+  queueSendNow?: boolean
   // Codex: the error its last turn ended with ("You've hit your usage limit…"), read from the screen.
   error?: string
   model?: ModelInfo
