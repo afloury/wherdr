@@ -357,29 +357,6 @@ describe('labels', () => {
   })
 })
 
-describe('closing what holds a task', () => {
-  const st = snapshot()
-  const all = links()
-  it('the repo space closes its worktree group: every task in it is named', async () => {
-    const { planClose, tasksClosing, taskStopMessage } = await import('../app/utils/closeFlow')
-    const plan = planClose(st, 'workspace', 'w2')
-    expect(plan.group).toBe(true)
-    const tasks = tasksClosing(plan, 'workspace', [all])
-    expect(tasks.map(t => t.key).sort()).toEqual(['APP-1', 'APP-2'])
-    const en = (a: string) => a
-    expect(taskStopMessage(tasks, en)?.action).toBe('Close and stop 2 tasks')
-    expect(taskStopMessage(tasks, en)?.message).toContain('APP-1 Login redirect')
-  })
-  it('a task\'s own space, or its agent\'s pane, names that task; a shell elsewhere names none', async () => {
-    const { planClose, tasksClosing, taskStopMessage } = await import('../app/utils/closeFlow')
-    expect(tasksClosing(planClose(st, 'workspace', 'w4'), 'workspace', [all]).map(t => t.key)).toEqual(['APP-2'])
-    expect(tasksClosing(planClose(st, 'pane', 'w3:p9'), 'pane', [all]).map(t => t.key)).toEqual(['APP-1'])
-    expect(tasksClosing(planClose(st, 'workspace', 'w5'), 'workspace', [all])).toEqual([])
-    expect(taskStopMessage([], (a: string) => a)).toBeNull()
-    expect(taskStopMessage([{ key: 'APP-2', title: '' }], (a: string) => a)?.action).toBe('Close and stop the task')
-  })
-})
-
 // herdr-projects keeps a reviewer's `watch` after the review (close_reviewer
 // drops the link, not the watcher): the task's own stage and line still decide.
 describe('a watcher kept after its review', () => {

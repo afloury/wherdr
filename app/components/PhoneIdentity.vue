@@ -24,7 +24,7 @@ const label = computed(() => [
   ...(panes.value.length > 1 ? [`${t('Pane')} ${position.value}`] : []), props.workspace?.label, hostLabel.value,
 ].filter(Boolean).join(', '))
 // Navigation lists only when there is somewhere to go; the actions are always
-// there (a single pane can still be renamed, split or get a new tab).
+// there (a single pane can still be renamed or get a new tab).
 const actions = computed<MenuItem[]>(() => [
   { kind: 'group', label: t('Current pane') },
   ...currentPaneItems(props.pane),
@@ -32,7 +32,6 @@ const actions = computed<MenuItem[]>(() => [
   ...currentTabItems(props.pane.tab, panes.value.length > 1
     ? { label: t('Tab overview'), icon: 'i-lucide-panels-top-left', desc: tl('All panes of this tab side by side', 'Tous les panneaux de cet onglet côte à côte'), run: () => emit('overview') }
     : undefined),
-  ...currentSpaceItems(props.pane),
 ])
 watch(() => props.pane.tab, id => noteTab(id), { immediate: true })
 watch(() => props.pane.id, () => { open.value = false })

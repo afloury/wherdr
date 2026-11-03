@@ -5,12 +5,11 @@
 // Photos shrunk in the browser (2048 px, JPEG) then stored on the server;
 // their path goes with the message. Other files the agent can read (PDF,
 // text, code, notebooks) are stored on its machine as they are (/api/attach).
-import type { Pane, QueuedMessage, SlashCommand } from '#shared/types'
+import type { Pane, QueuedMessage } from '#shared/types'
 import type { DraftAtt } from '~/composables/useDraft'
 import { unreference } from '#shared/reference'
 import { quotesIn, removeQuote } from '~/utils/questionReply'
 import { attachQuoteMirror } from '~/utils/quoteMirror'
-import { isAgentCommand } from '#shared/commandScreen'
 import { isSlashCommand } from '#shared/queuedMatch'
 import { viaPrompt } from '#shared/sendRoute'
 import type { AttachKind } from '#shared/attachments'
@@ -34,8 +33,6 @@ import { pasteHtmlText } from '~/utils/pasteHtml'
 const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void>, conversation?: boolean, escStops?: boolean, takeBack?: boolean, unanswered?: number, termShown?: boolean }>()
 const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [], showUnanswered: [] }>()
 
-// Claude Code update installed: the status line restarts the agent.
-// Claude Code error status ("Auto-update failed…"): in red, like in the terminal.
 // Text left in Codex's field (pane.codexField): it would be sent glued before
 // the next message. Clear: Ctrl+U and Backspace, line by line (a field of a
 // few lines; harmless on an empty field), only offered while Codex rests.
@@ -46,29 +43,7 @@ async function clearCodexField() {
   try { await props.sendKeys(Array.from({ length: 10 }, () => ['ctrl+u', 'backspace']).flat()) }
   finally { clearingField.value = false }
 }
-const noticeIsError = computed(() => /\b(failed|error)\b/i.test(props.pane?.claudeNotice || ''))
-const updateReady = computed(() => Boolean(props.pane?.claudeNotice && /Restart to update/i.test(props.pane.claudeNotice) && canRestart(props.pane)))
-const restartLabel = computed(() => {
-  const r = props.pane?.restart
-  if (!r) return ''
-  const who = kindLabel(r.agent)
-  // Codex update in its terminal: one more step between the stop and the relaunch.
-  if (r.update && r.phase === 'stopping') return tl(`Exiting ${who}…`, `Fermeture de ${who}…`)
-  if (r.phase === 'updating') return tl(`Updating ${who} in its terminal…`, `Mise à jour de ${who} dans son terminal…`)
-  return r.phase === 'stopping' ? tl(`Stopping ${who}…`, `Arrêt de ${who}…`) : tl(`Restarting ${who} on the same conversation…`, `Relance de ${who} sur la même conversation…`)
-})
-async function copyUpdate() {
-  const c = props.pane?.restart?.update
-  if (!c) return
-  try {
-    await navigator.clipboard.writeText(c)
-    toast(tl('Command copied: paste it into the terminal of this pane.', 'Commande copiée : colle-la dans le terminal de ce panneau.'))
-  } catch { toast(t('Copy failed'), true) }
-}
-
 // Conversation draft (text + photos), kept when switching conversations.
-// The model picker needs /api/models and friends: hidden with herdr-core.
-const core = useRuntimeConfig().public.core
 const draft = useDraft(props.paneId)
 const text = toRef(draft, 'text')
 const promptRef = ref<{ textareaRef?: HTMLTextAreaElement } | null>(null)
@@ -179,18 +154,6 @@ const placeholder = computed(() => {
 // Enter: UChatPrompt only sends text; a photo alone, or an empty field
 // while the agent is working (Stop), go through here.
 function onKeydown(e: KeyboardEvent) {
-  if (slashOpen.value && !e.isComposing) {
-    const n = slashMatches.value.length
-    if (e.key === 'ArrowDown') { e.preventDefault(); lastPointer = 'kb'; slashSel.value = (slashSel.value + 1) % n; return }
-    if (e.key === 'ArrowUp') { e.preventDefault(); lastPointer = 'kb'; slashSel.value = (slashSel.value - 1 + n) % n; return }
-    if (e.key === 'Escape') { e.preventDefault(); slashDismissed.value = true; return }
-    if (e.key === 'Tab' || (enterSends.value && e.key === 'Enter' && !e.shiftKey)) {
-      e.preventDefault()
-      e.stopPropagation()
-      pickSlash(slashMatches.value[slashSel.value] || slashMatches.value[0]!)
-      return
-    }
-  }
   if (e.key === 'Tab' && !e.shiftKey && !e.isComposing && suggestion.value && !text.value) {
     e.preventDefault()
     useSuggestion()
@@ -202,11 +165,11 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 // Bubble on window, after useCardKeys on document: the active card owns
-// arrows in an empty field. Slash suggestions are handled above at the field.
+// arrows in an empty field.
 const history = new PromptHistory()
 function onHistoryKey(e: KeyboardEvent) {
   const el = ta.value
-  if (!el || e.target !== el || slashOpen.value || sending.value) return
+  if (!el || e.target !== el || sending.value) return
   const current = { text: el.value, start: el.selectionStart, end: el.selectionEnd }
   const direction = historyDirection(e, current)
   if (direction === null) return
@@ -214,12 +177,7 @@ function onHistoryKey(e: KeyboardEvent) {
   if (!recalled) return
   e.preventDefault()
   text.value = recalled.text
-  // A recalled command should be browsable with the next arrow too.
-  slashDismissed.value = true
-  nextTick(() => {
-    slashDismissed.value = true
-    el.setSelectionRange(recalled.start, recalled.end)
-  })
+  nextTick(() => el.setSelectionRange(recalled.start, recalled.end))
 }
 onMounted(() => window.addEventListener('keydown', onHistoryKey))
 onBeforeUnmount(() => {
@@ -315,13 +273,6 @@ async function submit() {
     for (const a of atts) if (a.url) URL.revokeObjectURL(a.url)
     haptic()
     emit('sent', queued)
-    // "/" command: its result (terminal screen), as from the + menu.
-    // A skill or custom command makes the agent reply: no panel.
-    const cmd = msg.split(/\s/)[0]!
-    const listed = slashCache.get(props.paneId)?.list || slashList.value
-    if (free < 0 && p && p.agent && !paths.length && /^\/\S+$/.test(cmd) && !msg.includes('\n') && !isAgentCommand(cmd, listed)) {
-      showCommandResult(props.paneId, cmd, listed.some(c => c.source === 'builtin' && `/${c.name}` === cmd))
-    }
   } catch (err) {
     giveBack()
     toast((err as Error).message, true)
@@ -538,97 +489,6 @@ async function pasteFromClipboard() {
   }
 }
 
-// ------------------------------------------------------------ "/" commands
-// "/" as the first character: the agent's commands, like the terminal's
-// menu (built-in + the machine's skills and commands), filtered as you
-// type. Tapping a command puts it in the field; Enter sends it.
-// `denied`: macOS refused to list project folders, some commands are missing
-// (`remote`: the pane's machine is reached over SSH).
-interface SlashDenied { remote: boolean }
-const slashCache = new Map<string, { at: number, list: SlashCommand[], denied: SlashDenied | null }>()
-const slashList = ref<SlashCommand[]>([])
-const slashDenied = ref<SlashDenied | null>(null)
-const slashSel = ref(0)
-const slashDismissed = ref(false)
-const slashListEl = ref<HTMLElement | null>(null)
-const slashQuery = computed(() => {
-  const m = /^\/(\S*)$/.exec(text.value)
-  return props.pane && props.pane.agent && m ? m[1]!.toLowerCase() : null
-})
-async function loadSlash() {
-  // herdr-core refuses /api/commands: no command list.
-  if (useRuntimeConfig().public.core) return
-  const key = props.paneId
-  const hit = slashCache.get(key)
-  // The known list at once, asked again after a few seconds: a skill or
-  // command added on the machine shows up without reloading the app.
-  if (hit) {
-    slashList.value = hit.list
-    slashDenied.value = hit.denied
-    if (Date.now() - hit.at < 15000) return
-  }
-  try {
-    const r = await api<{ commands: SlashCommand[], partial?: boolean, denied?: 'macos', remote?: boolean }>(`/api/commands?pane=${encodeURIComponent(key)}`)
-    // Built-in commands only (machine's skills unreadable): asked again on
-    // the next "/", the last full list stays.
-    if (r.partial && hit) return
-    const denied = r.denied ? { remote: !!r.remote } : null
-    if (!r.partial) slashCache.set(key, { at: Date.now(), list: r.commands, denied })
-    if (key === props.paneId) {
-      slashList.value = r.commands
-      slashDenied.value = denied
-    }
-  } catch { /* no suggestions */ }
-}
-watch(slashQuery, (q, old) => {
-  if (q === null) { slashDismissed.value = false; return }
-  if (old === null || old === undefined) loadSlash()
-  slashSel.value = 0
-})
-watch(() => props.paneId, () => {
-  slashList.value = []
-  slashDenied.value = null
-})
-const slashMatches = computed(() => {
-  const q = slashQuery.value
-  if (q === null) return []
-  const starts: SlashCommand[] = []
-  const inName: SlashCommand[] = []
-  const inDesc: SlashCommand[] = []
-  for (const c of slashList.value) {
-    const n = c.name.toLowerCase()
-    if (n.startsWith(q)) starts.push(c)
-    else if (n.includes(q)) inName.push(c)
-    else if (q.length > 1 && c.desc.toLowerCase().includes(q)) inDesc.push(c)
-  }
-  return [...starts, ...inName, ...inDesc]
-})
-// Nothing matches but macOS hid project commands: the menu says so.
-const slashOpen = computed(() => slashQuery.value !== null && !slashDismissed.value && (slashMatches.value.length > 0 || !!slashDenied.value)
-  && !(slashMatches.value.length === 1 && slashMatches.value[0]!.name.toLowerCase() === slashQuery.value))
-// Hover: only if the mouse really moved. When the list scrolls with the
-// keyboard under a still pointer, the browser also emits hovers, which
-// would steal the selection.
-let lastPointer = ''
-function hoverSlash(e: MouseEvent, i: number) {
-  const at = `${e.screenX},${e.screenY}`
-  const kb = lastPointer === 'kb'
-  if (at === lastPointer) return
-  lastPointer = at
-  // Right after an arrow: the first position seen is that of the still pointer.
-  if (kb) return
-  slashSel.value = i
-}
-function pickSlash(c: SlashCommand) {
-  text.value = `/${c.name} `
-  haptic()
-  nextTick(() => ta.value?.focus())
-}
-watch(slashSel, i => nextTick(() => {
-  const el = slashListEl.value?.children[i] as HTMLElement | undefined
-  el?.scrollIntoView({ block: 'nearest' })
-}))
-
 // ------------------------------------------------------------ menu +
 const SLASH: Record<string, [string, string][]> = {
   claude: [['/compact', 'Summarize context'], ['/clear', 'New conversation'], ['/context', 'Context usage'],
@@ -657,13 +517,12 @@ function openPlus() {
   }
   openMenu(items)
 }
-async function runSlash(cmd: string, result = true) {
+async function runSlash(cmd: string) {
   try {
     await api('/api/prompt', { pane_id: props.paneId, text: cmd })
     rememberPrompt(props.paneId, cmd)
     haptic()
-  } catch (err) { return toast((err as Error).message, true) }
-  if (result) showCommandResult(props.paneId, cmd)
+  } catch (err) { toast((err as Error).message, true) }
 }
 
 // Focus, cursor at the end (text set from outside: "Problem" of the Project
@@ -713,57 +572,11 @@ defineExpose({
         <span class="restart-text">{{ stoppingShell ? tl('Cancelling the command…', 'Annulation de la commande…') : t('Stopping…') }}</span>
       </template>
     </div>
-    <div v-else-if="pane?.restart" class="composer-notice restart" :class="pane.restart.phase" role="status">
-      <template v-if="pane.restart.phase === 'failed'">
-        <span class="restart-text">{{ pane.restart.update ? t('Codex update failed') : t('Restart failed') }}{{ tl(': ', ' : ') }}{{ t(pane.restart.error || '') }}</span>
-        <button v-if="!termShown" type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('View terminal') }}</button>
-        <button v-if="pane.restart.update" type="button" class="notice-btn" @click="copyUpdate"><UIcon name="i-lucide-copy" />{{ t('Copy command') }}</button>
-        <button type="button" class="notice-btn" @click="dismissRestart(paneId)">{{ t('Hide') }}</button>
-      </template>
-      <template v-else>
-        <span class="notice-spin" aria-hidden="true" />
-        <span class="restart-text">{{ restartLabel }}</span>
-      </template>
-    </div>
-    <UsageLimitCard v-else-if="conversation && pane?.usageLimit" :limit="pane.usageLimit" :read-only="readOnly" :send-keys="sendKeys" @credits="runSlash('/usage-credits', false)" />
-    <div v-else-if="pane?.claudeNotice" class="composer-notice" :class="{ error: noticeIsError }" role="status">
-      <template v-if="updateReady">
-        <span class="restart-text">{{ pane.claudeNotice.replace(/\s*·\s*Restart to update\b.*$/, '') }} ·</span>
-        <button type="button" class="notice-btn" :disabled="readOnly" @click="restartAgent(pane)">
-          <UIcon name="i-lucide-rotate-cw" />{{ t('Restart to update') }}
-        </button>
-      </template>
-      <template v-else>{{ noticeIsError && !/^[✗✘]/.test(pane.claudeNotice) ? `✘ ${pane.claudeNotice}` : pane.claudeNotice }}</template>
-    </div>
-    <CodexNotices v-else-if="pane?.codexStatus" :pane="pane" :pane-id="paneId" :read-only="readOnly" />
     <div v-if="pane?.agent === 'codex' && pane.codexField && !interrupting" class="composer-notice codex-field" role="status">
       <UIcon name="i-lucide-text-cursor-input" class="notice-icon" />
       <span class="restart-text" :title="codexFieldHint">{{ tl('In Codex’s field:', 'Dans le champ de Codex :') }} <code>{{ pane.codexField }}</code></span>
       <button type="button" class="notice-btn" :disabled="readOnly || clearingField" :title="codexFieldHint" @click="clearCodexField">{{ tl('Clear', 'Vider') }}</button>
       <button v-if="!termShown" type="button" class="notice-btn" @click="emit('showTerminal')"><UIcon name="i-lucide-terminal" /><span class="notice-label">{{ t('View terminal') }}</span></button>
-    </div>
-    <div v-if="slashOpen" class="slash-menu" role="listbox" :aria-label="t('Commands')">
-      <div v-if="slashMatches.length" ref="slashListEl" class="slash-list">
-        <button
-          v-for="(c, i) in slashMatches" :key="c.name" type="button" role="option" class="slash-item"
-          :class="{ on: i === slashSel }" :aria-selected="i === slashSel"
-          @mousedown.prevent @mousemove="hoverSlash($event, i)" @click="pickSlash(c)"
-        >
-          <span class="slash-name">/{{ c.name }}<small v-if="c.hint"> {{ c.hint }}</small></span>
-          <span class="slash-desc">{{ c.desc }}</span>
-        </button>
-      </div>
-      <div v-if="slashDenied" class="slash-denied" role="status">
-        <p class="slash-denied-label">
-          <UIcon name="i-lucide-shield-alert" />{{ tl('macOS hides this project’s commands', 'macOS masque les commandes de ce projet') }}
-        </p>
-        <p>
-          {{ tl('Typed in full, they still work. To list them, on the Mac:', 'Tapées en entier, elles marchent quand même. Pour les lister, sur le Mac :') }}
-          <span class="dir-denied-path">{{ slashDenied.remote
-            ? tl('System Settings › General › Sharing › Remote Login ⓘ › “Allow full disk access for remote users”', 'Réglages Système › Général › Partage › Session à distance ⓘ › « Autoriser l’accès complet au disque pour les utilisateurs distants »')
-            : tl('System Settings › Privacy & Security › Full Disk Access', 'Réglages Système › Confidentialité et sécurité › Accès complet au disque') }}</span>
-        </p>
-      </div>
     </div>
     <!-- Questions of the agent's last message the draft does not answer yet
          (ChatView.vue): a tab on the top edge, out of the flow, so that it
@@ -784,7 +597,7 @@ defineExpose({
     </div>
     <UChatPrompt
       ref="promptRef" v-model="text" :disabled="Boolean(pane?.stopped)" :placeholder="pane?.stopped ? t('Restart Codex before sending a message') : readOnly ? t('Draft saved — sending unavailable offline') : placeholder" variant="outline" color="neutral"
-      :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends && !slashOpen"
+      :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends"
       :enterkeyhint="enterSends ? 'send' : 'enter'" autocapitalize="sentences"
       data-wherdr="composer-field" class="prompt" :class="{ suggesting: suggestTap, expanded }" :style="suggestRoom ? { '--suggest-room': `${suggestRoom}px` } : undefined" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
       @focus="fieldFocus" @blur="fieldBlur"
@@ -827,9 +640,6 @@ defineExpose({
         />
         <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="onFiles">
         <input ref="anyFileInput" type="file" multiple hidden data-testid="attach-any" @change="onFiles">
-        <div v-if="!core && pane && (pane.agent === 'claude' || pane.agent === 'codex' || pane.agent === 'omp')" class="prompt-models">
-          <ModelPicker :pane="pane" />
-        </div>
         <!-- Public marker (docs/plugins.md): plugins append their buttons here, before Send. -->
         <span data-wherdr="composer-actions" class="composer-actions" />
         <span v-if="hint && suggestion" class="prompt-hint"><UKbd value="tab" size="sm" /> {{ t('suggestion') }} <span class="sep">·</span> <UKbd value="enter" size="sm" /> {{ t('send') }}</span>

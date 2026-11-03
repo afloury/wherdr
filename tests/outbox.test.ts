@@ -28,7 +28,7 @@ describe('outbox: one bubble from the tap to the transcript', () => {
 
   it('takes the held state of the server, under the same id', () => {
     const box = settle(addSending([], 'w-a', 'hi', T0), 'w-a', { id: 'w-a', text: 'hi', at: T0 + 900, state: 'held', reason: 'busy' }, T0 + 900)
-    expect(shown([], box)).toEqual([expect.objectContaining({ id: 'w-a', state: 'held', reason: 'busy' })])
+    expect(shown([], box)).toEqual([expect.objectContaining({ id: 'w-a', state: 'held' })])
   })
 
   it('drops the bubble once the transcript has the message', () => {

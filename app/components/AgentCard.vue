@@ -107,7 +107,6 @@ const menuItems = computed<MenuItem[]>(() => space.value ? [
 ] : [
   notificationMenuItem(props.pane, true),
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
-  ...paneSpaceItems(props.pane),
   ...paneWorkspaceItems(props.pane),
   { kind: 'separator' },
   copyPaneIdItem(props.pane),
@@ -122,11 +121,10 @@ const menuItems = computed<MenuItem[]>(() => space.value ? [
 const contextItems = computed(() => (sheetMenus.value ? [] : toDropdown(menuItems.value)))
 
 // Touch or narrow screen: a still long press opens the card's menu as the
-// bottom sheet (ReorderList arms its drag at 300 ms: moving then drags).
+// bottom sheet.
 const lp = longPress({
   delay: 700,
   onPress: () => {
-    if (card.value?.classList.contains('reorder-source')) return
     haptic()
     openMenu(menuItems.value, title.value)
   },

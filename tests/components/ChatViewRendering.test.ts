@@ -14,39 +14,6 @@ registerEndpoint('/api/chat', () => ({ available: true, token: 'rendering', file
 describe('conversation rendering', () => {
   afterEach(() => { lightboxSrc.value = null; lightboxSet.value = []; herdrState.value = { ok: false, workspaces: [], panes: [] } })
 
-  it('attributes both wake formats to Autopilot and keeps their complete text and labelled copy action together', async () => {
-    const wakes = ['Autopilot: Check ready work.\nBoard context: no pending replies.  ', 'Autopilot woke: Check older work.']
-    const human = 'Please explain Autopilot: and Autopilot woke:.'
-    items = [
-      ...wakes.map((text): ChatItem => ({ role: 'user', text, ts: null })),
-      { role: 'user', text: human, ts: null },
-      { role: 'user', text: '> Autopilot: a quotation', ts: null },
-      { role: 'assistant', text: 'Autopilot: an assistant reply', ts: null },
-    ]
-    const original = structuredClone(items)
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
-    herdrState.value = { ok: true, workspaces: [], panes: [pane] }
-    const w = await mountSuspended(ChatView, { props: { pane, localQueued: [] } })
-    try {
-      await expect.poll(() => w.findAll('.msg-autopilot').length).toBe(2)
-      for (const [i, block] of w.findAll('.msg-autopilot').entries()) {
-        expect(block.find('.msg-system').text()).toBe('Autopilot')
-        expect(block.find('.msg-fold').element.textContent).toBe(wakes[i])
-        expect(block.find('.msg-user').exists()).toBe(false)
-        const copy = block.find('.msg-autopilot-body button')
-        expect(copy.exists()).toBe(true)
-        expect(copy.attributes('aria-label')).toBe('Copy message')
-        await copy.trigger('click')
-        expect(writeText).toHaveBeenLastCalledWith(wakes[i])
-      }
-      expect(w.findAll('.msg-user')).toHaveLength(2)
-      expect(w.find('.msg-user .msg-fold').element.textContent).toBe(human)
-      expect(w.find('.msg-ai').text()).toContain('Autopilot: an assistant reply')
-      expect(items).toEqual(original)
-    } finally { w.unmount(); vi.unstubAllGlobals() }
-  })
-
   it('keeps an action awaiting approval live without a finished-turn line', async () => {
     herdrState.value = { ok: true, workspaces: [], panes: [pane] }
     items = [
@@ -137,12 +104,12 @@ describe('conversation rendering', () => {
       // Raw provider JSON stays as written (no Markdown).
       expect(errors[0]!.find('.msg-error-text').element.textContent).toMatch(/^400 \{"type":"error"/)
       // Check-ins and actions are still there, around the errors.
-      expect(w.findAll('.msg-autopilot')).toHaveLength(5)
+      expect(w.findAll('.msg-user')).toHaveLength(5)
       expect(w.find('.omp-console .omp-tool-cmd').text()).toBe('tools/tasks.sh list')
       expect(w.find('.msg-ai').text()).toContain('Checking the board.')
       expect(w.findAll('.msg-system').map(s => s.text())).toEqual(expect.arrayContaining(['Retried after an error', 'Interrupted']))
       // Order: each error right after the check-in that hit it.
-      const order = [...w.find('.chat').element.querySelectorAll('.msg-autopilot, .msg-error')].map(el => el.classList.contains('msg-error') ? 'E' : 'A')
+      const order = [...w.find('.chat').element.querySelectorAll('.msg-user, .msg-error')].map(el => el.classList.contains('msg-error') ? 'E' : 'A')
       expect(order.join('')).toBe('AEAEAEAAE')
     } finally { w.unmount() }
   })

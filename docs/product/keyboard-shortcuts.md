@@ -47,11 +47,10 @@ promise that wherdr "can replace the Herdr terminal client day to day".
 
 These existing shortcuts are unchanged and listed in the help sheet:
 
-- Alt+Shift+arrows or Alt+Shift+H J K L swap panes (`useSpaces.swapShortcut`).
 - Ctrl/⌘+Alt+arrows move focus between side-by-side cells (`viewMode.cellFocusStep`).
-- In the composer: Enter, Shift+Enter, Tab and the slash menu keys. ↑ on the first logical
+- In the composer: Enter, Shift+Enter and Tab. ↑ on the first logical
   line recalls previous sent texts; ↓ on the last returns to newer texts, then the saved draft
-  and caret. Cards and slash suggestions keep priority. History is per device and pane, keeps
+  and caret. Cards keep priority. History is per device and pane, keeps
   100 texts, drops consecutive duplicates, and excludes attachments and reference lines.
   Editing a recalled text does not change stored entries.
 - In the terminal: Shift+Enter and the copy keys (⌘C or Ctrl+Shift+C copy the on-screen selection,
@@ -144,12 +143,10 @@ Esc stops the agent only after all of the following have had their chance:
 
 1. IME composition
 2. An open window
-3. A pane drag, whose listener moved to the capture phase so it runs first
-4. The slash menu, which needs text in the field, so Stop isn't shown
-5. Conversation search. Its field takes Esc when focused. While it's open, Composer's `escStops` is
+3. Conversation search. Its field takes Esc when focused. While it's open, Composer's `escStops` is
    false, which hides the `Esc stop` hint.
-6. A "Your turn" card, where the pane is blocked rather than working
-7. The terminal, where Esc goes to the program
+4. A "Your turn" card, where the pane is blocked rather than working
+5. The terminal, where Esc goes to the program
 
 The composer blurs itself on Esc. After a stop it gets the focus back.
 

@@ -6,7 +6,6 @@
 // conversation / terminal, Stop (usePaneShortcuts, AgentView).
 import type { Ref } from 'vue'
 import { type ShortcutContext, type ShortcutFocus, type ShortcutId, matchShortcut } from '~/utils/shortcuts'
-import { openFolderOnMachine } from './useHerdr'
 import { describeFocus } from '~/utils/cardKeys'
 
 export interface PaneShortcuts {
@@ -111,10 +110,7 @@ export function useShortcuts(searchOpen: Ref<boolean>) {
     e.stopPropagation()
   }
   const onCapture = (e: KeyboardEvent) => onKey(e, 'capture')
-  function onBubble(e: KeyboardEvent) {
-    if (!locked.value && swapShortcut(e)) return
-    onKey(e, 'bubble')
-  }
+  const onBubble = (e: KeyboardEvent) => onKey(e, 'bubble')
   onMounted(() => {
     loadLayout()
     window.addEventListener('focus', loadLayout)

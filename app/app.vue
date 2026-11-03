@@ -113,7 +113,6 @@ onUnmounted(() => {
     <NewAgentSheet />
     <MenuSheet />
     <RenameSheet />
-    <CommandResultSheet />
     <ConfirmSheet />
     <ImageLightbox />
     <ShortcutsSheet />

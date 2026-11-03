@@ -48,7 +48,7 @@ function openRepo() {
 }
 const repoLabel = computed(() => tl(`Open the terminal of ${g.value.repo}`, `Ouvrir le terminal de ${g.value.repo}`))
 const repoItems = (): MenuItem[] => (spaceId.value
-  ? [{ label: repoLabel.value, icon: 'i-lucide-square-terminal', run: openRepo }, { kind: 'separator' }, ...workspaceItems(spaceId.value, true)]
+  ? [{ label: repoLabel.value, icon: 'i-lucide-square-terminal', run: openRepo }, { kind: 'separator' }, ...workspaceItems(spaceId.value)]
   : [])
 const headItems = (): MenuItem[] => [
   ...(!g.value.coordinator && !g.value.remote ? [{
