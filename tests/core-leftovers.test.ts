@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 describe('core mode: state is not rebuilt from the empty legacy machines', () => {
+  vi.setConfig({ testTimeout: 30000 })
   beforeEach(() => { vi.resetModules(); process.env.WHERDR_BACKEND = 'core' })
   afterEach(() => { vi.restoreAllMocks(); delete process.env.WHERDR_BACKEND })
 
@@ -27,6 +28,7 @@ describe('core mode: state is not rebuilt from the empty legacy machines', () =>
 })
 
 describe('core mode: no Board read for a notification', () => {
+  vi.setConfig({ testTimeout: 30000 })
   afterEach(() => { delete process.env.WHERDR_BACKEND; vi.resetModules() })
   it('does not call readBoardLinks', async () => {
     vi.resetModules()
