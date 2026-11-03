@@ -23,7 +23,7 @@ const icon = (a: typeof busy.value, idle: string) => (busy.value === a ? 'i-luci
 </script>
 
 <template>
-  <div v-if="pane.queueSendNow && !pane.draft" class="queued-tag">
+  <div v-if="pane.queueSendNow && !pane.draft" class="queued-tag unsent-actions">
     <button type="button" class="queued-cancel" data-testid="queue-send-now" :disabled="Boolean(busy)" @click="act('send-queued')">
       <UIcon :name="icon('send-queued', 'i-lucide-send')" :class="{ spin: busy === 'send-queued' }" />{{ t('Send now') }}
     </button>
@@ -40,6 +40,8 @@ const icon = (a: typeof busy.value, idle: string) => (busy.value === a ? 'i-luci
     </UChatMessage>
     <div class="queued-tag failed" role="status">
       <UIcon name="i-lucide-circle-alert" /><span>{{ t('Not sent — still in Claude’s input') }}</span>
+    </div>
+    <div class="queued-tag unsent-actions">
       <button type="button" class="queued-cancel" :disabled="Boolean(busy)" @click="act('send')">
         <UIcon :name="icon('send', 'i-lucide-send')" :class="{ spin: busy === 'send' }" />{{ t('Send now') }}
       </button>
@@ -52,4 +54,6 @@ const icon = (a: typeof busy.value, idle: string) => (busy.value === a ? 'i-luci
 
 <style scoped>
 .unsent-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Room for the phone's terminal-keys toggle, which floats over the conversation's last lines. */
+@media (max-width: 700px) { .unsent-actions { margin-bottom: 44px; } }
 </style>
