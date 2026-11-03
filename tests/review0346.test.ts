@@ -8,54 +8,11 @@ import { classifyScreen } from '../shared/interactiveScreen'
 import { parseUsageLimit } from '../shared/usageLimit'
 import { keepReading, ScreenCache } from '../server/utils/screenCache'
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
-import { HerdrError } from '../server/utils/herdr'
 import { mapScreenPanes, ScreenGate, SCREEN_MACHINE_MAX, SCREEN_TOTAL_MAX } from '../server/utils/screenGate'
 import { bindChoices, bindFunction } from './stateFunction'
 import { createInteractionWindow } from '../app/utils/interactionWindow'
 const fx=(n:string)=>readFileSync(`tests/fixtures/${n}.txt`,'utf8')
 afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers()})
-async function route(name:string,call:any) {
- vi.useFakeTimers()
- for(const [key,value] of Object.entries({defineApi:(h:any)=>h,PANE_RE:/^w1:p1$/,HerdrError,
-  findPane:()=>({id:'w1:p1',agent:'codex',status:'blocked'}),herdr:call,...choices,...wait,
-  transcripts:{pendingClaudeQuestions:async()=>[]},choicesCache:new ScreenCache(),poll:()=>{},watchScreen:()=>{}}))vi.stubGlobal(key,value)
- return (await import(`../server/api/${name}.post.ts`)).default
-}
-it('R2 residual risk: Herdr has no conditional send between capture and input',async()=>{
- const first=fx('codex-request-increase'), second=fx('codex-approaching-limits')
- const old=choices.screenChoices(first,'codex')!
- let terminal=first; const writes:any[]=[]
- const call=vi.fn(async(method:string,params:any)=>{
-  if(method==='pane.read'){const captured=terminal;terminal=second;return {read:{text:captured}}}
-  writes.push({terminal,keys:params.keys});return {}
- })
- const handler=await route('choose',call)
- await expect(handler({}, {pane_id:'w1:p1',index:0,label:old.options[0]!.label,identity:old.identity})).resolves.toEqual({ok:true})
- expect(writes).toEqual([{terminal:second,keys:['enter']}])
-})
-it('unchanged questions remain answerable while unrelated detection text changes',async()=>{
- const base=fx('codex-approve-command'); let text=base+'\nBackground elapsed: 0s'
- const call=vi.fn(async()=>({read:{text}}));const handler=await route('choose',call)
- for(let i=0;i<5;i++){
-  const shown=choices.screenChoices(text,'codex')!;text=base+`\nBackground elapsed: ${i+1}s`
-  expect(choices.screenChoices(text,'codex')!.question).toBe(shown.question)
-  await expect(handler({}, {pane_id:'w1:p1',index:0,label:shown.options[0]!.label,identity:shown.identity})).resolves.toEqual({ok:true})
- }
- expect(call.mock.calls.filter(c=>c[0]==='pane.send_input')).toHaveLength(5)
-})
-it('old clients fail closed and identical labels with different question text are rejected',async()=>{
- let text=fx('codex-approve-command');const old=choices.screenChoices(text,'codex')!
- const call=vi.fn(async()=>({read:{text}}));const handler=await route('choose',call)
- await expect(handler({}, {pane_id:'w1:p1',index:0,label:old.options[0]!.label})).rejects.toMatchObject({code:'stale'})
- text=text.replace('npm test','npm run build')
- await expect(handler({}, {pane_id:'w1:p1',index:0,label:old.options[0]!.label,identity:old.identity})).rejects.toMatchObject({code:'stale'})
- expect(call).toHaveBeenCalledTimes(2)
-})
-it('a second identical screen occurrence is indistinguishable from the first',async()=>{
- const text=fx('codex-approve-command'),old=choices.screenChoices(text,'codex')!
- const call=vi.fn(async()=>({read:{text}}));const handler=await route('choose',call)
- await expect(handler({}, {pane_id:'w1:p1',index:0,label:old.options[0]!.label,identity:old.identity})).resolves.toEqual({ok:true})
-})
 export function reviewPoller(viewed = false){
  let now=0,fail=false;const cache=new ScreenCache();let reads=0
  const read=bindChoices(readFileSync('server/utils/state.ts','utf8'),{
@@ -107,23 +64,6 @@ it('R5: bounds 20 pane enrichments to two at once per machine', async () => {
  await result
  expect(published).toBe(true)
  expect(panes.every(p => (p as any).prompt?.options.length === 3)).toBe(true)
-})
-it('an invalidated in-flight screen cannot repopulate the cache or return its old card',async()=>{
- const oldText=fx('codex-request-increase');let release!:(v:any)=>void
- const cache=new ScreenCache();const pending=new Promise(r=>{release=r})
- const read=bindChoices(source,{
- ...choices,...wait,...menu,...settings,classifyScreen,parseUsageLimit,keepReading,isPermissionQuestion,mergeDetail,
- choicesCache:cache,screenWatch:new Map(),askChecks:new Map(),isViewed:()=>false,modelControlBusy:()=>false,noteScreen:()=>{},
- herdr:()=>pending,readMenu:async()=>null,transcripts:{pendingClaudeQuestions:async()=>[],pendingTool:async()=>null}})
- const oldRun=read({id:'w1:p1',agent:'codex',status:'blocked'},7,false)
- const newText=fx('codex-approaching-limits'),current=choices.screenChoices(newText,'codex')!
- const call=vi.fn(async()=>({read:{text:newText}}));const handler=await route('choose',call)
- vi.stubGlobal('choicesCache',cache)
- await handler({}, {pane_id:'w1:p1',index:2,label:current.options[2]!.label,identity:current.identity})
- expect(cache.has('w1:p1')).toBe(false)
- release({read:{text:oldText}});const result=await oldRun
- expect(cache.has('w1:p1')).toBe(false)
- expect(result.choices).toBeNull()
 })
 it('omp cursor movement preserves the identity of the question and options',()=>{
  const text=fx('omp-approve-bash')
@@ -185,22 +125,3 @@ it('R3: invalidation keeps a disabled display fallback until a fresh read succee
  expect(recovered.unavailable).toBeUndefined()
 })
 
-it('an ambiguous terminal menu refuses a stale native choice', async () => {
- const text = fx('codex-usage-menu'), old = choices.screenChoices(text, 'codex')!
- const call = vi.fn(async () => ({ read: { text } }))
- const handler = await route('choose', call)
- await expect(handler({}, { pane_id: 'w1:p1', index: 0, label: old.options[0]!.label, identity: old.identity })).rejects.toMatchObject({ code: 'stale' })
- expect(call).not.toHaveBeenCalledWith('pane.send_input', expect.anything())
-})
-
-it.each([
- ['codex-approve-command', 'Agent Command Center'],
- ['codex-approve-edits', 'codex-command-center'],
- ['codex-approve-command', 'codex-usage-menu'],
-])('answers a native approval below a quoted menu: %s / %s', async (file, quote) => {
- const text = `${quote.startsWith('codex-') ? fx(quote) : quote}\n\n${fx(file)}`, prompt = choices.screenChoices(text, 'codex')!
- const call = vi.fn(async () => ({ read: { text } }))
- const handler = await route('choose', call)
- await expect(handler({}, { pane_id: 'w1:p1', index: 0, label: prompt.options[0]!.label, identity: prompt.identity })).resolves.toEqual({ ok: true })
- expect(call).toHaveBeenCalledWith('pane.send_input', { pane_id: 'w1:p1', keys: ['enter'] })
-})

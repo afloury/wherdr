@@ -9,7 +9,7 @@ export default defineEventHandler(async event => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid terminal address' })
   }
   const endpoint = process.env.HC_SOCKET
-  if (!endpoint || process.env.WHERDR_BACKEND !== 'core') throw createError({ statusCode: 503, statusMessage: 'herdr-core inventory is unavailable' })
+  if (!endpoint) throw createError({ statusCode: 503, statusMessage: 'herdr-core inventory is unavailable' })
   try {
     if (terminal !== undefined) return await coreCall<CoreTerminal>(endpoint, 'terminal.get', { terminal })
     const list = await coreCall<Partial<CoreInventory>>(endpoint, 'terminal.list')

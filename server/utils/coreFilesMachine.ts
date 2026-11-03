@@ -28,8 +28,3 @@ export async function coreFilesMachine(key: unknown, opts: { call?: Call, machin
   }
   return { ...localMachine, key: k, label: info.label, local: false, home, status: 'online', exec, spawnShell: undefined }
 }
-
-/** The machine for a pane's `machine` key: core or v2 backend. */
-export async function filesMachine(key: unknown, machineFor: (key: unknown) => Machine): Promise<Machine> {
-  return process.env.WHERDR_BACKEND === 'core' ? coreFilesMachine(key) : machineFor(key)
-}

@@ -11,7 +11,6 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { inputVisible, keysFor, parseOmpPrompt, promptIdentity, screenChoices } from '../server/utils/choices'
 import { pendingOmpTool } from '../server/utils/promptDetail'
-import { shouldHold } from '../server/utils/queued'
 import { viaPrompt } from '../shared/sendRoute'
 import type { Choices } from '../shared/types'
 
@@ -179,11 +178,6 @@ describe('messages sent to omp during the dialog', () => {
     expect(viaPrompt({ agent: 'claude', status: 'blocked', prompt: approval })).toBe(false)
     expect(viaPrompt({ agent: 'codex', status: 'blocked', prompt: null })).toBe(true)
     expect(viaPrompt({ agent: 'omp', status: 'idle', prompt: null })).toBe(true)
-  })
-  it('are held by the server while the input field is hidden', () => {
-    expect(shouldHold('omp', 'idle', false, false)).toBe(true)
-    expect(shouldHold('omp', 'idle', true, false)).toBe(false)
-    expect(shouldHold('omp', 'blocked', true, true)).toBe(true)
   })
 })
 

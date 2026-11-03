@@ -18,7 +18,6 @@ export default defineNitroPlugin((nitroApp) => {
   startMachines()
   startPolling()
   startNotices()
-  startPaneSizes()
   onTailnetName(adoptTailnetName)
   startTailnetWatch()
   cleanUploads()
@@ -29,7 +28,6 @@ export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook('close', () => {
     stopPolling()
     stopNotices()
-    stopPaneSizes()
     stopTailnetWatch()
     stopMachines()
     clearInterval(purge)

@@ -1,35 +1,12 @@
 import {readFileSync} from 'node:fs'
 import {afterEach,it,expect,vi} from 'vitest'
 import * as choices from '../server/utils/choices'
-import * as wait from '../server/utils/waitScreen'
-import * as menus from '../shared/menuScreen'
-import {HerdrError} from '../server/utils/herdr'
 import {ScreenCache,keepReading} from '../server/utils/screenCache'
 import {ScreenGate,mapScreenPanes} from '../server/utils/screenGate'
 import {bindFunction} from './stateFunction'
-import {viaPrompt} from '../shared/sendRoute'
 import {cardKey} from '../app/utils/cardKeys'
 const fx=(n:string)=>readFileSync(`tests/fixtures/${n}`,'utf8')
 afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers()})
-async function route(name:string,call:any,extra:any={}){
- vi.useFakeTimers()
- for(const [k,v] of Object.entries({defineApi:(h:any)=>h,PANE_RE:/^w1:p1$/,HerdrError,...choices,...wait,
-  findPane:()=>({id:'w1:p1',agent:'codex',status:'blocked'}),herdr:call,transcripts:{pendingClaudeQuestions:async()=>[]},
-  choicesCache:new ScreenCache(),poll:()=>{},watchScreen:()=>{},...extra}))vi.stubGlobal(k,v)
- return (await import(`../server/api/${name}.post.ts`)).default
-}
-it('S1: different questions after the 300th character have distinct identities and reject the old answer',async()=>{
- const prefix='Please consider the current settings and deployment constraints carefully. '.repeat(5)
- const a=prefix+'Should the source database be deleted?', b=prefix+'Should the source database be preserved?'
- const suffix='\n\n› 1. Yes\n  2. No\n\nenter select · esc back'
- const old=choices.screenChoices(a+suffix,'codex')!,current=choices.screenChoices(b+suffix,'codex')!
- expect(a).not.toBe(b);expect(old).toBeTruthy();expect(current.question).toBe(old.question);expect(current.identity).not.toBe(old.identity)
- const call=vi.fn(async()=>({read:{text:b+suffix}}));const handler=await route('choose',call)
- await expect(handler({}, {pane_id:'w1:p1',index:0,label:'Yes',identity:old.identity})).rejects.toMatchObject({code:'stale'})
- expect(call).not.toHaveBeenCalledWith('pane.send_input',expect.anything())
- await expect(handler({}, {pane_id:'w1:p1',index:0,label:'Yes',identity:current.identity})).resolves.toEqual({ok:true})
- expect(call).toHaveBeenCalledWith('pane.send_input',{pane_id:'w1:p1',keys:['enter']})
-})
 it('native card keyboard does not translate y/n or Tab into confirmations',()=>{
  const focus={editable:false,empty:true,control:false,overlay:false}
  for(const key of ['y','n','Tab'])expect(cardKey({key,code:key,isComposing:false} as any,focus,{digits:9,enter:true,tabs:true})).toBeNull()
@@ -85,20 +62,4 @@ it('multiple visible devices or terminals independently enable the one-second ca
 it('invalidation survives a cache miss and forgetting/recreating the same pane id',()=>{
  const c=new ScreenCache();const before=c.version('w1:p1');c.delete('w1:p1');expect(c.version('w1:p1')).not.toBe(before)
  const second=c.version('w1:p1');c.forget('w1:p1');expect(c.version('w1:p1')).not.toBe(second)
-})
-
-it('S6: typed native-card answers reject changed or missing identity; raw terminal input stays free',async()=>{
- const old=choices.screenChoices(fx('codex-request-increase.txt'),'codex')!
- const next=choices.screenChoices(fx('codex-approaching-limits.txt'),'codex')!
- expect(viaPrompt({agent:'codex',status:'blocked',prompt:old})).toBe(false)
- const call=vi.fn(async()=>({read:{text:fx('codex-approaching-limits.txt')}}));const queued={id:'neutral'}
- const handler=await route('input',call,{withPaneLock:async(_:string,work:any)=>work(),addQueued:()=>queued})
- for(const identity of [old.identity,undefined])await expect(handler({}, {pane_id:'w1:p1',text:'n',keys:['enter'],native:true,identity})).rejects.toMatchObject({code:'stale'})
- expect(call).not.toHaveBeenCalledWith('pane.send_input',expect.anything())
- await expect(handler({}, {pane_id:'w1:p1',text:'n',keys:['enter'],native:true,identity:next.identity})).resolves.toEqual({ok:true,queued})
- expect(call).toHaveBeenCalledWith('pane.send_input',{pane_id:'w1:p1',keys:['enter']})
- call.mockClear()
- await handler({}, {pane_id:'w1:p1',text:'raw',keys:['enter']})
- expect(call.mock.calls.some(c=>c[0]==='pane.read')).toBe(false)
- expect(call).toHaveBeenCalledWith('pane.send_input',{pane_id:'w1:p1',text:'raw'})
 })

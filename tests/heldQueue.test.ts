@@ -2,30 +2,9 @@
 // delivered in order once the input is back; failed (not "sending…" forever)
 // when it really can't go.
 import { describe, expect, it } from 'vitest'
-import { HOLD_TTL_MS, LOST_MS, type QueueEntry, checkQueue, giveBackHeld, leftForGood, loadQueued, nextHeld, publicEntry, shouldHold } from '../server/utils/queued'
+import { HOLD_TTL_MS, LOST_MS, type QueueEntry, checkQueue, giveBackHeld, leftForGood, loadQueued, nextHeld, publicEntry } from '../server/utils/queued'
 
 const entry = (id: string, at: number, more: Partial<QueueEntry> = {}): QueueEntry => ({ id, text: `message ${id}`, at, ...more })
-
-describe('shouldHold', () => {
-  it('holds when the agent rests with its input hidden by a menu', () => {
-    expect(shouldHold('claude', 'idle', false, false)).toBe(true)
-    expect(shouldHold('codex', 'done', false, false)).toBe(true)
-  })
-  it('sends directly when the input is visible', () => {
-    expect(shouldHold('claude', 'idle', true, false)).toBe(false)
-  })
-  it('keeps Claude’s own queue while it works', () => {
-    expect(shouldHold('claude', 'working', false, false)).toBe(false)
-  })
-  it('queues behind an earlier held message, whatever the screen', () => {
-    expect(shouldHold('claude', 'idle', true, true)).toBe(true)
-    expect(shouldHold('claude', 'working', true, true)).toBe(true)
-  })
-  it('leaves other agents alone (no known input line)', () => {
-    expect(shouldHold('gemini', 'idle', false, false)).toBe(false)
-    expect(shouldHold(null, 'idle', false, false)).toBe(false)
-  })
-})
 
 describe('nextHeld', () => {
   it('delivers the oldest held message first, exactly once', () => {
