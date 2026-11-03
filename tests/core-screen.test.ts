@@ -71,10 +71,14 @@ describe('enrich', () => {
     expect(reads.length).toBe(2)
   })
   it('marks the interaction unknown when the read fails', async () => {
-    const { screens } = setup({})
+    const ok = { 'm/a': bash }
+    const { screens, tick } = setup(ok)
     const a = pane('a')
     await screens.enrich([a])
-    expect(a.interaction).toBeUndefined()
+    delete (ok as Record<string, string>)['m/a']
+    tick(2000)
+    await screens.enrich([a])
+    expect(a.interaction).toBe('unknown')
   })
 })
 
@@ -102,6 +106,22 @@ describe('coreChoose', () => {
     await expect(coreChoose(same.d, { pane_id: 't1', index: 0, label: 'Nope', identity: identity() })).rejects.toMatchObject({ code: 'stale' })
     await expect(coreChoose(same.d, { pane_id: 't1', index: 0, label: 'Yes', identity: 'other' })).rejects.toMatchObject({ code: 'stale' })
     expect(calls.length + same.calls.length).toBe(0)
+  })
+  it('sends a free answer only once the field has opened', async () => {
+    const ask = '  Which fruit?\n ❯ 1. Apple\n   2. Pear\n   3. Type something.\n──────────\n   4. Chat about this\n\nEnter to select · ↑/↓ to navigate · Esc to cancel'
+    const c = readCoreScreen(ask, 'claude', 'blocked').choices!
+    const free = c.options.findIndex(o => o.free)
+    expect(free).toBeGreaterThan(-1)
+    let opened = false
+    const s = setup(() => (opened ? input : ask))
+    s.d.call = async (m, params) => { s.calls.push([m, params]); if (m === 'terminal.keys') opened = true; return {} as never }
+    await coreChoose(s.d, { pane_id: 't1', index: free, label: c.options[free]!.label, identity: c.identity, text: 'Kiwi', question: c.question })
+    expect(s.calls.map(x => x[0])).toEqual(['terminal.keys', 'terminal.send'])
+    expect(s.calls[1]![1]).toEqual({ terminal: 'm/t1', text: 'Kiwi' })
+    // The field never opens: the text is not sent.
+    const stuck = setup(() => ask)
+    await expect(coreChoose(stuck.d, { pane_id: 't1', index: free, label: c.options[free]!.label, identity: c.identity, text: 'Kiwi', question: c.question })).rejects.toMatchObject({ code: 'stale' })
+    expect(stuck.calls.map(x => x[0])).toEqual(['terminal.keys'])
   })
   it('rejects an unknown pane and maps core errors', async () => {
     const { d } = setup(() => bash)
