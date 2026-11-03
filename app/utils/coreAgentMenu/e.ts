@@ -2,7 +2,7 @@
 import type { CoreMenuContribution } from '../coreAgentMenu'
 import { t } from '../i18n'
 
-const contribute: CoreMenuContribution = ({ pane, rename }) => pane
+const contribute: CoreMenuContribution = ({ pane, rename }) => pane && rename
   ? [{ label: t('Rename pane'), icon: 'i-lucide-pencil', run: () => rename(pane.id) }]
   : []
 export default contribute

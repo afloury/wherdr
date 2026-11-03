@@ -19,6 +19,10 @@ describe('coreAgentMenu', () => {
     items.find(i => i.label === 'Rename pane')!.run?.()
     expect(rename).toHaveBeenCalledWith('w1:p1')
   })
+  it('omits Rename without a rename action (the compact phone has it in its pane sheet)', () => {
+    const items = coreAgentMenu({ pane: { id: 'w1:p1' } as never, takeControl: vi.fn(), reconnect: vi.fn(), browseFiles: vi.fn(), settings: [], close: undefined })
+    expect(items.map(i => i.label)).not.toContain('Rename pane')
+  })
   it('omits the close entry when absent', () => {
     const items = coreAgentMenu({ pane: undefined, takeControl: vi.fn(), reconnect: vi.fn(), rename: vi.fn(), browseFiles: vi.fn(), settings: [], close: undefined })
     expect(items).toHaveLength(2)

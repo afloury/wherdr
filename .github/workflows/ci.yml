@@ -23,7 +23,7 @@ env:
 jobs:
   smoke:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -58,5 +58,5 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Smoke e2e (core, Chromium)
+      - name: E2e (core, Chromium)
         run: npx playwright test -c playwright.core.config.ts

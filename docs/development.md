@@ -39,15 +39,18 @@ separate hc session and its own socket, and a separate `DATA_DIR`.
 
 The core routes are listed in `shared/coreRoutes.ts` (one file per lot in `shared/coreRoutes/`);
 the server guard and the client use the same list. Unit and component tests run as usual
-(`npx vitest run`). The core smoke test starts its own server and a fake core socket, with no
-real hc session:
+(`npx vitest run`). The core end-to-end tests (`tests/e2e/core-*.spec.ts`, Chromium on a phone
+viewport) need no real hc session: each test starts its own server, a fake HOME holding the
+agents' conversation files and a scripted fake core socket (`tests/e2e/fake-core.ts`), which
+records what the app sent (messages, keys, terminal input, files) and lets an agent answer:
 
 ```sh
 WHERDR_BACKEND=core NUXT_PUBLIC_CORE=true npm run build
 npx playwright test -c playwright.core.config.ts
 ```
 
-CI runs the same build and smoke test on every push.
+CI runs the same build and tests on every push (about 3 minutes for the e2e part). Most specs
+without the `core-` prefix still target the v2 fake Herdr (`playwright.config.ts`).
 
 ## Contributing
 

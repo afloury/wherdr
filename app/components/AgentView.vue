@@ -405,7 +405,8 @@ function coreMenuItems(p: Pane | undefined): MenuItem[] {
     pane: p,
     keep: p && kept.value !== null ? { on: kept.value, toggle: () => toggleKeep(p) } : undefined,
     takeControl: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => ctl.connect(true)) },
-    rename: (id) => { renameTarget.value = id },
+    // Phone: Rename lives in the pane sheet of the header identity, as in v2.
+    rename: compactPhone.value ? undefined : (id) => { renameTarget.value = id },
     reconnect: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => { ctl.reset(); ctl.connect(false) }) },
     browseFiles: () => { filesOpen.value = true },
     settings: props.cell ? [] : settingsMenuItems(),
