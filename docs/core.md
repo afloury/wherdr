@@ -18,7 +18,7 @@ places them: by their `herdr.space` / `herdr.tab` labels, else by the tab of the
 machine's `herdr-app` document whose layout holds them; the document (read only,
 never written) gives the space and tab names and the tab order. Terminals with no
 such placement are grouped by machine and cwd, one tab and pane per terminal.
-"+" in a space's tab row starts a new terminal or agent in it: it carries that
+"+" in a space's tab row (or header) starts at once a terminal like the space's current one (same kind, same folder; "New tab…" in the tab menu opens the sheet to choose). The header map button lists the space's terminals to switch between. The new terminal carries that
 space's `herdr.space`, a new `herdr.tab` and `herdr.seen=0`, so it also appears in
 herdr-app. Terminals made from the "New" sheet get the space whose folder holds
 their cwd, else a new one. Rename, close, split and move stay in herdr-app.
