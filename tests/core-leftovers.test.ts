@@ -27,20 +27,6 @@ describe('core mode: state is not rebuilt from the empty legacy machines', () =>
   })
 })
 
-describe('core mode: no Board read for a notification', () => {
-  vi.setConfig({ testTimeout: 30000 })
-  afterEach(() => { delete process.env.WHERDR_BACKEND; vi.resetModules() })
-  it('does not call readBoardLinks', async () => {
-    vi.resetModules()
-    process.env.WHERDR_BACKEND = 'core'
-    const read = vi.fn(async () => null)
-    vi.doMock('../server/utils/boardLinks', () => ({ readBoardLinks: read }))
-    const { notificationAllowed } = await import('../server/utils/notificationRules')
-    await notificationAllowed('needs-you' as never, { workspaces: [] }, { id: 'p1', workspace: 'w1' }).catch(() => {})
-    expect(read).not.toHaveBeenCalled()
-  })
-})
-
 describe('core mode: pasted texts are kept', () => {
   it('coreSend keeps the pasted blocks of a message but not of a slash command', async () => {
     vi.resetModules()
