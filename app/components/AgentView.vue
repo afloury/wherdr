@@ -82,7 +82,7 @@ const workspace = computed(() => herdrState.value.workspaces.find(w => w.id === 
 // Several panes in the tab (cell or full screen): each pane carries its
 // own name; the space name stays in the tab header.
 const ownTitle = computed(() => Boolean(props.cell || (tabEnt.value && tabEnt.value.panes.length > 1)))
-const headTitle = computed(() => (pane.value ? (ownTitle.value ? paneTitle(pane.value) : spaceTitle(pane.value, workspace.value)) : '—'))
+const headTitle = computed(() => (pane.value ? desktopHeaderTitle(pane.value, workspace.value, ownTitle.value) : '—'))
 const subtitle = computed(() => {
   const s = pane.value ? conversationSubtitle(pane.value, workspace.value) : ''
   return s && s !== headTitle.value ? s : ''
