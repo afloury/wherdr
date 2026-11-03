@@ -18,7 +18,7 @@ import type { MachineInfo, NamedSession, Pane } from '#shared/types'
 import { type ReadySort, type Row, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
 import { spaceTitle } from '#shared/displayTitles'
 import { type BoardCard, type CoordinatorLevel, boardSections, countedPanes } from '#shared/boardLinks'
-import { homeCounts, withBoardGroups } from '#shared/homeCounts'
+import { homeCounts, taskStat, withBoardGroups } from '#shared/homeCounts'
 import { claudeApiShown, claudeSuggestion, machineQuotaRows, quotaRows, tabQuotaRows } from '~/utils/quotas'
 import { longPress } from '~/utils/longPress'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
@@ -47,9 +47,10 @@ const { board: tasksBoard } = useTasksBoard()
 const boardLinks = computed(() => withBoardGroups(fileLinks.value, tasksBoard.value))
 // Old notification exceptions keyed by a coordinator's pane move to its identity.
 useNotificationRekey()
-// What the counters count: a board task's helpers (reviewer, planner,
-// attempts) count once, as its row on the list.
-const counted = computed(() => countedPanes(agents.value, boardLinks.value))
+// What the counters count: one per row of the list (shared/boardLinks.ts
+// countedPanes): a board task's helpers (reviewer, planner, attempts) once,
+// a coordinator by its own state, a row of several terminals once.
+const counted = computed(() => countedPanes(agents.value, boardLinks.value, individualAgentList.value))
 // Counters follow the selected machine or group; unreachable machines stay out.
 const baseOfPane = (p: Pane) => { const m = machineInfo(p.machine); return m ? m.baseKey ?? m.key : p.machine || '' }
 // A board task counts by its state on the Board, once; other agents by their own.
@@ -57,7 +58,8 @@ const counts = computed(() => {
   const sel = machineBarSelection.value
   return homeCounts(agents.value, boardLinks.value, tasksBoard.value,
     p => !paneStale(p) && (sel === null || sel.includes(baseOfPane(p))),
-    m => sel === null || sel.includes(m))
+    m => sel === null || sel.includes(m),
+    individualAgentList.value)
 })
 
 const conn = computed(() => {
@@ -224,7 +226,7 @@ const stateCards = computed(() => {
 const stateCardByKey = computed(() => new Map(stateCards.value.map(c => [c.row.key, c])))
 const stateGroups = computed(() => groupsOf(stateCards.value.map(c => c.row), r => {
   const group = stateCardByKey.value.get(r.key)?.board?.group
-  return group ? group === 'needs' ? 'blocked' : group === 'working' ? 'working' : 'ready' : rowGroup(r)
+  return group ? taskStat(group) : rowGroup(r)
 }))
 // Machine bar: "All", then each machine (a named session counts as its machine),
 // with its state and the number of agents the list counts.

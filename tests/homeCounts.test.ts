@@ -135,3 +135,53 @@ describe('task groups on the home cards', () => {
     expect(withBoardGroups(l, null)).toBe(l)
   })
 })
+
+// The counters and the rows under them say the same thing (docs/home.md,
+// "What the counters count"): one count per row, in the state the row shows.
+describe('the counters count the rows of the list', () => {
+  const coord = (pane: string, level: 'top' | 'project' = 'project'): MachineLinks['coordinators'][number] =>
+    ({ level, ...(level === 'project' ? { repo: 'app' } : {}), pane, workspace: pane.split(':')[0]! }) as MachineLinks['coordinators'][number]
+
+  it('a task waiting for approval is the user\'s turn, as its badge and accent say', () => {
+    const l = [links([task(22, [{ id: 'w22:p1', role: 'worker' }], 'approval', 'ready')])]
+    // Its agent is idle: the task, not the terminal, decides.
+    expect(homeCounts([pane('w22:p1', 'idle')], l, null)).toEqual({ blocked: 1, working: 0, ready: 0 })
+    expect(homeCounts([pane('w22:p1', 'idle')], l, cli(machine([row(22, 'blocked', 'approval', { kind: 'permission' })])))).toEqual({ blocked: 1, working: 0, ready: 0 })
+    // The row's badge reads the same function (AgentCard: taskStat).
+    expect(taskStat('ready')).toBe('blocked')
+  })
+
+  it('a coordinator counts by its own state, like any agent row', () => {
+    const l: MachineLinks[] = [{ machine: '', tasks: [task(5, [{ id: 'w5:p1', role: 'worker' }])], coordinators: [coord('w10:p1', 'top'), coord('w11:p1')] }]
+    const panes = [pane('w10:p1', 'idle'), pane('w11:p1', 'blocked'), pane('w5:p1', 'working')]
+    expect(homeCounts(panes, l, null)).toEqual({ blocked: 1, working: 1, ready: 1 })
+    expect(countedPanes(panes, l).map(p => p.id).sort()).toEqual(['w10:p1', 'w11:p1', 'w5:p1'])
+  })
+
+  it('a coordinator sharing its space with another agent: two rows, two counts', () => {
+    const l: MachineLinks[] = [{ machine: '', tasks: [], coordinators: [coord('w1:p1')] }]
+    const panes = [pane('w1:p1', 'idle'), pane('w1:p2', 'working')]
+    expect(homeCounts(panes, l, null)).toEqual({ blocked: 0, working: 1, ready: 1 })
+    // Even when the coordinator's space is a task's: it is not the task.
+    const t = [{ ...l[0]!, tasks: [{ ...task(3, [{ id: 'w1:p2', role: 'worker' }]), workspace: 'w1' }] }]
+    expect(homeCounts(panes, t, null)).toEqual({ blocked: 0, working: 1, ready: 1 })
+  })
+
+  it('a row standing for several terminals counts once, by the state it shows', () => {
+    const panes = [pane('w32:p1', 'idle'), pane('w32:p2', 'working', 'codex'), pane('w33:p1', 'idle')]
+    expect(homeCounts(panes, [], null)).toEqual({ blocked: 0, working: 1, ready: 1 })
+    expect(countedPanes(panes, []).map(p => p.id).sort()).toEqual(['w32:p2', 'w33:p1'])
+    // The most urgent terminal leads the row, and its count.
+    expect(homeCounts([...panes, pane('w32:p3', 'blocked')], [], null)).toEqual({ blocked: 1, working: 0, ready: 1 })
+    // Individual agents on: a row per agent, a count per agent.
+    expect(homeCounts(panes, [], null, undefined, undefined, true)).toEqual({ blocked: 0, working: 1, ready: 2 })
+    // The same space on two machines is two rows.
+    expect(homeCounts([pane('w32:p1', 'idle'), { ...pane('w32:p1', 'working'), id: 'pi~w32:p1', machine: 'pi' }], [], null)).toEqual({ blocked: 0, working: 1, ready: 1 })
+  })
+
+  it('a space shared by two tasks and an agent of its own: a row (and a count) each', () => {
+    const l = [links([{ ...task(1, [{ id: 'w1:p1', role: 'worker' }]), workspace: 'w1' }, { ...task(2, [{ id: 'w1:p2', role: 'worker' }], 'approval', 'ready'), workspace: 'w1' }])]
+    const panes = [pane('w1:p1', 'working'), pane('w1:p2', 'idle'), pane('w1:p3', 'idle'), pane('w1:p4', 'working')]
+    expect(homeCounts(panes, l, null)).toEqual({ blocked: 1, working: 2, ready: 1 })
+  })
+})
