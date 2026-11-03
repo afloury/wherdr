@@ -55,3 +55,26 @@ it('notifies a new first reply after an empty baseline, without replaying initia
   await new Promise(resolve => setTimeout(resolve, 0))
   expect(notifyPane).toHaveBeenCalledTimes(1)
 })
+
+function coreDelivery(opts: { viewed?: boolean, allowed?: boolean } = {}) {
+  const pane = { id: 'w1:p1', coreAddress: 'm/t1', machine: 'k', workspace: 'w1', agent: 'claude', status: 'blocked', title: 'Example' }
+  const pushSend = vi.fn(async () => 1)
+  const notify = bindFunction(source, 'notifyCorePane', {
+    notificationAllowed: async () => opts.allowed ?? true, isViewed: () => opts.viewed ?? false, notificationTitle: (s: string) => s,
+    state: { workspaces: [{ id: 'w1', label: 'demo' }], panes: [pane], machines: [{ key: 'k', label: 'laptop' }, { key: '', label: 'Local' }] },
+    agentLabel: () => 'Claude', agentNotificationTitle: (kind: string, who: string) => ({ title: `${who} ${kind}`, titleFr: '' }), pushSend, log: () => {},
+  })
+  return { notify, pushSend }
+}
+it('pushes a core agent alert to every device, naming its machine', async () => {
+  const d = coreDelivery()
+  await d.notify('m/t1', 'needs-you')
+  expect(d.pushSend).toHaveBeenCalledWith(expect.objectContaining({ title: 'laptop · Claude blocked', tag: 'pane-w1:p1', body: 'demo · Example' }))
+})
+it('pushes nothing for a viewed agent, a muted one or an unknown terminal', async () => {
+  for (const [opts, address] of [[{ viewed: true }, 'm/t1'], [{ allowed: false }, 'm/t1'], [{}, 'm/other']] as const) {
+    const d = coreDelivery(opts)
+    await d.notify(address, 'finished')
+    expect(d.pushSend).not.toHaveBeenCalled()
+  }
+})
