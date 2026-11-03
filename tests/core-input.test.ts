@@ -117,3 +117,12 @@ describe('core interrupt: prompt put back by Claude', () => {
     expect(n).toBe(0)
   })
 })
+
+describe('interrupt with a queued message Claude runs', () => {
+  it('returns no restored text when nothing was taken back (bubble stays)', async () => {
+    const t = deps(() => ({ outcome: 'stopped' }))
+    const r = await coreInterrupt({ ...t.d, takeBack: async () => null }, { pane_id: 't1', restore: true })
+    expect(r).toMatchObject({ ok: true, stopped: true })
+    expect(r).not.toHaveProperty('restored')
+  })
+})
