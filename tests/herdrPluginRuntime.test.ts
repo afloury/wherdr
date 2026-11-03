@@ -32,7 +32,9 @@ function which(cmd: string) {
   return r.status === 0 ? r.stdout.trim() : ''
 }
 
-describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, native runtime', () => {
+// Each case runs the real script (one or two builds, ~1-4 s alone): over Vitest's 5 s
+// default when the whole suite loads the machine.
+describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, native runtime', { timeout: 20_000 }, () => {
   let tmp: string, root: string, home: string, rt: string, minbin: string, port: number
 
   beforeEach(async () => {
