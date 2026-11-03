@@ -1,5 +1,8 @@
 # Releasing wherdr
 
+> [!NOTE]
+> **v2 only.** This process publishes the 2.x line (npm, Homebrew, GitHub releases, the Herdr plugin). wherdr v3 on herdr-core has no release yet. See the [v3 documentation](README.md).
+
 Publishing a version requires the user's explicit approval. Never republish a package held
 for npm review. No new secret is needed: GitHub uses `GITHUB_TOKEN`, npm uses OIDC Trusted
 Publishing (`npm.yml`), and the tap uses the existing optional `HOMEBREW_TAP_TOKEN`.
