@@ -73,7 +73,7 @@ test('core smoke: home loads, a terminal shows, opening it attaches', async ({ p
     await new Promise<void>(resolve => core.listen(socketPath, resolve))
     await page.goto(`http://localhost:${port}`)
     await expect(page.locator('.home-version')).toHaveText(/^wherdr v3 · herdr-core$/i)
-    const card = page.locator('.card').filter({ hasText: 'demo' }).first()
+    const card = page.getByRole('button', { name: /review-agent/ }).first()
     await expect(card).toBeVisible()
     await card.click()
     await expect(page).toHaveURL(/#\/(a|t)\//)
