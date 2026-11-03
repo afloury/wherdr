@@ -184,7 +184,8 @@ const sections = computed(() => {
   return selected.map((m) => {
     const mine = (p: Pane) => (p.machine || '') === m.key
     const a = agents.value.filter(mine)
-    const c = counted.value.filter(mine)
+    // With herdr-core a group counts the rows of the list, like the tabs.
+    const c = core ? coreRows.value.map(r => r.lead).filter(mine) : counted.value.filter(mine)
     return {
       m,
       name: machineName(m.key),
