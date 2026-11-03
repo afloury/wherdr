@@ -274,6 +274,7 @@ async function submit() {
     return
   }
   const p = props.pane
+  if (p?.status === 'working') sentWhileWorking.value = true
   // omp question with "Other": the message is its free answer.
   const prompt = p && p.status === 'blocked' ? p.prompt : null
   const free = prompt ? prompt.options.findIndex(o => o.free) : -1
@@ -333,6 +334,9 @@ async function submit() {
 // The server sends Escape, sends it again if the agent is still working, stops
 // Claude's background tasks (see server/utils/interruptSeq.ts) then says whether the agent
 // stopped. Otherwise: lasting message with access to the terminal.
+// A message sent while the agent was busy waits in its queue (the screen does not always say so).
+const sentWhileWorking = ref(false)
+watch(() => props.pane?.status, st => { if (st !== 'working') sentWhileWorking.value = false })
 const interrupting = ref<'running' | 'failed' | null>(null)
 // What the last Stop targeted: the user's omp command, or the agent's turn.
 const stoppingShell = ref(false)
@@ -343,10 +347,11 @@ async function interrupt() {
   stoppingShell.value = shellRun.value
   // A queued message starts as soon as Escape interrupts the turn: the agent is
   // then "still working" on that message, which is not a failure.
-  const hadQueued = Boolean(props.pane?.queued?.length)
+  const hadQueued = Boolean(props.pane?.queued?.length) || sentWhileWorking.value
+  sentWhileWorking.value = false
   try {
-    const r = await api<{ stopped: boolean, background: number, shell?: boolean, restored?: string, lost?: number }>('/api/interrupt', { pane_id: props.paneId, restore: Boolean(props.takeBack) })
-    const nextStarted = !r.stopped && !r.shell && hadQueued
+    const r = await api<{ stopped: boolean, outcome?: string, background: number, shell?: boolean, restored?: string, lost?: number }>('/api/interrupt', { pane_id: props.paneId, restore: Boolean(props.takeBack) })
+    const nextStarted = r.outcome === 'still_working' && !r.stopped && !r.shell && hadQueued
     interrupting.value = r.stopped || nextStarted ? null : 'failed'
     stoppingShell.value = Boolean(r.shell)
     if (nextStarted) { toast(tl('Interrupted, next message started', 'Interrompu, message suivant lancé')); return }

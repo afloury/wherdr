@@ -32,6 +32,7 @@ describe('Stop with a queued message', () => {
     const fn = /async function interrupt\(\)[\s\S]*?\n\}/.exec(composer)?.[0] || ''
     expect(fn).toContain('hadQueued')
     expect(fn).toContain('Interrupted, next message started')
-    expect(fn).toMatch(/r\.stopped \|\| nextStarted \? null : 'failed'/)
+    expect(fn).toMatch(/r\.outcome === 'still_working'/)
+    expect(composer).toContain('sentWhileWorking')
   })
 })
