@@ -2,7 +2,7 @@
 // settings, lock, API calls. Module singletons (client app).
 import { createSocketProbe } from '~/utils/socketProbe'
 import { DESK_QUERY, SLIM_QUERY, TABLET_QUERY, provesHardwareKeyboard } from '~/utils/layoutMode'
-import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, NamedSession, Pane, Quotas } from '#shared/types'
+import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, Pane, Quotas } from '#shared/types'
 import { LOCAL, splitId } from '#shared/ids'
 import { clearOffline, readHome, saveHome } from '~/utils/offlineCache'
 import { coreRouteAllowed } from '#shared/coreRoutes'
@@ -12,7 +12,6 @@ import type { ActiveTerminalRenderer } from '~/utils/terminalRenderer'
 import { settleState } from '#shared/stateReady'
 import { READY_SORTS, type ReadySort } from '#shared/spaces'
 import { DEADLINE_WARNING_MS } from '#shared/sessionLimit'
-import { readSessionSelection, selectSessions, writeSessionSelection } from '~/utils/sessionSelection'
 import { effectiveTypingSpeed, encryptedTextActive, parseTypingSettings } from '~/utils/typewriter'
 import { readHiddenAgents } from '~/utils/agentChoices'
 import { checkNewVersion } from './useAppVersion'
@@ -48,25 +47,8 @@ const ls = {
 
 export const herdrState = shallowRef<HerdrState>({ ok: false, workspaces: [], panes: [] })
 let fullState: HerdrState = herdrState.value
-// Every open session's state, as the server follows them (herdrState keeps
-// only the session each device shows): to find a pane in a session not shown.
+// Every open session's state, as the server follows them.
 export const allSessionsState = shallowRef<HerdrState>(fullState)
-function loadSessionNames(): Record<string, string> {
-  return readSessionSelection(ls.get('machineSessions'))
-}
-export const machineSessions = ref<Record<string, string>>(loadSessionNames())
-function setSessionNames(names: Record<string, string>) {
-  machineSessions.value = names
-  ls.set('machineSessions', writeSessionSelection(names))
-  herdrState.value = selectSessions(fullState, names)
-}
-export async function chooseMachineSession(baseKey: string, name: string) {
-  const chosen = await api<{ session: NamedSession }>('/api/sessions', { machine: baseKey, name })
-  setSessionNames({ ...machineSessions.value, [baseKey]: name })
-  lastMachine.value = chosen.session.key
-  syncPushLanguage().catch(() => {})
-  await loadConfig()
-}
 export const eventsOpen = ref(false)
 export const netDown = ref(false)
 export const cachedAt = ref<number | null>(null)
@@ -550,7 +532,7 @@ export function connectEvents() {
       setNetDown(false)
       fullState = state
       allSessionsState.value = fullState
-      herdrState.value = selectSessions(state, machineSessions.value)
+      herdrState.value = state
       lastStateAt = Date.now()
       cachedAt.value = null
       if (state.ok && mayReadOffline(readOfflineAccess())) saveHome(herdrState.value)
@@ -692,7 +674,7 @@ export async function start({ resume = false } = {}) {
     if (saved && !eventsOpen.value) {
       fullState = saved.state
       allSessionsState.value = fullState
-      herdrState.value = selectSessions(fullState, machineSessions.value)
+      herdrState.value = fullState
       cachedAt.value = saved.at
     }
   }

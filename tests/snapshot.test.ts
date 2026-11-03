@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { foregroundCommand, reduceSnapshot } from '../server/utils/snapshot'
-import { selectSessions } from '../app/utils/sessionSelection'
 import { tabLayout } from '../shared/layout'
 import type { HerdrState } from '../shared/types'
 import layouts from './fixtures/snapshot-layouts.json'
@@ -55,29 +54,6 @@ describe('reduceSnapshot', () => {
   it('snapshot sans onglets (ancien Herdr)', () => {
     const s = reduceSnapshot({ workspaces: [], panes: [] })
     expect(s.tabs).toEqual([])
-  })
-})
-
-describe('displayed sessions', () => {
-  it('only keeps the tabs of the chosen sessions', () => {
-    const local = reduceSnapshot(snap)
-    const other = reduceSnapshot(snap, 'abcd1234')
-    const named = reduceSnapshot(snap, 'beef0001')
-    const state: HerdrState = {
-      ...local,
-      workspaces: [...local.workspaces, ...other.workspaces, ...named.workspaces],
-      tabs: [...local.tabs!, ...other.tabs!, ...named.tabs!],
-      panes: [...local.panes, ...other.panes, ...named.panes],
-      machines: [
-        { key: '', label: 'host-a', local: true, status: 'online', error: null, session: 'default' },
-        { key: 'abcd1234', label: 'laptop', local: false, status: 'online', error: null, session: 'default' },
-        { key: 'beef0001', baseKey: 'abcd1234', label: 'laptop', local: false, status: 'online', error: null, session: 'wip' },
-      ],
-    }
-    const tabs = selectSessions(state, { abcd1234: 'wip' }).tabs!.map(t => t.id)
-    expect(tabs.filter(t => t.startsWith('beef0001~'))).toHaveLength(4)
-    expect(tabs.filter(t => t.startsWith('abcd1234~'))).toHaveLength(0)
-    expect(tabs.filter(t => !t.includes('~'))).toHaveLength(4)
   })
 })
 

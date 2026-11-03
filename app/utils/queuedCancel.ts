@@ -13,7 +13,7 @@ const UPLOAD = '/.cache/herdr-web/uploads/'
 // Puts a cancelled message back into the draft, as if it had never been
 // sent: its text before what was already typed, its attached photos.
 // `pasted`: the pasted texts the server lists for it (sent from another device).
-// `after`: a message the server gives back (see givenBack.ts) goes after what
+// `after`: a message the server gives back goes after what
 // was already typed.
 export function restoreDraft(draft: { text: string, atts: DraftAtt[] }, message: string, pasted: string[] = [], after = false) {
   // A reply marker of an earlier version comes back as a reference.
