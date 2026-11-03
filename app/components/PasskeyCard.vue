@@ -49,6 +49,8 @@ async function disableLock() {
     await api('/api/auth/disable', {})
     clearOffline()
     await start()
+    // The server dropped every push subscription: this device's goes back at once.
+    syncPushLanguage().catch(() => {})
     toast(t('Lock turned off'))
   } catch (err) { toast((err as Error).message, true) }
   refreshAuthStatus()

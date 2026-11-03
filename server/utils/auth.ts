@@ -16,8 +16,11 @@
 // (12 h sliding) are re-issued at the next request, keeping their unlock time.
 //
 // data/auth.json: signing secret, registered keys (public key +
-// counter), generation number (incremented when disabling or locking every
-// device: all current sessions become invalid), maximum session duration.
+// counter), generation (a random nonce carried by every cookie), maximum
+// session duration. Disabling the lock or locking every device draws a new
+// secret and a new generation: every current session becomes invalid, even a
+// cookie forged by someone who once read this file. Earlier versions kept a
+// numeric counter: it is replaced by a nonce at startup (those sessions end once).
 // Lost key: deleting data/auth.json on the server reopens the app.
 import fs from 'node:fs'
 import path from 'node:path'
@@ -52,7 +55,7 @@ interface Credential {
 }
 // maxSessionChangedAt: when the duration was last changed (a shorter one does not
 // cut a session in use before OVERRUN_MS has passed).
-interface AuthDb { secret: string | null, generation: number, credentials: Credential[], maxSessionDays?: MaxSessionDays, maxSessionChangedAt?: number }
+interface AuthDb { secret: string | null, generation: string, credentials: Credential[], maxSessionDays?: MaxSessionDays, maxSessionChangedAt?: number }
 
 export class AuthError extends Error {
   code: string
@@ -67,15 +70,26 @@ type Json = any
 
 export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: { dataDir: string, log?: (...a: unknown[]) => void, passkeyUser?: string }) {
   const FILE = path.join(dataDir, 'auth.json')
-  let db: AuthDb = { secret: null, generation: 0, credentials: [] }
+  const nonce = () => crypto.randomBytes(18).toString('base64url')
+  let db: AuthDb = { secret: null, generation: '', credentials: [] }
   try { db = { ...db, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) } }
   catch { /* no file yet */ }
   const save = () => {
     fs.mkdirSync(dataDir, { recursive: true })
     fs.writeFileSync(FILE, JSON.stringify(db, null, 2) + '\n', { mode: 0o600 })
   }
-  if (!db.secret) {
+  // New secret and generation: every cookie signed before is worthless.
+  const rotate = () => {
     db.secret = crypto.randomBytes(32).toString('hex')
+    db.generation = nonce()
+  }
+  if (!db.secret) {
+    rotate()
+    save()
+  }
+  // Earlier versions: a predictable counter, replaced by a nonce.
+  if (typeof db.generation !== 'string' || !/^[\w-]{16,}$/.test(db.generation)) {
+    db.generation = nonce()
     save()
   }
 
@@ -120,7 +134,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     const parts = v.split('.')
     if (parts.length !== 3 && parts.length !== 4) return null
     const mac = parts.pop()!
-    if (!mac || parts[1] !== String(db.generation) || !safeEq(mac, sign(parts.join('.')))) return null
+    if (!mac || parts[1] !== db.generation || !safeEq(mac, sign(parts.join('.')))) return null
     const exp = Number(parts[0])
     const since = parts.length === 3 ? Number(parts[2]) : exp - LEGACY_SLIDE_MS
     if (!(exp >= now) || !Number.isFinite(since)) return null
@@ -241,7 +255,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   function disable(req: ReqLike) {
     if (!isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
     db.credentials = []
-    db.generation += 1
+    rotate()
     save()
     log('lock disabled')
     return { ok: true, __cookie: clearCookie(req) }
@@ -250,7 +264,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   // Lost or stolen device: every session ends (this one included), the keys stay.
   function lockAll(req: ReqLike) {
     if (!enabled() || !isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
-    db.generation += 1
+    rotate()
     save()
     log('lock: all devices locked')
     return { ok: true, __cookie: clearCookie(req) }
@@ -286,6 +300,8 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
 
   return {
     isUnlocked, status, renew,
+    // Current generation: stored with a push subscription, which stops when it changes.
+    generation: () => db.generation,
     // A passkey is registered (the lock is on).
     isEnabled: enabled, registerOptions, registerVerify, loginOptions, loginVerify, disable, lockAll, setMaxSession,
     lock: (req: ReqLike) => ({ ok: true, __cookie: clearCookie(req) }),
