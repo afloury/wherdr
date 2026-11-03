@@ -68,7 +68,7 @@ const empty = (box: string) => !box || box === '!'
 // then everything stays as Claude left it).
 export async function takeBackInterrupted(d: RestoreDeps): Promise<ChatItem | null> {
   let box = ''
-  for (let i = 0; i < 3 && empty(box); i++) {
+  for (let i = 0; i < 6 && empty(box); i++) {
     box = inputBox(await d.screen().catch(() => '')) || ''
     if (empty(box)) await d.sleep(250)
   }
