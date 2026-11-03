@@ -59,7 +59,7 @@ describe('enrich', () => {
   }
   it('fills prompt, interaction and status; skips shells and working agents', async () => {
     const { screens, reads } = setup({ 'm/a': bash, 'm/b': input })
-    const a = pane('a'), b = pane('b'), shell = pane('s', { agent: null }), busy = pane('w', { status: 'working' })
+    const a = pane('a'), b = pane('b'), shell = pane('s', { agent: null }), busy = pane('w', { status: 'working', agent: 'codex' })
     await screens.enrich([a, b, shell, busy])
     expect(reads.sort()).toEqual(['m/a', 'm/b'])
     expect(a).toMatchObject({ status: 'blocked', interaction: 'native' })
@@ -67,6 +67,14 @@ describe('enrich', () => {
     expect(b).toMatchObject({ status: 'idle', interaction: 'input' })
     expect(shell.interaction).toBeUndefined()
     expect(busy.status).toBe('working')
+  })
+  it('reads a working Claude only while its conversation is open (queue "send now")', async () => {
+    const open = setup({ 'm/w': input })
+    await open.screens.enrich([pane('w', { status: 'working' })])
+    expect(open.reads).toEqual(['m/w'])
+    const closed = setup({ 'm/w': input }, () => false)
+    await closed.screens.enrich([pane('w', { status: 'working' })])
+    expect(closed.reads).toEqual([])
   })
   it('caches reads per viewed / background pace and re-applies them', async () => {
     const { screens, reads, tick } = setup({ 'm/a': bash }, () => false)
