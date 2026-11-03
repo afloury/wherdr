@@ -79,10 +79,10 @@ function groupsOf(list: Row[], rawGroup = rowGroup) {
 }
 const rowTitle = (r: Row) => isIndividualAgentRow(r) ? individualAgentTitle(r.lead) : homeTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
 const standaloneRows = (rows: Row[]) => individualAgentRows(rows)
-// Sort menu of the Ready group; sorted other than in Herdr's order, the
+// Sort menu of the Ready group; sorted other than in the default order, the
 // list can no longer be reordered manually.
 const READY_SORT_LABELS: Record<ReadySort, [string, string]> = {
-  herdr: ['Herdr order', 'i-lucide-grip-vertical'], recent: ['Recent activity', 'i-lucide-clock'], name: ['Name', 'i-lucide-arrow-down-a-z'],
+  herdr: ['Default order', 'i-lucide-grip-vertical'], recent: ['Recent activity', 'i-lucide-clock'], name: ['Name', 'i-lucide-arrow-down-a-z'],
 }
 const readySortItems = computed(() => [[
   { type: 'label' as const, label: t('Sort ready') },

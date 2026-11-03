@@ -275,7 +275,7 @@ const FR: Record<string, string> = {
   'Advisor': 'Conseiller', 'Background job done': 'Tâche de fond terminée', 'Agent message': 'Message d’un agent',
   'Process': 'Processus', 'Background task': 'Tâche en arrière-plan', 'Show all': 'Tout afficher',
   'Show list': 'Afficher la liste', 'Collapse list': 'Réduire la liste', 'Continue': 'Continuer',
-  'Sort ready': 'Trier les prêts', 'Herdr order': 'Ordre de Herdr', 'Recent activity': 'Activité récente',
+  'Sort ready': 'Trier les prêts', 'Default order': 'Ordre par défaut', 'Recent activity': 'Activité récente',
   'Open terminal': 'Ouvrir le terminal',
   'Queued': 'En attente', 'Clear and send': 'Vider et envoyer', 'agent stopped': 'agent arrêté', 'agent starting': 'démarrage de l’agent',
   'Send now': 'Envoyer maintenant',
@@ -544,7 +544,7 @@ const FR: Record<string, string> = {
   'View image': 'Voir l’image',
   // Themes
   'Change theme': 'Changer de thème', 'Hide themes': 'Masquer les thèmes',
-  'Theme': 'Thème', 'Follow Herdr': 'Suivre Herdr', 'config.toml not found': 'config.toml introuvable',
+  'Theme': 'Thème',
   'default': 'par défaut', 'light': 'clair', 'The theme follows you on every device.': 'Le thème te suit sur tous tes appareils.',
   // Focus border of the message field
   'Message field border on focus': 'Bordure du champ au focus',

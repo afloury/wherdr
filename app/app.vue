@@ -12,11 +12,11 @@ function openSearch() { searchOpen.value = true }
 function closeListDrawer() { listDrawer.value = false }
 
 useHead({
-  htmlAttrs: { lang: language, class: computed(() => (activeTheme.value.def.light ? 'light' : 'dark')) },
+  htmlAttrs: { lang: language, class: computed(() => (activeTheme.value.light ? 'light' : 'dark')) },
   meta: [
     { name: 'description', content: tl('Control your Herdr code agents', 'Piloter ses agents de code Herdr') },
     { key: 'theme-color', name: 'theme-color', content: themeColor },
-    { key: 'color-scheme', name: 'color-scheme', content: computed(() => (activeTheme.value.def.light ? 'light' : 'dark')) },
+    { key: 'color-scheme', name: 'color-scheme', content: computed(() => (activeTheme.value.light ? 'light' : 'dark')) },
   ],
   // The demo build (wherdr.dev/demo) is not installable.
   link: import.meta.env.VITE_WHERDR_DEMO === '1' ? [] : [{ rel: 'manifest', href: language === 'en' ? '/manifest-en.webmanifest' : '/manifest.webmanifest' }],
