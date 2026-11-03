@@ -25,6 +25,7 @@ function setup(reply: (method: string, params: any) => unknown = () => ({})) {
     settle: async () => {},
     recent: async () => [],
     remember: async () => {},
+    launchWatchMs: 0,
   }
   const execReply = (params: any) => {
     const script: string = params.argv[2]
@@ -63,6 +64,21 @@ describe('core creation', () => {
     expect(Object.keys(t.runs()[0]![1].labels)).toEqual(['wherdr-request'])
   })
 
+  it('reports an agent that exits with an error right away, with its last output', async () => {
+    const t = setup((method) => {
+      if (method === 'terminal.run') return { address: 't3' }
+      if (method === 'terminal.get') return { state: 'finished', exit_code: 127 }
+      if (method === 'terminal.read') return { text: 'one\n\nclaude: command not found\n' }
+      return {}
+    })
+    await expect(coreCreate(t.deps, { kind: 'claude', cwd: '/home/u' })).rejects.toMatchObject({
+      code: 'launch_failed', message: 'claude stopped right after starting (exit code 127). Last output:\none\nclaude: command not found',
+    })
+  })
+  it('does not call a clean exit a failure', async () => {
+    const t = setup((method) => method === 'terminal.run' ? { address: 't3' } : method === 'terminal.get' ? { state: 'finished', exit_code: 0 } : {})
+    expect(await coreCreate(t.deps, { kind: 'claude', cwd: '/home/u' })).toMatchObject({ pane_id: 'w2:p2' })
+  })
   it('runs a terminal without parent, with a correlation label, on a machine', async () => {
     const t = setup(() => ({ address: 'vps/t7' }))
     const r = await coreCreate(t.deps, { kind: 'shell', machine: '7667', cwd: '/home/u/app', name: 'My Shell' })
