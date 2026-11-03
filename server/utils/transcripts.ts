@@ -29,6 +29,9 @@ export interface TranscriptPane {
   agentSession?: string | null
   bornAt?: number
   status?: string | null
+  // A conversation the board recorded (a finished task's agent): its session
+  // file only, never one guessed from a process or a folder's latest file.
+  fixed?: boolean
 }
 
 interface Loc { file: string, session: string, guessed?: boolean }
@@ -1169,12 +1172,15 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     let loc: Loc | null = null
     let failed = false
     try {
-      if (pane.agent === 'codex') loc = await locateCodexPane(pane)
+      if (pane.fixed) {
+        const f = pane.agentSession ? await findSessionFile(pane.agent, pane.agentSession) : null
+        if (f) loc = { file: f, session: pane.agentSession! }
+      } else if (pane.agent === 'codex') loc = await locateCodexPane(pane)
       else if (pane.agentSession) {
         const f = await findSessionFile(pane.agent, pane.agentSession)
         if (f) loc = { file: f, session: pane.agentSession }
       }
-      if (!loc && pane.agent === 'claude') {
+      if (!loc && pane.agent === 'claude' && !pane.fixed) {
         const proc = await paneProcess(pane.id, 'claude')
         if (proc) loc = await locateClaude(proc)
       }

@@ -193,7 +193,7 @@ const FR: Record<string, string> = {
   'Unlock': 'Déverrouiller', 'Unlock cancelled': 'Déverrouillage annulé', 'Too many attempts, wait a minute': 'Trop de tentatives, attends une minute', 'Device': 'Appareil',
   'Lock enabled on this device ✓': 'Verrouillage activé sur cet appareil ✓', 'Registration cancelled': 'Enregistrement annulé',
   'This device is already registered': 'Cet appareil est déjà enregistré',
-  'Optional: wherdr already answers only this computer and your tailnet. A passkey adds a lock on each device, with Face ID, Touch ID, Windows Hello…': 'Facultatif : wherdr ne répond déjà qu’à cet ordinateur et à ton tailnet. Une passkey ajoute un verrou sur chaque appareil, avec Face ID, Touch ID, Windows Hello…',
+  'Optional: wherdr already answers only this computer and your own tailnet devices. If you want one, a passkey adds an automatic lock on each device, with Face ID, Touch ID, Windows Hello…': 'Facultatif : wherdr ne répond déjà qu’à cet ordinateur et à tes propres appareils du tailnet. Si tu veux, une passkey ajoute un verrou automatique sur chaque appareil, avec Face ID, Touch ID, Windows Hello…',
   'This browser does not support passkeys.': 'Ce navigateur ne gère pas les clés d’accès.',
   'Registered keys:': 'Clés enregistrées :',
   'Turn off lock': 'Désactiver le verrouillage',

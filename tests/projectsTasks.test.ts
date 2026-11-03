@@ -6,7 +6,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   NOTIFY_SETUP, NO_ACTIONS, cleanTaskType, addArgs, parseBoardAgents, agentKind, delegateArgs, effortsFor, isAgentName, isEffortName, parseModels, parseWorkerAgent, parseWorkerEffort, restoreAgentArgs, runOver, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
-  reviewFindingsBrief, rowFromTaskFile, stateFromTaskFile, taskCanSendReview, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
+  reviewFindingsBrief, rowFromTaskFile, stateFromTaskFile, taskCanSendReview, taskConversation, taskTranscripts, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
 } from '../shared/projectsTasks'
 import { PROJECTS_TESTED } from '../shared/projectsPlugin'
 
@@ -564,5 +564,37 @@ describe('new task types', () => {
         '--desc=Brief', '--repo=demo', ...(delegate ? ['--delegate'] : []), '--', '--title',
       ])
     }
+  })
+})
+
+// The conversations a task's file records (1.x `session`, `reviewSession`):
+// what the Board's panel reads once that agent has exited.
+describe('a task\'s recorded conversations', () => {
+  const sid = '00000000-0000-4000-8000-000000000042'
+  it('names the worker\'s program and session, and the reviewer\'s while it reviews and after', () => {
+    const file = { id: 'demo/4', agent: 'claude/opus', session: sid, reviewSession: 'rv-1', link: { pane: 'w1:p1', reviewer: { pane: 'w1:p2', kind: 'codex' } } }
+    expect(taskConversation(file, 'worker')).toEqual({ kind: 'claude', session: sid })
+    expect(taskConversation(file, 'reviewer')).toEqual({ kind: 'codex', session: 'rv-1' })
+    // The review over, its link gone: who wrote the review.
+    const after = { ...file, link: { pane: 'w1:p1', reviewer: null }, review: { by: 'codex/gpt-6-sol', pass: true } }
+    expect(taskConversation(after, 'reviewer')).toEqual({ kind: 'codex', session: 'rv-1' })
+    expect(taskTranscripts(after)).toEqual({ worker: 'claude', reviewer: 'codex' })
+  })
+  it('follows the agent that took over (`on`)', () => {
+    expect(taskConversation({ agent: 'claude', on: 'codex/gpt-6-sol', session: sid }, 'worker')).toEqual({ kind: 'codex', session: sid })
+  })
+  it('omp\'s session is its file; an absolute .jsonl path only', () => {
+    const f = '/home/user/.omp/agent/sessions/-home-user-demo-/2026-01-01_x.jsonl'
+    expect(taskConversation({ agent: 'omp', session: f }, 'worker')).toEqual({ kind: 'omp', session: f })
+    expect(taskConversation({ agent: 'omp', session: 'relative.jsonl' }, 'worker')).toBeNull()
+  })
+  it('nothing without a session, for a program wherdr cannot read, or for a session that is a path', () => {
+    expect(taskTranscripts({ agent: 'claude' })).toEqual({ worker: null, reviewer: null })
+    expect(taskConversation({ agent: 'droid', session: sid }, 'worker')).toBeNull()
+    expect(taskConversation({ agent: 'claude', session: '../../etc/passwd' }, 'worker')).toBeNull()
+    expect(taskConversation({ agent: 'claude', session: 'a/b' }, 'worker')).toBeNull()
+    expect(taskConversation({ agent: 'claude', session: 'a..b' }, 'worker')).toBeNull()
+    expect(taskConversation({ agent: 'codex', reviewSession: 'rv' }, 'reviewer')).toBeNull()
+    expect(taskConversation(null, 'worker')).toBeNull()
   })
 })

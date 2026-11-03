@@ -3,7 +3,7 @@ import { BASE_URL } from './scenario.mjs'
 
 // The setup guide on localhost while wherdr's tailnet address is published
 // and answers: a "Continue on <address>" button reopens the guide at the same
-// step there, and the Security step sends the passkey to that address.
+// step there. The last step (Alerts: notifications, `security` in links) proposes no passkey.
 // /api/phone is intercepted: no Tailscale in the test box.
 const URL = 'https://box.example.ts.net:7683/'
 const NAME = 'box.example.ts.net'
@@ -24,13 +24,13 @@ const go = (page: Page) => guide(page).getByRole('link', { name: `Continue on ${
 const next = (page: Page) => guide(page).getByRole('button', { name: 'Next' })
 const current = (page: Page) => guide(page).locator('[aria-current="step"]')
 
-// Next until the Security step. An optional Quotas step comes before it while
+// Next until the last step (Alerts, `security` in links). An optional Quotas step comes before it while
 // a machine's Claude quotas are not set up; it can appear late (/api/quotas) and
 // leaving it stops suggesting it, so the number of steps is not fixed.
-async function toSecurity(page: Page) {
+async function toLast(page: Page) {
   await expect(async () => {
-    if ((await current(page).textContent())?.trim() !== 'Security') await next(page).click()
-    await expect(current(page)).toHaveText('Security', { timeout: 1_000 })
+    if ((await current(page).textContent())?.trim() !== 'Alerts') await next(page).click()
+    await expect(current(page)).toHaveText('Alerts', { timeout: 1_000 })
   }).toPass({ timeout: 15_000 })
 }
 
@@ -54,19 +54,19 @@ test('offers to continue on the tailnet address, at the same step', async ({ pag
   await page.screenshot({ path: `.shots/tailnet-phone-${testInfo.project.name}.png` })
 })
 
-test('the Security step sends the passkey to the tailnet address', async ({ page }, testInfo) => {
+test('the last step offers notifications and the tailnet address, no passkey', async ({ page }, testInfo) => {
   await open(page, published)
-  await toSecurity(page)
-  await expect(guide(page)).toContainText('A passkey only works on the address it was created on')
+  await toLast(page)
+  await expect(guide(page).getByRole('heading', { name: 'Get notified.' })).toBeVisible()
+  await expect(guide(page)).not.toContainText('passkey')
   await expect(go(page)).toHaveCount(1)
   await expect(go(page)).toHaveAttribute('href', `${URL}#/setup?step=security`)
-  await expect(guide(page).getByRole('button', { name: 'Enable passkey lock' })).toHaveCount(0)
   await page.screenshot({ path: `.shots/tailnet-security-${testInfo.project.name}.png` })
 })
 
-test('#/setup?step=security opens the guide at that step', async ({ page }) => {
+test('#/setup?step=security opens the guide at its last step', async ({ page }) => {
   await open(page, missing, '#/setup?step=security')
-  await expect(guide(page).locator('[aria-current="step"]')).toHaveText('Security')
+  await expect(guide(page).locator('[aria-current="step"]')).toHaveText('Alerts')
   await expect(guide(page).getByRole('button', { name: 'Finish' })).toBeVisible()
 })
 
@@ -81,13 +81,13 @@ test('a direct Security link stays at that step when the first-launch check arri
   })
   try {
     await page.goto('/#/setup?step=security')
-    await expect(guide(page).locator('[aria-current="step"]')).toHaveText('Security')
+    await expect(guide(page).locator('[aria-current="step"]')).toHaveText('Alerts')
     // The route has finished opening the guide and replacing its URL.
     await expect(page).toHaveURL(`${BASE_URL}/#/`)
     const checked = page.waitForResponse(r => r.url().endsWith('/api/onboarding'))
     release()
     await (await checked).finished()
-    await expect(guide(page).locator('[aria-current="step"]')).toHaveText('Security')
+    await expect(guide(page).locator('[aria-current="step"]')).toHaveText('Alerts')
     await expect(guide(page).getByRole('button', { name: 'Finish' })).toBeVisible()
   } finally { release() }
 })
@@ -98,8 +98,8 @@ test('without a tailnet address the guide stays on localhost', async ({ page }) 
   await next(page).click()
   await expect(guide(page)).toContainText('Not installed on this computer.')
   await expect(go(page)).toHaveCount(0)
-  await toSecurity(page)
-  await expect(guide(page).getByRole('button', { name: 'Enable passkey lock' })).toBeVisible()
+  await toLast(page)
+  await expect(guide(page).getByRole('button', { name: 'Enable passkey lock' })).toHaveCount(0)
   await expect(go(page)).toHaveCount(0)
 })
 

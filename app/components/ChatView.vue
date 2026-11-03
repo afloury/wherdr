@@ -25,8 +25,13 @@ import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } fr
 import { duplicateImages } from '#shared/imageDupes'
 import { isAutopilotWake } from '~/utils/autopilotWake'
 import { stripPosition } from '#shared/filePaths'
+import type { TaskRole } from '#shared/projectsTasks'
 
-const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
+// `source`: a finished task's conversation, as its board recorded it (the Board's
+// panel, once that agent has exited): read from /api/tasks/transcript, read only.
+// `pane` then only names it (its agent kind, an id of its own for what this
+// device keeps).
+const props = defineProps<{ pane: Pane, localQueued: OutboxItem[], source?: { machine: string, id: string, role: TaskRole } }>()
 // A version of a reply replaced while the agent writes takes its question marks with it.
 onMdDropped(forgetReply)
 const route = useRoute()
@@ -56,14 +61,23 @@ const misses = shallowRef<ChatMisses>(noMisses()) // missed polls, view kept
 const rendered = ref(false)
 const olderBusy = ref(false)
 const savedAt = ref<number | null>(null)
-const readOnly = computed(() => offlineView.value || paneStale(props.pane))
+// A recorded conversation: nothing to reply to, nothing running.
+const recorded = computed(() => Boolean(props.source))
+const readOnly = computed(() => recorded.value || offlineView.value || paneStale(props.pane))
+// Where the conversation is read: the pane's live one, or the task's recorded one.
+function chatUrl(q: URLSearchParams) {
+  const s = props.source
+  if (!s) return `/api/chat?${q}`
+  q.delete('pane')
+  return `/api/tasks/transcript?${new URLSearchParams({ machine: s.machine, id: s.id, role: s.role })}&${q}`
+}
 // The end kept on this device, still not read again after 600 ms: "Read at" over the list.
 const cachedTag = useDelayedFlag(computed(() => savedAt.value !== null && !readOnly.value && !netDown.value), 600, 0)
 // Nothing kept and the end still loading: its shapes, after 300 ms (ChatSkeleton).
 const skeleton = useDelayedFlag(computed(() => !rendered.value && !unavailable.value && !loadError.value))
 // Commands in the agent's replies can be run in its shell mode (Run buttons,
 // utils/shellCommand.ts); the replies carry `can-run` then.
-const canRun = computed(() => canRunIn(props.pane))
+const canRun = computed(() => !recorded.value && canRunIn(props.pane))
 // The end kept on this device, read while the network is asked (see onMounted):
 // shown only if it comes first.
 async function restoreChat() {
@@ -247,9 +261,9 @@ async function loadStep(current: () => boolean): Promise<boolean> {
   const pane = props.pane.id
   const stale = () => !current() || pane !== props.pane.id
   try {
-    const ready = chat.value.tailStart === null ? await chatIntent.take(props.pane) : undefined
+    const ready = chat.value.tailStart === null && !recorded.value ? await chatIntent.take(props.pane) : undefined
     if (stale()) return false
-    const r = ready || await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`)
+    const r = ready || await api<ChatResponse>(chatUrl(tailQuery(pane, chat.value)))
     if (stale()) return false
     if (!r.available) {
       const m = onUnavailable(misses.value, Boolean(chat.value.file) && items.value.length > 0)
@@ -316,7 +330,7 @@ async function loadOlder() {
   const file = chat.value.file
   const before = chat.value.olderCursor
   try {
-    const r = await api<ChatResponse>(`/api/chat?pane=${encodeURIComponent(pane)}&before=${before}`)
+    const r = await api<ChatResponse>(chatUrl(new URLSearchParams({ pane, before: String(before) })))
     if (pane !== props.pane.id || r.file !== file || chat.value.olderCursor !== before) return
     const b = box.value
     const fromBottom = b ? b.scrollHeight - b.scrollTop : 0
@@ -342,7 +356,8 @@ let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   // The network at once, the kept end alongside (shown only if it comes first).
   Promise.all([loadChat(), restoreChat()]).then(jumpToResult)
-  timer = setInterval(() => { if (!document.hidden && !offlineView.value) loadChat() }, 1500)
+  // A recorded conversation changes only if its agent comes back: read less often.
+  timer = setInterval(() => { if (!document.hidden && !offlineView.value) loadChat() }, recorded.value ? 5000 : 1500)
 })
 onUnmounted(() => clearInterval(timer))
 watch(pageVisible, (v) => { if (v) loadChat() })
@@ -409,8 +424,12 @@ function itemImageSrcs(it: ChatItem): string[] {
   const file = chat.value.file
   const srcs: string[] = []
   if (!it.ref || !it.images || !file) return srcs
+  const s = props.source
+  const base = s
+    ? `/api/tasks/transcript-image?${new URLSearchParams({ machine: s.machine, id: s.id, role: s.role })}`
+    : `/api/chat/image?pane=${encodeURIComponent(props.pane.id)}`
   for (let k = 0; k < it.images; k++) {
-    srcs.push(`/api/chat/image?pane=${encodeURIComponent(props.pane.id)}&file=${encodeURIComponent(file)}&ref=${it.ref}&i=${(it.imageAt || 0) + k}`)
+    srcs.push(`${base}&file=${encodeURIComponent(file)}&ref=${it.ref}&i=${(it.imageAt || 0) + k}`)
   }
   return srcs
 }
@@ -1323,7 +1342,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
   </div>
 
   <div class="chat-wrap">
-    <OfflineNote v-if="readOnly || netDown" :label="readOnly ? t('Offline reading') : undefined" :at="savedAt" />
+    <OfflineNote v-if="(readOnly && !recorded) || netDown" :label="readOnly ? t('Offline reading') : undefined" :at="savedAt" />
     <OfflineNote v-else-if="isStale(misses)" :label="t('Conversation not up to date — reconnecting…')" />
     <!-- The end kept on this device while the network is slow to answer: said, over the list (nothing moves). -->
     <span v-if="cachedTag && savedAt" class="cached-tag chat-cached" role="status">{{ tl(`Read at ${fmtTime(savedAt)}`, `Lu à ${fmtTime(savedAt)}`) }}</span>

@@ -4302,6 +4302,11 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-panel-tabs button.asks::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 6px; vertical-align: 1px; background: var(--ochre); }
 .board-panel-reviewer-bar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--bg-2); }
 .board-panel-reviewer-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 10px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); }
+/* A finished agent's bar: the task's own state (Ready to approve, Done…), not its pane's. */
+.board-panel-finished-state { color: var(--text-3); }
+.board-panel-finished-state.ready { color: var(--green); }
+.board-panel-finished-state.needs { color: var(--rose); }
+.task-transcript { flex: 1 1 auto; min-height: 0; }
 .board-panel-reviewer-mode { flex: none; min-height: 28px; padding: 3px 8px; border: 1px solid var(--line); font: 600 10px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
 .board-panel-reviewer-mode:hover { border-color: var(--line-strong); }
 .task-needs p.task-needs-reviewer { padding: 6px 8px; border-left: 2px solid var(--ochre); font-size: 12px; line-height: 1.4; }
