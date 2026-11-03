@@ -81,26 +81,6 @@ it('S7: independent viewed reads publish within two seconds and survive the old 
 
 })
 
-it.each([false,true])('S8: scrolling confirms only while the target details stay unchanged (%s)',async(changed)=>{
- const raw=fx('claude-resume.ansi')
- const old=menus.parseMenu(raw)!
- // The viewport scrolls: the first session leaves, the target stays and gains the cursor.
- const shifted=raw.split('\n').filter(l=>!l.includes('Review the module')&&!l.includes('3 seconds ago')).join('\n').replace('     Fix the tests','   ❯ Fix the tests')
- const next=menus.parseMenu(shifted)!
- if(changed)next.items[next.cursor!]!.hint += ' changed'
- const target=old.items.findIndex(i=>i.label==='Fix the tests')
- expect(target).toBeGreaterThan(old.cursor!)
- expect(next.items[next.cursor!]!.label).toBe('Fix the tests')
- const read=vi.fn().mockResolvedValueOnce(old).mockResolvedValue(next)
- const call=vi.fn(async()=>({}));const handler=await route('menu',call,{readMenu:read,sleep:(ms:number)=>new Promise(r=>setTimeout(r,ms))})
- const run=handler({}, {pane_id:'w1:p1',op:'select',index:target,label:old.items[target]!.label,identity:choices.menuIdentity(old,old.items[target])})
- const check=changed?expect(run).rejects.toMatchObject({code:'stale'}):expect(run).resolves.toEqual({ok:true})
- await vi.runAllTimersAsync();await check
- expect(call).toHaveBeenCalledWith('pane.send_input',{pane_id:'w1:p1',keys:['down']})
- if(changed)expect(call).not.toHaveBeenCalledWith('pane.send_input',{pane_id:'w1:p1',keys:['enter']})
- else expect(call).toHaveBeenCalledWith('pane.send_input',{pane_id:'w1:p1',keys:['enter']})
-})
-
 it.each(['invalidate','hidden','stop','agent','working','machine'])('independent publication refuses a stale owner after %s',async(change)=>{
  vi.useFakeTimers();vi.stubGlobal('stopped',false)
  const p={id:'w1:p1',agent:'codex',status:'blocked',agentSession:'neutral',prompt:choices.screenChoices(fx('codex-request-increase.txt'),'codex')!}

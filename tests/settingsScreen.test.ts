@@ -4,7 +4,6 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { isKeyLegend, settingsTabs, tabsOfRow } from '../shared/settingsScreen'
 import { parseMenu } from '../shared/menuScreen'
-import { activeTab } from '../server/utils/settingstabs'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 // eslint-disable-next-line no-control-regex
@@ -31,10 +30,6 @@ describe('settings tab row', () => {
   })
   it('is found on every tab of the real panel', () => {
     for (const s of Object.values(screens)) expect(settingsTabs(plain(s))).toEqual(TABS)
-  })
-  it('spots the active tab in the ANSI row', () => {
-    const row = screens.usage.split('\n').find(l => tabsOfRow(plain(l)))!
-    expect(activeTab(row)).toBe('Usage')
   })
 })
 

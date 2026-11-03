@@ -1,6 +1,6 @@
 // Glyphs omp draws differently with each of its symbol presets (setting
 // `symbolPreset`: unicode, nerd font, ascii; omp 18.6 packages/tui theme).
-// Screen readers of omp (ompScreen.ts, choices.ts, models.ts, commandScreen.ts)
+// Screen readers of omp (ompScreen.ts, choices.ts, models.ts)
 // build their patterns from these lists, in this order: unicode, nerd, ascii.
 export const OMP_ESC = ['⎋', '\u{F12B7}', 'Esc'] // key.esc ("⎋ to cancel")
 export const OMP_ENTER = ['⏎', '\u{F0311}', 'Enter'] // key.enter

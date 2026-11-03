@@ -382,7 +382,7 @@ const FR: Record<string, string> = {
   'Command copied: paste it into a terminal on the server, in the wherdr folder.': 'Commande copiée : colle-la dans un terminal du serveur, dans le dossier de wherdr.',
   'Then restart wherdr.': 'Puis relance wherdr.', 'Release notes': 'Notes',
   'Stop wherdr first, then run this command.': 'Arrête d’abord wherdr, puis lance cette commande.',
-  // One-tap update (SelfUpdateScreen.vue, server/utils/selfupdate.ts)
+  // One-tap update (bin/lib/updater.mjs)
   'wherdr update': 'Mise à jour de wherdr', 'Updating…': 'Mise à jour…', 'Reloading…': 'Rechargement…',
   'Update failed': 'Échec de la mise à jour', 'Going back to the previous version…': 'Retour à la version précédente…',
   'Restarting wherdr': 'Redémarrage de wherdr', 'Checking the new version': 'Vérification de la nouvelle version',

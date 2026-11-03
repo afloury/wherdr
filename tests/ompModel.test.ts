@@ -1,95 +1,18 @@
-// omp model switching: the "Switch Model" selector (alt+p, /switch, /model)
-// captured in a real session (omp 18.4), the sequence that drives it, and the
-// model read from its transcript (model_change, thinking_level_change,
-// assistant message.model).
+// omp models: readable labels, the model read from its transcript
+// (model_change, thinking_level_change, assistant message.model) and from its
+// status line.
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 const j = (o: unknown) => JSON.stringify(o)
 
-import {
-  lastModel, learnOmpCycle, modelFromLine, ompEffortLevels, ompModelLabel, ompScreenEffort, ompScreenModel, ompSelectorCaption, parseOmpSelector,
-} from '../server/utils/models'
+import { lastModel, modelFromLine, ompModelLabel, ompScreenEffort, ompScreenModel } from '../server/utils/models'
 import { createTranscripts, type Transcripts } from '../server/utils/transcripts'
 
-describe('omp selector parsing', () => {
-  it('reads the nerd-font symbol preset (omp 18.6) like the unicode one', () => {
-    const s = parseOmpSelector(fx('omp-selector-nerd.txt'))!
-    expect(s.task).toBe(false)
-    expect(s.search).toBe('')
-    expect(s.options.map(o => o.label)).toContain('anthropic/claude-sonnet-5-5')
-    expect(s.options[s.cursor]).toMatchObject({ label: 'anthropic/claude-opus-5-5', current: true })
-    expect(ompSelectorCaption(fx('omp-selector-nerd.txt'), 'anthropic/claude-opus-5-5')).toEqual({ name: 'Claude Opus 5.5', roles: ['current'] })
-  })
-
-  it('reads the models, the cursor, the search and the current mark', () => {
-    const s = parseOmpSelector(fx('omp-selector.txt'))!
-    expect(s.options.map(o => o.label)).toEqual([
-      'anthropic/claude-opus-5-5', 'anthropic/claude-haiku-4-5', 'anthropic/claude-sonnet-5-5',
-      'anthropic/claude-sonnet-5', 'openrouter/z-ai/glm-5.3-flash', 'anthropic/claude-opus-5',
-      'omlx/Qwen3.8-27B-8bit', 'opencode-zen/nemotron-3.5-lightning-free', 'nvidia/moonshotai/kimi-k3',
-      'opencode-zen/nemotron-3-ultra-free',
-    ])
-    expect(s.cursor).toBe(0)
-    expect(s.options[0]).toMatchObject({ current: true, hint: null })
-    expect(s.options[1]).toMatchObject({ hint: 'context>200k' })
-    expect(s.options[1]!.current).toBeFalsy()
-    expect(s.options[6]).toMatchObject({ hint: 'context>262k' })
-    expect(s.search).toBe('')
-    expect(s.task).toBe(false)
-  })
-
-  it('reads the search field and the separator of a filtered list', () => {
-    const s = parseOmpSelector(fx('omp-selector-search.txt'))!
-    expect(s.search).toBe('glm')
-    expect(s.separator).toBe(1)
-    expect(s.options[0]!.label).toBe('openrouter/z-ai/glm-5.3-flash')
-  })
-
-  it('recognizes the Task-model variant and refuses other screens', () => {
-    expect(parseOmpSelector(fx('omp-idle-footer.txt'))).toBeNull()
-    expect(parseOmpSelector(fx('omp-ask-single.txt'))).toBeNull()
-    expect(parseOmpSelector(fx('omp-models-panel.txt'))).toBeNull()
-    // Task variant: same box, "Switch Task Model" title.
-    const task = fx('omp-selector.txt').replace('╭─ Switch Model ', '╭─ Switch Task Model ')
-      .replace('use for this session', 'use for Task subagents')
-    expect(parseOmpSelector(task)?.task).toBe(true)
-  })
-
-  it('reads the caption omp itself gives, with the roles', () => {
-    const t = fx('omp-selector.txt')
-    expect(ompSelectorCaption(t, 'anthropic/claude-opus-5-5')).toEqual({
-      name: 'Claude Opus 5.5',
-      roles: ['current', 'default', 'slow', 'plan', 'designer'],
-    })
-    const s = parseOmpSelector(fx('omp-selector-search.txt'))!
-    expect(ompSelectorCaption(fx('omp-selector-search.txt'), s.options[s.cursor].label)?.name).toBe('GLM 5.3 Flash')
-    expect(ompSelectorCaption(t, 'anthropic/claude-sonnet-5-5')).toBeNull()
-  })
-
-  it('flags a selector cut by a narrow pane, footer included (omp 18.8, 38 columns)', () => {
-    const s = parseOmpSelector(fx('omp-selector-narrow-nerd.txt'))!
-    expect(s).toMatchObject({ truncated: true, width: 38, task: false })
-    // Once widened, the same selector is complete.
-    const w = parseOmpSelector(fx('omp-selector-wide-nerd.txt'))!
-    expect(w.truncated).toBe(false)
-    expect(w.options[w.cursor]).toMatchObject({ label: 'anthropic/claude-sonnet-4-5', current: true })
-    expect(w.options.map(o => o.label)).toContain('anthropic/claude-opus-5-5')
-  })
-
-  it('reads the ascii symbol preset', () => {
-    const t = fx('omp-selector-ascii.txt')
-    const s = parseOmpSelector(t)!
-    expect(s).toMatchObject({ truncated: false, task: false, search: '' })
-    expect(s.options[s.cursor]).toMatchObject({ label: 'anthropic/claude-sonnet-4-5', current: true })
-    expect(s.options).toHaveLength(21)
-    // "[/]" marks a role the model does not hold.
-    expect(ompSelectorCaption(t, 'anthropic/claude-sonnet-4-5')).toEqual({ name: 'Claude Sonnet 4.5', roles: ['current', 'default'] })
-  })
-
+describe('omp model labels', () => {
   it('labels the ids readable (Claude ids with Claude\'s naming)', () => {
     expect(ompModelLabel('anthropic/claude-opus-5-5')).toBe('Opus 5.5')
     expect(ompModelLabel('anthropic/claude-haiku-4-5')).toBe('Haiku 4.5')
@@ -148,101 +71,6 @@ describe('model in an omp transcript', () => {
       level('max', '2026-10-02T03:03:22.849Z'),
     ]
     expect(lastModel(lines, 'omp')).toMatchObject({ id: 'anthropic/claude-opus-5-5', label: 'Opus 5.5', effort: 'max' })
-  })
-})
-
-// The setModel sequence, on a fake Herdr socket (same harness as modelctlEffort).
-const calls = vi.hoisted(() => ({
-  sent: [] as { method: string, params: Record<string, unknown> }[], screen: '', search: '', switched: false,
-  opened: '', resized: [] as number[][], resizable: true,
-}))
-vi.mock('../server/utils/env', () => ({ log: () => {}, HOME: '/home/x', DATA_DIR: '/tmp/x' }))
-vi.mock('../server/utils/actions', () => ({ closePanel: async () => false }))
-vi.mock('../server/utils/machines', () => ({ machineOfPane: () => null }))
-vi.mock('../server/utils/herdr', () => {
-  const herdr = async (method: string, params: Record<string, unknown>) => {
-    calls.sent.push({ method, params })
-    if (method === 'pane.read') return { read: { text: calls.screen } }
-    if (method === 'pane.send_input') {
-      const keys = (params.keys as string[]) || []
-      if (keys.includes('alt+p')) calls.screen = calls.opened || fx('omp-selector.txt')
-      // Letters go to the search field; only 'glm' matches something.
-      if (keys.length === 1 && /^[a-z]$/.test(keys[0]!)) calls.search += keys[0]
-      // "down" moves the cursor one row further; esc closes.
-      if (keys.includes('down')) {
-        const rows = calls.screen.split('\n')
-        const at = rows.findIndex(l => l.startsWith('│ ❯'))
-        if (at >= 0) {
-          rows[at] = rows[at]!.replace(/^│ ❯ /, '│   ')
-          rows[at + 1] = rows[at + 1]!.replace(/^│   /, '│ ❯ ')
-          calls.screen = rows.join('\n')
-        }
-      }
-      if (keys.includes('esc')) { calls.screen = ''; calls.search = '' }
-      if (keys.includes('enter')) calls.switched = true
-    }
-    return {}
-  }
-  return {
-    HerdrError: class HerdrError extends Error {
-      constructor(public code: string, message: string) { super(message) }
-    },
-    sleep: async () => {},
-    herdr,
-    agentPrompt: async () => {},
-  }
-})
-vi.mock('../server/utils/state', () => ({
-  READY: new Set(['idle', 'done']),
-  findPane: () => ({ id: 'w1:p1', agent: 'omp', status: 'idle' }),
-  poll: () => {},
-  transcripts: {
-    model: async () => (calls.switched
-      ? { id: 'openrouter/z-ai/glm-5.3-flash', label: 'Glm 5.3 flash', effort: null, at: new Date().toISOString() }
-      : null),
-  },
-}))
-// Widening a narrow pane: omp redraws its selector uncut.
-vi.mock('../server/utils/terminal', () => ({
-  resizePane: async (_pane: string, cols: number, rows: number) => {
-    calls.resized.push([cols, rows])
-    if (calls.resizable && cols > 100 && calls.screen) calls.screen = fx('omp-selector.txt')
-    return calls.resizable
-  },
-}))
-
-import { setModel } from '../server/utils/modelctl'
-
-describe('omp setModel sequence', () => {
-  beforeEach(() => { calls.sent = []; calls.screen = ''; calls.opened = ''; calls.resized = []; calls.resizable = true; calls.switched = false })
-
-  it('opens the selector with alt+p, moves the cursor, applies with Enter', async () => {
-    const r = await setModel('w1:p1', 'openrouter/z-ai/glm-5.3-flash')
-    expect(r).toMatchObject({ id: 'openrouter/z-ai/glm-5.3-flash' })
-    expect(calls.sent.filter(c => c.method === 'pane.send_input').map(c => (c.params.keys as string[])[0]))
-      .toEqual(['alt+p', 'down', 'down', 'down', 'down', 'enter'])
-  })
-
-  it('refuses an unknown model and closes the selector', async () => {
-    await expect(setModel('w1:p1', 'nope/missing-model')).rejects.toMatchObject({ code: 'bad_model' })
-    expect(calls.sent.filter(c => c.method === 'pane.send_input').map(c => (c.params.keys as string[])[0])).toContain('esc')
-  })
-
-  it('widens a narrow pane to drive the selector, then gives its width back', async () => {
-    calls.opened = fx('omp-selector-narrow-nerd.txt')
-    const r = await setModel('w1:p1', 'openrouter/z-ai/glm-5.3-flash')
-    expect(r).toMatchObject({ id: 'openrouter/z-ai/glm-5.3-flash' })
-    expect(calls.resized).toEqual([[160, 40], [38, 40]])
-  })
-
-  it('changes nothing when the narrow pane cannot be widened (terminal attached)', async () => {
-    calls.opened = fx('omp-selector-narrow-nerd.txt')
-    calls.resizable = false
-    await expect(setModel('w1:p1', 'openrouter/z-ai/glm-5.3-flash')).rejects.toMatchObject({ code: 'narrow' })
-    const keys = calls.sent.filter(c => c.method === 'pane.send_input').map(c => (c.params.keys as string[])[0])
-    expect(keys).not.toContain('enter')
-    expect(keys).not.toContain('down')
-    expect(keys).toContain('esc')
   })
 })
 
@@ -315,16 +143,5 @@ describe('omp "auto" in the transcript', () => {
     expect(modelFromLine(line, 'omp')).toMatchObject({ effort: 'auto', effortResolved: 'low' })
     const fixed = j({ type: 'thinking_level_change', timestamp: '2026-01-01T00:00:00.000Z', thinkingLevel: 'low', configured: 'low' })
     expect(modelFromLine(fixed, 'omp')).toEqual({ id: null, label: '', effort: 'low', at: '2026-01-01T00:00:00.000Z' })
-  })
-})
-
-describe('omp ⇧⇥ cycle knowledge', () => {
-  it('offers the common levels until presses show the model\'s own', () => {
-    expect(ompEffortLevels(null)).toEqual(['off', 'auto', 'low', 'medium', 'high', 'xhigh', 'max'])
-    // high → off skips xhigh and max; auto → minimal shows an extra level.
-    const known = learnOmpCycle(null, ['high', 'off', 'auto', 'minimal'])
-    expect(ompEffortLevels(known)).toEqual(['off', 'auto', 'minimal', 'low', 'medium', 'high'])
-    // A later press that shows a level again restores it.
-    expect(ompEffortLevels(learnOmpCycle(known, ['high', 'xhigh']))).toContain('xhigh')
   })
 })

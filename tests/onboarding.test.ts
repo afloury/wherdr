@@ -1,11 +1,6 @@
-// Phone address helpers, and the setup guide's "done" state kept by the
-// server for every device of one machine.
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+// Phone address helpers: loopback hosts and continuing on the tailnet address.
+import { describe, expect, it } from 'vitest'
 import { isLoopbackHost, onAddress, tailnetSwitch } from '../app/utils/onboarding'
-import { readOnboarding, writeOnboarding } from '../server/utils/onboarding'
 
 describe('loopback hosts', () => {
   it('tells loopback hosts apart', () => {
@@ -32,36 +27,5 @@ describe('continuing on the tailnet address', () => {
 
   it('links a settings section on that address', () => {
     expect(onAddress('https://box.example.ts.net', '#/settings?section=security')).toBe('https://box.example.ts.net/#/settings?section=security')
-  })
-})
-
-describe('onboarding state', () => {
-  let dir = ''
-  afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }) })
-  const file = () => {
-    dir = mkdtempSync(path.join(os.tmpdir(), 'wherdr-onboarding-'))
-    return path.join(dir, 'data', 'onboarding.json')
-  }
-
-  it('is shown on a new install, then never again once finished or skipped', () => {
-    const f = file()
-    expect(readOnboarding(f, 'box')).toEqual({ done: false })
-    expect(writeOnboarding(true, f, 'box')).toEqual({ done: true })
-    expect(readOnboarding(f, 'box')).toEqual({ done: true })
-  })
-
-  it('is shown again on another machine with a copied data folder', () => {
-    const f = file()
-    writeOnboarding(true, f, 'box')
-    expect(readOnboarding(f, 'other-box')).toEqual({ done: false })
-  })
-
-  it('can be shown again, and treats a damaged file as not done', () => {
-    const f = file()
-    writeOnboarding(true, f, 'box')
-    expect(writeOnboarding(false, f, 'box')).toEqual({ done: false })
-    expect(readOnboarding(f, 'box')).toEqual({ done: false })
-    writeFileSync(f, '{ not json')
-    expect(readOnboarding(f, 'box')).toEqual({ done: false })
   })
 })

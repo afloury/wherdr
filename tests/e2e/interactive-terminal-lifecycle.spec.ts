@@ -33,9 +33,6 @@ test('the fallback closes when the agent starts working, and the composer return
   await expect(page.locator('.composer')).toBeVisible()
 })
 
-// Native approvals (including quoted terminal exceptions) and closed shell
-// classification moved to tests/nativeScreenParity.test.ts "quoted menus do
-// not steal native approvals" and "a closed Claude shell stays unknown".
 // The choose route is exercised by tests/review0346.test.ts
 // "answers a native approval below a quoted menu" for every Codex case.
 

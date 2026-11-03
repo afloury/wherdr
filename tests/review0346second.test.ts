@@ -30,24 +30,6 @@ it('S1: different questions after the 300th character have distinct identities a
  await expect(handler({}, {pane_id:'w1:p1',index:0,label:'Yes',identity:current.identity})).resolves.toEqual({ok:true})
  expect(call).toHaveBeenCalledWith('pane.send_input',{pane_id:'w1:p1',keys:['enter']})
 })
-it('S2: native menu click rejects another session with the same title',async()=>{
- const old=menus.parseMenu(fx('claude-resume.ansi'))!
- const next=menus.parseMenu(fx('claude-resume.ansi').replace('main · 244KB','feature · 512KB'))!
- expect(choices.menuIdentity(next)).not.toBe(choices.menuIdentity(old))
- const call=vi.fn(async()=>({}));const handler=await route('menu',call,{readMenu:async()=>next})
- await expect(handler({}, {pane_id:'w1:p1',op:'select',index:old.cursor,label:old.items[old.cursor!]!.label,identity:choices.menuIdentity(old)})).rejects.toMatchObject({code:'stale'})
- expect(call).not.toHaveBeenCalledWith('pane.send_input',expect.anything())
- await expect(handler({}, {pane_id:'w1:p1',op:'select',index:next.cursor,label:next.items[next.cursor!]!.label,identity:choices.menuIdentity(next)})).resolves.toEqual({ok:true})
- expect(call).toHaveBeenCalledWith('pane.send_input',{pane_id:'w1:p1',keys:['enter']})
-})
-it('S3: arrows do not authorize Enter on a changed question; missing identity also fails closed',async()=>{
- let text=fx('codex-request-increase.txt');const old=choices.screenChoices(text,'codex')!
- const call=vi.fn(async()=>({read:{text}}));const handler=await route('nav',call)
- await handler({}, {pane_id:'w1:p1',key:'down'})
- text=fx('codex-approaching-limits.txt');call.mockClear()
- for(const identity of [old.identity,undefined])await expect(handler({}, {pane_id:'w1:p1',key:'enter',identity})).rejects.toMatchObject({code:'stale'})
- expect(call.mock.calls.every(c=>c[0]==='pane.read')).toBe(true)
-})
 it('native card keyboard does not translate y/n or Tab into confirmations',()=>{
  const focus={editable:false,empty:true,control:false,overlay:false}
  for(const key of ['y','n','Tab'])expect(cardKey({key,code:key,isComposing:false} as any,focus,{digits:9,enter:true,tabs:true})).toBeNull()

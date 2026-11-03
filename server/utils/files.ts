@@ -5,8 +5,7 @@
 // stay under the root. Nothing here writes.
 //
 // A file path written in a conversation (shared/filePaths.ts) is previewed and
-// downloaded the same way, with the machine's home folder as the root, like
-// Reveal in Finder (server/utils/reveal.ts).
+// downloaded the same way, with the machine's home folder as the root.
 //
 // Never shown, whatever the root: wherdr's own data folder (DATA_DIR: the
 // lock's signing secret, push keys), ~/.ssh and ~/.config/herdr. Checked on
