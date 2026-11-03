@@ -573,7 +573,7 @@ const FR: Record<string, string> = {
   'Active pane in Herdr': 'Pane actif dans Herdr', 'A pane is zoomed in Herdr': 'Un pane est agrandi dans Herdr',
   'Tab overview': 'Plan de l’onglet', 'Side by side': 'Côte à côte', 'Open alone': 'Ouvrir seul',
   // Space, tab and pane actions
-  'Space': 'Espace', 'New tab': 'Nouvel onglet', 'New space': 'Nouvel espace', 'in the same space': 'dans le même espace', 'This space': 'Cet espace',
+  'Space': 'Espace', 'New tab': 'Nouvel onglet', 'New tab…': 'Nouvel onglet…', 'Tabs of this space': 'Onglets de cet espace', 'Tab map': 'Carte des onglets', 'New space': 'Nouvel espace', 'in the same space': 'dans le même espace', 'This space': 'Cet espace',
   'Swap with the pane on the left': 'Échanger avec le pane de gauche', 'Swap with the pane on the right': 'Échanger avec le pane de droite',
   'Swap with the pane above': 'Échanger avec le pane du dessus', 'Swap with the pane below': 'Échanger avec le pane du dessous',
   'Split right': 'Diviser à droite', 'Split down': 'Diviser en bas', 'Move to…': 'Déplacer vers…',

@@ -17,6 +17,8 @@ export interface CoreMenuContext {
   /** Take control of the terminal / reconnect it (they live in AgentView). */
   takeControl: () => void
   reconnect: () => void
+  /** Opens the rename sheet for a pane. */
+  rename: (paneId: string) => void
   /** Opens the file browser of the agent's folder. */
   browseFiles: () => void
   /** Settings entries (not in a side-by-side cell), already built. */

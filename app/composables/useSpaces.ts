@@ -4,7 +4,9 @@
 // explicit gesture; never zoom (the layout is shared with the attached client).
 import type { Pane } from '#shared/types'
 import { type MoveDestination, type SpaceEntry, type SplitDirection, moveTargets, paneSpaceEntries } from '#shared/spaceActions'
-import { reorderWorkspaces } from '#shared/spaces'
+import { leadPane, reorderWorkspaces } from '#shared/spaces'
+import { sameTabBody } from '#shared/coreTabMap'
+import { HERDR_AGENT_KINDS } from '#shared/launchableAgents'
 import { type DropSide, type PaneDirection, type TabLayout, directionNeighbor, dropPreview, layoutTree, resizePreview, swapDirections, swapInLayout } from '#shared/layout'
 import { closeConfirm } from '~/utils/spaceConfirm'
 import { herdrPaneId, paneIdLine } from '~/utils/paneId'
@@ -30,6 +32,27 @@ async function spaceApi(body: Record<string, unknown>): Promise<SpaceReply | nul
 // created; the tab is born on clicking "Launch" (NewAgentSheet), closing it
 // has left no trace in Herdr.
 export function newTab(workspaceId: string) {
+  haptic()
+  // herdr-core: "+" starts a terminal like the space's current one, no sheet.
+  if (coreMode()) {
+    const lead = leadPane(spaceTabs(workspaceId).flatMap(e => e.panes))
+    const body = sameTabBody(lead || undefined, [...HERDR_AGENT_KINDS])
+    if (body) return void quickTab(body)
+  }
+  newSplit.value = null
+  newTabSpace.value = workspaceId
+  newAgentOpen.value = true
+}
+async function quickTab(body: Record<string, unknown>) {
+  try {
+    const r = await api<{ pane_id: string }>('/api/agents', body)
+    toast(t('Tab created'))
+    navigateTo(panePath(r.pane_id))
+  }
+  catch (err) { toast((err as Error).message, true) }
+}
+// New tab with a choice of kind and folder (the sheet), also in herdr-core.
+export function newTabChoose(workspaceId: string) {
   haptic()
   newSplit.value = null
   newTabSpace.value = workspaceId
@@ -241,7 +264,7 @@ const coreMode = () => useRuntimeConfig().public.core
 export function tabItems(tabId: string): MenuItem[] {
   const e = tabOf(tabId)
   if (!e) return []
-  if (coreMode()) return [newTabItem(e.tab.workspace)]
+  if (coreMode()) return [newTabItem(e.tab.workspace), { label: t('New tab…'), icon: 'i-lucide-folder-plus', run: () => newTabChoose(e.tab.workspace) }]
   return [
     { label: t('Rename tab'), icon: 'i-lucide-pencil', run: () => renameTab(tabId) },
     newTabItem(e.tab.workspace),

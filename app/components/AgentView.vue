@@ -20,6 +20,7 @@ import type { Pane, QueuedMessage } from '#shared/types'
 import { coreAgentMenu } from '~/utils/coreAgentMenu'
 import type { PaneViewMode } from '~/composables/useHerdr'
 import { neighborPane } from '#shared/layout'
+import { spaceMapLayout } from '#shared/coreTabMap'
 import { swipeAxis, swipeOffset, swipeStep } from '~/utils/swipe'
 import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 import { carriesFiles, dragDepth } from '~/utils/fileDrop'
@@ -48,6 +49,14 @@ onUnmounted(() => {
 })
 
 const pane = computed(() => herdrState.value.panes.find(p => p.id === props.paneId))
+// herdr-core: opening a finished agent reads it (herdr.seen), once per turn, while the page is visible.
+const pageVisible = ref(true)
+const syncVisible = () => { pageVisible.value = document.visibilityState !== 'hidden' }
+onMounted(() => { syncVisible(); document.addEventListener('visibilitychange', syncVisible) })
+onUnmounted(() => document.removeEventListener('visibilitychange', syncVisible))
+watch(() => (core && live.value && pageVisible.value && pane.value?.agent && pane.value.status === 'done' ? pane.value.id : null), (id) => {
+  if (id) api('/api/seen', { pane_id: id, read: true }).catch(() => {})
+}, { immediate: true })
 const compactPhone = computed(() => !desk.value && !tablet.value && !props.cell)
 const phoneKeysOpen = ref(false)
 watch(() => props.paneId, () => { phoneKeysOpen.value = false })
@@ -396,6 +405,7 @@ function coreMenuItems(p: Pane | undefined): MenuItem[] {
     pane: p,
     keep: p && kept.value !== null ? { on: kept.value, toggle: () => toggleKeep(p) } : undefined,
     takeControl: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => ctl.connect(true)) },
+    rename: (id) => { renameTarget.value = id },
     reconnect: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => { ctl.reset(); ctl.connect(false) }) },
     browseFiles: () => { filesOpen.value = true },
     settings: props.cell ? [] : settingsMenuItems(),
@@ -500,6 +510,25 @@ function openPlan() {
   if (!tabEnt.value) return
   if (desk.value) navigateTo({ path: tabPath(tabEnt.value.tab.id), query: { pane: props.paneId } })
   else backToTab(tabEnt.value.tab.id)
+}
+// herdr-core: map of the space's terminals (each one a tab, no layout) -> list to switch.
+const isCore = core
+const spaceMap = computed(() => {
+  if (!isCore || props.cell || !pane.value) return null
+  const tabs = spaceTabs(pane.value.workspace)
+  if (tabs.length < 2) return null
+  const panes = tabs.map(e => e.panes[0]!)
+  return { layout: spaceMapLayout(pane.value.workspace, panes.map(p => p.id)), panes, tabs }
+})
+function openSpaceMap() {
+  const m = spaceMap.value
+  if (!m || !pane.value) return
+  const ws = pane.value.workspace
+  openMenu([
+    ...m.tabs.map(e => ({ label: e.tab.label || String(e.tab.number), icon: e.panes[0]!.id === props.paneId ? 'i-lucide-check' : 'i-lucide-square-terminal', desc: paneTitle(e.panes[0]!), run: () => switchSpaceTab(e.tab.id) })),
+    { kind: 'separator' as const },
+    newTabItem(ws),
+  ], t('Tabs of this space'))
 }
 // Header and browser back share the same history entry.
 const goBack = useViewBack()
@@ -629,6 +658,9 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
             v-if="headerAdd && pane && !compactPhone" icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn"
             :aria-label="t('New tab')" :title="t('New tab')" :disabled="offlineView" @click="newTab(pane.workspace)"
           />
+          <button v-if="spaceMap" type="button" class="map-btn" data-testid="space-map" :aria-label="t('Tab map')" :title="t('Tab map')" @click="openSpaceMap">
+            <TabMap :layout="spaceMap.layout" :panes="spaceMap.panes" :current="paneId" />
+          </button>
           <UTooltip v-if="cell" :text="t('Open alone')">
             <UButton icon="i-lucide-maximize-2" color="neutral" variant="ghost" size="md" class="icon-btn cell-extra" :aria-label="t('Open alone')" :to="panePath(paneId)" />
           </UTooltip>
