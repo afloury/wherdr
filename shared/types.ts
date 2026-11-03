@@ -149,6 +149,8 @@ export interface Pane {
   // messages wait for it (see server/utils/queued.ts lookForLeftMenu).
   menuLeftOpen?: boolean
   preview?: string
+  // Codex: the error its last turn ended with ("You've hit your usage limit…"), read from the screen.
+  error?: string
   model?: ModelInfo
   // Claude working, conversation shown: verb of its activity line ("Orbiting").
   activity?: string

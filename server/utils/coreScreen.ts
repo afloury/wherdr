@@ -4,6 +4,7 @@
 // reports nothing, the status. Reads are cached, bounded and never fatal.
 import type { Choices, Pane } from '../../shared/types'
 import { classifyScreen, confirmedInput } from '../../shared/interactiveScreen'
+import { codexError } from '../../shared/codexError'
 import { hasTranscript } from '../../shared/agentKind'
 import { parseChoices, parseOmpPrompt, promptIdentity, completeClaudeAsk, type ClaudeAsked } from './choices'
 
@@ -84,6 +85,9 @@ export function createCoreScreens(deps: CoreScreenDeps) {
         let choices = r.choices
         if (choices && p.agent === 'claude' && deps.asked) choices = completeClaudeAsk(choices, await deps.asked(p).catch(() => []))
         if (r.status) p.status = r.status
+        const error = p.agent === 'codex' ? codexError(c.text) : null
+        if (error) p.error = error
+        else delete p.error
         p.interaction = failed.has(p.id) ? 'unknown' : r.interaction
         if (choices && r.interaction === 'native') p.prompt = choices
       }

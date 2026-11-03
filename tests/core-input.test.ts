@@ -81,3 +81,25 @@ describe('keep after restart', () => {
     await expect(coreKeepSet(t.d, { pane_id: 't1', keep: 'yes' })).rejects.toMatchObject({ code: 'bad_keep' })
   })
 })
+
+describe('core interrupt: prompt put back by Claude', () => {
+  it('returns the text taken back after a Stop from the conversation', async () => {
+    const t = deps(() => ({ outcome: 'stopped' }))
+    const taken: string[] = []
+    t.d.takeBack = async (p) => { taken.push(p.id); return { text: 'queued message', lost: 0 } }
+    expect(await coreInterrupt(t.d, { pane_id: 't1', restore: true })).toMatchObject({ stopped: true, restored: 'queued message' })
+    expect(taken).toEqual(['t1'])
+  })
+  it('does not take anything back without restore, when not stopped, or for another agent', async () => {
+    const t = deps(() => ({ outcome: 'timeout' }))
+    let n = 0
+    t.d.takeBack = async () => { n++; return { text: 'x', lost: 0 } }
+    expect(await coreInterrupt(t.d, { pane_id: 't1', restore: true })).not.toHaveProperty('restored')
+    const u = deps(() => ({ outcome: 'stopped' }))
+    u.d.takeBack = async () => { n++; return { text: 'x', lost: 0 } }
+    await coreInterrupt(u.d, { pane_id: 't1' })
+    ;(u.d.pane('t2') as Pane).agent = 'codex'
+    await coreInterrupt(u.d, { pane_id: 't2', restore: true })
+    expect(n).toBe(0)
+  })
+})

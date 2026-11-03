@@ -82,10 +82,10 @@ function removeAll() {
     <div class="settings-group notification-default" data-testid="notification-default">
       <h3>{{ t('Default (applies to everything)') }}</h3>
       <NotificationLevel :events="defaultEvents" :label="t('Default level')" @change="events => setDefault({ events })" />
-      <label class="settings-toggle notification-subagents">
+      <label v-if="!core" class="settings-toggle notification-subagents">
         <span><b>{{ t('Sub-agents') }}</b><small>{{ rules.default.subagents
           ? t('On: task agents (workers, reviewers, attempts) notify too, at the same level.')
-          : (core ? t('Off: only standalone agents and coordinators notify. Task agents stay silent.') : t('Off: only coordinators, standalone agents and board events notify. Task agents stay silent.')) }}</small></span>
+          : t('Off: only coordinators, standalone agents and board events notify. Task agents stay silent.') }}</small></span>
         <USwitch color="success" size="xl" :model-value="rules.default.subagents" :aria-label="t('Sub-agents')" @update:model-value="v => setDefault({ subagents: v })" />
       </label>
       <p class="muted notification-help">{{ t('Visible conversations stay silent on every device. Push resumes after about 30 seconds away. Inactive tabs expire automatically.') }}</p>
@@ -93,7 +93,7 @@ function removeAll() {
 
     <div class="settings-group notification-exceptions" data-testid="notification-exceptions">
       <h3>{{ t('Exceptions') }}</h3>
-      <p v-if="!exceptions.length" class="muted">{{ t('No exceptions: everything follows the default. Add one for a coordinator or an agent, or use Notifications in its menu.') }}</p>
+      <p v-if="!exceptions.length" class="muted">{{ core ? t('No exceptions: everything follows the default. Add one for an agent, or use Notifications in its menu.') : t('No exceptions: everything follows the default. Add one for a coordinator or an agent, or use Notifications in its menu.') }}</p>
       <article v-for="{ e, machine, name } in exceptions" :key="JSON.stringify([e.kind, e.machine, e.id])" class="notification-rule" data-testid="notification-exception">
         <div class="notification-rule-head">
           <small>{{ machine }} · {{ kindLabel(e) }}</small>

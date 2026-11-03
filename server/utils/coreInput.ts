@@ -6,7 +6,14 @@ import { HerdrError } from './herdr'
 import type { Pane } from '../../shared/types'
 
 type Call = <T>(method: string, params: object, timeout: number) => Promise<T>
-export interface CoreInputDeps { call: Call, pane: (id: string) => Pane | undefined, panes: () => Pane[], refresh: () => void }
+export interface CoreInputDeps {
+  call: Call
+  pane: (id: string) => Pane | undefined
+  panes: () => Pane[]
+  refresh: () => void
+  /** After a Stop from the conversation: the prompt Claude put back into its field, taken out of it. */
+  takeBack?: (p: Pane) => Promise<{ text: string, lost: number } | null>
+}
 
 const KEY_RE = /^[a-z0-9+\-]{1,24}$/i
 const MAX_TEXT = 256 * 1024
@@ -21,6 +28,14 @@ export function coreInputDeps(): CoreInputDeps {
     pane: id => findPane(id),
     panes: () => getState().panes,
     refresh: () => { setTimeout(() => { void poll() }, 100) },
+    takeBack: (p) => {
+      const call = (method: string, params: object, t: number) => coreCall(process.env.HC_SOCKET || '', method, params, t)
+      return takeBackFromClaude(p, {
+        // Core's plain screen: Claude's field starts with "❯" + a space (a non-breaking one in ANSI).
+        screen: async () => String(((await call('terminal.read', { terminal: p.coreAddress, lines: 0 }, 4000)) as { text?: string }).text || '').replace(/^❯ /gm, '❯\u00a0'),
+        keys: async (keys) => { await call('terminal.keys', { terminal: p.coreAddress, keys }, 10000) },
+      }).then(item => (item ? takeBack(p.id, item) : null))
+    },
   }
 }
 
@@ -72,11 +87,15 @@ export async function coreInput(deps: CoreInputDeps, b: { pane_id?: unknown, tex
 }
 
 // Stop button: the stop key, then what core observed. Never escalates to a kill.
-export async function coreInterrupt(deps: CoreInputDeps, b: { pane_id?: unknown }) {
+export async function coreInterrupt(deps: CoreInputDeps, b: { pane_id?: unknown, restore?: unknown }) {
   const p = target(deps, b.pane_id)
   try {
     const r = await deps.call<{ outcome: string }>('terminal.interrupt', { terminal: p.coreAddress, timeout: 10 }, 15000)
-    return { ok: true, outcome: r.outcome, stopped: r.outcome === 'stopped' || r.outcome === 'exited', background: 0, shell: !p.agent }
+    const stopped = r.outcome === 'stopped' || r.outcome === 'exited'
+    // Claude puts the message it had not sent back into its field: it leaves the
+    // conversation and returns to wherdr's field (see interruptRestore.ts).
+    const back = stopped && b.restore === true && p.agent === 'claude' && deps.takeBack ? await deps.takeBack(p).catch(() => null) : null
+    return { ok: true, outcome: r.outcome, stopped, background: 0, shell: !p.agent, ...(back ? { restored: back.text, ...(back.lost ? { lost: back.lost } : {}) } : {}) }
   } catch (e) { failure(e) } finally { deps.refresh() }
 }
 

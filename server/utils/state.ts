@@ -688,10 +688,10 @@ export function takeBack(paneId: string, item: { text: string, ts?: string | nul
 // After an interrupt: the prompt Claude put back into its field, taken out of
 // it (see interruptRestore.ts). The transcript is looked for again: a brand new
 // Claude's first message may be the only thing in it, and only just written.
-export function takeBackFromClaude(p: Pane): Promise<ChatItem | null> {
+export function takeBackFromClaude(p: Pane, io?: { screen: () => Promise<string>, keys: (keys: string[]) => Promise<void> }): Promise<ChatItem | null> {
   return takeBackInterrupted({
-    screen: async () => String(((await herdr('pane.read', { pane_id: p.id, source: 'visible', format: 'ansi' }, 4000)).read || {}).text || ''),
-    keys: async (keys) => { await herdr('pane.send_input', { pane_id: p.id, keys }) },
+    screen: io?.screen ?? (async () => String(((await herdr('pane.read', { pane_id: p.id, source: 'visible', format: 'ansi' }, 4000)).read || {}).text || '')),
+    keys: io?.keys ?? (async (keys) => { await herdr('pane.send_input', { pane_id: p.id, keys }) }),
     chat: async () => (await transcripts.chat(p, { fresh: true })).items || [],
     sleep,
     pending: () => (queued.get(p.id) || []).map(q => q.text),

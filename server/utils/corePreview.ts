@@ -14,8 +14,13 @@ const RULE = /^[\s─━│┃┌┐└┘├┤┬┴┼╭╮╰╯═║\-_=*
 // TUI footers (Claude, Codex): key hints and mode lines, never content.
 const FOOTER = /^(?:[⏵▶►]{1,2}\s|←\s+for agents|\?\s+for shortcuts|auto mode (?:on|off)\b|accept edits on\b|plan mode on\b|bypass permissions on\b|esc to interrupt|enter to (?:confirm|select)\b|esc to cancel|ctrl\+[a-z] to |shift\+tab to |tab to (?:queue|cycle)|\d+% context left|gpt-[\w.-]+ .*·|\S+ · \d+% left)/iu
 
+// Empty-input placeholders ("› Ask Codex to do anything", '❯ Try "fix lint errors"') and the
+// status lines under them ("◐ medium · /effort", "GPT-6 medium · ~/dir · title").
+const PLACEHOLDER = /^[›❯]\s+(?:Ask \S+ to do anything|Try "[^"]*"|Type a message)\s*$/iu
+const MODEL_LINE = /^(?:[◐◑◒◓○●◔◕]\s+)?(?:\S+\s+)?(?:minimal|low|medium|high|xhigh|max)\s+·\s/iu
+
 export function lastLine(text: string): string | null {
-  const lines = text.split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim() && !RULE.test(l) && !PROMPT.test(l.trim()) && !FOOTER.test(l.trim()))
+  const lines = text.split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim() && !RULE.test(l) && !PROMPT.test(l.trim()) && !FOOTER.test(l.trim()) && !PLACEHOLDER.test(l.trim()) && !MODEL_LINE.test(l.trim()))
   const line = lines.at(-1)?.trim()
   if (!line) return null
   return line.length > MAX ? `${line.slice(0, MAX - 1)}…` : line
@@ -32,6 +37,7 @@ export function createCorePreviews(deps: CorePreviewDeps) {
   const cache = new Map<string, { key: string, text: string | null, at: number }>()
   const busy = new Set<string>()
   async function load(p: Pane): Promise<string | null> {
+    if (p.error) return p.error.length > MAX ? `${p.error.slice(0, MAX - 1)}…` : p.error
     if (p.agent) {
       const reply = await deps.reply(p).catch(() => null)
       if (reply?.text) return reply.text.length > MAX ? `${reply.text.slice(0, MAX - 1)}…` : reply.text
@@ -46,7 +52,7 @@ export function createCorePreviews(deps: CorePreviewDeps) {
       for (const p of panes) {
         if (!p.coreAddress) continue
         const hit = cache.get(p.id)
-        const key = `${p.status}:${p.stateSeq ?? ''}`
+        const key = `${p.status}:${p.stateSeq ?? ''}:${p.error ? 'e' : ''}`
         const due = !hit || hit.key !== key || (p.status === 'working' && now() - hit.at > WORKING_MS)
         if (due && !busy.has(p.id) && busy.size < MAX_BUSY) {
           busy.add(p.id)

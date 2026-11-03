@@ -1113,6 +1113,7 @@ const status = computed(() => {
     return { typing: true, omp: true, since: a.since, text: a.step || `${kindLabel(p.agent)} ${tl('is working…', 'travaille…')}` }
   }
   if (p.status === 'working') return { typing: true, text: `${kindLabel(p.agent)} ${tl('is working…', 'travaille…')}` }
+  if (p.error) return { typing: false, error: true, text: p.error }
   if (p.status === 'blocked' && !p.menu && !waiting.value && !(p.prompt && p.prompt.options) && !knownScreen(p)) return { typing: false, text: t('Waiting for your reply — details in the Terminal tab') }
   return null
 })

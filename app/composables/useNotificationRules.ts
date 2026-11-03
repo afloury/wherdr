@@ -21,8 +21,8 @@ export const levelLabel = (l: NotificationLevel | 'custom') => ({
 })[l]
 export const levelHint = (l: NotificationLevel) => ({
   'muted': t('Nothing.'),
-  'needs-you': t('A task or a coordinator is waiting for you.'),
-  'finished': t('Also a finished task, or a coordinator that finished answering you.'),
+  'needs-you': useRuntimeConfig().public.core ? t('An agent is waiting for you.') : t('A task or a coordinator is waiting for you.'),
+  'finished': useRuntimeConfig().public.core ? t('Also an agent that finished answering you.') : t('Also a finished task, or a coordinator that finished answering you.'),
   'all': t('Also every intermediate message.'),
 })[l]
 export const eventLabel = (e: NotificationEvent) => ({ 'needs-you': t('Needs you'), 'finished': t('Finished'), 'message': t('New message'), 'scheduled': t('Scheduled task') })[e]
