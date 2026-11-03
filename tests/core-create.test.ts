@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CoreError } from '../server/utils/core'
-import { coreAddMachine, coreCreate, coreIsGit, coreListDirs, type CoreAdminDeps } from '../server/utils/coreCreate'
+import { coreAddMachine, coreForgetMachine, coreRenameMachine, coreStatus, versionAtLeast, coreCreate, coreIsGit, coreListDirs, type CoreAdminDeps } from '../server/utils/coreCreate'
 import type { MachineInfo, Pane, Workspace } from '../shared/types'
 
 const b64 = (s: string) => Buffer.from(s).toString('base64')
@@ -25,6 +25,7 @@ function setup(reply: (method: string, params: any) => unknown = () => ({})) {
     settle: async () => {},
     recent: async () => [],
     remember: async () => {},
+    launchWatchMs: 0,
   }
   const execReply = (params: any) => {
     const script: string = params.argv[2]
@@ -63,6 +64,21 @@ describe('core creation', () => {
     expect(Object.keys(t.runs()[0]![1].labels)).toEqual(['wherdr-request'])
   })
 
+  it('reports an agent that exits with an error right away, with its last output', async () => {
+    const t = setup((method) => {
+      if (method === 'terminal.run') return { address: 't3' }
+      if (method === 'terminal.get') return { state: 'finished', exit_code: 127 }
+      if (method === 'terminal.read') return { text: 'one\n\nclaude: command not found\n' }
+      return {}
+    })
+    await expect(coreCreate(t.deps, { kind: 'claude', cwd: '/home/u' })).rejects.toMatchObject({
+      code: 'launch_failed', message: 'claude stopped right after starting (exit code 127). Last output:\none\nclaude: command not found',
+    })
+  })
+  it('does not call a clean exit a failure', async () => {
+    const t = setup((method) => method === 'terminal.run' ? { address: 't3' } : method === 'terminal.get' ? { state: 'finished', exit_code: 0 } : {})
+    expect(await coreCreate(t.deps, { kind: 'claude', cwd: '/home/u' })).toMatchObject({ pane_id: 'w2:p2' })
+  })
   it('runs a terminal without parent, with a correlation label, on a machine', async () => {
     const t = setup(() => ({ address: 'vps/t7' }))
     const r = await coreCreate(t.deps, { kind: 'shell', machine: '7667', cwd: '/home/u/app', name: 'My Shell' })
@@ -123,5 +139,33 @@ describe('core creation', () => {
     await expect(coreAddMachine(t.deps, { target: 'x', name: 'Bad Name' })).rejects.toMatchObject({ code: 'bad_name' })
     const taken = setup(() => new CoreError('already_added', 'x'))
     await expect(coreAddMachine(taken.deps, { target: 'vps' })).rejects.toMatchObject({ code: 'already_added' })
+  })
+  it('refuses host:port on a core older than 0.1.17, with a clear message', async () => {
+    const old = setup(m => m === 'server.status' ? { version: '0.1.16' } : {})
+    await expect(coreAddMachine(old.deps, { target: 'me@10.0.0.7:2222' })).rejects.toMatchObject({ code: 'port_unsupported' })
+    expect(old.calls.some(([m]) => m === 'machine.add')).toBe(false)
+    const current = setup(m => m === 'server.status' ? { version: '0.1.17' } : {})
+    await coreAddMachine(current.deps, { target: 'me@10.0.0.7:2222' })
+    expect(current.calls.at(-1)![0]).toBe('machine.add')
+    const plain = setup()
+    await coreAddMachine(plain.deps, { target: 'me@10.0.0.7' })
+    expect(plain.calls.map(([m]) => m)).toEqual(['machine.add'])
+    expect(versionAtLeast('0.2.0', [0, 1, 17]) && versionAtLeast('1.0.0', [0, 1, 17]) && !versionAtLeast('0.1.9', [0, 1, 17])).toBe(true)
+  })
+  it('renames a machine by its listed name and maps a taken name', async () => {
+    const t = setup()
+    await coreRenameMachine(t.deps, { key: '7667', name: 'box' })
+    expect(t.calls.at(-1)).toEqual(['machine.rename', { machine: 'vps', new_name: 'box' }])
+    await expect(coreRenameMachine(t.deps, { key: '7667', name: 'Bad Name' })).rejects.toMatchObject({ code: 'bad_name' })
+    await expect(coreRenameMachine(t.deps, { key: '', name: 'box' })).rejects.toMatchObject({ code: 'bad_machine' })
+    const taken = setup(() => new CoreError('name_taken', 'x'))
+    await expect(coreRenameMachine(taken.deps, { key: '7667', name: 'off' })).rejects.toMatchObject({ code: 'name_taken' })
+  })
+  it('forgets a remote machine only and reports the core status', async () => {
+    const t = setup(m => m === 'server.status' ? { version: '0.1.17', pid: 4, uptime_ms: 5000, live: 2, finished: 0, core: { name: 'me' } } : {})
+    await coreForgetMachine(t.deps, '7667')
+    expect(t.calls.at(-1)).toEqual(['machine.rm', { machine: 'vps' }])
+    await expect(coreForgetMachine(t.deps, '')).rejects.toMatchObject({ code: 'bad_machine' })
+    expect(await coreStatus(t.deps)).toEqual({ version: '0.1.17', pid: 4, uptimeMs: 5000, live: 2, finished: 0, name: 'me' })
   })
 })

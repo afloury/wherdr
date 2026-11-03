@@ -3,5 +3,6 @@
 export default defineApi((event, b) => {
   const pane = String(getQuery(event).pane || '')
   const ext = String(getQuery(event).ext || '')
+  if (process.env.WHERDR_BACKEND === 'core') return corePutFile(coreInputDeps(), pane, ext, b.data)
   return saveUpload(b.data, b.ctype, PANE_RE.test(pane) ? pane : null, ext)
 }, { raw: /^application\/octet-stream$/ })

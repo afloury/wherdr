@@ -8,14 +8,19 @@ import d from './coreAgentMenu/d'
 import e from './coreAgentMenu/e'
 import f from './coreAgentMenu/f'
 import g from './coreAgentMenu/g'
+import h from './coreAgentMenu/h'
 
 export interface CoreMenuContext {
   pane: Pane | undefined
+  /** "Keep after restart" of the pane (WHR-252): absent until its state is read. */
+  keep?: { on: boolean, toggle: () => void }
   /** Take control of the terminal / reconnect it (they live in AgentView). */
   takeControl: () => void
   reconnect: () => void
   /** Opens the rename sheet for a pane. */
   rename: (paneId: string) => void
+  /** Opens the file browser of the agent's folder. */
+  browseFiles: () => void
   /** Settings entries (not in a side-by-side cell), already built. */
   settings: MenuItem[]
   /** Close entry, absent on the compact phone. */
@@ -24,7 +29,7 @@ export interface CoreMenuContext {
 
 export type CoreMenuContribution = (ctx: CoreMenuContext) => MenuItem[]
 
-const CONTRIBUTIONS: CoreMenuContribution[] = [d, e, f, g]
+const CONTRIBUTIONS: CoreMenuContribution[] = [d, e, f, g, h]
 
 export function coreAgentMenu(ctx: CoreMenuContext): MenuItem[] {
   const items: MenuItem[] = [

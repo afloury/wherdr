@@ -24,6 +24,7 @@ export interface CoreAdminDeps {
   settle: () => Promise<unknown> // fresh inventory, published
   recent: (m: MachineInfo) => Promise<string[]>
   remember: (dir: string, m: MachineInfo) => Promise<unknown>
+  launchWatchMs?: number // how long a new agent is watched for an immediate failure (default 2 s)
 }
 
 const REQUEST_LABEL = 'wherdr-request'
@@ -106,6 +107,25 @@ export async function coreMachineConfigs(deps: CoreAdminDeps): Promise<MachineCo
   }))
 }
 
+interface CoreFacts { state?: string, exit_code?: number | null, signal?: string | null, reason?: string }
+
+// An agent that ends with a failure within a couple of seconds did not start: say so with
+// the exit code and the last lines it printed, rather than leaving a dead entry to find.
+async function launchFailure(deps: CoreAdminDeps, address: string, ms: number): Promise<{ code: string, lines: string } | null> {
+  const end = Date.now() + ms
+  do {
+    const t = await deps.call<CoreFacts>('terminal.get', { terminal: address }, 3000).catch(() => null)
+    if (t?.state === 'finished') {
+      if (t.exit_code === 0) return null
+      const out = await deps.call<{ text?: string }>('terminal.read', { terminal: address, lines: 20 }, 3000).catch(() => null)
+      const lines = String(out?.text || '').split('\n').map(l => l.trimEnd()).filter(Boolean).slice(-8).join('\n')
+      return { code: t.exit_code == null ? String(t.signal || t.reason || '?') : String(t.exit_code), lines }
+    }
+    if (Date.now() < end) await new Promise(r => setTimeout(r, 250))
+  } while (Date.now() < end)
+  return null
+}
+
 export interface CreateBody { kind?: unknown, machine?: unknown, cwd?: unknown, name?: unknown, workspace?: unknown }
 
 const newId = (prefix: string) => prefix + crypto.randomBytes(16).toString('hex')
@@ -152,7 +172,8 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
     address = found
   }
   await deps.remember(cwd, m).catch(() => {})
-  await deps.settle()
+  const [failed] = await Promise.all([kind === 'shell' ? null : launchFailure(deps, address, deps.launchWatchMs ?? 2000), deps.settle()])
+  if (failed) throw new HerdrError('launch_failed', fmt('{kind} stopped right after starting (exit code {code}). Last output:\n{lines}', { kind, code: failed.code, lines: failed.lines || '(none)' }))
   const pane = deps.panes().find(p => p.coreAddress === address)
   if (!pane) throw new HerdrError('uncertain', 'Created, but not in the list yet: check the list before creating it again')
   return { pane_id: pane.id, workspace_id: pane.workspace, name: kind === 'shell' ? null : name || kind }
@@ -165,6 +186,11 @@ export async function coreAddMachine(deps: CoreAdminDeps, body: { target?: unkno
   const name = typeof body.name === 'string' ? body.name.trim() : ''
   if (!TARGET_RE.test(target)) throw new HerdrError('bad_target', 'Invalid SSH target')
   if (name && !NAME_RE.test(name)) throw new HerdrError('bad_name', 'The name uses a-z, 0-9, - _ . (32 at most)')
+  // `user@host:port` (also `[::1]:22`) needs core 0.1.17+: say so instead of a vague SSH failure.
+  if (/:\d{1,5}$/.test(target)) {
+    const status = await deps.call<{ version?: string }>('server.status', {}, 8000).catch(() => null)
+    if (status?.version && !versionAtLeast(status.version, [0, 1, 17])) throw new HerdrError('port_unsupported', 'host:port needs herdr-core 0.1.17 or newer')
+  }
   try {
     await deps.call('machine.add', { target, ...(name ? { name } : {}) }, 60000)
   } catch (e) {
@@ -179,6 +205,46 @@ export async function coreAddMachine(deps: CoreAdminDeps, body: { target?: unkno
   }
   await deps.settle()
   return { ok: true }
+}
+
+export function versionAtLeast(version: string, min: [number, number, number]) {
+  const v = version.split('.').map(n => parseInt(n, 10) || 0)
+  for (let i = 0; i < 3; i++) if ((v[i] ?? 0) !== min[i]) return (v[i] ?? 0) > min[i]!
+  return true
+}
+
+function remoteMachine(deps: CoreAdminDeps, key: unknown) {
+  const m = deps.machines().find(x => x.key === String(key || '') && !x.local)
+  if (!m) throw new HerdrError('bad_machine', 'unknown remote machine')
+  return m
+}
+
+// Renames a machine here only (addresses with the old name stop working).
+export async function coreRenameMachine(deps: CoreAdminDeps, body: { key?: unknown, name?: unknown }) {
+  const m = remoteMachine(deps, body.key)
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  if (!NAME_RE.test(name)) throw new HerdrError('bad_name', 'The name uses a-z, 0-9, - _ . (32 at most)')
+  try { await deps.call('machine.rename', { machine: m.label, new_name: name }, 15000) } catch (e) {
+    if (e instanceof CoreError && e.kind === 'name_taken') throw new HerdrError('name_taken', 'A machine with this name already exists')
+    return failure(e)
+  }
+  await deps.settle()
+  return { ok: true }
+}
+
+// Forgets a machine: only this core's entry goes, its terminals keep running there.
+export async function coreForgetMachine(deps: CoreAdminDeps, key: unknown) {
+  const m = remoteMachine(deps, key)
+  try { await deps.call('machine.rm', { machine: m.label }, 15000) } catch (e) { return failure(e) }
+  await deps.settle()
+  return { ok: true }
+}
+
+export async function coreStatus(deps: CoreAdminDeps) {
+  try {
+    const s = await deps.call<{ version: string, pid: number, uptime_ms: number, live: number, finished: number, core?: { name?: string } }>('server.status', {}, 8000)
+    return { version: s.version, pid: s.pid, uptimeMs: s.uptime_ms, live: s.live, finished: s.finished, name: s.core?.name ?? null }
+  } catch (e) { return failure(e) }
 }
 
 export async function coreConnectMachine(deps: CoreAdminDeps, key: unknown) {

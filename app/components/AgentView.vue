@@ -388,12 +388,25 @@ function onComposerKey(e: KeyboardEvent) {
   if (field?.value) return
   if (composer.value?.stop() !== false) { e.preventDefault(); e.stopPropagation() }
 }
+// "Keep after restart" (terminal.keep): read when the pane changes, flipped from the menu.
+const kept = ref<boolean | null>(null)
+watch(() => (core ? pane.value?.id : undefined), async (id) => {
+  kept.value = null
+  if (!id) return
+  try { const r = await api<{ keep: boolean }>(`/api/keep?pane=${encodeURIComponent(id)}`); if (pane.value?.id === id) kept.value = r.keep } catch { /* the item stays hidden */ }
+}, { immediate: true })
+async function toggleKeep(p: Pane) {
+  const keep = !kept.value
+  try { kept.value = (await api<{ keep: boolean }>('/api/keep', { pane_id: p.id, keep })).keep } catch (err) { toast((err as Error).message, true) }
+}
 function coreMenuItems(p: Pane | undefined): MenuItem[] {
   return coreAgentMenu({
     pane: p,
+    keep: p && kept.value !== null ? { on: kept.value, toggle: () => toggleKeep(p) } : undefined,
     takeControl: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => ctl.connect(true)) },
     rename: (id) => { renameTarget.value = id },
     reconnect: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => { ctl.reset(); ctl.connect(false) }) },
+    browseFiles: () => { filesOpen.value = true },
     settings: props.cell ? [] : settingsMenuItems(),
     close: p && !compactPhone.value ? closePaneItem(p, live.value ? shortcutKbds('close-pane') : undefined) : undefined,
   })

@@ -13,7 +13,7 @@ import { SNIFF_BYTES, attachmentRef, checkAttachment, isStoredAttachmentName, st
 
 const fsp = fs.promises
 
-const REFUSED: Record<RefuseReason, string> = {
+export const REFUSED: Record<RefuseReason, string> = {
   archive: 'Archives cannot be read by the agent: extract the files first',
   video: 'Videos cannot be read by the agent',
   audio: 'Audio files cannot be read by the agent',

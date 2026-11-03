@@ -7,5 +7,6 @@ export default defineApi((event, b) => {
   const q = getQuery(event)
   const pane = String(q.pane || '')
   if (!PANE_RE.test(pane)) throw new HerdrError('bad_pane', 'Invalid pane')
+  if (process.env.WHERDR_BACKEND === 'core') return corePutAttachment(coreInputDeps(), pane, String(q.name || '').slice(0, 255), b.data)
   return saveAttachment(b.data, String(q.name || '').slice(0, 255), pane)
 }, { raw: /^application\/octet-stream$/, max: ATTACH_MAX, tooLarge: 'File too large (30 MB max)' })
