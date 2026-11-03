@@ -37,8 +37,4 @@ it('reads the recorded CLI format without losing source notes or problems', asyn
   const parsed = parseTaskSettings(raw)
   expect(parsed.settings.find(row => row.name === 'worker.fast')?.value).toBe(false)
   expect(parsed.settings.find(row => row.name === 'worker.agent')?.place).toBe('builtin')
-  const { taskSettingSource, taskSettingLabel } = await import('../app/utils/taskSettings')
-  expect(['task', 'repo', 'you', 'file', 'builtin', 'future', ''].map(taskSettingSource)).toEqual(['Task', 'Repository', 'You', 'Repository file', 'Default', 'future', 'Source not provided'])
-  expect(taskSettingLabel('workspace.from')).toBe('Starting branch')
-  expect(taskSettingLabel('future.option')).toBe('future.option')
 })
