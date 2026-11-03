@@ -557,7 +557,7 @@ onMounted(() => {
             <UpdateBanner v-if="!core && updateInfo?.latest" :info="updateInfo" />
             <p v-else-if="!core && updateInfo?.checked" class="muted settings-hint">{{ t('This is the latest version.') }}</p>
             <button type="button" class="settings-action solo" @click="reloadApp"><UIcon name="i-lucide-refresh-cw" />{{ t('Reload app') }}</button>
-            <button type="button" class="settings-action solo" @click="openOnboarding"><UIcon name="i-lucide-compass" />{{ tl('Setup guide', 'Guide de démarrage') }}</button>
+            <button v-if="!core" type="button" class="settings-action solo" @click="openOnboarding"><UIcon name="i-lucide-compass" />{{ tl('Setup guide', 'Guide de démarrage') }}</button>
           </div>
         </div>
       </div>
