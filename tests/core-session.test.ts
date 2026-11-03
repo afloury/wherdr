@@ -156,3 +156,50 @@ it('a reconnect snapshot raises no alert (only live events do)', async () => {
   sockets[0]!.feed({ jsonrpc: '2.0', id: 1, result: { seq: 1, terminals: [term('t1', { status: { state: 'blocked' } })] } })
   expect(onEvent).not.toHaveBeenCalled()
 })
+
+// Recorded from hc 0.1.16: a remote machine renamed, then its core restarted (server_stop).
+it('drops a remote terminal that ends while its machine reconnects', async () => {
+  const { session, sockets, log } = open()
+  await Promise.resolve()
+  const missed = (seq: number, terminals: CoreTerminal[]) => ({ jsonrpc: '2.0', method: 'missed', params: { seq, terminals } })
+  sockets[0]!.feed({ jsonrpc: '2.0', id: 1, result: { seq: 10, terminals: [term('t1'), term('sim/t1'), term('sim/t2')] } })
+  sockets[0]!.feed(
+    ev(11, 'removed', 'sim/t1'), ev(12, 'removed', 'sim/t2'),
+    // Core re-announces the machine's terminals under the new name, an old finished one included.
+    ev(13, 'created', 'simx/t1', { address: 'simx/t1', cwd: '/w', state: 'finished', reason: 'server_stop' }),
+    ev(14, 'created', 'simx/t2', { address: 'simx/t2', cwd: '/w', state: 'live' }),
+    ev(15, 'finished', 'simx/t2', { reason: 'server_stop' }))
+  expect(session.snapshot()?.map(t => t.address)).toEqual(['t1'])
+  // The machine is back: core resyncs with every terminal, finished ones included.
+  sockets[0]!.feed(missed(15, [term('t1'), term('simx/t1', { state: 'finished' }), term('simx/t2', { state: 'finished' })]),
+    ev(16, 'created', 'simx/t3', { address: 'simx/t3', cwd: '/w', state: 'live' }))
+  expect(session.snapshot()?.map(t => t.address)).toEqual(['t1', 'simx/t3'])
+  expect(sockets[0]!.destroyed).toBe(false)
+  expect(log.filter(w => w === 'snapshot')).toHaveLength(2)
+  session.stop()
+})
+
+it('a missed resync replaces what is held, unless the held state is newer', async () => {
+  const { session, sockets } = open()
+  await Promise.resolve()
+  // Arrives before the snapshot and is older than it: ignored.
+  sockets[0]!.feed({ jsonrpc: '2.0', method: 'missed', params: { seq: 3, terminals: [term('old')] } })
+  sockets[0]!.feed({ jsonrpc: '2.0', id: 1, result: { seq: 5, terminals: [term('t1'), term('sim/t1')] } })
+  expect(session.snapshot()?.map(t => t.address)).toEqual(['t1', 'sim/t1'])
+  // A stale terminal the events never removed goes on a resync that no longer lists it live.
+  sockets[0]!.feed({ jsonrpc: '2.0', method: 'missed', params: { seq: 8, terminals: [term('t1'), term('sim/t1', { state: 'lost' })] } })
+  expect(session.snapshot()?.map(t => t.address)).toEqual(['t1'])
+  sockets[0]!.feed(ev(9, 'title', 't1', { title: 'next' }))
+  expect(session.get('t1')?.title).toBe('next')
+  // A malformed resync takes a new snapshot.
+  sockets[0]!.feed({ jsonrpc: '2.0', method: 'missed', params: { seq: 10 } })
+  expect(sockets[0]!.destroyed).toBe(true)
+  session.stop()
+})
+
+it('a created or restarted event for an ended terminal does not add it', () => {
+  const m: CoreTerminals = new Map([['sim/t1', term('sim/t1')]])
+  expect(applyCoreEvent(m, { type: 'created', terminal: 'sim/t2', data: { address: 'sim/t2', cwd: '/w', state: 'finished' } })).toBeNull()
+  expect(applyCoreEvent(m, { type: 'restarted', terminal: 'sim/t1', data: { address: 'sim/t1', cwd: '/w', state: 'lost' } })).toBe('terminal')
+  expect(m.size).toBe(0)
+})

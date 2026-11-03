@@ -3,6 +3,7 @@ import { readCoreDocs } from './readCoreDocs'
 import type { CoreSession } from './coreSession'
 import { coreState, type CoreMachine } from '../../shared/coreState'
 import type { CoreInventory } from '../../shared/coreInventory'
+import { liveTerminals } from '../../shared/coreEvents'
 import type { HerdrState } from '../../shared/types'
 
 // Terminals come from the events session once it holds a snapshot (else one terminal.list).
@@ -21,7 +22,7 @@ export async function readCoreState(previous: HerdrState): Promise<HerdrState> {
     const endpoint = process.env.HC_SOCKET
     if (!endpoint) throw new Error('Missing core endpoint')
     const held = session?.snapshot() ?? null
-    const terminals = held ?? (await coreCall<CoreInventory>(endpoint, 'terminal.list')).terminals
+    const terminals = held ?? [...liveTerminals((await coreCall<CoreInventory>(endpoint, 'terminal.list')).terminals).values()]
     const gen = generation
     if (!cache || Date.now() - cache.at > MACHINES_MS || !held) {
       const machines = (await coreCall<{ machines: CoreMachine[] }>(endpoint, 'machine.list')).machines

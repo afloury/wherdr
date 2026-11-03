@@ -33,10 +33,17 @@ import { stateEntries, stateMachines } from '~/utils/homeGrouping'
 import { BAR_ALL } from '~/utils/machineBar'
 import { individualAgentRows, individualAgentTitle, isIndividualAgentRow } from '~/utils/homeAgentRows'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
+import type { TasksBoard } from '#shared/projectsTasks'
 const core = useRuntimeConfig().public.core
 const emit = defineEmits<{ search: [] }>()
-useQuotaLoader()
 onMounted(loadUpdate)
+const homeRoute = useRoute()
+// On the home page there is no agent to show: the list opens there.
+const atHome = () => homeRoute.path === '/' || homeRoute.path === ''
+// On the phone the list stays mounted (v-show in app.vue) under an agent's
+// page: its pollers (quotas, the Board's tasks, keep-awake) wait while it is
+// hidden and read once when it shows again.
+const homeShown = computed(() => desk.value || atHome())
 
 const everOpen = ref(false)
 watch(eventsOpen, (v) => { if (v) everOpen.value = true })
@@ -46,7 +53,21 @@ const agents = computed(() => st.value.panes.filter(p => core || p.agent))
 const fileLinks = useBoardLinks()
 // The Board's own list (herdr-projects' CLI): where each task stands, for its
 // card and the counters, as the Board shows it (shared/homeCounts.ts).
-const { board: tasksBoard } = useTasksBoard()
+// Read by HomePollers while the list is shown; kept while it is hidden.
+const tasksBoard = shallowRef<TasksBoard | null>(seenTasksBoard.value)
+// Mounted only while the list is shown: mounting again reads at once. With
+// herdr-core the tasks route is refused, so it is not polled.
+const HomePollers = defineComponent({
+  name: 'HomePollers',
+  setup() {
+    useQuotaLoader()
+    if (!core) {
+      const { board } = useTasksBoard()
+      watch(board, (b) => { tasksBoard.value = b }, { immediate: true })
+    }
+    return () => null
+  },
+})
 const boardLinks = computed(() => withBoardGroups(fileLinks.value, tasksBoard.value))
 // Old notification exceptions keyed by a coordinator's pane move to its identity.
 useNotificationRekey()
@@ -351,13 +372,23 @@ const eveningPast = computed(() => Boolean(awakeTarget.value && awakeByMachine.v
 const awakeOpen = computed({ get: () => Boolean(awakeTarget.value), set: v => { if (!v) awakeTarget.value = null } })
 const diagnosticOpen = computed({ get: () => Boolean(diagnosticTarget.value), set: v => { if (!v) diagnosticTarget.value = null } })
 const awakeUrl = (key: string, diagnostic = false) => `/api/machine/awake?key=${encodeURIComponent(key)}${diagnostic ? '&diagnostic=1' : ''}`
+// herdr-core: no keep-awake (route refused, menu hidden), never polled.
+const awakeAllowed = !core
 async function refreshAwake(m: MachineInfo) {
-  if (core || m.status !== 'online') return
+  if (!awakeAllowed || m.status !== 'online') return
   try { awakeByMachine.value[m.key] = await api<AwakeState>(awakeUrl(m.key)) }
   catch { /* the machine may disappear between two polls */ }
 }
+function refreshAllAwake() {
+  if (homeShown.value) for (const m of awakeMachines()) refreshAwake(m)
+}
 let awakeTimer: ReturnType<typeof setInterval> | undefined
-onMounted(() => { awakeTimer = setInterval(() => { if (document.visibilityState === 'visible') for (const m of awakeMachines()) refreshAwake(m) }, 30000) })
+function pollAwake(on: boolean) {
+  clearInterval(awakeTimer)
+  awakeTimer = on && awakeAllowed ? setInterval(() => { if (document.visibilityState === 'visible') refreshAllAwake() }, 30000) : undefined
+}
+onMounted(() => pollAwake(homeShown.value))
+watch(homeShown, (v) => { pollAwake(v); if (v) refreshAllAwake() })
 onBeforeUnmount(() => clearInterval(awakeTimer))
 function openAwake(m: MachineInfo) {
   awakeTarget.value = m
@@ -410,9 +441,7 @@ const soloMachine = computed<MachineInfo>(() => machines.value[0] || {
 })
 // A single machine: the state lists no machines, we probe the machine alone.
 const awakeMachines = () => machines.value.length ? machines.value : [soloMachine.value]
-watch(() => awakeMachines().map(m => `${m.key}:${m.status}`).join('|'), () => {
-  for (const m of awakeMachines()) refreshAwake(m)
-}, { immediate: true })
+watch(() => awakeMachines().map(m => `${m.key}:${m.status}`).join('|'), refreshAllAwake, { immediate: true })
 const baseKeyOf = (m: MachineInfo) => m.baseKey ?? m.key
 async function openSessions(m: MachineInfo) {
   sessionTarget.value = m
@@ -574,9 +603,6 @@ const drawerOpen = listDrawer
 const mode = computed(() => listMode({ desk: desk.value, slim: slim.value, collapsed: listCollapsed.value, drawerOpen: drawerOpen.value }))
 const rail = computed(() => mode.value === 'rail')
 const drawer = computed(() => mode.value === 'drawer')
-const homeRoute = useRoute()
-// On the home page there is no agent to show: the list opens there.
-const atHome = () => homeRoute.path === '/' || homeRoute.path === ''
 watch(() => homeRoute.fullPath, () => { drawerOpen.value = slim.value && atHome() }, { immediate: true })
 watch(slim, (v) => { drawerOpen.value = v && atHome() })
 function onDrawerKey(e: KeyboardEvent) {
@@ -645,6 +671,7 @@ function resetListWidth() {
 
 <template>
   <section ref="homeRoot" id="home" data-wherdr="home-list" class="view" :class="{ resizing: listDrag, rail, drawer, 'list-compact': compactList }" @click.capture="onDrawerPick">
+    <HomePollers v-if="homeShown" />
     <!-- Collapsed list (computer): narrow column, the rest of the list is hidden. -->
     <nav v-if="rail" class="home-rail" :aria-label="t('Agents')">
       <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" :title="conn.text" />

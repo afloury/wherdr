@@ -48,8 +48,8 @@ Each pane preserves its full core address behind a stable interface identifier.
 Agent identity uses core's `agent` field when supplied, otherwise recognised
 application/template/command names. Identity does not gate status: OSC 7501
 Working and Blocked lift any program's workspace into Working or Your turn.
-Idle and Done appear in Ready; absent or unrecognised status appears in Unknown.
-For online machines, the home counters (your turn, working, ready, unknown) count the same rows as their headings, and the machine tabs count rows too. The Herdr sessions row is hidden; `/api/phone` and a read-only `GET /api/update` (no one-tap update) answer.
+Idle and Done appear in Ready; absent or unrecognised status also appears in Ready (as in v2.5).
+For online machines, the three home counters (your turn, working, ready) count the same rows as their headings, and the machine tabs count rows too. The Herdr sessions row is hidden; `/api/phone` and a read-only `GET /api/update` (no one-tap update) answer.
 A mixed workspace follows its most urgent terminal. On connection loss the last
 inventory stays visible offline; subsequent polls reconcile it with core.
 

@@ -28,3 +28,6 @@ __pycache__/
 
 # Tutorial fonts, downloaded and verified by tools/tutorial-board/fontpin.py
 /tools/tutorial-board/fonts/
+
+# Packed npm tarballs (npm pack)
+*.tgz

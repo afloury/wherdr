@@ -11,11 +11,11 @@
   `herdr.tab` labels, else by the tab of the machine's herdr-app layout that holds them (space
   and tab names and the tab order come from it). Other terminals are grouped by machine and
   folder. Details in [herdr-core › Inventory](core.md#inventory).
-- **States**: **Your turn** (blocked: a question or a permission), **Working**, **Ready** (idle or
-  done) and **Unknown** (no status reported). A space with several terminals follows its most
-  urgent one. Three counters at the top (your turn, working, ready) count the same rows as the
-  headings. When core does not answer, the last list stays visible, marked offline, and the home
-  says **herdr-core is not responding**.
+- **States**: three only: **Your turn** (blocked: a question or a permission), **Working** and
+  **Ready** (idle or done; an agent that reports no status also counts as Ready, as in v2.5).
+  A space with several terminals follows its most urgent one. Three counters at the top (your
+  turn, working, ready) count the same rows as the headings. When core does not answer, the last
+  list stays visible, marked offline, and the home says **herdr-core is not responding**.
 - **Quick answers**: a waiting agent's card shows its question and options; **answer in one tap**
   without opening it. The question is read again before the answer is sent; if it changed, the
   answer is refused.

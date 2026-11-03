@@ -22,7 +22,7 @@ and the [browser demo](https://wherdr.dev/demo/) show wherdr v2 on Herdr, with i
 
 - **Your hc terminals, anywhere.** Every terminal of your hc session and of the machines it
   reaches, grouped into spaces and tabs as herdr-app shows them, with a live state: Your turn,
-  Working, Ready or Unknown.
+  Working or Ready (no status reported counts as Ready).
 - **Conversations, not just screens.** Claude Code and Codex open on their transcript: one-tap
   answers to questions, queued messages, quoted replies, photos and files.
 - **The real terminal, shared.** Several viewers (phone, computer, herdr-app) watch the same
