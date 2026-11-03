@@ -5,6 +5,7 @@
 //
 // Entry: a path under /api/ without the prefix ('state'), exact; ending with
 // '/*' it also covers everything below ('auth/*' = 'auth' and 'auth/login').
+// A 'GET ' prefix ('GET update') allows reads only: the route is refused to POST.
 import a from './coreRoutes/a'
 import b from './coreRoutes/b'
 import c from './coreRoutes/c'
@@ -27,13 +28,16 @@ const BASE = [
 ]
 
 const routes = [...BASE, ...a, ...b, ...c, ...d, ...e, ...f, ...g, ...h, ...i]
-const exact = new Set(routes.filter(r => !r.endsWith('/*')))
-const prefixes = routes.filter(r => r.endsWith('/*')).map(r => r.slice(0, -2))
+const readOnly = routes.filter(r => r.startsWith('GET ')).map(r => r.slice(4))
+const open = routes.filter(r => !r.startsWith('GET '))
+const exact = new Set(open.filter(r => !r.endsWith('/*')))
+const prefixes = open.filter(r => r.endsWith('/*')).map(r => r.slice(0, -2))
 
-/** `path`: '/api/state', with or without a query string. */
-export function coreRouteAllowed(path: string): boolean {
+/** `path`: '/api/state', with or without a query string; `method`: 'GET' unless told. */
+export function coreRouteAllowed(path: string, method = 'GET'): boolean {
   const m = /^\/api\/([^?#]*)/.exec(path)
   if (!m) return false
   const rest = m[1]!
+  if (method.toUpperCase() === 'GET' && readOnly.includes(rest)) return true
   return exact.has(rest) || prefixes.some(p => rest === p || rest.startsWith(`${p}/`))
 }
