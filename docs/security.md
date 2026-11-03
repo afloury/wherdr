@@ -33,7 +33,8 @@ wherdr drives Herdr, so **it can run anything as your user**.
   session generation, so even a cookie forged by someone who once read `data/auth.json` stops
   working; open WebSockets close at once, and every push subscription is removed (a device
   subscribes again by itself once unlocked; its own quiet setting is reset). Turning the lock off
-  does the same and removes the passkeys. The first start after upgrading to this version ends the open
+  does the same and removes the passkeys; every open app then posts its push subscription again
+  at once, and an app that was closed or asleep does so when it opens or reconnects. The first start after upgrading to this version ends the open
   sessions once (the old numeric generation is replaced); the passkeys stay. Lost passkey: delete
   `data/auth.json` on the server; the app is open again to whoever can reach it.
 - **Protected files**: the file browser and the file paths shown in conversations never preview,

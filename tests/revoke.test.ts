@@ -47,4 +47,11 @@ describe('Lock all devices', () => {
     expect(open.close).toHaveBeenCalledWith(1008, expect.any(String))
     expect(await push.readSubs()).toEqual([])
   })
+
+  it('asks every open app to post its push subscription again once the lock is off', () => {
+    const sent: string[] = []
+    const gone = { send: () => { throw new Error('closed') } }
+    expect(revoke.askPushResubscribe([{ send: d => sent.push(d) }, gone, { send: d => sent.push(d) }])).toBe(2)
+    expect(sent.map(d => JSON.parse(d))).toEqual([{ type: 'push-resubscribe' }, { type: 'push-resubscribe' }])
+  })
 })
