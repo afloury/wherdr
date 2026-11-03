@@ -1,7 +1,7 @@
 import { rowGroup, type Row } from './spaces'
 import type { CoreTerminal } from './coreInventory'
-import { type CoreDocs, SPACE_LABEL, TAB_LABEL, rootTerminals } from './coreLayout'
-import { coreActivity, coreTitle } from './coreInventory'
+import { type CoreDocs, SPACE_LABEL, TAB_LABEL, rootTerminals, SEEN_LABEL } from './coreLayout'
+import { coreActivity, coreTitle, coreUnread, ownTitle } from './coreInventory'
 import type { HerdrState, MachineInfo, Pane } from './types'
 
 export interface CoreMachine { name: string; state: string; why?: string }
@@ -50,9 +50,13 @@ export function coreState(terminals: CoreTerminal[], machines: CoreMachine[], do
       result.tabs!.push({ id: tab, workspace, machine, label: docTab?.name || coreTitle(terminal), number: result.tabs!.length + 1, layout: null })
       if (docTab) order.set(tab, space!.tabs!.indexOf(docTab))
     }
+    const state = activity === 'error' ? 'blocked' : activity
+    // idle after a turn nobody looked at yet = finished, unread ('done').
+    const status = (state === 'idle' || state === 'done') && terminal.labels?.[SEEN_LABEL] !== undefined ? (coreUnread(terminal) ? 'done' : 'idle') : state
     const pane: Pane = { id: `${workspace}:p${id}`, coreAddress: terminal.address, machine, workspace, tab, tabLabel: result.tabs!.find(t => t.id === tab)!.label,
-      agent, name: terminal.name ?? null, label: terminal.name ?? null, title: terminal.title ?? null, cwd, agentSession: null,
-      status: activity === 'error' ? 'blocked' : activity, interaction: 'unknown' }
+      agent, name: terminal.name ?? null, label: ownTitle(terminal), title: terminal.title ?? null, cwd, agentSession: null,
+      status, interaction: 'unknown',
+      ...(typeof terminal.status_ms === 'number' ? { stateSeq: terminal.status_ms } : terminal.turn ? { stateSeq: terminal.turn } : {}) }
     result.panes.push(pane)
   }
   // Tabs follow their document's order inside a space, then renumber from 1.

@@ -51,7 +51,9 @@ let touchMenuOpenedAt = 0
 
 const ws = computed(() => herdrState.value.workspaces.find(w => w.id === props.pane.workspace))
 const branch = computed(() => ws.value?.branch || null)
-const title = computed(() => props.board?.name || (isIndividualAgentRow(props.row) ? individualAgentTitle(props.pane) : spaceTitle(props.pane, ws.value)))
+// herdr-core: a terminal that has its own name (renamed, or named at creation) shows it rather than its folder.
+const ownName = computed(() => (props.row?.kind === 'pane' && props.pane.coreAddress ? props.pane.label?.trim() : '') || '')
+const title = computed(() => props.board?.name || (isIndividualAgentRow(props.row) ? individualAgentTitle(props.pane) : ownName.value || spaceTitle(props.pane, ws.value)))
 // "42% 17m", as Herdr's sidebar shows a task.
 const boardNow = useBoardNow()
 const boardStats = computed(() => {
