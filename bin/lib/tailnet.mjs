@@ -70,9 +70,10 @@ export function tailnetStatus(statusJson) {
 // readable: false for an empty or broken answer (a failed command, a socket
 // that did not answer): nothing is known then, not "stopped".
 // peerIps: your own devices only, those of the same user as this machine
-// (UserID) that are not nodes shared in from another tailnet (ShareeNode).
+// (UserID), except nodes of someone this machine is shared with (ShareeNode).
 // otherIps: every other peer (another user's device in a team tailnet, a node
-// shared in, a tagged node), which wherdr admits only behind a passkey.
+// shared in from another tailnet, which has another UserID, a sharee's node, a
+// tagged node), which wherdr admits only behind a passkey.
 // Tagged nodes all share one "tagged-devices" UserID: a tagged peer is never
 // yours, and on a tagged machine no peer is (its owner is not known).
 const TAGGED_DEVICES = 2147455555

@@ -98,10 +98,11 @@ How a request is judged, before anything else (WebSockets included):
     interface address in that range proves nothing, since a LAN may use it too. When Tailscale is
     stopped, missing or unreadable for 30 seconds, no direct connection counts as tailnet.
   - <a id="own-devices"></a>*Your own devices only*: a peer counts when Tailscale lists it under
-    the same user as this machine (`UserID`) and not as a node shared in from another tailnet
-    (`ShareeNode`). Every other peer is refused with HTTP 403 (`network`, `why: foreign`) while
+    the same user as this machine (`UserID`), is not tagged, and is not a node of someone you
+    shared this machine with (`ShareeNode`). Every other peer is refused with HTTP 403 (`network`, `why: foreign`) while
     no passkey is set up: another user's device in a team tailnet, a machine someone
-    [shared](https://tailscale.com/kb/1084/sharing) with you, a tagged node (tagged devices
+    [shared](https://tailscale.com/kb/1084/sharing) with you (it belongs to another user), a
+    device of someone you shared this machine with, a tagged node (tagged devices
     belong to no user, your own tagged servers included). When the machine running wherdr is
     itself tagged, its owner is unknown: no peer counts as yours, so only this computer gets in
     until a passkey is set up. The same rule applies to the client `tailscale serve` names in

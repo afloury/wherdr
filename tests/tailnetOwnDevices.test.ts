@@ -10,7 +10,7 @@ import {
 } from '../server/utils/network'
 import { networkRefusedPage } from '../server/utils/hosts'
 
-const STATUS = readFileSync(new URL('./fixtures/tailscale/status-team.json', import.meta.url), 'utf8')
+const STATUS = readFileSync(new URL('./recordings/tailscale/status-team.json', import.meta.url), 'utf8')
 const peers = tailnetPeers(STATUS)
 const ctx = (over: Partial<NetContext> = {}): NetContext => ({
   trusted: parseTrustedNetworks(''),

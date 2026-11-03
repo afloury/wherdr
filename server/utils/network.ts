@@ -12,10 +12,11 @@
 //   interface, so a reply to a forged peer address never goes back to the
 //   Wi-Fi. An interface address in that range proves nothing (a LAN may use
 //   it): Tailscale's state is read from Tailscale (CLI or its socket).
-//   Only your own devices count: peers of the same Tailscale user as this
-//   machine, not shared in from another tailnet. Any other peer (another
-//   user's device in a team tailnet, a shared-in or tagged node) is refused
-//   ('foreign') until the owner sets up a passkey, which then locks it out.
+//   Only your own devices count: untagged peers of the same Tailscale user
+//   as this machine (bin/lib/tailnet.mjs tailnetPeers). Any other peer
+//   (another user's device in a team tailnet, a node shared in from another
+//   tailnet, a sharee's or tagged node) is refused ('foreign') until the
+//   owner sets up a passkey, which then locks it out.
 // What a peer on this machine cannot prove: a relay running here (a reverse
 // proxy, a TCP forward, `tailscale funnel`) connects from loopback like a
 // local browser. wherdr reads Tailscale's serve configuration: once it shows
