@@ -63,7 +63,16 @@ test('machines can be renamed and forgotten, and the core line shows', async ({ 
     await page.getByTestId('core-machine').filter({ hasText: 'renamed' }).getByTestId('machine-forget').click()
     await expect(page.getByText(/Forget renamed\?.*terminals keep running there/i)).toBeVisible()
     await page.screenshot({ path: `.shots/core-machines-forget-${test.info().project.name}.png` })
+    // The home (another page) drops the forgotten machine's tab within a second, not on the next 4 s read.
+    const home = await page.context().newPage()
+    await home.goto(`http://localhost:${port}/`)
+    const tabs = home.locator('[data-bar-id]')
+    await expect(tabs.filter({ hasText: 'renamed' })).toHaveCount(1)
+    const before = await tabs.count()
     await page.getByRole('button', { name: 'Forget', exact: true }).click()
+    await expect(tabs).toHaveCount(before - 1, { timeout: 1000 })
+    await expect(tabs.filter({ hasText: 'renamed' })).toHaveCount(0)
+    await home.close()
     await expect(page.getByTestId('core-machine').filter({ hasText: 'renamed' })).toHaveCount(0)
     expect(rpc.find(r => r.method === 'machine.rm')?.params).toEqual({ machine: 'renamed' })
   } finally {
