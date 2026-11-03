@@ -417,10 +417,6 @@ body.short-bottom { --safe-bottom: 0px; }
 .stat.blocked span i { background: var(--blocked); }
 .stat.working span i { background: var(--working); }
 .stat.done span i { background: var(--done); }
-.stat.unknown span i { background: var(--dim); }
-/* Four cells (herdr-core adds Unknown): tighter so the labels still fit. */
-.stats:has(.stat.unknown) .stat { padding-inline: 6px; }
-.stats:has(.stat.unknown) .stat span { gap: 4px; letter-spacing: .02em; }
 .stat.zero b { color: var(--dim); }
 .stat.blocked:not(.zero) b { color: var(--rose); }
 

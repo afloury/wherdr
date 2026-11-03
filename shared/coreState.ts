@@ -70,7 +70,8 @@ export function coreState(terminals: CoreTerminal[], machines: CoreMachine[], do
 
 // Core counters count the same workspace (or individual) rows as the headings.
 export function coreRowCounts(rows: Row[], keep: (row: Row) => boolean = () => true) {
-  const counts = { blocked: 0, working: 0, ready: 0, unknown: 0 }
-  for (const row of rows) if (keep(row)) counts[rowGroup(row)]++
+  const counts = { blocked: 0, working: 0, ready: 0 }
+  // Rows without a status (plain shells) count as Ready, as in v2.5.
+  for (const row of rows) if (keep(row)) { const g = rowGroup(row); counts[g === 'unknown' ? 'ready' : g]++ }
   return counts
 }
