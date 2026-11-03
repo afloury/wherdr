@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createAuth, type Auth } from '../server/utils/auth'
+import { createAuth, createRateLimit, type Auth } from '../server/utils/auth'
 
 const dir = () => mkdtempSync(path.join(tmpdir(), 'hw-auth-'))
 const req = (cookie?: string, origin = 'http://localhost:7684') => ({ headers: { cookie, origin } })
@@ -87,7 +87,8 @@ describe('auth', () => {
     const p = `${Date.now() + D}.3.${Date.now()}`
     const oldCookie = `hw_session=${p}.${createHmac('sha256', secret).update(p).digest('base64url')}`
     const a = createAuth({ dataDir: d })
-    expect(a.status(req())).toMatchObject({ enabled: true, unlocked: false, devices: [{ name: 'Laptop', lastUsed: null }] })
+    expect(a.status(req())).toMatchObject({ enabled: true, unlocked: false, devices: [] })
+    expect(a.status(req(cookieValue(a._sessionCookie(req()))))).toMatchObject({ devices: [{ name: 'Laptop', lastUsed: null }] })
     const saved = JSON.parse(readFileSync(path.join(d, 'auth.json'), 'utf8'))
     expect(saved.generation).toMatch(/^[\w-]{24}$/)
     expect(saved.credentials).toEqual([credential])
@@ -278,5 +279,57 @@ describe('auth: damaged cookie', () => {
     withKey(a)
     expect(a.isUnlocked(req('hw_session=%E0%A4%A'))).toBe(false)
     expect(a.status(req('hw_session=%E0%A4%A')).unlocked).toBe(false)
+  })
+})
+
+describe('auth: nothing leaks before the unlock', () => {
+  it('gives a locked client no key names, dates or server clock', () => {
+    const a = createAuth({ dataDir: dir() })
+    withKey(a)
+    const locked = a.status(req())
+    expect(locked).toEqual({ enabled: true, unlocked: false, expiresAt: null, devices: [] })
+    const open = a.status(req(cookieValue(a._sessionCookie(req()))))
+    expect(open.devices).toEqual([{ name: 'iPhone', createdAt: '2026-01-01T00:00:00.000Z', lastUsed: null }])
+  })
+
+  it('unlock options list no key id (discoverable passkeys), registration requires one', async () => {
+    const a = createAuth({ dataDir: dir() })
+    withKey(a)
+    const opts = await a.loginOptions(req())
+    expect(opts.allowCredentials ?? []).toEqual([])
+    expect(JSON.stringify(opts)).not.toContain('k1')
+    const reg = await a.registerOptions(req(cookieValue(a._sessionCookie(req()))))
+    expect(reg.authenticatorSelection).toMatchObject({ residentKey: 'required', requireResidentKey: true })
+  })
+
+  it('keeps at most 100 pending challenges, the oldest dropped first', async () => {
+    const a = createAuth({ dataDir: dir() })
+    withKey(a)
+    const first = await a.loginOptions(req(), 'c0')
+    for (let i = 1; i < 150; i++) await a.loginOptions(req(), `c${i}`)
+    expect(a._challengeCount()).toBe(100)
+    // The first client's challenge is gone: its answer is refused.
+    const client = first.__cookie.split(';')[0]!
+    expect(() => a._takeChallenge({ headers: { cookie: client } }, 'auth')).toThrow(/expired/)
+  })
+
+  it('rate-limits unlock options per client', async () => {
+    const a = createAuth({ dataDir: dir() })
+    withKey(a)
+    const now = Date.now()
+    for (let i = 0; i < 10; i++) await a.loginOptions(req(), 'phone', now)
+    await expect(a.loginOptions(req(), 'phone', now)).rejects.toMatchObject({ code: 'rate_limited' })
+    // Another client is not affected, and the same one may try again a minute later.
+    await expect(a.loginOptions(req(), 'laptop', now)).resolves.toHaveProperty('challenge')
+    await expect(a.loginOptions(req(), 'phone', now + 60_000)).resolves.toHaveProperty('challenge')
+  })
+})
+
+describe('createRateLimit', () => {
+  it('bounds its table of clients', () => {
+    const r = createRateLimit(1, 1000, 50)
+    for (let i = 0; i < 500; i++) r.take(`ip${i}`, 0)
+    expect(r._size()).toBe(50)
+    expect(r.take('ip499', 0)).toBe(false)
   })
 })

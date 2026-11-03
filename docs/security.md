@@ -37,6 +37,10 @@ wherdr drives Herdr, so **it can run anything as your user**.
   at once, and an app that was closed or asleep does so when it opens or reconnects. The first start after upgrading to this version ends the open
   sessions once (the old numeric generation is replaced); the passkeys stay. Lost passkey: delete
   `data/auth.json` on the server; the app is open again to whoever can reach it.
+- **Before the unlock**, a locked device only learns that the app is locked: no passkey names or
+  dates, no machine name, no server clock. Unlocking lists no key: the device offers its own
+  passkey for the site (passkeys are registered as discoverable credentials). Unlock attempts
+  are limited to 10 per minute per client, and at most 100 unlock challenges wait at once.
 - **Protected files**: the file browser and the file paths shown in conversations never preview,
   download or stream wherdr's data folder (`DATA_DIR`, with `auth.json`, the push keys and
   subscriptions), `~/.ssh` or `~/.config/herdr`, on any machine, even through a symlink or inside
@@ -53,7 +57,9 @@ wherdr drives Herdr, so **it can run anything as your user**.
   optional: it adds an automatic lock on each device if you want one, and then lets other
   people's tailnet devices reach that lock.
 - Writes require `Content-Type: application/json` (or `image/*` for photos, `application/octet-stream` for attached files) and an `Origin`
-  matching the host, WebSockets included. API reads sent from another site (links, images,
+  matching the host, WebSockets included. Request bodies are read with a size limit (256 KB for
+  JSON, 20 MB for photos, 30 MB for attached files), chunked bodies included: past it the server
+  stops reading, answers `too_large` and closes the connection. API reads sent from another site (links, images,
   `no-cors` fetches, reported by the browser's `Sec-Fetch-Site`) are refused too.
 - A strict Content Security Policy limits scripts to the app's own origin and hashed inline
   scripts, and connections to that origin and its WebSockets. It also blocks embedded objects
