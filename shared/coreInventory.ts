@@ -14,6 +14,12 @@ export interface CoreTerminal {
   status?: { state: string; app?: string; msg?: string } | null
   // Shared with herdr-app: herdr.space / herdr.tab place the terminal (shared/coreLayout.ts).
   labels?: Record<string, string>
+  // Completed turns, and the terminal that started this one (a sub-agent has a parent).
+  turn?: number
+  parent?: string | null
+  keep?: boolean
+  cols?: number
+  rows?: number
 }
 export interface CoreInventory {
   terminals: CoreTerminal[]
