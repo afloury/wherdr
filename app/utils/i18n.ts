@@ -697,6 +697,8 @@ const FR: Record<string, string> = {
   'space on another machine': 'espace d’une autre machine', 'invalid split': 'split invalide', 'invalid ratio': 'ratio invalide',
   'no pane on that side': 'aucun pane de ce côté', 'a pane is zoomed in this tab': 'un pane est agrandi dans cet onglet',
   'Not sent': 'Non envoyé', 'will be sent when the menu closes': 'partira quand le menu sera fermé',
+  'Not sent — still in Claude’s input': 'Non envoyé — toujours dans la saisie de Claude', 'Clear': 'Effacer',
+  'Sent, but Claude has not started yet — check the terminal.': 'Envoyé, mais Claude n’a pas encore démarré — vérifie le terminal.',
   'A menu is still open in the agent’s terminal. Your messages wait for it to close.': 'Un menu est resté ouvert dans le terminal de l’agent. Vos messages attendent qu’il se ferme.',
   'Close menu': 'Fermer le menu', 'Send anyway': 'Envoyer quand même',
   'No menu to close': 'Aucun menu à fermer',
