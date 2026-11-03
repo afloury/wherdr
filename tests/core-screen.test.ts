@@ -88,6 +88,33 @@ describe('enrich', () => {
     await screens.enrich([pane('a')])
     expect(reads.length).toBe(2)
   })
+  it('shows a new Claude\'s trust box as Your turn at the next poll, not at the background pace', async () => {
+    const texts: Record<string, string> = { 'm/a': '' }
+    const { screens, reads, tick } = setup(texts, () => false)
+    const a = pane('a')
+    await screens.enrich([a])
+    expect(a.status).toBe('unknown')
+    texts['m/a'] = fx('claude-trust-folder.txt')
+    tick(1500)
+    const next = pane('a')
+    await screens.enrich([next])
+    expect(reads.length).toBe(2)
+    expect(next).toMatchObject({ status: 'blocked', interaction: 'native' })
+    expect(next.prompt?.options.map(o => o.label)).toContain('Yes, I trust this folder')
+    // Once the screen says something, the background pace is back.
+    tick(1500)
+    await screens.enrich([pane('a')])
+    expect(reads.length).toBe(2)
+  })
+  it('reads an undetermined screen at the background pace after the startup window', async () => {
+    const { screens, reads, tick } = setup({ 'm/a': 'loading' }, () => false)
+    await screens.enrich([pane('a')])
+    tick(31_000)
+    await screens.enrich([pane('a')])
+    tick(1500)
+    await screens.enrich([pane('a')])
+    expect(reads.length).toBe(2)
+  })
   it('marks the interaction unknown when the read fails', async () => {
     const ok = { 'm/a': bash }
     const { screens, tick } = setup(ok)
