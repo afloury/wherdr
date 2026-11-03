@@ -16,7 +16,7 @@ const list = createListShown()
 import type { Pane } from '#shared/types'
 import type { Row } from '#shared/spaces'
 import { tabStates } from '#shared/spaces'
-import { coreOwnName } from '#shared/displayTitles'
+import { homeTitle } from '#shared/displayTitles'
 import { type BoardCard, elapsedLabel } from '#shared/boardLinks'
 import type { MenuItem } from '~/composables/useUi'
 import { longPress } from '~/utils/longPress'
@@ -52,9 +52,7 @@ let touchMenuOpenedAt = 0
 
 const ws = computed(() => herdrState.value.workspaces.find(w => w.id === props.pane.workspace))
 const branch = computed(() => ws.value?.branch || null)
-// herdr-core: a terminal that has its own name (renamed, or named at creation) shows it rather than its folder.
-const ownName = computed(() => coreOwnName(props.pane))
-const title = computed(() => props.board?.name || (isIndividualAgentRow(props.row) ? individualAgentTitle(props.pane) : ownName.value || spaceTitle(props.pane, ws.value)))
+const title = computed(() => props.board?.name || (isIndividualAgentRow(props.row) ? individualAgentTitle(props.pane) : homeTitle(props.pane, ws.value)))
 // "42% 17m", as Herdr's sidebar shows a task.
 const boardNow = useBoardNow()
 const boardStats = computed(() => {

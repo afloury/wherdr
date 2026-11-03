@@ -22,8 +22,16 @@ const MODEL_LINE = /^(?:[◐◑◒◓○●◔◕]\s+)?(?:\S+\s+)?(?:minimal|low
 // Claude's turn summary under a finished answer: '✻ Worked for 2s · done 5:11 PM', '✻ Churned for 1m 3s'.
 const DURATION = /^[✻✶✳✢]\s+\S+(?:\s+\S+)?\s+for\s+\d+\s*(?:ms|[smh])\b.*$/u
 
+// Drawings, not text: a line without a letter or digit, or mostly braille / block elements
+// (Codex's start-screen logo '⠈⠙⠛⠿⠿⠿⠿⠛⠉').
+function drawing(line: string): boolean {
+  if (!/[\p{L}\p{N}]/u.test(line)) return true
+  const chars = [...line.replace(/\s/g, '')]
+  return chars.filter(c => /[\u2800-\u28FF\u2580-\u259F]/u.test(c)).length * 2 >= chars.length
+}
+
 export function lastLine(text: string): string | null {
-  const lines = text.split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim() && !RULE.test(l) && !PROMPT.test(l.trim()) && !FOOTER.test(l.trim()) && !PLACEHOLDER.test(l.trim()) && !MODEL_LINE.test(l.trim()) && !DURATION.test(l.trim()))
+  const lines = text.split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim() && !RULE.test(l) && !drawing(l) && !PROMPT.test(l.trim()) && !FOOTER.test(l.trim()) && !PLACEHOLDER.test(l.trim()) && !MODEL_LINE.test(l.trim()) && !DURATION.test(l.trim()))
   const line = lines.at(-1)?.trim().replace(/^[⏺●]\s+/u, '')
   if (!line) return null
   return line.length > MAX ? `${line.slice(0, MAX - 1)}…` : line

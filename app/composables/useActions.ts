@@ -121,15 +121,20 @@ export const STATUS: Record<string, { label: string, order: number }> = {
   unknown: { label: 'Unknown', order: 4 },
 }
 
+// herdr-core: a terminal without a status reads as the home lists it (#320): an agent is
+// Ready, a plain shell has no state.
+const unknownCore = (p: Pane) => Boolean(p.coreAddress) && (!p.status || p.status === 'unknown')
 export function statusKey(p: Pane) {
+  if (unknownCore(p)) return p.agent ? 'idle' : 'shell'
   return (p.coreAddress || p.agent) ? p.status || 'unknown' : 'shell'
 }
 export function statusLabel(p: Pane) {
-  const s = statusKey(p)
   if (!p.agent && !p.coreAddress) return 'Shell'
   if (p.usageLimit) return tl('Quota reached', 'Quota atteint')
   if (p.restart && p.restart.phase !== 'failed') return t('Restarting')
-  if (s === 'unknown' && p.pendingPrompt) return t('Starting')
+  if ((!p.status || p.status === 'unknown') && p.pendingPrompt) return t('Starting')
+  const s = statusKey(p)
+  if (s === 'shell') return ''
   return t((STATUS[s] || STATUS.unknown!).label)
 }
 

@@ -3,7 +3,7 @@ import type { HerdrState, Pane } from '#shared/types'
 import { cleanTitle, paneTitle as sharedPaneTitle } from '#shared/paneTitle'
 export { paneOwnTitle } from '#shared/paneTitle'
 import { hasTranscript } from '#shared/agentKind'
-export { spaceTitle, conversationSubtitle, desktopHeaderTitle } from '#shared/displayTitles'
+export { spaceTitle, conversationSubtitle, desktopHeaderTitle, homeTitle } from '#shared/displayTitles'
 
 export const KIND_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini CLI', opencode: 'OpenCode', kimi: 'Kimi', qodercli: 'Qoder CLI', mastracode: 'Mastra Code', copilot: 'Copilot', qwen: 'Qwen Code', pi: 'Pi', omp: 'omp' }
 export const kindLabel = (k: string | null | undefined) => (k && KIND_LABEL[k]) || (k ? k[0]!.toUpperCase() + k.slice(1) : 'Shell')
