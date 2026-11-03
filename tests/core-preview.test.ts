@@ -19,6 +19,11 @@ describe('lastLine', () => {
     expect(lastLine('The build passes.\n────────\n❯\n')).toBe('The build passes.')
     expect(lastLine('user@host:~$')).toBeNull()
   })
+  it('ignores drawings: braille logos and block elements', () => {
+    expect(lastLine('⠈⠙⠛⠿⠿⠿⠿⠛⠉\n')).toBeNull()
+    expect(lastLine('Ready to go\n  ⠈⠙⠛⠿⠿⠿⠿⠛⠉  \n ▀▀▀ ▄▄ \n')).toBe('Ready to go')
+    expect(lastLine('Build ⠿ 3 files')).toBe('Build ⠿ 3 files')
+  })
   it('ignores TUI footers', () => {
     expect(lastLine('Welcome back\n────\n❯\n────\n  ← for agents · ? for shortcuts')).toBe('Welcome back')
     expect(lastLine('Done\n  ⏵⏵ auto mode on (shift+tab to cycle)')).toBe('Done')

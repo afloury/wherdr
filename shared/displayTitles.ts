@@ -1,5 +1,6 @@
 import type { Pane, Workspace } from './types'
 import { cleanTitle, coordinatorTitle, paneTitle } from './paneTitle'
+import { addressOnly } from './coreInventory'
 
 // herdr-projects marks its spaces with invisible characters (braille blank
 // U+2800, zero-width spaces); some fonts draw them as dot grids.
@@ -37,7 +38,14 @@ export function conversationSubtitle(p: Pane, workspace?: Workspace | null): str
 }
 
 // herdr-core: a terminal with its own name (renamed, or named at creation) shows it on its
-// home card, single terminal or lead of a space, rather than its folder.
+// home card, single terminal or lead of a space, rather than its folder. A name that is only
+// its address ("t2") is not one: the folder stays.
 export function coreOwnName(p: Pick<Pane, 'coreAddress' | 'label'>): string {
-  return (p.coreAddress && p.label?.trim()) || ''
+  const name = (p.coreAddress && p.label?.trim()) || ''
+  return addressOnly(name, p.coreAddress) ? '' : name
+}
+
+// Title of a terminal on its home card and in the search results: its own name, else its space.
+export function homeTitle(p: Pane, workspace?: Workspace | null): string {
+  return coreOwnName(p) || spaceTitle(p, workspace)
 }
