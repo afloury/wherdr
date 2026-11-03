@@ -96,16 +96,6 @@ on each fresh runner.
 locally; without `E2E_SCOPE`, a local run is the whole suite. CI retries a failed test once (it
 then shows as flaky); local runs never retry.
 
-Engine inputs are selected by `scripts/engine-changes.mjs` in the existing `changes`
-job. Ordinary interface PRs skip Rust entirely. Engine sources and build, Board
-integration or distribution inputs run the upstream full Linux check and its macOS
-platform selection through `engine-ci.yml`, from `engine/`. Renames count both paths;
-an unavailable diff selects Rust conservatively. Manual runs and release tags also
-select it. Rust caches use `engine/target`, OS, host target, compiler version and
-`engine/Cargo.lock`. The always-present `engine-checks` result passes when Rust was
-intentionally skipped and fails for failed or cancelled required checks. Existing
-`checks` and `e2e` check names remain unchanged. No publishing is performed here.
-
 
 ## Agent test rule
 
