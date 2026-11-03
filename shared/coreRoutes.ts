@@ -21,9 +21,7 @@ const BASE = [
   'state', 'config', 'settings', 'health', 'search',
   'chat', 'chat/image', 'prompt', 'input', 'interrupt', 'close', 'agents',
   'dirs', 'isgit', 'quotas', 'claude-statusline', 'claude-setup',
-  'machine/add', 'machine/connect',
-  // Open PRs #301, #302, #303 (their lots rebase onto this list).
-  'machine/core', 'machine/core-rename', 'machine/core-forget',
+  'machine/add', 'machine/connect', 'machine/core', 'machine/core-rename', 'machine/core-forget',
   'upload', 'attach', 'file', 'keep',
 ]
 

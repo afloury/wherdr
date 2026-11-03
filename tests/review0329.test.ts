@@ -1,6 +1,4 @@
 // Regression proofs from the independent t-0329 review.
-// Its optional comparison to an unversioned main archive is already covered
-// by nativeScreenParity.test.ts and is deliberately not a runtime dependency.
 import { readFileSync, readdirSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import * as choices from '../server/utils/choices'

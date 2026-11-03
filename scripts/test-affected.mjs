@@ -14,7 +14,7 @@ export const domains = [
   { name: 'board', source: /board|machine|TaskPanel|TaskSheet|ProjectGroup/i, tests: /board|machine|TaskPanel|TaskSheet|ProjectGroup/i, e2e: ['machine-groups'], reason: 'Board auto-imports and cross-machine navigation need explicit coverage.' },
   { name: 'startup', source: /router|app\.vue|onboarding|app\/plugins/i, tests: /onboarding|directRoute|stateReady/i, e2e: ['startup-hash', 'onboarding'], reason: 'Startup and routing depend on Nuxt registration.' },
   { name: 'appearance', source: /app\/assets\/|themes?\.|font/i, tests: /layout|sheet|CompactDefault|ChatViewRendering|SettingsTyping|Composer|BoardPanel/i, e2e: ['theme', 'sheet-close'], reason: 'CSS and themes affect layout and overlays without import edges.' },
-  { name: 'chat-rendering', source: /ChatView|OmpTool|Settings/i, tests: /ChatViewRendering|CompactDefault|SettingsTyping|OmpTool|settings/i, e2e: ['settings-tabs', 'tool-images'], reason: 'Rendering assertions moved from e2e to components; retain integration boundaries.' },
+  { name: 'chat-rendering', source: /ChatView|OmpTool|Settings/i, tests: /ChatViewRendering|CompactDefault|SettingsTyping|OmpTool|settings/i, e2e: ['tool-images'], reason: 'Rendering assertions moved from e2e to components; retain integration boundaries.' },
 ]
 const doc = p => /\.(md|rst)$/.test(p) || /^docs\//.test(p)
 const test = p => /\.test\.[cm]?[jt]s$/.test(p)

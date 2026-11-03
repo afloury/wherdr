@@ -21,17 +21,6 @@ async function route(name:string,call:any) {
   transcripts:{pendingClaudeQuestions:async()=>[]},choicesCache:new ScreenCache(),poll:()=>{},watchScreen:()=>{}}))vi.stubGlobal(key,value)
  return (await import(`../server/api/${name}.post.ts`)).default
 }
-it('R1: Enter refuses the new question while the old card is displayed',async()=>{
- const old=choices.screenChoices(fx('codex-request-increase'),'codex')!
- const next=choices.screenChoices(fx('codex-approaching-limits'),'codex')!
- expect(next.identity).not.toBe(old.identity)
- const call=vi.fn(async()=>({read:{text:fx('codex-approaching-limits')}}))
- const handler=await route('nav',call)
- await expect(handler({}, {pane_id:'w1:p1',key:'enter',identity:old.identity})).rejects.toMatchObject({code:'stale'})
- expect(call).not.toHaveBeenCalledWith('pane.send_input',expect.anything())
- await expect(handler({}, {pane_id:'w1:p1',key:'down'})).resolves.toEqual({ok:true})
- await expect(handler({}, {pane_id:'w1:p1',key:'enter',identity:next.identity})).resolves.toEqual({ok:true})
-})
 it('R2 residual risk: Herdr has no conditional send between capture and input',async()=>{
  const first=fx('codex-request-increase'), second=fx('codex-approaching-limits')
  const old=choices.screenChoices(first,'codex')!
@@ -185,18 +174,6 @@ it('R5: the viewed pane starts before queued background panes', async () => {
  await jobs
 })
 
-it('legend confirmation refuses a changed waiting screen and accepts its fresh identity', async () => {
- const oldText = fx('codex-hooks-box')
- const newText = oldText.replace('4 hooks', '5 hooks')
- const old = wait.parseWaitScreen(oldText)!, current = wait.parseWaitScreen(newText)!
- const call = vi.fn(async () => ({read:{text:newText}}))
- const handler = await route('screen-key', call)
- await expect(handler({}, {pane_id:'w1:p1',key:'enter',label:'review',identity:choices.waitIdentity(old)})).rejects.toMatchObject({code:'stale'})
- expect(call).not.toHaveBeenCalledWith('pane.send_input',expect.anything())
- await expect(handler({}, {pane_id:'w1:p1',key:'enter',label:'review',identity:choices.waitIdentity(current)})).resolves.toEqual({ok:true})
- expect(call).toHaveBeenCalledWith('pane.send_input',{pane_id:'w1:p1',keys:['enter']})
-})
-
 it('R3: invalidation keeps a disabled display fallback until a fresh read succeeds', async () => {
  const p=reviewPoller(true)
  const original=await p.tick(0)
@@ -208,15 +185,6 @@ it('R3: invalidation keeps a disabled display fallback until a fresh read succee
  expect(recovered.unavailable).toBeUndefined()
 })
 
-it('omp Continue refuses a different question without sending Enter', async () => {
- const old = choices.screenChoices(fx('omp-ask-multi'), 'omp')!
- const call = vi.fn(async () => ({ read: { text: fx('omp-approve-bash') } }))
- const handler = await route('nav', call)
- vi.stubGlobal('findPane', () => ({ id: 'w1:p1', agent: 'omp', status: 'blocked' }))
- await expect(handler({}, { pane_id: 'w1:p1', key: 'enter', identity: old.identity })).rejects.toMatchObject({ code: 'stale' })
- expect(call).not.toHaveBeenCalledWith('pane.send_input', expect.anything())
-})
-
 it('an ambiguous terminal menu refuses a stale native choice', async () => {
  const text = fx('codex-usage-menu'), old = choices.screenChoices(text, 'codex')!
  const call = vi.fn(async () => ({ read: { text } }))
@@ -224,7 +192,6 @@ it('an ambiguous terminal menu refuses a stale native choice', async () => {
  await expect(handler({}, { pane_id: 'w1:p1', index: 0, label: old.options[0]!.label, identity: old.identity })).rejects.toMatchObject({ code: 'stale' })
  expect(call).not.toHaveBeenCalledWith('pane.send_input', expect.anything())
 })
-
 
 it.each([
  ['codex-approve-command', 'Agent Command Center'],

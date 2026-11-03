@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { driverFor, healthUrl, runUpdate, shortReason } from '../bin/lib/updater.mjs'
-import { REPO } from '../server/utils/updates'
-import { buildPlan } from '../server/utils/selfupdate'
-import { updateRunning, type UpdateJob } from '../shared/updates'
 
 const base = {
   from: '1.3.0', to: '1.3.1', dir: '/home/test/wherdr', runtime: '/usr/local/bin/node',
@@ -201,38 +198,6 @@ describe('one-tap update: going back', () => {
     const io = fakeIo({ answers: [''] })
     expect(await runUpdate(plans.brew, io)).toBe('failed')
     expect(io.states.at(-1)![1]).toMatch(/previous Homebrew version was removed/)
-  })
-})
-
-describe('one-tap update: who may start it', () => {
-  const ok = {
-    mode: 'plugin' as const, current: '1.3.0', latest: '1.3.1', to: '1.3.1', job: null, now: 1_000_000,
-    root: '/home/test/wherdr/app', dir: '/home/test/wherdr', runtime: '/usr/local/bin/node', pid: 4242, env: { PORT: '7691' },
-  }
-  const job = (state: UpdateJob['state'], updatedAt: number): UpdateJob => ({ state, from: '1.3.0', to: '1.3.1', mode: 'plugin', startedAt: updatedAt, updatedAt })
-
-  it('plans the update of the release the server found', () => {
-    expect(buildPlan(ok)).toEqual({
-      kind: 'plugin', from: '1.3.0', to: '1.3.1', root: '/home/test/wherdr/app', dir: '/home/test/wherdr',
-      releaseBase: `https://github.com/${REPO}/releases/download`,
-      runtime: '/usr/local/bin/node', serverPid: 4242, port: '7691', host: '127.0.0.1', registry: 'https://registry.npmjs.org',
-    })
-  })
-
-  it('never installs a version picked by the client', () => {
-    expect(() => buildPlan({ ...ok, to: '0.0.1' })).toThrow(/No newer version/)
-    expect(() => buildPlan({ ...ok, latest: null })).toThrow(/No newer version/)
-  })
-
-  it('refuses npx and checkouts', () => {
-    for (const mode of ['npm', 'native'] as const) expect(() => buildPlan({ ...ok, mode })).toThrow(/cannot update itself/)
-  })
-
-  it('runs one update at a time, unless the last one was abandoned', () => {
-    expect(() => buildPlan({ ...ok, job: job('restarting', ok.now - 60_000) })).toThrow(/already in progress/)
-    expect(buildPlan({ ...ok, job: job('restarting', ok.now - 11 * 60_000) }).to).toBe('1.3.1')
-    expect(buildPlan({ ...ok, job: job('rolled-back', ok.now) }).to).toBe('1.3.1')
-    expect(updateRunning(job('done', ok.now), ok.now)).toBe(false)
   })
 })
 

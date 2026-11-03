@@ -46,7 +46,7 @@ import { coreCall } from './core'
 import { createCorePreviews } from './corePreview'
 import { chatDelta } from './chatDelta'
 import { agentNotificationTitle, pushSend, subWatchesSession } from './push'
-import { currentModel, forgetModel, noteScreen, modelControlBusy } from './modelctl'
+import { currentModel, forgetModel, noteScreen } from './modelctl'
 import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane, machinesListed, multiMachine, onMachinesChange, remoteMachines } from './machines'
 import { READY_MAX_MS, publishedMachine, serverReady } from '../../shared/stateReady'
 import { createCodexStatus, dirWritable } from './codexStatus'
@@ -162,11 +162,6 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
   finally { if (choicesPending.get(p.id) === entry) choicesPending.delete(p.id) }
 }
 async function readChoices(p: Pane, rev: unknown, strict: boolean, watch = false): Promise<OnScreen> {
-  // The existing picker owns its temporary TUI while it reads/changes a model.
-  if (modelControlBusy(p.id)) {
-    choicesCache.delete(p.id)
-    return { choices: null, screen: null, menu: null, interaction: 'managed' }
-  }
   const c = choicesCache.get(p.id)
   const watched = (screenWatch.get(p.id) || 0) > Date.now()
   if (!watched) screenWatch.delete(p.id)

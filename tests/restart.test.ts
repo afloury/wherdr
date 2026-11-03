@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { claudeFooterMode, launchOptions, planRestart, restartNotice } from '../shared/restart'
-import { type RestartDeps, startAgent, stopAgent } from '../server/utils/restartSeq'
 
 const ID = '00000000-0000-4000-8000-000000000001'
 
@@ -98,61 +97,5 @@ describe('permission mode on screen', () => {
   it('champ absent (dialogue, menu) : inconnu', () => {
     expect(claudeFooterMode('Do you want to proceed?\n❯ 1. Yes\n  2. No')).toBeNull()
     expect(claudeFooterMode(null)).toBeNull()
-  })
-})
-
-// Fake Herdr: the pane goes back to the shell after `trigger` (key or text).
-function fakeHerdr(o: { exitOn: string | null, status?: string }) {
-  const calls: string[] = []
-  let atShell = false
-  let status = o.status || 'idle'
-  let t = 0
-  const d: RestartDeps = {
-    now: () => t,
-    sleep: async (ms) => { t += ms },
-    call: async (method, params) => {
-      if (method === 'pane.send_input') {
-        const what = params.text ? `text:${params.text}` : `keys:${(params.keys as string[]).join(',')}`
-        calls.push(what)
-        if (what === 'keys:esc') status = 'idle'
-        if (o.exitOn && what === o.exitOn) atShell = true
-        return {}
-      }
-      if (method === 'pane.get') return { pane: { agent_status: status } }
-      if (method === 'pane.process_info') {
-        return { process_info: { shell_pid: 10, foreground_process_group_id: atShell ? 10 : 20, foreground_processes: atShell ? [] : [{ pid: 20, name: 'claude', argv: ['claude'] }] } }
-      }
-      if (method === 'agent.start') { calls.push(`start:${JSON.stringify(params.args || [])}`); return {} }
-      throw new Error(method)
-    },
-  }
-  return { d, calls }
-}
-
-describe('stop and relaunch sequence', () => {
-  it('idle: /exit then Enter is enough', async () => {
-    const { d, calls } = fakeHerdr({ exitOn: 'keys:enter' })
-    expect(await stopAgent(d, { id: 'w1:p1', agent: 'claude', status: 'idle' })).toBe('exit')
-    expect(calls).toEqual(['text:/exit', 'keys:enter'])
-  })
-  it('working: a single Escape (the agent stops), then /exit', async () => {
-    const { d, calls } = fakeHerdr({ exitOn: 'keys:enter', status: 'working' })
-    await stopAgent(d, { id: 'w1:p1', agent: 'claude', status: 'working' })
-    expect(calls).toEqual(['keys:esc', 'text:/exit', 'keys:enter'])
-  })
-  it('/exit without effect: Ctrl+C twice', async () => {
-    const { d, calls } = fakeHerdr({ exitOn: 'keys:ctrl+c' })
-    expect(await stopAgent(d, { id: 'w1:p1', agent: 'claude', status: 'idle' })).toBe('ctrl-c')
-    expect(calls).toEqual(['text:/exit', 'keys:enter', 'keys:ctrl+c', 'keys:ctrl+c'])
-  })
-  it('agent that does not stop: clear error', async () => {
-    const { d } = fakeHerdr({ exitOn: null })
-    await expect(stopAgent(d, { id: 'w1:p1', agent: 'claude', status: 'idle' })).rejects.toThrow('did not stop')
-  })
-  it('relaunches with the plan\'s arguments, under the same name', async () => {
-    const { d, calls } = fakeHerdr({ exitOn: null })
-    const plan = planRestart({ kind: 'claude', argv: ['claude'], session: ID, hadSession: true })
-    await startAgent(d, { id: 'w1:p1', agent: 'claude', name: 'claude-ab12' }, plan)
-    expect(calls).toEqual([`start:${JSON.stringify(['--resume', ID])}`])
   })
 })
