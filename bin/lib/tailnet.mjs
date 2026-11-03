@@ -73,6 +73,9 @@ export function tailnetStatus(statusJson) {
 // (UserID) that are not nodes shared in from another tailnet (ShareeNode).
 // otherIps: every other peer (another user's device in a team tailnet, a node
 // shared in, a tagged node), which wherdr admits only behind a passkey.
+// Tagged nodes all share one "tagged-devices" UserID: a tagged peer is never
+// yours, and on a tagged machine no peer is (its owner is not known).
+const TAGGED_DEVICES = 2147455555
 export function tailnetPeers(statusJson) {
   let s = null
   try { s = JSON.parse(statusJson) } catch {}
@@ -80,7 +83,8 @@ export function tailnetPeers(statusJson) {
   const readable = Boolean(s && typeof s === 'object' && typeof s.BackendState === 'string')
   const peers = readable && s.Peer && typeof s.Peer === 'object' ? Object.values(s.Peer) : []
   const me = s?.Self?.UserID
-  const own = p => Boolean(me) && p?.UserID === me && !p?.ShareeNode
+  const tagged = node => (Array.isArray(node?.Tags) && node.Tags.length > 0) || node?.UserID === TAGGED_DEVICES
+  const own = p => Boolean(me) && !tagged(s.Self) && p?.UserID === me && !p?.ShareeNode && !tagged(p)
   return {
     readable,
     state: readable ? s.BackendState : null,

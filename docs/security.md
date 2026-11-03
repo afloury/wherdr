@@ -62,9 +62,9 @@ See [SECURITY.md](../SECURITY.md) to report a vulnerability.
 
 wherdr answers **this computer and your own tailnet devices only**. A device on any other network (a coffee shop
 Wi-Fi, an office LAN, the Internet) gets HTTP 403 (`network`), with a page that says why, even
-when it knows the address and the port. Your own devices never need the passkey: it is an extra
-lock on top, and it needs HTTPS (or `localhost`). Other people's tailnet devices get in only
-once a passkey is set up (see below).
+when it knows the address and the port. The passkey lock is never required for this computer
+and your own devices: it is an extra lock on top, and it needs HTTPS (or `localhost`). Other
+people's tailnet devices get in only once a passkey is set up (see below).
 
 **Good practices**
 
@@ -91,10 +91,14 @@ How a request is judged, before anything else (WebSockets included):
     (`ShareeNode`). Every other peer is refused with HTTP 403 (`network`, `why: foreign`) while
     no passkey is set up: another user's device in a team tailnet, a machine someone
     [shared](https://tailscale.com/kb/1084/sharing) with you, a tagged node (tagged devices
-    belong to no user, your own tagged servers included). The same applies to the client
-    `tailscale serve` names in `X-Forwarded-For`. Those addresses are remembered from the last
-    valid reading, so a failed reading does not let them in. Once a passkey is set up, they are
-    let through to the lock screen and need that passkey like any device.
+    belong to no user, your own tagged servers included). When the machine running wherdr is
+    itself tagged, its owner is unknown: no peer counts as yours, so only this computer gets in
+    until a passkey is set up. The same rule applies to the client `tailscale serve` names in
+    `X-Forwarded-For`: without a passkey, it must be one of your devices in the latest reading
+    (a device that joined in the last seconds, or any device while Tailscale cannot be read, is
+    refused). The other peers are remembered from the last valid reading, so a failed reading
+    does not let them in. Once a passkey is set up, they are let through to the lock screen and
+    need that passkey like any device.
 - **Proxy headers**, only when the peer is this computer (a proxy on the machine, such as
   `tailscale serve`): every address in `X-Forwarded-For`, `Forwarded`, `X-Real-IP`,
   `CF-Connecting-IP` must be loopback, the tailnet or a trusted range too. They can only refuse

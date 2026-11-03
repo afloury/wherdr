@@ -164,17 +164,21 @@ export function forwardedClients(h: Headers): string[] {
   return out
 }
 
-// The zone of an address a local proxy names. These only restrict (the
-// connection already comes from this machine), so the tailnet range is taken
-// at its word here: it can only turn "local" into "tailnet", except for a
-// peer Tailscale lists as not yours (`tailscale serve` names it), refused
-// without a passkey.
+// The zone of an address a local proxy names (`tailscale serve` names the
+// tailnet client). These only restrict (the connection already comes from
+// this machine). Without a passkey, a tailnet address counts only when
+// Tailscale lists it as one of your devices, like a direct connection: a peer
+// listed as not yours is 'foreign', one it does not list (a device that just
+// joined, Tailscale unreadable) is refused. With a passkey, any tailnet
+// client goes on to the lock.
 function forwardedZone(ip: string, ctx: NetContext): NetZone | 'foreign' | null {
   const a = plainIp(ip)
   if (!family(a)) return ctx.trusted.any ? 'open' : null
   if (isLoopbackIp(a)) return 'local'
-  if (tailnetOther(a, ctx)) return ctx.passkey ? 'tailnet' : 'foreign'
-  if (isTailnetIp(a)) return 'tailnet'
+  if (isTailnetIp(a)) {
+    if (ctx.passkey || tailnetKnown(a, ctx.tailscale)) return 'tailnet'
+    return tailnetOther(a, ctx) ? 'foreign' : null
+  }
   if (inList(ctx.trusted.list, a)) return 'trusted'
   return ctx.trusted.any ? 'open' : null
 }

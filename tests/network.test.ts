@@ -224,9 +224,10 @@ describe('client check', () => {
     }
   })
   it('refuses what a local proxy says comes from elsewhere', () => {
-    expect(checkClient('127.0.0.1', { 'x-forwarded-for': '100.64.0.2' }, ctx())).toEqual({ ok: true, zone: 'tailnet' })
-    expect(checkClient('127.0.0.1', { 'x-forwarded-for': '100.64.0.2, 203.0.113.9' }, ctx())).toEqual({ ok: false, reason: 'forwarded' })
-    expect(checkClient('127.0.0.1', { 'x-forwarded-for': '203.0.113.9, 100.64.0.2' }, ctx())).toEqual({ ok: false, reason: 'forwarded' })
+    expect(checkClient('127.0.0.1', { 'x-forwarded-for': '100.101.102.103' }, ctx())).toEqual({ ok: true, zone: 'tailnet' })
+    expect(checkClient('127.0.0.1', { 'x-forwarded-for': '100.64.0.2' }, ctx())).toEqual({ ok: false, reason: 'forwarded' })
+    expect(checkClient('127.0.0.1', { 'x-forwarded-for': '100.101.102.103, 203.0.113.9' }, ctx())).toEqual({ ok: false, reason: 'forwarded' })
+    expect(checkClient('127.0.0.1', { 'x-forwarded-for': '203.0.113.9, 100.101.102.103' }, ctx())).toEqual({ ok: false, reason: 'forwarded' })
     expect(checkClient('127.0.0.1', { forwarded: 'for="[2001:db8::1]:4711";proto=https' }, ctx())).toEqual({ ok: false, reason: 'forwarded' })
     expect(checkClient('127.0.0.1', { forwarded: 'for=unknown' }, ctx())).toEqual({ ok: false, reason: 'forwarded' })
     expect(checkClient('127.0.0.1', { 'tailscale-funnel-request': '?1' }, ctx())).toEqual({ ok: false, reason: 'funnel' })

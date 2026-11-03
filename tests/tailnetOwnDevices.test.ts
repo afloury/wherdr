@@ -37,6 +37,25 @@ describe('tailnetPeers: own devices apart from the others', () => {
   })
 })
 
+describe('tagged nodes', () => {
+  it('never counts a tagged peer as yours, even without its Tags', () => {
+    const s = JSON.parse(STATUS)
+    for (const p of Object.values(s.Peer) as { HostName: string, Tags?: string[] }[]) if (p.HostName === 'ci-runner') delete p.Tags
+    expect(tailnetPeers(JSON.stringify(s)).otherIps).toContain('100.80.0.7')
+  })
+  it('counts no peer as yours when this machine is tagged (its owner is unknown)', () => {
+    const s = JSON.parse(STATUS)
+    s.Self.UserID = 2147455555
+    s.Self.Tags = ['tag:server']
+    const p = tailnetPeers(JSON.stringify(s))
+    expect(p.peerIps).toEqual([])
+    expect(p.otherIps).toEqual([...OWN, ...OTHERS])
+    // Tags missing but the tagged-devices user: same.
+    delete s.Self.Tags
+    expect(tailnetPeers(JSON.stringify(s)).peerIps).toEqual([])
+  })
+})
+
 describe('checkClient without a passkey', () => {
   it('accepts the owner\'s own devices, directly and through tailscale serve', () => {
     for (const ip of OWN) {
@@ -49,6 +68,12 @@ describe('checkClient without a passkey', () => {
       expect(checkClient(ip, {}, ctx())).toEqual({ ok: false, reason: 'foreign' })
       expect(checkClient('127.0.0.1', { 'x-forwarded-for': ip }, ctx())).toEqual({ ok: false, reason: 'foreign' })
     }
+  })
+  it('refuses through tailscale serve a tailnet client Tailscale does not list as yours', () => {
+    // Joined since the last reading, or Tailscale unreadable: not proven yours.
+    expect(checkClient('127.0.0.1', { 'x-forwarded-for': '100.70.0.9' }, ctx())).toEqual({ ok: false, reason: 'forwarded' })
+    expect(checkClient('127.0.0.1', { 'x-forwarded-for': OWN[0]! }, ctx({ tailscale: null }))).toEqual({ ok: false, reason: 'forwarded' })
+    expect(checkClient('127.0.0.1', { 'x-forwarded-for': '100.70.0.9' }, ctx({ passkey: true }))).toEqual({ ok: true, zone: 'tailnet' })
   })
   it('sees an IPv4 peer behind a dual-stack socket', () => {
     expect(checkClient('::ffff:100.80.0.4', {}, ctx())).toEqual({ ok: false, reason: 'foreign' })

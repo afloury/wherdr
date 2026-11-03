@@ -68,13 +68,14 @@
       "HostName": "ci-runner",
       "DNSName": "ci-runner.example.ts.net.",
       "OS": "linux",
-      "UserID": 1234567,
+      "UserID": 2147455555,
       "Tags": ["tag:ci"],
       "TailscaleIPs": ["100.80.0.7"],
       "Online": true
     }
   },
   "User": {
+    "2147455555": { "ID": 2147455555, "LoginName": "tagged-devices", "DisplayName": "tagged-devices" },
     "1001": { "ID": 1001, "LoginName": "owner@example.com", "DisplayName": "Owner" },
     "2002": { "ID": 2002, "LoginName": "colleague@example.com", "DisplayName": "Colleague" },
     "3003": { "ID": 3003, "LoginName": "friend@example.org", "DisplayName": "Friend" }

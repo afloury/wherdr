@@ -77,7 +77,9 @@ From now on use `https://<machine>.<tailnet>.ts.net:7683/`, not localhost: **a p
 works on the address it was created on.**
 
 1. Open that address for the user, or give them the link.
-2. **Passkey lock** (optional, recommended if others share the tailnet): on that address,
+2. **Passkey lock** (optional, strongly recommended: without it, anyone using this computer or
+   one of the user's devices controls the agents, and other people's tailnet devices are
+   refused): on that address,
    Settings › Security › **Enable passkey lock**. It asks for a bootstrap token: the last
    `First passkey: bootstrap token` line of `~/wherdr/wherdr.log` (`wherdr logs` with Homebrew). Give the token to the user.
 3. **On the phone**: open the address in Safari (Share › Add to Home Screen, then open wherdr
