@@ -38,7 +38,7 @@ Keep the label alongside the indicator so color is not the only signal.
 | Blocked | `--blocked` (orange by default) | Filled square, 0.9 s pulse | `.card-state.blocked i`, `.pill.blocked i` |
 | Done | `--done` (green by default) | Filled square | `.card-state.done`, `.pill.done` |
 | Inactive | `--muted` | Hollow square | `.pill.inactive i` |
-| Unknown / shell | `--dim` | Filled square | `.card-state.unknown`, `.card-state.shell`, `.pill.unknown`, `.pill.shell` |
+| Unknown / shell (card dot only: on the home, no status counts as Ready) | `--dim` | Filled square | `.card-state.unknown`, `.card-state.shell`, `.pill.unknown`, `.pill.shell` |
 
 Preserve the existing deliberate size variations rather than copying them into a
 new status system: `.card-state.blocked i` is 8 px; compact home lead indicators
