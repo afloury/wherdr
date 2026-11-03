@@ -156,7 +156,7 @@ describe('enrich: draft on the pane', () => {
       colors: async () => { painted++; return texts.colored() },
     })
     const at = async (ms: number, status: Pane['status'] = null) => { t = ms; const p: Pane = { ...pane, status }; await s.enrich([p]); return p }
-    return { at, painted: () => painted }
+    return { at, painted: () => painted, keyed: () => s.keyed(pane.id) }
   }
   it('shown once the same text stayed 2 s and the colored screen confirms it, gone once the field is empty', async () => {
     let plain = TYPED
@@ -168,6 +168,20 @@ describe('enrich: draft on the pane', () => {
     expect(r.painted()).toBe(1)
     plain = EMPTY
     expect((await r.at(4000)).draft).toBeUndefined()
+  })
+  it('follows a key from the key bar at once, and Clear then matches Claude’s field', async () => {
+    let plain = field('❯\u00a0abcdef')
+    const r = run({ plain: () => plain, colored: () => plain })
+    await r.at(0)
+    expect((await r.at(2000)).draft?.text).toBe('abcdef')
+    // Key bar: Delete, Home, Delete. The first poll may come before Claude redraws.
+    r.keyed()
+    expect((await r.at(2100)).draft?.text).toBe('abcdef')
+    plain = field('❯\u00a0bcde')
+    const shown = (await r.at(2500)).draft
+    expect(shown?.text).toBe('bcde')
+    const f = fake([plain, EMPTY])
+    await expect(coreDraft(f.deps, { pane_id: pane.id, action: 'clear', text: shown!.text })).resolves.toEqual({ ok: true })
   })
   it('Claude’s gray suggestion is never shown as a draft (real screens)', async () => {
     const r = run({ plain: () => SUGGESTION, colored: () => SUGGESTION_COLORED })
