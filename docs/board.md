@@ -2,6 +2,9 @@
 
 [Documentation](README.md) · [Project](../README.md)
 
+> [!NOTE]
+> **v2 only.** This page describes the Board, herdr-projects and coordinators of wherdr 2.x on Herdr. wherdr v3 on herdr-core has no Board, no herdr-projects and no coordinators. See the [v3 documentation](README.md).
+
 On desktop, drag the ticket panel’s divider to adjust its width. It uses the same
 handle as the navigation list: arrow keys (Shift for a larger step), double-click,
 Home or Enter to restore the default width. The width is saved on this device;
@@ -178,6 +181,6 @@ What the Board shows and does:
   is open (a list less than 5 seconds old is reused), and the last list kept when a machine is
   slow or unreachable. Nothing runs where herdr-projects is missing or older than 1.2.1: its first
   run would take over an older install's files.
-- **Agents in user folders**: wherdr runs herdr-projects with your [PATH](installation.md#agent-path), on this
+- **Agents in user folders**: wherdr runs herdr-projects with your [PATH](https://github.com/afloury/wherdr/blob/main/docs/installation.md), on this
   machine and over SSH, so `claude is not installed here` does not come from a login service's
   short `PATH`.
