@@ -16,7 +16,7 @@ import { type NewPanePlace, launchInNewPane } from '~/utils/paneLaunch'
 import type { ProjectFolder } from '#shared/projectFolder'
 
 const open = newAgentOpen
-// herdr-core: a terminal or an agent in a folder; no board, worktree, resume or first message.
+// herdr-core: a terminal or an agent in a folder, resume and first message; no board or worktree.
 const core = useRuntimeConfig().public.core
 const kind = ref<string>('')
 const dir = ref<string | null>(null)
@@ -254,6 +254,7 @@ async function launch() {
       const r = await api<{ pane_id: string }>('/api/agents', {
         ...(machine.value ? { machine: machine.value } : {}),
         kind: kind.value, cwd: dir.value, name: name.value.trim(), workspace: newTabSpace.value,
+        prompt: prompt.value, resume: resume.value && canResume.value,
       })
       resetForm()
       newAgentOpen.value = false
@@ -271,8 +272,7 @@ async function launch() {
       name: name.value.trim(),
       prompt: prompt.value,
       resume: resume.value && canResume.value,
-      worktree: isGit.value && worktree.value,
-      branch: branch.value.trim(),
+      ...(core ? {} : { worktree: isGit.value && worktree.value, branch: branch.value.trim() }),
     })
     resetForm()
     newAgentOpen.value = false
@@ -359,14 +359,14 @@ async function launch() {
           />
         </div>
 
-        <label v-if="canResume && !core" class="toggle-row">
+        <label v-if="canResume" class="toggle-row">
           <span><b>{{ t('Resume the last conversation') }}</b><small>{{ t('for this agent in this folder') }}</small></span>
           <USwitch v-model="resume" color="success" size="xl" />
         </label>
 
-        <label v-if="!core" class="field-label" for="newPrompt">{{ t(shell ? 'Command to run' : 'First message') }} <span class="muted">{{ t('(optional)') }}</span></label>
+        <label class="field-label" for="newPrompt">{{ t(shell ? 'Command to run' : 'First message') }} <span class="muted">{{ t('(optional)') }}</span></label>
         <UTextarea
-          v-if="!core" id="newPrompt" v-model="prompt" :rows="2" autoresize size="xl" class="w-full" :class="{ mono: shell }"
+          id="newPrompt" v-model="prompt" :rows="2" autoresize size="xl" class="w-full" :class="{ mono: shell }"
           :placeholder="t(shell ? 'E.g. npm run dev' : 'E.g. Summarize the project TODOs')"
         />
 
