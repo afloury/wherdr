@@ -17,9 +17,6 @@ export default defineNitroPlugin((nitroApp) => {
   initVapid()
   startMachines()
   startPolling()
-  // The Board read once, so the first one opened after a restart finds it read.
-  const warm = setTimeout(warmTasksBoard, 2000)
-  warm.unref?.()
   startNotices()
   startPaneSizes()
   onTailnetName(adoptTailnetName)
