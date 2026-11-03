@@ -39,3 +39,16 @@ it('groups every reported program by status and lifts mixed workspaces', async (
   expect(rows[1]?.lead.coreAddress).toBe('t3')
   expect(tabStates(rows[1]!)).toEqual(['idle', 'working'])
 })
+
+it('lists three agents of one folder as three rows counted 1/1/1', async () => {
+  const { spaceRows } = await import('../shared/spaces')
+  const { individualAgentRows } = await import('../app/utils/homeAgentRows')
+  const state = coreState([
+    terminal('a1', { cwd: '/workspace/same', template: 'claude', status: { state: 'working' } }),
+    terminal('a2', { cwd: '/workspace/same', template: 'claude', status: { state: 'blocked' } }),
+    terminal('a3', { cwd: '/workspace/same', template: 'codex', status: { state: 'idle' } }),
+  ], [])
+  const rows = individualAgentRows(spaceRows(state))
+  expect(rows).toHaveLength(3)
+  expect(coreRowCounts(rows)).toEqual({ working: 1, blocked: 1, ready: 1 })
+})

@@ -338,7 +338,7 @@ onMounted(() => {
             <h4 id="home-group-label">{{ t('Group by') }}</h4>
             <URadioGroup v-model="homeGroup" :items="homeGroupItems" aria-labelledby="home-group-label" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
 
-            <label class="settings-toggle">
+            <label v-if="!core" class="settings-toggle">
               <span><b>{{ t('Individual agents') }}</b><small>{{ (core ? t('List standalone agents separately. Follows you on every device.') : t('List standalone agents separately. Board tasks stay grouped. Follows you on every device.')) }}</small></span>
               <USwitch v-model="individualListOn" :aria-label="t('Individual agents')" color="success" size="xl" />
             </label>
