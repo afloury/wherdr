@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Conversation: the agent's transcript (without touching the terminal, so
-// without resizing the pane the computer is looking at), re-read every 1.5 s (the server
-// replies "unchanged" as long as the file has not grown).
+// without resizing the pane the computer is looking at), re-read every 1.5 s while
+// the agent works, less often when it rests (see pollDelay; the server replies
+// "unchanged" as long as the file has not grown).
 // Shown = older pages loaded on demand (`older`, up to
 // byte `olderCursor`) + bottom re-read continuously from byte `tailStart`.
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolView, Pane, QueuedMessage } from '#shared/types'
@@ -341,13 +342,10 @@ async function loadOlder() {
   }
 }
 
-let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   // The network at once, the kept end alongside (shown only if it comes first).
   Promise.all([loadChat(), restoreChat()]).then(jumpToResult)
-  timer = setInterval(() => { if (!document.hidden && !offlineView.value) loadChat() }, 1500)
 })
-onUnmounted(() => clearInterval(timer))
 watch(pageVisible, (v) => { if (v) loadChat() })
 
 // ------------------------------------------------------------ rendu
@@ -413,7 +411,7 @@ function itemImageSrcs(it: ChatItem): string[] {
   const srcs: string[] = []
   if (!it.ref || !it.images || !file) return srcs
   for (let k = 0; k < it.images; k++) {
-    srcs.push(`/api/chat/image?pane=${encodeURIComponent(props.pane.id)}&file=${encodeURIComponent(file)}&ref=${it.ref}&i=${(it.imageAt || 0) + k}`)
+    srcs.push(`/api/chat/image?pane=${encodeURIComponent(paneId.value)}&file=${encodeURIComponent(file)}&ref=${it.ref}&i=${(it.imageAt || 0) + k}`)
   }
   return srcs
 }
@@ -445,7 +443,32 @@ function lazyHtml<T extends object>(b: T, render: () => string): T & { html: str
 }
 
 const openTools = reactive(new Set<string>())
+// Small flags read by `blocks` instead of the pane itself: a live state push
+// (new preview, new screen…) changes the pane object, but rebuilds the blocks
+// only when one of these flips.
+const paneId = computed(() => props.pane.id)
 const working = computed(() => !readOnly.value && props.pane.status === 'working')
+const blocked = computed(() => !readOnly.value && props.pane.status === 'blocked')
+const pendingPrompt = computed(() => Boolean(props.pane.pendingPrompt))
+
+// Re-read of the conversation: every 1.5 s while the agent works or waits on
+// the user, every few seconds when it rests. A status or preview change in the
+// live state re-reads it at once (the agent started, replied or stopped).
+const CHAT_POLL_ACTIVE_MS = 1500
+const CHAT_POLL_IDLE_MS = 6000
+const pollDelay = computed(() => (working.value || blocked.value || pendingPrompt.value ? CHAT_POLL_ACTIVE_MS : CHAT_POLL_IDLE_MS))
+let pollTimer: ReturnType<typeof setTimeout> | undefined
+let pollStopped = false
+const pollNow = () => { if (!document.hidden && !offlineView.value) loadChat() }
+function schedulePoll() {
+  clearTimeout(pollTimer)
+  if (pollStopped) return
+  pollTimer = setTimeout(() => { pollNow(); schedulePoll() }, pollDelay.value)
+}
+onMounted(schedulePoll)
+onUnmounted(() => { pollStopped = true; clearTimeout(pollTimer) })
+watch(pollDelay, schedulePoll)
+watch(() => [props.pane.status, props.pane.preview], () => { pollNow(); schedulePoll() })
 
 const blocks = computed<Block[]>(() => {
   const out: Block[] = []
@@ -569,12 +592,11 @@ const blocks = computed<Block[]>(() => {
   flush()
   // Last turn: summary only if it is finished (the agent is no longer working,
   // nor waiting for an approval or an answer in the middle of the turn).
-  const blocked = !readOnly.value && props.pane.status === 'blocked'
-  if (!working.value && !blocked && !props.pane.pendingPrompt) closeTurn()
+  if (!working.value && !blocked.value && !pendingPrompt.value) closeTurn()
   else {
     // In progress: the last action is the one running (or waiting for its approval).
     const last = out[out.length - 1]
-    if (last && last.k === 'tools' && (working.value || blocked)) last.live = true
+    if (last && last.k === 'tools' && (working.value || blocked.value)) last.live = true
   }
   return out
 })
@@ -656,7 +678,6 @@ function okAll(ref: Reference | null, click: boolean) {
   haptic()
   if (click) emit('answered', answerEnd(draft.text, ref))
 }
-const answered = (ref: Reference, a: Answer) => tappedAnswer(answerOf(draftText.value, ref) || '') === a
 // "Quoted" state of the question and point buttons (and of the words of a
 // question) and pressed state of the one-tap answers, read from the draft.
 function syncQuoted() {
@@ -940,20 +961,6 @@ const screen = computed<ClaudeScreen | null>(() => {
   return p.agent === 'claude' && p.status === 'working' ? p.claudeScreen || null : null
 })
 const liveShell = computed(() => (screen.value && screen.value.shell) || null)
-// Duration of the running command, to the second.
-const nowTick = ref(Date.now())
-let tick: ReturnType<typeof setInterval> | undefined
-watch(liveShell, (sh) => {
-  if (sh && !tick) tick = setInterval(() => { nowTick.value = Date.now() }, 1000)
-  if (!sh && tick) { clearInterval(tick); tick = undefined }
-}, { immediate: true })
-onUnmounted(() => clearInterval(tick))
-const shellDuration = computed(() => {
-  const since = liveShell.value && liveShell.value.since
-  if (!since) return null
-  const s = Math.max(0, Math.round((nowTick.value - since) / 1000))
-  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`
-})
 const queuedList = computed(() => {
   const p = props.pane
   // A record the server gives back is on its way to the message field (see utils/givenBack.ts).
@@ -1279,7 +1286,7 @@ function focusSearch() {
 // `asked`: that message, whatever the draft says (the list keeps room for the
 // reminder as long as it may show, so answering moves nothing).
 const asked = computed(() => {
-  if (readOnly.value || working.value || props.pane.status === 'blocked' || queuedList.value.length || liveShell.value) return null
+  if (readOnly.value || working.value || blocked.value || queuedList.value.length || liveShell.value) return null
   const last = blocks.value.findLast(b => b.k === 'assistant' || b.k === 'user' || b.k === 'autopilot' || b.k === 'shell' || b.k === 'ompRun')
   if (!last || last.k !== 'assistant' || typingAt(last.id) !== null) return null
   const targets = replyTargets(last.html)
@@ -1426,29 +1433,11 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                     <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" @done="typingDone(b.id)" />
                   </template>
                 </UChatMessage>
-                <div v-if="replyStyle === 'list' && !readOnly && typingAt(b.id) === null && (replyTargets(b.html).questions.length || replyTargets(b.html).pick)" class="q-bar">
-                  <template v-if="replyTargets(b.html).questions.length">
-                    <p class="q-bar-h">{{ tl('Questions · reply to', 'Questions · répondre à') }}</p>
-                    <div v-for="q in replyTargets(b.html).questions" :key="q.n" class="q-line">
-                      <button
-                        type="button" class="q-row" :class="{ quoted: isQuoted(draftText, pointRef(q.text, b.time, b.rid)) }"
-                        :aria-label="`${t('Reply')}: ${q.text}`" @click="quote(pointRef(q.text, b.time, b.rid))"
-                        @mouseenter="hotQuestion(b.key, q.n, true)" @mouseleave="hotQuestion(b.key, q.n, false)" @focus="hotQuestion(b.key, q.n, true)" @blur="hotQuestion(b.key, q.n, false)"
-                      >
-                        <b>{{ isQuoted(draftText, pointRef(q.text, b.time, b.rid)) ? '✓' : q.n }}</b><span>{{ q.text }}</span><i>↳<em> {{ isQuoted(draftText, pointRef(q.text, b.time, b.rid)) ? t('Quoted') : t('Reply') }}</em></i>
-                      </button>
-                      <template v-if="q.closed">
-                        <button
-                          v-for="a in (['yes', 'no'] as const)" :key="a" type="button" class="q-row-ans" :aria-pressed="answered(pointRef(q.text, b.time, b.rid), a)"
-                          :aria-label="`${answerWord(a)}: ${q.text}`" @click="answer(pointRef(q.text, b.time, b.rid), a, $event.detail > 0)"
-                        >{{ answerWord(a) }}</button>
-                      </template>
-                    </div>
-                  </template>
-                  <button v-if="replyTargets(b.html).pick" type="button" class="q-pick" :aria-pressed="pickKey === b.key" @click="pickKey = pickKey === b.key ? null : b.key">
-                    {{ pickKey === b.key ? tl('Pick the point to quote · Cancel', 'Choisis le point à citer · Annuler') : tl('+ Quote a point', '+ Citer un point') }}
-                  </button>
-                </div>
+                <ChatQuestionBar
+                  v-if="replyStyle === 'list' && !readOnly && typingAt(b.id) === null && (replyTargets(b.html).questions.length || replyTargets(b.html).pick)"
+                  :pane-id="pane.id" :targets="replyTargets(b.html)" :time="b.time" :rid="b.rid" :picking="pickKey === b.key"
+                  @quote="quote" @answer="answer" @hot="(n, on) => hotQuestion(b.key, n, on)" @pick="pickKey = pickKey === b.key ? null : b.key"
+                />
                 <div v-if="!b.endsTurn && !readOnly" class="msg-actions">
                   <button type="button" class="msg-reply" @click="replyTo(b.key)">
                     <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
@@ -1633,7 +1622,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <div v-else class="msg-shell-empty">{{ t('No output yet') }}</div>
             </div>
             <div class="queued-tag running">
-              <UIcon name="i-lucide-loader-circle" class="spin" /><span>{{ t('Running') }}<template v-if="shellDuration"> · {{ shellDuration }}</template></span>
+              <UIcon name="i-lucide-loader-circle" class="spin" /><ChatRunningTime :since="liveShell.since" />
             </div>
           </div>
           <div v-for="q in queuedList.filter(x => x.phase === 'queued')" :key="q.id" class="msg-user-wrap">

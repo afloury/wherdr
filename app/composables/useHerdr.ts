@@ -507,6 +507,31 @@ function normalize(s: HerdrState): HerdrState {
   return s
 }
 
+// Each push carries every pane. A pane whose content did not change keeps its
+// previous object, so views about other agents see the same value and do not
+// re-render. Panes are never mutated after normalize(), so a kept object still
+// matches its JSON.
+export function createPaneReuse() {
+  let seen = new Map<string, { json: string, pane: Pane }>()
+  return {
+    reuse(state: HerdrState): HerdrState {
+      if (!Array.isArray(state.panes)) return state
+      const next = new Map<string, { json: string, pane: Pane }>()
+      const panes = state.panes.map((p) => {
+        const json = JSON.stringify(p)
+        const prev = seen.get(p.id)
+        const kept = prev && prev.json === json ? prev.pane : p
+        next.set(p.id, { json, pane: kept })
+        return kept
+      })
+      seen = next
+      return { ...state, panes }
+    },
+    clear() { seen = new Map() },
+  }
+}
+const paneReuse = createPaneReuse()
+
 const eventProbe = createSocketProbe(() => evWs)
 let evHandshake: ReturnType<typeof setTimeout> | undefined
 export function recoverEvents() {
@@ -561,7 +586,7 @@ export function connectEvents() {
       if (data?.type === 'pong') { eventProbe.pong(ws); return }
       // Settings changed on another device (or another tab).
       if (data?.type === 'settings') { settingsSync.receive(data.settings || {}); return }
-      const got = normalize(data) as HerdrState
+      const got = paneReuse.reuse(normalize(data) as HerdrState)
       // Server just restarted, state still partial: we keep the whole
       // display, the "reconnecting" banner stays in place.
       const state = settleState(lastStateAt ? fullState : null, got, Date.now() < settleUntil)
@@ -670,6 +695,7 @@ export function showLock() {
   cachedAt.value = null
   setOfflineAccess(null)
   clearOffline()
+  paneReuse.clear()
   // Nothing must talk to the server any more until it is unlocked.
   eventProbe.cancel()
   clearTimeout(evHandshake)
