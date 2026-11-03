@@ -36,7 +36,6 @@ export default defineApi(async (event) => {
       if (d.keep !== undefined) r.keep = d.keep
     }
   }
-  if (r.queue && r.queue.length) r.queue = withSentText(p.id, r.queue)
   // Current model ("Opus 5.5", "GPT-6-Sol"): cached by file size. Not read
   // for an unchanged reply (most polls): the client keeps what it has.
   return r.available && !r.unchanged ? { ...r, model: await currentModel(p).catch(() => null) } : r

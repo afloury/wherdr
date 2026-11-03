@@ -57,7 +57,7 @@ export default defineEventHandler(async (event) => {
     case 'locked':
       return sendError(event, 401, { error: 'App is locked', code: 'locked' })
   }
-  if (process.env.WHERDR_BACKEND === 'core' && path.startsWith('/api/') && !coreRouteAllowed(path, event.method)) {
+  if (path.startsWith('/api/') && !coreRouteAllowed(path, event.method)) {
     return sendError(event, 503, { error: 'Unavailable with herdr-core' })
   }
   const renewed = auth.renew(req)

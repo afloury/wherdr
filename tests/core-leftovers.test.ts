@@ -2,26 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 describe('core mode: state is not rebuilt from the empty legacy machines', () => {
   vi.setConfig({ testTimeout: 30000 })
-  beforeEach(() => { vi.resetModules(); process.env.WHERDR_BACKEND = 'core' })
-  afterEach(() => { vi.restoreAllMocks(); delete process.env.WHERDR_BACKEND })
+  beforeEach(() => { vi.resetModules() })
+  afterEach(() => { vi.restoreAllMocks() })
 
-  it('keeps the core state after READY_MAX_MS', async () => {
+  it('schedules no legacy rebuild at load and keeps the core state', async () => {
     const good = { ok: true, workspaces: [{ id: 'w1', label: 'w' }], tabs: [], panes: [] }
     vi.doMock('../server/utils/readCoreState', () => ({ readCoreState: async () => good }))
     // These come from Nitro auto-imports in production.
-    Object.assign(globalThis, { coreScreens: () => ({ enrich: async () => {} }), coreTranscriptsOf: () => ({ observe: () => {}, forget: () => {} }), corePreviews: () => ({ apply: () => {} }) })
-    // The module schedules its rebuild at load: capture it and fire it by hand.
-    const real = globalThis.setTimeout
-    const late: Array<() => void> = []
-    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number, ...a: unknown[]) => {
-      if (ms === 20100) { late.push(fn); return 0 as never }
-      return real(fn, ms, ...a)
-    }) as never)
+    Object.assign(globalThis, { coreScreens: () => ({ enrich: async () => {} }) })
+    const timer = vi.spyOn(globalThis, 'setTimeout')
     const s = await import('../server/utils/state')
-    expect(late).toHaveLength(1)
+    expect(timer).not.toHaveBeenCalled()
     await s.poll()
-    expect(s.getState().ok).toBe(true)
-    late[0]!()
     expect(s.getState().ok).toBe(true)
     expect(s.getState().workspaces).toHaveLength(1)
   })

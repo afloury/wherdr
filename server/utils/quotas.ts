@@ -26,12 +26,12 @@ import type { AccountQuota, ClaudeSetup, ClaudeSetupState, Quota, QuotaWindow, Q
 import { readDismissed } from './claudeSetup'
 import type { ExecResult, MachineFs } from './fsx'
 import { HerdrError } from './herdr'
-import { allMachines, getMachine, type Machine } from './machines'
+import type { Machine } from './machines'
 import { coreQuotaMachines } from './coreQuotaMachines'
 import { fmt } from '../../shared/message'
 import { type KnownWeek, type WeekReading, codexWeekWindow } from '../../shared/codexStatus'
 
-// What a quota reading needs of a machine (v2 machines, or core's).
+// What a quota reading needs of a machine (core's machines, coreQuotaMachines.ts).
 export type QuotaMachine = Pick<Machine, 'key' | 'label' | 'local' | 'status' | 'home' | 'fs' | 'exec'>
 
 // Lazy: coreAdminDeps reaches state.ts, which itself registers into this module.
@@ -482,9 +482,7 @@ async function readMachineClaude(m: QuotaMachine): Promise<ClaudeMachineReading 
 export async function readQuotas(force = false): Promise<Quotas> {
   if (!force && cache && Date.now() - cache.at < TTL) return cache.q
   const version = ++readVersion
-  const all: QuotaMachine[] = process.env.WHERDR_BACKEND === 'core'
-    ? await coreMachines()
-    : allMachines().filter(m => !m.info().baseKey)
+  const all: QuotaMachine[] = await coreMachines()
   const online = all.filter(m => m.home && (m.local || m.status === 'online'))
   const dismissed = readDismissed()
   const readings = await Promise.all(online.map(async (m) => {
@@ -509,10 +507,9 @@ export async function readQuotas(force = false): Promise<Quotas> {
   return q
 }
 
-// The machine of a key (install route), on v2 or core.
+// The machine of a key (install route).
 export async function quotaMachine(key: string): Promise<QuotaMachine | undefined> {
-  if (process.env.WHERDR_BACKEND === 'core') return (await coreMachines()).find(m => m.key === key)
-  return getMachine(key)
+  return (await coreMachines()).find(m => m.key === key)
 }
 
 // Next read starts afresh (install, suggestion dismissed).
