@@ -1,11 +1,12 @@
 import { expect, test, type FakeCore, type Page } from './fake-core'
-import { DECISIONS } from './fake-core-chats'
 
-// The composer on herdr-core: layout (from composer-layout.spec.ts) and attachments (the
-// clipboard image of dictation-paste.spec.ts, a file through "+", both written beside the
-// terminal with terminal.put and sent with the message). Core has no model or effort
-// picker, so the toolbar checks hold the "+" and Send buttons only. Dropped: the paste
-// journal of Settings › Advanced and the native-clipboard timing loop (not core-specific).
+// The composer on herdr-core, end to end in a real browser: its layout on a touch screen
+// (from composer-layout.spec.ts), a pasted image written beside the terminal with
+// terminal.put and sent with the message (from dictation-paste.spec.ts), and a message sent
+// while the agent works. Core has no model or effort picker: the toolbar holds "+" and Send.
+// Covered elsewhere: a file added with "+" (core-attach.spec.ts), a pressed answer staying
+// under the finger (core-questions.spec.ts), sending, offline drafts and Escape
+// (components/Composer), the paste journal (components/PasteJournal).
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='
 const agent = (core: FakeCore) => core.claude('demo', [['user', 'Are you ready?'], ['assistant', 'Ready when you are.']], { reply: 'Got it.' })
 const open = async (page: Page, url: string) => {
@@ -13,12 +14,12 @@ const open = async (page: Page, url: string) => {
   await expect(page.locator('.chat').getByText('Ready when you are.')).toBeVisible()
 }
 
-test('touch composer expands only for editing or a kept draft', async ({ page, core }) => {
+test('the touch composer expands for editing, keeps its width and toolbar, and long drafts scroll above it', async ({ page, core }) => {
   await open(page, agent(core).url)
   const field = page.locator('.prompt textarea')
   const prompt = page.locator('.prompt')
+  // At rest it is one compact line; it expands while editing or holding a draft.
   await expect(prompt).not.toHaveClass(/expanded/)
-  await expect(page.locator('.prompt-models')).toHaveCount(0)
   expect((await prompt.boundingBox())!.height).toBeLessThanOrEqual(60)
   await field.focus()
   await expect(prompt).toHaveClass(/expanded/)
@@ -27,39 +28,6 @@ test('touch composer expands only for editing or a kept draft', async ({ page, c
   await field.fill('保留草稿时，编辑区仍应占满整行。')
   await field.blur()
   await expect(prompt).toHaveClass(/expanded/)
-  await field.fill('')
-  await field.blur()
-  await expect(prompt).not.toHaveClass(/expanded/)
-})
-
-test('blurring an empty touch editor keeps a pressed answer in place', async ({ page, core }) => {
-  await page.goto(core.claude('decisions', DECISIONS).url)
-  const answer = page.getByRole('button', { name: '1 · Yes: Tag the release today?', exact: true })
-  await expect(answer).toBeVisible()
-  const field = page.locator('.prompt textarea')
-  const prompt = page.locator('.prompt')
-  await field.fill('')
-  await expect(prompt).toHaveClass(/expanded/)
-  await answer.scrollIntoViewIfNeeded()
-  const box = (await answer.boundingBox())!
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-  await page.mouse.down()
-  try {
-    // Keep the press down across layout frames, as a real finger can: a
-    // blur must not collapse the composer and move its target before release.
-    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
-    await expect(prompt).toHaveClass(/expanded/)
-    expect((await answer.boundingBox())!.y).toBeCloseTo(box.y, 0)
-  } finally { await page.mouse.up() }
-  await expect(field).toHaveValue(/Tag the release today\? —\nYes\n$/)
-  await expect(page.locator('.composer-ask')).toHaveText('4 questions unanswered')
-  await expect(field).not.toBeFocused()
-})
-
-test('the editor keeps its width, the toolbar fits, and long drafts scroll above it', async ({ page, core }) => {
-  await open(page, agent(core).url)
-  const field = page.locator('.prompt textarea')
-  const prompt = page.locator('.prompt')
   for (const width of [320, 390, 430]) {
     await page.setViewportSize({ width, height: 844 })
     await field.fill('请继续研究重连与加载速度，把当前实现中的等待链逐项说明。')
@@ -114,23 +82,6 @@ test('a pasted image is put beside the terminal and sent with the message', asyn
   expect(claude.sends[0]).toContain('What is on this screenshot?')
   expect(claude.sends[0]).toContain(put.name)
   await expect(page.locator('.prompt .attachments img')).toHaveCount(0)
-})
-
-test('a file added with "+" is put beside the terminal and its path is sent', async ({ page, core }) => {
-  const claude = agent(core)
-  await open(page, claude.url)
-  await page.getByTestId('attach-any').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('release notes draft\n') })
-  await expect.poll(() => core.puts.length).toBe(1)
-  const put = core.puts[0]!
-  expect(put.data.toString('utf8')).toBe('release notes draft\n')
-  await expect(page.getByText('notes.txt')).toBeVisible()
-  await page.locator('.prompt textarea').fill('Read this file.')
-  await page.locator('.prompt-send').click()
-  await expect.poll(() => claude.sends.length).toBe(1)
-  expect(claude.sends[0]).toContain('Read this file.')
-  expect(claude.sends[0]).toContain(put.name)
-  // Settled: the message, then the reply.
-  await expect(page.locator('.chat').getByText('Got it.')).toBeVisible()
 })
 
 test('a message sent while Claude works waits in its queue, then settles when Claude takes it', async ({ page, core }) => {

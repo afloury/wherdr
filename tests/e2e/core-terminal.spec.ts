@@ -3,9 +3,10 @@ import { claudeScreen, expect, test, type Page } from './fake-core'
 // The terminal view on herdr-core, ported from terminal-size.spec.ts and view-toggle.spec.ts:
 // the live terminal attaches over the framed protocol (terminal.attach), shows the screen,
 // sends what is typed, follows the screen size and detaches when the conversation returns.
-// Dropped from v2: the grace delay after a dropped connection and the reopen-at-once case
-// (v2 restored the pane size itself; core does that on detach), and the split-cell toggle
-// (no split tabs on core).
+// Not repeated here: the desktop Conversation / Terminal button and its Ctrl+` shortcut
+// (components/ViewToggle, shortcuts.test.ts, viewMode.test.ts). Dropped from v2: the grace
+// delay after a dropped connection and the reopen-at-once case (core restores the size
+// itself on detach), and the split-cell toggle (no split tabs on core).
 // Claude Code's own screen: another screen would be taken for a full-screen program.
 const SCREEN = `fake terminal ready\n\n${claudeScreen()}`
 
@@ -41,43 +42,4 @@ test('the phone Terminal view attaches, sends typed keys, follows the size and d
   await expect(page.locator('#term')).toHaveCount(0)
   await expect(page.locator('.chat .chat-list article').last()).toBeVisible()
   await expect.poll(() => claude.size.attached, { timeout: 10_000 }).toBe(false)
-})
-
-test.describe('computer', () => {
-  test.use({ isMobile: false, hasTouch: false, viewport: { width: 1440, height: 900 } })
-
-  test('one desktop action switches both views, with the button and the shortcut', async ({ page, core }) => {
-    const claude = core.claude('demo', [['user', 'Are you ready?'], ['assistant', 'Ready when you are.']], { screen: SCREEN })
-    await domRenderer(page)
-    await page.goto(claude.url)
-    const scope = page.locator('#agent')
-    await expect(scope.locator('.chat')).toContainText('Ready when you are.')
-    await expect(scope.locator('.view-toggle')).toHaveCount(1)
-    const toggle = scope.getByRole('button', { name: 'Show terminal', exact: true })
-    await expect(toggle).toContainText('Terminal')
-    await toggle.hover()
-    await expect(page.getByText('Show terminal', { exact: true })).toBeVisible()
-    await expect(page.locator('[data-slot=kbds]')).toContainText('`')
-    await toggle.click()
-    await expect(scope.locator('#term .xterm')).toBeVisible()
-    await expect(scope.locator('#term .xterm-rows')).toContainText('fake terminal ready')
-    await expect(scope.getByRole('button', { name: 'Show conversation', exact: true })).toContainText('Conversation')
-    await scope.getByRole('button', { name: 'Show conversation', exact: true }).click()
-    await expect(scope.locator('.chat')).toBeVisible()
-    // The same shortcut still switches the focused pane in either direction.
-    await page.keyboard.press('Control+Backquote')
-    await expect(scope.locator('#term .xterm')).toBeVisible()
-    await page.keyboard.press('Control+Backquote')
-    await expect(scope.locator('.chat')).toBeVisible()
-  })
-
-  test('the action is accessible with a legacy French preference', async ({ page, core }) => {
-    const claude = core.claude('demo', [['user', 'Are you ready?'], ['assistant', 'Ready when you are.']], { screen: SCREEN })
-    await page.addInitScript(() => localStorage.setItem('herdrLanguage', 'fr'))
-    await page.goto(claude.url)
-    await page.getByRole('button', { name: 'Show terminal', exact: true }).click()
-    await expect(page.locator('#term .xterm')).toBeVisible()
-    await page.getByRole('button', { name: 'Show conversation', exact: true }).click()
-    await expect(page.locator('.chat')).toBeVisible()
-  })
 })

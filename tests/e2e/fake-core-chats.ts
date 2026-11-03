@@ -46,18 +46,3 @@ export const FOLLOWUP: Turn[] = [
   ['user', 'Go on.'],
   ['assistant', 'The plan has two open points. Shall I rename the module? It is a small change.\n\nWhich name do you prefer?'],
 ]
-
-export const TWO_TABLES: Turn[] = [
-  ['user', 'What about the rollout?'],
-  ['assistant', [
-    'Staging first:',
-    '| # | Question |\n| --- | --- |\n| 1 | Continue? |\n| 2 | Keep the staging data? |',
-    'Then production (rows 2 and 3 are settled):',
-    '| # | Question |\n| --- | --- |\n| 1 | Continue? |\n| 4 | Delete the old production replica? |',
-  ].join('\n\n')],
-]
-
-export const PROSE: Turn[] = [
-  ['user', 'Where are the threads?'],
-  ['assistant', 'Two threads are working.'],
-]

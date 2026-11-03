@@ -49,8 +49,10 @@ WHERDR_BACKEND=core NUXT_PUBLIC_CORE=true npm run build
 npx playwright test -c playwright.core.config.ts
 ```
 
-CI runs the same build and tests on every push (about 3 minutes for the e2e part). Most specs
-without the `core-` prefix still target the v2 fake Herdr (`playwright.config.ts`).
+CI runs the same build and tests on every push (about a minute for the e2e part). Keep these
+for what needs a real browser end to end (layout, touch, clipboard, the live terminal, the
+server and core together); test the rest with Vitest unit or component tests. Specs without
+the `core-` prefix still target the v2 fake Herdr (`playwright.config.ts`).
 
 ## Contributing
 

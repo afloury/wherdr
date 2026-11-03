@@ -16,6 +16,15 @@ describe('UserText pasted cards', () => {
     w.unmount()
   })
 
+  // Moved from send-message.spec.ts: only "> " lines are quotes; a ">>>" line is text.
+  it('keeps a ">>>" line as text and shows "> " lines as quotes', async () => {
+    const w = await mountSuspended(UserText, { props: { text: 'Markers\n<<<\nBody\n>>>\n> Quoted?\nYes.' } })
+    expect(w.findAll('.msg-q').map(q => q.text())).toEqual(['Quoted?'])
+    expect(w.text()).toContain('>>>')
+    expect(w.text()).toContain('<<<')
+    w.unmount()
+  })
+
   // A device that did not send the message only knows what the server lists.
   it('shows the paste the server lists as a card, on a device that never sent it', async () => {
     const w = await mountSuspended(UserText, { props: { text, pasted: [LOG] } })
