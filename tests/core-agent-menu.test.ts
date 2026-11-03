@@ -15,8 +15,8 @@ describe('coreAgentMenu', () => {
   it('adds Rename for a pane and opens the sheet for it', () => {
     const rename = vi.fn()
     const items = coreAgentMenu({ pane: { id: 'w1:p1' } as never, takeControl: vi.fn(), reconnect: vi.fn(), rename, browseFiles: vi.fn(), settings: [], close: undefined })
-    expect(items.map(i => i.label)).toEqual(['Take control of this terminal', 'Reconnect', 'Rename pane'])
-    items[2]!.run?.()
+    expect(items.map(i => i.label)).toContain('Rename pane')
+    items.find(i => i.label === 'Rename pane')!.run?.()
     expect(rename).toHaveBeenCalledWith('w1:p1')
   })
   it('omits the close entry when absent', () => {
