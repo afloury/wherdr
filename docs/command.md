@@ -2,12 +2,9 @@
 
 [Documentation](README.md) · [Project](../README.md)
 
-> [!NOTE]
-> **v2 only.** The `wherdr` command (npm, Homebrew) and its service install wherdr 2.x. wherdr v3 on herdr-core has no npm or Homebrew package yet: it runs [from source](installation.md#installation). See the [v3 documentation](README.md).
-
 ### The `wherdr` command
 
-An alternative to [the one command](https://github.com/afloury/wherdr/blob/main/docs/installation.md), from npm or Homebrew: the same app, without
+An alternative to [the one command](installation.md#the-one-command), from npm or Homebrew: the same app, without
 the Herdr plugin. npm can hold a new release for up to two days (moderation), so these get updates
 later than the installer, which downloads the GitHub release package. The npm package holds the
 built app: nothing is compiled on your machine. Try it with `npx wherdr` (or `bunx wherdr`,
@@ -27,7 +24,7 @@ wherdr phone                # phone state, the app's phone setup page, QR code o
 | `wherdr logs` (`-f` to follow, `-n 100`) | The log, `~/wherdr/wherdr.log`. |
 | `wherdr open` | Opens wherdr in the browser: its tailnet address when published and answering, else `localhost`. |
 | `wherdr phone` | Whether your phone can reach wherdr (Tailscale, `tailscale serve`, the address answering), the `tailscale serve` command to publish it when it is not (wherdr then enables the address by itself), the link to **Settings › Phone**, and the QR code once the address answers. |
-| `wherdr service install` · `uninstall` | Configure automatic startup: a LaunchAgent on macOS (`~/Library/LaunchAgents/dev.wherdr.plist`) starts at login; a `systemd --user` unit on Linux starts at boot with lingering enabled, otherwise at login. The command tries to enable lingering (`loginctl enable-linger`, without sudo; when your system refuses it, the command to run is printed) so it keeps running while you are logged out; without lingering it stops after logout. The service gets your [PATH](https://github.com/afloury/wherdr/blob/main/docs/installation.md). The one command and key **A** of the plugin's panel run it too. |
+| `wherdr service install` · `uninstall` | Configure automatic startup: a LaunchAgent on macOS (`~/Library/LaunchAgents/dev.wherdr.plist`) starts at login; a `systemd --user` unit on Linux starts at boot with lingering enabled, otherwise at login. The command tries to enable lingering (`loginctl enable-linger`, without sudo; when your system refuses it, the command to run is printed) so it keeps running while you are logged out; without lingering it stops after logout. The service gets your [PATH](installation.md#agent-path). The one command and key **A** of the plugin's panel run it too. |
 | `wherdr doctor` | Checks Node/Bun, Herdr and its socket, the port, the service, the data folder and `APP_URL`. |
 
 Options: `--port` (default `7683`), `--host` (default `127.0.0.1`; loopback or this machine's
@@ -52,7 +49,7 @@ On a Homebrew install, `wherdr start`, `stop`, `restart` and `service install` p
 show the Homebrew service. Update: `brew upgrade wherdr && brew services restart wherdr`.
 
 The login service records the **absolute path** of the runtime (n, nvm, fnm, Volta or Homebrew
-node) and your [PATH](https://github.com/afloury/wherdr/blob/main/docs/installation.md), since launchd and systemd do not see your shell's. It refuses to point at a
+node) and your [PATH](installation.md#agent-path), since launchd and systemd do not see your shell's. It refuses to point at a
 temporary `npx` / `pnpm dlx` / `bunx` folder: install the package globally first. To update:
 `npm install -g wherdr@latest && wherdr restart` (with `npx`: stop it, then `npx wherdr@latest`).
 

@@ -1,17 +1,10 @@
-# Plugins
+# Herdr plugins
 
 [Documentation](README.md) · [Project](../README.md)
 
-In v3 (herdr-core), only [wherdr plugins](#wherdr-plugins), which run in the wherdr page, are
-available. The wherdr Herdr plugin (its installer, panel and key) and the actions of Herdr
-plugins are **v2 only**: they need Herdr.
-
 ### Install as a Herdr plugin
 
-> [!NOTE]
-> **v2 only.** This section installs wherdr v2 next to Herdr. It does not install v3.
-
-This is what [the one command](https://github.com/afloury/wherdr/blob/main/docs/installation.md) installs; you can also run it yourself, on Linux
+This is what [the one command](installation.md#the-one-command) installs; you can also run it yourself, on Linux
 and macOS, with Herdr ≥ 0.9.1 (no checks for Herdr or Node.js first). In three lines:
 
 1. Run `herdr plugin install afloury/wherdr`: it installs wherdr, starts it
@@ -36,7 +29,7 @@ wherdr natively:
   from there (detached, or by the login service), with its pid and log (`wherdr.log`) in
   `~/wherdr`. Herdr builds plugins in a temporary folder and then moves them, so the server never
   runs from the plugin folder. Bun works too when Node.js 22 is missing. Without either, the
-  install stops and says so ([the one command](https://github.com/afloury/wherdr/blob/main/docs/installation.md) offers to install Node.js).
+  install stops and says so ([the one command](installation.md#the-one-command) offers to install Node.js).
 The **wherdr** panel (a Herdr popup) shows ● running / ○ stopped, the local address, the phone
 address (with its QR code once it answers), and two main keys: **O** Open wherdr, **P** Set up my
 phone (Settings › Phone in the browser). The other keys stay as a fallback: **S** start, **X**
@@ -79,9 +72,9 @@ leaves it alone). Remove the block with `sh scripts/herdr-plugin.sh key uninstal
 folder (`~/.config/herdr/plugins/github/wherdr-…`), or delete the lines from `# wherdr:` to `# end wherdr`.
 
 Auto-start: the plugin's startup hook starts wherdr each time the Herdr server starts, when
-nothing answers on the port yet. [The one command](https://github.com/afloury/wherdr/blob/main/docs/installation.md) also installs a login
+nothing answers on the port yet. [The one command](installation.md#the-one-command) also installs a login
 service (a LaunchAgent on macOS, a `systemd --user` unit with lingering on Linux, pointing at
-`~/wherdr/app` with the absolute path of the runtime and your [PATH](https://github.com/afloury/wherdr/blob/main/docs/installation.md)): wherdr then
+`~/wherdr/app` with the absolute path of the runtime and your [PATH](installation.md#agent-path)): wherdr then
 runs from boot and is restarted if it crashes. Key **A** in the panel turns it on or off;
 `herdr plugin install` alone does not add it, since it changes your login session.
 
@@ -105,9 +98,6 @@ uninstall` (the panel key) and `sh scripts/herdr-plugin.sh skill uninstall`; the
 and push keys).
 
 ## Herdr plugins
-
-> [!NOTE]
-> **v2 only.** Herdr plugin actions need Herdr; they are not shown with herdr-core.
 
 Actions declared by the plugins installed on a machine (`herdr plugin install|link`) appear in
 the menus: workspace / tab / pane actions in the agent menu, global actions in the machine menu.

@@ -1,8 +1,5 @@
 # Moving from herdr-projects 0.2 to 1.x
 
-> [!NOTE]
-> **v2 only.** This page is for wherdr 2.x on Herdr with herdr-projects, including its Docker notes. wherdr v3 on herdr-core has no herdr-projects and no Docker image. See the [v3 documentation](README.md).
-
 wherdr **2.0.0** reads herdr-projects **1.2.1 or later** only. wherdr 1.3.4 is the last version
 that reads herdr-projects 0.2 (its Project panel, `TASKS.md`, threads). This page moves one
 machine from 0.2 to 1.x, keeps a backup, and says how to go back. Do it on each machine that

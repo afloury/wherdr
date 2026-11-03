@@ -4,9 +4,7 @@
 
 ## Security
 
-wherdr drives herdr-core, so **it can run anything as your user**, on this machine and on every
-machine hc reaches. The browser never chooses the hc socket and cannot send arbitrary RPC calls:
-only the routes listed in `shared/coreRoutes.ts` answer.
+wherdr drives Herdr, so **it can run anything as your user**.
 
 - It listens on `127.0.0.1` only. Reach it from other devices **only through a private
   network** (Tailscale or [equivalent](networks.md#other-private-networks)). Never add a public route
@@ -53,7 +51,8 @@ only the routes listed in `shared/coreRoutes.ts` answer.
   a request; a name outside `*.ts.net` adds nothing. Any other image (public sites, another
   tailnet, plain HTTP, Tailscale IP addresses) is refused by the browser and shown as a note with
   a link to open it in a new tab.
-- wherdr never changes your agents' global settings.
+- wherdr never changes your agents' global settings: model and effort changes are for the
+  current session only.
 
 See [SECURITY.md](../SECURITY.md) to report a vulnerability.
 
@@ -114,11 +113,12 @@ How a request is judged, before anything else (WebSockets included):
 > wrote. wherdr cannot tell them apart. If you run one, make sure it only listens on a private
 > address, serve it over HTTPS and **create a passkey**.
 
-`tailscale serve` forwards to `127.0.0.1` with the
+`tailscale serve` (npm, Homebrew, the Herdr plugin) forwards to `127.0.0.1` with the
 tailnet client's address in `X-Forwarded-For`: accepted, nothing to set up.
 
 **Another private network** (ZeroTier, WireGuard, NetBird outside `100.64.0.0/10`): name its
 range, `WHERDR_TRUSTED_NETWORKS=10.147.17.0/24` (comma-separated CIDR ranges or addresses), then
-restart wherdr. Such devices get the whole app, Settings › Phone included, like the tailnet. `WHERDR_TRUSTED_NETWORKS=any` accepts every network: wherdr then
+restart wherdr. Such devices get the whole app, Settings › Phone and the one-tap update
+included, like the tailnet. `WHERDR_TRUSTED_NETWORKS=any` accepts every network: wherdr then
 warns at startup and shows a warning that cannot be hidden in the app. Use it only when
 something else protects the network (Cloudflare Access), and set up a passkey there too.

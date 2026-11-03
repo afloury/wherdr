@@ -1,32 +1,10 @@
-# herdr-core
+# herdr-core inventory
 
-[Documentation](README.md) · [Project](../README.md)
-
-wherdr v3 runs entirely on herdr-core (`hc`). This page is the reference for what it supports.
-
-## Setup
-
-Build with `WHERDR_BACKEND=core NUXT_PUBLIC_CORE=true`, and start the server with
-`WHERDR_BACKEND=core` and `HC_SOCKET` pointing to the socket of the desired hc session
-([First launch](quick-start.md#quick-start)). Obtain the endpoint from your hc configuration;
-wherdr requires an explicit endpoint and never starts or installs core. This avoids accidentally
-selecting an inherited agent session. The browser cannot choose the endpoint or issue arbitrary
-RPC calls.
-
-`GET /api/core` checks the configured hc: protocol generation 1 and these methods,
-in both advertised lists (`hello` and `rpc.discover`): `terminal.list`, `terminal.get`,
-`terminal.run`, `terminal.read`, `terminal.attach`, `terminal.send`, `terminal.keys`,
-`terminal.interrupt`, `terminal.put`, `terminal.kill`, `terminal.keep`, `events.subscribe`,
-`machine.list`, `machine.add`, `machine.connect`, `machine.rename`, `machine.rm` and
-`server.status` (`server/utils/core.ts`). A missing method is reported by name. Files,
-transcripts and quotas of core machines also use `machine.exec`.
-
-Only the API routes listed in `shared/coreRoutes.ts` answer; every other `/api/` route returns
-"Unavailable with herdr-core". The Board, herdr-projects, coordinators, worktrees, Git changes,
-model and effort pickers, Herdr sessions, Herdr plugins, the setup guide and the one-tap update
-are v2 only.
-
-## Inventory
+Run wherdr with `WHERDR_BACKEND=core` (at build and server startup) and
+`HC_SOCKET` pointing to the socket of the desired hc session. Obtain the endpoint
+from your hc configuration; wherdr requires an explicit endpoint and never starts
+or installs core. This avoids accidentally selecting an inherited agent session.
+The browser cannot choose the endpoint or issue arbitrary RPC calls.
 
 Core mode uses the existing v2 home, workspace cards, tabs and agent screen.
 A core poller reads `terminal.list` and `machine.list` and publishes changes through
@@ -94,40 +72,13 @@ with the usual user bin folders on `PATH`. Home, folders (browser, Git detection
 installed agents of any machine come from `machine.exec`; folders must stay under the
 machine's home. When core does not answer in time, the inventory is searched for the label:
 found means created, not found is shown as "not confirmed" and is never relaunched blindly.
-Resuming the last conversation and a first message are offered: the first message is sent
-once the program is ready, waits while it shows a dialog (such as trusting the folder), and the
-app says when it was not sent. Board, coordinator and worktree are not offered with core.
+Board, worktree, resume and first message are not offered with core.
 
 Claude and Codex quotas work as in v2 (home rows, Settings › Agents › Claude quotas): the server reads each
 machine's quota files, this machine's from disk and core machines' through `machine.exec` (the status line
 installer goes on its stdin), with a 30 s cache.
 
 Settings › Agents › Machines lists core's machines with their state, reconnects one
-(`machine.connect`), renames (`machine.rename`) or forgets (`machine.rm`) one, and adds one over
-SSH (`machine.add` with a target and an optional name, like `hc machine add`). The target must already accept this host's SSH login: wherdr never
+(`machine.connect`) and adds one over SSH (`machine.add` with a target and an optional name,
+like `hc machine add`). The target must already accept this host's SSH login: wherdr never
 asks for a password, installs core on the machine, or accepts a `via` command.
-
-## Agent actions
-
-The **…** menu of an agent holds Take control of this terminal, Reconnect, **Rename pane**,
-**Browse files**, **Keep after restart** and Close. These go through core and are shared with
-the other hc clients:
-
-- **Rename** writes the `herdr.title` label; an empty name brings the automatic one back.
-- **Read / unread** writes `herdr.seen`: opening a finished agent marks its turn as read.
-- **Keep after restart** sets `terminal.keep`: a kept terminal comes back as a shell when core
-  restarts or loses it.
-- **Answers** to a question (one-tap or typed) re-read the screen first; a question that changed
-  meanwhile is refused instead of answered blindly. A choice is sent with `terminal.keys`.
-- **Attachments** (photos and files) are copied to the agent's machine with `terminal.put`,
-  8 MB per file at most.
-- **Files**: the agent's folder is read on this machine, or with `machine.exec` on a core machine
-  ([Files](files.md)).
-
-## Notifications
-
-Push alerts come from core's events (`events.subscribe`), with herdr-app's rules: **needs you**
-when a terminal becomes blocked (or errors), **finished** when it goes from working to idle or
-done. Nothing for a sub-agent (a terminal with a parent), nothing before the first snapshot,
-nothing while someone views that agent, one alert per terminal, turn and kind, and only if the
-state still holds after a short settle. See [Notifications](notifications.md).

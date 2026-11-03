@@ -5,9 +5,6 @@ Status: **implemented** (2026-10-01). Code: `app/utils/shortcuts.ts` (table and 
 (help sheet), `app/components/ShortcutsReference.vue` (shared with Settings › Shortcuts). Tests: `tests/shortcuts.test.ts`, `tests/cardKeys.test.ts`.
 `[INFERENCE]` marks claims nobody has tested on a device yet.
 
-> v3 (herdr-core): the Board key `H`, pane swaps (`Alt+Shift+arrows`) and side-by-side focus
-> moves are v2 only; Mod+Alt+O (reveal) needs `/api/reveal`, which herdr-core mode does not serve.
-
 > 2026-10-02: Mod+Alt+O (current agent folder in the default editor, via the existing
 > /api/reveal "Open" action on the folder path) added since; action in
 > `app/composables/useHerdr.ts` (`openFolderOnMachine`). First bound to E, moved to O the

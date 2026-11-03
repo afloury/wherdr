@@ -1,8 +1,5 @@
 # Migrate a wherdr 1.x Docker install to wherdr 2.0
 
-> [!NOTE]
-> **v2 only.** This guide moves a wherdr 1.x Docker container to the native wherdr 2.0 service. wherdr v3 on herdr-core has no Docker image. See the [v3 documentation](README.md).
-
 wherdr 2.0.0 has no Docker image: it runs natively, as your user, so the herdr-projects Board can act.
 This guide moves a wherdr 1.x container to the native service. It keeps the port, the data
 folder (passkeys, push subscriptions, phone address, settings) and therefore the address your
