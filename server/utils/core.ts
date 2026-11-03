@@ -3,7 +3,8 @@ import { createConnection } from 'node:net'
 // First usable milestone (A–D2). Later file/document features negotiate separately.
 export const CORE_METHODS = ['hello', 'rpc.discover', 'terminal.list', 'terminal.get',
   'machine.list', 'terminal.run', 'terminal.read', 'terminal.attach', 'terminal.send',
-  'terminal.keys', 'terminal.interrupt', 'terminal.put', 'terminal.kill', 'terminal.keep', 'events.subscribe'] as const
+  'terminal.keys', 'terminal.interrupt', 'terminal.put', 'terminal.kill', 'terminal.keep', 'events.subscribe',
+  'machine.add', 'machine.connect', 'machine.rename', 'machine.rm', 'server.status'] as const
 export class CoreError extends Error {
   constructor(public kind: string, message: string, public hint?: string) { super(message) }
 }
