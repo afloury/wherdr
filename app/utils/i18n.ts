@@ -190,7 +190,7 @@ const FR: Record<string, string> = {
   // Lock
   'Security': 'Sécurité', 'wherdr is locked': 'wherdr est verrouillé',
   'Unlock with your passkey (Face ID, Touch ID, Windows Hello…) to reach your agents.': 'Déverrouille avec ta clé d’accès (Face ID, Touch ID, Windows Hello…) pour accéder à tes agents.',
-  'Unlock': 'Déverrouiller', 'Unlock cancelled': 'Déverrouillage annulé', 'Device': 'Appareil',
+  'Unlock': 'Déverrouiller', 'Unlock cancelled': 'Déverrouillage annulé', 'Too many attempts, wait a minute': 'Trop de tentatives, attends une minute', 'Device': 'Appareil',
   'Lock enabled on this device ✓': 'Verrouillage activé sur cet appareil ✓', 'Registration cancelled': 'Enregistrement annulé',
   'This device is already registered': 'Cet appareil est déjà enregistré',
   'Optional: wherdr already answers only this computer and your tailnet. A passkey adds a lock on each device, with Face ID, Touch ID, Windows Hello…': 'Facultatif : wherdr ne répond déjà qu’à cet ordinateur et à ton tailnet. Une passkey ajoute un verrou sur chaque appareil, avec Face ID, Touch ID, Windows Hello…',
