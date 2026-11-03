@@ -339,12 +339,12 @@ onMounted(() => {
             <URadioGroup v-model="homeGroup" :items="homeGroupItems" aria-labelledby="home-group-label" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
 
             <label class="settings-toggle">
-              <span><b>{{ t('Individual agents') }}</b><small>{{ t('List standalone agents separately. Board tasks stay grouped. Follows you on every device.') }}</small></span>
+              <span><b>{{ t('Individual agents') }}</b><small>{{ (core ? t('List standalone agents separately. Follows you on every device.') : t('List standalone agents separately. Board tasks stay grouped. Follows you on every device.')) }}</small></span>
               <USwitch v-model="individualListOn" :aria-label="t('Individual agents')" color="success" size="xl" />
             </label>
 
             <label class="settings-toggle">
-              <span><b>{{ t('Compact list') }}</b><small>{{ t('Tasks: one line in Compact, two in Normal with current activity and relevant labels. Details stay in the task sheet. Follows you on every device.') }}</small></span>
+              <span><b>{{ t('Compact list') }}</b><small>{{ (core ? t('Cards: one line in Compact, two in Normal with current activity. Follows you on every device.') : t('Tasks: one line in Compact, two in Normal with current activity and relevant labels. Details stay in the task sheet. Follows you on every device.')) }}</small></span>
               <USwitch v-model="compactOn" color="success" size="xl" />
             </label>
             <label class="settings-toggle">
@@ -553,9 +553,9 @@ onMounted(() => {
         <div v-show="activeSection === 'about'" class="settings-section">
           <div class="settings-group">
             <h3>{{ t('Application') }}</h3>
-            <p class="settings-version">wherdr · v{{ appVersion }}</p>
-            <UpdateBanner v-if="updateInfo?.latest" :info="updateInfo" />
-            <p v-else-if="updateInfo?.checked" class="muted settings-hint">{{ t('This is the latest version.') }}</p>
+            <p class="settings-version">wherdr · {{ core ? 'v3 · herdr-core' : `v${appVersion}` }}</p>
+            <UpdateBanner v-if="!core && updateInfo?.latest" :info="updateInfo" />
+            <p v-else-if="!core && updateInfo?.checked" class="muted settings-hint">{{ t('This is the latest version.') }}</p>
             <button type="button" class="settings-action solo" @click="reloadApp"><UIcon name="i-lucide-refresh-cw" />{{ t('Reload app') }}</button>
             <button type="button" class="settings-action solo" @click="openOnboarding"><UIcon name="i-lucide-compass" />{{ tl('Setup guide', 'Guide de démarrage') }}</button>
           </div>
