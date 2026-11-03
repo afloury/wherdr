@@ -56,6 +56,7 @@ const taskSettings = (value: string, place: string, from: string, effortOf?: str
 ], problems: [] })
 
 const T = await import('../server/utils/projectsTasks')
+const { createTranscripts } = await import('../server/utils/transcripts')
 const SA = await import('../server/utils/startAgents')
 
 let calls: string[][]
@@ -1496,5 +1497,53 @@ describe('archive completed repository tasks', () => {
     T.setRunner(run)
     for (const repo of ['', undefined, '/tmp/demo', '--done', {}]) await expect(T.archiveDoneTasks('', repo)).rejects.toThrow()
     expect(run).not.toHaveBeenCalled()
+  })
+})
+
+// A finished task (its agent exited, its pane a shell or gone): the conversation
+// its board recorded, read from the task's machine, never guessed.
+describe('a finished task\'s recorded conversation', () => {
+  const sid = '00000000-0000-4000-8000-000000000042'
+  const cwd = path.join(home, 'projects/demo')
+  const transcript = path.join(home, '.claude/projects', cwd.replace(/[/.]/g, '-'), `${sid}.jsonl`)
+  const base = { isSidechain: false, cwd, sessionId: sid }
+  beforeEach(() => {
+    mkdirSync(path.dirname(transcript), { recursive: true })
+    writeFileSync(transcript, [
+      { ...base, type: 'user', timestamp: '2026-01-01T10:00:00Z', message: { role: 'user', content: 'Add a dark mode toggle.' } },
+      { ...base, type: 'assistant', timestamp: '2026-01-01T10:01:00Z', message: { model: 'claude-opus-4-1', role: 'assistant', content: [{ type: 'text', text: 'Done: the toggle is in Settings.' }] } },
+    ].map(l => JSON.stringify(l)).join('\n') + '\n')
+    // A process the transcript reader must never be asked about: nothing is guessed.
+    Object.assign(machine, { transcripts: createTranscripts({ home, herdr: async () => { throw new Error('no pane to ask') } }) })
+  })
+  afterEach(() => { rmSync(path.join(home, '.claude'), { recursive: true, force: true }) })
+
+  it('details say which conversations were recorded', async () => {
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', agent: 'claude', session: sid, reviewSession: 'rv-1', review: { by: 'codex', pass: true }, link: { pane: 'w1:p1', reviewer: null } })
+    expect((await T.taskDetails('', 'demo/1')).transcripts).toEqual({ worker: 'claude', reviewer: 'codex' })
+  })
+
+  it('reads the agent\'s conversation from its session, then says when nothing changed', async () => {
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', agent: 'claude', session: sid })
+    const r = await T.taskTranscript('', 'demo/1', 'worker', {})
+    expect(r).toMatchObject({ available: true, session: sid })
+    expect(r.items!.map(i => [i.role, i.text])).toEqual([['user', 'Add a dark mode toggle.'], ['assistant', 'Done: the toggle is in Settings.']])
+    expect(await T.taskTranscript('', 'demo/1', 'worker', { since: r.token })).toMatchObject({ unchanged: true })
+  })
+
+  it('no recorded session, or its file gone: no conversation; a bad role is refused', async () => {
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', agent: 'claude' })
+    expect(await T.taskTranscript('', 'demo/1', 'worker', {})).toEqual({ available: false, reason: 'not_found' })
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', agent: 'claude', session: '00000000-0000-4000-8000-000000000099' })
+    expect(await T.taskTranscript('', 'demo/1', 'worker', {})).toEqual({ available: false, reason: 'not_found' })
+    await expect(T.taskTranscript('', 'demo/1', 'pane', {})).rejects.toThrow('Invalid role')
+    await expect(T.taskTranscript('', '../1', 'worker', {})).rejects.toThrow('Invalid task')
+  })
+
+  it('a machine that cannot be reached is said, not read', async () => {
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', agent: 'claude', session: sid })
+    Object.assign(remote, { status: 'offline' })
+    try { await expect(T.taskTranscript('remote', 'demo/1', 'worker', {})).rejects.toThrow('workstation is unreachable') }
+    finally { Object.assign(remote, { status: 'online' }) }
   })
 })
