@@ -9,7 +9,8 @@ const settle = () => new Promise(r => setTimeout(r, 5))
 describe('lastLine', () => {
   it('skips Claude\'s duration line and shows the last answer', () => {
     const screen = readFileSync(new URL('./fixtures/claude-done-time.txt', import.meta.url), 'utf8')
-    expect(lastLine(screen)).toBe('Les 12 tests passent, le correctif est prêt.')
+    expect(lastLine(screen)).toBe('Hello, all good.')
+    expect(lastLine('* Compiled for 3s ok')).toBe('* Compiled for 3s ok')
     expect(lastLine(readFileSync(new URL('./fixtures/claude-done.txt', import.meta.url), 'utf8'))).toBe("C'est fait : 12 tests verts.")
   })
 
