@@ -6,6 +6,7 @@ import { machineOfPane } from '../utils/machines'
 import { spaceTitle } from '../../shared/displayTitles'
 import { searchTasks } from '../../shared/taskSearch'
 import { searchableBoards } from '../utils/projectsTasks'
+import { boardTaskHits } from '../../shared/searchScope'
 
 // The Board's tasks are waited for this long at most; past it, their last list.
 const TASKS_DEADLINE_MS = 1500
@@ -14,8 +15,8 @@ export default defineApi(async (event): Promise<ConversationSearchResponse> => {
   const query = String(getQuery(event).q || '').trim().slice(0, 100)
   if (query.length < 2) return { hits: [], limited: false }
   // Read once for this search, alongside the conversations.
-  const tasks = searchableBoards(TASKS_DEADLINE_MS).then(boards => searchTasks(boards, query).hits, () => [])
   const core = process.env.WHERDR_BACKEND === 'core'
+  const tasks = boardTaskHits(core, () => searchableBoards(TASKS_DEADLINE_MS).then(boards => searchTasks(boards, query).hits))
   const panes = getState().panes.filter(p => hasTranscript(p.agent) &&
     (core ? getState().machines?.find(m => m.key === p.machine)?.status === 'online' : (!machineOfPane(p.id) || machineOfPane(p.id)?.status === 'online')))
   const deadline = Date.now() + SEARCH_DEADLINE_MS
