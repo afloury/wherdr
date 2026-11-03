@@ -59,9 +59,9 @@ export async function coreSend(deps: CoreInputDeps, b: { pane_id?: unknown, text
       await new Promise(res => setTimeout(res, deps.settleMs ?? 400))
       const t = await deps.call<{ status?: string | { state?: string } | null }>('terminal.get', { terminal: p.coreAddress }, 3000).catch(() => null)
       const state = typeof t?.status === 'string' ? t.status : t?.status?.state
-      if (state !== 'working') {
+      if (state === 'idle' || state === 'done') {
         await deps.call('terminal.keys', { terminal: p.coreAddress, keys: ['enter'] }, 10000)
-        started = true
+        started = null // unconfirmed: Enter pressed, no turn observed yet
       }
     }
     return { ok: true, started }

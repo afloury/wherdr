@@ -35,11 +35,11 @@ describe('core input routes', () => {
   it('presses Enter once when a multi-line send was left in the input (no turn started)', async () => {
     const t = deps((m) => m === 'terminal.send' ? { started: false } : m === 'terminal.get' ? { status: 'idle' } : {})
     t.d.settleMs = 1
-    expect(await coreSend(t.d, { pane_id: 't1', text: 'see\n@/f/a.txt' })).toEqual({ ok: true, started: true })
+    expect(await coreSend(t.d, { pane_id: 't1', text: 'see\n@/f/a.txt' })).toEqual({ ok: true, started: null })
     expect(t.calls.map(c => c[0])).toEqual(['terminal.send', 'terminal.get', 'terminal.keys'])
     expect(t.calls[2]![1]).toEqual({ terminal: 'm/t1', keys: ['enter'] })
     // Already working, or a one-line message: no extra Enter.
-    const w = deps((m) => m === 'terminal.send' ? { started: false } : { status: { state: 'working' } })
+    const w = deps((m) => m === 'terminal.send' ? { started: false } : { status: { state: 'blocked' } })
     w.d.settleMs = 1
     await coreSend(w.d, { pane_id: 't1', text: 'a\nb' })
     await coreSend(w.d, { pane_id: 't1', text: 'one line' })
