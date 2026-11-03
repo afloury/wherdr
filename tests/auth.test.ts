@@ -4,10 +4,12 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createAuth, type Auth } from '../server/utils/auth'
+import { createAuth, createRateLimit, type Auth } from '../server/utils/auth'
 
 const dir = () => mkdtempSync(path.join(tmpdir(), 'hw-auth-'))
 const req = (cookie?: string, origin = 'http://localhost:7684') => ({ headers: { cookie, origin } })
+const H = 3600 * 1000
+const D = 24 * H
 const cookieValue = (setCookie: string) => setCookie.split(';')[0]!
 // A fake key is enough: isUnlocked only looks at their count.
 const withKey = (a: ReturnType<typeof createAuth>) => {
@@ -15,12 +17,12 @@ const withKey = (a: ReturnType<typeof createAuth>) => {
 }
 
 describe('auth', () => {
-  it('creates data/auth.json (secret, generation 0, no key) on first startup', () => {
+  it('creates data/auth.json (secret, random generation, no key) on first startup', () => {
     const d = dir()
     createAuth({ dataDir: d })
     const db = JSON.parse(readFileSync(path.join(d, 'auth.json'), 'utf8'))
     expect(db.secret).toMatch(/^[0-9a-f]{64}$/)
-    expect(db.generation).toBe(0)
+    expect(db.generation).toMatch(/^[\w-]{24}$/)
     expect(db.credentials).toEqual([])
   })
 
@@ -36,7 +38,7 @@ describe('auth', () => {
     expect(a.isUnlocked(req())).toBe(false)
     const c = a._sessionCookie(req())
     // The cookie outlives the longest duration offered (365 days + 12 h): the server decides.
-    expect(c).toMatch(/^hw_session=\d+\.0\.\d+\.[\w-]+; Path=\/; HttpOnly; SameSite=Strict; Max-Age=31579200$/)
+    expect(c).toMatch(/^hw_session=\d+\.[\w-]{24}\.\d+\.[\w-]+; Path=\/; HttpOnly; SameSite=Strict; Max-Age=31579200$/)
     expect(a.isUnlocked(req(cookieValue(c)))).toBe(true)
     expect(a.status(req(cookieValue(c)))).toMatchObject({ enabled: true, unlocked: true, devices: [{ name: 'iPhone' }] })
   })
@@ -55,14 +57,17 @@ describe('auth', () => {
     expect(a.isUnlocked(req(old))).toBe(false)
   })
 
-  it('disabling invalidates all sessions (next generation)', () => {
+  it('disabling invalidates all sessions (new secret and generation)', () => {
     const d = dir()
     const a = createAuth({ dataDir: d })
     withKey(a)
+    const before = { ...a._db() }
     const v = cookieValue(a._sessionCookie(req()))
     const r = a.disable(req(v))
     expect(r.__cookie).toMatch(/Max-Age=0/)
-    expect(JSON.parse(readFileSync(path.join(d, 'auth.json'), 'utf8')).generation).toBe(1)
+    const saved = JSON.parse(readFileSync(path.join(d, 'auth.json'), 'utf8'))
+    expect(saved.generation).not.toBe(before.generation)
+    expect(saved.secret).not.toBe(before.secret)
     withKey(a)
     expect(a.isUnlocked(req(v))).toBe(false)
   })
@@ -73,14 +78,26 @@ describe('auth', () => {
     expect(a.lock(req(undefined, 'https://herdr.example.ts.net:8103')).__cookie).toMatch(/; Secure$/)
   })
 
-  it('re-reads an existing data/auth.json (previous version format)', () => {
+  it('re-reads an existing data/auth.json (previous version format): numeric generation replaced, keys kept', () => {
     const d = dir()
-    writeFileSync(path.join(d, 'auth.json'), JSON.stringify({ secret: 'ab'.repeat(32), generation: 3, credentials: [{ id: 'k', publicKey: 'x', counter: 5, transports: ['internal'], name: 'Laptop', createdAt: '2026-09-25T10:00:00.000Z' }] }))
+    const secret = 'ab'.repeat(32)
+    const credential = { id: 'k', publicKey: 'x', counter: 5, transports: ['internal'], name: 'Laptop', createdAt: '2026-09-25T10:00:00.000Z' }
+    writeFileSync(path.join(d, 'auth.json'), JSON.stringify({ secret, generation: 3, credentials: [credential] }))
+    // A cookie of the earlier version, generation 3.
+    const p = `${Date.now() + D}.3.${Date.now()}`
+    const oldCookie = `hw_session=${p}.${createHmac('sha256', secret).update(p).digest('base64url')}`
     const a = createAuth({ dataDir: d })
-    expect(a.status(req())).toMatchObject({ enabled: true, unlocked: false, devices: [{ name: 'Laptop', lastUsed: null }] })
+    expect(a.status(req())).toMatchObject({ enabled: true, unlocked: false, devices: [] })
+    expect(a.status(req(cookieValue(a._sessionCookie(req()))))).toMatchObject({ devices: [{ name: 'Laptop', lastUsed: null }] })
+    const saved = JSON.parse(readFileSync(path.join(d, 'auth.json'), 'utf8'))
+    expect(saved.generation).toMatch(/^[\w-]{24}$/)
+    expect(saved.credentials).toEqual([credential])
+    // The earlier version's sessions end once; a passkey unlock opens again.
+    expect(a.isUnlocked(req(oldCookie))).toBe(false)
     const v = cookieValue(a._sessionCookie(req()))
-    expect(v).toMatch(/^hw_session=\d+\.3\./)
     expect(a.isUnlocked(req(v))).toBe(true)
+    // Read again at the next start: the same generation, sessions kept.
+    expect(createAuth({ dataDir: d }).isUnlocked(req(v))).toBe(true)
   })
 
   it('refuses to add a key without being unlocked', async () => {
@@ -110,8 +127,6 @@ describe('auth', () => {
 })
 
 describe('auth: the chosen duration is the only rule', () => {
-  const H = 3600 * 1000
-  const D = 24 * H
   // The cookie of a passkey unlock `ago` old (it is never re-issued since).
   const unlocked = (a: Auth, now: number, ago: number) =>
     req(cookieValue(a._sessionCookie(req(), now - ago, now - ago)))
@@ -196,7 +211,8 @@ describe('auth: the chosen duration is the only rule', () => {
     const now = Date.now()
     const sign = (v: string) => createHmac('sha256', a._db().secret!).update(v).digest('base64url')
     // exp.gen.since.mac, renewed an hour ago, passkey unlock 3 days ago.
-    const v = `${now + 11 * H}.0.${now - 3 * D}`
+    const g = a._db().generation
+    const v = `${now + 11 * H}.${g}.${now - 3 * D}`
     const old = { headers: { cookie: `hw_session=${v}.${sign(v)}` } }
     expect(a.isUnlocked(old)).toBe(true)
     const renewed = a.renew(old, now)!
@@ -205,7 +221,7 @@ describe('auth: the chosen duration is the only rule', () => {
     expect(a.renew(req(cookieValue(renewed.cookie)), now)).toBeNull()
     // Older format exp.gen.mac: counted from its last renewal.
     const exp = now + 11 * H
-    const legacy = { headers: { cookie: `hw_session=${exp}.0.${sign(`${exp}.0`)}` } }
+    const legacy = { headers: { cookie: `hw_session=${exp}.${g}.${sign(`${exp}.${g}`)}` } }
     expect(a.isUnlocked(legacy)).toBe(true)
     expect(cookieValue(a.renew(legacy, now)!.cookie).split('.')[2]).toBe(String(exp - 12 * H))
   })
@@ -222,17 +238,38 @@ describe('auth: lock all devices', () => {
     expect(a.isUnlocked(mine)).toBe(false)
     expect(a.isUnlocked(other)).toBe(false)
     const saved = JSON.parse(readFileSync(path.join(d, 'auth.json'), 'utf8'))
-    expect(saved.generation).toBe(1)
     expect(saved.credentials).toHaveLength(1)
     // A new passkey unlock opens again.
     expect(a.isUnlocked(req(cookieValue(a._sessionCookie(req()))))).toBe(true)
   })
 
+  it('defeats a cookie forged with a copy of auth.json read before', () => {
+    const d = dir()
+    const a = createAuth({ dataDir: d })
+    withKey(a)
+    const leaked = JSON.parse(readFileSync(path.join(d, 'auth.json'), 'utf8'))
+    const forge = (generation: string) => {
+      const p = `${Date.now() + D}.${generation}.${Date.now()}`
+      return req(`hw_session=${p}.${createHmac('sha256', leaked.secret).update(p).digest('base64url')}`)
+    }
+    expect(a.isUnlocked(forge(leaked.generation))).toBe(true)
+    a.lockAll(req(cookieValue(a._sessionCookie(req()))))
+    const now = JSON.parse(readFileSync(path.join(d, 'auth.json'), 'utf8'))
+    expect(now.secret).not.toBe(leaked.secret)
+    expect(now.generation).not.toBe(leaked.generation)
+    // Even guessing the new generation is useless without the new secret.
+    expect(a.isUnlocked(forge(leaked.generation))).toBe(false)
+    expect(a.isUnlocked(forge(now.generation))).toBe(false)
+    // The same holds after a restart.
+    expect(createAuth({ dataDir: d }).isUnlocked(forge(now.generation))).toBe(false)
+  })
+
   it('refuses a locked request', () => {
     const a = createAuth({ dataDir: dir() })
     withKey(a)
+    const before = { ...a._db() }
     expect(() => a.lockAll(req())).toThrow(expect.objectContaining({ code: 'locked' }))
-    expect(a._db().generation).toBe(0)
+    expect(a._db()).toMatchObject({ generation: before.generation, secret: before.secret })
   })
 })
 
@@ -242,5 +279,57 @@ describe('auth: damaged cookie', () => {
     withKey(a)
     expect(a.isUnlocked(req('hw_session=%E0%A4%A'))).toBe(false)
     expect(a.status(req('hw_session=%E0%A4%A')).unlocked).toBe(false)
+  })
+})
+
+describe('auth: nothing leaks before the unlock', () => {
+  it('gives a locked client no key names, dates or server clock', () => {
+    const a = createAuth({ dataDir: dir() })
+    withKey(a)
+    const locked = a.status(req())
+    expect(locked).toEqual({ enabled: true, unlocked: false, expiresAt: null, devices: [] })
+    const open = a.status(req(cookieValue(a._sessionCookie(req()))))
+    expect(open.devices).toEqual([{ name: 'iPhone', createdAt: '2026-01-01T00:00:00.000Z', lastUsed: null }])
+  })
+
+  it('unlock options list no key id (discoverable passkeys), registration requires one', async () => {
+    const a = createAuth({ dataDir: dir() })
+    withKey(a)
+    const opts = await a.loginOptions(req())
+    expect(opts.allowCredentials ?? []).toEqual([])
+    expect(JSON.stringify(opts)).not.toContain('k1')
+    const reg = await a.registerOptions(req(cookieValue(a._sessionCookie(req()))))
+    expect(reg.authenticatorSelection).toMatchObject({ residentKey: 'required', requireResidentKey: true })
+  })
+
+  it('keeps at most 100 pending challenges, the oldest dropped first', async () => {
+    const a = createAuth({ dataDir: dir() })
+    withKey(a)
+    const first = await a.loginOptions(req(), 'c0')
+    for (let i = 1; i < 150; i++) await a.loginOptions(req(), `c${i}`)
+    expect(a._challengeCount()).toBe(100)
+    // The first client's challenge is gone: its answer is refused.
+    const client = first.__cookie.split(';')[0]!
+    expect(() => a._takeChallenge({ headers: { cookie: client } }, 'auth')).toThrow(/expired/)
+  })
+
+  it('rate-limits unlock options per client', async () => {
+    const a = createAuth({ dataDir: dir() })
+    withKey(a)
+    const now = Date.now()
+    for (let i = 0; i < 10; i++) await a.loginOptions(req(), 'phone', now)
+    await expect(a.loginOptions(req(), 'phone', now)).rejects.toMatchObject({ code: 'rate_limited' })
+    // Another client is not affected, and the same one may try again a minute later.
+    await expect(a.loginOptions(req(), 'laptop', now)).resolves.toHaveProperty('challenge')
+    await expect(a.loginOptions(req(), 'phone', now + 60_000)).resolves.toHaveProperty('challenge')
+  })
+})
+
+describe('createRateLimit', () => {
+  it('bounds its table of clients', () => {
+    const r = createRateLimit(1, 1000, 50)
+    for (let i = 0; i < 500; i++) r.take(`ip${i}`, 0)
+    expect(r._size()).toBe(50)
+    expect(r.take('ip499', 0)).toBe(false)
   })
 })

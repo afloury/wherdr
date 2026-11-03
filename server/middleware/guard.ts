@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
   await ensureFresh(HTTP_FRESH_MS)
   const path = event.path.split('?')[0]!
   const headers = event.node.req.headers
-  const check = checkRequestClient(event.node.req.socket?.remoteAddress, headers)
+  const check = checkRequestClient(event.node.req.socket?.remoteAddress, headers, auth.isEnabled())
   // An unknown host: maybe an address `tailscale serve` just published. The
   // request only triggers reading Tailscale again (at most every few
   // seconds); its Host header is never what gets allowed.
@@ -40,10 +40,12 @@ export default defineEventHandler(async (event) => {
   const html = hostRefusalIsHtml(path, headers.accept)
   switch (verdict) {
     case 'network': {
-      const why = !check.ok && check.reason === 'funnel' ? check.reason : undefined
+      const why = !check.ok && (check.reason === 'funnel' || check.reason === 'foreign') ? check.reason : undefined
       if (html) return htmlRefusal(event, networkRefusedPage(why))
       const error = why === 'funnel'
         ? 'Tailscale Funnel exposes wherdr to the Internet: turn it off for wherdr\'s port'
+        : why === 'foreign'
+          ? 'This tailnet device is not one of the owner\'s: wherdr admits it only once a passkey is set up'
           : 'wherdr only answers this computer and your tailnet'
       return sendError(event, 403, { error, code: 'network', ...(why ? { why } : {}) })
     }

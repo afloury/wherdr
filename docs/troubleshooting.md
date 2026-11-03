@@ -36,6 +36,10 @@
 - **HTTP 403 "wherdr only answers this computer and your tailnet"**: the device is on another
   network (Wi-Fi, LAN). Open wherdr through Tailscale, or name that private network in
   `WHERDR_TRUSTED_NETWORKS` ([Network access](security.md#network-access)).
+- **HTTP 403 "This device is not one of the owner's"**: Tailscale lists the device under another
+  user (a team tailnet), as shared in from another tailnet, or as a tagged node. Without a passkey,
+  wherdr only answers your own devices: log that device in to Tailscale with your own account, or
+  set up a passkey ([Your own devices only](security.md#own-devices)).
 - **HTTP 403 "Tailscale Funnel opens wherdr to the Internet"**: turn Funnel off for wherdr’s port (`tailscale funnel status`).
 - **wherdr stops at startup with "Refusing to listen on …"**: `HOST` is not loopback nor this
   machine's tailnet address. Set `HOST=127.0.0.1` and use `tailscale serve`, or see
