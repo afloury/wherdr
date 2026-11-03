@@ -1474,7 +1474,7 @@ async function notifyCorePane(address: string, kind: CoreAlertKind) {
   const p = state.panes.find(x => x.coreAddress === address)
   if (!p || isViewed(p.id)) return
   const event: NotificationEvent = kind === 'needs-you' ? 'needs-you' : 'finished'
-  if (!await notificationAllowed(event, state, p, { machine: p.machine })) return
+  if (!await notificationAllowed(event, state, p, { machine: p.machine ?? '' })) return
   const ws = state.workspaces.find(w => w.id === p.workspace)
   const where = [ws && ws.label, notificationTitle(p.title)].filter(Boolean).join(' · ')
   const on = state.machines && state.machines.length > 1 && p.machine ? `${state.machines.find(m => m.key === p.machine)?.label ?? p.machine} · ` : ''
