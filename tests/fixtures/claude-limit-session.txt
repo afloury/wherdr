@@ -1,0 +1,11 @@
+❯ Continue the review
+  ⎿ You've hit your session limit · resets 3pm (UTC)
+
+● Usage limit reached · continuing automatically at 3pm · esc to cancel
+
+────────────────────────────────────────
+❯ 
+────────────────────────────────────────
+  ⚠ Usage limit reached · limit resets 3pm
+    Continuing automatically at 3pm · esc to cancel · /usage-credits to continue now
+  ⏵⏵ auto mode on (shift+tab to cycle)
