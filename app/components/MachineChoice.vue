@@ -13,10 +13,10 @@ function pick(m: MachineConfig) {
 </script>
 
 <template>
-  <div class="segmented machine-seg" role="group" :aria-label="t('Machine')" :style="{ '--segment-count': machines.length }">
+  <div class="segmented machine-seg" role="radiogroup" :aria-label="t('Machine')" :style="{ '--segment-count': machines.length }">
     <button
-      v-for="m in machines" :key="m.key" type="button" :class="[{ on: m.key === modelValue }, machineStateOf(m)]"
-      :disabled="!machineOnline(m)" :aria-pressed="m.key === modelValue" :aria-label="m.label || t('This machine')" :data-machine="m.key || 'local'" @click="pick(m)"
+      v-for="m in machines" :key="m.key" type="button" role="radio" :class="[{ on: m.key === modelValue }, machineStateOf(m)]"
+      :disabled="!machineOnline(m)" :aria-checked="m.key === modelValue" :aria-label="m.label || t('This machine')" :data-machine="m.key || 'local'" @click="pick(m)"
     >
       <UIcon :name="m.local ? 'i-lucide-server' : 'i-lucide-laptop'" class="seg-icon" />
       <span class="machine-choice-name">{{ m.label || t('This machine') }}</span>

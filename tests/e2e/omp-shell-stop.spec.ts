@@ -25,9 +25,10 @@ test('Stop cancels an omp "!" command and the message does not go back to the qu
   await expect(stop).toHaveCount(0)
   // Observe actual conversation polls: a fixed sleep can finish before even
   // one response on a slow machine. Nothing returns to the queue in between.
+  // omp stays idle around a "!" command: the idle poll period (6 s, ChatView.vue).
   for (let poll = 0; poll < 3; poll++) {
     const next = page.waitForResponse(r => new URL(r.url()).pathname === '/api/chat' && new URL(r.url()).searchParams.get('pane') === OMP_SHELL_PANE)
-    await page.clock.fastForward(2000)
+    await page.clock.fastForward(6500)
     const update = await next
     expect(update.ok()).toBe(true)
     await update.finished()

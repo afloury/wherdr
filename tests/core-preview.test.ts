@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { createCorePreviews, lastLine } from '../server/utils/corePreview'
 import type { Pane } from '../shared/types'
@@ -6,6 +7,13 @@ const pane = (id: string, extra: Partial<Pane> = {}) => ({ id, workspace: 'w', c
 const settle = () => new Promise(r => setTimeout(r, 5))
 
 describe('lastLine', () => {
+  it('skips Claude\'s duration line and shows the last answer', () => {
+    const screen = readFileSync(new URL('./fixtures/claude-done-time.txt', import.meta.url), 'utf8')
+    expect(lastLine(screen)).toBe('Hello, all good.')
+    expect(lastLine('* Compiled for 3s ok')).toBe('* Compiled for 3s ok')
+    expect(lastLine(readFileSync(new URL('./fixtures/claude-done.txt', import.meta.url), 'utf8'))).toBe("C'est fait : 12 tests verts.")
+  })
+
   it('skips prompts, rules and blanks', () => {
     expect(lastLine('build ok\n\nuser@host:~/dir$ \n')).toBe('build ok')
     expect(lastLine('The build passes.\n────────\n❯\n')).toBe('The build passes.')

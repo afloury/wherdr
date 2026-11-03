@@ -5,6 +5,7 @@
 // inside. A single machine: the previous list, without a header.
 // Quotas: those shared by all machines at the top; the Claude account specific
 // to a machine (different accounts) and its install banner under its header.
+// Core mode: one row per agent terminal (individualAgentRows), as in v2.5.
 // One row per Herdr space (shared/spaces.ts): a space with a single tab and
 // a single pane keeps its agent's card; otherwise a space card, sorted
 // by its most urgent pane.
@@ -33,7 +34,6 @@ import { BAR_ALL } from '~/utils/machineBar'
 import { individualAgentRows, individualAgentTitle, isIndividualAgentRow } from '~/utils/homeAgentRows'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
 import type { TasksBoard } from '#shared/projectsTasks'
-import { coreRouteAllowed } from '#shared/coreRoutes'
 const core = useRuntimeConfig().public.core
 const emit = defineEmits<{ search: [] }>()
 onMounted(loadUpdate)
@@ -113,7 +113,7 @@ function groupsOf(list: Row[], rawGroup = rowGroup) {
   ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value).map(l => sortReady(l, readySort.value, rowTitle)) : [g.list] }))
 }
 const rowTitle = (r: Row) => isIndividualAgentRow(r) ? individualAgentTitle(r.lead) : spaceTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
-const standaloneRows = (rows: Row[]) => individualAgentList.value ? individualAgentRows(rows) : rows
+const standaloneRows = (rows: Row[]) => (core || individualAgentList.value) ? individualAgentRows(rows) : rows
 // Sort menu of the Ready group; sorted other than in Herdr's order, the
 // list can no longer be reordered manually.
 const READY_SORT_LABELS: Record<ReadySort, [string, string]> = {
@@ -372,8 +372,8 @@ const eveningPast = computed(() => Boolean(awakeTarget.value && awakeByMachine.v
 const awakeOpen = computed({ get: () => Boolean(awakeTarget.value), set: v => { if (!v) awakeTarget.value = null } })
 const diagnosticOpen = computed({ get: () => Boolean(diagnosticTarget.value), set: v => { if (!v) diagnosticTarget.value = null } })
 const awakeUrl = (key: string, diagnostic = false) => `/api/machine/awake?key=${encodeURIComponent(key)}${diagnostic ? '&diagnostic=1' : ''}`
-// Refused with herdr-core: never polled there.
-const awakeAllowed = !core || coreRouteAllowed('/api/machine/awake')
+// herdr-core: no keep-awake (route refused, menu hidden), never polled.
+const awakeAllowed = !core
 async function refreshAwake(m: MachineInfo) {
   if (!awakeAllowed || m.status !== 'online') return
   try { awakeByMachine.value[m.key] = await api<AwakeState>(awakeUrl(m.key)) }
@@ -470,11 +470,12 @@ const connectionMachine = ref<MachineInfo | null>(null)
 const connectionInfo = computed(() => machines.value.find(m => m.key === connectionMachine.value?.key) ?? connectionMachine.value)
 const connectionOpen = computed({ get: () => !!connectionMachine.value, set: (v: boolean) => { if (!v) connectionMachine.value = null } })
 function machineMenuItems(m: MachineInfo): MenuItem[] {
-  const items: MenuItem[] = [...core ? [] : [{ label: t('Herdr sessions'), icon: 'i-lucide-layers', run: () => openSessions(m) }], { label: t('Rename'), icon: 'i-lucide-pencil', run: () => {
+  // herdr-core: no sessions, board, rename route, keep-awake or connection page (machines are managed in Settings).
+  const items: MenuItem[] = core ? [] : [{ label: t('Herdr sessions'), icon: 'i-lucide-layers', run: () => openSessions(m) }, { label: t('Rename'), icon: 'i-lucide-pencil', run: () => {
     renamingMachine.value = m
     machineLabel.value = m.label
   } }]
-  if (!m.local) items.push({ label: t('Connection status'), icon: 'i-lucide-plug', run: () => { connectionMachine.value = m } })
+  if (!core && !m.local) items.push({ label: t('Connection status'), icon: 'i-lucide-plug', run: () => { connectionMachine.value = m } })
   if (multiMachine.value) {
     const key = baseKeyOf(m)
     const at = visibleKeys.value.indexOf(key)
@@ -483,9 +484,9 @@ function machineMenuItems(m: MachineInfo): MenuItem[] {
     if (machineOrder.value.length) items.push({ label: t('Reset order'), icon: 'i-lucide-rotate-ccw', run: () => saveMachineOrder([]) })
   }
   // The Board, already filtered on this machine (its board is the base machine's).
-  items.push({ label: t('Open the board'), icon: 'i-lucide-square-kanban', run: () => navigateTo({ path: '/board', query: { machine: baseKeyOf(m) } }) })
-  items.push({ label: tl('Board settings', 'Réglages du board'), icon: 'i-lucide-settings', run: () => navigateTo({ path: '/board', query: { settings: baseKeyOf(m) } }) })
-  if (m.status === 'online' && awakeByMachine.value[m.key]?.supported) {
+  if (!core) items.push({ label: t('Open the board'), icon: 'i-lucide-square-kanban', run: () => navigateTo({ path: '/board', query: { machine: baseKeyOf(m) } }) })
+  if (!core) items.push({ label: tl('Board settings', 'Réglages du board'), icon: 'i-lucide-settings', run: () => navigateTo({ path: '/board', query: { settings: baseKeyOf(m) } }) })
+  if (!core && m.status === 'online' && awakeByMachine.value[m.key]?.supported) {
     items.push({ label: t('Keep awake'), icon: 'i-lucide-sun', run: () => openAwake(m) })
     if (awakeByMachine.value[m.key]?.platform === 'mac') items.push({ label: t('What prevents sleep'), icon: 'i-lucide-list-filter', run: () => openDiagnostic(m) })
   }
@@ -577,7 +578,7 @@ async function saveMachine() {
 // Reorder: connected, and the machine online.
 function canReorder(machine: string) {
   // Dragging a pane must not silently reorder its whole workspace.
-  if (individualAgentList.value) return false
+  if (core || individualAgentList.value) return false
   if (offlineView.value || !eventsOpen.value || !st.value.ok) return false
   return !multiMachine.value || machines.value.some(m => m.key === machine && m.status === 'online')
 }

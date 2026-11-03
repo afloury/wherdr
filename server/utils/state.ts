@@ -1236,6 +1236,8 @@ function broadcastState() {
 // Union of the machines' states -> broadcast state. With a single machine, it
 // is identical to the previous one (no `machines` field, unchanged IDs).
 function rebuild() {
+  // herdr-core: the state comes from the core poll; mstates stays empty, so a rebuild would wipe it.
+  if (isCore()) return
   const machines = allMachines()
   for (const k of mstates.keys()) if (!getMachine(k)) mstates.delete(k)
   const loc = mstates.get(LOCAL) || { ok: false, error: 'starting…', workspaces: [], panes: [] }
@@ -1262,7 +1264,7 @@ function rebuild() {
 onMachinesChange(() => {
   rebuild()
   // Machine just connected: its state without waiting for the next round.
-  setTimeout(poll, 0)
+  if (!isCore()) setTimeout(poll, 0)
 })
 
 // "Ready" (see shared/stateReady.ts): once reached, we never go back.
