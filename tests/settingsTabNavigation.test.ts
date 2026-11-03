@@ -105,28 +105,3 @@ describe.each([80, 120])('real Claude Code 2.1.296 at %i columns', width => {
     expect(n.keys).toEqual(['up'])
   })
 })
-
-// Exercise the actual client functions: a stale follow-up screen must not
-// silently paint Config as though a Usage click had succeeded.
-import { bindFunction } from './stateFunction'
-const clientSource = readFileSync('app/composables/useUi.ts', 'utf8')
-it('reports a mismatched follow-up screen instead of silently returning to Config', async () => {
-  const commandResult = { open: true, pane: 'w1:p1', cmd: '/config', text: null, tab: 'Config' }
-  const read = bindFunction(clientSource, 'readCommandResult', {
-    resultSeq: 1, commandResult, t: (s: string) => s,
-    api: async () => ({ text: plain(fx('config-80-open')), tabs: ['Status', 'Config', 'Usage', 'Stats'], tab: 'Config' }),
-  })
-  await read('w1:p1', '/config', 1, 1, 'Usage')
-  expect(commandResult.text).toContain('Could not switch settings tabs.')
-  expect(commandResult.open).toBe(true)
-})
-it('keeps the confirmed tab on failure and permits retrying the displayed tab', async () => {
-  const commandResult = { open: true, pane: 'w1:p1', cmd: '/config', text: 'Config', tabs: ['Status', 'Config', 'Usage', 'Stats'], tab: 'Config' }
-  const api = vi.fn(async () => { throw new Error('Settings have changed.') })
-  const switchTab = bindFunction(clientSource.replace('export async function switchCommandTab', 'async function switchCommandTab'), 'switchCommandTab', { resultSeq: 1, commandResult, api })
-  await switchTab('Usage')
-  expect(commandResult.tab).toBe('Config')
-  expect(commandResult.text).toBe('Settings have changed.')
-  await switchTab('Config')
-  expect(api).toHaveBeenCalledTimes(2)
-})

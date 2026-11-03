@@ -171,50 +171,6 @@ export function rememberTab(memory: TabMemory, workspace: string, tab: string, o
   return Object.fromEntries(Object.entries(next).filter(([w]) => keep.has(w)))
 }
 
-// ------------------------------------------------------------ reorder
-// Drag and drop of a card within its group (same machine, same
-// state): a group's order is Herdr's, so dropping a card between
-// two neighbours places it, in Herdr, just before the lower neighbour; at the
-// bottom of the group, just after the last one (before the space that follows it in
-// Herdr, or at the end). The other spaces do not move.
-
-// Herdr order after placing `moving` before `before` (null: at the end).
-export function applyMove(order: string[], moving: string, before: string | null): string[] {
-  const rest = order.filter(id => id !== moving)
-  const i = before === null ? -1 : rest.indexOf(before)
-  if (i < 0) return [...rest, moving]
-  return [...rest.slice(0, i), moving, ...rest.slice(i)]
-}
-
-// `order`: the machine's spaces in Herdr's order; `group`: those of the
-// group, in displayed order; `slot`: targeted gap (0 = before the
-// first card, group.length = after the last). null: nothing changes.
-export function reorderTarget(order: string[], group: string[], moving: string, slot: number): { before: string | null } | null {
-  const from = group.indexOf(moving)
-  if (from < 0 || !order.includes(moving)) return null
-  const rest = group.filter(id => id !== moving)
-  const k = Math.max(0, Math.min(rest.length, slot > from ? slot - 1 : slot))
-  if (!rest.length) return null
-  let before: string | null
-  if (k < rest.length) before = rest[k]!
-  else {
-    const others = order.filter(id => id !== moving)
-    before = others[others.indexOf(rest[rest.length - 1]!) + 1] ?? null
-  }
-  const next = applyMove(order, moving, before)
-  return next.every((id, i) => id === order[i]) ? null : { before }
-}
-
-// Spaces renumbered as Herdr will do (immediate feedback while waiting for its state).
-export function reorderWorkspaces<W extends Pick<Workspace, 'id' | 'number'> & { machine?: string }>(list: W[], moving: string, before: string | null): W[] {
-  const m = list.find(w => w.id === moving)
-  if (!m) return list
-  const machine = m.machine || ''
-  const order = list.filter(w => (w.machine || '') === machine).sort((a, b) => a.number - b.number).map(w => w.id)
-  const rank = new Map(applyMove(order, moving, before).map((id, i) => [id, i + 1]))
-  return list.map(w => (rank.has(w.id) ? { ...w, number: rank.get(w.id)! } : w))
-}
-
 // State key of each tab of a space, in order (its most urgent pane;
 // 'shell' for a tab without an agent).
 export function tabStates(row: Row): string[] {

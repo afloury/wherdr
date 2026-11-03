@@ -841,29 +841,6 @@ body.short-bottom { --safe-bottom: 0px; }
 .card.done .card-title { font-weight: 700; }
 .card:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 
-/* Reorder spaces (ReorderList): grabbed card, ghost under the finger,
-   drop line between two cards. */
-.reorder-list { position: relative; }
-.card.reorder-armed { background: var(--surface-2); outline: 1px solid var(--mauve); outline-offset: -1px; transition: background-color .12s ease; }
-.card.reorder-source { opacity: .35; }
-.card.reorder-source::after { content: ''; position: absolute; inset: 3px; border: 1px dashed var(--line-strong); pointer-events: none; }
-.reorder-ghost {
-  position: absolute; z-index: 2; margin: 0; pointer-events: none;
-  background: var(--surface-2); outline: 1px solid var(--mauve); outline-offset: -1px;
-  box-shadow: 6px 6px 0 color-mix(in srgb, var(--mauve) 28%, transparent);
-}
-.reorder-line {
-  position: absolute; left: -1px; right: -1px; height: 2px; margin-top: -1px; z-index: 3;
-  background: var(--mauve); pointer-events: none;
-}
-.reorder-line::before, .reorder-line::after {
-  content: ''; position: absolute; top: -3px; width: 8px; height: 8px; background: var(--mauve);
-}
-.reorder-line::before { left: 0; }
-.reorder-line::after { right: 0; }
-html.reordering, html.reordering * { cursor: grabbing !important; }
-.is-reordering .card:hover { background: var(--bg-2); }
-
 .card-main { flex: 1; min-width: 0; }
 .card-title {
   font-weight: 600; font-size: 15px; line-height: 1.3; color: var(--text); letter-spacing: -.01em;
@@ -1584,11 +1561,6 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
 .queued-cancel:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
 .queued-cancel:disabled { opacity: .55; cursor: default; }
 .queued-cancel .spin { animation: spin .8s linear infinite; }
-.menu-left { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-left: auto; max-width: min(100%, 460px); padding: 10px 12px; border: 1px solid var(--line); border-left: 2px solid var(--blocked); border-radius: 0; background: var(--surface-2); }
-.menu-left-text { display: flex; align-items: flex-start; gap: 8px; margin: 0; font: 400 12px/1.45 var(--sans); color: var(--text-2); }
-.menu-left-text .iconify { width: 14px; height: 14px; flex: none; margin-top: 2px; color: var(--blocked); }
-.menu-left-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-.menu-left-actions .queued-cancel { margin-left: 0; }
 /* Sent but not yet in the transcript; "!" command running. */
 .queued-tag.sent .iconify { color: var(--accent); }
 .queued-tag.running { color: var(--text-2); letter-spacing: .08em; text-transform: uppercase; font-size: 10.5px; }
@@ -1862,30 +1834,6 @@ body.kb .composer { padding-bottom: 8px; }
 .prompt-suggest .iconify, .prompt-suggest svg { width: 12px; height: 12px; color: var(--accent); }
 .prompt-suggest:active { background: var(--bg-2); color: var(--text); border-color: var(--accent); }
 .prompt-suggest:focus-visible { outline: 0; border-color: var(--accent); color: var(--text); }
-/* "/" suggestions: just above the field, like the terminal's menu. */
-.slash-menu {
-  position: absolute; left: 12px; right: 12px; bottom: calc(100% - 2px); z-index: 20;
-  background: var(--bg-2); border: 1px solid var(--line);
-  box-shadow: 0 -12px 32px -12px rgb(0 0 0 / .45);
-}
-.slash-list { max-height: min(46vh, 340px); overflow-y: auto; overscroll-behavior: contain; padding: 4px 0; }
-.slash-item {
-  display: flex; align-items: baseline; gap: 12px; width: 100%; min-width: 0; padding: 8px 12px;
-  text-align: left; background: none; border: 0; border-left: 2px solid transparent; color: var(--text); cursor: pointer;
-}
-.slash-item.on { background: var(--surface); border-left-color: var(--mauve); }
-.slash-name { flex: none; font: 500 13px/1.3 var(--mono); color: var(--text); }
-.slash-name small { font-size: 11.5px; color: var(--dim); }
-.slash-item.on .slash-name { color: var(--mauve); }
-.slash-desc { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.35; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* Project commands macOS keeps from being listed (see .dir-denied). */
-.slash-denied { padding: 10px 12px; border-left: 2px solid var(--ochre); }
-.slash-list + .slash-denied { border-top: 1px solid var(--line); }
-.slash-denied p { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
-.slash-denied p + p { margin-top: 4px; }
-.slash-denied .slash-denied-label { display: flex; align-items: center; gap: 8px; font: 600 11px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-strong); }
-.slash-denied-label .iconify { width: 14px; height: 14px; color: var(--ochre); flex: none; }
-.slash-denied .dir-denied-path { font-size: 11.5px; }
 .prompt {
   position: relative; display: flex; flex-direction: column; align-items: stretch; min-width: 0;
   padding: 4px 6px 6px; gap: 2px;
@@ -2228,11 +2176,6 @@ body.kb .composer { padding-bottom: 8px; }
 .sheet-form :is(input, textarea)[data-slot="base"]:focus, .rename input[data-slot="base"]:focus { box-shadow: inset 0 0 0 1px var(--mauve); outline: none; }
 .mono textarea, .mono input, textarea.mono, input.mono { font-family: var(--mono); font-size: 15px; }
 .form-error { color: var(--rose); font-size: 14px; margin: 14px 2px 0; }
-.project-folder { margin: 8px 2px 14px; font-size: 13px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
-.project-folder code { font-family: var(--mono); color: var(--text); white-space: nowrap; }
-.form-error.project-folder { color: var(--rose); }
-.project-folder-tag { display: inline-block; margin-right: 6px; padding: 1px 6px; border: 1px solid currentColor; font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--text); vertical-align: 1px; }
-.project-folder-tag.new { color: var(--accent, var(--text)); }
 
 .segmented { display: grid; grid-template-columns: repeat(var(--segment-count), minmax(0, 1fr)); border: 1px solid var(--line); }
 .segmented button {
@@ -2964,50 +2907,6 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
   .cell-view .agent-actions .cell-extra { display: none; }
 }
 
-/* Drag and drop of panes and dividers (computer and plan). */
-.cell-view.gripped .agent-top { grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "grip head tabs actions"; padding-left: 2px; column-gap: 4px; }
-.cell-grip {
-  grid-area: grip; display: flex; align-items: center; justify-content: center; width: 20px; height: 34px;
-  color: var(--dim); cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none;
-}
-.cell-grip .iconify { width: 15px; height: 15px; }
-.cell-grip:hover { color: var(--text); }
-.split.dragging, .split.dragging * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
-.split.resizing, .plan.resizing { -webkit-user-select: none; user-select: none; }
-.split.resizing * { cursor: inherit !important; }
-.split.resizing:has(.divider.right.on) { cursor: col-resize; }
-.split.resizing:has(.divider.down.on) { cursor: row-resize; }
-/* Draggable plan: the finger stays on drag and drop (no scrolling nor back gesture). */
-.plan.movable { touch-action: none; }
-.split-box.drag-src, .plan-box.drag-src { opacity: .45; }
-.drop-zone {
-  position: absolute; z-index: 3; pointer-events: none; display: flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--mauve) 16%, transparent); border: 1px solid var(--mauve);
-}
-.drop-zone span {
-  padding: 5px 8px; font: 600 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase;
-  color: var(--mauve); background: var(--bg); border: 1px solid var(--mauve);
-}
-.drag-ghost {
-  position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; max-width: 240px; padding: 7px 10px;
-  font: 600 12px/1.2 var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  background: var(--bg-2); border: 1px solid var(--mauve); box-shadow: 4px 4px 0 color-mix(in srgb, var(--mauve) 35%, transparent);
-}
-.divider { position: absolute; z-index: 4; touch-action: none; outline: none; }
-.divider.right { width: 9px; transform: translateX(-50%); cursor: col-resize; }
-.divider.down { height: 9px; transform: translateY(-50%); cursor: row-resize; }
-.divider::after { content: ''; position: absolute; background: transparent; transition: background .1s ease; }
-.divider.right::after { top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; }
-.divider.down::after { left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; }
-.divider:hover::after, .divider:focus-visible::after, .divider.on::after { background: var(--mauve); }
-/* Plan (finger): wider touch area, line always marked with a notch. */
-.plan .divider.right { width: 24px; }
-.plan .divider.down { height: 24px; }
-.plan .divider::before { content: ''; position: absolute; left: 50%; top: 50%; background: var(--line); transform: translate(-50%, -50%); }
-.plan .divider.right::before { width: 4px; height: 26px; }
-.plan .divider.down::before { width: 26px; height: 4px; }
-.plan .divider.on::before { background: var(--mauve); }
-
 .terminal-selection-hint {
   position: absolute; z-index: 2; right: 8px; top: 8px; display: flex; align-items: center; gap: 8px;
   padding: 4px 5px 4px 8px; background: var(--bg-2); border: 1px solid var(--line);
@@ -3186,7 +3085,6 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .md { font-size: 15.5px; }
   .msg-user .msg-c { max-width: 78%; }
   .choices, .composer { padding-left: max(12px, calc((100% - var(--read)) / 2 + 12px)); padding-right: max(12px, calc((100% - var(--read)) / 2 + 12px)); }
-  .slash-menu { left: max(12px, calc((100% - var(--read)) / 2 + 12px)); right: max(12px, calc((100% - var(--read)) / 2 + 12px)); }
   /* Reading column framed by thin lines, grid in the margins. */
   .chat, .composer, .keybar {
     --col-l: calc(50% - var(--read) / 2);
@@ -3254,7 +3152,6 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .cell-view .md { font-size: 14px; }
   .cell-view .choices, .cell-view .composer { padding-left: 10px; padding-right: 10px; }
   .cell-view .composer { padding-bottom: 10px; }
-  .cell-view .slash-menu { left: 10px; right: 10px; }
   /* Also over the "wherdr grid" rule above (html[data-backdrop] outweighs .cell-view):
      a cell keeps a solid background, without the column lines. */
   .cell-view .chat, .cell-view .composer,

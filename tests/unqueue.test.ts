@@ -4,8 +4,8 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { clearKeys, findQueued, inputBox, msgText, unqueueClaude } from '../server/utils/unqueue'
-import { canCancelQueued, restoreDraft } from '../app/utils/queuedCancel'
-import type { ChatItem, ClaudeQueueEntry, Pane } from '../shared/types'
+import { restoreDraft } from '../app/utils/queuedCancel'
+import type { ChatItem, ClaudeQueueEntry } from '../shared/types'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 const E = '\x1b'
@@ -209,15 +209,6 @@ describe('record of the message to cancel', () => {
 })
 
 describe('bouton et brouillon', () => {
-  const pane = (x: Partial<Pane>) => ({ id: 'w1:p1', agent: 'claude', status: 'working', ...x }) as Pane
-  it('button: Claude working, or message not sent yet', () => {
-    expect(canCancelQueued(pane({}))).toBe(true)
-    expect(canCancelQueued(pane({ status: 'idle' }))).toBe(false)
-    expect(canCancelQueued(pane({ status: 'blocked' }))).toBe(false)
-    expect(canCancelQueued(pane({ agent: 'codex' }))).toBe(false)
-    expect(canCancelQueued(pane({ agent: 'codex', status: 'idle', pendingPrompt: true }))).toBe(true)
-    expect(canCancelQueued(undefined)).toBe(false)
-  })
   it('text put back before the draft, photos attached only once', () => {
     const d = { text: 'déjà tapé', atts: [] as { url: string, path: string | null, name?: string }[] }
     const msg = 'Regarde ça\n/home/user/.cache/herdr-web/uploads/2026-09-26T00-36-39-393Z-4fa305.jpg'

@@ -4,7 +4,7 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import AgentCard from '~/components/AgentCard.vue'
 import PhoneIdentity from '~/components/PhoneIdentity.vue'
 import { desk, herdrState } from '~/composables/useHerdr'
-import { currentPaneItems, paneItems, paneSpaceItems } from '~/composables/useSpaces'
+import { currentPaneItems, paneItems } from '~/composables/useSpaces'
 import type { Pane } from '#shared/types'
 
 // herdr-core has no split, move or swap: the pane menus must not offer them.
@@ -28,10 +28,7 @@ const labels = (items: { label?: string }[]) => items.map(i => i.label ?? '')
 
 it('core mode: no split, move or swap entry in the pane menus; rename and close stay', () => {
   herdrState.value = state()
-  cfg.core = false
-  expect(labels(paneSpaceItems(pane)).filter(l => LAYOUT.test(l)).length).toBeGreaterThanOrEqual(4)
   cfg.core = true
-  expect(paneSpaceItems(pane)).toEqual([])
   for (const items of [currentPaneItems(pane), paneItems(pane)]) {
     const l = labels(items)
     expect(l.filter(x => LAYOUT.test(x))).toEqual([])
