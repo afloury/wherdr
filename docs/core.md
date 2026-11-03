@@ -87,7 +87,8 @@ saving transcripts: a core started from inside a Claude Code session inherits
 
 Text left unsent in Claude Code's own input box (a draft or paste never submitted, or the
 prompt Claude puts back after an interrupt) shows at the end of the conversation as
-**Not sent** once it has stayed unchanged for two seconds, with **Send now** (Enter, then a
+**Not sent** once it has stayed unchanged for two seconds and the colored screen (the first
+paint of a passive `terminal.attach`) confirms it is typed text, not Claude's gray suggestion, with **Send now** (Enter, then a
 check that the box emptied and a turn started) and **Clear**. When Claude's queue offers
 "ctrl+enter to send now", the conversation offers **Send now** too. Each action re-reads the
 screen first and refuses a box that changed (`server/utils/coreDraft.ts`).
