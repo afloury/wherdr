@@ -6,9 +6,11 @@
 // once xterm has written each frame (see server/utils/coreTerm.ts).
 import { createSocketProbe } from '~/utils/socketProbe'
 import { DESK_QUERY } from '~/utils/layoutMode'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import { WebglAddon } from '@xterm/addon-webgl'
+// Types only: the code is loaded when a terminal is shown (utils/xtermLoader.ts).
+import type { Terminal } from '@xterm/xterm'
+import type { FitAddon } from '@xterm/addon-fit'
+import type { WebglAddon } from '@xterm/addon-webgl'
+import { loadWebgl, loadXterm } from '~/utils/xtermLoader'
 import { terminalPixelWidth } from '~/utils/terminalSize'
 import { guardWebglCanvasSize } from '~/utils/terminalRenderer'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
@@ -41,6 +43,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   let twsIntent = false
   let lastSize = { cols: 0, rows: 0 }
   let disposed = false
+  // xterm is being downloaded: what is asked meanwhile is done once it is there.
+  let mountSeq = 0
+  let mounting = false
+  let takeoverQueued = false
+  let focusQueued = false
   const loading = ref(false)
   const kbdOn = ref(false)
   const scrollInputVersion = ref(0)
@@ -102,13 +109,41 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
 
-  function mount(host: HTMLElement) {
+  // Resolves true once the terminal is in `host`, false if it was disposed (or
+  // xterm could not be downloaded: a banner then offers to retry) meanwhile.
+  async function mount(host: HTMLElement): Promise<boolean> {
     el = host
     // Clear before xterm handles paste, including a one-character paste.
     host.addEventListener('paste', clearVirtualModifiers, true)
     disposed = false
     twsRetry = 0
-    term = new Terminal({
+    const seq = ++mountSeq
+    mounting = true
+    loading.value = true
+    const renderer = terminalRenderer.value
+    let xterm: Awaited<ReturnType<typeof loadXterm>>
+    let gl: Awaited<ReturnType<typeof loadWebgl>> | null
+    try {
+      // Both at once: the WebGL renderer is in place before the first fit, as before.
+      [xterm, gl] = await Promise.all([loadXterm(), renderer === 'webgl' ? loadWebgl().catch(() => null) : null])
+    } catch {
+      if (seq !== mountSeq || disposed) return false
+      mounting = false
+      loading.value = false
+      opts.setBanner({
+        text: tl('The terminal could not be loaded.', 'Le terminal n’a pas pu être chargé.'),
+        btn: t('Retry'),
+        fn: () => {
+          opts.setBanner(null)
+          if (host.isConnected) void mount(host).then((ok) => { if (ok && !opts.hasBanner()) connect(false) })
+        },
+      })
+      return false
+    }
+    if (seq !== mountSeq || disposed) return false
+    mounting = false
+    loading.value = false
+    term = new xterm.Terminal({
       fontFamily: TERM_FONT,
       fontSize: fontSize.value,
       // Line height 1: block characters (Claude Code logo) and
@@ -122,7 +157,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       // Palette of the app theme (Settings → Theme), updated live.
       theme: terminalTheme.value,
     })
-    fit = new FitAddon()
+    fit = new xterm.FitAddon()
     term.loadAddon(fit)
     term.open(host)
     mouse = bindTerminalMouse(term, () => mouseSupported && opts.input?.() !== false, event => sendTerm(event))
@@ -152,8 +187,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         `Copie de l’agent ignorée : ${fmtBytes(bytes)} (limite ${fmtBytes(OSC52_MAX_BYTES)})`,
       )),
     })
-    // The device's choice may change while the terminal stays mounted.
-    setRenderer(terminalRenderer.value)
+    // The device's choice may change while the terminal stays mounted (and
+    // while xterm was loading: then the add-on is fetched now).
+    if (terminalRenderer.value === renderer && (renderer !== 'webgl' || gl)) applyRenderer(renderer, gl?.WebglAddon ?? null)
+    else void setRenderer(terminalRenderer.value)
     // JetBrains Mono (bundled): once loaded, xterm re-measures its cells.
     const t0 = term
     Promise.all([
@@ -212,6 +249,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       const bytes = Uint8Array.from(d, c => c.charCodeAt(0) & 0xff)
       sendTerm({ type: 'terminal.input', bytes: bytesToB64(bytes) })
     })
+    if (focusQueued) focus()
+    return true
   }
 
   const probe = createSocketProbe(() => tws)
@@ -282,8 +321,24 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   // The preference changes the width in pixels, then FitAddon re-measures.
   watch(contentWidth, () => nextTick(() => fitNow(true)))
 
-  function setRenderer(renderer: 'webgl' | 'html') {
+  // The WebGL add-on is downloaded the first time it is chosen; until then (or
+  // if that fails) xterm keeps the HTML renderer it starts with.
+  let rendererSeq = 0
+  async function setRenderer(renderer: 'webgl' | 'html') {
     if (!term) return
+    const seq = ++rendererSeq
+    const current = term
+    let Webgl: typeof WebglAddon | null = null
+    if (renderer === 'webgl') {
+      try { Webgl = (await loadWebgl()).WebglAddon }
+      catch { /* offline: HTML renderer */ }
+      if (seq !== rendererSeq || term !== current) return
+    }
+    applyRenderer(renderer, Webgl)
+  }
+  function applyRenderer(renderer: 'webgl' | 'html', Webgl: typeof WebglAddon | null) {
+    if (!term) return
+    rendererSeq++
     if (webgl) {
       const old = webgl
       webgl = null
@@ -292,7 +347,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     if (renderer === 'webgl') {
       let addon: WebglAddon | null = null
       try {
-        addon = new WebglAddon()
+        if (!Webgl) throw new Error('WebGL add-on not loaded')
+        addon = new Webgl()
         const next = addon
         addon.onContextLoss(() => {
           if (webgl !== next) return
@@ -318,7 +374,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     // the pane size stay handled by fitNow / TerminalView.
     fitNow(true)
   }
-  watch(terminalRenderer, setRenderer)
+  watch(terminalRenderer, r => void setRenderer(r))
 
   function setFontSize(n: number) {
     if (!term) return
@@ -327,7 +383,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   }
 
   function connect(takeover: boolean) {
-    if (disposed || !term) return
+    if (disposed) return
+    // Before xterm is there: the view connects once mounted; a take-over asked
+    // meanwhile is kept for that connection.
+    if (!term) { if (mounting && takeover) takeoverQueued = true; return }
+    if (takeoverQueued) { takeover = true; takeoverQueued = false }
     clearTimeout(twsTimer)
     clearTimeout(handshake)
     probe.cancel()
@@ -469,10 +529,14 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   function reset() { term?.reset() }
   function focus() {
+    focusQueued = !term && mounting
     term?.focus()
     kbdOn.value = true
   }
-  function blur() { term?.textarea?.blur() }
+  function blur() {
+    focusQueued = false
+    term?.textarea?.blur()
+  }
   // Tap on the touch layer: opens the link under the finger, if any.
   const tapLink = (x: number, y: number) => links?.tap(x, y) ?? false
   const hasFocus = () => Boolean(term && document.activeElement === term.textarea)
@@ -517,6 +581,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   function dispose() {
     el?.removeEventListener('paste', clearVirtualModifiers, true)
     disposed = true
+    if (mounting) loading.value = false
+    mounting = false
+    takeoverQueued = false
+    focusQueued = false
     stopSmoothWatch()
     disconnect()
     unbindSelection?.()
