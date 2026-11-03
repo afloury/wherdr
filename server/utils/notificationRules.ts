@@ -9,7 +9,8 @@ export const notificationPresence = new NotificationPresence()
 export async function notificationAllowed(event: NotificationEvent, state: Pick<HerdrState, 'workspaces'>,
   pane?: Pick<Pane, 'id' | 'workspace'>, fallback?: NotificationSource): Promise<boolean> {
   const settings = parseNotificationSettings((await readSettings()).notificationRules)
-  const board = pane ? await readBoardLinks() : null
+  // herdr-core has no Board: do not read ~/.herdr-projects on every notification.
+  const board = pane && process.env.WHERDR_BACKEND !== 'core' ? await readBoardLinks() : null
   const machine = pane ? machineOfPane(pane.id) : null
   const source = pane ? paneNotificationSource(pane, state, board && 'machines' in board ? board.machines : [],
     machine?.info().baseKey ?? machine?.key ?? fallback?.machine) : fallback

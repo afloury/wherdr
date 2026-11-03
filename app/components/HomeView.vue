@@ -352,7 +352,7 @@ const awakeOpen = computed({ get: () => Boolean(awakeTarget.value), set: v => { 
 const diagnosticOpen = computed({ get: () => Boolean(diagnosticTarget.value), set: v => { if (!v) diagnosticTarget.value = null } })
 const awakeUrl = (key: string, diagnostic = false) => `/api/machine/awake?key=${encodeURIComponent(key)}${diagnostic ? '&diagnostic=1' : ''}`
 async function refreshAwake(m: MachineInfo) {
-  if (m.status !== 'online') return
+  if (core || m.status !== 'online') return
   try { awakeByMachine.value[m.key] = await api<AwakeState>(awakeUrl(m.key)) }
   catch { /* the machine may disappear between two polls */ }
 }
@@ -441,11 +441,12 @@ const connectionMachine = ref<MachineInfo | null>(null)
 const connectionInfo = computed(() => machines.value.find(m => m.key === connectionMachine.value?.key) ?? connectionMachine.value)
 const connectionOpen = computed({ get: () => !!connectionMachine.value, set: (v: boolean) => { if (!v) connectionMachine.value = null } })
 function machineMenuItems(m: MachineInfo): MenuItem[] {
-  const items: MenuItem[] = [...core ? [] : [{ label: t('Herdr sessions'), icon: 'i-lucide-layers', run: () => openSessions(m) }], { label: t('Rename'), icon: 'i-lucide-pencil', run: () => {
+  // herdr-core: no sessions, board, rename route, keep-awake or connection page (machines are managed in Settings).
+  const items: MenuItem[] = core ? [] : [{ label: t('Herdr sessions'), icon: 'i-lucide-layers', run: () => openSessions(m) }, { label: t('Rename'), icon: 'i-lucide-pencil', run: () => {
     renamingMachine.value = m
     machineLabel.value = m.label
   } }]
-  if (!m.local) items.push({ label: t('Connection status'), icon: 'i-lucide-plug', run: () => { connectionMachine.value = m } })
+  if (!core && !m.local) items.push({ label: t('Connection status'), icon: 'i-lucide-plug', run: () => { connectionMachine.value = m } })
   if (multiMachine.value) {
     const key = baseKeyOf(m)
     const at = visibleKeys.value.indexOf(key)
@@ -454,9 +455,9 @@ function machineMenuItems(m: MachineInfo): MenuItem[] {
     if (machineOrder.value.length) items.push({ label: t('Reset order'), icon: 'i-lucide-rotate-ccw', run: () => saveMachineOrder([]) })
   }
   // The Board, already filtered on this machine (its board is the base machine's).
-  items.push({ label: t('Open the board'), icon: 'i-lucide-square-kanban', run: () => navigateTo({ path: '/board', query: { machine: baseKeyOf(m) } }) })
-  items.push({ label: tl('Board settings', 'Réglages du board'), icon: 'i-lucide-settings', run: () => navigateTo({ path: '/board', query: { settings: baseKeyOf(m) } }) })
-  if (m.status === 'online' && awakeByMachine.value[m.key]?.supported) {
+  if (!core) items.push({ label: t('Open the board'), icon: 'i-lucide-square-kanban', run: () => navigateTo({ path: '/board', query: { machine: baseKeyOf(m) } }) })
+  if (!core) items.push({ label: tl('Board settings', 'Réglages du board'), icon: 'i-lucide-settings', run: () => navigateTo({ path: '/board', query: { settings: baseKeyOf(m) } }) })
+  if (!core && m.status === 'online' && awakeByMachine.value[m.key]?.supported) {
     items.push({ label: t('Keep awake'), icon: 'i-lucide-sun', run: () => openAwake(m) })
     if (awakeByMachine.value[m.key]?.platform === 'mac') items.push({ label: t('What prevents sleep'), icon: 'i-lucide-list-filter', run: () => openDiagnostic(m) })
   }

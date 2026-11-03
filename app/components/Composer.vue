@@ -556,6 +556,8 @@ const slashQuery = computed(() => {
   return props.pane && props.pane.agent && m ? m[1]!.toLowerCase() : null
 })
 async function loadSlash() {
+  // herdr-core refuses /api/commands: no command list.
+  if (useRuntimeConfig().public.core) return
   const key = props.paneId
   const hit = slashCache.get(key)
   // The known list at once, asked again after a few seconds: a skill or
