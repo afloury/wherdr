@@ -507,6 +507,11 @@ function normalize(s: HerdrState): HerdrState {
 
 const eventProbe = createSocketProbe(() => evWs)
 let evHandshake: ReturnType<typeof setTimeout> | undefined
+// OPEN but silent: the upgrade succeeded and no real packet followed. An
+// open pipe proves nothing (the first state goes out on connect); past this
+// window the socket is dead rather than slow, so it is closed for onclose's
+// retry path.
+let evFirst: ReturnType<typeof setTimeout> | undefined
 export function recoverEvents() {
   connectEvents()
   return eventProbe.recover(() => { if (!document.hidden && !locked.value) reconnectEvents() })
@@ -514,6 +519,7 @@ export function recoverEvents() {
 export function reconnectEvents() {
   eventProbe.cancel()
   clearTimeout(evHandshake)
+  clearTimeout(evFirst)
   clearTimeout(evTimer)
   if (evWs) { try { evWs.onclose = null; evWs.close() } catch { /* ignore */ } evWs = null }
   evRetry = 0
@@ -525,9 +531,12 @@ export function connectEvents() {
   if (locked.value) return
   if (evWs && evWs.readyState <= 1) return
   clearTimeout(evHandshake)
+  clearTimeout(evFirst)
   eventProbe.cancel()
   const ws = new WebSocket(`${wsBase()}/ws/events`)
   evWs = ws
+  const t0 = Date.now() // staged timing: open, then first real packet
+  let proved = false
   // A CONNECTING socket fires nothing: no open, no close, no retry. If the
   // network is not actually back yet, the handshake hangs and the app would
   // sit offline forever -- close it on a deadline so onclose retries.
@@ -539,6 +548,9 @@ export function connectEvents() {
     clearTimeout(evHandshake)
     evRetry = 0
     eventsOpen.value = true
+    evFirst = setTimeout(() => {
+      if (evWs === ws) { try { ws.close() } catch { /* ignore */ } }
+    }, 8000)
     if (everOpen) {
       settleUntil = Date.now() + SETTLE_MS
       // Reconnection = often a redeployment: we check right away whether
@@ -557,7 +569,9 @@ export function connectEvents() {
       if (evWs !== ws) return
       const data = JSON.parse(e.data)
       if (data?.type === 'pong') { eventProbe.pong(ws); return }
-      // Settings changed on another device (or another tab).
+      // Real traffic (state or settings): the socket proved itself live.
+      clearTimeout(evFirst)
+      if (!proved) { proved = true; console.debug(`[events] first +${Date.now() - t0}ms`) }
       if (data?.type === 'settings') { settingsSync.receive(data.settings || {}); return }
       const got = normalize(data) as HerdrState
       // Server just restarted, state still partial: we keep the whole
@@ -582,6 +596,7 @@ export function connectEvents() {
   ws.onclose = () => {
     if (evWs !== ws) return
     clearTimeout(evHandshake)
+    clearTimeout(evFirst)
     evWs = null
     eventsOpen.value = false
     eventProbe.cancel()
@@ -625,13 +640,17 @@ watch(herdrState, (s) => {
   } catch { /* not supported */ }
 })
 
+// A status read that never answers (phone on a tailnet whose wherdr host is
+// gone) counts as unreachable past this delay; see `start` for the unlock path.
+const STATUS_WAIT_MS = 3000
+
 // Shows the lock screen only when the server itself says the session is
 // invalid; a network error or an odd answer leaves the app as it is.
 // resume: the app opens, reloads or comes back to the foreground. Only then does
 // the server end a session past its maximum duration (never in the middle of use).
 export async function confirmLock({ resume = false } = {}) {
   try {
-    const st = await api<AuthStatus>(resume ? '/api/auth/status?resume=1' : '/api/auth/status')
+    const st = await api<AuthStatus>(resume ? '/api/auth/status?resume=1' : '/api/auth/status', undefined, AbortSignal.timeout(STATUS_WAIT_MS))
     if (st.enabled && !st.unlocked) return showLock()
     const access = leaseFromStatus(st)
     setOfflineAccess(access)
@@ -685,10 +704,9 @@ export function showLock() {
 }
 
 // App opening or back in the foreground: a server that accepts the connection
-// but never answers (phone on a tailnet whose wherdr host is gone) counts as
-// unreachable past this delay, so the last known state shows and the live
-// connection keeps retrying. Unlock and Settings wait for the answer.
-const STATUS_WAIT_MS = 3000
+// but never answers counts as unreachable past STATUS_WAIT_MS, so the last
+// known state shows and the live connection keeps retrying. Unlock and
+// Settings wait for the answer.
 
 // resume: see confirmLock.
 export async function start({ resume = false } = {}) {
@@ -699,7 +717,7 @@ export async function start({ resume = false } = {}) {
   try {
     const st = resume
       ? await api<AuthStatus>('/api/auth/status?resume=1', undefined, AbortSignal.timeout(STATUS_WAIT_MS))
-      : await api<AuthStatus>('/api/auth/status')
+      : await api<AuthStatus>('/api/auth/status', undefined, AbortSignal.timeout(STATUS_WAIT_MS))
     if (st.hostLabel !== undefined) hostLabel.value = st.hostLabel
     if (st.enabled && !st.unlocked) return showLock()
     access = leaseFromStatus(st)

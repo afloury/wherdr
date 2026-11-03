@@ -174,6 +174,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   const probe = createSocketProbe(() => tws)
   let handshake: ReturnType<typeof setTimeout> | undefined
+  // OPEN but silent: the upgrade succeeded and no frame ever came. The server
+  // runs its terminal startup serially (pane size, agent version, stream), so
+  // this window stays generous -- past it the pipe is dead, not slow.
+  let frameWait: ReturnType<typeof setTimeout> | undefined
   watch(socketWake, () => {
     if (document.hidden || !twsIntent || disposed || opts.hasBanner()) return
     if (!isConnected()) connect(false)
@@ -287,6 +291,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     if (disposed || !term) return
     clearTimeout(twsTimer)
     clearTimeout(handshake)
+    clearTimeout(frameWait)
     probe.cancel()
     if (tws) {
       tws.onclose = null
@@ -306,6 +311,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     if (smoothTouchScrolling.value) scrollInputVersion.value++
     const ws = new WebSocket(`${wsBase()}/ws/term?${q}`)
     tws = ws
+    const t0 = Date.now() // staged timing: open, then first frame (devtools)
     // A CONNECTING socket fires nothing: if the handshake hangs (network not
     // really back yet) nothing retries -- close it on a deadline so onclose
     // schedules the next attempt.
@@ -315,7 +321,15 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     ws.onopen = () => {
       if (tws !== ws) return
       clearTimeout(handshake)
+      frameWait = setTimeout(() => {
+        if (tws !== ws || gotFrame) return
+        // A real reason, like a server-reported error: lets the retries below
+        // give up instead of looping on a pipe that never frames.
+        lastErr = lastErr || 'no terminal frame'
+        try { ws.close() } catch { /* already closed */ }
+      }, 12000)
       if (term) lastSize = { cols: term.cols, rows: term.rows }
+      console.debug(`[term ${paneId}] open +${Date.now() - t0}ms`)
       ws.send(JSON.stringify({ type: 'visibility', visible: !document.hidden }))
     }
     ws.onmessage = (e) => {
@@ -330,6 +344,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         if (!gotFrame) {
           gotFrame = true
           twsRetry = 0
+          clearTimeout(frameWait)
+          console.debug(`[term ${paneId}] frame +${Date.now() - t0}ms`)
         }
         loading.value = false
         if (!term) return
@@ -360,6 +376,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       if (tws !== ws) return
       if (smoothTouchScrolling.value) { scrollInputVersion.value++; touchEpoch++ }
       clearTimeout(handshake)
+      clearTimeout(frameWait)
       tws = null
       mouseSupported = false
       loading.value = false
@@ -394,6 +411,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     twsIntent = false
     clearTimeout(twsTimer)
     clearTimeout(handshake)
+    clearTimeout(frameWait)
     probe.cancel()
     if (tws) {
       const ws = tws
