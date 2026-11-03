@@ -21,7 +21,7 @@ function repo() {
   git('add', '.'); git('commit', '-qm', 'Fixture'); git('branch', 'base')
   return { cwd, git }
 }
-const available = ['tests/reference.test.ts', 'tests/components/Composer.test.ts', 'tests/e2e/reference.spec.ts', 'tests/e2e/startup-hash.spec.ts']
+const available = ['tests/reference.test.ts', 'tests/components/Composer.test.ts', 'tests/e2e/reference.spec.ts', 'tests/e2e/core-smoke.spec.ts']
 describe('affected test selector', () => {
   it('parses NUL names including both sides of renames and copies', () => {
     expect(parseChanges('R100\0old name.ts\0new name.ts\0D\0deleted.ts\0M\0space name.ts\0')).toEqual(['old name.ts', 'new name.ts', 'deleted.ts', 'space name.ts'])
@@ -56,7 +56,7 @@ describe('affected test selector', () => {
     const plan = select(['unknown source.ts'], available, undefined)
     expect(plan.broad).toBe(true)
     expect(Object.keys(plan.tests)).toHaveLength(2)
-    expect(Object.keys(plan.e2e)).toEqual(['tests/e2e/startup-hash.spec.ts'])
+    expect(Object.keys(plan.e2e)).toEqual(['tests/e2e/core-smoke.spec.ts'])
     const { cwd } = repo()
     const changes = changedFiles('missing-branch', cwd)
     expect(changes.warning).toMatch(/merge-base/)
@@ -99,10 +99,10 @@ describe('affected test selector', () => {
     const { cwd } = repo()
     mkdirSync(join(cwd, 'tests'))
     writeFileSync(join(cwd, 'README.md'), '# Fixture')
-    const result = spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/test-affected.mjs', import.meta.url)), '--base', 'base', '--dry-run', '--safari'], { cwd, encoding: 'utf8' })
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/test-affected.mjs', import.meta.url)), '--base', 'base', '--dry-run'], { cwd, encoding: 'utf8' })
     expect(result.status, result.stderr).toBe(0)
     expect(result.stdout).toContain('Documentation only: no JS tests or browser required.')
-    expect(result.stdout).toContain('"project": "webkit-phone"')
+    expect(result.stdout).toContain('"project": "chromium-phone"')
   })
   it('refuses a selection covering the entire Playwright suite before building', () => {
     const { cwd } = repo()

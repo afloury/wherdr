@@ -58,5 +58,5 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Smoke e2e (core, Chromium)
-        run: npx playwright test -c playwright.core.config.ts
+      - name: E2e (core, Chromium)
+        run: npx playwright test
