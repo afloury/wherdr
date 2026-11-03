@@ -33,7 +33,7 @@ const CASES: Case[] = [
   { name: 'claude-idle', status: 'idle', interaction: 'input', preview: 'Run /init to create a CLAUDE.md file with instructions for Claude' },
   { name: 'claude-working', status: 'working', interaction: 'working', preview: '✻ Pondering… (23s · ↓ 1.4k tokens · esc to interrupt)' },
   { name: 'claude-working-spinner', status: 'working', interaction: 'working', preview: "⎿  Tip: Use /btw to ask a quick side question without interrupting Claude's current work" },
-  { name: 'claude-finished', status: 'idle', interaction: 'input', preview: '✻ Worked for 3m 12s' },
+  { name: 'claude-finished', status: 'idle', interaction: 'input', preview: 'Added six cases for the date parser; all tests pass.' },
   {
     name: 'claude-question', status: 'blocked', interaction: 'native', preview: '5. Chat about this',
     question: 'Which database should the service use?',
