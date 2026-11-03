@@ -2135,7 +2135,7 @@ body.kb .composer { padding-bottom: 8px; }
 .hw-sheet > [data-slot="footer"]:empty { display: none; }
 .hw-sheet-foot .sheet-form { padding: 0; }
 .hw-sheet-foot .launch-btn { margin-top: 16px; }
-.hw-sheet-foot .form-error { margin: 0 2px 12px; }
+.hw-sheet-foot .form-error { margin: 0 2px 12px; white-space: pre-line; overflow-wrap: anywhere; max-height: 9em; overflow-y: auto; }
 /* Full-screen view on the phone (`screen`): covers the whole screen, in the
    page color (same as html/body and the theme-color meta), so no other color
    can show around it, even below a page shortened by iOS. It is laid out

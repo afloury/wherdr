@@ -76,6 +76,13 @@ export function tasksClosing(plan: ClosePlan, kind: CloseKind, links: MachineLin
   return out
 }
 
+// Agents a close interrupts: every pane of the plan that runs one, whatever its status
+// (a working agent, one waiting for an answer, one that ended in error).
+export function agentsClosing(plan: Pick<ClosePlan, 'panes'>, tl: (en: string, fr: string) => string): string {
+  const n = plan.panes.filter(p => p.agent).length
+  return n ? (n === 1 ? tl('⚠ 1 agent will be interrupted.', '⚠ 1 agent sera interrompu.') : tl(`⚠ ${n} agents will be interrupted.`, `⚠ ${n} agents seront interrompus.`)) : ''
+}
+
 // The warning for them, named (at most 4), and the button that says so.
 export function taskStopMessage(tasks: Pick<LinkedTask, 'key' | 'title'>[], tl: (en: string, fr: string) => string): { message: string, action: string } | null {
   const n = tasks.length

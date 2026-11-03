@@ -24,6 +24,7 @@ export interface CoreAdminDeps {
   settle: () => Promise<unknown> // fresh inventory, published
   recent: (m: MachineInfo) => Promise<string[]>
   remember: (dir: string, m: MachineInfo) => Promise<unknown>
+  launchWatchMs?: number // how long a new agent is watched for an immediate failure (default 2 s)
 }
 
 const REQUEST_LABEL = 'wherdr-request'
@@ -106,6 +107,25 @@ export async function coreMachineConfigs(deps: CoreAdminDeps): Promise<MachineCo
   }))
 }
 
+interface CoreFacts { state?: string, exit_code?: number | null, signal?: string | null, reason?: string }
+
+// An agent that ends with a failure within a couple of seconds did not start: say so with
+// the exit code and the last lines it printed, rather than leaving a dead entry to find.
+async function launchFailure(deps: CoreAdminDeps, address: string, ms: number): Promise<{ code: string, lines: string } | null> {
+  const end = Date.now() + ms
+  do {
+    const t = await deps.call<CoreFacts>('terminal.get', { terminal: address }, 3000).catch(() => null)
+    if (t?.state === 'finished') {
+      if (t.exit_code === 0) return null
+      const out = await deps.call<{ text?: string }>('terminal.read', { terminal: address, lines: 20 }, 3000).catch(() => null)
+      const lines = String(out?.text || '').split('\n').map(l => l.trimEnd()).filter(Boolean).slice(-8).join('\n')
+      return { code: t.exit_code == null ? String(t.signal || t.reason || '?') : String(t.exit_code), lines }
+    }
+    if (Date.now() < end) await new Promise(r => setTimeout(r, 250))
+  } while (Date.now() < end)
+  return null
+}
+
 export interface CreateBody { kind?: unknown, machine?: unknown, cwd?: unknown, name?: unknown, workspace?: unknown }
 
 const newId = (prefix: string) => prefix + crypto.randomBytes(16).toString('hex')
@@ -152,7 +172,8 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
     address = found
   }
   await deps.remember(cwd, m).catch(() => {})
-  await deps.settle()
+  const [failed] = await Promise.all([kind === 'shell' ? null : launchFailure(deps, address, deps.launchWatchMs ?? 2000), deps.settle()])
+  if (failed) throw new HerdrError('launch_failed', fmt('{kind} stopped right after starting (exit code {code}). Last output:\n{lines}', { kind, code: failed.code, lines: failed.lines || '(none)' }))
   const pane = deps.panes().find(p => p.coreAddress === address)
   if (!pane) throw new HerdrError('uncertain', 'Created, but not in the list yet: check the list before creating it again')
   return { pane_id: pane.id, workspace_id: pane.workspace, name: kind === 'shell' ? null : name || kind }
