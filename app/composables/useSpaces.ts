@@ -250,7 +250,12 @@ export function copyPaneIdItem(p: Pane): MenuItem {
     },
   }
 }
+// herdr-core: rename, close, split and move act on herdr-app's layout document, which
+// wherdr does not write; a new tab (a new terminal in the space) is all there is.
+const coreMode = () => useRuntimeConfig().public.core
+// Split, move and swap: herdr-app's layout, none of them in herdr-core.
 export function paneSpaceItems(p: Pane): MenuItem[] {
+  if (coreMode()) return []
   return [
     { label: t('Split right'), icon: 'i-lucide-columns-2', run: () => splitPane(p, 'right') },
     { label: t('Split down'), icon: 'i-lucide-rows-2', run: () => splitPane(p, 'down') },
@@ -258,9 +263,6 @@ export function paneSpaceItems(p: Pane): MenuItem[] {
     ...paneSwapItems(p),
   ]
 }
-// herdr-core: rename, close, split and move act on herdr-app's layout document, which
-// wherdr does not write; a new tab (a new terminal in the space) is all there is.
-const coreMode = () => useRuntimeConfig().public.core
 export function tabItems(tabId: string): MenuItem[] {
   const e = tabOf(tabId)
   if (!e) return []
