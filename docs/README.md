@@ -25,7 +25,7 @@ or [Development and tests](development.md) for repository changes.
 - [Settings and configuration](configuration.md) — Environment variables and in-app settings.
 - [Phone access and private networks](networks.md) — Set up Tailscale or another private network with HTTPS.
 - [Install as an app](phone.md) — Add wherdr to your home screen on a phone or install it in a desktop browser.
-- [wherdr plugins](plugins.md#wherdr-plugins) — Optional page plugins and `data-wherdr` markers.
+- [Plugins](plugins.md) — [wherdr plugins](plugins.md#wherdr-plugins): optional page plugins and `data-wherdr` markers.
 - [Security](security.md) — Remote-shell access, passkeys and network restrictions. Read this before enabling remote access.
 - [Design rules](design.md) — The single reference for interface styling, state indicators, controls and responsive checks.
 - [Development and tests](development.md) — Run from source and test the core build.

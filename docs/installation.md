@@ -87,3 +87,12 @@ WHERDR_BACKEND=core NUXT_PUBLIC_CORE=true npm run build
 ```
 
 then restart wherdr. Data in `DATA_DIR` (passkeys, push subscriptions, settings) is kept.
+
+## v2 only
+
+wherdr v2 needs Herdr ≥ 0.9.1 running on the server (`herdr status server` checks it), with the
+integrations of the agents you use (`herdr integration install claude|codex|omp`). It installs
+with `curl -fsSL https://wherdr.dev/install | sh`, the Herdr plugin, npm or Homebrew: see the
+[v2 installation guide](https://github.com/afloury/wherdr/blob/main/docs/installation.md). A
+wherdr 1.x Docker container moves to the native v2 service with the
+[Docker migration guide](migrate-from-1.x-docker.md). None of this applies to v3.

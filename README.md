@@ -8,7 +8,13 @@ copied and nothing runs in the cloud: wherdr talks to the hc session on your com
 > [!NOTE]
 > This is the `v3` branch. v3 has no Board, no herdr-projects, no coordinators and no Docker
 > image. Those belong to wherdr v2, which runs on [Herdr](https://herdr.dev): see the
-> [v2 README](https://github.com/afloury/wherdr/blob/main/README.md) on `main`.
+> [v2 README](https://github.com/afloury/wherdr/blob/main/README.md) on `main`, and
+> [Migrate from a 1.x Docker install](docs/migrate-from-1.x-docker.md) for old v1 containers.
+
+<p align="center">
+  <img src="assets/wherdr-readme.webp" width="720" alt="Animated demonstration of wherdr v2 on Herdr: launch an agent on desktop, continue on a phone, approve its request, view project tasks and open the Board. Real app, fictional demo data. v3 keeps the same home, conversation and phone screens, without the Board.">
+</p>
+<p align="center"><sub>The demo shows wherdr v2 on Herdr; v3 has no Board.</sub></p>
 
 ## What v3 does
 
@@ -23,8 +29,8 @@ copied and nothing runs in the cloud: wherdr talks to the hc session on your com
 - **Machines as tabs** in the home screen; add, reconnect, rename or forget machines in Settings.
 - **Files**: browse, read and download the files of an agent's folder.
 - **Notifications**: Web Push when an agent needs you or finishes.
-- **Settings**: theme, home list, conversation, terminal, agents, notifications, phone,
-  passkey lock.
+- **Settings**: theme, home list, conversation, terminal, agents, notifications, phone and an
+  optional passkey lock.
 
 ## Quick start
 
