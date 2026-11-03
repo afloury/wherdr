@@ -3,7 +3,7 @@
 // lasts until the next version, on this device.
 // herdr-core never offers the one-tap update (GET /api/update answers
 // oneTap: false): the banner shows the update command instead.
-import type { UpdateInfo, UpdateJob } from '#shared/updates'
+import type { UpdateInfo } from '#shared/updates'
 
 const DISMISS_KEY = 'wherdr.update.dismissed'
 export const updateInfo = ref<UpdateInfo | null>(null)
@@ -28,16 +28,4 @@ export function dismissUpdate() {
   if (!v) return
   dismissed.value = v
   try { localStorage.setItem(DISMISS_KEY, v) } catch { /* stockage indisponible */ }
-}
-
-// The old Updating screen's state (SelfUpdateScreen.vue, left for its own removal).
-export const selfUpdate = reactive<{ open: boolean, to: string, job: UpdateJob | null, error: string, timedOut: boolean }>({
-  open: false, to: '', job: null, error: '', timedOut: false,
-})
-
-export function closeSelfUpdate() {
-  selfUpdate.open = false
-  // The banner shows what is installed now.
-  loaded = false
-  loadUpdate()
 }

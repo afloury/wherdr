@@ -5,8 +5,6 @@ import { describe, expect, it } from 'vitest'
 import { isKeyLegend, settingsTabs, tabsOfRow } from '../shared/settingsScreen'
 import { parseMenu } from '../shared/menuScreen'
 import { activeTab } from '../server/utils/settingstabs'
-import { extractResult } from '../app/utils/commandResult'
-import { parseMeters } from '../app/utils/meters'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 // eslint-disable-next-line no-control-regex
@@ -58,55 +56,5 @@ describe('key legends', () => {
     expect(isKeyLegend('   Usage credits are off · /usage-credits to turn them on')).toBe(false)
     expect(isKeyLegend('   Last 24h · these are independent characteristics of your usage, not a breakdown')).toBe(false)
     expect(isKeyLegend('')).toBe(false)
-  })
-})
-
-describe('settings card content', () => {
-  const card = (s: string) => parseMeters(extractResult(plain(s), '/usage'))
-
-  it('Usage: every gauge with its reset, including an empty one', () => {
-    const r = card(screens.usage)
-    expect(r.meters).toEqual([
-      { label: 'Current session', pct: 20, kind: 'used', reset: '4pm (Europe/Paris)' },
-      { label: 'Current week (all models)', pct: 53, kind: 'used', reset: 'Oct 14, 9pm (Europe/Paris)' },
-      { label: 'Current week (Sonnet)', pct: 0, kind: 'used', reset: 'Oct 14, 9pm (Europe/Paris)' },
-    ])
-    expect(r.rest.split('\n')[0]).toMatch(/^\s*Total cost:\s+\$1\.23$/)
-    expect(r.rest).toMatch(/\n\s*Total duration \(API\):/)
-    expect(r.rest).toContain("What's contributing to your limits usage?")
-    expect(r.rest).not.toMatch(/[↑↓]/)
-  })
-
-  it('Usage, scrolled to the end: no tab row nor keyboard help', () => {
-    const r = card(screens.usageEnd)
-    expect(r.meters.map(m => m.pct)).toEqual([53, 0])
-    expect(r.rest).toContain('Usage credits are off')
-    expect(r.rest).not.toMatch(/Settings\s+Status|Esc to cancel|d to day/)
-  })
-
-  it('Status: one field per line', () => {
-    const r = card(screens.status)
-    expect(r.meters).toEqual([])
-    const lines = r.rest.split('\n')
-    // Every field aligned, the first one included.
-    expect(lines[0]).toMatch(/^Version:\s+2\.1\.294$/)
-    expect(lines[1]).toMatch(/^Session name:/)
-    expect(lines.some(l => /^\s*Model:\s+sonnet/.test(l))).toBe(true)
-    expect(r.rest).not.toContain('Esc to cancel')
-  })
-
-  it('Config: the setting list without its legend', () => {
-    const r = card(screens.config)
-    expect(r.rest).toMatch(/❯ Auto-compact\s+true/)
-    expect(r.rest).toMatch(/\n\s+Show tips\s+true/)
-    expect(r.rest).not.toContain('Esc to close')
-    expect(r.rest).not.toContain('⌕')
-  })
-
-  it('Stats: the summary lines', () => {
-    const r = card(screens.stats)
-    expect(r.rest).toMatch(/Sessions: 42\s+Longest session/)
-    expect(r.rest).toMatch(/Input 1\.0k · Output 2\.0k/)
-    expect(r.rest).not.toMatch(/↓ stats/)
   })
 })

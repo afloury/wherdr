@@ -938,7 +938,6 @@ const screen = computed<ClaudeScreen | null>(() => {
 const liveShell = computed(() => (screen.value && screen.value.shell) || null)
 const queuedList = computed(() => {
   const p = props.pane
-  // A record the server gives back is on its way to the message field (see utils/givenBack.ts).
   const mine = withOutbox([], readOnly.value ? [] : props.localQueued)
   const memory = rememberSent(p.id, mine)
   const replies = blocks.value.filter(b => b.k === 'assistant')

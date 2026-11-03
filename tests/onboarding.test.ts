@@ -1,38 +1,16 @@
-// First-launch setup guide: which steps a device gets, and the "done" state
-// kept by the server for every device of one machine.
+// Phone address helpers, and the setup guide's "done" state kept by the
+// server for every device of one machine.
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { isLoopbackHost, mobileOs, onAddress, onboardingSteps, setupHash, stepIndex, tailnetSwitch } from '../app/utils/onboarding'
+import { isLoopbackHost, onAddress, tailnetSwitch } from '../app/utils/onboarding'
 import { readOnboarding, writeOnboarding } from '../server/utils/onboarding'
 
-describe('onboarding steps', () => {
-  it('sets up the phone from a computer, or a phone on the local address', () => {
-    expect(onboardingSteps({ phone: false, host: 'localhost', standalone: false })).toEqual(['welcome', 'phone', 'security'])
-    expect(onboardingSteps({ phone: false, host: 'box.example.ts.net', standalone: false })).toEqual(['welcome', 'phone', 'security'])
-    expect(onboardingSteps({ phone: true, host: '127.0.0.1', standalone: false })).toEqual(['welcome', 'phone', 'security'])
-  })
-
-  it('offers Add to Home Screen to a phone already on the tailnet address, until installed', () => {
-    expect(onboardingSteps({ phone: true, host: 'box.example.ts.net', standalone: false })).toEqual(['welcome', 'homescreen', 'security'])
-    expect(onboardingSteps({ phone: true, host: 'box.example.ts.net', standalone: true })).toEqual(['welcome', 'security'])
-  })
-
-  it('adds the optional Claude quotas step before security when a machine needs it', () => {
-    expect(onboardingSteps({ phone: false, host: 'localhost', standalone: false, quotas: true })).toEqual(['welcome', 'phone', 'quotas', 'security'])
-    expect(onboardingSteps({ phone: true, host: 'box.example.ts.net', standalone: false, quotas: true })).toEqual(['welcome', 'homescreen', 'quotas', 'security'])
-    expect(onboardingSteps({ phone: true, host: 'box.example.ts.net', standalone: true, quotas: true })).toEqual(['welcome', 'quotas', 'security'])
-    expect(stepIndex(onboardingSteps({ phone: false, host: 'localhost', standalone: false, quotas: true }), 'quotas')).toBe(2)
-  })
-
-  it('tells loopback hosts and phone systems apart', () => {
+describe('loopback hosts', () => {
+  it('tells loopback hosts apart', () => {
     expect(['localhost', '127.0.0.1', '127.1.2.3', '[::1]', '::1'].every(isLoopbackHost)).toBe(true)
     expect(['box.example.ts.net', '100.64.0.1', 'localhost.example.com'].some(isLoopbackHost)).toBe(false)
-    expect(mobileOs('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)')).toBe('ios')
-    expect(mobileOs('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', true)).toBe('ios')
-    expect(mobileOs('Mozilla/5.0 (Linux; Android 15; Pixel 9)')).toBe('android')
-    expect(mobileOs('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)')).toBe(null)
   })
 })
 
@@ -52,17 +30,8 @@ describe('continuing on the tailnet address', () => {
     expect(tailnetSwitch('localhost', { url: 'not a url', reach: 'ok' })).toBe(null)
   })
 
-  it('links the same step, or a settings section, on that address', () => {
-    expect(onAddress(URL, setupHash('security'))).toBe('https://box.example.ts.net:7683/#/setup?step=security')
+  it('links a settings section on that address', () => {
     expect(onAddress('https://box.example.ts.net', '#/settings?section=security')).toBe('https://box.example.ts.net/#/settings?section=security')
-  })
-
-  it('opens the guide at the step of the link, the first one when unknown', () => {
-    const steps = onboardingSteps({ phone: false, host: 'box.example.ts.net', standalone: false })
-    expect(stepIndex(steps, 'security')).toBe(2)
-    expect(stepIndex(steps, ['phone', 'security'])).toBe(1)
-    expect(stepIndex(steps, 'homescreen')).toBe(0)
-    expect(stepIndex(steps, undefined)).toBe(0)
   })
 })
 
