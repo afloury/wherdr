@@ -196,3 +196,27 @@ describe('taken back with an attached file', () => {
     expect(draft.atts[0]).toMatchObject({ path: FILE, name: '2026-01-01T00-00-00-000Z-abc123-notes.md', ref: `@${FILE}` })
   })
 })
+
+// Claude Code 2.1.317, Esc while a tool runs with a message queued (real shape):
+// the queued prompt is written first, then the result of the cancelled tool call,
+// both children of the same assistant line.
+describe('parseClaude: queued message run after an interrupt', () => {
+  const asked = [
+    user('u1', null, 'run a slow command', '2026-01-01T00:00:00.000Z'),
+    line({ type: 'assistant', uuid: 't1', parentUuid: 'u1', timestamp: '2026-01-01T00:00:01.000Z', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'tool1', name: 'Bash', input: { command: 'sleep 20' } }] } }),
+  ]
+  const queued = line({ type: 'user', uuid: 'q', parentUuid: 't1', promptSource: 'queued', timestamp: '2026-01-01T00:00:05.000Z', message: { role: 'user', content: 'fictional queued message' } })
+  const cancelled = line({ type: 'user', uuid: 'r', parentUuid: 't1', timestamp: '2026-01-01T00:00:05.100Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool1', content: 'The user doesn\'t want to proceed', is_error: true }] } })
+  const answer = reply('a2', 'r', 'queued answer', '2026-01-01T00:00:07.000Z')
+  it('keeps the bubble of the queued message, before the answer', () => {
+    const t = texts([...asked, queued, cancelled, answer])
+    expect(t).toContain('user:fictional queued message')
+    expect(t.indexOf('user:fictional queued message')).toBeLessThan(t.indexOf('assistant:queued answer'))
+  })
+  it('keeps it even when its sibling is a new typed prompt (queued prompts are never put back)', () => {
+    expect(texts([...asked, queued, user('y', 't1', 'another', '2026-01-01T00:00:06.000Z')])).toContain('user:fictional queued message')
+  })
+  it('a cancelled tool result alone does not drop a typed prompt', () => {
+    expect(texts([...asked, user('x', 't1', 'typed prompt', '2026-01-01T00:00:05.000Z'), cancelled, answer])).toContain('user:typed prompt')
+  })
+})
