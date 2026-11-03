@@ -20,9 +20,8 @@
   without opening it. The question is read again before the answer is sent; if it changed, the
   answer is refused.
 - **Compact list**: Settings › Appearance › Home screen › **Compact list** shows one line per
-  card; Normal adds the current activity on a second line. **Individual agents** lists the
-  terminals of standalone agent spaces one row each, with their pane or tab labels. Both follow
-  you across devices.
+  card; Normal adds the current activity on a second line. It follows you across devices.
+  Every agent terminal is its own row, with its pane or tab label.
 - **Group by**: Settings › Appearance › Home screen › **Group by** chooses **Machine** or
   **State** (Your turn, Working, Ready across online machines).
 
