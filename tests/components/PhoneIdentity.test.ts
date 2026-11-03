@@ -21,6 +21,20 @@ it('uses the pane name and the app state square in its two-line identity', async
   } finally { wrapper.unmount() }
 })
 
+it('reads a herdr-core terminal without a status as the home does: Ready agent, stateless shell', async () => {
+  const shell: Pane = { ...pane, coreAddress: 't5', agent: null, name: null, status: 'unknown' }
+  herdrState.value = { ok: true, panes: [shell], workspaces: [] }
+  const wrapper = await mountSuspended(PhoneIdentity, { props: { pane: shell } })
+  try {
+    expect(wrapper.find('.phone-identity-meta').text()).toBe('')
+    expect(wrapper.find('.phone-identity-meta .pill').exists()).toBe(false)
+    await wrapper.setProps({ pane: { ...shell, agent: 'claude' } })
+    expect(wrapper.find('.phone-identity-meta .pill.idle').text()).toBe('Ready')
+    await wrapper.setProps({ pane: { ...shell, agent: 'claude', pendingPrompt: true } })
+    expect(wrapper.find('.phone-identity-meta .pill').text()).toBe('Starting')
+  } finally { wrapper.unmount() }
+})
+
 it('titles an unnamed agent pane by its agent id, without a capital or a repeated kind', async () => {
   const unnamed = { ...pane, name: '' }
   herdrState.value = { ok: true, panes: [unnamed], workspaces: [] }

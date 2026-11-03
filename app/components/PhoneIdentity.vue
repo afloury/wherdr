@@ -60,7 +60,7 @@ function tabStatus(e: typeof tabs.value[number]) {
   <button type="button" class="phone-identity" :aria-label="label" aria-haspopup="dialog" :aria-expanded="open" @click="open = true">
     <span class="phone-identity-copy" aria-hidden="true">
       <span class="phone-identity-title">{{ title }}</span>
-      <span class="phone-identity-meta"><span class="pill" :class="tone"><i />{{ stateLabel }}</span><template v-if="showKind"><span>·</span><span class="phone-identity-kind">{{ kind }}</span></template></span>
+      <span class="phone-identity-meta"><span v-if="stateLabel" class="pill" :class="tone"><i />{{ stateLabel }}</span><template v-if="showKind"><span>·</span><span class="phone-identity-kind">{{ kind }}</span></template></span>
     </span>
     <UIcon v-if="paneNotificationsMuted(pane)" name="i-lucide-bell-off" mode="svg" class="phone-identity-muted" aria-hidden="true" />
     <!-- Drawn like the header's .icon-btn (terminal button): the whole identity stays the one tap target.
@@ -72,18 +72,18 @@ function tabStatus(e: typeof tabs.value[number]) {
       <p class="phone-identity-summary">{{ hostLabel }} · {{ workspace?.label || pane.workspace }}</p>
       <!-- A lone pane has no list to show it in: its full name and state stay readable here. -->
       <p v-if="panes.length <= 1" class="phone-identity-current">
-        <span class="phone-identity-current-title">{{ title }}</span><span class="phone-identity-current-meta"><span class="pill" :class="tone"><i />{{ stateLabel }}</span><template v-if="showKind"> · {{ kind }}</template></span>
+        <span class="phone-identity-current-title">{{ title }}</span><span class="phone-identity-current-meta"><span v-if="stateLabel" class="pill" :class="tone"><i />{{ stateLabel }}</span><template v-if="showKind"> · {{ kind }}</template></span>
       </p>
       <div class="menu">
         <p v-if="panes.length > 1" class="menu-group">{{ tl('Panes in this tab', 'Panneaux de cet onglet') }}</p>
         <button v-for="(p, i) in panes.length > 1 ? panes : []" :key="p.id" type="button" :aria-current="p.id === pane.id ? 'page' : undefined" @click="visit(p)">
           <UIcon :name="p.id === pane.id ? 'i-lucide-check' : 'i-lucide-panel-top'" class="menu-icon" />
-          <span class="menu-text"><span>{{ p.label || p.name || paneOwnTitle(p) }}</span><span class="menu-sub"><span class="pill" :class="statusKey(p)"><i />{{ statusLabel(p) }}</span> · {{ i + 1 }}/{{ panes.length }}</span></span>
+          <span class="menu-text"><span>{{ p.label || p.name || paneOwnTitle(p) }}</span><span class="menu-sub"><template v-if="statusLabel(p)"><span class="pill" :class="statusKey(p)"><i />{{ statusLabel(p) }}</span> · </template>{{ i + 1 }}/{{ panes.length }}</span></span>
         </button>
         <p v-if="tabs.length > 1" class="menu-group">{{ t('Tabs') }}</p>
         <button v-for="e in tabs.length > 1 ? tabs : []" :key="e.tab.id" type="button" :aria-current="e.tab.id === pane.tab ? 'page' : undefined" @click="pickTab(e.tab.id)">
           <UIcon :name="e.tab.id === pane.tab ? 'i-lucide-check' : 'i-lucide-layers'" class="menu-icon" />
-          <span class="menu-text"><span>{{ e.tab.label || e.tab.number }}</span><span class="menu-sub"><span class="pill" :class="leadPane(e.panes) ? statusKey(leadPane(e.panes)!) : 'inactive'"><i />{{ tabStatus(e) }}</span> · {{ e.panes.length === 1 ? tl('1 pane', '1 panneau') : tl(`${e.panes.length} panes`, `${e.panes.length} panneaux`) }}</span></span>
+          <span class="menu-text"><span>{{ e.tab.label || e.tab.number }}</span><span class="menu-sub"><template v-if="tabStatus(e)"><span class="pill" :class="leadPane(e.panes) ? statusKey(leadPane(e.panes)!) : 'inactive'"><i />{{ tabStatus(e) }}</span> · </template>{{ e.panes.length === 1 ? tl('1 pane', '1 panneau') : tl(`${e.panes.length} panes`, `${e.panes.length} panneaux`) }}</span></span>
         </button>
         <template v-for="(item, i) in actions" :key="i">
           <div v-if="item.kind === 'separator'" class="menu-sep" />

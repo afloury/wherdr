@@ -112,7 +112,7 @@ function groupsOf(list: Row[], rawGroup = rowGroup) {
     { key: 'ready', title: tl('Ready', 'Prêts'), list: list.filter(r => group(r) === 'ready') },
   ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value).map(l => sortReady(l, readySort.value, rowTitle)) : [g.list] }))
 }
-const rowTitle = (r: Row) => isIndividualAgentRow(r) ? individualAgentTitle(r.lead) : spaceTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
+const rowTitle = (r: Row) => isIndividualAgentRow(r) ? individualAgentTitle(r.lead) : homeTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
 const standaloneRows = (rows: Row[]) => (core || individualAgentList.value) ? individualAgentRows(rows) : rows
 // Sort menu of the Ready group; sorted other than in Herdr's order, the
 // list can no longer be reordered manually.
@@ -865,7 +865,8 @@ function resetListWidth() {
           <div class="empty-box">
             <div class="empty-art">&gt;_</div>
             <p>{{ t('No agents yet.') }}</p>
-            <p class="muted">{{ t('Start one here, or from') }} <code>herdr</code> {{ t('in a terminal.') }}</p>
+            <p v-if="core" class="muted">{{ tl('Start one here, or with', 'Lance-en un ici, ou avec') }} <code>hc</code> {{ t('in a terminal.') }}</p>
+            <p v-else class="muted">{{ t('Start one here, or from') }} <code>herdr</code> {{ t('in a terminal.') }}</p>
           </div>
         </div>
       </template>
