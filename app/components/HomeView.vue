@@ -72,24 +72,22 @@ const conn = computed(() => {
   return { ok: true, text: `wherdr ${updateInfo.value?.current || pkg.version} · herdr ${st.value.version || ''}`.trim(), idle: false }
 })
 
-// "Dashboard"-style counters: always all three, zeros dimmed. With herdr-core a
-// fourth counts the rows without a status (the Unknown group), so the counters
-// add up to the lines below.
+// "Dashboard"-style counters: always all three, zeros dimmed. With herdr-core,
+// rows without a status (plain shells) count and list as Ready, as in v2.5.
 const stats = computed(() => ([
   ['blocked', counts.value.blocked, t('your turn')],
   ['working', counts.value.working, t('working')],
   ['done', counts.value.ready, t('ready')],
-  ...(core ? [['unknown', (counts.value as { unknown?: number }).unknown ?? 0, t('unknown')]] : []),
 ] as [string, number, string][]).map(([s, n, label]) => ({ s, n, label })))
 
 // Herdr's order stays that of each repository list. The Ready group may
 // show unread before read, and be sorted differently (readySort).
-function groupsOf(list: Row[], group = rowGroup) {
+function groupsOf(list: Row[], rawGroup = rowGroup) {
+  const group = (r: Row) => { const g = rawGroup(r); return g === 'unknown' ? 'ready' : g }
   return ([
     { key: 'blocked', title: t('Your turn'), list: list.filter(r => group(r) === 'blocked') },
     { key: 'working', title: t('Working'), list: list.filter(r => group(r) === 'working') },
     { key: 'ready', title: tl('Ready', 'Prêts'), list: list.filter(r => group(r) === 'ready') },
-    { key: 'unknown', title: t('Unknown'), list: list.filter(r => group(r) === 'unknown') },
   ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value).map(l => sortReady(l, readySort.value, rowTitle)) : [g.list] }))
 }
 const rowTitle = (r: Row) => isIndividualAgentRow(r) ? individualAgentTitle(r.lead) : spaceTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
