@@ -32,6 +32,16 @@ describe('readCoreScreen', () => {
     expect(readCoreScreen(bash, 'claude', 'blocked')).toMatchObject({ status: null, interaction: 'native' })
     expect(readCoreScreen(input, 'claude', 'idle')).toMatchObject({ status: null, interaction: 'input' })
   })
+  it('reads Claude\'s folder-trust box (unnumbered) as a question even without a core status', () => {
+    const trust = fx('claude-trust-folder.txt')
+    for (const status of ['unknown', null, 'idle']) {
+      const r = readCoreScreen(trust, 'claude', status)
+      expect(r.interaction).toBe('native')
+      expect(r.choices?.options.map(o => o.label)).toEqual(['No, exit', 'Yes, I trust this folder'])
+      expect(r.choices?.cursor).toBe(0)
+    }
+    expect(readCoreScreen(trust, 'claude', 'unknown').status).toBe('blocked')
+  })
   it('stays unknown on an unrecognised screen', () => {
     expect(readCoreScreen('$ ls', 'claude', 'unknown')).toMatchObject({ status: null, choices: null, interaction: 'unknown' })
   })

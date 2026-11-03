@@ -8,6 +8,9 @@ import { hasTranscript } from '../../shared/agentKind'
 import { parseChoices, parseOmpPrompt, promptIdentity, completeClaudeAsk, type ClaudeAsked } from './choices'
 
 const WORKING = /\besc(?:ape)? to interrupt\b/i
+// Claude's folder-trust box: unnumbered options, so it needs the non-strict reading
+// even while core reports no status.
+const TRUST_FOLDER = /Is this a project you created or one you trust\?[\s\S]*Yes, I trust this folder/
 // Claude's spinner line: "✻ Pondering… (12s · ↑ 1.2k tokens)".
 const SPINNER = /^\s*[*✢✳✶✻✽·]\s+\S.*…\s*\(\d+[smh]/
 
@@ -23,7 +26,7 @@ export function readCoreScreen(text: string, agent: string | null | undefined, s
   const working = WORKING.test(tail) || tail.split('\n').some(l => SPINNER.test(l))
   let choices: Choices | null = null
   if (!working) {
-    choices = agent === 'omp' ? parseOmpPrompt(text) : parseChoices(text, { strict: status !== 'blocked' })
+    choices = agent === 'omp' ? parseOmpPrompt(text) : parseChoices(text, { strict: status !== 'blocked' && !(agent === 'claude' && TRUST_FOLDER.test(tail)) })
     if (choices) choices.identity = promptIdentity(text, agent)
   }
   const known = status && status !== 'unknown' ? status : null
