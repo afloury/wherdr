@@ -1,5 +1,6 @@
 import { coreInputDeps } from './coreInput'
 import { getState, poll } from './state'
+import { staleCoreDocs } from './readCoreState'
 import { recentDirs, rememberDir } from './actions'
 import type { CoreAdminDeps } from './coreCreate'
 
@@ -11,7 +12,9 @@ export function coreAdminDeps(): CoreAdminDeps {
     machines: () => getState().machines ?? [],
     panes: () => getState().panes,
     workspaces: () => getState().workspaces,
-    settle: poll,
+    // Machine list and documents are cached for a few seconds: drop them so the
+    // rename/forget/connect that just ran shows in the pushed state at once.
+    settle: () => { staleCoreDocs(); return poll() },
     recent: m => recentDirs({ local: m.local, key: m.key, profileId: null }),
     remember: (dir, m) => rememberDir(dir, { local: m.local, key: m.key, profileId: null }),
   }

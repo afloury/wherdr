@@ -53,7 +53,9 @@ function recognize(modules: typeof after, raw: string, agent: string, strict: bo
   const screen = panel || tabs ? null : modules.wait.parseWaitScreen(text, { choices: Boolean(prompt) })
   return { choices: prompt, menu: panel, screen, settings: tabs }
 }
-const fixtures = readdirSync(new URL('./fixtures/', import.meta.url)).filter(f => !f.startsWith('core-')).sort() // core-*.json are herdr-core protocol fixtures, not screens
+// Fixtures added for core mode (tests/core*.test.ts): they have no origin/main baseline.
+const coreOnly = new Set(['claude-done-time.txt', 'claude-idle-effort.txt', 'claude-trust-folder.txt', 'codex-usage-limit.txt'])
+const fixtures = readdirSync(new URL('./fixtures/', import.meta.url)).filter(f => !f.startsWith('core-') && !coreOnly.has(f)).sort() // core-*.json are herdr-core protocol fixtures, not screens
 const results: { file: string, agent: string, strict: boolean, nativeBefore: boolean, nativeAfter: boolean, exception: boolean }[] = []
 afterAll(() => {
   if (process.env.NATIVE_PARITY_REPORT) writeFileSync(process.env.NATIVE_PARITY_REPORT, JSON.stringify({ baseline: baseline.provenance, fixtures: fixtures.length, comparisons: results.length, results }, null, 2) + '\n')

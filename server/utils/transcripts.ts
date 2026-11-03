@@ -308,7 +308,8 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
   let lastSaid = null as { item: ChatItem, parent: string, uuid: string } | null
   const noteSaid = (d: Json) => {
     const item = items[items.length - 1]
-    lastSaid = item && item.role === 'user' && d.parentUuid ? { item, parent: d.parentUuid, uuid: d.uuid } : null
+    // A prompt Claude ran from its queue (promptSource "queued") is never put back into its field.
+    lastSaid = item && item.role === 'user' && d.parentUuid && d.promptSource !== 'queued' ? { item, parent: d.parentUuid, uuid: d.uuid } : null
   }
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li]
@@ -317,7 +318,9 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     let d: Json
     try { d = JSON.parse(line) }
     catch { continue }
-    if (lastSaid && d.type === 'user' && !d.isSidechain && d.parentUuid === lastSaid.parent && d.uuid !== lastSaid.uuid) {
+    // The sibling must be a new prompt: the result of a cancelled tool call shares the parent too.
+    if (lastSaid && d.type === 'user' && !d.isSidechain && d.parentUuid === lastSaid.parent && d.uuid !== lastSaid.uuid
+      && !(Array.isArray(d.message?.content) && d.message.content.some((c: Json) => c?.type === 'tool_result'))) {
       const i = items.indexOf(lastSaid.item)
       if (i >= 0 && !items.slice(i + 1).some(x => x.role === 'assistant' || x.role === 'tool')) items.splice(i, 1)
       lastSaid = null

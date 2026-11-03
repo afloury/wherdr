@@ -9,7 +9,7 @@ async function coreConfig(): Promise<AppConfig> {
   const [kinds, home, machines] = await Promise.all([
     kindsOf(deps).catch(() => []), homeOf(deps).catch(() => ''), coreMachineConfigs(deps).catch(() => undefined),
   ])
-  return { hostLabel: 'Local', kinds, home, dirs: local ? await deps.recent(local) : [], machines, push: { enabled: pushReady(), key: vapidPublicKey(), devices: (await readSubs()).length } }
+  return { hostLabel: 'Local', kinds, home, dirs: local ? await deps.recent(local) : [], machines, push: { enabled: pushReady(), key: vapidPublicKey(), devices: (await readSubs()).length }, openNetwork: openNetworkMode() }
 }
 
 export default defineApi(async (): Promise<AppConfig> => process.env.WHERDR_BACKEND === 'core' ? coreConfig() : ({

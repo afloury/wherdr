@@ -5,7 +5,13 @@ export default defineNitroPlugin((nitroApp) => {
   if (process.env.WHERDR_BACKEND === 'core') {
     initVapid()
     startPolling()
-    nitroApp.hooks.hook('close', stopPolling)
+    // Housekeeping that still applies: the phone address, photos and pasted texts.
+    startTailnetWatch()
+    cleanUploads()
+    cleanAttachments()
+    purgePastes()
+    const purge = setInterval(() => { cleanUploads(); cleanAttachments(); purgePastes() }, 6 * 3600 * 1000)
+    nitroApp.hooks.hook('close', () => { stopPolling(); stopTailnetWatch(); clearInterval(purge) })
     return
   }
   initVapid()

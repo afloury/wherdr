@@ -299,6 +299,7 @@ export function currentPaneItems(p: Pane): MenuItem[] {
 export function currentTabItems(tabId: string, overview?: MenuItem): MenuItem[] {
   const e = tabOf(tabId)
   if (!e) return []
+  if (coreMode()) return [newTabItem(e.tab.workspace), ...(overview ? [overview] : [])]
   return [
     { label: t('Rename tab'), icon: 'i-lucide-pencil', run: () => renameTab(tabId) },
     newTabItem(e.tab.workspace),
@@ -308,6 +309,7 @@ export function currentTabItems(tabId: string, overview?: MenuItem): MenuItem[] 
 // The whole space, apart from the pane actions. Absent when the pane is its
 // only one: closing the pane already closes the space (a single close action).
 export function currentSpaceItems(p: Pane): MenuItem[] {
+  if (coreMode()) return []
   const ws = herdrState.value.workspaces.find(w => w.id === p.workspace)
   const panes = herdrState.value.panes.filter(x => x.workspace === p.workspace)
   if (!ws || panes.length <= 1) return []
