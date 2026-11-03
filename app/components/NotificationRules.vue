@@ -4,6 +4,7 @@ import { LEVEL_EVENTS, compareEvents, exceptionLive, levelOf, sameNotificationTa
 useNotificationClock()
 useNotificationRekey()
 const boards = useBoardLinks()
+const core = useRuntimeConfig().public.core
 const rules = notificationRules
 const now = notificationClock
 
@@ -84,7 +85,7 @@ function removeAll() {
       <label class="settings-toggle notification-subagents">
         <span><b>{{ t('Sub-agents') }}</b><small>{{ rules.default.subagents
           ? t('On: task agents (workers, reviewers, attempts) notify too, at the same level.')
-          : t('Off: only coordinators, standalone agents and board events notify. Task agents stay silent.') }}</small></span>
+          : (core ? t('Off: only standalone agents and coordinators notify. Task agents stay silent.') : t('Off: only coordinators, standalone agents and board events notify. Task agents stay silent.')) }}</small></span>
         <USwitch color="success" size="xl" :model-value="rules.default.subagents" :aria-label="t('Sub-agents')" @update:model-value="v => setDefault({ subagents: v })" />
       </label>
       <p class="muted notification-help">{{ t('Visible conversations stay silent on every device. Push resumes after about 30 seconds away. Inactive tabs expire automatically.') }}</p>
