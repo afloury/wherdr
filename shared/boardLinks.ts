@@ -288,6 +288,12 @@ const rowSpace = (r: Row) => (r.kind === 'space' ? r.workspace.id : r.lead.works
 const paneRow = (p: Pane): Row => ({ kind: 'pane', key: p.id, pane: p, lead: p })
 const LEVEL_ORDER: CoordinatorLevel[] = ['top', 'machine', 'project']
 const GROUP_ORDER: RowGroup[] = ['blocked', 'working', 'ready']
+// Where a member's row stands on the home list: its task's Board group
+// (taskStat), else its agents' state. The rows' order, their accent, the
+// repo bar and the home counters all read it.
+export function memberStat(m: Pick<Member, 'task' | 'row'>): HomeStat {
+  return m.task?.group ? taskStat(m.task.group) : rowGroup(m.row)
+}
 const hasAgent = (r: Row) => rowPanes(r).some(p => p.agent)
 
 // A section's rows (one machine, or the only one) sorted out with Herdr's
@@ -443,8 +449,9 @@ export function boardSections(
     // The checkout of the board whose tasks these are.
     g.info = repoInfo.get(infoKey(g.board, g.repo)) || null
     g.key = g.members.map(m => m.task && /^([A-Z][A-Z0-9]{1,4})-\d/.exec(m.task.key)?.[1]).find(Boolean) || ''
-    // Stable sort: most urgent first, Herdr's order on a tie.
-    g.members = g.members.map((m, i) => ({ m, i })).sort((a, b) => GROUP_ORDER.indexOf(rowGroup(a.m.row)) - GROUP_ORDER.indexOf(rowGroup(b.m.row)) || a.i - b.i).map(x => x.m)
+    // Stable sort: most urgent first (as the row counts, then its terminal), Herdr's order on a tie.
+    const rank = (m: Member) => GROUP_ORDER.indexOf(memberStat(m)) * GROUP_ORDER.length + GROUP_ORDER.indexOf(rowGroup(m.row))
+    g.members = g.members.map((m, i) => ({ m, i, r: rank(m) })).sort((a, b) => a.r - b.r || a.i - b.i).map(x => x.m)
     if (!g.coordinator) {
       // Coordinated from elsewhere: a project coordinator of that repo that Herdr shows, outside this section.
       const far = machines.flatMap(m => m.coordinators).find(c => c.level === 'project' && c.repo === g.repo && c.pane && live.has(c.pane) && !mine.has(c.pane))
@@ -458,7 +465,7 @@ export function boardSections(
       }
       if (!hasAgent(m.row)) continue
       g.sum.total++
-      g.sum[m.task?.group ? taskStat(m.task.group) : rowGroup(m.row)]++
+      g.sum[memberStat(m)]++
     }
     for (const r of [...(g.space ? [g.space] : []), ...(g.coordinator ? [g.coordinator] : [])]) {
       if (!hasAgent(r)) continue
@@ -540,21 +547,57 @@ export function taskStat(group: TaskGroup): HomeStat {
   return group === 'working' ? 'working' : 'ready'
 }
 
-// One representative pane per task, including helpers in separate spaces.
-export function countedPanes<P extends Pick<Pane, 'id' | 'agent' | 'status' | 'workspace'>>(panes: P[], machines: MachineLinks[]): P[] {
+// One representative pane per row of the home list: what the counters and
+// the machine bar count (one row = one count). A task is one row, whatever
+// helpers it has open and in however many spaces; a coordinator is a row of
+// its own, counted by its state like any agent; other agents are one row per
+// space (a row standing for several terminals counts once), except in a space
+// shared with a coordinator or with several tasks, or with Individual agents
+// on (`individual`), where each is a row of its own, as boardSections lists them.
+// The representative is the pane the row shows (its most urgent).
+export function countedPanes<P extends Pick<Pane, 'id' | 'agent' | 'status' | 'workspace'> & { machine?: string }>(panes: P[], machines: MachineLinks[], individual = false): P[] {
   const taskOf = taskLinks(machines, panes)
-  const byTask = new Map<string, { t: LinkedTask, list: P[] }>()
+  const coordPanes = new Set(machines.flatMap(m => m.coordinators.map(c => c.pane)).filter(Boolean))
+  const spaceKey = (p: P) => `${p.machine ?? ''}|${p.workspace}`
+  // Spaces split into a row per agent (boardSections): a coordinator among
+  // other agents, or several tasks' panes.
+  const split = new Set<string>()
+  const tasksIn = new Map<string, Set<LinkedTask>>()
+  const explicit = new Set(machines.flatMap(m => m.tasks.flatMap(t => t.panes.map(p => p.id))))
+  for (const p of panes) {
+    const k = spaceKey(p)
+    if (coordPanes.has(p.id) && panes.some(o => o !== p && o.agent && spaceKey(o) === k)) split.add(k)
+    const link = explicit.has(p.id) ? taskOf(p) : undefined
+    if (link) {
+      const set = tasksIn.get(k) ?? new Set()
+      set.add(link.task)
+      tasksIn.set(k, set)
+      if (set.size > 1) split.add(k)
+    }
+  }
+  const tasks = new Map<string, { t: LinkedTask, list: P[] }>()
+  const spaces = new Map<string, P[]>()
   const out: P[] = []
   for (const p of panes) {
-    const link = taskOf(p)
-    if (!link) { out.push(p); continue }
+    const link = coordPanes.has(p.id) ? undefined : taskOf(p)
+    if (!link) {
+      if (individual || coordPanes.has(p.id) || split.has(spaceKey(p))) { out.push(p); continue }
+      const list = spaces.get(spaceKey(p))
+      if (list) list.push(p)
+      else spaces.set(spaceKey(p), [p])
+      continue
+    }
     const t = link.task
     const k = `${link.machine}|${t.id}`
-    const e = byTask.get(k)
+    const e = tasks.get(k)
     if (e) e.list.push(p)
-    else byTask.set(k, { t, list: [p] })
+    else tasks.set(k, { t, list: [p] })
   }
-  for (const { t, list } of byTask.values()) {
+  for (const list of spaces.values()) {
+    const lead = leadPane(list)
+    if (lead) out.push(lead)
+  }
+  for (const { t, list } of tasks.values()) {
     const ids = new Set(list.map(p => p.id))
     const shown = shownPane(list, taskHelper(t, id => ids.has(id))?.id)
     if (shown) out.push(shown)

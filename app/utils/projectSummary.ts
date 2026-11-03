@@ -2,9 +2,8 @@
 // "4 TASKS · 1 YOUR TURN · 1 LIMIT". It counts the tasks' rows only (the
 // coordinator has its own row and state above it), so it says the same thing
 // folded or not.
-import { type Member, taskStat } from '../../shared/boardLinks'
+import { type Member, memberStat } from '../../shared/boardLinks'
 import type { TaskGroup } from '../../shared/projectsTasks'
-import { rowGroup } from '../../shared/spaces'
 
 // The Board's group a task's row shows. Null for a row without a task.
 export function memberGroup(m: Member): TaskGroup | null {
@@ -24,8 +23,7 @@ export function taskSummary(members: Member[]): TaskSummary {
     }
     s.tasks++
     // As its row says it: the Board's group, else its agents' state.
-    const g = memberGroup(m)
-    const stat = g ? taskStat(g) : rowGroup(m.row)
+    const stat = memberStat(m)
     if (stat === 'blocked') s.blocked++
     else if (stat === 'working') s.working++
     // The pane the row shows: the one its card tags with "Quota" (a provider quota, not a task limit).

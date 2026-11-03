@@ -327,8 +327,8 @@ describe('one row per task, whatever helpers its space holds', () => {
     const far = board([{ ...reviewing, link: { ...reviewing.link, reviewer: { pane: 'w6:p2', kind: 'codex' } } }])
     expect(groupOf(apart, far).sum.total).toBe(1)
     expect(countedPanes(apart.panes.filter(p => p.agent), [far])).toHaveLength(1)
-    // Without the board, every agent counts.
-    expect(countedPanes(st.panes.filter(p => p.agent), [])).toHaveLength(3)
+    // Without the board, one count per row: w7's two agents are one space row.
+    expect(countedPanes(st.panes.filter(p => p.agent), []).map(p => p.id).sort()).toEqual(['w5:p1', 'w7:p2'])
   })
 
   it('the pane a task shows', () => {

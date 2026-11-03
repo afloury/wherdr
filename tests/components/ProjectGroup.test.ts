@@ -113,6 +113,25 @@ describe('a repo group on the home list', () => {
     })
   }
 
+  it('a task ready to approve reads as the user\'s turn, as the counters count it', async () => {
+    const idle = pane('w9:p1', { status: 'idle' })
+    const w = await mountSuspended(AgentCard, { props: { pane: idle, board: { group: 'ready', tag: 'SHOP-9', name: 'A sample task', msg: 'Ready to approve' } } })
+    const card = w.find('.card')
+    expect(card.classes()).toEqual(expect.arrayContaining(['blocked', 'turn-approve']))
+    expect(card.classes()).not.toContain('done')
+    expect(card.find('.task-state').text()).toBe('Ready to approve')
+    expect(card.find('.task-state').classes()).toEqual(expect.arrayContaining(['ready', 'turn']))
+    w.unmount()
+    // Needs you: the user's turn too; working, to do and done are not.
+    for (const [group, cls] of [['needs', 'blocked'], ['working', 'working'], ['todo', 'idle'], ['done', 'idle']] as const) {
+      const v = await mountSuspended(AgentCard, { props: { pane: idle, board: { group, tag: 'SHOP-9', name: 'A sample task' } } })
+      expect(v.find('.card').classes()).toContain(cls)
+      expect(v.find('.card').classes()).not.toContain('turn-approve')
+      expect(v.find('.task-state').classes().includes('turn')).toBe(group === 'needs')
+      v.unmount()
+    }
+  })
+
   it('a coordinator alone: its row and bar, no empty task list', async () => {
     const w = await mount(section({ members: [] }))
     expect(w.find('.project-lead .home-lead').exists()).toBe(true)
