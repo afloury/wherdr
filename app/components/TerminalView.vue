@@ -260,10 +260,14 @@ watch(layoutTick, scheduleFit)
 let ro: ResizeObserver | null = null
 onMounted(() => {
   document.addEventListener('pointerdown', cancelTouch, true)
-  props.ctl.mount(host.value!)
-  nextTick(() => {
-    props.ctl.fitNow(false)
-    if (!props.ctl.hasBanner()) props.ctl.connect(false)
+  // xterm is downloaded on the first terminal shown (utils/xtermLoader.ts):
+  // the first fit and the connection wait for it.
+  void props.ctl.mount(host.value!).then((ready) => {
+    if (!ready) return
+    nextTick(() => {
+      props.ctl.fitNow(false)
+      if (!props.ctl.hasBanner()) props.ctl.connect(false)
+    })
   })
   ro = new ResizeObserver(scheduleFit)
   ro.observe(host.value!)
