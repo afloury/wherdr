@@ -11,8 +11,11 @@ const WORKING_MS = 10_000
 const PROMPT = /(?:^|\s)[\w.-]+@[\w.-]+:[^\s]*\s*[$#%]\s*$|^[$#%>❯»]\s*$/u
 const RULE = /^[\s─━│┃┌┐└┘├┤┬┴┼╭╮╰╯═║\-_=*·.]*$/u
 
+// TUI footers (Claude, Codex): key hints and mode lines, never content.
+const FOOTER = /^(?:[⏵▶►]{1,2}\s|←\s+for agents|\?\s+for shortcuts|auto mode (?:on|off)\b|accept edits on\b|plan mode on\b|bypass permissions on\b|esc to interrupt|enter to (?:confirm|select)\b|esc to cancel|ctrl\+[a-z] to |shift\+tab to |tab to (?:queue|cycle)|\d+% context left|gpt-[\w.-]+ .*·|\S+ · \d+% left)/iu
+
 export function lastLine(text: string): string | null {
-  const lines = text.split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim() && !RULE.test(l) && !PROMPT.test(l.trim()))
+  const lines = text.split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim() && !RULE.test(l) && !PROMPT.test(l.trim()) && !FOOTER.test(l.trim()))
   const line = lines.at(-1)?.trim()
   if (!line) return null
   return line.length > MAX ? `${line.slice(0, MAX - 1)}…` : line
