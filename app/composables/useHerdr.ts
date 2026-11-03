@@ -569,6 +569,8 @@ export function connectEvents() {
       // Reconnection = often a redeployment: we check right away whether
       // a new version is served ("Reload" banner).
       checkNewVersion()
+      // Push subscriptions dropped meanwhile (lock turned off): post this device's again.
+      syncPushLanguage().catch(() => {})
     }
     everOpen = true
     sendViewing()
@@ -584,6 +586,8 @@ export function connectEvents() {
       if (data?.type === 'pong') { eventProbe.pong(ws); return }
       // Settings changed on another device (or another tab).
       if (data?.type === 'settings') { settingsSync.receive(data.settings || {}); return }
+      // Lock turned off: the server dropped every push subscription, this device posts its own again.
+      if (data?.type === 'push-resubscribe') { syncPushLanguage().catch(() => {}); return }
       const got = paneReuse.reuse(normalize(data) as HerdrState)
       // Server just restarted, state still partial: we keep the whole
       // display, the "reconnecting" banner stays in place.

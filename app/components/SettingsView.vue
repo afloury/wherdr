@@ -507,7 +507,7 @@ onMounted(() => {
           <div class="settings-group">
             <h3>{{ tl('Network access', 'Accès réseau') }}</h3>
             <OpenNetworkBanner />
-            <p v-if="!appConfig.openNetwork" class="muted settings-hint">{{ tl('wherdr only answers this computer (localhost) and your tailnet. A device on another network (a Wi-Fi, a LAN, the Internet) is refused, even with the address and the port. A proxy or tunnel you run on this computer counts as this computer.', 'wherdr ne répond qu’à cet ordinateur (localhost) et à ton tailnet. Un appareil sur un autre réseau (un Wi-Fi, un réseau local, Internet) est refusé, même avec l’adresse et le port. Un proxy ou un tunnel que tu fais tourner sur cet ordinateur compte comme cet ordinateur.') }}</p>
+            <p v-if="!appConfig.openNetwork" class="muted settings-hint">{{ tl('wherdr only answers this computer (localhost) and your own tailnet devices. A device on another network (a Wi-Fi, a LAN, the Internet) is refused, even with the address and the port, and so are other people\'s devices on your tailnet. A proxy or tunnel you run on this computer counts as this computer.', 'wherdr ne répond qu’à cet ordinateur (localhost) et à tes propres appareils du tailnet. Un appareil sur un autre réseau (un Wi-Fi, un réseau local, Internet) est refusé, même avec l’adresse et le port, comme les appareils des autres personnes de ton tailnet. Un proxy ou un tunnel que tu fais tourner sur cet ordinateur compte comme cet ordinateur.') }}</p>
             <NetworkTips />
           </div>
           <div class="settings-group">
