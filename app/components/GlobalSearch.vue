@@ -11,6 +11,7 @@ import { highlightParts } from '#shared/searchText'
 const open = defineModel<boolean>('open', { default: false })
 const query = ref('')
 const hits = ref<ConversationHit[]>([])
+const core = useRuntimeConfig().public.core
 const tasks = ref<TaskHit[]>([])
 const limited = ref(false)
 const busy = ref(false)
@@ -127,7 +128,7 @@ async function choose(hit: ConversationHit) {
   <div v-if="open" class="global-search-backdrop" @click.self="close" @keydown.esc.stop.prevent="close">
     <section class="global-search" role="dialog" aria-modal="true" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')">
       <header class="global-search-head">
-        <div class="eyebrow"><span>{{ tl('Agents, tasks and conversations', 'Agents, tâches et conversations') }}</span></div>
+        <div class="eyebrow"><span>{{ core ? tl('Agents and conversations', 'Agents et conversations') : tl('Agents, tasks and conversations', 'Agents, tâches et conversations') }}</span></div>
         <button type="button" class="global-search-cancel mono-btn" @click="close">{{ desk ? t('Esc') : t('Cancel') }}</button>
       </header>
       <div class="global-search-input">
@@ -136,7 +137,7 @@ async function choose(hit: ConversationHit) {
           ref="input" v-model="query" type="text" role="combobox" inputmode="search" enterkeyhint="search"
           aria-autocomplete="list" aria-controls="global-search-results" :aria-expanded="count > 0"
           :aria-activedescendant="count ? hitId(active) : undefined"
-          :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" :placeholder="tl('Search agents, tasks and conversations', 'Rechercher agents, tâches et conversations')"
+          :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" :placeholder="core ? tl('Search agents and conversations', 'Rechercher agents et conversations') : tl('Search agents, tasks and conversations', 'Rechercher agents, tâches et conversations')"
           autocomplete="off" autocorrect="off" spellcheck="false" @keydown="onKey"
         >
         <button v-if="query" type="button" class="global-search-clear" :aria-label="t('Clear search')" @click="clearQuery"><UIcon name="i-lucide-x" /></button>
