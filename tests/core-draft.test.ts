@@ -1,6 +1,8 @@
 // Text left unsent in Claude's input box on herdr-core (WHR-286): read from real
-// core screens (fixtures/core-screens/claude-draft-*.txt, Claude Code 2.1.317),
-// shown after it stays put, then sent or cleared with the screen re-checked.
+// core screens of Claude Code 2.1.317 (fixtures/core-screens/: claude-draft-*.txt
+// from terminal.read, *.ansi from the first paint of terminal.attach), shown after
+// it stays put and the colored screen confirms it, then sent or cleared with the
+// screen re-checked.
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { coreDraft, queueSendNow, readDraft, type CoreDraftDeps } from '../server/utils/coreDraft'
@@ -12,6 +14,11 @@ const screen = (name: string) => readFileSync(new URL(`./fixtures/core-screens/$
 const TYPED = screen('claude-draft-typed')
 const INTERRUPTED = screen('claude-draft-interrupted')
 const EMPTY = screen('claude-idle-empty-field')
+const ansi = (name: string) => readFileSync(new URL(`./fixtures/core-screens/${name}.ansi`, import.meta.url), 'utf8')
+// Claude's gray next-message suggestion "commit it", same screen read both ways.
+const SUGGESTION = screen('claude-suggestion')
+const SUGGESTION_COLORED = ansi('claude-suggestion')
+const TYPED_COLORED = ansi('claude-draft-colored')
 const RULE = '─'.repeat(60)
 const field = (line: string) => ['● Done.', '', RULE, line, RULE, '  ? for shortcuts'].join('\n')
 
@@ -31,8 +38,10 @@ describe('readDraft', () => {
     // Sent messages keep a normal space after "❯".
     expect(readDraft(field('❯ hello there'), 'claude')).toBeNull()
   })
-  it('a gray suggestion (drawn after the cursor) is no draft', () => {
-    expect(readDraft(field('❯  Yes, push the branch'), 'claude')).toBeNull()
+  it('the gray suggestion reads as text on the plain screen, as nothing on the colored one', () => {
+    expect(readDraft(SUGGESTION, 'claude')).toEqual({ text: 'commit it', lines: 1 })
+    expect(readDraft(SUGGESTION_COLORED, 'claude')).toBeNull()
+    expect(readDraft(TYPED_COLORED, 'claude')).toEqual({ text: 'hi there', lines: 1 })
   })
   it('a pasted text left as its placeholder is shown as is', () => {
     expect(readDraft(field('❯ [Pasted text #1 +29 lines]'), 'claude')).toEqual({ text: '[Pasted text #1 +29 lines]', lines: 1 })
@@ -52,7 +61,9 @@ describe('queueSendNow', () => {
 
 const pane: Pane = { id: 'core:t2', workspace: 'w', tab: 'w:t', tabLabel: null, agent: 'claude', name: null, label: null, status: 'idle', title: null, cwd: null, agentSession: null, coreAddress: 'local/t2' }
 
-function fake(screens: string[], o: { turns?: number[], status?: string } = {}) {
+function fake(screens: string[], o: { turns?: number[], status?: string, colors?: string[] } = {}) {
+  // By default the colored screen shows the same field as the plain one.
+  const colored = o.colors ? [...o.colors] : null
   const keys: string[][] = []
   const turns = [...(o.turns || [3, 4])]
   let refreshed = 0
@@ -65,7 +76,8 @@ function fake(screens: string[], o: { turns?: number[], status?: string } = {}) 
     pane: id => (id === pane.id ? pane : undefined),
     panes: () => [pane],
     refresh: () => { refreshed++ },
-    read: async () => (screens.length > 1 ? screens.shift()! : screens[0]!),
+    read: async () => (colored ? screens[0]! : screens.length > 1 ? screens.shift()! : screens[0]!),
+    colors: async () => (colored ? (colored.length > 1 ? colored.shift()! : colored[0]!) : screens.length > 1 ? screens.shift()! : screens[0]!),
     sleep: async () => {},
   }
   return { deps, keys, refreshed: () => refreshed }
@@ -101,6 +113,21 @@ describe('coreDraft', () => {
     expect(f.keys).toHaveLength(1)
     expect(f.keys[0]!.filter(k => k === 'ctrl+u')).toHaveLength(5)
   })
+  it('Claude’s gray suggestion is never sent nor cleared', async () => {
+    for (const action of ['send', 'clear']) {
+      const f = fake([SUGGESTION], { colors: [SUGGESTION_COLORED] })
+      expect(await code(coreDraft(f.deps, { pane_id: pane.id, action, text: 'commit it' }))).toBe('stale')
+      expect(f.keys).toEqual([])
+    }
+  })
+  it('Clear: the suggestion that comes back after the text is erased counts as empty', async () => {
+    const f = fake([TYPED], { colors: [TYPED_COLORED, SUGGESTION_COLORED] })
+    await expect(coreDraft(f.deps, { pane_id: pane.id, action: 'clear', text: 'hi there' })).resolves.toEqual({ ok: true })
+  })
+  it('Send now: the suggestion that comes back after Enter counts as empty', async () => {
+    const f = fake([EMPTY], { colors: [TYPED_COLORED, SUGGESTION_COLORED] })
+    await expect(coreDraft(f.deps, { pane_id: pane.id, action: 'send', text: 'hi there' })).resolves.toEqual({ ok: true, started: true })
+  })
   it('Clear: a field that stays full is an error', async () => {
     const f = fake([TYPED])
     expect(await code(coreDraft(f.deps, { pane_id: pane.id, action: 'clear', text: 'hello there' }))).toBe('clear_failed')
@@ -121,27 +148,38 @@ describe('coreDraft', () => {
 })
 
 describe('enrich: draft on the pane', () => {
-  it('shown once the same text stayed 2 s, gone once the field is empty', async () => {
+  function run(texts: { plain: () => string, colored: () => string }) {
     let t = 0
-    let text = TYPED
-    const s = createCoreScreens({ call: async () => ({ text }), viewed: () => true, now: () => t })
-    const run = async () => { const p: Pane = { ...pane, status: null }; await s.enrich([p]); return p }
-    expect((await run()).draft).toBeUndefined()
-    t = 1000
-    expect((await run()).draft).toBeUndefined()
-    t = 2000
-    expect((await run()).draft).toEqual({ text: 'hello there', lines: 1 })
-    text = EMPTY
-    t = 3000
-    expect((await run()).draft).toBeUndefined()
+    let painted = 0
+    const s = createCoreScreens({
+      call: async () => ({ text: texts.plain() }), viewed: () => true, now: () => t,
+      colors: async () => { painted++; return texts.colored() },
+    })
+    const at = async (ms: number, status: Pane['status'] = null) => { t = ms; const p: Pane = { ...pane, status }; await s.enrich([p]); return p }
+    return { at, painted: () => painted }
+  }
+  it('shown once the same text stayed 2 s and the colored screen confirms it, gone once the field is empty', async () => {
+    let plain = TYPED
+    const r = run({ plain: () => plain, colored: () => TYPED })
+    expect((await r.at(0)).draft).toBeUndefined()
+    expect((await r.at(1000)).draft).toBeUndefined()
+    expect((await r.at(2000)).draft).toEqual({ text: 'hello there', lines: 1 })
+    expect((await r.at(3000)).draft).toEqual({ text: 'hello there', lines: 1 })
+    expect(r.painted()).toBe(1)
+    plain = EMPTY
+    expect((await r.at(4000)).draft).toBeUndefined()
+  })
+  it('Claude’s gray suggestion is never shown as a draft (real screens)', async () => {
+    const r = run({ plain: () => SUGGESTION, colored: () => SUGGESTION_COLORED })
+    for (let t = 0; t <= 5000; t += 1000) expect((await r.at(t)).draft).toBeUndefined()
+    expect(r.painted()).toBe(1)
+  })
+  it('no colored screen, no draft', async () => {
+    const r = run({ plain: () => TYPED, colored: () => { throw new Error('x') } })
+    for (let t = 0; t <= 3000; t += 1000) expect((await r.at(t)).draft).toBeUndefined()
   })
   it('a working Claude is not given a draft', async () => {
-    let t = 0
-    const s = createCoreScreens({ call: async () => ({ text: TYPED }), viewed: () => true, now: () => t })
-    for (t = 0; t <= 3000; t += 1000) {
-      const p: Pane = { ...pane, status: 'working' }
-      await s.enrich([p])
-      expect(p.draft).toBeUndefined()
-    }
+    const r = run({ plain: () => TYPED, colored: () => TYPED })
+    for (let t = 0; t <= 3000; t += 1000) expect((await r.at(t, 'working')).draft).toBeUndefined()
   })
 })

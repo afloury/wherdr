@@ -3,7 +3,7 @@ import { coreCall } from './core'
 import { createCoreScreens } from './coreScreen'
 import { coreInputDeps } from './coreInput'
 import type { CoreChooseDeps } from './coreChoose'
-import type { CoreDraftDeps } from './coreDraft'
+import { corePaint, type CoreDraftDeps } from './coreDraft'
 
 let screens: ReturnType<typeof createCoreScreens> | null = null
 export function coreScreens() {
@@ -11,6 +11,7 @@ export function coreScreens() {
     call: (method, params, timeout) => coreCall(process.env.HC_SOCKET || '', method, params, timeout),
     viewed: id => isViewed(id),
     asked: p => transcripts.pendingClaudeQuestions(p),
+    colors: p => corePaint(process.env.HC_SOCKET || '', p.coreAddress || ''),
   })
 }
 
@@ -21,5 +22,5 @@ export function coreChooseDeps(): CoreChooseDeps {
 }
 
 export function coreDraftDeps(): CoreDraftDeps {
-  return coreChooseDeps()
+  return { ...coreChooseDeps(), colors: p => corePaint(process.env.HC_SOCKET || '', p.coreAddress || '') }
 }

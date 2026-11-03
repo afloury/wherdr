@@ -9,27 +9,49 @@ import { failure, type CoreInputDeps } from './coreInput'
 import { readCoreScreen } from './coreScreen'
 import { clearKeys, inputBox } from './unqueue'
 import { parseClaudeScreen } from './claudeScreen'
+import { openFramed, FRAME } from './coreFramed'
 import type { CoreDraft, Pane } from '../../shared/types'
 
-// Core's screen is plain text, but it keeps the non-breaking space Claude puts
-// after the "❯" of its field (sent messages above have a normal one), so
-// inputBox finds the field. Its gray placeholder ('Try "…"') reads empty.
-// A gray next-message suggestion is drawn after the cursor: "❯  text"
-// (one more space than typed text). Without colors that space is the only
-// sign, so such a one-line box is not taken as a draft.
-const SUGGESTION = /^❯  \S/
+// Core's screen (terminal.read) is plain text. It keeps the non-breaking space
+// Claude puts after the "❯" of its field (sent messages above have a normal one),
+// so inputBox finds the field, and its placeholder ('Try "…"') reads empty. But
+// Claude's gray next-message suggestion ("commit it" after a turn) is the same
+// bytes there as typed text. So the plain screen only nominates a draft, and the
+// colored screen (the first paint of terminal.attach, see corePaint) confirms
+// it: there the suggestion is drawn dim, which inputBox leaves out.
 
-/** Pure: the unsent text in Claude's field on a core screen, or null. */
+/**
+ * Pure: text in Claude's field, or null. On the plain screen it is only a
+ * candidate; on the colored screen (dim text left out) it is the draft.
+ */
 export function readDraft(text: string, agent: string | null | undefined): CoreDraft | null {
   if (agent !== 'claude') return null
   const box = inputBox(text)
   if (!box || box === '!') return null
-  const lines = box.split('\n').length
-  if (lines === 1) {
-    const field = String(text).split('\n').findLast(l => l.startsWith('❯ '))
-    if (field && SUGGESTION.test(field)) return null
-  }
-  return { text: box, lines }
+  return { text: box, lines: box.split('\n').length }
+}
+
+const norm = (t: string) => t.replace(/\s+/g, '')
+export const sameText = (a: string, b: string) => norm(a) === norm(b)
+
+/** The colored screen of a terminal: the first paint of a passive attach at its own size. */
+export async function corePaint(endpoint: string, address: string, quietMs = 150, maxMs = 2500): Promise<string> {
+  const c = await openFramed(endpoint)
+  try {
+    const t = await c.call<{ cols: number, rows: number }>('terminal.get', { terminal: address })
+    const chunks: Buffer[] = []
+    let last = 0
+    const a = await c.call<{ channel: number }>('terminal.attach', { terminal: address, cols: t.cols, rows: t.rows, history: 0 })
+    c.stream(a.channel, (kind, payload) => {
+      if (kind !== FRAME.DATA) return
+      chunks.push(Buffer.from(payload))
+      last = Date.now()
+    })
+    const start = Date.now()
+    while (Date.now() - start < maxMs && (!last || Date.now() - last < quietMs)) await new Promise(r => setTimeout(r, 25))
+    if (!chunks.length) throw new HerdrError('timeout', 'herdr-core did not paint the screen in time')
+    return Buffer.concat(chunks).toString('utf8')
+  } finally { c.close() }
 }
 
 /** Pure: Claude offers to send its queued messages now (ctrl+enter). */
@@ -39,11 +61,12 @@ export function queueSendNow(text: string, agent: string | null | undefined): bo
 
 export interface CoreDraftDeps extends CoreInputDeps {
   read: (p: Pane) => Promise<string>
+  /** Colored screen (see corePaint). */
+  colors: (p: Pane) => Promise<string>
   sleep?: (ms: number) => Promise<void>
 }
 type Body = { pane_id?: unknown, action?: unknown, text?: unknown }
 
-const norm = (t: string) => t.replace(/\s+/g, '')
 const changed = () => new HerdrError('stale', 'Claude’s input has changed — check the current screen.')
 
 export async function coreDraft(deps: CoreDraftDeps, b: Body): Promise<{ ok: true, started?: boolean }> {
@@ -55,23 +78,24 @@ export async function coreDraft(deps: CoreDraftDeps, b: Body): Promise<{ ok: tru
   const sleep = deps.sleep ?? (ms => new Promise<void>(r => setTimeout(r, ms)))
   const keys = (k: string[]) => deps.call('terminal.keys', { terminal: p.coreAddress, keys: k }, 10000)
   const turn = async () => (await deps.call<{ turn?: number, status?: string | { state?: string } | null }>('terminal.get', { terminal: p.coreAddress }, 3000).catch(() => null))
+  // The colored screen: a gray suggestion is no text of the field.
+  const field = async () => readDraft(await deps.colors(p), p.agent)
   try {
-    const screen = await deps.read(p)
     if (action === 'send-queued') {
-      if (!queueSendNow(screen, p.agent)) throw new HerdrError('stale', 'The screen has changed — check the current screen.')
+      if (!queueSendNow(await deps.read(p), p.agent)) throw new HerdrError('stale', 'The screen has changed — check the current screen.')
       await keys(['ctrl+enter'])
       return { ok: true }
     }
-    const draft = readDraft(screen, p.agent)
-    if (!draft || typeof b.text !== 'string' || norm(draft.text) !== norm(b.text)) throw changed()
+    const draft = await field()
+    if (!draft || typeof b.text !== 'string' || !sameText(draft.text, b.text)) throw changed()
     if (action === 'clear') {
       for (let i = 0; i < 2; i++) {
         await keys(clearKeys(draft.lines))
         await sleep(150)
-        const now = readDraft(await deps.read(p), p.agent)
+        const now = await field()
         if (!now) return { ok: true }
         // Someone is typing in the terminal: their new text is left alone.
-        if (norm(now.text) !== norm(draft.text)) break
+        if (!sameText(now.text, draft.text)) break
       }
       throw new HerdrError('clear_failed', 'Claude’s input could not be emptied — check the terminal.')
     }
@@ -83,9 +107,8 @@ export async function coreDraft(deps: CoreDraftDeps, b: Body): Promise<{ ok: tru
     let started = false
     for (let i = 0; i < 8 && !(emptied && started); i++) {
       await sleep(400)
-      const now = await deps.read(p).catch(() => null)
-      if (now === null) continue
-      emptied = !readDraft(now, p.agent)
+      if (!emptied) emptied = await field().then(d => !d || !sameText(d.text, draft.text), () => false)
+      const now = await deps.read(p).catch(() => '')
       const t = await turn()
       const state = typeof t?.status === 'string' ? t.status : t?.status?.state
       started = readCoreScreen(now, p.agent, null).status === 'working' || state === 'working'

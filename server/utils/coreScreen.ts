@@ -7,7 +7,7 @@ import { classifyScreen, confirmedInput } from '../../shared/interactiveScreen'
 import { codexError } from '../../shared/codexError'
 import { hasTranscript } from '../../shared/agentKind'
 import { parseChoices, parseOmpPrompt, promptIdentity, completeClaudeAsk, type ClaudeAsked } from './choices'
-import { queueSendNow, readDraft } from './coreDraft'
+import { queueSendNow, readDraft, sameText } from './coreDraft'
 
 const WORKING = /\besc(?:ape)? to interrupt\b/i
 // Claude's folder-trust box: unnumbered options, so it needs the non-strict reading
@@ -43,20 +43,23 @@ export interface CoreScreenDeps {
   call: (method: string, params: object, timeout: number) => Promise<{ text?: string }>
   viewed: (id: string) => boolean
   asked?: (p: Pane) => Promise<ClaudeAsked[]>
+  /** Colored screen (see corePaint): without it, no draft is shown. */
+  colors?: (p: Pane) => Promise<string>
   now?: () => number
 }
 
 const VIEWED_MS = 1000
 const IDLE_MS = 5000
 const MAX_READS = 6
-// A draft is shown once it stayed the same this long: not while someone types it.
+// A draft is shown once it stayed the same this long (not while someone types it)
+// and the colored screen confirms it.
 const DRAFT_MS = 2000
 
 export function createCoreScreens(deps: CoreScreenDeps) {
   const now = deps.now ?? Date.now
   const cache = new Map<string, { at: number, text: string }>()
   const failed = new Set<string>()
-  const drafts = new Map<string, { text: string, since: number }>()
+  const drafts = new Map<string, { text: string, since: number, real?: boolean }>()
   const read = async (p: Pane) => {
     try {
       const r = await deps.call('terminal.read', { terminal: p.coreAddress, lines: 0 }, 3000)
@@ -102,7 +105,11 @@ export function createCoreScreens(deps: CoreScreenDeps) {
         const seen = drafts.get(p.id)
         if (!draft) drafts.delete(p.id)
         else if (seen?.text !== draft.text) drafts.set(p.id, { text: draft.text, since: c.at })
-        else if (c.at - seen.since >= DRAFT_MS) p.draft = draft
+        else if (c.at - seen.since >= DRAFT_MS && deps.colors) {
+          // Once per text: is it typed, or Claude's gray suggestion (same bytes on the plain screen)?
+          seen.real ??= await deps.colors(p).then(ansi => sameText(readDraft(ansi, p.agent)?.text ?? '', draft.text), () => false)
+          if (seen.real) p.draft = draft
+        }
       }
     },
   }
