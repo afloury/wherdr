@@ -57,8 +57,11 @@ test('machines can be renamed and forgotten, and the core line shows', async ({ 
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(page.getByTestId('core-machine').filter({ hasText: 'renamed' })).toBeVisible()
     expect(rpc.find(r => r.method === 'machine.rename')?.params).toEqual({ machine: 'host-a', new_name: 'renamed' })
+    // No ghost: the old name is gone at once and the row count is unchanged.
+    await expect(page.getByTestId('core-machine').filter({ hasText: 'host-a' })).toHaveCount(0)
+    await expect(page.getByTestId('core-machine')).toHaveCount(2)
     await page.getByTestId('core-machine').filter({ hasText: 'renamed' }).getByTestId('machine-forget').click()
-    await expect(page.getByText(/terminals keep running there/i)).toBeVisible()
+    await expect(page.getByText(/Forget renamed\?.*terminals keep running there/i)).toBeVisible()
     await page.screenshot({ path: `.shots/core-machines-forget-${test.info().project.name}.png` })
     await page.getByRole('button', { name: 'Forget', exact: true }).click()
     await expect(page.getByTestId('core-machine').filter({ hasText: 'renamed' })).toHaveCount(0)

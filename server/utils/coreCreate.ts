@@ -25,6 +25,8 @@ export interface CoreAdminDeps {
   recent: (m: MachineInfo) => Promise<string[]>
   remember: (dir: string, m: MachineInfo) => Promise<unknown>
   launchWatchMs?: number // how long a new agent is watched for an immediate failure (default 2 s)
+  queueWatchMs?: number // how long a first message waits for a dialog to be answered (default 10 min)
+  onQueued?: (watch: Promise<unknown>) => void // test hook: the background wait of a queued first message
   readyWatchMs?: number // how long the first message waits for the program to be ready (default 15 s)
   pollMs?: number // readiness polling step (default 500 ms)
 }
@@ -138,25 +140,38 @@ const STILL_POLLS = 6
 // screen is still, else (no status reported) the screen has been still for a few seconds.
 // Codex shows its composer for ~2 s before the folder trust dialog, and core reports no
 // state until the dialog is answered: a still screen alone is not enough when a status exists.
-// Never retried or replayed: a program that blocks, ends, shows a dialog or stays busy
-// past the deadline simply gets nothing ('skipped').
-export async function sendFirstMessage(deps: CoreAdminDeps, address: string, text: string): Promise<'sent' | 'skipped'> {
+// Never retried or replayed: a program that ends or stays busy past the deadline gets
+// nothing ('skipped'); one that shows a dialog or blocks is 'dialog' (see sendAfterDialog).
+export async function sendFirstMessage(deps: CoreAdminDeps, address: string, text: string): Promise<'sent' | 'skipped' | 'dialog'> {
   const step = deps.pollMs ?? 500
   const end = Date.now() + (deps.readyWatchMs ?? 15000)
   let last = '', stable = 0, sawStatus = false
   while (Date.now() < end) {
     const t = await deps.call<CoreFacts & { status?: string | { state?: string } | null }>('terminal.get', { terminal: address }, 3000).catch(() => null)
     const state = typeof t?.status === 'string' ? t.status : t?.status?.state
-    if (!t || t.state === 'finished' || state === 'blocked') return 'skipped'
+    if (!t || t.state === 'finished') return 'skipped'
+    if (state === 'blocked') return 'dialog'
     if (state) sawStatus = true
     const screen = String((await deps.call<{ text?: string }>('terminal.read', { terminal: address, lines: 40 }, 3000).catch(() => null))?.text || '')
-    if (DIALOG_RE.test(screen)) return 'skipped'
+    if (DIALOG_RE.test(screen)) return 'dialog'
     stable = screen.trim() && screen === last ? stable + 1 : 0
     last = screen
     if (state === 'idle' ? stable >= 2 : !sawStatus && stable >= STILL_POLLS) {
       try { await deps.call('terminal.send', { terminal: address, text }, 30000); return 'sent' } catch { return 'skipped' }
     }
     await new Promise(r => setTimeout(r, step))
+  }
+  return 'skipped'
+}
+
+// The first message of a program that opened on a dialog (trust this folder): waits in the
+// background until the person has answered it, then sends it once. Gives up after queueWatchMs.
+export async function sendAfterDialog(deps: CoreAdminDeps, address: string, text: string): Promise<'sent' | 'skipped'> {
+  const end = Date.now() + (deps.queueWatchMs ?? 600_000)
+  while (Date.now() < end) {
+    await new Promise(r => setTimeout(r, (deps.pollMs ?? 500) * 2))
+    const r = await sendFirstMessage(deps, address, text).catch(() => 'skipped' as const)
+    if (r !== 'dialog') return r
   }
   return 'skipped'
 }
@@ -215,7 +230,15 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
   if (!pane) throw new HerdrError('uncertain', 'Created, but not in the list yet: check the list before creating it again')
   // The program needs time to start: wait for it so that the sheet can say when nothing was
   // typed. A failure here must not undo the creation.
-  const sent = first ? await sendFirstMessage(deps, address, first).catch(() => 'skipped' as const) : null
+  let sent: 'sent' | 'skipped' | 'queued' | null = null
+  if (first) {
+    const r = await sendFirstMessage(deps, address, first).catch(() => 'skipped' as const)
+    sent = r === 'dialog' ? 'queued' : r
+    if (r === 'dialog') {
+      const watch = sendAfterDialog(deps, address, first)
+      deps.onQueued?.(watch)
+    }
+  }
   return { pane_id: pane.id, workspace_id: pane.workspace, name: kind === 'shell' ? null : name || kind, first_message: sent }
 }
 
