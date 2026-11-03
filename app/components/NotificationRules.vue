@@ -3,8 +3,6 @@
 import { LEVEL_EVENTS, compareEvents, exceptionLive, levelOf, sameNotificationTarget, type NotificationEvent, type NotificationException, type NotificationTarget } from '#shared/notificationRules'
 useNotificationClock()
 useNotificationRekey()
-const boards = useBoardLinks()
-const core = useRuntimeConfig().public.core
 const rules = notificationRules
 const now = notificationClock
 
@@ -14,18 +12,11 @@ function setDefault(patch: { events?: NotificationEvent[], subagents?: boolean }
 const defaultEvents = computed(() => rules.value.default.events)
 
 // Exceptions, by machine then name (ended timed mutes that left nothing are gone).
+// A coordinator's exception (older settings) keeps its saved name.
 const exceptions = computed(() => rules.value.exceptions
-  .filter(e => exceptionLive(e, now.value) && !(e.kind === 'conversation' && taskPane(e.id)))
-  .map(e => ({ e, machine: notificationMachineName(e.machine), name: exceptionName(e) }))
+  .filter(e => exceptionLive(e, now.value))
+  .map(e => ({ e, machine: notificationMachineName(e.machine), name: livePaneTitle(e.id) || e.label }))
   .sort((a, b) => a.machine.localeCompare(b.machine) || a.name.localeCompare(b.name)))
-function exceptionName(e: NotificationTarget) {
-  return e.kind === 'coordinator' ? coordinatorNotificationLabel(e.machine, e.id) : livePaneTitle(e.id) || e.label
-}
-// A conversation exception on a task agent (from older settings) is not shown: the Sub-agents switch decides.
-function taskPane(id: string) {
-  const p = herdrState.value.panes.find(x => x.id === id)
-  return p ? Boolean(notificationSource(p).subagent) : false
-}
 const livePaneTitle = (id: string) => herdrState.value.panes.find(p => p.id === id)?.title || ''
 const mutedUntil = (e: NotificationException) => e.until !== null && e.until > now.value ? e.until : null
 const eventsOf = (e: NotificationException) => e.events ?? defaultEvents.value
@@ -43,8 +34,7 @@ function difference(e: NotificationException) {
 }
 const kindLabel = (e: NotificationTarget) => e.kind === 'coordinator' ? t('Coordinator') : t('Conversation')
 
-// "Add an exception": a coordinator of a board, or a standalone agent
-// conversation, grouped by machine. Never task threads or sub-agents.
+// "Add an exception": an agent conversation, grouped by machine.
 const picking = ref(false)
 const candidates = computed(() => {
   const groups = new Map<string, { machine: string, name: string, items: NotificationTarget[] }>()
@@ -54,15 +44,7 @@ const candidates = computed(() => {
     if (!g.items.some(x => sameNotificationTarget(x, t))) g.items.push(t)
     groups.set(t.machine, g)
   }
-  const order = { top: 0, machine: 1, project: 2 }
-  for (const b of boards.value) {
-    for (const c of [...b.coordinators].sort((x, y) => order[x.level] - order[y.level] || (x.repo ?? '').localeCompare(y.repo ?? ''))) add(coordinatorTarget(b.machine, c))
-  }
-  for (const p of herdrState.value.panes) {
-    if (!p.agent) continue
-    const target = paneNotificationTarget(p)
-    if (target?.kind === 'conversation') add(target)
-  }
+  for (const p of herdrState.value.panes) if (p.agent) add(paneNotificationTarget(p))
   return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))
 })
 function addException(t: NotificationTarget) {
@@ -82,18 +64,12 @@ function removeAll() {
     <div class="settings-group notification-default" data-testid="notification-default">
       <h3>{{ t('Default (applies to everything)') }}</h3>
       <NotificationLevel :events="defaultEvents" :label="t('Default level')" @change="events => setDefault({ events })" />
-      <label v-if="!core" class="settings-toggle notification-subagents">
-        <span><b>{{ t('Sub-agents') }}</b><small>{{ rules.default.subagents
-          ? t('On: task agents (workers, reviewers, attempts) notify too, at the same level.')
-          : t('Off: only coordinators, standalone agents and board events notify. Task agents stay silent.') }}</small></span>
-        <USwitch color="success" size="xl" :model-value="rules.default.subagents" :aria-label="t('Sub-agents')" @update:model-value="v => setDefault({ subagents: v })" />
-      </label>
       <p class="muted notification-help">{{ t('Visible conversations stay silent on every device. Push resumes after about 30 seconds away. Inactive tabs expire automatically.') }}</p>
     </div>
 
     <div class="settings-group notification-exceptions" data-testid="notification-exceptions">
       <h3>{{ t('Exceptions') }}</h3>
-      <p v-if="!exceptions.length" class="muted">{{ core ? t('No exceptions: everything follows the default. Add one for an agent, or use Notifications in its menu.') : t('No exceptions: everything follows the default. Add one for a coordinator or an agent, or use Notifications in its menu.') }}</p>
+      <p v-if="!exceptions.length" class="muted">{{ t('No exceptions: everything follows the default. Add one for an agent, or use Notifications in its menu.') }}</p>
       <article v-for="{ e, machine, name } in exceptions" :key="JSON.stringify([e.kind, e.machine, e.id])" class="notification-rule" data-testid="notification-exception">
         <div class="notification-rule-head">
           <small>{{ machine }} · {{ kindLabel(e) }}</small>
@@ -101,12 +77,6 @@ function removeAll() {
           <small class="notification-diff">{{ difference(e) }}</small>
         </div>
         <NotificationLevel :events="eventsOf(e)" :muted="!!mutedUntil(e)" :label="tl(`Notifications: ${name}`, `Notifications : ${name}`)" @change="events => setException(e, { events, until: null })" />
-        <label v-if="e.kind === 'coordinator'" class="settings-toggle notification-subagents">
-          <span><b>{{ t('Sub-agents') }}</b><small>{{ e.subagents
-            ? t('On: the task agents of this board follow this exception.')
-            : t('Off: only this coordinator. Its board’s task agents follow the default.') }}</small></span>
-          <USwitch color="success" size="lg" :model-value="e.subagents" :aria-label="tl(`Sub-agents: ${name}`, `Sous-agents : ${name}`)" @update:model-value="v => setException(e, { subagents: v })" />
-        </label>
         <button type="button" class="settings-action" @click="removeException(e)">
           <UIcon name="i-lucide-x" />{{ t('Remove exception') }}<small class="muted">{{ tl(`Back to the default: ${defaultLevelLabel()}`, `Retour au défaut : ${defaultLevelLabel()}`) }}</small>
         </button>
@@ -114,11 +84,11 @@ function removeAll() {
 
       <button type="button" class="settings-action solo notification-add" :aria-expanded="picking" @click="picking = !picking"><UIcon name="i-lucide-plus" />{{ t('Add an exception') }}</button>
       <div v-if="picking" class="notification-picker" data-testid="notification-picker">
-        <p v-if="!candidates.length" class="muted">{{ t('No coordinator or agent conversation to add. Task agents follow the Sub-agents switch.') }}</p>
+        <p v-if="!candidates.length" class="muted">{{ t('No agent conversation to add.') }}</p>
         <div v-for="g in candidates" :key="g.machine" class="notification-picker-group">
           <small>{{ g.name }}</small>
           <button v-for="c in g.items" :key="c.kind + c.id" type="button" class="settings-action" @click="addException(c)">
-            <UIcon :name="c.kind === 'coordinator' ? 'i-lucide-message-square-text' : 'i-lucide-bot'" />{{ c.label }}
+            <UIcon name="i-lucide-bot" />{{ c.label }}
           </button>
         </div>
       </div>

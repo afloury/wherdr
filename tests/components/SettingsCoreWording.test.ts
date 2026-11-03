@@ -28,10 +28,8 @@ async function text(section: string, core: boolean) {
   }
 }
 
-it('drops the Board wording in core mode, keeps it otherwise', async () => {
-  const core = await text('appearance', true)
-  expect(core).not.toMatch(/Board tasks|Tasks: one line/)
-  expect(await text('appearance', false)).toMatch(/Board tasks stay grouped/)
+it('never shows the Board wording', async () => {
+  expect(await text('appearance', true)).not.toMatch(/Board tasks|Tasks: one line/)
 })
 
 it('shows the v3 version, no v2 update line, in core mode', async () => {
