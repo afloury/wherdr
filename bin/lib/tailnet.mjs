@@ -69,17 +69,30 @@ export function tailnetStatus(statusJson) {
 // itself, never guessed from an interface address in 100.64.0.0/10.
 // readable: false for an empty or broken answer (a failed command, a socket
 // that did not answer): nothing is known then, not "stopped".
+// peerIps: your own devices only, those of the same user as this machine
+// (UserID), except nodes of someone this machine is shared with (ShareeNode).
+// otherIps: every other peer (another user's device in a team tailnet, a node
+// shared in from another tailnet, which has another UserID, a sharee's node, a
+// tagged node), which wherdr admits only behind a passkey.
+// Tagged nodes all share one "tagged-devices" UserID: a tagged peer is never
+// yours, and on a tagged machine no peer is (its owner is not known).
+const TAGGED_DEVICES = 2147455555
 export function tailnetPeers(statusJson) {
   let s = null
   try { s = JSON.parse(statusJson) } catch {}
   const ips = node => (Array.isArray(node?.TailscaleIPs) ? node.TailscaleIPs.filter(ip => typeof ip === 'string') : [])
   const readable = Boolean(s && typeof s === 'object' && typeof s.BackendState === 'string')
+  const peers = readable && s.Peer && typeof s.Peer === 'object' ? Object.values(s.Peer) : []
+  const me = s?.Self?.UserID
+  const tagged = node => (Array.isArray(node?.Tags) && node.Tags.length > 0) || node?.UserID === TAGGED_DEVICES
+  const own = p => Boolean(me) && !tagged(s.Self) && p?.UserID === me && !p?.ShareeNode && !tagged(p)
   return {
     readable,
     state: readable ? s.BackendState : null,
     running: readable && s.BackendState === 'Running',
     selfIps: readable ? ips(s.Self) : [],
-    peerIps: readable ? Object.values(s.Peer || {}).flatMap(ips) : [],
+    peerIps: peers.filter(own).flatMap(ips),
+    otherIps: peers.filter(p => !own(p)).flatMap(ips),
   }
 }
 
@@ -123,7 +136,7 @@ export function funnelExposes(port, serveJson) {
 
 // Only a valid reading may prove the absence of Funnel on this port.
 export async function tailnetFacts(port, bin = tailscaleBin(), socket = bin ? null : tailscaledSocket()) {
-  if (!bin && !socket) return { installed: false, readable: true, running: false, selfIps: [], peerIps: [], funnel: false }
+  if (!bin && !socket) return { installed: false, readable: true, running: false, selfIps: [], peerIps: [], otherIps: [], funnel: false }
   const run = args => exec(bin, args, { encoding: 'utf8', timeout: 8000 }).then(r => r.stdout, () => '')
   const { state, ...peers } = tailnetPeers(bin ? await run(['status', '--json']) : await localApi(socket, 'status'))
   if (!peers.readable) return { installed: true, ...peers, funnel: null }

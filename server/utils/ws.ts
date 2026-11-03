@@ -22,7 +22,7 @@ export function headersOf(h: Headers): Record<string, string | undefined> {
 // the passkey lock (when set up) always applies.
 export function upgradeVerdict(headers: Record<string, string | undefined>, remoteAddress: string | undefined) {
   return gateDecision({
-    check: checkRequestClient(remoteAddress, headers),
+    check: checkRequestClient(remoteAddress, headers, auth.isEnabled()),
     unlocked: auth.isUnlocked({ headers }),
     hostOk: hostAllowed(headers.host),
     crossSite: !sameOrigin(headers),
