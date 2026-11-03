@@ -38,6 +38,8 @@ export async function dismissStopped(paneId: string): Promise<boolean> {
 
 // omp "Ask" box with tabs: show question `index` (or Submit).
 export async function askTab(paneId: string, index: number, label: string): Promise<boolean> {
+  // herdr-core refuses this route: the tabs of an omp box are answered in the terminal.
+  if (useRuntimeConfig().public.core) return false
   haptic()
   try {
     await api('/api/ask-tab', { pane_id: paneId, index, label })

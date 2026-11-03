@@ -417,7 +417,9 @@ export interface QuotaWindow {
   minutes: number // window duration
   fresh?: boolean // window that just restarted, missing from the reading: nothing used
 }
-export interface Quota { five: QuotaWindow | null, week: QuotaWindow | null, at: number }
+// `limited`: the account hit its usage limit (Codex writes no numbers then);
+// both windows are null and `resetsAt` (ms) is the reset time if known.
+export interface Quota { five: QuotaWindow | null, week: QuotaWindow | null, at: number, limited?: { resetsAt: number | null } }
 // Quotas of an account and machines using it (key '' = local, displayed name).
 export interface AccountQuota extends Quota { machines: { key: string, label: string }[] }
 export interface Quotas {

@@ -19,3 +19,21 @@ it('reads core machines and terminals without legacy discovery', async () => {
   expect(offline.panes).toEqual(state.panes)
   expect(offline.machines?.[0]?.status).toBe('offline')
 })
+
+it('rereads core machines at once after staleCoreDocs (forget/rename)', async () => {
+  vi.stubEnv('HC_SOCKET', '/test/core.sock')
+  const { useCoreSession, staleCoreDocs } = await import('../server/utils/readCoreState')
+  useCoreSession({ snapshot: () => [] } as never)
+  let machines = [{ name: 'host-a', status: 'online' }]
+  vi.mocked(coreCall).mockImplementation(async (_e, method) => method === 'machine.list' ? { machines } : { terminals: [] })
+  const prev = { ok: true, panes: [], workspaces: [] }
+  await readCoreState(prev)
+  machines = []
+  const cached = vi.mocked(coreCall).mock.calls.length
+  await readCoreState(prev)
+  expect(vi.mocked(coreCall).mock.calls.length).toBe(cached) // still cached
+  staleCoreDocs()
+  await readCoreState(prev)
+  expect(vi.mocked(coreCall).mock.calls.slice(cached).map(c => c[1])).toContain('machine.list')
+  useCoreSession(null)
+})
