@@ -84,16 +84,57 @@ export function codexQuota(rl: Json, at: number): Quota | null {
   return quota(five, week, at)
 }
 
-// Last `rate_limits` line of a Codex conversation (read from the end).
-export function lastCodexLimits(text: string): { rl: Json, at: number } | null {
+// Reset time written in Codex's "usage limit" message: "try again at 6:37 AM"
+// (today or tomorrow) or "try again at Nov 8th, 2026 2:52 PM". Local time of
+// the machine running wherdr, which is the one Codex formatted it for in the
+// usual case. null if the text carries no readable time.
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+export function codexLimitReset(message: string, at: number): number | null {
+  const m = /try again at\s+(?:([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(?:(\d{4})\s+)?)?(\d{1,2}):(\d{2})\s*([AaPp][Mm])/.exec(message)
+  if (!m) return null
+  let h = Number(m[4]) % 12
+  if (/p/i.test(m[6]!)) h += 12
+  const base = new Date(at || Date.now())
+  if (m[1]) {
+    const mon = MONTHS.indexOf(m[1].slice(0, 3).toLowerCase())
+    if (mon < 0) return null
+    const d = new Date(m[3] ? Number(m[3]) : base.getFullYear(), mon, Number(m[2]), h, Number(m[5]))
+    if (!m[3] && d.getTime() <= base.getTime()) d.setFullYear(d.getFullYear() + 1)
+    return d.getTime()
+  }
+  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate(), h, Number(m[5]))
+  if (d.getTime() <= base.getTime()) d.setDate(d.getDate() + 1)
+  return d.getTime()
+}
+
+// Newest limit state of a Codex conversation (read from the end): the last
+// `rate_limits` with numbers, or "limit reached" (`limited`): Codex writes no
+// numbers then (primary/secondary null, no credits) and only reports the error
+// `usage_limit_exceeded` (or sets `rate_limit_reached_type`). Whichever comes
+// last wins, so a later reading with numbers brings the gauges back.
+export type CodexLimits = { rl: Json, at: number, limited?: undefined } | { limited: { resetsAt: number | null }, at: number, rl?: undefined }
+export function lastCodexLimits(text: string): CodexLimits | null {
   const lines = text.split('\n')
   for (let i = lines.length - 1; i >= 0; i--) {
     const l = lines[i]!
-    if (!l.includes('"rate_limits"')) continue
+    const reached = l.includes('usage_limit_exceeded')
+    if (!reached && !l.includes('"rate_limits"')) continue
     try {
       const d = JSON.parse(l)
-      const rl = d.payload && d.payload.rate_limits
-      if (rl && (rl.primary || rl.secondary)) return { rl, at: Date.parse(d.timestamp) || 0 }
+      const at = Date.parse(d.timestamp) || 0
+      const p = d.payload
+      if (reached) {
+        const e = p && p.error
+        if (e && e.codex_error_info === 'usage_limit_exceeded') return { limited: { resetsAt: codexLimitReset(String(e.message || ''), at) }, at }
+        continue
+      }
+      const rl = p && p.rate_limits
+      if (!rl || !(rl.primary || rl.secondary)) continue
+      if (rl.rate_limit_reached_type) {
+        const resets = [rl.primary, rl.secondary].flatMap(w => (w && Number(w.used_percent) >= 100 && Number(w.resets_at) ? [Number(w.resets_at) * 1000] : []))
+        return { limited: { resetsAt: resets.length ? Math.max(...resets) : null }, at }
+      }
+      return { rl, at }
     } catch { /* cut line */ }
   }
   return null
@@ -227,6 +268,13 @@ function latestWindow(list: { w: QuotaWindow, stamp: number }[]): QuotaWindow | 
 }
 export function latestCodexQuota(readings: CodexReading[]): Quota | null {
   if (!readings.length) return null
+  // "Limit reached" holds until a reading with numbers comes after it.
+  const limits = readings.filter(r => r.q.limited)
+  if (limits.length) {
+    const last = limits.reduce((a, b) => (b.stamp > a.stamp ? b : a))
+    if (!readings.some(r => !r.q.limited && r.stamp >= last.stamp)) return last.q
+    readings = readings.filter(r => !r.q.limited)
+  }
   const pick = (k: 'five' | 'week') => latestWindow(readings.flatMap(r => (r.q[k] ? [{ w: r.q[k]!, stamp: r.stamp }] : [])))
   return quota(pick('five'), pick('week'), Math.max(...readings.map(r => r.q.at)))
 }
@@ -316,7 +364,7 @@ export async function readCodexMachine(fs: MachineFs, home: string): Promise<{ q
       const len = Math.min(s!.size, max)
       try {
         const hit = lastCodexLimits((await fs.read(f, s!.size - len, len)).toString('utf8'))
-        const q = hit && codexQuota(hit.rl, hit.at || s!.mtimeMs)
+        const q = hit && (hit.limited ? { five: null, week: null, at: hit.at || s!.mtimeMs, limited: hit.limited } : codexQuota(hit.rl, hit.at || s!.mtimeMs))
         if (q) return { q, stamp: Math.max(started, hit!.at || s!.mtimeMs), account }
       } catch { return empty /* unreadable file: never reuse an older identity */ }
       if (len === s!.size) break
