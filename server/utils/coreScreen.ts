@@ -36,6 +36,9 @@ export function readCoreScreen(text: string, agent: string | null | undefined, s
   // `screen`/`menu` cards have no core route yet: such screens stay terminals.
   const interaction = (derived || known) === 'working' ? 'working'
     : classifyScreen({ text, agent, choices, status: known || derived || 'unknown' })
+  // hc reports a starting Codex as idle while its folder-trust question is up:
+  // a question on screen is Your turn whatever core says.
+  if (known === 'idle' && choices && interaction === 'native') return { status: 'blocked', choices, interaction }
   return { status: derived, choices, interaction }
 }
 
@@ -54,10 +57,14 @@ const MAX_READS = 6
 // A draft is shown once it stayed the same this long (not while someone types it)
 // and the colored screen confirms it.
 const DRAFT_MS = 2000
-// A new agent whose screen says nothing yet (Claude starting, before its trust box) is read
-// at every poll during its first STARTUP_MS, not at the background pace: the poll its
-// drawing triggers then shows the question at once, in step with the card's preview.
+// A new agent that is not yet at a question or at work (Claude starting before its trust
+// box, a Codex that hc already calls idle) is read at every poll during its first
+// STARTUP_MS, not at the background pace: the poll its drawing triggers then shows the
+// question at once, in step with the card's preview.
 const STARTUP_MS = 30_000
+// After a key from the key bar, the agent is read at every poll this long, and a changed
+// draft is shown at once: the change is the key's, nobody is typing it.
+const KEYED_MS = 2000
 
 export function createCoreScreens(deps: CoreScreenDeps) {
   const now = deps.now ?? Date.now
@@ -65,6 +72,8 @@ export function createCoreScreens(deps: CoreScreenDeps) {
   const born = new Map<string, number>()
   const failed = new Set<string>()
   const drafts = new Map<string, { text: string, since: number, real?: boolean }>()
+  const keyed = new Map<string, number>()
+  const isKeyed = (id: string) => (keyed.get(id) ?? -Infinity) > now()
   const read = async (p: Pane) => {
     try {
       const r = await deps.call('terminal.read', { terminal: p.coreAddress, lines: 0 }, 3000)
@@ -74,6 +83,11 @@ export function createCoreScreens(deps: CoreScreenDeps) {
   }
   return {
     forget: (id: string) => { cache.delete(id) },
+    /** Keys were just pressed in this agent (key bar): read it again, its draft follows. */
+    keyed: (id: string) => {
+      cache.delete(id)
+      if (drafts.has(id)) keyed.set(id, now() + KEYED_MS)
+    },
     /** Fresh screen of one agent (before validating an answer). */
     async fresh(p: Pane): Promise<string> {
       const r = await deps.call('terminal.read', { terminal: p.coreAddress, lines: 0 }, 3000)
@@ -87,7 +101,7 @@ export function createCoreScreens(deps: CoreScreenDeps) {
         && (p.status !== 'working' || (p.agent === 'claude' && deps.viewed(p.id))))
       const due = agents.filter(p => {
         const c = cache.get(p.id)
-        if (!c || (c.open && now() - (born.get(p.id) ?? 0) < STARTUP_MS)) return true
+        if (!c || isKeyed(p.id) || (c.open && now() - (born.get(p.id) ?? 0) < STARTUP_MS)) return true
         return now() - c.at >= (deps.viewed(p.id) ? VIEWED_MS : IDLE_MS)
       }).sort((a, b) => Number(deps.viewed(b.id)) - Number(deps.viewed(a.id))).slice(0, MAX_READS)
       await Promise.all(due.map(read))
@@ -95,12 +109,14 @@ export function createCoreScreens(deps: CoreScreenDeps) {
       for (const id of cache.keys()) if (!alive.has(id)) cache.delete(id)
       for (const id of born.keys()) if (!alive.has(id)) born.delete(id)
       for (const id of drafts.keys()) if (!alive.has(id)) drafts.delete(id)
+      for (const id of keyed.keys()) if (!alive.has(id) || !isKeyed(id)) keyed.delete(id)
       for (const p of agents) {
         const c = cache.get(p.id)
         if (!c) continue
         const r = readCoreScreen(c.text, p.agent, p.status)
         if (!born.has(p.id)) born.set(p.id, c.at)
-        c.open = !r.status && !(p.status && p.status !== 'unknown')
+        const status = r.status || p.status
+        c.open = status !== 'blocked' && status !== 'working'
         let choices = r.choices
         if (choices && p.agent === 'claude' && deps.asked) choices = completeClaudeAsk(choices, await deps.asked(p).catch(() => []))
         if (r.status) p.status = r.status
@@ -111,13 +127,15 @@ export function createCoreScreens(deps: CoreScreenDeps) {
         if (choices && r.interaction === 'native') p.prompt = choices
         if (queueSendNow(c.text, p.agent)) p.queueSendNow = true
         const draft = !failed.has(p.id) && r.interaction === 'input' && p.status !== 'working' ? readDraft(c.text, p.agent) : null
-        const seen = drafts.get(p.id)
+        let seen = drafts.get(p.id)
         if (!draft) drafts.delete(p.id)
-        else if (seen?.text !== draft.text) drafts.set(p.id, { text: draft.text, since: c.at })
-        else if (c.at - seen.since >= DRAFT_MS && deps.colors) {
-          // Once per text: is it typed, or Claude's gray suggestion (same bytes on the plain screen)?
-          seen.real ??= await deps.colors(p).then(ansi => sameText(readDraft(ansi, p.agent)?.text ?? '', draft.text), () => false)
-          if (seen.real) p.draft = draft
+        else {
+          if (seen?.text !== draft.text) drafts.set(p.id, seen = { text: draft.text, since: isKeyed(p.id) ? c.at - DRAFT_MS : c.at })
+          if (c.at - seen.since >= DRAFT_MS && deps.colors) {
+            // Once per text: is it typed, or Claude's gray suggestion (same bytes on the plain screen)?
+            seen.real ??= await deps.colors(p).then(ansi => sameText(readDraft(ansi, p.agent)?.text ?? '', draft.text), () => false)
+            if (seen.real) p.draft = draft
+          }
         }
       }
     },

@@ -42,6 +42,11 @@ describe('readCoreScreen', () => {
     }
     expect(readCoreScreen(trust, 'claude', 'unknown').status).toBe('blocked')
   })
+  it('reads Codex 0.166\'s folder-trust question as Your turn while core still says idle', () => {
+    const r = readCoreScreen(fx('codex-trust-folder.txt'), 'codex', 'idle')
+    expect(r).toMatchObject({ status: 'blocked', interaction: 'native' })
+    expect(r.choices?.options.map(o => o.label)).toEqual(['Trust and continue', 'Back to Agent Command Center'])
+  })
   it('stays unknown on an unrecognised screen', () => {
     expect(readCoreScreen('$ ls', 'claude', 'unknown')).toMatchObject({ status: null, choices: null, interaction: 'unknown' })
   })
@@ -105,6 +110,20 @@ describe('enrich', () => {
     tick(1500)
     await screens.enrich([pane('a')])
     expect(reads.length).toBe(2)
+  })
+  it('shows a new Codex\'s trust question as Your turn at the next poll, though core calls it idle', async () => {
+    const texts: Record<string, string> = { 'm/a': '› Ask Codex to do anything\n\n  ? for shortcuts' }
+    const { screens, reads, tick } = setup(texts, () => false)
+    const a = pane('a', { agent: 'codex', status: 'idle' })
+    await screens.enrich([a])
+    expect(a.status).toBe('idle')
+    texts['m/a'] = fx('codex-trust-folder.txt')
+    tick(1500)
+    const next = pane('a', { agent: 'codex', status: 'idle' })
+    await screens.enrich([next])
+    expect(reads.length).toBe(2)
+    expect(next).toMatchObject({ status: 'blocked', interaction: 'native' })
+    expect(next.prompt?.options[0]?.label).toBe('Trust and continue')
   })
   it('reads an undetermined screen at the background pace after the startup window', async () => {
     const { screens, reads, tick } = setup({ 'm/a': 'loading' }, () => false)
