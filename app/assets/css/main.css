@@ -1059,6 +1059,8 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
   font: 500 11px/1.2 var(--mono); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .agent-meta .agent-machine::before { content: '·'; color: var(--dim); margin-right: 2px; }
+/* No status pill (a plain shell): the first item has no separator to follow. */
+.agent-meta > :first-child::before { content: none; }
 .agent-meta .agent-machine .iconify { width: 12px; height: 12px; color: var(--muted); }
 .agent-meta .agent-machine.connecting { color: var(--ochre); }
 .agent-meta .agent-machine.offline { color: var(--rose); }
