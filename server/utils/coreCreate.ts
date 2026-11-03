@@ -176,7 +176,22 @@ export async function sendAfterDialog(deps: CoreAdminDeps, address: string, text
   return 'skipped'
 }
 
-export interface CreateBody { kind?: unknown, machine?: unknown, cwd?: unknown, name?: unknown, workspace?: unknown, prompt?: unknown, resume?: unknown }
+export interface CreateBody { kind?: unknown, machine?: unknown, cwd?: unknown, name?: unknown, workspace?: unknown, prompt?: unknown, resume?: unknown, labels?: unknown }
+
+// Labels a plugin gives a new agent (wherdr.agents.start): `wherdr.*` keys only, so that
+// placement (herdr.*) and the request label stay wherdr's own.
+const PLUGIN_LABEL_RE = /^wherdr\.[a-z0-9_.-]{1,48}$/
+export function pluginLabels(raw: unknown): Record<string, string> {
+  if (raw === undefined || raw === null) return {}
+  if (typeof raw !== 'object' || Array.isArray(raw)) throw new HerdrError('bad_labels', 'Invalid labels')
+  const entries = Object.entries(raw as Record<string, unknown>)
+  if (entries.length > 8) throw new HerdrError('bad_labels', 'At most 8 labels')
+  for (const [k, v] of entries) {
+    if (!PLUGIN_LABEL_RE.test(k)) throw new HerdrError('bad_labels', fmt('Invalid label: {label}', { label: k.slice(0, 60) }))
+    if (typeof v !== 'string' || v.length > 400 || /[\0\n\r]/.test(v)) throw new HerdrError('bad_labels', fmt('Invalid label: {label}', { label: k }))
+  }
+  return Object.fromEntries(entries) as Record<string, string>
+}
 
 const newId = (prefix: string) => prefix + crypto.randomBytes(16).toString('hex')
 // herdr-app placement: a new tab of the given space, else of the space holding the
@@ -203,13 +218,14 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
   if ((await exec(deps, on, 'test -d "$1"', [cwd])).code !== 0) throw new HerdrError('bad_cwd', fmt('Folder not found: {path}', { path: cwd }))
   const first = typeof body.prompt === 'string' ? body.prompt.trim() : ''
   if (first.length > MAX_FIRST) throw new HerdrError('too_large', 'Message too large')
+  const extra = pluginLabels(body.labels)
   const typed = cleanLabel(body.name)
   const name = toAgentName(typed)
   if (name && !NAME_RE.test(name)) throw new HerdrError('bad_name', 'Invalid name')
   const request = crypto.randomBytes(8).toString('hex')
   const params = {
     cwd, ...(on ? { on } : {}), ...(name ? { name } : {}), no_parent: true, wait: false,
-    labels: { [REQUEST_LABEL]: request, ...creationLabels(deps, m, cwd, body.workspace) }, ...(kind === 'shell' ? {} : { line: `${PATH_SETUP}; exec ${[kind, ...(body.resume === true ? RESUME_ARGS[kind] || [] : [])].join(' ')}` }),
+    labels: { ...extra, [REQUEST_LABEL]: request, ...creationLabels(deps, m, cwd, body.workspace) }, ...(kind === 'shell' ? {} : { line: `${PATH_SETUP}; exec ${[kind, ...(body.resume === true ? RESUME_ARGS[kind] || [] : [])].join(' ')}` }),
   }
   let address: string
   try {

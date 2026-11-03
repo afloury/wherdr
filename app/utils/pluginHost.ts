@@ -4,12 +4,35 @@
 import type { ClientPluginInfo, PluginPrefs } from '../../shared/clientPlugins'
 
 export interface CurrentAgent { id: string, agent: string | null, name: string | null, machine: string | null }
+// An agent (terminal) of the app state, as plugins see it (wherdr.state).
+export interface PluginAgent {
+  id: string
+  name: string | null
+  agent: string | null
+  status: string | null
+  labels: Record<string, string> // its `wherdr.*` labels (herdr-core)
+  folder: string | null
+  machine: string // '' = this machine
+}
+export interface StartAgent {
+  machine?: string
+  folder: string
+  agent: string
+  name?: string
+  firstMessage?: string
+  labels?: Record<string, string>
+}
+export interface StartedAgent { id: string, name: string | null, firstMessage: 'sent' | 'skipped' | 'queued' | null }
 export interface WherdrApi {
   apiVersion: 1
   draft: { insert: (text: string) => void }
   currentAgent: () => CurrentAgent | null
   // Returns the unsubscribe function.
   onNavigate: (cb: (path: string) => void) => () => void
+  // Additions (apiVersion 1): agents, state and project files (herdr-core).
+  agents: { start: (o: StartAgent) => Promise<StartedAgent>, open: (id: string) => void }
+  state: { agents: () => PluginAgent[], subscribe: (cb: (agents: PluginAgent[]) => void) => () => void }
+  files: { read: (machine: string, path: string) => Promise<string | null>, write: (machine: string, path: string, text: string) => Promise<void> }
 }
 type Plugin = ((w: WherdrApi) => unknown) | { activate: (w: WherdrApi) => unknown, deactivate?: () => unknown }
 
@@ -20,6 +43,14 @@ export interface HostDeps {
   currentAgent: () => CurrentAgent | null
   // Subscribes to route changes; returns the unsubscribe function.
   subscribeNavigate: (cb: (path: string) => void) => () => void
+  // Agents of the app state, and a subscription to their changes (returns the unsubscribe).
+  // Optional: without them the calls give an empty list or reject.
+  agents?: () => PluginAgent[]
+  subscribeAgents?: (cb: () => void) => () => void
+  startAgent?: (o: StartAgent) => Promise<StartedAgent>
+  openAgent?: (id: string) => void
+  readFile?: (machine: string, path: string) => Promise<string | null>
+  writeFile?: (machine: string, path: string, text: string) => Promise<void>
   prefs: () => PluginPrefs
   savePrefs: (p: PluginPrefs) => void
   // Called when anything about a plugin's state changed (the Settings list).
@@ -51,6 +82,10 @@ export function createPluginHost(deps: HostDeps) {
   function apiFor(id: string): WherdrApi {
     const own = new Set<() => void>()
     subs.set(id, own)
+    const guarded = <T>(cb: (v: T) => unknown) => (v: T) => {
+      if (status.get(id) !== 'running' && status.get(id) !== 'loading') return
+      try { Promise.resolve(cb(v)).catch(e => fail(id, e)) } catch (e) { fail(id, e) }
+    }
     return {
       apiVersion: 1,
       draft: { insert: (text) => { if (typeof text === 'string' && text) deps.insertDraft(text) } },
@@ -62,6 +97,34 @@ export function createPluginHost(deps: HostDeps) {
         })
         own.add(off)
         return () => { off(); own.delete(off) }
+      },
+      agents: {
+        start: async o => (deps.startAgent ?? unavailable)(checkStart(o)),
+        open: (agent) => { if (typeof agent === 'string' && agent) deps.openAgent?.(agent) },
+      },
+      state: {
+        agents: () => deps.agents?.() ?? [],
+        // Called at once with the current list, then after each change of it.
+        subscribe: (cb) => {
+          const call = guarded(cb)
+          let last = ''
+          const push = () => {
+            const list = deps.agents?.() ?? []
+            const key = JSON.stringify(list)
+            if (key !== last) { last = key; call(list) }
+          }
+          const off = deps.subscribeAgents?.(push) ?? (() => {})
+          own.add(off)
+          push()
+          return () => { off(); own.delete(off) }
+        },
+      },
+      files: {
+        read: async (machine, path) => (deps.readFile ?? unavailable)(String(machine || ''), String(path)),
+        write: async (machine, path, text) => {
+          if (typeof text !== 'string') throw new Error('Text expected')
+          return (deps.writeFile ?? unavailable)(String(machine || ''), String(path), text)
+        },
       },
     }
   }
@@ -120,6 +183,18 @@ export function createPluginHost(deps: HostDeps) {
     return infos.map(i => ({ ...i, status: status.get(i.id) || 'off', error: p.failed[i.id] || '' }))
   }
   return { init, setEnabled, rows, listError: () => listError }
+}
+
+const unavailable = (): never => { throw new Error('Not available in this wherdr') }
+
+// Plain checks before the server's own: a clear error in the plugin's console.
+function checkStart(o: StartAgent): StartAgent {
+  if (!o || typeof o !== 'object') throw new Error('agents.start: options expected')
+  if (typeof o.folder !== 'string' || !o.folder.startsWith('/')) throw new Error('agents.start: an absolute folder is expected')
+  if (typeof o.agent !== 'string' || !o.agent) throw new Error('agents.start: agent expected (claude, codex…)')
+  const labels = o.labels ?? {}
+  for (const k of Object.keys(labels)) if (!k.startsWith('wherdr.')) throw new Error(`agents.start: label ${k} must start with "wherdr."`)
+  return { machine: String(o.machine || ''), folder: o.folder, agent: o.agent, name: o.name, firstMessage: o.firstMessage, labels }
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, why: string): Promise<T> {

@@ -1,0 +1,1 @@
+{ "name": "Mini-board (experimental)", "version": "0.1.0", "description": "Per project folder, a task list (.wherdr/tasks.json) and a coordinator agent that spawns worker agents. herdr-core (v3) only.", "main": "index.js" }

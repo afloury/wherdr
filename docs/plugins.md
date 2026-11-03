@@ -148,7 +148,9 @@ is kept per device.
 
 A plugin is two files in one folder: `manifest.json` and a prebuilt ES module. The complete
 working example is [`examples/plugins/hello-mic/`](../examples/plugins/hello-mic/): a microphone
-button next to Send that inserts a fixed sample text (no audio). To follow the steps without
+button next to Send that inserts a fixed sample text (no audio). A larger, experimental one is
+[`examples/plugins/mini-board/`](../examples/plugins/mini-board/): a task board whose coordinator
+agent starts worker agents (herdr-core only). To follow the steps without
 writing code, install it as is.
 
 1. **Write** `src/index.ts` (or plain `index.js`). Export an object `{ activate(wherdr), deactivate() }`
@@ -186,6 +188,30 @@ export default function (wherdr) {
 | `wherdr.draft.insert(text)` | Appends `text` to the draft of the open conversation (nothing is sent). No-op when no conversation is open. |
 | `wherdr.currentAgent()` | `{ id, agent, name, machine }` of the open conversation, or `null` (`agent` is `claude`, `codex`, `omp`… or `null` for a terminal). |
 | `wherdr.onNavigate(cb)` | `cb(path)` after each page change (`/`, `/settings?section=plugins`…). Returns the function that unsubscribes. |
+| `wherdr.agents`, `wherdr.state`, `wherdr.files` | Agents, state and project files: [below](#agents-state-and-project-files-herdr-core). |
+
+### Agents, state and project files (herdr-core)
+
+> [!NOTE]
+> **Experimental additions** (apiVersion stays `1`). `agents.start` labels and `files` need
+> herdr-core (v3); the example that uses them is
+> [`examples/plugins/mini-board/`](../examples/plugins/mini-board/).
+
+| API | Meaning |
+|---|---|
+| `wherdr.agents.start({ machine, folder, agent, name, firstMessage, labels })` | Starts an agent (`claude`, `codex`…) in `folder` (absolute, under the machine's home) through the same path as the New sheet. `machine`: `''` (this one, the default) or the `machine` of an agent below. `labels`: at most 8, keys `wherdr.*` only (placement labels stay wherdr's). `firstMessage` is sent once the agent is ready. Resolves to `{ id, name, firstMessage }` (`firstMessage`: `sent`, `queued` behind a dialog, `skipped` or `null`). |
+| `wherdr.agents.open(id)` | Opens the agent's conversation. |
+| `wherdr.state.agents()` | The agents now: `[{ id, name, agent, status, labels, folder, machine }]`. `labels` holds the terminal's `wherdr.*` labels only. |
+| `wherdr.state.subscribe(cb)` | `cb(agents)` at once, then after each change of that list. Returns the function that unsubscribes. A throw disables the plugin, like `onNavigate`. |
+| `wherdr.files.read(machine, path)` | Text of a file, or `null` when it does not exist (1 MB max). |
+| `wherdr.files.write(machine, path, text)` | Writes the file (replaced in one step; missing folders are created; 200 KB max). |
+
+`files` only reach a **project folder**: a Git repository strictly below the machine's home. The
+path is absolute; hidden folders are refused (so `~/.ssh`, `~/.config`, `.git`…), except `.wherdr`
+for plugin data; so are wherdr's `DATA_DIR` and symbolic links. The checks run on the machine on
+the real path (`machine.exec`). These calls go through the usual lock and network checks; their
+routes are `/api/agents` and `/api/plugin-files/read|write` (exact entries in
+`shared/coreRoutes/plugins.ts`). There is still no server part for plugins.
 
 ### Failures are isolated
 

@@ -180,6 +180,8 @@ export interface Pane {
   ompActivity?: OmpActivity
   // omp shown: the "!" / "$" command the user is running (omp stays idle meanwhile).
   ompShell?: ShellRun
+  // herdr-core: the terminal's `wherdr.*` labels (plugins read them, see docs/plugins.md).
+  labels?: Record<string, string>
 }
 export interface OmpStatus { line: string, meters: string | null }
 export interface OmpActivity { step: string | null, since: number | null }

@@ -4,6 +4,8 @@ import { type CoreDocs, SPACE_LABEL, TAB_LABEL, rootTerminals, SEEN_LABEL } from
 import { coreActivity, coreTitle, coreUnread, ownTitle } from './coreInventory'
 import type { HerdrState, MachineInfo, Pane } from './types'
 
+// Labels a plugin may set and read (wherdr.task, wherdr.project…): the others stay core's and herdr-app's.
+export const PLUGIN_LABEL_PREFIX = 'wherdr.'
 export interface CoreMachine { name: string; state: string; why?: string }
 // Lossless encoding keeps IDs stable across inventory order and core restarts.
 const key = (value: string) => Array.from(new TextEncoder().encode(value), b => b.toString(16).padStart(2, '0')).join('')
@@ -53,10 +55,12 @@ export function coreState(terminals: CoreTerminal[], machines: CoreMachine[], do
     const state = activity === 'error' ? 'blocked' : activity
     // idle after a turn nobody looked at yet = finished, unread ('done').
     const status = (state === 'idle' || state === 'done') && terminal.labels?.[SEEN_LABEL] !== undefined ? (coreUnread(terminal) ? 'done' : 'idle') : state
+    const own = Object.entries(terminal.labels ?? {}).filter(([k]) => k.startsWith(PLUGIN_LABEL_PREFIX))
     const pane: Pane = { id: `${workspace}:p${id}`, coreAddress: terminal.address, machine, workspace, tab, tabLabel: result.tabs!.find(t => t.id === tab)!.label,
       agent, name: terminal.name ?? null, label: ownTitle(terminal), title: terminal.title ?? null, cwd, agentSession: null,
       status, interaction: 'unknown',
-      ...(typeof terminal.status_ms === 'number' ? { stateSeq: terminal.status_ms } : terminal.turn ? { stateSeq: terminal.turn } : {}) }
+      ...(typeof terminal.status_ms === 'number' ? { stateSeq: terminal.status_ms } : terminal.turn ? { stateSeq: terminal.turn } : {}),
+      ...(own.length ? { labels: Object.fromEntries(own) } : {}) }
     result.panes.push(pane)
   }
   // Tabs follow their document's order inside a space, then renumber from 1.

@@ -24,7 +24,8 @@ transcripts and quotas of core machines also use `machine.exec`.
 Only the API routes listed in `shared/coreRoutes.ts` answer; every other `/api/` route returns
 "Unavailable with herdr-core". The Board, herdr-projects, coordinators, worktrees, Git changes,
 model and effort pickers, Herdr sessions, Herdr plugins, the setup guide and the one-tap update
-are v2 only.
+are v2 only. An experimental task board with a coordinator agent exists as an optional
+[wherdr plugin](plugins.md#agents-state-and-project-files-herdr-core) ([mini-board](../examples/plugins/mini-board/)).
 
 ## Inventory
 

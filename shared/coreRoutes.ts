@@ -15,6 +15,7 @@ import f from './coreRoutes/f'
 import g from './coreRoutes/g'
 import h from './coreRoutes/h'
 import i from './coreRoutes/i'
+import plugins from './coreRoutes/plugins'
 
 const BASE = [
   'auth/*', 'core/*', 'client-plugins/*',
@@ -27,7 +28,7 @@ const BASE = [
   'upload', 'attach', 'file', 'keep',
 ]
 
-const routes = [...BASE, ...a, ...b, ...c, ...d, ...e, ...f, ...g, ...h, ...i]
+const routes = [...BASE, ...a, ...b, ...c, ...d, ...e, ...f, ...g, ...h, ...i, ...plugins]
 const readOnly = routes.filter(r => r.startsWith('GET ')).map(r => r.slice(4))
 const open = routes.filter(r => !r.startsWith('GET '))
 const exact = new Set(open.filter(r => !r.endsWith('/*')))
