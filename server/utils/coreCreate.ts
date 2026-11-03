@@ -6,7 +6,7 @@ import { posix as px } from 'node:path'
 import { CoreError } from './core'
 import { HerdrError } from './herdr'
 import { failure } from './coreInput'
-import { AGENT_KINDS } from './env'
+import { AGENT_KINDS, RESUME_ARGS } from './env'
 import { HERDR_AGENT_KINDS, availableAgentKinds } from '../../shared/launchableAgents'
 import { KIND_PROBE_SCRIPT } from './agentAvailability'
 import { LIST_DIRS_SCRIPT, dirDeniedFromCode, parseDirList } from './fsx'
@@ -25,6 +25,8 @@ export interface CoreAdminDeps {
   recent: (m: MachineInfo) => Promise<string[]>
   remember: (dir: string, m: MachineInfo) => Promise<unknown>
   launchWatchMs?: number // how long a new agent is watched for an immediate failure (default 2 s)
+  readyWatchMs?: number // how long the first message waits for the program to be ready (default 45 s)
+  pollMs?: number // readiness polling step (default 500 ms)
 }
 
 const REQUEST_LABEL = 'wherdr-request'
@@ -126,7 +128,33 @@ async function launchFailure(deps: CoreAdminDeps, address: string, ms: number): 
   return null
 }
 
-export interface CreateBody { kind?: unknown, machine?: unknown, cwd?: unknown, name?: unknown, workspace?: unknown }
+const MAX_FIRST = 64 * 1024
+// A dialog the program waits on (trust a folder, confirm): nothing is typed into it.
+const DIALOG_RE = /Enter to confirm|Esc to cancel|\(y\/n\)|\[y\/N\]/i
+
+// Sends the first message once, when the program looks ready: its status says idle, or its
+// screen has not changed for three polls. Never retried or replayed: a program that blocks,
+// ends, shows a dialog or stays busy past the deadline simply gets nothing.
+export async function sendFirstMessage(deps: CoreAdminDeps, address: string, text: string): Promise<'sent' | 'skipped'> {
+  const step = deps.pollMs ?? 500
+  const end = Date.now() + (deps.readyWatchMs ?? 45000)
+  let last = '', stable = 0
+  while (Date.now() < end) {
+    const t = await deps.call<CoreFacts & { status?: string | null }>('terminal.get', { terminal: address }, 3000).catch(() => null)
+    if (!t || t.state === 'finished' || t.status === 'blocked') return 'skipped'
+    const screen = String((await deps.call<{ text?: string }>('terminal.read', { terminal: address, lines: 40 }, 3000).catch(() => null))?.text || '')
+    if (DIALOG_RE.test(screen)) return 'skipped'
+    stable = screen.trim() && screen === last ? stable + 1 : 0
+    last = screen
+    if (t.status === 'idle' ? screen.trim() : stable >= 3) {
+      try { await deps.call('terminal.send', { terminal: address, text }, 30000); return 'sent' } catch { return 'skipped' }
+    }
+    await new Promise(r => setTimeout(r, step))
+  }
+  return 'skipped'
+}
+
+export interface CreateBody { kind?: unknown, machine?: unknown, cwd?: unknown, name?: unknown, workspace?: unknown, prompt?: unknown, resume?: unknown }
 
 const newId = (prefix: string) => prefix + crypto.randomBytes(16).toString('hex')
 // herdr-app placement: a new tab of the given space, else of the space holding the
@@ -151,13 +179,15 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
   const cwd = home && underHome(body.cwd || home, home)
   if (!cwd) throw new HerdrError('bad_cwd', fmt('The folder must be under {home}', { home }))
   if ((await exec(deps, on, 'test -d "$1"', [cwd])).code !== 0) throw new HerdrError('bad_cwd', fmt('Folder not found: {path}', { path: cwd }))
+  const first = typeof body.prompt === 'string' ? body.prompt.trim() : ''
+  if (first.length > MAX_FIRST) throw new HerdrError('too_large', 'Message too large')
   const typed = cleanLabel(body.name)
   const name = toAgentName(typed)
   if (name && !NAME_RE.test(name)) throw new HerdrError('bad_name', 'Invalid name')
   const request = crypto.randomBytes(8).toString('hex')
   const params = {
     cwd, ...(on ? { on } : {}), ...(name ? { name } : {}), no_parent: true, wait: false,
-    labels: { [REQUEST_LABEL]: request, ...creationLabels(deps, m, cwd, body.workspace) }, ...(kind === 'shell' ? {} : { line: `${PATH_SETUP}; exec ${kind}` }),
+    labels: { [REQUEST_LABEL]: request, ...creationLabels(deps, m, cwd, body.workspace) }, ...(kind === 'shell' ? {} : { line: `${PATH_SETUP}; exec ${[kind, ...(body.resume === true ? RESUME_ARGS[kind] || [] : [])].join(' ')}` }),
   }
   let address: string
   try {
@@ -176,7 +206,9 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
   if (failed) throw new HerdrError('launch_failed', fmt('{kind} stopped right after starting (exit code {code}). Last output:\n{lines}', { kind, code: failed.code, lines: failed.lines || '(none)' }))
   const pane = deps.panes().find(p => p.coreAddress === address)
   if (!pane) throw new HerdrError('uncertain', 'Created, but not in the list yet: check the list before creating it again')
-  return { pane_id: pane.id, workspace_id: pane.workspace, name: kind === 'shell' ? null : name || kind }
+  // After the answer: the program needs time to start, and a failure here must not undo the creation.
+  if (first) void sendFirstMessage(deps, address, first).catch(() => {})
+  return { pane_id: pane.id, workspace_id: pane.workspace, name: kind === 'shell' ? null : name || kind, first_message: first ? 'queued' : null }
 }
 
 // Adds a machine over SSH (like `hc machine add <target>`): no command (`via`) and no

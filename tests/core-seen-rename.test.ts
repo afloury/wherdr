@@ -86,3 +86,12 @@ describe('core rename route', () => {
     expect(s.panes.map(p => p.stateSeq)).toEqual([1700, 5, undefined])
   })
 })
+
+describe('home card name', () => {
+  it('uses a core terminal own name for a single terminal or the lead of a space, never for others', async () => {
+    const { coreOwnName } = await import('../shared/displayTitles')
+    expect(coreOwnName({ coreAddress: 't1', label: ' Deploy ' })).toBe('Deploy')
+    expect(coreOwnName({ coreAddress: 't1', label: null })).toBe('')
+    expect(coreOwnName({ label: 'x' })).toBe('')
+  })
+})

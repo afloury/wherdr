@@ -30,3 +30,9 @@ export function conversationSubtitle(p: Pane, workspace?: Workspace | null): str
   if (title.toLocaleLowerCase() === spaceTitle(p, workspace).toLocaleLowerCase()) return ''
   return title
 }
+
+// herdr-core: a terminal with its own name (renamed, or named at creation) shows it on its
+// home card, single terminal or lead of a space, rather than its folder.
+export function coreOwnName(p: Pick<Pane, 'coreAddress' | 'label'>): string {
+  return (p.coreAddress && p.label?.trim()) || ''
+}
