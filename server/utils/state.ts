@@ -1,4 +1,6 @@
-import { readCoreState } from './readCoreState'
+import { readCoreState, staleCoreDocs, useCoreSession } from './readCoreState'
+import { CoreSession } from './coreSession'
+import { type CoreAlertKind, createCoreAlerts } from './coreAlerts'
 import { DeliveryLedger, writeDeliveryFile } from './deliveryLedger'
 import type { NotificationEvent } from '../../shared/notificationRules'
 import { notificationAllowed } from './notificationRules'
@@ -1375,7 +1377,9 @@ export async function pollFresh(m: Machine) {
 // but their state is republished with the right status.
 export async function poll() {
   if (process.env.WHERDR_BACKEND === 'core') {
+    lastCorePoll = Date.now()
     state = await readCoreState(state)
+    await coreScreens().enrich(state.panes).catch(() => {})
     void coreTranscriptsOf().observe(state.panes)
     const json = JSON.stringify(state)
     if (json !== stateJson) { stateJson = json; broadcastState() }
@@ -1395,11 +1399,7 @@ let viewedTimer: ReturnType<typeof setTimeout> | null = null
 export function startPolling() {
   stopped = false
   if (process.env.WHERDR_BACKEND === 'core') {
-    const loop = async () => {
-      await poll()
-      if (!stopped) pollTimer = setTimeout(loop, POLL_MS)
-    }
-    void loop()
+    startCoreEvents()
     return
   }
   focusScreenGate()
@@ -1421,9 +1421,72 @@ export function startPolling() {
   }
   loop()
 }
+
+// ---------------------------------------------------------------- core events
+// herdr-core: one events.subscribe connection instead of a poll every second. State is
+// rebuilt (debounced) on each change; machines are read again every few seconds, and the
+// poll comes back to POLL_MS while the connection is down.
+let coreSession: CoreSession | null = null
+let coreAlerts: ReturnType<typeof createCoreAlerts> | null = null
+let corePoll: ReturnType<typeof setTimeout> | null = null
+let coreBusy = false
+let coreAgain = false
+function scheduleCorePoll() {
+  if (corePoll || stopped) return
+  corePoll = setTimeout(async () => {
+    corePoll = null
+    if (coreBusy) { coreAgain = true; return }
+    coreBusy = true
+    try { await poll() } finally {
+      coreBusy = false
+      if (coreAgain) { coreAgain = false; scheduleCorePoll() }
+    }
+  }, 50)
+}
+function startCoreEvents() {
+  const endpoint = process.env.HC_SOCKET
+  if (endpoint) {
+    coreAlerts = createCoreAlerts({ settleMs: NOTIFY_SETTLE_MS, current: a => coreSession?.get(a), send: (a, k) => { notifyCorePane(a, k).catch(e => log('notification:', e.message)) } })
+    coreSession = new CoreSession({ endpoint,
+      onEvent: (e, before, after) => coreAlerts?.onEvent(e, before, after),
+      onChange: (what) => { if (what !== 'terminal') staleCoreDocs(); scheduleCorePoll() },
+      onStatus: scheduleCorePoll })
+    useCoreSession(coreSession)
+    coreSession.start()
+  }
+  const loop = async () => {
+    if (!coreSession?.connected || Date.now() - lastCorePoll > 5000) await poll()
+    if (!stopped) pollTimer = setTimeout(loop, coreSession?.connected ? 5000 : POLL_MS)
+  }
+  void loop()
+}
+let lastCorePoll = 0
+function stopCoreEvents() {
+  coreSession?.stop()
+  coreAlerts?.stop()
+  coreSession = null
+  coreAlerts = null
+  useCoreSession(null)
+  if (corePoll) clearTimeout(corePoll)
+  corePoll = null
+}
+async function notifyCorePane(address: string, kind: CoreAlertKind) {
+  const p = state.panes.find(x => x.coreAddress === address)
+  if (!p || isViewed(p.id)) return
+  const event: NotificationEvent = kind === 'needs-you' ? 'needs-you' : 'finished'
+  if (!await notificationAllowed(event, state, p, { machine: p.machine ?? '' })) return
+  const ws = state.workspaces.find(w => w.id === p.workspace)
+  const where = [ws && ws.label, notificationTitle(p.title)].filter(Boolean).join(' · ')
+  const on = state.machines && state.machines.length > 1 && p.machine ? `${state.machines.find(m => m.key === p.machine)?.label ?? p.machine} · ` : ''
+  const { title, titleFr } = agentNotificationTitle(kind === 'needs-you' ? 'blocked' : 'done', `${on}${agentLabel(p.agent)}`)
+  const badge = state.panes.filter(x => x.status === 'blocked' || x.status === 'done').length
+  const sent = await pushSend({ title, titleFr, body: where || p.id, tag: `pane-${p.id}`, url: `/#/a/${encodeURIComponent(p.id)}`, badge })
+  log(`notification ${p.id} ${kind} "${title}" -> ${sent} device(s)`)
+}
 const localMachineOf = (ms: Machine[]) => ms.find(m => m.local)!
 export function stopPolling() {
   stopped = true
+  stopCoreEvents()
   if (pollTimer) clearTimeout(pollTimer)
   if (viewedTimer) clearTimeout(viewedTimer)
   selfUpdates.flush()
