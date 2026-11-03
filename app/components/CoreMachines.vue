@@ -7,7 +7,14 @@ const name = ref('')
 const adding = ref(false)
 const busyKey = ref('')
 const error = ref('')
-const remote = computed(() => machines.value.filter(m => !m.local))
+// Rename/forget show at once: the live state needs a few seconds to follow, so the
+// old row is hidden right away and the renamed one borrows its state until it is online.
+const gone = ref<string[]>([])
+const renamedTo = ref<Record<string, string>>({})
+const remote = computed(() => machines.value.filter(m => !m.local && !gone.value.includes(m.key)).map((m) => {
+  const from = renamedTo.value[m.label]
+  return from && m.status !== 'online' ? { ...m, status: 'connecting' as const, error: undefined } : m
+}))
 const STATE: Record<string, string> = { online: 'connected', connecting: 'connecting…', offline: 'offline' }
 
 async function add() {
@@ -45,6 +52,9 @@ async function rename(key: string) {
   error.value = ''
   try {
     await api('/api/machine/core-rename', { key, name })
+    gone.value = [...gone.value, key]
+    renamedTo.value = { ...renamedTo.value, [name]: key }
+    setTimeout(() => { delete renamedTo.value[name]; renamedTo.value = { ...renamedTo.value }; gone.value = gone.value.filter(k => k !== key) }, 15000)
     renaming.value = ''
     loadConfig()
   } catch (err) { error.value = (err as Error).message }
@@ -59,7 +69,12 @@ async function forget(m: { key: string, label: string }) {
   if (!ok) return
   busyKey.value = m.key
   error.value = ''
-  try { await api('/api/machine/core-forget', { key: m.key }); loadConfig() }
+  try {
+    await api('/api/machine/core-forget', { key: m.key })
+    gone.value = [...gone.value, m.key]
+    setTimeout(() => { gone.value = gone.value.filter(k => k !== m.key) }, 15000)
+    loadConfig()
+  }
   catch (err) { error.value = (err as Error).message }
   finally { busyKey.value = '' }
 }
