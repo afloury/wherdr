@@ -53,7 +53,7 @@ function recognize(modules: typeof after, raw: string, agent: string, strict: bo
   const screen = panel || tabs ? null : modules.wait.parseWaitScreen(text, { choices: Boolean(prompt) })
   return { choices: prompt, menu: panel, screen, settings: tabs }
 }
-const fixtures = readdirSync(new URL('./fixtures/', import.meta.url)).sort()
+const fixtures = readdirSync(new URL('./fixtures/', import.meta.url)).filter(f => !f.startsWith('core-')).sort() // core-*.json are herdr-core protocol fixtures, not screens
 const results: { file: string, agent: string, strict: boolean, nativeBefore: boolean, nativeAfter: boolean, exception: boolean }[] = []
 afterAll(() => {
   if (process.env.NATIVE_PARITY_REPORT) writeFileSync(process.env.NATIVE_PARITY_REPORT, JSON.stringify({ baseline: baseline.provenance, fixtures: fixtures.length, comparisons: results.length, results }, null, 2) + '\n')

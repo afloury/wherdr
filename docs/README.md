@@ -30,6 +30,7 @@ Read only the page relevant to your task. Start with [Installation and updates](
 - [Install as an app](phone.md) — Add wherdr to your home screen on a phone or install it in a desktop browser.
 - [Settings and configuration](configuration.md) — Configure the service through environment variables and the app through shared and device-specific preferences.
 - [Machines and SSH](machines.md) — Register remote machines and use their agents through SSH. Includes sessions and connection troubleshooting.
+- [herdr-core (v3)](core.md) — Run wherdr on a herdr-core session: setup and what the inventory shows.
 - [Claude and Codex quotas](quotas.md) — Show remaining usage and handle Codex updates, limits and restarts.
 - [Notifications](notifications.md) — Enable Web Push, relay Herdr notifications and configure Do not disturb.
 - [Board and coordinators](board.md) — Work with herdr-projects tasks, reviews, approvals and coordinators across machines.
