@@ -54,10 +54,15 @@ const MAX_READS = 6
 // A draft is shown once it stayed the same this long (not while someone types it)
 // and the colored screen confirms it.
 const DRAFT_MS = 2000
+// A new agent whose screen says nothing yet (Claude starting, before its trust box) is read
+// at every poll during its first STARTUP_MS, not at the background pace: the poll its
+// drawing triggers then shows the question at once, in step with the card's preview.
+const STARTUP_MS = 30_000
 
 export function createCoreScreens(deps: CoreScreenDeps) {
   const now = deps.now ?? Date.now
-  const cache = new Map<string, { at: number, text: string }>()
+  const cache = new Map<string, { at: number, text: string, open?: boolean }>()
+  const born = new Map<string, number>()
   const failed = new Set<string>()
   const drafts = new Map<string, { text: string, since: number, real?: boolean }>()
   const read = async (p: Pane) => {
@@ -82,16 +87,20 @@ export function createCoreScreens(deps: CoreScreenDeps) {
         && (p.status !== 'working' || (p.agent === 'claude' && deps.viewed(p.id))))
       const due = agents.filter(p => {
         const c = cache.get(p.id)
-        return !c || now() - c.at >= (deps.viewed(p.id) ? VIEWED_MS : IDLE_MS)
+        if (!c || (c.open && now() - (born.get(p.id) ?? 0) < STARTUP_MS)) return true
+        return now() - c.at >= (deps.viewed(p.id) ? VIEWED_MS : IDLE_MS)
       }).sort((a, b) => Number(deps.viewed(b.id)) - Number(deps.viewed(a.id))).slice(0, MAX_READS)
       await Promise.all(due.map(read))
       const alive = new Set(panes.map(p => p.id))
       for (const id of cache.keys()) if (!alive.has(id)) cache.delete(id)
+      for (const id of born.keys()) if (!alive.has(id)) born.delete(id)
       for (const id of drafts.keys()) if (!alive.has(id)) drafts.delete(id)
       for (const p of agents) {
         const c = cache.get(p.id)
         if (!c) continue
         const r = readCoreScreen(c.text, p.agent, p.status)
+        if (!born.has(p.id)) born.set(p.id, c.at)
+        c.open = !r.status && !(p.status && p.status !== 'unknown')
         let choices = r.choices
         if (choices && p.agent === 'claude' && deps.asked) choices = completeClaudeAsk(choices, await deps.asked(p).catch(() => []))
         if (r.status) p.status = r.status
