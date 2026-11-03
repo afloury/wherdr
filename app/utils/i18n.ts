@@ -439,6 +439,8 @@ const FR: Record<string, string> = {
   'Invalid subscription': 'abonnement invalide',
   // Labels without emoji (Lucide icons replace them in the new interface)
   'Rename': 'Renommer', 'Take control of this terminal': 'Prendre la main sur ce terminal',
+  'host:port needs herdr-core 0.1.17 or newer': 'host:port demande herdr-core 0.1.17 ou plus récent',
+  'A machine with this name already exists': 'Une machine porte déjà ce nom',
   'Reconnect': 'Reconnecter', 'Photo or screenshot': 'Photo ou capture d’écran',
   'Changes': 'Changements', 'View changes': 'Voir les changements', 'Refresh changes': 'Rafraîchir les changements', 'Refresh': 'Rafraîchir',
   'Reading changes…': 'Lecture des changements…', 'This folder is not a Git repository.': 'Ce dossier n’est pas un dépôt Git.',
