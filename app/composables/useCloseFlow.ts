@@ -1,4 +1,4 @@
-import { checkoutMessage, planClose, taskStopMessage, tasksClosing, widerClose, type CloseKind, type ClosePlan, type CheckoutStatus } from '~/utils/closeFlow'
+import { agentsClosing, checkoutMessage, planClose, taskStopMessage, tasksClosing, widerClose, type CloseKind, type ClosePlan, type CheckoutStatus } from '~/utils/closeFlow'
 
 interface CloseStatus { git: boolean, modified?: number, untracked?: number, truncated?: boolean }
 
@@ -50,6 +50,7 @@ async function askClose(kind: CloseKind, plan: ClosePlan, { message, action }: {
   // herdr-projects tasks it stops (the repo's space closes its tasks' spaces): named, and said on the button.
   await refreshBoardLinks()
   const tasks = taskStopMessage(tasksClosing(plan, kind, boardLinksNow()), tl)
-  const text = `${message}${processes}${tasks ? `\n\n${tasks.message}` : ''}${details}`
+  const agents = agentsClosing(plan, tl)
+  const text = `${message}${processes}${agents ? `\n\n${agents}` : ''}${tasks ? `\n\n${tasks.message}` : ''}${details}`
   return await askConfirm(text, tasks?.action || groupAction)
 }
