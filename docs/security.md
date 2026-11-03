@@ -46,10 +46,12 @@ wherdr drives Herdr, so **it can run anything as your user**.
   with a passkey synced by your password manager (iCloud Keychain, Google Password Manager,
   1Password…), or with the passkey of another device through the browser's "use a phone or
   tablet" QR code, then Settings → Security → **Add this device** to give it its own passkey.
-- Without a passkey, **anyone who can use this computer or one of your tailnet devices can
-  control your agents**, other OS users of this computer included (see
-  [Shared computers](security.md#shared-computers)). Devices of other people on your tailnet are
-  refused until a passkey is set up, then they reach the lock screen.
+- By default, with no passkey, wherdr answers **this computer and your own tailnet devices**:
+  devices of other people on your tailnet are always filtered out (no setting turns this off).
+  Whoever uses this computer or one of your devices can control your agents, other OS users of
+  this computer included (see [Shared computers](security.md#shared-computers)). The passkey is
+  optional: it adds an automatic lock on each device if you want one, and then lets other
+  people's tailnet devices reach that lock.
 - Writes require `Content-Type: application/json` (or `image/*` for photos, `application/octet-stream` for attached files) and an `Origin`
   matching the host, WebSockets included. API reads sent from another site (links, images,
   `no-cors` fetches, reported by the browser's `Sec-Fetch-Site`) are refused too.
@@ -81,9 +83,8 @@ people's tailnet devices get in only once a passkey is set up (see below).
 - Prefer **Tailscale** (`tailscale serve`): a private HTTPS address, only for your devices.
 - A network you add **without HTTPS** gets no passkey, no installed app and no notifications, and
   any device on that network can control your agents.
-- **Create a passkey** as soon as wherdr is reached over HTTPS: without one, whoever picks up one
-  of your devices, or uses this computer, controls your agents. Settings › Security says so on
-  an HTTPS address.
+- **Passkey** (optional, over HTTPS): an automatic lock on each device, if you want one. Your
+  own devices get in without it.
 
 How a request is judged, before anything else (WebSockets included):
 
@@ -138,8 +139,8 @@ How a request is judged, before anything else (WebSockets included):
 > <a id="shared-computers"></a>**Every user of this computer counts as this computer.** Loopback
 > connections are not tied to an OS user: on a machine where other people have an account (a
 > shared server, a lab machine), any of them can open `http://127.0.0.1:7683/` and control
-> your agents. wherdr keeps loopback open so you can always reach it on your own machine; on a
-> shared machine, **create a passkey**: it then locks loopback too.
+> your agents. wherdr keeps loopback open so you can always reach it on your own machine. On a
+> machine others log in to, the optional passkey locks loopback too.
 
 > [!IMPORTANT]
 > **A relay on this computer counts as this computer.** A reverse proxy or TCP forward you run

@@ -59,14 +59,14 @@ there.
 Settings → **Enable notifications**. **On the computer:** use the same address in a browser; the
 desktop layout can replace the Herdr terminal client for daily work.
 
-**5. Passkey lock** (recommended over HTTPS): Settings → Security → **Enable passkey lock**. The
+**5. Passkey lock** (optional): Settings → Security → **Enable passkey lock**. The
 first passkey asks for a bootstrap token, printed in the server log (`~/wherdr/wherdr.log`,
 **L** in the wherdr panel); it changes on each restart and is only needed for that first passkey. Add a passkey on each of
-your devices after that (see [New device](security.md#new-device)). Without one, each of your own
-devices, and anyone who uses this computer (other OS users included, see
-[Shared computers](security.md#shared-computers)), can control your agents. Devices of other
-people on your tailnet are refused; with a passkey they reach the lock screen. Set one up as
-soon as you use the HTTPS address, and always on a computer other people log in to.
+your devices after that (see [New device](security.md#new-device)). Without one, wherdr
+answers this computer and your own tailnet devices; devices of other people on your tailnet are
+always refused (with a passkey, they reach the lock screen). A passkey adds an automatic lock on
+each device if you want one, for example on a computer other people log in to (see
+[Shared computers](security.md#shared-computers)).
 
 **6. More machines** (optional): register your other computers in Herdr over SSH
 (`herdr machine add`, see [Several machines (SSH)](machines.md#several-machines-ssh)). Their agents show
