@@ -376,8 +376,12 @@ watch(pageVisible, (v) => { if (v) loadChat() })
 // Invalidate the loader so a read still in flight (possibly black-holed,
 // holding the one-at-a-time lock) drops its reply, and re-read the tail at
 // once rather than waiting out the poll interval.
-watch(() => eventsOpen.value && herdrState.value.ok && !netDown.value && !offlineView.value,
-  (ok) => { if (ok) { tailLoader.invalidate(); loadChat() } })
+// The counter, not the eventsOpen boolean: reconnectEvents() swaps a zombie
+// socket with onclose = null, so the boolean can stay true through the
+// replacement and a watch on it would never fire.
+watch(eventsGen, () => {
+  if (herdrState.value.ok && !netDown.value && !offlineView.value) { tailLoader.invalidate(); loadChat() }
+})
 
 // ------------------------------------------------------------ rendu
 // Short tool nouns: written as pairs because "Read" or "Search" mean something else elsewhere.
