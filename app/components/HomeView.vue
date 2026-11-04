@@ -9,7 +9,6 @@
 // a status (plain shells) list as Ready.
 import type { MachineInfo, Pane } from '#shared/types'
 import { type ReadySort, type Row, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
-import { spaceTitle } from '#shared/displayTitles'
 import { coreRowCounts } from '#shared/coreState'
 import { claudeApiShown, claudeSuggestion, machineQuotaRows, quotaRows, tabQuotaRows } from '~/utils/quotas'
 import { longPress } from '~/utils/longPress'
