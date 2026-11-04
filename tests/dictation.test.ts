@@ -5,7 +5,7 @@ import { effectScope } from 'vue'
 import { createFakeEngine } from './fakeDictationEngine'
 import type { FakeEngine } from './fakeDictationEngine'
 import { ENGINES, disposeEngines } from '../app/utils/dictation/registry'
-import { MAX_TAKE_MS, useDictation } from '../app/composables/useDictation'
+import { MAX_TAKE_MS, TRANSCRIBE_TIMEOUT_MS, useDictation } from '../app/composables/useDictation'
 
 const RATE = 48000
 
@@ -176,6 +176,33 @@ describe('useDictation', () => {
     await vi.advanceTimersByTimeAsync(10) // the engine answers
     expect(texts).toEqual(['hello pane'])
     expect(d.status.value).toBe('idle')
+  })
+
+  it('gives up after 90 s without news, but not while partial results keep coming', async () => {
+    vi.useFakeTimers()
+    // Partial results at 60 s and 120 s, the text at 170 s.
+    engine.transcribe = (_take, opts) => new Promise((resolve) => {
+      setTimeout(() => opts.onPartial?.('a'), 60_000)
+      setTimeout(() => opts.onPartial?.('a b'), 120_000)
+      setTimeout(() => resolve({ text: 'a b c', ms: 170_000 }), 170_000)
+    })
+    const slow = setup()
+    await slow.start()
+    FakeAudioContext.last.feed()
+    void slow.d.stop()
+    await vi.advanceTimersByTimeAsync(170_000)
+    expect(slow.texts).toEqual(['a b c'])
+    slow.d.dispose()
+
+    engine = createFakeEngine({ delayMs: TRANSCRIBE_TIMEOUT_MS + 1000 })
+    disposeEngines()
+    const stuck = setup()
+    await stuck.start()
+    FakeAudioContext.last.feed()
+    void stuck.d.stop()
+    await vi.advanceTimersByTimeAsync(TRANSCRIBE_TIMEOUT_MS)
+    expect(stuck.d.error.value).toEqual({ reason: 'timeout' })
+    expect(stuck.texts).toEqual([])
   })
 
   it('reports an engine that is not ready and drops the mic', async () => {

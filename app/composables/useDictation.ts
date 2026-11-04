@@ -47,7 +47,8 @@ export interface Dictation {
 // A forgotten take still ends somewhere on a phone.
 export const MAX_TAKE_MS = 120_000
 // A big model decodes slowly on a phone, but a wedged one must not leave the
-// composer on "Recognizing…" forever.
+// composer on "Recognizing…" forever. Counted from the stop, or from the last
+// partial result (a long take decoded piece by piece keeps going).
 export const TRANSCRIBE_TIMEOUT_MS = 90_000
 const LEVELS_MAX = 40
 const BUFFER = 4096
@@ -212,10 +213,14 @@ async function stop(me: Facade) {
     if (current.value !== take) return
     const pcm = concatPcm(take.chunks, take.samples)
     take.chunks = []
-    timer = setTimeout(() => { timedOut = true; take.abort.abort() }, TRANSCRIBE_TIMEOUT_MS)
+    const arm = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => { timedOut = true; take.abort.abort() }, TRANSCRIBE_TIMEOUT_MS)
+    }
+    arm()
     const { text } = await engine.transcribe(
       { pcm, seconds: pcm.length / TAKE_RATE },
-      { language: take.opts.language, terms: take.opts.terms ?? [], signal: take.abort.signal },
+      { language: take.opts.language, terms: take.opts.terms ?? [], signal: take.abort.signal, onPartial: arm },
     )
     // Cancelled meanwhile (an engine that ignores its signal): drop the text.
     if (current.value !== take) return

@@ -62,6 +62,21 @@ describe('the on-device engine', () => {
     expect(FakeWorker.made[0]!.terminated).toBe(true)
   })
 
+  it('decodes a long take piece by piece, with the text so far after each', async () => {
+    const engine = make()
+    const partial: string[] = []
+    const abort = new AbortController()
+    const long = { pcm: new Float32Array(TAKE_RATE * 45).fill(0.5), seconds: 45 }
+    expect(await engine.transcribe(long, { terms: [], signal: abort.signal, onPartial: t => partial.push(t) }))
+      .toEqual({ text: 'bonjour bonjour bonjour', ms: 21 })
+    expect(partial).toEqual(['bonjour', 'bonjour bonjour', 'bonjour bonjour bonjour'])
+    // Cancelled during the first piece: the next ones are never sent.
+    const run = engine.transcribe(long, { terms: [], signal: abort.signal, onPartial: () => abort.abort() })
+    expect(isAbortError(await run.catch(e => e))).toBe(true)
+    await new Promise(r => setTimeout(r, 10))
+    expect(FakeWorker.made[0]!.got.filter(m => m.t === 'decode')).toHaveLength(4)
+  })
+
   it('fails the load and starts a fresh worker on the next press', async () => {
     const engine = make({ loadError: 'out of memory' })
     await expect(engine.prepare()).rejects.toThrow('out of memory')

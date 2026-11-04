@@ -1,6 +1,7 @@
 // The on-device engine: sherpa-onnx WASM in a worker (public/workers/
 // dictation-worker.js), on the CPU. The model files come from the wherdr
 // server (/models/**) once, then from Cache Storage. Nothing leaves the device.
+import { splitTake } from './audio'
 import { abortError } from './engine'
 import type { DictationEngine, PrepareProgress, Readiness } from './engine'
 import { DEVICE_CACHE, DEVICE_MODEL_KEY, DEVICE_RUNTIME, deviceModel } from './deviceModels'
@@ -99,6 +100,20 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
     return hits.every(Boolean)
   }
 
+  // One piece to the worker; a copy, so the caller keeps its take. A cancelled
+  // piece's answer is dropped when it comes (a decode cannot be stopped).
+  function decode(pcm: Float32Array, signal: AbortSignal): Promise<{ text: string, ms: number }> {
+    if (!worker) return Promise.reject(abortError()) // disposed meanwhile
+    const id = ++nextId
+    const result = new Promise<{ text: string, ms: number }>((resolve, reject) => {
+      pending.set(id, { resolve, reject })
+    })
+    const copy = pcm.slice()
+    worker.postMessage({ t: 'decode', id, pcm: copy.buffer }, [copy.buffer])
+    signal.addEventListener('abort', () => pending.delete(id), { once: true })
+    return result
+  }
+
   function prepare(progress?: (p: PrepareProgress) => void): Promise<void> {
     onProgress = progress
     if (!loading) {
@@ -129,6 +144,8 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
 
     prepare,
 
+    // A long take is decoded piece by piece (splitTake): each piece reports
+    // the text so far, and a cancel stops before the next piece.
     async transcribe(take, opts) {
       if (opts.signal.aborted) throw abortError()
       const aborted = new Promise<never>((_, reject) => {
@@ -136,16 +153,16 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
       })
       aborted.catch(() => {})
       await Promise.race([prepare(onProgress), aborted])
-      const id = ++nextId
-      const result = new Promise<{ text: string, ms: number }>((resolve, reject) => {
-        pending.set(id, { resolve, reject })
-      })
-      // A copy goes to the worker: the caller keeps its take.
-      const pcm = take.pcm.slice()
-      worker!.postMessage({ t: 'decode', id, pcm: pcm.buffer }, [pcm.buffer])
-      // Cancelled: the answer is dropped when it comes (a decode cannot be stopped).
-      opts.signal.addEventListener('abort', () => pending.delete(id), { once: true })
-      return Promise.race([result, aborted])
+      let text = ''
+      let ms = 0
+      for (const piece of splitTake(take.pcm)) {
+        if (opts.signal.aborted) throw abortError()
+        const r = await Promise.race([decode(piece, opts.signal), aborted])
+        text = [text, r.text].filter(Boolean).join(' ')
+        ms += r.ms
+        opts.onPartial?.(text)
+      }
+      return { text, ms }
     },
 
     dispose() {
