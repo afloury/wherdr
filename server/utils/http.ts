@@ -92,13 +92,17 @@ export function defineApi<T>(
     const url = getRequestURL(event)
     try {
       let body: Json = {}
+      // Every write (POST, DELETE…) comes from the app's own origin; reads
+      // (GET, HEAD) change nothing.
+      const write = event.method !== 'GET' && event.method !== 'HEAD'
+      if (write && !sameOrigin(getRequestHeaders(event))) return sendError(event, 403, { error: 'Origin refused' })
       if (event.method === 'POST') {
         const headers = getRequestHeaders(event)
         const ctype = String(headers['content-type'] || '')
         // Non-"simple" types (JSON, image/*): another site cannot send them
         // without a CORS preflight, which we never satisfy.
         const typeOk = opts.raw ? opts.raw.test(ctype) : ctype.startsWith('application/json')
-        if (!sameOrigin(headers) || !typeOk) return sendError(event, 403, { error: 'Origin refused' })
+        if (!typeOk) return sendError(event, 403, { error: 'Origin refused' })
         const max = opts.raw ? opts.max || 20 * 1024 * 1024 : BODY_MAX
         const tooLarge = opts.raw ? opts.tooLarge || 'Image too large (20 MB max)' : 'Request too large'
         const raw = await readBodyLimited(event.node.req, max)

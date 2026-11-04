@@ -117,3 +117,24 @@ describe('dictation relay', () => {
     noKey(logs)
   })
 })
+
+describe('dictation limits', () => {
+  it('relays at most 2 takes at once, then 10 per client per minute', async () => {
+    const pending: (() => void)[] = []
+    const fetch = vi.fn(() => new Promise<Response>(r => pending.push(() => r(new Response('{"text":"ok"}')))))
+    const d = createDictation({ dataDir: dir, envKey: KEY, fetch })
+    const a = d.transcribe(wav, {}, undefined, 'a')
+    const b = d.transcribe(wav, {}, undefined, 'b')
+    await expect(d.transcribe(wav, {}, undefined, 'c')).rejects.toMatchObject({ code: 'rate_limited' })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    pending.splice(0).forEach(f => f())
+    await Promise.all([a, b])
+    // A failed take frees its place too.
+    fetch.mockRejectedValueOnce(new Error('down'))
+    await expect(d.transcribe(wav, {}, undefined, 'a')).rejects.toMatchObject({ code: 'upstream' })
+    fetch.mockImplementation(async () => new Response('{"text":"ok"}'))
+    for (let i = 0; i < 8; i++) await d.transcribe(wav, {}, undefined, 'a')
+    await expect(d.transcribe(wav, {}, undefined, 'a')).rejects.toMatchObject({ code: 'rate_limited' })
+    await expect(d.transcribe(wav, {}, undefined, 'b')).resolves.toMatchObject({ text: 'ok' })
+  })
+})

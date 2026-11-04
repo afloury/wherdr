@@ -300,9 +300,12 @@ does not speak shows "—"; a missing figure is left out of the file, never set 
 
 ### Content Security Policy
 
-`server/utils/csp.ts` adds `'wasm-unsafe-eval'` to `script-src`. It lets the dictation worker
+Only the worker's own response (`/workers/dictation-worker.js`, a route rule in
+`nuxt.config.ts`) carries `'wasm-unsafe-eval'` in `script-src` (`CSP_DICTATION_WORKER` in
+`server/utils/csp.ts`): a worker follows its script's policy, not the page's. It lets the worker
 compile its WebAssembly runtime (sherpa-onnx, onnxruntime-web) served from `/models/runtime/`.
-It allows compiling WebAssembly only, never `eval()` of JavaScript: `'unsafe-eval'` stays out.
+The page itself cannot compile WebAssembly, and `eval()` of JavaScript is never allowed:
+`'unsafe-eval'` stays out.
 Runtimes and workers load from `'self'` only (`worker-src 'self' blob:`, `connect-src 'self'`):
 no CDN at run time. A runtime that needs anything more must say why in its pull request.
 

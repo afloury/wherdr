@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto'
 import type { AddressInfo } from 'node:net'
 import crossws from 'crossws/adapters/node'
 import WebSocket from 'ws'
-import { applyWsCompression, compressionAllowed, eventSendOptions, EVENTS_DEFLATE } from '../server/utils/wsCompression'
+import { applyWsCompression, compressionAllowed, eventSendOptions, EVENTS_DEFLATE, WS_MAX_PAYLOAD } from '../server/utils/wsCompression'
 
 describe('compressionAllowed', () => {
   it.each(['/ws/events', '/ws/events?x=1', '/ws/events/'])('allows %s', u => expect(compressionAllowed(u)).toBe(true))
@@ -161,5 +161,32 @@ describe('permessage-deflate', () => {
     const ws = new WebSocket(`ws://127.0.0.1:${(server.address() as AddressInfo).port}/ws/events`)
     const status = await new Promise(r => ws.on('unexpected-response', (_req, res) => r(res.statusCode)))
     expect(status).toBe(403)
+  })
+})
+
+describe('maxPayload', () => {
+  it('closes on a small compressed frame that inflates past 256 KB, before the route reads it', async () => {
+    let received = 0
+    const options = applyWsCompression({ hooks: { message: () => { received++ } } })
+    expect(options.serverOptions?.maxPayload).toBe(WS_MAX_PAYLOAD)
+    const { handleUpgrade } = crossws(options as Parameters<typeof crossws>[0])
+    const server = http.createServer()
+    server.on('upgrade', handleUpgrade)
+    servers.push(server)
+    await new Promise<void>(r => server.listen(0, '127.0.0.1', r))
+    const url = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/ws/events`
+    const code = await new Promise<number>((resolve, reject) => {
+      const ws = new WebSocket(url, { perMessageDeflate: { threshold: 0 } })
+      ws.on('open', () => {
+        // 4 MB of zeros: a few KB on the wire.
+        ws.send(Buffer.alloc(4 * 1024 * 1024), { compress: true })
+      })
+      ws.on('close', c => resolve(c))
+      ws.on('error', () => { /* the close follows */ })
+      setTimeout(() => reject(new Error('no close')), 5000)
+    })
+    // 1009: message too big.
+    expect(code).toBe(1009)
+    expect(received).toBe(0)
   })
 })
