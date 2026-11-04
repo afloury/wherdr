@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DICTATION_MAX, OPENROUTER_URL, createDictation } from '../server/utils/dictation'
 
-const KEY = 'sk-or-v1-0123456789abcdef3f2a'
+const KEY = 'sk-or-test-key-0000'
 // A WAV header and 0.1 s of 16 kHz silence: all the relay checks is RIFF/WAVE.
 const wav = Buffer.concat([Buffer.from('RIFF\0\0\0\0WAVE', 'latin1'), Buffer.alloc(3200)])
 let dir: string
@@ -25,7 +25,7 @@ describe('dictation key store', () => {
     const d = createDictation({ dataDir: dir })
     expect(d.status()).toEqual({ set: false })
     const saved = d.saveKey(` ${KEY} `)
-    expect(saved).toEqual({ set: true, last4: '3f2a' })
+    expect(saved).toEqual({ set: true, last4: '0000' })
     noKey(saved)
     const file = path.join(dir, 'openrouter.json')
     expect(fs.statSync(file).mode & 0o777).toBe(0o600)
@@ -35,10 +35,10 @@ describe('dictation key store', () => {
   })
 
   it('refuses what is not a key, and the environment key wins', () => {
-    const d = createDictation({ dataDir: dir, envKey: 'sk-or-v1-fromtheenvironment9999' })
+    const d = createDictation({ dataDir: dir, envKey: 'sk-or-test-key-1111' })
     expect(() => d.saveKey('short')).toThrow('does not look like')
     expect(() => d.saveKey(42)).toThrow()
-    expect(d.status()).toEqual({ set: true, last4: '9999', env: true })
+    expect(d.status()).toEqual({ set: true, last4: '1111', env: true })
   })
 })
 

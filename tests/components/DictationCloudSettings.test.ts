@@ -6,7 +6,7 @@ import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import DictationCloudSettings from '~/components/DictationCloudSettings.vue'
 import { CLOUD_OPTIONS_KEY } from '~/utils/dictation/cloudOptions'
 
-const KEY = 'sk-or-v1-0123456789abcdef3f2a'
+const KEY = 'sk-or-test-key-0000'
 let saved = ''
 const status = () => saved ? { set: true, last4: saved.slice(-4) } : { set: false }
 registerEndpoint('/api/dictation/status', () => status())
@@ -27,7 +27,7 @@ describe('DictationCloudSettings', () => {
     await w.find('input[type="password"]').setValue(KEY)
     await w.find('form').trigger('submit')
     await vi.waitFor(() => expect(saved).toBe(KEY))
-    await vi.waitFor(() => expect(w.find('[data-testid="dictation-key-mask"]').text()).toBe('••••••••3f2a'))
+    await vi.waitFor(() => expect(w.find('[data-testid="dictation-key-mask"]').text()).toBe('••••••••0000'))
     expect(w.html()).not.toContain(KEY)
     expect(w.find('[data-testid="dictation-test"]').attributes('disabled')).toBeUndefined()
     await w.findAll('button').find(b => b.text() === 'Remove')!.trigger('click')
