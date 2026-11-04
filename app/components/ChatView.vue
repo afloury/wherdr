@@ -13,7 +13,7 @@ import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
-import { CHAT_READ_MS, createTailLoader, nextTail, restartsTail, tailQuery } from '~/utils/chatTail'
+import { CHAT_READ_MS, createTailLoader, nextTail, reconcileTail, restartsTail, sameQueue, tailQuery } from '~/utils/chatTail'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -290,10 +290,21 @@ async function loadStep(current: () => boolean): Promise<boolean> {
       return true
     }
     // Incremental reply that does not fit our list: ask for it in full.
-    const tail = nextTail(chat.value.tail, r)
+    let tail = nextTail(chat.value.tail, r)
     if (!tail) {
       chat.value = { ...chat.value, token: '' }
       return true
+    }
+    tail = reconcileTail(chat.value.tail, tail)
+    if (tail === chat.value.tail && (r.file || null) === chat.value.file
+      && chat.value.tailStart !== null && sameQueue(chat.value.queue, r.queue || [])) {
+      // Nothing the list shows changed: the rendered blocks stay as they are
+      // (no apply(), no new items or Markdown, no re-pin to the bottom) and
+      // only the token advances — in place, `chat` being a shallowRef: this
+      // recomputes nothing; the token is read only by tailQuery() next time.
+      chat.value.token = r.token || ''
+      away = false
+      return false
     }
     await apply(() => {
       const c = { ...chat.value }
@@ -361,6 +372,12 @@ onMounted(() => {
 })
 onUnmounted(() => clearInterval(timer))
 watch(pageVisible, (v) => { if (v) loadChat() })
+// Live events socket + a fresh state accepted: the server answers again.
+// Invalidate the loader so a read still in flight (possibly black-holed,
+// holding the one-at-a-time lock) drops its reply, and re-read the tail at
+// once rather than waiting out the poll interval.
+watch(() => eventsOpen.value && herdrState.value.ok && !netDown.value && !offlineView.value,
+  (ok) => { if (ok) { tailLoader.invalidate(); loadChat() } })
 
 // ------------------------------------------------------------ rendu
 // Short tool nouns: written as pairs because "Read" or "Search" mean something else elsewhere.
