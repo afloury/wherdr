@@ -54,7 +54,7 @@ describe('step engine, vibe', () => {
     ])
     expect(r.state.yourTurn).toEqual({ reason: 'action', badge: 'land: conflict in app.vue' })
     const again = onEvent(r.plan, r.state, { kind: 'user' }, 7 * MIN)
-    expect(again.effects).toEqual([{ kind: 'action', step: 'land', action: { kind: 'git.land', target: 'dev' } }])
+    expect(again.effects).toEqual([{ kind: 'action', step: 'land', action: { kind: 'git.land', target: 'dev' }, attempt: 2 }])
     expect(again.state.yourTurn).toBeUndefined()
   })
 })
@@ -86,7 +86,7 @@ describe('step engine, company flow', () => {
       [60, { kind: 'user' }],
       [61, { kind: 'action-result', ok: false, error: 'commit not in develop' }],
     ])
-    expect(r.effects.at(-1)).toEqual({ kind: 'action', step: 'merge', action: { kind: 'git.verify-merged', target: 'develop' } })
+    expect(r.effects.at(-1)).toEqual({ kind: 'action', step: 'merge', action: { kind: 'git.verify-merged', target: 'develop' }, attempt: 1 })
     expect(currentStep(r.plan, r.state)!.id).toBe('merge')
     expect(r.state.yourTurn).toEqual({ reason: 'action', badge: 'Merge the PR: commit not in develop' })
   })

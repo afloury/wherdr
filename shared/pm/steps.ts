@@ -20,6 +20,7 @@ export interface StepState {
   yourTurn?: YourTurn
   proofs: Record<string, Partial<Record<Evidence, string>>> // per step id
   rounds: Record<string, number> // send-backs per verdict step id
+  tries?: Record<string, number> // engine actions started per step id: one receipt each
   done?: boolean
 }
 
@@ -28,12 +29,13 @@ export type StepEvent =
   | { kind: 'report', from: Holder, evidence?: Partial<Record<Evidence, string>> }
   | { kind: 'verdict', from: Holder, pass: boolean }
   | { kind: 'user' } // the step's button, or "it is merged" said by the user
-  | { kind: 'action-result', ok: boolean, error?: string }
+  // toAgent: the worker has to fix it (a conflict): the task goes back to its step.
+  | { kind: 'action-result', ok: boolean, error?: string, evidence?: Partial<Record<Evidence, string>>, toAgent?: boolean }
   | { kind: 'tick' }
 
 export type Effect =
   | { kind: 'instruct', step: string, holder: Holder, text: string }
-  | { kind: 'action', step: string, action: StepAction }
+  | { kind: 'action', step: string, action: StepAction, attempt: number }
   | { kind: 'done' }
 
 export interface StepResult { state: StepState, effects: Effect[], refused?: string }
@@ -61,6 +63,12 @@ export const initialState = (): StepState => ({ at: 0, started: false, proofs: {
 export const currentStep = (plan: PlannedStep[], s: StepState): PlannedStep | undefined => plan[s.at]
 const hasAgent = (s: Step) => !!s.holder && s.holder !== 'none'
 
+function act(s: StepState, step: PlannedStep, effects: Effect[]): StepState {
+  const attempt = (s.tries?.[step.id] ?? 0) + 1
+  effects.push({ kind: 'action', step: step.id, action: step.action!, attempt })
+  return { ...s, acting: true, yourTurn: undefined, tries: { ...s.tries, [step.id]: attempt } }
+}
+
 // Enters step i: a step with no end is passed through (the last one is done).
 function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, effects: Effect[]): StepState {
   const step = plan[i]
@@ -70,9 +78,8 @@ function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, eff
   if (step.timeout) s.deadline = now + durationMs(step.timeout)
   if (step.recheck) s.recheckAt = now + durationMs(step.recheck)
   if (hasAgent(step)) effects.push({ kind: 'instruct', step: step.id, holder: step.holder!, text: step.text })
-  if (step.ends === 'action') { s.acting = true; effects.push({ kind: 'action', step: step.id, action: step.action! }) }
   if (step.ends === 'user') s.yourTurn = { reason: 'user', badge: step.badge || step.userLabel || step.id }
-  return s
+  return step.ends === 'action' ? act(s, step, effects) : s
 }
 
 export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, now: number): StepResult {
@@ -119,11 +126,18 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       if (step.ends !== 'user' && !retry) return refuse(`Step "${step.id}" does not wait for you`)
       if (state.acting) return refuse('Already checking')
       if (!step.action) return next()
-      return { state: { ...state, acting: true, yourTurn: undefined }, effects: [{ kind: 'action', step: step.id, action: step.action }] }
+      return { state: act(state, step, effects), effects }
     }
     case 'action-result': {
       if (!state.acting) return refuse('No action is running')
-      if (ev.ok) return next()
+      const proofs = ev.evidence ? { ...state.proofs, [step.id]: { ...state.proofs[step.id], ...ev.evidence } } : state.proofs
+      if (ev.ok) return { state: enter(plan, { ...state, proofs }, state.at + 1, now, effects), effects }
+      const back = plan.slice(0, state.at).findLastIndex(p => p.holder === 'worker')
+      if (ev.toAgent && back >= 0) {
+        const s = enter(plan, { ...state, proofs }, back, now, effects)
+        effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: `${step.id}: ${ev.error}. Fix it, commit, then say you are done.` })
+        return { state: s, effects }
+      }
       // The step stays open; the badge says what went wrong.
       const badge = `${step.badge || step.userLabel || step.id}: ${ev.error || `${step.action!.kind} failed`}`
       return { state: { ...state, acting: undefined, yourTurn: { reason: 'action', badge } }, effects }
