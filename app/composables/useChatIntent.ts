@@ -1,6 +1,6 @@
 import { effectScope } from 'vue'
 import type { Pane, ChatResponse } from '#shared/types'
-import { chatIntentKey, createChatIntentCache } from '~/utils/chatIntent'
+import { chatIntentKey, createChatIntentCache, withDeadline } from '~/utils/chatIntent'
 import { CHAT_READ_MS, tailQuery } from '~/utils/chatTail'
 
 // The speculative read shares the tail read's deadline (CHAT_READ_MS): the
@@ -8,7 +8,7 @@ import { CHAT_READ_MS, tailQuery } from '~/utils/chatTail'
 // ChatView's one-at-a-time loader behind it.
 const cache = createChatIntentCache((pane, signal) => api<ChatResponse>(
   `/api/chat?${tailQuery(pane, { token: '', tailStart: null, tail: [] })}`, undefined,
-  AbortSignal.any([signal, AbortSignal.timeout(CHAT_READ_MS)]),
+  withDeadline(signal, CHAT_READ_MS),
 ))
 let watching = false
 const allowed = (pane: Pane) => !locked.value && !netDown.value && !offlineView.value
