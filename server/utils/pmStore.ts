@@ -1,6 +1,6 @@
 // Project management storage, in DATA_DIR/projects/ (one engine, on the wherdr
 // host): pm.json (the on/off switch and this install's id), projects.json,
-// templates/<id>.json, tasks/<KEY>-<n>.json, runs/<id>.json.
+// templates/<id>.json, tasks/<KEY>-<n>.json, runs/<id>.json, receipts/<id>.json.
 // Atomic writes (temp file + rename), one at a time. Switched off, every
 // write is refused except turning it back on.
 import fs from 'node:fs/promises'
@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto'
 import { cleanProjectInput, isTemplateId, type PmOverview, type Project, type TemplateInfo } from '../../shared/pm/project'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import type { Run, Task } from '../../shared/pm/run'
+import type { Receipt } from '../../shared/pm/actions'
 import { HerdrError } from './herdr'
 import { DATA_DIR } from './env'
 
@@ -43,7 +44,7 @@ const badInput = (errors: { path: string, message: string }[]) =>
 export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   const files = {
     pm: path.join(dir, 'pm.json'), projects: path.join(dir, 'projects.json'), templates: path.join(dir, 'templates'),
-    tasks: path.join(dir, 'tasks'), runs: path.join(dir, 'runs'),
+    tasks: path.join(dir, 'tasks'), runs: path.join(dir, 'runs'), receipts: path.join(dir, 'receipts'),
   }
   let queue: Promise<unknown> = Promise.resolve()
   const serial = <T>(fn: () => Promise<T>): Promise<T> => {
@@ -108,6 +109,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     runs: () => readAll<Run>(files.runs),
     saveTask: (t: Task) => write(async () => { await writeJson(path.join(files.tasks, `${t.id}.json`), t); return t }),
     saveRun: (r: Run) => write(() => writeJson(path.join(files.runs, `${r.id}.json`), r)),
+    receipt: (id: string) => readJson<Receipt>(path.join(files.receipts, `${id}.json`)),
+    saveReceipt: (r: Receipt) => write(() => writeJson(path.join(files.receipts, `${r.id}.json`), r)),
 
     // { project, title, description?, type }: a new task, to do.
     addTask: (raw: unknown) => write(async () => {

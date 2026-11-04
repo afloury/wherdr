@@ -19,12 +19,13 @@ else git -C "$repo" worktree add -b "$branch" "$dir" \${base:+"$base"} 2>&1; fi`
 const WRITE_SCRIPT = 'mkdir -p "$(dirname "$1")" && cat > "$1"'
 const NOT_FOUND = '127' // the shell found no such program: starting again cannot help
 
-async function exec(deps: CoreAdminDeps, on: string | undefined, script: string, args: string[], input?: string) {
-  const r = await deps.call<{ code: number | null, stdout: string, timed_out?: boolean }>('machine.exec', {
+export async function exec(deps: Pick<CoreAdminDeps, 'call'>, on: string | undefined, script: string, args: string[], input?: string) {
+  const r = await deps.call<{ code: number | null, stdout: string, stderr?: string, timed_out?: boolean }>('machine.exec', {
     argv: ['sh', '-c', script, 'sh', ...args], ...(on ? { on } : {}), timeout: 60,
     ...(input !== undefined ? { input: Buffer.from(input).toString('base64') } : {}),
   }, 70000)
-  return { code: r.timed_out ? null : r.code, out: Buffer.from(r.stdout || '', 'base64').toString('utf8').trim() }
+  const text = (b?: string) => Buffer.from(b || '', 'base64').toString('utf8').trim()
+  return { code: r.timed_out ? null : r.code, out: text(r.stdout), err: text(r.stderr) }
 }
 
 export interface PmLaunchDeps extends CoreAdminDeps { store: PmStore }
