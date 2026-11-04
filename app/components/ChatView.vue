@@ -22,6 +22,7 @@ import { findReplyOrigin, parseReply, type ReplyTarget } from '#shared/replyQuot
 import { messageId, messageOf, messageRef, pointRef, type Reference } from '#shared/reference'
 import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
+import { keepIfSame, keyedMemo, weakMemo } from '~/utils/keepIfSame'
 import { duplicateImages } from '#shared/imageDupes'
 import { stripPosition } from '#shared/filePaths'
 import { readAloudEngine, stopSpeaking } from '~/composables/useReadAloud'
@@ -450,6 +451,30 @@ const paneId = computed(() => props.pane.id)
 const working = computed(() => !readOnly.value && props.pane.status === 'working')
 const blocked = computed(() => !readOnly.value && props.pane.status === 'blocked')
 const pendingPrompt = computed(() => Boolean(props.pane.pendingPrompt))
+// Read by the template instead of `pane.*`: the conversation sits in one slot,
+// and a read of the pane there re-renders every message on every push.
+const agent = computed(() => props.pane.agent)
+const hasDraft = computed(() => Boolean(props.pane.draft || props.pane.queueSendNow))
+const unsentPane = computed<Pane>(old => (old && old.id === props.pane.id && old.queueSendNow === props.pane.queueSendNow && JSON.stringify(old.draft) === JSON.stringify(props.pane.draft) ? old : props.pane))
+const waitFor = computed(() => waitingOn(props.pane))
+// Same props objects for the messages on each render (none built inline).
+const userParts = weakMemo((b: Block & { k: 'user' }) => [
+  ...b.srcs.map(url => ({ type: 'file' as const, mediaType: 'image/jpeg', url })),
+  ...(b.text || b.files.length ? [{ type: 'text' as const, text: b.text || ' ' }] : []),
+])
+const userUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: 'msg-bubble', header: 'msg-files' }))
+const userRoot = (b: Block & { k: 'user' }) => (b.text.trim() || b.files.length ? 'msg msg-user' : 'msg msg-user msg-no-text')
+const textParts = weakMemo((b: { text: string }) => [{ type: 'text' as const, text: b.text }])
+const aiUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: 'md' }))
+const pendingUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: root.includes(' queued') ? 'msg-bubble queued' : 'msg-bubble', header: 'msg-files' }))
+const firstParts = keyedMemo((text: string) => [{ type: 'text' as const, text }])
+// omp rows always carry their parsed call (isOmpGroup).
+type OmpToolItem = ChatItem & { omp: OmpToolView }
+const MSGS_UI = { root: 'chat-msgs', viewport: 'hw-jump-vp', autoScroll: 'hw-jump' }
+const FIRST_UI = { root: 'msg msg-user msg-pending', container: 'msg-c', content: 'msg-bubble' }
+const THINKING_UI = { root: 'omp-thinking', trigger: 'omp-thinking-head', label: 'omp-thinking-label', content: 'omp-thinking-content', body: 'omp-thinking-body' }
+const TOOL_UI = { root: 'tool', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading' }
+const TOOL_GROUP_UI = { root: 'tool group', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading', body: 'tool-body', trailingIcon: 'tool-chev' }
 
 // Re-read of the conversation: every 1.5 s while the agent works or waits on
 // the user, every few seconds when it rests. A status or preview change in the
@@ -468,7 +493,9 @@ function schedulePoll() {
 onMounted(schedulePoll)
 onUnmounted(() => { pollStopped = true; clearTimeout(pollTimer) })
 watch(pollDelay, schedulePoll)
-watch(() => [props.pane.status, props.pane.preview], () => { pollNow(); schedulePoll() })
+// Two sources, compared one by one: a getter returning a new array would fire
+// on every push (a new pane object), not only when one of them changes.
+watch([() => props.pane.status, () => props.pane.preview], () => { pollNow(); schedulePoll() })
 
 const blocks = computed<Block[]>(() => {
   const out: Block[] = []
@@ -934,20 +961,21 @@ function waitingOn(p: Pane): 'stopped' | 'question' | 'working' | 'sending' {
   if (p.prompt || p.status === 'blocked') return 'question'
   return p.status === 'working' ? 'working' : 'sending'
 }
-const screen = computed<ClaudeScreen | null>(() => {
+const screen = computed<ClaudeScreen | null>(old => keepIfSame(old, liveScreen()))
+function liveScreen(): ClaudeScreen | null {
   if (readOnly.value) return null
   const p = props.pane
   if (p.agent === 'omp') return p.ompShell ? { shell: p.ompShell, sent: null, queued: [] } : null
   return p.agent === 'claude' && p.status === 'working' ? p.claudeScreen || null : null
-})
+}
 const liveShell = computed(() => (screen.value && screen.value.shell) || null)
-const queuedList = computed(() => {
-  const p = props.pane
+const queuedList = computed<ReturnType<typeof queuedNow>>(old => keepIfSame(old, queuedNow()))
+function queuedNow() {
   const mine = withOutbox([], readOnly.value ? [] : props.localQueued)
-  const memory = rememberSent(p.id, mine)
+  const memory = rememberSent(paneId.value, mine)
   const replies = blocks.value.filter(b => b.k === 'assistant')
   // Agent idle, nothing holding it: Claude's own queue is empty by now.
-  const idle = waitingOn(p) === 'sending'
+  const idle = waitFor.value === 'sending'
   return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle }).map((q) => {
     const lines = q.raw.split('\n')
     const text = lines.filter(l => !isUploadLine(l) && !isAttachmentLine(l)).join('\n').trim()
@@ -962,7 +990,7 @@ const queuedList = computed(() => {
       origin: parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null,
     }
   })
-})
+}
 // Same parts as a message in the conversation: thumbnails above the bubble,
 // so nothing moves when it lands.
 const pendingParts = (q: { srcs: string[], missing: number, body: string, files: unknown[] }) => [
@@ -991,7 +1019,7 @@ async function retryQueued(q: { id: string }) {
 }
 function queuedLabel(q: { state: string | null }) {
   if (q.state === 'sending') return t('Queued · ') + t('sending…')
-  switch (waitingOn(props.pane)) {
+  switch (waitFor.value) {
     case 'stopped': return t('Queued · ') + t('agent stopped')
     case 'question': return t('Queued · ') + t('after you answer the question')
     case 'working': return t('Queued')
@@ -1005,16 +1033,20 @@ watch(() => props.pane.draft?.text, () => nextTick(() => scrollToEnd(false)))
 // No conversation yet but a waiting screen (key legend):
 // the agent is waiting for an action. Recognized screen: details and buttons in the
 // "Your turn" panel at the bottom; otherwise preview of the last lines, to do in the terminal.
-const waiting = computed(() => {
+const waiting = computed<ReturnType<typeof waitingNow>>(old => keepIfSame(old, waitingNow()))
+function waitingNow() {
   const p = props.pane
   if (p.menu || p.interaction === 'terminal' || !unavailable.value || unavailable.value === 'unsupported' || !p.screen || p.status === 'working' || readOnly.value) return null
   const who = kindLabel(p.agent)
   return knownScreen(p)
     ? { text: tl(`${who} is waiting for your answer, below or in the terminal.`, `${who} attend ta réponse, ci-dessous ou dans le terminal.`), lines: [] }
     : { text: tl(`${who} is waiting for an action in the terminal.`, `${who} attend une action dans le terminal.`), lines: p.screen.lines }
-})
+}
 
-const status = computed(() => {
+const status = computed<ReturnType<typeof statusNow>>(old => keepIfSame(old, statusNow()))
+// Read by ChatStatusLine itself (its own render), not by the conversation's slot.
+const readStatus = () => status.value
+function statusNow() {
   if (readOnly.value) return null
   const p = props.pane
   if (p.pendingPrompt && p.status !== 'working') {
@@ -1034,7 +1066,7 @@ const status = computed(() => {
   if (p.error) return { typing: false, error: true, text: p.error }
   if (p.status === 'blocked' && !p.menu && !waiting.value && !(p.prompt && p.prompt.options) && !knownScreen(p)) return { typing: false, text: t('Waiting for your reply — details in the Terminal tab') }
   return null
-})
+}
 watch(() => props.pane.status, () => nextTick(() => scrollToEnd(false)))
 
 // ------------------------------------------------------------ search
@@ -1254,13 +1286,13 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         :status="working ? 'streaming' : 'ready'" :should-auto-scroll="false"
         :auto-scroll="{ color: 'neutral', variant: 'outline' }"
         auto-scroll-icon="i-lucide-arrow-down"
-        :ui="{ root: 'chat-msgs', viewport: 'hw-jump-vp', autoScroll: 'hw-jump' }"
+        :ui="MSGS_UI"
       >
         <div ref="listEl" class="chat-list" :class="[readOnly ? 'no-reply' : `rs-${replyStyle}`, { asking: asked, skeleton }]" @click="onListClick" @keydown="onListKey">
           <div v-if="unavailable === 'not_found' && firstPrompt" class="msg-user-wrap" data-testid="first-prompt">
             <UChatMessage
-              id="first-prompt" role="user" side="right" variant="soft" :parts="[{ type: 'text', text: firstPrompt }]"
-              :ui="{ root: 'msg msg-user msg-pending', container: 'msg-c', content: 'msg-bubble' }"
+              id="first-prompt" role="user" side="right" variant="soft" :parts="firstParts(firstPrompt)"
+              :ui="FIRST_UI"
             >
               <template #content>
                 <UserText :text="firstPrompt" />
@@ -1293,7 +1325,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
           </div>
           <template v-else>
-            <ChatSkeleton v-if="skeleton" :agent="pane.agent" />
+            <ChatSkeleton v-if="skeleton" :agent="agent" />
             <!-- Blocks above not shown yet: no "Load earlier" before them. -->
             <template v-else-if="hiddenBlocks" />
             <div v-else-if="chat.olderCursor > 0" class="chat-more">
@@ -1306,8 +1338,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <template v-for="b in (skeleton ? [] : visibleBlocks)" :key="b.key">
               <div v-if="b.k === 'day'" class="day-sep"><span>{{ b.label }}</span></div>
 
-              <div v-else-if="b.k === 'who'" class="msg-who" :class="pane.agent || ''">
-                <UIcon :name="agentIcon(pane.agent) || 'i-lucide-bot'" /><span>{{ kindLabel(pane.agent) }}</span>
+              <div v-else-if="b.k === 'who'" class="msg-who" :class="agent || ''">
+                <UIcon :name="agentIcon(agent) || 'i-lucide-bot'" /><span>{{ kindLabel(agent) }}</span>
               </div>
 
 
@@ -1317,8 +1349,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </button>
                 <UChatMessage
                   :id="b.key" role="user" side="right" variant="soft"
-                  :parts="[...b.srcs.map(url => ({ type: 'file' as const, mediaType: 'image/jpeg', url })), ...(b.text || b.files.length ? [{ type: 'text' as const, text: b.text || ' ' }] : [])]"
-                  :ui="{ root: b.text.trim() || b.files.length ? 'msg msg-user' : 'msg msg-user msg-no-text', container: 'msg-c', content: 'msg-bubble', header: 'msg-files' }"
+                  :parts="userParts(b)"
+                  :ui="userUi(userRoot(b))"
                 >
                   <template #files>
                     <MsgThumbs :srcs="b.srcs" :offline="readOnly" />
@@ -1336,8 +1368,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <UChatMessage
                   :id="b.key" role="assistant" side="left" variant="naked"
                   :data-hit-key="b.key"
-                  :parts="[{ type: 'text', text: b.text }]"
-                  :ui="{ root: `msg msg-ai tw-${pane.agent || 'agent'}${canRun ? ' can-run' : ''}${pickKey === b.key ? ' q-picking' : ''}`, container: 'msg-c', content: 'md' }"
+                  :parts="textParts(b)"
+                  :ui="aiUi(`msg msg-ai tw-${agent || 'agent'}${canRun ? ' can-run' : ''}${pickKey === b.key ? ' q-picking' : ''}`)"
                 >
                   <template #content>
                     <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" @done="typingDone(b.id)" />
@@ -1345,20 +1377,20 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </UChatMessage>
                 <ChatQuestionBar
                   v-if="replyStyle === 'list' && !readOnly && typingAt(b.id) === null && (replyTargets(b.html).questions.length || replyTargets(b.html).pick)"
-                  :pane-id="pane.id" :targets="replyTargets(b.html)" :time="b.time" :rid="b.rid" :picking="pickKey === b.key"
+                  :pane-id="paneId" :targets="replyTargets(b.html)" :time="b.time" :rid="b.rid" :picking="pickKey === b.key"
                   @quote="quote" @answer="answer" @hot="(n, on) => hotQuestion(b.key, n, on)" @pick="pickKey = pickKey === b.key ? null : b.key"
                 />
                 <div v-if="!b.endsTurn && (!readOnly || readAloudEngine !== 'off')" class="msg-actions">
                   <button v-if="!readOnly" type="button" class="msg-reply" @click="replyTo(b.key)">
                     <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
                   </button>
-                  <ReadAloudButton :id="`${pane.id}:${b.key}`" :text="b.text" />
+                  <ReadAloudButton :id="`${paneId}:${b.key}`" :text="b.text" />
                 </div>
               </template>
 
               <UChatReasoning v-else-if="b.k === 'thinking'" class="omp-thinking" :text="b.text"
                 :streaming="thoughtTyping(b.id) !== null" :duration="b.ms === undefined ? undefined : Math.max(1, Math.round(b.ms / 1000))"
-                :auto-close-delay="450" :ui="{ root: 'omp-thinking', trigger: 'omp-thinking-head', label: 'omp-thinking-label', content: 'omp-thinking-content', body: 'omp-thinking-body' }">
+                :auto-close-delay="450" :ui="THINKING_UI">
                 <ChatMarkdown class="md" :html="b.html" :typing="thoughtTyping(b.id)" :speed="reducedMotion ? 'off' : 'fast'" :cipher="false" @done="thoughtDone(b.id)" />
               </UChatReasoning>
 
@@ -1431,7 +1463,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <button v-if="b.reply && !readOnly" type="button" class="msg-reply" @click="replyTo(b.reply)">
                   <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
                 </button>
-                <ReadAloudButton v-if="b.copy && b.reply" :id="`${pane.id}:${b.reply}`" :text="b.copy" />
+                <ReadAloudButton v-if="b.copy && b.reply" :id="`${paneId}:${b.reply}`" :text="b.copy" />
                 <span>{{ b.text }}</span>
               </div>
 
@@ -1452,7 +1484,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </button>
                 <MsgThumbs v-for="(srcs, j) in hiddenToolImages(b)" :key="`h${j}`" class="tool-thumbs" :srcs="srcs" :max="TOOL_THUMB_MAX" :offline="readOnly" :dupes="dupeSrcs" />
                 <template v-for="(tool, j) in ompRows(b).rows" :key="`${b.key}:${b.list.length - ompRows(b).rows.length + j}`">
-                  <OmpTool :tool="{ ...tool, omp: tool.omp! }" :live="b.live && tool === b.list[b.list.length - 1]" />
+                  <OmpTool :tool="tool as OmpToolItem" :live="b.live && tool === b.list[b.list.length - 1]" />
                   <MsgThumbs v-if="tool.images" class="tool-thumbs" :srcs="itemImageSrcs(tool)" :max="TOOL_THUMB_MAX" :offline="readOnly" :dupes="dupeSrcs" />
                 </template>
               </div>
@@ -1462,7 +1494,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                     <UChatTool
                       :text="toolLabel(tool)" :suffix="toolText(tool)" :icon="toolIcon(tool)"
                       :loading="b.live && j === b.list.length - 1" :streaming="b.live && j === b.list.length - 1"
-                      :ui="{ root: 'tool', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading' }"
+                      :ui="TOOL_UI"
                       :class="{ err: tool.error }"
                     />
                     <MsgThumbs v-if="tool.images" class="tool-thumbs" :srcs="itemImageSrcs(tool)" :max="TOOL_THUMB_MAX" :offline="readOnly" :dupes="dupeSrcs" />
@@ -1472,7 +1504,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   v-else :open="isOpen(b.key)" :text="`${b.list.length} ${t('actions')}`"
                   :suffix="groupSuffix(b.list[b.list.length - 1]!)"
                   :icon="b.live ? undefined : 'i-lucide-layers'" :loading="b.live" :streaming="b.live" chevron="trailing"
-                  :ui="{ root: 'tool group', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading', body: 'tool-body', trailingIcon: 'tool-chev' }"
+                  :ui="TOOL_GROUP_UI"
                   @update:open="setOpen(b.key, $event)"
                 >
                   <template v-for="(tool, j) in b.list" :key="j">
@@ -1501,7 +1533,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
           </button>
         </Teleport>
-        <div v-if="queuedList.length || liveShell || (!readOnly && (pane.draft || pane.queueSendNow))" class="queued-list">
+        <div v-if="queuedList.length || liveShell || (!readOnly && hasDraft)" class="queued-list">
           <!-- Already sent (visible as sent on screen), not yet in the transcript. -->
           <div v-for="q in queuedList.filter(x => x.phase === 'sent')" :key="q.id" class="msg-user-wrap">
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
@@ -1510,7 +1542,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <UChatMessage
               :id="`q:${q.id}`" role="user" side="right" variant="soft"
               :parts="pendingParts(q)"
-              :ui="{ root: `msg msg-user msg-pending sent${q.body || q.files.length ? '' : ' msg-no-text'}`, container: 'msg-c', content: 'msg-bubble', header: 'msg-files' }"
+              :ui="pendingUi(`msg msg-user msg-pending sent${q.body || q.files.length ? '' : ' msg-no-text'}`)"
             >
               <template #files>
                 <MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span>
@@ -1527,7 +1559,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
           <div v-if="liveShell" class="msg-user-wrap">
             <div class="msg-shell bash running">
               <div class="msg-shell-cmd">
-                <span class="msg-shell-sign" aria-hidden="true">{{ pane.agent !== 'omp' ? '!' : liveShell.python ? '>>>' : '$' }}</span>
+                <span class="msg-shell-sign" aria-hidden="true">{{ agent !== 'omp' ? '!' : liveShell.python ? '>>>' : '$' }}</span>
                 <code>{{ liveShell.command }}</code>
               </div>
               <div v-if="liveShell.lines.length" class="msg-shell-body">
@@ -1547,7 +1579,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <UChatMessage
               :id="`q:${q.id}`" role="user" side="right" variant="soft"
               :parts="pendingParts(q)"
-              :ui="{ root: `msg msg-user msg-pending queued${q.body || q.files.length ? '' : ' msg-no-text'}`, container: 'msg-c', content: 'msg-bubble queued', header: 'msg-files' }"
+              :ui="pendingUi(`msg msg-user msg-pending queued${q.body || q.files.length ? '' : ' msg-no-text'}`)"
             >
               <template #files>
                 <MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span>
@@ -1572,26 +1604,17 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             </div>
           </div>
           <!-- herdr-core: text left unsent in Claude's own input box, Claude's queue. -->
-          <UnsentInput v-if="!readOnly && (pane.draft || pane.queueSendNow)" :pane="pane" />
+          <UnsentInput v-if="!readOnly && hasDraft" :pane="unsentPane" />
         </div>
 
-        <div v-if="status" class="chat-status" :class="{ typing: status.typing, waiting: !status.typing }">
-          <!-- Claude's verb and omp's step have their own spinner: no extra state dot. -->
-          <span v-if="'verb' in status" class="claude-verb-line"><ClaudeSpinner /><UChatShimmer :text="status.text" :duration="2.4" class="claude-verb" /></span>
-          <span v-else-if="'omp' in status" class="omp-step-line"><OmpSpinner :since="status.since"><UChatShimmer :text="status.text" :duration="2.4" class="omp-step" /></OmpSpinner></span>
-          <template v-else>
-            <i class="status-dot" />
-            <UChatShimmer v-if="status.typing" :text="status.text" :duration="2.4" />
-            <span v-else>{{ status.text }}</span>
-          </template>
-        </div>
+        <ChatStatusLine :get="readStatus" />
       </UChatMessages>
     </div>
     <UDropdownMenu v-if="!sheetMenus" v-model:open="codeMenu.open" :items="codeMenuDropdown" :content="{ align: 'start', side: 'bottom', sideOffset: 4 }" :ui="{ content: 'hw-dropdown' }">
       <span class="path-anchor" :style="{ left: `${codeMenu.x}px`, top: `${codeMenu.y}px`, width: `${codeMenu.w}px`, height: `${codeMenu.h}px` }" aria-hidden="true" />
     </UDropdownMenu>
     <AppSheet v-model:open="filePeek.open" :title="fileName(stripPosition(filePeek.path))" wide full screen>
-      <FilesView v-if="filePeek.open" :key="filePeek.path" :pane-id="pane.id" :file="filePeek.path" />
+      <FilesView v-if="filePeek.open" :key="filePeek.path" :pane-id="paneId" :file="filePeek.path" />
     </AppSheet>
   </div>
 </template>
