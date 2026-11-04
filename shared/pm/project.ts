@@ -1,6 +1,7 @@
 // A managed project: a git folder on a machine reached through herdr-core,
 // and the template its tasks follow. Stored in DATA_DIR/projects/projects.json.
 import type { WorkflowError } from './workflow'
+import type { Task } from './run'
 
 export interface Project {
   key: string // task ids are <key>-<n>: WHR-344
@@ -15,7 +16,7 @@ export interface Project {
 export type ProjectInput = Omit<Project, 'addedAt'>
 export interface TemplateInfo { id: string, version?: number }
 // GET /api/pm/overview
-export interface PmOverview { enabled: boolean, projects: Project[], templates: TemplateInfo[] }
+export interface PmOverview { enabled: boolean, projects: Project[], templates: TemplateInfo[], tasks?: Task[] }
 
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/

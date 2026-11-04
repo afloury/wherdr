@@ -16,7 +16,7 @@ const input = { key: 'web', name: 'Web app', machine: '', path: '~/src/web', tem
 describe('pm store', () => {
   it('is off by default, and off it refuses every write without touching the disk', async () => {
     const store = createPmStore(dir)
-    expect(await store.overview()).toEqual({ enabled: false, projects: [], templates: [] })
+    expect(await store.overview()).toEqual({ enabled: false, projects: [], templates: [], tasks: [] })
     const writes = [
       store.addProject(input, okFolder), store.setTemplate('WEB', 'vibe'),
       store.removeProject('WEB'), store.saveTemplate(template),
@@ -33,7 +33,7 @@ describe('pm store', () => {
     expect(added).toMatchObject({ key: 'WEB', name: 'Web app', machine: '', path: '/home/u/src/web', template: 'vibe' })
 
     const restarted = createPmStore(dir)
-    expect(await restarted.overview()).toEqual({ enabled: true, projects: [added], templates: [{ id: 'vibe', version: 1 }] })
+    expect(await restarted.overview()).toEqual({ enabled: true, projects: [added], templates: [{ id: 'vibe', version: 1 }], tasks: [] })
 
     await restarted.setEnabled(false)
     await expect(restarted.removeProject('WEB')).rejects.toMatchObject({ code: 'pm_off' })
