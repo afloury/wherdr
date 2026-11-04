@@ -48,8 +48,13 @@ export function stripDeflateOffer(request: UpgradeRequest) {
   if (req?.headers && !compressionAllowed(req.url)) delete req.headers['sec-websocket-extensions']
 }
 
+// Largest message a client may send, on every route. ws stops inflating a
+// compressed frame past it (its default, 100 MiB, let a few-KB frame grow to
+// about 100 MB before messageText refused it).
+export const WS_MAX_PAYLOAD = 256 * 1024
+
 export function applyWsCompression(options: WsOptions) {
-  options.serverOptions = { ...options.serverOptions, perMessageDeflate: EVENTS_DEFLATE }
+  options.serverOptions = { ...options.serverOptions, perMessageDeflate: EVENTS_DEFLATE, maxPayload: WS_MAX_PAYLOAD }
   const previous = options.hooks?.upgrade
   options.hooks = {
     ...options.hooks,
