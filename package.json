@@ -27,6 +27,7 @@
     "!.output/**/*.map",
     "bin",
     "scripts/fetch-dictation-files.mjs",
+    "scripts/dictation-files.mjs",
     "app/utils/dictation/models.json",
     "docs/*.md"
   ],

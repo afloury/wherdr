@@ -312,7 +312,7 @@ describe('wherdr dictation fetch', () => {
 
   it('ships the script and the model catalog it reads in the npm package', () => {
     const files = JSON.parse(readFileSync('package.json', 'utf8')).files as string[]
-    expect(files).toEqual(expect.arrayContaining(['scripts/fetch-dictation-files.mjs', 'app/utils/dictation/models.json']))
+    expect(files).toEqual(expect.arrayContaining(['scripts/fetch-dictation-files.mjs', 'scripts/dictation-files.mjs', 'app/utils/dictation/models.json']))
     expect(files).not.toContain('skills/wherdr')
   })
 })
