@@ -8,6 +8,7 @@ import { CoreError } from './core'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, kindsOf, launchFailure, machineOn, type CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
+import { initialState, onEvent, planSteps } from '../../shared/pm/steps'
 import { LABEL, agentLine, instructionsText, reconcile, runLabels, taskPaths, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 
 // Reuses the worktree of an earlier attempt; else a new branch from the base.
@@ -56,11 +57,14 @@ export async function startTask(deps: PmLaunchDeps, id: unknown): Promise<Task> 
   const text = instructionsText(p, t, task, paths)
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')
 
+  // The engine's start: the task enters its first step (the worker's); the
+  // instructions file already tells the worker what to do.
+  const step = task.step?.started ? task.step : onEvent(planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }), initialState(), { kind: 'start' }, Date.now()).state
   const install = await store.install()
   let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine: p.machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now() }
   for (;;) {
     await store.saveRun(run) // the receipt, before the terminal exists
-    await store.saveTask({ ...task, state: 'working', waiting: undefined, run: run.id })
+    await store.saveTask({ ...task, state: 'working', waiting: undefined, run: run.id, step })
     let address: string
     try {
       address = (await deps.call<{ address: string }>('terminal.run', {
