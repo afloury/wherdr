@@ -3,6 +3,8 @@ import { boardColumns, cardOf, type Board } from '../../shared/pm/board'
 import { initialState, onEvent, planSteps } from '../../shared/pm/steps'
 import { taskGuards, type ActionResult } from '../../shared/pm/actions'
 import type { Template } from '../../shared/pm/workflow'
+import { addShot, SHOT_TYPES, type Shot } from '../../shared/pm/shots'
+import { randomUUID } from 'node:crypto'
 import type { Task } from '../../shared/pm/run'
 import { actionShell, runAction } from './pmActions'
 import { machineOn, type CoreAdminDeps } from './coreCreate'
@@ -55,4 +57,22 @@ export async function userStep(deps: CoreAdminDeps & { store: PmStore }, id: unk
     state = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.error ? { error: result.error } : {}), evidence }, Date.now()).state
   }
   return store.saveTask({ ...task, step: state })
+}
+
+// An agent's screenshot for its current step (POST /api/pm/shot), kept with the task's data.
+export async function uploadShot(store: PmStore, id: unknown, phase: unknown, data: Buffer, ctype: string): Promise<Shot> {
+  const ext = SHOT_TYPES[ctype]
+  if (!ext) throw new HerdrError('bad_input', 'A PNG, JPEG or WebP image')
+  if (phase !== 'before' && phase !== 'after') throw new HerdrError('bad_input', 'phase: before or after')
+  const task = await store.task(id)
+  if (!task) throw new HerdrError('not_found', 'Unknown task')
+  const p = (await store.projects()).find(x => x.key === task.project)
+  const plan = planOf(p?.template ? await store.template(p.template) : null, task)
+  const shot: Shot = { file: `${randomUUID().replace(/-/g, '').slice(0, 12)}.${ext}`, phase, at: Date.now() }
+  await store.addShot(task.id, shot.file, data, (fresh) => {
+    const r = addShot(plan, fresh.step, shot)
+    if ('refused' in r) throw new HerdrError('refused', r.refused)
+    return { ...fresh, step: r.state }
+  })
+  return shot
 }
