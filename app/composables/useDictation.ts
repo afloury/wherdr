@@ -16,7 +16,7 @@ import type { DictationEngine, DictationEngineId, NotReadyReason, PrepareProgres
 import { loadEngine } from '../utils/dictation/registry'
 import { concatPcm, createResampler, rms } from '../utils/dictation/audio'
 
-export type DictationStatus = 'idle' | 'preparing' | 'recording' | 'transcribing' | 'error' | 'busy'
+export type DictationStatus = 'idle' | 'preparing' | 'recording' | 'transcribing' | 'rewriting' | 'error' | 'busy'
 
 export interface DictationError {
   reason: NotReadyReason | 'mic' | 'failed' | 'timeout'
@@ -28,6 +28,8 @@ export interface DictationStart {
   language?: string
   terms?: string[]
   onText: (text: string) => void // the take's text, never empty
+  // The optional rewrite of that text; it rejects only when the take is cancelled.
+  rewrite?: (text: string, signal: AbortSignal) => Promise<string>
 }
 
 export interface Dictation {
@@ -224,9 +226,15 @@ async function stop(me: Facade) {
     )
     // Cancelled meanwhile (an engine that ignores its signal): drop the text.
     if (current.value !== take) return
+    let clean = text.trim()
+    if (clean && take.opts.rewrite) {
+      if (timer) clearTimeout(timer)
+      me.status.value = 'rewriting'
+      clean = (await take.opts.rewrite(clean, take.abort.signal)).trim() || clean
+      if (current.value !== take) return
+    }
     current.value = null
     me.status.value = 'idle'
-    const clean = text.trim()
     if (clean) take.opts.onText(clean)
   }
   catch (e) {

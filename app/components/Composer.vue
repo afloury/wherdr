@@ -599,7 +599,11 @@ defineExpose({
       </button>
     </div>
     <div v-if="mic.shown.value" class="composer-notice dictation" role="status" data-testid="dictation-take">
-      <template v-if="mic.status.value === 'transcribing'">
+      <template v-if="mic.status.value === 'rewriting'">
+        <span class="notice-spin" aria-hidden="true" />
+        <span class="restart-text">{{ tl('Rewriting…', 'Reformulation…') }}</span>
+      </template>
+      <template v-else-if="mic.status.value === 'transcribing'">
         <span class="notice-spin" aria-hidden="true" />
         <span class="restart-text">{{ tl('Recognizing…', 'Reconnaissance…') }}</span>
         <!-- Stopped while the model still downloads (first use): its progress. -->

@@ -103,7 +103,7 @@ async function test() {
         :aria-label="tl('Model', 'Modèle')" data-testid="dictation-model"
       >
         <template #item-trailing="{ item }">
-          <span v-if="item.price !== undefined" class="mono dictation-cloud-price">{{ price(item.price) }}</span>
+          <DictationModelPrice :id="item.value" :price="item.price === undefined ? undefined : price(item.price)" />
         </template>
       </USelectMenu>
     </label>
@@ -135,7 +135,6 @@ async function test() {
 /* The list's names are long: the select gets a row of its own. */
 .dictation-cloud-model-row { flex-direction: column; align-items: stretch; gap: 10px; }
 .dictation-cloud-model { width: 100%; }
-.dictation-cloud-price { font-size: 11px; color: var(--muted); white-space: nowrap; }
 .dictation-cloud-error { color: var(--rose); }
 .dictation-cloud .settings-lead { margin-top: 12px; }
 </style>

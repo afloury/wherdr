@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DICTATION_MAX, MODELS_RETRY_MS, MODELS_TTL_MS, OPENROUTER_MODELS_URL, OPENROUTER_URL, createDictation } from '../server/utils/dictation'
+import { DICTATION_MAX, MODELS_RETRY_MS, MODELS_TTL_MS, OPENROUTER_CHAT_URL, OPENROUTER_MODELS_URL, OPENROUTER_TEXT_MODELS_URL, OPENROUTER_URL, createDictation } from '../server/utils/dictation'
 import { FALLBACK_CLOUD_MODELS } from '../shared/dictationModels'
 
 const KEY = 'sk-or-test-key-0000'
@@ -199,5 +199,51 @@ describe('dictation model list', () => {
     expect(await d1.models()).toEqual({ models: FALLBACK_CLOUD_MODELS, live: false })
     const d2 = createDictation({ dataDir: dir, envKey: KEY, fetch: answer(200, { data: [] }) })
     expect(await d2.models()).toEqual({ models: FALLBACK_CLOUD_MODELS, live: false })
+  })
+})
+
+describe('dictation rewrite relay', () => {
+  const TEXT = { input_modalities: ['text'], output_modalities: ['text'] }
+  const texts = { data: [
+    { id: 'openai/gpt-5-mini', name: 'GPT-5 Mini', architecture: TEXT, pricing: { prompt: '0.00000025', completion: '0.000002' } },
+    { id: 'mistralai/mistral-nemo', name: 'Mistral Nemo', architecture: TEXT, pricing: { prompt: '0.000000029', completion: '0.00000003' } },
+  ] }
+  // The model list for GET /models, the chat answer for the completion.
+  const upstream = (chat: { status: number, body: unknown }) => vi.fn(async (url: string) => url === OPENROUTER_TEXT_MODELS_URL
+    ? new Response(JSON.stringify(texts), { status: 200 })
+    : new Response(JSON.stringify(chat.body), { status: chat.status }))
+
+  it('sends the prompt with the dictionary and the text to the cheapest model by default, with ZDR', async () => {
+    const fetch = upstream({ status: 200, body: { choices: [{ message: { content: 'So wherdr is ready.' } }], usage: { cost: 0.00001 } } })
+    const d = createDictation({ dataDir: dir, envKey: KEY, fetch })
+    expect(await d.texts()).toMatchObject({ live: true, default: 'mistralai/mistral-nemo' })
+    const r = await d.rewrite({ text: ' so uh wherdr is ready ', dictionary: ['wherdr'] })
+    expect(r).toEqual({ text: 'So wherdr is ready.', cost: 0.00001 })
+    const call = fetch.mock.calls.find(c => c[0] === OPENROUTER_CHAT_URL) as unknown as [string, RequestInit]
+    const body = JSON.parse(String(call[1].body))
+    expect(body.model).toBe('mistralai/mistral-nemo')
+    expect(body.provider).toEqual({ zdr: true, data_collection: 'deny' })
+    expect(body.messages[0].content).toContain('- wherdr')
+    expect(body.messages[1].content).toContain('so uh wherdr is ready')
+    noKey(body)
+  })
+
+  it('uses the chosen model, turns ZDR off only when asked, and scrubs the key from errors', async () => {
+    const fetch = upstream({ status: 502, body: { error: { message: `bad ${KEY}` } } })
+    const d = createDictation({ dataDir: dir, envKey: KEY, fetch })
+    const err = await d.rewrite({ text: 'hi', model: 'openai/gpt-5-mini', zdr: false }).catch(e => e)
+    expect(err.message).toContain('OpenRouter: bad')
+    noKey(err.message)
+    const body = JSON.parse(String((fetch.mock.calls.find(c => c[0] === OPENROUTER_CHAT_URL) as unknown as [string, RequestInit])[1].body))
+    expect(body.model).toBe('openai/gpt-5-mini')
+    expect(body.provider).toEqual({ data_collection: 'deny' })
+  })
+
+  it('refuses without a key or text, and an empty answer', async () => {
+    const fetch = upstream({ status: 200, body: { choices: [{ message: { content: '' } }] } })
+    await expect(createDictation({ dataDir: dir, fetch }).rewrite({ text: 'hi' })).rejects.toThrow('No OpenRouter key')
+    const d = createDictation({ dataDir: dir, envKey: KEY, fetch })
+    await expect(d.rewrite({ text: '  ' })).rejects.toThrow('Nothing to rewrite')
+    await expect(d.rewrite({ text: 'hi', model: 'openai/gpt-5-mini' })).rejects.toThrow('empty rewrite')
   })
 })
