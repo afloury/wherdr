@@ -5,7 +5,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createServer, type Socket } from 'node:net'
-import { context, coreRows, needCore, openAddress, remember, serviceSpec } from '../bin/lib/commands.mjs'
+import { HELP, context, coreRows, dictation, needCore, openAddress, panel, remember, serviceSpec } from '../bin/lib/commands.mjs'
+import { removeLegacySkill } from '../bin/lib/skill.mjs'
+import * as dictationFiles from '../scripts/fetch-dictation-files.mjs'
 import { SESSION_IGNORED, parseArgs, parseEnvFile, portTaken, serverEnv } from '../bin/lib/core.mjs'
 import fixture from './fixtures/core-0.1.16.json'
 import { runtimeCandidates, temporaryInstall } from '../bin/lib/runtime.mjs'
@@ -25,6 +27,8 @@ describe('wherdr command line', () => {
     expect(parseArgs(['service', 'install'])).toEqual({ command: 'service', sub: 'install' })
     expect(parseArgs(['status', '-h']).command).toBe('help')
     expect(parseArgs(['--version']).command).toBe('version')
+    expect(parseArgs(['dictation', 'fetch'])).toEqual({ command: 'dictation', sub: 'fetch', sets: [] })
+    expect(parseArgs(['dictation', 'fetch', 'runtime', 'ort', '--data-dir', '/srv/d'])).toEqual({ command: 'dictation', sub: 'fetch', sets: ['runtime', 'ort'], dataDir: '/srv/d' })
   })
 
   it('reads --session (a Herdr session, gone in v3) only to warn that it is ignored', () => {
@@ -36,6 +40,7 @@ describe('wherdr command line', () => {
     expect(() => parseArgs(['strat'])).toThrow('unknown command: strat')
     expect(() => parseArgs(['service'])).toThrow('wherdr service install|uninstall')
     expect(() => parseArgs(['status', 'now'])).toThrow('unexpected argument: now')
+    expect(() => parseArgs(['dictation'])).toThrow('usage: wherdr dictation fetch [set...]')
     expect(() => parseArgs(['--prot', '1'])).toThrow('unknown option: --prot')
     expect(() => parseArgs(['--port'])).toThrow('--port needs a value')
     expect(() => parseArgs(['--hc-socket'])).toThrow('--hc-socket needs a value')
@@ -50,7 +55,7 @@ describe('wherdr server environment', () => {
 
   it('defaults to loopback, port 7683 and ~/wherdr/data', () => {
     const env = serverEnv({}, {}, home)
-    expect(env).toMatchObject({ PORT: '7683', HOST: '127.0.0.1', DATA_DIR: '/home/test/wherdr/data', WHERDR_INSTALL: 'npm', NODE_ENV: 'production' })
+    expect(env).toMatchObject({ PORT: '7683', HOST: '127.0.0.1', DATA_DIR: '/home/test/wherdr/data', WHERDR_INSTALL: 'native', NODE_ENV: 'production' })
     expect(env.HC_SOCKET).toBeUndefined()
     expect(serverEnv({}, { WHERDR_DIR: '~/w2' }, home).DATA_DIR).toBe('/home/test/w2/data')
   })
@@ -61,10 +66,10 @@ describe('wherdr server environment', () => {
     expect(serverEnv({}, {}, home, '/opt/homebrew/lib/node_modules/wherdr/bin/wherdr.mjs').WHERDR_INSTALL).toBe('npm-global')
     expect(serverEnv({}, {}, home, '/home/test/.npm/_npx/0a1b2c/node_modules/wherdr/bin/wherdr.mjs').WHERDR_INSTALL).toBe('npm')
     expect(serverEnv({}, {}, home, '/home/test/.npm/_npx/0a1b2c/lib/node_modules/wherdr/bin/wherdr.mjs').WHERDR_INSTALL).toBe('npm')
-    // The copy the Herdr plugin runs, in the wherdr folder (WHERDR_DIR included).
-    expect(serverEnv({}, {}, home, '/home/test/wherdr/app/bin/wherdr.mjs').WHERDR_INSTALL).toBe('plugin')
-    expect(serverEnv({}, { WHERDR_DIR: '/srv/w' }, home, '/srv/w/app/bin/wherdr.mjs')).toMatchObject({ WHERDR_INSTALL: 'plugin', WHERDR_DIR: '/srv/w' })
-    expect(serverEnv({}, { WHERDR_DIR: '/srv/w' }, home, '/home/test/wherdr/app/bin/wherdr.mjs').WHERDR_INSTALL).toBe('npm')
+    expect(serverEnv({}, {}, home, '/srv/app/node_modules/wherdr/bin/wherdr.mjs').WHERDR_INSTALL).toBe('npm')
+    // A source checkout; wherdr 3 is not a Herdr plugin: its old ~/wherdr/app copy is no mode of its own.
+    expect(serverEnv({}, {}, home, '/home/test/src/wherdr/bin/wherdr.mjs').WHERDR_INSTALL).toBe('native')
+    expect(serverEnv({}, {}, home, '/home/test/wherdr/app/bin/wherdr.mjs').WHERDR_INSTALL).toBe('native')
   })
 
   it('lets options win over the environment, and the environment over the defaults', () => {
@@ -260,5 +265,54 @@ describe('wherdr doctor: herdr-core', () => {
     const unset = await coreRows({})
     expect(unset).toHaveLength(1)
     expect(unset[0]).toEqual(['fail', expect.stringContaining('HC_SOCKET is not set')])
+  })
+})
+
+describe('wherdr 3 without the Herdr plugin', () => {
+  it('says nothing of Herdr in its help, and lists dictation fetch, not the panel', () => {
+    expect(HELP).not.toMatch(/Herdr|HERDR/)
+    expect(HELP).toContain('dictation fetch')
+    expect(HELP).not.toMatch(/^ {2}panel/m)
+  })
+
+  it('explains that the panel is gone', () => {
+    expect(() => panel()).toThrow(/wherdr 2 Herdr plugin[\s\S]*wherdr status/)
+  })
+
+  it('removes the 2.x skill only when its copy is there', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'wherdr-skill-'))
+    try {
+      const calls: unknown[][] = []
+      const run = (...args: unknown[]) => { calls.push(args); return {} }
+      expect(removeLegacySkill({ WHERDR_DIR: dir }, run as never)).toBe(false)
+      mkdirSync(path.join(dir, 'skills', 'wherdr'), { recursive: true })
+      expect(removeLegacySkill({ WHERDR_DIR: dir }, run as never)).toBe(true)
+      expect(calls).toHaveLength(1)
+      expect((calls[0]![1] as string[]).slice(-1)).toEqual(['uninstall'])
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+})
+
+describe('wherdr dictation fetch', () => {
+  it('fetches the named sets, or the default ones, into the models folder of DATA_DIR', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'wherdr-dictation-'))
+    try {
+      const calls: unknown[][] = []
+      const load = async () => ({ ...dictationFiles, fetchSets: async (...args: unknown[]) => { calls.push(args) } })
+      const opts = { dataDir: path.join(dir, 'data') }
+      await dictation({ ...opts, sets: ['runtime', 'ort'] }, { log: () => {}, load })
+      await dictation({ ...opts, sets: [] }, { log: () => {}, load })
+      expect(calls.map(c => c.slice(0, 2))).toEqual([
+        [path.join(dir, 'data', 'models'), ['runtime', 'ort']],
+        [path.join(dir, 'data', 'models'), dictationFiles.DEFAULT_SETS],
+      ])
+      await expect(dictation({ ...opts, sets: ['nope'] }, { log: () => {}, load })).rejects.toMatchObject({ code: 2, message: expect.stringContaining('unknown set: nope') })
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('ships the script and the model catalog it reads in the npm package', () => {
+    const files = JSON.parse(readFileSync('package.json', 'utf8')).files as string[]
+    expect(files).toEqual(expect.arrayContaining(['scripts/fetch-dictation-files.mjs', 'app/utils/dictation/models.json']))
+    expect(files).not.toContain('skills/wherdr')
   })
 })

@@ -2,10 +2,11 @@
 // Downloads the files of on-device dictation into DATA_DIR/models, where the
 // /models/** route serves them: the WASM runtimes under runtime/, the models
 // beside them. Every file is pinned (exact URL) and checked against its
-// sha256 before it is moved into place. They stay out of the npm package and
-// of the service worker precache (docs/installation.md#on-device-dictation-files).
+// sha256 before it is moved into place. They stay out of the npm package (this
+// script and the catalog ship in it) and of the service worker precache (docs/installation.md#on-device-dictation-files).
 //
 //   DATA_DIR=~/.local/share/wherdr node scripts/fetch-dictation-files.mjs [set...]
+//   wherdr dictation fetch [set...]   (installed package: DATA_DIR of wherdr)
 //
 // Sets: runtime (sherpa-onnx WASM, 13 MB), parakeet (Parakeet v3, French,
 // English and 23 more, 670 MB), sensevoice (237 MB, no French), ort
@@ -132,15 +133,21 @@ export function setsOf(args) {
   return names
 }
 
+// Every entry of the named sets into modelsDir (also `wherdr dictation fetch`).
+export async function fetchSets(modelsDir, names, opts = {}) {
+  const log = opts.log || (() => {})
+  log(`into ${modelsDir}`)
+  for (const name of names) {
+    for (const entry of SETS[name]) await fetchEntry(modelsDir, entry, { ...opts, log })
+  }
+}
+
 async function main() {
   let names
   try { names = setsOf(process.argv.slice(2)) }
   catch (err) { console.error(err.message); process.exit(2) }
   const modelsDir = path.join(path.resolve(process.env.DATA_DIR || path.join(process.cwd(), 'data')), 'models')
-  console.log(`into ${modelsDir}`)
-  for (const name of names) {
-    for (const entry of SETS[name]) await fetchEntry(modelsDir, entry, { log: m => console.log(m) })
-  }
+  await fetchSets(modelsDir, names, { log: m => console.log(m) })
   console.log('done')
 }
 
