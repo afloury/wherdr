@@ -357,6 +357,24 @@ an English take work on at least one Android phone with WebGPU, with load time, 
 memory reported in the pull request; a device without WebGPU or `shader-f16` gets the
 `unsupported` message, not a crash. iOS Safari results are welcome but not required.
 
+## Read aloud
+
+The other direction: **Play** under each agent reply reads it aloud, chosen in **Settings ›
+Conversation › Read aloud** (per device: Off, or the device's voices; on by default where the
+browser has `speechSynthesis`).
+
+| File | Role |
+| --- | --- |
+| `app/utils/speech/plainText.ts` | `speakableText()`: the words of a reply, "Code block." for code; `speechChunks()`: pieces of at most 220 characters (Chrome cuts long utterances) |
+| `app/composables/useReadAloud.ts` | Engine and voice choice, the voice list (`voiceschanged`), one reply at a time for the app |
+| `app/components/ReadAloudButton.vue`, `ReadAloudSettings.vue` | Play / Stop under a reply; the settings (voice search, Test) |
+
+Every piece is queued in the tap itself: iOS only speaks from a user gesture. iOS may stop
+speech when the screen locks or the app goes to the background, without an `end` event; a check
+every 1.5 s puts the button back to Play. Leaving the pane stops its reply. Voices marked
+"online" (Chrome's Google voices) send the text to their vendor. An OpenRouter engine
+(`POST /api/v1/audio/speech`, relayed by the server like dictation) is a planned follow-up.
+
 ## Known limits
 
 - No published speed figures exist for speech models in a phone browser; speed ratings stay
