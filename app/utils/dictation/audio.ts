@@ -40,3 +40,27 @@ export function concatPcm(chunks: Float32Array[], length: number): Float32Array 
   for (const c of chunks) { out.set(c, at); at += c.length }
   return out
 }
+
+// A long take in pieces of at most `max` seconds, each cut at the quietest
+// tenth of a second of its last `look` seconds (a pause between words when
+// there is one). A model decodes short pieces faster and in less memory than
+// one long take: Parakeet slowed to 1.3x real time on a 45 s take.
+export function splitTake(pcm: Float32Array, max = 20, look = 6): Float32Array[] {
+  const most = max * TAKE_RATE
+  const win = TAKE_RATE / 10
+  const out: Float32Array[] = []
+  let at = 0
+  while (pcm.length - at > most) {
+    const end = at + most
+    let cut = end
+    let best = Infinity
+    for (let w = end - look * TAKE_RATE; w + win <= end; w += win) {
+      const e = rms(pcm, w, w + win)
+      if (e < best) { best = e; cut = w + win / 2 }
+    }
+    out.push(pcm.subarray(at, cut))
+    at = cut
+  }
+  out.push(pcm.subarray(at))
+  return out
+}

@@ -1,8 +1,9 @@
 // Engines load lazily: none of their weight is in the main bundle. Each engine
-// task adds its entry here (device: F2).
+// task adds its entry here.
 import type { DictationEngine, DictationEngineId } from './engine'
 
 export const ENGINES: Partial<Record<DictationEngineId, () => Promise<DictationEngine>>> = {
+  device: () => import('./device').then(m => m.createDeviceEngine()),
   cloud: () => import('./cloud').then(m => m.createCloudEngine()),
 }
 

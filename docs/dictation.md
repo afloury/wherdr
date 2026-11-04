@@ -17,7 +17,7 @@ pane terms, model route, fetch script), with credit in the code.
 | Composer mic and **Settings › Conversation › Dictation** | Merged |
 | Online engine (OpenRouter, through the wherdr server) | Merged |
 | `/models/**` route, fetch script with sha256, CSP, service worker | Merged |
-| On-device engine (sherpa-onnx WASM worker, CPU) | In review: Parakeet v3 (French + English) and SenseVoice |
+| On-device engine (sherpa-onnx WASM worker, CPU) | Merged: Parakeet v3 (French + English, default) and SenseVoice |
 | Model list in Settings (install, delete, progress, ratings) | Planned |
 | WebGPU models (Qwen3-ASR q4f16) | **Open for an outside contributor** (see [Task split](#task-split)) |
 
@@ -205,10 +205,20 @@ percentage) and ×.
   (`app/service-worker/sw.ts`) leaves `/models/` alone and keeps `wherdr-asr-*` caches across app
   updates (it deletes every other old cache).
 
+### Long takes
+
+Parakeet slows down on long audio (about 1.3 times real time on a 45 s take on a desktop CPU,
+and more memory). `splitTake` (`app/utils/dictation/audio.ts`) cuts a take longer than 20 s into
+pieces of at most 20 s, each at the quietest tenth of a second of its last 6 s. The device
+engine decodes them one after the other and calls `onPartial` with the text so far after each;
+`useDictation` counts its 90 s recognition timeout from the last partial result, so a long take
+that keeps progressing is never cut, while a stuck engine still is. A cancel stops before the
+next piece (the piece being decoded cannot be stopped).
+
 ### The fetch script
 
 `scripts/fetch-dictation-files.mjs` downloads named **sets** (`runtime`, `ort`, model sets;
-default `runtime sensevoice`; `all`). Every entry has a pinned URL and a **sha256**: a download
+default `runtime parakeet`; `all`). Every entry has a pinned URL and a **sha256**: a download
 goes to `file.part`, resumes with `Range` after an interruption, and is moved into place only
 when its hash matches. An entry is either a single file (`{ url, sha256, to }`) or a `.tar.bz2`
 archive (`{ url, sha256, dir, members }`) from which only the listed members are extracted; a
@@ -218,7 +228,7 @@ covers resume, mismatch and the set list.
 ### The model catalog
 
 The on-device engine reads its models from a catalog: one entry per model, telling the worker
-how to build the recognizer and the Settings list what to show. The engine under review starts
+how to build the recognizer and the Settings list what to show. The engine starts
 with a typed list in `app/utils/dictation/deviceModels.ts`; the target is a JSON catalog read by
 both the Settings list and the fetch script, so that a model of a known family is added without
 code. Whichever form is current, an entry carries:

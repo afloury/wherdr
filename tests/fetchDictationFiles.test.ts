@@ -42,7 +42,7 @@ describe('the pinned files', () => {
     for (const e of [...SETS.runtime, ...SETS.ort] as Entry[]) expect(e.to).toMatch(/^runtime\/[^/]+-[0-9a-f.]{5,}\//)
   })
   it('chooses the default sets, all, or refuses an unknown one', () => {
-    expect(setsOf([])).toEqual(['runtime', 'sensevoice'])
+    expect(setsOf([])).toEqual(['runtime', 'parakeet'])
     expect(setsOf(['all'])).toEqual(Object.keys(SETS))
     expect(() => setsOf(['nope'])).toThrow(/unknown set: nope/)
   })

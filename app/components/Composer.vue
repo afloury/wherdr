@@ -602,6 +602,8 @@ defineExpose({
       <template v-if="mic.status.value === 'transcribing'">
         <span class="notice-spin" aria-hidden="true" />
         <span class="restart-text">{{ tl('Recognizing…', 'Reconnaissance…') }}</span>
+        <!-- Stopped while the model still downloads (first use): its progress. -->
+        <span v-if="mic.loading.value" class="dictation-clock">{{ mic.loading.value }}</span>
       </template>
       <template v-else>
         <span class="dictation-dot" aria-hidden="true" />

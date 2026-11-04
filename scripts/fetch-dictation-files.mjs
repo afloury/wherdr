@@ -7,8 +7,10 @@
 //
 //   DATA_DIR=~/.local/share/wherdr node scripts/fetch-dictation-files.mjs [set...]
 //
-// Sets: runtime (sherpa-onnx WASM, 13 MB), sensevoice (227 MB), ort
-// (onnxruntime-web, 59 MB, for WebGPU models only), all. Default: runtime sensevoice.
+// Sets: runtime (sherpa-onnx WASM, 13 MB), parakeet (Parakeet v3, French,
+// English and 23 more, 670 MB), sensevoice (237 MB, no French), ort
+// (onnxruntime-web, 59 MB, for WebGPU models only), all. Default: runtime parakeet.
+// The models must match app/utils/dictation/deviceModels.ts (a test checks it).
 // Run again: files already in place are checked and kept, an interrupted
 // download resumes. Based on followcat's scripts/fetch-asr-models.sh (MIT).
 import { spawn } from 'node:child_process'
@@ -44,6 +46,12 @@ export const SETS = {
     ['ort-wasm-simd-threaded.asyncify.mjs', '249b4dc791f081d33bd11760bfd669fe85f97289e679bbeb291b874272125dff'],
     ['ort-wasm-simd-threaded.asyncify.wasm', 'babec0bbddb6d3082623b99b7e1391b75e0729bcca076ff8424d7753af97fada'],
   ].map(([name, sha256]) => ({ url: ORT + name, sha256, to: `runtime/onnxruntime-web-1.23.2/${name}` })),
+  parakeet: [{
+    url: `${ASR_MODELS}sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2`,
+    sha256: '5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf',
+    dir: 'parakeet-tdt-0.6b-v3-int8',
+    members: ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt'],
+  }],
   sensevoice: [{
     url: `${ASR_MODELS}sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09.tar.bz2`,
     sha256: '7305f7905bfcf77fa0b39388a313f3da35c68d971661a65475b56fb2162c8e63',
@@ -51,7 +59,7 @@ export const SETS = {
     members: ['model.int8.onnx', 'tokens.txt'],
   }],
 }
-export const DEFAULT_SETS = ['runtime', 'sensevoice']
+export const DEFAULT_SETS = ['runtime', 'parakeet']
 
 export async function sha256Of(file) {
   const hash = createHash('sha256')

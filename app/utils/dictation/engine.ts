@@ -14,7 +14,8 @@ export interface TranscribeOptions {
   language?: string // ISO 639-1; absent = automatic detection
   terms: string[] // pane terms (dictationTerms), possibly empty
   signal: AbortSignal // the take was cancelled or its composer unmounted
-  onPartial?: (text: string) => void // for a future streaming engine
+  // The text so far, as a long take is decoded piece by piece (or streamed).
+  onPartial?: (text: string) => void
 }
 
 export type NotReadyReason = 'not-installed' | 'no-key' | 'unsupported' | 'offline'
