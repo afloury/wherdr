@@ -8,6 +8,7 @@ import { SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
 import type { SettingsSection } from '~/utils/settingsNav'
 import { type QuietDuration, type QuietScope, quietUntil } from '#shared/quiet'
 import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
+import { ENGINES } from '~/utils/dictation/registry'
 import { DEFAULT_MAX_SESSION_DAYS, MAX_SESSION_DAYS, type MaxSessionDays } from '#shared/sessionLimit'
 
 const router = useRouter()
@@ -85,6 +86,18 @@ const replyStyleItems = computed(() => [
   { label: tl('Tap the text', 'Toucher le texte'), description: tl('No button: a question is underlined, tap it. A point: click it on a computer; on a phone, tap it, then “↳ Discuss”.', 'Aucun bouton : une question est soulignée, touche-la. Un point : clique-le sur ordinateur ; sur téléphone, touche-le, puis « ↳ Discuter ».'), value: 'text' },
   { label: tl('List under the message', 'Liste sous le message'), description: tl('A number after each question and the questions listed under the message; “+ Quote a point”, then the point.', 'Un numéro après chaque question et les questions listées sous le message ; « + Citer un point », puis le point.'), value: 'list' },
 ])
+// Dictation: Off, then the engines this build has (utils/dictation/registry.ts). Per device.
+const dictationChoice = dictationEngine
+const dictationItems = computed(() => {
+  const engines: Record<string, { label: string, description: string }> = {
+    device: { label: tl('On this device', 'Sur cet appareil'), description: tl('Nothing leaves the device; the model is downloaded once.', 'Rien ne quitte l’appareil ; le modèle est téléchargé une fois.') },
+    cloud: { label: tl('Online (OpenRouter)', 'En ligne (OpenRouter)'), description: tl('The audio goes through the wherdr server to OpenRouter.', 'L’audio passe par le serveur wherdr vers OpenRouter.') },
+  }
+  return [
+    { label: tl('Off', 'Désactivée'), description: tl('No mic in the message field. Default.', 'Pas de micro dans le champ de message. Par défaut.'), value: 'off' },
+    ...Object.keys(ENGINES).map(id => ({ ...engines[id]!, value: id })),
+  ]
+})
 // Forced off if the system reduces motion: shown disabled.
 const typewriter = computed({ get: () => typingSpeed.value, set: (v: TypingSpeed) => { typewriterSpeed.value = v } })
 const typingItems = computed(() => [
@@ -391,6 +404,12 @@ onMounted(() => {
             <p class="muted settings-lead">{{ tl('Answer several questions, passages or decisions of an agent in one message: each one goes into the field as a “↳ … —” line that names the message and quotes it, your answer below. Choose how the field shows these lines; the message sent is the same.', 'Réponds à plusieurs questions, passages ou décisions d’un agent dans un seul message : chacun entre dans le champ sous la forme d’une ligne « ↳ … — » qui nomme le message et le cite, ta réponse en dessous. Choisis comment le champ affiche ces lignes ; le message envoyé est le même.') }}</p>
             <QuoteTokensPreview v-if="activeSection === 'conversation'" :mode="quoteChoice" />
             <URadioGroup v-model="quoteChoice" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio quote-mode-radio" />
+            <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
+          </div>
+          <div class="settings-group" data-testid="dictation-settings">
+            <h3>{{ tl('Dictation', 'Dictée') }}</h3>
+            <p class="muted settings-lead">{{ tl('A mic next to Send: hold it and talk, or tap it to start and again to stop. The text goes into the field; nothing is sent on its own.', 'Un micro à côté d’Envoyer : maintiens-le et parle, ou touche-le pour démarrer puis encore pour arrêter. Le texte va dans le champ ; rien n’est envoyé tout seul.') }}</p>
+            <URadioGroup v-model="dictationChoice" :items="dictationItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
             <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
           </div>
         </div>

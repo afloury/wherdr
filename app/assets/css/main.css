@@ -1768,6 +1768,26 @@ body.kb .composer { padding-bottom: 8px; }
 .prompt-send.stop { background: var(--text); color: var(--bg); }
 /* Pressed by a touch (Composer's sendTap): its touchstart is cancelled, which can drop :active on iOS. */
 .prompt-send.pressed { opacity: .75; }
+/* Dictation mic (useComposerDictation): before the plugins' buttons. Hold or tap, so no
+   callout, magnifier, selection or scroll may start under the finger (iOS). */
+.prompt-mic {
+  flex: none; position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; color: var(--text-2); background: none; border: 1px solid var(--line); border-radius: 0; cursor: pointer;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+.prompt-mic::after { content: ''; position: absolute; inset: -8px; }
+.prompt-mic .iconify { width: 18px; height: 18px; }
+.prompt-mic:hover:not(:disabled) { color: var(--text); border-color: var(--text-2); }
+.prompt-mic:disabled { opacity: .35; cursor: default; }
+.prompt-mic.on { color: var(--bg); background: var(--rose); border-color: var(--rose); }
+/* The take above the field: a dot, the wave in block characters, the clock, ×. */
+.composer-notice.dictation { display: flex; align-items: center; justify-content: flex-end; gap: 8px; color: var(--rose); }
+.composer-notice.dictation .notice-btn { color: var(--text-2); }
+.dictation-dot { flex: none; width: 7px; height: 7px; background: currentColor; animation: dictation-blink 1s step-end infinite; }
+@keyframes dictation-blink { 50% { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) { .dictation-dot { animation: none; } }
+.dictation-wave { min-width: 0; overflow: hidden; letter-spacing: -.02em; }
+.dictation-clock { flex: none; color: var(--text-2); font-variant-numeric: tabular-nums; }
 
 /* Touch: one row at rest, a full-width editor over the toolbar while editing.
    The compact row has only +, the field and send, so selectors cannot squeeze it. */
@@ -1777,6 +1797,10 @@ body.kb .composer { padding-bottom: 8px; }
   .prompt .prompt-foot { display: contents; }
   .prompt .prompt-plus { grid-column: 1; grid-row: 1; }
   .prompt .prompt-send { grid-column: 3; grid-row: 1; margin-left: 0; }
+  /* With the mic, the row at rest keeps it next to Send. */
+  .prompt.has-mic { grid-template-columns: 44px minmax(0, 1fr) 44px 44px; }
+  .prompt.has-mic .prompt-mic { grid-column: 3; grid-row: 1; }
+  .prompt.has-mic .prompt-send { grid-column: 4; }
   .prompt .prompt-hint { display: none; }
   .prompt.expanded { display: flex; align-items: stretch; }
   .prompt.expanded .prompt-foot { display: flex; }
@@ -1787,8 +1811,8 @@ body.kb .composer { padding-bottom: 8px; }
   }
   .prompt .prompt-input:placeholder-shown { height: 40px; }
   .prompt .prompt-foot { gap: 4px; }
-  .prompt .prompt-plus, .prompt .prompt-send { width: 44px; height: 44px; }
-  .prompt .prompt-plus::after, .prompt .prompt-send::after { inset: 0; }
+  .prompt .prompt-plus, .prompt .prompt-send, .prompt .prompt-mic { width: 44px; height: 44px; }
+  .prompt .prompt-plus::after, .prompt .prompt-send::after, .prompt .prompt-mic::after { inset: 0; }
   .prompt:not(.expanded) .prompt-suggest { top: 12px; right: 58px; }
 }
 
