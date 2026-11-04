@@ -24,6 +24,7 @@ import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
 import { duplicateImages } from '#shared/imageDupes'
 import { stripPosition } from '#shared/filePaths'
+import { readAloudEngine, stopSpeaking } from '~/composables/useReadAloud'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 // A version of a reply replaced while the agent writes takes its question marks with it.
@@ -147,6 +148,8 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   if (box.value && rendered.value) saveReadingPosition(props.pane.id, chat.value.file, box.value)
+  // Leaving the pane stops the reply it was reading aloud.
+  stopSpeaking(`${props.pane.id}:`)
 })
 onUnmounted(() => ro?.disconnect())
 function onScroll() {
@@ -1345,10 +1348,11 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   :pane-id="pane.id" :targets="replyTargets(b.html)" :time="b.time" :rid="b.rid" :picking="pickKey === b.key"
                   @quote="quote" @answer="answer" @hot="(n, on) => hotQuestion(b.key, n, on)" @pick="pickKey = pickKey === b.key ? null : b.key"
                 />
-                <div v-if="!b.endsTurn && !readOnly" class="msg-actions">
-                  <button type="button" class="msg-reply" @click="replyTo(b.key)">
+                <div v-if="!b.endsTurn && (!readOnly || readAloudEngine !== 'off')" class="msg-actions">
+                  <button v-if="!readOnly" type="button" class="msg-reply" @click="replyTo(b.key)">
                     <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
                   </button>
+                  <ReadAloudButton :id="`${pane.id}:${b.key}`" :text="b.text" />
                 </div>
               </template>
 
@@ -1427,6 +1431,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <button v-if="b.reply && !readOnly" type="button" class="msg-reply" @click="replyTo(b.reply)">
                   <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
                 </button>
+                <ReadAloudButton v-if="b.copy && b.reply" :id="`${pane.id}:${b.reply}`" :text="b.copy" />
                 <span>{{ b.text }}</span>
               </div>
 
