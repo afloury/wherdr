@@ -87,7 +87,7 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
   switch (a.kind) {
     case 'git.land': return commit(SCRIPT.land, [a.target!])
     case 'git.push': return commit(SCRIPT.push, [branch])
-    case 'git.verify-merged': return commit(SCRIPT.verify, [a.target!])
+    case 'git.verify-merged': return commit(SCRIPT.verify, [a.target!, branch])
     case 'github.pr': {
       const r = await run(deps, SCRIPT.pr, [wt, branch, a.base!, `${job.task.id}: ${job.task.title}`], job.task.description || job.task.title)
       return r.code === 0 ? { ok: true, link: lastLine(r.out) } : fail(r)
