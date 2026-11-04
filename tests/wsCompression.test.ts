@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import http from 'node:http'
+import { randomBytes } from 'node:crypto'
 import type { AddressInfo } from 'node:net'
 import crossws from 'crossws/adapters/node'
 import WebSocket from 'ws'
@@ -56,11 +57,16 @@ const state = JSON.stringify({ ok: true, panes: Array.from({ length: 60 }, (_, i
 async function negotiated(offer: string) {
   const base = await serve(state)
   const { port } = new URL(base)
+  const nonce = randomBytes(16).toString('base64')
   return new Promise<string>((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port, path: '/ws/events', headers: {
-      'connection': 'Upgrade', 'upgrade': 'websocket', 'sec-websocket-version': '13',
-      'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==', 'sec-websocket-extensions': offer,
-    } })
+    const headers = {
+      'connection': 'Upgrade',
+      'upgrade': 'websocket',
+      'sec-websocket-version': '13',
+      'sec-websocket-key': nonce,
+      'sec-websocket-extensions': offer,
+    }
+    const req = http.request({ host: '127.0.0.1', port, path: '/ws/events', headers })
     req.on('upgrade', (res, socket) => { socket.destroy(); resolve(String(res.headers['sec-websocket-extensions'] || '')) })
     req.on('response', res => reject(new Error(`HTTP ${res.statusCode}`)))
     req.on('error', reject)
