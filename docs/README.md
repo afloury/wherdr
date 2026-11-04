@@ -1,8 +1,7 @@
 # Documentation
 
 This is the documentation of **wherdr v3**, which runs on herdr-core (`hc`) with
-`WHERDR_BACKEND=core`. v3 has no Board, no herdr-projects, no coordinators and no Docker image;
-pages and sections about them are marked **v2 only** and apply to wherdr 2.x on Herdr.
+`WHERDR_BACKEND=core`. Pages and sections marked **v2 only** apply to wherdr 2.x on Herdr.
 
 Read only the page relevant to your task. Start with [herdr-core](core.md) for what v3 supports,
 [Installation and updates](installation.md) for setup, [Security](security.md) for remote access,
@@ -19,7 +18,7 @@ or [Development and tests](development.md) for repository changes.
 - [Terminal](terminal.md) — The real terminal, shared viewers and taking control.
 - [Files](files.md) — Browse, read and download the files of an agent's folder.
 - [Computer, phone and iPad](devices.md) — Layouts, keyboard shortcuts and touch controls.
-- [Machines](machines.md) — Machines reached by herdr-core over SSH.
+- [Machines](machines.md) — Add, reconnect, rename and forget machines reached by herdr-core over SSH.
 - [Claude and Codex quotas](quotas.md) — Remaining usage on every machine.
 - [Notifications](notifications.md) — Web Push, Do not disturb, default and exceptions.
 - [Settings and configuration](configuration.md) — Environment variables and in-app settings.
@@ -38,11 +37,8 @@ Also see the [keyboard shortcut specification](product/keyboard-shortcuts.md) an
 
 These pages describe wherdr 2.x on Herdr. They do not apply to v3.
 
-- [Board and coordinators](board.md) — herdr-projects tasks, reviews, approvals and coordinators.
-- [herdr-projects 1.x migration](herdr-projects-1x.md) — Moving herdr-projects 0.2 to 1.x.
 - [Migrate from a 1.x Docker install](migrate-from-1.x-docker.md) — Docker container to the native 2.0 service.
 - [The wherdr command](command.md) — npm and Homebrew packages and the native service.
-- [Herdr plugins](plugins.md#herdr-plugins) — The wherdr Herdr plugin, its panel and plugin actions.
 - [Releasing](RELEASING.md) — Release process of the 2.x line.
 
 Release notes of the 2.x line: [2.5.0](release-notes-2.5.0.md) · [2.4.0](release-notes-2.4.0.md) ·
@@ -69,6 +65,4 @@ Release notes of the 2.x line: [2.5.0](release-notes-2.5.0.md) · [2.4.0](releas
 - [Security](security.md#security)
 - [Troubleshooting](troubleshooting.md#troubleshooting)
 - [Contributing](development.md#contributing) · [License](overview.md#license)
-- v2 only: [Works great with herdr-projects](board.md#works-great-with-herdr-projects) ·
-  [Install as a Herdr plugin](plugins.md#install-as-a-herdr-plugin) ·
-  [the `wherdr` command](command.md#the-wherdr-command)
+- v2 only: [the `wherdr` command](command.md#the-wherdr-command)

@@ -5,17 +5,14 @@ Status: **implemented** (2026-10-01). Code: `app/utils/shortcuts.ts` (table and 
 (help sheet), `app/components/ShortcutsReference.vue` (shared with Settings › Shortcuts). Tests: `tests/shortcuts.test.ts`, `tests/cardKeys.test.ts`.
 `[INFERENCE]` marks claims nobody has tested on a device yet.
 
-> v3 (herdr-core): the Board key `H`, pane swaps (`Alt+Shift+arrows`) and side-by-side focus
-> moves are v2 only; Mod+Alt+O (reveal) needs `/api/reveal`, which herdr-core mode does not serve.
+> v3 (herdr-core): pane swaps (`Alt+Shift+arrows`) and side-by-side focus moves are v2 only;
+> Mod+Alt+O (reveal) needs `/api/reveal`, which herdr-core mode does not serve.
 
 > 2026-10-02: Mod+Alt+O (current agent folder in the default editor, via the existing
 > /api/reveal "Open" action on the folder path) added since; action in
 > `app/composables/useHerdr.ts` (`openFolderOnMachine`). First bound to E, moved to O the
 > same day: Firefox and Zen own ⌘⌥E (Network Monitor) on macOS, Zen also Ctrl+Alt+E
 > ("Forward workspace").
-
-> 2026-10-06: herdr-projects keys Mod+Alt+P (Project panel) and Mod+Alt+Shift+N (New project),
-> decision Q10. Removed with herdr-projects 0.2 (wherdr 2.0).
 
 ## Capability
 
@@ -43,7 +40,6 @@ promise that wherdr "can replace the Herdr terminal client day to day".
 | Stop the working agent, same as the Stop button | Esc | Conversation mode, Stop shown, empty field, no conversation search open | No (Esc goes to the program) |
 | Settings | Mod+, | Computer | Yes |
 | Shortcut list | Mod+/, or `?` outside a field | Computer; also Settings › Shortcuts | Mod+/ only |
-| Board: the herdr-projects tasks of every machine | `H` outside a field | Computer | No (the program gets the key) |
 
 These existing shortcuts are unchanged and listed in the help sheet:
 
@@ -63,7 +59,6 @@ These existing shortcuts are unchanged and listed in the help sheet:
 Where the keys are shown:
 
 - Tooltips: global search, new agent (rail) and settings in the sidebar; search in the agent header.
-- The Board button (header and collapsed rail of the list) shows `H` in its tooltip.
 - The agent menu's "Close this pane" entry shows Mod+Alt+W.
 - The agent menu's "Open in editor" entry shows Mod+Alt+O (on the agent's Mac).
 - The composer shows `Esc stop` while Stop is visible.
@@ -184,18 +179,6 @@ The composer blurs itself on Esc. After a stop it gets the focus back.
   free in Firefox, Zen, Chromium and Safari (⌘O "Open File" needs no Alt). The agent menu gets
   an "Open in editor" entry, the help sheet a row.
 
-- **Q10.** herdr-projects keys, live only where the plugin is installed. Mod+Alt+P for the
-  Project panel: VS Code's secondary side bar is ⌥⌘B, but Chrome on macOS binds ⌥⌘B to the
-  Bookmark Manager; ⌥⌘P is unbound in Chrome, Firefox and Safari (Finder's path bar only)
-  `[INFERENCE]`, not checked on a device. On a coordinator it toggles the panel (shared state
-  `projectSideOpen`, the same as its collapse button); from a thread it opens the coordinator with
-  the panel shown. New project is Mod+Alt+Shift+N, the Shift sibling of New agent; on Windows,
-  AltGr+Shift+letter typing a non-Latin letter (Polish `Ń`) stays text. Both are caught before
-  the terminal like the other Mod+Alt keys.
-- **Q11.** (2026-10-12) Board key: bare `H`, like `?`, because the user asked for H.
-  Mod+Alt+H is unusable on macOS: ⌘⌥H is "Hide Others", the page never sees it. Bare `H`
-  does not fire while typing (any text field) or in the terminal, nor with Shift, Alt, Ctrl or ⌘
-  (Alt+Shift+H stays the pane swap). Computer layout only.
 - **Q5.** Sidebar toggle: not now.
 
 ## Still open

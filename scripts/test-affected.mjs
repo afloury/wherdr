@@ -9,11 +9,11 @@ import net from 'node:net'
 // CSS and transport boundaries are not ordinary static imports.
 export const domains = [
   { name: 'references', source: /(?:reference|Composer|ChatMarkdown|QuotedText|UserText)/i, tests: /(?:reference|Composer|ChatMarkdown|QuotedText|UserText|quote)/i, e2e: ['core-smoke'], reason: 'References cross templates, composer state and the send boundary.' },
-  { name: 'guards', source: /(?:server\/api\/(?:prompt|input|choose|menu|nav)|Identity|guardedSend)/i, tests: /(?:guard|Identity|stoppedAgent|agentPrompt|menuRoute)/i, e2e: ['core-smoke'], reason: 'Identity and stale actions must be checked through transport.' },
+  { name: 'guards', source: /(?:server\/api\/(?:prompt|input|choose)|Identity|guardedSend)/i, tests: /(?:guard|Identity|stoppedAgent|agentPrompt)/i, e2e: ['core-smoke'], reason: 'Identity and stale actions must be checked through transport.' },
   { name: 'terminal', source: /terminal|server\/routes\/.*ws/i, tests: /terminal/i, e2e: ['core-smoke'], reason: 'Terminal rendering and websocket lifecycle cross the built app.' },
-  { name: 'board', source: /board|machine|TaskPanel|TaskSheet|ProjectGroup/i, tests: /board|machine|TaskPanel|TaskSheet|ProjectGroup/i, e2e: ['core-machines'], reason: 'Board auto-imports and cross-machine navigation need explicit coverage.' },
+  { name: 'machines', source: /machine/i, tests: /machine/i, e2e: ['core-machines'], reason: 'Machine tabs and cross-machine navigation need explicit coverage.' },
   { name: 'startup', source: /router|app\.vue|onboarding|app\/plugins/i, tests: /onboarding|directRoute|stateReady/i, e2e: ['core-smoke'], reason: 'Startup and routing depend on Nuxt registration.' },
-  { name: 'appearance', source: /app\/assets\/|themes?\.|font/i, tests: /layout|sheet|CompactDefault|ChatViewRendering|SettingsTyping|Composer|BoardPanel/i, e2e: [], reason: 'CSS and themes affect layout and overlays without import edges.' },
+  { name: 'appearance', source: /app\/assets\/|themes?\.|font/i, tests: /layout|sheet|CompactDefault|ChatViewRendering|SettingsTyping|Composer/i, e2e: [], reason: 'CSS and themes affect layout and overlays without import edges.' },
   { name: 'chat-rendering', source: /ChatView|OmpTool|Settings/i, tests: /ChatViewRendering|CompactDefault|SettingsTyping|OmpTool|settings/i, e2e: [], reason: 'Rendering assertions moved from e2e to components; retain integration boundaries.' },
 ]
 const doc = p => /\.(md|rst)$/.test(p) || /^docs\//.test(p)

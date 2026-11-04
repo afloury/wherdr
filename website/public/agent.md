@@ -24,7 +24,7 @@ Herdr runs, as the same user, on `127.0.0.1:7683` only. Details: https://github.
 ```sh
 herdr --version          # Herdr ≥ 0.9.1, or send the user to https://herdr.dev
 herdr status server      # its server must be running
-herdr plugin list        # afloury.wherdr: wherdr is installed; herdr-projects: see Extras
+herdr plugin list        # afloury.wherdr: wherdr is installed
 curl -fsS http://127.0.0.1:7683/manifest.webmanifest   # answers: wherdr already runs
 brew list wherdr         # a Homebrew install
 node --version           # Node.js 22
@@ -91,8 +91,7 @@ passkey lock is on, and how to update (run the install command again).
 ## Extras (only if asked)
 
 - **Only a terminal, no conversation**: `herdr integration install claude|codex|omp`.
-- **Agents on other computers**: Herdr only on them, registered with `herdr machine add`:
+- **Agents on other computers**: Herdr only on them, each registered as a Herdr machine:
   https://github.com/afloury/wherdr/blob/main/docs/machines.md#several-machines-ssh.
-- **herdr-projects** (task board): `herdr plugin install eliasstravik/herdr-projects --ref v1.2.21 --yes`.
 - **Something fails**: the **L** key (log) of the wherdr panel in Herdr, and
   https://github.com/afloury/wherdr/blob/main/docs/troubleshooting.md#troubleshooting.
