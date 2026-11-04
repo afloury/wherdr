@@ -139,7 +139,10 @@ export function openCoreTerm(ws: WsLike, url: URL, deps: CoreTermDeps): TermSess
         onEvent(payload)
       })
       core.send(sub.channel, FRAME.CREDIT, u32(1024 * 1024))
-      size = { cols: t.cols || want.cols, rows: t.rows || want.rows }
+      // A viewer in control attaches at its own size, which resizes the terminal
+      // first: core's paint ends wrapped lines with hard newlines, so a paint
+      // drawn at another width would not reflow to this one in xterm.
+      size = control ? want : { cols: t.cols || want.cols, rows: t.rows || want.rows }
       const attached = await core.call<{ channel: number }>('terminal.attach', { terminal: address, cols: size.cols, rows: size.rows, history: HISTORY })
       if (done) return
       channel = attached.channel
@@ -157,7 +160,6 @@ export function openCoreTerm(ws: WsLike, url: URL, deps: CoreTermDeps): TermSess
           end(closedText(why), 4000, 'terminal ended')
         }
       })
-      if (control) resize(want)
       announce()
       for (const go of early.splice(0)) go()
     } catch (e) {
