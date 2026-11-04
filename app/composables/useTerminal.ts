@@ -13,6 +13,7 @@ import type { WebglAddon } from '@xterm/addon-webgl'
 import { loadWebgl, loadXterm } from '~/utils/xtermLoader'
 import { reloadIfNewBuild } from '~/composables/useAppVersion'
 import { terminalPixelWidth } from '~/utils/terminalSize'
+import { writeTerminalFrame } from '~/utils/terminalFrame'
 import { guardWebglCanvasSize } from '~/utils/terminalRenderer'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
 import { bindTerminalLinks, type TerminalLinks } from '~/utils/terminalLinks'
@@ -442,20 +443,22 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         }
         loading.value = false
         if (!term) return
-        if (m.width && m.height && (m.width !== term.cols || m.height !== term.rows)) {
-          if (smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
-          term.resize(m.width, m.height)
-          if (coreStream) offerFit()
-        }
         const current = term
-        // Core repaints the screen and its history on each attach.
-        if (coreStream && m.full) current.reset()
         const credit = coreStream && Number.isInteger(m.credit) && m.credit > 0 ? m.credit : 0
-        current.write(b64ToBytes(m.bytes || ''), () => {
-          if (credit && tws === ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'credit', bytes: credit }))
-          if (coreStream && !coreControl) followCursor()
-          selectionHint.refresh(current, mouseSupported)
-          if (smoothTouchScrolling.value) frameTick.value++
+        // Size and reset apply in stream order (see utils/terminalFrame.ts).
+        // Core repaints the screen and its history on each attach.
+        writeTerminalFrame(current, { width: m.width, height: m.height, reset: coreStream && m.full === true, bytes: b64ToBytes(m.bytes || '') }, {
+          resized: () => {
+            if (term !== current) return
+            if (smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
+            if (coreStream) offerFit()
+          },
+          written: () => {
+            if (credit && tws === ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'credit', bytes: credit }))
+            if (coreStream && !coreControl) followCursor()
+            selectionHint.refresh(current, mouseSupported)
+            if (smoothTouchScrolling.value) frameTick.value++
+          },
         })
       } else if (m.type === 'terminal.control') {
         coreControl = m.on === true
