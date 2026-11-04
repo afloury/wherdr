@@ -4,7 +4,7 @@ import type { Template } from './workflow'
 
 const todo = { id: 'todo', column: 'To do' }
 const done = { id: 'done', column: 'Done' }
-const prefs = { agent: 'claude', model: 'sonnet' }
+const prefs = { agent: 'claude', model: 'sonnet', reviewModel: 'opus' }
 
 // Commits straight to dev: no PR, no review, no CI.
 export const vibe: Template = {

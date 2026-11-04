@@ -72,6 +72,21 @@ export function workerPlan(t: Template, task: Task): { program: string, model: s
   return { program, model }
 }
 
+// Program and model of the reviewer: reviewAgent and reviewModel, nearest
+// level first. The reviewer is always of another model than the worker.
+export function reviewerPlan(t: Template, task: Task): { program: string, model: string } | { reason: string } {
+  const worker = workerPlan(t, task)
+  if ('reason' in worker) return worker
+  if (!typeSteps(t, task.type).some(s => s.holder === 'reviewer')) return { reason: `Task type "${task.type}" has no reviewer step` }
+  const tt = t.taskTypes[task.type]
+  const pick = (k: 'reviewAgent' | 'reviewModel') => task.prefs?.[k] || tt?.prefs?.[k] || t.prefs?.[k] || ''
+  const program = pick('reviewAgent') || worker.program, model = pick('reviewModel')
+  if (!(PROGRAMS as readonly string[]).includes(program)) return { reason: `The engine cannot start "${program}": claude or codex` }
+  if (!MODEL_RE.test(model)) return { reason: model ? `Invalid review model "${model}"` : 'No review model set: add prefs.reviewModel to the template' }
+  if (model === worker.model) return { reason: `The reviewer must use another model than the worker (${model})` }
+  return { program, model }
+}
+
 // The instructions file: the task, then every level's instructions, broadest first.
 export function instructionsText(p: Project, t: Template, task: Task, run: Pick<Run, 'worktree' | 'branch'>) {
   const step = typeSteps(t, task.type).find(s => s.holder === 'worker')
