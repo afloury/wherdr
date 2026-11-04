@@ -51,9 +51,6 @@ jobs:
 
       - name: Build (herdr-core)
         run: npm run build
-        env:
-          WHERDR_BACKEND: core
-          NUXT_PUBLIC_CORE: 'true'
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
