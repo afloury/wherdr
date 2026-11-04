@@ -6,6 +6,8 @@ import { fixture, startCore } from './core'
 // machine, the phone key bar's navigation keys reach core by the names terminal.keys
 // accepts (home, pageup…, not v2 Herdr's CSI bytes), and the terminal attaches.
 // Merges the former core-attach and core-keybar specs: same agent, same opening steps.
+// Also runs on webkit-phone (playwright.config.ts): the events WebSocket must open and
+// deliver a state frame there, since iOS Safari can reject a handshake Chromium accepts.
 test('core smoke: home, conversation attach and key bar, terminal attach', async ({ page }) => {
   const terminal = fixture.inventory.terminals[0]!
   const core = await startCore(call =>
@@ -14,8 +16,20 @@ test('core smoke: home, conversation attach and key bar, terminal attach', async
     : call.method === 'terminal.put' ? { path: `/remote/${call.params.name}` }
     : call.method === 'terminal.keys' ? { status: null, turn: 0 }
     : undefined)
+  // Agents in the latest state frame of /ws/events (pongs and settings messages have no panes).
+  let eventsPanes = -1
+  page.on('websocket', (ws) => {
+    if (!new URL(ws.url()).pathname.endsWith('/ws/events')) return
+    ws.on('framereceived', ({ payload }) => {
+      try {
+        const data = JSON.parse(String(payload))
+        if (Array.isArray(data?.panes)) eventsPanes = data.panes.length
+      } catch { /* not JSON */ }
+    })
+  })
   try {
     await core.open(page)
+    await expect.poll(() => eventsPanes, { message: '/ws/events opens and sends a state frame with the agent' }).toBeGreaterThan(0)
     await expect(page.locator('.home-version')).toHaveText(/^wherdr v3 · herdr-core$/i)
     await page.getByRole('button', { name: /review-agent/ }).first().click()
     await expect(page).toHaveURL(/#\/(a|t)\//)
