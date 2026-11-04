@@ -12,10 +12,10 @@ import { RUNTIME_HELP, findRuntime, isBun, runtimeOk, runtimeVersion, temporaryI
 import { brewDoctor, brewRedirect, brewService, brewStatusRows } from './brew.mjs'
 import { controlService, enableLinger, installService, lingerOn, serviceFile, servicePlatform, serviceState, uninstallService } from './service.mjs'
 import { loginShellPath, userPath } from './userpath.mjs'
-import { refreshSkill } from './skill.mjs'
+import { removeLegacySkill } from './skill.mjs'
 import { LINKS, inspect, publishCommand, reachable } from './tailnet.mjs'
 
-export const HELP = `${'wherdr'}: your Herdr agents from your phone and browser.
+export const HELP = `${'wherdr'}: your coding agents on herdr-core (hc), from your phone and browser.
 
 Usage: wherdr [command] [options]
 
@@ -27,16 +27,17 @@ Commands:
   logs [-f]          Last lines of the log (-n <lines>); -f follows it
   open               Open wherdr in the browser
   phone              Phone state, the app's phone setup page, QR code once it answers
-  panel              One screen: state, Open wherdr, Set up my phone, other commands
   service install    Start wherdr at login (macOS LaunchAgent, Linux systemd --user)
   service uninstall  Remove it
+  dictation fetch    Download the on-device dictation files into <data dir>/models
+                     (default: runtime and the phone model; or name sets, or all)
   doctor             Check Node/Bun, herdr-core (hc) and its socket, the port and the service
 
 Options:
   --hc-socket <path>  Socket of the herdr-core (hc) session to drive (required, or $HC_SOCKET)
   --port <n>          Listening port (default: 7683, or $PORT)
   --host <addr>       Listening address (default: 127.0.0.1, or $HOST): loopback or this machine's tailnet address.
-  --data-dir <dir>    Passkeys, push keys and settings (default: ~/wherdr/data, or $DATA_DIR)
+  --data-dir <dir>    Passkeys, push keys, settings and dictation files (default: ~/wherdr/data, or $DATA_DIR)
   -v, --version       Print the version
   -h, --help          Print this help
 
@@ -123,7 +124,7 @@ function needServer() {
 
 // ------------------------------------------------------------------- run
 export async function run(opts) {
-  refreshSkill(context(opts).env)
+  removeLegacySkill(context(opts).env)
   needServer()
   const ctx = context(opts)
   needCore(ctx)
@@ -148,7 +149,7 @@ export async function run(opts) {
 
 // ----------------------------------------------------------------- start
 export async function start(opts) {
-  refreshSkill(context(opts).env)
+  removeLegacySkill(context(opts).env)
   needServer()
   const ctx = context(opts)
   needCore(ctx)
@@ -233,7 +234,7 @@ export async function stop(opts, { quiet = false } = {}) {
   }
   if (quiet) return false
   const other = await probe(ctx.port, ctx.host)
-  if (other) warn(`the wherdr on port ${ctx.port} was not started by \`wherdr start\` (plugin, a terminal…): left running.`)
+  if (other) warn(`the wherdr on port ${ctx.port} was not started by \`wherdr start\` (npm start, a terminal…): left running.`)
   else say('wherdr is not running.')
   return false
 }
@@ -263,7 +264,7 @@ export async function status(opts) {
   const hb = brew && brewStatusRows(brew)
   say(`${c.bold('wherdr')} ${VERSION}`)
   row('Address', answer === 'wherdr' ? `${c.green('●')} ${c.cyan(ctx.url)} answers` : answer ? `${c.yellow('●')} port ${ctx.port} is taken by another program` : `${c.dim('○')} port ${ctx.port} free: not running`)
-  row('Process', hb?.process ? hb.process : svc.running ? 'login service' : pid ? `pid ${pid} (wherdr start)` : answer === 'wherdr' ? 'started another way (plugin, a terminal…)' : 'none')
+  row('Process', hb?.process ? hb.process : svc.running ? 'login service' : pid ? `pid ${pid} (wherdr start)` : answer === 'wherdr' ? 'started another way (npm start, a terminal…)' : 'none')
   row('Service', hb ? hb.service : svc.installed ? `installed (${serviceFile()})${svc.running ? '' : ', not running'}` : 'not installed · wherdr service install')
   row('Data', ctx.env.DATA_DIR)
   row('Log', hb ? hb.log : ctx.files.log)
@@ -387,7 +388,7 @@ export async function phone(opts) {
 
 // --------------------------------------------------------------- service
 export async function service(opts) {
-  if (opts.sub === 'install') refreshSkill(context(opts).env)
+  if (opts.sub === 'install') removeLegacySkill(context(opts).env)
   const ctx = context(opts)
   if (opts.sub === 'uninstall') {
     const file = uninstallService()
@@ -462,6 +463,26 @@ export function serviceSpec(ctx, bin, runtime, PATH) {
 // shell's, asked once, herdr-projects' record and the usual folders).
 export function servicePath(runtime, env = process.env, { home = os.homedir(), login = loginShellPath(env), exists } = {}) {
   return userPath({ env, home, first: [path.dirname(runtime)], login, exists })
+}
+
+// ------------------------------------------------------------- dictation
+// The on-device dictation files (scripts/fetch-dictation-files.mjs, shipped in
+// the package), into the same DATA_DIR as the server: it serves them at /models/.
+export const DICTATION_SCRIPT = path.join(ROOT, 'scripts', 'fetch-dictation-files.mjs')
+
+export async function dictation(opts, { log = say, load = () => import(pathToFileURL(DICTATION_SCRIPT).href) } = {}) {
+  const ctx = context(opts)
+  const { fetchSets, setsOf } = await load()
+  let names
+  try { names = setsOf(opts.sets ?? []) } catch (e) { throw new CliError(e.message, 2) }
+  const modelsDir = path.join(ctx.env.DATA_DIR, 'models')
+  await fetchSets(modelsDir, names, { log })
+  ok(`dictation files in place: ${modelsDir}`)
+}
+
+// wherdr 2's panel was the screen of the Herdr plugin; wherdr 3 is not a Herdr plugin.
+export function panel() {
+  throw new CliError('`wherdr panel` is gone: it was the screen of the wherdr 2 Herdr plugin, and wherdr 3 runs on herdr-core.\n  Use `wherdr status`, `wherdr open` and `wherdr phone` instead.')
 }
 
 // ---------------------------------------------------------------- doctor

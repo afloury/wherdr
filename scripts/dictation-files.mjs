@@ -131,3 +131,12 @@ export function setsOf(args) {
   if (unknown.length) throw new Error(`unknown set: ${unknown.join(', ')} (sets: ${Object.keys(SETS).join(', ')}, all)`)
   return names
 }
+
+// Every entry of the named sets into modelsDir (the script, `wherdr dictation fetch`).
+export async function fetchSets(modelsDir, names, opts = {}) {
+  const log = opts.log || (() => {})
+  log(`into ${modelsDir}`)
+  for (const name of names) {
+    for (const entry of SETS[name]) await fetchEntry(modelsDir, entry, { ...opts, log })
+  }
+}

@@ -15,3 +15,4 @@ export function sha256Of(file: string): Promise<string>
 export function download(url: string, sha256: string, file: string, opts?: FetchOptions): Promise<void>
 export function fetchEntry(modelsDir: string, entry: FetchEntry, opts?: FetchOptions): Promise<void>
 export function setsOf(args: string[]): string[]
+export function fetchSets(modelsDir: string, names: string[], opts?: FetchOptions): Promise<void>

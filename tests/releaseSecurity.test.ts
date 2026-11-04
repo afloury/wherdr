@@ -57,9 +57,8 @@ describe('allowed hosts', () => {
     expect(phoneFixCommand('npm-global', '7683')).toBe('wherdr phone')
     expect(phoneFixCommand('npm', '')).toBe('npx wherdr phone')
     expect(phoneFixCommand('', '7683')).toBe('npx wherdr phone')
-    // No `wherdr` command on the host there: the installer ends with the same check.
-    expect(phoneFixCommand('plugin', '7690')).toBe('curl -fsSL https://wherdr.dev/install | sh')
-    expect(hostRefusedPage('plugin')).toContain('<pre><code>curl -fsSL https://wherdr.dev/install | sh</code></pre>')
+    // wherdr 3 is not a Herdr plugin: no installer command any more.
+    expect(phoneFixCommand('plugin', '7690')).toBe('npx wherdr phone --port 7690')
   })
   it('names the port in the command when wherdr does not run on the default one', () => {
     // `wherdr phone` alone looks at port 7683.
