@@ -24,6 +24,8 @@ import { paneFallback } from '~/utils/viewMode'
 import { menuAsSheet } from '~/utils/menuRoute'
 import { DEFAULT_QUOTE_MODE, QUOTE_MODE_KEY, migrateQuoteMode, type QuoteMode } from '~/utils/quoteTokens'
 import { parseReplyStyle } from '~/utils/questionReply'
+import { DICTATION_KEY, parseDictationChoice } from '~/utils/dictation/compose'
+import { ENGINES } from '~/utils/dictation/registry'
 import { flag, settingsSync, syncedRef } from './useSyncedSettings'
 import type { SettingsMap } from '#shared/settings'
 import type { QuotaDisplay } from '~/utils/quotas'
@@ -125,6 +127,9 @@ watch(quoteMode, v => ls.set(QUOTE_MODE_KEY, v))
 // How the questions and the points of an agent reply offer to be quoted
 // (utils/questionReply.ts): an icon by default.
 export const replyStyle = syncedRef('replyStyle', parseReplyStyle, v => v)
+// Dictation engine of this device (Settings › Conversation): off by default.
+export const dictationEngine = ref(parseDictationChoice(ls.get(DICTATION_KEY), Object.keys(ENGINES)))
+watch(dictationEngine, v => ls.set(DICTATION_KEY, v))
 // Account quotas (read by QuotaStrip, also shown in the machine headers).
 export const homeQuotas = ref<Quotas | null>(null)
 export const fontSize = ref(Number(ls.get('fontSize')) || 12)

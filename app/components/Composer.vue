@@ -48,6 +48,8 @@ const draft = useDraft(props.paneId)
 const text = toRef(draft, 'text')
 const promptRef = ref<{ textareaRef?: HTMLTextAreaElement } | null>(null)
 const ta = computed(() => promptRef.value?.textareaRef || null)
+// Dictation (Settings › Conversation): the mic before the plugins' buttons, the take above the field.
+const mic = useComposerDictation({ text, ta, pane: () => props.pane })
 const fieldFocused = ref(false)
 let pointerHeld = false
 let collapseAfterPress = false
@@ -596,6 +598,18 @@ defineExpose({
         <UIcon name="i-lucide-arrow-up" /><span>{{ unanswered > 1 ? tl(`${unanswered} questions unanswered`, `${unanswered} questions sans réponse`) : tl('1 question unanswered', '1 question sans réponse') }}</span>
       </button>
     </div>
+    <div v-if="mic.shown.value" class="composer-notice dictation" role="status" data-testid="dictation-take">
+      <template v-if="mic.status.value === 'transcribing'">
+        <span class="notice-spin" aria-hidden="true" />
+        <span class="restart-text">{{ tl('Recognizing…', 'Reconnaissance…') }}</span>
+      </template>
+      <template v-else>
+        <span class="dictation-dot" aria-hidden="true" />
+        <span class="dictation-wave" aria-hidden="true">{{ mic.wave.value }}</span>
+        <span class="dictation-clock">{{ mic.loading.value || mic.clock.value }}</span>
+      </template>
+      <button type="button" class="notice-btn" :aria-label="tl('Cancel dictation', 'Annuler la dictée')" @mousedown.prevent @click="mic.cancel()"><UIcon name="i-lucide-x" /></button>
+    </div>
     <div v-if="quotes.length" class="composer-quotes" role="list" :aria-label="t('Quoted questions')">
       <span class="composer-quotes-label">↳ {{ quotes.length }}</span>
       <span v-for="q in quotes" :key="q.start" class="composer-quote" role="listitem">
@@ -609,7 +623,7 @@ defineExpose({
       ref="promptRef" v-model="text" :disabled="Boolean(pane?.stopped)" :placeholder="pane?.stopped ? t('Restart Codex before sending a message') : readOnly ? t('Draft saved — sending unavailable offline') : placeholder" variant="outline" color="neutral"
       :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends && (canSend || stopMode || readOnly)"
       :enterkeyhint="enterSends ? 'send' : 'enter'" autocapitalize="sentences"
-      data-wherdr="composer-field" class="prompt" :class="{ suggesting: suggestTap, expanded }" :style="suggestRoom ? { '--suggest-room': `${suggestRoom}px` } : undefined" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
+      data-wherdr="composer-field" class="prompt" :class="{ suggesting: suggestTap, expanded, 'has-mic': Boolean(mic.engine.value) }" :style="suggestRoom ? { '--suggest-room': `${suggestRoom}px` } : undefined" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
       @focus="fieldFocus" @blur="fieldBlur"
       @submit="submit" @keydown="onKeydown" @paste="onPaste" @beforeinput="onBeforeInput"
     >
@@ -650,6 +664,15 @@ defineExpose({
         />
         <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="onFiles">
         <input ref="anyFileInput" type="file" multiple hidden data-testid="attach-any" @change="onFiles">
+        <button
+          v-if="mic.engine.value" type="button" class="prompt-mic" :class="{ on: mic.shown.value }" data-testid="dictation-mic"
+          :disabled="readOnly || mic.status.value === 'busy'" :aria-pressed="mic.live.value"
+          :aria-label="mic.live.value ? tl('Stop dictation', 'Arrêter la dictée') : tl('Dictate: hold, or tap to start and stop', 'Dicter : maintenir, ou toucher pour démarrer et arrêter')"
+          @mousedown.prevent @touchstart.prevent @contextmenu.prevent
+          @pointerdown="mic.down" @pointerup="mic.up" @pointercancel="mic.up" @click="mic.click"
+        >
+          <UIcon :name="mic.live.value ? 'i-lucide-square' : 'i-lucide-mic'" />
+        </button>
         <!-- Public marker (docs/plugins.md): plugins append their buttons here, before Send. -->
         <span data-wherdr="composer-actions" class="composer-actions" />
         <span v-if="hint && suggestion" class="prompt-hint"><UKbd value="tab" size="sm" /> {{ t('suggestion') }} <span class="sep">·</span> <UKbd value="enter" size="sm" /> {{ t('send') }}</span>
