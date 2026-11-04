@@ -44,16 +44,15 @@ test('core smoke: home, conversation attach and key bar, terminal attach', async
     expect(page.url()).toMatch(/s[0-9a-z]+:p/)
     await expect(page.getByText('Invalid pane')).toHaveCount(0)
 
-    // Key bar from the conversation (no terminal attached).
+    // Key bar from the conversation (no terminal attached): one key proves the chain
+    // button → /api/input → terminal.keys. Every key's name is checked lower, in
+    // tests/keybarKeys.test.ts and tests/core-input.test.ts.
     await page.getByRole('button', { name: 'Show or hide terminal keys', exact: true }).click()
     const bar = page.getByRole('group', { name: 'Terminal function keys', exact: true })
-    const names = { Home: 'home', End: 'end', PgUp: 'pageup', PgDn: 'pagedown', Delete: 'delete', Insert: 'insert' }
-    for (const name of Object.keys(names)) {
-      const response = page.waitForResponse(r => r.url().endsWith('/api/input') && r.request().method() === 'POST')
-      await bar.getByRole('button', { name, exact: true }).click()
-      expect((await response).status()).toBe(200)
-    }
-    expect(core.calls.filter(c => c.method === 'terminal.keys').map(c => c.params.keys)).toEqual(Object.values(names).map(k => [k]))
+    const response = page.waitForResponse(r => r.url().endsWith('/api/input') && r.request().method() === 'POST')
+    await bar.getByRole('button', { name: 'PgUp', exact: true }).click()
+    expect((await response).status()).toBe(200)
+    expect(core.calls.filter(c => c.method === 'terminal.keys').map(c => c.params.keys)).toEqual([['pageup']])
 
     // The terminal view attaches the live terminal.
     await page.getByRole('button', { name: 'Terminal', exact: true }).click()
