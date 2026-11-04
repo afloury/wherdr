@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import { fixture, startCore } from './core'
-import core17 from '../fixtures/core-0.1.17.json' with { type: 'json' }
 
 // Settings > Machines on herdr-core: core line, rename, forget (own isolated server and fake core).
+// Add machine and host:port are covered lower: tests/components/CoreMachines.test.ts (form)
+// and tests/core-create.test.ts (machine.add and rpc.discover).
 test('machines can be renamed and forgotten, and the core line shows', async ({ page }) => {
   const machineList = [{ name: 'host-a', state: 'connected' }, { name: 'host-b', state: 'unreachable', why: 'a different core answers there' }]
   const core = await startCore((r) => {
@@ -12,10 +13,8 @@ test('machines can be renamed and forgotten, and the core line shows', async ({ 
     return r.method === 'terminal.list' ? { ...fixture.inventory, terminals: [] }
       : r.method === 'machine.list' ? { machines: machineList }
       : r.method === 'server.status' ? { core: { id: 'x', name: 'core-a' }, version: '0.1.17', pid: 1, uptime_ms: 3 * 3600 * 1000, holders: [], live: 0, finished: 0 }
-      : r.method === 'machine.add' ? { name: 'box' }
       : r.method === 'machine.rename' || r.method === 'machine.rm' ? { removed: r.params.machine }
-      // The recorded 0.1.17 discover takes `user@host:port`.
-      : r.method === 'rpc.discover' ? core17.discover : undefined
+      : undefined
   })
   const rpc = core.calls
   try {
@@ -24,11 +23,6 @@ test('machines can be renamed and forgotten, and the core line shows', async ({ 
     await expect(page.getByTestId('core-line')).toContainText('Core 0.1.17 · running for 3 h')
     await mkdir('.shots', { recursive: true })
     await page.screenshot({ path: `.shots/core-machines-${test.info().project.name}.png` })
-    // host:port on a core whose discover takes a port goes through; a 0.1.16 core is covered by
-    // tests/core-capabilities.test.ts and tests/components/CoreMachines.test.ts.
-    await page.getByLabel('SSH target').fill('me@10.0.0.9:2222')
-    await page.getByRole('button', { name: 'Add machine' }).click()
-    await expect.poll(() => rpc.find(r => r.method === 'machine.add')?.params).toEqual({ target: 'me@10.0.0.9:2222' })
     await page.getByTestId('core-machine').filter({ hasText: 'host-a' }).getByTestId('machine-rename').click()
     await page.getByLabel('Name', { exact: true }).fill('renamed')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
