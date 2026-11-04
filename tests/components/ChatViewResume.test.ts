@@ -3,11 +3,13 @@
 // re-read that changed nothing must leave the view exactly as it is: same
 // tail, same items, same blocks and DOM nodes, no Markdown re-render, no
 // scroll write — only the token the next request sends advances.
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import type { VueWrapper } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import ChatView from '~/components/ChatView.vue'
-import { cachedAt, eventsOpen, herdrState, netDown, pageVisible, reducedMotion } from '~/composables/useHerdr'
+import { cachedAt, connectEvents, eventsOpen, herdrState, locked, netDown, pageVisible, reconnectEvents, reducedMotion } from '~/composables/useHerdr'
+import * as herdr from '~/composables/useHerdr'
 import type { ChatItem, ChatResponse, Pane } from '#shared/types'
 
 // Markdown render calls (utils/markdown.ts): the equal re-read must not ask
@@ -34,6 +36,7 @@ const ITEMS: ChatItem[] = [
   { role: 'assistant', text: 'The re-read now keeps **equal** items.', ts: '2026-01-01T00:00:02Z' },
 ]
 const pane = { id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'claude', name: null, label: null, status: 'idle', title: null, cwd: '/tmp/demo', agentSession: null } as Pane
+const STATE = { ok: true, ready: true, workspaces: [], panes: [pane] }
 
 // The component's own state, through the dev bindings (chat, items, blocks,
 // loadChat): what a re-read would have rebuilt is asserted by identity.
@@ -46,7 +49,18 @@ interface View {
 const view = (w: VueWrapper): View => (w.vm as unknown as { $: { setupState: View } }).$.setupState
 
 // scrollTop writes on the scroll box: apply() re-pins to the bottom through
-// requestAnimationFrame; the no-op path must not.
+// requestAnimationFrame; the no-op path must not. Frames are stubbed and
+// flushed by hand, so "no write" holds at an explicit frame boundary rather
+// than after a guessed delay; the 1.5 s poll interval and the ResizeObserver
+// bottom-follow are stubbed out for the same reason — reads happen only when
+// a test asks for one.
+const raf: FrameRequestCallback[] = []
+async function flushFrames() {
+  while (raf.length) {
+    for (const cb of raf.splice(0)) cb(0)
+    await nextTick()
+  }
+}
 function scrollWrites(el: Element) {
   let n = 0
   let v = (el as HTMLElement).scrollTop
@@ -57,10 +71,39 @@ function scrollWrites(el: Element) {
   })
   return () => n
 }
-// Let the rAF of a scrollToEnd run, when there is one.
-const settle = () => new Promise(r => setTimeout(r, 80))
 const rendered = (w: VueWrapper) => [...(w.find('.chat-list').element.children)]
 const sameNodes = (a: Element[], b: Element[]) => a.length === b.length && a.every((el, i) => el === b[i])
+
+// Stand-in events sockets: useHerdr drives open/state/close by hand.
+interface FakeSocket {
+  readyState: number
+  onopen: (() => void) | null
+  onmessage: ((e: { data: string }) => void) | null
+  onclose: (() => void) | null
+  send: (data: string) => void
+  close: () => void
+}
+function fakeSockets() {
+  const list: FakeSocket[] = []
+  vi.stubGlobal('WebSocket', class {
+    readyState = 0
+    onopen: (() => void) | null = null
+    onmessage: ((e: { data: string }) => void) | null = null
+    onclose: (() => void) | null = null
+    send() {}
+    close() { this.readyState = 3 }
+    constructor() { list.push(this as unknown as FakeSocket) }
+  })
+  return list
+}
+const open = (ws: FakeSocket) => { ws.readyState = 1; ws.onopen!() }
+const state = (ws: FakeSocket, s: object) => ws.onmessage!({ data: JSON.stringify(s) })
+// Drop the live socket without arming the 2.5 s netDown timer (locked skips it).
+function dropSocket(ws: FakeSocket | undefined) {
+  locked.value = true
+  ws?.onclose?.()
+  locked.value = false
+}
 
 // UTooltip needs the app's TooltipProvider: the end-of-turn copy button is
 // not what is tested here.
@@ -69,11 +112,17 @@ async function mount() {
   herdrState.value = { ok: true, workspaces: [], panes: [pane] }
   const w = await mountSuspended(ChatView, mountOptions)
   await expect.poll(() => w.find('.chat').text()).toContain('keeps')
-  await settle() // the first paint's own scrollToEnd rAF fires here, not in a test
+  await flushFrames() // the first paint's own scrollToEnd rAF fires here, not in a test
   return w
 }
 
 describe('re-read that keeps the current blocks', () => {
+  beforeEach(() => {
+    raf.length = 0
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { raf.push(cb); return raf.length })
+    vi.stubGlobal('setInterval', () => 0)
+    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+  })
   afterEach(() => {
     asks.length = 0
     reply = () => ({ available: false, reason: 'not_found' })
@@ -83,6 +132,7 @@ describe('re-read that keeps the current blocks', () => {
     cachedAt.value = null
     pageVisible.value = true
     reducedMotion.value = false
+    vi.unstubAllGlobals()
   })
 
   it('an equal answer keeps tail, items, blocks and nodes, and only the token advances', async () => {
@@ -103,7 +153,7 @@ describe('re-read that keeps the current blocks', () => {
       token = 'tok-2'
       await v.loadChat()
       await expect.poll(() => asks.length).toBeGreaterThanOrEqual(2)
-      await settle()
+      await flushFrames()
 
       expect(v.chat.tail).toBe(tail)
       expect(v.chat.tail.every((it, i) => it === itemObjects[i])).toBe(true)
@@ -139,7 +189,7 @@ describe('re-read that keeps the current blocks', () => {
         : { available: true, file: FILE, token, start: 0, items: structuredClone(ITEMS) })
       await v.loadChat()
       await expect.poll(() => asks.some(a => a.since === 'tok-1')).toBe(true)
-      await settle()
+      await flushFrames()
 
       expect(v.chat.tail).toBe(tail)
       expect(v.blocks).toBe(blocks)
@@ -179,6 +229,12 @@ describe('re-read that keeps the current blocks', () => {
   })
 
   it('the events socket returning drops a black-holed read and asks again at once', async () => {
+    const socks = fakeSockets()
+    connectEvents()
+    const a = socks[0]!
+    open(a)
+    state(a, STATE) // the app is live before the view mounts
+
     const pending: Array<() => void> = []
     reply = () => (asks.length === 1
       // The first read never answers (a request outliving a suspend): it
@@ -186,16 +242,83 @@ describe('re-read that keeps the current blocks', () => {
       ? new Promise<ChatResponse>((resolve) => pending.push(() => resolve({ available: false, reason: 'not_found' })))
       : Promise.resolve({ available: true, file: FILE, token: 'tok-2', start: 0, items: structuredClone(ITEMS) }))
     const w = await mountSuspended(ChatView, mountOptions)
-    herdrState.value = { ok: true, workspaces: [], panes: [pane] }
     try {
       await expect.poll(() => asks.length).toBe(1) // the first read is in flight, unanswered
-      // The socket comes back: the held read is dropped and a new one starts.
-      eventsOpen.value = true
+      // The socket drops for real, then the next socket's first accepted
+      // state asks again at once. The nextTicks stand for the event-loop
+      // turns a real drop, reopen and first packet span.
+      a.onclose!()
+      expect(eventsOpen.value).toBe(false)
+      await nextTick()
+      connectEvents()
+      const b = socks[1]!
+      open(b)
+      await nextTick()
+      state(b, STATE)
       await expect.poll(() => asks.length).toBeGreaterThanOrEqual(2)
       await expect.poll(() => w.find('.chat').text()).toContain('keeps')
     } finally {
       pending.forEach(r => r())
-      eventsOpen.value = false
+      dropSocket(socks.at(-1))
+      w.unmount()
+    }
+  })
+
+  it('a zombie socket swapped behind an open eventsOpen drops the held read and asks again', async () => {
+    const socks = fakeSockets()
+    connectEvents()
+    const a = socks[0]!
+    open(a)
+    state(a, STATE) // live before the view mounts, like the settled app a phone suspended in
+
+    const pending: Array<() => void> = []
+    reply = () => (asks.length === 1
+      ? new Promise<ChatResponse>((resolve) => pending.push(() => resolve({ available: false, reason: 'not_found' })))
+      : Promise.resolve({ available: true, file: FILE, token: 'tok-2', start: 0, items: structuredClone(ITEMS) }))
+    const w = await mountSuspended(ChatView, mountOptions)
+    try {
+      await expect.poll(() => asks.length).toBe(1) // held in flight, unanswered
+      // The socket went zombie: reconnectEvents() detaches its onclose and
+      // replaces it, so eventsOpen never flapped. A boolean watch could not
+      // see this; the held read must still be dropped for a fresh one.
+      reconnectEvents()
+      const b = socks[1]!
+      open(b)
+      expect(eventsOpen.value).toBe(true)
+      state(b, STATE)
+      await expect.poll(() => asks.length).toBeGreaterThanOrEqual(2)
+      await expect.poll(() => w.find('.chat').text()).toContain('keeps')
+    } finally {
+      pending.forEach(r => r())
+      dropSocket(socks.at(-1))
+      w.unmount()
+    }
+  })
+
+  it('a state on the same socket does not ask again', async () => {
+    const gen = (herdr as unknown as { eventsGen?: { value: number } }).eventsGen
+    const socks = fakeSockets()
+    connectEvents()
+    const a = socks[0]!
+    open(a)
+    state(a, STATE)
+    reply = () => ({ available: true, file: FILE, token: 'tok-2', start: 0, items: structuredClone(ITEMS) })
+    const w = await mount()
+    try {
+      await expect.poll(() => asks.length).toBe(1)
+      expect(gen).toBeDefined()
+      const g = gen!.value
+      // Another state on the same socket is not a reconnection: no bump, no read.
+      state(a, STATE)
+      await nextTick()
+      expect(gen!.value).toBe(g)
+      // Draining a known read proves the queue held at one (a wrongly fired
+      // read would have been asked first).
+      await view(w).loadChat()
+      await expect.poll(() => asks.length).toBe(2)
+      expect(asks.at(-1)!.since).toBe('tok-2')
+    } finally {
+      dropSocket(socks.at(-1))
       w.unmount()
     }
   })
