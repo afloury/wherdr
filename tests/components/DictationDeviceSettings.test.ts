@@ -12,16 +12,18 @@ import { fakeCaches, rangeServer } from '../fakeModelCache'
 // One more model, for the GPU only.
 vi.mock('~/utils/dictation/models.json', async (real) => {
   const { default: catalog } = await real<{ default: { models: DeviceModel[] } }>()
-  const gpu = { ...catalog.models[1]!, id: 'gpu-model', name: 'GPU model', requires: ['webgpu', 'shader-f16'], quality: [], speed: undefined }
+  const gpu = { ...catalog.models.find(m => m.id === 'sensevoice')!, id: 'gpu-model', name: 'GPU model', requires: ['webgpu', 'shader-f16'], quality: [], speed: undefined }
   return { default: { ...catalog, models: [...catalog.models, gpu] } }
 })
 
 const rows = (w: Awaited<ReturnType<typeof mountSuspended>>) => w.findAll('.dictation-model')
 const rating = (r: ReturnType<Awaited<ReturnType<typeof mountSuspended>>['find']>) => r.findAll('.dictation-model-rating span, .dictation-model-rating i').map(e => e.text())
 const row = (w: Awaited<ReturnType<typeof mountSuspended>>, id: string) => w.find(`[data-model="${id}"]`)
+const senseVoice = async () => (await import('~/utils/dictation/deviceModels')).DEVICE_MODELS.find(m => m.id === 'sensevoice')!
 
 beforeEach(() => {
   localStorage.removeItem(DEVICE_MODEL_KEY)
+  localStorage.removeItem('dictationTooLarge')
   vi.stubGlobal('caches', fakeCaches())
 })
 afterEach(() => {
@@ -33,7 +35,7 @@ describe('DictationDeviceSettings', () => {
   it('lists each model with its languages, size, quality and speed, and no GPU model without WebGPU', async () => {
     const w = await mountSuspended(DictationDeviceSettings)
     await flushPromises()
-    expect(rows(w).map(r => r.find('b').text())).toEqual(['Parakeet v3', 'SenseVoice'])
+    expect(rows(w).map(r => r.find('b').text())).toEqual(['Parakeet v3', 'Canary 180M', 'SenseVoice'])
     const parakeet = row(w, 'parakeet-v3')
     expect(parakeet.find('.dictation-model-meta').text()).toBe('FR · EN · +23 · 670 MB')
     expect(rating(parakeet)).toEqual(['Quality', 'FR ■■■■□', 'EN ■■■■■', 'Speed', '■■■□□ est.'])
@@ -42,13 +44,47 @@ describe('DictationDeviceSettings', () => {
     expect(sense.find('.dictation-model-meta').text()).toBe('EN · +4 · 237 MB')
     expect(rating(sense)).toEqual(['Quality', 'FR —', 'EN ■■□□□', 'Speed', '■■■■■ est.'])
     expect(sense.find('button:not([role])').text()).toBe('Install · 237 MB')
+    const canary = row(w, 'canary-180m')
+    expect(canary.find('.dictation-model-meta').text()).toBe('FR · EN · +2 · 207 MB')
+    expect(canary.find('[data-testid="model-language"]').text()).toMatch(/^No language detection: writes [A-Z]{2}, this device’s language$/)
+    expect(w.find('[data-testid="model-too-large"]').exists()).toBe(false)
+  })
+
+  it('on an iPhone, marks Parakeet too large, never chooses it, and defaults to Canary', async () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1')
+    localStorage.setItem(DEVICE_MODEL_KEY, 'parakeet-v3')
+    const w = await mountSuspended(DictationDeviceSettings)
+    await flushPromises()
+    const parakeet = row(w, 'parakeet-v3')
+    expect(parakeet.find('[data-testid="model-too-large"]').text()).toBe('Too large for this device · it needs about 858 MB of memory once loaded, more than this browser safely gives a page.')
+    expect(parakeet.find('button:not([role])').exists()).toBe(false) // no Install
+    expect(row(w, 'canary-180m').find('[role="radio"]').attributes('aria-checked')).toBe('true')
+    await parakeet.find('[role="radio"]').trigger('click')
+    expect(parakeet.find('[role="radio"]').attributes('aria-checked')).toBe('false')
+    expect(localStorage.getItem(DEVICE_MODEL_KEY)).toBe('parakeet-v3') // untouched
+    vi.restoreAllMocks()
+  })
+
+  it('says why a model was marked too large, and Try again clears the mark', async () => {
+    localStorage.setItem('dictationTooLarge', JSON.stringify({ 'canary-180m': 'oom', 'sensevoice': 'killed' }))
+    localStorage.setItem(DEVICE_MODEL_KEY, 'canary-180m')
+    const w = await mountSuspended(DictationDeviceSettings)
+    await flushPromises()
+    const canary = () => row(w, 'canary-180m')
+    expect(canary().find('[data-testid="model-too-large"]').text()).toBe('Too large for this device · it ran out of memory on this device.')
+    expect(row(w, 'sensevoice').find('[data-testid="model-too-large"]').text()).toBe('Too large for this device · the page stopped while loading it, out of memory.')
+    expect(row(w, 'parakeet-v3').find('[role="radio"]').attributes('aria-checked')).toBe('true') // the fallback
+    await canary().find('[data-testid="model-retry"]').trigger('click')
+    expect(canary().find('[data-testid="model-too-large"]').exists()).toBe(false)
+    expect(canary().find('[role="radio"]').attributes('aria-checked')).toBe('true') // the saved choice again
+    expect(JSON.parse(localStorage.getItem('dictationTooLarge')!)).toEqual({ sensevoice: 'killed' })
   })
 
   it('shows a GPU model when the device has WebGPU with f16, unknown figures as unknown', async () => {
     Object.defineProperty(navigator, 'gpu', { configurable: true, value: { requestAdapter: async () => ({ features: new Set(['shader-f16']) }) } })
     const w = await mountSuspended(DictationDeviceSettings)
     await flushPromises()
-    expect(rows(w)).toHaveLength(3)
+    expect(rows(w)).toHaveLength(4)
     expect(rating(row(w, 'gpu-model'))).toEqual(['Quality', 'FR —', 'EN unknown', 'Speed', 'unknown'])
   })
 
@@ -56,7 +92,7 @@ describe('DictationDeviceSettings', () => {
     const w = await mountSuspended(DictationDeviceSettings)
     await flushPromises()
     const sense = () => row(w, 'sensevoice')
-    vi.stubGlobal('fetch', rangeServer((await import('~/utils/dictation/deviceModels')).DEVICE_MODELS[1]!).fetch)
+    vi.stubGlobal('fetch', rangeServer(await senseVoice()).fetch)
     await sense().find('button:not([role])').trigger('click')
     expect(sense().find('progress').exists()).toBe(true)
     await vi.waitFor(() => expect(sense().find('[data-testid="model-state"]').text()).toContain('Installed'), { timeout: 5000 })
@@ -74,7 +110,7 @@ describe('DictationDeviceSettings', () => {
   it('shows the server preparing the files, then the download to this device', async () => {
     const w = await mountSuspended(DictationDeviceSettings)
     await flushPromises()
-    const files = rangeServer((await import('~/utils/dictation/deviceModels')).DEVICE_MODELS[1]!)
+    const files = rangeServer(await senseVoice())
     let release = () => {}
     const ready = new Promise<void>((r) => { release = r })
     let polls = 0

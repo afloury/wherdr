@@ -17,7 +17,7 @@ pane terms, model route, fetch script), with credit in the code.
 | Composer mic and **Settings › Conversation › Dictation** | Merged |
 | Online engine (OpenRouter, through the wherdr server) | Merged |
 | `/models/**` route, fetch script with sha256, CSP, service worker | Merged |
-| On-device engine (sherpa-onnx WASM worker, CPU) | Merged: Parakeet v3 (French + English, default) and SenseVoice |
+| On-device engine (sherpa-onnx WASM worker, CPU) | Merged: Parakeet v3 (French + English, default), Canary 180M (default on iPhone) and SenseVoice |
 | Model list in Settings (install, delete, progress, ratings) | Merged |
 | WebGPU models (Qwen3-ASR q4f16) | **Open for an outside contributor** (see [Task split](#task-split)) |
 
@@ -294,11 +294,14 @@ family is added there without code; the app needs a rebuild to ship it. An entry
 | Field | Meaning |
 | --- | --- |
 | `id`, `name` | Stable id (saved as the device's choice); short display name |
-| `kind` | The family: how the worker builds it (`senseVoice`, `nemoTransducer`; later `canary`, `moonshine`, `whisper`, `qwen3Q4F16`…). An entry of a family this build does not know is skipped, never an error |
+| `kind` | The family: how the worker builds it (`senseVoice`, `nemoTransducer`, `canary`; later `moonshine`, `whisper`, `qwen3Q4F16`…). An entry of a family this build does not know is skipped, never an error |
 | `requires` | `[]`, `['webgpu']` or `['webgpu', 'shader-f16']`: Settings hides the model when the browser lacks it |
 | `set`, `source` | The fetch script's set name and its pinned archive (`url`, `sha256`) |
 | `dir`, `files` | Folder under `/models/` and its files, each with its exact `bytes` (checked against the server's on download) |
-| `languages`, `punctuation` | ISO 639-1 codes, all detected; punctuation and capitals |
+| `languages`, `punctuation` | ISO 639-1 codes; punctuation and capitals |
+| `autoDetect` | `false` when the model does not detect the language (Canary): the worker is given the first of the device's languages it speaks, else English |
+| `textCase` | `"upper"` when the model writes in capitals (SenseVoice, even with inverse text normalization on): the app puts its text in sentence case |
+| `memory` | Measured `{ heap, peak, basis }`: WASM heap after load, and the page's peak memory. `heap` is what the device budget checks |
 | `quality` | Raw published WER per language: `{ lang, dataset, wer, source }` |
 | `speed` | `{ estimate: 1–5, basis, source }`, absent when there is no source |
 | `license` | `{ id, url }` |
@@ -310,6 +313,32 @@ native real-time factors on a phone-class CPU (≤ 0.1 → 5, ≤ 0.2 → 4, ≤
 above → 1), shown as estimated; measuring it on the device is left for later. A language the model
 does not speak shows "—"; a missing figure is left out of the file, never set to zero, and shows
 "unknown".
+
+### Memory budget
+
+Safari on iOS kills a tab that uses too much memory, with no error the page can catch: the page
+goes black and reloads. Measured on 2026-11-05 (worker in headless Chromium and WebKit, Linux):
+
+| Model | WASM heap | Page peak, Chromium | Page peak, WebKit |
+| --- | --- | --- | --- |
+| Parakeet v3 | 818 MiB | 1.8 GB | killed during the load |
+| Canary 180M | 512 MiB | 0.85 GB | 1.35 to 1.5 GB |
+| SenseVoice | 512 MiB | 0.96 GB | 1.2 to 1.45 GB |
+
+SenseVoice runs on a real iPhone; Parakeet kills it. `memoryBudget()` (`deviceModels.ts`) gives
+iOS and iPadOS a 640 MiB heap budget, and other browsers a quarter of `navigator.deviceMemory`
+when they report it. A model over the budget shows **Too large for this device** in Settings, and
+is never chosen (`deviceModel()` falls back to the first catalog model that fits, so Canary 180M
+on an iPhone).
+
+When the page is killed anyway: a load in progress is noted in `localStorage` and cleared when it
+ends or on `pagehide`. Found at the next start, it means the system killed the page: the model is
+marked too large on this device, the next mic press says "Dictation stopped: the model is too
+large for this device", and the choice falls back to a model that fits. A worker that reports
+running out of memory (emscripten `Aborted(OOM)`, a failed grow or allocation) fails the same way,
+during the session: the composer then frees the engine, so the next press loads the model that
+fits without a reload. Settings tells the two cases apart, and **Try again** (or Delete) clears the
+mark, since a page can also be lost for another reason.
 
 ### Adding a model
 
@@ -328,6 +357,7 @@ does not speak shows "—"; a missing figure is left out of the file, never set 
    language when the model cannot detect it.
 5. **Check**: the unit tests (catalog shape, fetch set matches the catalog), then a real take in
    French and English on an Android phone and an iPhone, noting load time, decode time and memory.
+   Record the heap and peak in `memory` (see [Memory budget](#memory-budget)).
 6. Document the set in [On-device dictation files](installation.md#on-device-dictation-files).
 
 ### Content Security Policy
@@ -401,8 +431,9 @@ every 1.5 s puts the button back to Play. Leaving the pane stops its reply. Voic
 
 - No published speed figures exist for speech models in a phone browser; speed ratings stay
   estimates until measured on the device.
-- Memory: Safari can kill a tab beyond roughly 1 to 1.5 GB on a 4 GB iPhone. Large models must
-  be measured there.
+- Memory: Safari can kill a tab beyond roughly 1 to 1.5 GB on a 4 GB iPhone. The figures in
+  [Memory budget](#memory-budget) were measured on desktop engines; only SenseVoice and Parakeet
+  were tried on a real iPhone so far.
 - Outside an installed app, Safari may clear site storage (and downloaded models) after 7 days
   without a visit.
 - `ScriptProcessorNode` is deprecated but works everywhere; moving to an `AudioWorklet` would add

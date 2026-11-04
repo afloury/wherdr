@@ -7,7 +7,7 @@ import type { Pane } from '#shared/types'
 import { useDictation, type DictationError } from './useDictation'
 import { dictationEngine, toast } from './useHerdr'
 import { t, tl } from '~/utils/i18n'
-import { ENGINES } from '~/utils/dictation/registry'
+import { disposeEngines, ENGINES } from '~/utils/dictation/registry'
 import { dictationTerms } from '~/utils/dictation/terms'
 import { insertDictated, takeClock, waveText } from '~/utils/dictation/compose'
 import { readRewriteOptions, rewriteText } from '~/utils/dictation/rewrite'
@@ -20,6 +20,7 @@ function errorText(e: DictationError): { msg: string, settings: boolean } {
     case 'no-key': return { msg: tl('Dictation needs an OpenRouter key', 'La dictée a besoin d’une clé OpenRouter'), settings: true }
     case 'unsupported': return { msg: tl('This device cannot run this dictation engine', 'Cet appareil ne peut pas faire tourner ce moteur de dictée'), settings: true }
     case 'offline': return { msg: tl('Dictation is unavailable offline', 'La dictée est indisponible hors ligne'), settings: true }
+    case 'too-large': return { msg: tl('Dictation stopped: the model is too large for this device. Choose a lighter one in Settings', 'Dictée arrêtée : le modèle est trop lourd pour cet appareil. Choisissez-en un plus léger dans Réglages'), settings: true }
     case 'mic': return { msg: tl('Microphone unavailable', 'Micro indisponible'), settings: false }
     case 'timeout': return { msg: tl('Dictation took too long: nothing was written', 'La dictée a pris trop de temps : rien n’a été écrit'), settings: false }
     default: return { msg: tl('Dictation failed', 'La dictée a échoué'), settings: false }
@@ -51,6 +52,9 @@ export function useComposerDictation(o: { text: Ref<string>, ta: ComputedRef<HTM
   watch(d.error, (e) => {
     if (!e) return
     const { msg, settings } = errorText(e)
+    // The model is now marked too large: the next press loads a fresh engine,
+    // on the model Settings shows (one that fits).
+    if (e.reason === 'too-large') disposeEngines()
     toast(msg, true, settings ? undefined : e.detail, settings
       ? { label: t('Settings'), run: () => navigateTo({ path: '/settings', query: { section: 'conversation' } }) }
       : undefined)

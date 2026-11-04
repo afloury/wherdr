@@ -87,7 +87,8 @@ DATA_DIR=/path/to/data node scripts/fetch-dictation-files.mjs
 | Set | Size | Content |
 | --- | --- | --- |
 | `runtime` (default) | 13 MB | sherpa-onnx WASM runtime, in `models/runtime/` |
-| `parakeet` (default) | 670 MB | Parakeet v3, the phone's model: French, English and 23 more European languages, detected |
+| `parakeet` (default) | 670 MB | Parakeet v3: French, English and 23 more European languages, detected. Too large for an iPhone |
+| `canary` | 207 MB | Canary 180M, the iPhone's default: French, English, German, Spanish (the device's language, not detected) |
 | `sensevoice` | 237 MB | SenseVoice, lighter, no French (Chinese, English, Japanese, Korean, Cantonese) |
 | `ort` | 59 MB | onnxruntime-web 1.23.2, in `models/runtime/`, for WebGPU models only |
 
