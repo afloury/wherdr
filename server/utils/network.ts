@@ -298,7 +298,6 @@ export async function refreshTailscale(read: TailscaleReader = defaultReader, no
 // a WebSocket upgrade asks for a reading started after it arrived.
 let inflight: { at: number, done: Promise<void> } | null = null
 export async function ensureFresh(maxAgeMs: number, read: TailscaleReader = defaultReader, now = Date.now()) {
-  if (forced) return
   if (ts && ts.at >= now - maxAgeMs) return
   if (inflight && inflight.at >= now - maxAgeMs) return inflight.done
   const at = Date.now()
@@ -307,14 +306,10 @@ export async function ensureFresh(maxAgeMs: number, read: TailscaleReader = defa
   return done
 }
 
-let forced: NetContext | null = null
-// Tests: a fixed context (null = the live one).
-export function setNetContextForTests(ctx: NetContext | null) { forced = ctx }
 // Tests: forget what was read.
 export function resetNetworkStateForTests() { ts = null; inflight = null; started = 0; published = 0; funnelSeen = false; othersSeen = [] }
 
 export function netContext(now = Date.now()): NetContext {
-  if (forced) return forced
   // Stale (no reading finished lately): nothing is known.
   const fresh = ts && now - ts.at < STALE_MS ? ts : null
   return {

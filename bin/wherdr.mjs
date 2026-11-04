@@ -11,6 +11,7 @@ function fail(message, code = 1) {
 
 let opts
 try { opts = parseArgs(process.argv.slice(2)) } catch (e) { fail(e.message, 2) }
+for (const w of opts.warnings || []) process.stderr.write(`wherdr: ${w}\n`)
 
 try {
   if (opts.command === 'help') process.stdout.write(`${commands.HELP}\n`)
