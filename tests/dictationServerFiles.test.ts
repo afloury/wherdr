@@ -6,12 +6,14 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { createServerFiles } from '../server/utils/dictationServerFiles'
 import type { ServerFilesState } from '../server/utils/dictationServerFiles'
 
 const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex')
-const tmp = () => mkdtempSync(path.join(process.env.TMPDIR || tmpdir(), 'hw-srvfiles-'))
+const made: string[] = []
+const tmp = () => { const d = mkdtempSync(path.join(process.env.TMPDIR || tmpdir(), 'hw-srvfiles-')); made.push(d); return d }
+afterAll(() => { for (const d of made) rmSync(d, { recursive: true, force: true }) })
 const rt = Buffer.from('r'.repeat(300))
 const enc = Buffer.from('e'.repeat(2000))
 
