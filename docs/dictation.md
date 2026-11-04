@@ -52,6 +52,8 @@ insertion are shared; only the engine behind the interface changes.
 | `server/utils/modelFiles.ts`, `server/routes/models/[...path].ts` | Serving `DATA_DIR/models/**` |
 | `scripts/dictation-files.mjs`, `scripts/fetch-dictation-files.mjs` | Pinned downloads into `DATA_DIR/models`, checked by sha256 (the code, and its CLI) |
 | `server/utils/dictationServerFiles.ts`, `server/api/dictation/prepare.post.ts` | The server fetching a model's missing files when Install asks |
+| `public/workers/dictation-worker.js` | The sherpa-onnx worker: WASM runtime, recognizer, decode |
+| `public/workers/model-files.js` | Model-file access shared by the dictation workers (cached slices, Range-slice streaming) |
 
 ## The engine interface
 
