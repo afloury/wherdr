@@ -11,7 +11,7 @@ export const DEVICE_RUNTIME = 'sherpa-onnx-679ff70'
 export const DEVICE_CACHE = 'wherdr-asr-v1'
 
 // The families the worker knows how to build (public/workers/dictation-worker.js).
-export const DEVICE_KINDS = ['senseVoice', 'nemoTransducer'] as const
+export const DEVICE_KINDS = ['senseVoice', 'nemoTransducer', 'canary'] as const
 export type DeviceKind = typeof DEVICE_KINDS[number]
 export type DeviceNeed = 'webgpu' | 'shader-f16'
 
@@ -24,11 +24,15 @@ export interface DeviceModel {
   dir: string // under /models/
   files: { path: string, bytes: number }[]
   source: { url: string, sha256: string } // the fetch script's pinned archive
-  languages: string[] // ISO 639-1, all detected automatically
+  languages: string[] // ISO 639-1
+  autoDetect?: false // the language is not detected: the device's is used (deviceLanguage)
   punctuation: boolean
+  textCase?: 'upper' // writes in capitals: put in sentence case (sentenceCase)
   quality: { lang: string, dataset: string, wer: number, source: string }[] // published WER, %
   speed?: { estimate: number, basis: string, source: string } // 1-5, until measured here
   license?: { id: string, url: string }
+  // Measured: WASM heap after load (what the budget checks) and the page's peak.
+  memory?: { heap: number, peak: number, basis: string }
 }
 
 // A catalog entry of a family this build does not know is skipped, so a newer
@@ -41,9 +45,94 @@ export const DEVICE_MODELS: DeviceModel[] = readCatalog(catalog)
 
 export const DEVICE_MODEL_KEY = 'dictationDeviceModel'
 
-// The model this device uses: its saved choice if still offered, else the default.
-export function deviceModel(saved: string | null | undefined): DeviceModel {
-  return DEVICE_MODELS.find(m => m.id === saved) ?? DEVICE_MODELS[0]!
+// What this device can hold, in bytes of WASM heap; null = no known limit.
+// iOS Safari kills a tab around 1 to 1.5 GB: SenseVoice (512 MiB of heap)
+// runs on a real iPhone, Parakeet v3 (818 MiB) gets the page killed.
+// Elsewhere, a quarter of navigator.deviceMemory (Chromium only).
+export const IOS_HEAP_BUDGET = 640 * 2 ** 20
+export function memoryBudget(nav: { userAgent?: string, platform?: string, maxTouchPoints?: number, deviceMemory?: number } | undefined = globalThis.navigator): number | null {
+  if (!nav) return null
+  const ios = /iPad|iPhone|iPod/.test(nav.userAgent ?? '') || (nav.platform === 'MacIntel' && (nav.maxTouchPoints ?? 0) > 1)
+  if (ios) return IOS_HEAP_BUDGET
+  return nav.deviceMemory ? nav.deviceMemory * 2 ** 30 / 4 : null
+}
+
+// Models whose load got the page killed here (see markLoading).
+const CRASHED_KEY = 'dictationTooLarge'
+const LOADING_KEY = 'dictationLoading'
+function store(): Storage | null {
+  try { return globalThis.localStorage ?? null }
+  catch { return null }
+}
+export function crashedModels(): string[] {
+  try { return JSON.parse(store()?.getItem(CRASHED_KEY) || '[]') as string[] }
+  catch { return [] }
+}
+function setCrashed(ids: string[]) {
+  try { store()?.setItem(CRASHED_KEY, JSON.stringify([...new Set(ids)])) }
+  catch { /* private mode */ }
+}
+export const markTooLarge = (id: string) => setCrashed([...crashedModels(), id])
+export const forgetCrash = (id: string) => setCrashed(crashedModels().filter(c => c !== id))
+// A load in progress is noted until it ends; a normal reload or close
+// (pagehide) clears it. Still there at the next start: the system killed
+// the page while it loaded (iOS, out of memory), so the model is too large here.
+export function markLoading(id: string | null) {
+  try {
+    if (id) store()?.setItem(LOADING_KEY, id)
+    else store()?.removeItem(LOADING_KEY)
+  }
+  catch { /* private mode */ }
+}
+let checked = false
+let lastCrash: string | null = null
+export function checkCrash() {
+  if (checked) return
+  checked = true
+  globalThis.addEventListener?.('pagehide', () => markLoading(null))
+  lastCrash = store()?.getItem(LOADING_KEY) ?? null
+  if (!lastCrash) return
+  markLoading(null)
+  markTooLarge(lastCrash)
+}
+// The model the last page was killed loading, given once.
+export function takeCrash(): string | null {
+  checkCrash()
+  const id = lastCrash
+  lastCrash = null
+  return id
+}
+
+// 'ok', or why this model should not run here.
+export function memoryFit(m: DeviceModel, budget = memoryBudget(), crashed = crashedModels()): 'ok' | 'budget' | 'crashed' {
+  if (crashed.includes(m.id)) return 'crashed'
+  if (budget != null && m.memory && m.memory.heap > budget) return 'budget'
+  return 'ok'
+}
+
+// The model this device uses: its saved choice if still offered and not too
+// large here, else the first of the catalog that fits (never a too-large one).
+export function deviceModel(saved: string | null | undefined, budget = memoryBudget(), crashed = crashedModels()): DeviceModel {
+  const fits = (m: DeviceModel) => memoryFit(m, budget, crashed) === 'ok'
+  const own = DEVICE_MODELS.find(m => m.id === saved)
+  return (own && fits(own) ? own : DEVICE_MODELS.find(fits)) ?? own ?? DEVICE_MODELS[0]!
+}
+
+// The language a model without detection is told: the first of the device's
+// languages it speaks, else English.
+export function deviceLanguage(m: DeviceModel, langs: readonly string[] = globalThis.navigator?.languages ?? []): string {
+  return langs.map(l => l.slice(0, 2).toLowerCase()).find(l => m.languages.includes(l)) ?? (m.languages.includes('en') ? 'en' : m.languages[0]!)
+}
+
+// All-capital output in sentence case: lower case, a capital to start each
+// sentence and on the English "I". Text with any small letter is kept.
+export function sentenceCase(text: string): string {
+  if (text === text.toUpperCase() && text !== text.toLowerCase()) {
+    return text.toLowerCase()
+      .replace(/(^|[.!?]\s+)(\p{L})/gu, (_, a: string, b: string) => a + b.toUpperCase())
+      .replace(/\bi\b(?=$|\s|')/g, 'I')
+  }
+  return text
 }
 
 export const modelBytes = (m: DeviceModel) => m.files.reduce((n, f) => n + f.bytes, 0)

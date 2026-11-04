@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runDictationEngineContract } from './dictationEngineContract'
 import { createDeviceEngine } from '../app/utils/dictation/device'
-import { DEVICE_CACHE, DEVICE_MODELS, DEVICE_RUNTIME, deviceModel } from '../app/utils/dictation/deviceModels'
+import { DEVICE_CACHE, DEVICE_MODELS, DEVICE_RUNTIME, IOS_HEAP_BUDGET, deviceLanguage, deviceModel, memoryBudget, memoryFit, sentenceCase } from '../app/utils/dictation/deviceModels'
 import { TAKE_RATE, isAbortError } from '../app/utils/dictation/engine'
 import { CHUNK } from '../app/utils/dictation/modelStore'
 import { fakeCaches, rangeServer } from './fakeModelCache'
@@ -18,13 +18,14 @@ class FakeWorker {
   onerror: ((e: { message: string, preventDefault?: () => void }) => void) | null = null
   got: { t: string, [k: string]: unknown }[] = []
   terminated = false
-  constructor(private o: { loadError?: string, text?: string } = {}) { FakeWorker.made.push(this) }
+  constructor(private o: { loadError?: string, text?: string, dies?: boolean } = {}) { FakeWorker.made.push(this) }
   private send(data: unknown) { setTimeout(() => !this.terminated && this.onmessage?.({ data }), 1) }
   postMessage(m: { t: string, id?: number, pcm?: ArrayBuffer, files?: string[] }) {
     this.got.push(m)
     if (m.t === 'load') {
       if (this.o.loadError) return this.send({ t: 'error', error: this.o.loadError })
       this.send({ t: 'phase', phase: 'fetch' })
+      if (this.o.dies) return void setTimeout(() => this.onerror?.({ message: '' }), 2)
       this.send({ t: 'dl', file: 'a.onnx', got: 100, total: 100 })
       this.send({ t: 'dl', file: 'tokens.txt', got: 5, total: 10 })
       this.send({ t: 'ready', ms: 3, heap: 1 })
@@ -34,8 +35,15 @@ class FakeWorker {
   terminate() { this.terminated = true }
 }
 
-const make = (o: ConstructorParameters<typeof FakeWorker>[0] = {}) =>
-  createDeviceEngine({ model, caches: null, worker: () => new FakeWorker(o) as unknown as Worker })
+const make = (o: ConstructorParameters<typeof FakeWorker>[0] = {}, m = model) =>
+  createDeviceEngine({ model: m, caches: null, worker: () => new FakeWorker(o) as unknown as Worker })
+
+// localStorage for the Node tests.
+function memoryStorage() {
+  const map = new Map<string, string>()
+  return { getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => void map.set(k, v), removeItem: (k: string) => void map.delete(k) }
+}
+const IPHONE = { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1' }
 const take = () => ({ pcm: new Float32Array(TAKE_RATE).fill(0.5), seconds: 1 })
 
 afterEach(() => {
@@ -96,11 +104,50 @@ describe('the on-device engine', () => {
   })
 
   it('fails the load and starts a fresh worker on the next press', async () => {
-    const engine = make({ loadError: 'out of memory' })
-    await expect(engine.prepare()).rejects.toThrow('out of memory')
-    await expect(engine.prepare()).rejects.toThrow('out of memory')
+    const engine = make({ loadError: 'bad tokens.txt' })
+    await expect(engine.prepare()).rejects.toThrow('bad tokens.txt')
+    await expect(engine.prepare()).rejects.toThrow('bad tokens.txt')
     expect(FakeWorker.made).toHaveLength(2)
     expect(FakeWorker.made[0]!.terminated).toBe(true)
+  })
+
+  it('fails softly when the model is too large: out of memory, or the worker dies while loading', async () => {
+    vi.stubGlobal('localStorage', memoryStorage())
+    const oom = await make({ loadError: 'Aborted(OOM)' }).prepare().catch(e => e)
+    expect(oom.name).toBe('ModelTooLarge')
+    expect(JSON.parse(localStorage.getItem('dictationTooLarge')!)).toEqual([model.id])
+    expect((await make({ dies: true }).prepare().catch(e => e)).name).toBe('ModelTooLarge')
+    expect(localStorage.getItem('dictationLoading')).toBeNull()
+    // A worker that never started (its file missing) is not a memory problem.
+    const silent = createDeviceEngine({ model, caches: null, worker: () => ({ postMessage() { setTimeout(() => this.onerror?.({ message: '' }), 1) }, terminate() {} }) as unknown as Worker })
+    expect((await silent.prepare().catch(e => e)).name).toBe('Error')
+  })
+
+  it('puts a capitals-only model in sentence case and tells a model without detection the language', async () => {
+    const sense = { ...model, textCase: 'upper' as const }
+    // Recorded SenseVoice output (2025-09 int8, ITN on), sherpa-onnx's en.wav.
+    const engine = make({ text: 'AK NOT WHAT YOUR COUNTY CAN DO FOR YOU ASK WHAT YOU CAN DO FOR YOUR COUNTRY' }, sense)
+    expect((await engine.transcribe(take(), { terms: [], signal: new AbortController().signal })).text)
+      .toBe('Ak not what your county can do for you ask what you can do for your country')
+    vi.stubGlobal('navigator', { languages: ['fr-FR', 'en'] })
+    await make({}, { ...model, kind: 'canary', languages: ['de', 'en', 'es', 'fr'], autoDetect: false }).prepare()
+    expect(FakeWorker.made.at(-1)!.got[0]).toMatchObject({ kind: 'canary', language: 'fr' })
+    await make().prepare()
+    expect(FakeWorker.made.at(-1)!.got[0]).toMatchObject({ language: '' })
+  })
+
+  it('says once that the page was killed loading a model, and falls back to one that fits', async () => {
+    vi.resetModules()
+    vi.stubGlobal('localStorage', memoryStorage())
+    vi.stubGlobal('Worker', FakeWorker)
+    localStorage.setItem('dictationDeviceModel', 'parakeet-v3')
+    localStorage.setItem('dictationLoading', 'parakeet-v3') // never cleared: the page died
+    const { createDeviceEngine: create } = await import('../app/utils/dictation/device')
+    const engine = create({ caches: null, fetch: async () => new Response(null, { status: 200 }) })
+    expect(await engine.readiness()).toEqual({ ready: false, reason: 'too-large', detail: 'Parakeet v3' })
+    expect(await engine.readiness()).toEqual({ ready: true })
+    expect(engine.caps.languages).toEqual(DEVICE_MODELS.find(m => m.id === 'canary-180m')!.languages)
+    expect(localStorage.getItem('dictationLoading')).toBeNull()
   })
 
   it('rejects a load still running when disposed', async () => {
@@ -163,5 +210,35 @@ describe('device models', () => {
     expect(DEVICE_MODELS[0]!.languages).toEqual(expect.arrayContaining(['fr', 'en']))
     expect(deviceModel('sensevoice').id).toBe('sensevoice')
     expect(deviceModel('gone').id).toBe('parakeet-v3')
+  })
+
+  it('carry their measured memory, checked against this device\'s budget', () => {
+    for (const m of DEVICE_MODELS) expect(m.memory!.heap).toBeGreaterThan(0)
+    expect(memoryBudget(IPHONE)).toBe(IOS_HEAP_BUDGET)
+    expect(memoryBudget({ userAgent: 'Mozilla/5.0 (Macintosh)', platform: 'MacIntel', maxTouchPoints: 5 })).toBe(IOS_HEAP_BUDGET) // iPad
+    expect(memoryBudget({ userAgent: 'Mozilla/5.0 (Linux; Android 14)', deviceMemory: 4 })).toBe(2 ** 30)
+    expect(memoryBudget({ userAgent: 'Mozilla/5.0 (X11; Linux x86_64)' })).toBeNull()
+    const parakeet = DEVICE_MODELS.find(m => m.id === 'parakeet-v3')!
+    expect(memoryFit(parakeet, IOS_HEAP_BUDGET, [])).toBe('budget')
+    expect(memoryFit(parakeet, null, ['parakeet-v3'])).toBe('crashed')
+    // Too large is never chosen: an iPhone gets Canary, even with Parakeet saved.
+    expect(deviceModel(null, IOS_HEAP_BUDGET, []).id).toBe('canary-180m')
+    expect(deviceModel('parakeet-v3', IOS_HEAP_BUDGET, []).id).toBe('canary-180m')
+    expect(deviceModel('sensevoice', IOS_HEAP_BUDGET, []).id).toBe('sensevoice')
+    expect(deviceModel(null, null, ['parakeet-v3']).id).toBe('canary-180m')
+    expect(deviceModel(null, null, []).id).toBe('parakeet-v3')
+  })
+
+  it('pick the device\'s language for a model without detection', () => {
+    const canary = DEVICE_MODELS.find(m => m.id === 'canary-180m')!
+    expect(deviceLanguage(canary, ['fr-FR', 'en-US'])).toBe('fr')
+    expect(deviceLanguage(canary, ['ja-JP', 'es'])).toBe('es')
+    expect(deviceLanguage(canary, ['ja-JP'])).toBe('en')
+  })
+
+  it('put capitals-only text in sentence case and keep any other', () => {
+    expect(sentenceCase('I THINK I\'M DONE. OK THEN')).toBe('I think I\'m done. Ok then')
+    expect(sentenceCase('Already fine, NASA.')).toBe('Already fine, NASA.')
+    expect(sentenceCase('你好')).toBe('你好')
   })
 })

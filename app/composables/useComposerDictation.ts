@@ -19,6 +19,7 @@ function errorText(e: DictationError): { msg: string, settings: boolean } {
     case 'no-key': return { msg: tl('Dictation needs an OpenRouter key', 'La dictée a besoin d’une clé OpenRouter'), settings: true }
     case 'unsupported': return { msg: tl('This device cannot run this dictation engine', 'Cet appareil ne peut pas faire tourner ce moteur de dictée'), settings: true }
     case 'offline': return { msg: tl('Dictation is unavailable offline', 'La dictée est indisponible hors ligne'), settings: true }
+    case 'too-large': return { msg: tl('Dictation stopped: the model is too large for this device. Choose a lighter one in Settings', 'Dictée arrêtée : le modèle est trop lourd pour cet appareil. Choisissez-en un plus léger dans Réglages'), settings: true }
     case 'mic': return { msg: tl('Microphone unavailable', 'Micro indisponible'), settings: false }
     case 'timeout': return { msg: tl('Dictation took too long: nothing was written', 'La dictée a pris trop de temps : rien n’a été écrit'), settings: false }
     default: return { msg: tl('Dictation failed', 'La dictée a échoué'), settings: false }
