@@ -75,6 +75,28 @@ LaunchAgent with the same command and variables.
 You can start with the second one and move to the first later
 ([Phone access and private networks](networks.md)).
 
+### On-device dictation files
+
+Dictation that runs on the phone itself needs a speech model and a WebAssembly runtime: large
+files that are not in the repository, the build or the app's offline cache. Download them once
+into `DATA_DIR/models`, in the checkout, with the same `DATA_DIR` as wherdr:
+
+```sh
+DATA_DIR=/path/to/data node scripts/fetch-dictation-files.mjs
+```
+
+| Set | Size | Content |
+| --- | --- | --- |
+| `runtime` (default) | 13 MB | sherpa-onnx WASM runtime, in `models/runtime/` |
+| `sensevoice` (default) | 227 MB | SenseVoice model (Chinese, English, Japanese, Korean, Cantonese) |
+| `ort` | 59 MB | onnxruntime-web 1.23.2, in `models/runtime/`, for WebGPU models only |
+
+Name sets to choose (`… fetch-dictation-files.mjs runtime ort`), or `all`. Every file has a fixed
+URL and a sha256: a file that does not match is never kept. Run it again after an interruption:
+it resumes, and keeps what is already in place. wherdr serves the folder at `/models/` (behind
+the passkey lock when one is set up), where the phone's browser downloads what it needs. The folder
+survives updates; delete it to free the space. Dictation through a cloud service needs none of this.
+
 ## Updating
 
 v3 has no update check, banner or one-tap update (Settings › About shows `v3 · herdr-core`). To
