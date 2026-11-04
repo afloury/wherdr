@@ -21,8 +21,9 @@ export const EVENTS_DEFLATE = {
   // against it. memLevel 7 takes 64 KB less than the default for the same
   // output on these frames.
   zlibDeflateOptions: { memLevel: 7 },
-  // The browser's messages are tiny ({"type":"ping"}): a 1 KB window for them.
-  clientMaxWindowBits: 10,
+  // No clientMaxWindowBits: iOS Safari drops the socket when the answer limits
+  // its window (client_max_window_bits=N), and the app stays offline on
+  // iPhone. Without it, the answer only carries what the client offered.
 } as const
 
 // ws applies `threshold` only to connections without context takeover: with
