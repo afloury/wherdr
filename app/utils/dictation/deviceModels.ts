@@ -57,23 +57,32 @@ export function memoryBudget(nav: { userAgent?: string, platform?: string, maxTo
   return nav.deviceMemory ? nav.deviceMemory * 2 ** 30 / 4 : null
 }
 
-// Models whose load got the page killed here (see markLoading).
+// Models marked too large on this device: 'killed', the page died while
+// loading it (see markLoading); 'oom', the worker said it ran out of memory.
+// Settings' Try again (or Delete) clears the mark.
+export type TooLargeWhy = 'killed' | 'oom'
 const CRASHED_KEY = 'dictationTooLarge'
 const LOADING_KEY = 'dictationLoading'
 function store(): Storage | null {
   try { return globalThis.localStorage ?? null }
   catch { return null }
 }
-export function crashedModels(): string[] {
-  try { return JSON.parse(store()?.getItem(CRASHED_KEY) || '[]') as string[] }
-  catch { return [] }
+export function crashedModels(): Record<string, TooLargeWhy> {
+  try {
+    const v = JSON.parse(store()?.getItem(CRASHED_KEY) || '{}')
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {}
+  }
+  catch { return {} }
 }
-function setCrashed(ids: string[]) {
-  try { store()?.setItem(CRASHED_KEY, JSON.stringify([...new Set(ids)])) }
+function setCrashed(marks: Record<string, TooLargeWhy>) {
+  try { store()?.setItem(CRASHED_KEY, JSON.stringify(marks)) }
   catch { /* private mode */ }
 }
-export const markTooLarge = (id: string) => setCrashed([...crashedModels(), id])
-export const forgetCrash = (id: string) => setCrashed(crashedModels().filter(c => c !== id))
+export const markTooLarge = (id: string, why: TooLargeWhy) => setCrashed({ ...crashedModels(), [id]: why })
+export function forgetCrash(id: string) {
+  const { [id]: _, ...rest } = crashedModels()
+  setCrashed(rest)
+}
 // A load in progress is noted until it ends; a normal reload or close
 // (pagehide) clears it. Still there at the next start: the system killed
 // the page while it loaded (iOS, out of memory), so the model is too large here.
@@ -93,7 +102,7 @@ export function checkCrash() {
   lastCrash = store()?.getItem(LOADING_KEY) ?? null
   if (!lastCrash) return
   markLoading(null)
-  markTooLarge(lastCrash)
+  markTooLarge(lastCrash, 'killed')
 }
 // The model the last page was killed loading, given once.
 export function takeCrash(): string | null {
@@ -104,16 +113,16 @@ export function takeCrash(): string | null {
 }
 
 // 'ok', or why this model should not run here.
-export function memoryFit(m: DeviceModel, budget = memoryBudget(), crashed = crashedModels()): 'ok' | 'budget' | 'crashed' {
-  if (crashed.includes(m.id)) return 'crashed'
+export function memoryFit(m: DeviceModel, budget = memoryBudget(), marks = crashedModels()): 'ok' | 'budget' | TooLargeWhy {
+  if (marks[m.id]) return marks[m.id]!
   if (budget != null && m.memory && m.memory.heap > budget) return 'budget'
   return 'ok'
 }
 
 // The model this device uses: its saved choice if still offered and not too
 // large here, else the first of the catalog that fits (never a too-large one).
-export function deviceModel(saved: string | null | undefined, budget = memoryBudget(), crashed = crashedModels()): DeviceModel {
-  const fits = (m: DeviceModel) => memoryFit(m, budget, crashed) === 'ok'
+export function deviceModel(saved: string | null | undefined, budget = memoryBudget(), marks = crashedModels()): DeviceModel {
+  const fits = (m: DeviceModel) => memoryFit(m, budget, marks) === 'ok'
   const own = DEVICE_MODELS.find(m => m.id === saved)
   return (own && fits(own) ? own : DEVICE_MODELS.find(fits)) ?? own ?? DEVICE_MODELS[0]!
 }

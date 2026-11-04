@@ -115,12 +115,16 @@ describe('the on-device engine', () => {
     vi.stubGlobal('localStorage', memoryStorage())
     const oom = await make({ loadError: 'Aborted(OOM)' }).prepare().catch(e => e)
     expect(oom.name).toBe('ModelTooLarge')
-    expect(JSON.parse(localStorage.getItem('dictationTooLarge')!)).toEqual([model.id])
+    expect(JSON.parse(localStorage.getItem('dictationTooLarge')!)).toEqual({ [model.id]: 'oom' })
     expect((await make({ dies: true }).prepare().catch(e => e)).name).toBe('ModelTooLarge')
     expect(localStorage.getItem('dictationLoading')).toBeNull()
     // A worker that never started (its file missing) is not a memory problem.
     const silent = createDeviceEngine({ model, caches: null, worker: () => ({ postMessage() { setTimeout(() => this.onerror?.({ message: '' }), 1) }, terminate() {} }) as unknown as Worker })
     expect((await silent.prepare().catch(e => e)).name).toBe('Error')
+    // Nor is any other abort: no mark on a weak signal.
+    vi.stubGlobal('localStorage', memoryStorage())
+    expect((await make({ loadError: 'RuntimeError: Aborted(assertion failed)' }).prepare().catch(e => e)).name).toBe('Error')
+    expect(localStorage.getItem('dictationTooLarge')).toBeNull()
   })
 
   it('puts a capitals-only model in sentence case and tells a model without detection the language', async () => {
@@ -148,6 +152,7 @@ describe('the on-device engine', () => {
     expect(await engine.readiness()).toEqual({ ready: true })
     expect(engine.caps.languages).toEqual(DEVICE_MODELS.find(m => m.id === 'canary-180m')!.languages)
     expect(localStorage.getItem('dictationLoading')).toBeNull()
+    expect(JSON.parse(localStorage.getItem('dictationTooLarge')!)).toEqual({ 'parakeet-v3': 'killed' })
   })
 
   it('rejects a load still running when disposed', async () => {
@@ -219,14 +224,15 @@ describe('device models', () => {
     expect(memoryBudget({ userAgent: 'Mozilla/5.0 (Linux; Android 14)', deviceMemory: 4 })).toBe(2 ** 30)
     expect(memoryBudget({ userAgent: 'Mozilla/5.0 (X11; Linux x86_64)' })).toBeNull()
     const parakeet = DEVICE_MODELS.find(m => m.id === 'parakeet-v3')!
-    expect(memoryFit(parakeet, IOS_HEAP_BUDGET, [])).toBe('budget')
-    expect(memoryFit(parakeet, null, ['parakeet-v3'])).toBe('crashed')
+    expect(memoryFit(parakeet, IOS_HEAP_BUDGET, {})).toBe('budget')
+    expect(memoryFit(parakeet, null, { 'parakeet-v3': 'killed' })).toBe('killed')
+    expect(memoryFit(parakeet, null, { 'parakeet-v3': 'oom' })).toBe('oom')
     // Too large is never chosen: an iPhone gets Canary, even with Parakeet saved.
-    expect(deviceModel(null, IOS_HEAP_BUDGET, []).id).toBe('canary-180m')
-    expect(deviceModel('parakeet-v3', IOS_HEAP_BUDGET, []).id).toBe('canary-180m')
-    expect(deviceModel('sensevoice', IOS_HEAP_BUDGET, []).id).toBe('sensevoice')
-    expect(deviceModel(null, null, ['parakeet-v3']).id).toBe('canary-180m')
-    expect(deviceModel(null, null, []).id).toBe('parakeet-v3')
+    expect(deviceModel(null, IOS_HEAP_BUDGET, {}).id).toBe('canary-180m')
+    expect(deviceModel('parakeet-v3', IOS_HEAP_BUDGET, {}).id).toBe('canary-180m')
+    expect(deviceModel('sensevoice', IOS_HEAP_BUDGET, {}).id).toBe('sensevoice')
+    expect(deviceModel(null, null, { 'parakeet-v3': 'killed' }).id).toBe('canary-180m')
+    expect(deviceModel(null, null, {}).id).toBe('parakeet-v3')
   })
 
   it('pick the device\'s language for a model without detection', () => {

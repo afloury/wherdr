@@ -71,14 +71,19 @@ function install(m: DeviceModel) {
   follow(m, installModel(m, onRun(m)))
 }
 
+// Clears a too-large mark (a one-off crash, a freed device): the model can
+// be chosen again; the engine is reloaded on the model then chosen.
+function retry(m: DeviceModel) {
+  forgetCrash(m.id)
+  fit[m.id] = memoryFit(m, budget)
+  chosen.value = deviceModel(readSaved()).id
+  disposeEngines()
+}
+
 async function remove(m: DeviceModel) {
   await deleteModel(m).catch(e => toast((e as Error).message, true))
   if (m.id === chosen.value) disposeEngines()
-  // A fresh install gets another try.
-  if (fit[m.id] === 'crashed') {
-    forgetCrash(m.id)
-    fit[m.id] = memoryFit(m, budget)
-  }
+  if (fit[m.id] === 'killed' || fit[m.id] === 'oom') retry(m)
   await refresh(m)
   storage.value = await storageInfo()
 }
@@ -140,9 +145,11 @@ function quality(m: DeviceModel, lang: string) {
         <div class="dictation-model-state" data-testid="model-state">
           <small v-if="fit[m.id] !== 'ok'" class="dictation-model-error" role="status" data-testid="model-too-large">
             <b>{{ tl('Too large for this device', 'Trop lourd pour cet appareil') }}</b> ·
-            <template v-if="fit[m.id] === 'crashed'">{{ tl('the page stopped while loading it, out of memory.', 'la page s’est arrêtée en le chargeant, faute de mémoire.') }}</template>
+            <template v-if="fit[m.id] === 'killed'">{{ tl('the page stopped while loading it, out of memory.', 'la page s’est arrêtée en le chargeant, faute de mémoire.') }}</template>
+            <template v-else-if="fit[m.id] === 'oom'">{{ tl('it ran out of memory on this device.', 'la mémoire a manqué sur cet appareil.') }}</template>
             <template v-else>{{ tl(`it needs about ${fmtBytes(m.memory!.heap)} of memory once loaded, more than this browser safely gives a page.`, `il lui faut environ ${fmtBytes(m.memory!.heap)} de mémoire une fois chargé, plus que ce navigateur n’accorde sans risque à une page.`) }}</template>
           </small>
+          <UButton v-if="fit[m.id] === 'killed' || fit[m.id] === 'oom'" color="neutral" variant="outline" size="md" icon="i-lucide-rotate-ccw" data-testid="model-retry" :label="tl('Try again', 'Réessayer')" @click="retry(m)" />
           <template v-if="progress[m.id]">
             <progress :value="progress[m.id]!.got" :max="progress[m.id]!.total" />
             <small v-if="progress[m.id]!.unpack" data-testid="model-server">{{ tl('Unpacking on the server…', 'Décompression sur le serveur…') }}</small>

@@ -312,8 +312,11 @@ on an iPhone).
 When the page is killed anyway: a load in progress is noted in `localStorage` and cleared when it
 ends or on `pagehide`. Found at the next start, it means the system killed the page: the model is
 marked too large on this device, the next mic press says "Dictation stopped: the model is too
-large for this device", and the choice falls back to a model that fits. A worker that runs out of
-memory with an error (emscripten abort) fails the same way. Deleting the model clears the mark.
+large for this device", and the choice falls back to a model that fits. A worker that reports
+running out of memory (emscripten `Aborted(OOM)`, a failed grow or allocation) fails the same way,
+during the session: the composer then frees the engine, so the next press loads the model that
+fits without a reload. Settings tells the two cases apart, and **Try again** (or Delete) clears the
+mark, since a page can also be lost for another reason.
 
 ### Adding a model
 

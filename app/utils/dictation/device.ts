@@ -28,9 +28,10 @@ type FromWorker =
 
 interface Pending { resolve: (r: { text: string, ms: number }) => void, reject: (e: unknown) => void }
 
-// A worker that dies while loading, or says it ran out of memory: the model is
-// too large for this device. Emscripten reports it as an abort or a failed grow.
-const OUT_OF_MEMORY = /out of memory|OOM|enlarge memory|allocat|Aborted\(|RangeError/i
+// A worker that says it ran out of memory: the model is too large for this
+// device. Emscripten reports an abort for OOM or a failed memory grow; the
+// browser, a failed buffer allocation. Other errors stay plain failures.
+const OUT_OF_MEMORY = /out of memory|Aborted\(OOM\)|enlarge memory|allocation failed/i
 
 function savedModel(): DeviceModel {
   try { return deviceModel(localStorage.getItem(DEVICE_MODEL_KEY)) }
@@ -102,7 +103,7 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
       let started = false // the worker spoke: a silent death after is not a missing file
       const fail = (err: Error) => { if (worker === w) reset(err); reject(err) }
       // A load that dies (no message) or runs out of memory: too large here.
-      const tooLarge = (msg: string) => { markTooLarge(model.id); return new ModelTooLarge(msg) }
+      const tooLarge = (msg: string) => { markTooLarge(model.id, 'oom'); return new ModelTooLarge(msg) }
       const loadFailed = (msg: string) => fail((!msg && started) || OUT_OF_MEMORY.test(msg) ? tooLarge(msg || 'dictation worker died') : new Error(msg || 'dictation worker failed'))
       w.onerror = (e) => {
         e.preventDefault?.()

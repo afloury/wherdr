@@ -7,7 +7,7 @@ import type { Pane } from '#shared/types'
 import { useDictation, type DictationError } from './useDictation'
 import { dictationEngine, toast } from './useHerdr'
 import { t, tl } from '~/utils/i18n'
-import { ENGINES } from '~/utils/dictation/registry'
+import { disposeEngines, ENGINES } from '~/utils/dictation/registry'
 import { dictationTerms } from '~/utils/dictation/terms'
 import { insertDictated, takeClock, waveText } from '~/utils/dictation/compose'
 
@@ -50,6 +50,9 @@ export function useComposerDictation(o: { text: Ref<string>, ta: ComputedRef<HTM
   watch(d.error, (e) => {
     if (!e) return
     const { msg, settings } = errorText(e)
+    // The model is now marked too large: the next press loads a fresh engine,
+    // on the model Settings shows (one that fits).
+    if (e.reason === 'too-large') disposeEngines()
     toast(msg, true, settings ? undefined : e.detail, settings
       ? { label: t('Settings'), run: () => navigateTo({ path: '/settings', query: { section: 'conversation' } }) }
       : undefined)

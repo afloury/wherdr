@@ -65,6 +65,21 @@ describe('DictationDeviceSettings', () => {
     vi.restoreAllMocks()
   })
 
+  it('says why a model was marked too large, and Try again clears the mark', async () => {
+    localStorage.setItem('dictationTooLarge', JSON.stringify({ 'canary-180m': 'oom', 'sensevoice': 'killed' }))
+    localStorage.setItem(DEVICE_MODEL_KEY, 'canary-180m')
+    const w = await mountSuspended(DictationDeviceSettings)
+    await flushPromises()
+    const canary = () => row(w, 'canary-180m')
+    expect(canary().find('[data-testid="model-too-large"]').text()).toBe('Too large for this device · it ran out of memory on this device.')
+    expect(row(w, 'sensevoice').find('[data-testid="model-too-large"]').text()).toBe('Too large for this device · the page stopped while loading it, out of memory.')
+    expect(row(w, 'parakeet-v3').find('[role="radio"]').attributes('aria-checked')).toBe('true') // the fallback
+    await canary().find('[data-testid="model-retry"]').trigger('click')
+    expect(canary().find('[data-testid="model-too-large"]').exists()).toBe(false)
+    expect(canary().find('[role="radio"]').attributes('aria-checked')).toBe('true') // the saved choice again
+    expect(JSON.parse(localStorage.getItem('dictationTooLarge')!)).toEqual({ sensevoice: 'killed' })
+  })
+
   it('shows a GPU model when the device has WebGPU with f16, unknown figures as unknown', async () => {
     Object.defineProperty(navigator, 'gpu', { configurable: true, value: { requestAdapter: async () => ({ features: new Set(['shader-f16']) }) } })
     const w = await mountSuspended(DictationDeviceSettings)
