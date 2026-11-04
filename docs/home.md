@@ -45,7 +45,7 @@ devices. Machines themselves are managed in [Settings › Agents › Machines](m
   terminal carries the space's labels, so it also appears in herdr-app.
 - Rename, close, split and move of spaces and tabs stay in herdr-app. Closing an agent's pane
   from wherdr ends its program.
-- Worktrees, coordinators and Board tasks are v2 only.
+- Worktrees are v2 only.
 
 ### Search
 
@@ -58,4 +58,4 @@ Codex agents of online machines. Choosing a result opens it.
 ([Notifications](notifications.md)), the **passkey lock** (Face ID, Touch ID, Windows Hello,
 Android…) and optional [wherdr plugins](plugins.md#wherdr-plugins).
 
-Herdr sessions, Herdr plugin actions, keep-awake and the Board are v2 only.
+Herdr sessions, Herdr plugin actions and keep-awake are v2 only.

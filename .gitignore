@@ -17,17 +17,12 @@ test-data-old/
 test-results/
 playwright-report/
 .e2e-tmp/
-# herdr-plugin.sh: folder chosen at plugin install time
-/.wherdr-dir
 blob-report/
 e2e-metrics/
 
 # Python bytecode
 __pycache__/
 *.pyc
-
-# Tutorial fonts, downloaded and verified by tools/tutorial-board/fontpin.py
-/tools/tutorial-board/fonts/
 
 # Packed npm tarballs (npm pack)
 *.tgz

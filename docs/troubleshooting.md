@@ -11,7 +11,7 @@
   - `Cannot connect to herdr-core. Check HC_SOCKET and start hc.`: nothing answers on that socket;
   - `Incompatible herdr-core. Protocol generation 1 is required.`, or `herdr-core is missing
     required capabilities` with the missing methods: update hc ([Setup](core.md#setup)).
-- **The app looks for Herdr, shows the Board or the setup guide**: it was built or started
+- **The app looks for Herdr or shows the setup guide**: it was built or started
   without `WHERDR_BACKEND=core`. Build again with `WHERDR_BACKEND=core NUXT_PUBLIC_CORE=true` and
   start with `WHERDR_BACKEND=core` ([First launch](quick-start.md#quick-start)).
 - **"Unavailable with herdr-core"** (HTTP 503): that route is v2 only ([herdr-core › Setup](core.md#setup)).
@@ -52,5 +52,5 @@
 - **iPhone layout cut at the bottom** after changing the status bar style: reinstall the home
   screen icon (iOS reads this setting at install time).
 
-v2 issues (Herdr, the Board, the `wherdr` command, Herdr SSH machines) are covered by the
+v2 issues (Herdr, the `wherdr` command, Herdr SSH machines) are covered by the
 [v2 troubleshooting page](https://github.com/afloury/wherdr/blob/main/docs/troubleshooting.md).
