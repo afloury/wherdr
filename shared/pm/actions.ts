@@ -54,7 +54,7 @@ gh pr merge "$1" "--$m" --match-head-commit "$2" 2>&1 || exit 1; echo "$1"`,
   // Merged when GitHub has a merged PR from the branch into the target whose
   // head is HEAD (or holds it): squash and rebase merges leave no ancestor.
   // Else HEAD must be in the target and the branch hold a commit of its own:
-  // one made on it (its reflog, as a fast-forward is no work) since its start
+  // one made on it (its reflog: a fast-forward is no work) since its start
   // (branch.<b>.wherdrstart, written at worktree add). Inspired by Shepherdr's
   // merged_here()/own_work() (mods/tasks/bin/herdr_task/github.py, MIT).
   verify: `${IN} t=$1 b=$2 ghe=; h=$(git rev-parse HEAD) || exit 1
@@ -67,7 +67,11 @@ git fetch -q origin "$t" 2>&1 || exit 1
 if git merge-base --is-ancestor HEAD "origin/$t"; then
   s=$(git config "branch.$b.wherdrstart")
   mine=$(git rev-list --no-merges \${s:+"$s.."}HEAD)
-  for c in $({ git log -g --format='%H %gs' "refs/heads/$b"; git log -g --format='%H %gs' HEAD; } 2>/dev/null | grep -E '^[0-9a-f]+ (commit( \\((initial|amend)\\))?|cherry-pick|revert|rebase( -i)? \\((pick|reword|edit|squash|fixup|continue)\\)):' | cut -d' ' -f1); do
+  # Reflog entries that made a commit: commit, amend, cherry-pick, revert, am,
+  # a rebase's picks (rebase, rebase -i, pull --rebase...), and a rebase's end
+  # whose tip is not its onto (else it was only a fast-forward).
+  OWN='$2 ~ /^(commit|cherry-pick|revert|am):$/ || / commit \\((initial|amend)\\): / || /\\((pick|reword|edit|squash|fixup|continue)\\): / || (/ \\(finish\\): refs\\/heads\\/[^ ]+ onto [0-9a-f]+$/ && $1 != $NF) { print $1 }'
+  for c in $({ git log -g --format='%H %gs' "refs/heads/$b"; git log -g --format='%H %gs' HEAD; } 2>/dev/null | awk "$OWN"); do
     case "$mine" in *"$c"*) echo "$h"; exit 0;; esac; done
   why="$b has no commit of its own: nothing was merged"
 else why="commit $(git rev-parse --short HEAD) is not in $t"; fi

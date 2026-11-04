@@ -203,7 +203,7 @@ describe('verify-merged', () => {
       runAction({ ...fakeDeps([]).deps, sh }, job({ worktree: wt, step: 'check', by, action: { kind: 'git.verify-merged', target: 'dev' } }))
     // Someone else's commit on dev.
     const theirs = () => {
-      git(repo, 'checkout', '-q', '-B', 'other', 'origin/dev'); fs.writeFileSync(path.join(repo, 'c.txt'), 'theirs\n')
+      git(repo, 'checkout', '-q', '-B', 'other', 'origin/dev'); fs.writeFileSync(path.join(repo, 'c.txt'), `theirs ${++n}\n`)
       git(repo, 'add', '.'); git(repo, 'commit', '-qm', 'theirs'); git(repo, 'push', '-q', 'origin', 'HEAD:dev')
     }
     const work = () => { fs.writeFileSync(path.join(wt, 'b.txt'), 'task\n'); git(wt, 'add', '.'); git(wt, 'commit', '-qm', 'task'); return git(wt, 'rev-parse', 'HEAD') }
@@ -232,6 +232,21 @@ describe('verify-merged', () => {
     expect(await s.verify()).toMatchObject({ ok: true, commit: head })
   })
 
+  it('accepts own work rebuilt with pull --rebase or am, then merged by hand', async () => {
+    for (const rebuild of ['pull', 'am'] as const) {
+      const s = await setup(), mine = s.work()
+      s.theirs()
+      if (rebuild === 'pull') git(s.wt, 'pull', '-q', '--rebase', 'origin', 'dev')
+      else {
+        const patch = git(s.wt, 'format-patch', '-1', mine, '-o', path.join(s.wt, '..', 'p'))
+        git(s.wt, 'fetch', '-q', 'origin'); git(s.wt, 'reset', '-q', '--hard', 'origin/dev'); git(s.wt, 'am', '-q', patch)
+      }
+      const head = git(s.wt, 'rev-parse', 'HEAD')
+      git(s.wt, 'push', '-q', 'origin', 'HEAD:dev')
+      expect(await s.verify()).toMatchObject({ ok: true, commit: head })
+    }
+  })
+
   it('accepts a plain merge into dev', async () => {
     const s = await setup(), head = s.work()
     s.theirs()
@@ -240,11 +255,15 @@ describe('verify-merged', () => {
     expect(await s.verify()).toMatchObject({ ok: true, commit: head })
   })
 
-  it('refuses a branch with no commit of its own, even fast-forwarded to dev', async () => {
+  it('refuses a branch with no commit of its own, even fast-forwarded or rebased onto dev', async () => {
     const s = await setup()
     expect(await s.verify()).toMatchObject({ ok: false, error: 'verify-merged: task/A-1 has no commit of its own: nothing was merged' })
     s.theirs()
     git(s.wt, 'fetch', '-q', 'origin'); git(s.wt, 'merge', '-q', '--ff-only', 'origin/dev')
+    expect(await s.verify()).toMatchObject({ ok: false, error: expect.stringMatching(/no commit of its own/) })
+    s.theirs(); git(s.wt, 'pull', '-q', '--rebase', 'origin', 'dev')
+    s.theirs(); git(s.wt, 'fetch', '-q', 'origin'); git(s.wt, 'rebase', '-q', 'origin/dev')
+    expect(git(s.wt, 'rev-parse', 'HEAD')).toBe(git(s.wt, 'rev-parse', 'origin/dev'))
     expect(await s.verify()).toMatchObject({ ok: false, error: expect.stringMatching(/no commit of its own/) })
   })
 })
