@@ -13,8 +13,8 @@ export const chunkUrl = (url: string, i: number) => `${url}?chunk=${i}`
 export const chunkCount = (bytes: number) => Math.max(1, Math.ceil(bytes / CHUNK))
 const chunkEnd = (bytes: number, i: number) => Math.min(bytes, (i + 1) * CHUNK) - 1
 
-// The server answers 404: its DATA_DIR/models has no such file (the fetch
-// script was not run there, or not for this model's set).
+// The server answers 404: its DATA_DIR/models has no such file (an older
+// server that cannot fetch it itself, and the fetch script was not run there).
 export class MissingOnServer extends Error {
   constructor(readonly model: DeviceModel, readonly path: string) {
     super(`${path}: HTTP 404`)
@@ -26,7 +26,48 @@ export class MissingOnServer extends Error {
 export const fetchCommand = (m: DeviceModel) => `node scripts/fetch-dictation-files.mjs runtime ${m.set}`
 
 export interface StoreDeps { caches?: CacheStorage | null, fetch?: typeof fetch }
-export interface Progress { got: number, total: number }
+// `server`: the wherdr server is still fetching the files (`unpack`: extracting them).
+export interface Progress { got: number, total: number, server?: boolean, unpack?: boolean }
+
+// The server fetched this model's files and failed (a link down, a sha256 mismatch).
+export class ServerFetchFailed extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ServerFetchFailed'
+  }
+}
+
+export const PREPARE_URL = '/api/dictation/prepare'
+export const PREPARE_POLL_MS = 1000
+
+const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  const t = setTimeout(resolve, ms)
+  signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason) }, { once: true })
+})
+
+// Ask the server for the model's files (server/utils/dictationServerFiles.ts):
+// when it lacks them it fetches them, and this follows its progress until they
+// are there. An older server without the route, a refusal or no answer to the
+// first request is left to the download, which says what went wrong; once the
+// server fetches, a dropped poll is retried.
+export async function prepareOnServer(m: DeviceModel, deps: StoreDeps, signal: AbortSignal, onProgress: (p: Progress) => void) {
+  const doFetch = deps.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a))
+  const init = { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: m.id }), signal }
+  for (let first = true; ; first = false) {
+    let r: Response
+    try { r = first ? await doFetch(PREPARE_URL, init) : await refetch(() => doFetch(PREPARE_URL, init), signal) }
+    catch (e) {
+      if (first && !signal.aborted) return
+      throw e
+    }
+    if (!r.ok) { await r.body?.cancel(); return }
+    const s = await r.json() as { state: string, got?: number, total?: number, phase?: string, error?: string }
+    if (s.state === 'ready' || s.state === 'missing') return
+    if (s.state === 'error') throw new ServerFetchFailed(s.error || 'The server could not fetch the files')
+    onProgress({ got: s.got ?? 0, total: s.total ?? 0, server: true, unpack: s.phase === 'unpack' })
+    await pause(PREPARE_POLL_MS, signal)
+  }
+}
 
 const cachesOf = (d: StoreDeps) => (d.caches === undefined ? globalThis.caches ?? null : d.caches)
 const keyOf = (u: string) => { const url = new URL(u, 'http://x'); return url.pathname + url.search }
@@ -72,6 +113,8 @@ async function download(m: DeviceModel, deps: StoreDeps, signal: AbortSignal, on
   const cache = await cs.open(DEVICE_CACHE)
   const total = m.files.reduce((n, f) => n + f.bytes, 0)
   let got = await storedBytes(m, deps)
+  // A model the phone holds whole is not asked for: it loads offline too.
+  if (got < total) await prepareOnServer(m, deps, signal, onProgress)
   onProgress({ got, total })
   for (const f of m.files) {
     const url = fileUrl(m, f.path)

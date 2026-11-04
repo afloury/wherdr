@@ -8,8 +8,7 @@ import { DEVICE_CACHE, DEVICE_MODELS, DEVICE_RUNTIME, deviceModel } from '../app
 import { TAKE_RATE, isAbortError } from '../app/utils/dictation/engine'
 import { CHUNK } from '../app/utils/dictation/modelStore'
 import { fakeCaches, rangeServer } from './fakeModelCache'
-// @ts-expect-error plain .mjs script, no types
-import { DEFAULT_SETS, SETS } from '../scripts/fetch-dictation-files.mjs'
+import { DEFAULT_SETS, SETS } from '../scripts/dictation-files.mjs'
 
 const model = { ...DEVICE_MODELS[0]!, files: [{ path: 'a.onnx', bytes: 100 }, { path: 'tokens.txt', bytes: 10 }] }
 
