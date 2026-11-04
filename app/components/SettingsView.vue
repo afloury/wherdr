@@ -26,10 +26,10 @@ watch(() => [route.path, route.query.section], () => {
 const section = computed<SettingsSection | null>(() => (SETTINGS_SECTIONS as readonly string[]).includes(String(route.query.section)) ? route.query.section as SettingsSection : null)
 const sectionIcons: Record<SettingsSection, string> = {
   appearance: 'i-lucide-palette', conversation: 'i-lucide-message-square', terminal: 'i-lucide-square-terminal',
-  agents: 'i-lucide-bot', plugins: 'i-lucide-puzzle', phone: 'i-lucide-smartphone', notifications: 'i-lucide-bell', security: 'i-lucide-lock', shortcuts: 'i-lucide-keyboard', advanced: 'i-lucide-bug', about: 'i-lucide-info',
+  agents: 'i-lucide-bot', projects: 'i-lucide-kanban', plugins: 'i-lucide-puzzle', phone: 'i-lucide-smartphone', notifications: 'i-lucide-bell', security: 'i-lucide-lock', shortcuts: 'i-lucide-keyboard', advanced: 'i-lucide-bug', about: 'i-lucide-info',
 }
 const sectionLabels: Record<SettingsSection, string> = {
-  appearance: 'Appearance', conversation: 'Conversation', terminal: 'Terminal', agents: 'Agents',
+  appearance: 'Appearance', conversation: 'Conversation', terminal: 'Terminal', agents: 'Agents', projects: 'Projects',
   plugins: 'Plugins', phone: 'Phone', notifications: 'Notifications', security: 'Security', shortcuts: 'Shortcuts', advanced: 'Advanced', about: 'About',
 }
 const sections = computed(() => SETTINGS_SECTIONS
@@ -503,6 +503,10 @@ onMounted(() => {
             <PushCard detailed />
             <PushDevices v-if="activeSection === 'notifications'" />
           </div>
+        </div>
+
+        <div v-show="activeSection === 'projects'" class="settings-section">
+          <ProjectsSettings :active="activeSection === 'projects'" />
         </div>
 
         <div v-show="activeSection === 'plugins'" class="settings-section">
