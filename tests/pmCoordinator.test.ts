@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
-import { issueToken, noteTurn, runCommand, userMessageTo } from '../server/utils/pmCoordinator'
+import { issueToken, noteTurn, runCommand, startCoordinator, userMessageTo } from '../server/utils/pmCoordinator'
 import { parseCommand, roleFiles, coordinatorArgs } from '../shared/pm/coordinator'
 import { EXAMPLES, common, company } from '../shared/pm/examples'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
@@ -151,6 +151,27 @@ describe('arbitration after N send-backs', () => {
 })
 
 describe('role files', () => {
+  it('are written in the coordinator\'s own folder when it starts, with a new token in its environment', async () => {
+    const written: string[] = [], runs: Record<string, unknown>[] = []
+    const call = async (method: string, params: Record<string, unknown>) => {
+      const argv = params.argv as string[] | undefined
+      if (method === 'machine.exec' && argv?.[2] === 'printf %s "$HOME"') return { code: 0, stdout: Buffer.from('/h').toString('base64') }
+      if (method === 'machine.exec') return written.push(argv![4]!), { code: 0, stdout: '' }
+      runs.push(params)
+      return { address: 'host/t5' }
+    }
+    const machines = () => [{ key: '', label: 'here', local: true, status: 'online' }]
+    const r = await startCoordinator({ store, call, machines } as unknown as Parameters<typeof startCoordinator>[0], 'CO', { program: 'claude', model: 'opus' }, 'http://127.0.0.1:7690')
+    expect(r).toEqual({ terminal: 'host/t5', folder: '/h/.wherdr/pm/coordinators/CO' })
+    expect(written.every(f => f.startsWith('/h/.wherdr/pm/coordinators/CO/'))).toBe(true)
+    expect(runs[0]).toMatchObject({ cwd: '/h/.wherdr/pm/coordinators/CO', labels: { 'wherdr.coordinator': 'CO' }, env: { DISABLE_AUTOUPDATER: '1' } })
+    expect(runs[0]!.line).toContain(`'claude' '--model' 'opus' '--add-dir' '/src/co'`)
+    const fresh = (runs[0]!.env as { WHERDR_PM_TOKEN: string }).WHERDR_PM_TOKEN
+    await refused(cli(['list']), 'Unknown coordinator token')
+    await expect(cli(['list'], undefined, fresh)).resolves.toBeTruthy()
+    expect((await store.coordinator('CO'))!.terminal).toBe('host/t5')
+  })
+
   it('say who it is, its commands, each plan and the user\'s instructions, all inside its own folder', () => {
     const files = roleFiles({ key: 'CO', name: 'Company', machine: '', path: '/src/co', template: 'company', addedAt: 1 }, company, EXAMPLES)
     expect(Object.keys(files).sort()).toEqual(['.claude/settings.json', '.claude/skills/wherdr-pm/SKILL.md', 'AGENTS.md', 'CLAUDE.md'])
