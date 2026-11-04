@@ -1,7 +1,7 @@
 // Fewer transcript reads (server/utils/transcripts.ts): several devices on one
 // pane share a read in progress, and card previews read the end of a long
 // transcript first.
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -93,5 +93,98 @@ describe('card preview of a long transcript', () => {
     expect((await t.latestReply(pane))?.text).toBe('Done')
     expect((await t.latestReply(pane))?.text).toBe('Done')
     expect(reads.length).toBe(before)
+  })
+})
+
+// While an agent writes, a poll from a cursor reads only the bytes appended
+// since the last one (readBelow): same reply as a whole new read, every time.
+describe('bottom read from a cursor while the transcript grows', () => {
+  const fixture = (name: string) => readFileSync(path.join(__dirname, 'fixtures', name))
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex').toString('base64')
+  const image = (text: string) => JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: png } }] }, timestamp: at() })
+  const claude = Buffer.concat([fixture('claude-session.jsonl'), fixture('claude-queue.jsonl'), Buffer.from(`${image('A photo')}\n`), fixture('claude-bash.jsonl')])
+  const codexId = '00000000-0000-4000-8000-00000000c0de'
+  const codexPane = { id: 'w1:p2', agent: 'codex', cwd: '/home/user/dev/sandbox', agentSession: codexId }
+
+  // An empty transcript of `kind`, a cached reader counting its bytes, and a
+  // reader without any cache to compare with.
+  function grow(kind: 'claude' | 'codex') {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-grow-'))
+    homes.push(home)
+    const dir = kind === 'claude' ? path.join(home, '.claude/projects/-x') : path.join(home, '.codex/sessions/2026/09/25')
+    mkdirSync(dir, { recursive: true })
+    const file = path.join(dir, kind === 'claude' ? 'abc-123.jsonl' : `rollout-2026-09-25T11-29-56-${codexId}.jsonl`)
+    writeFileSync(file, '')
+    let bytes = 0
+    const fs: MachineFs = { ...localFs, read: async (p, start, len) => {
+      const b = await localFs.read(p, start, len)
+      if (p === file) bytes += b.length
+      return b
+    } }
+    const t = createTranscripts({ home, herdr: noHerdr, fs })
+    const p = kind === 'claude' ? pane : codexPane
+    const poll = async (from: number) => {
+      bytes = 0
+      const r = await t.chat(p, { from })
+      return { r, bytes }
+    }
+    const fresh = (from: number) => createTranscripts({ home, herdr: noHerdr }).chat(p, { from })
+    return { file, poll, fresh }
+  }
+  // Appends `data` in uneven chunks (lines split across polls), polling after each.
+  async function feed(g: ReturnType<typeof grow>, data: Buffer, from: number, check?: (appended: number, bytes: number) => void) {
+    let at = 0
+    for (let k = 0; at < data.length; k++) {
+      const n = Math.min(data.length - at, [37, 211, 5, 640, 90][k % 5]!)
+      appendFileSync(g.file, data.subarray(at, at + n))
+      at += n
+      const { r, bytes } = await g.poll(from)
+      expect(r).toEqual(await g.fresh(from))
+      check?.(n, bytes)
+    }
+  }
+
+  it('Claude: same items, queue and token as a whole read, reading only what was appended', async () => {
+    const g = grow('claude')
+    // What was appended, the 4 KB checked above it (up to 4 KB more when one
+    // read also takes the cursor's anchor), and a line not ended yet read again.
+    const longest = Math.max(...claude.toString('utf8').split('\n').map(l => Buffer.byteLength(l) + 1))
+    await feed(g, claude, 0, (appended, bytes) => expect(bytes).toBeLessThanOrEqual(appended + 2 * 4096 + longest))
+    const { r } = await g.poll(0)
+    expect(r.items!.some(i => i.role === 'tool' && i.error)).toBe(true) // a result marking its earlier call
+    expect(r.items!.find(i => i.text === 'A photo')!.hashes).toHaveLength(1)
+  })
+
+  it('Claude: from a cursor at a line start and in the middle of a line', async () => {
+    for (const from of [claude.indexOf(0x0a, 3000) + 1, 3000]) {
+      const g = grow('claude')
+      appendFileSync(g.file, claude.subarray(0, from + 50))
+      await feed(g, claude.subarray(from + 50), from)
+    }
+  })
+
+  it('Codex: same reply as a whole read', async () => {
+    const g = grow('codex')
+    await feed(g, fixture('codex-rollout.jsonl'), 0)
+    expect((await g.poll(0)).r.items!.length).toBeGreaterThan(0)
+  })
+
+  it('a transcript cut, replaced or rewritten is read again', async () => {
+    const g = grow('claude')
+    await feed(g, claude, 0)
+    // Cut, then longer than before with other lines.
+    writeFileSync(g.file, claude.subarray(0, claude.indexOf(0x0a, 2000) + 1))
+    expect((await g.poll(0)).r).toEqual(await g.fresh(0))
+    appendFileSync(g.file, `${user('Another question')}\n${claude.toString('utf8')}`)
+    expect((await g.poll(0)).r).toEqual(await g.fresh(0))
+    // Replaced by another file (another inode), then rewritten just above its end.
+    const other = `${g.file}.new`
+    writeFileSync(other, `${user('New file')}\n${reply('Fresh')}\n`)
+    renameSync(other, g.file)
+    expect((await g.poll(0)).r).toEqual(await g.fresh(0))
+    writeFileSync(g.file, `${user('New file')}\n${reply('Fresh!')}\n${reply('More')}\n`)
+    const r = (await g.poll(0)).r
+    expect(r).toEqual(await g.fresh(0))
+    expect(r.items!.map(i => i.text)).toEqual(['New file', 'Fresh!', 'More'])
   })
 })
