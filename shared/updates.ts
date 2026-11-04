@@ -1,6 +1,5 @@
 // New version notice: version comparison, update command depending on the
-// installation mode, and the state of a one-tap update (shared by server / app,
-// no dependency).
+// installation mode (shared by server / app, no dependency).
 
 // Install modes of wherdr 3 (bin/lib/core.mjs installKind; wherdr 3 is not a Herdr plugin):
 // npm: started from a temporary package folder (npx / bunx / pnpm dlx wherdr).
@@ -8,20 +7,6 @@
 // brew: the same package, installed by the Homebrew formula (the project's tap).
 // native: a source checkout (git clone, npm ci, npm run build).
 export type InstallMode = 'native' | 'npm' | 'npm-global' | 'brew'
-
-// One-tap update (bin/lib/updater.mjs): written by the updater to
-// ~/wherdr/update.json, read back by the server for the app.
-export type UpdateState = 'installing' | 'restarting' | 'checking' | 'rolling-back' | 'done' | 'rolled-back' | 'failed'
-export interface UpdateJob {
-  state: UpdateState
-  from: string
-  to: string
-  mode: InstallMode
-  // Error of a failed update, in English (also in ~/wherdr/update.log).
-  message?: string
-  startedAt: number
-  updatedAt: number
-}
 
 export interface UpdateInfo {
   current: string
@@ -74,10 +59,4 @@ export function updateCommand(mode: InstallMode): string {
 // update); not a checkout (local changes, build of several minutes).
 export function oneTapMode(mode: InstallMode): boolean {
   return mode === 'npm-global' || mode === 'brew'
-}
-
-// An update still in progress (not finished, and not abandoned: an updater
-// killed half-way leaves a state that stops counting after 10 minutes).
-export function updateRunning(job: UpdateJob | null, now: number): boolean {
-  return !!job && !['done', 'rolled-back', 'failed'].includes(job.state) && now - job.updatedAt < 10 * 60_000
 }

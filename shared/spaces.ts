@@ -60,7 +60,6 @@ export function spaceRows(s: State, machine?: string): Row[] {
 // (no agent) is sorted as an idle space, in Ready, as in Herdr's
 // first list.
 export type RowGroup = 'blocked' | 'working' | 'ready' | 'unknown'
-export const isShellRow = (r: Row) => !r.lead.agent
 export function paneGroup(p: Pick<Pane, 'agent' | 'status' | 'coreAddress'>): RowGroup {
   if (p.coreAddress && (!p.status || p.status === 'unknown')) return 'unknown'
   if ((p.coreAddress || p.agent) && p.status === 'blocked') return 'blocked'

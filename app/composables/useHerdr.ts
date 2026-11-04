@@ -305,12 +305,11 @@ watch(lastMachine, v => ls.set('lastMachine', v))
 type Toaster = ReturnType<typeof useToast>
 let toaster: Toaster | null = null
 export function setToaster(t: Toaster) { toaster = t }
-// `detail`: an extra, smaller line (output of a plugin action…).
-export function clearToast() { toaster?.clear() }
 // `action`: one button in it (Restore after Archive…), the toast then stays a
 // few seconds longer; a tap runs it and closes the toast.
 export interface ToastAction { label: string, icon?: string, run: () => void }
 export const ACTION_TOAST_MS = 6000
+// `detail`: an extra, smaller line (output of a plugin action…).
 export function toast(msg: string, err = false, detail?: string, action?: ToastAction) {
   if (!toaster) return
   toaster.clear()
