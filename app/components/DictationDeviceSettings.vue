@@ -7,7 +7,7 @@
 import { fmtBytes } from '~/utils/bytes'
 import { DEVICE_MODELS, DEVICE_MODEL_KEY, deviceModel, gpuFeatures, modelBytes, qualityRating, runnableModels } from '~/utils/dictation/deviceModels'
 import type { DeviceModel, DeviceNeed } from '~/utils/dictation/deviceModels'
-import { cancelInstall, deleteModel, installModel, storageInfo, storedBytes, watchInstall } from '~/utils/dictation/modelStore'
+import { cancelInstall, deleteModel, fetchCommand, installModel, MissingOnServer, storageInfo, storedBytes, watchInstall } from '~/utils/dictation/modelStore'
 import type { Progress, StorageInfo } from '~/utils/dictation/modelStore'
 import { disposeEngines } from '~/utils/dictation/registry'
 
@@ -17,6 +17,8 @@ const chosen = ref(deviceModel(readSaved()).id)
 const have = reactive<Record<string, number>>({})
 const progress = reactive<Record<string, Progress | null>>({})
 const errors = reactive<Record<string, string>>({})
+// Models whose files the server does not have (404 from /models/).
+const missing = reactive<Record<string, boolean>>({})
 const storage = ref<StorageInfo>({ free: null, persisted: null })
 const canKeep = typeof caches !== 'undefined'
 
@@ -39,8 +41,12 @@ async function refresh(m: DeviceModel) {
 
 async function follow(m: DeviceModel, run: Promise<void>) {
   errors[m.id] = ''
+  missing[m.id] = false
   try { await run }
-  catch (e) { if ((e as Error).name !== 'AbortError') errors[m.id] = (e as Error).message }
+  catch (e) {
+    if (e instanceof MissingOnServer) missing[m.id] = true
+    else if ((e as Error).name !== 'AbortError') errors[m.id] = (e as Error).message
+  }
   finally {
     progress[m.id] = null
     await refresh(m)
@@ -128,7 +134,12 @@ function quality(m: DeviceModel, lang: string) {
             <UButton color="primary" variant="outline" size="md" icon="i-lucide-download" :disabled="!canKeep" :label="have[m.id] ? tl('Resume', 'Reprendre') : tl(`Install · ${fmtBytes(modelBytes(m))}`, `Installer · ${fmtBytes(modelBytes(m))}`)" @click="install(m)" />
             <UButton v-if="have[m.id]" color="neutral" variant="ghost" size="md" :label="tl('Delete', 'Supprimer')" @click="remove(m)" />
           </template>
-          <small v-if="errors[m.id]" class="dictation-model-error" role="status">{{ errors[m.id] }}</small>
+          <small v-if="missing[m.id]" class="dictation-model-error" role="status" data-testid="model-missing">
+            {{ tl('The wherdr server does not have this model’s files. On the server, in the wherdr folder, with its DATA_DIR, run:', 'Le serveur wherdr n’a pas les fichiers de ce modèle. Sur le serveur, dans le dossier de wherdr, avec son DATA_DIR, lancez :') }}
+            <code>{{ fetchCommand(m) }}</code>
+            {{ tl('See docs/installation.md, “On-device dictation files”.', 'Voir docs/installation.md, « On-device dictation files ».') }}
+          </small>
+          <small v-else-if="errors[m.id]" class="dictation-model-error" role="status">{{ errors[m.id] }}</small>
         </div>
       </div>
     </div>
@@ -163,6 +174,7 @@ function quality(m: DeviceModel, lang: string) {
 .dictation-model-state progress::-webkit-progress-bar { background: var(--line); }
 .dictation-model-state progress::-webkit-progress-value { background: var(--accent); }
 .dictation-model-state progress::-moz-progress-bar { background: var(--accent); }
-.dictation-model-error { flex-basis: 100%; color: var(--rose) !important; text-transform: none !important; }
+.dictation-model-error { display: block !important; flex-basis: 100%; color: var(--rose) !important; text-transform: none !important; }
+.dictation-model-error code { display: block; margin: 4px 0; font: 500 11.5px/1.4 var(--mono); color: var(--text); overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; }
 .dictation-device .settings-hint { margin-top: 10px; }
 </style>

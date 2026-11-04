@@ -280,7 +280,7 @@ const FR: Record<string, string> = {
   'Invalid subscription': 'abonnement invalide',
   // Labels without emoji (Lucide icons replace them in the new interface)
   'Rename': 'Renommer', 'Take control of this terminal': 'Prendre la main sur ce terminal',
-  'host:port needs herdr-core 0.1.17 or newer': 'host:port demande herdr-core 0.1.17 ou plus récent',
+  'This herdr-core takes no port: update it, or use a Host from ~/.ssh/config': 'Ce herdr-core ne prend pas de port : mets-le à jour, ou utilise un Host de ~/.ssh/config',
   'A machine with this name already exists': 'Une machine porte déjà ce nom',
   'Reconnect': 'Reconnecter', 'Photo or screenshot': 'Photo ou capture d’écran',
   'Refresh': 'Rafraîchir',

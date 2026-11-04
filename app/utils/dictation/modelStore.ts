@@ -13,6 +13,18 @@ export const chunkUrl = (url: string, i: number) => `${url}?chunk=${i}`
 export const chunkCount = (bytes: number) => Math.max(1, Math.ceil(bytes / CHUNK))
 const chunkEnd = (bytes: number, i: number) => Math.min(bytes, (i + 1) * CHUNK) - 1
 
+// The server answers 404: its DATA_DIR/models has no such file (the fetch
+// script was not run there, or not for this model's set).
+export class MissingOnServer extends Error {
+  constructor(readonly model: DeviceModel, readonly path: string) {
+    super(`${path}: HTTP 404`)
+    this.name = 'MissingOnServer'
+  }
+}
+
+// The command that fetches this model's files on the server.
+export const fetchCommand = (m: DeviceModel) => `node scripts/fetch-dictation-files.mjs runtime ${m.set}`
+
 export interface StoreDeps { caches?: CacheStorage | null, fetch?: typeof fetch }
 export interface Progress { got: number, total: number }
 
@@ -70,6 +82,7 @@ async function download(m: DeviceModel, deps: StoreDeps, signal: AbortSignal, on
       const start = i * CHUNK
       const end = chunkEnd(f.bytes, i)
       const res = await refetch(() => doFetch(url, { headers: { range: `bytes=${start}-${end}` }, signal }), signal)
+      if (res.status === 404) throw new MissingOnServer(m, f.path)
       if (res.status !== 206) throw new Error(`${f.path}: HTTP ${res.status}`)
       if (Number(res.headers.get('content-range')?.split('/')[1]) !== f.bytes) throw new Error(`${f.path}: size differs from the catalog`)
       const part = await res.arrayBuffer()
