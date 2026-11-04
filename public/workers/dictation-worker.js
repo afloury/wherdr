@@ -3,10 +3,11 @@
 // Ported from followcat's public/workers/asr-worker.js (followcat/wherdr,
 // branch mobile, MIT); the WebGPU (onnxruntime-web) path is left for later.
 //
-//   in : {t:'load', runtime, base, kind, files[], cache}
+//   in : {t:'load', runtime, base, kind, files[], bytes[], chunk, cache}
 //          runtime: URL of the sherpa-onnx files, ending in '/'
 //          base:    URL of the model's folder, files[] relative to it
-//          cache:   Cache Storage name the model files are kept in ('' = none)
+//          cache:   Cache Storage name holding the files in `chunk`-byte slices
+//                   (app/utils/dictation/modelStore.ts), '' = stream them from the server
 //   in : {t:'decode', id, pcm}              pcm: Float32 ArrayBuffer, 16 kHz mono
 //   out: {t:'phase', phase}                 'runtime' | 'fetch' | 'create'
 //   out: {t:'dl', file, got, total}         bytes of the file being downloaded
@@ -43,9 +44,9 @@ function startRuntime(runtime) {
   return engineReady
 }
 
-// Model files download in 8 MB range slices: a long single GET through a
-// tunnel or a mobile link dies mid-stream and restarts from zero, while each
-// slice gets its own retries.
+// Without Cache Storage, model files stream from the server in 8 MB range
+// slices: a long single GET through a tunnel or a mobile link dies mid-stream,
+// while each slice gets its own retries.
 const CHUNK = 8 * 1024 * 1024
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
@@ -98,28 +99,28 @@ async function* streamFile(url, file) {
   }
 }
 
-// A Response for `url`: the cached copy if there is one, else a streamed
-// download, stored on the way. The body is never assembled in JS, so a 600 MB
-// file keeps the worker's own memory flat.
-async function fetchCached(url, file, cacheName) {
-  const cache = cacheName && self.caches ? await caches.open(cacheName) : null
-  const hit = cache && await cache.match(url)
-  if (hit) return hit
-  const gen = streamFile(url, file)
-  const body = new ReadableStream({
+// A Response for `url`, never assembled in JS: its slices from the cache
+// (or one whole entry, as F2 kept files), else streamed from the server.
+async function openFile(url, file, bytes, msg) {
+  const cache = msg.cache && self.caches ? await caches.open(msg.cache) : null
+  const whole = cache && await cache.match(url)
+  if (whole) return whole
+  const gen = cache ? cachedSlices(cache, url, file, Math.max(1, Math.ceil(bytes / msg.chunk))) : streamFile(url, file)
+  return new Response(new ReadableStream({
     async pull(ctrl) {
       const { done, value } = await gen.next()
       if (done) ctrl.close()
       else ctrl.enqueue(value)
     },
-  })
-  const headers = { 'content-type': 'application/octet-stream' }
-  if (!cache) return new Response(body, { headers })
-  // One branch to the cache, one to the caller.
-  const [forCache, forFs] = body.tee()
-  const stored = cache.put(url, new Response(forCache, { headers }))
-  stored.catch(() => {})
-  return new Response(forFs, { headers })
+  }))
+}
+
+async function* cachedSlices(cache, url, file, count) {
+  for (let i = 0; i < count; i++) {
+    const hit = await cache.match(`${url}?chunk=${i}`)
+    if (!hit) throw new Error(`${file}: not downloaded`)
+    yield new Uint8Array(await hit.arrayBuffer())
+  }
 }
 
 // A file into the emscripten FS slice by slice: the weights must live in the
@@ -168,8 +169,8 @@ async function load(msg) {
   postMessage({ t: 'phase', phase: 'fetch' })
   try { Module.FS.mkdir(MODEL_DIR) }
   catch { /* already there */ }
-  for (const file of msg.files) {
-    await fsWriteStreamed(`${MODEL_DIR}/${file}`, await fetchCached(`${msg.base}/${file}`, file, msg.cache))
+  for (const [i, file] of msg.files.entries()) {
+    await fsWriteStreamed(`${MODEL_DIR}/${file}`, await openFile(`${msg.base}/${file}`, file, msg.bytes[i], msg))
   }
 
   postMessage({ t: 'phase', phase: 'create' })

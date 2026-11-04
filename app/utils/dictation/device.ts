@@ -1,11 +1,13 @@
 // The on-device engine: sherpa-onnx WASM in a worker (public/workers/
 // dictation-worker.js), on the CPU. The model files come from the wherdr
-// server (/models/**) once, then from Cache Storage. Nothing leaves the device.
+// server (/models/**) once, kept in Cache Storage by modelStore.ts (the same
+// download as Settings › Dictation), then read from there. Nothing leaves the device.
 import { splitTake } from './audio'
 import { abortError } from './engine'
 import type { DictationEngine, PrepareProgress, Readiness } from './engine'
-import { DEVICE_CACHE, DEVICE_MODEL_KEY, DEVICE_RUNTIME, deviceModel } from './deviceModels'
+import { DEVICE_CACHE, DEVICE_MODEL_KEY, DEVICE_RUNTIME, deviceModel, modelBytes } from './deviceModels'
 import type { DeviceModel } from './deviceModels'
+import { CHUNK, installModel, storedBytes } from './modelStore'
 
 export const WORKER_URL = '/workers/dictation-worker.js'
 
@@ -36,13 +38,14 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
   const doFetch = deps.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a))
   const makeWorker = deps.worker ?? (() => new Worker(WORKER_URL))
   const urlOf = (path: string) => `/models/${model.dir}/${path}`
-  const total = model.files.reduce((n, f) => n + f.bytes, 0)
+  const total = modelBytes(model)
 
   let worker: Worker | null = null
   let loading: Promise<void> | null = null
   let failLoad: ((err: Error) => void) | null = null
   let onProgress: ((p: PrepareProgress) => void) | undefined
   let nextId = 0
+  let disposed = false
   const pending = new Map<number, Pending>()
 
   // The worker failed (load error, crash, out of memory): everything waiting
@@ -57,7 +60,21 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
     pending.clear()
   }
 
-  function start(): Promise<void> {
+  // Into Cache Storage first, where the worker reads it. A browser that cannot
+  // keep it (no Cache Storage, quota full) has the worker stream it from the server.
+  async function fetchModel(): Promise<string> {
+    if (!cacheStorage) return ''
+    try {
+      await installModel(model, p => onProgress?.({ phase: 'fetch', ...p }), { caches: cacheStorage, fetch: doFetch })
+      return DEVICE_CACHE
+    }
+    catch (e) {
+      if ((e as Error).name === 'QuotaExceededError') return ''
+      throw e
+    }
+  }
+
+  function start(cache: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const w = makeWorker()
       worker = w
@@ -88,17 +105,14 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
         base: `/models/${model.dir}`,
         kind: model.kind,
         files: model.files.map(f => f.path),
-        cache: DEVICE_CACHE,
+        bytes: model.files.map(f => f.bytes),
+        chunk: CHUNK,
+        cache,
       })
     })
   }
 
-  async function cached(): Promise<boolean> {
-    if (!cacheStorage) return false
-    const cache = await cacheStorage.open(DEVICE_CACHE)
-    const hits = await Promise.all(model.files.map(f => cache.match(urlOf(f.path))))
-    return hits.every(Boolean)
-  }
+  const cached = async () => !!cacheStorage && await storedBytes(model, { caches: cacheStorage }) === total
 
   // One piece to the worker; a copy, so the caller keeps its take. A cancelled
   // piece's answer is dropped when it comes (a decode cannot be stopped).
@@ -117,8 +131,10 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
   function prepare(progress?: (p: PrepareProgress) => void): Promise<void> {
     onProgress = progress
     if (!loading) {
-      loading = start()
-      loading.catch(() => {}) // a dispose with no take waiting
+      // Disposed while downloading (another model chosen): no worker is started.
+      const run = fetchModel().then(cache => (disposed ? Promise.reject(abortError()) : start(cache)))
+      loading = run
+      run.catch(() => { if (loading === run) loading = null }) // the next press tries again
     }
     return loading
   }
@@ -166,6 +182,7 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
     },
 
     dispose() {
+      disposed = true
       if (worker) reset(abortError())
     },
   }

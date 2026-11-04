@@ -10,12 +10,13 @@
 // Sets: runtime (sherpa-onnx WASM, 13 MB), parakeet (Parakeet v3, French,
 // English and 23 more, 670 MB), sensevoice (237 MB, no French), ort
 // (onnxruntime-web, 59 MB, for WebGPU models only), all. Default: runtime parakeet.
-// The models must match app/utils/dictation/deviceModels.ts (a test checks it).
+// Model sets come from the catalog, app/utils/dictation/models.json (`set`,
+// `source`, `dir`, `files`): a model is added there, not here.
 // Run again: files already in place are checked and kept, an interrupted
 // download resumes. Based on followcat's scripts/fetch-asr-models.sh (MIT).
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { createReadStream, createWriteStream } from 'node:fs'
+import { createReadStream, createWriteStream, readFileSync } from 'node:fs'
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Readable } from 'node:stream'
@@ -26,7 +27,6 @@ import { fileURLToPath } from 'node:url'
 // branch mobile, commit 679ff70; no official release ships this build).
 const SHERPA = 'https://raw.githubusercontent.com/followcat/wherdr/679ff70f98d0a296477776a7d3fb2344a0c8a1d5/public/wasm/'
 const ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/'
-const ASR_MODELS = 'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/'
 
 // A file: { url, sha256, to } with `to` relative to DATA_DIR/models.
 // An archive: { url, sha256, dir, members }, its members extracted into `dir`.
@@ -46,20 +46,12 @@ export const SETS = {
     ['ort-wasm-simd-threaded.asyncify.mjs', '249b4dc791f081d33bd11760bfd669fe85f97289e679bbeb291b874272125dff'],
     ['ort-wasm-simd-threaded.asyncify.wasm', 'babec0bbddb6d3082623b99b7e1391b75e0729bcca076ff8424d7753af97fada'],
   ].map(([name, sha256]) => ({ url: ORT + name, sha256, to: `runtime/onnxruntime-web-1.23.2/${name}` })),
-  parakeet: [{
-    url: `${ASR_MODELS}sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2`,
-    sha256: '5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf',
-    dir: 'parakeet-tdt-0.6b-v3-int8',
-    members: ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt'],
-  }],
-  sensevoice: [{
-    url: `${ASR_MODELS}sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09.tar.bz2`,
-    sha256: '7305f7905bfcf77fa0b39388a313f3da35c68d971661a65475b56fb2162c8e63',
-    dir: 'sensevoice-zh-en-ja-ko-yue-2025-09',
-    members: ['model.int8.onnx', 'tokens.txt'],
-  }],
 }
-export const DEFAULT_SETS = ['runtime', 'parakeet']
+const CATALOG = JSON.parse(readFileSync(new URL('../app/utils/dictation/models.json', import.meta.url), 'utf8'))
+for (const m of CATALOG.models) {
+  SETS[m.set] = [{ url: m.source.url, sha256: m.source.sha256, dir: m.dir, members: m.files.map(f => f.path) }]
+}
+export const DEFAULT_SETS = ['runtime', CATALOG.models[0].set]
 
 export async function sha256Of(file) {
   const hash = createHash('sha256')

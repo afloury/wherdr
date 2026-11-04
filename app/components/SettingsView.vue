@@ -410,6 +410,7 @@ onMounted(() => {
             <h3>{{ tl('Dictation', 'Dictée') }}</h3>
             <p class="muted settings-lead">{{ tl('A mic next to Send: hold it and talk, or tap it to start and again to stop. The text goes into the field; nothing is sent on its own.', 'Un micro à côté d’Envoyer : maintiens-le et parle, ou touche-le pour démarrer puis encore pour arrêter. Le texte va dans le champ ; rien n’est envoyé tout seul.') }}</p>
             <URadioGroup v-model="dictationChoice" :items="dictationItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <DictationDeviceSettings v-if="dictationChoice === 'device'" />
             <DictationCloudSettings v-if="dictationChoice === 'cloud'" />
             <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
           </div>

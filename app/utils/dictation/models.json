@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "updated": "2026-11-04",
+  "models": [
+    {
+      "id": "parakeet-v3",
+      "name": "Parakeet v3",
+      "kind": "nemoTransducer",
+      "requires": [],
+      "set": "parakeet",
+      "dir": "parakeet-tdt-0.6b-v3-int8",
+      "files": [
+        { "path": "encoder.int8.onnx", "bytes": 652184281 },
+        { "path": "decoder.int8.onnx", "bytes": 11845275 },
+        { "path": "joiner.int8.onnx", "bytes": 6355277 },
+        { "path": "tokens.txt", "bytes": 93939 }
+      ],
+      "source": {
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2",
+        "sha256": "5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf"
+      },
+      "languages": ["bg", "cs", "da", "de", "el", "en", "es", "et", "fi", "fr", "hr", "hu", "it", "lt", "lv", "mt", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "uk"],
+      "punctuation": true,
+      "quality": [
+        { "lang": "fr", "dataset": "FLEURS", "wer": 5.15, "source": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" },
+        { "lang": "fr", "dataset": "MLS", "wer": 4.97, "source": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" },
+        { "lang": "en", "dataset": "FLEURS", "wer": 4.85, "source": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" }
+      ],
+      "speed": {
+        "estimate": 3,
+        "basis": "RTF 0.220, Cortex-A76, 1 thread, native sherpa-onnx (v2 int8, same encoder size)",
+        "source": "https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-transducer/nemo-transducer-models.html"
+      },
+      "license": { "id": "CC-BY-4.0", "url": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" }
+    },
+    {
+      "id": "sensevoice",
+      "name": "SenseVoice",
+      "kind": "senseVoice",
+      "requires": [],
+      "set": "sensevoice",
+      "dir": "sensevoice-zh-en-ja-ko-yue-2025-09",
+      "files": [
+        { "path": "model.int8.onnx", "bytes": 237115547 },
+        { "path": "tokens.txt", "bytes": 315894 }
+      ],
+      "source": {
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09.tar.bz2",
+        "sha256": "7305f7905bfcf77fa0b39388a313f3da35c68d971661a65475b56fb2162c8e63"
+      },
+      "languages": ["zh", "en", "ja", "ko", "yue"],
+      "punctuation": true,
+      "quality": [
+        { "lang": "en", "dataset": "CV", "wer": 14.71, "source": "https://arxiv.org/html/2407.04051v3" }
+      ],
+      "speed": {
+        "estimate": 5,
+        "basis": "RTF 0.099, Cortex-A76, 1 thread, native sherpa-onnx",
+        "source": "https://k2-fsa.github.io/sherpa/onnx/sense-voice/pretrained.html"
+      },
+      "license": { "id": "FunASR model license", "url": "https://huggingface.co/FunAudioLLM/SenseVoiceSmall" }
+    }
+  ]
+}
