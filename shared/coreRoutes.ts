@@ -23,6 +23,7 @@ const BASE = [
   'dirs', 'isgit', 'quotas', 'claude-statusline', 'claude-setup',
   'machine/add', 'machine/connect', 'machine/core', 'machine/core-rename', 'machine/core-forget',
   'upload', 'attach', 'file', 'keep',
+  'dictation/*',
 ]
 
 const routes = [...BASE, ...a, ...b, ...c, ...d, ...e, ...f, ...g, ...h, ...i]
