@@ -11,6 +11,7 @@ import type { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
 import type { WebglAddon } from '@xterm/addon-webgl'
 import { loadWebgl, loadXterm } from '~/utils/xtermLoader'
+import { reloadIfNewBuild } from '~/composables/useAppVersion'
 import { terminalPixelWidth } from '~/utils/terminalSize'
 import { guardWebglCanvasSize } from '~/utils/terminalRenderer'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
@@ -127,6 +128,9 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       // Both at once: the WebGL renderer is in place before the first fit, as before.
       [xterm, gl] = await Promise.all([loadXterm(), renderer === 'webgl' ? loadWebgl().catch(() => null) : null])
     } catch {
+      // A deployment may have removed this version's xterm files (not
+      // precached, shared/precache.ts): move to the new version.
+      void reloadIfNewBuild()
       if (seq !== mountSeq || disposed) return false
       mounting = false
       loading.value = false
