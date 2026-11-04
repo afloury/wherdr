@@ -13,7 +13,7 @@ export const taskGuards = (t: Template, type: string) =>
 export function guardAction(g: ResolvedGuards, a: StepAction, ctx: { branch: string, by: MergeBy, base?: string }): string | undefined {
   const onlyYou = (b: string) => `${b} is protected: only you may merge into it`
   if (a.kind === 'git.land' && !mayMerge(g, a.target!, ctx.by)) return onlyYou(a.target!)
-  if (a.kind === 'git.push' && isProtected(g, ctx.branch)) return `${ctx.branch} is protected: the engine never pushes to it`
+  if ((a.kind === 'git.push' || a.kind === 'github.pr') && isProtected(g, ctx.branch)) return `${ctx.branch} is protected: the engine never pushes to it`
   if (a.kind === 'github.merge' && ctx.base !== undefined && !mayMerge(g, ctx.base, ctx.by)) return onlyYou(ctx.base)
 }
 
@@ -39,12 +39,18 @@ git rev-parse HEAD`,
   // Opens the PR, or puts an open one back on the right base. Body on stdin.
   pr: `${IN} ${CLEAN} b=$1 base=$2
 git push -q origin "HEAD:refs/heads/$b" 2>&1 || exit 1
-cur=$(gh pr list --head "$b" --state open --json url,baseRefName -q '.[] | .baseRefName+" "+.url' | head -1) || exit 1
+cur=$(gh pr list --head "$b" --state open --json url,baseRefName -q '.[] | .baseRefName+" "+.url' 2>&1) || { echo "$cur"; exit 1; }
+cur=$(echo "$cur" | head -1)
 if [ -z "$cur" ]; then out=$(gh pr create --head "$b" --base "$base" --title "$3" --body-file - 2>&1) || { echo "$out"; exit 1; }; echo "$out" | tail -1; exit 0; fi
-[ "\${cur%% *}" = "$base" ] || gh pr edit "\${cur#* }" --base "$base" >/dev/null 2>&1 || exit 1
+if [ "\${cur%% *}" != "$base" ]; then e=$(gh pr edit "\${cur#* }" --base "$base" 2>&1) || { echo "$e"; exit 1; }; fi
 echo "\${cur#* }"`,
-  prInfo: `${IN} git rev-parse HEAD && gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,statusCheckRollup`,
-  merge: `${IN} gh pr merge "$1" --merge --match-head-commit "$2" 2>&1 || exit 1; echo "$1"`,
+  // The commit, then the open PR as JSON on the last line.
+  prInfo: `${IN} git rev-parse HEAD || exit 1
+j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,statusCheckRollup 2>&1) || { echo "$j"; exit 1; }
+echo "$j" | tail -1`,
+  // The first merge method the repo allows: merge commit, squash, rebase.
+  merge: `${IN} m=$(gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed -q 'if .mergeCommitAllowed then "merge" elif .squashMergeAllowed then "squash" else "rebase" end' 2>&1) || { echo "$m"; exit 1; }
+gh pr merge "$1" "--$m" --match-head-commit "$2" 2>&1 || exit 1; echo "$1"`,
   verify: `${IN} t=$1; git fetch -q origin "$t" 2>&1 || exit 1
 git merge-base --is-ancestor HEAD "origin/$t" || { echo "commit $(git rev-parse --short HEAD) is not in $t"; exit ${CODE.NOT_MERGED}; }
 git rev-parse HEAD`,
@@ -76,8 +82,10 @@ const TRANSIENT = [
   /could not resolve host/i, /connection (reset|refused|timed out)/i, /operation timed out/i, /remote end hung up/i,
   /RPC failed|early EOF/i, /cannot lock ref/i, /\(fetch first\)/i, /rate limit/i,
 ]
-// code null = the command timed out.
-export const isTransient = (code: number | null, out: string) => code === null || code === CODE.NOT_YET || TRANSIENT.some(r => r.test(out))
+// code null = the command timed out. A send-back or not-merged answer is
+// final, whatever its text (a file named 502.vue).
+export const isTransient = (code: number | null, out: string) =>
+  code === null || code === CODE.NOT_YET || (code !== CODE.SEND_BACK && code !== CODE.NOT_MERGED && TRANSIENT.some(r => r.test(out)))
 export const RETRY_MS = [60_000, 120_000, 240_000, 480_000]
 
 // Protected branches that hold the task's commit although nothing allowed it:

@@ -134,8 +134,9 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       if (ev.ok) return { state: enter(plan, { ...state, proofs }, state.at + 1, now, effects), effects }
       const back = plan.slice(0, state.at).findLastIndex(p => p.holder === 'worker')
       if (ev.toAgent && back >= 0) {
-        const s = enter(plan, { ...state, proofs }, back, now, effects)
-        effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: `${step.id}: ${ev.error}. Fix it, commit, then say you are done.` })
+        // One message: what to fix, not the step's text again.
+        const s = enter(plan, { ...state, proofs }, back, now, [])
+        effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: `${ev.error}. Fix it, commit, then say you are done.` })
         return { state: s, effects }
       }
       // The step stays open; the badge says what went wrong.

@@ -27,9 +27,13 @@ export interface ActionJob {
   allowed?: string[] // protected branches the task already reached through you
 }
 
-// The shell of a project's machine, through herdr-core.
-export const coreShell = (deps: Pick<CoreAdminDeps, 'call'>, on: string | undefined): Shell =>
-  (script, args, input) => exec(deps, on, `${PATH_SETUP}\n${script}`, args, input)
+// The shell of a project's machine, through herdr-core. stderr is kept: a
+// transient error is often only there.
+export const actionShell = (deps: Pick<CoreAdminDeps, 'call'>, on: string | undefined): Shell =>
+  async (script, args, input) => {
+    const r = await exec(deps, on, `${PATH_SETUP}\n${script}`, args, input)
+    return { code: r.code, out: [r.out, r.err].filter(Boolean).join('\n') }
+  }
 
 const lastLine = (out: string) => out.trim().split('\n').pop()?.trim().slice(0, 300) || ''
 const pause = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
@@ -92,9 +96,9 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
       for (let i = 0; ; i++) {
         const r = await run(deps, SCRIPT.prInfo, [wt, branch])
         if (r.code !== 0) return fail(r)
-        const [head = '', ...json] = r.out.split('\n')
+        const lines = r.out.split('\n'), head = lines[0] ?? ''
         let pr: PrInfo | undefined
-        try { pr = (JSON.parse(json.join('\n') || '[]') as PrInfo[])[0] }
+        try { pr = (JSON.parse(lines.at(-1) || '[]') as PrInfo[])[0] }
         catch { return { ok: false, error: 'merge: unreadable PR details' } }
         const refused = pr && guardAction(job.guards, a, { branch, by: job.by, base: pr.baseRefName })
         if (refused) return { ok: false, error: refused }

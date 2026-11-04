@@ -25,6 +25,7 @@ describe('guards', () => {
 
   it('never pushes to a protected branch, and a task type can only harden', () => {
     expect(guardAction(g, { kind: 'git.push' }, { branch: 'main', by: 'user' })).toMatch(/never pushes/)
+    expect(guardAction(g, { kind: 'github.pr', base: 'dev' }, { branch: 'main', by: 'engine' })).toMatch(/never pushes/)
     const strict = taskGuards(t, 'careful')
     expect(guardAction(strict, { kind: 'git.land', target: 'dev' }, { branch: 'b', by: 'engine' })).toMatch(/only you/)
     expect(guardAction(strict, { kind: 'git.land', target: 'other' }, { branch: 'b', by: 'engine' })).toMatch(/only you/)
@@ -42,6 +43,8 @@ describe('guards', () => {
     expect(isTransient(1, 'HTTP 502: Bad Gateway')).toBe(true)
     expect(isTransient(null, '')).toBe(true)
     expect(isTransient(3, 'conflict in app.vue')).toBe(false)
+    expect(isTransient(3, 'conflict in src/502.vue')).toBe(false)
+    expect(isTransient(5, 'commit abc is not in release-503')).toBe(false)
     expect(leaks(g, ['origin', 'origin/main', 'origin/dev'], [])).toEqual(['main'])
     expect(leaks(g, ['origin/main'], ['main'])).toEqual([])
   })
@@ -108,7 +111,7 @@ describe('step engine and action results', () => {
     expect(r.effects).toEqual([{ kind: 'action', step: 'land', action: { kind: 'git.land', target: 'dev' }, attempt: 1 }])
     r = onEvent(plan, r.state, { kind: 'action-result', ok: false, error: 'land: conflict in a.ts', toAgent: true }, 2)
     expect(r.state.at).toBe(1)
-    expect(r.effects.at(-1)).toMatchObject({ kind: 'instruct', holder: 'worker', text: 'land: land: conflict in a.ts. Fix it, commit, then say you are done.' })
+    expect(r.effects).toEqual([{ kind: 'instruct', step: 'work', holder: 'worker', text: 'land: conflict in a.ts. Fix it, commit, then say you are done.' }])
     r = onEvent(plan, r.state, { kind: 'report', from: 'worker' }, 3)
     expect(r.effects).toMatchObject([{ kind: 'action', attempt: 2 }])
     s = onEvent(plan, r.state, { kind: 'action-result', ok: true, evidence: { commit: 'abc' } }, 4).state
@@ -161,5 +164,20 @@ describe('on a real repo', () => {
       .toMatchObject({ ok: true, alert: expect.stringMatching(/is on main without a step of yours/) })
     expect(await runAction(deps, at(7, { step: 'check', by: 'user', action: { kind: 'git.verify-merged', target: 'main' } })))
       .toEqual({ ok: true, commit: head })
+  })
+
+  it('sees a gh error printed on stderr even when only stdout comes back, and tries again', async () => {
+    const repo = path.join(tmp, 'gh'), bin = path.join(tmp, 'bin')
+    fs.mkdirSync(bin); git(tmp, 'init', '-q', repo); git(repo, 'commit', '-q', '--allow-empty', '-m', 'x')
+    fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\necho "HTTP 502: Bad Gateway" >&2; exit 1\n', { mode: 0o755 })
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` }
+    const stdoutOnly: ActionDeps['sh'] = async (script, args) => {
+      const r = spawnSync('sh', ['-c', script, 'sh', ...args], { encoding: 'utf8', env })
+      return { code: r.status, out: r.stdout.trim() }
+    }
+    const f = fakeDeps([])
+    const r = await runAction({ ...f.deps, sh: stdoutOnly }, job({ worktree: repo, step: 'merge', action: { kind: 'github.merge' } }))
+    expect(r).toEqual({ ok: false, error: 'merge: HTTP 502: Bad Gateway' })
+    expect(f.sleeps).toEqual([60_000, 120_000, 240_000, 480_000])
   })
 })
