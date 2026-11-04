@@ -3,7 +3,7 @@
 import type { H3Event, EventHandlerRequest } from 'h3'
 import type { IncomingMessage } from 'node:http'
 import { defineEventHandler, getRequestHeader, getRequestHeaders, setResponseHeader, setResponseStatus, getRequestURL } from 'h3'
-import { gzipBody } from './gzipJson'
+import { jsonBody } from './gzipJson'
 import { createAuth, type ReqLike } from './auth'
 import { DATA_DIR, PASSKEY_USER, log } from './env'
 import { HerdrError } from './herdr'
@@ -137,13 +137,13 @@ export function defineApi<T>(
 }
 
 // Large JSON answers gzipped when the browser takes it (gzipJson.ts).
-function gzipJson<T>(event: H3Event, out: T): T | Buffer {
-  const body = gzipBody(getRequestHeader(event, 'accept-encoding'), out)
+function gzipJson<T>(event: H3Event, out: T): T | Buffer | string {
+  const r = jsonBody(getRequestHeader(event, 'accept-encoding'), out)
   setResponseHeader(event, 'vary', 'accept-encoding')
-  if (!body) return out
+  if (!r) return out
   setResponseHeader(event, 'content-type', 'application/json')
-  setResponseHeader(event, 'content-encoding', 'gzip')
-  return body
+  if (r.gzip) setResponseHeader(event, 'content-encoding', 'gzip')
+  return r.body
 }
 
 // Binary image (conversation or sent photo).

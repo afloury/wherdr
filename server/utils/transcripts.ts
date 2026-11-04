@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, type Hash } from 'node:crypto'
 import path from 'node:path'
 import { imageTagCount } from '../../shared/queuedMatch'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
@@ -228,10 +228,14 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
 // of a conversation is parsed once and each poll feeds only the lines
 // appended since (see readTail). Its items keep changing as lines come (a
 // tool result marks its call, a "/" command becomes a user message…):
-// result() hands out copies, so a list already given never changes.
+// result() hands out copies, so a list already given never changes. The copy
+// of an item is made once and handed out again until the item changes
+// (touch): chatDelta signs each copy once.
 export type ClaudeParser = ReturnType<typeof claudeParser>
 export function claudeParser(home = '') {
   const items: ChatItem[] = []
+  const copies = new WeakMap<ChatItem, ChatItem>()
+  const touch = (it: ChatItem) => { copies.delete(it) }
   const tools = new Map<string, ChatItem>()
   // Claude's own queue (messages typed while it works,
   // from the phone or the computer): enqueue, then dequeue (taken at the end of
@@ -292,6 +296,7 @@ export function claudeParser(home = '') {
       return true
     }
     if (open && items[items.length - 1] === open && open.out === undefined) {
+      touch(open)
       open.out = o.out
       open.err = o.err
     }
@@ -411,6 +416,7 @@ export function claudeParser(home = '') {
       const content = d.message && d.message.content
       if (d.type === 'assistant' && pendingCmd && Array.isArray(content) && content.some((c: Json) => c.type === 'tool_use' || assistantText(c))) {
         const c: ChatItem = pendingCmd
+        touch(c)
         c.role = 'user'
         delete c.out
         delete c.err
@@ -456,6 +462,7 @@ export function claudeParser(home = '') {
         for (const part of content) {
           if (part.type === 'tool_result') {
             const t = tools.get(part.tool_use_id)
+            if (t) touch(t)
             if (t && part.is_error) t.error = true
             const n = Array.isArray(part.content) ? part.content.filter((p: Json) => p && p.type === 'image').length : 0
             if (t && n && ref) {
@@ -496,17 +503,17 @@ export function claudeParser(home = '') {
     }
   }
   function result(): Parsed {
-    const out: Parsed = items.map((it) => {
-      const c = { ...it }
-      const key = replyKeys.get(it)
-      if (key) replyKeys.set(c, key)
-      return c
-    })
-    // Local commands: one "/cmd → useful output" line; the full output stays
-    // only when it says more than that line (opened by a tap, see ChatView);
-    // screen text copied there alone (no useful line) is dropped.
-    for (const it of out) {
-      if (it.role !== 'cmd') continue
+    const out: Parsed = items.map((orig) => {
+      let it = copies.get(orig)
+      if (it) return it
+      it = { ...orig }
+      copies.set(orig, it)
+      const key = replyKeys.get(orig)
+      if (key) replyKeys.set(it, key)
+      // Local commands: one "/cmd → useful output" line; the full output stays
+      // only when it says more than that line (opened by a tap, see ChatView);
+      // screen text copied there alone (no useful line) is dropped.
+      if (it.role !== 'cmd') return it
       const line = usefulOutput(it.out, it.err)
       if (line) it.text = `${it.text} → ${line}`
       const full = [it.err, it.out].filter(Boolean).join('\n').trim()
@@ -517,7 +524,8 @@ export function claudeParser(home = '') {
         if (!it.out) delete it.out
         if (!it.err) delete it.err
       }
-    }
+      return it
+    })
     // Queued task notifications: not user messages.
     out.queue = queue.filter(q => !isNoise(q.text))
     out.popped = [...popped]
@@ -927,6 +935,15 @@ export function parseLines(text: string, kind: string | null, base = 0, home = '
     if (own.length === it.images) it.hashes = own
   }
   return items
+}
+
+// A message the user typed: where a Codex or omp turn starts (see lastTurn).
+export function turnStart(line: string, kind: string | null): boolean {
+  if (!line.includes('"user"')) return false
+  let d: Json
+  try { d = JSON.parse(line) } catch { return false }
+  if (kind === 'omp') return d?.type === 'message' && d.message?.role === 'user' && !d.message.synthetic && d.message.attribution !== 'agent'
+  return d?.type === 'response_item' && d.payload?.type === 'message' && d.payload.role === 'user'
 }
 
 // Hashes are cached per line: transcripts only grow, a line never changes,
@@ -1351,8 +1368,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   }
   async function readTail(file: string, kind: string | null, size: number, from: number | null, ino?: number): Promise<TailResult> {
     if (from !== null && from <= size && size - from <= MAX_READ_BYTES) {
-      if (kind !== 'omp') return await locked(`${file}|${kind}|${from}`, () => readBelow(file, kind, size, from, ino))
-      return await readSlice(file, kind, size, from)
+      return await locked(`${file}|${kind}|${from}`, () => readBelow(file, kind, size, from, ino))
     }
     const r = await readBackwards(file, size, kind)
     r.anchor = await anchorAt(file, r.start)
@@ -1379,18 +1395,19 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   // Bottom below a client's cursor, kept between polls: while an agent
   // writes, each poll reads only the bytes appended since (and the few KB
   // around to check the rest is still there) instead of everything from the
-  // cursor. Claude's new lines are parsed alone (claudeParser); Codex's are
-  // kept and parsed again together, its image placeholders being declared on
-  // a later line (see codexPlaceholders). omp rewrites its file (retries, see
-  // ompTurnEnd): read whole each time (readSlice).
+  // cursor. Claude's new lines are parsed alone (claudeParser); Codex's and
+  // omp's are kept and their last turn parsed again (see lastTurn). omp
+  // rewrites its file (retries, see ompTurnEnd): all its bytes below the
+  // cursor are checked, not only the last CHECK_BYTES.
   interface Below extends LineStore {
     ino?: number
     start: number // first line start at or after the cursor
     end: number // after the last complete line read
     above: string // anchorHash of the bytes above the cursor
     aligned: boolean // the cursor is a line start
-    check: string // anchorHash of the CHECK_BYTES before `end`
+    check: string // anchorHash of the CHECK_BYTES before `end` (omp: from `start`)
     claude: ClaudeParser | null
+    turns: { lines: number, items: ChatItem[], templates: readonly CommandTemplate[] } // see lastTurn
   }
   const CHECK_BYTES = 4096
   const MAX_BELOW = 8
@@ -1405,6 +1422,27 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     void done.then(() => { if (queues.get(key) === done) queues.delete(key) })
     return r
   }
+  // Codex and omp read a turn as a whole (a tool's result marks its call, an
+  // image placeholder is declared after its message): the items of the turns
+  // before the last one are kept, and only the last turn is parsed again. A
+  // turn starts at a message the user typed. Kept items are handed out again
+  // as the same objects (chatDelta signs each once).
+  function lastTurn(b: Below, kind: string | null, cwd: string): Parsed {
+    const all = b.lines
+    if (b.turns.templates !== ompTemplates.list) b.turns = { lines: 0, items: [], templates: ompTemplates.list }
+    const parse = (from: number, to = all.length) => {
+      const lines: Lines = all.slice(from, to)
+      lines.refs = all.refs.slice(from, to)
+      return kind === 'omp' ? parseOmp(lines, home, ompTemplates.list, cwd) : parseCodex(lines)
+    }
+    for (let i = all.length - 1; i > b.turns.lines; i--) {
+      if (!turnStart(all[i]!, kind)) continue
+      b.turns.items.push(...parse(b.turns.lines, i))
+      b.turns.lines = i
+      break
+    }
+    return b.turns.items.concat(parse(b.turns.lines))
+  }
   async function readBelow(file: string, kind: string | null, size: number, from: number, ino?: number): Promise<TailResult> {
     const key = `${file}|${kind}|${from}`
     const s0 = Math.max(0, from - ANCHOR_BYTES)
@@ -1413,7 +1451,10 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     let above: Buffer = Buffer.alloc(0)
     let known: Buffer = Buffer.alloc(0) // bytes just before b.end, still the same
     let fresh: Buffer = Buffer.alloc(0) // bytes from b.end
-    const c0 = b ? Math.max(b.start, b.end - CHECK_BYTES) : 0
+    const whole = kind === 'omp'
+    // omp: one hash of the bytes from b.start, checked, then extended with the new ones.
+    let sum: Hash | null = null
+    const c0 = b ? (whole ? b.start : Math.max(b.start, b.end - CHECK_BYTES)) : 0
     if (b && b.ino === ino && size >= b.end) {
       if (c0 - from <= CHECK_BYTES) {
         const buf = await fs.read(file, s0, size - s0)
@@ -1427,7 +1468,9 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
         fresh = buf.subarray(b.end - c0)
       }
       // Rewritten, cut or replaced since: read again from the cursor.
-      if (above.length !== from - s0 || known.length !== b.end - c0 || anchorHash(above) !== b.above || anchorHash(known) !== b.check) b = undefined
+      sum = whole ? createHash('sha1').update(known) : null
+      const check = sum ? sum.copy().digest('hex').slice(0, 12) : anchorHash(known)
+      if (above.length !== from - s0 || known.length !== b.end - c0 || anchorHash(above) !== b.above || check !== b.check) b = undefined
     }
     if (!b || b.ino !== ino || size < b.end) {
       const buf = await fs.read(file, s0, size - s0)
@@ -1438,8 +1481,11 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
         off = nl < 0 ? buf.length : nl + 1
       }
       known = Buffer.alloc(0)
+      sum = whole ? createHash('sha1') : null
       const lines: Lines & { refs: string[] } = Object.assign([], { refs: [] })
-      b = { ino, start: s0 + off, end: s0 + off, above: anchorHash(above), aligned: off === from - s0, check: anchorHash(known), lines, hashes: new Map(), keep: kind === 'codex', claude: kind === 'codex' ? null : claudeParser(home) }
+      const claude = kind === 'codex' || kind === 'omp' ? null : claudeParser(home)
+      b = { ino, start: s0 + off, end: s0 + off, above: anchorHash(above), aligned: off === from - s0, check: anchorHash(known), lines, hashes: new Map(), keep: !claude, claude,
+        turns: { lines: 0, items: [], templates: ompTemplates.list } }
       fresh = buf.subarray(off)
     }
     const nl = fresh.lastIndexOf(0x0a)
@@ -1448,8 +1494,11 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
       b.claude?.feed(added)
       b.end += nl + 1
       // From c0 (or the start) to the new end: covers the bytes to check next time.
-      const tail = Buffer.concat([known, fresh.subarray(0, nl + 1)])
-      b.check = anchorHash(tail.subarray(Math.max(0, tail.length - CHECK_BYTES)))
+      if (sum) b.check = sum.update(fresh.subarray(0, nl + 1)).digest('hex').slice(0, 12)
+      else {
+        const tail = Buffer.concat([known, fresh.subarray(0, nl + 1)])
+        b.check = anchorHash(tail.subarray(Math.max(0, tail.length - CHECK_BYTES)))
+      }
     }
     below.set(key, b)
     let kept = 0
@@ -1469,7 +1518,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
         return await readSlice(file, kind, size, from)
       } catch { /* incomplete: ignored as the parsers would */ }
     }
-    const items = b.claude ? b.claude.result() : parseCodex(b.lines)
+    const items = b.claude ? b.claude.result() : lastTurn(b, kind, kind === 'omp' ? await ompCwd(file) : '')
     withHashes(items, b.hashes)
     return { start: from, items, queue: items.queue || [], popped: items.popped || [], anchor: b.aligned ? b.above : '' }
   }
