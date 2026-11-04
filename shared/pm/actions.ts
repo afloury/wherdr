@@ -51,9 +51,28 @@ echo "$j" | tail -1`,
   // The first merge method the repo allows: merge commit, squash, rebase.
   merge: `${IN} m=$(gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed -q 'if .mergeCommitAllowed then "merge" elif .squashMergeAllowed then "squash" else "rebase" end' 2>&1) || { echo "$m"; exit 1; }
 gh pr merge "$1" "--$m" --match-head-commit "$2" 2>&1 || exit 1; echo "$1"`,
-  verify: `${IN} t=$1; git fetch -q origin "$t" 2>&1 || exit 1
-git merge-base --is-ancestor HEAD "origin/$t" || { echo "commit $(git rev-parse --short HEAD) is not in $t"; exit ${CODE.NOT_MERGED}; }
-git rev-parse HEAD`,
+  // Merged when GitHub has a merged PR from the branch into the target whose
+  // head is HEAD (or holds it): squash and rebase merges leave no ancestor.
+  // Else HEAD must be in the target and the branch hold a commit of its own:
+  // one made on it (its reflog, as a fast-forward is no work) since its start
+  // (branch.<b>.wherdrstart, written at worktree add). Inspired by Shepherdr's
+  // merged_here()/own_work() (mods/tasks/bin/herdr_task/github.py, MIT).
+  verify: `${IN} t=$1 b=$2 ghe=; h=$(git rev-parse HEAD) || exit 1
+if command -v gh >/dev/null; then
+  if heads=$(gh pr list --head "$b" --base "$t" --state merged --json headRefOid -q '.[].headRefOid' 2>&1); then
+    for p in $heads; do { [ "$p" = "$h" ] || git merge-base --is-ancestor "$h" "$p" 2>/dev/null; } && { echo "$h"; exit 0; }; done
+  else echo "$heads" | grep -qiE 'known GitHub host|not a git repository' || ghe=$heads; fi
+fi
+git fetch -q origin "$t" 2>&1 || exit 1
+if git merge-base --is-ancestor HEAD "origin/$t"; then
+  s=$(git config "branch.$b.wherdrstart")
+  mine=$(git rev-list --no-merges \${s:+"$s.."}HEAD)
+  for c in $({ git log -g --format='%H %gs' "refs/heads/$b"; git log -g --format='%H %gs' HEAD; } 2>/dev/null | grep -E '^[0-9a-f]+ (commit( \\((initial|amend)\\))?|cherry-pick|revert|rebase( -i)? \\((pick|reword|edit|squash|fixup|continue)\\)):' | cut -d' ' -f1); do
+    case "$mine" in *"$c"*) echo "$h"; exit 0;; esac; done
+  why="$b has no commit of its own: nothing was merged"
+else why="commit $(git rev-parse --short HEAD) is not in $t"; fi
+[ -z "$ghe" ] || { echo "$ghe"; exit 1; }
+echo "$why"; exit ${CODE.NOT_MERGED}`,
   // Remote branches holding the task's commit, for the protected-branch alert.
   contains: `${IN} git fetch -q origin 2>&1 || exit 1; git branch -r --contains HEAD --format='%(refname:short)'`,
 }
