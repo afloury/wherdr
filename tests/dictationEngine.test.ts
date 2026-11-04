@@ -24,7 +24,10 @@ describe('dictation engine registry', () => {
   })
 
   it('rejects an engine that is not built in', async () => {
+    const cloud = ENGINES.cloud
+    delete ENGINES.cloud
     await expect(loadEngine('cloud')).rejects.toThrow('not available')
+    ENGINES.cloud = cloud
   })
 })
 
