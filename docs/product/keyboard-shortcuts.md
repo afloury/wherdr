@@ -55,8 +55,9 @@ These existing shortcuts are unchanged and listed in the help sheet:
   Editing a recalled text does not change stored entries.
 - In the terminal: Shift+Enter and the copy keys (⌘C or Ctrl+Shift+C copy the on-screen selection,
   which releasing the mouse button also copies).
-- On a "Your turn" card: ↑ ↓ Enter Esc, 1–9 and ← →. The card takes them before the focused
-  empty message field; the server sends a key only while the same question is on screen.
+- On a "Your turn" card: ↑ ↓ Enter Esc, 1–9 and ← →. The empty message field lets Enter through
+  to the card (a field that handles a key itself, like search, keeps it); the server sends a key
+  only while the same question is on screen.
 - In the lightbox, conversation search and global search: their own keys.
 
 Where the keys are shown:
