@@ -5,13 +5,15 @@ import type { Quotas } from '#shared/types'
 import { readQuotas, saveQuotas } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { claudeInstallCommand, claudeSetupRows } from '~/utils/quotas'
+import { keepIfSame } from '~/utils/keepIfSame'
 
 export const quotaNow = ref(Date.now())
 
 export async function reloadQuotas() {
   try {
     const q = await api<Quotas>('/api/quotas')
-    homeQuotas.value = q
+    // Unchanged quotas keep the same object: the tables do not re-render.
+    homeQuotas.value = keepIfSame(homeQuotas.value ?? undefined, q)
     if (mayReadOffline(readOfflineAccess())) saveQuotas(q)
   }
   catch { /* retry on the next round */ }
