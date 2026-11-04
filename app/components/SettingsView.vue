@@ -412,6 +412,7 @@ onMounted(() => {
             <URadioGroup v-model="dictationChoice" :items="dictationItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
             <DictationDeviceSettings v-if="dictationChoice === 'device'" />
             <DictationCloudSettings v-if="dictationChoice === 'cloud'" />
+            <DictationRewriteSettings v-if="dictationChoice !== 'off'" />
             <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
           </div>
           <div class="settings-group" data-testid="read-aloud-group">

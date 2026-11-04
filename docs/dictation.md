@@ -49,6 +49,8 @@ insertion are shared; only the engine behind the interface changes.
 | `app/utils/dictation/modelStore.ts` | Model files in Cache Storage: resumable install, delete, space used |
 | `app/components/DictationDeviceSettings.vue` | Settings › Dictation › On this device (model list) |
 | `server/utils/dictation.ts`, `server/api/dictation/*` | Key storage and the OpenRouter relay |
+| `shared/dictationRewrite.ts`, `app/utils/dictation/rewrite.ts` | The optional rewrite: prompt, dictionary, the call with its raw-text fallback |
+| `app/components/DictationRewriteSettings.vue` | Settings › Dictation › Rewrite (switch, model, prompt, dictionary) |
 | `server/utils/modelFiles.ts`, `server/routes/models/[...path].ts` | Serving `DATA_DIR/models/**` |
 | `scripts/dictation-files.mjs`, `scripts/fetch-dictation-files.mjs` | Pinned downloads into `DATA_DIR/models`, checked by sha256 (the code, and its CLI) |
 | `server/utils/dictationServerFiles.ts`, `server/api/dictation/prepare.post.ts` | The server fetching a model's missing files when Install asks |
@@ -196,11 +198,32 @@ percentage) and ×.
   audio in, give a transcription out and are served at `/api/v1/audio/transcriptions`
   (`shared/dictationModels.ts`). It answers `{ models: [{ id, name, perMinute? }], live }`: the
   price per minute only for models billed by duration (`pricing.prompt` per second, no output
-  price). The list is kept 6 hours, served stale while OpenRouter fails (retried after a minute);
+  price). Others (MAI quotes per hour, GPT-4o and Gemini transcribers bill tokens) show
+  **Price: see OpenRouter**, a link to `https://openrouter.ai/<model id>`: the unit is never guessed. The list is kept 6 hours, served stale while OpenRouter fails (retried after a minute);
   without a key or any good fetch, a built-in list of three. Settings searches it locally by name
   or id (`USelectMenu`).
 - **Options** (per device, `cloudOptions.ts`): model (Whisper large v3 turbo by default), ZDR (on
   by default), send pane terms (off by default).
+
+## Rewrite
+
+An optional pass after the transcript, for both engines (**Settings › Conversation › Dictation ›
+Rewrite**, per device, off by default). The take's text goes to `POST /api/dictation/rewrite`;
+the server sends it with its key to OpenRouter's `POST /api/v1/chat/completions` (ZDR as for
+transcription, 30 s timeout, 2 at once and 10 per client per minute).
+
+- **Messages** (`rewriteMessages()`): the prompt (editable; the default removes filler words and
+  false starts, fixes punctuation, keeps the meaning and language, never answers or adds) plus the
+  **personal dictionary** as the system message, the text between `<transcript>` tags as the user
+  one. The dictionary is also sent as `keyterms` to the online engine, with or without the
+  rewrite. A model that refuses keyterms (Whisper does; the model list does not say which) gets
+  the take again without them. Quotes wrapped around the whole answer are dropped.
+- **Model**: `GET /api/dictation/text-models` lists OpenRouter's text models, cached like the
+  transcription list, priced per million tokens, with a default computed from the live list: the
+  cheapest model that bills both input and output, never `:free` or `:batch`. An empty choice
+  follows that default.
+- **Composer**: the take's line says **Rewriting…** meanwhile; × drops the take. When the rewrite
+  fails or times out, the raw transcript goes into the field and a toast says so.
 
 ## On-device models
 

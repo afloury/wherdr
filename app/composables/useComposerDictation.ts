@@ -10,6 +10,7 @@ import { t, tl } from '~/utils/i18n'
 import { disposeEngines, ENGINES } from '~/utils/dictation/registry'
 import { dictationTerms } from '~/utils/dictation/terms'
 import { insertDictated, takeClock, waveText } from '~/utils/dictation/compose'
+import { readRewriteOptions, rewriteText } from '~/utils/dictation/rewrite'
 
 export const HOLD_MS = 600
 
@@ -30,7 +31,8 @@ export function useComposerDictation(o: { text: Ref<string>, ta: ComputedRef<HTM
   const d = useDictation()
   const engine = computed(() => dictationEngine.value !== 'off' && ENGINES[dictationEngine.value] ? dictationEngine.value : null)
   const live = computed(() => d.status.value === 'preparing' || d.status.value === 'recording')
-  const shown = computed(() => live.value || d.status.value === 'transcribing')
+  const working = computed(() => d.status.value === 'transcribing' || d.status.value === 'rewriting')
+  const shown = computed(() => live.value || working.value)
   const wave = computed(() => waveText(d.levels.value))
   const clock = computed(() => takeClock(d.recMs.value))
   const loading = computed(() => {
@@ -64,7 +66,16 @@ export function useComposerDictation(o: { text: Ref<string>, ta: ComputedRef<HTM
     if (!id) return
     const p = o.pane()
     const terms = dictationTerms({ agent: p?.agent, machine: p?.machine, name: p?.name, title: p?.title, cwd: p?.cwd, draft: o.text.value })
-    try { await d.start({ engine: id, terms, onText: insert }) }
+    // The optional rewrite: on failure the raw text goes in, and a toast says so.
+    const rw = readRewriteOptions()
+    const rewrite = rw.on
+      ? async (text: string, signal: AbortSignal) => {
+          const r = await rewriteText(text, signal, rw)
+          if (r.error) toast(tl('Rewrite failed: the raw transcript was kept', 'La reformulation a échoué : la transcription brute est gardée'), true, r.error)
+          return r.text
+        }
+      : undefined
+    try { await d.start({ engine: id, terms, onText: insert, rewrite }) }
     catch { toast(tl('The microphone is in use in another pane', 'Le micro est pris dans un autre panneau'), true) }
   }
 
@@ -74,7 +85,7 @@ export function useComposerDictation(o: { text: Ref<string>, ta: ComputedRef<HTM
     if (e.pointerType === 'mouse' && e.button !== 0) return
     // A tap-started take: this press ends it.
     if (live.value) { pressing = false; void d.stop(); return }
-    if (d.status.value === 'transcribing') return
+    if (working.value) return
     try { (e.currentTarget as Element | null)?.setPointerCapture?.(e.pointerId) }
     catch { /* already released */ }
     pressing = true
@@ -91,7 +102,7 @@ export function useComposerDictation(o: { text: Ref<string>, ta: ComputedRef<HTM
   function click(e: MouseEvent) {
     if (e.detail !== 0) return
     if (live.value) void d.stop()
-    else if (d.status.value !== 'transcribing') void begin()
+    else if (!working.value) void begin()
   }
 
   return {

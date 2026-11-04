@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CLOUD_MODEL, sttModels } from '../shared/dictationModels'
+import { DEFAULT_CLOUD_MODEL, cheapestTextModel, openRouterPage, sttModels, textModels } from '../shared/dictationModels'
 
 const STT = { input_modalities: ['audio'], output_modalities: ['transcription'] }
 const ENDPOINT = ['/api/v1/audio/transcriptions']
@@ -40,5 +40,57 @@ describe('sttModels', () => {
     expect(sttModels(null)).toEqual([])
     expect(sttModels({ data: 'x' })).toEqual([])
     expect(sttModels({ data: [null, 1, { id: 'a/b', architecture: { input_modalities: 'audio' } }] })).toEqual([])
+  })
+})
+
+describe('prices that are not plain per-second audio prices', () => {
+  // Real pricing shapes from OpenRouter (2026-11): MAI quotes per hour, the
+  // GPT-4o and Gemini transcribers bill tokens. No unit is guessed: no price,
+  // the pickers link to the model's OpenRouter page instead.
+  it('gives no per-minute price for them, and a page to link to', () => {
+    const real = { data: [
+      { id: 'microsoft/mai-transcribe-2', architecture: STT, pricing: { prompt: '0.1', completion: '0' }, endpoints: ENDPOINT },
+      { id: 'microsoft/mai-transcribe-1.5', architecture: STT, pricing: { prompt: '0.36', completion: '0' }, endpoints: ENDPOINT },
+      { id: 'openai/gpt-4o-transcribe', architecture: STT, pricing: { prompt: '0.0000025', completion: '0.00001' }, endpoints: ENDPOINT },
+      { id: 'google/gemini-3.5-transcribe', architecture: STT, pricing: { prompt: '0.000002', completion: '0.000012' }, endpoints: ENDPOINT },
+      { id: 'deepgram/nova-3', architecture: STT, pricing: { prompt: '0.0000716666666667', completion: '0' }, endpoints: ENDPOINT },
+    ] }
+    const out = sttModels(real)
+    expect(out.filter(m => m.perMinute === undefined).map(m => m.id).sort()).toEqual([
+      'google/gemini-3.5-transcribe', 'microsoft/mai-transcribe-1.5', 'microsoft/mai-transcribe-2', 'openai/gpt-4o-transcribe',
+    ])
+    expect(out.find(m => m.id === 'deepgram/nova-3')!.perMinute).toBe(0.0043)
+    expect(openRouterPage('microsoft/mai-transcribe-2')).toBe('https://openrouter.ai/microsoft/mai-transcribe-2')
+  })
+})
+
+describe('textModels', () => {
+  const TEXT = { input_modalities: ['text'], output_modalities: ['text'] }
+  const answer = { data: [
+    { id: 'mistralai/mistral-nemo', name: 'Mistral: Mistral Nemo', architecture: TEXT, pricing: { prompt: '0.000000029', completion: '0.00000003' } },
+    // Cheaper still, but output is free: an extraction tool, not a chat model.
+    { id: 'scaledown/extract', name: 'ScaleDown: Extract', architecture: TEXT, pricing: { prompt: '0.00000004', completion: '0' } },
+    { id: 'openai/gpt-oss-20b:batch', name: 'gpt-oss-20b (batch)', architecture: TEXT, pricing: { prompt: '0.00000001', completion: '0.00000001' } },
+    { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama free', architecture: TEXT, pricing: { prompt: '0', completion: '0' } },
+    { id: 'openrouter/auto', name: 'Auto Router', architecture: TEXT, pricing: { prompt: '-1', completion: '-1' } },
+    { id: 'openai/gpt-5-mini', name: 'OpenAI: GPT-5 Mini', architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] }, pricing: { prompt: '0.00000025', completion: '0.000002' } },
+    { id: 'openai/whisper-1', name: 'Whisper', architecture: STT, pricing: { prompt: '0.0001', completion: '0' } },
+    { id: 'black-forest-labs/flux', name: 'Flux', architecture: { input_modalities: ['text'], output_modalities: ['image'] } },
+  ] }
+
+  it('keeps text-to-text models, priced per million tokens when the price is plain', () => {
+    const out = textModels(answer)
+    expect(out.map(m => m.id)).not.toContain('openai/whisper-1')
+    expect(out.map(m => m.id)).not.toContain('black-forest-labs/flux')
+    const byId = Object.fromEntries(out.map(m => [m.id, m]))
+    expect(byId['mistralai/mistral-nemo']!.perM).toEqual({ in: 0.029, out: 0.03 })
+    expect(byId['openai/gpt-5-mini']!.perM).toEqual({ in: 0.25, out: 2 })
+    expect(byId['openrouter/auto']!.perM).toBeUndefined()
+    expect(textModels({ data: [{ id: 'a/b', architecture: TEXT, pricing: { prompt: '' , completion: '0' } }] })[0]!.perM).toBeUndefined()
+  })
+
+  it('defaults to the cheapest paid chat model, never a free, batch or free-output one', () => {
+    expect(cheapestTextModel(textModels(answer))).toBe('mistralai/mistral-nemo')
+    expect(cheapestTextModel([])).toBeUndefined()
   })
 })

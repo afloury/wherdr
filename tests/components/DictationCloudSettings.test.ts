@@ -68,6 +68,9 @@ describe('DictationCloudSettings', () => {
     const options = () => [...document.body.querySelectorAll('[role="option"]')].map(o => o.textContent!.replace(/\s+/g, ' ').trim())
     await vi.waitFor(() => expect(options()).toHaveLength(4))
     expect(options()[0]).toContain('$0.0002 / min')
+    // Billed per token: no per-minute price, a link to its OpenRouter page.
+    expect(options()[3]).toContain('Price: see OpenRouter')
+    expect(document.body.querySelectorAll('[role="option"]')[3]!.querySelector('a')!.getAttribute('href')).toBe('https://openrouter.ai/openai/gpt-4o-transcribe')
     search.value = 'qwen'
     search.dispatchEvent(new Event('input'))
     await vi.waitFor(() => expect(options()).toEqual([expect.stringContaining('Qwen: Qwen3 ASR 1.7B')]))

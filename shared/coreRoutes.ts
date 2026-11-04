@@ -27,6 +27,7 @@ const BASE = [
   'machine/add', 'machine/connect', 'machine/core', 'machine/core-rename', 'machine/core-forget',
   'upload', 'attach', 'file', 'keep',
   'dictation/status', 'dictation/key', 'dictation/transcribe', 'dictation/prepare', 'GET dictation/models',
+  'dictation/rewrite', 'GET dictation/text-models',
 ]
 
 export const CORE_ROUTES = [...BASE, ...a, ...b, ...c, ...d, ...e, ...f, ...g, ...h, ...i]
