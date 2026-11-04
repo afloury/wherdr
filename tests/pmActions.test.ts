@@ -5,6 +5,7 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { guardAction, isTransient, leaks, prReady, taskGuards, type Receipt } from '../shared/pm/actions'
 import { runAction, type ActionDeps, type ActionJob } from '../server/utils/pmActions'
+import { WORKTREE_SCRIPT } from '../server/utils/pmLaunch'
 import { initialState, onEvent, planSteps } from '../shared/pm/steps'
 import type { Template } from '../shared/pm/workflow'
 
@@ -123,8 +124,11 @@ describe('step engine and action results', () => {
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-actions-'))
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }))
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...args], { cwd, encoding: 'utf8' }).trim()
+// A gh that knows no merged PR, so the tests never call GitHub.
+const noGh = path.join(tmp, 'no-gh')
+fs.mkdirSync(noGh); fs.writeFileSync(path.join(noGh, 'gh'), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
 const localSh: ActionDeps['sh'] = async (script, args, input) => {
-  const r = spawnSync('sh', ['-c', script, 'sh', ...args], { input, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.invalid' } })
+  const r = spawnSync('sh', ['-c', script, 'sh', ...args], { input, encoding: 'utf8', env: { ...process.env, PATH: `${noGh}:${process.env.PATH}`, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.invalid' } })
   return { code: r.status, out: `${r.stdout}${r.stderr}`.trim() }
 }
 
@@ -179,5 +183,94 @@ describe('on a real repo', () => {
     const r = await runAction({ ...f.deps, sh: stdoutOnly }, job({ worktree: repo, step: 'merge', action: { kind: 'github.merge' } }))
     expect(r).toEqual({ ok: false, error: 'merge: HTTP 502: Bad Gateway' })
     expect(f.sleeps).toEqual([60_000, 120_000, 240_000, 480_000])
+  })
+})
+
+// verify-merged on a worktree made by the launch script, with a fake gh that
+// lists the heads of the merged PRs written in its file.
+describe('verify-merged', () => {
+  let n = 0
+  async function setup() {
+    const dir = path.join(tmp, `v${++n}`), origin = path.join(dir, 'origin.git'), repo = path.join(dir, 'repo'), wt = path.join(dir, 'wt'), bin = path.join(dir, 'bin')
+    const merged = path.join(dir, 'merged')
+    fs.mkdirSync(bin, { recursive: true })
+    fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\n[ -f "${merged}.err" ] && { cat "${merged}.err" >&2; exit 1; }\ncat "${merged}" 2>/dev/null; exit 0\n`, { mode: 0o755 })
+    git(dir, 'init', '-q', '--bare', '-b', 'main', origin)
+    git(dir, 'clone', '-q', origin, repo)
+    fs.writeFileSync(path.join(repo, 'a.txt'), 'one\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-qm', 'init'); git(repo, 'push', '-q', 'origin', 'main:dev')
+    git(repo, 'fetch', '-q')
+    expect((await localSh(WORKTREE_SCRIPT, [repo, wt, 'task/A-1', 'origin/dev'])).code).toBe(0)
+    const sh: ActionDeps['sh'] = (script, args, input) => localSh(`PATH="${bin}:$PATH"\n${script}`, args, input)
+    const verify = (by: 'user' | 'engine' = 'user') =>
+      runAction({ ...fakeDeps([]).deps, sh }, job({ worktree: wt, step: 'check', by, action: { kind: 'git.verify-merged', target: 'dev' } }))
+    // Someone else's commit on dev.
+    const theirs = () => {
+      git(repo, 'checkout', '-q', '-B', 'other', 'origin/dev'); fs.writeFileSync(path.join(repo, 'c.txt'), `theirs ${++n}\n`)
+      git(repo, 'add', '.'); git(repo, 'commit', '-qm', 'theirs'); git(repo, 'push', '-q', 'origin', 'HEAD:dev')
+    }
+    const work = () => { fs.writeFileSync(path.join(wt, 'b.txt'), 'task\n'); git(wt, 'add', '.'); git(wt, 'commit', '-qm', 'task'); return git(wt, 'rev-parse', 'HEAD') }
+    return { repo, wt, merged, verify, theirs, work }
+  }
+
+  it('records where the branch started, once', async () => {
+    const s = await setup()
+    expect(git(s.repo, 'config', 'branch.task/A-1.wherdrstart')).toBe(git(s.wt, 'rev-parse', 'HEAD'))
+  })
+
+  it('accepts a PR merged with squash or rebase on GitHub', async () => {
+    const s = await setup(), head = s.work()
+    git(s.repo, 'checkout', '-q', '-B', 'dev', 'origin/dev'); git(s.repo, 'merge', '-q', '--squash', head); git(s.repo, 'commit', '-qm', 'A-1 (#1)'); git(s.repo, 'push', '-q', 'origin', 'dev')
+    expect(await s.verify()).toMatchObject({ ok: false, error: expect.stringMatching(/is not in dev$/) })
+    // gh unable to answer: the git reason stays, with why GitHub was not asked.
+    fs.writeFileSync(`${s.merged}.err`, 'To get started with GitHub CLI, please run:  gh auth login\nGH_TOKEN: x\n')
+    expect(await s.verify()).toMatchObject({ ok: false, error: 'verify-merged: commit ' + head.slice(0, 7) + ' is not in dev (GitHub not checked: To get started with GitHub CLI, please run:  gh auth login)' })
+    fs.rmSync(`${s.merged}.err`)
+    fs.writeFileSync(s.merged, `${head}\n`)
+    expect(await s.verify()).toMatchObject({ ok: true, commit: head })
+  })
+
+  it('accepts a branch rebased onto dev, then landed', async () => {
+    const s = await setup()
+    s.work(); s.theirs()
+    git(s.wt, 'fetch', '-q', 'origin'); git(s.wt, 'rebase', '-q', 'origin/dev')
+    const head = git(s.wt, 'rev-parse', 'HEAD')
+    git(s.wt, 'push', '-q', 'origin', 'HEAD:dev')
+    expect(await s.verify()).toMatchObject({ ok: true, commit: head })
+  })
+
+  it('accepts own work rebuilt with pull --rebase or am, then merged by hand', async () => {
+    for (const rebuild of ['pull', 'am'] as const) {
+      const s = await setup(), mine = s.work()
+      s.theirs()
+      if (rebuild === 'pull') git(s.wt, 'pull', '-q', '--rebase', 'origin', 'dev')
+      else {
+        const patch = git(s.wt, 'format-patch', '-1', mine, '-o', path.join(s.wt, '..', 'p'))
+        git(s.wt, 'fetch', '-q', 'origin'); git(s.wt, 'reset', '-q', '--hard', 'origin/dev'); git(s.wt, 'am', '-q', patch)
+      }
+      const head = git(s.wt, 'rev-parse', 'HEAD')
+      git(s.wt, 'push', '-q', 'origin', 'HEAD:dev')
+      expect(await s.verify()).toMatchObject({ ok: true, commit: head })
+    }
+  })
+
+  it('accepts a plain merge into dev', async () => {
+    const s = await setup(), head = s.work()
+    s.theirs()
+    git(s.wt, 'push', '-q', 'origin', 'HEAD:refs/heads/task/A-1'); git(s.repo, 'fetch', '-q')
+    git(s.repo, 'checkout', '-q', '-B', 'dev', 'origin/dev'); git(s.repo, 'merge', '-q', '--no-ff', '-m', 'merge A-1', 'origin/task/A-1'); git(s.repo, 'push', '-q', 'origin', 'dev')
+    expect(await s.verify()).toMatchObject({ ok: true, commit: head })
+  })
+
+  it('refuses a branch with no commit of its own, even fast-forwarded or rebased onto dev', async () => {
+    const s = await setup()
+    expect(await s.verify()).toMatchObject({ ok: false, error: 'verify-merged: task/A-1 has no commit of its own: nothing was merged' })
+    s.theirs()
+    git(s.wt, 'fetch', '-q', 'origin'); git(s.wt, 'merge', '-q', '--ff-only', 'origin/dev')
+    expect(await s.verify()).toMatchObject({ ok: false, error: expect.stringMatching(/no commit of its own/) })
+    s.theirs(); git(s.wt, 'pull', '-q', '--rebase', 'origin', 'dev')
+    s.theirs(); git(s.wt, 'fetch', '-q', 'origin'); git(s.wt, 'rebase', '-q', 'origin/dev')
+    expect(git(s.wt, 'rev-parse', 'HEAD')).toBe(git(s.wt, 'rev-parse', 'origin/dev'))
+    expect(await s.verify()).toMatchObject({ ok: false, error: expect.stringMatching(/no commit of its own/) })
   })
 })
