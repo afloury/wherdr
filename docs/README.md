@@ -26,6 +26,7 @@ or [Development and tests](development.md) for repository changes.
 - [Install as an app](phone.md) — Add wherdr to your home screen on a phone or install it in a desktop browser.
 - [Plugins](plugins.md) — [wherdr plugins](plugins.md#wherdr-plugins): optional page plugins and `data-wherdr` markers.
 - [Security](security.md) — Remote-shell access, passkeys and network restrictions. Read this before enabling remote access.
+- [Dictation design](dictation.md) — For contributors: the engine interface, capture pipeline, OpenRouter relay, on-device models and how to add one.
 - [Design rules](design.md) — The single reference for interface styling, state indicators, controls and responsive checks.
 - [Development and tests](development.md) — Run from source and test the core build.
 - [Troubleshooting](troubleshooting.md) — herdr-core connection, conversations, machines and network problems.
