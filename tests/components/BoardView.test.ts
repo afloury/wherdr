@@ -72,6 +72,17 @@ it('shows the reviewer\'s state in review, and no indicator on a holder: none ca
   expect(card(w, 'CO-2').text()).toContain('merge')
 })
 
+it('moves a card to Your turn when its agent waits for the user', async () => {
+  const before = herdrState.value
+  herdrState.value = { ...before, panes: before.panes.map(p => (p.coreAddress === 'host-a/t1' ? { ...p, status: 'blocked' as const } : p)) }
+  try {
+    const w = await mount()
+    expect(laneOf(w, 'VIB-1')).toBe('your-turn')
+    expect(card(w, 'VIB-1').text()).toContain('Answer the agent')
+    expect(card(w, 'VIB-1').find('[data-testid="holder-state"]').classes()).toContain('blocked')
+  } finally { herdrState.value = before }
+})
+
 it('moves a card to Your turn whatever its step, and keeps its step and indicator', async () => {
   reset({ yourTurn: { reason: 'timeout', badge: 'Check review: over 90m' } })
   const w = await mount()

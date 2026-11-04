@@ -5,6 +5,8 @@ import { afterEach, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { board, userStep } from '../server/utils/pmBoard'
 import { company } from '../shared/pm/examples'
+import { cardOf } from '../shared/pm/board'
+import { planSteps } from '../shared/pm/steps'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 
 let dir = ''
@@ -28,4 +30,13 @@ it('the Merged button runs the step\'s check, and a failed check stays in Your t
   const { cards, projects } = await board(store)
   expect(projects[0]!.columns).toEqual(['To do', 'Working', 'Review', 'Deploy', 'Done'])
   expect(cards[0]).toMatchObject({ column: 'Review', step: 'merge', holder: 'none', userLabel: 'Merged', yourTurn: 'Merge the PR: No worktree: the task never started' })
+})
+
+it('a working task with no recorded step shows in its worker\'s step with its agent, and a proof link is the card\'s link', () => {
+  const plan = planSteps(company, { type: 'feature' })
+  const run = { id: 'r', task: 'CO-1', role: 'worker', program: 'claude', model: 'm', machine: '', worktree: '/w', branch: 'b', instructions: '/i', terminal: 'host-a/t1', attempt: 1, state: 'running', startedAt: 1 } as const
+  const task = { id: 'CO-1', project: 'CO', title: 'T', description: '', type: 'feature', state: 'working', createdAt: 1 } as const
+  expect(cardOf(task, plan, [run])).toMatchObject({ phase: 'working', column: 'Working', step: 'work', holder: 'worker', terminal: 'host-a/t1' })
+  const at4 = { ...task, step: { at: 4, started: true, rounds: {}, proofs: { pr: { link: 'https://example.com/pr/12' } } } }
+  expect(cardOf(at4, plan, [run]).links).toEqual([{ label: 'pr', url: 'https://example.com/pr/12' }])
 })

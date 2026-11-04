@@ -91,7 +91,8 @@ describe('startTask', () => {
   it('starts a labelled agent in a worktree, model pinned, autoupdate off, instructions in a file', async () => {
     const { store, deps, runs, files } = await setup()
     const t = await startTask(deps, 'WEB-1')
-    expect(t).toMatchObject({ state: 'working' })
+    // The board follows it: the engine has it in its worker's step.
+    expect(t).toMatchObject({ state: 'working', step: { started: true, at: 1 } })
     expect(runs).toHaveLength(1)
     const install = await store.install()
     expect(runs[0]).toMatchObject({

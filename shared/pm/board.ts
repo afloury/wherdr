@@ -50,8 +50,10 @@ export function boardColumns(plans: PlannedStep[][]): string[] {
 export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
   const s = task.step
   const started = !!s?.started && !!plan.length
-  const step = started ? plan[s!.at] : undefined
-  const holder: Holder = (!s?.done && step?.holder) || 'none'
+  // Working with no step recorded (started before the engine kept it): its worker's step.
+  const running = !started && task.state === 'working'
+  const step = started ? plan[s!.at] : running ? plan.find(p => p.holder === 'worker') : undefined
+  const holder: Holder = (!s?.done && step?.holder) || (running ? 'worker' : 'none')
   // The holder's agent: its latest run that has not ended.
   const run = holder === 'worker' || holder === 'reviewer'
     ? runs.filter(r => r.task === task.id && r.role === holder && r.state !== 'ended').sort((a, b) => b.startedAt - a.startedAt)[0]
@@ -60,14 +62,15 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
   return {
     id: task.id, project: task.project, title: task.title, description: task.description,
     column: plan.length ? columnOf((s?.done ? plan.at(-1) : step) ?? plan[0]!) : 'To do',
-    phase: s?.done ? 'done' : started ? 'working' : 'todo',
+    phase: s?.done ? 'done' : started || running ? 'working' : 'todo',
     ...(step ? { step: step.id } : {}),
     holder,
     ...(run?.terminal ? { terminal: run.terminal } : {}),
     ...(yourTurn ? { yourTurn } : {}),
-    ...(step?.ends === 'user' && !s?.done ? { userLabel: step.userLabel || 'Done' } : {}),
+    ...(step?.ends === 'user' && started && !s?.done ? { userLabel: step.userLabel || 'Done' } : {}),
     tags: task.tags ?? [],
-    links: task.links ?? [],
+    // Then the links steps gave as their proof (the PR), labelled by step.
+    links: [...task.links ?? [], ...plan.flatMap(p => (s?.proofs[p.id]?.link ? [{ label: p.id, url: s.proofs[p.id]!.link! }] : []))],
     plan,
     ...(s ? { state: s } : {}),
   }

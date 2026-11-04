@@ -18,7 +18,11 @@ let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { load(); timer = setInterval(load, 10_000) })
 onBeforeUnmount(() => clearInterval(timer))
 
-const cards = computed(() => (data.value?.cards ?? []).filter(c => !project.value || c.project === project.value))
+// An agent asking a question or a permission puts its card in Your turn too.
+const waitsForYou = (c: Card) => { const p = paneOf(c); return !!p && hasAgent(c) && statusKey(p) === 'blocked' }
+const cards = computed(() => (data.value?.cards ?? [])
+  .filter(c => !project.value || c.project === project.value)
+  .map(c => (!c.yourTurn && waitsForYou(c) ? { ...c, yourTurn: tl('Answer the agent', 'Réponds à l’agent') } : c)))
 const columns = computed(() => (project.value ? data.value?.projects.find(p => p.key === project.value)?.columns ?? [] : null))
 const lanes = computed(() => boardLanes(cards.value, columns.value))
 const PHASE_LABEL: Record<string, string> = { 'your-turn': 'Your turn', 'todo': 'To do', 'working': 'Working', 'done': 'Done' }
@@ -26,13 +30,13 @@ const laneLabel = (id: string) => (columns.value && id !== 'your-turn' ? id : t(
 const showStep = (c: Card, lane: string) => c.step && (!columns.value || lane === 'your-turn')
 
 // The holder's pane, by its herdr-core address; none for holder: none.
+const hasAgent = (c: Card) => c.holder !== 'none' && !c.state?.done
 const paneOf = (c: Card): Pane | undefined => (c.terminal ? herdrState.value?.panes.find(p => p.coreAddress === c.terminal) : undefined)
-const hasAgent = (c: Card) => c.holder !== 'none' && c.state && !c.state.done
 const live = (c: Card) => {
   const p = paneOf(c)
   return p ? { key: statusKey(p), label: `${t(c.holder === 'reviewer' ? 'Reviewer' : 'Worker')}: ${statusLabel(p)}` } : { key: 'inactive', label: tl('No agent running', 'Aucun agent lancé') }
 }
-const selected = computed(() => data.value?.cards.find(c => c.id === open.value) ?? null)
+const selected = computed(() => cards.value.find(c => c.id === open.value) ?? data.value?.cards.find(c => c.id === open.value) ?? null)
 </script>
 
 <template>

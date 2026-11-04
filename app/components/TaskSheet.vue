@@ -47,11 +47,11 @@ async function press() {
       <ol class="task-plan" data-testid="task-plan">
         <li v-for="(s, i) in card.plan" :key="s.id" :class="{ now: i === at && !done, past: i < at || done }" :aria-current="i === at && !done ? 'step' : undefined">
           <span class="mono-label">{{ s.id }} · {{ s.column || s.id }}<template v-if="s.holder && s.holder !== 'none'"> · {{ s.holder }}</template><template v-if="rounds(s.id)"> · {{ tl(`${rounds(s.id)} send-backs`, `${rounds(s.id)} renvois`) }}</template></span>
-          <details v-if="s.text">
+          <details v-if="s.text && s.holder && s.holder !== 'none'">
             <summary>{{ tl('Instructions', 'Consignes') }}</summary>
             <p class="task-desc">{{ s.text }}</p>
           </details>
-          <small v-for="[k, v] in proofs(s.id)" :key="k" class="muted">{{ k }}: {{ v }}</small>
+          <small v-for="[k, v] in proofs(s.id)" :key="k" class="muted">{{ k }}: <a v-if="/^https?:\/\//.test(v)" :href="v" target="_blank" rel="noopener">{{ v }}</a><template v-else>{{ v }}</template></small>
         </li>
       </ol>
     </div>
