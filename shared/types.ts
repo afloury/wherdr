@@ -356,24 +356,12 @@ export interface ConversationHit {
 }
 export interface ConversationSearchResponse { hits: ConversationHit[], limited: boolean }
 
-// Herdr theme (~/.config/herdr/config.toml, [theme] section), for "Follow Herdr".
-export interface HerdrThemeConfig {
-  name: string | null
-  autoSwitch: boolean
-  darkName: string | null
-  lightName: string | null
-  custom: Record<string, string>
-  customLight: Record<string, string>
-  customDark: Record<string, string>
-}
-
 // Machine offered in the "New" sheet: home folder and recent ones.
 export interface MachineConfig { key: string, label: string, local: boolean, home: string, dirs: string[], online: boolean, kinds: string[] }
 
 export interface AppConfig {
   hostLabel?: string
   machines?: MachineConfig[]
-  herdrTheme?: HerdrThemeConfig | null
   kinds: string[]
   home: string
   os?: string // local machine, `uname -s` names

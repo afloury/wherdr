@@ -195,21 +195,14 @@ const quietEnd = computed(() => {
 })
 
 // ------------------------------------------------------------ theme
-// Picker section titles: brand names stay as is in both languages.
-const themeGroupLabel = (g: ThemeGroup) => (g === 'agents' ? tl('Agents', 'Agents') : g === 'herdr' ? 'Herdr' : 'wherdr')
+// Picker section titles: brand names stay as is in both languages; the
+// 'herdr' group holds the classic terminal palettes.
+const themeGroupLabel = (g: ThemeGroup) => (g === 'agents' ? tl('Agents', 'Agents') : g === 'herdr' ? tl('Classic', 'Classiques') : 'wherdr')
 // Preview: background, surface, line, text, accent, states (working, waiting, done).
 const swatches = (th: ThemeDef) => [th.c.bg, th.c.surface, th.c.line, th.c.text, th.c.accent, th.c.blue, th.c.rose, th.c.teal]
-const herdrName = computed(() => {
-  const h = appConfig.value.herdrTheme
-  if (!h) return null
-  return h.autoSwitch ? `${h.darkName || 'catppuccin'} / ${h.lightName || 'catppuccin-latte'}` : h.name || 'catppuccin'
-})
-const followed = computed(() => themeById(resolveHerdrTheme(appConfig.value.herdrTheme, false).id))
 const themesOpen = ref(false)
-const currentTheme = computed(() => (themeChoice.value === FOLLOW_HERDR ? followed.value : themeById(themeChoice.value)))
-const currentLabel = computed(() => (themeChoice.value === FOLLOW_HERDR
-  ? `${t('Follow Herdr')}${followed.value ? ` · ${followed.value.label}` : ''}`
-  : (currentTheme.value ? currentTheme.value.label : themeChoice.value)))
+const currentTheme = computed(() => themeById(themeChoice.value))
+const currentLabel = computed(() => (currentTheme.value ? currentTheme.value.label : themeChoice.value))
 function pickTheme(id: string) {
   themeChoice.value = id
   haptic()
@@ -259,7 +252,7 @@ const deadlineText = computed(() => {
 
 onMounted(() => {
   refreshTerminalRenderStatus()
-  loadConfig() // Herdr theme up to date for "Follow Herdr"
+  loadConfig()
   refreshPush().then(refreshQuiet)
   refreshSecurity()
 })
@@ -297,17 +290,6 @@ onMounted(() => {
               <section v-for="sec in themeSections()" :key="sec.group" class="theme-section" :aria-label="themeGroupLabel(sec.group)">
                 <h4 class="theme-section-title">{{ themeGroupLabel(sec.group) }}</h4>
                 <div class="theme-grid">
-                  <button
-                    v-if="sec.group === 'herdr'"
-                    type="button" role="radio" class="theme-opt" :class="{ on: themeChoice === FOLLOW_HERDR }" :aria-checked="themeChoice === FOLLOW_HERDR"
-                    @click="pickTheme(FOLLOW_HERDR)"
-                  >
-                    <span class="theme-sw">
-                      <i v-for="(c, i) in followed ? swatches(followed) : []" :key="i" :style="{ background: c }" />
-                    </span>
-                    <span class="theme-name">{{ t('Follow Herdr') }}<small>{{ herdrName ? `config.toml · ${herdrName}` : t('config.toml not found') }}</small></span>
-                    <UIcon v-if="themeChoice === FOLLOW_HERDR" name="i-lucide-check" class="theme-check" />
-                  </button>
                   <button
                     v-for="th in sec.themes" :key="th.id" type="button" role="radio" class="theme-opt" :class="{ on: themeChoice === th.id }"
                     :aria-checked="themeChoice === th.id" @click="pickTheme(th.id)"
