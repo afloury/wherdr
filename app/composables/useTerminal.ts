@@ -12,7 +12,7 @@ import type { FitAddon } from '@xterm/addon-fit'
 import type { WebglAddon } from '@xterm/addon-webgl'
 import { loadWebgl, loadXterm } from '~/utils/xtermLoader'
 import { reloadIfNewBuild } from '~/composables/useAppVersion'
-import { terminalPixelWidth } from '~/utils/terminalSize'
+import { proposeTerminalSize, terminalPixelWidth } from '~/utils/terminalSize'
 import { writeTerminalFrame } from '~/utils/terminalFrame'
 import { guardWebglCanvasSize } from '~/utils/terminalRenderer'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
@@ -93,7 +93,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   function offerFit() {
     followCursor()
     const fits = !term || !fit || (() => {
-      const p = fit!.proposeDimensions()
+      const p = proposeTerminalSize(term!)
       return !p || (p.cols === term!.cols && p.rows === term!.rows)
     })()
     if (!coreStream || coreControl || fits) {
@@ -307,11 +307,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   function fitNow(send: boolean) {
     if (!term || !fit || !el || !el.parentElement) return
-    // FitAddon measures the parent of .xterm (#term), not .xterm itself.
+    // Measured on the parent of .xterm (#term), not .xterm itself (as FitAddon does).
     // On the phone, the inset of #term already defines its width.
     const desktop = matchMedia(DESK_QUERY).matches && !opts.fill?.()
     el.style.width = desktop ? `${terminalPixelWidth(el.parentElement.clientWidth, contentWidth.value)}px` : ''
-    const p = fit.proposeDimensions()
+    const p = proposeTerminalSize(term)
     if (!p || !p.cols || !p.rows) return
     const d = { cols: p.cols, rows: p.rows }
     if (!coreStream && (d.cols !== term.cols || d.rows !== term.rows)) term.resize(d.cols, d.rows)
