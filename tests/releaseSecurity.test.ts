@@ -114,7 +114,8 @@ describe('first key and challenges', () => {
 
 it('only allows the exact inline scripts of the Nuxt HTML', () => {
   const policy = cspForHtml('<html><script type="importmap">{"imports":{}}</script><script>window.__NUXT__={}</script><script type="application/json">{}</script></html>', 'localhost:7690')
-  expect(policy).toContain("script-src 'self' 'sha256-")
+  expect(policy).toContain("script-src 'self' 'wasm-unsafe-eval' 'sha256-")
+  expect(policy.match(/script-src ([^;]+)/)?.[1]).not.toContain("'unsafe-eval'")
   expect(policy.match(/'sha256-/g)).toHaveLength(2)
   expect(policy.match(/script-src ([^;]+)/)?.[1]).not.toContain('unsafe-inline')
   expect(policy).toContain("frame-ancestors 'none'")

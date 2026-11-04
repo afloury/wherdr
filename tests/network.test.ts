@@ -287,6 +287,8 @@ describe('gate matrix', () => {
         expect(decide(z, path, true, false)).toBe('locked')
         expect(decide(z, path, true, true)).toBe('ok')
       }
+      // Photos and dictation files are behind the lock too.
+      for (const path of ['/uploads/a.jpg', '/models/runtime/x.wasm']) expect(decide(z, path, true, false)).toBe('locked')
       // The lock screen's own routes and the app shell stay reachable.
       expect(decide(z, '/api/auth/disable', true, false)).toBe('ok')
       expect(decide(z, '/', true, false)).toBe('ok')
