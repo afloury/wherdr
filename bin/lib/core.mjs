@@ -30,10 +30,12 @@ export function installKind(bin, dir) {
 }
 
 export const COMMANDS = ['run', 'start', 'stop', 'restart', 'status', 'logs', 'open', 'phone', 'panel', 'service', 'doctor', 'help', 'version']
-const VALUE_OPTIONS = { '--port': 'port', '--host': 'host', '--data-dir': 'dataDir', '--session': 'session', '--lines': 'lines', '-n': 'lines' }
+const VALUE_OPTIONS = { '--port': 'port', '--host': 'host', '--data-dir': 'dataDir', '--hc-socket': 'hcSocket', '--session': 'session', '--lines': 'lines', '-n': 'lines' }
+// Herdr sessions are gone in wherdr 3: --session is read, then ignored with a warning.
+export const SESSION_IGNORED = '--session is ignored: wherdr 3 drives a herdr-core (hc) session, chosen with --hc-socket <path>.'
 const FLAGS = { '-h': 'help', '--help': 'help', '-v': 'version', '--version': 'version', '-f': 'follow', '--follow': 'follow' }
 
-// argv without the runtime and script → { command, sub, port, host, dataDir, session, lines, follow, help, version }.
+// argv without the runtime and script → { command, sub, port, host, dataDir, hcSocket, lines, follow, help, version, warnings }.
 // Throws an Error with a user-facing message on bad input.
 export function parseArgs(argv) {
   const out = {}
@@ -48,7 +50,8 @@ export function parseArgs(argv) {
     if (!key) throw new Error(`unknown option: ${arg} (see wherdr --help)`)
     const value = eq > 0 ? arg.slice(eq + 1) : argv[++i]
     if (value === undefined || value === '' || (eq < 0 && value.startsWith('--'))) throw new Error(`${name} needs a value`)
-    out[key] = value
+    if (key === 'session') (out.warnings ??= []).push(SESSION_IGNORED)
+    else out[key] = value
   }
   const [command = 'run', sub, ...extra] = words
   if (!COMMANDS.includes(command)) throw new Error(`unknown command: ${command} (see wherdr --help)`)
@@ -106,7 +109,8 @@ export function serverEnv(opts, env, home = os.homedir(), bin = BIN) {
   out.PORT = opts.port ?? env.PORT ?? DEFAULT_PORT
   out.HOST = opts.host ?? env.HOST ?? '127.0.0.1'
   out.DATA_DIR = path.resolve(expandHome(opts.dataDir ?? env.DATA_DIR ?? path.join(dir, 'data'), home))
-  if (opts.session !== undefined) out.HERDR_WEB_SESSION = opts.session
+  const hc = opts.hcSocket ?? env.HC_SOCKET
+  if (hc) out.HC_SOCKET = path.resolve(expandHome(hc, home))
   out.NODE_ENV = 'production'
   // Open WebSockets do not hold Ctrl+C for 30 s; clients reconnect on their own.
   out.NITRO_SHUTDOWN_TIMEOUT ??= '1500'
