@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { EXAMPLES, common, company, github, vibe } from '../shared/pm/examples'
 import { currentStep, initialState, onEvent, planSteps, type Effect, type StepEvent, type StepState } from '../shared/pm/steps'
 import { validateTemplate, type Template } from '../shared/pm/workflow'
+import type { Finding } from '../shared/pm/verdict'
 
 const MIN = 60_000
+const bug: Finding = { id: 'bug', severity: 'major', title: 'Crashes on empty input', proof: 'npm test: 1 failed' }
 
 // Plays a stream of [minute, event] and keeps what the board and the server would see.
 function play(t: Template, type: string, events: [number, StepEvent][], input: { instructions?: string } = {}) {
@@ -63,9 +65,9 @@ describe('step engine, company flow', () => {
   const toMerge: [number, StepEvent][] = [
     [0, { kind: 'start' }],
     [10, { kind: 'report', from: 'worker' }],
-    [20, { kind: 'verdict', from: 'reviewer', pass: false }],
+    [20, { kind: 'verdict', from: 'reviewer', findings: [bug] }],
     [30, { kind: 'report', from: 'worker' }],
-    [40, { kind: 'verdict', from: 'reviewer', pass: true }],
+    [40, { kind: 'verdict', from: 'reviewer', findings: [] }],
     [50, { kind: 'report', from: 'worker' }], // no link: refused
     [51, { kind: 'report', from: 'worker', evidence: { link: 'https://git.example/pr/7' } }],
   ]
@@ -107,7 +109,7 @@ describe('step engine, company flow', () => {
   it('takes a step\'s end only from its holder', () => {
     const r = play(company, 'feature', [
       [0, { kind: 'start' }],
-      [1, { kind: 'verdict', from: 'reviewer', pass: true }],
+      [1, { kind: 'verdict', from: 'reviewer', findings: [] }],
       [2, { kind: 'user' }],
       [3, { kind: 'report', from: 'reviewer' }],
     ])
@@ -118,19 +120,19 @@ describe('step engine, company flow', () => {
 
 describe('step engine, GitHub flow', () => {
   it('opens the PR, sends back twice, then the third failure goes to Your turn', () => {
-    const fail: StepEvent = { kind: 'verdict', from: 'reviewer', pass: false }
+    const fail: StepEvent = { kind: 'verdict', from: 'reviewer', findings: [bug] }
     const back: [number, StepEvent][] = [[0, { kind: 'report', from: 'worker' }], [0, { kind: 'action-result', ok: true }], [0, fail]]
     const r = play(github, 'simple', [[0, { kind: 'start' }], ...back, ...back, ...back])
     expect(r.steps).toEqual(['todo', 'work', 'pr', 'review', 'work', 'pr', 'review', 'work', 'pr', 'review'])
     expect(r.state.rounds).toEqual({ review: 3 })
-    expect(r.state.yourTurn).toEqual({ reason: 'rounds', badge: 'Decide: review failed 3 times' })
-    expect(r.effects.at(-1)).toEqual({ kind: 'instruct', step: 'review', holder: 'reviewer', text: 'Code, commits and PR in English.' })
+    expect(r.state.yourTurn).toMatchObject({ reason: 'rounds', badge: 'Decide: review failed 3 times' })
+    expect(r.effects.at(-1)).toMatchObject({ kind: 'instruct', step: 'review', holder: 'reviewer', text: expect.stringMatching(/^Code, commits and PR in English\.\nCheck only these findings/) })
   })
 
   it('merges after a passing review', () => {
     const r = play(github, 'simple', [
       [0, { kind: 'start' }], [1, { kind: 'report', from: 'worker' }], [2, { kind: 'action-result', ok: true }],
-      [3, { kind: 'verdict', from: 'reviewer', pass: true }], [4, { kind: 'action-result', ok: true }],
+      [3, { kind: 'verdict', from: 'reviewer', findings: [] }], [4, { kind: 'action-result', ok: true }],
     ])
     expect(kinds(r.effects)).toEqual(['instruct:work', 'action:pr', 'instruct:review', 'action:merge', 'done'])
     expect(r.state.done).toBe(true)
