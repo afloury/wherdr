@@ -297,7 +297,11 @@ describe('auth: nothing leaks before the unlock', () => {
     withKey(a)
     const opts = await a.loginOptions(req())
     expect(opts.allowCredentials ?? []).toEqual([])
-    expect(JSON.stringify(opts)).not.toContain('k1')
+    // The challenge and the challenge cookie are random base64 and may contain 'k1' by chance.
+    const { challenge, __cookie, ...rest } = opts
+    expect(challenge).toEqual(expect.any(String))
+    expect(__cookie).toEqual(expect.any(String))
+    expect(JSON.stringify(rest)).not.toContain('k1')
     const reg = await a.registerOptions(req(cookieValue(a._sessionCookie(req()))))
     expect(reg.authenticatorSelection).toMatchObject({ residentKey: 'required', requireResidentKey: true })
   })
