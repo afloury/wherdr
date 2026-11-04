@@ -17,7 +17,7 @@ const WORKTREE_SCRIPT = `repo=$1 dir=$2 branch=$3 base=$4
 mkdir -p "$(dirname "$dir")" || exit 1
 if git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then git -C "$repo" worktree add "$dir" "$branch" 2>&1
 else git -C "$repo" worktree add -b "$branch" "$dir" \${base:+"$base"} 2>&1; fi`
-const WRITE_SCRIPT = 'mkdir -p "$(dirname "$1")" && cat > "$1"'
+export const WRITE_SCRIPT = 'mkdir -p "$(dirname "$1")" && cat > "$1"'
 const NOT_FOUND = '127' // the shell found no such program: starting again cannot help
 
 export async function exec(deps: Pick<CoreAdminDeps, 'call'>, on: string | undefined, script: string, args: string[], input?: string) {
