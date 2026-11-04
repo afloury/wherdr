@@ -27,7 +27,9 @@ const sw = self as unknown as SwGlobal
 const CACHE = 'wherdr-v1'
 // Silent server: the cached copy past this delay (see networkFirst.ts).
 const NETWORK_WAIT_MS = 3000
-// Files of the built app (hashes in the name) + the page.
+// Files of the built app (hashes in the name) + the page. Not all of them: the
+// terminal (xterm.js, icon fonts) and PDF.js are kept on first use by the
+// /_nuxt/ branch of the fetch handler (shared/precache.ts).
 // (written as is: workbox looks for "self.__WB_MANIFEST" to inject the list there)
 const WB_MANIFEST = self.__WB_MANIFEST
 const PRECACHE = ['/', ...WB_MANIFEST.map(e => '/' + (typeof e === 'string' ? e : e.url).replace(/^\//, ''))]

@@ -3,11 +3,14 @@
 // Herdr gateway (API, WebSockets, Web Push): see server/.
 import { CSP_BASE } from './server/utils/csp'
 import { ICON_SCAN_GLOBS } from './shared/iconScan'
+import { lazyChunks, PRECACHE_GLOBS, RUNTIME_ONLY_GLOBS } from './shared/precache'
 
 // Demo build (`VITE_WHERDR_DEMO=1 nuxt generate`, served at wherdr.dev/demo/):
 // the same app, static, with no server at all — app/demo/ answers the API in
 // the browser — and no service worker. See app/demo/shim.ts.
 const demo = process.env.VITE_WHERDR_DEMO === '1'
+// Chunks left out of the service worker precache (shared/precache.ts).
+const lazy = lazyChunks()
 
 export default defineNuxtConfig({
   ssr: false,
@@ -91,6 +94,8 @@ export default defineNuxtConfig({
 
   // Custom service worker (app/service-worker/sw.ts), compiled by vite-pwa in
   // injectManifest mode. The FR/EN manifests are files in public/.
+  vite: { plugins: demo ? [] : [lazy.plugin] },
+
   pwa: {
     strategies: 'injectManifest',
     srcDir: 'service-worker',
@@ -101,11 +106,11 @@ export default defineNuxtConfig({
     injectManifest: {
       rollupFormat: 'iife',
       minify: false,
-      // Fonts included (≈ 400 KB): the app keeps its typography offline.
-      globPatterns: ['**/*.{js,css,png,svg,webmanifest,woff2}'],
-      // PDF.js and its worker are URL-imported .mjs assets, fetched only
-      // when a PDF opens; deliberately outside this precache glob.
-      globIgnores: ['**/node_modules/**'],
+      // App shell, scripts, styles and interface fonts; terminal icon fonts,
+      // xterm.js and PDF.js are cached on first use (shared/precache.ts).
+      globPatterns: PRECACHE_GLOBS,
+      globIgnores: ['**/node_modules/**', ...RUNTIME_ONLY_GLOBS],
+      manifestTransforms: [lazy.manifestTransform],
     },
     client: { installPrompt: false, periodicSyncForUpdates: 0 },
     devOptions: { enabled: false },
