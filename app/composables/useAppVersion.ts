@@ -43,15 +43,22 @@ export function registerServiceWorker() {
 
 // The shell may have come from the SW cache (slow network) and be older than
 // the served build: reload once, right away, before anything is typed.
-async function startupBuildCheck() {
+function startupBuildCheck() { void reloadIfNewBuild() }
+
+// Is a newer build served? Then reload to it once (guard against loops),
+// otherwise the banner. Also used when a file of the running build is missing:
+// a deployment removed it (terminal opened for the first time after a deploy).
+// Offline or same build: nothing. True if a newer build is served.
+export async function reloadIfNewBuild(): Promise<boolean> {
   try {
     const res = await fetch(`/_nuxt/builds/latest.json?${Date.now()}`, { cache: 'no-store' })
-    if (!res.ok || !isNewBuild(useRuntimeConfig().app.buildId, await res.json())) return
-    let storage: Storage | null = null
-    try { storage = sessionStorage } catch { /* unavailable */ }
-    if (mayReloadForChunk(storage, Date.now())) applyNewVersion()
-    else markNew()
-  } catch { /* offline: the periodic check will catch up */ }
+    if (!res.ok || !isNewBuild(useRuntimeConfig().app.buildId, await res.json())) return false
+  } catch { return false } // offline: the periodic check will catch up
+  let storage: Storage | null = null
+  try { storage = sessionStorage } catch { /* unavailable */ }
+  if (mayReloadForChunk(storage, Date.now())) void applyNewVersion()
+  else markNew()
+  return true
 }
 
 // Is the server serving a build other than the one running?
