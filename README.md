@@ -39,8 +39,8 @@ On the Linux or macOS computer running an **hc session**, with **Node.js 22**:
 git clone -b v3 https://github.com/afloury/wherdr.git
 cd wherdr
 npm ci
-WHERDR_BACKEND=core NUXT_PUBLIC_CORE=true npm run build
-WHERDR_BACKEND=core HC_SOCKET=/path/to/hc.sock npm start
+npm run build
+HC_SOCKET=/path/to/hc.sock npm start
 ```
 
 `HC_SOCKET` is the socket of your hc session (from your hc configuration); wherdr never starts
