@@ -32,6 +32,7 @@ function archive(home: string, opts: { omit?: string, extra?: Record<string, str
     'bin/lib/verify-release.mjs': readFileSync('bin/lib/verify-release.mjs', 'utf8'),
     'package.json': readFileSync(path.join(home, 'package.json'), 'utf8'),
     'scripts/fetch-dictation-files.mjs': '// dictation files',
+    'scripts/dictation-files.mjs': '// dictation files code',
     'app/utils/dictation/models.json': '{}',
     '.output/server/node_modules/web-push/package.json': '{"keywords":["binary"]}',
     ...opts.extra,
@@ -96,6 +97,7 @@ describe.skipIf(!hasCommands('bash', 'tar'))('package', () => {
   for (const [name, opts] of [
     ['no skill helper', { omit: 'bin/lib/install-skill.sh' }],
     ['no dictation script', { omit: 'scripts/fetch-dictation-files.mjs' }],
+    ['no dictation code', { omit: 'scripts/dictation-files.mjs' }],
     ['no dictation catalog', { omit: 'app/utils/dictation/models.json' }],
     ['no server', { omit: '.output/server/index.mjs' }],
     ['a .node addon', { extra: { '.output/server/node_modules/x/build/Release/x.node': 'addon' } }],

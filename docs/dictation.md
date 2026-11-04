@@ -50,7 +50,8 @@ insertion are shared; only the engine behind the interface changes.
 | `app/components/DictationDeviceSettings.vue` | Settings › Dictation › On this device (model list) |
 | `server/utils/dictation.ts`, `server/api/dictation/*` | Key storage and the OpenRouter relay |
 | `server/utils/modelFiles.ts`, `server/routes/models/[...path].ts` | Serving `DATA_DIR/models/**` |
-| `scripts/fetch-dictation-files.mjs` | Pinned downloads into `DATA_DIR/models`, checked by sha256 |
+| `scripts/dictation-files.mjs`, `scripts/fetch-dictation-files.mjs` | Pinned downloads into `DATA_DIR/models`, checked by sha256 (the code, and its CLI) |
+| `server/utils/dictationServerFiles.ts`, `server/api/dictation/prepare.post.ts` | The server fetching a model's missing files when Install asks |
 
 ## The engine interface
 
@@ -145,8 +146,10 @@ pane name and title, the last two folders of the cwd, and name-like words of the
 draft (inner capitals, digits, `-`, `.`, `/`, `_`), at most 400 characters. Each engine uses them
 its own way: `keyterms` for OpenRouter, a prompt for a context-capable local model.
 
-**Composer.** The mic sits before the plugins' buttons (`data-wherdr="composer-actions"`) and is
-hidden while dictation is **Off**. Hold it (≥ 0.6 s) and release to stop, or tap to start and tap
+**Composer.** The mic sits before the plugins' buttons (`data-wherdr="composer-actions"`), right
+of **+**, in every state: on a touch screen the row at rest is `+ · mic · field · Send`, and the
+toolbar under the field while editing keeps it in the same place. A stray tap there is harmless,
+unlike Send. It is hidden while dictation is **Off**. Hold it (≥ 0.6 s) and release to stop, or tap to start and tap
 again. The take's line above the field shows the wave (`▁▂▃▄▅▆▇█`), the clock (or the load
 percentage) and ×.
 
@@ -193,7 +196,8 @@ percentage) and ×.
 
 ### Where files are stored and served
 
-- **Server side**: `DATA_DIR/models/`, filled by `scripts/fetch-dictation-files.mjs`. Runtimes go
+- **Server side**: `DATA_DIR/models/`, filled by the server itself on Install (below) or by
+  `scripts/fetch-dictation-files.mjs`. Runtimes go
   under `runtime/<name>-<version>/` (sherpa-onnx WASM, onnxruntime-web); each model gets its own
   folder. These files are never in the repository, the npm package or the service worker
   precache. The folder survives updates.
@@ -213,6 +217,21 @@ percentage) and ×.
   (`app/service-worker/sw.ts`) leaves `/models/` alone and keeps `wherdr-asr-*` caches across app
   updates (it deletes every other old cache).
 
+### The server fetches what it lacks
+
+Before downloading a model the phone does not hold whole, `modelStore.ts` posts
+`{ model }` to `POST /api/dictation/prepare` (`server/utils/dictationServerFiles.ts`). The server
+checks the runtime set's files and the model's files at their catalog sizes (no hash of 600 MB on
+every Install) and answers `ready`, or starts fetching what is missing and answers
+`preparing` with `got`, `total` and `phase` (`fetch`, then `unpack` for the archive). The browser
+posts again every second, Settings shows *Preparing on the server… 40 %*, and the phone download
+starts once the answer is `ready`. It runs the fetch script's own code (`scripts/dictation-files.mjs`:
+same pinned URLs, sha256 checks, `.part` resume), one fetch at a time for the whole server; a
+second request for the same model joins the running one. A failed fetch (`error`, shown in the
+row) is told once; the next Install tries again and resumes. Cancel stops the phone's polling, not
+the server's fetch. A server without the route (older build) falls back to the 404 message with
+the command to run.
+
 ### Long takes
 
 Parakeet slows down on long audio (about 1.3 times real time on a 45 s take on a desktop CPU,
@@ -231,7 +250,8 @@ goes to `file.part`, resumes with `Range` after an interruption, and is moved in
 when its hash matches. An entry is either a single file (`{ url, sha256, to }`) or a `.tar.bz2`
 archive (`{ url, sha256, dir, members }`) from which only the listed members are extracted; a
 `.complete` stamp holding the archive's hash marks it done. `tests/fetchDictationFiles.test.ts`
-covers resume, mismatch and the set list.
+covers resume, mismatch and the set list; `tests/dictationServerFiles.test.ts` the server's use of
+it. The code lives in `scripts/dictation-files.mjs`, which has no CLI, since the server bundles it.
 
 ### The model catalog
 

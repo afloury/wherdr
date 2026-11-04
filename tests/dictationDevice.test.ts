@@ -8,8 +8,7 @@ import { DEVICE_CACHE, DEVICE_MODELS, DEVICE_RUNTIME, deviceModel } from '../app
 import { TAKE_RATE, isAbortError } from '../app/utils/dictation/engine'
 import { CHUNK } from '../app/utils/dictation/modelStore'
 import { fakeCaches, rangeServer } from './fakeModelCache'
-// @ts-expect-error plain .mjs script, no types
-import { DEFAULT_SETS, SETS } from '../scripts/fetch-dictation-files.mjs'
+import { DEFAULT_SETS, SETS } from '../scripts/dictation-files.mjs'
 
 const model = { ...DEVICE_MODELS[0]!, files: [{ path: 'a.onnx', bytes: 100 }, { path: 'tokens.txt', bytes: 10 }] }
 
@@ -109,6 +108,20 @@ describe('the on-device engine', () => {
     const loading = engine.prepare()
     engine.dispose()
     expect(isAbortError(await loading.catch(e => e))).toBe(true)
+  })
+
+  it('stops waiting for the server to fetch the files when disposed', async () => {
+    let polls = 0
+    const fetch = vi.fn(async () => { polls++; return Response.json({ state: 'preparing', phase: 'fetch', got: 1, total: 10 }) })
+    const engine = createDeviceEngine({ model, caches: null, fetch, worker: () => new FakeWorker() as unknown as Worker })
+    const seen: unknown[] = []
+    const loading = engine.prepare(p => seen.push(p))
+    await vi.waitFor(() => expect(seen).toEqual([{ phase: 'fetch', got: 1, total: 10, server: true, unpack: false }]))
+    engine.dispose()
+    expect(isAbortError(await loading.catch(e => e))).toBe(true)
+    await new Promise(r => setTimeout(r, 1100))
+    expect(polls).toBe(1)
+    expect(FakeWorker.made).toHaveLength(0)
   })
 
   describe('readiness', () => {

@@ -71,6 +71,26 @@ describe('DictationDeviceSettings', () => {
     expect(sense().find('[role="radio"]').attributes('aria-checked')).toBe('true')
   })
 
+  it('shows the server preparing the files, then the download to this device', async () => {
+    const w = await mountSuspended(DictationDeviceSettings)
+    await flushPromises()
+    const files = rangeServer((await import('~/utils/dictation/deviceModels')).DEVICE_MODELS[1]!)
+    let release = () => {}
+    const ready = new Promise<void>((r) => { release = r })
+    let polls = 0
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      if (url !== '/api/dictation/prepare') return files.fetch(url, init)
+      if (polls++) await ready
+      return Response.json(polls > 1 ? { state: 'ready' } : { state: 'preparing', phase: 'fetch', got: 40, total: 100 })
+    })
+    const sense = () => row(w, 'sensevoice')
+    await sense().find('button:not([role])').trigger('click')
+    await vi.waitFor(() => expect(sense().find('[data-testid="model-server"]').text()).toBe('Preparing on the server… 40 %'))
+    expect(w.find('[data-testid="dictation-storage"]').text()).toContain('0 B used on this device')
+    release()
+    await vi.waitFor(() => expect(sense().find('[data-testid="model-state"]').text()).toContain('Installed'), { timeout: 5000 })
+  })
+
   it('says the server is missing the model files on a 404, with the fetch command', async () => {
     const w = await mountSuspended(DictationDeviceSettings)
     await flushPromises()

@@ -1779,9 +1779,11 @@ body.kb .composer { padding-bottom: 8px; }
   .prompt .prompt-foot { display: contents; }
   .prompt .prompt-plus { grid-column: 1; grid-row: 1; }
   .prompt .prompt-send { grid-column: 3; grid-row: 1; margin-left: 0; }
-  /* With the mic, the row at rest keeps it next to Send. */
-  .prompt.has-mic { grid-template-columns: 44px minmax(0, 1fr) 44px 44px; }
-  .prompt.has-mic .prompt-mic { grid-column: 3; grid-row: 1; }
+  /* With the mic, the row at rest keeps it next to +, where it sits while editing too:
+     it never moves, and a stray tap there sends nothing. */
+  .prompt.has-mic { grid-template-columns: 44px 44px minmax(0, 1fr) 44px; }
+  .prompt.has-mic .prompt-mic { grid-column: 2; grid-row: 1; }
+  .prompt.has-mic .prompt-body { grid-column: 3; }
   .prompt.has-mic .prompt-send { grid-column: 4; }
   .prompt .prompt-hint { display: none; }
   .prompt.expanded { display: flex; align-items: stretch; }
