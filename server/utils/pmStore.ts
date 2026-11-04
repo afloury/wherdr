@@ -1,6 +1,6 @@
 // Project management storage, in DATA_DIR/projects/ (one engine, on the wherdr
 // host): pm.json (the on/off switch and this install's id), projects.json,
-// templates/<id>.json, tasks/<KEY>-<n>.json, runs/<id>.json, receipts/<id>.json.
+// templates/<id>.json, template-log/<id>.json, tasks/<KEY>-<n>.json, runs/<id>.json, receipts/<id>.json.
 // Atomic writes (temp file + rename), one at a time. Switched off, every
 // write is refused except turning it back on.
 import fs from 'node:fs/promises'
@@ -8,6 +8,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { cleanProjectInput, isTemplateId, type PmOverview, type Project, type TemplateInfo } from '../../shared/pm/project'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
+import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
 import type { Run, Task } from '../../shared/pm/run'
 import type { Receipt } from '../../shared/pm/actions'
 import { HerdrError } from './herdr'
@@ -43,7 +44,7 @@ const badInput = (errors: { path: string, message: string }[]) =>
 
 export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   const files = {
-    pm: path.join(dir, 'pm.json'), projects: path.join(dir, 'projects.json'), templates: path.join(dir, 'templates'),
+    pm: path.join(dir, 'pm.json'), projects: path.join(dir, 'projects.json'), templates: path.join(dir, 'templates'), templateLog: path.join(dir, 'template-log'),
     tasks: path.join(dir, 'tasks'), runs: path.join(dir, 'runs'), receipts: path.join(dir, 'receipts'),
   }
   let queue: Promise<unknown> = Promise.resolve()
@@ -106,6 +107,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     projects,
     task: (id: unknown) => (typeof id === 'string' && TASK_ID_RE.test(id) ? readJson<Task>(path.join(files.tasks, `${id}.json`)) : Promise.resolve(null)),
     template: (id: string) => (isTemplateId(id) ? readJson<Template>(path.join(files.templates, `${id}.json`)) : Promise.resolve(null)),
+    templateLog: async (id: string) => (isTemplateId(id) ? (await readJson<{ entries?: LogEntry[] }>(path.join(files.templateLog, `${id}.json`)))?.entries : null) ?? [],
     runs: () => readAll<Run>(files.runs),
     saveTask: (t: Task) => write(async () => { await writeJson(path.join(files.tasks, `${t.id}.json`), t); return t }),
     saveRun: (r: Run) => write(() => writeJson(path.join(files.runs, `${r.id}.json`), r)),
@@ -163,8 +165,17 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const id = (t as Template | null)?.id
       if (!errors.length && !isTemplateId(id)) errors.push({ path: 'id', message: 'lowercase letters, digits, . _ -' })
       if (errors.length) throw badInput(errors)
-      await writeJson(path.join(files.templates, `${id}.json`), t)
-      return { id: id!, ...((t as Template).version !== undefined ? { version: (t as Template).version } : {}) }
+      // Each save that changes something is a new version and a line of its log.
+      const file = path.join(files.templates, `${id}.json`)
+      const old = await readJson<Template>(file)
+      const changes = templateChanges(old, t as Template)
+      if (old && !changes.length) return { id: id!, version: old.version ?? 1 }
+      const version = (old?.version ?? 0) + 1
+      await writeJson(file, { ...(t as Template), version })
+      const logFile = path.join(files.templateLog, `${id}.json`)
+      const entries = (await readJson<{ entries?: LogEntry[] }>(logFile))?.entries ?? []
+      await writeJson(logFile, { v: 1, entries: [...entries, { at: Date.now(), by: 'user', version, changes }].slice(-200) })
+      return { id: id!, version }
     }),
   }
 }

@@ -29,11 +29,17 @@ describe('pm store', () => {
     const store = createPmStore(dir)
     await store.setEnabled(true)
     expect(await store.saveTemplate(template)).toEqual({ id: 'vibe', version: 1 })
+    // Same content: no new version. A change: version 2 and a line of the log.
+    expect(await store.saveTemplate(template)).toEqual({ id: 'vibe', version: 1 })
+    const changed = { ...template, instructions: 'Small commits.' }
+    expect(await store.saveTemplate(changed)).toEqual({ id: 'vibe', version: 2 })
+    expect((await store.templateLog('vibe')).map(e => [e.version, e.changes])).toEqual([[1, []], [2, ['instructions']]])
+    await store.saveTemplate({ ...template, version: 9 }) // back to the first content: version 3, whatever the client said
     const added = await store.addProject(input, okFolder)
     expect(added).toMatchObject({ key: 'WEB', name: 'Web app', machine: '', path: '/home/u/src/web', template: 'vibe' })
 
     const restarted = createPmStore(dir)
-    expect(await restarted.overview()).toEqual({ enabled: true, projects: [added], templates: [{ id: 'vibe', version: 1 }], tasks: [] })
+    expect(await restarted.overview()).toEqual({ enabled: true, projects: [added], templates: [{ id: 'vibe', version: 3 }], tasks: [] })
 
     await restarted.setEnabled(false)
     await expect(restarted.removeProject('WEB')).rejects.toMatchObject({ code: 'pm_off' })
