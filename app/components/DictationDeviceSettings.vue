@@ -5,15 +5,20 @@
 // chosen model is kept per device. Row layout after followcat's model list
 // (followcat/wherdr, branch mobile, MIT).
 import { fmtBytes } from '~/utils/bytes'
-import { DEVICE_MODELS, DEVICE_MODEL_KEY, deviceModel, gpuFeatures, modelBytes, qualityRating, runnableModels } from '~/utils/dictation/deviceModels'
+import { checkCrash, DEVICE_MODELS, DEVICE_MODEL_KEY, deviceLanguage, deviceModel, forgetCrash, gpuFeatures, memoryBudget, memoryFit, modelBytes, qualityRating, runnableModels } from '~/utils/dictation/deviceModels'
 import type { DeviceModel, DeviceNeed } from '~/utils/dictation/deviceModels'
 import { cancelInstall, deleteModel, fetchCommand, installModel, MissingOnServer, ServerFetchFailed, storageInfo, storedBytes, watchInstall } from '~/utils/dictation/modelStore'
 import type { Progress, StorageInfo } from '~/utils/dictation/modelStore'
 import { disposeEngines } from '~/utils/dictation/registry'
 
+checkCrash() // a page killed while loading a model marks it too large first
 const gpu = ref<DeviceNeed[]>([])
 const models = computed(() => runnableModels(gpu.value))
 const chosen = ref(deviceModel(readSaved()).id)
+// Models over this device's memory budget (iPhone, iPad, small Android) or
+// that got the page killed: shown, never chosen.
+const budget = memoryBudget()
+const fit = reactive<Record<string, ReturnType<typeof memoryFit>>>(Object.fromEntries(DEVICE_MODELS.map(m => [m.id, memoryFit(m, budget)])))
 const have = reactive<Record<string, number>>({})
 const progress = reactive<Record<string, Progress | null>>({})
 const errors = reactive<Record<string, string>>({})
@@ -28,7 +33,7 @@ function readSaved() {
 }
 
 function choose(id: string) {
-  if (id === chosen.value) return
+  if (id === chosen.value || fit[id] !== 'ok') return
   chosen.value = id
   try { localStorage.setItem(DEVICE_MODEL_KEY, id) }
   catch { /* private mode: this page only */ }
@@ -66,9 +71,19 @@ function install(m: DeviceModel) {
   follow(m, installModel(m, onRun(m)))
 }
 
+// Clears a too-large mark (a one-off crash, a freed device): the model can
+// be chosen again; the engine is reloaded on the model then chosen.
+function retry(m: DeviceModel) {
+  forgetCrash(m.id)
+  fit[m.id] = memoryFit(m, budget)
+  chosen.value = deviceModel(readSaved()).id
+  disposeEngines()
+}
+
 async function remove(m: DeviceModel) {
   await deleteModel(m).catch(e => toast((e as Error).message, true))
   if (m.id === chosen.value) disposeEngines()
+  if (fit[m.id] === 'killed' || fit[m.id] === 'oom') retry(m)
   await refresh(m)
   storage.value = await storageInfo()
 }
@@ -107,12 +122,13 @@ function quality(m: DeviceModel, lang: string) {
 <template>
   <div class="dictation-device" data-testid="dictation-device">
     <div class="dictation-models" role="radiogroup" :aria-label="tl('Model', 'Modèle')">
-      <div v-for="m in models" :key="m.id" class="dictation-model" :class="{ on: chosen === m.id }" :data-model="m.id">
-        <button type="button" role="radio" :aria-checked="chosen === m.id" class="dictation-model-pick" @click="choose(m.id)">
+      <div v-for="m in models" :key="m.id" class="dictation-model" :class="{ on: chosen === m.id, off: fit[m.id] !== 'ok' }" :data-model="m.id">
+        <button type="button" role="radio" :aria-checked="chosen === m.id" :aria-disabled="fit[m.id] !== 'ok'" class="dictation-model-pick" @click="choose(m.id)">
           <UIcon :name="chosen === m.id ? 'i-lucide-square-dot' : 'i-lucide-square'" class="dictation-model-dot" />
           <span class="dictation-model-text">
             <b>{{ m.name }}</b>
             <small class="dictation-model-meta" :title="m.languages.join(', ')">{{ langs(m) }} · {{ fmtBytes(modelBytes(m)) }}</small>
+            <small v-if="m.autoDetect === false" data-testid="model-language">{{ tl(`No language detection: writes ${deviceLanguage(m).toUpperCase()}, this device’s language`, `Sans détection de langue : écrit en ${deviceLanguage(m).toUpperCase()}, la langue de cet appareil`) }}</small>
             <small class="dictation-model-rating">
               <span>{{ tl('Quality', 'Qualité') }}</span>
               <template v-for="l in ['fr', 'en']" :key="l">
@@ -127,6 +143,13 @@ function quality(m: DeviceModel, lang: string) {
           </span>
         </button>
         <div class="dictation-model-state" data-testid="model-state">
+          <small v-if="fit[m.id] !== 'ok'" class="dictation-model-error" role="status" data-testid="model-too-large">
+            <b>{{ tl('Too large for this device', 'Trop lourd pour cet appareil') }}</b> ·
+            <template v-if="fit[m.id] === 'killed'">{{ tl('the page stopped while loading it, out of memory.', 'la page s’est arrêtée en le chargeant, faute de mémoire.') }}</template>
+            <template v-else-if="fit[m.id] === 'oom'">{{ tl('it ran out of memory on this device.', 'la mémoire a manqué sur cet appareil.') }}</template>
+            <template v-else>{{ tl(`it needs about ${fmtBytes(m.memory!.heap)} of memory once loaded, more than this browser safely gives a page.`, `il lui faut environ ${fmtBytes(m.memory!.heap)} de mémoire une fois chargé, plus que ce navigateur n’accorde sans risque à une page.`) }}</template>
+          </small>
+          <UButton v-if="fit[m.id] === 'killed' || fit[m.id] === 'oom'" color="neutral" variant="outline" size="md" icon="i-lucide-rotate-ccw" data-testid="model-retry" :label="tl('Try again', 'Réessayer')" @click="retry(m)" />
           <template v-if="progress[m.id]">
             <progress :value="progress[m.id]!.got" :max="progress[m.id]!.total" />
             <small v-if="progress[m.id]!.unpack" data-testid="model-server">{{ tl('Unpacking on the server…', 'Décompression sur le serveur…') }}</small>
@@ -138,11 +161,12 @@ function quality(m: DeviceModel, lang: string) {
             <small><UIcon name="i-lucide-check" /> {{ tl('Installed', 'Installé') }}</small>
             <UButton color="neutral" variant="outline" size="md" icon="i-lucide-trash-2" :label="tl('Delete', 'Supprimer')" @click="remove(m)" />
           </template>
-          <template v-else>
+          <template v-else-if="fit[m.id] === 'ok'">
             <small v-if="have[m.id]">{{ tl('Partly downloaded', 'Téléchargé en partie') }} · {{ fmtBytes(have[m.id]!) }}</small>
             <UButton color="primary" variant="outline" size="md" icon="i-lucide-download" :disabled="!canKeep" :label="have[m.id] ? tl('Resume', 'Reprendre') : tl(`Install · ${fmtBytes(modelBytes(m))}`, `Installer · ${fmtBytes(modelBytes(m))}`)" @click="install(m)" />
             <UButton v-if="have[m.id]" color="neutral" variant="ghost" size="md" :label="tl('Delete', 'Supprimer')" @click="remove(m)" />
           </template>
+          <UButton v-else-if="have[m.id]" color="neutral" variant="ghost" size="md" :label="tl('Delete', 'Supprimer')" @click="remove(m)" />
           <small v-if="missing[m.id]" class="dictation-model-error" role="status" data-testid="model-missing">
             {{ tl('The wherdr server does not have this model’s files. On the server, in the wherdr folder, with its DATA_DIR, run:', 'Le serveur wherdr n’a pas les fichiers de ce modèle. Sur le serveur, dans le dossier de wherdr, avec son DATA_DIR, lancez :') }}
             <code>{{ fetchCommand(m) }}</code>
@@ -170,6 +194,7 @@ function quality(m: DeviceModel, lang: string) {
 .dictation-model-pick { display: flex; gap: 12px; width: 100%; padding: 13px 16px 8px; text-align: left; min-height: 44px; }
 .dictation-model-dot { flex: none; width: 18px; height: 18px; margin-top: 2px; color: var(--muted); }
 .on .dictation-model-dot { color: var(--accent); }
+.dictation-model.off .dictation-model-pick { opacity: .55; cursor: not-allowed; }
 .dictation-model-text { min-width: 0; }
 .dictation-model-text b { display: block; font-weight: 600; font-size: 15px; }
 .dictation-model-text small { display: block; font-size: 12.5px; color: var(--muted); margin-top: 3px; }
