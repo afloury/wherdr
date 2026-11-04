@@ -57,5 +57,4 @@ Do not disturb setting and notification deduplication still apply.
 ## v2 only
 
 In wherdr v2 on Herdr, wherdr also relays `herdr notification show` notices (as a passive Herdr
-client), and the policy covers coordinators, Board events and task sub-agents. None of these
-exist with herdr-core.
+client). herdr-core has no such notices.

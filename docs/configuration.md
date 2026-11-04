@@ -33,7 +33,6 @@ unit: see [Installation](installation.md#keep-it-running)), read at each start.
 | --- | --- |
 | `HERDR_BIN` | Herdr binary. |
 | `HERDR_WEB_SESSION` | Named Herdr session to drive. |
-| `HERDR_PROJECTS_DATA_DIR` | herdr-projects' data folder. |
 | `HERDR_WEB_MACHINES` | `off` to ignore the SSH machines registered in Herdr. |
 | `HERDR_WEB_SELF_HOSTS` | Other names / IPs of this machine (Herdr machine profiles pointing to it are ignored). |
 | `HERDR_WEB_REMOTE_SESSION` | Herdr session to use on every remote machine. |
