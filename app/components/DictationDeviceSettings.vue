@@ -7,7 +7,7 @@
 import { fmtBytes } from '~/utils/bytes'
 import { DEVICE_MODELS, DEVICE_MODEL_KEY, deviceModel, gpuFeatures, modelBytes, qualityRating, runnableModels } from '~/utils/dictation/deviceModels'
 import type { DeviceModel, DeviceNeed } from '~/utils/dictation/deviceModels'
-import { cancelInstall, deleteModel, installModel, storageInfo, storedBytes, watchInstall } from '~/utils/dictation/modelStore'
+import { cancelInstall, deleteModel, fetchCommand, installModel, MissingOnServer, ServerFetchFailed, storageInfo, storedBytes, watchInstall } from '~/utils/dictation/modelStore'
 import type { Progress, StorageInfo } from '~/utils/dictation/modelStore'
 import { disposeEngines } from '~/utils/dictation/registry'
 
@@ -17,6 +17,8 @@ const chosen = ref(deviceModel(readSaved()).id)
 const have = reactive<Record<string, number>>({})
 const progress = reactive<Record<string, Progress | null>>({})
 const errors = reactive<Record<string, string>>({})
+// Models whose files the server does not have (404 from /models/).
+const missing = reactive<Record<string, boolean>>({})
 const storage = ref<StorageInfo>({ free: null, persisted: null })
 const canKeep = typeof caches !== 'undefined'
 
@@ -39,8 +41,13 @@ async function refresh(m: DeviceModel) {
 
 async function follow(m: DeviceModel, run: Promise<void>) {
   errors[m.id] = ''
+  missing[m.id] = false
   try { await run }
-  catch (e) { if ((e as Error).name !== 'AbortError') errors[m.id] = (e as Error).message }
+  catch (e) {
+    if (e instanceof MissingOnServer) missing[m.id] = true
+    else if (e instanceof ServerFetchFailed) errors[m.id] = tl(`The server could not fetch the files: ${e.message}`, `Le serveur n’a pas pu récupérer les fichiers : ${e.message}`)
+    else if ((e as Error).name !== 'AbortError') errors[m.id] = (e as Error).message
+  }
   finally {
     progress[m.id] = null
     await refresh(m)
@@ -48,9 +55,15 @@ async function follow(m: DeviceModel, run: Promise<void>) {
   }
 }
 
+// Bytes on the server while it fetches the files, on this device after.
+const onRun = (m: DeviceModel) => (p: Progress) => {
+  progress[m.id] = p
+  if (!p.server) have[m.id] = p.got
+}
+
 function install(m: DeviceModel) {
   progress[m.id] = { got: have[m.id] ?? 0, total: modelBytes(m) }
-  follow(m, installModel(m, (p) => { progress[m.id] = p; have[m.id] = p.got }))
+  follow(m, installModel(m, onRun(m)))
 }
 
 async function remove(m: DeviceModel) {
@@ -65,7 +78,7 @@ onMounted(async () => {
   await Promise.all(DEVICE_MODELS.map(refresh))
   // A download started by the mic (or before this page was opened) shows here too.
   for (const m of DEVICE_MODELS) {
-    const run = watchInstall(m.id, (p) => { progress[m.id] = p; have[m.id] = p.got })
+    const run = watchInstall(m.id, onRun(m))
     if (run) follow(m, run)
   }
   storage.value = await storageInfo()
@@ -116,7 +129,9 @@ function quality(m: DeviceModel, lang: string) {
         <div class="dictation-model-state" data-testid="model-state">
           <template v-if="progress[m.id]">
             <progress :value="progress[m.id]!.got" :max="progress[m.id]!.total" />
-            <small>{{ pct(progress[m.id]!) }} % · {{ fmtBytes(progress[m.id]!.got) }} / {{ fmtBytes(progress[m.id]!.total) }}</small>
+            <small v-if="progress[m.id]!.unpack" data-testid="model-server">{{ tl('Unpacking on the server…', 'Décompression sur le serveur…') }}</small>
+            <small v-else-if="progress[m.id]!.server" data-testid="model-server">{{ tl(`Preparing on the server… ${pct(progress[m.id]!)} %`, `Préparation sur le serveur… ${pct(progress[m.id]!)} %`) }}</small>
+            <small v-else>{{ pct(progress[m.id]!) }} % · {{ fmtBytes(progress[m.id]!.got) }} / {{ fmtBytes(progress[m.id]!.total) }}</small>
             <UButton color="neutral" variant="outline" size="md" :label="t('Cancel')" @click="cancelInstall(m.id)" />
           </template>
           <template v-else-if="have[m.id] && have[m.id]! >= modelBytes(m)">
@@ -128,7 +143,12 @@ function quality(m: DeviceModel, lang: string) {
             <UButton color="primary" variant="outline" size="md" icon="i-lucide-download" :disabled="!canKeep" :label="have[m.id] ? tl('Resume', 'Reprendre') : tl(`Install · ${fmtBytes(modelBytes(m))}`, `Installer · ${fmtBytes(modelBytes(m))}`)" @click="install(m)" />
             <UButton v-if="have[m.id]" color="neutral" variant="ghost" size="md" :label="tl('Delete', 'Supprimer')" @click="remove(m)" />
           </template>
-          <small v-if="errors[m.id]" class="dictation-model-error" role="status">{{ errors[m.id] }}</small>
+          <small v-if="missing[m.id]" class="dictation-model-error" role="status" data-testid="model-missing">
+            {{ tl('The wherdr server does not have this model’s files. On the server, in the wherdr folder, with its DATA_DIR, run:', 'Le serveur wherdr n’a pas les fichiers de ce modèle. Sur le serveur, dans le dossier de wherdr, avec son DATA_DIR, lancez :') }}
+            <code>{{ fetchCommand(m) }}</code>
+            {{ tl('See docs/installation.md, “On-device dictation files”.', 'Voir docs/installation.md, « On-device dictation files ».') }}
+          </small>
+          <small v-else-if="errors[m.id]" class="dictation-model-error" role="status">{{ errors[m.id] }}</small>
         </div>
       </div>
     </div>
@@ -163,6 +183,7 @@ function quality(m: DeviceModel, lang: string) {
 .dictation-model-state progress::-webkit-progress-bar { background: var(--line); }
 .dictation-model-state progress::-webkit-progress-value { background: var(--accent); }
 .dictation-model-state progress::-moz-progress-bar { background: var(--accent); }
-.dictation-model-error { flex-basis: 100%; color: var(--rose) !important; text-transform: none !important; }
+.dictation-model-error { display: block !important; flex-basis: 100%; color: var(--rose) !important; text-transform: none !important; }
+.dictation-model-error code { display: block; margin: 4px 0; font: 500 11.5px/1.4 var(--mono); color: var(--text); overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; }
 .dictation-device .settings-hint { margin-top: 10px; }
 </style>

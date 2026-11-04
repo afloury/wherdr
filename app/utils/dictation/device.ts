@@ -7,7 +7,8 @@ import { abortError } from './engine'
 import type { DictationEngine, PrepareProgress, Readiness } from './engine'
 import { DEVICE_CACHE, DEVICE_MODEL_KEY, DEVICE_RUNTIME, deviceModel, modelBytes } from './deviceModels'
 import type { DeviceModel } from './deviceModels'
-import { CHUNK, installModel, storedBytes } from './modelStore'
+import { CHUNK, installModel, prepareOnServer, storedBytes } from './modelStore'
+import type { Progress } from './modelStore'
 
 export const WORKER_URL = '/workers/dictation-worker.js'
 
@@ -46,6 +47,8 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
   let onProgress: ((p: PrepareProgress) => void) | undefined
   let nextId = 0
   let disposed = false
+  // Stops a load's wait for the server's files (no Cache Storage) on dispose.
+  let waitServer: AbortController | null = null
   const pending = new Map<number, Pending>()
 
   // The worker failed (load error, crash, out of memory): everything waiting
@@ -63,9 +66,16 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
   // Into Cache Storage first, where the worker reads it. A browser that cannot
   // keep it (no Cache Storage, quota full) has the worker stream it from the server.
   async function fetchModel(): Promise<string> {
-    if (!cacheStorage) return ''
+    const report = (p: Progress) => onProgress?.({ phase: 'fetch', ...p })
+    if (!cacheStorage) {
+      // Streamed from the server: it still has to hold the files.
+      waitServer = new AbortController()
+      try { await prepareOnServer(model, { fetch: doFetch }, waitServer.signal, report) }
+      finally { waitServer = null }
+      return ''
+    }
     try {
-      await installModel(model, p => onProgress?.({ phase: 'fetch', ...p }), { caches: cacheStorage, fetch: doFetch })
+      await installModel(model, report, { caches: cacheStorage, fetch: doFetch })
       return DEVICE_CACHE
     }
     catch (e) {
@@ -183,6 +193,7 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
 
     dispose() {
       disposed = true
+      waitServer?.abort(abortError())
       if (worker) reset(abortError())
     },
   }

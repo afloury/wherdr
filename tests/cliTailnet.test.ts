@@ -1,42 +1,9 @@
-// `wherdr panel` (the Herdr plugin's "wherdr" action) and the tailnet
-// helpers shared with the server: which command each key runs, the phone
-// address, Tailscale's errors, and when the QR code shows.
+// The tailnet helpers shared by `wherdr phone` and the server: the phone
+// address, Tailscale's errors, and whether the published address answers.
 import { describe, expect, it } from 'vitest'
-import { keyCommand, render } from '../bin/lib/panel.mjs'
 import { healthReach, phoneAddress, serveError, servedAddresses, servedPorts, tailnetStatus, tailscaleBin } from '../bin/lib/tailnet.mjs'
 
 const URL = 'https://box.example.ts.net:7683/'
-const state = (over: Record<string, unknown> = {}) => ({
-  version: '1.2.0', mode: 'native', plugin: true, runtime: 'node 22.0.0', url: 'http://localhost:7683', port: '7683',
-  answer: 'wherdr', pid: 1, service: { installed: false, running: false }, dir: '/tmp/w',
-  tailnet: { installed: true, connected: true, phone: { url: URL, served: true, httpsPort: '7683' }, reach: 'ok' },
-  ...over,
-})
-
-describe('wherdr panel keys', () => {
-  const control = ['sh', '/plugin/scripts/herdr-plugin.sh']
-
-  it('runs the plugin script when it controls the panel', () => {
-    expect(keyCommand('s', state(), control)).toEqual([...control, 'start'])
-    expect(keyCommand('l', state(), control)).toEqual([...control, 'logs'])
-    expect(keyCommand('u', state(), control)).toEqual([...control, 'update'])
-  })
-
-  it('turns the login service on, or off when it is installed', () => {
-    expect(keyCommand('a', state(), control)).toEqual([...control, 'service', 'install'])
-    expect(keyCommand('a', state({ service: { installed: true, running: false } }), control)).toEqual([...control, 'service', 'uninstall'])
-  })
-
-  it('P opens the phone setup page itself, not a command', () => {
-    expect(keyCommand('p', state(), control)).toBeNull()
-  })
-
-  it('runs wherdr itself otherwise: logs follow, update is left to the package manager', () => {
-    expect(keyCommand('l', state(), null).slice(-2)).toEqual(['logs', '--follow'])
-    expect(keyCommand('u', state(), null)).toBeNull()
-    expect(keyCommand('z', state(), control)).toBeNull()
-  })
-})
 
 describe('phone address', () => {
   const serve = (web: Record<string, string>) => JSON.stringify({ Web: Object.fromEntries(Object.entries(web).map(([k, proxy]) => [k, { Handlers: { '/': { Proxy: proxy } } }])) })
@@ -130,17 +97,5 @@ describe('phone address probe', () => {
     expect(healthReach(401, '{"code":"locked"}')).toBeNull()
     expect(healthReach(200, '<html>something else</html>')).toBeNull()
     expect(healthReach(403, 'Forbidden')).toBeNull()
-  })
-})
-
-describe('panel phone section', () => {
-  it('shows the QR code only once the published address answers', () => {
-    expect(render(state(), 'QRCODE')).toContain('QRCODE')
-    const notAnswering = state({ tailnet: { ...state().tailnet, reach: 'unreachable' } })
-    expect(render(notAnswering, 'QRCODE')).not.toContain('QRCODE')
-    const unpublished = state({ tailnet: { installed: true, connected: true, phone: { url: URL, served: false, httpsPort: '7683' } } })
-    expect(render(unpublished, 'QRCODE')).not.toContain('QRCODE')
-    expect(render(unpublished, '')).toContain('Not reachable from your phone yet')
-    expect(render(state(), 'QRCODE')).toContain('Set up my phone')
   })
 })

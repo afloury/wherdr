@@ -4,7 +4,7 @@
 import type { Quotas } from '#shared/types'
 import { readQuotas, saveQuotas } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
-import { claudeInstallCommand, claudeSetupRows, claudeSuggestion } from '~/utils/quotas'
+import { claudeInstallCommand, claudeSetupRows } from '~/utils/quotas'
 
 export const quotaNow = ref(Date.now())
 
@@ -84,7 +84,3 @@ export const claudeSetupList = computed(() => {
     || [{ key: '', name: hostLabel.value || t('This machine'), online: true, kinds: appConfig.value.kinds }]
   return claudeSetupRows(homeQuotas.value, ms)
 })
-// Those to offer (install or update, not declined): the setup guide's Quotas step.
-export const claudeSuggested = computed(() => (showQuotas.value
-  ? claudeSetupList.value.filter(r => r.online && claudeSuggestion(homeQuotas.value, r.key, true, hiddenAgents.value)).map(r => r.key)
-  : []))
