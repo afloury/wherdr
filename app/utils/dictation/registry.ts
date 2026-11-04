@@ -1,9 +1,10 @@
 // Engines load lazily: none of their weight is in the main bundle. Each engine
-// task adds its entry here (cloud: A3, device: F2), e.g.
-//   cloud: () => import('./cloud').then(m => m.createCloudEngine()),
+// task adds its entry here (cloud: A3).
 import type { DictationEngine, DictationEngineId } from './engine'
 
-export const ENGINES: Partial<Record<DictationEngineId, () => Promise<DictationEngine>>> = {}
+export const ENGINES: Partial<Record<DictationEngineId, () => Promise<DictationEngine>>> = {
+  device: () => import('./device').then(m => m.createDeviceEngine()),
+}
 
 // One instance per engine for the whole app: loading a model costs seconds, so
 // the engine survives pane switches and composer unmounts.
