@@ -124,8 +124,11 @@ describe('step engine and action results', () => {
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-actions-'))
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }))
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...args], { cwd, encoding: 'utf8' }).trim()
+// A gh that knows no merged PR, so the tests never call GitHub.
+const noGh = path.join(tmp, 'no-gh')
+fs.mkdirSync(noGh); fs.writeFileSync(path.join(noGh, 'gh'), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
 const localSh: ActionDeps['sh'] = async (script, args, input) => {
-  const r = spawnSync('sh', ['-c', script, 'sh', ...args], { input, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.invalid' } })
+  const r = spawnSync('sh', ['-c', script, 'sh', ...args], { input, encoding: 'utf8', env: { ...process.env, PATH: `${noGh}:${process.env.PATH}`, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.invalid' } })
   return { code: r.status, out: `${r.stdout}${r.stderr}`.trim() }
 }
 
@@ -191,7 +194,7 @@ describe('verify-merged', () => {
     const dir = path.join(tmp, `v${++n}`), origin = path.join(dir, 'origin.git'), repo = path.join(dir, 'repo'), wt = path.join(dir, 'wt'), bin = path.join(dir, 'bin')
     const merged = path.join(dir, 'merged')
     fs.mkdirSync(bin, { recursive: true })
-    fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\ncat "${merged}" 2>/dev/null; exit 0\n`, { mode: 0o755 })
+    fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\n[ -f "${merged}.err" ] && { cat "${merged}.err" >&2; exit 1; }\ncat "${merged}" 2>/dev/null; exit 0\n`, { mode: 0o755 })
     git(dir, 'init', '-q', '--bare', '-b', 'main', origin)
     git(dir, 'clone', '-q', origin, repo)
     fs.writeFileSync(path.join(repo, 'a.txt'), 'one\n')
@@ -218,7 +221,11 @@ describe('verify-merged', () => {
   it('accepts a PR merged with squash or rebase on GitHub', async () => {
     const s = await setup(), head = s.work()
     git(s.repo, 'checkout', '-q', '-B', 'dev', 'origin/dev'); git(s.repo, 'merge', '-q', '--squash', head); git(s.repo, 'commit', '-qm', 'A-1 (#1)'); git(s.repo, 'push', '-q', 'origin', 'dev')
-    expect(await s.verify()).toMatchObject({ ok: false, error: expect.stringMatching(/is not in dev/) })
+    expect(await s.verify()).toMatchObject({ ok: false, error: expect.stringMatching(/is not in dev$/) })
+    // gh unable to answer: the git reason stays, with why GitHub was not asked.
+    fs.writeFileSync(`${s.merged}.err`, 'To get started with GitHub CLI, please run:  gh auth login\nGH_TOKEN: x\n')
+    expect(await s.verify()).toMatchObject({ ok: false, error: 'verify-merged: commit ' + head.slice(0, 7) + ' is not in dev (GitHub not checked: To get started with GitHub CLI, please run:  gh auth login)' })
+    fs.rmSync(`${s.merged}.err`)
     fs.writeFileSync(s.merged, `${head}\n`)
     expect(await s.verify()).toMatchObject({ ok: true, commit: head })
   })

@@ -75,7 +75,7 @@ if git merge-base --is-ancestor HEAD "origin/$t"; then
     case "$mine" in *"$c"*) echo "$h"; exit 0;; esac; done
   why="$b has no commit of its own: nothing was merged"
 else why="commit $(git rev-parse --short HEAD) is not in $t"; fi
-[ -z "$ghe" ] || { echo "$ghe"; exit 1; }
+[ -z "$ghe" ] || { echo "$why (GitHub not checked: $(echo "$ghe" | head -1))"; exit 1; }
 echo "$why"; exit ${CODE.NOT_MERGED}`,
   // Remote branches holding the task's commit, for the protected-branch alert.
   contains: `${IN} git fetch -q origin 2>&1 || exit 1; git branch -r --contains HEAD --format='%(refname:short)'`,
