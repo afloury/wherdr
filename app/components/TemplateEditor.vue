@@ -9,13 +9,15 @@ import { parseTemplateText, type LogEntry } from '#shared/pm/templateText'
 import { ENDS, HOLDERS, type Step, type Template } from '#shared/pm/workflow'
 import type { TemplateInfo } from '#shared/pm/project'
 
-defineProps<{ templates: TemplateInfo[] }>()
+const props = defineProps<{ templates: TemplateInfo[] }>()
 const emit = defineEmits<{ saved: [] }>()
 
 const text = ref('')
 const mode = ref<'steps' | 'json'>('steps')
 const type = ref('')
 const log = ref<LogEntry[]>([])
+// The saved template open here: only it may be replaced by a save.
+const opened = ref('')
 const busy = ref(false)
 const error = ref('')
 
@@ -34,16 +36,28 @@ const steps = computed(() => {
 const plan = computed(() => (parsed.value?.template && type.value ? planSteps(parsed.value.template, { type: type.value }) : []))
 
 const show = (t: unknown) => { text.value = JSON.stringify(t, null, 2) + '\n' }
+async function load(id: string) {
+  const r = await api<{ template: Template, log: LogEntry[] }>(`/api/pm/template?id=${encodeURIComponent(id)}`)
+  show(r.template)
+  log.value = r.log
+  opened.value = id
+}
+// A copy takes a free id, so it never replaces a saved template.
+const freeId = (id: string) => {
+  const taken = new Set(props.templates.map(t => t.id))
+  let out = id
+  for (let n = 1; taken.has(out); n++) out = n === 1 ? `${id}-copy` : `${id}-copy-${n}`
+  return out
+}
 async function pick(value: string) {
+  if (!value) return
   error.value = ''
   log.value = []
+  opened.value = ''
   const [from, id] = [value.slice(0, value.indexOf(':')), value.slice(value.indexOf(':') + 1)]
-  if (from === 'example') return show(EXAMPLES.find(e => e.id === id))
-  try {
-    const r = await api<{ template: Template, log: LogEntry[] }>(`/api/pm/template?id=${encodeURIComponent(id)}`)
-    show(r.template)
-    log.value = r.log
-  }
+  const example = EXAMPLES.find(e => e.id === id)
+  if (from === 'example' && example) return show({ ...example, id: freeId(id) })
+  try { await load(id) }
   catch (e) { error.value = (e as Error).message }
 }
 
@@ -67,10 +81,9 @@ async function save() {
   busy.value = true
   error.value = ''
   try {
-    const { template } = await api<{ template: TemplateInfo }>('/api/pm/template', { template: parsed.value.template })
-    const r = await api<{ template: Template, log: LogEntry[] }>(`/api/pm/template?id=${encodeURIComponent(template.id)}`)
-    show(r.template)
-    log.value = r.log
+    const t = parsed.value.template
+    const { template } = await api<{ template: TemplateInfo }>('/api/pm/template', { template: t, replace: t.id === opened.value })
+    await load(template.id)
     toast(tl('Template saved', 'Modèle enregistré'))
     emit('saved')
   }
@@ -108,9 +121,8 @@ async function save() {
           <template v-else>
             <UInput size="xl" :model-value="s.id" class="mono" :aria-label="tl('Step id', 'Id de l’étape')" @update:model-value="v => set(i, 'id', String(v))" />
             <UInput size="xl" :model-value="s.column ?? ''" :placeholder="tl('Column', 'Colonne')" :aria-label="tl('Column', 'Colonne')" @update:model-value="v => set(i, 'column', String(v))" />
-            <select class="pm-select" :value="s.holder ?? ''" :aria-label="tl('Held by', 'Tenue par')" data-testid="tpl-holder" @change="set(i, 'holder', field($event))">
-              <option value="">{{ tl('no agent', 'sans agent') }}</option>
-              <option v-for="h in HOLDERS.filter(h => h !== 'none')" :key="h" :value="h">{{ h }}</option>
+            <select class="pm-select" :value="s.holder ?? 'none'" :aria-label="tl('Held by', 'Tenue par')" data-testid="tpl-holder" @change="set(i, 'holder', field($event))">
+              <option v-for="h in HOLDERS" :key="h" :value="h">{{ h }}</option>
             </select>
             <select class="pm-select" :value="s.ends ?? ''" :aria-label="tl('Ends with', 'Finit par')" @change="set(i, 'ends', field($event))">
               <option value="">{{ tl('no end', 'sans fin') }}</option>
@@ -127,7 +139,7 @@ async function save() {
         </div>
         <UButton v-if="steps" size="sm" color="neutral" variant="outline" icon="i-lucide-plus" class="tpl-add" data-testid="tpl-add" @click="edit(list => list.push({ id: `step-${list.length + 1}` }))">{{ tl('Add a step', 'Ajouter une étape') }}</UButton>
       </div>
-      <UTextarea size="xl" v-else v-model="text" :rows="16" :maxrows="30" autoresize class="w-full mono" :spellcheck="false" :aria-label="tl('Template JSON', 'JSON du modèle')" data-testid="tpl-json" />
+      <UTextarea size="xl" v-else v-model="text" :rows="16" :maxrows="30" autoresize class="w-full mono" :spellcheck="false" wrap="off" :aria-label="tl('Template JSON', 'JSON du modèle')" data-testid="tpl-json" />
 
       <ul v-if="parsed?.errors.length" class="tpl-errors" role="alert" data-testid="tpl-errors">
         <li v-for="(e, n) in parsed.errors" :key="n" class="form-error"><b>{{ tl(`Line ${e.line}`, `Ligne ${e.line}`) }}</b> · {{ e.path ? `${e.path}: ` : '' }}{{ e.message }}</li>

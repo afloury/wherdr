@@ -160,7 +160,9 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await saveProjects(list)
     }),
 
-    saveTemplate: (t: unknown) => write(async () => {
+    // replace: the caller opened this template and means to change it. Without
+    // it, an id already taken is refused: nothing is overwritten by mistake.
+    saveTemplate: (t: unknown, { replace = false } = {}) => write(async () => {
       const errors = validateTemplate(t)
       const id = (t as Template | null)?.id
       if (!errors.length && !isTemplateId(id)) errors.push({ path: 'id', message: 'lowercase letters, digits, . _ -' })
@@ -168,6 +170,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       // Each save that changes something is a new version and a line of its log.
       const file = path.join(files.templates, `${id}.json`)
       const old = await readJson<Template>(file)
+      if (old && !replace) throw new HerdrError('exists', 'A template already has this id')
       const changes = templateChanges(old, t as Template)
       if (old && !changes.length) return { id: id!, version: old.version ?? 1 }
       const version = (old?.version ?? 0) + 1

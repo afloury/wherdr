@@ -47,6 +47,11 @@ describe('template text', () => {
     next.instructions = 'Base branch is main.'
     expect(templateChanges(null, company)).toEqual([])
     expect(templateChanges(company, structuredClone(company))).toEqual([])
+    // A field written back at the end (the form) is not a change.
+    const moved = structuredClone(company)
+    const { holder, ...rest } = moved.taskTypes.feature!.steps[1] as { holder: string }
+    moved.taskTypes.feature!.steps[1] = { ...rest, holder } as never
+    expect(templateChanges(company, moved)).toEqual([])
     expect(templateChanges(company, next)).toEqual(['instructions', 'feature: + notify', 'feature: - deploy', 'feature.work', '+ study'])
   })
 })

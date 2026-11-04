@@ -74,7 +74,10 @@ export function parseTemplateText(text: string): { value?: unknown, template?: T
   return { value: r.value, errors, ...(errors.length ? {} : { template: r.value as Template }) }
 }
 
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+// Field order does not count: the form may write a field back at the end.
+const sorted = (v: unknown): unknown => (Array.isArray(v) ? v.map(sorted)
+  : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, x]) => [k, sorted(x)])) : v)
+const same = (a: unknown, b: unknown) => JSON.stringify(sorted(a)) === JSON.stringify(sorted(b))
 const stepIds = (tt: TaskType) => tt.steps.map(s => (typeof s === 'string' ? s : s.id))
 
 // What a save changed, one short line each: "simple: + land", "simple.work".

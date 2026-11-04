@@ -1,13 +1,13 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
-import { getQuery, readBody } from 'h3'
+import { createError, getQuery, readBody } from 'h3'
 import TemplateEditor from '~/components/TemplateEditor.vue'
 import { company, vibe } from '#shared/pm/examples'
 import type { Template } from '#shared/pm/workflow'
 
 // A fake server keeping one saved template and its log.
 let saved: Record<string, { template: Template, log: { at: number, by: 'user', version: number, changes: string[] }[] }> = {}
-const posts: Template[] = []
+const posts: { template: Template, replace?: boolean }[] = []
 registerEndpoint('/api/pm/template', {
   method: 'GET',
   handler: event => saved[String(getQuery(event).id)],
@@ -15,9 +15,10 @@ registerEndpoint('/api/pm/template', {
 registerEndpoint('/api/pm/template', {
   method: 'POST',
   handler: async (event) => {
-    const { template } = await readBody(event)
-    posts.push(template)
+    const { template, replace } = await readBody(event)
+    posts.push({ template, replace })
     const old = saved[template.id]
+    if (old && !replace) throw createError({ statusCode: 409, data: { error: 'A template already has this id' } })
     const version = (old?.template.version ?? 0) + 1
     saved[template.id] = { template: { ...template, version }, log: [...old?.log ?? [], { at: 0, by: 'user', version, changes: old ? ['simple.work'] : [] }] }
     return { template: { id: template.id, version } }
@@ -34,15 +35,21 @@ const plan = (w: W) => w.findAll('[data-testid="tpl-plan"] li').map(l => l.text(
 
 it('copies an example, edits its steps in the form, previews the plan and saves it', async () => {
   const w = await mount()
+  // vibe is saved: its copy takes a free id. company is not: the copy keeps its id.
+  await w.find('[data-testid="tpl-open"]').setValue('example:vibe')
+  await w.find('[data-testid="tpl-mode-json"]').trigger('click')
+  expect(JSON.parse((w.find(json).element as HTMLTextAreaElement).value).id).toBe('vibe-copy')
+  await w.find('[data-testid="tpl-mode-steps"]').trigger('click')
   await w.find('[data-testid="tpl-open"]').setValue('example:company')
   expect(w.findAll('[data-testid="tpl-step"]')).toHaveLength(7)
   expect(plan(w)).toEqual(['todo', 'work', 'review', 'pr', 'merge', 'deploy', 'done'])
 
   // The worker step held by no one: refused, with its line in the JSON.
-  await w.findAll('[data-testid="tpl-holder"]')[1]!.setValue('')
-  // The holder is gone: the line is the one where the step starts.
+  expect((w.findAll('[data-testid="tpl-holder"]')[4]!.element as HTMLSelectElement).value).toBe('none') // merge
+  await w.findAll('[data-testid="tpl-holder"]')[1]!.setValue('none')
+  // The line of the work step's holder.
   const src = JSON.stringify(company, null, 2).split('\n')
-  const line = src.findIndex(l => l.includes('"id": "work"'))
+  const line = src.findIndex((l, n) => n > src.findIndex(x => x.includes('"id": "work"')) && l.includes('"holder"')) + 1
   expect(errors(w)).toEqual([`Line ${line} · taskTypes.feature.steps[1].holder: an agent must hold a step that ends with report`])
   expect(w.find('[data-testid="tpl-save"]').attributes('disabled')).toBeDefined()
   expect(plan(w)).toEqual([])
@@ -53,7 +60,8 @@ it('copies an example, edits its steps in the form, previews the plan and saves 
   expect(plan(w)).toEqual(['todo', 'work', 'review', 'pr', 'merge', 'deploy', 'done', 'step-8'])
   await w.find('[data-testid="tpl-save"]').trigger('click')
   await vi.waitFor(() => expect(w.find('[data-testid="tpl-log"]').text()).toContain('v1'))
-  expect(posts[0]!.taskTypes.feature!.steps.at(-1)).toEqual({ id: 'step-8' })
+  expect(posts[0]!.template.taskTypes.feature!.steps.at(-1)).toEqual({ id: 'step-8' })
+  expect(posts[0]!.replace).toBe(false)
   expect(w.emitted('saved')).toHaveLength(1)
 })
 
@@ -62,6 +70,9 @@ it('refuses invalid JSON with the faulty line, then saves the fixed text', async
   const w = await mount()
   await w.find('[data-testid="tpl-open"]').setValue('saved:vibe')
   await vi.waitFor(() => expect(w.find('[data-testid="tpl-log"]').text()).toContain('created'))
+  // The placeholder option asks nothing and keeps the template open.
+  await w.find('[data-testid="tpl-open"]').setValue('')
+  expect(w.find('[role="alert"]').exists()).toBe(false)
   await w.find('[data-testid="tpl-mode-json"]').trigger('click')
   const area = w.find(json)
   const good = (area.element as HTMLTextAreaElement).value
@@ -82,5 +93,6 @@ it('refuses invalid JSON with the faulty line, then saves the fixed text', async
   await w.find('[data-testid="tpl-save"]').trigger('click')
   await vi.waitFor(() => expect(w.find('[data-testid="tpl-log"]').text()).toContain('v2'))
   expect(w.find('[data-testid="tpl-log"]').text()).toContain('simple.work')
-  expect(posts[0]!.taskTypes.simple!.steps[1]).toMatchObject({ instructions: expect.stringContaining('npm test') })
+  expect(posts[0]!.replace).toBe(true) // the template opened here
+  expect(posts[0]!.template.taskTypes.simple!.steps[1]).toMatchObject({ instructions: expect.stringContaining('npm test') })
 })
