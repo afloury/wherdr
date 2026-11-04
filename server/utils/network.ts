@@ -306,6 +306,18 @@ export async function ensureFresh(maxAgeMs: number, read: TailscaleReader = defa
   return done
 }
 
+// HTTP requests (server/middleware/guard.ts): a reading started at most
+// `freshMs` ago, else the current one while it is at most `blockMs` old, with
+// a new reading started in the background for the next requests. Older, or
+// none: the request waits for a new reading. Funnel traffic is still refused
+// on each request by its own header (checkClient), whatever the reading's age.
+export async function ensureRecent(freshMs: number, blockMs: number, read: TailscaleReader = defaultReader, now = Date.now()) {
+  if (ts && ts.at >= now - freshMs) return
+  const done = ensureFresh(freshMs, read, now)
+  if (ts && ts.at >= now - blockMs) return
+  return done
+}
+
 // Tests: forget what was read.
 export function resetNetworkStateForTests() { ts = null; inflight = null; started = 0; published = 0; funnelSeen = false; othersSeen = [] }
 
