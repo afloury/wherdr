@@ -33,7 +33,7 @@ export interface CoreAdminDeps {
 }
 
 const REQUEST_LABEL = 'wherdr-request'
-const PATH_SETUP = 'export PATH="$HOME/.local/bin:$HOME/.kimi-code/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"'
+export const PATH_SETUP = 'export PATH="$HOME/.local/bin:$HOME/.kimi-code/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"'
 const TARGET_RE = /^[A-Za-z0-9_][A-Za-z0-9_.@:%[\]-]{0,199}$/
 const NAME_RE = /^[a-z0-9_][a-z0-9_.-]{0,31}$/
 
@@ -116,7 +116,7 @@ interface CoreFacts { state?: string, exit_code?: number | null, signal?: string
 
 // An agent that ends with a failure within a couple of seconds did not start: say so with
 // the exit code and the last lines it printed, rather than leaving a dead entry to find.
-async function launchFailure(deps: CoreAdminDeps, address: string, ms: number): Promise<{ code: string, lines: string } | null> {
+export async function launchFailure(deps: CoreAdminDeps, address: string, ms: number): Promise<{ code: string, lines: string } | null> {
   const end = Date.now() + ms
   do {
     const t = await deps.call<CoreFacts>('terminal.get', { terminal: address }, 3000).catch(() => null)

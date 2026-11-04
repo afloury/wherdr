@@ -1,5 +1,6 @@
 // Project management storage, in DATA_DIR/projects/ (one engine, on the wherdr
-// host): pm.json (the on/off switch), projects.json, templates/<id>.json.
+// host): pm.json (the on/off switch and this install's id), projects.json,
+// templates/<id>.json, tasks/<KEY>-<n>.json, runs/<id>.json.
 // Atomic writes (temp file + rename), one at a time. Switched off, every
 // write is refused except turning it back on.
 import fs from 'node:fs/promises'
@@ -7,6 +8,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { cleanProjectInput, isTemplateId, type PmOverview, type Project, type TemplateInfo } from '../../shared/pm/project'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
+import type { Run, Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { DATA_DIR } from './env'
 
@@ -34,11 +36,15 @@ async function writeJson(file: string, data: unknown) {
   }
 }
 
+const TASK_ID_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/
 const badInput = (errors: { path: string, message: string }[]) =>
   new HerdrError('bad_input', errors.map(e => (e.path ? `${e.path}: ${e.message}` : e.message)).join('; '))
 
 export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
-  const files = { pm: path.join(dir, 'pm.json'), projects: path.join(dir, 'projects.json'), templates: path.join(dir, 'templates') }
+  const files = {
+    pm: path.join(dir, 'pm.json'), projects: path.join(dir, 'projects.json'), templates: path.join(dir, 'templates'),
+    tasks: path.join(dir, 'tasks'), runs: path.join(dir, 'runs'),
+  }
   let queue: Promise<unknown> = Promise.resolve()
   const serial = <T>(fn: () => Promise<T>): Promise<T> => {
     const run = queue.then(fn)
@@ -46,7 +52,13 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     return run
   }
 
-  const enabled = async () => (await readJson<{ enabled?: boolean }>(files.pm))?.enabled === true
+  const pm = async () => (await readJson<{ enabled?: boolean, install?: string }>(files.pm)) ?? {}
+  const enabled = async () => (await pm()).enabled === true
+  const readAll = async <T>(folder: string) => {
+    const names = (await fs.readdir(folder).catch(() => [] as string[])).filter(n => n.endsWith('.json')).sort()
+    return (await Promise.all(names.map(n => readJson<T>(path.join(folder, n)).catch(() => null)))).filter((x): x is Awaited<T> & {} => !!x)
+  }
+  const tasks = () => readAll<Task>(files.tasks)
   const projects = async () => (await readJson<{ projects?: Project[] }>(files.projects))?.projects ?? []
   async function templates(): Promise<TemplateInfo[]> {
     const names = await fs.readdir(files.templates).catch(() => [] as string[])
@@ -76,9 +88,41 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   return {
     files,
     async overview(): Promise<PmOverview> {
-      return { enabled: await enabled(), projects: await projects(), templates: await templates() }
+      return { enabled: await enabled(), projects: await projects(), templates: await templates(), tasks: await tasks() }
     },
-    setEnabled: (on: boolean) => serial(() => writeJson(files.pm, { v: 1, enabled: on })),
+    setEnabled: (on: boolean) => serial(async () => writeJson(files.pm, { ...await pm(), v: 1, enabled: on })),
+    // Marks the terminals this wherdr starts (wherdr.install), so that two
+    // instances on one herdr-core never take each other's.
+    install: () => serial(async () => {
+      const cur = await pm()
+      if (cur.install) return cur.install
+      const install = randomUUID().slice(0, 8)
+      await writeJson(files.pm, { v: 1, ...cur, install })
+      return install
+    }),
+    enabled,
+    tasks,
+    projects,
+    task: (id: unknown) => (typeof id === 'string' && TASK_ID_RE.test(id) ? readJson<Task>(path.join(files.tasks, `${id}.json`)) : Promise.resolve(null)),
+    template: (id: string) => (isTemplateId(id) ? readJson<Template>(path.join(files.templates, `${id}.json`)) : Promise.resolve(null)),
+    runs: () => readAll<Run>(files.runs),
+    saveTask: (t: Task) => write(async () => { await writeJson(path.join(files.tasks, `${t.id}.json`), t); return t }),
+    saveRun: (r: Run) => write(() => writeJson(path.join(files.runs, `${r.id}.json`), r)),
+
+    // { project, title, description?, type }: a new task, to do.
+    addTask: (raw: unknown) => write(async () => {
+      const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+      const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string).trim() : '')
+      const p = (await projects()).find(x => x.key === o.project)
+      if (!p) throw new HerdrError('not_found', 'Unknown project')
+      const title = str('title'), type = str('type')
+      if (!title || title.length > 200) throw badInput([{ path: 'title', message: '1 to 200 characters' }])
+      if (!type) throw badInput([{ path: 'type', message: 'is required' }])
+      const n = 1 + Math.max(0, ...(await tasks()).filter(t => t.project === p.key).map(t => Number(t.id.slice(p.key.length + 1)) || 0))
+      const task: Task = { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', createdAt: Date.now() }
+      await writeJson(path.join(files.tasks, `${task.id}.json`), task)
+      return task
+    }),
 
     addProject: (raw: unknown, check: FolderCheck) => write(async () => {
       const { project, errors } = cleanProjectInput(raw)
