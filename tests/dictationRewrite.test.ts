@@ -26,6 +26,15 @@ describe('rewriteMessages', () => {
     expect(rewriteAnswer('<transcript>\nHi.\n</transcript>')).toBe('Hi.')
     expect(rewriteAnswer(null)).toBe('')
   })
+
+  it('drops quotes wrapped around the whole answer, unless the speaker quoted it', () => {
+    // Mistral Nemo, real answer (2026-11-05).
+    const raw = 'um so uh I I think we should uh merge the the werder branch into herder core you know before friday'
+    expect(rewriteAnswer('"So, I think we should merge the Werder branch into Herder Core before Friday."', raw)).toBe('So, I think we should merge the Werder branch into Herder Core before Friday.')
+    expect(rewriteAnswer('« Bon, on fusionne vendredi. »', 'euh bon on fusionne vendredi')).toBe('Bon, on fusionne vendredi.')
+    expect(rewriteAnswer('"Ship it," he said, "now."', 'ship it he said now')).toBe('"Ship it," he said, "now."')
+    expect(rewriteAnswer('"Ready."', '"ready"')).toBe('"Ready."')
+  })
 })
 
 describe('rewriteText', () => {

@@ -216,7 +216,8 @@ transcription, 30 s timeout, 2 at once and 10 per client per minute).
   false starts, fixes punctuation, keeps the meaning and language, never answers or adds) plus the
   **personal dictionary** as the system message, the text between `<transcript>` tags as the user
   one. The dictionary is also sent as `keyterms` to the online engine, with or without the
-  rewrite.
+  rewrite. A model that refuses keyterms (Whisper does; the model list does not say which) gets
+  the take again without them. Quotes wrapped around the whole answer are dropped.
 - **Model**: `GET /api/dictation/text-models` lists OpenRouter's text models, cached like the
   transcription list, priced per million tokens, with a default computed from the live list: the
   cheapest model that bills both input and output, never `:free` or `:batch`. An empty choice

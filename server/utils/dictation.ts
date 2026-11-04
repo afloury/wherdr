@@ -98,7 +98,17 @@ export function createDictation(o: { dataDir: string, envKey?: string, fetch?: t
       // ZDR unless the browser turned it off: only providers that keep nothing.
       provider: p.zdr === '0' ? { data_collection: 'deny' } : { zdr: true, data_collection: 'deny' },
     }
-    const data = await post(OPENROUTER_URL, body, signal, o.timeoutMs ?? DICTATION_TIMEOUT_MS) as { text?: unknown, usage?: { seconds?: unknown, cost?: unknown } }
+    type Answer = { text?: unknown, usage?: { seconds?: unknown, cost?: unknown } }
+    const ms = o.timeoutMs ?? DICTATION_TIMEOUT_MS
+    let data: Answer
+    try { data = await post(OPENROUTER_URL, body, signal, ms) as Answer }
+    catch (e) {
+      // Terms are a hint: a model that refuses them (Whisper does, and the
+      // model list does not say which) gets the take again without them.
+      if (!keyterms.length || !(e instanceof HerdrError) || !/keyterm/i.test(e.message)) throw e
+      const { keyterms: _dropped, ...plain } = body
+      data = await post(OPENROUTER_URL, plain, signal, ms) as Answer
+    }
     const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? v : undefined
     return { text: typeof data.text === 'string' ? data.text.trim() : '', seconds: num(data.usage?.seconds), cost: num(data.usage?.cost) }
   }
@@ -146,7 +156,7 @@ export function createDictation(o: { dataDir: string, envKey?: string, fetch?: t
         max_tokens: 4096,
         provider: p.zdr === false ? { data_collection: 'deny' } : { zdr: true, data_collection: 'deny' },
       }, signal, o.timeoutMs ?? REWRITE_TIMEOUT_MS) as { choices?: { message?: { content?: unknown } }[], usage?: { cost?: unknown } }
-      const out = rewriteAnswer(data.choices?.[0]?.message?.content)
+      const out = rewriteAnswer(data.choices?.[0]?.message?.content, text)
       if (!out) throw new HerdrError('upstream', 'OpenRouter: empty rewrite')
       const cost = data.usage?.cost
       return { text: out, ...(typeof cost === 'number' && Number.isFinite(cost) ? { cost } : {}) }

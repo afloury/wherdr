@@ -94,7 +94,7 @@ const coarse = { base: 'pointer-coarse:text-[16px]' }
     <label class="settings-toggle dictation-rewrite-col">
       <span>
         <b>{{ tl('Personal dictionary', 'Dictionnaire personnel') }}</b>
-        <small>{{ tl('One word or name per line (project names, people…). Given to the rewrite, and to the online engine as terms to recognise.', 'Un mot ou un nom par ligne (projets, personnes…). Donné à la reformulation, et au moteur en ligne comme termes à reconnaître.') }}</small>
+        <small>{{ tl('One word or name per line (project names, people…). Given to the rewrite, and to the online engine as terms to recognise when its model takes them.', 'Un mot ou un nom par ligne (projets, personnes…). Donné à la reformulation, et au moteur en ligne comme termes à reconnaître quand son modèle les accepte.') }}</small>
       </span>
       <UTextarea
         v-model="opts.dictionary" :rows="3" :maxrows="10" autoresize size="lg" class="w-full mono" :ui="coarse" autocapitalize="none" autocorrect="off" :spellcheck="false"

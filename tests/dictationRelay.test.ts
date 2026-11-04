@@ -119,6 +119,25 @@ describe('dictation relay', () => {
   })
 })
 
+describe('dictation terms a model refuses', () => {
+  it('sends the take again without keyterms when the model does not take them', async () => {
+    const fetch = vi.fn(async (_u: string, init: RequestInit) => JSON.parse(String(init.body)).keyterms
+      ? new Response(JSON.stringify({ error: { message: 'The selected model does not support keyterms' } }), { status: 400 })
+      : new Response(JSON.stringify({ text: 'hello wherdr' }), { status: 200 }))
+    const d = createDictation({ dataDir: dir, envKey: KEY, fetch })
+    expect((await d.transcribe(wav, { terms: 'wherdr\nherdr-core' })).text).toBe('hello wherdr')
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(String((fetch.mock.calls[1] as unknown as [string, RequestInit])[1].body)).keyterms).toBeUndefined()
+  })
+
+  it('does not retry other errors', async () => {
+    const fetch = answer(400, { error: { message: 'Bad audio' } })
+    const d = createDictation({ dataDir: dir, envKey: KEY, fetch })
+    await expect(d.transcribe(wav, { terms: 'wherdr' })).rejects.toThrow('Bad audio')
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('dictation limits', () => {
   it('relays at most 2 takes at once, then 10 per client per minute', async () => {
     const pending: (() => void)[] = []
