@@ -71,6 +71,7 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
           <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-trash-2" :aria-label="tl(`Remove ${p.name}`, `Retirer ${p.name}`)" :loading="busy === `rm:${p.key}`" @click="remove(p.key)" />
         </div>
       </div>
+      <UButton v-if="data.projects.length" to="/board" color="neutral" variant="outline" size="xl" icon="i-lucide-kanban" class="pm-board" data-testid="pm-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
       <p v-else class="muted settings-hint" data-testid="pm-empty">{{ tl('No project yet.', 'Aucun projet pour l’instant.') }}</p>
 
       <form class="sheet-form" @submit.prevent="add">
@@ -102,14 +103,12 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
 
 <style scoped>
 .pm-settings h3 { margin-top: 24px; }
+.pm-board { margin-top: 8px; }
 .pm-settings .settings-card { padding: 0; }
 .pm-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
 .pm-row:last-child { border-bottom: 0; }
 .pm-id { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .pm-path { color: var(--muted); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; }
-.mono-label { font-family: var(--font-mono, 'JetBrains Mono', monospace); text-transform: uppercase; letter-spacing: .08em; font-size: 12px; color: var(--text-2); }
-/* 16 px: iOS zooms into a smaller field. */
-.pm-select { max-width: 100%; min-height: 44px; padding: 8px; border: 1px solid var(--line); border-radius: 0; background: var(--bg); color: var(--text); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 16px; }
 form .pm-select { width: 100%; }
 .pm-settings form.sheet-form { margin-top: 8px; }
 .pm-settings form .settings-hint { margin-bottom: 16px; }

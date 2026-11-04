@@ -129,7 +129,6 @@ async function reconnect(key: string) {
 .machine-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
 .machine-row:last-child { border-bottom: 0; }
 .machine-row span:first-child { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
-.mono-label { font-family: var(--font-mono, 'JetBrains Mono', monospace); text-transform: uppercase; letter-spacing: .08em; font-size: 12px; color: var(--text-2); }
 .mono-label[data-status='online'] { color: var(--green, var(--text)); }
 .core-machines .settings-card { padding: 0; margin-top: 12px; }
 .rename-form { display: flex; gap: 8px; width: 100%; align-items: center; }

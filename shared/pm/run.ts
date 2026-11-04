@@ -15,13 +15,15 @@ export interface Task {
   run?: string // the current run
   step?: StepState // where the step engine has it
   prefs?: Prefs
+  tags?: string[] // short texts, shown on the card
+  links?: { label: string, url: string }[] // the PR, the ticket…
   createdAt: number
 }
 
 export interface Run {
   id: string
   task: string
-  role: 'worker'
+  role: 'worker' | 'reviewer'
   program: string // claude or codex
   model: string // pinned at launch
   machine: string // herdr-core machine key, '' = the wherdr host
