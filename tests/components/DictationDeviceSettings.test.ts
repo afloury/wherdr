@@ -70,4 +70,17 @@ describe('DictationDeviceSettings', () => {
     expect(localStorage.getItem(DEVICE_MODEL_KEY)).toBe('sensevoice')
     expect(sense().find('[role="radio"]').attributes('aria-checked')).toBe('true')
   })
+
+  it('says the server is missing the model files on a 404, with the fetch command', async () => {
+    const w = await mountSuspended(DictationDeviceSettings)
+    await flushPromises()
+    vi.stubGlobal('fetch', async () => new Response(null, { status: 404 }))
+    await row(w, 'sensevoice').find('button:not([role])').trigger('click')
+    const msg = () => row(w, 'sensevoice').find('[data-testid="model-missing"]')
+    await vi.waitFor(() => expect(msg().exists()).toBe(true))
+    expect(msg().text()).toContain('The wherdr server does not have this model’s files')
+    expect(msg().find('code').text()).toBe('node scripts/fetch-dictation-files.mjs runtime sensevoice')
+    expect(msg().text()).toContain('docs/installation.md')
+    expect(msg().text()).not.toContain('HTTP 404')
+  })
 })

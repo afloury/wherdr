@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import http from 'node:http'
+import { randomBytes } from 'node:crypto'
 import type { AddressInfo } from 'node:net'
 import crossws from 'crossws/adapters/node'
 import WebSocket from 'ws'
@@ -52,7 +53,54 @@ function firstMessage(url: string) {
 // A state-shaped frame: repetitive JSON, like the real one.
 const state = JSON.stringify({ ok: true, panes: Array.from({ length: 60 }, (_, i) => ({ id: `p${i}`, agent: 'claude', status: 'idle', label: `pane ${i}`, workspace: 'w1' })) })
 
+// The extension the server answers to a raw offer, as a browser sends it.
+async function negotiated(offer: string) {
+  const base = await serve(state)
+  const { port } = new URL(base)
+  const nonce = randomBytes(16).toString('base64')
+  return new Promise<string>((resolve, reject) => {
+    const headers = {
+      'connection': 'Upgrade',
+      'upgrade': 'websocket',
+      'sec-websocket-version': '13',
+      'sec-websocket-key': nonce,
+      'sec-websocket-extensions': offer,
+    }
+    const req = http.request({ host: '127.0.0.1', port, path: '/ws/events', headers })
+    req.on('upgrade', (res, socket) => { socket.destroy(); resolve(String(res.headers['sec-websocket-extensions'] || '')) })
+    req.on('response', res => reject(new Error(`HTTP ${res.statusCode}`)))
+    req.on('error', reject)
+    req.end()
+  })
+}
+
+// RFC 7692 §7.1: the parameters an answer may carry, each once, and
+// client_max_window_bits only when the client offered it.
+function rfc7692Valid(answer: string, offer: string) {
+  const [name, ...params] = answer.split(';').map(p => p.trim())
+  if (name !== 'permessage-deflate') return false
+  const seen = new Set<string>()
+  for (const p of params) {
+    const [k, v] = p.split('=').map(x => x.trim())
+    if (!k || seen.has(k)) return false
+    seen.add(k)
+    if (k === 'server_no_context_takeover' || k === 'client_no_context_takeover') { if (v !== undefined) return false }
+    else if (k === 'server_max_window_bits' || k === 'client_max_window_bits') { if (!/^(8|9|1[0-5])$/.test(v ?? '')) return false }
+    else return false
+  }
+  return !seen.has('client_max_window_bits') || /client_max_window_bits/.test(offer)
+}
+
 describe('permessage-deflate', () => {
+  // iOS Safari drops the socket when the answer limits its window (the app
+  // stays offline on iPhone): never send client_max_window_bits.
+  it.each(['permessage-deflate', 'permessage-deflate; client_max_window_bits'])('answers a Safari offer (%s) per RFC 7692, without client_max_window_bits', async (offer) => {
+    const answer = await negotiated(offer)
+    expect(answer).toMatch(/^permessage-deflate\b/)
+    expect(rfc7692Valid(answer, offer)).toBe(true)
+    expect(answer).not.toContain('client_max_window_bits')
+  })
+
   it('compresses a state frame on /ws/events', async () => {
     const base = await serve(state)
     const m = await firstMessage(`${base}/ws/events`)
