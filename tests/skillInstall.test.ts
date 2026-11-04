@@ -21,7 +21,7 @@ function fixture(mode: string) {
   cpSync(path.join(repo, 'herdr-plugin.toml'), path.join(root, 'herdr-plugin.toml'))
   const bin = path.join(home, 'tools')
   mkdirSync(bin)
-  const env = { ...process.env, HOME: home, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), WHERDR_DIR: path.join(home, 'wherdr'), IMAGE_ROOT: root, PATH: `${bin}:${process.env.PATH}` }
+  const env = { ...process.env, HOME: home, HC_SOCKET: path.join(home, 'hc.sock'), CLAUDE_CONFIG_DIR: path.join(home, '.claude'), WHERDR_DIR: path.join(home, 'wherdr'), IMAGE_ROOT: root, PATH: `${bin}:${process.env.PATH}` }
   const source = path.join(root, 'skills/wherdr/SKILL.md')
   const run = () => {
     if (mode === 'npm' || mode === 'brew') {
