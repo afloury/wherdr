@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **A finished task shows its agent's conversation.** Once a task's agent has finished (Ready to approve, Done) and its process has exited, the Board panel's Agent tab shows the conversation the board recorded for it, read only, instead of the shell left in its terminal; the terminal is still one tap away. The tab's bar says the task's state (for example Ready to approve) rather than the pane's. The Reviewer tab does the same once the review is over.
+
 ## [2.5.0] — 2026-11-02
 
 ### Added and improved

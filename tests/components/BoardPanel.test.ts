@@ -288,9 +288,13 @@ describe('the Board panel follows its coordinator', () => {
 // A task's agent with no pane: what its details say, and what `tell` received.
 const told: unknown[] = []
 let taskAgentPane: string | null = null
+let taskStage = 'working'
+// The conversations its board recorded (task.json `session`, `reviewSession`).
+let recordedTranscripts: { worker: string | null, reviewer: string | null } | undefined
 registerEndpoint('/api/tasks/details', () => ({
   id: 'demo/3', title: 'Add dark mode', msg: '', description: '', agent: 'claude', pr: '', branch: '', worktree: '',
-  failure: '', failureStage: '', failureAuth: false, stage: 'working', summary: '', report: null, review: null, reviewRounds: 0, plan: '', research: false, pane: taskAgentPane,
+  failure: '', failureStage: '', failureAuth: false, stage: taskStage, summary: '', report: null, review: null, reviewRounds: 0, plan: '', research: false, pane: taskAgentPane,
+  ...(recordedTranscripts ? { transcripts: recordedTranscripts } : {}),
 }))
 registerEndpoint('/api/tasks/tell', { method: 'POST', handler: async (event) => {
   told.push(await readBody(event))
@@ -380,6 +384,96 @@ describe('the task Agent tab', () => {
       await flushPromises()
       expect(w.find('.board-panel-agent-bar button').exists()).toBe(false)
       expect(view().props('selectedMode')).toBe('term')
+    } finally { w.unmount() }
+  })
+})
+
+// A task whose agent finished (Ready to approve): its `claude` exited and left
+// only the shell of its terminal. The Agent tab shows the conversation the board
+// recorded, the terminal one tap away; the bar says the task's state, not a pane's.
+describe('the Agent and Reviewer tabs of a finished task', () => {
+  const ready = { ...working, state: 'blocked', kind: 'permission', stage: 'approval', msg: 'Ready to approve', group: 'ready' as const }
+  beforeEach(() => {
+    setTaskPanelChoice('far|demo/3', null)
+    taskAgentPane = 'w1:p1'
+    taskStage = 'approval'
+    recordedTranscripts = { worker: 'claude', reviewer: 'codex' }
+    // The pane is still there, its agent gone: a shell.
+    herdrState.value = { ok: true, workspaces: [], panes: [{ ...pane('w1:p1'), agent: null, status: null }] }
+  })
+  afterEach(() => {
+    taskAgentPane = null
+    taskStage = 'working'
+    recordedTranscripts = undefined
+    herdrState.value = { ok: false, workspaces: [], panes: [] }
+  })
+  const finished = (extra: Record<string, unknown> = {}) => mountSuspended(BoardPanel, {
+    props: { target: { machine: 'far', kind: 'task', id: 'demo/3' }, task: ready, machineLabel: 'Far', reachable: true, ...extra },
+    global: { stubs: { AgentView: true, FoldText: true, TaskTranscript: true } },
+  })
+
+  it('opens the Agent tab on the recorded conversation, with its terminal one tap away', async () => {
+    const w = await finished()
+    try {
+      await vi.waitFor(() => expect(w.find('.board-panel-finished-bar').exists()).toBe(true))
+      expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Task', 'Agent', 'Reviewer', 'Settings'])
+      const transcript = () => w.findComponent({ name: 'TaskTranscript' })
+      const view = () => w.findComponent({ name: 'AgentView' })
+      expect(transcript().props()).toMatchObject({ machine: 'far', id: 'demo/3', role: 'worker', agent: 'claude' })
+      expect(view().exists()).toBe(false)
+      // The task's state, never the leftover pane's ("Shell") or a stale "Working".
+      const bar = w.get('.board-panel-finished-bar .board-panel-reviewer-who')
+      expect(bar.text()).toBe('Agent · Claude · Ready to approve')
+      expect(w.get('.board-panel-tabs button[aria-label="Agent"]').attributes('title')).toBe('Agent finished · Ready to approve')
+      await w.get('.board-panel-finished-bar button').trigger('click')
+      expect(view().props()).toMatchObject({ paneId: 'w1:p1', selectedMode: 'term' })
+      expect(transcript().exists()).toBe(false)
+      expect(w.get('.board-panel-finished-bar button').text()).toBe('Conversation')
+      await w.get('.board-panel-finished-bar button').trigger('click')
+      expect(transcript().exists()).toBe(true)
+    } finally { w.unmount() }
+  })
+
+  it('shows the recorded conversation even once its pane is closed, without a Terminal button', async () => {
+    taskAgentPane = null
+    herdrState.value = { ok: true, workspaces: [], panes: [] }
+    const w = await finished()
+    try {
+      await vi.waitFor(() => expect(w.findComponent({ name: 'TaskTranscript' }).exists()).toBe(true))
+      expect(w.find('.board-panel-finished-bar button').exists()).toBe(false)
+    } finally { w.unmount() }
+  })
+
+  it('shows the reviewer\'s conversation once the review is over', async () => {
+    const w = await finished()
+    try {
+      await vi.waitFor(() => expect(w.find('.board-panel-tabs').exists()).toBe(true))
+      await w.get('.board-panel-tabs button[aria-label="Reviewer"]').trigger('click')
+      expect(w.findComponent({ name: 'TaskTranscript' }).props()).toMatchObject({ role: 'reviewer', agent: 'codex' })
+      expect(w.get('.board-panel-finished-bar .board-panel-reviewer-who').text()).toBe('Reviewer · Codex · Review over')
+      // No reviewer pane left: nothing to switch to.
+      expect(w.find('.board-panel-finished-bar button').exists()).toBe(false)
+    } finally { w.unmount() }
+  })
+
+  it('keeps the live agent while it runs: its pane, not the recording', async () => {
+    herdrState.value = { ok: true, workspaces: [], panes: [pane('w1:p1')] }
+    const w = await finished()
+    try {
+      await vi.waitFor(() => expect(w.find('.board-panel-agent-bar').exists()).toBe(true))
+      expect(w.find('.board-panel-finished-bar').exists()).toBe(false)
+      expect(w.findComponent({ name: 'TaskTranscript' }).exists()).toBe(false)
+      expect(w.findComponent({ name: 'AgentView' }).props('paneId')).toBe('w1:p1')
+    } finally { w.unmount() }
+  })
+
+  it('without a recorded conversation, the shell stays what the Agent tab shows', async () => {
+    recordedTranscripts = { worker: null, reviewer: null }
+    const w = await finished()
+    try {
+      await vi.waitFor(() => expect(w.findComponent({ name: 'AgentView' }).exists()).toBe(true))
+      expect(w.findComponent({ name: 'AgentView' }).props('selectedMode')).toBe('term')
+      expect(w.findAll('.board-panel-tabs button').map(b => b.text())).toEqual(['Task', 'Agent', 'Settings'])
     } finally { w.unmount() }
   })
 })

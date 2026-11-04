@@ -116,7 +116,17 @@ const activityClass = computed(() => (activity.value && activity.value.kind !== 
 const reviewing = computed(() => ['reviewing', 'reviewneeds'].includes(details.value?.stage || props.task?.stage || ''))
 const conversation = computed(() => Boolean(agentPane.value && hasChat(agentPane.value))
   && !(props.task?.stage === 'failed' && ['start', 'setup', 'attempts'].includes(details.value?.failureStage || '')))
-const agentHint = computed(() => agentPane.value ? tl(`Agent: ${statusLabel(agentPane.value)}`, `Agent : ${statusLabel(agentPane.value)}`) : tl('Agent not running', 'Agent arrêté'))
+// The conversations the board recorded for the task (task.json `session`,
+// `reviewSession`), by program: what the Agent and Reviewer tabs show once
+// that agent has exited (its pane gone, or only the shell it ran in left).
+const recorded = computed(() => details.value?.transcripts ?? null)
+const workerDone = computed(() => props.target.kind === 'task' && Boolean(recorded.value?.worker) && !agentPane.value?.agent)
+// What the task is now, in the board's words: said instead of a pane's state
+// once its agent has exited ("Ready to approve", "Done"…).
+const taskState = computed(() => (props.task ? taskGroupLabel(props.task.group) : ''))
+const agentHint = computed(() => workerDone.value
+  ? tl(`Agent finished · ${taskState.value}`, `Agent terminé · ${taskState.value}`)
+  : agentPane.value ? tl(`Agent: ${statusLabel(agentPane.value)}`, `Agent : ${statusLabel(agentPane.value)}`) : tl('Agent not running', 'Agent arrêté'))
 const taskPermissions = computed(() => props.task ? taskActions(props.task, details.value) : null)
 const canFix = computed(() => props.task && taskCanFix(props.task, details.value))
 const canAnyway = computed(() => props.task && taskCanApproveAnyway(props.task, details.value))
@@ -232,7 +242,12 @@ const reviewerPane = computed(() => {
   return id && herdrState.value.panes.some(p => p.id === id) ? id : null
 })
 const reviewerAgent = computed(() => herdrState.value.panes.find(p => p.id === reviewerPane.value))
-const reviewerHint = computed(() => reviewerAgent.value ? tl(`Reviewer: ${statusLabel(reviewerAgent.value)}`, `Relecteur : ${statusLabel(reviewerAgent.value)}`) : tl('Reviewer', 'Relecteur'))
+// The review is over (or its reviewer exited): its recorded conversation.
+const reviewerDone = computed(() => props.target.kind === 'task' && Boolean(recorded.value?.reviewer)
+  && (!reviewing.value || (Boolean(reviewerPane.value) && !reviewerAgent.value?.agent)))
+const reviewerHint = computed(() => reviewerDone.value
+  ? tl('Reviewer · review over', 'Relecteur · relecture terminée')
+  : reviewerAgent.value ? tl(`Reviewer: ${statusLabel(reviewerAgent.value)}`, `Relecteur : ${statusLabel(reviewerAgent.value)}`) : tl('Reviewer', 'Relecteur'))
 // Only once its details say so too: until then, nothing said of its pane.
 const rvWait = computed(() => (reviewerAsks.value && details.value?.stage === 'reviewneeds'
   ? reviewerWait({ stage: 'reviewneeds', reviewer: details.value.reviewer, panes: herdrState.value.panes, everywhere: allSessionsState.value.panes, live: herdrState.value.ok && props.reachable !== false })
@@ -270,7 +285,9 @@ const rvWords = computed(() => {
 // Each role follows Default pane view until its bar selects a mode.
 // Without a readable conversation, the terminal is the only mode.
 const reviewerChoice = ref<PaneViewMode | null>(null)
-const reviewerMode = computed<PaneViewMode>(() => reviewerAgent.value && hasChat(reviewerAgent.value) ? reviewerChoice.value ?? defaultViewMode.value : 'term')
+const reviewerMode = computed<PaneViewMode>(() => reviewerDone.value
+  ? (reviewerPane.value ? reviewerChoice.value ?? 'chat' : 'chat')
+  : reviewerAgent.value && hasChat(reviewerAgent.value) ? reviewerChoice.value ?? defaultViewMode.value : 'term')
 watch(reviewerPane, () => { reviewerChoice.value = null })
 
 // The panel owns view selection. A task with nothing to talk to
@@ -281,16 +298,19 @@ const choice = ref<TaskPanelTab | null>(taskPanelChoice(choiceKey.value))
 // Its details read once (or failed): until then no tab is picked.
 const settled = computed(() => !loading.value || details.value !== null)
 const views = computed(() => ({
-  chat: Boolean(taskPane.value) || tellOnly.value || Boolean(failureDetail.value && !needs.value),
+  chat: Boolean(taskPane.value) || tellOnly.value || Boolean(failureDetail.value && !needs.value) || workerDone.value,
   term: Boolean(taskPane.value),
-  reviewer: Boolean(reviewerPane.value),
+  reviewer: Boolean(reviewerPane.value) || reviewerDone.value,
   settings: props.target.kind === 'task',
 }))
 const tabs = computed(() => taskPanelTabs(views.value))
 // Keep chat/term as internal destinations for existing links and shortcuts.
 // They share one visible Agent tab; its selection also remembers the mode.
 const agentChoice = ref<PaneViewMode | null>(choice.value === 'chat' || choice.value === 'term' ? choice.value : null)
-const agentMode = computed<PaneViewMode>(() => agentPane.value && !hasChat(agentPane.value) ? 'term' : agentChoice.value ?? defaultViewMode.value)
+// A finished agent opens on its conversation; its leftover shell stays a tap away.
+const agentMode = computed<PaneViewMode>(() => workerDone.value
+  ? (taskPane.value ? agentChoice.value ?? 'chat' : 'chat')
+  : agentPane.value && !hasChat(agentPane.value) ? 'term' : agentChoice.value ?? defaultViewMode.value)
 const selected = computed(() => taskPanelTab(views.value, choice.value ?? (views.value.term ? agentMode.value : null)))
 const navigationTabs = computed<TaskPanelTab[]>(() => [
   'task', ...(views.value.chat || views.value.term ? ['chat' as const] : []),
@@ -304,7 +324,7 @@ function chooseAgentMode(mode: PaneViewMode) {
   choose(mode, true)
 }
 // The banner's way to another tab, never to the one already shown.
-const jump = computed(() => agentPane.value && !hasChat(agentPane.value)
+const jump = computed(() => agentPane.value && !hasChat(agentPane.value) && !workerDone.value
   ? selected.value === 'term' || selected.value === 'chat' ? null : 'term'
   : needsJumpTab(tabs.value, selected.value))
 function choose(tab: TaskPanelTab, force = false) {
@@ -720,6 +740,24 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <TaskSettings v-if="target.kind === 'task' && settled" v-show="selected === 'settings'" :machine="target.machine" :id="target.id" :active="selected === 'settings'" :reachable="reachable" />
       <TaskSheet :limit-request="limitRequest" v-if="target.kind === 'task' && settled && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :reachable="reachable" :refresh="refreshTask" @chat="choose('chat')" @coordinator="(machine, task) => emit('coordinator', machine, task)" @archived="archivedTask" @restored="restoredTask" />
       <template v-else-if="selected === 'settings'" />
+      <!-- A finished agent (its process exited): the conversation its board recorded, its leftover shell a tap away. -->
+      <template v-else-if="target.kind === 'task' && selected === 'reviewer' && reviewerDone && recorded?.reviewer">
+        <div class="board-panel-reviewer-bar board-panel-finished-bar">
+          <span class="board-panel-reviewer-who">{{ tl('Reviewer', 'Relecteur') }} · {{ kindLabel(recorded.reviewer) }} · <span class="board-panel-finished-state">{{ tl('Review over', 'Relecture terminée') }}</span></span>
+          <button v-if="reviewerPane" type="button" class="board-panel-reviewer-mode" @click="reviewerChoice = reviewerMode === 'chat' ? 'term' : 'chat'">{{ reviewerMode === 'chat' ? t('Terminal') : t('Conversation') }}</button>
+        </div>
+        <AgentView v-if="reviewerMode === 'term' && reviewerPane" :key="`reviewer-${reviewerPane}`" :pane-id="reviewerPane" cell active embedded selected-mode="term" />
+        <TaskTranscript v-else :key="`reviewer-${target.machine}|${target.id}`" :machine="target.machine" :id="target.id" role="reviewer" :agent="recorded.reviewer" @goto-term="reviewerPane && (reviewerChoice = 'term')" />
+      </template>
+      <template v-else-if="target.kind === 'task' && (selected === 'chat' || selected === 'term') && workerDone && recorded?.worker">
+        <div class="board-panel-reviewer-bar board-panel-agent-bar board-panel-finished-bar">
+          <span class="board-panel-reviewer-who">{{ t('Agent') }} · {{ kindLabel(recorded.worker) }}<template v-if="taskState"> · <span class="board-panel-finished-state" :class="task?.group">{{ taskState }}</span></template></span>
+          <button v-if="paneId" type="button" class="board-panel-reviewer-mode" @click="chooseAgentMode(agentMode === 'chat' ? 'term' : 'chat')">{{ agentMode === 'chat' ? t('Terminal') : t('Conversation') }}</button>
+        </div>
+        <AgentView v-if="agentMode === 'term' && paneId" :key="paneId" :pane-id="paneId" cell active embedded selected-mode="term" />
+        <TaskTranscript v-else :key="`worker-${target.machine}|${target.id}`" :machine="target.machine" :id="target.id" role="worker" :agent="recorded.worker" @goto-term="paneId && chooseAgentMode('term')" />
+        <TaskTell v-if="tellOnly" v-model="reply" class="board-panel-finished-tell" :to-reviewer="toReviewer" :plan="task?.stage === 'plan'" :reachable="reachable" :machine-label="machineLabel" :telling="telling" @send="tell()" />
+      </template>
       <template v-else-if="target.kind === 'task' && selected === 'reviewer' && reviewerPane">
         <div class="board-panel-reviewer-bar">
           <span class="board-panel-reviewer-who">{{ tl('Reviewer', 'Relecteur') }}<template v-if="reviewerAgent"> · {{ statusLabel(reviewerAgent) }}</template></span>
@@ -743,18 +781,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <h3>{{ details?.failureStage === 'setup' || details?.failureStage === 'start' ? tl('Setup output', 'Sortie du démarrage') : tl('No agent conversation yet', 'Pas encore de conversation avec l’agent') }}</h3>
         <pre v-if="failureDetail && !needs">{{ failureDetail }}</pre>
         <p>{{ tl('The terminal stays available when the task has a pane. Task details and actions are in the Task tab.', 'Le terminal reste accessible quand la tâche a un pane. Les détails et actions sont dans l’onglet Tâche.') }}</p>
-        <form v-if="tellOnly" class="board-panel-first board-panel-tell" @submit.prevent="tell()">
-          <label for="board-panel-tell">{{ toReviewer
-            ? tl('The reviewer is waiting for an answer: herdr-projects passes your reply on to it.', 'Le relecteur attend une réponse : herdr-projects lui transmet ta réponse.')
-            : task?.stage === 'plan'
-            ? tl('Its agent is not running now: your words send the plan back, through herdr-projects.', 'Son agent ne tourne pas en ce moment : tes mots renvoient le plan, par herdr-projects.')
-            : tl('Its agent is not running now: herdr-projects passes your reply on.', 'Son agent ne tourne pas en ce moment : herdr-projects lui transmet ta réponse.') }}</label>
-          <p v-if="!reachable" class="board-panel-away" role="status">
-            {{ tl(`${machineLabel} cannot be reached now.`, `${machineLabel} est injoignable pour l’instant.`) }}
-          </p>
-          <UTextarea id="board-panel-tell" v-model="reply" :rows="3" autoresize :maxlength="TELL_MAX" :placeholder="tl('Message', 'Message')" :disabled="offlineView" />
-          <UButton type="submit" color="primary" icon="i-lucide-send" :loading="telling" :disabled="!reply.trim() || offlineView || !reachable">{{ t('Send') }}</UButton>
-        </form>
+        <TaskTell v-if="tellOnly" v-model="reply" :to-reviewer="toReviewer" :plan="task?.stage === 'plan'" :reachable="reachable" :machine-label="machineLabel" :telling="telling" @send="tell()" />
       </div>
       <p v-else-if="target.kind === 'coordinator' && !coordLoaded" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <div v-else-if="target.kind === 'coordinator'" class="board-panel-start">

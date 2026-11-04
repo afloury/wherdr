@@ -31,8 +31,10 @@ import {
   canPickAttempt, taskAgentIdentity, type MachineTasks, type TaskDetails, type TaskPanes, type TaskReviewer, REVIEW_STAGES, type TaskRow, type TasksBoard,
   TASK_QUESTION_MAX, taskCanFix, taskCanApproveAnyway, taskCanSendReview, failureIsStale, type StartOptions, type TaskCommand, addArgs, cleanTaskType, isPlanApproval, delegateArgs, isAgentName, isEffortName, isProgramName, agentKind, parseModels, type StartModels, parseWorkerAgent, parseWorkerEffort, restoreAgentArgs, runOver, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
-  cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots,
+  cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots, type TaskRole, isTaskRole, taskConversation, taskTranscripts,
 } from '../../shared/projectsTasks'
+import type { ChatResponse } from '../../shared/types'
+import type { TranscriptPane } from './transcripts'
 import {
   AUTOPILOT_MIN, OFF, autopilotId, autopilotOnArgs, autopilotTargetArgs, coordinatorShowArgs, parseAutopilotList, parseCoordinatorSettings,
   type AutopilotDetails, type AutopilotStatus,
@@ -390,7 +392,31 @@ export async function taskDetails(machine: unknown, id: unknown): Promise<TaskDe
   // The closing note and whether it is archived: in the task's file only (1.2.1's `details` leaves them out).
   if (!d.summary && typeof file?.summary === 'string') d = { ...d, summary: file.summary.slice(0, 8000).trim() }
   if (!d.archived && file?.archivedAt) d = { ...d, archived: true }
-  return { ...withStale(d, file), ...(file ? { identity: taskAgentIdentity(file) } : {}), pane: taskPane(m, file), reviewer: reviewerOf(m, file, d.stage) }
+  return { ...withStale(d, file), ...(file ? { identity: taskAgentIdentity(file) } : {}), pane: taskPane(m, file), reviewer: reviewerOf(m, file, d.stage), transcripts: taskTranscripts(file) }
+}
+
+// The conversation the board recorded for one role of a task (its agent's, or
+// its reviewer's), read from its session file on the task's machine: what the
+// panel shows once that agent has exited and its pane holds only a shell. Read
+// only; the same reply as /api/chat (`since`, `from`, `before`).
+// Its key in the transcript reader's caches: never a pane's id.
+const transcriptKey = (m: Machine, id: string, role: TaskRole) => `task:${m.key}|${id}|${role}`
+async function recordedConversation(machine: unknown, id: unknown, role: unknown): Promise<{ m: Machine, pane: TranscriptPane } | null> {
+  const m = boardOf(machine)
+  const tid = checkId(id)
+  if (!isTaskRole(role)) throw new HerdrError('bad_role', 'Invalid role')
+  if (!m.local && m.status !== 'online') throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
+  const c = taskConversation(await readTaskFile(m, tid), role)
+  return c ? { m, pane: { id: transcriptKey(m, tid, role), agent: c.kind, cwd: null, agentSession: c.session, fixed: true } } : null
+}
+export async function taskTranscript(machine: unknown, id: unknown, role: unknown, opts: { since?: string, from?: number | null, before?: number | null }): Promise<ChatResponse> {
+  const r = await recordedConversation(machine, id, role)
+  if (!r) return { available: false, reason: 'not_found' }
+  return r.m.transcripts.chat(r.pane, { ...opts, anchor: opts.since })
+}
+export async function taskTranscriptImage(machine: unknown, id: unknown, role: unknown, file: string, ref: string, index: number) {
+  const r = await recordedConversation(machine, id, role)
+  return r ? r.m.transcripts.image(r.pane, file, ref, index) : null
 }
 
 // Whether its failure is behind it: the task's file has when it last moved on.

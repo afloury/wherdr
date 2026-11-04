@@ -4,11 +4,12 @@ import { expect, test } from './test'
 // Settings › Security says who else may reach it. The passkey is never required.
 test('Settings › Security explains network access, good practices and an optional passkey', async ({ page }) => {
   await page.goto('/#/settings?section=security')
-  await expect(page.getByText('wherdr only answers this computer (localhost) and your tailnet.')).toBeVisible()
+  await expect(page.getByText('wherdr only answers this computer (localhost) and your own tailnet devices.')).toBeVisible()
   const tips = page.locator('.settings-section .network-tips')
   await expect(tips).toContainText('Prefer Tailscale')
   await expect(tips).toContainText('A network added without HTTPS gets no passkey')
-  await expect(tips).toContainText('Create a passkey as soon as wherdr is reached over HTTPS.')
+  await expect(tips).toContainText('Optional: a passkey adds an automatic lock on each device')
+  await expect(tips).not.toContainText('Create a passkey')
   await expect(page.getByRole('heading', { name: 'Passkey · optional' })).toBeVisible()
   await expect(page.locator('.open-network-banner')).toHaveCount(0)
 })
