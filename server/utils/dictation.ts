@@ -7,10 +7,14 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { HerdrError } from './herdr'
+import { createRateLimit } from './rateLimit'
 
 export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/audio/transcriptions'
 export const DICTATION_MAX = 8 * 1024 * 1024 // a 120 s take is 3.8 MB
 export const DICTATION_TIMEOUT_MS = 60_000
+// Takes relayed to OpenRouter at once (all clients), and per client per minute.
+export const DICTATION_CONCURRENT = 2
+export const DICTATION_PER_MINUTE = 10
 const KEY_RE = /^[\x21-\x7E]{16,256}$/
 const MODEL_RE = /^[\w.-]+\/[\w.:-]+$/
 const LANG_RE = /^[a-z]{2}$/
@@ -19,6 +23,8 @@ export interface DictationStatus { set: boolean, last4?: string, env?: boolean }
 export interface TranscribeParams { model?: string, language?: string, terms?: string, zdr?: string }
 
 export function createDictation(o: { dataDir: string, envKey?: string, fetch?: typeof fetch, timeoutMs?: number }) {
+  const perMinute = createRateLimit(DICTATION_PER_MINUTE, 60_000)
+  let running = 0
   const file = path.join(o.dataDir, 'openrouter.json')
   const fileKey = (): string => {
     try {
@@ -51,7 +57,16 @@ export function createDictation(o: { dataDir: string, envKey?: string, fetch?: t
   }
 
   // `signal`: the browser went away (× or a closed tab): OpenRouter is cut too.
-  async function transcribe(wav: Buffer, p: TranscribeParams, signal?: AbortSignal): Promise<{ text: string, seconds?: number, cost?: number }> {
+  // `client`: who sent the take (clientKey), for the per-minute limit.
+  async function transcribe(wav: Buffer, p: TranscribeParams, signal?: AbortSignal, client = ''): Promise<{ text: string, seconds?: number, cost?: number }> {
+    if (running >= DICTATION_CONCURRENT) throw new HerdrError('rate_limited', 'Too many dictations at once, try again in a moment')
+    if (!perMinute.take(client)) throw new HerdrError('rate_limited', 'Too many dictations, wait a minute')
+    running++
+    try { return await relay(wav, p, signal) }
+    finally { running-- }
+  }
+
+  async function relay(wav: Buffer, p: TranscribeParams, signal?: AbortSignal): Promise<{ text: string, seconds?: number, cost?: number }> {
     const k = key()
     if (!k) throw new HerdrError('no_key', 'No OpenRouter key on this server')
     if (wav.length > DICTATION_MAX) throw new HerdrError('too_large', 'Recording too large (8 MB max)')
