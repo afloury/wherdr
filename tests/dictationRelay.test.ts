@@ -2,7 +2,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DICTATION_MAX, OPENROUTER_URL, createDictation } from '../server/utils/dictation'
+import { DICTATION_MAX, MODELS_RETRY_MS, MODELS_TTL_MS, OPENROUTER_MODELS_URL, OPENROUTER_URL, createDictation } from '../server/utils/dictation'
+import { FALLBACK_CLOUD_MODELS } from '../shared/dictationModels'
 
 const KEY = 'sk-or-test-key-0000'
 // A WAV header and 0.1 s of 16 kHz silence: all the relay checks is RIFF/WAVE.
@@ -136,5 +137,67 @@ describe('dictation limits', () => {
     for (let i = 0; i < 8; i++) await d.transcribe(wav, {}, undefined, 'a')
     await expect(d.transcribe(wav, {}, undefined, 'a')).rejects.toMatchObject({ code: 'rate_limited' })
     await expect(d.transcribe(wav, {}, undefined, 'b')).resolves.toMatchObject({ text: 'ok' })
+  })
+})
+
+describe('dictation model list', () => {
+  const STT = { input_modalities: ['audio'], output_modalities: ['transcription'] }
+  const list = { data: [{ id: 'qwen/qwen3-asr-0.6b', name: 'Qwen3 ASR', architecture: STT, pricing: { prompt: '0.00000333', completion: '0' } }] }
+  const live = { models: [{ id: 'qwen/qwen3-asr-0.6b', name: 'Qwen3 ASR', perMinute: 0.0002 }], live: true }
+
+  it('fetches nothing without a key', async () => {
+    const fetch = answer(200, list)
+    const d = createDictation({ dataDir: dir, fetch })
+    expect(await d.models()).toEqual({ models: FALLBACK_CLOUD_MODELS, live: false })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('fetches once with the key, keeps the list 6 hours, and never shows the key', async () => {
+    let t = 0
+    const fetch = answer(200, list)
+    const d = createDictation({ dataDir: dir, envKey: KEY, fetch, now: () => t })
+    const [a, b] = await Promise.all([d.models(), d.models()])
+    expect(a).toEqual(live)
+    expect(b).toEqual(live)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe(OPENROUTER_MODELS_URL)
+    expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${KEY}`)
+    noKey(a)
+    t = MODELS_TTL_MS - 1
+    await d.models()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    t = MODELS_TTL_MS
+    await d.models()
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('serves the last good list while OpenRouter fails, retrying after a minute', async () => {
+    let t = 0
+    let fail = false
+    const fetch = vi.fn(async () => {
+      if (fail) throw new Error(`down ${KEY}`)
+      return new Response(JSON.stringify(list))
+    })
+    const d = createDictation({ dataDir: dir, envKey: KEY, fetch, now: () => t })
+    await d.models()
+    fail = true
+    t = MODELS_TTL_MS
+    expect(await d.models()).toEqual(live)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    t += MODELS_RETRY_MS - 1
+    await d.models()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    fail = false
+    t += 1
+    expect(await d.models()).toEqual(live)
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('falls back to the built-in list on an error or an empty answer', async () => {
+    const d1 = createDictation({ dataDir: dir, envKey: KEY, fetch: answer(401, { error: { message: 'bad key' } }) })
+    expect(await d1.models()).toEqual({ models: FALLBACK_CLOUD_MODELS, live: false })
+    const d2 = createDictation({ dataDir: dir, envKey: KEY, fetch: answer(200, { data: [] }) })
+    expect(await d2.models()).toEqual({ models: FALLBACK_CLOUD_MODELS, live: false })
   })
 })

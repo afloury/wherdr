@@ -191,8 +191,16 @@ percentage) and ×.
 - **Key**: `OPENROUTER_API_KEY` wins, else `DATA_DIR/openrouter.json` (mode 0600) written by
   `POST /api/dictation/key` and removed by `DELETE`. `GET /api/dictation/status` returns only
   `{ set, last4 }`. The key is never returned, never logged, and scrubbed from upstream errors.
-- **Options** (per device, `cloudOptions.ts`): model (Whisper large v3 turbo by default, Voxtral
-  Mini, GPT-4o mini transcribe), ZDR (on by default), send pane terms (off by default).
+- **Models**: once a key is saved, `GET /api/dictation/models` has the server fetch OpenRouter's
+  `GET /api/v1/models?output_modalities=transcription` with the key and keep the models that take
+  audio in, give a transcription out and are served at `/api/v1/audio/transcriptions`
+  (`shared/dictationModels.ts`). It answers `{ models: [{ id, name, perMinute? }], live }`: the
+  price per minute only for models billed by duration (`pricing.prompt` per second, no output
+  price). The list is kept 6 hours, served stale while OpenRouter fails (retried after a minute);
+  without a key or any good fetch, a built-in list of three. Settings searches it locally by name
+  or id (`USelectMenu`).
+- **Options** (per device, `cloudOptions.ts`): model (Whisper large v3 turbo by default), ZDR (on
+  by default), send pane terms (off by default).
 
 ## On-device models
 
