@@ -50,7 +50,9 @@ sw.addEventListener('message', (e) => {
 
 sw.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
-    for (const k of await caches.keys()) if (k !== CACHE) await caches.delete(k)
+    // wherdr-asr-* holds the on-device dictation models and runtimes (100 MB
+    // to 1 GB): clearing them on each update would download them again.
+    for (const k of await caches.keys()) if (k !== CACHE && !k.startsWith('wherdr-asr-')) await caches.delete(k)
     await sw.clients.claim()
   })())
 })
@@ -66,7 +68,9 @@ sw.addEventListener('fetch', (e) => {
   const req: Request = e.request
   const url = new URL(req.url)
   if (req.method !== 'GET' || url.origin !== sw.location.origin
-    || url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws/') || url.pathname.startsWith('/uploads/')) return
+    || url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws/') || url.pathname.startsWith('/uploads/')
+    // Dictation files: the dictation worker keeps them in its own wherdr-asr-* caches.
+    || url.pathname.startsWith('/models/')) return
   // Fingerprinted build files never change under their name: once cached, no
   // round trip (a silent server would otherwise hold up each file of the shell).
   if (url.pathname.startsWith('/_nuxt/') && !url.pathname.startsWith('/_nuxt/builds/')) {

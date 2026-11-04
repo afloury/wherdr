@@ -65,7 +65,8 @@ only the routes listed in `shared/coreRoutes.ts` answer.
   `no-cors` fetches, reported by the browser's `Sec-Fetch-Site`) are refused too.
 - A strict Content Security Policy limits scripts to the app's own origin and hashed inline
   scripts, and connections to that origin and its WebSockets. It also blocks embedded objects
-  and framing.
+  and framing. It allows compiling WebAssembly (`'wasm-unsafe-eval'`), which on-device dictation
+  needs, but never `eval()` of JavaScript.
 - Images in agent replies load from the app's own origin (`data:` and `blob:` included) and,
   over HTTPS only, from any machine and port of the tailnet wherdr is reached on
   (`https://*.<tailnet>.ts.net:*`). That tailnet is read from Tailscale on the machine, from
