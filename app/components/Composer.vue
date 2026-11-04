@@ -160,10 +160,20 @@ function onKeydown(e: KeyboardEvent) {
     return
   }
   if (enterSends.value && e.key === 'Enter' && !e.shiftKey && !e.isComposing && !text.value.trim()) {
+    // Nothing to send (no Stop, no attachment; UChatPrompt's own submit-on-enter
+    // is off then): Enter goes on to a "Your turn" card (useCardKeys on
+    // document); onEmptyEnter drops the newline otherwise.
+    if (!readOnly.value && !stopMode.value && !attachments.value.length) return
     e.preventDefault()
     submit()
   }
 }
+function onEmptyEnter(e: KeyboardEvent) {
+  if (e.defaultPrevented || e.target !== ta.value || e.key !== 'Enter' || e.shiftKey || e.isComposing || !enterSends.value || text.value.trim()) return
+  e.preventDefault()
+}
+onMounted(() => window.addEventListener('keydown', onEmptyEnter))
+onBeforeUnmount(() => window.removeEventListener('keydown', onEmptyEnter))
 // Bubble on window, after useCardKeys on document: the active card owns
 // arrows in an empty field.
 const history = new PromptHistory()
@@ -597,7 +607,7 @@ defineExpose({
     </div>
     <UChatPrompt
       ref="promptRef" v-model="text" :disabled="Boolean(pane?.stopped)" :placeholder="pane?.stopped ? t('Restart Codex before sending a message') : readOnly ? t('Draft saved — sending unavailable offline') : placeholder" variant="outline" color="neutral"
-      :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends"
+      :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends && (canSend || stopMode || readOnly)"
       :enterkeyhint="enterSends ? 'send' : 'enter'" autocapitalize="sentences"
       data-wherdr="composer-field" class="prompt" :class="{ suggesting: suggestTap, expanded }" :style="suggestRoom ? { '--suggest-room': `${suggestRoom}px` } : undefined" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
       @focus="fieldFocus" @blur="fieldBlur"

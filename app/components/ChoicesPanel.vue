@@ -97,7 +97,7 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
     return
   }
   // Like ↑/↓: key by key, in typing order (without waiting for the state).
-  if (k.kind === 'tab') return navKey(props.paneId, k.dir > 0 ? 'right' : 'left')
+  if (k.kind === 'tab') return navKey(props.paneId, k.dir > 0 ? 'right' : 'left', p.identity)
   if (k.kind === 'nav') {
     if ((k.key === 'up' || k.key === 'down') && cursor.value !== null && cursor.value !== undefined) {
       cursor.value = Math.max(0, Math.min(p.options.length - 1, cursor.value + (k.key === 'down' ? 1 : -1)))

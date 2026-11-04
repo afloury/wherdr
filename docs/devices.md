@@ -20,8 +20,8 @@
     and terminal, and `Esc` stops a working agent when the message field is empty.
   - `Esc` closes dialogs, `Enter` sends
     and `Shift+Enter` adds a new line. On a "Your turn" card, `1`–`9` pick an option (on AZERTY
-    without Shift too, outside the message field); on the `/resume` card, `Ctrl+A` switches
-    between every project and the current one (`⌘A` still selects all on macOS).
+    without Shift too, outside the message field), and `↑` `↓` `Enter` `Esc` go to the terminal
+    while the same question is on screen.
 - In the message field, `↑` on the first line recalls previous messages and slash commands;
   `↓` on the last line returns to newer entries, then restores your draft. History keeps the
   last 100 texts sent from this device per agent, without attachments or quoted references.

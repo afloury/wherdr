@@ -481,13 +481,21 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       }
     }
   }
-  // Local commands: one "/cmd → useful output" line, without a block.
+  // Local commands: one "/cmd → useful output" line; the full output stays
+  // only when it says more than that line (opened by a tap, see ChatView);
+  // screen text copied there alone (no useful line) is dropped.
   for (const it of items) {
     if (it.role !== 'cmd') continue
     const line = usefulOutput(it.out, it.err)
     if (line) it.text = `${it.text} → ${line}`
-    delete it.out
-    delete it.err
+    const full = [it.err, it.out].filter(Boolean).join('\n').trim()
+    if (!line || full === line) {
+      delete it.out
+      delete it.err
+    } else {
+      if (!it.out) delete it.out
+      if (!it.err) delete it.err
+    }
   }
   // Queued task notifications: not user messages.
   items.queue = queue.filter(q => !isNoise(q.text))

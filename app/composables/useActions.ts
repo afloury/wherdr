@@ -22,30 +22,15 @@ export async function choose(paneId: string, index: number, label: string, ident
   }
 }
 
-// Claude Code interactive menu (/resume…): choose an entry, press
-// a key from its legend, replace the text of its search. The server
-// re-reads the screen before each key.
-export async function menuAction(paneId: string, body: { op: 'select', index: number, label: string } | { op: 'key', key: string, label: string } | { op: 'search', text: string }, identity?: string): Promise<boolean> {
-  haptic()
-  try {
-    await api('/api/menu', { pane_id: paneId, ...body, identity })
-    if (body.op === 'select') toast(`✓ ${body.label}`)
-    return true
-  } catch (err) {
-    toast((err as Error).message, true)
-    return false
-  }
-}
-
-// Computer keyboard on a "Your turn" card: a real key to the
-// terminal (the server checks that a menu or prompt is still shown; ← → only
-// on omp's "Ask" box with tabs).
+// Computer keyboard on a "Your turn" card: a real key to the terminal. With
+// the question's identity, the server first checks that it is still on screen
+// (see coreNav); ← → only on omp's "Ask" box with tabs.
 // Keys sent one after the other, in typing order.
 let navChain: Promise<unknown> = Promise.resolve()
 export function navKey(paneId: string, key: 'up' | 'down' | 'enter' | 'esc' | 'left' | 'right', identity?: string): Promise<boolean> {
   const run = navChain.then(async () => {
     try {
-      await api('/api/nav', { pane_id: paneId, key, identity })
+      await api('/api/input', { pane_id: paneId, keys: [key], ...(identity ? { identity } : {}) })
       return true
     } catch (err) {
       toast((err as Error).message, true)

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { createCoreScreens, readCoreScreen } from '../server/utils/coreScreen'
-import { coreChoose, type CoreChooseDeps } from '../server/utils/coreChoose'
+import { coreChoose, coreNav, type CoreChooseDeps } from '../server/utils/coreChoose'
 import { CoreError } from '../server/utils/core'
 import type { Pane } from '../shared/types'
 
@@ -192,5 +192,16 @@ describe('coreChoose', () => {
     await expect(coreChoose(d, { pane_id: 'zz' })).rejects.toMatchObject({ code: 'bad_pane' })
     d.call = async () => { throw new CoreError('not_found', 'gone') }
     await expect(coreChoose(d, { pane_id: 't1', index: 0, label: 'Yes', identity: identity() })).rejects.toMatchObject({ code: 'stale' })
+  })
+  it('sends card keys only while the same question is on screen', async () => {
+    const { d, calls } = setup(() => bash)
+    await coreNav(d, { pane_id: 't1', keys: ['down'], identity: identity() })
+    await coreNav(d, { pane_id: 't1', keys: ['enter'], identity: identity() })
+    expect(calls).toEqual([['terminal.keys', { terminal: 'm/t1', keys: ['down'] }], ['terminal.keys', { terminal: 'm/t1', keys: ['enter'] }]])
+    await expect(coreNav(d, { pane_id: 't1', keys: ['enter'], identity: 'other' })).rejects.toMatchObject({ code: 'stale' })
+    await expect(coreNav(d, { pane_id: 't1', keys: ['ctrl+c'], identity: identity() })).rejects.toMatchObject({ code: 'bad_keys' })
+    const gone = setup(() => input)
+    await expect(coreNav(gone.d, { pane_id: 't1', keys: ['enter'], identity: identity() })).rejects.toMatchObject({ code: 'stale' })
+    expect(calls.length + gone.calls.length).toBe(2)
   })
 })

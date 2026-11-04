@@ -31,7 +31,6 @@ const allGroups: Group[] = [
   { title: tl('“Your turn” card', 'Carte « À toi »'), rows: [
     { label: tl('Choose an option', 'Choisir une option'), keys: [['1–9']] },
     { label: tl('Move, confirm, cancel', 'Déplacer, valider, annuler'), keys: [['arrowup', 'arrowdown', 'enter', 'escape']] },
-    { label: tl('/resume: all projects or the current one', '/resume : tous les projets ou le projet courant'), keys: [['ctrl', 'A']] },
   ] },
   { title: tl('Terminal', 'Terminal'), rows: [
     { label: tl('Copy the selection', 'Copier la sélection'), keys: [mac ? ['meta', 'C'] : ['ctrl', 'shift', 'C']] },

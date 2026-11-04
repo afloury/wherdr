@@ -57,6 +57,29 @@ describe('conversation rendering', () => {
       expect(lightboxSet.value).toEqual([src])
     } finally { w.unmount() }
   })
+  it('opens the full output of a local "/" command from its one-line summary', async () => {
+    const idle = { ...pane, agent: 'claude' as const, status: 'idle' as const }
+    herdrState.value = { ok: true, workspaces: [], panes: [idle] }
+    items = [
+      { role: 'cmd', text: '/context → claude-opus · 45k/200k tokens (22%)', ts: '2026-01-01T00:00:00Z', out: 'Context Usage\nclaude-opus · 45k/200k tokens (22%)\nSystem prompt: 3k tokens\nMessages: 40k tokens' },
+      { role: 'cmd', text: '/cost → Total cost: $0.12', ts: '2026-01-01T00:00:01Z' },
+    ]
+    const w = await mountSuspended(ChatView, { props: { pane: idle, localQueued: [] } })
+    try {
+      await expect.poll(() => w.find('.chat').text()).toContain('/cost → Total cost: $0.12')
+      // Nothing more to say: a plain line, not a button.
+      expect(w.findAll('div.msg-system').map(x => x.text())).toContain('/cost → Total cost: $0.12')
+      const line = w.find('.msg-cmd button.msg-system')
+      expect(line.text()).toContain('/context')
+      expect(line.attributes('aria-expanded')).toBe('false')
+      expect(w.find('.msg-cmd pre').exists()).toBe(false)
+      await line.trigger('click')
+      expect(line.attributes('aria-expanded')).toBe('true')
+      expect(w.find('.msg-cmd pre').text()).toBe('Context Usage\nclaude-opus · 45k/200k tokens (22%)\nSystem prompt: 3k tokens\nMessages: 40k tokens')
+      await line.trigger('click')
+      expect(w.find('.msg-cmd pre').exists()).toBe(false)
+    } finally { w.unmount() }
+  })
   it('keeps a scheduled prompt folded while rendering its Markdown on demand', async () => {
     const idle = { ...pane, status: 'idle' as const }
     herdrState.value = { ok: true, workspaces: [], panes: [idle] }

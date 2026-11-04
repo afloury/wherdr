@@ -4,6 +4,7 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import ChoicesPanel from '~/components/ChoicesPanel.vue'
 import { eventsOpen } from '~/composables/useHerdr'
 import { screenChoices, ompActiveTab } from '../../server/utils/choices'
+import type { Pane } from '#shared/types'
 
 const { nav } = vi.hoisted(() => ({ nav: vi.fn(async () => false) }))
 mockNuxtImport('navKey', () => nav)
@@ -35,4 +36,48 @@ it.each(cases)('renders the native card for %s', async (file, agent, selector) =
     expect(nav).toHaveBeenCalledExactlyOnceWith('w1:p1', 'enter', prompt!.identity)
   }
   w.unmount()
+})
+
+// Card keyboard and focused fields: the empty message field lets Enter reach the
+// card, while a field that handles a key itself (conversation search: Esc closes
+// it) keeps it.
+it('takes Enter from the empty message field, never a key a focused field handled', async () => {
+  const Composer = (await import('~/components/Composer.vue')).default
+  const { desk, herdrState } = await import('~/composables/useHerdr')
+  eventsOpen.value = true
+  desk.value = true
+  nav.mockClear()
+  const prompt = screenChoices(readFileSync('tests/fixtures/claude-security-guide.txt', 'utf8').replace(/\x1b\[[0-9;]*m|\r/g, ''), 'claude')!
+  const pane = { id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'claude', name: null, label: null, status: 'blocked', title: null, cwd: '/tmp/demo', agentSession: null, prompt } as Pane
+  herdrState.value = { ok: true, workspaces: [], panes: [pane] }
+  const card = await mountSuspended(ChoicesPanel, { props: { paneId: 'w1:p1', prompt, keys: true }, attachTo: document.body })
+  const composer = await mountSuspended(Composer, { props: { pane, paneId: 'w1:p1', sendKeys: async () => {} }, attachTo: document.body })
+  const search = document.createElement('input')
+  search.addEventListener('keydown', (e) => { if (e.key === 'Escape' || e.key === 'Enter') e.preventDefault() })
+  document.body.append(search)
+  try {
+    const ta = composer.find('textarea').element as HTMLTextAreaElement
+    ta.focus()
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    ta.dispatchEvent(enter)
+    expect(nav).toHaveBeenCalledExactlyOnceWith('w1:p1', 'enter', prompt.identity)
+    expect(enter.defaultPrevented).toBe(true)
+    nav.mockClear()
+    search.focus()
+    for (const key of ['Escape', 'Enter']) search.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+    expect(nav).not.toHaveBeenCalled()
+    // No card: Enter in the empty field adds no newline and sends nothing.
+    card.unmount()
+    ta.focus()
+    const alone = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    ta.dispatchEvent(alone)
+    expect(alone.defaultPrevented).toBe(true)
+    expect(nav).not.toHaveBeenCalled()
+  } finally {
+    search.remove()
+    card.unmount()
+    composer.unmount()
+    desk.value = false
+    herdrState.value = { ok: false, workspaces: [], panes: [] }
+  }
 })
