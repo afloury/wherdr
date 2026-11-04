@@ -6,8 +6,8 @@ wherdr v3 runs entirely on herdr-core (`hc`). This page is the reference for wha
 
 ## Setup
 
-Build with `WHERDR_BACKEND=core NUXT_PUBLIC_CORE=true`, and start the server with
-`WHERDR_BACKEND=core` and `HC_SOCKET` pointing to the socket of the desired hc session
+Build with `npm run build`, and start the server with `HC_SOCKET` pointing to the socket of the
+desired hc session
 ([First launch](quick-start.md#quick-start)). Obtain the endpoint from your hc configuration;
 wherdr requires an explicit endpoint and never starts or installs core. This avoids accidentally
 selecting an inherited agent session. The browser cannot choose the endpoint or issue arbitrary
@@ -64,8 +64,7 @@ bounds the relay) and scrolls the history it received locally.
 The composer sends with `terminal.send` (never retried), Stop calls
 `terminal.interrupt` and reports what core observed, keys use `terminal.keys`, and
 closing a pane ends its program with `terminal.kill`. Controls that core does not support
-yet are disabled or hidden. Without
-`WHERDR_BACKEND=core`, the existing v2 application is unchanged.
+yet are disabled or hidden.
 
 Reference: [published 0.1.16 protocol](https://github.com/herdrdev/herdr-core/blob/v0.1.16/schema/README.md).
 Generation 1 and both advertised method lists must support the first v3 terminal
