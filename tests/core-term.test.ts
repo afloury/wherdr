@@ -55,12 +55,15 @@ describe('openCoreTerm', () => {
   it('fits the terminal to the screen on open, and gives control up when another viewer sets the size', async () => {
     const t = setup()
     await tick()
-    expect(resizes(t.sent)).toEqual([[40, 20]])
+    // Attached at this screen's size: core paints at the final width, no resize after.
+    expect(t.calls[1]!.params).toMatchObject({ terminal: 'm/t7', cols: 40, rows: 20 })
+    expect(t.out.find(m => m.full)).toMatchObject({ type: 'terminal.frame', width: 40, height: 20 })
+    expect(resizes(t.sent)).toEqual([])
     t.streams.get(2)!(FRAME.DATA, Buffer.from(JSON.stringify({ jsonrpc: '2.0', method: 'event', params: { type: 'size', terminal: 'm/t7', data: { cols: 120, rows: 40 } } }) + '\n'))
     expect(t.out.at(-2)).toMatchObject({ type: 'terminal.frame', width: 120, height: 40, bytes: '' })
     expect(t.out.at(-1)).toEqual({ type: 'terminal.control', on: false })
     t.sess.onMessage(JSON.stringify({ type: 'terminal.resize', cols: 50, rows: 20 }))
-    expect(resizes(t.sent)).toHaveLength(1)
+    expect(resizes(t.sent)).toEqual([])
     t.sess.onMessage(JSON.stringify({ type: 'take.control' }))
     expect(resizes(t.sent).at(-1)).toEqual([50, 20])
   })
@@ -69,11 +72,11 @@ describe('openCoreTerm', () => {
     const size = (cols: number, rows: number) => Buffer.from(JSON.stringify({ jsonrpc: '2.0', method: 'event', params: { type: 'size', terminal: 'm/t7', data: { cols, rows } } }) + '\n')
     const t = setup()
     await tick()
-    expect(resizes(t.sent)).toEqual([[40, 20]])
+    expect(resizes(t.sent)).toEqual([])
     t.sess.onMessage(JSON.stringify({ type: 'terminal.resize', cols: 60, rows: 30 }))
-    expect(resizes(t.sent)).toEqual([[40, 20], [60, 30]])
+    expect(resizes(t.sent)).toEqual([[60, 30]])
     t.sess.onMessage(JSON.stringify({ type: 'terminal.resize', cols: 70, rows: 30 }))
-    expect(resizes(t.sent)).toEqual([[40, 20], [60, 30], [70, 30]])
+    expect(resizes(t.sent)).toEqual([[60, 30], [70, 30]])
     // The echo of our own size is not another viewer's.
     t.streams.get(2)!(FRAME.DATA, size(70, 30))
     expect(t.out.at(-1)).not.toEqual({ type: 'terminal.control', on: false })
@@ -81,7 +84,7 @@ describe('openCoreTerm', () => {
     t.streams.get(2)!(FRAME.DATA, size(100, 40))
     expect(t.out.at(-1)).toEqual({ type: 'terminal.control', on: false })
     t.sess.onMessage(JSON.stringify({ type: 'terminal.resize', cols: 71, rows: 30 }))
-    expect(resizes(t.sent)).toHaveLength(3)
+    expect(resizes(t.sent)).toHaveLength(2)
   })
 
   it('relays output with its credit and returns no more credit than was sent', async () => {
