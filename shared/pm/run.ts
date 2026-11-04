@@ -2,6 +2,7 @@
 // wherdr.* labels on herdr-core, so the engine finds it again after a restart.
 import type { Project } from './project'
 import type { Prefs, Step, Template } from './workflow'
+import type { StepState } from './steps'
 
 export interface Task {
   id: string // <project key>-<n>
@@ -12,6 +13,7 @@ export interface Task {
   state: 'todo' | 'working' | 'waiting'
   waiting?: string // why it waits for the user
   run?: string // the current run
+  step?: StepState // where the step engine has it
   prefs?: Prefs
   createdAt: number
 }
