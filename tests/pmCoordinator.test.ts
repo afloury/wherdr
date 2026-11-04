@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
-import { issueToken, noteTurn, runCommand, startCoordinator, userMessageTo } from '../server/utils/pmCoordinator'
+import { deliverWakes, issueToken, noteTurn, runCommand, startCoordinator, userMessageTo } from '../server/utils/pmCoordinator'
 import { parseCommand, roleFiles, coordinatorArgs } from '../shared/pm/coordinator'
 import { EXAMPLES, common, company } from '../shared/pm/examples'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
@@ -73,8 +73,9 @@ describe('template edit', () => {
   it('in a user turn: saved, with the diff, and logged with the user\'s sentence', async () => {
     await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9' })
     await userMessageTo(store, 'host/t9', 'Tell agents to never run the full suite')
-    const r = await cli(['template', 'edit'], moreInstructions) as { version: number, changes: string[] }
+    const r = await cli(['template', 'edit'], moreInstructions) as { version: number, changes: string[], diff: string }
     expect(r.version).toBe(2)
+    expect(r.diff).toBe('-   "instructions": "Base branch is develop.",\n+   "instructions": "Base branch is develop. Never run the full suite locally.",')
     expect(r.changes.length).toBeGreaterThan(0)
     expect((await store.templateLog('company')).at(-1)).toMatchObject({ by: 'coordinator CO', version: 2, said: 'Tell agents to never run the full suite' })
   })
@@ -102,7 +103,7 @@ describe('step done', () => {
     await cli(done, undefined, st)
     const saved = (await store.task(task.id))!
     expect(saved.step).toMatchObject({ done: true })
-    expect(saved.log!.at(-1)).toMatchObject({ by: 'coordinator ST', text: 'pick: the user said "Yes, create them"' })
+    expect(saved.log!.at(-1)).toMatchObject({ by: 'coordinator ST', text: 'pick: done on the user\'s message "Yes, create them"' })
   })
 
   it('ends only a step the coordinator holds; its recheck reminds it', async () => {
@@ -151,7 +152,8 @@ describe('arbitration after N send-backs', () => {
 })
 
 describe('role files', () => {
-  it('are written in the coordinator\'s own folder when it starts, with a new token in its environment', async () => {
+  // A fake herdr-core: the machine's home is /h; files written; terminals started.
+  const fakeCore = (local = true) => {
     const written: string[] = [], runs: Record<string, unknown>[] = []
     const call = async (method: string, params: Record<string, unknown>) => {
       const argv = params.argv as string[] | undefined
@@ -160,21 +162,35 @@ describe('role files', () => {
       runs.push(params)
       return { address: 'host/t5' }
     }
-    const machines = () => [{ key: '', label: 'here', local: true, status: 'online' }]
-    const r = await startCoordinator({ store, call, machines } as unknown as Parameters<typeof startCoordinator>[0], 'CO', { program: 'claude', model: 'opus' }, 'http://127.0.0.1:7690')
+    const machines = () => [{ key: '', label: 'here', local, status: 'online' }]
+    return { written, runs, deps: { store, call, machines } as unknown as Parameters<typeof startCoordinator>[0] }
+  }
+  const urls = { local: 'http://127.0.0.1:7690', remote: 'https://host.tailnet.example' }
+
+  it('are written in the coordinator\'s own folder when it starts, with a new token and its wherdr script in its environment', async () => {
+    const { written, runs, deps } = fakeCore()
+    const r = await startCoordinator(deps, 'CO', { program: 'claude', model: 'opus' }, urls)
     expect(r).toEqual({ terminal: 'host/t5', folder: '/h/.wherdr/pm/coordinators/CO' })
     expect(written.every(f => f.startsWith('/h/.wherdr/pm/coordinators/CO/'))).toBe(true)
-    expect(runs[0]).toMatchObject({ cwd: '/h/.wherdr/pm/coordinators/CO', labels: { 'wherdr.coordinator': 'CO' }, env: { DISABLE_AUTOUPDATER: '1' } })
-    expect(runs[0]!.line).toContain(`'claude' '--model' 'opus' '--add-dir' '/src/co'`)
+    expect(written).toContain('/h/.wherdr/pm/coordinators/CO/bin/wherdr')
+    expect(runs[0]).toMatchObject({ cwd: '/h/.wherdr/pm/coordinators/CO', labels: { 'wherdr.coordinator': 'CO' }, env: { DISABLE_AUTOUPDATER: '1', WHERDR_URL: urls.local } })
+    expect(runs[0]!.line).toContain(`export PATH='/h/.wherdr/pm/coordinators/CO/bin':"$PATH"; exec 'claude' '--model' 'opus' '--add-dir' '/src/co'`)
     const fresh = (runs[0]!.env as { WHERDR_PM_TOKEN: string }).WHERDR_PM_TOKEN
     await refused(cli(['list']), 'Unknown coordinator token')
     await expect(cli(['list'], undefined, fresh)).resolves.toBeTruthy()
     expect((await store.coordinator('CO'))!.terminal).toBe('host/t5')
   })
 
+  it('on another machine, the coordinator gets wherdr\'s published address, never loopback', async () => {
+    const remote = fakeCore(false)
+    await startCoordinator(remote.deps, 'CO', { program: 'codex', model: 'gpt-5' }, urls)
+    expect(remote.runs[0]).toMatchObject({ on: 'here', env: { WHERDR_URL: urls.remote } })
+    await refused(startCoordinator(fakeCore(false).deps, 'CO', { program: 'codex', model: 'gpt-5' }, { local: urls.local }), 'publish it on your tailnet')
+  })
+
   it('say who it is, its commands, each plan and the user\'s instructions, all inside its own folder', () => {
     const files = roleFiles({ key: 'CO', name: 'Company', machine: '', path: '/src/co', template: 'company', addedAt: 1 }, company, EXAMPLES)
-    expect(Object.keys(files).sort()).toEqual(['.claude/settings.json', '.claude/skills/wherdr-pm/SKILL.md', 'AGENTS.md', 'CLAUDE.md'])
+    expect(Object.keys(files).sort()).toEqual(['.claude/settings.json', '.claude/skills/wherdr-pm/SKILL.md', 'AGENTS.md', 'CLAUDE.md', 'bin/wherdr'])
     const agents = files['AGENTS.md']!
     expect(agents).toContain('You coordinate project CO only')
     expect(agents).toContain('`wherdr pm task link <task> <url> --label <label>`')
@@ -182,8 +198,11 @@ describe('role files', () => {
     expect(agents).toContain('- Base branch is develop.')
     expect(agents).toContain('"id":"vibe"')
     expect(files['CLAUDE.md']).toBe('@AGENTS.md\n')
-    expect(JSON.parse(files['.claude/settings.json']!).permissions.deny).toContain('Edit(//src/co/**)')
-    expect(coordinatorArgs('codex', 'gpt-5', '/h/c', '/src/co')).not.toContain('--add-dir')
+    expect(JSON.parse(files['.claude/settings.json']!).permissions.deny).toEqual(['Edit(//src/co/**)'])
+    const codex = coordinatorArgs('codex', 'gpt-5', '/h/c', '/src/co')
+    expect(codex).not.toContain('--add-dir')
+    expect(codex).not.toContain('-s') // a sandbox mode would bring back the profile-less sandbox, without network
+    expect(codex).toEqual(expect.arrayContaining(['default_permissions="wherdr"', 'permissions.wherdr.extends=":workspace"', 'permissions.wherdr.network.enabled=true']))
   })
 })
 
@@ -202,4 +221,88 @@ it('wherdr pm sends its words with the token, and template edit sends stdin', as
   expect(JSON.parse(calls[0]!.init.body)).toEqual({ argv: ['template', 'edit'], input: '{"id":"company"}' })
   expect(printed).toContain('"version": 2')
   await expect(pm(['list'], { env: {}, request })).rejects.toThrow('WHERDR_PM_TOKEN')
+})
+
+// The script written in the coordinator's folder, run for real (sh, base64, curl)
+// against a server that answers with runCommand.
+it('the folder\'s wherdr script sends any words and stdin, and fails on a refusal', async () => {
+  const http = await import('node:http')
+  const { execFile } = await import('node:child_process')
+  const { WHERDR_SCRIPT } = await import('../shared/pm/coordinator')
+  const task = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
+  const server = http.createServer((req, res) => {
+    let raw = ''
+    req.on('data', (c) => { raw += c })
+    req.on('end', async () => {
+      const ok = req.headers.origin === `http://${req.headers.host}`
+      try {
+        if (!ok) throw new Error('Origin refused')
+        res.end(JSON.stringify(await runCommand(deps(), String(req.headers.authorization).slice(7), JSON.parse(raw))))
+      }
+      catch (e) { res.statusCode = 400; res.end(JSON.stringify({ error: (e as Error).message })) }
+    })
+  })
+  await new Promise<void>(r => server.listen(0, '127.0.0.1', r))
+  const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+  const script = path.join(dir, 'wherdr')
+  await fs.writeFile(script, WHERDR_SCRIPT, { mode: 0o755 })
+  const run = (args: string[], input = '') => new Promise<{ code: number, out: string }>((resolve) => {
+    const child = execFile(script, args, { env: { PATH: process.env.PATH, WHERDR_URL: url, WHERDR_PM_TOKEN: token } }, (e, out) => resolve({ code: e ? Number(e.code) : 0, out }))
+    child.stdin!.end(input)
+  })
+  try {
+    const tag = await run(['pm', 'task', 'tag', task.id, 'say "hi" \\ ünï'])
+    expect(tag.code).toBe(0)
+    expect((await store.task(task.id))!.tags).toEqual(['say "hi" \\ ünï'])
+    const edit = await run(['pm', 'template', 'edit'], JSON.stringify(company))
+    expect(edit.code).not.toBe(0)
+    expect(edit.out).toContain('only for a turn that comes from the user')
+    expect((await run(['list'])).code).toBe(2)
+  }
+  finally { server.close() }
+})
+
+describe('wakes', () => {
+  const deliver = (status: string, now: number) => {
+    const sent: { terminal: string, text: string }[] = []
+    const call = async (method: string, params: Record<string, string>) => {
+      if (method === 'terminal.get') return { status }
+      if (method === 'terminal.send') sent.push({ terminal: params.terminal!, text: params.text! })
+      return {}
+    }
+    return { sent, run: () => deliverWakes({ store, call } as unknown as Parameters<typeof deliverWakes>[0], now) }
+  }
+  const atDeploy = async (since: number) => {
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9' })
+    const task = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
+    await store.saveTask({ ...task, state: 'working', step: state(5, { since, recheckAt: since + 300_000 }) })
+    return task.id
+  }
+
+  it('tells the coordinator its step once, then each recheck, as an Autopilot wake turn', async () => {
+    const id = await atDeploy(1000)
+    const first = deliver('idle', 2000)
+    expect(await first.run()).toEqual(['CO'])
+    expect(first.sent).toEqual([{ terminal: 'host/t9', text: expect.stringMatching(/^Autopilot:\n\nCO-1 \(Fix\): Base branch is develop\.[\s\S]*Watch the develop pipeline/) }])
+    expect((await store.coordinator('CO'))!.turn).toMatchObject({ kind: 'wake' })
+    // A wake turn: the user's words cannot be claimed.
+    await store.saveTask({ ...(await store.task(id))!, step: { ...(await store.task(id))!.step!, at: 4, yourTurn: { reason: 'user', badge: 'Merge the PR' } } })
+    await refused(cli(['step', 'done', id, '--user-said', 'merged']), 'not a wake')
+    await store.saveTask({ ...(await store.task(id))!, step: { ...(await store.task(id))!.step!, at: 5, yourTurn: undefined } })
+    const again = deliver('idle', 3000)
+    expect(await again.run()).toEqual([])
+    const recheck = deliver('idle', 1000 + 300_000)
+    await recheck.run()
+    expect(recheck.sent[0]!.text).toContain('Check again: ')
+  })
+
+  it('waits while the coordinator works or the user just wrote', async () => {
+    await atDeploy(1000)
+    const busy = deliver('working', 2000)
+    expect(await busy.run()).toEqual([])
+    await noteTurn(store, 'CO', 'user', 'hi')
+    const quiet = deliver('idle', Date.now() + 10_000)
+    expect(await quiet.run()).toEqual([])
+    expect(quiet.sent).toEqual([])
+  })
 })

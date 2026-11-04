@@ -2,7 +2,7 @@
 // it), where its current turn comes from, the `wherdr pm` commands it runs,
 // and its role files, written in its own folder on the project's machine.
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import { parseCommand, roleFiles, stepDoneEvent, templateEditRefusal, coordinatorArgs, type Turn } from '../../shared/pm/coordinator'
+import { coordinatorArgs, coordinatorWake, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { EXAMPLES } from '../../shared/pm/examples'
@@ -57,11 +57,15 @@ const summary = (t: Template | null, task: Task) => {
   return { id: task.id, title: task.title, type: task.type, state: task.state, step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links }
 }
 
-// POST /api/pm/cli: { argv, input? } with the coordinator's token.
-export async function runCommand(deps: Deps, token: unknown, body: { argv?: unknown, input?: unknown }) {
+const unb64 = (v: unknown) => (typeof v === 'string' ? Buffer.from(v, 'base64').toString('utf8') : v)
+
+// POST /api/pm/cli: { argv, input? } with the coordinator's token, or
+// { argv64, input64 } from the folder's `wherdr` script.
+export async function runCommand(deps: Deps, token: unknown, body: { argv?: unknown, input?: unknown, argv64?: unknown, input64?: unknown }) {
   const { store } = deps
   const key = await scopeOf(store, token)
   if (!key) throw new HerdrError('forbidden', 'Unknown coordinator token')
+  if (Array.isArray(body.argv64)) body = { argv: body.argv64.map(unb64), input: unb64(body.input64) }
   const cmd = parseCommand(body.argv)
   if ('error' in cmd) throw new HerdrError('bad_input', cmd.error)
   const projects = await store.projects()
@@ -93,7 +97,9 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const other = projects.find(x => x.key !== key && x.template === t!.id)
       if (other) throw new HerdrError('refused', `Template ${t!.id} is also used by project ${other.key}: the user changes it in Settings › Projects`)
       const saved = await store.saveTemplate(next, { replace: true, by, said: rec?.turn?.said })
-      return { ...saved, changes: templateChanges(t, next) }
+      // The role files show the new plans at once, not at the next start.
+      const rewritten = await writeRoleFiles(deps, key).then(() => true, () => false)
+      return { ...saved, changes: templateChanges(t, next), diff: templateDiff(t, next), roleFiles: rewritten ? 'updated' : 'not updated: restart the coordinator' }
     }
     case 'task tag': {
       const task = await taskOf(cmd.task)
@@ -113,7 +119,8 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if ('refused' in ev) throw new HerdrError('refused', ev.refused)
       const step = currentStep(plan, state)!.id
       // The user's words: the same path as the step's button (runs its check).
-      if (ev.kind === 'user') return { task: await store.logTask(await userStep(deps, task.id), by, `${step}: the user said "${cmd.userSaid}"`) }
+      // The log keeps the user's own message (the turn's), not the coordinator's quote.
+      if (ev.kind === 'user') return { task: await store.logTask(await userStep(deps, task.id), by, `${step}: done on the user's message "${rec?.turn?.said ?? ''}"`) }
       const r = onEvent(plan, state, ev, Date.now())
       if (r.refused) throw new HerdrError('refused', r.refused)
       return { task: await store.logTask({ ...task, step: r.state }, by, `${step}: done`) }
@@ -128,37 +135,96 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
   }
 }
 
-// When a project coordinator starts: a new token, the role files in its own
-// folder (~/.wherdr/pm/coordinators/<KEY> on the project's machine; never
-// ~/.claude or ~/.codex), and how to start it there.
-export async function prepareCoordinator(deps: Deps, key: string, agent: { program: 'claude' | 'codex', model: string }, url: string) {
+// The role files (and the `wherdr` script) in the coordinator's own folder,
+// ~/.wherdr/pm/coordinators/<KEY> on the project's machine; never ~/.claude
+// or ~/.codex.
+async function writeRoleFiles(deps: Deps, key: string) {
   const { store } = deps
   const p = (await store.projects()).find(x => x.key === key)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
   const t = p.template ? await store.template(p.template) : null
-  const { on } = machineOn(deps, p.machine)
+  const { m, on } = machineOn(deps, p.machine)
   const home = await homeOf(deps, on)
   if (!home) throw new HerdrError('core', 'Home folder not found on the project\'s machine')
   const folder = `${home}/.wherdr/pm/coordinators/${key}`
   for (const [file, text] of Object.entries(roleFiles(p, t, EXAMPLES)))
     if ((await exec(deps, on, WRITE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not write ${file}`)
-  const token = await issueToken(store, key)
+  await exec(deps, on, 'chmod 755 "$1"', [`${folder}/bin/wherdr`])
+  return { p, local: !!m.local, on, folder }
+}
+
+// Where the coordinator reaches wherdr: loopback on the wherdr host; from
+// another machine, wherdr's published (tailnet) address.
+export interface CoordinatorUrls { local: string, remote?: string }
+
+// When a project coordinator starts: its files, a new token, how to start it.
+export async function prepareCoordinator(deps: Deps, key: string, agent: { program: 'claude' | 'codex', model: string }, urls: CoordinatorUrls) {
+  const { p, local, on, folder } = await writeRoleFiles(deps, key)
+  const url = local ? urls.local : urls.remote
+  if (!url) throw new HerdrError('unreachable', 'The project\'s machine cannot reach this wherdr: publish it on your tailnet first (Settings › Phone)')
+  const token = await issueToken(deps.store, key)
   return { on, folder, argv: coordinatorArgs(agent.program, agent.model, folder, p.path), env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
 }
 
-// Starts the coordinator in its folder, model pinned, token in its environment.
-export async function startCoordinator(deps: Deps, key: unknown, agent: { program?: unknown, model?: unknown }, url: string) {
+// Starts the coordinator in its folder, model pinned, token in its environment,
+// its folder's bin/ (the `wherdr` script) first in its PATH.
+export async function startCoordinator(deps: Deps, key: unknown, agent: { program?: unknown, model?: unknown }, urls: CoordinatorUrls) {
   const program = agent.program === 'codex' ? 'codex' : agent.program === 'claude' ? 'claude' : null
   if (!program || typeof agent.model !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:[\]/-]{0,63}$/.test(agent.model))
     throw new HerdrError('bad_input', 'program: claude or codex, and a model')
   if (typeof key !== 'string') throw new HerdrError('not_found', 'Unknown project')
-  const c = await prepareCoordinator(deps, key, { program, model: agent.model }, url)
+  const c = await prepareCoordinator(deps, key, { program, model: agent.model }, urls)
   const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
   const { address } = await deps.call<{ address: string }>('terminal.run', {
     cwd: c.folder, ...(c.on ? { on: c.on } : {}), no_parent: true, wait: false, env: c.env,
     labels: { 'wherdr.install': await deps.store.install(), 'wherdr.coordinator': key },
-    line: `${PATH_SETUP}; exec ${c.argv.map(quote).join(' ')}`,
+    line: `${PATH_SETUP}; export PATH=${quote(`${c.folder}/bin`)}:"$PATH"; exec ${c.argv.map(quote).join(' ')}`,
   }, 30000)
   await deps.store.saveCoordinator({ ...(await deps.store.coordinator(key))!, terminal: address })
   return { terminal: address, folder: c.folder }
+}
+
+const QUIET_MS = 60_000 // no wake within a minute of the user's message
+
+// The engine's wakes (server/plugins/pm.ts, every 30 s): for each task, its
+// recheck reminders and the start of a step the coordinator holds go to the
+// project's coordinator as one "Autopilot:" message, once it is idle and the
+// user has not written in the last minute. The turn is noted as a wake first.
+// Undelivered, nothing is marked: the next tick tries again.
+export async function deliverWakes(deps: Deps, now = Date.now()) {
+  const { store } = deps
+  if (!(await store.enabled())) return []
+  const projects = await store.projects()
+  const templates = new Map<string, Template | null>()
+  const pending = new Map<string, { task: Task, state: NonNullable<Task['step']>, texts: string[] }[]>()
+  for (const task of await store.tasks()) {
+    if (!task.step?.started || task.step.done) continue
+    const p = projects.find(x => x.key === task.project)
+    if (!p?.template) continue
+    if (!templates.has(p.template)) templates.set(p.template, await store.template(p.template))
+    const t = templates.get(p.template)
+    if (!t) continue
+    const w = coordinatorWake(planOf(t, task), task.step, now)
+    if (w.texts.length) pending.set(p.key, [...(pending.get(p.key) ?? []), { task, state: w.state, texts: w.texts }])
+    else if (JSON.stringify(w.state) !== JSON.stringify(task.step)) await store.saveTask({ ...task, step: w.state })
+  }
+  const sent: string[] = []
+  for (const [key, items] of pending) {
+    const c = await store.coordinator(key)
+    if (!c?.terminal) {
+      // No coordinator: the tick still counts (timeouts), the step start stays to announce.
+      for (const i of items) await store.saveTask({ ...i.task, step: { ...i.state, told: i.task.step!.told } })
+      continue
+    }
+    if (c.turn?.kind === 'user' && now - c.turn.at < QUIET_MS) continue
+    const st = await deps.call<{ status?: string | { state?: string } | null }>('terminal.get', { terminal: c.terminal }, 3000).catch(() => null)
+    const state = typeof st?.status === 'string' ? st.status : st?.status?.state
+    if (state !== 'idle' && state !== 'done') continue
+    const text = ['Autopilot:', ...items.map(i => `${i.task.id} (${i.task.title}): ${i.texts.join('\n')}`)].join('\n\n')
+    await noteTurn(store, key, 'wake')
+    try { await deps.call('terminal.send', { terminal: c.terminal, text }, 30000) } catch { continue }
+    for (const i of items) await store.saveTask({ ...(await store.task(i.task.id))!, step: i.state })
+    sent.push(key)
+  }
+  return sent
 }

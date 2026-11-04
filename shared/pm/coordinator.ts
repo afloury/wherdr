@@ -4,7 +4,7 @@
 import type { Project } from './project'
 import type { Template } from './workflow'
 import { CHOICES, type Choice } from './verdict'
-import { planSteps, type PlannedStep, type StepEvent } from './steps'
+import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
 
 // Where the coordinator's current turn comes from: a message the user sent
 // from the interface, an engine wake, or nothing known (refused like a wake).
@@ -113,11 +113,56 @@ export function stepDoneEvent(step: PlannedStep | undefined, cmd: { userSaid?: s
 }
 
 // How the coordinator starts, in its own folder. Claude: the repo added with
-// --add-dir, its writes denied in the folder's .claude/settings.json. Codex:
-// its --add-dir makes a folder writable, so none; its workspace-write sandbox
-// already reads the whole disk and writes only in the coordinator's folder.
+// --add-dir, its edits denied in the folder's .claude/settings.json. Codex:
+// its --add-dir makes a folder writable, so none. Its `workspace-write`
+// sandbox has no network, which `wherdr pm` needs: a permission profile given
+// only by -c (nothing in ~/.codex) extends :workspace (reads everywhere, writes
+// in its folder and temp folders) with the network on.
 export function coordinatorArgs(program: 'claude' | 'codex', model: string, folder: string, repo: string): string[] {
-  return program === 'claude' ? ['claude', '--model', model, '--add-dir', repo] : ['codex', '--model', model, '-C', folder, '-s', 'workspace-write']
+  return program === 'claude'
+    ? ['claude', '--model', model, '--add-dir', repo]
+    : ['codex', '--model', model, '-C', folder, '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true']
+}
+
+// `wherdr` in the coordinator's folder (bin/, first in its PATH): the project's
+// machine may have no wherdr installed, and a build ships none. sh, base64 and
+// curl only; every word goes base64-encoded, so any text is safe in the JSON.
+export const WHERDR_SCRIPT = `#!/bin/sh
+# wherdr pm, for this project's coordinator (written by wherdr at its start).
+[ "$1" = pm ] || { echo "wherdr: only 'wherdr pm <command>' works here" >&2; exit 2; }
+shift
+b64() { base64 | tr -d '\\n'; }
+body='{"argv64":[' sep=
+for a in "$@"; do body="$body$sep\\"$(printf %s "$a" | b64)\\"" sep=,; done
+body="$body]"
+[ "$1 $2" = "template edit" ] && body="$body,\\"input64\\":\\"$(b64)\\""
+out=$(mktemp) || exit 1
+code=$(printf '%s}' "$body" | curl -sS -o "$out" -w '%{http_code}' -X POST --data-binary @- \\
+  -H 'content-type: application/json' -H "origin: $WHERDR_URL" -H "authorization: Bearer $WHERDR_PM_TOKEN" "$WHERDR_URL/api/pm/cli")
+cat "$out"; echo; rm -f "$out"
+[ "$code" -ge 200 ] 2>/dev/null && [ "$code" -lt 300 ]
+`
+
+// The changed lines of two templates, as JSON: what the coordinator shows the user.
+export function templateDiff(old: Template | null, next: Template): string {
+  const lines = (t: Template | null) => JSON.stringify({ ...t, version: undefined }, null, 2).split('\n') // the version is the store's
+  const a = lines(old), b = lines(next)
+  let i = 0, j = 0
+  while (i < a.length && i < b.length && a[i] === b[i]) i++
+  while (j < a.length - i && j < b.length - i && a[a.length - 1 - j] === b[b.length - 1 - j]) j++
+  return [...a.slice(i, a.length - j).map(l => `- ${l}`), ...b.slice(i, b.length - j).map(l => `+ ${l}`)].join('\n')
+}
+
+// What the engine tells the coordinator on a tick: its step's instructions
+// once when the step starts, then each recheck. `told` marks the step start
+// already announced.
+export function coordinatorWake(plan: PlannedStep[], state: StepState, now: number): { state: StepState, texts: string[] } {
+  if (!state.started || state.done) return { state, texts: [] }
+  const r = onEvent(plan, state, { kind: 'tick' }, now)
+  const texts = r.effects.flatMap(e => (e.kind === 'instruct' && e.holder === 'coordinator' ? [e.text] : []))
+  const step = currentStep(plan, r.state)
+  if (step?.holder !== 'coordinator' || state.told === state.since) return { state: r.state, texts }
+  return { state: { ...r.state, told: state.since }, texts: texts.length ? texts : [step.text] }
 }
 
 const stepLine = (s: PlannedStep) => `- ${s.id} (${s.column ?? s.id}): ${[
@@ -155,11 +200,13 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[]):
   ].join('\n')
   const skill = ['---', 'name: wherdr-pm', `description: Act on project ${p.key}'s board with the wherdr pm command (tasks, steps, tags, links, template).`, '---', '',
     '# wherdr pm', '', 'Your token is in WHERDR_PM_TOKEN; the server checks every right.', '', ...commandList, ''].join('\n')
-  const deny = ['Edit', 'Write', 'NotebookEdit'].map(tool => `${tool}(/${p.path.replace(/\/$/, '')}/**)`)
+  // Claude's Edit rule covers every file-writing tool.
+  const deny = [`Edit(/${p.path.replace(/\/$/, '')}/**)`]
   return {
     'AGENTS.md': agents,
     'CLAUDE.md': '@AGENTS.md\n',
     '.claude/skills/wherdr-pm/SKILL.md': skill,
     '.claude/settings.json': `${JSON.stringify({ permissions: { deny } }, null, 2)}\n`,
+    'bin/wherdr': WHERDR_SCRIPT,
   }
 }
