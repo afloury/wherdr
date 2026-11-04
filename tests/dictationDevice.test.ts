@@ -4,8 +4,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runDictationEngineContract } from './dictationEngineContract'
 import { createDeviceEngine } from '../app/utils/dictation/device'
-import { DEVICE_MODELS, DEVICE_RUNTIME, deviceModel } from '../app/utils/dictation/deviceModels'
+import { DEVICE_CACHE, DEVICE_MODELS, DEVICE_RUNTIME, deviceModel } from '../app/utils/dictation/deviceModels'
 import { TAKE_RATE, isAbortError } from '../app/utils/dictation/engine'
+import { CHUNK } from '../app/utils/dictation/modelStore'
+import { fakeCaches, rangeServer } from './fakeModelCache'
 // @ts-expect-error plain .mjs script, no types
 import { DEFAULT_SETS, SETS } from '../scripts/fetch-dictation-files.mjs'
 
@@ -77,6 +79,23 @@ describe('the on-device engine', () => {
     expect(FakeWorker.made[0]!.got.filter(m => m.t === 'decode')).toHaveLength(4)
   })
 
+  it('downloads into Cache Storage before the worker reads it, or streams it when the quota is full', async () => {
+    const caches = fakeCaches()
+    const seen: unknown[] = []
+    const engine = createDeviceEngine({ model, caches, fetch: rangeServer(model).fetch, worker: () => new FakeWorker() as unknown as Worker })
+    await engine.prepare(p => seen.push(p))
+    expect(seen.slice(0, 3)).toEqual([{ phase: 'fetch', got: 0, total: 110 }, { phase: 'fetch', got: 100, total: 110 }, { phase: 'fetch', got: 110, total: 110 }])
+    expect(FakeWorker.made[0]!.got[0]).toMatchObject({ cache: DEVICE_CACHE, chunk: CHUNK, bytes: [100, 10] })
+    vi.stubGlobal('Worker', FakeWorker)
+    expect(await engine.readiness()).toEqual({ ready: true })
+
+    const full = fakeCaches()
+    const open = full.open.bind(full)
+    full.open = async (n: string) => ({ ...(await open(n)), put: async () => { throw new DOMException('full', 'QuotaExceededError') } }) as unknown as Cache
+    await createDeviceEngine({ model: { ...model, id: 'q' }, caches: full, fetch: rangeServer(model).fetch, worker: () => new FakeWorker() as unknown as Worker }).prepare()
+    expect(FakeWorker.made[1]!.got[0]).toMatchObject({ cache: '' })
+  })
+
   it('fails the load and starts a fresh worker on the next press', async () => {
     const engine = make({ loadError: 'out of memory' })
     await expect(engine.prepare()).rejects.toThrow('out of memory')
@@ -94,7 +113,7 @@ describe('the on-device engine', () => {
 
   describe('readiness', () => {
     const head = (status: number) => vi.fn(async () => new Response(null, { status }))
-    const cachesWith = (hit: boolean) => ({ open: async () => ({ match: async () => (hit ? new Response('x') : undefined) }) }) as unknown as CacheStorage
+    const cachesWith = (hit: boolean) => ({ open: async () => ({ keys: async () => (hit ? model.files.map(f => ({ url: `http://x/models/${model.dir}/${f.path}` })) : []) }) }) as unknown as CacheStorage
 
     it('is ready when the model is cached, or when the server has it', async () => {
       vi.stubGlobal('Worker', FakeWorker)

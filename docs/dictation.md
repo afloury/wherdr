@@ -18,7 +18,7 @@ pane terms, model route, fetch script), with credit in the code.
 | Online engine (OpenRouter, through the wherdr server) | Merged |
 | `/models/**` route, fetch script with sha256, CSP, service worker | Merged |
 | On-device engine (sherpa-onnx WASM worker, CPU) | Merged: Parakeet v3 (French + English, default) and SenseVoice |
-| Model list in Settings (install, delete, progress, ratings) | Planned |
+| Model list in Settings (install, delete, progress, ratings) | Merged |
 | WebGPU models (Qwen3-ASR q4f16) | **Open for an outside contributor** (see [Task split](#task-split)) |
 
 ## Overview
@@ -45,6 +45,9 @@ insertion are shared; only the engine behind the interface changes.
 | `app/utils/dictation/terms.ts` | `dictationTerms()`: pane words that bias recognition |
 | `app/utils/dictation/cloud.ts`, `cloudOptions.ts`, `wav.ts` | The online engine and its options |
 | `app/components/DictationCloudSettings.vue` | Settings › Dictation › Online (key, model, ZDR, terms, Test) |
+| `app/utils/dictation/models.json`, `deviceModels.ts` | The on-device model catalog and its ratings |
+| `app/utils/dictation/modelStore.ts` | Model files in Cache Storage: resumable install, delete, space used |
+| `app/components/DictationDeviceSettings.vue` | Settings › Dictation › On this device (model list) |
 | `server/utils/dictation.ts`, `server/api/dictation/*` | Key storage and the OpenRouter relay |
 | `server/utils/modelFiles.ts`, `server/routes/models/[...path].ts` | Serving `DATA_DIR/models/**` |
 | `scripts/fetch-dictation-files.mjs` | Pinned downloads into `DATA_DIR/models`, checked by sha256 |
@@ -200,8 +203,13 @@ percentage) and ×.
   (`..`, absolute paths, symlinks leading out). It sits behind the same lock as the rest of
   wherdr. **Immutable means a new version needs a new folder name**, never a file replaced in
   place.
-- **Browser side**: the dictation worker downloads files once in resumable `Range` slices into
-  Cache Storage, in caches named `wherdr-asr-*`. The service worker
+- **Browser side**: `modelStore.ts` downloads each file once in 8 MB `Range` slices into Cache
+  Storage (`wherdr-asr-v1`), one entry per slice (`file?chunk=N`): an interrupted download resumes
+  at the first missing slice, and no file is assembled in memory. Settings' Install and the first
+  mic press share the same download; the worker then reads the slices. Installing asks for
+  persistent storage (`navigator.storage.persist()`); a browser without Cache Storage (plain HTTP)
+  or with a full quota has the worker stream the model from the server on each load. Caches are
+  named `wherdr-asr-*`. The service worker
   (`app/service-worker/sw.ts`) leaves `/models/` alone and keeps `wherdr-asr-*` caches across app
   updates (it deletes every other old cache).
 
@@ -227,32 +235,29 @@ covers resume, mismatch and the set list.
 
 ### The model catalog
 
-The on-device engine reads its models from a catalog: one entry per model, telling the worker
-how to build the recognizer and the Settings list what to show. The engine starts
-with a typed list in `app/utils/dictation/deviceModels.ts`; the target is a JSON catalog read by
-both the Settings list and the fetch script, so that a model of a known family is added without
-code. Whichever form is current, an entry carries:
+The on-device models live in one data file, `app/utils/dictation/models.json`, read by the app
+(`deviceModels.ts`, Settings list) and by the fetch script (its model sets). A model of a known
+family is added there without code; the app needs a rebuild to ship it. An entry carries:
 
 | Field | Meaning |
 | --- | --- |
-| `id`, `name` | Stable id (the cache key, with the files' sha256); short display name |
-| `kind` | The family: how the worker builds it (`senseVoice`, `nemoTransducer`, later `canary`, `moonshine`, `whisper`, `qwen3Q4F16`…). An unknown `kind` is skipped, never an error |
-| `runtime` | `{ engine: 'sherpa-wasm' \| 'ort-web', providers: ['cpu'] \| ['webgpu'], requires: [] \| ['webgpu'] \| ['webgpu', 'shader-f16'] }`. The WebGPU flag: Settings greys out the model, with the reason, when `navigator.gpu` or `shader-f16` is missing |
-| `dir`, `files` | Folder under `/models/` and its files, each with exact `bytes` and `sha256` |
-| `source` | Pinned download: a file URL or a release archive, with its own `sha256` (the fetch script's entry) |
-| `languages`, `autoDetect` | ISO 639-1 codes; whether the model detects the language (Canary does not: the language must be chosen) |
-| `punctuation`, `context` | Punctuation and capitals; whether it uses pane terms |
-| `memoryEstimate` | Bytes, an estimate: a warning on devices with little memory |
+| `id`, `name` | Stable id (saved as the device's choice); short display name |
+| `kind` | The family: how the worker builds it (`senseVoice`, `nemoTransducer`; later `canary`, `moonshine`, `whisper`, `qwen3Q4F16`…). An entry of a family this build does not know is skipped, never an error |
+| `requires` | `[]`, `['webgpu']` or `['webgpu', 'shader-f16']`: Settings hides the model when the browser lacks it |
+| `set`, `source` | The fetch script's set name and its pinned archive (`url`, `sha256`) |
+| `dir`, `files` | Folder under `/models/` and its files, each with its exact `bytes` (checked against the server's on download) |
+| `languages`, `punctuation` | ISO 639-1 codes, all detected; punctuation and capitals |
 | `quality` | Raw published WER per language: `{ lang, dataset, wer, source }` |
-| `speed` | `{ estimate: 1–5, basis, source }` until measured on the device |
-| `license`, `recommended`, `hidden` | License id and link; languages it is the default for; kept out of the list |
+| `speed` | `{ estimate: 1–5, basis, source }`, absent when there is no source |
+| `license` | `{ id, url }` |
 
 **Ratings are computed, never typed by hand.** Quality: the WER for the language, FLEURS first,
 else MLS, else Common Voice; ≤ 5 → 5 dots, ≤ 7 → 4, ≤ 10 → 3, ≤ 15 → 2, above → 1, no figure →
-"?". The tooltip names the figure, dataset and source. Speed: the real-time factor measured on
-the device (`ms / audio ms`, average of the last 5 takes, per model): ≤ 0.1 → 5, ≤ 0.2 → 4,
-≤ 0.4 → 3, ≤ 0.8 → 2, above → 1; until then the catalog's `speed.estimate`, marked "estimated".
-An unknown figure is left out, never set to zero.
+"?". The tooltip names the figure, dataset and source. Speed: the catalog's `speed.estimate`, from
+native real-time factors on a phone-class CPU (≤ 0.1 → 5, ≤ 0.2 → 4, ≤ 0.4 → 3, ≤ 0.8 → 2,
+above → 1), shown as estimated; measuring it on the device is left for later. A language the model
+does not speak shows "—"; a missing figure is left out of the file, never set to zero, and shows
+"unknown".
 
 ### Adding a model
 
@@ -260,13 +265,12 @@ An unknown figure is left out, never set to zero.
    2 GiB heap: much more than about 1 GB of int8 weights does not load on the CPU. Larger
    LLM-style models (Qwen3-ASR, Whisper turbo q4f16) need onnxruntime-web on WebGPU with
    `shader-f16`.
-2. **Add a fetch set** in `scripts/fetch-dictation-files.mjs`: pinned URL (a release asset or a
-   Hugging Face `resolve/<commit>/…` URL, never a moving branch), its sha256 (`sha256sum` of the
-   downloaded file), the target folder, and the archive members if any. Use a new folder name for
-   a new version.
-3. **Add the catalog entry** with exact `bytes` and `sha256` per file (taken from the fetched
-   files, not typed), languages, the runtime and its `requires`, and published WER figures with
-   their source. Leave a figure out rather than guess it.
+2. **Add the entry to `models.json`**: `set`, a pinned `source` (a release asset or a Hugging
+   Face `resolve/<commit>/…` URL, never a moving branch) with its sha256 (`sha256sum` of the
+   downloaded archive), a new `dir` for a new version, and each file's exact `bytes` (from the
+   fetched files, not typed). The fetch script picks it up as a set.
+3. **Add the figures**: languages, `requires`, and published WER figures with their source.
+   Leave a figure out rather than guess it.
 4. **New family only**: add its builder to the worker (for sherpa-onnx families such as Canary,
    Whisper or Moonshine this is one `case`; the WASM already ships their configs), and pass the
    language when the model cannot detect it.
@@ -293,8 +297,8 @@ interface above.
 | A2 | Composer mic and Dictation setting | Merged |
 | A3 | Online engine (OpenRouter) | Merged |
 | F1 | `/models/**` route, fetch script with sha256, CSP, service worker | Merged |
-| F2 | On-device engine: worker, CPU models with French (Parakeet v3) | In review |
-| F3 | Model list in Settings: install, delete, progress, resume, storage used, WebGPU detection, ratings | Planned |
+| F2 | On-device engine: worker, CPU models with French (Parakeet v3) | Merged |
+| F3 | Model list in Settings: install, delete, progress, resume, storage used, WebGPU detection, ratings | Merged |
 | **F4** | **WebGPU models (Qwen3-ASR q4f16)** | **Open for an outside contributor** |
 
 ### F4: WebGPU models
