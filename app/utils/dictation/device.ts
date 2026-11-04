@@ -47,6 +47,8 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
   let onProgress: ((p: PrepareProgress) => void) | undefined
   let nextId = 0
   let disposed = false
+  // Stops a load's wait for the server's files (no Cache Storage) on dispose.
+  let waitServer: AbortController | null = null
   const pending = new Map<number, Pending>()
 
   // The worker failed (load error, crash, out of memory): everything waiting
@@ -67,7 +69,9 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
     const report = (p: Progress) => onProgress?.({ phase: 'fetch', ...p })
     if (!cacheStorage) {
       // Streamed from the server: it still has to hold the files.
-      await prepareOnServer(model, { fetch: doFetch }, new AbortController().signal, report)
+      waitServer = new AbortController()
+      try { await prepareOnServer(model, { fetch: doFetch }, waitServer.signal, report) }
+      finally { waitServer = null }
       return ''
     }
     try {
@@ -189,6 +193,7 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
 
     dispose() {
       disposed = true
+      waitServer?.abort(abortError())
       if (worker) reset(abortError())
     },
   }

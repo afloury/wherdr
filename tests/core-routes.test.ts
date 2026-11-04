@@ -38,6 +38,19 @@ describe('coreRouteAllowed', () => {
   it('answers the file browser routes', () => {
     for (const r of ['/api/files?pane=x', '/api/files/read?pane=x&path=a', '/api/files/download?pane=x']) expect(coreRouteAllowed(r)).toBe(true)
   })
+  // v3 has no other backend: a route of server/api/ left out of the list is
+  // refused by the guard (server/middleware/guard.ts: coreRouteAllowed(path,
+  // event.method)) with 503, as Install's POST dictation/prepare once was.
+  it('answers every route of server/api/, with its own method', () => {
+    const methodOf = (r: string) => (/\.(post|delete)\.ts$/.exec(r)?.[1] ?? 'get').toUpperCase()
+    const files = (dir: string, base = ''): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(e =>
+      e.isDirectory() ? files(path.join(dir, e.name), `${base}${e.name}/`) : e.name.startsWith('[...') ? [] : [`${base}${e.name}`])
+    const refused = files(path.join(__dirname, '../server/api'))
+      .map(f => ({ method: methodOf(f), url: `/api/${f.replace(/(\.(get|post|delete|head))?\.ts$/, '').replace(/\[\w+\]/g, 'x')}` }))
+      .filter(r => !coreRouteAllowed(r.url, r.method))
+    expect(refused).toEqual([])
+    expect(coreRouteAllowed('/api/dictation/prepare', 'POST')).toBe(true)
+  })
   it('lists only routes that exist', () => {
     const existing = new Set(apiRoutes())
     for (const r of CORE_ROUTES) expect(existing, r).toContain(r.replace(/^GET /, ''))

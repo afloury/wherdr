@@ -110,6 +110,20 @@ describe('the on-device engine', () => {
     expect(isAbortError(await loading.catch(e => e))).toBe(true)
   })
 
+  it('stops waiting for the server to fetch the files when disposed', async () => {
+    let polls = 0
+    const fetch = vi.fn(async () => { polls++; return Response.json({ state: 'preparing', phase: 'fetch', got: 1, total: 10 }) })
+    const engine = createDeviceEngine({ model, caches: null, fetch, worker: () => new FakeWorker() as unknown as Worker })
+    const seen: unknown[] = []
+    const loading = engine.prepare(p => seen.push(p))
+    await vi.waitFor(() => expect(seen).toEqual([{ phase: 'fetch', got: 1, total: 10, server: true, unpack: false }]))
+    engine.dispose()
+    expect(isAbortError(await loading.catch(e => e))).toBe(true)
+    await new Promise(r => setTimeout(r, 1100))
+    expect(polls).toBe(1)
+    expect(FakeWorker.made).toHaveLength(0)
+  })
+
   describe('readiness', () => {
     const head = (status: number) => vi.fn(async () => new Response(null, { status }))
     const cachesWith = (hit: boolean) => ({ open: async () => ({ keys: async () => (hit ? model.files.map(f => ({ url: `http://x/models/${model.dir}/${f.path}` })) : []) }) }) as unknown as CacheStorage

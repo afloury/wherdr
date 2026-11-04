@@ -26,7 +26,7 @@ const BASE = [
   'dirs', 'isgit', 'quotas', 'claude-statusline', 'claude-setup',
   'machine/add', 'machine/connect', 'machine/core', 'machine/core-rename', 'machine/core-forget',
   'upload', 'attach', 'file', 'keep',
-  'dictation/status', 'dictation/key', 'dictation/transcribe',
+  'dictation/status', 'dictation/key', 'dictation/transcribe', 'dictation/prepare',
 ]
 
 export const CORE_ROUTES = [...BASE, ...a, ...b, ...c, ...d, ...e, ...f, ...g, ...h, ...i]

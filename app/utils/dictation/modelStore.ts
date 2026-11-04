@@ -57,7 +57,8 @@ export async function prepareOnServer(m: DeviceModel, deps: StoreDeps, signal: A
     let r: Response
     try { r = first ? await doFetch(PREPARE_URL, init) : await refetch(() => doFetch(PREPARE_URL, init), signal) }
     catch (e) {
-      if (first && !signal.aborted) return
+      if (signal.aborted) throw signal.reason
+      if (first) return
       throw e
     }
     if (!r.ok) { await r.body?.cancel(); return }
