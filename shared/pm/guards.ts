@@ -34,9 +34,11 @@ export function combineGuards(levels: { source: typeof GUARD_LEVELS[number], gua
     for (const k of ['protected', 'others'] as const) {
       const v = guards?.merge?.[k]
       if (!v) continue
-      // The first level to speak replaces the default; later ones only harden.
-      if (!set[k] || strictness(v) > strictness(out.merge[k].value)) out.merge[k] = { value: v, source }
-      set[k] = true
+      // The user or the project may replace the default; past that, and for a
+      // task type or a task always, a level only hardens.
+      const chooses = !set[k] && (source === 'user' || source === 'project')
+      if (chooses || strictness(v) > strictness(out.merge[k].value)) out.merge[k] = { value: v, source }
+      if (chooses) set[k] = true
     }
   }
   return out

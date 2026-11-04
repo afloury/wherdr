@@ -158,12 +158,12 @@ export function validateTemplate(t: unknown): WorkflowError[] {
     if (tt.instructions !== undefined && typeof tt.instructions !== 'string') errs.push({ path: `${path}.instructions`, message: 'must be text' })
     checkGuards(tt.guards, `${path}.guards`, errs)
     checkPrefs(tt.prefs, `${path}.prefs`, errs)
-    if (tt.childType !== undefined && !(tt.childType as string in t.taskTypes)) errs.push({ path: `${path}.childType`, message: 'must name a task type of this template' })
+    if (tt.childType !== undefined && !Object.hasOwn(t.taskTypes, tt.childType as string)) errs.push({ path: `${path}.childType`, message: 'must name a task type of this template' })
     if (!Array.isArray(tt.steps) || !tt.steps.length) { errs.push({ path: `${path}.steps`, message: 'needs at least one step' }); continue }
     const seen: string[] = []
     tt.steps.forEach((entry, i) => {
       const p = `${path}.steps[${i}]`
-      if (typeof entry === 'string' && !(entry in shared)) errs.push({ path: p, message: `no shared step "${entry}"` })
+      if (typeof entry === 'string' && !Object.hasOwn(shared, entry)) errs.push({ path: p, message: `no shared step "${entry}"` })
       const step = typeof entry === 'string' ? shared[entry] : entry
       if (typeof entry !== 'string') checkStep(entry, p, seen, errs)
       else if (isObj(step) && step.ends === 'verdict' && !seen.includes(step.sendBack as string)) errs.push({ path: p, message: `sendBack "${step.sendBack}" is not an earlier step here` })

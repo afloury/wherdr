@@ -63,6 +63,11 @@ describe('validateTemplate', () => {
     expect(paths(validateTemplate(t))).toContain('taskTypes.simple.steps[6]')
   })
 
+  it('does not take object built-ins for steps or task types', () => {
+    const t = { id: 'x', taskTypes: { a: { childType: 'constructor', steps: ['toString', { id: 'w', holder: 'worker', ends: 'report' }] } } }
+    expect(paths(validateTemplate(t))).toEqual(['taskTypes.a.childType', 'taskTypes.a.steps[0]'])
+  })
+
   it('needs at least one task type', () => {
     expect(paths(validateTemplate({ id: 'x', taskTypes: {} }))).toEqual(['taskTypes'])
   })
@@ -101,6 +106,18 @@ describe('combineGuards', () => {
     expect(mayMerge(g, 'main', 'engine')).toBe(false)
     expect(mayMerge(g, 'feature', 'engine')).toBe(false)
     expect(mayMerge(g, 'main', 'user')).toBe(true)
+  })
+
+  it('keeps the default when only a task type or a task speaks', () => {
+    for (const source of ['task', 'task-type'] as const) {
+      const g = combineGuards([
+        { source, guards: { merge: { protected: 'engine', others: 'user' } } },
+        { source: 'project', guards: { protected: ['main'] } },
+      ])
+      expect(g.merge.protected).toEqual({ value: 'user', source: 'builtin' })
+      expect(g.merge.others).toEqual({ value: 'user', source })
+      expect(mayMerge(g, 'main', 'engine')).toBe(false)
+    }
   })
 
   it('lets the user and the project choose, the stricter of the two winning', () => {
