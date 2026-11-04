@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fakeCaches, rangeServer } from './fakeModelCache'
 import { DEVICE_CACHE, DEVICE_MODELS, qualityRating, readCatalog, runnableModels } from '../app/utils/dictation/deviceModels'
 import type { DeviceModel } from '../app/utils/dictation/deviceModels'
-import { CHUNK, cancelInstall, deleteModel, installModel, storedBytes, watchInstall } from '../app/utils/dictation/modelStore'
+import { CHUNK, cancelInstall, deleteModel, fetchCommand, installModel, MissingOnServer, storedBytes, watchInstall } from '../app/utils/dictation/modelStore'
 
 const model: DeviceModel = { ...DEVICE_MODELS[0]!, id: 'm', dir: 'm', files: [{ path: 'enc.onnx', bytes: 2 * CHUNK + 5 }, { path: 'tokens.txt', bytes: 10 }] }
 const total = 2 * CHUNK + 15
@@ -61,6 +61,14 @@ describe('model store', () => {
     const wrong = { ...model, files: [{ path: 'enc.onnx', bytes: 2 * CHUNK + 5 }] }
     const server = rangeServer({ ...model, files: [{ path: 'enc.onnx', bytes: 99 }] })
     await expect(installModel(wrong, undefined, { caches, fetch: server.fetch })).rejects.toThrow('size differs from the catalog')
+  })
+
+  it('says the server is missing the files on a 404, with the command that fetches them', async () => {
+    const fetch404 = (async () => new Response(null, { status: 404 })) as typeof fetch
+    const err = await installModel(model, undefined, { caches: fakeCaches(), fetch: fetch404 }).catch(e => e)
+    expect(err).toBeInstanceOf(MissingOnServer)
+    expect(err).toMatchObject({ path: 'enc.onnx', model: { id: 'm' } })
+    expect(fetchCommand(model)).toBe(`node scripts/fetch-dictation-files.mjs runtime ${model.set}`)
   })
 
   it('counts a whole-file entry, and deletes only this model', async () => {
