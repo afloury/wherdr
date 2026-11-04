@@ -76,4 +76,4 @@ modifiers reset after that key; tapping a selected modifier cancels it. Pasting
 or entering composed text clears the selection and keeps the text unchanged.
 
 Split panes drawn in Herdr's layout, dragging panes and dividers, pane swaps
-(`Alt+Shift+arrows`), side-by-side focus moves and the Board (`H`) are v2 only.
+(`Alt+Shift+arrows`) and side-by-side focus moves are v2 only.

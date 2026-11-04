@@ -22,15 +22,14 @@ in both advertised lists (`hello` and `rpc.discover`): `terminal.list`, `termina
 transcripts and quotas of core machines also use `machine.exec`.
 
 Only the API routes listed in `shared/coreRoutes.ts` answer; every other `/api/` route returns
-"Unavailable with herdr-core". The Board, herdr-projects, coordinators, worktrees, Git changes,
-model and effort pickers, Herdr sessions, Herdr plugins, the setup guide and the one-tap update
-are v2 only.
+"Unavailable with herdr-core". Worktrees, Git changes, model and effort pickers, Herdr sessions,
+Herdr plugins, the setup guide and the one-tap update are v2 only.
 
 ## Inventory
 
 Core mode uses the existing v2 home, workspace cards, tabs and agent screen.
 A core poller reads `terminal.list` and `machine.list` and publishes changes through
-the existing state WebSocket. The old Herdr poller, Board discovery and TUI
+the existing state WebSocket. The old Herdr poller and TUI
 notifications are disabled. Network and passkey guards remain active; legacy
 control routes are unavailable in core mode.
 
@@ -104,7 +103,7 @@ machine's home. When core does not answer in time, the inventory is searched for
 found means created, not found is shown as "not confirmed" and is never relaunched blindly.
 Resuming the last conversation and a first message are offered: the first message is sent
 once the program is ready, waits while it shows a dialog (such as trusting the folder), and the
-app says when it was not sent. Board, coordinator and worktree are not offered with core.
+app says when it was not sent. Worktrees are not offered with core.
 
 Claude and Codex quotas work as in v2 (home rows, Settings › Agents › Claude quotas): the server reads each
 machine's quota files, this machine's from disk and core machines' through `machine.exec` (the status line

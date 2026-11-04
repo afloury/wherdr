@@ -47,8 +47,9 @@ describe('affected test selector', () => {
     expect(changedFiles('base', cwd).files).toEqual([])
   })
   it('covers old and new domains even when the old path no longer exists', () => {
-    const plan = select(['shared/reference old.ts', 'app/components/Terminal.vue'], available.concat('tests/terminalSize.test.ts'), undefined)
-    expect(Object.keys(plan.domains)).toEqual(['references', 'terminal'])
+    const plan = select(['shared/reference old.ts', 'app/components/Terminal.vue', 'app/components/MachineBar.vue'], available.concat('tests/terminalSize.test.ts', 'tests/e2e/core-machines.spec.ts'), undefined)
+    expect(Object.keys(plan.domains)).toEqual(['references', 'terminal', 'machines'])
+    expect(Object.keys(plan.e2e)).toContain('tests/e2e/core-machines.spec.ts')
     expect(Object.keys(plan.tests)).toContain('tests/reference.test.ts')
     expect(Object.keys(plan.tests)).toContain('tests/terminalSize.test.ts')
   })

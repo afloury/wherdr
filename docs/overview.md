@@ -16,7 +16,7 @@ Follow their work and answer from your phone.</b></p>
 <p align="center"><a href="https://github.com/afloury/wherdr/actions/workflows/ci.yml"><img src="https://github.com/afloury/wherdr/actions/workflows/ci.yml/badge.svg?branch=v3" alt="CI"></a></p>
 
 This page describes **wherdr v3**, which runs on herdr-core (`hc`). The launch film, the website
-and the [browser demo](https://wherdr.dev/demo/) show wherdr v2 on Herdr, with its Board.
+and the [browser demo](https://wherdr.dev/demo/) show wherdr v2 on Herdr.
 
 ## Why wherdr
 
