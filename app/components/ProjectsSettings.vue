@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Settings › Projects: the project management switch, the projects (a git
-// folder on a machine herdr-core reaches) and the template each one follows.
+// folder on a machine herdr-core reaches), the template each one follows, and
+// the template editor.
 // Off, the server refuses every change but the switch.
 import type { PmOverview } from '#shared/pm/project'
 
@@ -73,6 +74,9 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
       </div>
       <UButton v-if="data.projects.length" to="/board" color="neutral" variant="outline" size="xl" icon="i-lucide-kanban" class="pm-board" data-testid="pm-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
       <p v-else class="muted settings-hint" data-testid="pm-empty">{{ tl('No project yet.', 'Aucun projet pour l’instant.') }}</p>
+
+      <h3>{{ tl('Templates', 'Modèles') }}</h3>
+      <TemplateEditor :templates="data.templates" @saved="load" />
 
       <form class="sheet-form" @submit.prevent="add">
         <h3>{{ tl('Add a project', 'Ajouter un projet') }}</h3>
