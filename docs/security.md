@@ -45,7 +45,7 @@ only the routes listed in `shared/coreRoutes.ts` answer.
   are limited to 10 per minute per client, and at most 100 unlock challenges wait at once.
 - **Protected files**: the file browser and the file paths shown in conversations never preview,
   download or stream wherdr's data folder (`DATA_DIR`, with `auth.json`, the push keys and
-  subscriptions), `~/.ssh` or `~/.config/herdr`, on any machine, even through a symlink or inside
+  subscriptions, the OpenRouter key), `~/.ssh` or `~/.config/herdr`, on any machine, even through a symlink or inside
   a browsed project. Agents themselves can still read them: the lock protects the app, not the
   machine.
 - <a id="new-device"></a>**New device**: it can only get in with an existing passkey. Unlock it
@@ -58,9 +58,9 @@ only the routes listed in `shared/coreRoutes.ts` answer.
   this computer included (see [Shared computers](security.md#shared-computers)). The passkey is
   optional: it adds an automatic lock on each device if you want one, and then lets other
   people's tailnet devices reach that lock.
-- Writes require `Content-Type: application/json` (or `image/*` for photos, `application/octet-stream` for attached files) and an `Origin`
+- Writes require `Content-Type: application/json` (or `image/*` for photos, `application/octet-stream` for attached files, `audio/wav` for dictation) and an `Origin`
   matching the host, WebSockets included. Request bodies are read with a size limit (256 KB for
-  JSON, 20 MB for photos, 30 MB for attached files), chunked bodies included: past it the server
+  JSON, 20 MB for photos, 30 MB for attached files, 8 MB for a dictation take), chunked bodies included: past it the server
   stops reading, answers `too_large` and closes the connection. API reads sent from another site (links, images,
   `no-cors` fetches, reported by the browser's `Sec-Fetch-Site`) are refused too.
 - A strict Content Security Policy limits scripts to the app's own origin and hashed inline
@@ -75,6 +75,16 @@ only the routes listed in `shared/coreRoutes.ts` answer.
   tailnet, plain HTTP, Tailscale IP addresses) is refused by the browser and shown as a note with
   a link to open it in a new tab.
 - wherdr never changes your agents' global settings.
+- <a id="dictation"></a>**Dictation, online** (Settings › Conversation › Dictation, off by
+  default): each take leaves your network. The browser sends it as a WAV to the wherdr server,
+  which sends it to OpenRouter (`/api/v1/audio/transcriptions`), which passes it to the model's
+  provider. OpenRouter keeps no prompts unless logging is turned on in your OpenRouter account.
+  With **ZDR** (on by default), only providers with zero data retention are used; if none
+  serves the model, the take fails (Test shows it). Pane terms (agent, machine and folder names,
+  words of the draft) are sent only if **Send pane terms** is on. The OpenRouter key stays on
+  the server: `OPENROUTER_API_KEY`, or `DATA_DIR/openrouter.json` (mode 600) saved from
+  Settings. It is never sent back to a browser (Settings shows its last 4 characters), never
+  logged, and scrubbed from OpenRouter's error messages. Dictation on the device sends nothing.
 
 See [SECURITY.md](../SECURITY.md) to report a vulnerability.
 

@@ -25,6 +25,7 @@ unit: see [Installation](installation.md#keep-it-running)), read at each start.
 | `AGENT_KINDS` | all known agents | Agents offered in **New** (only installed ones are shown). |
 | `UPLOAD_DIR` | `~/.cache/herdr-web/uploads` | Where photos sent to agents are stored (deleted after 7 days). |
 | `ATTACH_DIR` | `~/.cache/herdr-web/files` | Where other files attached to messages are stored, on the agent's machine (mode 600, deleted after 7 days). |
+| `OPENROUTER_API_KEY` | *(empty)* | OpenRouter key for online dictation (Settings › Conversation › Dictation › Online). Wins over the key saved from Settings in `DATA_DIR/openrouter.json`; see [Dictation](security.md#dictation). |
 | `TZ` | `UTC` | Time zone. |
 
 **v2 only.** These variables configure wherdr v2 on Herdr and are ignored in core mode:

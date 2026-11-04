@@ -23,7 +23,7 @@ describe('dictation engine registry', () => {
   })
 
   it('rejects an engine that is not built in', async () => {
-    await expect(loadEngine('cloud')).rejects.toThrow('not available')
+    await expect(loadEngine('device')).rejects.toThrow('not available')
   })
 })
 
