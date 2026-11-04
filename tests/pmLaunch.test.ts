@@ -3,7 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore, type PmStore } from '../server/utils/pmStore'
-import { reconcileRuns, startTask, type PmLaunchDeps } from '../server/utils/pmLaunch'
+import { reconcileRuns, startTask, wherdrBase, type PmLaunchDeps } from '../server/utils/pmLaunch'
+import { uploadShot } from '../server/utils/pmBoard'
 import { agentLine, reconcile, workerPlan, type Run, type Task } from '../shared/pm/run'
 import type { Template } from '../shared/pm/workflow'
 
@@ -57,10 +58,10 @@ let dir = '', n = 0
 beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-launch-')) })
 afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 
-async function setup(opts: { installed?: string[], exits?: (number | null)[] } = {}) {
+async function setup(opts: { installed?: string[], exits?: (number | null)[], template?: Template } = {}) {
   const store: PmStore = createPmStore(dir)
   await store.setEnabled(true)
-  await store.saveTemplate(template)
+  await store.saveTemplate(opts.template ?? template)
   const machine = `m${++n}`
   await store.addProject({ key: 'WEB', machine, path: '/home/u/web', template: 'vibe' }, async (_m, p) => p)
   await store.addTask({ project: 'WEB', title: 'Fix it', type: 'simple' })
@@ -103,6 +104,29 @@ describe('startTask', () => {
     expect(files['/home/u/.wherdr/pm/tasks/WEB-1/instructions.md']).toMatch(/# WEB-1: Fix it[\s\S]*Small commits\.\nRun the tests\./)
     expect((await store.runs())[0]).toMatchObject({ id: t.run, state: 'running', terminal: expect.stringMatching(/\/t1$/) })
     await expect(startTask(deps, 'WEB-1')).rejects.toMatchObject({ code: 'busy' })
+  })
+
+  it('a visual task: the instructions file says how to upload the screenshots, with the task\'s key, and that upload passes', async () => {
+    const visual = { ...template, taskTypes: { simple: { steps: [{ id: 'todo' }, { id: 'work', holder: 'worker' as const, ends: 'report' as const, evidence: ['screenshots' as const], screenshots: 'before-after' as const }] } } }
+    const { store, deps, files } = await setup({ template: visual })
+    await startTask({ ...deps, origin: 'https://wherdr.example.ts.net' }, 'WEB-1')
+    const token = (await store.task('WEB-1'))!.shotToken!
+    expect(token).toMatch(/^[a-f0-9]{32}$/)
+    const text = files['/home/u/.wherdr/pm/tasks/WEB-1/instructions.md']!
+    expect(text).toContain('## Screenshots')
+    const cmd = `curl -fsS -X POST -H 'Content-Type: image/png' -H 'X-Wherdr-Shot-Token: ${token}' --data-binary @shot.png 'https://wherdr.example.ts.net/api/pm/shot?task=WEB-1&phase=before'`
+    expect(text).toContain(cmd)
+    expect(text).toContain(cmd.replace('phase=before', 'phase=after'))
+    // What the command sends is taken; the browser never sees the key.
+    const png = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2])
+    await expect(uploadShot(store, 'WEB-1', 'before', png, 'image/png', token)).resolves.toMatchObject({ phase: 'before' })
+    expect(JSON.stringify((await store.overview()).tasks)).not.toContain(token)
+  })
+
+  it('agents reach wherdr on loopback from its own machine, else at the app address or the user\'s', () => {
+    expect(wherdrBase('', 'https://b.example', 'https://a.example/', '7683')).toBe('http://127.0.0.1:7683')
+    expect(wherdrBase('m1', 'https://b.example', 'https://a.example/', '7683')).toBe('https://a.example')
+    expect(wherdrBase('m1', 'https://b.example', '', '7683')).toBe('https://b.example')
   })
 
   it('a missing program: waiting with the reason, no terminal', async () => {

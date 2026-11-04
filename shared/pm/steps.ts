@@ -64,7 +64,7 @@ const UNIT = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const
 export const durationMs = (d: string) => Number(d.slice(0, -1)) * UNIT[d.slice(-1) as keyof typeof UNIT]
 
 const PROOF: Record<Exclude<Evidence, 'screenshots'>, string> = { link: 'a link', commit: 'the commit', report: 'your report', 'proposed-tasks': 'the proposed tasks' }
-const shotHow = (s: Step) => `Upload each screenshot to wherdr: POST the PNG (Content-Type image/png) to /api/pm/shot?task=<this task's id>&phase=${shotMode(s) === 'before-after' ? 'before (or after)' : 'after'}.`
+const SHOT_HOW = 'Upload each screenshot with the command under "Screenshots" in your instructions file.'
 const proofOf = (s: Step) => (e: Evidence) =>
   e === 'screenshots' ? shotsText(shotMode(s) === 'before-after' ? ['before', 'after'] : ['after']) : PROOF[e]
 export const DEFAULT_ROUNDS = 2
@@ -83,7 +83,7 @@ export function planSteps(t: Template, input: TaskInput): PlannedStep[] {
     const own = input.steps?.[s.id]
     const parts = [t.instructions, tt.instructions, input.instructions, s.instructions, own?.instructions].map(x => x?.trim()).filter(Boolean)
     if (s.evidence?.length) parts.push(`Before you say you are done, give ${s.evidence.map(proofOf(s)).join(', ')}.`)
-    if (s.evidence?.includes('screenshots')) parts.push(shotHow(s))
+    if (s.evidence?.includes('screenshots')) parts.push(SHOT_HOW)
     return { ...s, ...(own?.timeout ? { timeout: own.timeout } : {}), ...guarded, text: parts.join('\n\n') }
   })
 }

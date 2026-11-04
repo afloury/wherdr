@@ -92,7 +92,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   return {
     files,
     async overview(): Promise<PmOverview> {
-      return { enabled: await enabled(), projects: await projects(), templates: await templates(), tasks: await tasks() }
+      // A task's screenshot key stays on the server.
+      return { enabled: await enabled(), projects: await projects(), templates: await templates(), tasks: (await tasks()).map(({ shotToken: _, ...t }) => t) }
     },
     setEnabled: (on: boolean) => serial(async () => writeJson(files.pm, { ...await pm(), v: 1, enabled: on })),
     // Marks the terminals this wherdr starts (wherdr.install), so that two

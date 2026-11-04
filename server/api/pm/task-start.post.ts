@@ -4,4 +4,4 @@ import { coreAdminDeps } from '../../utils/coreAdminDeps'
 import { startTask } from '../../utils/pmLaunch'
 import { pmStore } from '../../utils/pmStore'
 
-export default defineApi(async (_event, body) => ({ task: await startTask({ ...coreAdminDeps(), store: pmStore() }, body.id) }))
+export default defineApi(async (event, body) => ({ task: await startTask({ ...coreAdminDeps(), store: pmStore(), origin: getRequestURL(event).origin }, body.id) }))

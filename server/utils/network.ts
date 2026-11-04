@@ -232,11 +232,14 @@ export function gateDecision(o: {
   // HTTP: Sec-Fetch-Site says another site; WS: the Origin differs from the host.
   crossSite: boolean
   ws?: boolean
+  // An agent's upload with its task's key (POST /api/pm/shot): the route
+  // checks the key, so the passkey session is not asked.
+  agentKey?: boolean
 }): GateVerdict {
   if (!o.check.ok) return 'network'
   if (!o.hostOk) return 'host'
   if (o.crossSite && (o.ws || o.path.startsWith('/api/'))) return 'origin'
-  if ((o.ws || needsUnlock(o.path)) && !o.unlocked) return 'locked'
+  if ((o.ws || needsUnlock(o.path)) && !o.unlocked && !(o.agentKey && !o.ws && o.path === '/api/pm/shot')) return 'locked'
   return 'ok'
 }
 

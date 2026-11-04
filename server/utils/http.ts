@@ -81,6 +81,9 @@ interface ApiOptions {
   // Largest binary body (default 20 MB) and the error given beyond it.
   max?: number
   tooLarge?: string
+  // Written to by an agent with its task's key, not by the app: no Origin to
+  // check (the route checks the key; server/api/pm/shot.post.ts).
+  agentKey?: boolean
 }
 
 // An API route: write checks, JSON body, known errors -> { error, code }.
@@ -95,7 +98,7 @@ export function defineApi<T>(
       // Every write (POST, DELETE…) comes from the app's own origin; reads
       // (GET, HEAD) change nothing.
       const write = event.method !== 'GET' && event.method !== 'HEAD'
-      if (write && !sameOrigin(getRequestHeaders(event))) return sendError(event, 403, { error: 'Origin refused' })
+      if (write && !opts.agentKey && !sameOrigin(getRequestHeaders(event))) return sendError(event, 403, { error: 'Origin refused' })
       if (event.method === 'POST') {
         const headers = getRequestHeaders(event)
         const ctype = String(headers['content-type'] || '')

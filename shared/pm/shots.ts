@@ -11,6 +11,17 @@ export const SHOT_TYPES: Record<string, string> = { 'image/png': 'png', 'image/j
 export const SHOT_FILE_RE = /^[a-f0-9]{12}\.(png|jpg|webp)$/
 export const MAX_SHOTS = 24 // per step
 export const SHOT_MAX_BYTES = 10 * 1024 * 1024
+export const SHOT_TOKEN_HEADER = 'x-wherdr-shot-token'
+
+// The body is an image of the declared type (its first bytes), not any bytes.
+export function isImage(data: Uint8Array, ext: string) {
+  const at = (i: number, bytes: number[]) => bytes.every((b, k) => data[i + k] === b)
+  const ascii = (t: string) => [...t].map(c => c.charCodeAt(0))
+  if (ext === 'png') return at(0, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+  if (ext === 'jpg') return at(0, [0xFF, 0xD8, 0xFF])
+  if (ext === 'webp') return at(0, ascii('RIFF')) && at(8, ascii('WEBP'))
+  return false
+}
 
 export const shotMode = (s: Pick<Step, 'screenshots'>): ShotMode => s.screenshots ?? 'after'
 export const needsShots = (s: Pick<Step, 'evidence'>) => !!s.evidence?.includes('screenshots')

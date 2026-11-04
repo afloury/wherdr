@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { addShot, shotRows, shotsMissing, type Shot } from '../shared/pm/shots'
+import { addShot, isImage, shotRows, shotsMissing, type Shot } from '../shared/pm/shots'
 import { initialState, onEvent, planSteps, type StepState } from '../shared/pm/steps'
 import { validateTemplate, type Template } from '../shared/pm/workflow'
 import { createPmStore } from '../server/utils/pmStore'
@@ -42,7 +42,7 @@ describe('screenshots evidence', () => {
 
   it('tells the agent what to give and how to upload it', () => {
     expect(planSteps(visual('before-after'), { type: 'ui' })[1]!.text).toContain('give a link, screenshots before and after the change.')
-    expect(planSteps(visual(), { type: 'ui' })[1]!.text).toContain('/api/pm/shot?task=<this task\'s id>&phase=after.')
+    expect(planSteps(visual(), { type: 'ui' })[1]!.text).toContain('the command under "Screenshots" in your instructions file.')
   })
 
   it('a step that requires screenshots does not pass without them', () => {
@@ -72,6 +72,11 @@ describe('screenshots evidence', () => {
     expect(addShot(plan, full, shot('after'))).toEqual({ refused: 'Step "work" has 24 screenshots already' })
   })
 
+  it('knows a PNG, a JPEG and a WebP by their first bytes', () => {
+    const webp = Buffer.from('RIFF\0\0\0\0WEBPVP8 ', 'latin1')
+    expect([isImage(webp, 'webp'), isImage(Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]), 'jpg'), isImage(webp, 'png'), isImage(Buffer.alloc(0), 'png')]).toEqual([true, true, false, false])
+  })
+
   it('pairs before and after for the gallery, in upload order', () => {
     const list = [shot('before', 1), shot('after', 2), shot('before', 3)]
     expect(shotRows(list, 'before-after')).toEqual([{ before: list[0], after: list[1] }, { before: list[2] }])
@@ -90,12 +95,20 @@ describe('screenshot upload', () => {
     await store.saveTemplate(visual())
     await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [{ key: 'UI', name: 'UI', machine: '', path: '/src/ui', template: 'visual', addedAt: 1 }] }))
     const task = await store.addTask({ project: 'UI', title: 'New look', type: 'ui' })
-    const png = Buffer.from('fake png')
-    await expect(uploadShot(store, task.id, 'after', png, 'image/png')).rejects.toMatchObject({ code: 'refused' })
-    await store.saveTask({ ...task, state: 'working', step: working() })
-    await expect(uploadShot(store, task.id, 'after', png, 'image/gif')).rejects.toMatchObject({ code: 'bad_input' })
-    await expect(uploadShot(store, task.id, 'before', png, 'image/png')).rejects.toMatchObject({ code: 'refused' })
-    const [a, b] = await Promise.all([uploadShot(store, task.id, 'after', png, 'image/png'), uploadShot(store, task.id, 'after', png, 'image/png')])
+    const png = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13])
+    const key = 'k'.repeat(32)
+    const up = (phase: string, body = png, ctype = 'image/png', token: unknown = key) => uploadShot(store, task.id, phase, body, ctype, token)
+    // No key on the task yet (never started), a wrong key, no key: the same refusal.
+    await expect(up('after')).rejects.toMatchObject({ code: 'forbidden' })
+    await store.saveTask({ ...task, state: 'working', step: working(), shotToken: key })
+    await expect(up('after', png, 'image/png', 'x'.repeat(32))).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(up('after', png, 'image/png', null)).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(up('after', png, 'image/gif')).rejects.toMatchObject({ code: 'bad_input' })
+    // Any bytes sent as a PNG are not an image.
+    await expect(up('after', Buffer.from('not an image at all'))).rejects.toMatchObject({ code: 'bad_input' })
+    await expect(up('after', png, 'image/jpeg')).rejects.toMatchObject({ code: 'bad_input' })
+    await expect(up('before')).rejects.toMatchObject({ code: 'refused' })
+    const [a, b] = await Promise.all([up('after'), up('after')])
     // Both kept, even sent at once; only these two files are on disk.
     expect((await store.task(task.id))?.step?.shots?.work?.map(s => s.file)).toEqual([a!.file, b!.file])
     expect((await fs.readdir(path.join(dir, 'shots', task.id))).sort()).toEqual([a!.file, b!.file].sort())

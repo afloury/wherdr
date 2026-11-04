@@ -3,13 +3,13 @@
 // the agent with its model pinned and DISABLE_AUTOUPDATER=1. Nothing is ever
 // started twice blindly: the run is saved before the terminal, and a restart
 // finds it again by its labels (reconcileRuns).
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { CoreError } from './core'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, kindsOf, launchFailure, machineOn, type CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
 import { initialState, onEvent, planSteps } from '../../shared/pm/steps'
-import { LABEL, agentLine, instructionsText, reconcile, runLabels, taskPaths, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, agentLine, instructionsText, shotStep, reconcile, runLabels, taskPaths, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 
 // Reuses the worktree of an earlier attempt; else a new branch from the base.
 const WORKTREE_SCRIPT = `repo=$1 dir=$2 branch=$3 base=$4
@@ -29,7 +29,15 @@ export async function exec(deps: Pick<CoreAdminDeps, 'call'>, on: string | undef
   return { code: r.timed_out ? null : r.code, out: text(r.stdout), err: text(r.stderr) }
 }
 
-export interface PmLaunchDeps extends CoreAdminDeps { store: PmStore }
+// origin: the address the user reached wherdr at (the start request's).
+export interface PmLaunchDeps extends CoreAdminDeps { store: PmStore, origin?: string }
+
+// Where an agent reaches wherdr: on wherdr's own machine, loopback; elsewhere,
+// the app's address (APP_URL), else the one the user started the task from.
+export function wherdrBase(machine: string, origin = '', appUrl = process.env.APP_URL || '', port = process.env.NITRO_PORT || process.env.PORT || '3000') {
+  if (!machine) return `http://127.0.0.1:${port}`
+  return (appUrl || origin).replace(/\/+$/, '')
+}
 
 const wait = (store: PmStore, task: Task, reason: string) => store.saveTask({ ...task, state: 'waiting', waiting: reason })
 
@@ -54,7 +62,9 @@ export async function startTask(deps: PmLaunchDeps, id: unknown): Promise<Task> 
   const paths = taskPaths(home, task.id)
   const wt = await exec(deps, on, WORKTREE_SCRIPT, [p.path, paths.worktree, paths.branch, p.base || ''])
   if (wt.code !== 0) return wait(store, task, `git worktree failed: ${wt.out.split('\n').slice(-3).join(' ') || 'timeout'}`)
-  const text = instructionsText(p, t, task, paths)
+  // A visual task: the worker's key to upload its screenshots, kept with the task.
+  const shotToken = shotStep(t, task.type) ? task.shotToken || randomBytes(16).toString('hex') : undefined
+  const text = instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(p.machine, deps.origin), token: shotToken } : undefined)
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')
 
   // The engine's start: the task enters its first step (the worker's); the
@@ -64,7 +74,7 @@ export async function startTask(deps: PmLaunchDeps, id: unknown): Promise<Task> 
   let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine: p.machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now() }
   for (;;) {
     await store.saveRun(run) // the receipt, before the terminal exists
-    await store.saveTask({ ...task, state: 'working', waiting: undefined, run: run.id, step })
+    await store.saveTask({ ...task, state: 'working', waiting: undefined, run: run.id, step, ...(shotToken ? { shotToken } : {}) })
     let address: string
     try {
       address = (await deps.call<{ address: string }>('terminal.run', {
