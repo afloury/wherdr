@@ -32,6 +32,7 @@ Commands:
   dictation fetch    Download the on-device dictation files into <data dir>/models
                      (default: runtime and the phone model; or name sets, or all)
   doctor             Check Node/Bun, herdr-core (hc) and its socket, the port and the service
+  pm <command>       A project coordinator's board commands (token in its environment; see its AGENTS.md)
 
 Options:
   --hc-socket <path>  Socket of the herdr-core (hc) session to drive (required, or $HC_SOCKET)

@@ -21,6 +21,7 @@ export interface StepState {
   since?: number // when the current step started
   deadline?: number // absolute time, from the step's timeout
   recheckAt?: number // absolute time, for a step with recheck
+  told?: number // the `since` of the coordinator step whose instructions were delivered
   acting?: boolean // an engine action is running
   yourTurn?: YourTurn
   proofs: Record<string, Partial<Record<Evidence, string>>> // per step id

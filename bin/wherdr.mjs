@@ -9,6 +9,13 @@ function fail(message, code = 1) {
   process.exit(code)
 }
 
+// `wherdr pm …` takes its own words and options (bin/lib/pm.mjs).
+if (process.argv[2] === 'pm') {
+  const { pm } = await import('./lib/pm.mjs')
+  try { await pm(process.argv.slice(3)) } catch (e) { fail(e.message, e instanceof CliError ? e.code : 1) }
+  process.exit(0)
+}
+
 let opts
 try { opts = parseArgs(process.argv.slice(2)) } catch (e) { fail(e.message, 2) }
 for (const w of opts.warnings || []) process.stderr.write(`wherdr: ${w}\n`)

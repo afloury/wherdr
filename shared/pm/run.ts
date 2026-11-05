@@ -17,8 +17,11 @@ export interface Task {
   prefs?: Prefs
   tags?: string[] // short texts, shown on the card
   links?: { label: string, url: string }[] // the PR, the ticket…
+  log?: TaskLogEntry[] // who changed what, newest last
   createdAt: number
 }
+
+export interface TaskLogEntry { at: number, by: string, text: string }
 
 export interface Run {
   id: string
