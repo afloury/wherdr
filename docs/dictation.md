@@ -363,14 +363,22 @@ mark, since a page can also be lost for another reason.
 
 ### Content Security Policy
 
-Only the worker's own response (`/workers/dictation-worker.js`, a route rule in
-`nuxt.config.ts`) carries `'wasm-unsafe-eval'` in `script-src` (`CSP_DICTATION_WORKER` in
-`server/utils/csp.ts`): a worker follows its script's policy, not the page's. It lets the worker
+Only the dictation workers' own responses (`/workers/dictation-worker.js` and
+`/workers/dictation-webgpu-worker.js`, separate route rules in `nuxt.config.ts`) carry
+`'wasm-unsafe-eval'` in `script-src` (`CSP_DICTATION_WORKER` and `CSP_WEBGPU_WORKER` in
+`server/utils/csp.ts`): a worker follows its script's policy, not the page's. It lets each worker
 compile its WebAssembly runtime (sherpa-onnx, onnxruntime-web) served from `/models/runtime/`.
 The page itself cannot compile WebAssembly, and `eval()` of JavaScript is never allowed:
 `'unsafe-eval'` stays out.
 Runtimes and workers load from `'self'` only (`worker-src 'self' blob:`, `connect-src 'self'`):
 no CDN at run time. A runtime that needs anything more must say why in its pull request.
+
+The pinned ORT WebGPU 1.23.2 asyncify build contains a `new Function` path. A Chromium
+probe with same-origin runtime files, external weights and GPU-resident inputs/outputs
+initialized and ran inference under the worker policy above with no CSP violations.
+The page policy blocked WASM compilation as expected. JavaScript `'unsafe-eval'` is
+unnecessary for that path and remains forbidden. The probe used float32 on a software
+adapter; Qwen fp16 inference still requires validation on a device with `shader-f16`.
 
 ## Task split
 
