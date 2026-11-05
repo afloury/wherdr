@@ -3,6 +3,8 @@
 // the server (server/utils/pmCoordinator.ts) reads and writes.
 import type { Project } from './project'
 import type { Template } from './workflow'
+import type { Autopilot, limitsLeft } from './autopilot'
+import type { Wake } from './wakes'
 import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
 
@@ -26,7 +28,11 @@ export interface Proposal { template: Template, diff: string, at: number, base: 
 export type ProposalOutcome = 'accepted' | 'refused' | 'outdated: the template changed since, propose again'
 
 // GET /api/pm/coordinators: one per project.
-export interface CoordinatorView { project: string, name: string, agent: CoordinatorAgent, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'> }
+export interface CoordinatorView {
+  project: string, name: string, agent: CoordinatorAgent, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'>
+  // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
+  autopilot?: Autopilot, limits?: ReturnType<typeof limitsLeft>, wakes?: Wake[]
+}
 
 // Where the coordinator's current turn comes from: a message the user sent
 // from the interface, an engine wake, or nothing known (refused like a wake).

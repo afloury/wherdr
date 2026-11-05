@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // A project coordinator: who you talk to and which agent answers (its default
-// changed in one gesture), a warning when its kept conversation ran with
+// changed in one gesture), its autopilot, a warning when its kept conversation ran with
 // another agent, and the template change it proposed, to accept or refuse.
 // On the board (`open`), also the button that opens or starts it.
 import { COORDINATOR_AGENTS, agentName, sameAgent, type CoordinatorAgent, type CoordinatorView } from '#shared/pm/coordinator'
@@ -43,6 +43,7 @@ const answer = (accept: boolean) => act(() => api('/api/pm/template-proposal', {
         {{ pane ? tl('Open', 'Ouvrir') : tl(`Start with ${agentName(c.agent)}`, `Lancer avec ${agentName(c.agent)}`) }}
       </UButton>
     </div>
+    <CoordinatorAutopilot :c="c" />
     <div v-if="other && c.ran" class="term-banner coord-warn" data-testid="coordinator-other-agent">
       <UIcon name="i-lucide-triangle-alert" class="term-banner-icon" />
       <span class="coord-warn-text">{{ tl(`The previous conversation used ${agentName(c.ran)}. The default is ${agentName(c.agent)}.`, `La conversation précédente utilisait ${agentName(c.ran)}. Le défaut est ${agentName(c.agent)}.`) }}</span>

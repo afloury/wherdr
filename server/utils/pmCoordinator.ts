@@ -221,9 +221,13 @@ export async function setCoordinatorAgent(store: PmStore, key: unknown, agent: {
 // Each project's coordinator: who answers, the agent of its kept conversation, its pending change.
 export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[]> {
   if (!(await store.enabled())) return []
+  const [tasks, runs, wakes, now] = [await store.tasks(), await store.runs(), await store.wakes(), Date.now()]
   return Promise.all((await store.projects()).map(async (p) => {
     const c = await store.coordinator(p.key)
+    const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT
     return {
+      autopilot, limits: limitsLeft(autopilot, tasks.filter(t => t.project === p.key), runs, now),
+      wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
       project: p.key, name: p.name, agent: c?.agent ?? COORDINATOR_AGENTS[0]!,
       ...(c?.ran ? { ran: c.ran } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
       ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, ...(c.proposal.said ? { said: c.proposal.said } : {}) } } : {}),
