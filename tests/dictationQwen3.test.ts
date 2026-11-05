@@ -134,6 +134,8 @@ describe('the qwen3 prompt', () => {
     expect(Q.prompt.buildPrompt(CONFIG, [], 0, 'yue').ids.slice(-4)).toEqual([11528, 72366, 2367, 151704])
     expect(Q.prompt.buildPrompt(CONFIG, [], 0, 'en').ids.slice(-3)).toEqual([11528, 6364, 151704])
     expect(Q.prompt.buildPrompt(CONFIG, [], 0, 'xx').ids.slice(-6)).toEqual(CONFIG.prompt.suffix_ids)
+    expect(Q.prompt.buildPrompt(CONFIG, [], 0, 'constructor').ids)
+      .toEqual(Q.prompt.buildPrompt(CONFIG, [], 0).ids)
     expect(Q.prompt.languages(CONFIG)).toEqual(['zh', 'yue', 'en', 'fr'])
   })
   it('refuses a layout without the system turn mark', () => {
