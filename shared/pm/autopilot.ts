@@ -38,6 +38,9 @@ export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error
   } }
 }
 
+// The goal as a sentence in a wake's text: one final period, never two.
+export const sentence = (s: string) => (/[.!?…]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`)
+
 export function inHours(hours: Autopilot['hours'], d: Date) {
   if (!hours) return true
   const h = d.getHours()
@@ -67,6 +70,17 @@ export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: num
   if (l.started >= l.perDay) return `Today's limit is reached (${l.perDay} tasks started)`
   if (l.working >= l.atOnce) return `${l.working} tasks already work at once (limit ${l.atOnce})`
   if (!inHours(ap.hours, new Date(now))) return 'Outside the autopilot\'s hours'
+}
+
+// Why the coordinator (or the engine, for a chained task) may not start
+// `task` now, or undefined. In a wake, only with the autopilot on; its limits
+// and hours hold whatever the turn.
+export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, tasks: Task[], runs: Run[], now: number, wake: boolean): string | undefined {
+  if (task.state !== 'todo') return `${task.id} is not to do (${taskStatus(task)})`
+  const first = task.after ? tasks.find(t => t.id === task.after) : undefined
+  if (first && !first.step?.done) return `${task.id} starts after ${first.id}, which is not done`
+  if (wake && !ap?.on) return 'In a wake, a task starts only with the autopilot on'
+  return startRefusal(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now)
 }
 
 // The events since the last tick: tasks added, done, stuck (waiting) or

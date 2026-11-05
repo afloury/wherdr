@@ -10,9 +10,10 @@ const error = ref('')
 const project = ref('') // '' = all projects
 const tag = ref('') // '' = every tag
 const open = ref<string | null>(null)
+const decisions = ref(0) // what waits for the user's choice, on the Decisions screen
 
 async function load() {
-  try { data.value = await api<Board>('/api/pm/board'); error.value = ''; loadCoordinators() }
+  try { data.value = await api<Board>('/api/pm/board'); error.value = ''; loadCoordinators(); api<unknown[]>('/api/pm/decisions').then((d) => { decisions.value = d.length }, () => {}) }
   catch (e) { error.value = (e as Error).message }
 }
 let timer: ReturnType<typeof setInterval> | undefined
@@ -47,6 +48,9 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
     <header class="board-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back" :aria-label="t('Back')" to="/" />
       <h1 class="display">{{ tl('Board', 'Tableau') }}</h1>
+      <UButton :color="decisions ? 'warning' : 'neutral'" :variant="decisions ? 'solid' : 'outline'" size="lg" to="/decisions" data-testid="board-decisions">
+        {{ tl('Decisions', 'Décisions') }}<span v-if="decisions" class="mono-label board-decisions-n">{{ decisions }}</span>
+      </UButton>
       <select v-model="project" class="pm-select" :aria-label="tl('Project', 'Projet')" data-testid="board-project">
         <option value="">{{ tl('All projects', 'Tous les projets') }}</option>
         <option v-for="p in data?.projects" :key="p.key" :value="p.key">{{ p.name }}</option>
@@ -85,6 +89,7 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
 .board { color: var(--text); }
 .board-top { flex: none; display: flex; align-items: center; gap: 8px; min-height: calc(44px + var(--safe-top, 0px)); padding: var(--safe-top, 0px) 8px 0; border-bottom: 1px solid var(--line); }
 .board-top h1 { flex: 1; margin: 0; font-size: 20px; }
+.board-decisions-n { margin-left: 6px; color: inherit; }
 .board-top .pm-select { min-width: 0; flex: 0 1 auto; }
 .board-note { padding: 12px 16px; }
 .board-lanes { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding-bottom: var(--safe-bottom, 0px); }
