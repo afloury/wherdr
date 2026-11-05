@@ -12,14 +12,18 @@ import { initialState, onEvent, planSteps } from '../../shared/pm/steps'
 import { doneSection, runFiles } from '../../shared/pm/advance'
 import { LABEL, agentLine, isAuthFailure, instructionsText, shotStep, reconcile, runLabels, taskPaths, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 
-// Reuses the worktree of an earlier attempt; else a new branch from the base.
-// Records where the branch started (its fork from the base), once: verify
-// counts only the commits made on it since.
+// Reuses the worktree of an earlier attempt; else a new branch from the base
+// (origin's when the clone has no local branch of that name: git would else
+// check out a new local base branch instead of the task's). Records where the
+// branch started (its fork from the base), once: verify counts only the
+// commits made on it since.
 export const WORKTREE_SCRIPT = `repo=$1 dir=$2 branch=$3 base=$4
 [ -e "$dir/.git" ] && exit 0
 mkdir -p "$(dirname "$dir")" || exit 1
+from=$base
+git -C "$repo" rev-parse -q --verify "refs/heads/$base" >/dev/null || ! git -C "$repo" rev-parse -q --verify "refs/remotes/origin/$base" >/dev/null || from=origin/$base
 if git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then git -C "$repo" worktree add "$dir" "$branch" 2>&1
-else git -C "$repo" worktree add -b "$branch" "$dir" \${base:+"$base"} 2>&1 && base=HEAD; fi || exit 1
+else git -C "$repo" worktree add -b "$branch" "$dir" \${from:+"$from"} 2>&1 && base=HEAD; fi || exit 1
 k="branch.$branch.wherdrstart"
 [ -z "$base" ] || git -C "$repo" config "$k" >/dev/null || git -C "$repo" config "$k" "$(git -C "$dir" merge-base HEAD "$base")"`
 export const WRITE_SCRIPT = 'mkdir -p "$(dirname "$1")" && cat > "$1"'

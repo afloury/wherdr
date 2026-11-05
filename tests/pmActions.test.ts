@@ -201,6 +201,10 @@ describe('verify-merged', () => {
     git(repo, 'add', '.'); git(repo, 'commit', '-qm', 'init'); git(repo, 'push', '-q', 'origin', 'main:dev')
     git(repo, 'fetch', '-q')
     expect((await localSh(WORKTREE_SCRIPT, [repo, wt, 'task/A-1', 'origin/dev'])).code).toBe(0)
+    // A base the clone has only on origin: the task's branch, never a new local base branch.
+    expect((await localSh(WORKTREE_SCRIPT, [repo, `${wt}2`, 'task/A-2', 'dev'])).code).toBe(0)
+    expect(git(`${wt}2`, 'branch', '--show-current')).toBe('task/A-2')
+    expect(git(repo, 'branch', '--list', 'dev')).toBe('')
     const sh: ActionDeps['sh'] = (script, args, input) => localSh(`PATH="${bin}:$PATH"\n${script}`, args, input)
     const verify = (by: 'user' | 'engine' = 'user') =>
       runAction({ ...fakeDeps([]).deps, sh }, job({ worktree: wt, step: 'check', by, action: { kind: 'git.verify-merged', target: 'dev' } }))
