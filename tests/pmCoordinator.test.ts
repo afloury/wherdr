@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
 import { answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, userMessageTo } from '../server/utils/pmCoordinator'
 import { parseCommand, roleFiles, coordinatorArgs } from '../shared/pm/coordinator'
@@ -15,6 +16,11 @@ import { WAKE } from '../shared/pm/wakes'
 import { DEFAULT_AUTOPILOT } from '../shared/pm/autopilot'
 // @ts-expect-error plain JavaScript module
 import { pm } from '../bin/lib/pm.mjs'
+
+// The quota readings the pace reads; none by default (quota unknown).
+const quotas = vi.hoisted(() => ({ q: null as Quotas | null }))
+vi.mock('../server/utils/quotas', async orig => ({ ...(await orig<object>()), readQuotas: async () => quotas.q ?? { claude: null, codex: null } }))
+afterEach(() => { quotas.q = null })
 
 let dir = '', store: ReturnType<typeof createPmStore>, token = ''
 const deps = () => ({ store }) as unknown as CoreAdminDeps & { store: typeof store }
@@ -428,8 +434,23 @@ describe('wakes', () => {
       // Marked run: the slot does not fire again.
       expect(await deliver('idle', day(2, 8, 2)).run()).toEqual([])
       expect((await store.coordinator('CO'))!.skipped!.n).toBe(1)
-      expect(await cli(['autopilot', 'show'])).toMatchObject({ lookForWork: false, today: { skippedWakes: 1 } })
+      expect(await cli(['autopilot', 'show'])).toMatchObject({ lookForWork: false, today: { skippedWakes: 1 }, pacing: 'claude · quota unknown (no reading of claude on this project\'s machine) · task-count limits only' })
       expect((await coordinatorsView(store)).find(v => v.project === 'CO')).toMatchObject({ asleep: 'idle', wokeAt: day(2, 6), skippedToday: 1 })
+    })
+
+    it('skips a scheduled wake while the worker\'s account is ahead of its pace, marked run', async () => {
+      const task = await asleep()
+      await store.saveTask({ ...task, state: 'waiting', step: state(5) })
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, seen: { 'CO-1': 'waiting' } })
+      const now = day(2, 8, 1)
+      // The 5-hour window at 90 %: past the 25 % reserve.
+      quotas.q = { codex: null, claude: { at: now, five: { used: 90, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
+      expect(await deliver('idle', now).run()).toEqual([])
+      expect(await scheduled()).toBe(0)
+      expect((await store.coordinator('CO'))!).toMatchObject({ ranAt: now, atRan: now, skipped: { n: 1 } })
+      // Marked run: the next tick does not try again.
+      expect(await deliver('idle', day(2, 8, 2)).run()).toEqual([])
+      expect((await store.coordinator('CO'))!.skipped!.n).toBe(1)
     })
 
     it('wakes when a task is not done, or something changed since the last wake', async () => {

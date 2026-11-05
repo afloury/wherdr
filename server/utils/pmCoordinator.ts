@@ -18,6 +18,8 @@ import { WRITE_SCRIPT, exec, startTask } from './pmLaunch'
 import { userStep } from './pmBoard'
 import { resumeTask, stopTask } from './pmStop'
 import { resumeRefusal } from '../../shared/pm/stop'
+import { pacedStart, paceLine } from '../../shared/pm/pace'
+import { projectPace } from './pmPace'
 import type { CoordinatorRecord, PmStore } from './pmStore'
 
 type Deps = CoreAdminDeps & { store: PmStore }
@@ -151,10 +153,12 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const ap = rec?.autopilot ?? DEFAULT_AUTOPILOT
       const mine = (await store.tasks()).filter(x => x.project === key)
       const now = Date.now()
+      const pace = await projectPace(store, key, undefined, now, true)
       return {
         autopilot: ap, lookForWork: !!ap.lookForWork,
+        pacing: pace ? paceLine(pace, now) : 'unknown: the project has no template or no worker program',
         today: { ...limitsLeft(ap, mine, await store.runs(), now), skippedWakes: today(rec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(rec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
-        note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped',
+        note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are',
       }
     }
     case 'automation list': return { automations: (await store.automations(key)).automations.map(automationLine), note: 'Only the user adds or changes automations, in wherdr' }
@@ -178,9 +182,10 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     case 'task start': {
       const task = await taskOf(cmd.task)
       const mine = (await store.tasks()).filter(x => x.project === key)
-      const wake = turn !== 'user', who = { who: 'coordinator' as const, wake }
+      const wake = turn !== 'user', who = { who: 'coordinator' as const, wake }, now = Date.now()
+      const pace = pacedStart(task, wake ? 'wake' : 'user') ? (await projectPace(store, key, task, now))?.verdict : undefined
       const why = (task.stopped ? resumeRefusal(task, 'continue', who, undefined) : undefined)
-        ?? coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), Date.now(), wake)
+        ?? coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), now, wake, { pace })
       if (why) throw new HerdrError('refused', why)
       // Started in a wake: the autopilot's own task, which it may stop in a wake.
       if (wake && !task.autopilot) await store.saveTask({ ...task, autopilot: true })
@@ -197,7 +202,8 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const why = addRefusal(rec?.autopilot, turn !== 'user') ?? (look ? lookAddRefusal(rec?.autopilot, today(rec?.lookAdded, Date.now())) : undefined)
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
-      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '' })
+      // Added in the user's turn: their request, never held by the pace.
+      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', origin: turn === 'user' ? 'user' : 'coordinator' })
       const task = turn !== 'user' ? { ...added, autopilot: true as const } : added
       if (look) await store.saveCoordinator({ ...rec!, lookAdded: bump(rec!.lookAdded, Date.now()) })
       return { task: await store.logTask(task, by, `added the task${cmd.after ? `, after ${cmd.after}` : ''}`) }

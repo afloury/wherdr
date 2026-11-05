@@ -104,7 +104,7 @@ export function firingTask(a: Automation, project: string, firstType: string, no
   const d = new Date(now), pad = (n: number) => String(n).padStart(2, '0')
   const when = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   return {
-    project, title: `${a.name} · ${when}`.slice(0, 200), type: a.type || firstType, auto: a.id,
+    project, title: `${a.name} · ${when}`.slice(0, 200), type: a.type || firstType, auto: a.id, origin: 'automation' as const,
     description: cause ? `${a.prompt}\n\nTriggered by ${cause}.` : a.prompt,
   }
 }

@@ -55,7 +55,7 @@ const midnight = (t: number) => new Date(t).setHours(0, 0, 0, 0)
 
 // A window as it stands now: a reading taken before its reset counts as empty,
 // with the next reset one window later.
-function current(w: QuotaWindow | null, now: number): { used: number, resetsAt: number | null } | null {
+export function current(w: QuotaWindow | null, now: number): { used: number, resetsAt: number | null } | null {
   if (!w) return null
   if (w.resetsAt !== null && w.resetsAt <= now) return { used: 0, resetsAt: w.resetsAt + w.minutes * 60_000 }
   return { used: w.fresh ? 0 : w.used, resetsAt: w.resetsAt }

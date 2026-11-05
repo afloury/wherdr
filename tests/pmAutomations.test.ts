@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanAutomation, firesOn, firingTask, globMatch, taskEvents, type Automation } from '../shared/pm/automations'
 import type { Task } from '../shared/pm/run'
+import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
 import { issueToken, runCommand } from '../server/utils/pmCoordinator'
 import { company } from '../shared/pm/examples'
@@ -18,6 +19,9 @@ vi.mock('../server/utils/pmLaunch', async orig => ({
     return deps.store.saveTask({ ...(await deps.store.task(id))!, state: 'working' })
   },
 }))
+// The quota readings the pace reads; none by default (quota unknown).
+const quotas = vi.hoisted(() => ({ q: null as Quotas | null }))
+vi.mock('../server/utils/quotas', async orig => ({ ...(await orig<object>()), readQuotas: async () => quotas.q ?? { claude: null, codex: null } }))
 const { automationTick, fireAutomation } = await import('../server/utils/pmAutomations')
 
 const at = (d: number, h = 0, mi = 0) => new Date(2026, 10, d, h, mi).getTime()
@@ -65,7 +69,7 @@ describe('automations', () => {
     expect(firesOn({ ...a, filter: undefined }, ev(task('CO-1', { auto: 'other' })))).toBe(false)
     expect(firesOn({ ...a, event: 'failed' }, ev(task('CO-1', { title: 'Docs' })))).toBe(false)
     expect(firingTask(auto({ type: 'study' }), 'CO', 'feature', at(5, 4, 17), 'CO-1 (Fix): merged'))
-      .toEqual({ project: 'CO', title: 'A · 2026-11-05 04:17', type: 'study', auto: 'a', description: 'Do it\n\nTriggered by CO-1 (Fix): merged.' })
+      .toEqual({ project: 'CO', title: 'A · 2026-11-05 04:17', type: 'study', auto: 'a', origin: 'automation', description: 'Do it\n\nTriggered by CO-1 (Fix): merged.' })
   })
 })
 
@@ -81,7 +85,7 @@ describe('the engine', () => {
     await store.saveTemplate(company)
     await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [{ key: 'CO', name: 'Co', machine: '', path: '/r', template: 'company', addedAt: 1 }] }))
   })
-  afterEach(() => fs.rm(dir, { recursive: true, force: true }))
+  afterEach(() => { quotas.q = null; return fs.rm(dir, { recursive: true, force: true }) })
 
   it('a slot missed while down fires once on start, after a restart too', async () => {
     await save([auto({ id: 'clean', name: 'Clean', schedule: 'daily 04:17', last: at(1, 5) }), auto({ id: 'off', schedule: 'daily 04:17', on: false, last: at(1, 5) })])
@@ -94,6 +98,20 @@ describe('the engine', () => {
     expect(t).toMatchObject({ title: 'Clean · 2026-11-05 10:00', type: 'feature', auto: 'clean', state: 'working', description: 'Do it\n\nTriggered by the schedule daily 04:17.' })
     const [a] = (await store.automations('CO')).automations
     expect(a).toMatchObject({ last: at(5, 10), firings: [{ at: at(5, 10), by: 'schedule', task: 'CO-1' }] })
+  })
+
+  it('a slot held by the pace is noted as fired, with why; run now is never held', async () => {
+    const now = at(5, 10)
+    // The account at its limit until tomorrow.
+    quotas.q = { codex: null, claude: { at: now, five: null, week: null, limited: { resetsAt: at(6, 0) } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
+    await save([auto({ id: 'clean', name: 'Clean', schedule: 'daily 04:17', last: at(4, 5) })])
+    expect(await automationTick(deps(), now)).toEqual([expect.stringMatching(/^paced: the account hit its limit until /)])
+    expect(await store.tasks()).toEqual([])
+    expect((await store.automations('CO')).automations[0]).toMatchObject({ last: now, firings: [{ at: now, by: 'schedule', error: expect.stringMatching(/^paced:/) }] })
+    // No catch-up nor retry in a loop.
+    expect(await automationTick(deps(), at(5, 11))).toEqual([])
+    expect(await fireAutomation(deps(), 'CO', 'clean', at(5, 12))).toMatchObject({ by: 'user', task: 'CO-1' })
+    expect((await store.task('CO-1'))!.origin).toBe('automation')
   })
 
   it('fires on an event of another task; run now fires one that is off', async () => {
