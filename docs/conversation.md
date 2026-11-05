@@ -8,6 +8,7 @@
   A command the agent proposes (shell code block, or inline `! command`) can be copied without
   its prompt, or run in the agent's shell mode (`!`, Claude Code, Codex and omp) after you
   confirm the full command.
+- **SVG diagrams**: complete code fences labelled `svg` render as isolated, theme-aware images. **Source / Preview**, beside **Copy** in the card header, switches the same card between the diagram and its original markup; **Copy** always copies that markup. Click or use Enter/Space on the image for the existing full-screen viewer. Static shapes, text and local definitions are supported, up to 150,000 source characters, 2,000 source elements and 10,000 expanded reference instances. Incomplete, unsupported or unsafe diagrams stay readable code. Scripts, foreign HTML, animation and external resources are rejected; raw inline SVG is not inserted into the page. Other fence languages and file-explorer document fences remain code.
 - **Interactive agent screens**: in a conversation, an uncertain menu or panel opens the
   pane's real terminal in a modal window, with arrows, Enter, Escape, Tab, digits and y/n.
   The rest of the app waits behind a scrim (the window fills the screen on a phone); in a
