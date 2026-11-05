@@ -14,7 +14,7 @@ export interface CoreTranscriptDeps {
   localHome: string
 }
 
-interface CoreProcess { pid?: number, name?: string, argv?: string[], cwd?: string }
+interface CoreProcess { pid?: number, name?: string, argv?: string[], cwd?: string, startedAt?: number }
 interface CoreDetail { pid?: number, argv?: string[], created_ms?: number, foreground?: CoreProcess | null }
 
 // The machine part of a core address (`mac/t7` -> `mac`; local ones have none).
@@ -29,7 +29,7 @@ export function processInfo(d: CoreDetail) {
   return { process_info: { foreground_processes: procs } }
 }
 
-const AGENT_PROGRAMS = new Set(['claude', 'codex', 'omp'])
+const AGENT_PROGRAMS = new Set(['claude', 'codex', 'omp', 'devin'])
 const baseName = (s: string | undefined) => (s || '').split('/').pop() || ''
 // Programs under the terminal's process, from `ps -e -o pid=,ppid=,args=`: an agent started by a
 // shell, or hosted by a helper, is not the foreground process of the terminal.
@@ -90,6 +90,22 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
       const on = machineOfAddress(address)
       const ps = await deps.call<{ stdout?: string }>('machine.exec', { argv: ['ps', '-e', '-o', 'pid=,ppid=,args='], ...(on ? { on } : {}), timeout: 5 }, 8000).catch(() => null)
       procs.unshift(...agentDescendants(Buffer.from(ps?.stdout || '', 'base64').toString('utf8'), d.pid))
+    }
+    const devin = procs.filter(p => [baseName(p.name), ...(p.argv?.slice(0, 2).map(baseName) || [])].includes('devin') && Number.isSafeInteger(p.pid))
+    if (devin.length) {
+      // Actual agent birth, not the enclosing terminal's: stale PID lock files can
+      // survive exit and PID reuse. UTC/C makes ps's one-second timestamp portable.
+      const on = machineOfAddress(address)
+      const r = await deps.call<{ stdout?: string }>('machine.exec', {
+        argv: ['env', 'LC_ALL=C', 'TZ=UTC', 'ps', '-p', devin.map(p => p.pid).join(','), '-o', 'pid=,lstart='],
+        ...(on ? { on } : {}), timeout: 5,
+      }, 8000).catch(() => null)
+      for (const line of Buffer.from(r?.stdout || '', 'base64').toString('utf8').split('\n')) {
+        const m = /^\s*(\d+)\s+(.+)$/.exec(line)
+        const p = m && devin.find(p => p.pid === Number(m[1]))
+        const at = m ? Date.parse(`${m[2]} UTC`) : NaN
+        if (p && Number.isFinite(at)) p.startedAt = at
+      }
     }
     return info
   }
