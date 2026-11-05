@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_AUTOPILOT, autopilotEvents, coordinatorStartRefusal, cleanAutopilot, inHours, limitsLeft, startRefusal, tellRefusal } from '../shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, limitsLeft, startRefusal, tellRefusal } from '../shared/pm/autopilot'
 import type { Run, Task } from '../shared/pm/run'
 
 const task = (n: number, more: Partial<Task> = {}): Task => ({ id: `CO-${n}`, project: 'CO', title: `T${n}`, description: '', type: 'feature', state: 'working', createdAt: 0, ...more })
@@ -84,4 +84,8 @@ describe('starting a task (coordinator, or the engine for a chained one)', () =>
     expect(coordinatorStartRefusal(ap, next, [task(1, { state: 'todo' }), next], [], at(12), true)).toBe('CO-2 starts after CO-1, which is not done')
     expect(coordinatorStartRefusal(ap, next, [done, next], [], at(12), true)).toBeUndefined()
   })
+})
+
+it('puts the goal in a wake with one final period', () => {
+  expect(['Ship v3', 'Ship v3.', ' Ship v3? '].map(sentence)).toEqual(['Ship v3.', 'Ship v3.', 'Ship v3?'])
 })

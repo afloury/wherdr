@@ -38,6 +38,9 @@ export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error
   } }
 }
 
+// The goal as a sentence in a wake's text: one final period, never two.
+export const sentence = (s: string) => (/[.!?…]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`)
+
 export function inHours(hours: Autopilot['hours'], d: Date) {
   if (!hours) return true
   const h = d.getHours()
