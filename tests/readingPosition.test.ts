@@ -23,4 +23,9 @@ describe('position de lecture', () => {
     expect(restoredScrollTop('p3', 'b.jsonl', 5000)).toBeNull()
     expect(restoredScrollTop('inconnu', 'a.jsonl', 5000)).toBeNull()
   })
+  it('matches on the pane alone when the file is not known (copy kept without it)', () => {
+    saveReadingPosition('p4', 'a.jsonl', box(1000))
+    expect(restoredScrollTop('p4', undefined, 5000)).toBe(1000)
+    expect(restoredScrollTop('p4', null, 5000)).toBeNull()
+  })
 })
