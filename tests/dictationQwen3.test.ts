@@ -19,8 +19,8 @@ interface Q3 {
 }
 
 // A worker-like global: `self` is the global object.
-function load() {
-  const ctx = vm.createContext({ TextEncoder, TextDecoder } as Record<string, unknown>)
+function load(globals: Record<string, unknown> = {}) {
+  const ctx = vm.createContext({ TextEncoder, TextDecoder, ...globals } as Record<string, unknown>)
   ctx.self = ctx
   for (const f of ['tokenizer.js', 'prompt.js']) {
     vm.runInContext(readFileSync(new URL(`../public/workers/qwen3/${f}`, import.meta.url), 'utf8'), ctx)
@@ -102,6 +102,10 @@ describe('the qwen3 tokenizer', () => {
     const bad = JSON.parse(JSON.stringify(spec()))
     bad.pre_tokenizer.pretokenizers[0].invert = true
     expect(() => Q.tokenizer(bad)).toThrow('Unsupported speech model tokenizer')
+  })
+  it('reports unsupported tokenizer configuration when regex modifiers cannot compile', () => {
+    const unsupported = load({ RegExp: function () { throw new SyntaxError('Invalid group') } })
+    expect(() => unsupported.tokenizer(spec())).toThrow('Unsupported speech model tokenizer configuration')
   })
 })
 

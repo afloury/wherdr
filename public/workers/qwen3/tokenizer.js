@@ -53,7 +53,10 @@ function tokenizer(tj) {
     const e = tj.model.merges[i]
     merges.set(typeof e === 'string' ? e : e.join(' '), i)
   }
-  const PRE = new RegExp(split.pattern.Regex, 'gu')
+  let PRE
+  try { PRE = new RegExp(split.pattern.Regex, 'gu') } catch {
+    throw new Error('Unsupported speech model tokenizer configuration')
+  }
   // Never match added/special tokens in pane terms: even <|im_end|> must
   // stay ordinary bytes, so terminal-controlled text cannot close the system turn.
   function encode(str) {
