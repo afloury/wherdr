@@ -320,6 +320,15 @@ describe('gate matrix', () => {
     expect(decide('lan', '/ws', false, false, true)).toBe('network')
     expect(decide('funnel', '/ws', false, false, true)).toBe('network')
   })
+  it('with a passkey: an agent\'s screenshot upload with its task\'s key skips the lock, nothing else does', () => {
+    const agent = (zone: keyof typeof checks, path: string, ws = false, crossSite = false) =>
+      gateDecision({ check: checks[zone], unlocked: false, hostOk: true, crossSite, path, ws, agentKey: true })
+    expect(agent('tailnet', '/api/pm/shot')).toBe('ok') // the route checks the key
+    expect(agent('tailnet', '/api/config')).toBe('locked')
+    expect(agent('tailnet', '/ws', true)).toBe('locked')
+    expect(agent('lan', '/api/pm/shot')).toBe('network')
+    expect(agent('tailnet', '/api/pm/shot', false, true)).toBe('origin')
+  })
   it('with a passkey: every accepted network needs the unlocked session for the API and WebSockets', () => {
     for (const z of served) {
       for (const path of ['/api/config', '/api/phone', '/api/update']) {

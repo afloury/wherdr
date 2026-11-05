@@ -8,8 +8,11 @@ export type Holder = typeof HOLDERS[number]
 // user's gesture. action: the engine runs `action`.
 export const ENDS = ['report', 'verdict', 'user', 'action'] as const
 export type End = typeof ENDS[number]
-export const EVIDENCE = ['link', 'commit', 'report', 'proposed-tasks'] as const
+export const EVIDENCE = ['link', 'commit', 'report', 'proposed-tasks', 'screenshots'] as const
 export type Evidence = typeof EVIDENCE[number]
+// What screenshots evidence asks for: the result only, or before and after the change.
+export const SHOT_MODES = ['after', 'before-after'] as const
+export type ShotMode = typeof SHOT_MODES[number]
 export const ACTIONS = ['git.land', 'git.push', 'github.pr', 'github.merge', 'git.verify-merged'] as const
 export type ActionKind = typeof ACTIONS[number]
 // Who may merge: only the user, or the engine too. Ordered loosest first.
@@ -27,6 +30,7 @@ export interface Step {
   userLabel?: string // button text for ends: user
   badge?: string // what the user has to do, shown on the card in Your turn
   evidence?: Evidence[]
+  screenshots?: ShotMode // with evidence screenshots, defaults to 'after'
   recheck?: string // duration, for a coordinator step
   timeout?: string // duration, then the task goes to Your turn
   sendBack?: string // ends: verdict, an earlier step
@@ -102,7 +106,7 @@ function checkPrefs(p: unknown, path: string, errs: WorkflowError[]) {
   for (const [k, v] of Object.entries(p)) if (!isStr(v)) errs.push({ path: `${path}.${k}`, message: 'must be text' })
 }
 
-const STEP_KEYS = ['id', 'column', 'holder', 'instructions', 'ends', 'userLabel', 'badge', 'evidence', 'recheck', 'timeout', 'sendBack', 'rounds', 'action']
+const STEP_KEYS = ['id', 'column', 'holder', 'instructions', 'ends', 'userLabel', 'badge', 'evidence', 'screenshots', 'recheck', 'timeout', 'sendBack', 'rounds', 'action']
 
 function checkStep(s: unknown, path: string, earlier: string[], errs: WorkflowError[]) {
   const err = (field: string, message: string) => errs.push({ path: field ? `${path}.${field}` : path, message })
@@ -117,6 +121,10 @@ function checkStep(s: unknown, path: string, earlier: string[], errs: WorkflowEr
   if ((s.ends === 'report' || s.ends === 'verdict') && !agent) err('holder', `an agent must hold a step that ends with ${s.ends}`)
   if (s.evidence !== undefined && !(Array.isArray(s.evidence) && s.evidence.every(e => EVIDENCE.includes(e))))
     err('evidence', `must be a list of ${EVIDENCE.join(', ')}`)
+  if (s.screenshots !== undefined) {
+    if (!SHOT_MODES.includes(s.screenshots as ShotMode)) err('screenshots', `must be one of ${SHOT_MODES.join(', ')}`)
+    else if (!(Array.isArray(s.evidence) && s.evidence.includes('screenshots'))) err('screenshots', 'only for a step whose evidence has screenshots')
+  }
   for (const k of ['recheck', 'timeout'])
     if (s[k] !== undefined && !(typeof s[k] === 'string' && DURATION.test(s[k]))) err(k, 'must be a duration like 30s, 5m, 2h or 1d')
   if (s.ends === 'verdict') {
