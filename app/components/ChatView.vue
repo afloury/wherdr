@@ -458,15 +458,14 @@ const hasDraft = computed(() => Boolean(props.pane.draft || props.pane.queueSend
 const unsentPane = computed<Pane>(old => (old && old.id === props.pane.id && old.queueSendNow === props.pane.queueSendNow && JSON.stringify(old.draft) === JSON.stringify(props.pane.draft) ? old : props.pane))
 const waitFor = computed(() => waitingOn(props.pane))
 // Same props objects for the messages on each render (none built inline).
-const userParts = weakMemo((b: Block & { k: 'user' }) => [
-  ...b.srcs.map(url => ({ type: 'file' as const, mediaType: 'image/jpeg', url })),
-  ...(b.text || b.files.length ? [{ type: 'text' as const, text: b.text || ' ' }] : []),
-])
-const userUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: 'msg-bubble', header: 'msg-files' }))
+// A user message is one framed bubble: its images first, then its text, so a
+// message of images only still reads as the user's (right side, frame, time).
+const userParts = weakMemo((b: Block & { k: 'user' }) => [{ type: 'text' as const, text: b.text || ' ' }])
+const userUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: 'msg-bubble' }))
 const userRoot = (b: Block & { k: 'user' }) => (b.text.trim() || b.files.length ? 'msg msg-user' : 'msg msg-user msg-no-text')
 const textParts = weakMemo((b: { text: string }) => [{ type: 'text' as const, text: b.text }])
 const aiUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: 'md' }))
-const pendingUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: root.includes(' queued') ? 'msg-bubble queued' : 'msg-bubble', header: 'msg-files' }))
+const pendingUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: root.includes(' queued') ? 'msg-bubble queued' : 'msg-bubble' }))
 const firstParts = keyedMemo((text: string) => [{ type: 'text' as const, text }])
 // omp rows always carry their parsed call (isOmpGroup).
 type OmpToolItem = ChatItem & { omp: OmpToolView }
@@ -991,13 +990,9 @@ function queuedNow() {
     }
   })
 }
-// Same parts as a message in the conversation: thumbnails above the bubble,
-// so nothing moves when it lands.
-const pendingParts = (q: { srcs: string[], missing: number, body: string, files: unknown[] }) => [
-  ...q.srcs.map(url => ({ type: 'file' as const, mediaType: 'image/jpeg', url })),
-  ...Array.from({ length: q.missing }, () => ({ type: 'file' as const, mediaType: 'image/jpeg', url: '' })),
-  ...(q.body || q.files.length ? [{ type: 'text' as const, text: q.body || ' ' }] : []),
-]
+// Same bubble as a message in the conversation (thumbnails inside, above the
+// text), so nothing moves when it lands.
+const pendingParts = (q: { body: string }) => [{ type: 'text' as const, text: q.body || ' ' }]
 // A message the server never got: "Cancel" puts the app's copy back into the
 // field, "Retry" sends it again.
 function cancelQueued(q: { id: string, raw: string }) {
@@ -1352,11 +1347,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   :parts="userParts(b)"
                   :ui="userUi(userRoot(b))"
                 >
-                  <template #files>
-                    <MsgThumbs :srcs="b.srcs" :offline="readOnly" />
-                  </template>
                   <template #content>
-                    <span v-if="b.files.length" class="msg-file-chips">
+                    <span v-if="b.srcs.length" class="msg-media"><MsgThumbs :srcs="b.srcs" :offline="readOnly" /></span><span v-if="b.files.length" class="msg-file-chips">
                       <FileChip v-for="f in b.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
                     </span><UserText :text="b.text" :pasted="b.pasted" />
                   </template>
@@ -1544,11 +1536,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               :parts="pendingParts(q)"
               :ui="pendingUi(`msg msg-user msg-pending sent${q.body || q.files.length ? '' : ' msg-no-text'}`)"
             >
-              <template #files>
-                <MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span>
-              </template>
               <template #content>
-                <span v-if="q.files.length" class="msg-file-chips">
+                <span v-if="q.srcs.length || q.missing" class="msg-media"><MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span></span><span v-if="q.files.length" class="msg-file-chips">
                   <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
                 </span><UserText :text="q.body" :pasted="q.pasted" />
               </template>
@@ -1581,11 +1570,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               :parts="pendingParts(q)"
               :ui="pendingUi(`msg msg-user msg-pending queued${q.body || q.files.length ? '' : ' msg-no-text'}`)"
             >
-              <template #files>
-                <MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span>
-              </template>
               <template #content>
-                <span v-if="q.files.length" class="msg-file-chips">
+                <span v-if="q.srcs.length || q.missing" class="msg-media"><MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span></span><span v-if="q.files.length" class="msg-file-chips">
                   <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
                 </span><UserText :text="q.body" :pasted="q.pasted" />
               </template>
