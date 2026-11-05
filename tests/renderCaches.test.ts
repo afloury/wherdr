@@ -1,9 +1,13 @@
+// @vitest-environment happy-dom
 // Budgets of the rendering caches (Markdown, question marks, reply targets):
 // a corpus of large replies stays under the cap, and the versions of a reply
 // still being written do not pile up.
 import { describe, expect, it } from 'vitest'
-import { MD_CACHE_CHARS, md, mdCacheStats, onMdDropped } from '~/utils/markdown'
-import { MARKED_CACHE_CHARS, TARGETS_CACHE_CHARS, forgetReply, replyCacheStats, replyTargets, withQuestions } from '~/utils/questionReply'
+import { MD_CACHE_CHARS, md, mdCacheStats, onMdDropped } from '../app/utils/markdown'
+import { MARKED_CACHE_CHARS, TARGETS_CACHE_CHARS, forgetReply, replyCacheStats, replyTargets, withQuestions } from '../app/utils/questionReply'
+
+// Nuxt auto-imports t() (app/utils/i18n.ts); English is the active language.
+;(globalThis as { t?: (s: string) => string }).t = s => s
 
 const labels = { reply: 'Reply', quoted: 'Quoted', discuss: 'Discuss', yes: 'Yes', no: 'No', okAll: 'OK to all', decisions: 'Decisions' }
 const big = (i: number, chars: number) => `Reply ${i}\n\n` + `Line of plain prose number ${i}, long enough to weigh. `.repeat(Math.ceil(chars / 52))
