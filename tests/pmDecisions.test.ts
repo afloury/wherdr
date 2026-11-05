@@ -106,4 +106,23 @@ describe('Allow / Deny on a permission', () => {
     expect(permissionKeys({ ...claude, options: [{ n: 1, label: 'Run it' }] }, true)).toBeNull()
     expect(permissionKeys(null, true)).toBeNull()
   })
+
+  it('reads the agent\'s screen only (herdr-core answers no history read of a Claude terminal), then sends the keys', async () => {
+    const { answerPermission } = await import('../server/utils/pmPermission')
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-perm-'))
+    try {
+      const store = createPmStore(dir)
+      await store.setEnabled(true)
+      await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [{ key: 'CO', name: 'CO', machine: '', path: '/src', addedAt: 1 }] }))
+      const t = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
+      await store.saveRun({ id: 'r1', task: t.id, role: 'worker', program: 'claude', model: 'opus', machine: '', worktree: '/w', branch: 'b', instructions: '', terminal: 'h/t3', attempt: 1, state: 'running', startedAt: 1 })
+      await store.saveTask({ ...t, state: 'waiting', waitKind: 'permission', waiting: 'approve Bash: touch a', run: 'r1' })
+      const calls: [string, Record<string, unknown>][] = []
+      const screen = ' Bash command\n   touch a\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don\'t ask again for touch commands\n   3. No, and tell Claude what to do differently (esc)\n\n Esc to cancel'
+      const call = async (m: string, p: Record<string, unknown>) => { calls.push([m, p]); return m === 'terminal.read' ? { text: screen } : {} }
+      const saved = await answerPermission({ store, call } as unknown as Parameters<typeof answerPermission>[0], t.id, false)
+      expect(calls).toEqual([['terminal.read', { terminal: 'h/t3', lines: 0 }], ['terminal.keys', { terminal: 'h/t3', keys: ['down', 'down', 'enter'] }]])
+      expect(saved).toMatchObject({ state: 'working', waitKind: undefined })
+    } finally { await fs.rm(dir, { recursive: true, force: true }) }
+  })
 })

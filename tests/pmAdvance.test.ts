@@ -211,6 +211,21 @@ describe('advanceTick (store and a fake herdr-core)', () => {
       await advanceTick(deps) // nothing new: told once
       expect(calls.filter(([m]) => m === 'terminal.run')).toHaveLength(1)
 
+      // A major finding: back to the worker, its old note removed (a stale link proves nothing).
+      verdict = major
+      terms['h/t2']!['wherdr.report'] = 'done'
+      await advanceTick(deps)
+      expect(plan[(await store.task(t.id))!.step!.at]!.id).toBe('work')
+      await advanceTick(deps)
+      const sent = calls.filter(([m, p]) => m === 'terminal.send' && p.terminal === 'h/t1').map(([, p]) => p.text as string)
+      expect(sent.at(-1)).toContain('no-test [major] No test')
+      expect(calls.some(([m, p]) => m === 'machine.exec' && (p.argv as string[]).includes('/h/.wherdr/pm/tasks/CO-1/report.md') && (p.argv as string[])[2] === 'rm -f "$1"')).toBe(true)
+      // The fix, then the review again in the same reviewer's terminal.
+      terms['h/t1']!['wherdr.report'] = 'done'
+      await advanceTick(deps) // the PR again (same branch), then the review
+      await advanceTick(deps)
+      expect(calls.filter(([m, p]) => m === 'terminal.send' && p.terminal === 'h/t2').at(-1)![1].text).toBe('Review again: read /h/.wherdr/pm/tasks/CO-1/review.md and follow it.')
+      expect(calls.filter(([m]) => m === 'terminal.run')).toHaveLength(1)
       verdict = '{"findings":[]}'
       terms['h/t2']!['wherdr.report'] = 'done'
       await advanceTick(deps)
@@ -228,6 +243,16 @@ describe('advanceTick (store and a fake herdr-core)', () => {
       await startChained(deps)
       expect(calls.slice(before).some(([m]) => m === 'terminal.run')).toBe(true)
       expect((await store.task(next.id))!.log?.at(-1)?.text).toBe(`started: ${t.id} done`)
+
+      // A chained task held because the task before it stopped: to do again once that one goes on.
+      const third = await store.addTask({ project: 'CO', title: 'Last', type: 'simple', after: next.id })
+      await store.saveTask({ ...(await store.task(next.id))!, state: 'waiting', waiting: 'git worktree failed' })
+      await startChained(deps)
+      expect(await store.task(third.id)).toMatchObject({ state: 'waiting', waiting: `${next.id}, which this task starts after, stopped: git worktree failed` })
+      await store.saveTask({ ...(await store.task(next.id))!, state: 'working', waiting: undefined })
+      await startChained(deps)
+      expect(await store.task(third.id)).toMatchObject({ state: 'todo' })
+      expect((await store.task(third.id))!.waiting).toBeUndefined()
     } finally { await fs.rm(dir, { recursive: true, force: true }) }
   })
 })

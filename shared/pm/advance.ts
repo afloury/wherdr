@@ -85,6 +85,9 @@ export const runsNow = (step: PlannedStep | undefined, s: StepState | undefined)
 // The tasks a task waits for: `after: A-1,A-2`.
 export const afterIds = (t: Pick<Task, 'after'>) => (t.after ?? '').split(',').map(s => s.trim()).filter(Boolean)
 
+// What every chain wait says: the engine knows which waits are its own.
+export const CHAIN_WAIT = 'which this task starts after'
+
 // Where a chained task stands: 'go' once all its tasks are done (merged, or
 // their report finished); a reason to wait for the user when one failed or
 // stopped; undefined while they still run.
@@ -92,11 +95,11 @@ export function chainState(task: Task, tasks: Task[]): 'go' | { wait: string } |
   let open = false
   for (const id of afterIds(task)) {
     const t = tasks.find(x => x.id === id)
-    if (!t) return { wait: `${id}, which this task starts after, does not exist` }
-    if (t.step?.abandoned) return { wait: `${id}, which this task starts after, was abandoned` }
+    if (!t) return { wait: `${id}, ${CHAIN_WAIT}, does not exist` }
+    if (t.step?.abandoned) return { wait: `${id}, ${CHAIN_WAIT}, was abandoned` }
     if (t.step?.done) continue
     // Stopped: waiting, not on an agent's question but on a failure.
-    if (t.state === 'waiting' && !t.waitKind) return { wait: `${id}, which this task starts after, stopped: ${t.waiting?.split('\n')[0] ?? ''}` }
+    if (t.state === 'waiting' && !t.waitKind) return { wait: `${id}, ${CHAIN_WAIT}, stopped: ${t.waiting?.split('\n')[0] ?? ''}` }
     open = true
   }
   return open ? undefined : 'go'

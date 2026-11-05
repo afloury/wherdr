@@ -11,7 +11,7 @@ import { actionShell } from './pmActions'
 import { stepAction } from './pmBoard'
 import { exec, startTask, type PmLaunchDeps } from './pmLaunch'
 import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
-import { chainState } from '../../shared/pm/advance'
+import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { advanceTick } from './pmAdvance'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
@@ -58,9 +58,12 @@ export async function syncWaits(deps: PmLaunchDeps) {
 export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
   const tasks = await store.tasks(), runs = await store.runs(), started: string[] = []
-  for (const t of tasks.filter(x => x.state === 'todo' && x.after)) {
+  for (const t of tasks.filter(x => x.after && !x.step?.started)) {
     const c = chainState(t, tasks)
-    if (c && c !== 'go') await store.logTask({ ...t, state: 'waiting', waiting: c.wait }, 'engine', c.wait)
+    const held = c && c !== 'go' ? c.wait : undefined
+    if (t.state === 'todo' && held) await store.logTask({ ...t, state: 'waiting', waiting: held }, 'engine', held)
+    // Held by its chain, and the task before it goes on again: to do, the engine starts it once that one is done.
+    else if (t.state === 'waiting' && !held && t.waiting?.includes(CHAIN_WAIT)) await store.logTask({ ...t, state: 'todo', waiting: undefined }, 'engine', 'to do again: the tasks before it go on')
   }
   for (const p of await store.projects()) {
     const ap = (await store.coordinator(p.key))?.autopilot

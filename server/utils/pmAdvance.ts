@@ -13,7 +13,7 @@ import { WRITE_SCRIPT, exec, type PmLaunchDeps } from './pmLaunch'
 import { stepAction } from './pmBoard'
 
 // The task's commit, its diff size since the branch started, the worker's note, the verdict file.
-export const READ_SCRIPT = `wt=$1 b=$2
+export const SIGNAL_READ_SCRIPT = `wt=$1 b=$2
 git -C "$wt" rev-parse -q --verify HEAD; echo "${READ_SEP}"
 s=$(git -C "$wt" config "branch.$b.wherdrstart")
 git -C "$wt" diff --numstat \${s:+"$s"} HEAD 2>/dev/null | awk '{n+=$1+$2} END {print n+0}'; echo "${READ_SEP}"
@@ -57,7 +57,7 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   if (!c || c.task.step!.done) return
   const step = c.plan[c.task.step!.at]
   const files = runFiles(latest(await deps.store.runs(), run.task, 'worker')?.instructions ?? run.instructions)
-  const r = await exec(deps, c.on, READ_SCRIPT, [run.worktree, run.branch, files.note, files.verdict])
+  const r = await exec(deps, c.on, SIGNAL_READ_SCRIPT, [run.worktree, run.branch, files.note, files.verdict])
   const ev = signalEvent(step, run.role, parseRead(r.out))
   if (!ev) return
   const tell = (text: string) => deps.call('terminal.send', { terminal: run.terminal, text }, 30000)
@@ -92,6 +92,8 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
   const worker = latest(runs, id, 'worker')
   if (!alive(worker)) return void (task.state !== 'waiting' && await waitFor(deps, id, 'The worker\'s agent is not running: start the task again to go on'))
   await clearSignal(deps, worker!.terminal!)
+  // A new note for this step: the last one's link must not pass as this step's proof.
+  await exec(deps, c.on, 'rm -f "$1"', [runFiles(worker!.instructions).note])
   await deps.call('terminal.send', { terminal: worker!.terminal, text: due.text }, 30000)
   await deps.store.logTask({ ...task, step: told, run: worker!.id }, 'engine', `${plan[s.at]!.id}: sent to the worker`)
 }

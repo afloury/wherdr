@@ -22,7 +22,8 @@ export async function answerPermission(deps: CoreAdminDeps & { store: PmStore },
   if (!task) throw new HerdrError('not_found', 'Unknown task')
   const run = (await store.runs()).find(r => r.id === task.run)
   if (!run?.terminal || run.state === 'ended') throw new HerdrError('not_found', 'The task\'s agent is not running')
-  const screen = await deps.call<{ text?: string }>('terminal.read', { terminal: run.terminal, lines: 60 }, 3000)
+  // The screen only (lines: 0), as every Claude screen read: herdr-core does not answer a history read of a Claude terminal.
+  const screen = await deps.call<{ text?: string }>('terminal.read', { terminal: run.terminal, lines: 0 }, 3000)
   const keys = permissionKeys(readCoreScreen(String(screen?.text || ''), run.program, 'blocked').choices, allow === true)
   if (!keys) throw new HerdrError('stale', 'No permission prompt on the agent\'s screen: open the agent')
   await deps.call('terminal.keys', { terminal: run.terminal, keys }, 10000)
