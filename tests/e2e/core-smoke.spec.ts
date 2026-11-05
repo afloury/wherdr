@@ -16,6 +16,19 @@ test('core smoke: home, conversation attach and key bar, terminal attach', async
     : call.method === 'terminal.put' ? { path: `/remote/${call.params.name}` }
     : call.method === 'terminal.keys' ? { status: null, turn: 0 }
     : undefined)
+  // Startup discovery uses the banner even if the current shell is older.
+  // Keep registration isolated; the worker's navigation cache is covered by
+  // tests/serviceWorkerNavigation.test.ts.
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.serviceWorker, 'register', { value: async () => ({
+      waiting: null, installing: null, addEventListener() {},
+    }) })
+  })
+  await page.route('**/_nuxt/builds/latest.json?*', route => route.fulfill({ json: { id: 'next-deployment' } }))
+  let navigations = 0
+  page.on('request', request => {
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) navigations++
+  })
   // Agents in the latest state frame of /ws/events (pongs and settings messages have no panes).
   let eventsPanes = -1
   page.on('websocket', (ws) => {
@@ -29,6 +42,12 @@ test('core smoke: home, conversation attach and key bar, terminal attach', async
   })
   try {
     await core.open(page)
+    const banner = page.locator('.new-version')
+    await expect(banner).toContainText('New version available')
+    expect(navigations).toBe(1)
+    await test.info().attach('startup-update-phone', { body: await page.screenshot(), contentType: 'image/png' })
+    await banner.getByRole('button', { name: 'Later', exact: true }).click()
+    await expect(banner).toHaveCount(0)
     await expect.poll(() => eventsPanes, { message: '/ws/events opens and sends a state frame with the agent' }).toBeGreaterThan(0)
     await expect(page.locator('.home-version')).toHaveText(/^wherdr v3 · herdr-core$/i)
     await page.getByRole('button', { name: /review-agent/ }).first().click()
@@ -57,6 +76,19 @@ test('core smoke: home, conversation attach and key bar, terminal attach', async
     // The terminal view attaches the live terminal.
     await page.getByRole('button', { name: 'Terminal', exact: true }).click()
     await expect.poll(() => core.framed.filter(c => c.method === 'terminal.attach').map(c => c.params.terminal)).toContain(terminal.address)
+    await expect(page.locator('.xterm')).toBeVisible()
+
+    // Only the user's Reload action navigates, and the open core deep link survives.
+    const deepLink = page.url()
+    expect(navigations).toBe(1)
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.reload()
+    await expect(banner).toBeVisible()
+    expect(navigations).toBe(2)
+    await test.info().attach('startup-update-desktop', { body: await page.screenshot(), contentType: 'image/png' })
+    await banner.getByRole('button', { name: 'Reload', exact: true }).click()
+    await expect.poll(() => navigations).toBe(3)
+    await expect(page).toHaveURL(deepLink)
     await expect(page.locator('.xterm')).toBeVisible()
   } finally {
     await core.stop()

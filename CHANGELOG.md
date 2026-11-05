@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **Startup updates (#324).** Cached pages open immediately and show the existing Reload banner when a newer build is served, preserving the current view until the user reloads.
+
 - **Conversation reads recover (#324).** Bottom, older-page and speculative reads stop after 8 seconds so the next refresh can proceed. Speculative reads also work on iOS 16.4 and contain synchronous reader errors.
 
 - **Recovery after suspend (#324).** Unlock and Settings checks allow 10 seconds to save the offline lease; resume checks keep their 3-second deadline. Events sockets with no real packet after 8 seconds and terminal sockets with no frame after 12 seconds close through the existing retry paths.
