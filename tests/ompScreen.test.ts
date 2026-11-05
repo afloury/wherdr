@@ -17,4 +17,12 @@ describe('parseOmpStatus', () => {
   it('nothing without a rule just above the last line (full-screen panel)', () => {
     expect(parseOmpStatus('Usage\n████ 40%\n\nEsc to close')).toBeNull()
   })
+  it('reads a current input-border gauge without treating historical tool output as current', () => {
+    const screen = 'old output ▶─99%──200K─◀\n╭── ⠦ 4m > ◒ GPT > 📁 ~/project ▶──27%────┃──500K─◀ ⚙ 1 ──╮\n╰─ ─╯'
+    const status = parseOmpStatus(screen)!
+    expect(status.line).toContain('⠦ 4m > ◒ GPT > 📁 ~/project')
+    expect(status.line).toContain('⚙ 1')
+    expect(status.meters).toBe('▶──27%────┃──500K─◀')
+    expect(parseOmpStatus('old output ▶─99%──200K─◀\nFull-screen panel\nEsc to close')).toBeNull()
+  })
 })

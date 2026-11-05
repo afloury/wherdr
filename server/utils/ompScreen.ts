@@ -20,6 +20,15 @@ export function parseOmpStatus(text: string | null | undefined): OmpStatus | nul
   const lines = text.split('\n').map(l => l.trimEnd()).filter(Boolean)
   const status = lines[lines.length - 1]
   const below = lines[lines.length - 2]
+  // Current omp embeds the status and context gauge in the input box's top border.
+  if (status && /^\s*╰[─━]/.test(status)) {
+    const border = lines.slice(-16, -1).findLast(l => /^\s*╭[─━]/.test(l) && l.includes('▶'))
+    if (border) {
+      const meters = /▶[^◀\n]*◀/.exec(border)?.[0] ?? null
+      const line = border.replace(/^\s*╭[─━]+\s*/, '').replace(/▶[^◀\n]*◀/, ' ').replace(/\s*[─━]*╮\s*$/, '').trim().slice(0, 300)
+      return { line, meters }
+    }
+  }
   if (!status || !below || !RULE.test(below) || /^\s*[─━│╭╰├┌└]/.test(status)) return null
   let meters: string | null = null
   for (let i = lines.length - 3; i >= Math.max(0, lines.length - 15) && meters === null; i--) {

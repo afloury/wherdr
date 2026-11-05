@@ -9,6 +9,9 @@ All notable changes to this project are documented here. The format follows
 ### Fixed
 
 - **A finished task shows its agent's conversation.** Once a task's agent has finished (Ready to approve, Done) and its process has exited, the Board panel's Agent tab shows the conversation the board recorded for it, read only, instead of the shell left in its terminal; the terminal is still one tap away. The tab's bar says the task's state (for example Ready to approve) rather than the pane's. The Reviewer tab does the same once the review is over.
+- **omp context at a glance.** Agent rows show a thin usage line; the composer shows
+  percentage and estimated tokens, with status details on demand. Unknown readings stay
+  hidden, while resting or unreadable gauges remain clearly marked as last known.
 
 ## [2.5.0] — 2026-11-02
 
