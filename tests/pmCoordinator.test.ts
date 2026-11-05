@@ -391,6 +391,15 @@ describe('wakes', () => {
 })
 
 describe('commands of lot 10', () => {
+  it('a new token (the coordinator started again) keeps the autopilot the user set', async () => {
+    const autopilot = { on: true, goal: 'ship lot 10', every: '2h', events: ['done' as const], perDay: 4, atOnce: 1, hours: { from: 22, to: 6 } }
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot, seen: { 'CO-1': 'working' }, ranAt: 5, userAt: 6, terminal: 'host/t1', turn: { kind: 'wake', at: 1 } })
+    await issueToken(store, 'CO')
+    const c = (await store.coordinator('CO'))!
+    expect(c).toMatchObject({ autopilot, seen: { 'CO-1': 'working' }, ranAt: 5, userAt: 6 })
+    expect([c.terminal, c.turn]).toEqual([undefined, undefined])
+  })
+
   it('approve, merge, settings and the autopilot\'s limits are the user\'s', async () => {
     await refused(cli(['approve', 'CO-1']), 'Approving is the user\'s')
     await refused(cli(['merge', 'CO-1']), 'Merging is the user\'s gesture')
@@ -419,5 +428,9 @@ describe('commands of lot 10', () => {
     const told = (await store.task(task.id))!
     expect([told.state, told.waitKind, told.log?.at(-1)?.text]).toEqual(['working', undefined, 'told the agent: Postgres, as in the README'])
     await refused(tell(['tell', task.id, 'and also…']), 'only answers an agent\'s question')
+    // A permission prompt on its screen, even in the user's turn: never typed into.
+    await noteTurn(store, 'CO', 'user', 'tell it')
+    const blocked = async (method: string, p: { text: string }) => (method === 'terminal.get' ? { status: { state: 'blocked' } } : call(method, p))
+    await refused(runCommand({ store, call: blocked } as unknown as Parameters<typeof runCommand>[0], token, { argv: ['tell', task.id, 'yes'] }), 'permission request is the user\'s')
   })
 })

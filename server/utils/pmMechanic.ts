@@ -5,7 +5,7 @@
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
 import { planSteps } from '../../shared/pm/steps'
-import type { Run, Task } from '../../shared/pm/run'
+import { LABEL, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP, machineOn } from './coreCreate'
 import { actionShell } from './pmActions'
 import { stepAction } from './pmBoard'
@@ -15,9 +15,30 @@ export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) cl
 
 const lastLine = (out: string) => out.trim().split('\n').pop()?.trim().slice(0, 300) || ''
 
+const WAITS = { question: 'The agent asks a question', permission: 'The agent asks for a permission', auth: 'The agent is not logged in' } as const
+
+// What each running agent waits for, from its terminal (wherdr.report label or
+// a permission prompt): its task waits with that kind, and works again once it is gone.
+export async function syncWaits(deps: PmLaunchDeps) {
+  const { store } = deps
+  const install = await store.install()
+  const { terminals } = await deps.call<{ terminals: (LabelledTerminal & { status?: { state?: string } })[] }>('terminal.list', { all: true, labels: { [LABEL.install]: install } }, 8000)
+  const runs = await store.runs()
+  for (const task of await store.tasks()) {
+    const run = runs.find(r => r.id === task.run)
+    const term = run?.terminal && run.state !== 'ended' ? terminals.find(x => x.address === run.terminal) : undefined
+    if (!term || term.state === 'finished') continue
+    const kind = waitOf(term)
+    if (task.state === 'working' && kind) await store.saveTask({ ...task, state: 'waiting', waiting: WAITS[kind], waitKind: kind })
+    else if (task.state === 'waiting' && (task.waitKind === 'question' || task.waitKind === 'permission') && !kind)
+      await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined })
+  }
+}
+
 export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
   if (!(await store.enabled())) return []
+  await syncWaits(deps).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
   for (const task of await store.tasks()) {
@@ -48,18 +69,27 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
     if (!next) continue
     const noted = await store.saveTask({ ...task, mech: { ...task.mech, [next.key]: now } })
     const text = await perform(deps, noted, run, next.move, facts, sh).catch((e: Error) => `failed: ${e.message}`)
+    // Not delivered (the agent's terminal is gone): tried again on a later tick.
+    if (text === null) {
+      const { [next.key]: _, ...mech } = (await store.task(task.id))!.mech ?? {}
+      await store.saveTask({ ...(await store.task(task.id))!, mech })
+      continue
+    }
     await store.logTask((await store.task(task.id))!, 'engine', `${next.move.kind}: ${text}`)
     made.push({ task: task.id, move: next.move.kind })
   }
   return made
 }
 
-async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: MechFacts, sh: ReturnType<typeof actionShell>): Promise<string> {
-  const tell = (text: string) => run.terminal
-    ? deps.call('terminal.send', { terminal: run.terminal, text }, 30000).then(() => 'sent to the agent')
-    : Promise.resolve('the agent is not running: left to the user')
+async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: MechFacts, sh: ReturnType<typeof actionShell>): Promise<string | null> {
+  const tell = (text: string) => run.terminal && run.state !== 'ended'
+    ? deps.call('terminal.send', { terminal: run.terminal, text }, 30000).then(() => 'sent to the agent', () => null)
+    : Promise.resolve(null)
   switch (move.kind) {
     case 'restart':
+      // The agent stopped on its login may still sit in its terminal: one agent per task.
+      if (run.terminal && run.state !== 'ended') await deps.call('terminal.kill', { terminal: run.terminal }, 15000).catch(() => {})
+      await deps.store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
       await deps.store.saveTask({ ...task, waitKind: undefined })
       return `the login is back; ${(await startTask(deps, task.id)).state}`
     case 'retry-action': case 'merge':

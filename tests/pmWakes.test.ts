@@ -90,6 +90,12 @@ describe('wake queue', () => {
     expect(r.deliver).toMatchObject({ id: 'w2' })
   })
 
+  it('an unacked wake of a coordinator that quit is reported, not left pending', () => {
+    let r = tick(tick(queued(['a']), 'idle', 0).q, 'gone', MIN)
+    r = tick(r.q, 'gone', WAKE.ACK_MS)
+    expect(r.notify).toMatchObject({ id: 'w1', ended: 'unanswered', tries: 1 })
+  })
+
   it('ends when the coordinator quits, and after 1 h at most', () => {
     const quit = tick(tick(queued(['a']), 'idle', 0).q, 'gone', MIN)
     expect(quit.q[0]).toMatchObject({ ended: 'quit' })

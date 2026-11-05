@@ -82,3 +82,40 @@ describe('mechanical moves', () => {
     expect(nextMove(facts({ task: task({ step: step(2, { acting: true }) }) }))).toBeUndefined()
   })
 })
+
+describe('what a task waits for', () => {
+  it('reads the agent\'s report label, else a permission prompt; a login failure is told apart', async () => {
+    const { waitOf, isAuthFailure } = await import('../shared/pm/run')
+    expect(waitOf({ labels: { 'wherdr.report': 'blocked:question' }, status: { state: 'idle' } })).toBe('question')
+    expect(waitOf({ labels: { 'wherdr.report': 'blocked:auth' } })).toBe('auth')
+    expect(waitOf({ status: { state: 'blocked' } })).toBe('permission')
+    expect(waitOf({ labels: { 'wherdr.report': 'done' }, status: 'working' })).toBeUndefined()
+    expect(isAuthFailure('Invalid API key · Please run /login')).toBe(true)
+    expect(isAuthFailure('Error: ENOENT')).toBe(false)
+  })
+
+  it('syncWaits: a task waits with the kind its terminal shows, and works again once it is gone', async () => {
+    const fs = await import('node:fs/promises'), os = await import('node:os'), path = await import('node:path')
+    const { createPmStore } = await import('../server/utils/pmStore')
+    const { syncWaits } = await import('../server/utils/pmMechanic')
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-mech-'))
+    try {
+      const store = createPmStore(dir)
+      await store.setEnabled(true)
+      await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [{ key: 'CO', name: 'CO', machine: '', path: '/src', addedAt: 1 }] }))
+      const t = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
+      await store.saveRun({ id: 'r1', task: t.id, role: 'worker', program: 'claude', model: 'opus', machine: '', worktree: '/w', branch: 'b', instructions: '', terminal: 'host/t3', attempt: 1, state: 'running', startedAt: 1 })
+      await store.saveTask({ ...t, state: 'working', run: 'r1' })
+      let term: Record<string, unknown> = { address: 'host/t3', status: { state: 'blocked' } }
+      const deps = { store, call: async () => ({ terminals: [term] }) } as unknown as Parameters<typeof syncWaits>[0]
+      await syncWaits(deps)
+      expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waitKind: 'permission' })
+      term = { address: 'host/t3', status: { state: 'working' } }
+      await syncWaits(deps)
+      expect((await store.task(t.id))!.state).toBe('working')
+      term = { address: 'host/t3', labels: { 'wherdr.report': 'blocked:question' }, status: { state: 'idle' } }
+      await syncWaits(deps)
+      expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waitKind: 'question', waiting: 'The agent asks a question' })
+    } finally { await fs.rm(dir, { recursive: true, force: true }) }
+  })
+})

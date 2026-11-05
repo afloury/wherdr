@@ -69,7 +69,7 @@ export function tickWakes(q: Wake[], coordinator: string, { status, lastUserAt, 
   // No ack within 15 min, its turn over: once more (with what waits meanwhile), then the user.
   for (const w of cur()) {
     if (w.deliveredAt === undefined || isOpen(w) || w.ackedAt !== undefined || w.ended === 'unanswered' || now - w.deliveredAt < WAKE.ACK_MS) continue
-    if (w.tries >= WAKE.TRIES) { notify = put({ ...w, endedAt: w.endedAt ?? now, ended: 'unanswered' }); continue }
+    if (w.tries >= WAKE.TRIES || status === 'gone') { notify = put({ ...w, endedAt: w.endedAt ?? now, ended: 'unanswered' }); continue }
     const other = pendingOf(cur(), coordinator)
     if (other) put({ ...other, ended: 'merged', endedAt: now })
     put({ ...w, deliveredAt: undefined, idleSince: undefined, endedAt: undefined, ended: undefined, reasons: [...w.reasons, ...(other?.reasons ?? []).filter(r => !w.reasons.includes(r))], ...(other?.now ? { now: true as const } : {}) })

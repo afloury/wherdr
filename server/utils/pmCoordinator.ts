@@ -10,7 +10,7 @@ import { EXAMPLES } from '../../shared/pm/examples'
 import { DEFAULT_AUTOPILOT, USER_ONLY, limitsLeft, tellRefusal } from '../../shared/pm/autopilot'
 import { ackWakes } from '../../shared/pm/wakes'
 import type { Template } from '../../shared/pm/workflow'
-import type { Task } from '../../shared/pm/run'
+import { waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, type CoreAdminDeps } from './coreCreate'
 import { WRITE_SCRIPT, exec } from './pmLaunch'
@@ -23,9 +23,10 @@ const sha = (s: string) => createHash('sha256').update(s).digest()
 // A new token for the project's coordinator; the one before stops working.
 export async function issueToken(store: PmStore, key: string) {
   const token = randomBytes(32).toString('hex')
-  // Its default agent and pending change stay; its turn and terminal are the old conversation's.
-  const { agent, proposal, answered } = (await store.coordinator(key)) ?? {}
-  await store.saveCoordinator({ project: key, tokenHash: sha(token).toString('hex'), ...(agent ? { agent } : {}), ...(proposal ? { proposal } : {}), ...(answered ? { answered } : {}) })
+  // Its settings stay (default agent, autopilot, pending change…); its turn,
+  // terminal and agent that ran are the old conversation's.
+  const { turn: _turn, terminal: _terminal, ran: _ran, tokenHash: _hash, ...keep } = (await store.coordinator(key)) ?? {}
+  await store.saveCoordinator({ ...keep, project: key, tokenHash: sha(token).toString('hex') })
   return token
 }
 
@@ -149,10 +150,12 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     }
     case 'tell': {
       const task = await taskOf(cmd.task)
-      const why = tellRefusal(task, turn !== 'user')
-      if (why) throw new HerdrError('refused', why)
       const run = task.run ? (await store.runs()).find(r => r.id === task.run) : undefined
       if (!run?.terminal || run.state === 'ended') throw new HerdrError('not_found', 'The task\'s agent is not running')
+      // What the agent waits for now, from its terminal: a permission prompt is never typed into.
+      const live = waitOf(await deps.call<Parameters<typeof waitOf>[0]>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null))
+      const why = tellRefusal({ state: live ? 'waiting' : task.state, waitKind: live ?? task.waitKind }, turn !== 'user')
+      if (why) throw new HerdrError('refused', why)
       await deps.call('terminal.send', { terminal: run.terminal, text: `From the project coordinator: ${cmd.text}` }, 30000)
       const saved = await store.logTask(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task, by, `told the agent: ${cmd.text.slice(0, 300)}`)
       return { task: saved }
