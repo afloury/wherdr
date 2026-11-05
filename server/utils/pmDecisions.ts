@@ -18,14 +18,14 @@ export async function decisions(store: PmStore) {
 // What was pushed already; null until the first tick, which only notes what
 // waits (a restart does not push the same decisions again).
 let told: Set<string> | null = null
-type Notify = (title: string, body: string, badge: number) => Promise<unknown>
-const pushNotify: Notify = (title, body, badge) => pushSend({ title, body, tag: 'pm-decisions', url: '/#/decisions', badge })
+type Notify = (p: { title: string, titleFr: string, body: string }, badge: number) => Promise<unknown>
+const pushNotify: Notify = (p, badge) => pushSend({ ...p, tag: 'pm-decisions', url: '/#/decisions', badge })
 
 export async function decisionsTick(store: PmStore, notify: Notify = pushNotify) {
   const ds = await decisions(store)
   const p = told && decisionsPush(ds, told)
   told = new Set(ds.map(d => d.id))
-  if (p) await notify(p.title, p.body, ds.length).catch(() => {})
+  if (p) await notify(p, ds.length).catch(() => {})
   return p
 }
 export const resetDecisionsTold = () => { told = null }

@@ -69,6 +69,17 @@ export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: num
   if (!inHours(ap.hours, new Date(now))) return 'Outside the autopilot\'s hours'
 }
 
+// Why the coordinator (or the engine, for a chained task) may not start
+// `task` now, or undefined. In a wake, only with the autopilot on; its limits
+// and hours hold whatever the turn.
+export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, tasks: Task[], runs: Run[], now: number, wake: boolean): string | undefined {
+  if (task.state !== 'todo') return `${task.id} is not to do (${taskStatus(task)})`
+  const first = task.after ? tasks.find(t => t.id === task.after) : undefined
+  if (first && !first.step?.done) return `${task.id} starts after ${first.id}, which is not done`
+  if (wake && !ap?.on) return 'In a wake, a task starts only with the autopilot on'
+  return startRefusal(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now)
+}
+
 // The events since the last tick: tasks added, done, stuck (waiting) or
 // ready, among those the autopilot wakes for. `seen`: each task's last status.
 export function autopilotEvents(ap: Autopilot, tasks: Task[], seen: Record<string, TaskStatus>) {

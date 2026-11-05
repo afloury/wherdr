@@ -17,7 +17,9 @@ let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { load(); timer = setInterval(load, 10_000) })
 onBeforeUnmount(() => clearInterval(timer))
 
-const groups = computed(() => decisionGroups(list.value ?? []))
+// An agent answered from here leaves at once, not at the engine's next tick.
+const answered = (d: Decision) => d.group === 'agent' && d.kind !== 'auth' && !!paneOf(d) && paneOf(d)!.status !== 'blocked'
+const groups = computed(() => decisionGroups((list.value ?? []).filter(d => !answered(d))))
 const GROUP_LABEL: Record<DecisionGroup, [string, string]> = {
   agent: ['Agents waiting', 'Agents en attente'], arbitrate: ['Reviews to settle', 'Relectures à trancher'], proposal: ['Coordinator proposals', 'Propositions du coordinateur'],
   step: ['Your steps', 'Tes étapes'], overdue: ['Overdue steps', 'Étapes en retard'], coordinator: ['Coordinator not answering', 'Coordinateur sans réponse'],
@@ -97,4 +99,6 @@ const runNow = (d: Decision) => act(d, () => api('/api/pm/autopilot', { project:
 .decision-text { margin: 0; color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
 .decision-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .decision-actions:empty { display: none; }
+/* The agent's prompt shows whole here: the page scrolls, not the panel. */
+.decision :deep(.choices) { max-height: none; overflow: visible; padding: 10px 0 4px; }
 </style>

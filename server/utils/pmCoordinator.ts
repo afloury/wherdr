@@ -7,13 +7,13 @@ import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/s
 import { templateChanges } from '../../shared/pm/templateText'
 import { validateTemplate } from '../../shared/pm/workflow'
 import { EXAMPLES } from '../../shared/pm/examples'
-import { DEFAULT_AUTOPILOT, USER_ONLY, limitsLeft, tellRefusal } from '../../shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, USER_ONLY, coordinatorStartRefusal, limitsLeft, tellRefusal } from '../../shared/pm/autopilot'
 import { ackWakes } from '../../shared/pm/wakes'
 import type { Template } from '../../shared/pm/workflow'
 import { waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, type CoreAdminDeps } from './coreCreate'
-import { WRITE_SCRIPT, exec } from './pmLaunch'
+import { WRITE_SCRIPT, exec, startTask } from './pmLaunch'
 import { userStep } from './pmBoard'
 import type { PmStore } from './pmStore'
 
@@ -61,7 +61,7 @@ export async function userMessageTo(store: PmStore, terminal: string | undefined
 const planOf = (t: Template, task: Task) => planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) })
 const summary = (t: Template | null, task: Task) => {
   const step = t ? currentStep(planOf(t, task), task.step ?? initialState()) : undefined
-  return { id: task.id, title: task.title, type: task.type, state: task.state, step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links }
+  return { id: task.id, title: task.title, type: task.type, state: task.state, step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}) }
 }
 
 const unb64 = (v: unknown) => (typeof v === 'string' ? Buffer.from(v, 'base64').toString('utf8') : v)
@@ -159,6 +159,14 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       await deps.call('terminal.send', { terminal: run.terminal, text: `From the project coordinator: ${cmd.text}` }, 30000)
       const saved = await store.logTask(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task, by, `told the agent: ${cmd.text.slice(0, 300)}`)
       return { task: saved }
+    }
+    case 'task start': {
+      const task = await taskOf(cmd.task)
+      const mine = (await store.tasks()).filter(x => x.project === key)
+      const why = coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), Date.now(), turn !== 'user')
+      if (why) throw new HerdrError('refused', why)
+      const started = await startTask(deps, task.id)
+      return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`) }
     }
     case 'task decide': {
       const task = await taskOf(cmd.task)

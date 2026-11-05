@@ -59,7 +59,7 @@ it('pushes once for what is new, the count of all', () => {
   const ds = decisionsOf(input())
   expect(decisionsPush(ds, new Set(ds.map(d => d.id)))).toBeNull()
   const told = new Set(ds.filter(d => d.task !== 'CO-4').map(d => d.id))
-  expect(decisionsPush(ds, told)).toEqual({ title: '7 decisions wait for you', body: 'CO-4: Merge the PR' })
+  expect(decisionsPush(ds, told)).toEqual({ title: '7 decisions wait for you', titleFr: '7 décisions t’attendent', body: 'CO-4: Merge the PR' })
   expect(decisionsPush(ds, new Set())!.body.split('\n')).toEqual(['CO-5: Asks for a permission', 'CO-3: Decide: review failed 3 times: New finding: crash', 'CO-2: Decide: review failed 3 times: New finding: crash', '+4 more'])
 })
 
@@ -85,7 +85,7 @@ it('the user settles a review in one tap, and the grouped push tells only what i
   const notify = vi.fn(async () => {})
   expect(await decisionsTick(store, notify)).toBeNull() // the first look only notes
   await store.saveTask({ ...task, state: 'waiting', waitKind: 'question', waiting: 'Which port?' })
-  expect(await decisionsTick(store, notify)).toEqual({ title: '2 decisions wait for you', body: 'GH-1: Which port?' })
+  expect(await decisionsTick(store, notify)).toEqual({ title: '2 decisions wait for you', titleFr: '2 décisions t’attendent', body: 'GH-1: Which port?' })
   expect(notify).toHaveBeenCalledTimes(1)
   expect(await decisionsTick(store, notify)).toBeNull()
 

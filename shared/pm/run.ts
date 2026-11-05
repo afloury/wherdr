@@ -22,6 +22,7 @@ export interface Task {
   links?: { label: string, url: string }[] // the PR, the ticket…
   shotToken?: string // the agent's key for POST /api/pm/shot (never sent to the browser)
   log?: TaskLogEntry[] // who changed what, newest last
+  after?: string // a task of the same project: this one starts once that one is done
   createdAt: number
 }
 
@@ -58,6 +59,10 @@ export function waitOf(t: { labels?: Record<string, string>, status?: string | {
   const s = typeof t?.status === 'string' ? t.status : t?.status?.state
   if (s === 'blocked') return 'permission'
 }
+// Claude's "Do you trust this folder?" dialog on the worktree the engine made
+// for the task from the user's own project: the engine answers it, once.
+export const trustPrompt = (screen: string, worktree: string) =>
+  /Yes, I trust this folder/.test(screen) && screen.includes(worktree)
 // An agent that stopped because it is not logged in.
 export const isAuthFailure = (text: string) => /not logged in|log ?in again|please (run )?\/?login|authenticat|unauthori[sz]ed|invalid api key|\b401\b/i.test(text)
 // Agents the engine knows how to start with a pinned model and a first message.

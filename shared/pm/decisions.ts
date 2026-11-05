@@ -76,12 +76,13 @@ export const decisionGroups = (ds: Decision[]) =>
 
 // One push for what is new since the last one; null when nothing is new.
 // The same tag replaces the previous push on the phone.
-export function decisionsPush(ds: Decision[], told: Set<string>): { title: string, body: string } | null {
+export function decisionsPush(ds: Decision[], told: Set<string>): { title: string, titleFr: string, body: string } | null {
   const fresh = ds.filter(d => !told.has(d.id))
   if (!fresh.length) return null
   const n = ds.length
   return {
     title: n === 1 ? '1 decision waits for you' : `${n} decisions wait for you`,
+    titleFr: n === 1 ? '1 décision t’attend' : `${n} décisions t’attendent`,
     body: [...fresh.slice(0, 3).map(d => `${d.task ?? d.project}: ${d.text.slice(0, 80)}`), ...(fresh.length > 3 ? [`+${fresh.length - 3} more`] : [])].join('\n'),
   }
 }

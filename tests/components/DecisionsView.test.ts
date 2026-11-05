@@ -52,6 +52,11 @@ it('answers a permission with the agent\'s own buttons, and opens an agent with 
   expect(item(b, 'CO-1').findAll('.choices-list button').map(x => x.text())).toEqual(['1Yes', '2No'])
   expect(item(b, 'CO-2').find('.choices').exists()).toBe(false)
   expect(item(b, 'CO-2').find('[data-testid="decision-open"]').attributes('href')).toBe('#/a/w1%3Ap2')
+  // Answered (the prompt is gone): it leaves at once.
+  const panes = herdrState.value!.panes
+  herdrState.value = { ...herdrState.value!, panes: [{ ...panes[0]!, status: 'working', prompt: null } as Pane, panes[1]!] }
+  await vi.waitFor(() => expect(item(b, 'CO-1').exists()).toBe(false))
+  herdrState.value = { ...herdrState.value!, panes }
   // No agent running: the board, where the task is.
   expect(item(b, 'CO-5').find('[data-testid="decision-board"]').exists()).toBe(true)
 })

@@ -5,11 +5,12 @@
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
 import { planSteps } from '../../shared/pm/steps'
-import { LABEL, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP, machineOn } from './coreCreate'
 import { actionShell } from './pmActions'
 import { stepAction } from './pmBoard'
 import { exec, startTask, type PmLaunchDeps } from './pmLaunch'
+import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -19,26 +20,59 @@ const WAITS = { question: 'The agent asks a question', permission: 'The agent as
 
 // What each running agent waits for, from its terminal (wherdr.report label or
 // a permission prompt): its task waits with that kind, and works again once it is gone.
+const trusted = new Set<string>() // runs whose trust dialog the engine answered
 export async function syncWaits(deps: PmLaunchDeps) {
   const { store } = deps
   const install = await store.install()
-  const { terminals } = await deps.call<{ terminals: (LabelledTerminal & { status?: { state?: string } })[] }>('terminal.list', { all: true, labels: { [LABEL.install]: install } }, 8000)
+  const { terminals } = await deps.call<{ terminals: (LabelledTerminal & { status?: { state?: string, msg?: string } })[] }>('terminal.list', { all: true, labels: { [LABEL.install]: install } }, 8000)
   const runs = await store.runs()
+  // A new agent stopped on the folder trust dialog of its own worktree (no status yet): "Yes".
+  for (const run of runs.filter(r => r.terminal && r.state !== 'ended' && Date.now() - r.startedAt < 10 * 60_000)) {
+    const term = terminals.find(x => x.address === run.terminal)
+    if (!term || term.state === 'finished' || term.status?.state || trusted.has(run.id)) continue
+    const screen = String((await deps.call<{ text?: string }>('terminal.read', { terminal: run.terminal, lines: 30 }, 3000).catch(() => null))?.text || '')
+    if (!trustPrompt(screen, run.worktree)) continue
+    trusted.add(run.id)
+    await deps.call('terminal.keys', { terminal: run.terminal, keys: ['down', 'enter'] }, 10000).catch(() => {})
+    const task = await store.task(run.task)
+    if (task) await store.logTask(task, 'engine', `trusted the task's worktree for the ${run.role} (${run.worktree})`)
+  }
   for (const task of await store.tasks()) {
     const run = runs.find(r => r.id === task.run)
     const term = run?.terminal && run.state !== 'ended' ? terminals.find(x => x.address === run.terminal) : undefined
     if (!term || term.state === 'finished') continue
     const kind = waitOf(term)
-    if (task.state === 'working' && kind) await store.saveTask({ ...task, state: 'waiting', waiting: WAITS[kind], waitKind: kind })
+    // What herdr-core says is asked ("approve Bash: npm test"), else the kind.
+    const msg = typeof term.status === 'object' ? term.status?.msg?.trim().slice(0, 300) : undefined
+    if (task.state === 'working' && kind) await store.saveTask({ ...task, state: 'waiting', waiting: (kind === 'permission' && msg) || WAITS[kind], waitKind: kind })
     else if (task.state === 'waiting' && (task.waitKind === 'question' || task.waitKind === 'permission') && !kind)
       await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined })
   }
+}
+
+// A task with "after" starts once that task is done, when its coordinator's
+// autopilot is on and its limits and hours allow (one per tick and project).
+export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
+  const { store } = deps
+  const tasks = await store.tasks(), runs = await store.runs(), started: string[] = []
+  for (const p of await store.projects()) {
+    const ap = (await store.coordinator(p.key))?.autopilot
+    if (!ap?.on) continue
+    const mine = tasks.filter(t => t.project === p.key)
+    const next = mine.find(t => t.after && !coordinatorStartRefusal(ap, t, mine, runs, now, true))
+    if (!next) continue
+    const r = await startTask(deps, next.id).catch((e: Error) => ({ ...next, state: 'waiting' as const, waiting: e.message }))
+    await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} is done` : `could not start after ${next.after}: ${r.waiting ?? ''}`)
+    started.push(next.id)
+  }
+  return started
 }
 
 export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
   if (!(await store.enabled())) return []
   await syncWaits(deps).catch(() => {})
+  await startChained(deps, now).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
   for (const task of await store.tasks()) {
