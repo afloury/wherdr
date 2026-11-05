@@ -22,7 +22,7 @@ export interface Task {
   links?: { label: string, url: string }[] // the PR, the ticket…
   shotToken?: string // the agent's key for POST /api/pm/shot (never sent to the browser)
   log?: TaskLogEntry[] // who changed what, newest last
-  after?: string // a task of the same project: this one starts once that one is done
+  after?: string // tasks of the same project, comma-separated: this one starts once they are done
   createdAt: number
 }
 

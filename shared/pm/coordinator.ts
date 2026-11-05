@@ -64,7 +64,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task decide <task> <choice> --reason "<one sentence>"', does: 'after N send-backs, pick one of the engine\'s options' },
   { usage: 'ack <wake> [<wake>…]', does: 'say you handled an Autopilot wake (each wake ends with its id); unacked, it comes back once, then the user is told' },
   { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, and what is left of today\'s limits' },
-  { usage: 'task start <task>', does: 'start a task to do; in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until that task is done (the engine then starts it itself)' },
+  { usage: 'task start <task>', does: 'start a task to do; in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself)' },
   { usage: 'tell <task> "<text>"', does: 'a message to the task\'s agent; in a wake, only to answer its question (a permission request is the user\'s)' },
 ]
 
@@ -232,7 +232,8 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[]):
     '- edit the template on your own: only the user\'s request starts a proposal, and only their yes in wherdr saves it;',
     '- pass a critical finding with proof, or a send-back whose next step is a guarded merge: those go to the user;',
     '- approve, merge, change settings or your autopilot\'s limits; answer a permission request: those are the user\'s.', '',
-    'Each Autopilot wake ends with its id: once you have handled it, run `wherdr pm ack <id>`. The engine already fixes PR bases, re-runs CI, retries pushes, catches up branches, sends red CI back and merges what the branch rule allows: leave those to it. It does not start tasks on its own, except a task whose "after" task is done: start the next task toward your goal with `task start`.', '',
+    'Each Autopilot wake ends with its id: once you have handled it, run `wherdr pm ack <id>`. The engine already fixes PR bases, re-runs CI, retries pushes, catches up branches, sends red CI back and merges what the branch rule allows: leave those to it.',
+    'The engine also moves each started task through its steps: when the worker says it is done, it runs the next step (a PR, a reviewer of another model, a merge the branch rule allows) and sends a review\'s findings back to the worker. It starts a task with "after" once those tasks are done, and makes it wait for the user when one of them failed. It starts no other task: start the next one toward your goal with `task start`.', '',
     '## Plans of this project\'s task types', '', `Template: ${t ? `${t.id} v${t.version ?? 1}` : 'none'}`, '', ...plans,
     '## Turning a workflow request into steps', '',
     'wherdr imposes no workflow: it knows ordered steps, who holds each (worker, reviewer, coordinator, none), how it ends (report, verdict, user, action), the proofs it needs (evidence) and the user\'s guards. What an agent must do is plain text in `instructions`.',

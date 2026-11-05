@@ -9,7 +9,9 @@ const data = ref<Board | null>(null)
 const error = ref('')
 const project = ref('') // '' = all projects
 const tag = ref('') // '' = every tag
-const open = ref<string | null>(null)
+// The task to show, also from Decisions' "Open task" (/board?task=CO-1).
+const route = useRoute()
+const open = ref<string | null>(typeof route.query.task === 'string' ? route.query.task : null)
 const decisions = ref(0) // what waits for the user's choice, on the Decisions screen
 
 async function load() {

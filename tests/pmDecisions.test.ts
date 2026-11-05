@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { decisionGroups, decisionsOf, decisionsPush, type DecisionsInput } from '../shared/pm/decisions'
 import { initialState, onEvent, planSteps, type StepEvent, type StepState } from '../shared/pm/steps'
 import { github } from '../shared/pm/examples'
@@ -94,4 +94,16 @@ it('the user settles a review in one tap, and the grouped push tells only what i
   expect(after.step?.yourTurn).toBeUndefined()
   expect(after.log?.at(-1)).toMatchObject({ by: 'user', text: expect.stringMatching(/^review: user chose pass/) })
   await expect(userDecide(store, task.id, 'pass')).rejects.toThrow('Nothing to decide')
+})
+
+describe('Allow / Deny on a permission', () => {
+  it('picks the prompt\'s own Yes or No; Deny falls back to Esc; no prompt, nothing', async () => {
+    const { permissionKeys } = await import('../server/utils/pmPermission')
+    const claude = { question: 'Do you want to proceed?', cursor: 0, options: [{ n: 1, label: 'Yes' }, { n: 2, label: 'Yes, and don\'t ask again for npm test' }, { n: 3, label: 'No, and tell Claude what to do differently (esc)' }] }
+    expect(permissionKeys(claude, true)).toEqual(['enter'])
+    expect(permissionKeys(claude, false)).toEqual(['down', 'down', 'enter'])
+    expect(permissionKeys({ ...claude, options: [{ n: 1, label: 'Run it' }] }, false)).toEqual(['esc'])
+    expect(permissionKeys({ ...claude, options: [{ n: 1, label: 'Run it' }] }, true)).toBeNull()
+    expect(permissionKeys(null, true)).toBeNull()
+  })
 })
