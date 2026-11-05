@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { useRouter } from '#app'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import CoordinatorBar from '~/components/CoordinatorBar.vue'
@@ -44,10 +45,15 @@ it('remembers "Resume with" after a reload, and shows the board\'s diff open', a
   const b = await mount(view({ ran: { program: 'codex', model: 'gpt-5' }, terminal: 'host/t1', proposal: { diff: '+ x', at: 1 } }), true)
   expect(b.find('[data-testid="proposal-diff"]').exists()).toBe(true)
   await b.find('[data-testid="coordinator-resume"]').trigger('click')
+  // It opens the conversation: wait until the agent page (and its lazy imports) is there,
+  // else they load after the test environment is torn down.
+  const router = useRouter()
+  await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/a/w1:p1'), { timeout: 15000 })
   expect(b.find('[data-testid="coordinator-other-agent"]').exists()).toBe(false)
   expect(JSON.parse(localStorage.getItem('wherdr.coordinatorsResumed')!)).toEqual(['host/t1'])
   resumedCoordinators.value = []
   localStorage.removeItem('wherdr.coordinatorsResumed')
+  await router.replace('/')
 })
 
 it('shows no warning when the kept conversation is the default agent\'s', async () => {

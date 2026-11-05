@@ -9,7 +9,7 @@ import type { Pane } from '#shared/types'
 const posts: { url: string, body: Record<string, unknown> }[] = []
 let list: Decision[] = []
 registerEndpoint('/api/pm/decisions', () => list)
-for (const url of ['/api/pm/decide', '/api/pm/step-user', '/api/pm/template-proposal', '/api/pm/autopilot'])
+for (const url of ['/api/pm/decide', '/api/pm/step-user', '/api/pm/template-proposal', '/api/pm/autopilot', '/api/pm/permission'])
   registerEndpoint(url, { method: 'POST', handler: async (e) => { posts.push({ url, body: await readBody(e) }); return {} } })
 
 const d = (id: string, group: Decision['group'], more: Partial<Decision> = {}): Decision => ({ id, group, project: 'CO', task: id, title: `Task ${id}`, text: `About ${id}`, at: 1, ...more })
@@ -60,8 +60,27 @@ it('answers a permission with the agent\'s own buttons, and opens an agent with 
   expect(item(b, 'CO-2').exists()).toBe(true)
   expect(b.find('[data-testid="decisions-count"]').text()).toBe('6')
   herdrState.value = { ...herdrState.value!, panes }
-  // No agent running: the board, where the task is.
-  expect(item(b, 'CO-5').find('[data-testid="decision-board"]').exists()).toBe(true)
+  // An overdue step without a button of its own: its task.
+  expect(item(b, 'CO-5').find('[data-testid="decision-task"]').attributes('href')).toBe('#/board?task=CO-5')
+})
+
+it('answers a permission whose prompt is not shown with Allow or Deny, and an overdue step with its own button', async () => {
+  list = [d('CO-6', 'agent', { kind: 'permission', text: 'approve Bash: npm test' }), d('CO-7', 'agent', { kind: 'permission' }), d('CO-8', 'overdue', { label: 'Deployed' })]
+  const b = await mount()
+  expect(item(b, 'CO-6').find('.choices').exists()).toBe(false)
+  for (const [id, tid] of [['CO-6', 'decision-allow'], ['CO-7', 'decision-deny'], ['CO-8', 'decision-step']] as const) {
+    const tap = item(b, id).find(`[data-testid="${tid}"]`)
+    await vi.waitFor(() => expect(tap.attributes('disabled')).toBeUndefined())
+    await tap.trigger('click')
+  }
+  await vi.waitFor(() => expect(posts).toHaveLength(3))
+  expect(posts).toEqual([
+    { url: '/api/pm/permission', body: { id: 'CO-6', allow: true } },
+    { url: '/api/pm/permission', body: { id: 'CO-7', allow: false } },
+    { url: '/api/pm/step-user', body: { id: 'CO-8' } },
+  ])
+  expect(item(b, 'CO-8').text()).toContain('Deployed')
+  expect(item(b, 'CO-8').find('[data-testid="decision-task"]').exists()).toBe(false)
 })
 
 it('puts the recommendation first and answers each in one tap', async () => {

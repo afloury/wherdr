@@ -46,6 +46,8 @@ const decide = (d: Decision, choice: Choice) => act(d, () => api('/api/pm/decide
 const step = (d: Decision) => act(d, () => api('/api/pm/step-user', { id: d.task }))
 const proposal = (d: Decision, accept: boolean) => act(d, () => api('/api/pm/template-proposal', { project: d.project, accept }))
 const runNow = (d: Decision) => act(d, () => api('/api/pm/autopilot', { project: d.project, runNow: true }))
+// The agent's prompt is not on screen here: Yes or No chosen in it by the server.
+const permission = (d: Decision, allow: boolean) => act(d, () => api('/api/pm/permission', { id: d.task, allow }))
 </script>
 
 <template>
@@ -72,17 +74,22 @@ const runNow = (d: Decision) => act(d, () => api('/api/pm/autopilot', { project:
                 {{ tl(...CHOICE_LABEL[o]) }}<template v-if="o === d.recommend"> · {{ tl('recommended', 'conseillé') }}</template>
               </UButton>
             </template>
-            <UButton v-else-if="g.group === 'step'" color="primary" size="lg" :loading="busy === d.id" :disabled="!!busy" data-testid="decision-step" @click="step(d)">{{ d.label }}</UButton>
+            <template v-else-if="g.group === 'agent' && d.kind === 'permission' && !promptOf(d)">
+              <UButton color="primary" size="lg" :loading="busy === d.id" :disabled="!!busy" data-testid="decision-allow" @click="permission(d, true)">{{ tl('Allow', 'Autoriser') }}</UButton>
+              <UButton color="neutral" variant="outline" size="lg" :disabled="!!busy" data-testid="decision-deny" @click="permission(d, false)">{{ tl('Deny', 'Refuser') }}</UButton>
+            </template>
+            <UButton v-else-if="g.group === 'step' || (g.group === 'overdue' && d.label)" color="primary" size="lg" :loading="busy === d.id" :disabled="!!busy" data-testid="decision-step" @click="step(d)">{{ d.label }}</UButton>
             <template v-else-if="g.group === 'proposal'">
               <UButton color="primary" size="lg" :loading="busy === d.id" :disabled="!!busy" data-testid="decision-accept" @click="proposal(d, true)">{{ tl('Accept', 'Accepter') }}</UButton>
               <UButton color="neutral" variant="outline" size="lg" :disabled="!!busy" @click="proposal(d, false)">{{ tl('Refuse', 'Refuser') }}</UButton>
               <UButton color="neutral" variant="ghost" size="lg" to="/board">{{ tl('Show diff', 'Voir le diff') }}</UButton>
             </template>
             <UButton v-else-if="g.group === 'coordinator'" color="primary" size="lg" icon="i-lucide-play" :loading="busy === d.id" :disabled="!!busy" data-testid="decision-run-now" @click="runNow(d)">{{ tl('Run now', 'Lancer maintenant') }}</UButton>
-            <UButton v-if="(g.group === 'agent' || g.group === 'overdue') && paneOf(d)" :color="promptOf(d) ? 'neutral' : 'primary'" :variant="promptOf(d) ? 'ghost' : 'solid'" size="lg" icon="i-lucide-terminal" :to="panePath(paneOf(d)!.id)" data-testid="decision-open">
+            <UButton v-else-if="g.group === 'overdue'" color="neutral" variant="outline" size="lg" icon="i-lucide-square-arrow-out-up-right" :to="{ path: '/board', query: { task: d.task } }" data-testid="decision-task">{{ tl('Open task', 'Ouvrir la tâche') }}</UButton>
+            <UButton v-if="g.group === 'agent' && paneOf(d)" :color="promptOf(d) ? 'neutral' : 'primary'" :variant="promptOf(d) ? 'ghost' : 'solid'" size="lg" icon="i-lucide-terminal" :to="panePath(paneOf(d)!.id)" data-testid="decision-open">
               {{ tl('Open the agent', 'Ouvrir l’agent') }}
             </UButton>
-            <UButton v-else-if="g.group === 'agent' || g.group === 'overdue'" color="neutral" variant="outline" size="lg" to="/board" data-testid="decision-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
+            <UButton v-else-if="g.group === 'agent'" color="neutral" variant="outline" size="lg" to="/board" data-testid="decision-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
           </div>
         </article>
       </section>

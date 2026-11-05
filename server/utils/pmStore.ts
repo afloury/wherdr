@@ -13,6 +13,7 @@ import { cleanProjectInput, isTemplateId, type PmOverview, type Project, type Te
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
 import { publicTask, type Run, type Task } from '../../shared/pm/run'
+import { afterIds } from '../../shared/pm/advance'
 import type { Receipt } from '../../shared/pm/actions'
 import { SHOT_FILE_RE } from '../../shared/pm/shots'
 import { HerdrError } from './herdr'
@@ -180,8 +181,9 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       if (!title || title.length > 200) throw badInput([{ path: 'title', message: '1 to 200 characters' }])
       if (!type) throw badInput([{ path: 'type', message: 'is required' }])
       const n = 1 + Math.max(0, ...(await tasks()).filter(t => t.project === p.key).map(t => Number(t.id.slice(p.key.length + 1)) || 0))
-      const after = str('after')
-      if (after && !(await tasks()).some(t => t.id === after && t.project === p.key)) throw badInput([{ path: 'after', message: 'a task of the same project' }])
+      const after = afterIds({ after: str('after') }).join(',')
+      const known = await tasks()
+      if (afterIds({ after }).some(a => !known.some(t => t.id === a && t.project === p.key))) throw badInput([{ path: 'after', message: 'tasks of the same project, comma-separated' }])
       const task: Task = { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', createdAt: Date.now(), ...(after ? { after } : {}) }
       await writeJson(path.join(files.tasks, `${task.id}.json`), task)
       return task

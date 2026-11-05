@@ -38,10 +38,19 @@ export const userStep = (deps: CoreAdminDeps & { store: PmStore }, id: unknown) 
 
 // by 'engine': a failed action tried again, or one entered and not run yet
 // (a merge the branch rule gives the engine); its guard is checked again.
+// Tasks whose engine action runs now: one at a time (the user's gesture, the engine's pass).
+const running = new Set<string>()
 export async function stepAction(deps: CoreAdminDeps & { store: PmStore }, id: unknown, by: MergeBy): Promise<Task> {
   const { store } = deps
   const task = await store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
+  if (running.has(task.id)) throw new HerdrError('busy', 'Already checking')
+  running.add(task.id)
+  try { return await stepActionOf(deps, task, by) } finally { running.delete(task.id) }
+}
+
+async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task, by: MergeBy): Promise<Task> {
+  const { store } = deps
   const p = (await store.projects()).find(x => x.key === task.project)
   const t = p?.template ? await store.template(p.template) : null
   if (!p || !t) throw new HerdrError('not_found', 'The project has no template')

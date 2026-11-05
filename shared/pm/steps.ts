@@ -22,7 +22,8 @@ export interface StepState {
   since?: number // when the current step started
   deadline?: number // absolute time, from the step's timeout
   recheckAt?: number // absolute time, for a step with recheck
-  told?: number // the `since` of the coordinator step whose instructions were delivered
+  told?: number // the `since` of the step whose instructions were delivered to its holder
+  fix?: string // what the worker must fix, when an engine action sent the task back to it
   acting?: boolean // an engine action is running
   yourTurn?: YourTurn
   proofs: Record<string, Partial<Record<Evidence, string>>> // per step id
@@ -102,7 +103,7 @@ function act(s: StepState, step: PlannedStep, effects: Effect[]): StepState {
 // Enters step i: a step with no end is passed through (the last one is done).
 function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, effects: Effect[]): StepState {
   const step = plan[i]
-  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, recheckAt: undefined, acting: undefined, yourTurn: undefined }
+  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, recheckAt: undefined, acting: undefined, yourTurn: undefined, fix: undefined }
   if (!step) return effects.push({ kind: 'done' }), { ...s, done: true }
   if (!step.ends) return i === plan.length - 1 ? (effects.push({ kind: 'done' }), { ...s, done: true }) : enter(plan, s, i + 1, now, effects)
   if (step.timeout) s.deadline = now + durationMs(step.timeout)
@@ -217,9 +218,9 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       const back = plan.slice(0, state.at).findLastIndex(p => p.holder === 'worker')
       if (ev.toAgent && back >= 0) {
         // One message: what to fix, not the step's text again.
-        const s = enter(plan, { ...state, proofs }, back, now, [])
-        effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: `${ev.error}. Fix it, commit, then say you are done.` })
-        return { state: s, effects }
+        const fix = `${ev.error}. Fix it, commit, then say you are done.`
+        effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: fix })
+        return { state: { ...enter(plan, { ...state, proofs }, back, now, []), fix }, effects }
       }
       // The step stays open; the badge says what went wrong.
       const badge = `${step.badge || step.userLabel || step.id}: ${ev.error || `${step.action!.kind} failed`}`

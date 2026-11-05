@@ -25,7 +25,7 @@ export interface Decision {
   terminal?: string // the agent to answer in
   options?: Choice[] // arbitrate: recommended first
   recommend?: Choice
-  label?: string // step: the button
+  label?: string // step, or an overdue step that waits for the user: its button
   at: number
 }
 
@@ -54,7 +54,7 @@ export function decisionsOf({ cards, tasks, coordinators, wakes }: DecisionsInpu
       const options = a.options.length ? [...a.options] : [...CHOICES]
       const recommend = (options as string[]).includes(a.outcome) ? a.outcome as Choice : a.options.length === 1 ? a.options[0] : undefined
       out.push({ ...base, id, group: 'arbitrate', text: `${y.badge}: ${a.why}`, options: recommend ? [recommend, ...options.filter(o => o !== recommend)] : options, ...(recommend ? { recommend } : {}) })
-    } else if (y.reason === 'timeout') out.push({ ...base, id, group: 'overdue', text: y.badge })
+    } else if (y.reason === 'timeout') out.push({ ...base, id, group: 'overdue', text: y.badge, ...(c.userLabel ? { label: c.userLabel } : {}) })
     else out.push({ ...base, id, group: 'step', text: y.badge, label: c.userLabel || 'Try again' })
   }
   for (const c of coordinators)

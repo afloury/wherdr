@@ -9,16 +9,24 @@ import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, kindsOf, launchFailure, machineOn, type CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
 import { initialState, onEvent, planSteps } from '../../shared/pm/steps'
+import { doneSection, runFiles } from '../../shared/pm/advance'
 import { LABEL, agentLine, isAuthFailure, instructionsText, shotStep, reconcile, runLabels, taskPaths, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 
-// Reuses the worktree of an earlier attempt; else a new branch from the base.
-// Records where the branch started (its fork from the base), once: verify
-// counts only the commits made on it since.
+// Reuses the worktree of an earlier attempt; else a new branch from the base,
+// origin's as fetched now when origin has it (a local one may be stale: a
+// chained task needs the task merged before it; and with no local one, git
+// would check out a new local base branch instead of the task's), not
+// tracking it: the agent's git status must not read as being on the base. Records where the
+// branch started (its fork from the base), once: verify counts only the
+// commits made on it since.
 export const WORKTREE_SCRIPT = `repo=$1 dir=$2 branch=$3 base=$4
 [ -e "$dir/.git" ] && exit 0
 mkdir -p "$(dirname "$dir")" || exit 1
+from=$base
+if [ -n "$base" ] && git -C "$repo" rev-parse -q --verify "refs/remotes/origin/$base" >/dev/null; then
+  git -C "$repo" fetch -q origin "$base" 2>/dev/null; from=origin/$base; fi
 if git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then git -C "$repo" worktree add "$dir" "$branch" 2>&1
-else git -C "$repo" worktree add -b "$branch" "$dir" \${base:+"$base"} 2>&1 && base=HEAD; fi || exit 1
+else git -C "$repo" worktree add --no-track -b "$branch" "$dir" \${from:+"$from"} 2>&1 && base=HEAD; fi || exit 1
 k="branch.$branch.wherdrstart"
 [ -z "$base" ] || git -C "$repo" config "$k" >/dev/null || git -C "$repo" config "$k" "$(git -C "$dir" merge-base HEAD "$base")"`
 export const WRITE_SCRIPT = 'mkdir -p "$(dirname "$1")" && cat > "$1"'
@@ -69,11 +77,14 @@ export async function startTask(deps: PmLaunchDeps, id: unknown): Promise<Task> 
   // A visual task: the worker's key to upload its screenshots, kept with the task.
   const shotToken = shotStep(t, task.type) ? task.shotToken || randomBytes(16).toString('hex') : undefined
   const text = instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(p.machine, deps.origin), token: shotToken } : undefined)
+    + ['', ...doneSection(runFiles(paths.instructions).note)].join('\n')
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')
 
   // The engine's start: the task enters its first step (the worker's); the
   // instructions file already tells the worker what to do.
-  const step = task.step?.started ? task.step : onEvent(planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }), initialState(), { kind: 'start' }, Date.now()).state
+  // Its first step's text is in the instructions file: told already.
+  const first = onEvent(planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }), initialState(), { kind: 'start' }, Date.now()).state
+  const step = task.step?.started ? task.step : { ...first, told: first.since }
   const install = await store.install()
   let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine: p.machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now() }
   for (;;) {

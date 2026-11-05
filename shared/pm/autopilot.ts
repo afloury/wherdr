@@ -2,6 +2,7 @@
 // limits, stored with the coordinator. Only the user changes it (Settings, the
 // passkey session); the coordinator reads it with `wherdr pm autopilot show`.
 import type { Run, Task } from './run'
+import { chainState } from './advance'
 
 export const AUTOPILOT_EVENTS = ['added', 'done', 'stuck', 'ready'] as const
 export type AutopilotEvent = typeof AUTOPILOT_EVENTS[number]
@@ -77,8 +78,8 @@ export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: num
 // and hours hold whatever the turn.
 export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, tasks: Task[], runs: Run[], now: number, wake: boolean): string | undefined {
   if (task.state !== 'todo') return `${task.id} is not to do (${taskStatus(task)})`
-  const first = task.after ? tasks.find(t => t.id === task.after) : undefined
-  if (first && !first.step?.done) return `${task.id} starts after ${first.id}, which is not done`
+  const chain = task.after ? chainState(task, tasks) : 'go'
+  if (chain !== 'go') return chain?.wait ?? `${task.id} starts after ${task.after}, which is not done`
   if (wake && !ap?.on) return 'In a wake, a task starts only with the autopilot on'
   return startRefusal(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now)
 }

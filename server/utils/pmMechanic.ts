@@ -11,6 +11,8 @@ import { actionShell } from './pmActions'
 import { stepAction } from './pmBoard'
 import { exec, startTask, type PmLaunchDeps } from './pmLaunch'
 import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
+import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
+import { advanceTick } from './pmAdvance'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -50,19 +52,26 @@ export async function syncWaits(deps: PmLaunchDeps) {
   }
 }
 
-// A task with "after" starts once that task is done, when its coordinator's
-// autopilot is on and its limits and hours allow (one per tick and project).
+// A task with "after" starts once those tasks are done, within its
+// coordinator's autopilot limits and hours (one per tick and project): the
+// order is the user's. One of them failed or stopped: it waits for the user, with why.
 export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
   const tasks = await store.tasks(), runs = await store.runs(), started: string[] = []
+  for (const t of tasks.filter(x => x.after && !x.step?.started)) {
+    const c = chainState(t, tasks)
+    const held = c && c !== 'go' ? c.wait : undefined
+    if (t.state === 'todo' && held) await store.logTask({ ...t, state: 'waiting', waiting: held }, 'engine', held)
+    // Held by its chain, and the task before it goes on again: to do, the engine starts it once that one is done.
+    else if (t.state === 'waiting' && !held && t.waiting?.includes(CHAIN_WAIT)) await store.logTask({ ...t, state: 'todo', waiting: undefined }, 'engine', 'to do again: the tasks before it go on')
+  }
   for (const p of await store.projects()) {
     const ap = (await store.coordinator(p.key))?.autopilot
-    if (!ap?.on) continue
-    const mine = tasks.filter(t => t.project === p.key)
-    const next = mine.find(t => t.after && !coordinatorStartRefusal(ap, t, mine, runs, now, true))
+    const mine = (await store.tasks()).filter(t => t.project === p.key)
+    const next = mine.find(t => t.after && !coordinatorStartRefusal(ap, t, mine, runs, now, false))
     if (!next) continue
     const r = await startTask(deps, next.id).catch((e: Error) => ({ ...next, state: 'waiting' as const, waiting: e.message }))
-    await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} is done` : `could not start after ${next.after}: ${r.waiting ?? ''}`)
+    await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} done` : `could not start after ${next.after}: ${r.waiting ?? ''}`)
     started.push(next.id)
   }
   return started
@@ -72,6 +81,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
   if (!(await store.enabled())) return []
   await syncWaits(deps).catch(() => {})
+  await advanceTick(deps, now).catch(() => {})
   await startChained(deps, now).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
