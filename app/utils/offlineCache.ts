@@ -17,7 +17,9 @@ export const CHAT_BYTES = 220 * 1024
 export const LEASE_MS = 12 * 3600 * 1000
 export const WRITE_MS = 2000
 
-export interface SavedChat { id: string, items: ChatItem[], at: number }
+// file: the transcript the items come from (the reading position is matched on it);
+// missing in copies kept before it was.
+export interface SavedChat { id: string, items: ChatItem[], at: number, file?: string | null }
 export interface SavedHome { state: HerdrState, quotas: Quotas | null, at: number }
 export interface SavedBoard { board: TasksBoard, at: number }
 // One kept conversation: when it was last opened (`used`) and its size in bytes.
@@ -223,8 +225,8 @@ export function saveBoard(board: TasksBoard) {
   pending.board = { board, at: Date.now() }
   schedule()
 }
-export function saveChat(id: string, items: ChatItem[]) {
-  pending.chats.set(id, { id, items, at: Date.now() })
+export function saveChat(id: string, items: ChatItem[], file: string | null = null) {
+  pending.chats.set(id, { id, items, at: Date.now(), file })
   pending.used.set(id, Date.now())
   schedule()
 }
