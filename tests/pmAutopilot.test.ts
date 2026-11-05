@@ -11,6 +11,8 @@ describe('autopilot settings', () => {
     expect(cleanAutopilot({ on: true, goal: ' ship v3 ', every: '2h', events: ['done', 'done', 'stuck'], perDay: 5, atOnce: 2, hours: { from: 22, to: 6 }, extra: 1 }))
       .toEqual({ autopilot: { on: true, goal: 'ship v3', every: '2h', events: ['done', 'stuck'], perDay: 5, atOnce: 2, hours: { from: 22, to: 6 } } })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, every: '0m' })).toEqual({ error: expect.stringMatching(/every/) })
+    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, at: ' daily 08:00 ' })).toMatchObject({ autopilot: { at: 'daily 08:00' } })
+    for (const at of ['every 2h', 'soon']) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, at })).toEqual({ error: expect.stringMatching(/^at:/) })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, events: ['merged'] })).toEqual({ error: expect.stringMatching(/events/) })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay: 1000 })).toEqual({ error: expect.stringMatching(/perDay/) })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, hours: { from: 8, to: 8 } })).toEqual({ error: expect.stringMatching(/hours/) })

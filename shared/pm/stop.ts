@@ -17,13 +17,17 @@ export type Resume = typeof RESUMES[number]
 // Who asks: the user, or the coordinator in a turn of the user or in a wake.
 export type Stopper = { who: 'user' } | { who: 'coordinator', wake: boolean }
 
+// The autopilot's own tasks: started or added by the coordinator in a wake,
+// or added by one of its automations.
+const autopilots = (t: Task) => !!t.autopilot || !!t.auto
+
 // Why the task may not be stopped now, or undefined. In a wake, the
-// coordinator stops only its autopilot's own tasks (started or added in a wake).
+// coordinator stops only its autopilot's own tasks.
 export function stopRefusal(task: Task, by: Stopper): string | undefined {
   if (task.step?.done) return `${task.id} is done`
   if (task.stopped) return `${task.id} is already stopped`
   if (task.state === 'todo' || !task.step?.started) return `${task.id} has not started`
-  if (by.who === 'coordinator' && by.wake && !task.auto) return `In a wake, you stop only the tasks your autopilot started: ${task.id} is the user's`
+  if (by.who === 'coordinator' && by.wake && !autopilots(task)) return `In a wake, you stop only the tasks your autopilot started: ${task.id} is the user's`
 }
 
 export const stoppedText = (s: Stopped) => `Stopped by ${s.by}: ${s.why}`
@@ -38,7 +42,7 @@ export function resumeRefusal(task: Task, how: Resume, by: Stopper, step: Planne
   if (!task.stopped) return `${task.id} is not stopped`
   if (!RESUMES.includes(how)) return `How to go on: ${RESUMES.join(', ')}`
   if (by.who === 'coordinator' && how !== 'continue') return 'Taking a stopped task as it is, or archiving it, is the user\'s'
-  if (by.who === 'coordinator' && by.wake && (!task.auto || task.stopped.by === 'the user')) return `${task.id} was stopped by ${task.stopped.by}: going on is the user's call`
+  if (by.who === 'coordinator' && by.wake && (!autopilots(task) || task.stopped.by === 'the user')) return `${task.id} was stopped by ${task.stopped.by}: going on is the user's call`
   if (how === 'as-is' && !step?.ends) return 'This step has no end to skip'
 }
 

@@ -29,7 +29,8 @@ describe('who may stop', () => {
     expect(stopRefusal(working(), user)).toBeUndefined()
     expect(stopRefusal(working(), inTurn)).toBeUndefined()
     expect(stopRefusal(working(), inWake)).toMatch(/only the tasks your autopilot started/)
-    expect(stopRefusal(working({ auto: true }), inWake)).toBeUndefined()
+    expect(stopRefusal(working({ autopilot: true }), inWake)).toBeUndefined()
+    expect(stopRefusal(working({ auto: 'nightly' }), inWake)).toBeUndefined() // added by an automation
     // Waiting on a question still holds an agent: it may be stopped.
     expect(stopRefusal(working({ state: 'waiting', waitKind: 'question' }), user)).toBeUndefined()
   })
@@ -41,9 +42,9 @@ describe('who may stop', () => {
   })
 
   it('the coordinator only continues, and in a wake not what the user stopped', () => {
-    const own = stop(working({ auto: true }), 'the coordinator')
+    const own = stop(working({ autopilot: true }), 'the coordinator')
     expect(resumeRefusal(own, 'continue', inWake, plan[1])).toBeUndefined()
-    expect(resumeRefusal(stop(working({ auto: true })), 'continue', inWake, plan[1])).toMatch(/stopped by the user/)
+    expect(resumeRefusal(stop(working({ autopilot: true })), 'continue', inWake, plan[1])).toMatch(/stopped by the user/)
     expect(resumeRefusal(stop(working()), 'continue', inTurn, plan[1])).toBeUndefined()
     expect(resumeRefusal(stop(working()), 'as-is', inTurn, plan[1])).toMatch(/the user's/)
     expect(resumeRefusal(working(), 'continue', user, plan[1])).toMatch(/not stopped/)

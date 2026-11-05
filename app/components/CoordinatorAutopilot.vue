@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // A coordinator's autopilot: its switch, today's counters against the limits,
-// and on demand its goal, interval, events and limits (saved by the user
+// and on demand its goal, interval, fixed times, events and limits (saved by the user
 // only), its latest wakes (created, delivered, acked) and "run now".
 import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
 import type { CoordinatorView } from '#shared/pm/coordinator'
@@ -12,8 +12,8 @@ const open = ref(false)
 const busy = ref(false)
 const error = ref('')
 const sent = ref(false)
-const form = reactive({ goal: '', every: '', events: [] as AutopilotEvent[], perDay: 0, atOnce: 0 })
-const fill = () => Object.assign(form, { goal: ap.value.goal, every: ap.value.every ?? '', events: [...ap.value.events], perDay: ap.value.perDay, atOnce: ap.value.atOnce })
+const form = reactive({ goal: '', every: '', at: '', events: [] as AutopilotEvent[], perDay: 0, atOnce: 0 })
+const fill = () => Object.assign(form, { goal: ap.value.goal, every: ap.value.every ?? '', at: ap.value.at ?? '', events: [...ap.value.events], perDay: ap.value.perDay, atOnce: ap.value.atOnce })
 watch(ap, fill, { immediate: true })
 
 const EVENT_LABEL: Record<AutopilotEvent, [string, string]> = {
@@ -30,7 +30,7 @@ async function act(fn: () => Promise<unknown>) {
 }
 const save = (more: Partial<Autopilot> = {}) => act(() => api('/api/pm/autopilot', {
   project: props.c.project,
-  autopilot: { ...ap.value, goal: form.goal, every: form.every.trim(), events: form.events, perDay: Number(form.perDay), atOnce: Number(form.atOnce), ...more },
+  autopilot: { ...ap.value, goal: form.goal, every: form.every.trim(), at: form.at.trim(), events: form.events, perDay: Number(form.perDay), atOnce: Number(form.atOnce), ...more },
 }))
 // The switch keeps the saved settings: only what Save sent counts.
 const setOn = (on: boolean) => act(() => api('/api/pm/autopilot', { project: props.c.project, autopilot: { ...ap.value, on } }))
@@ -71,6 +71,10 @@ const counters = computed(() => props.c.limits
         <div>
           <label class="field-label" :for="`ap-every-${c.project}`">{{ tl('Every', 'Fréquence') }}</label>
           <UInput :id="`ap-every-${c.project}`" v-model="form.every" size="xl" class="w-full mono" placeholder="2h" maxlength="5" autocapitalize="none" autocorrect="off" :spellcheck="false" data-testid="autopilot-every" />
+        </div>
+        <div>
+          <label class="field-label" :for="`ap-at-${c.project}`">{{ tl('At', 'À') }}</label>
+          <UInput :id="`ap-at-${c.project}`" v-model="form.at" size="xl" class="w-full mono" placeholder="daily 08:00" maxlength="60" autocapitalize="none" autocorrect="off" :spellcheck="false" data-testid="autopilot-at" />
         </div>
         <div>
           <label class="field-label" :for="`ap-day-${c.project}`">{{ tl('Tasks / day', 'Tâches / jour') }}</label>
@@ -119,7 +123,7 @@ const counters = computed(() => props.c.limits
 .ap-count { flex: 1; color: var(--muted); white-space: nowrap; }
 .ap-goal { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 .ap-form { display: grid; gap: 6px; max-height: 55vh; overflow-y: auto; overscroll-behavior: contain; }
-.ap-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ap-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .ap-events, .ap-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ap-actions .mono-label { flex: 1; color: var(--muted); }
 .ap-wakes { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }

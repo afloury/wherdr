@@ -25,7 +25,8 @@ export interface Task {
   log?: TaskLogEntry[] // who changed what, newest last
   after?: string // tasks of the same project, comma-separated: this one starts once they are done
   stopped?: Stopped // who stopped it and why (stop.ts): it waits for the user
-  auto?: true // started or added by the coordinator in a wake: its autopilot's own
+  autopilot?: true // started or added by the coordinator in a wake: its autopilot's own
+  auto?: string // the automation that added it
   createdAt: number
 }
 

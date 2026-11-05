@@ -9,6 +9,7 @@ import { validateTemplate } from '../../shared/pm/workflow'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DEFAULT_AUTOPILOT, USER_ONLY, addRefusal, coordinatorStartRefusal, limitsLeft, tellRefusal } from '../../shared/pm/autopilot'
 import { ackWakes } from '../../shared/pm/wakes'
+import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
 import { waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
@@ -150,6 +151,12 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const mine = (await store.tasks()).filter(x => x.project === key)
       return { autopilot: ap, today: limitsLeft(ap, mine, await store.runs(), Date.now()), note: 'Only the user changes these, in wherdr' }
     }
+    case 'automation list': return { automations: (await store.automations(key)).automations.map(automationLine), note: 'Only the user adds or changes automations, in wherdr' }
+    case 'automation show': {
+      const a = (await store.automations(key)).automations.find(x => x.id === cmd.id)
+      if (!a) throw new HerdrError('not_found', 'Unknown automation')
+      return { automation: a }
+    }
     case 'tell': {
       const task = await taskOf(cmd.task)
       const run = task.run ? (await store.runs()).find(r => r.id === task.run) : undefined
@@ -170,7 +177,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
         ?? coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), Date.now(), wake)
       if (why) throw new HerdrError('refused', why)
       // Started in a wake: the autopilot's own task, which it may stop in a wake.
-      if (wake && !task.auto) await store.saveTask({ ...task, auto: true })
+      if (wake && !task.autopilot) await store.saveTask({ ...task, autopilot: true })
       if (task.stopped) return { task: await resumeTask(deps, task.id, 'continue', who, by) }
       const started = await startTask(deps, task.id)
       return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`) }
@@ -184,7 +191,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
       const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '' })
-      const task = turn !== 'user' ? { ...added, auto: true as const } : added
+      const task = turn !== 'user' ? { ...added, autopilot: true as const } : added
       return { task: await store.logTask(task, by, `added the task${cmd.after ? `, after ${cmd.after}` : ''}`) }
     }
     case 'task decide': {
