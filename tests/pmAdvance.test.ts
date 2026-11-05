@@ -159,6 +159,39 @@ describe('chained tasks', () => {
 })
 
 describe('advanceTick (store and a fake herdr-core)', () => {
+  it('a task stopped at its review, started again, gets its reviewer again, never a new worker', async () => {
+    const { createPmStore } = await import('../server/utils/pmStore')
+    const { advanceTick } = await import('../server/utils/pmAdvance')
+    const { startTask } = await import('../server/utils/pmLaunch')
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-advance-'))
+    try {
+      const store = createPmStore(dir)
+      await store.setEnabled(true)
+      await store.saveTemplate(github)
+      await store.addProject({ key: 'CO', machine: '', path: '/src', template: 'github' }, async (_m, p) => p)
+      const t = await store.addTask({ project: 'CO', title: 'Fix', type: 'simple' })
+      const at = planSteps(github, { type: 'simple' }).findIndex(s => s.id === 'review')
+      await store.saveRun({ id: 'r1', task: t.id, role: 'worker', program: 'claude', model: 'sonnet', machine: '', worktree: '/w', branch: 'task/CO-1', instructions: '/h/.wherdr/pm/tasks/CO-1/instructions.md', attempt: 1, state: 'ended', startedAt: 1 })
+      await store.saveTask({ ...t, state: 'waiting', waiting: 'The reviewer (claude) stopped right after starting', run: 'r1', step: { at, started: true, since: 5, told: 5, proofs: {}, rounds: {} } })
+      const calls: [string, Record<string, unknown>][] = []
+      const call = async (method: string, p: Record<string, unknown>) => {
+        calls.push([method, p])
+        if (method === 'terminal.list') return { terminals: [] }
+        if (method === 'terminal.run') return { address: 'h/t2' }
+        if (method === 'terminal.get') return { state: 'running' }
+        return method === 'machine.exec' ? { code: 0, stdout: '' } : {}
+      }
+      const deps = { store, call, machines: () => [{ key: '', local: true, label: 'host' }], launchWatchMs: 0 } as unknown as Parameters<typeof advanceTick>[0]
+      expect(await startTask(deps, t.id)).toMatchObject({ state: 'working', step: { at } })
+      expect(calls.some(([m]) => m === 'terminal.run')).toBe(false)
+      await advanceTick(deps)
+      const runs = calls.filter(([m]) => m === 'terminal.run')
+      expect(runs).toHaveLength(1)
+      expect(runs[0]![1]).toMatchObject({ cwd: '/w', labels: { 'wherdr.role': 'reviewer' } })
+    }
+    finally { await fs.rm(dir, { recursive: true, force: true }) }
+  })
+
   it('turns the worker\'s done into the PR, starts the reviewer of another model, then reads its verdict', async () => {
     const { createPmStore } = await import('../server/utils/pmStore')
     const { advanceTick } = await import('../server/utils/pmAdvance')
