@@ -3,7 +3,8 @@
 import { validateTemplate, type Template, type TaskType } from './workflow'
 
 export interface TextError { line: number, path: string, message: string }
-export interface LogEntry { at: number, by: 'user', version: number, changes: string[] } // changes: [] = created
+// by: 'user', or 'coordinator <KEY>' with the user's sentence that asked for it.
+export interface LogEntry { at: number, by: string, version: number, changes: string[], said?: string } // changes: [] = created
 
 const NUMBER = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null/y
 const STRING = /"(?:[^"\\\u0000-\u001F]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"/y

@@ -2,5 +2,6 @@
 import { coreAdminDeps } from '../../utils/coreAdminDeps'
 import { userStep } from '../../utils/pmBoard'
 import { pmStore } from '../../utils/pmStore'
+import { publicTask } from '../../../shared/pm/run'
 
-export default defineApi(async (_event, body) => ({ task: await userStep({ ...coreAdminDeps(), store: pmStore() }, body.id) }))
+export default defineApi(async (_event, body) => ({ task: publicTask(await userStep({ ...coreAdminDeps(), store: pmStore() }, body.id)) }))

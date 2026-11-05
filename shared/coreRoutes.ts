@@ -20,6 +20,7 @@ import j from './coreRoutes/j'
 import k from './coreRoutes/k'
 import l from './coreRoutes/l'
 import m from './coreRoutes/m'
+import n from './coreRoutes/n'
 
 const BASE = [
   'auth/status', 'auth/lock', 'auth/lock-all', 'auth/disable', 'auth/max-session',
@@ -34,7 +35,7 @@ const BASE = [
   'dictation/rewrite', 'GET dictation/text-models',
 ]
 
-export const CORE_ROUTES = [...BASE, ...a, ...b, ...c, ...d, ...e, ...f, ...g, ...h, ...i, ...j, ...k, ...l, ...m]
+export const CORE_ROUTES = [...BASE, ...a, ...b, ...c, ...d, ...e, ...f, ...g, ...h, ...i, ...j, ...k, ...l, ...m, ...n]
 const readOnly = CORE_ROUTES.filter(r => r.startsWith('GET ')).map(r => r.slice(4))
 const open = CORE_ROUTES.filter(r => !r.startsWith('GET '))
 const exact = new Set(open.filter(r => !r.includes(':')))

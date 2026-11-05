@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore, type PmStore } from '../server/utils/pmStore'
 import { reconcileRuns, startTask, wherdrBase, type PmLaunchDeps } from '../server/utils/pmLaunch'
 import { uploadShot } from '../server/utils/pmBoard'
-import { agentLine, reconcile, workerPlan, type Run, type Task } from '../shared/pm/run'
+import { agentLine, publicTask, reconcile, workerPlan, type Run, type Task } from '../shared/pm/run'
 import type { Template } from '../shared/pm/workflow'
 
 const template: Template = {
@@ -121,6 +121,7 @@ describe('startTask', () => {
     const png = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2])
     await expect(uploadShot(store, 'WEB-1', 'before', png, 'image/png', token)).resolves.toMatchObject({ phase: 'before' })
     expect(JSON.stringify((await store.overview()).tasks)).not.toContain(token)
+    expect(JSON.stringify(publicTask((await store.task('WEB-1'))!))).not.toContain(token)
   })
 
   it('agents reach wherdr on loopback from its own machine, else at the app address or the user\'s', () => {

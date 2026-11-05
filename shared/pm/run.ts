@@ -19,8 +19,14 @@ export interface Task {
   tags?: string[] // short texts, shown on the card
   links?: { label: string, url: string }[] // the PR, the ticket…
   shotToken?: string // the agent's key for POST /api/pm/shot (never sent to the browser)
+  log?: TaskLogEntry[] // who changed what, newest last
   createdAt: number
 }
+
+// A task as the browser gets it: the agent's screenshot key stays on the server.
+export const publicTask = ({ shotToken: _, ...t }: Task): Task => t
+
+export interface TaskLogEntry { at: number, by: string, text: string }
 
 export interface Run {
   id: string

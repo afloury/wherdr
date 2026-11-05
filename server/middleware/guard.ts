@@ -36,7 +36,8 @@ export default defineEventHandler(async (event) => {
   const req = reqOf(event)
   const verdict = gateDecision({
     check, path,
-    unlocked: auth.isUnlocked(req),
+    // A coordinator's `wherdr pm` call carries its token, checked by the route.
+    unlocked: auth.isUnlocked(req) || (path === '/api/pm/cli' && /^Bearer [0-9a-f]{64}$/.test(String(headers.authorization || ''))),
     hostOk: hostAllowed(headers.host),
     crossSite: crossSiteRequest(headers),
     agentKey: event.method === 'POST' && typeof headers[SHOT_TOKEN_HEADER] === 'string',
