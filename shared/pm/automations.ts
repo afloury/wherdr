@@ -19,7 +19,7 @@ export interface Automation {
   on: boolean
   schedule?: string
   event?: AutomationEvent
-  filter?: string // glob on the task's title or branch: feature/*
+  filter?: string // glob on the task's title, or its branch (task/<id>): docs*, task/W3-*
   last?: number // the last firing, or when it was switched on: missed slots count from here
   firings?: Firing[] // newest last
 }
@@ -91,9 +91,10 @@ export function taskEvents(tasks: Task[], seen: Record<string, Mark> | undefined
   return { seen: now, events }
 }
 
-// Does this event fire this automation? Never on a task it added itself.
+// Does this event fire this automation? Never on a task an automation added:
+// two automations cannot feed each other.
 export const firesOn = (a: Automation, e: TaskEvent) =>
-  a.on && a.event === e.event && e.task.auto !== a.id
+  a.on && a.event === e.event && !e.task.auto
   && (!a.filter || globMatch(a.filter, e.task.title) || globMatch(a.filter, `task/${e.task.id}`))
 
 // The task a firing adds: its title says which automation and when.

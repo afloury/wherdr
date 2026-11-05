@@ -1,9 +1,11 @@
-// ?project=KEY: the project's automations, their last firings first known.
+// ?project=KEY: the project's automations, and its template's task types (for the editor).
 import { HerdrError } from '../../utils/herdr'
 import { pmStore } from '../../utils/pmStore'
 
 export default defineApi(async (event) => {
-  const key = String(getQuery(event).project ?? '')
-  if (!(await pmStore().projects()).some(p => p.key === key)) throw new HerdrError('not_found', 'Unknown project')
-  return { automations: (await pmStore().automations(key)).automations }
+  const store = pmStore()
+  const p = (await store.projects()).find(x => x.key === String(getQuery(event).project ?? ''))
+  if (!p) throw new HerdrError('not_found', 'Unknown project')
+  const t = p.template ? await store.template(p.template) : null
+  return { automations: (await store.automations(p.key)).automations, types: Object.keys(t?.taskTypes ?? {}) }
 })

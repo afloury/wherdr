@@ -52,7 +52,7 @@ describe('automations', () => {
     expect(taskEvents(after, r.seen).events).toEqual([])
   })
 
-  it('fires on its event, with the filter on title or branch, never on a task it added', () => {
+  it('fires on its event, with the filter on title or branch, never on a task an automation added', () => {
     expect(globMatch('feature/*', 'Feature/login')).toBe(true)
     expect(globMatch('feature/*', 'a feature/login')).toBe(false)
     const ev = (t: Task) => ({ event: 'merged' as const, task: t })
@@ -62,6 +62,7 @@ describe('automations', () => {
     expect(firesOn(auto({ event: 'merged', filter: 'task/CO-1' }), ev(task('CO-1')))).toBe(true)
     expect(firesOn({ ...a, on: false }, ev(task('CO-1', { title: 'Docs' })))).toBe(false)
     expect(firesOn({ ...a, filter: undefined }, ev(task('CO-1', { auto: 'a' })))).toBe(false)
+    expect(firesOn({ ...a, filter: undefined }, ev(task('CO-1', { auto: 'other' })))).toBe(false)
     expect(firesOn({ ...a, event: 'failed' }, ev(task('CO-1', { title: 'Docs' })))).toBe(false)
     expect(firingTask(auto({ type: 'study' }), 'CO', 'feature', at(5, 4, 17), 'CO-1 (Fix): merged'))
       .toEqual({ project: 'CO', title: 'A · 2026-11-05 04:17', type: 'study', auto: 'a', description: 'Do it\n\nTriggered by CO-1 (Fix): merged.' })
