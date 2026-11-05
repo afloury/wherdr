@@ -13,6 +13,8 @@ export interface Task {
   type: string // a task type of the project's template
   state: 'todo' | 'working' | 'waiting'
   waiting?: string // why it waits for the user
+  waitKind?: 'question' | 'permission' | 'auth' // what it waits for
+  mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
   run?: string // the current run
   step?: StepState // where the step engine has it
   prefs?: Prefs
