@@ -7,7 +7,7 @@ import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/s
 import { templateChanges } from '../../shared/pm/templateText'
 import { validateTemplate } from '../../shared/pm/workflow'
 import { EXAMPLES } from '../../shared/pm/examples'
-import { DEFAULT_AUTOPILOT, USER_ONLY, coordinatorStartRefusal, limitsLeft, tellRefusal } from '../../shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, USER_ONLY, addRefusal, coordinatorStartRefusal, limitsLeft, tellRefusal } from '../../shared/pm/autopilot'
 import { ackWakes } from '../../shared/pm/wakes'
 import type { Template } from '../../shared/pm/workflow'
 import { waitOf, type Task } from '../../shared/pm/run'
@@ -61,7 +61,7 @@ export async function userMessageTo(store: PmStore, terminal: string | undefined
 const planOf = (t: Template, task: Task) => planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) })
 const summary = (t: Template | null, task: Task) => {
   const step = t ? currentStep(planOf(t, task), task.step ?? initialState()) : undefined
-  return { id: task.id, title: task.title, type: task.type, state: task.state, step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}) }
+  return { id: task.id, title: task.title, type: task.type, state: task.step?.abandoned ? 'abandoned' : task.step?.done ? 'done' : task.state, step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}) }
 }
 
 const unb64 = (v: unknown) => (typeof v === 'string' ? Buffer.from(v, 'base64').toString('utf8') : v)
@@ -167,6 +167,13 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if (why) throw new HerdrError('refused', why)
       const started = await startTask(deps, task.id)
       return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`) }
+    }
+    case 'task add': {
+      const why = addRefusal(rec?.autopilot, turn !== 'user')
+      if (why) throw new HerdrError('refused', why)
+      if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
+      const task = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '' })
+      return { task: await store.logTask(task, by, `added the task${cmd.after ? `, after ${cmd.after}` : ''}`) }
     }
     case 'task decide': {
       const task = await taskOf(cmd.task)
