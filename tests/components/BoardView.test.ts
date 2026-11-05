@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
+import { readBody } from 'h3'
 import BoardView from '~/components/BoardView.vue'
 import { herdrState } from '~/composables/useHerdr'
 import { boardColumns, cardOf, type Board } from '#shared/pm/board'
@@ -36,6 +37,9 @@ const reset = (co1: Partial<StepState> = {}) => {
 reset()
 registerEndpoint('/api/pm/board', () => board)
 registerEndpoint('/api/pm/coordinators', () => [])
+const posts: { url: string, body: Record<string, unknown> }[] = []
+for (const url of ['/api/pm/task-stop', '/api/pm/task-resume'])
+  registerEndpoint(url, { method: 'POST', handler: async (e) => { posts.push({ url, body: await readBody(e) }); return {} } })
 const pane = (coreAddress: string, status: Pane['status']) => ({ id: coreAddress, coreAddress, status, agent: 'claude', workspace: 'w', tab: 't' }) as Pane
 herdrState.value = { ok: true, workspaces: [], panes: [pane('host-a/t1', 'working'), pane('host-a/t2', 'idle'), pane('host-a/t3', 'working')] }
 
@@ -112,4 +116,36 @@ it('shows the coordinator\'s choice and its reason in the task\'s log', async ()
   await card(w, 'CO-1').trigger('click')
   await vi.waitFor(() => expect(document.querySelector('[data-testid="task-log"]')?.textContent).toContain('coordinator CO'))
   expect(document.querySelector('[data-testid="task-log"]')!.textContent).toContain('chose pass (advice: pass, nothing above minor). Only a naming nit is left.')
+})
+
+it('stops a task from its sheet, after a confirmation with its reason', async () => {
+  posts.length = 0
+  const w = await mount()
+  await card(w, 'VIB-1').trigger('click')
+  const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)
+  await vi.waitFor(() => expect(q('task-stop')).not.toBeNull())
+  q('task-stop')!.click()
+  await vi.waitFor(() => expect(q('task-stop-confirm')?.textContent).toContain('nothing is merged'))
+  const why = q('task-stop-why')!.querySelector('input') ?? q('task-stop-why') as HTMLInputElement
+  ;(why as HTMLInputElement).value = 'it loops'
+  why.dispatchEvent(new Event('input'))
+  q('task-stop-yes')!.click()
+  await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/task-stop', body: { id: 'VIB-1', why: 'it loops' } }]))
+  expect(card(w, 'VIB-1').element.parentElement!.querySelector('[data-testid="card-menu"]')).not.toBeNull()
+})
+
+it('a stopped card waits in Your turn with who stopped it; its sheet offers Continue, Take it as it is, Archive', async () => {
+  posts.length = 0
+  const stopped = { by: 'the user', why: 'it loops', at: 3 }
+  board.cards[0] = cardOf(task('VIB-1', at(1), { type: 'simple', state: 'waiting', waiting: 'Stopped by the user: it loops', stopped }), planSteps(vibe, { type: 'simple' }), [])
+  const w = await mount()
+  expect(laneOf(w, 'VIB-1')).toBe('your-turn')
+  expect(card(w, 'VIB-1').text()).toContain('Stopped by the user: it loops')
+  expect(card(w, 'VIB-1').find('[data-testid="holder-state"]').exists()).toBe(true)
+  await card(w, 'VIB-1').trigger('click')
+  await vi.waitFor(() => expect(document.querySelectorAll('[data-resume]')).toHaveLength(3))
+  expect(document.querySelector('[data-testid="task-stop"]')).toBeNull()
+  expect([...document.querySelectorAll('[data-resume]')].map(b => b.textContent!.trim())).toEqual(['Continue', 'Take it as it is', 'Archive'])
+  document.querySelector<HTMLElement>('[data-resume="continue"]')!.click()
+  await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/task-resume', body: { id: 'VIB-1', how: 'continue' } }]))
 })

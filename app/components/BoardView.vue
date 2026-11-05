@@ -2,7 +2,8 @@
 // The board: Your turn first, then the columns of the project's template
 // (To do / Working / Done for all projects, with the step on the card). A
 // card's indicator is the live state of the agent holding its step.
-import { boardLanes, boardTags, mainLink, type Board, type Card } from '#shared/pm/board'
+import { boardLanes, boardTags, canStop, mainLink, type Board, type Card } from '#shared/pm/board'
+import { RESUMES } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
 
 const data = ref<Board | null>(null)
@@ -42,6 +43,15 @@ const live = (c: Card) => {
   const p = paneOf(c)
   return p ? { key: statusKey(p), label: `${t(c.holder === 'reviewer' ? 'Reviewer' : 'Worker')}: ${statusLabel(p)}` } : { key: 'inactive', label: tl('No agent running', 'Aucun agent lancé') }
 }
+// The card's menu: Stop (confirmed in the task's sheet), or how a stopped task goes on.
+const stopping = ref(false)
+const show = (id: string, stop = false) => { stopping.value = stop; open.value = id }
+const act = (fn: () => Promise<unknown>) => fn().then(load, (e: Error) => { error.value = e.message })
+const menuOf = (c: Card): MenuItem[] => [
+  { label: tl('Open', 'Ouvrir'), icon: 'i-lucide-panel-right-open', run: () => show(c.id) },
+  ...(canStop(c) ? [{ label: tl('Stop…', 'Arrêter…'), icon: 'i-lucide-square', danger: true, run: () => show(c.id, true) }] : []),
+  ...(c.stopped ? RESUMES.map(how => ({ label: tl(...RESUME_LABEL[how]), danger: how === 'archive', run: () => act(() => resumeTaskApi(c.id, how)) })) : []),
+]
 const selected = computed(() => cards.value.find(c => c.id === open.value) ?? data.value?.cards.find(c => c.id === open.value) ?? null)
 </script>
 
@@ -68,7 +78,8 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
     <div class="board-lanes">
       <section v-for="l in lanes" :key="l.id" class="board-lane" :class="{ mine: l.id === 'your-turn' }" :data-lane="l.id" data-testid="board-lane">
         <h2 class="mono-label">{{ laneLabel(l.id) }} <span>{{ l.cards.length }}</span></h2>
-        <button v-for="c in l.cards" :key="c.id" type="button" class="board-card" data-testid="board-card" :data-task="c.id" @click="open = c.id">
+        <div v-for="c in l.cards" :key="c.id" class="board-card-wrap">
+        <button type="button" class="board-card" data-testid="board-card" :data-task="c.id" @click="show(c.id)">
           <span class="board-card-head">
             <span v-if="hasAgent(c)" class="card-state" :class="live(c).key" role="img" :aria-label="live(c).label" :title="live(c).label" data-testid="holder-state"><i /></span>
             <b>{{ c.title }}</b>
@@ -81,9 +92,14 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
             <a v-if="mainLink(c)" :href="mainLink(c)!.url" target="_blank" rel="noopener" class="board-chip" data-testid="board-link" @click.stop>{{ mainLink(c)!.label }}</a>
           </span>
         </button>
+        <UDropdownMenu v-if="!sheetMenus" :items="toDropdown(menuOf(c))" :content="{ align: 'end', sideOffset: 4 }" :ui="{ content: 'hw-dropdown' }">
+          <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn board-card-menu" :aria-label="tl('Task menu', 'Menu de la tâche')" data-testid="card-menu" />
+        </UDropdownMenu>
+        <UButton v-else icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn board-card-menu" :aria-label="tl('Task menu', 'Menu de la tâche')" data-testid="card-menu" @click="openMenu(menuOf(c), c.title)" />
+        </div>
       </section>
     </div>
-    <TaskSheet v-if="selected" :card="selected" :pane="paneOf(selected)" @closed="open = null" @changed="load" />
+    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}`" :card="selected" :pane="paneOf(selected)" :stopping="stopping" @closed="open = null; stopping = false" @changed="load" />
   </section>
 </template>
 
@@ -98,6 +114,9 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
 .board-lane { flex: none; border-bottom: 1px solid var(--line); padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
 .board-lane h2 { margin: 0; display: flex; justify-content: space-between; color: var(--muted); }
 .board-lane.mine h2 { color: var(--blocked); }
+.board-card-wrap { position: relative; display: flex; flex-direction: column; }
+.board-card-menu { position: absolute; top: 0; right: 0; }
+.board-card-wrap .board-card-head { padding-right: 36px; }
 .board-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 12px; min-height: 44px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
 .board-card:active { background: var(--surface-2); }
 .board-card-head { display: flex; align-items: center; gap: 8px; }

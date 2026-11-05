@@ -50,6 +50,7 @@ export type StepEvent =
   // toAgent: the worker has to fix it (a conflict): the task goes back to its step.
   | { kind: 'action-result', ok: boolean, error?: string, evidence?: Partial<Record<Evidence, string>>, toAgent?: boolean }
   | { kind: 'tick' }
+  | { kind: 'skip' } // the user takes a stopped task as it is: on to the next step
 
 export type Effect =
   | { kind: 'instruct', step: string, holder: Holder, text: string }
@@ -226,6 +227,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       const badge = `${step.badge || step.userLabel || step.id}: ${ev.error || `${step.action!.kind} failed`}`
       return { state: { ...state, acting: undefined, yourTurn: { reason: 'action', badge } }, effects }
     }
+    case 'skip': return { state: enter(plan, { ...state, backFrom: undefined }, state.at + 1, now, effects), effects }
     case 'tick': {
       let s = state
       if (s.recheckAt !== undefined && now >= s.recheckAt && hasAgent(step)) {

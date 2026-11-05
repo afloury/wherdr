@@ -15,6 +15,8 @@ import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, type CoreAdminDeps } from './coreCreate'
 import { WRITE_SCRIPT, exec, startTask } from './pmLaunch'
 import { userStep } from './pmBoard'
+import { resumeTask, stopTask } from './pmStop'
+import { resumeRefusal } from '../../shared/pm/stop'
 import type { PmStore } from './pmStore'
 
 type Deps = CoreAdminDeps & { store: PmStore }
@@ -61,7 +63,7 @@ export async function userMessageTo(store: PmStore, terminal: string | undefined
 const planOf = (t: Template, task: Task) => planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) })
 const summary = (t: Template | null, task: Task) => {
   const step = t ? currentStep(planOf(t, task), task.step ?? initialState()) : undefined
-  return { id: task.id, title: task.title, type: task.type, state: task.step?.abandoned ? 'abandoned' : task.step?.done ? 'done' : task.state, step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}) }
+  return { id: task.id, title: task.title, type: task.type, state: task.step?.abandoned ? 'abandoned' : task.step?.done ? 'done' : task.stopped ? 'stopped' : task.state, ...(task.stopped ? { stopped: task.stopped } : {}), step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}) }
 }
 
 const unb64 = (v: unknown) => (typeof v === 'string' ? Buffer.from(v, 'base64').toString('utf8') : v)
@@ -163,16 +165,26 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     case 'task start': {
       const task = await taskOf(cmd.task)
       const mine = (await store.tasks()).filter(x => x.project === key)
-      const why = coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), Date.now(), turn !== 'user')
+      const wake = turn !== 'user', who = { who: 'coordinator' as const, wake }
+      const why = (task.stopped ? resumeRefusal(task, 'continue', who, undefined) : undefined)
+        ?? coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), Date.now(), wake)
       if (why) throw new HerdrError('refused', why)
+      // Started in a wake: the autopilot's own task, which it may stop in a wake.
+      if (wake && !task.auto) await store.saveTask({ ...task, auto: true })
+      if (task.stopped) return { task: await resumeTask(deps, task.id, 'continue', who, by) }
       const started = await startTask(deps, task.id)
       return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`) }
+    }
+    case 'task stop': {
+      const task = await taskOf(cmd.task)
+      return { task: await stopTask(deps, task.id, { who: 'coordinator', wake: turn !== 'user' }, cmd.reason, by) }
     }
     case 'task add': {
       const why = addRefusal(rec?.autopilot, turn !== 'user')
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
-      const task = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '' })
+      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '' })
+      const task = turn !== 'user' ? { ...added, auto: true as const } : added
       return { task: await store.logTask(task, by, `added the task${cmd.after ? `, after ${cmd.after}` : ''}`) }
     }
     case 'task decide': {

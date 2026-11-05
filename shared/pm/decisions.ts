@@ -5,13 +5,14 @@ import type { Card } from './board'
 import type { Task, WaitKind } from './run'
 import type { Wake } from './wakes'
 import { CHOICES, type Choice } from './verdict'
+import { stoppedText } from './stop'
 
 // agent: a permission, question or login an agent waits on. arbitrate: the
 // after-N rule hands a review to the user. proposal: a template change of the
 // coordinator. step: a step that ends with the user's button (Merged), or an
 // action that failed. overdue: a step over its timeout. coordinator: a wake
-// it never acked.
-export const DECISION_GROUPS = ['agent', 'arbitrate', 'proposal', 'step', 'overdue', 'coordinator'] as const
+// it never acked. stopped: a task stopped by the user or the coordinator.
+export const DECISION_GROUPS = ['agent', 'stopped', 'arbitrate', 'proposal', 'step', 'overdue', 'coordinator'] as const
 export type DecisionGroup = typeof DECISION_GROUPS[number]
 
 export interface Decision {
@@ -31,7 +32,7 @@ export interface Decision {
 
 export interface DecisionsInput {
   cards: Card[]
-  tasks: Pick<Task, 'id' | 'state' | 'waiting' | 'waitKind'>[]
+  tasks: Pick<Task, 'id' | 'state' | 'waiting' | 'waitKind' | 'stopped'>[]
   coordinators: { project: string, name: string, proposal?: { at: number, said?: string } }[]
   wakes: Wake[]
 }
@@ -43,6 +44,8 @@ export function decisionsOf({ cards, tasks, coordinators, wakes }: DecisionsInpu
   for (const c of cards) {
     const t = tasks.find(x => x.id === c.id)
     const base = { project: c.project, task: c.id, title: c.title, at: c.state?.since ?? 0, ...(c.terminal ? { terminal: c.terminal } : {}) }
+    // Stopped: how to go on is the only thing asked.
+    if (t?.stopped) { out.push({ ...base, id: `stopped:${c.id}:${t.stopped.at}`, group: 'stopped', text: stoppedText(t.stopped), at: t.stopped.at }); continue }
     if (t?.state === 'waiting' && t.waitKind)
       out.push({ ...base, id: `agent:${c.id}:${t.waitKind}`, group: 'agent', kind: t.waitKind, text: t.waiting?.split('\n')[0] || KIND_TEXT[t.waitKind] })
     const y = c.state?.yourTurn

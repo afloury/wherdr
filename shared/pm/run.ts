@@ -4,6 +4,7 @@ import type { Project } from './project'
 import type { Prefs, Step, Template } from './workflow'
 import type { StepState } from './steps'
 import { needsShots, shotMode } from './shots'
+import type { Stopped } from './stop'
 
 export interface Task {
   id: string // <project key>-<n>
@@ -23,6 +24,8 @@ export interface Task {
   shotToken?: string // the agent's key for POST /api/pm/shot (never sent to the browser)
   log?: TaskLogEntry[] // who changed what, newest last
   after?: string // tasks of the same project, comma-separated: this one starts once they are done
+  stopped?: Stopped // who stopped it and why (stop.ts): it waits for the user
+  auto?: true // started or added by the coordinator in a wake: its autopilot's own
   createdAt: number
 }
 
@@ -44,7 +47,7 @@ export interface Run {
   terminal?: string // herdr-core address, once started
   attempt: number // 1, or 2 after an agent that exited at once
   state: 'starting' | 'running' | 'ended'
-  endedBy?: 'exit' | 'lost'
+  endedBy?: 'exit' | 'lost' | 'stopped'
   startedAt: number
 }
 

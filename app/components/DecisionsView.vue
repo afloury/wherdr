@@ -4,6 +4,7 @@
 // answered right here with its own buttons; a question opens the agent.
 import { decisionGroups, type Decision, type DecisionGroup } from '#shared/pm/decisions'
 import type { Choice } from '#shared/pm/verdict'
+import { RESUMES, type Resume } from '#shared/pm/stop'
 
 const list = ref<Decision[] | null>(null)
 const error = ref('')
@@ -24,7 +25,7 @@ const answered = (d: Decision) => d.kind === 'permission' && !!paneOf(d) && pane
 const shown = computed(() => list.value?.filter(d => !answered(d)))
 const groups = computed(() => decisionGroups(shown.value ?? []))
 const GROUP_LABEL: Record<DecisionGroup, [string, string]> = {
-  agent: ['Agents waiting', 'Agents en attente'], arbitrate: ['Reviews to settle', 'Relectures à trancher'], proposal: ['Coordinator proposals', 'Propositions du coordinateur'],
+  agent: ['Agents waiting', 'Agents en attente'], stopped: ['Stopped tasks', 'Tâches arrêtées'], arbitrate: ['Reviews to settle', 'Relectures à trancher'], proposal: ['Coordinator proposals', 'Propositions du coordinateur'],
   step: ['Your steps', 'Tes étapes'], overdue: ['Overdue steps', 'Étapes en retard'], coordinator: ['Coordinator not answering', 'Coordinateur sans réponse'],
 }
 const CHOICE_LABEL: Record<Choice, [string, string]> = {
@@ -38,7 +39,7 @@ const promptOf = (d: Decision) => { const p = paneOf(d); return p?.status === 'b
 async function act(d: Decision, fn: () => Promise<unknown>) {
   busy.value = d.id
   error.value = ''
-  try { await fn(); await load() }
+  try { if (await fn() !== false) await load() }
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = '' }
 }
@@ -48,6 +49,12 @@ const proposal = (d: Decision, accept: boolean) => act(d, () => api('/api/pm/tem
 const runNow = (d: Decision) => act(d, () => api('/api/pm/autopilot', { project: d.project, runNow: true }))
 // The agent's prompt is not on screen here: Yes or No chosen in it by the server.
 const permission = (d: Decision, allow: boolean) => act(d, () => api('/api/pm/permission', { id: d.task, allow }))
+const resume = (d: Decision, how: Resume) => act(d, () => resumeTaskApi(d.task!, how))
+// An agent stuck or over its time: stopped from here, its work kept.
+const stop = (d: Decision) => act(d, async () => {
+  if (!(await askConfirm(tl('Stop this task? Its agent ends; the worktree, branch and work stay, and nothing is merged.', 'Arrêter cette tâche ? Son agent s’arrête ; le worktree, la branche et le travail restent, rien n’est fusionné.'), tl('Stop the task', 'Arrêter la tâche')))) return false
+  return stopTaskApi(d.task!, 'from Decisions')
+})
 </script>
 
 <template>
@@ -84,12 +91,17 @@ const permission = (d: Decision, allow: boolean) => act(d, () => api('/api/pm/pe
               <UButton color="neutral" variant="outline" size="lg" :disabled="!!busy" @click="proposal(d, false)">{{ tl('Refuse', 'Refuser') }}</UButton>
               <UButton color="neutral" variant="ghost" size="lg" to="/board">{{ tl('Show diff', 'Voir le diff') }}</UButton>
             </template>
+            <template v-else-if="g.group === 'stopped'">
+              <UButton v-for="how in RESUMES" :key="how" size="lg" :color="how === 'continue' ? 'primary' : 'neutral'" :variant="how === 'continue' ? 'solid' : 'outline'"
+                :loading="busy === d.id && how === 'continue'" :disabled="!!busy" :data-resume="how" @click="resume(d, how)">{{ tl(...RESUME_LABEL[how]) }}</UButton>
+            </template>
             <UButton v-else-if="g.group === 'coordinator'" color="primary" size="lg" icon="i-lucide-play" :loading="busy === d.id" :disabled="!!busy" data-testid="decision-run-now" @click="runNow(d)">{{ tl('Run now', 'Lancer maintenant') }}</UButton>
             <UButton v-else-if="g.group === 'overdue'" color="neutral" variant="outline" size="lg" icon="i-lucide-square-arrow-out-up-right" :to="{ path: '/board', query: { task: d.task } }" data-testid="decision-task">{{ tl('Open task', 'Ouvrir la tâche') }}</UButton>
             <UButton v-if="g.group === 'agent' && paneOf(d)" :color="promptOf(d) ? 'neutral' : 'primary'" :variant="promptOf(d) ? 'ghost' : 'solid'" size="lg" icon="i-lucide-terminal" :to="panePath(paneOf(d)!.id)" data-testid="decision-open">
               {{ tl('Open the agent', 'Ouvrir l’agent') }}
             </UButton>
             <UButton v-else-if="g.group === 'agent'" color="neutral" variant="outline" size="lg" to="/board" data-testid="decision-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
+            <UButton v-if="(g.group === 'agent' || g.group === 'overdue') && d.task" color="error" variant="ghost" size="lg" icon="i-lucide-square" :disabled="!!busy" data-testid="decision-stop" @click="stop(d)">{{ tl('Stop', 'Arrêter') }}</UButton>
           </div>
         </article>
       </section>

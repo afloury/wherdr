@@ -55,7 +55,8 @@ const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitK
 
 // Starts the worker of a task to do (or waiting, to try again). Any reason it
 // cannot start puts the task in 'waiting' with that reason, after one attempt.
-export async function startTask(deps: PmLaunchDeps, id: unknown): Promise<Task> {
+// handover: a note for a worker that takes up a stopped task (stop.ts).
+export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: { handover?: string } = {}): Promise<Task> {
   const { store } = deps
   const task = await store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
@@ -85,7 +86,7 @@ export async function startTask(deps: PmLaunchDeps, id: unknown): Promise<Task> 
   // A visual task: the worker's key to upload its screenshots, kept with the task.
   const shotToken = shotStep(t, task.type) ? task.shotToken || randomBytes(16).toString('hex') : undefined
   const text = instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(p.machine, deps.origin), token: shotToken } : undefined)
-    + ['', ...doneSection(runFiles(paths.instructions).note)].join('\n')
+    + ['', ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n')
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')
 
   // The engine's start: the task enters its first step (the worker's); the
