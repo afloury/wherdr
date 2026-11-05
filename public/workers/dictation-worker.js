@@ -3,11 +3,12 @@
 // Ported from followcat's public/workers/asr-worker.js (followcat/wherdr,
 // branch mobile, MIT); the WebGPU (onnxruntime-web) path is left for later.
 //
-//   in : {t:'load', runtime, base, kind, files[], bytes[], chunk, cache}
+//   in : {t:'load', runtime, base, kind, files[], bytes[], chunk, cache, language}
 //          runtime: URL of the sherpa-onnx files, ending in '/'
 //          base:    URL of the model's folder, files[] relative to it
 //          cache:   Cache Storage name holding the files in `chunk`-byte slices
 //                   (app/utils/dictation/modelStore.ts), '' = stream them from the server
+//          language: ISO 639-1, for a model that does not detect it (Canary)
 //   in : {t:'decode', id, pcm}              pcm: Float32 ArrayBuffer, 16 kHz mono
 //   out: {t:'phase', phase}                 'runtime' | 'fetch' | 'create'
 //   out: {t:'dl', file, got, total}         bytes of the file being downloaded
@@ -44,84 +45,14 @@ function startRuntime(runtime) {
   return engineReady
 }
 
-// Without Cache Storage, model files stream from the server in 8 MB range
-// slices: a long single GET through a tunnel or a mobile link dies mid-stream,
-// while each slice gets its own retries.
-const CHUNK = 8 * 1024 * 1024
+// Model files come through the shared loader (public/workers/
+// model-files.js): the cached `?chunk=N` slices or a whole entry, else
+// resumable 8 MB Range slices from the server, { t:'dl' } progress posted
+// as the bytes arrive.
+importScripts('/workers/model-files.js')
+const { openFile } = self.wherdrModelFiles
+
 const sleep = ms => new Promise(r => setTimeout(r, ms))
-
-async function refetch(doFetch) {
-  let lastErr = null
-  for (let i = 0; i < 5; i++) {
-    try {
-      const r = await doFetch()
-      if (r.status < 500) return r
-      lastErr = new Error(`HTTP ${r.status}`)
-    }
-    catch (e) { lastErr = e }
-    await sleep(700 * (i + 1))
-  }
-  throw lastErr
-}
-
-// The first request doubles as slice 0 and a range probe: a 206 means the
-// server slices; a 200 means it sends the whole file, drained as it comes.
-async function* streamFile(url, file) {
-  const first = await refetch(() => fetch(url, { headers: { range: `bytes=0-${CHUNK - 1}` } }))
-  if (first.status !== 206) {
-    if (!first.ok) throw new Error(`fetch ${file}: HTTP ${first.status}`)
-    const total = Number(first.headers.get('content-length')) || 0
-    const reader = first.body.getReader()
-    let got = 0
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) return
-      got += value.length
-      postMessage({ t: 'dl', file, got, total })
-      yield value
-    }
-  }
-  const total = Number((first.headers.get('content-range') || '').split('/')[1]) || 0
-  if (!total) throw new Error(`fetch ${file}: bad content-range`)
-  const firstPart = new Uint8Array(await first.arrayBuffer())
-  let got = firstPart.byteLength
-  postMessage({ t: 'dl', file, got, total })
-  yield firstPart
-  while (got < total) {
-    const end = Math.min(got + CHUNK - 1, total - 1)
-    const res = await refetch(() => fetch(url, { headers: { range: `bytes=${got}-${end}` } }))
-    if (res.status !== 206) throw new Error(`fetch ${file}: HTTP ${res.status} at byte ${got}`)
-    const part = new Uint8Array(await res.arrayBuffer())
-    if (part.byteLength !== end - got + 1) throw new Error(`fetch ${file}: short slice at byte ${got}`)
-    got = end + 1
-    postMessage({ t: 'dl', file, got, total })
-    yield part
-  }
-}
-
-// A Response for `url`, never assembled in JS: its slices from the cache
-// (or one whole entry, as F2 kept files), else streamed from the server.
-async function openFile(url, file, bytes, msg) {
-  const cache = msg.cache && self.caches ? await caches.open(msg.cache) : null
-  const whole = cache && await cache.match(url)
-  if (whole) return whole
-  const gen = cache ? cachedSlices(cache, url, file, Math.max(1, Math.ceil(bytes / msg.chunk))) : streamFile(url, file)
-  return new Response(new ReadableStream({
-    async pull(ctrl) {
-      const { done, value } = await gen.next()
-      if (done) ctrl.close()
-      else ctrl.enqueue(value)
-    },
-  }))
-}
-
-async function* cachedSlices(cache, url, file, count) {
-  for (let i = 0; i < count; i++) {
-    const hit = await cache.match(`${url}?chunk=${i}`)
-    if (!hit) throw new Error(`${file}: not downloaded`)
-    yield new Uint8Array(await hit.arrayBuffer())
-  }
-}
 
 // A file into the emscripten FS slice by slice: the weights must live in the
 // WASM heap anyway, but no second whole copy is held in JS (a whole-file
@@ -142,17 +73,23 @@ async function fsWriteStreamed(path, res) {
 }
 
 // The model part of the recognizer config, per model family. Field names are
-// the JS binding's (useItn, not useInverseTextNormalization: a wrong name is
-// silently ignored).
-function modelConfig(kind) {
+// the runtime's (sherpa-onnx-asr.js): a wrong name is silently ignored.
+function modelConfig(kind, language) {
   const M = MODEL_DIR
   switch (kind) {
-    // SenseVoice: zh, en, ja, ko, yue, detected; punctuation through ITN.
-    case 'senseVoice': return { senseVoice: { model: `${M}/model.int8.onnx`, language: '', useItn: 1 } }
+    // SenseVoice: zh, en, ja, ko, yue, detected. Inverse text normalization
+    // gives casing and punctuation (the binding reads
+    // useInverseTextNormalization; useItn left the text in capitals).
+    case 'senseVoice': return { senseVoice: { model: `${M}/model.int8.onnx`, language: '', useInverseTextNormalization: 1 } }
     // NeMo transducers (Parakeet TDT v3: 25 European languages, detected).
     case 'nemoTransducer': return {
       transducer: { encoder: `${M}/encoder.int8.onnx`, decoder: `${M}/decoder.int8.onnx`, joiner: `${M}/joiner.int8.onnx` },
       modelType: 'nemo_transducer',
+    }
+    // NeMo Canary (180M flash: en, de, es, fr): no detection, the language is
+    // given; punctuation and casing on (usePnc).
+    case 'canary': return {
+      canary: { encoder: `${M}/encoder.int8.onnx`, decoder: `${M}/decoder.int8.onnx`, srcLang: language || 'en', tgtLang: language || 'en', usePnc: 1 },
     }
     default: throw new Error(`unknown model kind: ${kind}`)
   }
@@ -176,7 +113,7 @@ async function load(msg) {
   postMessage({ t: 'phase', phase: 'create' })
   if (recognizer) recognizer.free()
   recognizer = new OfflineRecognizer({
-    modelConfig: { ...modelConfig(msg.kind), tokens: `${MODEL_DIR}/tokens.txt`, numThreads: 1, provider: 'cpu', debug: 0 },
+    modelConfig: { ...modelConfig(msg.kind, msg.language), tokens: `${MODEL_DIR}/tokens.txt`, numThreads: 1, provider: 'cpu', debug: 0 },
   }, Module)
   // The weights are now in the recognizer: the FS copies only cost memory.
   for (const file of msg.files) {
