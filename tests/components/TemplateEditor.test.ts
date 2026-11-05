@@ -117,3 +117,45 @@ it('sets screenshots as a step\'s evidence: after only, before and after, or non
   expect(step('pr').evidence).toEqual(['link'])
   expect(step('pr').screenshots).toBeUndefined()
 })
+
+it('shows a step\'s action as fields, edits it, and says what each step does', async () => {
+  const w = await mount()
+  await w.find('[data-testid="tpl-open"]').setValue('example:vibe')
+  const step = (id: string) => JSON.parse((w.find(json).element as HTMLTextAreaElement).value).taskTypes.simple.steps.find((s: { id?: string }) => s.id === id)
+  const kind = () => w.find('[data-testid="tpl-action"]')
+  const chosen = (sel: Omit<W, 'unmount'>) => { const e = sel.element as HTMLSelectElement; return e.options[e.selectedIndex]!.text }
+  const input = (id: string) => w.find(`input[data-testid="${id}"], [data-testid="${id}"] input`)
+  const says = () => w.findAll('[data-testid="tpl-say"]').map(p => p.text())
+  // land: merge into dev, no PR, with its plain label and sentence.
+  expect((kind().element as HTMLSelectElement).value).toBe('git.land')
+  expect(chosen(kind())).toBe('Merge into dev (no PR)')
+  expect((input('tpl-action-branch').element as HTMLInputElement).value).toBe('dev')
+  expect(says()).toEqual([
+    'The task waits here until it starts.',
+    'The worker does the task and says when it is done.',
+    'The engine merges the task’s branch into dev and pushes it, without a PR. A conflict sends it back to the agent.',
+    'The task is done.',
+  ])
+  expect(w.find('[data-testid="tpl-plan"]').text()).toContain('without a PR')
+  expect(chosen(w.findAll('[data-testid="tpl-holder"]')[2]!)).toBe('none · the engine or you')
+
+  // Into main, protected: the sentence says the merge waits for you.
+  await input('tpl-action-branch').setValue('main')
+  expect(says()[2]).toContain('main is protected: it waits for you to merge.')
+  // Another kind keeps the branch, as the PR's base.
+  await kind().setValue('github.pr')
+  await w.find('[data-testid="tpl-mode-json"]').trigger('click')
+  expect(step('land').action).toEqual({ kind: 'github.pr', base: 'main' })
+  await w.find('[data-testid="tpl-mode-steps"]').trigger('click')
+  await kind().setValue('github.merge')
+  await w.find('[data-testid="tpl-action-method"]').setValue('squash')
+  await input('tpl-action-checks').setValue('smoke, lint')
+  await input('tpl-action-checks').trigger('change')
+  expect(says()[2]).toBe('The engine merges the GitHub PR (squash) once smoke, lint are green.')
+  expect(errors(w)).toEqual([])
+  // A step that no longer ends with an action drops it.
+  await w.findAll('[data-testid="tpl-ends"]')[2]!.setValue('')
+  expect(w.find('[data-testid="tpl-action"]').exists()).toBe(false)
+  await w.find('[data-testid="tpl-mode-json"]').trigger('click')
+  expect(step('land')).toEqual({ id: 'land', column: 'Working' })
+})

@@ -6,7 +6,8 @@
 import { EXAMPLES } from '#shared/pm/examples'
 import { planSteps } from '#shared/pm/steps'
 import { parseTemplateText, type LogEntry } from '#shared/pm/templateText'
-import { ENDS, HOLDERS, SHOT_MODES, type ShotMode, type Step, type Template } from '#shared/pm/workflow'
+import { actionField, actionLabel, describeStep, endHint, holderHint } from '#shared/pm/describe'
+import { ACTIONS, ENDS, HOLDERS, MERGE_METHODS, SHOT_MODES, type ActionKind, type ShotMode, type Step, type StepAction, type Template } from '#shared/pm/workflow'
 import type { TemplateInfo } from '#shared/pm/project'
 
 const props = defineProps<{ templates: TemplateInfo[] }>()
@@ -71,7 +72,33 @@ const set = (i: number, key: keyof Step, v: string) => edit((list) => {
   const s = list[i] as unknown as Record<string, unknown>
   if (v || key === 'id') s[key] = v
   else delete s[key]
+  // Only a step that ends with action or user runs one.
+  if (key === 'ends' && v !== 'action' && v !== 'user') delete s.action
 })
+// The engine action: a new kind keeps the branch already typed.
+const setAction = (i: number, kind: string) => edit((list) => {
+  const s = list[i] as Step
+  if (!kind) return void delete s.action
+  const old = s.action, branch = old?.target || old?.base
+  const a: StepAction = { kind: kind as ActionKind }
+  const f = actionField(a.kind)
+  if (f && branch) a[f] = branch
+  if (a.kind === 'github.merge') Object.assign(a, old?.method ? { method: old.method } : {}, old?.checks ? { checks: old.checks } : {})
+  s.action = a
+})
+const setActionField = (i: number, key: 'target' | 'base' | 'method' | 'checks', v: string) => edit((list) => {
+  const a = (list[i] as Step).action as unknown as Record<string, unknown>
+  const value = key === 'checks' ? v.split(',').map(c => c.trim()).filter(Boolean) : v.trim()
+  if (value.length) a[key] = value
+  else delete a[key]
+})
+// What happens at step i, in one sentence: the plan's step when the template
+// is valid (it knows the guards), else the step as written.
+const sayStep = (s: Step | string, i: number) => {
+  const step = plan.value[i] ?? (typeof s === 'string' ? shape.value?.steps?.[s] : s)
+  if (!step || typeof step !== 'object') return ''
+  return describeStep(step, tl, { first: i === 0, last: i === steps.value!.length - 1 })
+}
 // Screenshots as evidence: none, the result only, or before and after.
 const shotsOf = (s: Step) => (s.evidence?.includes('screenshots') ? s.screenshots ?? 'after' : '')
 const setShots = (i: number, v: string) => edit((list) => {
@@ -133,13 +160,27 @@ async function save() {
           <template v-else>
             <UInput size="xl" :model-value="s.id" class="mono" :aria-label="tl('Step id', 'Id de l’étape')" @update:model-value="v => set(i, 'id', String(v))" />
             <UInput size="xl" :model-value="s.column ?? ''" :placeholder="tl('Column', 'Colonne')" :aria-label="tl('Column', 'Colonne')" @update:model-value="v => set(i, 'column', String(v))" />
-            <select class="pm-select" :value="s.holder ?? 'none'" :aria-label="tl('Held by', 'Tenue par')" data-testid="tpl-holder" @change="set(i, 'holder', field($event))">
-              <option v-for="h in HOLDERS" :key="h" :value="h">{{ h }}</option>
+            <select class="pm-select tpl-pair" :value="s.holder ?? 'none'" :aria-label="tl('Held by', 'Tenue par')" data-testid="tpl-holder" @change="set(i, 'holder', field($event))">
+              <option v-for="h in HOLDERS" :key="h" :value="h">{{ h }} · {{ holderHint(h, tl) }}</option>
             </select>
-            <select class="pm-select" :value="s.ends ?? ''" :aria-label="tl('Ends with', 'Finit par')" @change="set(i, 'ends', field($event))">
-              <option value="">{{ tl('no end', 'sans fin') }}</option>
-              <option v-for="e in ENDS" :key="e" :value="e">{{ e }}</option>
+            <select class="pm-select tpl-pair" :value="s.ends ?? ''" :aria-label="tl('Ends with', 'Finit par')" data-testid="tpl-ends" @change="set(i, 'ends', field($event))">
+              <option value="">{{ tl('no end', 'sans fin') }} · {{ endHint('', tl) }}</option>
+              <option v-for="e in ENDS" :key="e" :value="e">{{ e }} · {{ endHint(e, tl) }}</option>
             </select>
+            <template v-if="s.ends === 'action' || s.ends === 'user'">
+              <select class="pm-select tpl-pair" :value="s.action?.kind ?? ''" :aria-label="tl('Action', 'Action')" data-testid="tpl-action" @change="setAction(i, field($event))">
+                <option value="">{{ s.ends === 'user' ? tl('No action after it', 'Aucune action ensuite') : tl('Choose an action…', 'Choisir une action…') }}</option>
+                <option v-for="k in ACTIONS" :key="k" :value="k">{{ actionLabel({ ...s.action, kind: k }, tl) }}</option>
+              </select>
+              <UInput v-if="s.action && actionField(s.action.kind)" size="xl" class="mono" :model-value="s.action[actionField(s.action.kind)!] ?? ''" :placeholder="actionField(s.action.kind) === 'base' ? tl('PR base branch', 'Branche de base de la PR') : tl('Branch to merge into', 'Branche où fusionner')" :aria-label="actionField(s.action.kind) === 'base' ? tl('PR base branch', 'Branche de base de la PR') : tl('Branch to merge into', 'Branche où fusionner')" data-testid="tpl-action-branch" @update:model-value="v => setActionField(i, actionField(s.action!.kind)!, String(v))" />
+              <template v-if="s.action?.kind === 'github.merge'">
+                <select class="pm-select" :value="s.action.method ?? ''" :aria-label="tl('Merge method', 'Méthode de fusion')" data-testid="tpl-action-method" @change="setActionField(i, 'method', field($event))">
+                  <option value="">{{ tl('Method: the repo’s default', 'Méthode : celle du dépôt') }}</option>
+                  <option v-for="m in MERGE_METHODS" :key="m" :value="m">{{ m }}</option>
+                </select>
+                <UInput size="xl" class="mono" :model-value="(s.action.checks ?? []).join(', ')" :placeholder="tl('Checks that must be green', 'Checks à avoir au vert')" :aria-label="tl('Checks that must be green', 'Checks à avoir au vert')" data-testid="tpl-action-checks" @change="setActionField(i, 'checks', field($event))" />
+              </template>
+            </template>
             <select v-if="agent(s) && s.ends === 'report'" class="pm-select" :value="shotsOf(s)" :aria-label="tl('Screenshots', 'Captures')" data-testid="tpl-shots" @change="setShots(i, field($event))">
               <option value="">{{ tl('No screenshots', 'Sans captures') }}</option>
               <option v-for="m in SHOT_MODES" :key="m" :value="m">{{ t(SHOT_LABEL[m]) }}</option>
@@ -147,6 +188,7 @@ async function save() {
             <UInput size="xl" v-if="s.ends === 'user'" :model-value="s.userLabel ?? ''" class="tpl-wide" :placeholder="tl('Button text', 'Texte du bouton')" :aria-label="tl('Button text', 'Texte du bouton')" @update:model-value="v => set(i, 'userLabel', String(v))" />
             <UTextarea size="xl" v-if="agent(s)" :model-value="s.instructions ?? ''" class="tpl-wide" :rows="2" autoresize :placeholder="tl('Instructions sent to the agent', 'Consigne envoyée à l’agent')" @update:model-value="v => set(i, 'instructions', String(v))" />
           </template>
+          <p class="tpl-wide tpl-say muted" data-testid="tpl-say">{{ sayStep(s, i) }}</p>
           <span class="tpl-moves">
             <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-arrow-up" :disabled="i === 0" :aria-label="tl('Move up', 'Monter')" @click="move(i, -1)" />
             <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-arrow-down" :disabled="i === steps!.length - 1" :aria-label="tl('Move down', 'Descendre')" @click="move(i, 1)" />
@@ -164,9 +206,10 @@ async function save() {
       <template v-if="plan.length">
         <h4 class="mono-label">{{ tl(`Plan of a ${type} task`, `Plan d’une tâche ${type}`) }}</h4>
         <ol class="tpl-plan" data-testid="tpl-plan">
-          <li v-for="p in plan" :key="p.id">
+          <li v-for="(p, n) in plan" :key="p.id">
             <b class="mono">{{ p.id }}</b> <span class="muted">{{ p.column || p.id }} · {{ p.holder || 'none' }}{{ p.ends ? ` → ${p.ends}` : '' }}</span>
             <small v-if="p.guarded" class="mono-label"> · {{ tl('merge left to you', 'fusion laissée à toi') }}</small>
+            <p class="tpl-say muted">{{ describeStep(p, tl, { first: n === 0, last: n === plan.length - 1 }) }}</p>
           </li>
         </ol>
       </template>
@@ -195,10 +238,13 @@ async function save() {
 .tpl-step .pm-select { width: 100%; }
 .tpl-editor > .pm-select, .tpl-bar .pm-select { min-width: 0; }
 .tpl-wide { grid-column: 1 / -1; }
+/* Wide enough to read the option with its hint. */
+.tpl-pair { grid-column: span 2; }
 .tpl-moves { display: flex; gap: 2px; justify-content: flex-end; grid-column: 1 / -1; }
 .tpl-add { margin: 12px 16px; }
 .tpl-errors, .tpl-plan, .tpl-log { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
 .tpl-errors .form-error { margin: 0; }
 .tpl-plan { list-style: decimal inside; }
+.tpl-say { margin: 0; font-size: 14px; }
 .tpl-log { font-size: 14px; }
 </style>
