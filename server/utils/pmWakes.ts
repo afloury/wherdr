@@ -5,7 +5,7 @@
 // end of an open wake, a missed ack tried again, then a push to the user.
 import { randomUUID } from 'node:crypto'
 import { coordinatorWake } from '../../shared/pm/coordinator'
-import { autopilotEvents, inHours } from '../../shared/pm/autopilot'
+import { autopilotEvents, inHours, sentence } from '../../shared/pm/autopilot'
 import { planSteps, durationMs } from '../../shared/pm/steps'
 import { enqueue, tickWakes, wakeText, type CoordStatus } from '../../shared/pm/wakes'
 import type { Template } from '../../shared/pm/workflow'
@@ -18,7 +18,7 @@ import { HerdrError } from './herdr'
 export interface WakeDeps extends CoreAdminDeps { store: PmStore, notify?: (title: string, body: string, project: string) => Promise<unknown> }
 const newId = () => randomUUID().replace(/-/g, '').slice(0, 8)
 
-const pushNotify = (title: string, body: string, project: string) => pushSend({ title, body, tag: `pm-wake-${project}`, url: '/board' })
+const pushNotify = (title: string, body: string, project: string) => pushSend({ title, body, tag: `pm-wake-${project}`, url: '/#/board' })
 
 // What herdr-core says of the coordinator's terminal; null: unknown this tick.
 async function statusOf(deps: WakeDeps, terminal: string | undefined): Promise<CoordStatus | null> {
@@ -58,7 +58,7 @@ async function gather(deps: WakeDeps, now: number) {
     // The first look only notes where tasks stand.
     if (on && c.seen) add(p.key, ev.reasons)
     const due = on && ap!.every && now - (c.ranAt ?? 0) >= durationMs(ap!.every)
-    if (due) add(p.key, [`Scheduled wake (every ${ap!.every}). Your goal: ${ap!.goal || '(none set)'}. Run \`wherdr pm autopilot show\` for what is left of today's limits.`])
+    if (due) add(p.key, [`Scheduled wake (every ${ap!.every}). Your goal: ${sentence(ap!.goal || '(none set)')} Run \`wherdr pm autopilot show\` for what is left of today's limits.`])
     if (due || JSON.stringify(ev.seen) !== JSON.stringify(c.seen ?? null)) await store.saveCoordinator({ ...c, seen: ev.seen, ...(due ? { ranAt: now } : {}) })
   }
   return reasons
@@ -69,7 +69,7 @@ async function gather(deps: WakeDeps, now: number) {
 export async function runNow(deps: WakeDeps, key: string, now = Date.now()) {
   const c = await deps.store.coordinator(key)
   if (!c?.terminal) throw new HerdrError('not_found', 'The coordinator is not running: start it first')
-  const goal = c.autopilot?.goal ? ` Your goal: ${c.autopilot.goal}.` : ''
+  const goal = c.autopilot?.goal ? ` Your goal: ${sentence(c.autopilot.goal)}` : ''
   const w = enqueue(await deps.store.wakes(), key, [`The user asked you to run now.${goal}`], now, newId(), true)
   await deps.store.saveWakes([w])
   return wakeTick(deps, now)

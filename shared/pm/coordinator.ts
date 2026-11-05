@@ -3,6 +3,8 @@
 // the server (server/utils/pmCoordinator.ts) reads and writes.
 import type { Project } from './project'
 import type { Template } from './workflow'
+import type { Autopilot, limitsLeft } from './autopilot'
+import type { Wake } from './wakes'
 import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
 
@@ -26,7 +28,11 @@ export interface Proposal { template: Template, diff: string, at: number, base: 
 export type ProposalOutcome = 'accepted' | 'refused' | 'outdated: the template changed since, propose again'
 
 // GET /api/pm/coordinators: one per project.
-export interface CoordinatorView { project: string, name: string, agent: CoordinatorAgent, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'> }
+export interface CoordinatorView {
+  project: string, name: string, agent: CoordinatorAgent, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'>
+  // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
+  autopilot?: Autopilot, limits?: ReturnType<typeof limitsLeft>, wakes?: Wake[]
+}
 
 // Where the coordinator's current turn comes from: a message the user sent
 // from the interface, an engine wake, or nothing known (refused like a wake).
@@ -42,6 +48,7 @@ export type Command =
   | { name: 'task decide', task: string, choice: Choice, reason: string }
   | { name: 'ack', wakes: string[] } | { name: 'autopilot show' }
   | { name: 'tell', task: string, text: string }
+  | { name: 'task start', task: string }
 
 // One table for the parser, the skill and the role file.
 export const COMMANDS: { usage: string, does: string }[] = [
@@ -57,6 +64,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task decide <task> <choice> --reason "<one sentence>"', does: 'after N send-backs, pick one of the engine\'s options' },
   { usage: 'ack <wake> [<wake>…]', does: 'say you handled an Autopilot wake (each wake ends with its id); unacked, it comes back once, then the user is told' },
   { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, and what is left of today\'s limits' },
+  { usage: 'task start <task>', does: 'start a task to do; in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until that task is done (the engine then starts it itself)' },
   { usage: 'tell <task> "<text>"', does: 'a message to the task\'s agent; in a wake, only to answer its question (a permission request is the user\'s)' },
 ]
 
@@ -90,6 +98,7 @@ export function parseCommand(argv: unknown): Command | { error: string } {
   if (w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0 }
   if (w0 === 'show') return w1 && TASK_RE.test(w1) && !w2 ? { name: 'show', task: w1 } : usage('show')
   if (verb === 'template show' || verb === 'template edit') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
+  if (verb === 'task start') return TASK_RE.test(task) && !w3 ? { name: verb, task } : usage(verb)
   if (verb !== 'task tag' && verb !== 'task link' && verb !== 'step done' && verb !== 'task decide') return { error: `unknown command: ${words.join(' ') || '(none)'} (see wherdr pm help)` }
   if (!TASK_RE.test(task) || rest.length) return usage(verb)
   if (verb === 'task tag') {
@@ -223,7 +232,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[]):
     '- edit the template on your own: only the user\'s request starts a proposal, and only their yes in wherdr saves it;',
     '- pass a critical finding with proof, or a send-back whose next step is a guarded merge: those go to the user;',
     '- approve, merge, change settings or your autopilot\'s limits; answer a permission request: those are the user\'s.', '',
-    'Each Autopilot wake ends with its id: once you have handled it, run `wherdr pm ack <id>`. The engine already fixes PR bases, re-runs CI, retries pushes, catches up branches, sends red CI back and merges what the branch rule allows: leave those to it.', '',
+    'Each Autopilot wake ends with its id: once you have handled it, run `wherdr pm ack <id>`. The engine already fixes PR bases, re-runs CI, retries pushes, catches up branches, sends red CI back and merges what the branch rule allows: leave those to it. It does not start tasks on its own, except a task whose "after" task is done: start the next task toward your goal with `task start`.', '',
     '## Plans of this project\'s task types', '', `Template: ${t ? `${t.id} v${t.version ?? 1}` : 'none'}`, '', ...plans,
     '## Turning a workflow request into steps', '',
     'wherdr imposes no workflow: it knows ordered steps, who holds each (worker, reviewer, coordinator, none), how it ends (report, verdict, user, action), the proofs it needs (evidence) and the user\'s guards. What an agent must do is plain text in `instructions`.',

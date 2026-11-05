@@ -6,6 +6,7 @@ import type { MergeBy, Template } from '../../shared/pm/workflow'
 import { addShot, isImage, SHOT_TYPES, type Shot } from '../../shared/pm/shots'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import type { Task } from '../../shared/pm/run'
+import { CHOICES, type Choice } from '../../shared/pm/verdict'
 import { actionShell, runAction } from './pmActions'
 import { machineOn, type CoreAdminDeps } from './coreCreate'
 import { HerdrError } from './herdr'
@@ -65,6 +66,20 @@ export async function stepAction(deps: CoreAdminDeps & { store: PmStore }, id: u
     state = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.error ? { error: result.error } : {}), evidence }, Date.now()).state
   }
   return store.saveTask({ ...(await store.task(task.id) ?? task), step: state })
+}
+
+// The user's choice on a review the after-N rule handed to them (Decisions):
+// any choice, like the coordinator's `task decide` but not limited to its options.
+export async function userDecide(store: PmStore, id: unknown, choice: unknown) {
+  const task = await store.task(id)
+  if (!task) throw new HerdrError('not_found', 'Unknown task')
+  if (!CHOICES.includes(choice as Choice)) throw new HerdrError('bad_input', `choice: one of ${CHOICES.join(', ')}`)
+  const p = (await store.projects()).find(x => x.key === task.project)
+  const t = p?.template ? await store.template(p.template) : null
+  if (!t) throw new HerdrError('not_found', 'The project has no template')
+  const r = onEvent(planOf(t, task), task.step ?? initialState(), { kind: 'decide', by: 'user', choice: choice as Choice }, Date.now())
+  if (r.refused) throw new HerdrError('refused', r.refused)
+  return store.logTask({ ...task, step: r.state }, 'user', r.effects.flatMap(e => (e.kind === 'log' ? [e.text] : [])).join('; '))
 }
 
 const sameKey = (a: string | undefined, b: unknown) =>
