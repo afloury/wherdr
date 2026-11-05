@@ -3,7 +3,7 @@ import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import CoordinatorBar from '~/components/CoordinatorBar.vue'
 import { herdrState } from '~/composables/useHerdr'
-import { coordinators } from '~/composables/useCoordinators'
+import { coordinators, resumedCoordinators } from '~/composables/useCoordinators'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
 
@@ -40,6 +40,16 @@ it('warns when the kept conversation ran with another agent, and offers a new on
   await vi.waitFor(() => expect(posts[0]).toEqual({ url: '/api/pm/coordinator-start', body: { project: 'CO' } }))
 })
 
+it('remembers "Resume with" after a reload, and shows the board\'s diff open', async () => {
+  const b = await mount(view({ ran: { program: 'codex', model: 'gpt-5' }, terminal: 'host/t1', proposal: { diff: '+ x', at: 1 } }), true)
+  expect(b.find('[data-testid="proposal-diff"]').exists()).toBe(true)
+  await b.find('[data-testid="coordinator-resume"]').trigger('click')
+  expect(b.find('[data-testid="coordinator-other-agent"]').exists()).toBe(false)
+  expect(JSON.parse(localStorage.getItem('wherdr.coordinatorsResumed')!)).toEqual(['host/t1'])
+  resumedCoordinators.value = []
+  localStorage.removeItem('wherdr.coordinatorsResumed')
+})
+
 it('shows no warning when the kept conversation is the default agent\'s', async () => {
   const b = await mount(view({ ran: { program: 'claude', model: 'opus' }, terminal: 'host/t1' }), true)
   expect(b.find('[data-testid="coordinator-other-agent"]').exists()).toBe(false)
@@ -51,6 +61,9 @@ it('shows a proposed template change as a diff, to accept or refuse', async () =
   for (const accept of [true, false]) {
     posts.length = 0
     const b = await mount(view({ proposal }))
+    // In the conversation the diff is folded, so the chat stays visible on a phone.
+    expect(b.find('[data-testid="proposal-diff"]').exists()).toBe(false)
+    await b.find('[data-testid="proposal-toggle"]').trigger('click')
     const box = b.find('[data-testid="template-proposal"]')
     expect(box.text()).toContain('“Use b”')
     expect(box.findAll('.del').map(x => x.text())).toEqual(['-   "instructions": "a",'])

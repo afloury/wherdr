@@ -5,8 +5,18 @@ import type { Pane } from '#shared/types'
 
 export const coordinators = ref<CoordinatorView[]>([])
 let loading: Promise<void> | null = null
-// Kept conversations of another agent the user chose to resume: no warning any more.
-export const resumedCoordinators = ref<string[]>([])
+// Kept conversations of another agent the user chose to resume: no warning
+// any more, also after a reload (this browser only).
+const RESUMED_KEY = 'wherdr.coordinatorsResumed'
+const readResumed = (): string[] => {
+  try { const v = JSON.parse(localStorage.getItem(RESUMED_KEY) || '[]'); return Array.isArray(v) ? v.filter(x => typeof x === 'string') : [] }
+  catch { return [] }
+}
+export const resumedCoordinators = ref<string[]>(import.meta.client ? readResumed() : [])
+export function resumeCoordinator(terminal: string) {
+  resumedCoordinators.value = [...resumedCoordinators.value.filter(x => x !== terminal), terminal].slice(-20)
+  try { localStorage.setItem(RESUMED_KEY, JSON.stringify(resumedCoordinators.value)) } catch {}
+}
 
 export function loadCoordinators() {
   return (loading ??= api<CoordinatorView[]>('/api/pm/coordinators')

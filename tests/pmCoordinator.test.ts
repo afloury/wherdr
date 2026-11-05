@@ -85,6 +85,17 @@ describe('template edit', () => {
     expect((await store.template('company'))!.version).toBe(2)
     expect((await store.templateLog('company')).at(-1)).toMatchObject({ by: 'coordinator CO', version: 2, said: 'Tell agents to never run the full suite' })
     expect((await store.coordinator('CO'))!.proposal).toBeUndefined()
+    expect(await cli(['template', 'show'])).toMatchObject({ lastProposal: 'accepted' })
+  })
+
+  it('is not saved over a change the user made after it', async () => {
+    await noteTurn(store, 'CO', 'user', 'add a line')
+    await cli(['template', 'edit'], moreInstructions)
+    await store.saveTemplate({ ...structuredClone(company), instructions: 'USER EDIT' }, { replace: true })
+    await refused(answerProposal(deps(), 'CO', true), 'The template changed since this proposal')
+    expect((await store.template('company'))!.instructions).toBe('USER EDIT')
+    expect((await store.coordinator('CO'))!.proposal).toBeUndefined()
+    expect(await cli(['template', 'show'])).toMatchObject({ lastProposal: expect.stringContaining('outdated') })
   })
 
   it('refused by the user: nothing saved, nothing logged', async () => {
@@ -94,6 +105,7 @@ describe('template edit', () => {
     await answerProposal(deps(), 'CO', false)
     expect((await store.template('company'))!.version).toBe(1)
     expect(await store.templateLog('company')).toEqual(log)
+    expect(await cli(['template', 'show'])).toMatchObject({ lastProposal: 'refused' })
     await refused(answerProposal(deps(), 'CO', true), 'No template change waits for you')
   })
 

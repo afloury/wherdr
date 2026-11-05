@@ -20,10 +20,13 @@ export const agentName = (a: CoordinatorAgent) => (a.program === 'claude'
 
 // A template change the coordinator proposed: the user accepts or refuses it
 // in the interface; only an accepted one is saved and goes to the template's log.
-export interface Proposal { template: Template, diff: string, at: number, said?: string }
+// base: the template version its diff was made against.
+export interface Proposal { template: Template, diff: string, at: number, base: number, said?: string }
+// What became of the last one, for the coordinator's `template show`.
+export type ProposalOutcome = 'accepted' | 'refused' | 'outdated: the template changed since, propose again'
 
 // GET /api/pm/coordinators: one per project.
-export interface CoordinatorView { project: string, name: string, agent: CoordinatorAgent, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template'> }
+export interface CoordinatorView { project: string, name: string, agent: CoordinatorAgent, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'> }
 
 // Where the coordinator's current turn comes from: a message the user sent
 // from the interface, an engine wake, or nothing known (refused like a wake).

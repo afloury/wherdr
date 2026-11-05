@@ -2,7 +2,7 @@
 // it), where its current turn comes from, the `wherdr pm` commands it runs,
 // and its role files, written in its own folder on the project's machine.
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import { COORDINATOR_AGENTS, coordinatorArgs, coordinatorWake, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorView, type Turn } from '../../shared/pm/coordinator'
+import { COORDINATOR_AGENTS, coordinatorArgs, coordinatorWake, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { validateTemplate } from '../../shared/pm/workflow'
@@ -22,8 +22,8 @@ const sha = (s: string) => createHash('sha256').update(s).digest()
 export async function issueToken(store: PmStore, key: string) {
   const token = randomBytes(32).toString('hex')
   // Its default agent and pending change stay; its turn and terminal are the old conversation's.
-  const { agent, proposal } = (await store.coordinator(key)) ?? {}
-  await store.saveCoordinator({ project: key, tokenHash: sha(token).toString('hex'), ...(agent ? { agent } : {}), ...(proposal ? { proposal } : {}) })
+  const { agent, proposal, answered } = (await store.coordinator(key)) ?? {}
+  await store.saveCoordinator({ project: key, tokenHash: sha(token).toString('hex'), ...(agent ? { agent } : {}), ...(proposal ? { proposal } : {}), ...(answered ? { answered } : {}) })
   return token
 }
 
@@ -91,7 +91,10 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     case 'list': return { tasks: (await store.tasks()).filter(x => x.project === key).map(x => summary(t, x)) }
     case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task) : [] } }
     case 'plan': return { template: t && { id: t.id, version: t.version }, plans: Object.fromEntries(Object.keys(needPlan().taskTypes).map(type => [type, planSteps(t!, { type })])) }
-    case 'template show': return { template: needPlan(), ...(rec?.proposal ? { proposal: 'waiting for the user in wherdr', diff: rec.proposal.diff } : {}) }
+    case 'template show': return {
+      template: needPlan(),
+      ...(rec?.proposal ? { proposal: 'waiting for the user in wherdr', diff: rec.proposal.diff } : rec?.answered ? { lastProposal: rec.answered.outcome } : {}),
+    }
     case 'template edit': {
       let next: Template
       try { next = JSON.parse(String(body.input ?? '')) as Template } catch { throw new HerdrError('bad_input', 'The new template is not valid JSON') }
@@ -99,9 +102,9 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const errors = validateTemplate(next)
       if (errors.length) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
       // The user accepts or refuses it in the interface; nothing is saved yet.
-      const proposal = { template: next, diff: templateDiff(t, next), at: Date.now(), ...(rec?.turn?.said ? { said: rec.turn.said } : {}) }
+      const proposal = { template: next, diff: templateDiff(t, next), at: Date.now(), base: t!.version ?? 1, ...(rec?.turn?.said ? { said: rec.turn.said } : {}) }
       await store.saveCoordinator({ ...rec!, proposal })
-      return { proposed: true, changes: templateChanges(t, next), diff: proposal.diff, next: 'The user accepts or refuses this diff in wherdr; template show tells you which' }
+      return { proposed: true, changes: templateChanges(t, next), diff: proposal.diff, next: 'The user accepts or refuses this diff in wherdr; template show tells you what they chose' }
     }
     case 'task tag': {
       const task = await taskOf(cmd.task)
@@ -154,15 +157,21 @@ export async function answerProposal(deps: Deps, key: unknown, accept: unknown) 
   const rec = typeof key === 'string' ? await store.coordinator(key) : null
   if (!rec?.proposal) throw new HerdrError('not_found', 'No template change waits for you')
   const { proposal, ...rest } = rec
-  if (accept === true) {
-    const p = (await store.projects()).find(x => x.key === rec.project)
-    const t = p?.template ? await store.template(p.template) : null
-    await editRefusal(store, rec.project, t, proposal.template, 'user')
-    await store.saveTemplate(proposal.template, { replace: true, by: `coordinator ${rec.project}`, said: proposal.said })
+  const done = (outcome: ProposalOutcome) => store.saveCoordinator({ ...rest, answered: { outcome, at: Date.now() } })
+  if (accept !== true) { await done('refused'); return { accepted: false } }
+  const p = (await store.projects()).find(x => x.key === rec.project)
+  const t = p?.template ? await store.template(p.template) : null
+  // Its diff was made against that version: saved over a newer one, it would
+  // undo a change the user made since.
+  if ((t?.version ?? 1) !== proposal.base) {
+    await done('outdated: the template changed since, propose again')
+    throw new HerdrError('refused', 'The template changed since this proposal: ask the coordinator to propose again')
   }
-  await store.saveCoordinator(rest)
-  if (accept === true) await writeRoleFiles(deps, rec.project).catch(() => {})
-  return { accepted: accept === true }
+  await editRefusal(store, rec.project, t, proposal.template, 'user')
+  await store.saveTemplate(proposal.template, { replace: true, by: `coordinator ${rec.project}`, said: proposal.said })
+  await done('accepted')
+  await writeRoleFiles(deps, rec.project).catch(() => {})
+  return { accepted: true }
 }
 
 const agentOf = (v: { program?: unknown, model?: unknown }): CoordinatorAgent | null => {
