@@ -66,6 +66,14 @@ export async function startTask(deps: PmLaunchDeps, id: unknown): Promise<Task> 
   if (!t) return wait(store, task, 'The project has no template: pick one in Settings › Projects')
   const plan = workerPlan(t, task)
   if ('reason' in plan) return wait(store, task, plan.reason)
+  // Stopped at a step the worker does not hold (the review): no new worker. That
+  // step's holder is told again (the reviewer started again) by the next advance pass.
+  const s = task.step
+  const held = s?.started && !s.done ? planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) })[s.at] : undefined
+  if (held && held.holder !== 'worker') {
+    const { told: _told, ...step } = s!
+    return store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, step })
+  }
   let on: string | undefined, label = ''
   try { ({ on, m: { label } } = machineOn(deps, p.machine)) } catch (e) { return wait(store, task, (e as Error).message) }
   if (!(await kindsOf(deps, on)).includes(plan.program)) return wait(store, task, `${plan.program} is not installed on ${label}`)

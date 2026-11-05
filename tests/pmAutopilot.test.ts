@@ -80,6 +80,8 @@ describe('starting a task (coordinator, or the engine for a chained one)', () =>
     // Stopped on a failure: started again, in a wake only while it ran few times; a question is not a stop.
     const stopped = task(2, { state: 'waiting', waiting: 'git worktree failed' })
     expect(coordinatorStartRefusal(ap, stopped, [stopped], [run(2, at(9))], at(12), true)).toBeUndefined()
+    // An agent that exited at once: its second attempt is the same start.
+    expect(coordinatorStartRefusal(ap, stopped, [stopped], [run(2, at(9)), { ...run(2, at(9)), id: 'r2b', attempt: 2 }], at(12), true)).toBeUndefined()
     expect(coordinatorStartRefusal(ap, stopped, [stopped], [run(2, at(9)), run(2, at(10))], at(12), true)).toBe('CO-2 already ran 2 times: starting it again is the user\'s call')
     expect(coordinatorStartRefusal(ap, stopped, [stopped], [run(2, at(9)), run(2, at(10))], at(12), false)).toBeUndefined()
     expect(coordinatorStartRefusal(ap, { ...stopped, waitKind: 'question' }, [stopped], [], at(12), false)).toBe('CO-2 is not to do (waiting)')
