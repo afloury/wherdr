@@ -52,6 +52,8 @@ it('answers a permission with the agent\'s own buttons, and opens an agent with 
   expect(item(b, 'CO-1').findAll('.choices-list button').map(x => x.text())).toEqual(['1Yes', '2No'])
   expect(item(b, 'CO-2').find('.choices').exists()).toBe(false)
   expect(item(b, 'CO-2').find('[data-testid="decision-open"]').attributes('href')).toBe('#/a/w1%3Ap2')
+  // No agent running: the board, where the task is.
+  expect(item(b, 'CO-5').find('[data-testid="decision-board"]').exists()).toBe(true)
 })
 
 it('puts the recommendation first and answers each in one tap', async () => {

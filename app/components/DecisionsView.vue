@@ -77,6 +77,7 @@ const runNow = (d: Decision) => act(d, () => api('/api/pm/autopilot', { project:
             <UButton v-if="(g.group === 'agent' || g.group === 'overdue') && paneOf(d)" :color="promptOf(d) ? 'neutral' : 'primary'" :variant="promptOf(d) ? 'ghost' : 'solid'" size="lg" icon="i-lucide-terminal" :to="panePath(paneOf(d)!.id)" data-testid="decision-open">
               {{ tl('Open the agent', 'Ouvrir l’agent') }}
             </UButton>
+            <UButton v-else-if="g.group === 'agent' || g.group === 'overdue'" color="neutral" variant="outline" size="lg" to="/board" data-testid="decision-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
           </div>
         </article>
       </section>
