@@ -17,9 +17,12 @@ let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { load(); timer = setInterval(load, 10_000) })
 onBeforeUnmount(() => clearInterval(timer))
 
-// An agent answered from here leaves at once, not at the engine's next tick.
-const answered = (d: Decision) => d.group === 'agent' && d.kind !== 'auth' && !!paneOf(d) && paneOf(d)!.status !== 'blocked'
-const groups = computed(() => decisionGroups((list.value ?? []).filter(d => !answered(d))))
+// A permission answered from here leaves at once, not at the engine's next
+// tick. Only a permission prompt blocks the pane: a question (the agent's
+// label) leaves an idle or done pane, and stays until the engine sees it gone.
+const answered = (d: Decision) => d.kind === 'permission' && !!paneOf(d) && paneOf(d)!.status !== 'blocked'
+const shown = computed(() => list.value?.filter(d => !answered(d)))
+const groups = computed(() => decisionGroups(shown.value ?? []))
 const GROUP_LABEL: Record<DecisionGroup, [string, string]> = {
   agent: ['Agents waiting', 'Agents en attente'], arbitrate: ['Reviews to settle', 'Relectures à trancher'], proposal: ['Coordinator proposals', 'Propositions du coordinateur'],
   step: ['Your steps', 'Tes étapes'], overdue: ['Overdue steps', 'Étapes en retard'], coordinator: ['Coordinator not answering', 'Coordinateur sans réponse'],
@@ -50,10 +53,10 @@ const runNow = (d: Decision) => act(d, () => api('/api/pm/autopilot', { project:
     <header class="board-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back" :aria-label="t('Back')" to="/board" />
       <h1 class="display">{{ tl('Decisions', 'Décisions') }}</h1>
-      <span v-if="list" class="mono-label">{{ list.length }}</span>
+      <span v-if="shown" class="mono-label" data-testid="decisions-count">{{ shown.length }}</span>
     </header>
     <p v-if="error" class="error board-note" role="alert">{{ error }}</p>
-    <p v-if="list && !list.length" class="muted board-note" data-testid="decisions-empty">{{ tl('Nothing waits for you.', 'Rien ne t’attend.') }}</p>
+    <p v-if="shown && !shown.length" class="muted board-note" data-testid="decisions-empty">{{ tl('Nothing waits for you.', 'Rien ne t’attend.') }}</p>
     <div class="decisions-list">
       <section v-for="g in groups" :key="g.group" class="decisions-group" :data-group="g.group" data-testid="decisions-group">
         <h2 class="mono-label">{{ tl(...GROUP_LABEL[g.group]) }} <span>{{ g.items.length }}</span></h2>

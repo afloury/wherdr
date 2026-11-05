@@ -25,7 +25,8 @@ const all = (): Decision[] => [
 const prompt = { question: 'Allow Bash(npm test)?', options: [{ label: 'Yes' }, { label: 'No' }], identity: 'x' }
 herdrState.value = { ok: true, workspaces: [], panes: [
   { id: 'w1:p1', coreAddress: 'host/t1', status: 'blocked', prompt, agent: 'claude', workspace: 'w', tab: 't' } as unknown as Pane,
-  { id: 'w1:p2', coreAddress: 'host/t2', status: 'blocked', agent: 'claude', workspace: 'w', tab: 't' } as Pane,
+  // A question is the agent's label: its pane is idle, not blocked.
+  { id: 'w1:p2', coreAddress: 'host/t2', status: 'idle', agent: 'claude', workspace: 'w', tab: 't' } as Pane,
 ] }
 
 let w: Awaited<ReturnType<typeof mountSuspended>> | null = null
@@ -56,6 +57,8 @@ it('answers a permission with the agent\'s own buttons, and opens an agent with 
   const panes = herdrState.value!.panes
   herdrState.value = { ...herdrState.value!, panes: [{ ...panes[0]!, status: 'working', prompt: null } as Pane, panes[1]!] }
   await vi.waitFor(() => expect(item(b, 'CO-1').exists()).toBe(false))
+  expect(item(b, 'CO-2').exists()).toBe(true)
+  expect(b.find('[data-testid="decisions-count"]').text()).toBe('6')
   herdrState.value = { ...herdrState.value!, panes }
   // No agent running: the board, where the task is.
   expect(item(b, 'CO-5').find('[data-testid="decision-board"]').exists()).toBe(true)
