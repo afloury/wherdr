@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { agentDescendants, coreShell, createCoreTranscripts, machineOfAddress, processInfo } from '../server/utils/coreTranscripts'
+import { DEVIN_PROCESS_SCRIPT } from '../server/utils/devinProcesses'
 import { CoreError } from '../server/utils/core'
 import type { Pane } from '../shared/types'
 
@@ -23,7 +24,7 @@ function fakeCore(details: Record<string, object>) {
       return details[params.terminal]
     }
     if (method === 'machine.exec') {
-      return await new Promise(resolve => execFile(params.argv[0], params.argv.slice(1), { encoding: 'buffer', env: { ...process.env, HOME: process.env.FAKE_REMOTE_HOME } },
+      return await new Promise(resolve => execFile(params.argv[0], params.argv.slice(1), { encoding: 'buffer', maxBuffer: 24 * 1024 * 1024, env: { ...process.env, HOME: process.env.FAKE_REMOTE_HOME } },
         (err, stdout, stderr) => resolve({ code: err ? (err as any).code ?? 1 : 0, stdout: stdout.toString('base64'), stderr: stderr.toString('base64'), timed_out: false, truncated: false })))
     }
     throw new CoreError('rpc', method)
@@ -138,7 +139,7 @@ describe('Devin core transcripts', () => {
     const core = fakeCore({ 'host-a/t1': { pid: 10, argv: ['sh'] } })
     const call = vi.fn(async (method: string, params: any): Promise<any> => {
       if (params.argv?.[0] === 'ps') return { stdout: Buffer.from('10 1 sh\n42424242 10 /opt/devin\n').toString('base64') }
-      if (params.argv?.[0] === 'env') return { stdout: Buffer.from('42424242 Thu Jan  1 00:00:00 2026\n').toString('base64') }
+      if (params.argv?.[2] === DEVIN_PROCESS_SCRIPT) return { stdout: Buffer.from('42424242 100 100 1767225600 100.00 1767225700.001 ' + Buffer.from('/opt/devin\0').toString('base64') + '\n').toString('base64') }
       if (params.argv?.[2] === 'printf %s "$HOME"') return { code: 0, stdout: Buffer.from(home).toString('base64') }
       return core.call(method, params)
     })

@@ -1,9 +1,10 @@
+import { execFile } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { devinResume, devinSession } from '../server/utils/devinSessions'
-import { localFs } from '../server/utils/fsx'
+import { createShellFs, localFs } from '../server/utils/fsx'
 import { createTranscripts } from '../server/utils/transcripts'
 
 const homes: string[] = []
@@ -43,12 +44,12 @@ it('rejects stale PID reuse, oversized locks and unknown process start time', as
   expect(await devinSession(localFs, home, { pid: 100, startedAt: birth }, false)).toBeNull()
   lock('current', 100)
   expect(await devinSession(localFs, home, { pid: 100 }, false)).toBeNull()
-  expect(await devinSession(localFs, home, { pid: NaN, argv: ['devin', '-r', 'current'] }, false)).toBeNull()
+  expect(await devinSession(localFs, home, { pid: NaN, argvExact: true, argv: ['devin', '-r', 'current'] }, false)).toBeNull()
 })
 
 it('prefers the active lock after resume but refuses two fresh locks for one PID', async () => {
   const { home, lock } = fixture()
-  const proc = { pid: 100, startedAt: birth, argv: ['devin', '-r', 'old'] }
+  const proc = { pid: 100, startedAt: birth, argvExact: true, argv: ['devin', '-r', 'old'] }
   lock('current', 100)
   expect(await devinSession(localFs, home, proc, false)).toBe('current')
   lock('ambiguous', 100, birth + 2000)
@@ -57,7 +58,7 @@ it('prefers the active lock after resume but refuses two fresh locks for one PID
 
 it('uses explicit resume when locks are absent, and refuses truncated scans', async () => {
   const { home } = fixture()
-  const proc = { pid: 100, startedAt: birth, argv: ['devin', '-r', 'session-a'] }
+  const proc = { pid: 100, startedAt: birth, argvExact: true, argv: ['devin', '-r', 'session-a'] }
   expect(await devinSession(localFs, home, proc, false)).toBe('session-a')
   expect(await devinSession({ ...localFs, readdir: async () => Array.from({ length: 4097 }, (_, i) => `${i}.lock`) }, home, proc, false)).toBeNull()
 })
@@ -68,7 +69,7 @@ it('refreshes identity after in-process resume and stops serving an ambiguous se
   for (const id of ['old', 'current']) writeFileSync(path.join(root, 'transcripts', `${id}.json`), JSON.stringify({ schema_version: 'ATIF-v1.7', session_id: id, steps: [{ step_id: 1, source: 'agent', message: id }] }))
   let clock = Date.now()
   vi.spyOn(Date, 'now').mockImplementation(() => clock)
-  const reader = createTranscripts({ home, herdr: async () => ({ process_info: { foreground_processes: [{ pid: 100, name: 'devin', startedAt: birth, argv: ['devin', '-r', 'old'] }] } }) })
+  const reader = createTranscripts({ home, herdr: async () => ({ process_info: { foreground_processes: [{ pid: 100, name: 'devin', startedAt: birth, argvExact: true, argv: ['devin', '-r', 'old'] }] } }) })
   const pane = { id: 'p1', agent: 'devin', cwd: '/work/demo' }
   expect((await reader.chat(pane)).session).toBe('old')
   lock('current', 100)
@@ -77,4 +78,32 @@ it('refreshes identity after in-process resume and stops serving an ambiguous se
   lock('other', 100)
   clock += 1600
   expect(await reader.chat(pane)).toMatchObject({ available: false, reason: 'not_found' })
+})
+
+it('rejects locks before or equal to the proven process birth boundary', async () => {
+  const { home, lock } = fixture()
+  for (const at of [birth - 500, birth]) {
+    lock('stale', 100, at)
+    expect(await devinSession(localFs, home, { pid: 100, startedAt: birth }, false)).toBeNull()
+  }
+})
+
+it('does not use resume flags whose argv boundaries were reconstructed by ps', async () => {
+  const { home } = fixture()
+  expect(await devinSession(localFs, home, { pid: 100, argv: ['devin', 'Explain', '--resume=session-b'], argvExact: false }, false)).toBeNull()
+})
+
+
+it('resolves hundreds of remote locks with a constant number of shell calls', async () => {
+  const { home, lock } = fixture()
+  for (let i = 0; i < 100; i++) lock(`unrelated-${i}`, 200 + i)
+  lock("current ' spaced", 100)
+  const exec = vi.fn(async (script: string, args: string[] = []) => await new Promise<any>((resolve) => {
+    execFile('sh', ['-c', script, 'sh', ...args], { encoding: 'buffer' }, (err, stdout, stderr) => {
+      resolve({ code: err ? 1 : 0, stdout, stderr: stderr.toString() })
+    })
+  }))
+  const remote = createShellFs(exec, { statTtlMs: 0 })
+  for (let i = 0; i < 2; i++) expect(await devinSession(remote, home, { pid: 100, startedAt: birth }, false)).toBe("current ' spaced")
+  expect(exec.mock.calls.length).toBeLessThanOrEqual(4)
 })
