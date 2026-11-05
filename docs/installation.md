@@ -77,8 +77,9 @@ You can start with the second one and move to the first later
 ### On-device dictation files
 
 Dictation that runs on the phone itself needs a speech model and a WebAssembly runtime: large
-files that are not in the repository, the build or the app's offline cache. Download them once
-into `DATA_DIR/models`, in the checkout, with the same `DATA_DIR` as wherdr:
+files that are not in the repository, the build or the app's offline cache. The server fetches
+the missing ones into `DATA_DIR/models` by itself when you press Install. To fetch them ahead,
+run, with the same `DATA_DIR` as wherdr:
 
 ```sh
 DATA_DIR=/path/to/data node scripts/fetch-dictation-files.mjs
