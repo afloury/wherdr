@@ -5,6 +5,7 @@
 import { PATH_SETUP, type CoreAdminDeps } from './coreCreate'
 import { exec } from './pmLaunch'
 import type { PmStore } from './pmStore'
+import { mayMerge } from '../../shared/pm/guards'
 import { CODE, RETRY_MS, SCRIPT, guardAction, isTransient, leaks, prReady, receiptId, type ActionResult, type PrInfo } from '../../shared/pm/actions'
 import type { ResolvedGuards } from '../../shared/pm/guards'
 import type { MergeBy, StepAction } from '../../shared/pm/workflow'
@@ -101,6 +102,13 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
         let pr: PrInfo | undefined
         try { pr = (JSON.parse(lines.at(-1) || '[]') as PrInfo[])[0] }
         catch { return { ok: false, error: 'merge: unreadable PR details' } }
+        // Merged on GitHub already (by hand, or a merge answered with an error): done.
+        // Its base counts as reached only where this step could have merged:
+        // a protected branch merged outside your gesture still raises the alert.
+        if (pr?.merged) {
+          const reached = mayMerge(job.guards, pr.baseRefName, job.by) ? [pr.baseRefName] : []
+          return { ok: true, link: pr.url, commit: head.trim(), reached, note: 'already merged on GitHub' }
+        }
         const refused = pr && guardAction(job.guards, a, { branch, by: job.by, base: pr.baseRefName })
         if (refused) return { ok: false, error: refused }
         const ready = prReady(pr, head.trim(), a.checks)

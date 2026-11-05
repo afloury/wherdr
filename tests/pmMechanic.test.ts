@@ -40,6 +40,10 @@ describe('mechanical moves', () => {
     expect(nextMove(facts({ pr: pr({ baseRefName: 'main' }) }))).toEqual({ key: 'base:abc1234', move: { kind: 'fix-base', base: 'v3' } })
     // Not the task's commit, or before the PR step: nothing.
     expect(nextMove(facts({ pr: pr({ baseRefName: 'main', headRefOid: 'other' }) }))).toBeUndefined()
+    // Merged on GitHub already: never edited, the merge step records it.
+    const merged = pr({ baseRefName: 'main', headRefOid: 'later', merged: true, statusCheckRollup: [] })
+    expect(nextMove(facts({ pr: merged, task: task({ step: step(2) }) }))).toBeUndefined()
+    expect(nextMove(facts({ pr: { ...merged, baseRefName: 'v3' } }))).toEqual({ key: 'merge:abc1234', move: { kind: 'merge', url: 'https://gh/pr/7', base: 'v3' } })
     expect(nextMove(facts({ task: task({ step: step(1) }), pr: pr({ baseRefName: 'main' }) }))).toBeUndefined()
   })
 

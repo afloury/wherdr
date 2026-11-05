@@ -75,6 +75,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
       : { ok: false, error: 'No worktree: the task never started' }
     const evidence = { ...(result.link ? { link: result.link } : {}), ...(result.commit ? { commit: result.commit } : {}) }
     state = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.error ? { error: result.error } : {}), evidence }, Date.now()).state
+    if (result.note) return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', `${act.step}: ${result.note}`)
   }
   return store.saveTask({ ...(await store.task(task.id) ?? task), step: state })
 }

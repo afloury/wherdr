@@ -291,3 +291,62 @@ describe('verify-merged', () => {
     expect(await s.verify()).toMatchObject({ ok: false, error: expect.stringMatching(/no commit of its own/) })
   })
 })
+
+// A PR of the branch merged on GitHub before the engine's merge step (by hand,
+// or a merge that answered 502): never a second PR. As Shepherdr #706 (MIT).
+describe('a PR already merged on GitHub', () => {
+  // A gh with no open PR, the merged PRs ("<head> <url>") in its file, and
+  // `pr create` printing a new PR's link.
+  function setup(name: string) {
+    const dir = path.join(tmp, name), repo = path.join(dir, 'repo'), bin = path.join(dir, 'bin'), merged = path.join(dir, 'merged')
+    fs.mkdirSync(bin, { recursive: true })
+    fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
+case "$*" in
+  *"--state merged"*) while read -r h u b; do case "$*" in *tojson*) echo "$h {\\"url\\":\\"$u\\",\\"baseRefName\\":\\"\${b:-dev}\\",\\"headRefOid\\":\\"$h\\",\\"merged\\":true}";; *) echo "$h $u";; esac; done < "${merged}";;
+  *"--state open"*" -q "*) ;;
+  *"--state open"*) echo '[]';;
+  "pr create"*) echo "https://pr/new";;
+  *) echo "unexpected gh $*" >&2; exit 1;;
+esac
+`, { mode: 0o755 })
+    git(tmp, 'init', '-q', '--bare', path.join(dir, 'origin.git'))
+    git(tmp, 'init', '-q', '-b', 'task/A-1', repo); git(repo, 'remote', 'add', 'origin', path.join(dir, 'origin.git'))
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'task')
+    fs.writeFileSync(merged, `${git(repo, 'rev-parse', 'HEAD')} https://pr/1\n`)
+    const sh: ActionDeps['sh'] = (script, args, input) => localSh(`PATH="${bin}:$PATH"\n${script}`, args, input)
+    const f = fakeDeps([])
+    const go = (step: string, action: ActionJob['action'], attempt = 1, by: ActionJob['by'] = 'engine') => runAction({ ...f.deps, sh }, job({ worktree: repo, step, attempt, action, by }))
+    return { repo, merged, go }
+  }
+
+  it('counts as done at the merge step', async () => {
+    const s = setup('merged-merge'), head = git(s.repo, 'rev-parse', 'HEAD')
+    expect(await s.go('merge', { kind: 'github.merge' })).toEqual({ ok: true, link: 'https://pr/1', commit: head, note: 'already merged on GitHub' })
+    // A merged PR that does not hold the task's commit: still no open PR.
+    fs.writeFileSync(s.merged, `${'f'.repeat(40)} https://pr/1\n`)
+    expect(await s.go('merge', { kind: 'github.merge' }, 2)).toEqual({ ok: false, error: 'merge: no open PR for this task' })
+    // Merged into protected main outside your gesture: recorded, with the alert.
+    fs.writeFileSync(s.merged, `${head} https://pr/1 main\n`)
+    git(s.repo, 'push', '-q', 'origin', 'HEAD:refs/heads/main')
+    expect(await s.go('merge', { kind: 'github.merge' }, 3)).toMatchObject({ ok: true, alert: 'A-1\'s commit ' + head.slice(0, 7) + ' is on main without a step of yours' })
+    // Your gesture: main is yours to merge, no alert.
+    expect(await s.go('merge', { kind: 'github.merge' }, 4, 'user')).toEqual({ ok: true, link: 'https://pr/1', commit: head, note: 'already merged on GitHub' })
+    // The PR's head pushed from elsewhere, not fetched here yet: found all the same.
+    const other = path.join(tmp, 'merged-merge', 'other')
+    git(s.repo, 'push', '-q', 'origin', 'HEAD:refs/heads/task/A-1'); git(tmp, 'clone', '-q', '-b', 'task/A-1', path.join(tmp, 'merged-merge', 'origin.git'), other)
+    git(other, 'commit', '-q', '--allow-empty', '-m', 'elsewhere'); git(other, 'push', '-q', 'origin', 'HEAD:task/A-1')
+    fs.writeFileSync(s.merged, `${git(other, 'rev-parse', 'HEAD')} https://pr/2\n`)
+    expect(await s.go('merge', { kind: 'github.merge' }, 5)).toMatchObject({ ok: true, link: 'https://pr/2', commit: head, note: 'already merged on GitHub' })
+  })
+
+  it('is the PR step\'s PR at its head, and refuses new commits after it', async () => {
+    const s = setup('merged-pr')
+    const pr = (attempt: number) => s.go('pr', { kind: 'github.pr', base: 'dev' }, attempt)
+    expect(await pr(1)).toEqual({ ok: true, link: 'https://pr/1' })
+    git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'after review')
+    expect(await pr(2)).toEqual({ ok: false, error: 'pr: task/A-1 already had PR https://pr/1 merged: new commits need a new branch' })
+    // No merged PR: a new one, as before.
+    fs.writeFileSync(s.merged, '')
+    expect(await pr(3)).toEqual({ ok: true, link: 'https://pr/new' })
+  })
+})

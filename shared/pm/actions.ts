@@ -24,6 +24,8 @@ export const CODE = { SEND_BACK: 3, NOT_MERGED: 5, NOT_YET: 6 } as const
 // Each script runs in the task's worktree ($1); its other arguments follow.
 // The last line of a successful run is its result (a commit or a link).
 const IN = 'cd "$1" || exit 1; shift;'
+// Does merged PR head $p hold HEAD ($h)? A head pushed from elsewhere is fetched first.
+const HOLDS = `{ [ "$p" = "$h" ] || { git cat-file -e "$p^{commit}" 2>/dev/null || git fetch -q origin "$p" 2>/dev/null; git merge-base --is-ancestor "$h" "$p" 2>/dev/null; }; }`
 const CLEAN = `[ -z "$(git status --porcelain)" ] || { echo "uncommitted changes: commit them, then say you are done"; exit ${CODE.SEND_BACK}; };`
 export const SCRIPT = {
   // Catch up with the target, then push the task branch onto it.
@@ -37,17 +39,37 @@ git push -q origin "HEAD:refs/heads/$t" 2>&1 || exit 1
 git rev-parse HEAD`,
   push: `${IN} ${CLEAN} git push -q origin "HEAD:refs/heads/$1" 2>&1 || exit 1; git rev-parse HEAD`,
   // Opens the PR, or puts an open one back on the right base. Body on stdin.
-  pr: `${IN} ${CLEAN} b=$1 base=$2
-git push -q origin "HEAD:refs/heads/$b" 2>&1 || exit 1
+  // A PR of the branch already merged (by hand, or a merge GitHub did but
+  // answered with an error) whose head holds HEAD is the PR: no second one.
+  // Commits after it need a new branch. As Shepherdr #706 (SHEP-59, MIT).
+  pr: `${IN} ${CLEAN} b=$1 base=$2 h=$(git rev-parse HEAD) || exit 1
 cur=$(gh pr list --head "$b" --state open --json url,baseRefName -q '.[] | .baseRefName+" "+.url' 2>&1) || { echo "$cur"; exit 1; }
 cur=$(echo "$cur" | head -1)
+if [ -z "$cur" ]; then
+  m=$(gh pr list --head "$b" --state merged --json headRefOid,url -q '.[] | .headRefOid+" "+.url' 2>&1) || { echo "$m"; exit 1; }
+  if [ -n "$m" ]; then
+    while read -r p u; do ${HOLDS} && { echo "$u"; exit 0; }; done <<EOF
+$m
+EOF
+    u=$(echo "$m" | head -1); echo "$b already had PR \${u#* } merged: new commits need a new branch"; exit 1
+  fi
+fi
+git push -q origin "HEAD:refs/heads/$b" 2>&1 || exit 1
 if [ -z "$cur" ]; then out=$(gh pr create --head "$b" --base "$base" --title "$3" --body-file - 2>&1) || { echo "$out"; exit 1; }; echo "$out" | tail -1; exit 0; fi
 if [ "\${cur%% *}" != "$base" ]; then e=$(gh pr edit "\${cur#* }" --base "$base" 2>&1) || { echo "$e"; exit 1; }; fi
 echo "\${cur#* }"`,
-  // The commit, then the open PR as JSON on the last line.
-  prInfo: `${IN} git rev-parse HEAD || exit 1
+  // The commit, then the open PR as JSON on the last line. None open: the
+  // merged PR of the branch whose head holds HEAD, marked merged (Shepherdr #706).
+  prInfo: `${IN} h=$(git rev-parse HEAD) || exit 1; echo "$h"
 j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup 2>&1) || { echo "$j"; exit 1; }
-echo "$j" | tail -1`,
+j=$(echo "$j" | tail -1)
+if [ "$j" = "[]" ]; then
+  m=$(gh pr list --head "$1" --state merged --json url,baseRefName,headRefOid -q '.[] | .headRefOid+" "+(. + {merged: true} | tojson)' 2>&1) || { echo "$m"; exit 1; }
+  while read -r p pj; do [ -n "$p" ] && ${HOLDS} && { j="[$pj]"; break; }; done <<EOF
+$m
+EOF
+fi
+echo "$j"`,
   // The step's method ($3), else the first the repo allows: merge commit, squash, rebase.
   merge: `${IN} m=$3; [ -n "$m" ] || m=$(gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed -q 'if .mergeCommitAllowed then "merge" elif .squashMergeAllowed then "squash" else "rebase" end' 2>&1) || { echo "$m"; exit 1; }
 gh pr merge "$1" "--$m" --match-head-commit "$2" 2>&1 || exit 1; echo "$1"`,
@@ -90,7 +112,8 @@ for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
 }
 
 interface Check { name?: string, context?: string, status?: string, conclusion?: string, state?: string }
-export interface PrInfo { url: string, baseRefName: string, headRefOid: string, statusCheckRollup?: Check[] }
+// merged: no PR open, this one of the branch is merged already and holds the task's commit.
+export interface PrInfo { url: string, baseRefName: string, headRefOid: string, statusCheckRollup?: Check[], merged?: boolean }
 
 const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
 // May the open PR be merged now? Its head must be the task's commit, every
@@ -131,6 +154,7 @@ export function leaks(g: ResolvedGuards, remoteBranches: string[], allowed: stri
 // Written before an action runs, completed after. One per attempt: an action
 // is never run twice for one receipt, and one found 'pending' after a restart
 // becomes 'uncertain' instead of being run again blindly.
-export interface ActionResult { ok: boolean, error?: string, toAgent?: boolean, link?: string, commit?: string, alert?: string }
+// note: a line for the task's log.
+export interface ActionResult { ok: boolean, error?: string, toAgent?: boolean, link?: string, commit?: string, alert?: string, note?: string }
 export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain', result?: ActionResult, at: number }
 export const receiptId = (task: string, step: string, attempt: number) => `${task}.${attempt}.${encodeURIComponent(step)}`
