@@ -94,7 +94,7 @@ describe('the qwen3 tokenizer', () => {
     // digits are separate words, so '1 2' can never merge.
     expect(tok.encode('12')).toEqual([49, 50])
     expect(tok.decode([0])).toBe('\u0000') // NUL, a raw byte
-    expect(tok.decode([42, 999999])).toBe('*<unk:999999>')
+    expect(tok.decode([42, 999999])).toBe('*')
     expect(tok.decode([97, 151643, 98])).toBe('ab') // specials are skipped
   })
   it('refuses a tokenizer.json outside the declared contract', () => {
@@ -106,6 +106,11 @@ describe('the qwen3 tokenizer', () => {
   it('reports unsupported tokenizer configuration when regex modifiers cannot compile', () => {
     const unsupported = load({ RegExp: function () { throw new SyntaxError('Invalid group') } })
     expect(() => unsupported.tokenizer(spec())).toThrow('Unsupported speech model tokenizer configuration')
+  })
+  it('refuses a BPE piece missing from the vocabulary', () => {
+    const bad = spec()
+    delete bad.model.vocab.ab
+    expect(() => Q.tokenizer(bad).encode('ab')).toThrow('Missing speech model tokenizer piece')
   })
 })
 

@@ -75,7 +75,11 @@ function tokenizer(tj) {
         if (bi < 0) break
         parts.splice(bi, 2, parts[bi] + parts[bi + 1])
       }
-      for (const p of parts) { const id = vocab.get(p); if (id !== undefined) out.push(id) }
+      for (const p of parts) {
+        const id = vocab.get(p)
+        if (id === undefined) throw new Error('Missing speech model tokenizer piece')
+        out.push(id)
+      }
     }
     return out
   }
@@ -88,7 +92,7 @@ function tokenizer(tj) {
       for (const id of ids) {
         if (sp.has(id)) { flush(); continue }
         const tok = idTo[id]
-        if (tok === undefined) { flush(); out += '<unk:' + id + '>'; continue }
+        if (tok === undefined) { flush(); continue }
         for (const ch of tok) {
           const b = c2b.get(ch)
           if (b === undefined) { flush(); out += ch } else bytes.push(b)
