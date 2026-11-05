@@ -39,8 +39,13 @@ function dftTables() {
 // normalize; dropLastFrame drops the last frame (prompt_config's
 // drop_last_frame, pinned true).
 function logMel(audio, filters, { dropLastFrame = true } = {}) {
+  const nMels = filters?.n_mels
+  if (!Number.isInteger(nMels) || nMels <= 0 || !Array.isArray(filters.data)
+    || filters.data.length !== nMels || filters.data.some(row => !Array.isArray(row)
+      || row.length !== N_FREQS || row.some(v => !Number.isFinite(v)))) {
+    throw new Error('Invalid speech model mel filters')
+  }
   const { cos, sin, w } = dftTables()
-  const nMels = filters.n_mels
   const fb = new Float32Array(nMels * N_FREQS)
   for (let m = 0; m < nMels; m++) for (let k = 0; k < N_FREQS; k++) fb[m * N_FREQS + k] = filters.data[m][k]
   const pad = N_FFT / 2

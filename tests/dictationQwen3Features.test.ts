@@ -26,6 +26,17 @@ const Q = load()
 describe('the qwen3 log-mel', () => {
   const row = (k: number) => { const r = new Array(201).fill(0); r[k] = 1; return r }
   const filters = { n_mels: 3, data: [row(0), row(1), row(2)] }
+  it('refuses malformed mel filterbanks instead of producing NaN features', () => {
+    for (const bad of [
+      { n_mels: 2, data: [row(0)] },
+      { n_mels: 1, data: [row(0).slice(1)] },
+      { n_mels: 1, data: [[...row(0), 0]] },
+      { n_mels: 0, data: [] },
+      { n_mels: 1, data: [row(0).fill(NaN)] },
+    ]) {
+      expect(() => Q.mel.logMel(new Float32Array(160), bad)).toThrow('Invalid speech model mel filters')
+    }
+  })
   it('gives finite values and one frame minimum at the edges', () => {
     for (const [len, T] of [[0, 1], [159, 1], [160, 1], [161, 1], [16000, 100]]) {
       const m = Q.mel.logMel(new Float32Array(len).fill(0.5), filters)
