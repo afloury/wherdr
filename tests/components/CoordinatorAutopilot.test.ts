@@ -40,11 +40,12 @@ it('saves the goal, interval, events and limits edited', async () => {
   await b.find('[data-testid="autopilot-toggle"]').trigger('click')
   await b.find('textarea#ap-goal-CO').setValue('  Fix the board first ')
   await b.find('input#ap-every-CO').setValue('30m')
+  await b.find('input#ap-at-CO').setValue(' daily 08:00 ')
   await b.find('input#ap-day-CO').setValue('4')
   await b.find('[data-testid="autopilot-event-ready"]').trigger('click')
   await b.find('[data-testid="autopilot-event-stuck"]').trigger('click')
   await b.find('[data-testid="autopilot-save"]').trigger('submit')
-  await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', autopilot: { ...autopilot, goal: '  Fix the board first ', every: '30m', perDay: 4, events: ['done', 'ready'] } }]))
+  await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', autopilot: { ...autopilot, goal: '  Fix the board first ', every: '30m', at: 'daily 08:00', perDay: 4, events: ['done', 'ready'] } }]))
 })
 
 it('lists the wakes as waiting, delivered, acked or unanswered, and runs now', async () => {

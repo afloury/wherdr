@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { coordinatorWake } from '../../shared/pm/coordinator'
 import { autopilotEvents, inHours, sentence } from '../../shared/pm/autopilot'
 import { planSteps, durationMs } from '../../shared/pm/steps'
+import { due as isDue, parseSchedule } from '../../shared/pm/schedule'
 import { enqueue, tickWakes, wakeText, type CoordStatus } from '../../shared/pm/wakes'
 import type { Template } from '../../shared/pm/workflow'
 import type { CoreAdminDeps } from './coreCreate'
@@ -58,8 +59,12 @@ async function gather(deps: WakeDeps, now: number) {
     // The first look only notes where tasks stand.
     if (on && c.seen) add(p.key, ev.reasons)
     const due = on && ap!.every && now - (c.ranAt ?? 0) >= durationMs(ap!.every)
-    if (due) add(p.key, [`Scheduled wake (every ${ap!.every}). Your goal: ${sentence(ap!.goal || '(none set)')} Run \`wherdr pm autopilot show\` for what is left of today's limits.`])
-    if (due || JSON.stringify(ev.seen) !== JSON.stringify(c.seen ?? null)) await store.saveCoordinator({ ...c, seen: ev.seen, ...(due ? { ranAt: now } : {}) })
+    // Fixed times: a slot missed (wherdr down, the coordinator off) wakes it once.
+    const at = on && ap!.at ? parseSchedule(ap!.at) : null
+    const atDue = !!at && !('error' in at) && isDue(at, c.atRan ?? now, now)
+    const goal = `Your goal: ${sentence(ap?.goal || '(none set)')} Run \`wherdr pm autopilot show\` for what is left of today's limits.`
+    if (due || atDue) add(p.key, [`Scheduled wake (${due ? `every ${ap!.every}` : ap!.at}). ${goal}`])
+    if (due || atDue || JSON.stringify(ev.seen) !== JSON.stringify(c.seen ?? null)) await store.saveCoordinator({ ...c, seen: ev.seen, ...(due ? { ranAt: now } : {}), ...(atDue ? { atRan: now } : {}) })
   }
   return reasons
 }

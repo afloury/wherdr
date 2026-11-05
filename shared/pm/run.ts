@@ -23,6 +23,7 @@ export interface Task {
   shotToken?: string // the agent's key for POST /api/pm/shot (never sent to the browser)
   log?: TaskLogEntry[] // who changed what, newest last
   after?: string // tasks of the same project, comma-separated: this one starts once they are done
+  auto?: string // the automation that added it
   createdAt: number
 }
 

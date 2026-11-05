@@ -9,6 +9,7 @@ import { validateTemplate } from '../../shared/pm/workflow'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DEFAULT_AUTOPILOT, USER_ONLY, addRefusal, coordinatorStartRefusal, limitsLeft, tellRefusal } from '../../shared/pm/autopilot'
 import { ackWakes } from '../../shared/pm/wakes'
+import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
 import { waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
@@ -147,6 +148,12 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const ap = rec?.autopilot ?? DEFAULT_AUTOPILOT
       const mine = (await store.tasks()).filter(x => x.project === key)
       return { autopilot: ap, today: limitsLeft(ap, mine, await store.runs(), Date.now()), note: 'Only the user changes these, in wherdr' }
+    }
+    case 'automation list': return { automations: (await store.automations(key)).automations.map(automationLine), note: 'Only the user adds or changes automations, in wherdr' }
+    case 'automation show': {
+      const a = (await store.automations(key)).automations.find(x => x.id === cmd.id)
+      if (!a) throw new HerdrError('not_found', 'Unknown automation')
+      return { automation: a }
     }
     case 'tell': {
       const task = await taskOf(cmd.task)

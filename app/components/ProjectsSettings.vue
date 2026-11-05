@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Settings › Projects: the project management switch, the projects (a git
-// folder on a machine herdr-core reaches), the template each one follows, and
-// the template editor.
+// folder on a machine herdr-core reaches), the template each one follows,
+// each project's automations and the template editor.
 // Off, the server refuses every change but the switch.
 import type { PmOverview } from '#shared/pm/project'
 
@@ -74,6 +74,14 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
       </div>
       <UButton v-if="data.projects.length" to="/board" color="neutral" variant="outline" size="xl" icon="i-lucide-kanban" class="pm-board" data-testid="pm-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
       <p v-else class="muted settings-hint" data-testid="pm-empty">{{ tl('No project yet.', 'Aucun projet pour l’instant.') }}</p>
+
+      <template v-if="data.projects.length">
+        <h3>{{ tl('Automations', 'Automatisations') }}</h3>
+        <p class="muted settings-hint">{{ tl('Each firing adds a task from the project\'s template and starts it at once.', 'Chaque déclenchement ajoute une tâche du modèle du projet et la lance aussitôt.') }}</p>
+        <div class="settings-card">
+          <ProjectAutomations v-for="p in data.projects" :key="p.key" :project="p.key" :name="p.name" />
+        </div>
+      </template>
 
       <h3>{{ tl('Templates', 'Modèles') }}</h3>
       <TemplateEditor :templates="data.templates" @saved="load" />

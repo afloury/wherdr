@@ -3,7 +3,8 @@
 // templates/<id>.json, template-log/<id>.json, tasks/<KEY>-<n>.json, runs/<id>.json, receipts/<id>.json,
 // shots/<KEY>-<n>/<file> (a task's screenshots),
 // coordinators/<KEY>.json (the hash of the coordinator's token, its current turn, its autopilot),
-// wakes.jsonl (the coordinators' wake queue, append-only: the last line of an id wins).
+// wakes.jsonl (the coordinators' wake queue, append-only: the last line of an id wins),
+// automations/<KEY>.json (the project's automations and where its tasks stood at the last tick).
 // Atomic writes (temp file + rename), one at a time. Switched off, every
 // write is refused except turning it back on.
 import fs from 'node:fs/promises'
@@ -20,6 +21,7 @@ import { HerdrError } from './herdr'
 import type { CoordinatorAgent, Proposal, ProposalOutcome } from '../../shared/pm/coordinator'
 import type { Autopilot, TaskStatus } from '../../shared/pm/autopilot'
 import { readQueue, type Wake } from '../../shared/pm/wakes'
+import type { Automation, Mark } from '../../shared/pm/automations'
 import { DATA_DIR } from './env'
 
 // A project coordinator: the sha256 of its token, its terminal (herdr-core
@@ -31,7 +33,10 @@ export interface CoordinatorRecord {
   agent?: CoordinatorAgent, ran?: CoordinatorAgent, proposal?: Proposal, answered?: { outcome: ProposalOutcome, at: number }
   // userAt: the user's last message. seen: each task's status at the last tick; ranAt: the last interval wake.
   userAt?: number, autopilot?: Autopilot, seen?: Record<string, TaskStatus>, ranAt?: number
+  atRan?: number // the last scheduled wake at fixed times (autopilot.at), or when it was set
 }
+
+export interface AutomationsFile { automations: Automation[], seen?: Record<string, Mark> }
 
 // The checks the store cannot make itself: the machine, a git folder there.
 // Resolves to the folder's absolute path.
@@ -65,7 +70,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   const files = {
     pm: path.join(dir, 'pm.json'), projects: path.join(dir, 'projects.json'), templates: path.join(dir, 'templates'), templateLog: path.join(dir, 'template-log'),
     tasks: path.join(dir, 'tasks'), runs: path.join(dir, 'runs'), receipts: path.join(dir, 'receipts'), shots: path.join(dir, 'shots'),
-    coordinators: path.join(dir, 'coordinators'), wakes: path.join(dir, 'wakes.jsonl'),
+    coordinators: path.join(dir, 'coordinators'), wakes: path.join(dir, 'wakes.jsonl'), automations: path.join(dir, 'automations'),
   }
   let queue: Promise<unknown> = Promise.resolve()
   const serial = <T>(fn: () => Promise<T>): Promise<T> => {
@@ -167,6 +172,16 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await fs.writeFile(temp, keep.map(w => JSON.stringify(w) + '\n').join(''), { mode: 0o600 })
       await fs.rename(temp, files.wakes)
     }),
+    automations: async (key: string): Promise<AutomationsFile> =>
+      ({ automations: [], ...(TASK_ID_RE.test(`${key}-1`) ? await readJson<AutomationsFile>(path.join(files.automations, `${key}.json`)) : null) }),
+    // `change` gets the file as it is now, inside the write: no firing is lost to a concurrent save.
+    changeAutomations: <T>(key: string, change: (f: AutomationsFile) => { file: AutomationsFile, out: T }) => write(async () => {
+      if (!TASK_ID_RE.test(`${key}-1`)) throw new HerdrError('not_found', 'Unknown project')
+      const file = path.join(files.automations, `${key}.json`)
+      const r = change({ automations: [], ...(await readJson<AutomationsFile>(file)) })
+      await writeJson(file, { v: 1, ...r.file })
+      return r.out
+    }),
     saveRun: (r: Run) => write(() => writeJson(path.join(files.runs, `${r.id}.json`), r)),
     receipt: (id: string) => readJson<Receipt>(path.join(files.receipts, `${id}.json`)),
     saveReceipt: (r: Receipt) => write(() => writeJson(path.join(files.receipts, `${r.id}.json`), r)),
@@ -184,7 +199,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const after = afterIds({ after: str('after') }).join(',')
       const known = await tasks()
       if (afterIds({ after }).some(a => !known.some(t => t.id === a && t.project === p.key))) throw badInput([{ path: 'after', message: 'tasks of the same project, comma-separated' }])
-      const task: Task = { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', createdAt: Date.now(), ...(after ? { after } : {}) }
+      const auto = str('auto')
+      const task: Task = { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', createdAt: Date.now(), ...(after ? { after } : {}), ...(auto ? { auto } : {}) }
       await writeJson(path.join(files.tasks, `${task.id}.json`), task)
       return task
     }),
