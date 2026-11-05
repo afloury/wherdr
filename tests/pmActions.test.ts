@@ -201,10 +201,16 @@ describe('verify-merged', () => {
     git(repo, 'add', '.'); git(repo, 'commit', '-qm', 'init'); git(repo, 'push', '-q', 'origin', 'main:dev')
     git(repo, 'fetch', '-q')
     expect((await localSh(WORKTREE_SCRIPT, [repo, wt, 'task/A-1', 'origin/dev'])).code).toBe(0)
-    // A base the clone has only on origin: the task's branch, never a new local base branch.
+    // A base the clone has only on origin: the task's branch, never a new local base branch,
+    // from origin's base as it is now (a task merged meanwhile is in it).
+    git(repo, 'checkout', '-q', '-b', 'tmp'); fs.writeFileSync(path.join(repo, 'm.txt'), 'merged\n')
+    git(repo, 'add', '.'); git(repo, 'commit', '-qm', 'merged'); git(repo, 'push', '-q', 'origin', 'HEAD:dev'); git(repo, 'checkout', '-q', 'main'); git(repo, 'branch', '-qD', 'tmp')
+    git(repo, 'update-ref', 'refs/remotes/origin/dev', 'HEAD') // the clone's view of dev is stale
     expect((await localSh(WORKTREE_SCRIPT, [repo, `${wt}2`, 'task/A-2', 'dev'])).code).toBe(0)
+    expect(fs.existsSync(path.join(`${wt}2`, 'm.txt'))).toBe(true)
     expect(git(`${wt}2`, 'branch', '--show-current')).toBe('task/A-2')
     expect(git(repo, 'branch', '--list', 'dev')).toBe('')
+    expect(spawnSync('git', ['-C', `${wt}2`, 'rev-parse', '--abbrev-ref', '@{upstream}']).status).not.toBe(0)
     const sh: ActionDeps['sh'] = (script, args, input) => localSh(`PATH="${bin}:$PATH"\n${script}`, args, input)
     const verify = (by: 'user' | 'engine' = 'user') =>
       runAction({ ...fakeDeps([]).deps, sh }, job({ worktree: wt, step: 'check', by, action: { kind: 'git.verify-merged', target: 'dev' } }))
