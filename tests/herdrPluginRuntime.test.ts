@@ -230,7 +230,8 @@ describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, n
     }
     // Linux unless a test says otherwise (the suite also runs on a Mac).
     writeFileSync(path.join(fake, 'uname'), '#!/bin/sh\necho Linux\n'); chmodSync(path.join(fake, 'uname'), 0o755)
-    const opened = () => existsSync(calls) ? readFileSync(calls, 'utf8').trim().split('\n') : []
+    // The log can exist before its line is written: an empty read is no call yet.
+    const opened = () => existsSync(calls) ? readFileSync(calls, 'utf8').split('\n').filter(Boolean) : []
     return { fake, opened }
   }
 
