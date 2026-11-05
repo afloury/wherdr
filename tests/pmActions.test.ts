@@ -101,6 +101,10 @@ describe('runAction', () => {
     const p = fakeDeps([info('COMPLETED', 'main')])
     expect(await runAction(p.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toMatchObject({ error: expect.stringMatching(/only you/) })
     expect(p.calls.length).toBe(1)
+    // Stopped while its checks ran: never merged.
+    const h = fakeDeps([info('QUEUED'), info('COMPLETED')])
+    expect(await runAction(h.deps, job({ step: 'merge', action: { kind: 'github.merge' }, halted: async () => true }))).toEqual({ ok: false, error: 'merge: the task was stopped' })
+    expect(h.calls.length).toBe(2)
   })
 })
 
