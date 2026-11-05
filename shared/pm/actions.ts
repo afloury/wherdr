@@ -48,8 +48,8 @@ echo "\${cur#* }"`,
   prInfo: `${IN} git rev-parse HEAD || exit 1
 j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup 2>&1) || { echo "$j"; exit 1; }
 echo "$j" | tail -1`,
-  // The first merge method the repo allows: merge commit, squash, rebase.
-  merge: `${IN} m=$(gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed -q 'if .mergeCommitAllowed then "merge" elif .squashMergeAllowed then "squash" else "rebase" end' 2>&1) || { echo "$m"; exit 1; }
+  // The step's method ($3), else the first the repo allows: merge commit, squash, rebase.
+  merge: `${IN} m=$3; [ -n "$m" ] || m=$(gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed -q 'if .mergeCommitAllowed then "merge" elif .squashMergeAllowed then "squash" else "rebase" end' 2>&1) || { echo "$m"; exit 1; }
 gh pr merge "$1" "--$m" --match-head-commit "$2" 2>&1 || exit 1; echo "$1"`,
   // Merged when GitHub has a merged PR from the branch into the target whose
   // head is HEAD (or holds it): squash and rebase merges leave no ancestor.
@@ -93,13 +93,16 @@ interface Check { name?: string, context?: string, status?: string, conclusion?:
 export interface PrInfo { url: string, baseRefName: string, headRefOid: string, statusCheckRollup?: Check[] }
 
 const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
-// May the open PR be merged now? Its head must be the task's commit, and every
-// check green; a check still running means later.
-export function prReady(pr: PrInfo | undefined, head: string): { ok: true } | { ok: false, later?: boolean, why: string } {
+// May the open PR be merged now? Its head must be the task's commit, every
+// check green and each required one there; a check still running, or a
+// required one not reported yet, means later.
+export function prReady(pr: PrInfo | undefined, head: string, required: string[] = []): { ok: true } | { ok: false, later?: boolean, why: string } {
   if (!pr) return { ok: false, why: 'no open PR for this task' }
   if (pr.headRefOid !== head) return { ok: false, why: 'the PR head is not the task\'s commit' }
   const checks = pr.statusCheckRollup ?? []
   const state = (c: Check) => c.conclusion || c.state || ''
+  const absent = required.filter(n => !checks.some(c => (c.name || c.context) === n))
+  if (absent.length) return { ok: false, later: true, why: `waiting for check ${absent.join(', ')}` }
   if (checks.some(c => (c.status && c.status !== 'COMPLETED') || ['PENDING', 'EXPECTED'].includes(c.state ?? ''))) return { ok: false, later: true, why: 'checks still running' }
   const red = checks.filter(c => !GREEN.includes(state(c)))
   if (red.length) return { ok: false, why: `${red.length} check(s) failed` }

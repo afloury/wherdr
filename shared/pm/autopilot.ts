@@ -105,6 +105,10 @@ export const USER_ONLY: Record<string, string> = {
   'autopilot set': 'The autopilot\'s goal and limits change only in wherdr, by the user',
 }
 
+// `task add`: in a wake, only with the autopilot on (the user's own turn may always).
+export const addRefusal = (ap: Autopilot | undefined, wake: boolean) =>
+  wake && !ap?.on ? 'In a wake, a task is added only with the autopilot on' : undefined
+
 // `tell <task>`: in a wake, only to answer an agent's question; a permission
 // request always stays the user's.
 export function tellRefusal(task: Pick<Task, 'state' | 'waitKind'>, wake: boolean): string | undefined {

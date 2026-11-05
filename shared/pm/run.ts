@@ -67,6 +67,8 @@ export const trustPrompt = (screen: string, worktree: string) =>
 export const isAuthFailure = (text: string) => /not logged in|log ?in again|please (run )?\/?login|authenticat|unauthori[sz]ed|invalid api key|\b401\b/i.test(text)
 // Agents the engine knows how to start with a pinned model and a first message.
 export const PROGRAMS = ['claude', 'codex'] as const
+// reviewModel: the worker's own model, in a new session.
+export const SAME_MODEL = 'same'
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:[\]/-]{0,63}$/
 
 export const runLabels = (install: string, run: Run) =>
@@ -102,17 +104,20 @@ export function workerPlan(t: Template, task: Task): { program: string, model: s
 }
 
 // Program and model of the reviewer: reviewAgent and reviewModel, nearest
-// level first. The reviewer is always of another model than the worker.
+// level first. The reviewer is of another model than the worker, unless the
+// template says reviewModel "same": a fresh session of the worker's model.
 export function reviewerPlan(t: Template, task: Task): { program: string, model: string } | { reason: string } {
   const worker = workerPlan(t, task)
   if ('reason' in worker) return worker
   if (!typeSteps(t, task.type).some(s => s.holder === 'reviewer')) return { reason: `Task type "${task.type}" has no reviewer step` }
   const tt = t.taskTypes[task.type]
   const pick = (k: 'reviewAgent' | 'reviewModel') => task.prefs?.[k] || tt?.prefs?.[k] || t.prefs?.[k] || ''
-  const program = pick('reviewAgent') || worker.program, model = pick('reviewModel')
+  const program = pick('reviewAgent') || worker.program, asked = pick('reviewModel')
+  const same = asked === SAME_MODEL, model = same ? worker.model : asked
   if (!(PROGRAMS as readonly string[]).includes(program)) return { reason: `The engine cannot start "${program}": claude or codex` }
+  if (same && program !== worker.program) return { reason: `reviewModel "${SAME_MODEL}" needs the worker's agent (${worker.program})` }
   if (!MODEL_RE.test(model)) return { reason: model ? `Invalid review model "${model}"` : 'No review model set: add prefs.reviewModel to the template' }
-  if (model === worker.model) return { reason: `The reviewer must use another model than the worker (${model})` }
+  if (!same && model === worker.model) return { reason: `The reviewer must use another model than the worker (${model}), or set reviewModel to "${SAME_MODEL}"` }
   return { program, model }
 }
 

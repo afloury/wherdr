@@ -70,7 +70,7 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   // A merge step the branch rule gives the engine. A protected branch is never
   // merged without the user's gesture, whatever the rule or the autopilot.
   if (step.action?.kind === 'github.merge' && step.ends === 'action' && !step.guarded && !isProtected(guards, pr.baseRefName)
-    && mayMerge(guards, pr.baseRefName, 'engine') && prReady(pr, head).ok)
+    && mayMerge(guards, pr.baseRefName, 'engine') && prReady(pr, head, step.action.checks).ok)
     return pick(`merge:${head}`, { kind: 'merge', url: pr.url, base: pr.baseRefName })
 }
 

@@ -39,6 +39,9 @@ describe('guards', () => {
     expect(prReady(pr([{ status: 'IN_PROGRESS' }]), 'abc')).toMatchObject({ ok: false, later: true })
     expect(prReady(pr([{ status: 'COMPLETED', conclusion: 'FAILURE' }]), 'abc')).toMatchObject({ ok: false, why: '1 check(s) failed' })
     expect(prReady(pr([{ status: 'COMPLETED', conclusion: 'SUCCESS' }, { state: 'SUCCESS' }]), 'abc')).toEqual({ ok: true })
+    // A required check not reported yet (CI not started): later, never merged on no checks.
+    expect(prReady(pr([]), 'abc', ['smoke'])).toEqual({ ok: false, later: true, why: 'waiting for check smoke' })
+    expect(prReady(pr([{ name: 'smoke', status: 'COMPLETED', conclusion: 'SUCCESS' }]), 'abc', ['smoke'])).toEqual({ ok: true })
     expect(isTransient(1, 'remote: fatal error in commit_refs')).toBe(true)
     expect(isTransient(1, 'base branch policy prohibits the merge')).toBe(true)
     expect(isTransient(1, 'HTTP 502: Bad Gateway')).toBe(true)
@@ -94,7 +97,7 @@ describe('runAction', () => {
     const r = await runAction(f.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))
     expect(r).toEqual({ ok: true, link: 'https://pr/1', commit: 'abc', alert: 'A-1\'s commit abc is on main without a step of yours' })
     expect(f.sleeps).toEqual([60_000])
-    expect(f.calls[2]).toEqual(['/w', 'https://pr/1', 'abc'])
+    expect(f.calls[2]).toEqual(['/w', 'https://pr/1', 'abc', '']) // no method: the first the repo allows
     const p = fakeDeps([info('COMPLETED', 'main')])
     expect(await runAction(p.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toMatchObject({ error: expect.stringMatching(/only you/) })
     expect(p.calls.length).toBe(1)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EXAMPLES, common, company, github, vibe } from '../shared/pm/examples'
+import { EXAMPLES, common, company, github, vibe, wherdr } from '../shared/pm/examples'
 import { currentStep, initialState, onEvent, planSteps, type Effect, type StepEvent, type StepState } from '../shared/pm/steps'
 import { validateTemplate, type Template } from '../shared/pm/workflow'
 import type { Finding } from '../shared/pm/verdict'
@@ -27,6 +27,20 @@ const kinds = (effects: Effect[]) => effects.map(e => e.kind === 'done' ? 'done'
 describe('example templates', () => {
   it('are valid templates', () => {
     for (const t of EXAMPLES) expect(validateTemplate(t), t.id).toEqual([])
+  })
+
+  it('wherdr: the engine squash-merges into v3 after review; a visual change waits for the user; a study opens no PR', () => {
+    const plan = (type: string) => planSteps(wherdr, { type })
+    expect(plan('simple').map(s => s.id)).toEqual(['todo', 'work', 'pr', 'review', 'merge', 'done'])
+    expect(plan('simple')[4]).toMatchObject({ action: { kind: 'github.merge', method: 'squash', checks: ['smoke'] } })
+    expect(plan('simple')[4].guarded).toBeUndefined()
+    expect(plan('simple')[3]).toMatchObject({ rounds: 3, sendBack: 'work' })
+    expect(plan('visual')[4]).toMatchObject({ ends: 'user', userLabel: 'Merge' })
+    expect(plan('visual')[1].evidence).toEqual(['screenshots'])
+    expect(plan('study').some(s => s.action)).toBe(false)
+    // develop and main stay the user's, whatever the template's merge step.
+    const toDevelop = { ...wherdr, steps: { ...wherdr.steps, pr: { ...wherdr.steps!.pr!, action: { kind: 'github.pr' as const, base: 'develop' } } } }
+    expect(planSteps(toDevelop, { type: 'simple' })[4].guarded).toBe(true)
   })
 })
 
