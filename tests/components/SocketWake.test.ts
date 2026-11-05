@@ -92,3 +92,43 @@ it.each([false, true])('shares wake probes while preserving touch beta=%s frame 
     vi.unstubAllGlobals()
   }
 })
+
+it.each([false, true])('closes an open terminal socket only while its first frame is missing=%s', async missing => {
+  vi.useFakeTimers()
+  let ws!: Socket
+  class Socket {
+    readyState = 0
+    send = vi.fn()
+    close = vi.fn()
+    onopen?: () => void
+    onmessage?: (e: { data: string }) => void
+    constructor() { ws = this }
+  }
+  vi.stubGlobal('WebSocket', Socket)
+  pageVisible.value = true
+  terminalRenderer.value = 'html'
+  let ctl!: ReturnType<typeof createTerminal>
+  const wrapper = mount(defineComponent({
+    setup() {
+      ctl = createTerminal('w1:p1', { setBanner: vi.fn(), hasBanner: () => false })
+      return () => h('div')
+    },
+  }))
+  try {
+    await ctl.mount(wrapper.element as HTMLElement)
+    ctl.connect(false)
+    ws.readyState = 1
+    ws.onopen!()
+    ws.onmessage!({ data: JSON.stringify(missing ? { type: 'web.capabilities', mouse: true } : { type: 'terminal.frame', width: 80, height: 24, bytes: '' }) })
+    await vi.advanceTimersByTimeAsync(11999)
+    expect(ws.close).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(ws.close).toHaveBeenCalledTimes(missing ? 1 : 0)
+  } finally {
+    ctl.dispose()
+    wrapper.unmount()
+    vi.clearAllTimers()
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  }
+})

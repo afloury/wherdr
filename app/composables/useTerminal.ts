@@ -260,6 +260,9 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   const probe = createSocketProbe(() => tws)
   let handshake: ReturnType<typeof setTimeout> | undefined
+  // Core may accept the attach without painting. Close an open socket that
+  // never delivers a frame so the existing retry path can recover it.
+  let frameWait: ReturnType<typeof setTimeout> | undefined
   watch(socketWake, () => {
     if (document.hidden || !twsIntent || disposed || opts.hasBanner()) return
     if (!isConnected()) connect(false)
@@ -395,6 +398,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     if (takeoverQueued) { takeover = true; takeoverQueued = false }
     clearTimeout(twsTimer)
     clearTimeout(handshake)
+    clearTimeout(frameWait)
     probe.cancel()
     if (tws) {
       tws.onclose = null
@@ -423,6 +427,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     ws.onopen = () => {
       if (tws !== ws) return
       clearTimeout(handshake)
+      frameWait = setTimeout(() => {
+        if (tws !== ws || gotFrame) return
+        lastErr = lastErr || 'no terminal frame'
+        try { ws.close() } catch { /* already closed */ }
+      }, 12000)
       if (term) lastSize = { cols: term.cols, rows: term.rows }
       ws.send(JSON.stringify({ type: 'visibility', visible: !document.hidden }))
     }
@@ -440,6 +449,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         if (!gotFrame) {
           gotFrame = true
           twsRetry = 0
+          clearTimeout(frameWait)
         }
         loading.value = false
         if (!term) return
@@ -486,6 +496,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       if (tws !== ws) return
       if (smoothTouchScrolling.value) { scrollInputVersion.value++; touchEpoch++ }
       clearTimeout(handshake)
+      clearTimeout(frameWait)
       tws = null
       mouseSupported = false
       coreStream = false
@@ -524,6 +535,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     twsIntent = false
     clearTimeout(twsTimer)
     clearTimeout(handshake)
+    clearTimeout(frameWait)
     probe.cancel()
     if (tws) {
       const ws = tws
