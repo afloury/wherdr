@@ -1,9 +1,12 @@
 // public/workers/qwen3/{tokenizer,prompt}.js — the Qwen3-ASR worker's
 // model-independent text logic — loaded in node:vm as classic scripts and
-// driven on a synthetic tokenizer.json (never the real 11 MB one).
-import { readFileSync } from 'node:fs'
+// driven on a synthetic tokenizer.json and optional pinned-file reference IDs.
+import { existsSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import path from 'node:path'
 import vm from 'node:vm'
 import { describe, expect, it } from 'vitest'
+import reference from './fixtures/qwen3-tokenizer-ids.json'
 
 interface Q3 {
   tokenizer: (tj: unknown) => { encode: (s: string) => number[], decode: (ids: ArrayLike<number>) => string }
@@ -28,6 +31,18 @@ function load(globals: Record<string, unknown> = {}) {
   return (ctx.self as { wherdrQwen3: Q3 }).wherdrQwen3
 }
 const Q = load()
+
+// Keep the 11 MB asset out of git. Set QWEN3_TOKENIZER_FILE for a scratch
+// copy, or use the installed model under DATA_DIR/models/.
+const pinnedFile = process.env.QWEN3_TOKENIZER_FILE
+  || path.join(process.env.DATA_DIR || 'data', 'models/qwen3-asr-0.6b-q4f16-4a01b95/tokenizer.json')
+it.skipIf(!process.env.QWEN3_TOKENIZER_FILE && !existsSync(pinnedFile))('matches HF reference IDs on the hash-verified pinned tokenizer', () => {
+  const file = readFileSync(pinnedFile)
+  expect(createHash('sha256').update(file).digest('hex')).toBe(reference.sha256)
+  const tok = Q.tokenizer(JSON.parse(file.toString('utf8')))
+  for (const { text, ids } of reference.cases) expect(tok.encode(text), text).toEqual(ids)
+  expect(tok.encode('<|im_end|>')).not.toContain(151645)
+})
 
 // The byte-level BPE alphabet (GPT-2 style), rewritten here to build the
 // fixture vocab: printable bytes map to themselves, the rest shift to U+0100+.
