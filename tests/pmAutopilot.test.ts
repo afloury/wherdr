@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_AUTOPILOT, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, limitsLeft, startRefusal, tellRefusal } from '../shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, scheduledWake, startRefusal, today, tellRefusal } from '../shared/pm/autopilot'
 import type { Run, Task } from '../shared/pm/run'
 
 const task = (n: number, more: Partial<Task> = {}): Task => ({ id: `CO-${n}`, project: 'CO', title: `T${n}`, description: '', type: 'feature', state: 'working', createdAt: 0, ...more })
@@ -53,6 +53,54 @@ describe('autopilot events', () => {
     expect(r.reasons).toEqual(['CO-1 (T1): stuck: Which DB?', 'CO-3 (T3): added'])
     expect(r.seen).toEqual({ 'CO-1': 'waiting', 'CO-2': 'done', 'CO-3': 'todo' })
     expect(autopilotEvents({ ...ap, events: [...ap.events] }, tasks, r.seen).reasons).toEqual([])
+  })
+})
+
+describe('nothing to do: scheduled wakes skipped', () => {
+  const done = (n: number) => task(n, { step: { at: 3, started: true, done: true, proofs: {}, rounds: {} } })
+  const last = { at: 100, seen: { 'CO-1': 'done', 'CO-2': 'done' } } as const
+  const wake = { ...last, seen: { ...last.seen } }
+  it('only when every task is done and nothing changed since the last wake', () => {
+    expect(nothingToDo([done(1), done(2)], wake)).toBe(true)
+    expect(nothingToDo([], { at: 1, seen: {} })).toBe(true)
+    // Never known before a first wake.
+    expect(nothingToDo([done(1)], {})).toBe(false)
+    // Under way, to do, waiting for the user or ready for them.
+    for (const t of [task(2), task(2, { state: 'todo' }), task(2, { state: 'waiting' }), task(2, { step: { at: 3, started: true, proofs: {}, rounds: {}, yourTurn: { reason: 'user', badge: 'Merge' } } })])
+      expect(nothingToDo([done(1), t], wake)).toBe(false)
+    // A change since: a task finished, added or removed, a message of the user.
+    expect(nothingToDo([done(1), done(2)], { at: 100, seen: { 'CO-1': 'done', 'CO-2': 'working' } })).toBe(false)
+    expect(nothingToDo([done(1), done(2), done(3)], wake)).toBe(false)
+    expect(nothingToDo([done(1)], wake)).toBe(false)
+    expect(nothingToDo([done(1), done(2)], wake, 101)).toBe(false)
+    expect(nothingToDo([done(1), done(2)], wake, 99)).toBe(true)
+  })
+  it('kept with "look for new work", within the tasks those wakes may add a day', () => {
+    const idle = [done(1), done(2)]
+    expect(scheduledWake(DEFAULT_AUTOPILOT, idle, wake, undefined, 0)).toBe('idle')
+    expect(scheduledWake(DEFAULT_AUTOPILOT, [done(1), task(2)], wake, undefined, 0)).toBe('send')
+    const look = { ...DEFAULT_AUTOPILOT, lookForWork: true as const }
+    expect(scheduledWake(look, idle, wake, undefined, LOOK_PER_DAY - 1)).toBe('look')
+    expect(scheduledWake(look, idle, wake, undefined, LOOK_PER_DAY)).toBe('limit')
+    expect(scheduledWake({ ...look, lookPerDay: 5 }, idle, wake, undefined, 4)).toBe('look')
+    expect(scheduledWake({ ...look, lookPerDay: 0 }, idle, wake, undefined, 0)).toBe('limit')
+    // Work to do is never limited by it.
+    expect(scheduledWake(look, [task(1)], wake, undefined, 99)).toBe('send')
+    expect(lookAddRefusal(look, 2)).toBeUndefined()
+    expect(lookAddRefusal(look, 3)).toMatch(/limit of new work is reached \(3 tasks.*until tomorrow/)
+    // The settings: on by default at 3 a day, editable, kept only with the option on.
+    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, lookForWork: true })).toEqual({ autopilot: { ...DEFAULT_AUTOPILOT, lookForWork: true, lookPerDay: 3 } })
+    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, lookForWork: true, lookPerDay: 7 })).toEqual({ autopilot: { ...DEFAULT_AUTOPILOT, lookForWork: true, lookPerDay: 7 } })
+    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, lookForWork: true, lookPerDay: 21 })).toEqual({ error: expect.stringMatching(/^lookPerDay/) })
+    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, lookForWork: 'yes', lookPerDay: 7 })).toEqual({ autopilot: DEFAULT_AUTOPILOT })
+  })
+  it('counts per local day', () => {
+    const c = { day: new Date(at(9)).toDateString(), n: 3 }
+    expect(today(c, at(23))).toBe(3)
+    expect(today(c, at(9) + 86_400_000)).toBe(0)
+    expect(today(undefined, at(9))).toBe(0)
+    expect(bump(c, at(10))).toEqual({ ...c, n: 4 })
+    expect(bump(c, at(9) + 86_400_000)).toEqual({ day: new Date(at(9) + 86_400_000).toDateString(), n: 1 })
   })
 })
 

@@ -69,3 +69,33 @@ it('cannot run a coordinator that is not started', async () => {
   expect(b.text()).toContain('Start the coordinator to wake it.')
   expect(b.text()).toContain('No wake yet.')
 })
+
+it('shows Active, or Asleep with its last wake when there is nothing to do', async () => {
+  const on = { ...autopilot, on: true, events: [...autopilot.events] }
+  const woke = new Date(); woke.setHours(9, 5, 0, 0)
+  let b = await mount(view({ autopilot: on }))
+  expect(b.find('[data-testid="autopilot-state"]').text()).toBe('Autopilot · Active')
+  b.unmount()
+  b = await mount(view({ autopilot: on, asleep: 'idle', wokeAt: woke.getTime() }))
+  const state = b.find('[data-testid="autopilot-state"]')
+  expect(state.text()).toMatch(/^Autopilot · Asleep · nothing to do · woke 09:05/)
+  expect(state.attributes('data-asleep')).toBeDefined()
+  b.unmount()
+  b = await mount(view({ autopilot: on, asleep: 'limit' }))
+  expect(b.find('[data-testid="autopilot-state"]').text()).toBe('Autopilot · Asleep · new work limit reached until tomorrow')
+  b.unmount()
+  // Off: never asleep.
+  b = await mount(view({ asleep: 'idle' }))
+  expect(b.find('[data-testid="autopilot-state"]').text()).toBe('Autopilot · Off')
+})
+
+it('saves "look for new work" only when on, with its daily limit', async () => {
+  const b = await mount()
+  await b.find('[data-testid="autopilot-toggle"]').trigger('click')
+  expect(b.find('[data-testid="autopilot-look-per-day"]').exists()).toBe(false)
+  await b.find('[data-testid="autopilot-look-for-work"]').trigger('click')
+  expect((b.find('input#ap-look-CO').element as HTMLInputElement).value).toBe('3')
+  await b.find('input#ap-look-CO').setValue('5')
+  await b.find('[data-testid="autopilot-save"]').trigger('submit')
+  await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', autopilot: { ...autopilot, at: '', lookForWork: true, lookPerDay: 5 } }]))
+})

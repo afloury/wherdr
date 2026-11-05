@@ -7,7 +7,7 @@ import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/s
 import { templateChanges } from '../../shared/pm/templateText'
 import { validateTemplate } from '../../shared/pm/workflow'
 import { EXAMPLES } from '../../shared/pm/examples'
-import { DEFAULT_AUTOPILOT, USER_ONLY, addRefusal, coordinatorStartRefusal, limitsLeft, tellRefusal } from '../../shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, coordinatorStartRefusal, limitsLeft, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
 import { ackWakes } from '../../shared/pm/wakes'
 import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
@@ -18,7 +18,7 @@ import { WRITE_SCRIPT, exec, startTask } from './pmLaunch'
 import { userStep } from './pmBoard'
 import { resumeTask, stopTask } from './pmStop'
 import { resumeRefusal } from '../../shared/pm/stop'
-import type { PmStore } from './pmStore'
+import type { CoordinatorRecord, PmStore } from './pmStore'
 
 type Deps = CoreAdminDeps & { store: PmStore }
 const sha = (s: string) => createHash('sha256').update(s).digest()
@@ -44,11 +44,12 @@ export async function scopeOf(store: PmStore, token: unknown) {
 
 // Called by whatever delivers a message to the coordinator: the user's
 // message from the interface (with its text) or an engine wake.
-export async function noteTurn(store: PmStore, key: string, kind: 'user' | 'wake', said?: string) {
+// look: a look-for-new-work wake, whose turn counts the tasks it adds.
+export async function noteTurn(store: PmStore, key: string, kind: 'user' | 'wake', said?: string, look = false) {
   const c = await store.coordinator(key)
   if (!c) throw new HerdrError('not_found', 'No coordinator for this project')
   const at = Date.now()
-  await store.saveCoordinator({ ...c, turn: { kind, at, ...(kind === 'user' && said ? { said: said.slice(0, 500) } : {}) }, ...(kind === 'user' ? { userAt: at } : {}) })
+  await store.saveCoordinator({ ...c, turn: { kind, at, ...(kind === 'user' && said ? { said: said.slice(0, 500) } : {}), ...(kind === 'wake' && look ? { look: true as const } : {}) }, ...(kind === 'user' ? { userAt: at } : {}) })
 }
 
 const TURN_MS = 3_600_000
@@ -149,7 +150,12 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     case 'autopilot show': {
       const ap = rec?.autopilot ?? DEFAULT_AUTOPILOT
       const mine = (await store.tasks()).filter(x => x.project === key)
-      return { autopilot: ap, today: limitsLeft(ap, mine, await store.runs(), Date.now()), note: 'Only the user changes these, in wherdr' }
+      const now = Date.now()
+      return {
+        autopilot: ap, lookForWork: !!ap.lookForWork,
+        today: { ...limitsLeft(ap, mine, await store.runs(), now), skippedWakes: today(rec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(rec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
+        note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped',
+      }
     }
     case 'automation list': return { automations: (await store.automations(key)).automations.map(automationLine), note: 'Only the user adds or changes automations, in wherdr' }
     case 'automation show': {
@@ -187,11 +193,13 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       return { task: await stopTask(deps, task.id, { who: 'coordinator', wake: turn !== 'user' }, cmd.reason, by) }
     }
     case 'task add': {
-      const why = addRefusal(rec?.autopilot, turn !== 'user')
+      const look = turn === 'wake' && !!rec?.turn?.look
+      const why = addRefusal(rec?.autopilot, turn !== 'user') ?? (look ? lookAddRefusal(rec?.autopilot, today(rec?.lookAdded, Date.now())) : undefined)
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
       const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '' })
       const task = turn !== 'user' ? { ...added, autopilot: true as const } : added
+      if (look) await store.saveCoordinator({ ...rec!, lookAdded: bump(rec!.lookAdded, Date.now()) })
       return { task: await store.logTask(task, by, `added the task${cmd.after ? `, after ${cmd.after}` : ''}`) }
     }
     case 'task decide': {
@@ -252,15 +260,23 @@ export async function setCoordinatorAgent(store: PmStore, key: unknown, agent: {
   return { agent: a }
 }
 
+// Asleep: its scheduled wakes are skipped, nothing to do or the new work limit of today reached.
+function asleepOf(ap: Autopilot, tasks: Task[], c: CoordinatorRecord | null | undefined, now: number) {
+  const k = ap.on ? scheduledWake(ap, tasks, c?.woke ?? {}, c?.userAt, today(c?.lookAdded, now)) : 'send'
+  return k === 'idle' || k === 'limit' ? { asleep: k } : {}
+}
+
 // Each project's coordinator: who answers, the agent of its kept conversation, its pending change.
 export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[]> {
   if (!(await store.enabled())) return []
   const [tasks, runs, wakes, now] = [await store.tasks(), await store.runs(), await store.wakes(), Date.now()]
   return Promise.all((await store.projects()).map(async (p) => {
     const c = await store.coordinator(p.key)
-    const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT
+    const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => t.project === p.key)
     return {
-      autopilot, limits: limitsLeft(autopilot, tasks.filter(t => t.project === p.key), runs, now),
+      autopilot, limits: limitsLeft(autopilot, mine, runs, now),
+      ...asleepOf(autopilot, mine, c, now), skippedToday: today(c?.skipped, now),
+      ...(c?.woke?.at ? { wokeAt: c.woke.at } : {}),
       wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
       project: p.key, name: p.name, agent: c?.agent ?? COORDINATOR_AGENTS[0]!,
       ...(c?.ran ? { ran: c.ran } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),

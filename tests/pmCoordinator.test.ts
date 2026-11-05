@@ -405,6 +405,90 @@ describe('wakes', () => {
     expect((await store.coordinator('CO'))!.atRan).toBe(day(5, 10))
     expect((await store.wakes()).filter(w => w.reasons.some(r => r.startsWith('Scheduled')))).toHaveLength(1)
   })
+
+  describe('nothing to do', () => {
+    // Day 2 is today: the skipped wakes are counted per local day.
+    const day = (d: number, h: number, m = 0) => { const x = new Date(); x.setDate(x.getDate() + d - 2); x.setHours(h, m, 0, 0); return x.getTime() }
+    const scheduled = async () => (await store.wakes()).filter(w => w.reasons.some(r => r.startsWith('Scheduled'))).length
+    // A project whose tasks are all done, woken once since: asleep.
+    const asleep = async (more: Partial<typeof DEFAULT_AUTOPILOT> = {}) => {
+      const task = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
+      await store.saveTask({ ...task, step: state(5, { done: true }) })
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9', atRan: day(1, 9), ranAt: day(2, 6), seen: { 'CO-1': 'done' }, woke: { at: day(2, 6), seen: { 'CO-1': 'done' } },
+        autopilot: { on: true, goal: 'Triage', every: '30m', at: 'daily 08:00', events: ['added', 'done', 'stuck'], perDay: 3, atOnce: 1, ...more } })
+      return task
+    }
+
+    it('skips the interval and fixed-time wakes, marks the slots run and counts them', async () => {
+      await asleep()
+      expect(await deliver('idle', day(2, 8, 1)).run()).toEqual([])
+      expect(await scheduled()).toBe(0)
+      const c = (await store.coordinator('CO'))!
+      expect(c).toMatchObject({ ranAt: day(2, 8, 1), atRan: day(2, 8, 1), skipped: { n: 1 } })
+      // Marked run: the slot does not fire again.
+      expect(await deliver('idle', day(2, 8, 2)).run()).toEqual([])
+      expect((await store.coordinator('CO'))!.skipped!.n).toBe(1)
+      expect(await cli(['autopilot', 'show'])).toMatchObject({ lookForWork: false, today: { skippedWakes: 1 } })
+      expect((await coordinatorsView(store)).find(v => v.project === 'CO')).toMatchObject({ asleep: 'idle', wokeAt: day(2, 6), skippedToday: 1 })
+    })
+
+    it('wakes when a task is not done, or something changed since the last wake', async () => {
+      const task = await asleep()
+      await store.saveTask({ ...task, state: 'waiting', step: state(5) })
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, seen: { 'CO-1': 'waiting' } })
+      expect(await deliver('idle', day(2, 8, 1)).run()).toEqual(['CO'])
+      expect(await scheduled()).toBe(1)
+      // Done again (an event wake), then the user wrote since that wake.
+      await store.saveTask({ ...task, step: state(5, { done: true }) })
+      await deliver('idle', day(2, 8, 2)).run()
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, userAt: day(2, 8, 3) })
+      const t = day(2, 8, 40)
+      await deliver('idle', t).run()
+      expect((await store.coordinator('CO'))!).toMatchObject({ ranAt: t, woke: { at: t, seen: { 'CO-1': 'done' } } })
+      expect((await store.coordinator('CO'))!.skipped).toBeUndefined()
+      // That wake noted where tasks stand: the next slot sleeps.
+      await deliver('idle', t + 31 * 60_000).run()
+      expect((await store.coordinator('CO'))!).toMatchObject({ woke: { at: t }, skipped: { n: 1 } })
+    })
+
+    it('keeps the scheduled wakes with "look for new work", within its daily limit', async () => {
+      await asleep({ lookForWork: true, lookPerDay: 1 })
+      expect((await coordinatorsView(store)).find(v => v.project === 'CO')!.asleep).toBeUndefined()
+      const r = deliver('idle', day(2, 8, 1))
+      expect(await r.run()).toEqual(['CO'])
+      expect(r.sent[0]!.text).toContain('Scheduled wake (every 30m). Nothing is under way: look for new work toward your goal. Your goal: Triage.')
+      // Its turn adds one task, then the limit holds until tomorrow.
+      expect((await store.coordinator('CO'))!.turn).toMatchObject({ kind: 'wake', look: true })
+      await cli(['task', 'add', 'More', 'tests', '--type', 'feature'])
+      await refused(cli(['task', 'add', 'Even', 'more', '--type', 'feature']), 'limit of new work is reached (1 tasks')
+      expect(await cli(['autopilot', 'show'])).toMatchObject({ lookForWork: true, today: { newWorkAdded: 1, newWorkPerDay: 1 } })
+      // That task done and seen: idle again, and the limit is reached.
+      const added = (await store.tasks()).find(t => t.title === 'More tests')!
+      await store.saveTask({ ...added, step: state(5, { done: true }) })
+      const seen = { 'CO-1': 'done', [added.id]: 'done' } as const
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, seen: { ...seen }, woke: { at: day(2, 8, 2), seen: { ...seen } } })
+      expect(await deliver('idle', day(2, 8, 40)).run()).toEqual([])
+      expect((await store.coordinator('CO'))!).toMatchObject({ ranAt: day(2, 8, 40), skipped: { n: 1 } })
+      expect((await coordinatorsView(store)).find(v => v.project === 'CO')!.asleep).toBe('limit')
+      // A user's turn is never limited by it.
+      await noteTurn(store, 'CO', 'user', 'add one')
+      await cli(['task', 'add', 'Mine', '--type', 'feature'])
+    })
+
+    it('the new work limit ends with the day', async () => {
+      await asleep({ lookForWork: true, lookPerDay: 1 })
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, lookAdded: { day: new Date(day(1, 12)).toDateString(), n: 1 } })
+      expect(await deliver('idle', day(2, 8, 1)).run()).toEqual(['CO'])
+    })
+
+    it('event wakes are unaffected', async () => {
+      await asleep({ every: undefined, at: undefined })
+      await store.addTask({ project: 'CO', title: 'New', type: 'feature' })
+      const r = deliver('idle', day(2, 8, 1))
+      expect(await r.run()).toEqual(['CO'])
+      expect(r.sent[0]!.text).toContain('CO-2 (New): added')
+    })
+  })
 })
 
 describe('commands of lot 10', () => {
