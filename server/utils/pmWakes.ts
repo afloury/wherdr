@@ -1,11 +1,13 @@
 // The engine's wakes, every 30 s (server/plugins/pm.ts): reasons are gathered
 // (a coordinator step that starts or rechecks, the autopilot's events, its
-// interval and fixed times, those skipped when there is nothing to do) into
+// interval and fixed times, those skipped when there is nothing to do or the
+// worker's account is ahead of its pace) into
 // the persisted queue, then each coordinator's queue ticks (shared/pm/wakes.ts): delivery once it is idle and the user is quiet, the
 // end of an open wake, a missed ack tried again, then a push to the user.
 import { randomUUID } from 'node:crypto'
 import { coordinatorWake } from '../../shared/pm/coordinator'
-import { LOOK_REASON, autopilotEvents, bump, inHours, scheduledWake, sentence, today } from '../../shared/pm/autopilot'
+import { LOOK_REASON, autopilotEvents, bump, inHours, scheduledWake, sentence, skippedWake, today } from '../../shared/pm/autopilot'
+import { projectPace } from './pmPace'
 import { planSteps, durationMs } from '../../shared/pm/steps'
 import { due as isDue, parseSchedule } from '../../shared/pm/schedule'
 import { enqueue, tickWakes, wakeText, type CoordStatus } from '../../shared/pm/wakes'
@@ -63,9 +65,11 @@ async function gather(deps: WakeDeps, now: number) {
     const at = on && ap!.at ? parseSchedule(ap!.at) : null
     const atDue = !!at && !('error' in at) && isDue(at, c.atRan ?? now, now)
     const goal = `Your goal: ${sentence(ap?.goal || '(none set)')} Run \`wherdr pm autopilot show\` for what is left of today's limits.`
-    // Nothing to do: the slot counts as run, the paid turn is saved.
-    const kind = due || atDue ? scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now)) : null
-    const skip = kind === 'idle' || kind === 'limit'
+    // Nothing to do, or the worker's account ahead of its pace: the slot counts
+    // as run, the paid turn is saved. The pace is read only for a wake that would go.
+    let kind = due || atDue ? scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now)) : null
+    if (kind === 'send' || kind === 'look') kind = scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now), (await projectPace(store, p.key, undefined, now))?.verdict)
+    const skip = skippedWake(kind)
     if (kind && !skip) add(p.key, [`Scheduled wake (${due ? `every ${ap!.every}` : ap!.at}). ${kind === 'look' ? `${LOOK_REASON} ` : ''}${goal}`])
     const woke = !!reasons.get(p.key)?.length
     if (due || atDue || woke || JSON.stringify(ev.seen) !== JSON.stringify(c.seen ?? null)) {

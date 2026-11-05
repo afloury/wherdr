@@ -11,6 +11,8 @@ import { actionShell } from './pmActions'
 import { stepAction } from './pmBoard'
 import { exec, startTask, type PmLaunchDeps } from './pmLaunch'
 import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
+import { pacedStart } from '../../shared/pm/pace'
+import { projectPace } from './pmPace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { advanceTick } from './pmAdvance'
 
@@ -68,7 +70,12 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
   for (const p of await store.projects()) {
     const ap = (await store.coordinator(p.key))?.autopilot
     const mine = (await store.tasks()).filter(t => t.project === p.key)
-    const next = mine.find(t => t.after && t.state === 'todo' && !coordinatorStartRefusal(ap, t, mine, runs, now, false))
+    // A chain the coordinator or an automation made is automatic work: held by the pace.
+    let next: typeof mine[number] | undefined
+    for (const t of mine.filter(x => x.after && x.state === 'todo')) {
+      const pace = pacedStart(t, 'engine') ? (await projectPace(store, p.key, t, now))?.verdict : undefined
+      if (!coordinatorStartRefusal(ap, t, mine, runs, now, false, { pace, engine: true })) { next = t; break }
+    }
     if (!next) continue
     const r = await startTask(deps, next.id).catch((e: Error) => ({ ...next, state: 'waiting' as const, waiting: e.message }))
     await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} done` : `could not start after ${next.after}: ${r.waiting ?? ''}`)

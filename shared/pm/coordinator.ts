@@ -68,7 +68,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'step done <task> --user-said "<their words>"', does: 'end a step that waits for the user, with the user\'s own words; only in a turn that comes from the user' },
   { usage: 'task decide <task> <choice> --reason "<one sentence>"', does: 'after N send-backs, pick one of the engine\'s options' },
   { usage: 'ack <wake> [<wake>…]', does: 'say you handled an Autopilot wake (each wake ends with its id); unacked, it comes back once, then the user is told' },
-  { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, whether it looks for new work (and how many tasks those wakes may still add today), the scheduled wakes skipped today (nothing to do), and what is left of today\'s limits' },
+  { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, whether it looks for new work (and how many tasks those wakes may still add today), the scheduled wakes skipped today (nothing to do, or ahead of the pace), what is left of today\'s limits, and the pacing of your worker\'s account (go, or what automatic work waits for)' },
   { usage: 'automation list', does: 'the project\'s automations: on or off, schedule or event, last firing' },
   { usage: 'automation show <automation>', does: 'one automation, its prompt and its last firings; only the user adds or changes them, in wherdr' },
   { usage: 'task start <task>', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself)' },

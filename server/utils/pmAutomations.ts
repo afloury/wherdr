@@ -6,12 +6,20 @@ import { addFiring, firesOn, firingTask, taskEvents, type Automation, type Firin
 import { due, parseSchedule } from '../../shared/pm/schedule'
 import type { Project } from '../../shared/pm/project'
 import { HerdrError } from './herdr'
+import { paceWait } from '../../shared/pm/pace'
+import { projectPace } from './pmPace'
 import { startTask, type PmLaunchDeps } from './pmLaunch'
 
 // Adds the firing's task and starts it; a refusal stays on the firing.
 async function fire(deps: PmLaunchDeps, p: Project, a: Automation, f: Omit<Firing, 'task' | 'error'>): Promise<Firing> {
   const t = p.template ? await deps.store.template(p.template) : null
   if (!t) return { ...f, error: 'The project has no template' }
+  // A schedule or an event is automatic work: held by the worker account's pace,
+  // the slot counted as fired (no catch-up, no retry loop). The user's "run now" never is.
+  if (f.by !== 'user') {
+    const v = (await projectPace(deps.store, p.key, { type: a.type || Object.keys(t.taskTypes)[0]! }, f.at))?.verdict
+    if (v && !v.go) return { ...f, error: `paced: ${paceWait(v)}` }
+  }
   try {
     const task = await deps.store.addTask(firingTask(a, p.key, Object.keys(t.taskTypes)[0]!, f.at, f.cause))
     const started = await startTask(deps, task.id).catch((e: Error) => ({ ...task, state: 'waiting' as const, waiting: e.message }))

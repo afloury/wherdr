@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_AUTOPILOT, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, scheduledWake, startRefusal, today, tellRefusal } from '../shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, scheduledWake, startRefusal, today, tellRefusal } from '../shared/pm/autopilot'
 import type { Run, Task } from '../shared/pm/run'
+import { accountQuota, pacedStart, paceLine } from '../shared/pm/pace'
+import { DEFAULT_PACE, type PaceVerdict } from '../shared/pm/pacing'
+import type { Quotas } from '../shared/types'
 
 const task = (n: number, more: Partial<Task> = {}): Task => ({ id: `CO-${n}`, project: 'CO', title: `T${n}`, description: '', type: 'feature', state: 'working', createdAt: 0, ...more })
 const run = (n: number, startedAt: number): Run => ({ id: `r${n}`, task: `CO-${n}`, role: 'worker', program: 'claude', model: 'opus', machine: '', worktree: '', branch: '', instructions: '', attempt: 1, state: 'running', startedAt })
@@ -146,4 +149,58 @@ describe('starting a task (coordinator, or the engine for a chained one)', () =>
 
 it('puts the goal in a wake with one final period', () => {
   expect(['Ship v3', 'Ship v3.', ' Ship v3? '].map(sentence)).toEqual(['Ship v3.', 'Ship v3.', 'Ship v3?'])
+})
+
+describe('the pace holds automatic starts only', () => {
+  const ap = { ...DEFAULT_AUTOPILOT, on: true, perDay: 5, atOnce: 2 }
+  const wait: PaceVerdict = { go: false, reason: 'ahead', until: new Date(2026, 10, 6, 0, 0).getTime() }
+  const todo = (n: number, more: Partial<Task> = {}) => task(n, { state: 'todo', ...more })
+  const done = task(1, { step: { at: 3, started: true, done: true, proofs: {}, rounds: {} } })
+  const start = (t: Task, wake: boolean, engine = false) => coordinatorStartRefusal(ap, t, [done, t], [], at(12), wake, { pace: wait, engine })
+
+  it('refuses a wake\'s start and an automatic chain, after the task-count limits', () => {
+    expect(start(todo(2), true)).toMatch(/^Paced: ahead of the target line until Fri 00:00/)
+    expect(start(todo(2, { after: 'CO-1', origin: 'coordinator' }), false, true)).toMatch(/^Paced:/)
+    expect(start(todo(2, { after: 'CO-1', auto: 'nightly' }), false, true)).toMatch(/^Paced:/)
+    expect(startRefusal({ ...ap, atOnce: 0 }, [], [], at(12), wait)).toMatch(/at once/)
+    expect(startRefusal(ap, [], [], at(12), { go: true, unknown: true })).toBeUndefined()
+  })
+
+  it('never refuses a task the user starts (their turn), even one the coordinator added', () => {
+    expect(start(todo(2), false)).toBeUndefined()
+    expect(start(todo(2, { origin: 'coordinator', autopilot: true }), false)).toBeUndefined()
+  })
+
+  it('never holds a chain the user made', () => {
+    expect(start(todo(2, { after: 'CO-1', origin: 'user' }), false, true)).toBeUndefined()
+    expect(start(todo(2, { after: 'CO-1' }), false, true)).toBeUndefined() // made before `origin`
+  })
+
+  it('never holds the steps of a task under way', () => {
+    const stopped = task(2, { state: 'waiting', waiting: 'git worktree failed', origin: 'automation', step: { at: 2, started: true, proofs: {}, rounds: {} } })
+    expect(pacedStart(stopped, 'wake')).toBe(false)
+    expect(coordinatorStartRefusal(ap, stopped, [stopped], [], at(12), true, { pace: wait })).toBeUndefined()
+  })
+
+  it('skips a scheduled wake that would go, as run', () => {
+    const wake = { at: 1, seen: { 'CO-1': 'done' as const } }
+    expect(scheduledWake(DEFAULT_AUTOPILOT, [task(1)], wake, undefined, 0, wait)).toBe('paced')
+    expect(scheduledWake({ ...DEFAULT_AUTOPILOT, lookForWork: true }, [done], wake, undefined, 0, wait)).toBe('paced')
+    expect(scheduledWake(DEFAULT_AUTOPILOT, [done], wake, undefined, 0, wait)).toBe('idle')
+    expect(scheduledWake(DEFAULT_AUTOPILOT, [task(1)], wake, undefined, 0, { go: true })).toBe('send')
+    expect(['send', 'look', 'idle', 'limit', 'paced'].map(k => skippedWake(k as never))).toEqual([false, false, true, true, true])
+  })
+
+  it('finds the account\'s quota and describes the pace for `autopilot show`', () => {
+    const now = new Date(2026, 10, 5, 12).getTime(), reset = now + 3.5 * 86_400_000
+    const quota = { at: now, five: { used: 30, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 41, resetsAt: reset, minutes: 10080 } }
+    const account = { key: 'claude:ab12cd34', program: 'claude' as const, name: 'Pro work', machines: [''] }
+    const q: Quotas = { claude: quota, codex: null, accounts: [account] }
+    expect(accountQuota(q, account)).toBe(quota)
+    expect(accountQuota({ ...q, claudeAccounts: [{ ...quota, key: 'claude:ffff0000', machines: [] }] }, account)).toBeNull()
+    const s = { program: 'claude', account, quota, policy: DEFAULT_PACE, verdict: { go: true } as PaceVerdict, today: 9 }
+    expect(paceLine(s, now)).toBe('claude:ab12cd34 Pro work · free with reserve · week 41 % / limit 60 % · today +9 % · 5 h 30 % · go')
+    expect(paceLine({ ...s, policy: { ...DEFAULT_PACE, mode: 'workdays' }, verdict: wait }, now)).toMatch(/· working days · week 41 % \/ line \d+ % · .* · wait: ahead of the target line until Fri 00:00$/)
+    expect(paceLine({ ...s, account: null, quota: null, verdict: { go: true, unknown: true }, today: null }, now)).toBe('claude · quota unknown (no reading of claude on this project\'s machine) · task-count limits only')
+  })
 })

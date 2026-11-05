@@ -4,6 +4,8 @@
 import type { Run, Task } from './run'
 import { chainState } from './advance'
 import { parseSchedule } from './schedule'
+import type { PaceVerdict } from './pacing'
+import { pacedStart, paceRefusal } from './pace'
 
 export const AUTOPILOT_EVENTS = ['added', 'done', 'stuck', 'ready'] as const
 export type AutopilotEvent = typeof AUTOPILOT_EVENTS[number]
@@ -78,12 +80,14 @@ export function limitsLeft(ap: Autopilot, tasks: Task[], runs: Run[], now: numbe
   return { started, perDay: ap.perDay, startLeft: Math.max(0, Math.min(ap.perDay - started, ap.atOnce - working)), working, atOnce: ap.atOnce }
 }
 
-// Why the autopilot may not start one more task now, or undefined.
-export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: number): string | undefined {
+// Why the autopilot may not start one more task now, or undefined. `pace`:
+// the verdict of the worker's account, given only for automatic work.
+export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: number, pace?: PaceVerdict): string | undefined {
   const l = limitsLeft(ap, tasks, runs, now)
   if (l.started >= l.perDay) return `Today's limit is reached (${l.perDay} tasks started)`
   if (l.working >= l.atOnce) return `${l.working} tasks already work at once (limit ${l.atOnce})`
   if (!inHours(ap.hours, new Date(now))) return 'Outside the autopilot\'s hours'
+  return paceRefusal(pace)
 }
 
 // Starts a stopped task may have had for a wake to start it again.
@@ -93,7 +97,9 @@ export const WAKE_RETRIES = 2
 // `task` now, or undefined. In a wake, only with the autopilot on; its limits
 // and hours hold whatever the turn. A task stopped on a failure starts again
 // too, from its step; in a wake only while it has had few worker runs.
-export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, tasks: Task[], runs: Run[], now: number, wake: boolean): string | undefined {
+// `pace`: the worker's account verdict, held to only for automatic work
+// (pacedStart); `engine`: the engine starts it, after its chain.
+export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, tasks: Task[], runs: Run[], now: number, wake: boolean, { pace, engine }: { pace?: PaceVerdict, engine?: boolean } = {}): string | undefined {
   const stopped = task.state === 'waiting' && !task.waitKind && !task.step?.done
   if (task.state !== 'todo' && !stopped) return `${task.id} is not to do (${taskStatus(task)})`
   // Starts, not attempts: an agent that exits at once gets a second run in the same start.
@@ -102,7 +108,8 @@ export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, t
   const chain = task.after ? chainState(task, tasks) : 'go'
   if (chain !== 'go') return chain?.wait ?? `${task.id} starts after ${task.after}, which is not done`
   if (wake && !ap?.on) return 'In a wake, a task starts only with the autopilot on'
-  return startRefusal(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now)
+  const paced = pacedStart(task, engine ? 'engine' : wake ? 'wake' : 'user')
+  return startRefusal(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now, paced ? pace : undefined)
 }
 
 // The coordinator's last wake: when, and where its tasks stood then.
@@ -121,12 +128,16 @@ export function nothingToDo(tasks: Task[], last: LastWake, userAt?: number) {
 // A scheduled wake with nothing to do: skipped ('idle'), unless the user asked
 // it to look for new work ('look'), within the tasks those wakes may add a
 // day ('limit' once reached: asleep until tomorrow). 'send': there is work.
-export type ScheduledWake = 'send' | 'look' | 'idle' | 'limit'
-export function scheduledWake(ap: Autopilot, tasks: Task[], last: LastWake, userAt: number | undefined, lookAdded: number): ScheduledWake {
-  if (!nothingToDo(tasks, last, userAt)) return 'send'
-  if (!ap.lookForWork) return 'idle'
-  return lookAdded >= (ap.lookPerDay ?? LOOK_PER_DAY) ? 'limit' : 'look'
+// 'paced': there is work, but the worker's account is ahead of its pace (a
+// scheduled wake is automatic work): skipped too.
+export type ScheduledWake = 'send' | 'look' | 'idle' | 'limit' | 'paced'
+export function scheduledWake(ap: Autopilot, tasks: Task[], last: LastWake, userAt: number | undefined, lookAdded: number, pace?: PaceVerdict): ScheduledWake {
+  const kind = !nothingToDo(tasks, last, userAt) ? 'send' : !ap.lookForWork ? 'idle' : lookAdded >= (ap.lookPerDay ?? LOOK_PER_DAY) ? 'limit' : 'look'
+  return (kind === 'send' || kind === 'look') && pace && !pace.go ? 'paced' : kind
 }
+
+// Skipped: the slot counts as run, the paid turn is saved.
+export const skippedWake = (k: ScheduledWake | null) => k === 'idle' || k === 'limit' || k === 'paced'
 
 // The reason a look-for-new-work wake starts with: its turn counts the tasks it adds.
 export const LOOK_REASON = 'Nothing is under way: look for new work toward your goal.'

@@ -6,6 +6,10 @@ import type { StepState } from './steps'
 import { needsShots, shotMode } from './shots'
 import type { Stopped } from './stop'
 
+// Who made a task: the user (the board, their turn), the coordinator in a
+// wake, an automation, a mission.
+export type TaskOrigin = 'user' | 'coordinator' | 'automation' | 'mission'
+
 export interface Task {
   id: string // <project key>-<n>
   project: string
@@ -27,6 +31,7 @@ export interface Task {
   stopped?: Stopped // who stopped it and why (stop.ts): it waits for the user
   autopilot?: true // started or added by the coordinator in a wake: its autopilot's own
   auto?: string // the automation that added it
+  origin?: TaskOrigin // who made it: only automatic work is held by the pace (pace.ts)
   createdAt: number
 }
 
