@@ -22,6 +22,7 @@ function load(o: { f16?: boolean } = {}) {
   return (ctx.self as { wherdrQwen3: Q3 }).wherdrQwen3
 }
 const Q = load()
+const hasNativeF16 = vm.runInNewContext('typeof Float16Array === "function"') as boolean
 
 describe('the qwen3 log-mel', () => {
   const row = (k: number) => { const r = new Array(201).fill(0); r[k] = 1; return r }
@@ -67,12 +68,33 @@ describe('the qwen3 log-mel', () => {
 describe('the qwen3 fp16 conversion', () => {
   const slow = load({ f16: false }).fp16, fast = load().fp16
   const same = (a: ArrayLike<number>, b: ArrayLike<number>) => a.length === b.length && [...a].every((v, i) => Object.is(v, b[i]))
-  it('matches Float16Array bit for bit, both directions', () => {
+  it.skipIf(!hasNativeF16)('matches Float16Array bit for bit, both directions', () => {
     const f32 = new Float32Array([0, -0, 1, -2.5, 0.1, 65504, -65504, 65519, 65520, 1e9, 6e-5, 6e-8, 3e-8, 1e-9, Infinity, -Infinity, NaN])
     expect(same(slow.f32ToF16(f32), fast.f32ToF16(f32))).toBe(true)
     const all = new Uint16Array(65536)
     for (let i = 0; i < all.length; i++) all[i] = i
     expect(same(slow.f16ToF32(all), fast.f16ToF32(all))).toBe(true)
+  })
+  it.skipIf(!hasNativeF16)('matches native rounding around every f16 value and seeded f32 bit patterns', () => {
+    const all = Uint16Array.from({ length: 65536 }, (_, i) => i)
+    const f32 = fast.f16ToF32(all)
+    const bits = new Uint32Array(f32.buffer)
+    const sweep = new Uint32Array(all.length * 4)
+    let seed = 0x12345678
+    for (let i = 0; i < all.length; i++) {
+      sweep[i * 4] = bits[i] - 1
+      sweep[i * 4 + 1] = bits[i]
+      sweep[i * 4 + 2] = bits[i] + 1
+      seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5
+      sweep[i * 4 + 3] = seed >>> 0
+    }
+    const values = new Float32Array(sweep.buffer)
+    const actual = slow.f32ToF16(values), expected = fast.f32ToF16(values)
+    // JS engines may choose different NaN signs/payloads; all other bits,
+    // including signed zero, must agree exactly.
+    const nan = (v: number) => (v & 0x7c00) === 0x7c00 && (v & 0x3ff) !== 0
+    const mismatch = actual.findIndex((v, i) => v !== expected[i] && !(nan(v) && nan(expected[i]!)))
+    expect(mismatch).toBe(-1)
   })
   it('converts the boundary cases: normals, subnormals, Inf, NaN', () => {
     const bits = slow.f32ToF16(new Float32Array([1, -2, 0.5, 65504, 6.103515625e-5, 5.960464477539063e-8, Infinity, -Infinity, NaN]))
