@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
-import { deliverWakes, issueToken, noteTurn, runCommand, startCoordinator, userMessageTo } from '../server/utils/pmCoordinator'
+import { answerProposal, coordinatorsView, deliverWakes, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, userMessageTo } from '../server/utils/pmCoordinator'
 import { parseCommand, roleFiles, coordinatorArgs } from '../shared/pm/coordinator'
 import { EXAMPLES, common, company } from '../shared/pm/examples'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
@@ -70,14 +70,31 @@ describe('template edit', () => {
     expect((await store.template('company'))!.version).toBe(1)
   })
 
-  it('in a user turn: saved, with the diff, and logged with the user\'s sentence', async () => {
+  it('in a user turn: proposed with its diff; saved only once the user accepts, logged with their sentence', async () => {
     await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9' })
     await userMessageTo(store, 'host/t9', 'Tell agents to never run the full suite')
-    const r = await cli(['template', 'edit'], moreInstructions) as { version: number, changes: string[], diff: string }
-    expect(r.version).toBe(2)
-    expect(r.diff).toBe('-   "instructions": "Base branch is develop.",\n+   "instructions": "Base branch is develop. Never run the full suite locally.",')
+    const r = await cli(['template', 'edit'], moreInstructions) as { proposed: boolean, changes: string[], diff: string }
+    const diff = '-   "instructions": "Base branch is develop.",\n+   "instructions": "Base branch is develop. Never run the full suite locally.",'
+    expect(r).toMatchObject({ proposed: true, diff })
     expect(r.changes.length).toBeGreaterThan(0)
+    expect((await store.template('company'))!.version).toBe(1)
+    expect((await coordinatorsView(store)).find(c => c.project === 'CO')!.proposal).toMatchObject({ diff, said: 'Tell agents to never run the full suite' })
+    expect(await cli(['template', 'show'])).toMatchObject({ diff })
+    // No core: the role files are not rewritten, the template is saved all the same.
+    await expect(answerProposal(deps(), 'CO', true)).resolves.toEqual({ accepted: true })
+    expect((await store.template('company'))!.version).toBe(2)
     expect((await store.templateLog('company')).at(-1)).toMatchObject({ by: 'coordinator CO', version: 2, said: 'Tell agents to never run the full suite' })
+    expect((await store.coordinator('CO'))!.proposal).toBeUndefined()
+  })
+
+  it('refused by the user: nothing saved, nothing logged', async () => {
+    await noteTurn(store, 'CO', 'user', 'shorter instructions')
+    await cli(['template', 'edit'], moreInstructions)
+    const log = await store.templateLog('company')
+    await answerProposal(deps(), 'CO', false)
+    expect((await store.template('company'))!.version).toBe(1)
+    expect(await store.templateLog('company')).toEqual(log)
+    await refused(answerProposal(deps(), 'CO', true), 'No template change waits for you')
   })
 
   it('never changes a guard with the token, even in a user turn', async () => {
@@ -159,8 +176,8 @@ describe('role files', () => {
       const argv = params.argv as string[] | undefined
       if (method === 'machine.exec' && argv?.[2] === 'printf %s "$HOME"') return { code: 0, stdout: Buffer.from('/h').toString('base64') }
       if (method === 'machine.exec') return written.push(argv![4]!), { code: 0, stdout: '' }
-      runs.push(params)
-      return { address: 'host/t5' }
+      runs.push({ method, ...params })
+      return { address: `host/t${runs.length + 4}` }
     }
     const machines = () => [{ key: '', label: 'here', local, status: 'online' }]
     return { written, runs, deps: { store, call, machines } as unknown as Parameters<typeof startCoordinator>[0] }
@@ -181,6 +198,21 @@ describe('role files', () => {
     expect((await store.coordinator('CO'))!.terminal).toBe('host/t5')
   })
 
+  it('start with the project\'s default agent, remember the agent that ran, and a new conversation replaces the old one', async () => {
+    const { runs, deps } = fakeCore()
+    await setCoordinatorAgent(store, 'CO', { program: 'claude', model: 'sonnet' })
+    await startCoordinator(deps, 'CO', {}, urls)
+    expect(runs[0]!.line).toContain(`exec 'claude' '--model' 'sonnet'`)
+    await setCoordinatorAgent(store, 'CO', { program: 'codex', model: 'gpt-5' })
+    // The default and the agent of the kept conversation stay apart, and survive a new token.
+    expect((await coordinatorsView(store)).find(c => c.project === 'CO')).toMatchObject({ agent: { program: 'codex', model: 'gpt-5' }, ran: { program: 'claude', model: 'sonnet' }, terminal: 'host/t5' })
+    await startCoordinator(deps, 'CO', {}, urls)
+    expect(runs.map(r => [r.method, r.terminal ?? r.cwd])).toEqual([['terminal.run', '/h/.wherdr/pm/coordinators/CO'], ['terminal.run', '/h/.wherdr/pm/coordinators/CO'], ['terminal.kill', 'host/t5']])
+    expect((await store.coordinator('CO'))).toMatchObject({ agent: { program: 'codex' }, ran: { program: 'codex', model: 'gpt-5' }, terminal: 'host/t6' })
+    await refused(setCoordinatorAgent(store, 'CO', { program: 'omp', model: 'x' }), 'claude or codex')
+    await refused(setCoordinatorAgent(store, 'NOPE', { program: 'claude', model: 'opus' }), 'Unknown project')
+  })
+
   it('on another machine, the coordinator gets wherdr\'s published address, never loopback', async () => {
     const remote = fakeCore(false)
     await startCoordinator(remote.deps, 'CO', { program: 'codex', model: 'gpt-5' }, urls)
@@ -197,6 +229,7 @@ describe('role files', () => {
     expect(agents).toContain('- deploy (Deploy): holder coordinator, ends report, recheck 5m, timeout 90m')
     expect(agents).toContain('- Base branch is develop.')
     expect(agents).toContain('"id":"vibe"')
+    expect(agents).toContain('with its absolute path (`/src/co/README.md`)')
     expect(files['CLAUDE.md']).toBe('@AGENTS.md\n')
     expect(JSON.parse(files['.claude/settings.json']!).permissions.deny).toEqual(['Edit(//src/co/**)'])
     const codex = coordinatorArgs('codex', 'gpt-5', '/h/c', '/src/co')

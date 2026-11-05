@@ -6,6 +6,25 @@ import type { Template } from './workflow'
 import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
 
+// The agent of a coordinator: the project's default, and the one its kept
+// conversation ran with (changing it starts a new conversation, never a
+// resume of another program's session).
+export interface CoordinatorAgent { program: 'claude' | 'codex', model: string }
+export const COORDINATOR_AGENTS: CoordinatorAgent[] = [
+  { program: 'claude', model: 'opus' }, { program: 'claude', model: 'sonnet' }, { program: 'codex', model: 'gpt-6-sol' },
+]
+export const sameAgent = (a?: CoordinatorAgent, b?: CoordinatorAgent) => !!a && !!b && a.program === b.program && a.model === b.model
+export const agentName = (a: CoordinatorAgent) => (a.program === 'claude'
+  ? `Claude ${a.model.charAt(0).toUpperCase()}${a.model.slice(1)}`
+  : `Codex ${a.model.replace(/^gpt/i, 'GPT')}`)
+
+// A template change the coordinator proposed: the user accepts or refuses it
+// in the interface; only an accepted one is saved and goes to the template's log.
+export interface Proposal { template: Template, diff: string, at: number, said?: string }
+
+// GET /api/pm/coordinators: one per project.
+export interface CoordinatorView { project: string, name: string, agent: CoordinatorAgent, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template'> }
+
 // Where the coordinator's current turn comes from: a message the user sent
 // from the interface, an engine wake, or nothing known (refused like a wake).
 export type Turn = 'user' | 'wake' | 'none'
@@ -25,7 +44,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'show <task>', does: 'one task, its plan and its log' },
   { usage: 'plan', does: 'the resolved plan of each task type' },
   { usage: 'template show', does: 'the project\'s template (JSON)' },
-  { usage: 'template edit < template.json', does: 'replace the template; only in a turn that comes from the user, guards unchanged; shows the diff' },
+  { usage: 'template edit < template.json', does: 'propose a new template; only in a turn that comes from the user, guards unchanged; the user accepts or refuses its diff in wherdr' },
   { usage: 'task tag <task> <text>', does: 'a short tag on the card (a ticket key, a client)' },
   { usage: 'task link <task> <url> --label <label>', does: 'a link on the card (PR, ticket, pipeline)' },
   { usage: 'step done <task> [--link <url>]', does: 'end the task\'s current step when you hold it (holder: coordinator)' },
@@ -182,17 +201,18 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[]):
     `You coordinate project ${p.key} only. Its repository is ${p.path}: read it, never change it; task agents do the work in their own worktrees.`,
     'Messages that start with "Autopilot:" are wakes sent by the engine; the others come from the user. The server knows which, and refuses what a wake may not do.', '',
     '## Commands (your token: this project only)', '', ...commandList, '',
-    'Every change you make is written to the task\'s or the template\'s log with your name.', '',
+    'Every change you make is written to the task\'s or the template\'s log with your name.',
+    `Quote a file as inline code with its absolute path (\`${p.path.replace(/\/$/, '')}/README.md\`): the user's interface makes it a link.`, '',
     '## What you never do', '',
     '- change a guard (protected branches, who merges): the user does it in Settings › Projects;',
     '- end a step that waits for the user unless they just told you so (`--user-said` with their words);',
-    '- edit the template on your own: propose, show the change, and edit only once the user says yes;',
+    '- edit the template on your own: only the user\'s request starts a proposal, and only their yes in wherdr saves it;',
     '- pass a critical finding with proof, or a send-back whose next step is a guarded merge: those go to the user.', '',
     '## Plans of this project\'s task types', '', `Template: ${t ? `${t.id} v${t.version ?? 1}` : 'none'}`, '', ...plans,
     '## Turning a workflow request into steps', '',
     'wherdr imposes no workflow: it knows ordered steps, who holds each (worker, reviewer, coordinator, none), how it ends (report, verdict, user, action), the proofs it needs (evidence) and the user\'s guards. What an agent must do is plain text in `instructions`.',
     'When the user says "after each task, create the PR with my Bitbucket tool, then wait until I say it is merged", write a worker step with that instruction and `evidence: ["link"]`, then a step `{ holder: "none", ends: "user", userLabel: "Merged", action: { kind: "git.verify-merged", target } }`. "Watch the deploy" is a step you hold: `holder: "coordinator", ends: "report", recheck: "5m"`.',
-    'Read the template, write the new one, show the user the change, and run `template edit` once they agree. Examples to copy from:', '',
+    'Read the template, write the new one and run `template edit`: wherdr shows the user its diff, to accept or refuse; `template show` tells you which. Examples to copy from:', '',
     ...examples.map(e => `\`\`\`json\n${JSON.stringify(e)}\n\`\`\``), '',
     '## After N send-backs', '',
     'The engine sorts what is left and gives options. Pick one with `task decide` and one sentence of reason. When it gives no option, the choice is the user\'s: tell them.', '',
