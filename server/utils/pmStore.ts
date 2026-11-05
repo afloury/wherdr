@@ -1,6 +1,7 @@
 // Project management storage, in DATA_DIR/projects/ (one engine, on the wherdr
 // host): pm.json (the on/off switch and this install's id), projects.json,
 // templates/<id>.json, template-log/<id>.json, tasks/<KEY>-<n>.json, runs/<id>.json, receipts/<id>.json,
+// shots/<KEY>-<n>/<file> (a task's screenshots),
 // coordinators/<KEY>.json (the hash of the coordinator's token, its current turn).
 // Atomic writes (temp file + rename), one at a time. Switched off, every
 // write is refused except turning it back on.
@@ -10,8 +11,9 @@ import { randomUUID } from 'node:crypto'
 import { cleanProjectInput, isTemplateId, type PmOverview, type Project, type TemplateInfo } from '../../shared/pm/project'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
-import type { Run, Task } from '../../shared/pm/run'
+import { publicTask, type Run, type Task } from '../../shared/pm/run'
 import type { Receipt } from '../../shared/pm/actions'
+import { SHOT_FILE_RE } from '../../shared/pm/shots'
 import { HerdrError } from './herdr'
 import { DATA_DIR } from './env'
 
@@ -50,7 +52,8 @@ const badInput = (errors: { path: string, message: string }[]) =>
 export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   const files = {
     pm: path.join(dir, 'pm.json'), projects: path.join(dir, 'projects.json'), templates: path.join(dir, 'templates'), templateLog: path.join(dir, 'template-log'),
-    tasks: path.join(dir, 'tasks'), runs: path.join(dir, 'runs'), receipts: path.join(dir, 'receipts'), coordinators: path.join(dir, 'coordinators'),
+    tasks: path.join(dir, 'tasks'), runs: path.join(dir, 'runs'), receipts: path.join(dir, 'receipts'), shots: path.join(dir, 'shots'),
+    coordinators: path.join(dir, 'coordinators'),
   }
   let queue: Promise<unknown> = Promise.resolve()
   const serial = <T>(fn: () => Promise<T>): Promise<T> => {
@@ -95,7 +98,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   return {
     files,
     async overview(): Promise<PmOverview> {
-      return { enabled: await enabled(), projects: await projects(), templates: await templates(), tasks: await tasks() }
+      return { enabled: await enabled(), projects: await projects(), templates: await templates(), tasks: (await tasks()).map(publicTask) }
     },
     setEnabled: (on: boolean) => serial(async () => writeJson(files.pm, { ...await pm(), v: 1, enabled: on })),
     // Marks the terminals this wherdr starts (wherdr.install), so that two
@@ -115,6 +118,19 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     templateLog: async (id: string) => (isTemplateId(id) ? (await readJson<{ entries?: LogEntry[] }>(path.join(files.templateLog, `${id}.json`)))?.entries : null) ?? [],
     runs: () => readAll<Run>(files.runs),
     saveTask: (t: Task) => write(async () => { await writeJson(path.join(files.tasks, `${t.id}.json`), t); return t }),
+    // A screenshot of the task: `change` gives the task with it, from the task
+    // read in the same write (refused: it throws, nothing is kept).
+    addShot: (id: string, file: string, data: Buffer, change: (t: Task) => Task) => write(async () => {
+      const task = TASK_ID_RE.test(id) && SHOT_FILE_RE.test(file) ? await readJson<Task>(path.join(files.tasks, `${id}.json`)) : null
+      if (!task) throw new HerdrError('not_found', 'Unknown task')
+      const next = change(task)
+      const folder = path.join(files.shots, id)
+      await fs.mkdir(folder, { recursive: true, mode: 0o700 })
+      await fs.writeFile(path.join(folder, file), data, { mode: 0o600 })
+      await writeJson(path.join(files.tasks, `${id}.json`), next)
+      return next
+    }),
+    shot: (id: string, file: string) => (TASK_ID_RE.test(id) && SHOT_FILE_RE.test(file) ? fs.readFile(path.join(files.shots, id, file)).catch(() => null) : Promise.resolve(null)),
     // A line of the task's log, saved with the task.
     logTask: (t: Task, by: string, text: string) => write(async () => {
       const out = { ...t, log: [...(t.log ?? []), { at: Date.now(), by, text }].slice(-200) }

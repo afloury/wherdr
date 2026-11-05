@@ -4,6 +4,7 @@
 // the step's button when it waits for the user ("Merged").
 import type { Card } from '#shared/pm/board'
 import type { Pane } from '#shared/types'
+import { shotMode } from '#shared/pm/shots'
 
 const props = defineProps<{ card: Card, pane?: Pane }>()
 const emit = defineEmits<{ closed: [], changed: [] }>()
@@ -15,6 +16,8 @@ const at = computed(() => (props.card.state?.started ? props.card.state.at : -1)
 const done = computed(() => !!props.card.state?.done)
 const proofs = (id: string) => Object.entries(props.card.state?.proofs[id] ?? {}).filter(([, v]) => v)
 const rounds = (id: string) => props.card.state?.rounds[id] ?? 0
+// The steps that have screenshots, to look at before the push, the PR or the merge.
+const shotSteps = computed(() => props.card.plan.filter(s => props.card.state?.shots?.[s.id]?.length))
 
 async function press() {
   busy.value = true
@@ -43,6 +46,14 @@ async function press() {
       </div>
       <p v-if="error" class="error">{{ error }}</p>
 
+      <template v-if="shotSteps.length">
+        <h3 class="mono-label">{{ tl('Screenshots', 'Captures') }}</h3>
+        <section v-for="s in shotSteps" :key="s.id" class="task-shots">
+          <span v-if="shotSteps.length > 1" class="mono-label muted">{{ s.id }}</span>
+          <TaskShots :task="card.id" :shots="card.state!.shots![s.id]!" :mode="shotMode(s)" />
+        </section>
+      </template>
+
       <h3 class="mono-label">{{ tl('Plan', 'Plan') }}</h3>
       <ol class="task-plan" data-testid="task-plan">
         <li v-for="(s, i) in card.plan" :key="s.id" :class="{ now: i === at && !done, past: i < at || done }" :aria-current="i === at && !done ? 'step' : undefined">
@@ -63,6 +74,7 @@ async function press() {
 .task-sheet p, .task-sheet h3 { margin: 0; }
 .task-desc { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.task-shots { display: grid; gap: 6px; }
 .task-plan { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
 .task-plan li { display: flex; flex-direction: column; gap: 4px; padding: 8px 0 8px 12px; border-bottom: 1px solid var(--line-soft); border-left: 2px solid transparent; }
 .task-plan li.past { color: var(--muted); }

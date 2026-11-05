@@ -6,6 +6,7 @@
 import type { Evidence, Holder, Step, StepAction, Template, TaskInput } from './workflow'
 import { mayMerge } from './guards'
 import { taskGuards } from './actions'
+import { shotsMissing, shotsText, shotMode, type Shot } from './shots'
 import { advise, blocking, reviewText, sendBackText, type Advice, type Choice, type Finding, type Round } from './verdict'
 
 // text: what the holder is told at the start. guarded: a merge only the user may do.
@@ -25,6 +26,7 @@ export interface StepState {
   acting?: boolean // an engine action is running
   yourTurn?: YourTurn
   proofs: Record<string, Partial<Record<Evidence, string>>> // per step id
+  shots?: Record<string, Shot[]> // the screenshots uploaded per step id (shots.ts)
   rounds: Record<string, number> // send-backs per verdict step id
   tries?: Record<string, number> // engine actions started per step id: one receipt each
   reviews?: Record<string, Round[]> // the send-backs of each verdict step
@@ -62,7 +64,10 @@ export interface StepResult { state: StepState, effects: Effect[], refused?: str
 const UNIT = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const
 export const durationMs = (d: string) => Number(d.slice(0, -1)) * UNIT[d.slice(-1) as keyof typeof UNIT]
 
-const PROOF: Record<Evidence, string> = { link: 'a link', commit: 'the commit', report: 'your report', 'proposed-tasks': 'the proposed tasks' }
+const PROOF: Record<Exclude<Evidence, 'screenshots'>, string> = { link: 'a link', commit: 'the commit', report: 'your report', 'proposed-tasks': 'the proposed tasks' }
+const SHOT_HOW = 'Upload each screenshot with the command under "Screenshots" in your instructions file.'
+const proofOf = (s: Step) => (e: Evidence) =>
+  e === 'screenshots' ? shotsText(shotMode(s) === 'before-after' ? ['before', 'after'] : ['after']) : PROOF[e]
 export const DEFAULT_ROUNDS = 2
 
 // The steps of a task type, shared steps resolved, each with the text its
@@ -78,7 +83,8 @@ export function planSteps(t: Template, input: TaskInput): PlannedStep[] {
     const guarded = into !== undefined && !mayMerge(g, into, 'engine') ? { guarded: true as const } : {}
     const own = input.steps?.[s.id]
     const parts = [t.instructions, tt.instructions, input.instructions, s.instructions, own?.instructions].map(x => x?.trim()).filter(Boolean)
-    if (s.evidence?.length) parts.push(`Before you say you are done, give ${s.evidence.map(e => PROOF[e]).join(', ')}.`)
+    if (s.evidence?.length) parts.push(`Before you say you are done, give ${s.evidence.map(proofOf(s)).join(', ')}.`)
+    if (s.evidence?.includes('screenshots')) parts.push(SHOT_HOW)
     return { ...s, ...(own?.timeout ? { timeout: own.timeout } : {}), ...guarded, text: parts.join('\n\n') }
   })
 }
@@ -135,9 +141,11 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       if (!fromHolder(ev.from)) return refuse(`Step "${step.id}" is held by the ${step.holder}`)
       const given = { ...state.proofs[step.id], ...ev.evidence }
       const proofs = { ...state.proofs, [step.id]: given }
-      const missing = (step.evidence ?? []).filter(e => !given[e]?.trim())
+      // Screenshots are not given with the report: they are the images uploaded for this step.
+      const shots = shotsMissing(step, state.shots?.[step.id])
+      const missing = (step.evidence ?? []).filter(e => (e === 'screenshots' ? shots.length : !given[e]?.trim()))
       if (missing.length) {
-        const ask = `Not done yet: step "${step.id}" needs ${missing.map(e => PROOF[e]).join(', ')}.`
+        const ask = `Not done yet: step "${step.id}" needs ${missing.map(e => (e === 'screenshots' ? shotsText(shots) : PROOF[e])).join(', ')}.`
         return { state: { ...state, proofs }, effects: [{ kind: 'instruct', step: step.id, holder: step.holder!, text: ask }], refused: ask }
       }
       let reviews = state.reviews

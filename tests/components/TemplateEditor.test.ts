@@ -96,3 +96,24 @@ it('refuses invalid JSON with the faulty line, then saves the fixed text', async
   expect(posts[0]!.replace).toBe(true) // the template opened here
   expect(posts[0]!.template.taskTypes.simple!.steps[1]).toMatchObject({ instructions: expect.stringContaining('npm test') })
 })
+
+it('sets screenshots as a step\'s evidence: after only, before and after, or none', async () => {
+  const w = await mount()
+  await w.find('[data-testid="tpl-open"]').setValue('example:company')
+  const shots = () => w.findAll('[data-testid="tpl-shots"]') // work, pr, deploy: the report steps
+  const step = (id: string) => JSON.parse((w.find(json).element as HTMLTextAreaElement).value).taskTypes.feature.steps.find((s: { id?: string }) => s.id === id)
+  expect(shots()).toHaveLength(3)
+  await shots()[1]!.setValue('before-after')
+  await shots()[0]!.setValue('after')
+  expect((shots()[1]!.element as HTMLSelectElement).value).toBe('before-after')
+  expect(errors(w)).toEqual([])
+  await w.find('[data-testid="tpl-mode-json"]').trigger('click')
+  expect(step('pr')).toMatchObject({ evidence: ['link', 'screenshots'], screenshots: 'before-after' })
+  expect(step('work').evidence).toEqual(['screenshots'])
+  expect(step('work').screenshots).toBeUndefined()
+  await w.find('[data-testid="tpl-mode-steps"]').trigger('click')
+  await shots()[1]!.setValue('')
+  await w.find('[data-testid="tpl-mode-json"]').trigger('click')
+  expect(step('pr').evidence).toEqual(['link'])
+  expect(step('pr').screenshots).toBeUndefined()
+})

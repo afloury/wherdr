@@ -8,6 +8,7 @@ import type { H3Event } from 'h3'
 import { crossSiteRequest, hostAllowed, hostRefusalIsHtml, hostRefusedPage, networkRefusedPage } from '../utils/hosts'
 import { checkRequestClient, ensureRecent, gateDecision, networkReady } from '../utils/network'
 import { coreRouteAllowed } from '../../shared/coreRoutes'
+import { SHOT_TOKEN_HEADER } from '../../shared/pm/shots'
 import { adoptServed } from '../utils/phone'
 const HOST_RECHECK_MS = 3000
 const HTTP_FRESH_MS = 2000
@@ -39,6 +40,7 @@ export default defineEventHandler(async (event) => {
     unlocked: auth.isUnlocked(req) || (path === '/api/pm/cli' && /^Bearer [0-9a-f]{64}$/.test(String(headers.authorization || ''))),
     hostOk: hostAllowed(headers.host),
     crossSite: crossSiteRequest(headers),
+    agentKey: event.method === 'POST' && typeof headers[SHOT_TOKEN_HEADER] === 'string',
   })
   const html = hostRefusalIsHtml(path, headers.accept)
   switch (verdict) {

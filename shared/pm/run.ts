@@ -3,6 +3,7 @@
 import type { Project } from './project'
 import type { Prefs, Step, Template } from './workflow'
 import type { StepState } from './steps'
+import { needsShots, shotMode } from './shots'
 
 export interface Task {
   id: string // <project key>-<n>
@@ -17,9 +18,13 @@ export interface Task {
   prefs?: Prefs
   tags?: string[] // short texts, shown on the card
   links?: { label: string, url: string }[] // the PR, the ticket…
+  shotToken?: string // the agent's key for POST /api/pm/shot (never sent to the browser)
   log?: TaskLogEntry[] // who changed what, newest last
   createdAt: number
 }
+
+// A task as the browser gets it: the agent's screenshot key stays on the server.
+export const publicTask = ({ shotToken: _, ...t }: Task): Task => t
 
 export interface TaskLogEntry { at: number, by: string, text: string }
 
@@ -92,13 +97,35 @@ export function reviewerPlan(t: Template, task: Task): { program: string, model:
   return { program, model }
 }
 
-// The instructions file: the task, then every level's instructions, broadest first.
-export function instructionsText(p: Project, t: Template, task: Task, run: Pick<Run, 'worktree' | 'branch'>) {
+// The worker's step that asks for screenshots, if any.
+export const shotStep = (t: Template, type: string) => typeSteps(t, type).find(s => s.holder === 'worker' && needsShots(s))
+
+// How the worker gives its screenshots: one ready command per image, to wherdr
+// at `base`, with the task's key (no browser, no passkey session needed).
+export function shotsSection(step: Step, task: Pick<Task, 'id'>, shots: { base: string, token: string }) {
+  const both = shotMode(step) === 'before-after'
+  const url = (phase: string) => `${shots.base.replace(/\/+$/, '')}/api/pm/shot?task=${task.id}&phase=${phase}`
+  const cmd = (phase: string) => `curl -fsS -X POST -H 'Content-Type: image/png' -H 'X-Wherdr-Shot-Token: ${shots.token}' --data-binary @shot.png '${url(phase)}'`
+  return [
+    '## Screenshots', '',
+    both
+      ? 'Step "' + step.id + '" needs screenshots before and after your change: take the before ones first, on the unchanged code, then the same screens after.'
+      : 'Step "' + step.id + '" needs screenshots of the result.',
+    'Upload each one (PNG, JPEG or WebP, 10 MB max; set Content-Type to match) with:', '',
+    ...(both ? ['    ' + cmd('before')] : []), '    ' + cmd('after'), '',
+  ]
+}
+
+// The instructions file: the task, then every level's instructions, broadest
+// first, then how to upload screenshots when a worker step asks for them.
+export function instructionsText(p: Project, t: Template, task: Task, run: Pick<Run, 'worktree' | 'branch'>, shots?: { base: string, token: string }) {
   const step = typeSteps(t, task.type).find(s => s.holder === 'worker')
   const parts = [t.instructions, t.taskTypes[task.type]?.instructions, step?.instructions].map(s => s?.trim()).filter(Boolean)
+  const visual = shotStep(t, task.type)
   return [
     `# ${task.id}: ${task.title}`, '', task.description.trim() || '(no description)', '',
     '## Instructions', '', ...(parts.length ? parts : ['(none)']), '',
+    ...(visual && shots ? shotsSection(visual, task, shots) : []),
     `You work in ${run.worktree} on branch ${run.branch} of project ${p.name}.`, '',
   ].join('\n')
 }

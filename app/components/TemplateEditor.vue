@@ -6,7 +6,7 @@
 import { EXAMPLES } from '#shared/pm/examples'
 import { planSteps } from '#shared/pm/steps'
 import { parseTemplateText, type LogEntry } from '#shared/pm/templateText'
-import { ENDS, HOLDERS, type Step, type Template } from '#shared/pm/workflow'
+import { ENDS, HOLDERS, SHOT_MODES, type ShotMode, type Step, type Template } from '#shared/pm/workflow'
 import type { TemplateInfo } from '#shared/pm/project'
 
 const props = defineProps<{ templates: TemplateInfo[] }>()
@@ -72,6 +72,18 @@ const set = (i: number, key: keyof Step, v: string) => edit((list) => {
   if (v || key === 'id') s[key] = v
   else delete s[key]
 })
+// Screenshots as evidence: none, the result only, or before and after.
+const shotsOf = (s: Step) => (s.evidence?.includes('screenshots') ? s.screenshots ?? 'after' : '')
+const setShots = (i: number, v: string) => edit((list) => {
+  const s = list[i] as Step
+  const rest = (s.evidence ?? []).filter(e => e !== 'screenshots')
+  const evidence = v ? [...rest, 'screenshots' as const] : rest
+  if (evidence.length) s.evidence = evidence
+  else delete s.evidence
+  if (v === 'before-after') s.screenshots = v
+  else delete s.screenshots
+})
+const SHOT_LABEL: Record<ShotMode, string> = { 'after': 'Screenshots: after', 'before-after': 'Screenshots: before and after' }
 const move = (i: number, by: number) => edit(list => list.splice(i + by, 0, ...list.splice(i, 1)))
 const field = (e: Event) => (e.target as HTMLInputElement).value
 const agent = (s: Step) => !!s.holder && s.holder !== 'none'
@@ -127,6 +139,10 @@ async function save() {
             <select class="pm-select" :value="s.ends ?? ''" :aria-label="tl('Ends with', 'Finit par')" @change="set(i, 'ends', field($event))">
               <option value="">{{ tl('no end', 'sans fin') }}</option>
               <option v-for="e in ENDS" :key="e" :value="e">{{ e }}</option>
+            </select>
+            <select v-if="agent(s) && s.ends === 'report'" class="pm-select" :value="shotsOf(s)" :aria-label="tl('Screenshots', 'Captures')" data-testid="tpl-shots" @change="setShots(i, field($event))">
+              <option value="">{{ tl('No screenshots', 'Sans captures') }}</option>
+              <option v-for="m in SHOT_MODES" :key="m" :value="m">{{ t(SHOT_LABEL[m]) }}</option>
             </select>
             <UInput size="xl" v-if="s.ends === 'user'" :model-value="s.userLabel ?? ''" class="tpl-wide" :placeholder="tl('Button text', 'Texte du bouton')" :aria-label="tl('Button text', 'Texte du bouton')" @update:model-value="v => set(i, 'userLabel', String(v))" />
             <UTextarea size="xl" v-if="agent(s)" :model-value="s.instructions ?? ''" class="tpl-wide" :rows="2" autoresize :placeholder="tl('Instructions sent to the agent', 'Consigne envoyée à l’agent')" @update:model-value="v => set(i, 'instructions', String(v))" />
