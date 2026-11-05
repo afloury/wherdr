@@ -43,6 +43,9 @@ describe('the token', () => {
     await refused(cli(['list'], undefined, 'f'.repeat(64)), 'Unknown coordinator token')
     const mine = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
     expect((await cli(['list']) as { tasks: { id: string }[] }).tasks.map(t => t.id)).toEqual([mine.id])
+    // A finished task reads done, not the state it kept while working.
+    await store.saveTask({ ...mine, state: 'working', step: { at: 5, started: true, done: true, proofs: {}, rounds: {} } })
+    expect((await cli(['list']) as { tasks: { state: string }[] }).tasks[0]!.state).toBe('done')
     const fresh = await issueToken(store, 'CO')
     await refused(cli(['list']), 'Unknown coordinator token')
     await expect(cli(['list'], undefined, fresh)).resolves.toBeTruthy()

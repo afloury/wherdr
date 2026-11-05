@@ -70,8 +70,9 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
     ...(yourTurn ? { yourTurn } : {}),
     ...(step?.ends === 'user' && started && !s?.done ? { userLabel: step.userLabel || 'Done' } : {}),
     tags: task.tags ?? [],
-    // Then the links steps gave as their proof (the PR), labelled by step.
-    links: [...task.links ?? [], ...plan.flatMap(p => (s?.proofs[p.id]?.link ? [{ label: p.id, url: s.proofs[p.id]!.link! }] : []))],
+    // Then the links steps gave as their proof (the PR), labelled by step; each address once.
+    links: [...task.links ?? [], ...plan.flatMap(p => (s?.proofs[p.id]?.link ? [{ label: p.id, url: s.proofs[p.id]!.link! }] : []))]
+      .filter((l, i, all) => all.findIndex(x => x.url === l.url) === i),
     log: (task.log ?? []).slice(-30),
     plan,
     ...(s ? { state: s } : {}),
