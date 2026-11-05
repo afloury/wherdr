@@ -12,6 +12,8 @@ import { canStop, cardOf } from '../shared/pm/board'
 import { parseCommand } from '../shared/pm/coordinator'
 import { initialState, onEvent, planSteps } from '../shared/pm/steps'
 import { wherdr } from '../shared/pm/examples'
+import { taskEvents } from '../shared/pm/automations'
+import { DEFAULT_AUTOPILOT, autopilotEvents } from '../shared/pm/autopilot'
 import type { Task } from '../shared/pm/run'
 
 const plan = planSteps(wherdr, { type: 'simple' }) // todo, work, pr, review, merge, done
@@ -30,7 +32,8 @@ describe('who may stop', () => {
     expect(stopRefusal(working(), inTurn)).toBeUndefined()
     expect(stopRefusal(working(), inWake)).toMatch(/only the tasks your autopilot started/)
     expect(stopRefusal(working({ autopilot: true }), inWake)).toBeUndefined()
-    expect(stopRefusal(working({ auto: 'nightly' }), inWake)).toBeUndefined() // added by an automation
+    // Added by an automation the user set up, not started by the coordinator in a wake: the user's.
+    expect(stopRefusal(working({ auto: 'nightly' }), inWake)).toMatch(/only the tasks your autopilot started/)
     // Waiting on a question still holds an agent: it may be stopped.
     expect(stopRefusal(working({ state: 'waiting', waitKind: 'question' }), user)).toBeUndefined()
   })
@@ -63,6 +66,16 @@ describe('a stopped task', () => {
     expect(canStop(cardOf(working(), plan, []))).toBe(true)
     const ds = decisionsOf({ cards: [card], tasks: [t], coordinators: [], wakes: [] })
     expect(ds).toEqual([expect.objectContaining({ group: 'stopped', task: 'WH-1', text: t.waiting })])
+  })
+
+  it('is no failure: no automation fires on it, the autopilot is not woken; a real failure still fires', () => {
+    const first = taskEvents([working()], {})
+    expect(taskEvents([stop(working())], first.seen).events).toEqual([])
+    const ap = { ...DEFAULT_AUTOPILOT, events: ['stuck' as const] }
+    expect(autopilotEvents(ap, [stop(working())], { 'WH-1': 'working' }).reasons).toEqual([])
+    const failed = working({ state: 'waiting', waiting: 'claude stopped right after starting' })
+    expect(taskEvents([failed], first.seen).events.map(e => e.event)).toEqual(['failed', 'needs-you'])
+    expect(autopilotEvents(ap, [failed], { 'WH-1': 'working' }).reasons).toHaveLength(1)
   })
 
   it('the handover note says why, where the work is, and what the step asks now', () => {

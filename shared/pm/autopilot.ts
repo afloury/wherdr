@@ -100,11 +100,12 @@ export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, t
 
 // The events since the last tick: tasks added, done, stuck (waiting) or
 // ready, among those the autopilot wakes for. `seen`: each task's last status.
+// A stopped task is not stuck: someone chose to stop it.
 export function autopilotEvents(ap: Autopilot, tasks: Task[], seen: Record<string, TaskStatus>) {
   const now: Record<string, TaskStatus> = {}, reasons: string[] = []
   for (const t of tasks) {
     const s = now[t.id] = taskStatus(t)
-    const ev: AutopilotEvent | undefined = !(t.id in seen) ? 'added' : seen[t.id] === s ? undefined : s === 'waiting' ? 'stuck' : s === 'done' || s === 'ready' ? s : undefined
+    const ev: AutopilotEvent | undefined = !(t.id in seen) ? 'added' : seen[t.id] === s ? undefined : s === 'waiting' ? (t.stopped ? undefined : 'stuck') : s === 'done' || s === 'ready' ? s : undefined
     if (ev && ap.events.includes(ev)) reasons.push(`${t.id} (${t.title}): ${ev}${ev === 'stuck' && t.waiting ? `: ${t.waiting.split('\n')[0]}` : ''}`)
   }
   return { seen: now, reasons }

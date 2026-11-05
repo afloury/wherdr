@@ -17,9 +17,8 @@ export type Resume = typeof RESUMES[number]
 // Who asks: the user, or the coordinator in a turn of the user or in a wake.
 export type Stopper = { who: 'user' } | { who: 'coordinator', wake: boolean }
 
-// The autopilot's own tasks: started or added by the coordinator in a wake,
-// or added by one of its automations.
-const autopilots = (t: Task) => !!t.autopilot || !!t.auto
+// The autopilot's own tasks: started or added by the coordinator in a wake.
+const autopilots = (t: Task) => !!t.autopilot
 
 // Why the task may not be stopped now, or undefined. In a wake, the
 // coordinator stops only its autopilot's own tasks.

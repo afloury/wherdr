@@ -60,6 +60,8 @@ export const globMatch = (glob: string, s: string) =>
 export interface Mark { turn?: string, failed?: boolean, needs?: boolean, rounds: number, merged?: boolean }
 export function markOf(t: Task): Mark {
   const s = t.step, rounds = Object.values(s?.rounds ?? {}).reduce((a, b) => a + b, 0)
+  // Stopped by the user or the coordinator: their choice, neither a failure nor a new need.
+  if (t.stopped) return { rounds, ...(s?.yourTurn?.reason === 'user' ? { turn: s.yourTurn.badge } : {}) }
   const failed = (t.state === 'waiting' && !t.waitKind) || s?.yourTurn?.reason === 'action'
   return {
     rounds,

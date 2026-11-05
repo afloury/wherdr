@@ -55,7 +55,8 @@ const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitK
 
 // Starts the worker of a task to do (or waiting, to try again). Any reason it
 // cannot start puts the task in 'waiting' with that reason, after one attempt.
-// handover: a note for a worker that takes up a stopped task (stop.ts).
+// handover: a note for a worker that takes up a stopped task (stop.ts). A
+// stopped task stays stopped until its agent starts: never seen as a failure meanwhile.
 export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: { handover?: string } = {}): Promise<Task> {
   const { store } = deps
   const task = await store.task(id)
@@ -73,7 +74,7 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: {
   const held = s?.started && !s.done ? planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) })[s.at] : undefined
   if (held && held.holder !== 'worker') {
     const { told: _told, ...step } = s!
-    return store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, step })
+    return store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, step })
   }
   let on: string | undefined, label = ''
   try { ({ on, m: { label } } = machineOn(deps, p.machine)) } catch (e) { return wait(store, task, (e as Error).message) }
@@ -98,7 +99,7 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: {
   let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine: p.machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now() }
   for (;;) {
     await store.saveRun(run) // the receipt, before the terminal exists
-    await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, run: run.id, step, ...(shotToken ? { shotToken } : {}) })
+    await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, run: run.id, step, ...(shotToken ? { shotToken } : {}) })
     let address: string
     try {
       address = (await deps.call<{ address: string }>('terminal.run', {

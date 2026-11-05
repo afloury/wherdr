@@ -49,7 +49,8 @@ export async function resumeTask(deps: PmLaunchDeps, id: unknown, how: Resume, b
   // Continue: a new agent for the step, in the same worktree; a worker reads a handover note first.
   const worker = (await store.runs()).filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
   const handover = plan[s.at]?.holder === 'worker' && worker ? handoverText(task, plan, worker.branch) : undefined
-  await store.saveTask({ ...going, state: 'waiting', waiting: 'Continuing' })
-  const started = await startTask(deps, task.id, { handover })
+  let started = await startTask(deps, task.id, { handover })
+  // It could not start: now a failure of its own, no longer the stop.
+  if (started.stopped) started = await store.saveTask({ ...started, stopped: undefined })
   return store.logTask(started, logBy, started.state === 'working' ? `${plan[s.at]?.id ?? 'step'}: continued` : `could not continue: ${started.waiting ?? ''}`)
 }
