@@ -15,11 +15,17 @@ import { publicTask, type Run, type Task } from '../../shared/pm/run'
 import type { Receipt } from '../../shared/pm/actions'
 import { SHOT_FILE_RE } from '../../shared/pm/shots'
 import { HerdrError } from './herdr'
+import type { CoordinatorAgent, Proposal, ProposalOutcome } from '../../shared/pm/coordinator'
 import { DATA_DIR } from './env'
 
 // A project coordinator: the sha256 of its token, its terminal (herdr-core
-// address), and where its current turn comes from (said: the user's message).
-export interface CoordinatorRecord { project: string, tokenHash: string, terminal?: string, turn?: { kind: 'user' | 'wake', at: number, said?: string } }
+// address), where its current turn comes from (said: the user's message), the
+// project's default agent, the agent its conversation ran with, and a template
+// change waiting for the user.
+export interface CoordinatorRecord {
+  project: string, tokenHash: string, terminal?: string, turn?: { kind: 'user' | 'wake', at: number, said?: string }
+  agent?: CoordinatorAgent, ran?: CoordinatorAgent, proposal?: Proposal, answered?: { outcome: ProposalOutcome, at: number }
+}
 
 // The checks the store cannot make itself: the machine, a git folder there.
 // Resolves to the folder's absolute path.

@@ -24,14 +24,18 @@ const reset = (co1: Partial<StepState> = {}) => {
   board = {
     projects: [{ key: 'VIB', name: 'Vibe', columns: columns(vibe) }, { key: 'CO', name: 'Company', columns: columns(company) }],
     cards: [
-      vibeTask('VIB-1', at(1)),
-      coTask(task('CO-1', at(2, co1), { tags: ['CTP-1', 'client', 'x'], links: [{ label: 'PR', url: 'https://example.com/pr/1' }] })),
+      cardOf(task('VIB-1', at(1), { type: 'simple', tags: ['client'], links: [{ label: 'Ticket', url: 'https://example.com/t/1' }, { label: 'PR', url: 'https://example.com/pr/2' }] }), planSteps(vibe, { type: 'simple' }), runs),
+      coTask(task('CO-1', at(2, co1), {
+        tags: ['CTP-1', 'client', 'x'], links: [{ label: 'PR', url: 'https://example.com/pr/1' }],
+        log: [{ at: 1, by: 'coordinator CO', text: 'review: coordinator chose pass (advice: pass, nothing above minor). Only a naming nit is left.' }],
+      })),
       coTask(task('CO-2', at(4, { yourTurn: { reason: 'user', badge: 'Merge the PR' } }))),
     ],
   }
 }
 reset()
 registerEndpoint('/api/pm/board', () => board)
+registerEndpoint('/api/pm/coordinators', () => [])
 const pane = (coreAddress: string, status: Pane['status']) => ({ id: coreAddress, coreAddress, status, agent: 'claude', workspace: 'w', tab: 't' }) as Pane
 herdrState.value = { ok: true, workspaces: [], panes: [pane('host-a/t1', 'working'), pane('host-a/t2', 'idle'), pane('host-a/t3', 'working')] }
 
@@ -91,4 +95,21 @@ it('moves a card to Your turn whatever its step, and keeps its step and indicato
   expect(card(w, 'CO-1').text()).toContain('review')
   expect(card(w, 'CO-1').find('[data-testid="holder-state"]').exists()).toBe(true)
   expect(w.find('[data-lane="Review"]').findAll('[data-testid="board-card"]')).toHaveLength(0)
+})
+
+it('filters the board by tag, and the card\'s one-tap link is its PR', async () => {
+  const w = await mount()
+  expect(card(w, 'VIB-1').find('[data-testid="board-link"]').attributes('href')).toBe('https://example.com/pr/2')
+  expect(w.findAll('[data-testid="board-tag"] option').map(o => o.text())).toEqual(['Tags', 'CTP-1', 'client', 'x'])
+  await w.find('[data-testid="board-tag"]').setValue('client')
+  expect(w.findAll('[data-testid="board-card"]').map(c => c.attributes('data-task'))).toEqual(['VIB-1', 'CO-1'])
+  await w.find('[data-testid="board-tag"]').setValue('x')
+  expect(w.findAll('[data-testid="board-card"]').map(c => c.attributes('data-task'))).toEqual(['CO-1'])
+})
+
+it('shows the coordinator\'s choice and its reason in the task\'s log', async () => {
+  const w = await mount()
+  await card(w, 'CO-1').trigger('click')
+  await vi.waitFor(() => expect(document.querySelector('[data-testid="task-log"]')?.textContent).toContain('coordinator CO'))
+  expect(document.querySelector('[data-testid="task-log"]')!.textContent).toContain('chose pass (advice: pass, nothing above minor). Only a naming nit is left.')
 })

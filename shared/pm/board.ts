@@ -23,6 +23,7 @@ export interface Card {
   userLabel?: string // the button of a step that waits for the user
   tags: string[]
   links: { label: string, url: string }[]
+  log: { at: number, by: string, text: string }[] // newest last: tags, links, the coordinator's choices and their reason
   plan: PlannedStep[]
   state?: StepState
 }
@@ -71,10 +72,17 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
     tags: task.tags ?? [],
     // Then the links steps gave as their proof (the PR), labelled by step.
     links: [...task.links ?? [], ...plan.flatMap(p => (s?.proofs[p.id]?.link ? [{ label: p.id, url: s.proofs[p.id]!.link! }] : []))],
+    log: (task.log ?? []).slice(-30),
     plan,
     ...(s ? { state: s } : {}),
   }
 }
+
+// The card's one-tap link: its PR when it has one, else its first link.
+export const mainLink = (c: Pick<Card, 'links'>) => c.links.find(l => /^pr$/i.test(l.label)) ?? c.links[0]
+
+// The tags of the cards, once each, to filter the board by.
+export const boardTags = (cards: Pick<Card, 'tags'>[]) => [...new Set(cards.flatMap(c => c.tags))].sort()
 
 // The columns shown: Your turn first, then the project's columns (or To do /
 // Working / Done for all projects). A card in Your turn is in no other column.

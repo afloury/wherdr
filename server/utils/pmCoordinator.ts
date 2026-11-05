@@ -2,9 +2,10 @@
 // it), where its current turn comes from, the `wherdr pm` commands it runs,
 // and its role files, written in its own folder on the project's machine.
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import { coordinatorArgs, coordinatorWake, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type Turn } from '../../shared/pm/coordinator'
+import { COORDINATOR_AGENTS, coordinatorArgs, coordinatorWake, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
+import { validateTemplate } from '../../shared/pm/workflow'
 import { EXAMPLES } from '../../shared/pm/examples'
 import type { Template } from '../../shared/pm/workflow'
 import type { Task } from '../../shared/pm/run'
@@ -20,7 +21,9 @@ const sha = (s: string) => createHash('sha256').update(s).digest()
 // A new token for the project's coordinator; the one before stops working.
 export async function issueToken(store: PmStore, key: string) {
   const token = randomBytes(32).toString('hex')
-  await store.saveCoordinator({ project: key, tokenHash: sha(token).toString('hex') })
+  // Its default agent and pending change stay; its turn and terminal are the old conversation's.
+  const { agent, proposal, answered } = (await store.coordinator(key)) ?? {}
+  await store.saveCoordinator({ project: key, tokenHash: sha(token).toString('hex'), ...(agent ? { agent } : {}), ...(proposal ? { proposal } : {}), ...(answered ? { answered } : {}) })
   return token
 }
 
@@ -88,18 +91,20 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     case 'list': return { tasks: (await store.tasks()).filter(x => x.project === key).map(x => summary(t, x)) }
     case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task) : [] } }
     case 'plan': return { template: t && { id: t.id, version: t.version }, plans: Object.fromEntries(Object.keys(needPlan().taskTypes).map(type => [type, planSteps(t!, { type })])) }
-    case 'template show': return { template: needPlan() }
+    case 'template show': return {
+      template: needPlan(),
+      ...(rec?.proposal ? { proposal: 'waiting for the user in wherdr', diff: rec.proposal.diff } : rec?.answered ? { lastProposal: rec.answered.outcome } : {}),
+    }
     case 'template edit': {
       let next: Template
       try { next = JSON.parse(String(body.input ?? '')) as Template } catch { throw new HerdrError('bad_input', 'The new template is not valid JSON') }
-      const why = templateEditRefusal(t, next, turn)
-      if (why) throw new HerdrError('refused', why)
-      const other = projects.find(x => x.key !== key && x.template === t!.id)
-      if (other) throw new HerdrError('refused', `Template ${t!.id} is also used by project ${other.key}: the user changes it in Settings › Projects`)
-      const saved = await store.saveTemplate(next, { replace: true, by, said: rec?.turn?.said })
-      // The role files show the new plans at once, not at the next start.
-      const rewritten = await writeRoleFiles(deps, key).then(() => true, () => false)
-      return { ...saved, changes: templateChanges(t, next), diff: templateDiff(t, next), roleFiles: rewritten ? 'updated' : 'not updated: restart the coordinator' }
+      await editRefusal(store, key, t, next, turn)
+      const errors = validateTemplate(next)
+      if (errors.length) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
+      // The user accepts or refuses it in the interface; nothing is saved yet.
+      const proposal = { template: next, diff: templateDiff(t, next), at: Date.now(), base: t!.version ?? 1, ...(rec?.turn?.said ? { said: rec.turn.said } : {}) }
+      await store.saveCoordinator({ ...rec!, proposal })
+      return { proposed: true, changes: templateChanges(t, next), diff: proposal.diff, next: 'The user accepts or refuses this diff in wherdr; template show tells you what they chose' }
     }
     case 'task tag': {
       const task = await taskOf(cmd.task)
@@ -133,6 +138,67 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       return { task: await store.logTask({ ...task, step: r.state }, by, line), effects: r.effects.filter(e => e.kind !== 'log') }
     }
   }
+}
+
+// Why the coordinator may not change the template to `next`; the same checks
+// when the user accepts it later, against the template as it is then.
+async function editRefusal(store: PmStore, key: string, t: Template | null, next: Template, turn: Turn) {
+  const why = templateEditRefusal(t, next, turn)
+  if (why) throw new HerdrError('refused', why)
+  const other = (await store.projects()).find(x => x.key !== key && x.template === t!.id)
+  if (other) throw new HerdrError('refused', `Template ${t!.id} is also used by project ${other.key}: the user changes it in Settings › Projects`)
+}
+
+// The user's answer to the coordinator's template change. Accepted: saved,
+// written to the template's log (by the coordinator, with the user's sentence),
+// and the role files show the new plans at once.
+export async function answerProposal(deps: Deps, key: unknown, accept: unknown) {
+  const { store } = deps
+  const rec = typeof key === 'string' ? await store.coordinator(key) : null
+  if (!rec?.proposal) throw new HerdrError('not_found', 'No template change waits for you')
+  const { proposal, ...rest } = rec
+  const done = (outcome: ProposalOutcome) => store.saveCoordinator({ ...rest, answered: { outcome, at: Date.now() } })
+  if (accept !== true) { await done('refused'); return { accepted: false } }
+  const p = (await store.projects()).find(x => x.key === rec.project)
+  const t = p?.template ? await store.template(p.template) : null
+  // Its diff was made against that version: saved over a newer one, it would
+  // undo a change the user made since.
+  if ((t?.version ?? 1) !== proposal.base) {
+    await done('outdated: the template changed since, propose again')
+    throw new HerdrError('refused', 'The template changed since this proposal: ask the coordinator to propose again')
+  }
+  await editRefusal(store, rec.project, t, proposal.template, 'user')
+  await store.saveTemplate(proposal.template, { replace: true, by: `coordinator ${rec.project}`, said: proposal.said })
+  await done('accepted')
+  await writeRoleFiles(deps, rec.project).catch(() => {})
+  return { accepted: true }
+}
+
+const agentOf = (v: { program?: unknown, model?: unknown }): CoordinatorAgent | null => {
+  const program = v.program === 'codex' ? 'codex' : v.program === 'claude' ? 'claude' : null
+  return program && typeof v.model === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:[\]/-]{0,63}$/.test(v.model) ? { program, model: v.model } : null
+}
+
+// The project's default coordinator agent, changed in one gesture.
+export async function setCoordinatorAgent(store: PmStore, key: unknown, agent: { program?: unknown, model?: unknown }) {
+  const a = agentOf(agent)
+  if (!a) throw new HerdrError('bad_input', 'program: claude or codex, and a model')
+  if (typeof key !== 'string' || !(await store.projects()).some(p => p.key === key)) throw new HerdrError('not_found', 'Unknown project')
+  await store.saveCoordinator({ project: key, tokenHash: '', ...(await store.coordinator(key)), agent: a })
+  return { agent: a }
+}
+
+// Each project's coordinator: who answers, the agent of its kept conversation, its pending change.
+export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[]> {
+  if (!(await store.enabled())) return []
+  return Promise.all((await store.projects()).map(async (p) => {
+    const c = await store.coordinator(p.key)
+    return {
+      project: p.key, name: p.name, agent: c?.agent ?? COORDINATOR_AGENTS[0]!,
+      ...(c?.ran ? { ran: c.ran } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
+      ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, ...(c.proposal.said ? { said: c.proposal.said } : {}) } } : {}),
+    }
+  }))
 }
 
 // The role files (and the `wherdr` script) in the coordinator's own folder,
@@ -169,18 +235,22 @@ export async function prepareCoordinator(deps: Deps, key: string, agent: { progr
 // Starts the coordinator in its folder, model pinned, token in its environment,
 // its folder's bin/ (the `wherdr` script) first in its PATH.
 export async function startCoordinator(deps: Deps, key: unknown, agent: { program?: unknown, model?: unknown }, urls: CoordinatorUrls) {
-  const program = agent.program === 'codex' ? 'codex' : agent.program === 'claude' ? 'claude' : null
-  if (!program || typeof agent.model !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:[\]/-]{0,63}$/.test(agent.model))
-    throw new HerdrError('bad_input', 'program: claude or codex, and a model')
   if (typeof key !== 'string') throw new HerdrError('not_found', 'Unknown project')
-  const c = await prepareCoordinator(deps, key, { program, model: agent.model }, urls)
+  // No agent given: the project's default.
+  const a = agent.program === undefined ? (await deps.store.coordinator(key))?.agent ?? COORDINATOR_AGENTS[0]! : agentOf(agent)
+  if (!a) throw new HerdrError('bad_input', 'program: claude or codex, and a model')
+  const { program, model } = a
+  const before = await deps.store.coordinator(key)
+  const c = await prepareCoordinator(deps, key, { program, model }, urls)
   const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
   const { address } = await deps.call<{ address: string }>('terminal.run', {
     cwd: c.folder, ...(c.on ? { on: c.on } : {}), no_parent: true, wait: false, env: c.env,
     labels: { 'wherdr.install': await deps.store.install(), 'wherdr.coordinator': key },
     line: `${PATH_SETUP}; export PATH=${quote(`${c.folder}/bin`)}:"$PATH"; exec ${c.argv.map(quote).join(' ')}`,
   }, 30000)
-  await deps.store.saveCoordinator({ ...(await deps.store.coordinator(key))!, terminal: address })
+  await deps.store.saveCoordinator({ ...(await deps.store.coordinator(key))!, terminal: address, ran: { program, model } })
+  // A new conversation replaces the one before (another agent's, or ended).
+  if (before?.terminal && before.terminal !== address) await deps.call('terminal.kill', { terminal: before.terminal }, 15000).catch(() => {})
   return { terminal: address, folder: c.folder }
 }
 

@@ -65,6 +65,16 @@ async function press() {
           <small v-for="[k, v] in proofs(s.id)" :key="k" class="muted">{{ k }}: <a v-if="/^https?:\/\//.test(v)" :href="v" target="_blank" rel="noopener">{{ v }}</a><template v-else>{{ v }}</template></small>
         </li>
       </ol>
+
+      <template v-if="card.log.length">
+        <h3 class="mono-label">{{ tl('Log', 'Journal') }}</h3>
+        <ol class="task-log" data-testid="task-log">
+          <li v-for="(e, i) in [...card.log].reverse()" :key="i">
+            <span class="mono-label muted">{{ new Date(e.at).toLocaleString() }} · {{ e.by }}</span>
+            <span class="task-desc">{{ e.text }}</span>
+          </li>
+        </ol>
+      </template>
     </div>
   </AppSheet>
 </template>
@@ -79,5 +89,7 @@ async function press() {
 .task-plan li { display: flex; flex-direction: column; gap: 4px; padding: 8px 0 8px 12px; border-bottom: 1px solid var(--line-soft); border-left: 2px solid transparent; }
 .task-plan li.past { color: var(--muted); }
 .task-plan li.now { border-left-color: var(--accent); }
+.task-log { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.task-log li { display: grid; gap: 2px; padding: 6px 0; border-bottom: 1px solid var(--line-soft); }
 .task-plan summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
 </style>
