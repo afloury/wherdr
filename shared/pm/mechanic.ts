@@ -17,7 +17,7 @@ export interface MechFacts {
   branch: string
   agentBusy: boolean // the worker's terminal is working: its worktree is not touched
   head?: string // the task's commit
-  pr?: PrState // its open PR
+  pr?: PrState // its open PR, else its merged one (merged: true)
   loggedIn?: boolean // the agent's program answers its login status again
 }
 
@@ -54,7 +54,14 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   // The rest needs the task's open PR, at its commit, opened by an earlier step.
   const prStep = plan.slice(0, s.at).findLast(p => p.action?.kind === 'github.pr')
   const base = prStep?.action?.base
-  if (!pr || !head || pr.headRefOid !== head || !base) return
+  if (!pr || !head || !base) return
+  const mergeMove = () => (step.action?.kind === 'github.merge' && step.ends === 'action' && !step.guarded && !isProtected(guards, pr.baseRefName)
+    && mayMerge(guards, pr.baseRefName, 'engine') && (pr.merged || prReady(pr, head, step.action.checks).ok)
+    ? pick(`merge:${head}`, { kind: 'merge', url: pr.url, base: pr.baseRefName })
+    : undefined)
+  // Merged on GitHub already: nothing to fix on it, the merge step records it.
+  if (pr.merged) return mergeMove()
+  if (pr.headRefOid !== head) return
   if (pr.baseRefName !== base) return pick(`base:${head}`, { kind: 'fix-base', base })
   if (f.agentBusy) return
   if (['BEHIND', 'DIRTY'].includes(pr.mergeStateStatus ?? '') && !isProtected(guards, f.branch)) return pick(`catch-up:${head}`, { kind: 'catch-up', base })
@@ -69,9 +76,7 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   }
   // A merge step the branch rule gives the engine. A protected branch is never
   // merged without the user's gesture, whatever the rule or the autopilot.
-  if (step.action?.kind === 'github.merge' && step.ends === 'action' && !step.guarded && !isProtected(guards, pr.baseRefName)
-    && mayMerge(guards, pr.baseRefName, 'engine') && prReady(pr, head, step.action.checks).ok)
-    return pick(`merge:${head}`, { kind: 'merge', url: pr.url, base: pr.baseRefName })
+  return mergeMove()
 }
 
 // What the agent is told when its CI is red.

@@ -101,6 +101,8 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
         let pr: PrInfo | undefined
         try { pr = (JSON.parse(lines.at(-1) || '[]') as PrInfo[])[0] }
         catch { return { ok: false, error: 'merge: unreadable PR details' } }
+        // Merged on GitHub already (by hand, or a merge answered with an error): done.
+        if (pr?.merged) return { ok: true, link: pr.url, commit: head.trim(), reached: [pr.baseRefName], note: 'already merged on GitHub' }
         const refused = pr && guardAction(job.guards, a, { branch, by: job.by, base: pr.baseRefName })
         if (refused) return { ok: false, error: refused }
         const ready = prReady(pr, head.trim(), a.checks)
