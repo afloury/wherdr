@@ -54,6 +54,8 @@ function tokenizer(tj) {
     merges.set(typeof e === 'string' ? e : e.join(' '), i)
   }
   const PRE = new RegExp(split.pattern.Regex, 'gu')
+  // Never match added/special tokens in pane terms: even <|im_end|> must
+  // stay ordinary bytes, so terminal-controlled text cannot close the system turn.
   function encode(str) {
     const out = []
     const text = form ? String(str).normalize(form) : String(str)
