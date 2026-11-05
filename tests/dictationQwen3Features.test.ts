@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import { describe, expect, it } from 'vitest'
+import { referenceMel } from './qwen3DftReference'
 
 interface Q3 {
   mel: { N_FFT: number, HOP: number, N_FREQS: number, logMel: (a: Float32Array, f: { n_mels: number, data: number[][] }, o?: { dropLastFrame?: boolean }) => { data: Float32Array, nMels: number, T: number } }
@@ -62,6 +63,25 @@ describe('the qwen3 log-mel', () => {
     expect(m.data[0]).toBeCloseTo((Math.log10(40000) + 4) / 4, 4)
     expect(m.data[1]).toBeCloseTo((Math.log10(10000) + 4) / 4, 4)
     expect(m.data[2]).toBeCloseTo((Math.log10(40000) - 4) / 4, 4) // clamped to the gmax-8 floor
+  })
+  it('matches the previous DFT across every real-frequency bin and framing edge', () => {
+    const bank = { n_mels: 201, data: Array.from({ length: 201 }, (_, k) => row(k)) }
+    let seed = 0x12345678
+    const noise = Float32Array.from({ length: 1600 }, () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+      return seed / 2 ** 32 - 0.5
+    })
+    const impulse = new Float32Array(401); impulse[200] = 1
+    const tone = Float32Array.from({ length: 1600 }, (_, i) => Math.sin(2 * Math.PI * 440 * i / 16000))
+    for (const audio of [new Float32Array(), new Float32Array(159).fill(0.5), new Float32Array(1600), impulse, tone, noise]) {
+      for (const dropLastFrame of [false, true]) {
+        const actual = Q.mel.logMel(audio, bank, { dropLastFrame }).data
+        const expected = referenceMel(audio, bank, dropLastFrame)
+        expect(actual.length).toBe(expected.length)
+        const maxError = actual.reduce((max, v, i) => Math.max(max, Math.abs(v - expected[i]!)), 0)
+        expect(maxError).toBeLessThan(2e-5)
+      }
+    }
   })
 })
 
