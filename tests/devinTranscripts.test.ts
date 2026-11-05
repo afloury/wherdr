@@ -571,3 +571,41 @@ it('bounds full-history scans for 40000 hidden steps on initial and cached reads
   } finally { Array.prototype[Symbol.iterator] = iterate }
   expect(scans).toBeLessThanOrEqual(12)
 })
+
+it('paginates by the call step when its image result is in a later step', async () => {
+  const { home } = fixture()
+  const file = writeDevinFixture(home)
+  const doc = JSON.parse(readFileSync(file, 'utf8'))
+  // 121 visible source steps: step 2 is a tool call, while its image is
+  // stored in the separate, otherwise invisible observation step 122.
+  doc.steps = Array.from({ length: 121 }, (_, i) => ({ step_id: i + 1, source: 'agent', message: `Reply ${i + 1}` }))
+  doc.steps[1] = { step_id: 2, source: 'agent', tool_calls: [
+    { tool_call_id: 'diagram-call', function_name: 'read', arguments: { path: 'diagram.png' } },
+  ] }
+  const image = Buffer.from('invented diagram image')
+  doc.steps.push({ step_id: 122, source: 'agent', observation: { results: [
+    { source_call_id: 'diagram-call', content: [{ type: 'image', mimeType: 'image/png', data: image.toString('base64') }] },
+  ] } })
+  writeFileSync(file, JSON.stringify(doc))
+  const reader = createDevinTranscripts({ home })
+  const tail = await reader.chat(pane)
+  expect(tail.items).toHaveLength(120)
+  expect(tail.items?.[0]).toMatchObject({ role: 'tool', ref: '122:r', images: 1 })
+  expect(tail.start).toBe(2)
+  expect(await reader.image(pane, tail.file!, tail.items![0]!.ref!, 0)).toEqual({ type: 'image/png', body: image })
+
+  const older = await reader.chat(pane, { before: tail.start, anchor: tail.token })
+  expect(older.start).toBe(0)
+  expect(older.items?.map(i => i.text)).toEqual(['Reply 1'])
+  const combined = [...older.items!, ...tail.items!]
+  expect(combined).toHaveLength(121)
+  expect(new Set(combined.map(i => i.ref)).size).toBe(121)
+
+  doc.steps.push({ step_id: 123, source: 'agent', message: 'New reply' })
+  writeFileSync(file, JSON.stringify(doc))
+  const next = await reader.chat(pane, { from: tail.start, since: tail.token, anchor: tail.token })
+  expect(next.start).toBe(2)
+  expect(next.rewritten).toBeUndefined()
+  expect(next.items?.slice(0, -1)).toEqual(tail.items)
+  expect(next.items?.at(-1)?.text).toBe('New reply')
+})

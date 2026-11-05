@@ -261,7 +261,9 @@ function takeVisible(steps: Step[], doc: AtifDoc, limit: number): { steps: Step[
   }
   kept.reverse()
   const items = parseDevin(kept, doc.steps, doc.images, doc.results)
-  const start = kept.length < steps.length && items[0]?.ref ? Number(String(items[0].ref).split(':')[0]) || 0 : 0
+  // Image refs can point to a later observation step. Pagination follows the
+  // selected source steps, independently of where attachment bytes are stored.
+  const start = kept.length < steps.length ? Number(kept[0]?.step_id) || 0 : 0
   return { steps: kept, start, items }
 }
 
