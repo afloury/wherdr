@@ -248,6 +248,8 @@ it('the folder\'s wherdr script sends any words and stdin, and fails on a refusa
   await fs.writeFile(script, WHERDR_SCRIPT, { mode: 0o755 })
   const run = (args: string[], input = '') => new Promise<{ code: number, out: string }>((resolve) => {
     const child = execFile(script, args, { env: { PATH: process.env.PATH, WHERDR_URL: url, WHERDR_PM_TOKEN: token } }, (e, out) => resolve({ code: e ? Number(e.code) : 0, out }))
+    // A script that exits before reading stdin (`list`) closes the pipe first: not a failure.
+    child.stdin!.on('error', () => {})
     child.stdin!.end(input)
   })
   try {
