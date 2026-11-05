@@ -62,11 +62,11 @@ export function md(text: string, options: MdOptions = {}): string {
           // fence (including examples containing SVG) remains ordinary code.
           if (!docNow && l.toLowerCase() === 'svg') {
             const src = svgPreview(text)
-            const source = `<pre><code class="language-svg">${escHtml(text)}</code></pre>`
-            const head = `<div class="code-head"><span>svg</span><span class="code-tools"><button type="button" class="code-copy">${escHtml(t('Copy'))}</button></span></div>`
+            const source = `<pre class="svg-source"${src ? ' hidden' : ''}><code class="language-svg">${escHtml(text)}</code></pre>`
+            const head = `<div class="code-head"><span>svg</span><span class="code-tools">${src ? `<button type="button" class="svg-toggle" aria-pressed="false">${escHtml(t('Source'))}</button>` : ''}<button type="button" class="code-copy">${escHtml(t('Copy'))}</button></span></div>`
             return `<div class="code-block svg-block">${head}`
               + (src
-                ? `<img class="svg-preview" src="${escHtml(src)}" alt="${escHtml(t('SVG preview'))}" role="button" tabindex="0" aria-label="${escHtml(t('Enlarge SVG preview'))}"><details class="svg-source"><summary>${escHtml(t('Show SVG source'))}</summary>${source}</details>`
+                ? `<img class="svg-preview" src="${escHtml(src)}" alt="${escHtml(t('SVG preview'))}" role="button" tabindex="0" aria-label="${escHtml(t('Enlarge SVG preview'))}">${source}`
                 : `<p class="svg-note">${escHtml(t('SVG preview unavailable. Source shown below.'))}</p>${source}`)
               + '</div>'
           }

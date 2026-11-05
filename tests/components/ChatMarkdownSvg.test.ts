@@ -14,10 +14,19 @@ function render(text: string) {
 }
 
 describe('SVG fenced previews', () => {
-  it('renders an image with a native source disclosure and the existing Copy control', async () => {
+  it('switches between preview and exact source within one card while keeping Copy available', async () => {
     const w = await mountSuspended(ChatMarkdown, { props: { html: render(`\`\`\`svg\n${source}\n\`\`\``), typing: null } })
     expect(w.find('img.svg-preview').attributes('src')).toMatch(/^data:image\/svg\+xml,/)
-    expect((w.find('details').element as HTMLDetailsElement).open).toBe(false)
+    expect((w.find('.svg-source').element as HTMLElement).hidden).toBe(true)
+    expect(w.find('.code-head .svg-toggle').exists()).toBe(true)
+    await w.find('.svg-toggle').trigger('click')
+    expect((w.find('.svg-source').element as HTMLElement).hidden).toBe(false)
+    expect((w.find('img').element as HTMLImageElement).hidden).toBe(true)
+    expect(w.find('.svg-toggle').attributes('aria-pressed')).toBe('true')
+    expect(w.findAll('.svg-block')).toHaveLength(1)
+    expect(w.find('.code-copy').exists()).toBe(true)
+    await w.find('.svg-toggle').trigger('click')
+    expect((w.find('img').element as HTMLImageElement).hidden).toBe(false)
     expect(w.find('pre').element.textContent).toBe(source)
     expect(w.find('svg').exists()).toBe(false)
     w.unmount()
@@ -38,7 +47,8 @@ describe('SVG fenced previews', () => {
     const w = await mountSuspended(ChatMarkdown, { props: { html: render(`\`\`\`svg\n${source}\n\`\`\``), typing: null } })
     await w.find('img').trigger('error')
     expect(w.find('img').exists()).toBe(false)
-    expect((w.find('details').element as HTMLDetailsElement).open).toBe(true)
+    expect((w.find('.svg-source').element as HTMLElement).hidden).toBe(false)
+    expect((w.find('.svg-toggle').element as HTMLButtonElement).disabled).toBe(true)
     expect(w.find('pre').element.textContent).toBe(source)
     w.unmount()
   })
@@ -50,7 +60,7 @@ describe('SVG fenced previews', () => {
     expect(w.find('pre').element.textContent).toBe(source)
     await w.find('.md-body').trigger('click')
     expect(w.find('pre').element.textContent).toBe(source)
-    expect((w.find('details').element as HTMLDetailsElement).open).toBe(false)
+    expect((w.find('.svg-source').element as HTMLElement).hidden).toBe(true)
     expect(w.emitted('done')).toHaveLength(1)
     w.unmount()
   })

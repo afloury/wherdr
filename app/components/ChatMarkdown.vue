@@ -19,8 +19,7 @@ const el = ref<HTMLElement | null>(null)
 
 let plan: RevealPlan | null = null
 let raf = 0
-// Source in a closed details element must not be rewritten by the typewriter:
-// the preview and its copyable source appear together at the block's position.
+// Reveal the SVG card atomically so typing never rewrites its source or controls.
 const atomic = (n: RevealNode) => {
   const classes = (n as unknown as Element).classList
   return Boolean(classes?.contains('code-head') || classes?.contains('svg-block'))
@@ -109,14 +108,28 @@ let themeObserver: MutationObserver | null = null
 let svgPalette = ''
 function revealSvgSource(img: HTMLImageElement) {
   const block = img.closest('.svg-block')
-  const details = block?.querySelector<HTMLDetailsElement>('.svg-source')
-  if (!details) return false
-  details.open = true
+  const source = block?.querySelector<HTMLElement>('.svg-source')
+  if (!source) return false
+  source.hidden = false
+  const toggle = block?.querySelector<HTMLButtonElement>('.svg-toggle')
+  if (toggle) { toggle.disabled = true; toggle.setAttribute('aria-pressed', 'true') }
   const note = document.createElement('p')
   note.className = 'svg-note'
   note.textContent = t('SVG preview unavailable. Source shown below.')
   img.replaceWith(note)
   return true
+}
+function onSvgToggle(event: MouseEvent) {
+  const button = (event.target as Element).closest<HTMLButtonElement>('.svg-toggle')
+  if (!button || button.disabled) return
+  const block = button.closest('.svg-block')
+  const source = block?.querySelector<HTMLElement>('.svg-source')
+  const image = block?.querySelector<HTMLImageElement>('img.svg-preview')
+  if (!source || !image) return
+  source.hidden = !source.hidden
+  image.hidden = !source.hidden
+  button.setAttribute('aria-pressed', String(!source.hidden))
+  button.textContent = t(source.hidden ? 'Source' : 'Preview')
 }
 function syncSvgTheme(force = false) {
   const images = el.value?.querySelectorAll<HTMLImageElement>('.svg-block img.svg-preview')
@@ -185,7 +198,7 @@ onBeforeUnmount(() => {
 
 <template>
   <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
-  <div ref="el" class="md-body" :class="{ typing: typing !== null }" @click.capture="onClick" @keydown="onKey" @error.capture="onImageError" v-html="html" />
+  <div ref="el" class="md-body" :class="{ typing: typing !== null }" @click.capture="onClick" @click="onSvgToggle" @keydown="onKey" @error.capture="onImageError" v-html="html" />
 </template>
 
 <style scoped>
@@ -195,14 +208,14 @@ onBeforeUnmount(() => {
   object-fit: contain; margin: 0; padding: 12px; border: 0;
   background: transparent; cursor: zoom-in;
 }
+.md-body :deep(.svg-source[hidden]), .md-body :deep(img.svg-preview[hidden]) { display: none; }
 .md-body :deep(img.svg-preview:focus-visible),
-.md-body :deep(.svg-source summary:focus-visible) { outline: 1px solid var(--accent); outline-offset: -2px; }
-.md-body :deep(.svg-source summary) {
-  display: list-item; min-height: 44px; padding: 12px 14px;
-  border-top: 1px solid var(--line-soft); color: var(--muted);
-  font: 500 11px/1.6 var(--mono); cursor: pointer;
+.md-body :deep(.svg-toggle:focus-visible) { outline: 1px solid var(--accent); outline-offset: -2px; }
+.md-body :deep(.svg-toggle) {
+  min-width: 64px; min-height: 44px; padding: 6px 8px; color: var(--muted);
+  font: 500 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; cursor: pointer;
 }
-.md-body :deep(.svg-source summary:hover) { color: var(--text); background: var(--surface-2); }
+.md-body :deep(.svg-toggle:hover) { color: var(--text); background: var(--surface-2); }
 .md-body :deep(.svg-note) { margin: 0; padding: 12px 14px; color: var(--muted); font-size: 13px; }
 .md-body :deep(.svg-block .code-head) { min-height: 44px; height: auto; }
 .md-body :deep(.svg-block .code-copy) { min-width: 44px; min-height: 44px; }
