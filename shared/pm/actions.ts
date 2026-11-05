@@ -24,6 +24,8 @@ export const CODE = { SEND_BACK: 3, NOT_MERGED: 5, NOT_YET: 6 } as const
 // Each script runs in the task's worktree ($1); its other arguments follow.
 // The last line of a successful run is its result (a commit or a link).
 const IN = 'cd "$1" || exit 1; shift;'
+// Does merged PR head $p hold HEAD ($h)? A head pushed from elsewhere is fetched first.
+const HOLDS = `{ [ "$p" = "$h" ] || { git cat-file -e "$p^{commit}" 2>/dev/null || git fetch -q origin "$p" 2>/dev/null; git merge-base --is-ancestor "$h" "$p" 2>/dev/null; }; }`
 const CLEAN = `[ -z "$(git status --porcelain)" ] || { echo "uncommitted changes: commit them, then say you are done"; exit ${CODE.SEND_BACK}; };`
 export const SCRIPT = {
   // Catch up with the target, then push the task branch onto it.
@@ -46,7 +48,7 @@ cur=$(echo "$cur" | head -1)
 if [ -z "$cur" ]; then
   m=$(gh pr list --head "$b" --state merged --json headRefOid,url -q '.[] | .headRefOid+" "+.url' 2>&1) || { echo "$m"; exit 1; }
   if [ -n "$m" ]; then
-    while read -r p u; do { [ "$p" = "$h" ] || git merge-base --is-ancestor "$h" "$p" 2>/dev/null; } && { echo "$u"; exit 0; }; done <<EOF
+    while read -r p u; do ${HOLDS} && { echo "$u"; exit 0; }; done <<EOF
 $m
 EOF
     u=$(echo "$m" | head -1); echo "$b already had PR \${u#* } merged: new commits need a new branch"; exit 1
@@ -63,7 +65,7 @@ j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeS
 j=$(echo "$j" | tail -1)
 if [ "$j" = "[]" ]; then
   m=$(gh pr list --head "$1" --state merged --json url,baseRefName,headRefOid -q '.[] | .headRefOid+" "+(. + {merged: true} | tojson)' 2>&1) || { echo "$m"; exit 1; }
-  while read -r p pj; do [ -n "$p" ] && { [ "$p" = "$h" ] || git merge-base --is-ancestor "$h" "$p" 2>/dev/null; } && { j="[$pj]"; break; }; done <<EOF
+  while read -r p pj; do [ -n "$p" ] && ${HOLDS} && { j="[$pj]"; break; }; done <<EOF
 $m
 EOF
 fi
