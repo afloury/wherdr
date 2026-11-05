@@ -7,7 +7,7 @@ import { pageVisible, socketWake, terminalRenderer, smoothTouchScrolling } from 
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
   cols = 80; rows = 24; options = {}; modes = { mouseTrackingMode: 'none' }
   write(_data: unknown, done?: () => void) { done?.() }
-  loadAddon() {} open() {} dispose() {} refresh() {} attachCustomWheelEventHandler() {}
+  loadAddon() {} open() {} dispose() {} refresh() {} reset() {} attachCustomWheelEventHandler() {}
   attachCustomKeyEventHandler() {} onData() {} onBinary() {}
 } }))
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { proposeDimensions() { return null } } }))
@@ -93,16 +93,23 @@ it.each([false, true])('shares wake probes while preserving touch beta=%s frame 
   }
 })
 
-it.each([false, true])('closes an open terminal socket only while its first frame is missing=%s', async missing => {
+it.each([
+  { name: 'relay reset and control only', paint: null },
+  { name: 'normal core output', paint: 'hello from core' },
+  // Core always sends an attach snapshot, even without new program output.
+  { name: 'idle shell snapshot', paint: '\x18\x1b[H\x1b[2J\x1b[?9001l' },
+  { name: 'cleared screen snapshot', paint: '\x1b[2J\x1b[H' },
+])('waits for core paint: $name', async ({ paint }) => {
   vi.useFakeTimers()
-  let ws!: Socket
+  const sockets: Socket[] = []
   class Socket {
     readyState = 0
     send = vi.fn()
-    close = vi.fn()
+    close = vi.fn(() => { this.readyState = 3; this.onclose?.() })
     onopen?: () => void
     onmessage?: (e: { data: string }) => void
-    constructor() { ws = this }
+    onclose?: (() => void) | null
+    constructor() { sockets.push(this) }
   }
   vi.stubGlobal('WebSocket', Socket)
   pageVisible.value = true
@@ -117,13 +124,50 @@ it.each([false, true])('closes an open terminal socket only while its first fram
   try {
     await ctl.mount(wrapper.element as HTMLElement)
     ctl.connect(false)
+    const ws = sockets[0]!
+    const receive = (packet: object) => ws.onmessage!({ data: JSON.stringify(packet) })
     ws.readyState = 1
     ws.onopen!()
-    ws.onmessage!({ data: JSON.stringify(missing ? { type: 'web.capabilities', mouse: true } : { type: 'terminal.frame', width: 80, height: 24, bytes: '' }) })
-    await vi.advanceTimersByTimeAsync(11999)
+    // events.subscribe precedes attach: another viewer's size event can send
+    // an empty frame and control state before capabilities announce core.
+    receive({ type: 'terminal.frame', width: 80, height: 24, bytes: '' })
+    receive({ type: 'terminal.control', on: false })
+    const loadingBeforeCapabilities = ctl.loading.value
+    // The relay sends these before core's attach DATA arrives. Neither proves
+    // that core painted, and pongs/resize frames must not reset the deadline.
+    receive({ type: 'web.capabilities', mouse: false, core: true })
+    receive({ type: 'terminal.frame', full: true, width: 80, height: 24, bytes: '' })
+    receive({ type: 'terminal.control', on: true })
+    const loadingBeforePaint = ctl.loading.value
+    if (paint !== null) {
+      const bytes = new TextEncoder().encode(paint)
+      receive({ type: 'terminal.frame', width: 80, height: 24, bytes: btoa(paint), credit: bytes.length })
+      expect(ctl.loading.value).toBe(false)
+      expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'credit', bytes: bytes.length }))
+    }
+    await vi.advanceTimersByTimeAsync(6000)
+    receive({ type: 'terminal.frame', width: 80, height: 24, bytes: '' })
+    receive({ type: 'terminal.control', on: false })
+    receive({ type: 'pong' })
+    await vi.advanceTimersByTimeAsync(5999)
     expect(ws.close).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
-    expect(ws.close).toHaveBeenCalledTimes(missing ? 1 : 0)
+    expect(ws.close).toHaveBeenCalledTimes(paint === null ? 1 : 0)
+    if (paint === null) {
+      expect(loadingBeforeCapabilities).toBe(true)
+      expect(loadingBeforePaint).toBe(true)
+      await vi.advanceTimersByTimeAsync(399)
+      expect(sockets).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(sockets).toHaveLength(2)
+      expect(ctl.loading.value).toBe(true)
+    } else {
+      // This is an initial-paint deadline, not a timer for subsequent output.
+      await vi.advanceTimersByTimeAsync(24000)
+      expect(ws.close).not.toHaveBeenCalled()
+      expect(sockets).toHaveLength(1)
+      expect(ctl.loading.value).toBe(false)
+    }
   } finally {
     ctl.dispose()
     wrapper.unmount()

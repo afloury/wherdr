@@ -260,8 +260,9 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   const probe = createSocketProbe(() => tws)
   let handshake: ReturnType<typeof setTimeout> | undefined
-  // Core may accept the attach without painting. Close an open socket that
-  // never delivers a frame so the existing retry path can recover it.
+  // Core may accept the attach without painting. Only DATA bytes prove it
+  // painted: the relay's empty reset/resize frames do not. Even an idle core
+  // sends an ANSI snapshot on attach, so no new program output is required.
   let frameWait: ReturnType<typeof setTimeout> | undefined
   watch(socketWake, () => {
     if (document.hidden || !twsIntent || disposed || opts.hasBanner()) return
@@ -446,18 +447,20 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         coreStream = m.core === true
         if (term) term.options.scrollback = coreStream ? CORE_SCROLLBACK : 0
       } else if (m.type === 'terminal.frame') {
-        if (!gotFrame) {
+        const bytes = b64ToBytes(m.bytes || '')
+        // A size event can precede capabilities; an empty frame is never paint.
+        if (!gotFrame && bytes.length > 0) {
           gotFrame = true
           twsRetry = 0
           clearTimeout(frameWait)
         }
-        loading.value = false
+        if (gotFrame) loading.value = false
         if (!term) return
         const current = term
         const credit = coreStream && Number.isInteger(m.credit) && m.credit > 0 ? m.credit : 0
         // Size and reset apply in stream order (see utils/terminalFrame.ts).
         // Core repaints the screen and its history on each attach.
-        writeTerminalFrame(current, { width: m.width, height: m.height, reset: coreStream && m.full === true, bytes: b64ToBytes(m.bytes || '') }, {
+        writeTerminalFrame(current, { width: m.width, height: m.height, reset: coreStream && m.full === true, bytes }, {
           resized: () => {
             if (term !== current) return
             if (smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
