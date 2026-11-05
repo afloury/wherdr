@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { parseMeters } from '../app/utils/meters'
+import { parseMeters, parseOmpContext } from '../app/utils/meters'
+
+describe('omp context meter', () => {
+  it('reads the context percentage and window, estimating tokens from the displayed percentage', () => {
+    expect(parseOmpContext('quota ◫ 51.7%/1M other')).toEqual({ pct: 51.7, total: 1_000_000, estimated: 517_000 })
+    expect(parseOmpContext('◫ 0%/128K')).toEqual({ pct: 0, total: 128_000, estimated: 0 })
+    expect(parseOmpContext('◫ 100%/1.5m')).toEqual({ pct: 100, total: 1_500_000, estimated: 1_500_000 })
+  })
+  it('reads current bordered gauges, but does not infer missing percent or window labels', () => {
+    expect(parseOmpContext('▶──27%────┃──500K─◀')).toEqual({ pct: 27, total: 500_000, estimated: 135_000 })
+    expect(parseOmpContext('▶─0.5%────┆──1M─◀')).toEqual({ pct: 0.5, total: 1_000_000, estimated: 5_000 })
+    for (const text of ['▶────500K─◀', '▶──27%────...', '▶──27%────◀', '▶──27%──500GB─◀', '▶──27%──500Kgarbage─◀']) expect(parseOmpContext(text)).toBeNull()
+  })
+  it('preserves usage above the window after switching to a smaller model', () => {
+    expect(parseOmpContext('▶──200K─120%◀')).toEqual({ pct: 120, total: 200_000, estimated: 240_000 })
+    expect(parseOmpContext('◫ 120%/200K')).toEqual({ pct: 120, total: 200_000, estimated: 240_000 })
+  })
+  it('does not invent data for missing or invalid meters', () => {
+    for (const text of [null, '', '51%/1M', '◫ 10%/0K', '◫ --/1M']) expect(parseOmpContext(text)).toBeNull()
+  })
+})
 
 describe('usage gauges', () => {
   it('lit le /usage de Claude Code', () => {

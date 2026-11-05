@@ -176,7 +176,8 @@ export interface Pane {
   // omp shown: the "!" / "$" command the user is running (omp stays idle meanwhile).
   ompShell?: ShellRun
 }
-export interface OmpStatus { line: string, meters: string | null }
+// metersFresh: the latest screen read contained these gauges, not a retained reading.
+export interface OmpStatus { line: string, meters: string | null, metersFresh?: boolean }
 export interface OmpActivity { step: string | null, since: number | null }
 
 export interface ChangeLine { kind: 'add' | 'del' | 'context' | 'hunk' | 'meta', text: string }

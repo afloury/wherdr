@@ -39,6 +39,14 @@
   pane and opens a new one for the same agent (the same conversation, or the same herdr-projects
   coordinator or task, as after `coordinator restart`), the view moves to the new pane and the
   draft comes along. A pane closed for good keeps it under its banner, with **Copy draft**.
+- **omp context**: beside the model, plain text shows a whole-number percentage and
+  estimated tokens in uppercase `K`. Select it for the window, original percentage,
+  estimate details and terminal status; no separate status row is added. Estimates use
+  omp's rounded percentage, not cumulative token consumption. Unknown readings stay hidden.
+  Working panes refresh even when not selected; unviewed resting panes retain their reading.
+  Failed or gauge-free reads are marked as last known. On touch screens, context details
+  appear with the model picker when the composer expands. Escape closes details without
+  stopping the agent.
 - **Model and effort pickers** for Claude Code, Codex and omp (omp: its
   "Switch Model" selector, `/switch` or `/model`, and its thinking level, changed with its own
   ⇧⇥ cycle). Changes apply **to the current session only**; wherdr never changes your default

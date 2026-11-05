@@ -23,6 +23,9 @@
   the first 2.0 load; turning it on again is kept. Other agents
   also use dense rows, with a last-answer preview in normal mode; waiting agents keep their
   questions and one-tap answers in both modes.
+  omp cards show context usage as a thin bottom-border line, without changing row height or
+  click targets. Open the conversation for percentage and estimated-token details. Resting
+  panes retain their last reading; unknown readings stay hidden.
   With [herdr-projects](board.md#works-great-with-herdr-projects), the board's spaces follow Herdr's sidebar:
   the Coordinators on top, then one group per repo, headed by its project coordinator (the repo's
   name, the wherdr mark, **Coordinator** and its state), a bar that folds the group and sums up its
