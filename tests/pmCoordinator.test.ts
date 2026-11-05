@@ -394,6 +394,17 @@ describe('wakes', () => {
     expect(now.sent[0]!.text).toContain('The user asked you to run now. Your goal: Ship lot 10.')
     expect(now.sent[0]!.text).toContain('CO-2 (New): added')
   })
+
+  it('wakes at its fixed times, once for slots missed while down', async () => {
+    const day = (d: number, h: number) => new Date(2026, 10, d, h).getTime()
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9', atRan: day(1, 9), autopilot: { on: true, goal: 'Triage', at: 'daily 08:00', events: [], perDay: 3, atOnce: 1 } })
+    expect(await deliver('idle', day(2, 7)).run()).toEqual([])
+    const late = deliver('idle', day(5, 10))
+    expect(await late.run()).toEqual(['CO'])
+    expect(late.sent[0]!.text).toContain('Scheduled wake (daily 08:00). Your goal: Triage.')
+    expect((await store.coordinator('CO'))!.atRan).toBe(day(5, 10))
+    expect((await store.wakes()).filter(w => w.reasons.some(r => r.startsWith('Scheduled')))).toHaveLength(1)
+  })
 })
 
 describe('commands of lot 10', () => {

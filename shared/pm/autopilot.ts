@@ -3,6 +3,7 @@
 // passkey session); the coordinator reads it with `wherdr pm autopilot show`.
 import type { Run, Task } from './run'
 import { chainState } from './advance'
+import { parseSchedule } from './schedule'
 
 export const AUTOPILOT_EVENTS = ['added', 'done', 'stuck', 'ready'] as const
 export type AutopilotEvent = typeof AUTOPILOT_EVENTS[number]
@@ -11,6 +12,7 @@ export interface Autopilot {
   on: boolean
   goal: string
   every?: string // duration (30m, 2h): a wake with the goal, in hours
+  at?: string // fixed times (daily 08:00, mon,thu 09:00, a cron): a wake with the goal, too
   events: AutopilotEvent[]
   perDay: number // tasks started per day
   atOnce: number // tasks working at once (waiting and ready ones take no slot)
@@ -26,6 +28,9 @@ export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error
   const goal = typeof o.goal === 'string' ? o.goal.trim() : ''
   if (goal.length > 2000) return { error: 'goal: 2000 characters at most' }
   if (o.every !== undefined && o.every !== '' && !(typeof o.every === 'string' && /^\d{1,4}[mh]$/.test(o.every) && Number.parseInt(o.every) > 0)) return { error: 'every: a duration like 30m or 2h' }
+  const at = typeof o.at === 'string' ? o.at.trim() : ''
+  const s = at ? parseSchedule(at) : null
+  if (s && ('error' in s || 'every' in s)) return { error: 'at: fixed times like daily 08:00, mon,thu 09:00 or a cron' }
   const events = Array.isArray(o.events) ? o.events : []
   if (!events.every(e => (AUTOPILOT_EVENTS as readonly unknown[]).includes(e))) return { error: `events: ${AUTOPILOT_EVENTS.join(', ')}` }
   const perDay = int(o.perDay, 100), atOnce = int(o.atOnce, 20)
@@ -35,6 +40,7 @@ export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error
   return { autopilot: {
     on: o.on === true, goal, events: [...new Set(events as AutopilotEvent[])], perDay, atOnce,
     ...(typeof o.every === 'string' && o.every ? { every: o.every } : {}),
+    ...(at ? { at } : {}),
     ...(h ? { hours: { from: h.from as number, to: h.to as number } } : {}),
   } }
 }
@@ -111,6 +117,7 @@ export const USER_ONLY: Record<string, string> = {
   merge: 'Merging is the user\'s gesture, or the engine\'s where the branch rule allows it',
   settings: 'Settings change only in wherdr, by the user',
   'autopilot set': 'The autopilot\'s goal and limits change only in wherdr, by the user',
+  ...Object.fromEntries(['add', 'set', 'edit', 'remove', 'on', 'off', 'run'].map(v => [`automation ${v}`, 'Automations are added, changed and run only in wherdr, by the user'])),
 }
 
 // `task add`: in a wake, only with the autopilot on (the user's own turn may always).
