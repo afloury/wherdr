@@ -11,18 +11,21 @@ import { type MachineFs, localFs } from './fsx'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = Record<string, any>
 type Step = Json
-interface ImagePayload { mimeType: string, data?: string, path?: string, hash?: string }
+interface ImagePayload { mimeType: string, data?: string, hash?: string }
 interface AtifDoc {
   file: string
   model: string | null
   steps: Step[]
   images: Map<string, ImagePayload[]>
   fingerprints: Map<number, string>
+  results: Map<string, ToolResult>
 }
 export interface DevinOptions { since?: string, from?: number | null, before?: number | null, anchor?: string }
 
 const PAGE_ITEMS = 120
 const MAX_READ_BYTES = 24 * 1024 * 1024
+// Base64 + JSON framing must remain below coreCall's 16 MiB reply limit.
+const READ_CHUNK_BYTES = 4 * 1024 * 1024
 const MAX_TEXT = 20000
 const FAIL_QUIET_MS = 1500
 const IMAGE_TYPES = /^image\/(?:png|jpeg|gif|webp|avif)$/
@@ -90,11 +93,8 @@ function imagePayload(img: Json): ImagePayload | null {
     : typeof img.extra?.data === 'string' && img.extra.data ? img.extra.data
       : typeof img.source?.data === 'string' && img.source.data ? img.source.data
         : undefined
-  const file = typeof img.source?.path === 'string' && img.source.path !== 'inline' ? img.source.path
-    : typeof img.path === 'string' ? img.path
-      : undefined
-  if (!data && !file) return mime ? { mimeType: mime } : null
-  return { mimeType: mime, ...(data ? { data } : {}), ...(file ? { path: file } : {}) }
+  // An ATIF attachment is not permission to open another file on the machine.
+  return data ? { mimeType: mime, data } : null
 }
 
 function payloads(value: unknown): ImagePayload[] {
@@ -149,8 +149,7 @@ function resultImages(hit: ToolResult | undefined): ImagePayload[] {
   return payloads(hit.result.content).concat(payloads(hit.result.extra), payloads(hit.result.metadata))
 }
 
-export function parseDevin(steps: Step[], all: Step[] = steps, imagesByRef?: Map<string, ImagePayload[]>): ChatItem[] {
-  const results = observations(all)
+export function parseDevin(steps: Step[], all: Step[] = steps, imagesByRef?: Map<string, ImagePayload[]>, results = observations(all)): ChatItem[] {
   const items: ChatItem[] = []
   // Same payload bytes a /chat/image request serves — hashed so the view can
   // collapse a picture repeated in a later message (shared/imageDupes.ts).
@@ -170,7 +169,7 @@ export function parseDevin(steps: Step[], all: Step[] = steps, imagesByRef?: Map
       const parts = step.message
       const blocks = extraBlocks(step)
       const text = clip(contentText(parts) || contentText(blocks))
-      const count = images(parts).length + images(blocks).length
+      const count = imagesByRef ? imagesByRef.get(ref('u'))?.length || 0 : payloads(parts).length + payloads(blocks).length
       if (text || count) items.push({ role: 'user', text, ts, ref: ref('u'), ...(count ? { images: count } : {}), ...(imageHashes(ref('u')) ? { hashes: imageHashes(ref('u')) } : {}) })
       continue
     }
@@ -178,7 +177,7 @@ export function parseDevin(steps: Step[], all: Step[] = steps, imagesByRef?: Map
     const thinking = typeof step.reasoning_content === 'string' ? step.reasoning_content : ''
     if (thinking) items.push({ role: 'thinking', text: clip(thinking), ts, ref: ref('h') })
     const text = clip(contentText(step.message))
-    const count = images(step.message).length + images(extraBlocks(step)).length
+    const count = imagesByRef ? imagesByRef.get(ref('a'))?.length || 0 : payloads(step.message).length + payloads(extraBlocks(step)).length
     if (text || count) items.push({ role: 'assistant', text, ts, ref: ref('a'), ...(count ? { images: count } : {}), ...(imageHashes(ref('a')) ? { hashes: imageHashes(ref('a')) } : {}) })
     for (const [index, call] of toolCalls(step).entries()) {
       const hit = results.get(call.id)
@@ -186,7 +185,7 @@ export function parseDevin(steps: Step[], all: Step[] = steps, imagesByRef?: Map
       const input = call.arguments || {}
       const title = call.name || 'Tool'
       const summary = input.command || input.file_path || input.path || input.query || input.pattern || title
-      const imgCount = resultImages(hit).length
+      const imgCount = imagesByRef ? hit && imagesByRef.get(resultRef(hit))?.length || 0 : resultImages(hit).length
       const imgRef = imgCount && hit ? resultRef(hit) : null
       items.push({
         role: 'tool', name: title, text: clip(String(summary || title)), ts,
@@ -201,8 +200,7 @@ export function parseDevin(steps: Step[], all: Step[] = steps, imagesByRef?: Map
   return items
 }
 
-function collectImages(steps: Step[]): Map<string, ImagePayload[]> {
-  const results = observations(steps)
+function collectImages(steps: Step[], results: Map<string, ToolResult>): Map<string, ImagePayload[]> {
   const found = new Map<string, ImagePayload[]>()
   const add = (ref: string, list: ImagePayload[]) => { if (list.length) found.set(ref, list) }
   for (const step of steps) {
@@ -225,9 +223,20 @@ function collectImages(steps: Step[]): Map<string, ImagePayload[]> {
 }
 
 function normalize(raw: Json, file: string): AtifDoc {
-  const steps = Array.isArray(raw.steps) ? raw.steps.filter((s: unknown) => s && typeof s === 'object') as Step[] : []
+  const original = asList(raw.steps)
+  const found = observations(original)
+  const steps = stripImages(original) as Step[]
   const model = typeof raw.agent?.model_name === 'string' ? raw.agent.model_name : null
-  return { file, model, steps, images: collectImages(steps), fingerprints: new Map() }
+  const resultHashes = new Map([...found].map(([id, hit]) => [id, hash12(JSON.stringify([hit.step.step_id, hit.index, hit.result]))]))
+  const fingerprints = new Map(original.map(step => [Number(step.step_id), hash12(JSON.stringify([
+    step, toolCalls(step).map(call => resultHashes.get(call.id) || null),
+  ]))]))
+  // An older call's fingerprint includes its later observation dependency. A
+  // changed result invalidates pages holding that call even if its step is intact.
+  const results = new Map([...found].map(([id, hit]) => [id, {
+    step: { step_id: hit.step.step_id }, index: hit.index, result: stripImages(hit.result) as Json,
+  }]))
+  return { file, model, steps, images: collectImages(original, found), fingerprints, results }
 }
 
 function pageTooLarge(steps: Step[], maxPageBytes: number): boolean {
@@ -239,17 +248,19 @@ function pageTooLarge(steps: Step[], maxPageBytes: number): boolean {
   return false
 }
 
-function takeVisible(steps: Step[], all: Step[], limit: number, imagesByRef?: Map<string, ImagePayload[]>): { steps: Step[], start: number, items: ChatItem[] } {
+function takeVisible(steps: Step[], doc: AtifDoc, limit: number): { steps: Step[], start: number, items: ChatItem[] } {
   const kept: Step[] = []
   let visible = 0
   for (let i = steps.length - 1; i >= 0; i--) {
     const step = steps[i]!
     kept.push(step)
-    visible += parseDevin([step], all).length
+    // The result index belongs to the document version: never scan all history
+    // again to count one step. Hidden context costs a constant-time check.
+    if (step.source !== 'system' && step.is_copied_context !== true) visible += parseDevin([step], doc.steps, doc.images, doc.results).length
     if (visible >= limit) break
   }
   kept.reverse()
-  const items = parseDevin(kept, all, imagesByRef)
+  const items = parseDevin(kept, doc.steps, doc.images, doc.results)
   const start = kept.length < steps.length && items[0]?.ref ? Number(String(items[0].ref).split(':')[0]) || 0 : 0
   return { steps: kept, start, items }
 }
@@ -328,19 +339,24 @@ export function createDevinTranscripts({
     if (known) return known
     const work = (async () => {
       if (size > MAX_READ_BYTES) throw new Error('Devin conversation exceeds the supported size limit')
-      const buf = await fs.read(file, 0, size)
+      const chunks: Buffer[] = []
+      for (let start = 0; start < size; start += READ_CHUNK_BYTES) {
+        const len = Math.min(READ_CHUNK_BYTES, size - start)
+        const chunk = await fs.read(file, start, len)
+        if (chunk.length !== len) throw new Error('Incomplete Devin transcript read')
+        chunks.push(chunk)
+      }
+      const buf = Buffer.concat(chunks, size)
       let raw: Json
       try { raw = JSON.parse(buf.toString('utf8')) }
       catch { throw new Error('Unsupported Devin transcript format') }
       if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.schema_version !== 'ATIF-v1.7' || !Array.isArray(raw.steps) || raw.session_id !== path.basename(file, '.json')) throw new Error('Unsupported Devin transcript format')
-      const doc = normalize(stripImages(raw) as Json, path.basename(file))
-      doc.images = collectImages(Array.isArray(raw.steps) ? raw.steps : [])
-      for (const step of asList(raw.steps)) doc.fingerprints.set(Number(step.step_id), hash12(JSON.stringify(step)))
+      const doc = normalize(raw, path.basename(file))
       if (!withImages) {
         // Polling retains only metadata and hashes; image views re-read the
         // bounded source on demand rather than pinning base64 across sessions.
         doc.images = new Map([...doc.images].map(([ref, list]) => [ref, list.map((img, n) => ({
-          mimeType: img.mimeType, ...(img.path ? { path: img.path } : {}),
+          mimeType: img.mimeType,
           hash: hash12(img.data || `${ref}:${n}`),
         }))]))
         loaded.set(file, { gen, size, doc })
@@ -417,7 +433,7 @@ export function createDevinTranscripts({
       if (before != null) {
         const end = before === 0 ? 0 : doc.steps.findIndex(s => Number(s.step_id) >= before)
         const slice = end < 0 ? doc.steps : doc.steps.slice(0, end)
-        const page = takeVisible(slice, doc.steps, PAGE_ITEMS, doc.images)
+        const page = takeVisible(slice, doc, PAGE_ITEMS)
         selected = page.steps
         start = page.start
         items = page.items
@@ -426,16 +442,16 @@ export function createDevinTranscripts({
         selected = lo < 0 ? doc.steps : doc.steps.slice(lo)
         if (pageTooLarge(selected, maxPageBytes)) {
           rewritten = true
-          const page = takeVisible(doc.steps, doc.steps, PAGE_ITEMS, doc.images)
+          const page = takeVisible(doc.steps, doc, PAGE_ITEMS)
           selected = page.steps
           start = page.start
           items = page.items
         } else {
-          items = parseDevin(selected, doc.steps, doc.images)
+          items = parseDevin(selected, doc.steps, doc.images, doc.results)
           start = selected[0] && selected.length < doc.steps.length ? Number(selected[0].step_id) || 0 : 0
         }
       } else {
-        const page = takeVisible(doc.steps, doc.steps, PAGE_ITEMS, doc.images)
+        const page = takeVisible(doc.steps, doc, PAGE_ITEMS)
         selected = page.steps
         start = page.start
         items = page.items
@@ -469,13 +485,6 @@ export function createDevinTranscripts({
     if (img.data) {
       if (img.data.length > 80 * 1024 * 1024) return null
       body = Buffer.from(img.data, 'base64')
-    } else if (img.path) {
-      const abs = path.isAbsolute(img.path) ? img.path : path.join(path.dirname(got.file), img.path)
-      try {
-        const st = await fs.stat(abs)
-        if (!st.isFile || st.size > 60 * 1024 * 1024) return null
-        body = await fs.read(abs, 0, st.size)
-      } catch { return null }
     }
     if (!body || body.length > 60 * 1024 * 1024) return null
     const mime = img.mimeType.toLowerCase()
@@ -486,7 +495,7 @@ export function createDevinTranscripts({
     if (!pane.agentSession || Date.now() >= deadline) return { hits: [], limited: Date.now() >= deadline, kind: 'devin' }
     const got = await load(pane.agentSession).catch(e => { if (isMissing(e)) return null; throw e })
     if (!got) return { hits: [], limited: false, kind: 'devin' }
-    const hits = parseDevin(got.doc.steps).filter(i => i.role === 'user' || i.role === 'assistant').reverse().flatMap(i => {
+    const hits = parseDevin(got.doc.steps, got.doc.steps, got.doc.images, got.doc.results).filter(i => i.role === 'user' || i.role === 'assistant').reverse().flatMap(i => {
       const at = matchAt(i.text, text)
       return at < 0 ? [] : [{ role: i.role, text: i.text.slice(0, 180), excerpt: excerpt(i.text, at, 120, text), ts: i.ts, offset: Number(i.ref!.split(':')[0]) }]
     }).slice(0, 8)

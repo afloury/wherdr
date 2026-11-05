@@ -86,10 +86,12 @@ saving transcripts: a core started from inside a Claude Code session inherits
 `CLAUDE_CODE_CHILD_SESSION`, which turns saving off; start core from a plain shell.
 
 Devin CLI (tested with 3000.11.234) is read through its saved ATIF-v1.7 files at
-`~/.local/share/devin/cli/transcripts/<session>.json` (24 MiB maximum). The reader
-matches the process PID to `session_locks/<session>.lock`, rejecting locks older
-than the process, or uses an explicit `-r <session>` / `--resume <session>` launch
-argument. It never guesses from the folder or the newest transcript. Two agents
+`~/.local/share/devin/cli/transcripts/<session>.json` (24 MiB maximum, transferred
+in chunks of at most 4 MiB so remote replies stay below core's transport limit). The reader
+matches the process PID to `session_locks/<session>.lock` only when the lock is
+strictly newer than a proven upper bound on process birth. Linux process metadata
+provides that bound; if it is unavailable, the reader requires an explicit `-r <session>` / `--resume <session>` launch
+argument from core's exact argv or Linux's NUL-separated process arguments. It never guesses from the folder or the newest transcript. Two agents
 in the same folder are resolved independently. If a process has multiple matching
 locks after an in-process `/resume`, or no session can be identified, use Terminal;
 the conversation reader cannot resolve that case. Local `DEVIN_SESSIONS_DIR` and
@@ -99,7 +101,9 @@ default path. No database, hook or agent configuration is modified.
 ATIF updates once per turn: while Devin works, Conversation retains the last
 saved checkpoint. The current prompt, tools and reply appear after the next save.
 Compaction can remove earlier history from ATIF, so scrollback and search cover
-only what Devin retained. Model metadata comes from that checkpoint too; model
+only what Devin retained. A tool observation saved in a later step invalidates
+older pages that held the call, so reloaded history includes its result. Only
+inline image data is shown; image paths in ATIF are never opened. Model metadata comes from that checkpoint too; model
 pickers remain v2 only.
 
 Text left unsent in Claude Code's own input box (a draft or paste never submitted, or the

@@ -174,3 +174,27 @@ describe('Devin core transcripts', () => {
     expect(agentDescendants('10 1 sh\n12 10 /opt/devin -r example\n20 1 devin\n', 10).map(p => p.pid)).toEqual([12])
   })
 })
+
+
+it.each([13, 24])('reads a %s MiB remote ATIF document without exceeding a 16 MiB core reply', async (mebibytes) => {
+  const home = mkdtempSync(path.join(tmpdir(), 'hw-core-large-devin-'))
+  const dir = path.join(home, '.local/share/devin/cli/transcripts')
+  mkdirSync(dir, { recursive: true })
+  const doc = { schema_version: 'ATIF-v1.7', session_id: 'large-session',
+    steps: [{ step_id: 1, source: 'system', message: '' }, { step_id: 2, source: 'agent', message: 'Large remote reply' }] }
+  doc.steps[0]!.message = 'x'.repeat(mebibytes * 1024 * 1024 - Buffer.byteLength(JSON.stringify(doc)))
+  writeFileSync(path.join(dir, 'large-session.json'), JSON.stringify(doc))
+  const core = fakeCore({ 'host-a/t1': { pid: 42424242, argv: ['devin', '-r', doc.session_id] } })
+  let peak = 0
+  const call = async (method: string, params: any) => {
+    const result = params.argv?.[2] === 'printf %s "$HOME"'
+      ? { code: 0, stdout: Buffer.from(home).toString('base64') } : await core.call(method, params)
+    peak = Math.max(peak, Buffer.byteLength(JSON.stringify(result)))
+    if (peak >= 16 * 1024 * 1024) throw new CoreError('rpc', 'reply too large')
+    return result
+  }
+  const p = pane('devin-large', 'host-a/t1', 'devin', '/work/proj')
+  const reader = createCoreTranscripts({ call, pane: () => p, localHome: '/unrelated' })
+  expect((await reader.chat(p)).items?.at(-1)?.text).toBe('Large remote reply')
+  expect(peak).toBeLessThan(16 * 1024 * 1024)
+})

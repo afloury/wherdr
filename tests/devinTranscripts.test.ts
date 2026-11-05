@@ -510,3 +510,64 @@ it('keeps its raw token when the HTTP layer decorates a response token', async (
   writeFileSync(file, '{partial')
   expect(await reader.chat(pane, { since: rawToken })).toMatchObject({ unchanged: true, token: rawToken })
 })
+
+it('never opens transcript image paths, including protected files and relative escapes', async () => {
+  const { home } = fixture()
+  const file = writeDevinFixture(home)
+  const secret = path.join(home, '.ssh/id_ed25519')
+  mkdirSync(path.dirname(secret), { recursive: true })
+  writeFileSync(secret, 'invented private bytes')
+  const doc = JSON.parse(readFileSync(file, 'utf8'))
+  doc.steps = [{ step_id: 1, source: 'user', message: [
+    { type: 'image', path: secret },
+    { type: 'image', source: { path: '../../../../.ssh/id_ed25519' } },
+    { type: 'image', source: { path: '/home/user/.ssh/id_ed25519' } },
+  ] }]
+  writeFileSync(file, JSON.stringify(doc))
+  const opened: string[] = []
+  const reader = createDevinTranscripts({ home, fs: { ...localFs, read: async (p, start, len) => {
+    opened.push(p)
+    return localFs.read(p, start, len)
+  } } })
+  for (let index = 0; index < 3; index++) expect(await reader.image(pane, 'devin-test.json', '1:u', index)).toBeNull()
+  expect(opened.every(p => p === file)).toBe(true)
+})
+
+it('invalidates the page holding a tool when its observation arrives in a later step', async () => {
+  const { home } = fixture()
+  const file = writeDevinFixture(home)
+  const doc = JSON.parse(readFileSync(new URL('./fixtures/devin-atif-later-result.json', import.meta.url), 'utf8'))
+  const result = doc.steps.pop()
+  doc.steps.push(...Array.from({ length: 150 }, (_, i) => ({ step_id: i + 2, source: 'agent', message: `Progress ${i}` })))
+  writeFileSync(file, JSON.stringify(doc))
+  const reader = createDevinTranscripts({ home })
+  const tail = await reader.chat(pane)
+  const older = await reader.chat(pane, { before: tail.start, anchor: tail.token })
+  expect(older.items?.find(i => i.role === 'tool')).toMatchObject({ text: 'npm test' })
+  doc.steps.push(result)
+  writeFileSync(file, JSON.stringify(doc))
+  expect(await reader.chat(pane, { from: tail.start, since: tail.token, anchor: tail.token })).toMatchObject({ rewritten: true })
+  expect(await reader.chat(pane, { before: tail.start, anchor: tail.token })).toMatchObject({ rewritten: true, items: [] })
+  expect((await reader.chat(pane, { before: tail.start })).items?.find(i => i.role === 'tool')).toMatchObject({ out: '12 passed' })
+})
+
+it('bounds full-history scans for 40000 hidden steps on initial and cached reads', async () => {
+  const { home, reader } = fixture()
+  const file = writeDevinFixture(home)
+  const doc = JSON.parse(readFileSync(file, 'utf8'))
+  doc.steps = Array.from({ length: 40000 }, (_, i) => ({ step_id: i + 1, source: 'system', message: 'Hidden performance fixture' }))
+  writeFileSync(file, JSON.stringify(doc))
+  const iterate = Array.prototype[Symbol.iterator]
+  let scans = 0
+  Array.prototype[Symbol.iterator] = function (this: any[]) {
+    if (this.length === 40000 && this[0]?.message === 'Hidden performance fixture') {
+      if (++scans > 12) throw new Error('Full-history scan budget exceeded')
+    }
+    return iterate.call(this)
+  }
+  try {
+    expect((await reader.chat(pane)).items).toEqual([])
+    expect(await reader.latestReply(pane)).toBeNull()
+  } finally { Array.prototype[Symbol.iterator] = iterate }
+  expect(scans).toBeLessThanOrEqual(12)
+})
