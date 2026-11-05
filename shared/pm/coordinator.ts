@@ -65,7 +65,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task decide <task> <choice> --reason "<one sentence>"', does: 'after N send-backs, pick one of the engine\'s options' },
   { usage: 'ack <wake> [<wake>…]', does: 'say you handled an Autopilot wake (each wake ends with its id); unacked, it comes back once, then the user is told' },
   { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, and what is left of today\'s limits' },
-  { usage: 'task start <task>', does: 'start a task to do; in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself)' },
+  { usage: 'task start <task>', does: 'start a task to do, or one stopped on a failure again (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself)' },
   { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done' },
   { usage: 'tell <task> "<text>"', does: 'a message to the task\'s agent; in a wake, only to answer its question (a permission request is the user\'s)' },
 ]

@@ -73,11 +73,18 @@ export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: num
   if (!inHours(ap.hours, new Date(now))) return 'Outside the autopilot\'s hours'
 }
 
+// Worker runs a stopped task may have had for a wake to start it again.
+export const WAKE_RETRIES = 2
+
 // Why the coordinator (or the engine, for a chained task) may not start
 // `task` now, or undefined. In a wake, only with the autopilot on; its limits
-// and hours hold whatever the turn.
+// and hours hold whatever the turn. A task stopped on a failure starts again
+// too, from its step; in a wake only while it has had few worker runs.
 export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, tasks: Task[], runs: Run[], now: number, wake: boolean): string | undefined {
-  if (task.state !== 'todo') return `${task.id} is not to do (${taskStatus(task)})`
+  const stopped = task.state === 'waiting' && !task.waitKind && !task.step?.done
+  if (task.state !== 'todo' && !stopped) return `${task.id} is not to do (${taskStatus(task)})`
+  const tries = runs.filter(r => r.task === task.id && r.role === 'worker').length
+  if (stopped && wake && tries >= WAKE_RETRIES) return `${task.id} already ran ${tries} times: starting it again is the user's call`
   const chain = task.after ? chainState(task, tasks) : 'go'
   if (chain !== 'go') return chain?.wait ?? `${task.id} starts after ${task.after}, which is not done`
   if (wake && !ap?.on) return 'In a wake, a task starts only with the autopilot on'

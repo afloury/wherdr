@@ -77,6 +77,12 @@ describe('starting a task (coordinator, or the engine for a chained one)', () =>
     expect(coordinatorStartRefusal(ap, todo(2), [todo(2), finished(4), finished(5)], [run(4, at(9)), run(5, at(10))], at(12), true)).toMatch(/Today's limit/)
     expect(coordinatorStartRefusal({ ...ap, hours: { from: 22, to: 6 } }, todo(2), [todo(2)], [], at(12), true)).toBe('Outside the autopilot\'s hours')
     expect(coordinatorStartRefusal(ap, task(2), [task(2)], [], at(12), false)).toBe('CO-2 is not to do (working)')
+    // Stopped on a failure: started again, in a wake only while it ran few times; a question is not a stop.
+    const stopped = task(2, { state: 'waiting', waiting: 'git worktree failed' })
+    expect(coordinatorStartRefusal(ap, stopped, [stopped], [run(2, at(9))], at(12), true)).toBeUndefined()
+    expect(coordinatorStartRefusal(ap, stopped, [stopped], [run(2, at(9)), run(2, at(10))], at(12), true)).toBe('CO-2 already ran 2 times: starting it again is the user\'s call')
+    expect(coordinatorStartRefusal(ap, stopped, [stopped], [run(2, at(9)), run(2, at(10))], at(12), false)).toBeUndefined()
+    expect(coordinatorStartRefusal(ap, { ...stopped, waitKind: 'question' }, [stopped], [], at(12), false)).toBe('CO-2 is not to do (waiting)')
   })
 
   it('a chained task waits until the task before it is done', () => {

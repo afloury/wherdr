@@ -68,7 +68,7 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
   for (const p of await store.projects()) {
     const ap = (await store.coordinator(p.key))?.autopilot
     const mine = (await store.tasks()).filter(t => t.project === p.key)
-    const next = mine.find(t => t.after && !coordinatorStartRefusal(ap, t, mine, runs, now, false))
+    const next = mine.find(t => t.after && t.state === 'todo' && !coordinatorStartRefusal(ap, t, mine, runs, now, false))
     if (!next) continue
     const r = await startTask(deps, next.id).catch((e: Error) => ({ ...next, state: 'waiting' as const, waiting: e.message }))
     await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} done` : `could not start after ${next.after}: ${r.waiting ?? ''}`)
