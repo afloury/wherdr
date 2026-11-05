@@ -19,7 +19,7 @@ import type { Receipt } from '../../shared/pm/actions'
 import { SHOT_FILE_RE } from '../../shared/pm/shots'
 import { HerdrError } from './herdr'
 import type { CoordinatorAgent, Proposal, ProposalOutcome } from '../../shared/pm/coordinator'
-import type { Autopilot, TaskStatus } from '../../shared/pm/autopilot'
+import type { Autopilot, DayCount, LastWake, TaskStatus } from '../../shared/pm/autopilot'
 import { readQueue, type Wake } from '../../shared/pm/wakes'
 import type { Automation, Mark } from '../../shared/pm/automations'
 import { DATA_DIR } from './env'
@@ -29,11 +29,14 @@ import { DATA_DIR } from './env'
 // project's default agent, the agent its conversation ran with, and a template
 // change waiting for the user.
 export interface CoordinatorRecord {
-  project: string, tokenHash: string, terminal?: string, turn?: { kind: 'user' | 'wake', at: number, said?: string }
+  project: string, tokenHash: string, terminal?: string, turn?: { kind: 'user' | 'wake', at: number, said?: string, look?: true }
   agent?: CoordinatorAgent, ran?: CoordinatorAgent, proposal?: Proposal, answered?: { outcome: ProposalOutcome, at: number }
   // userAt: the user's last message. seen: each task's status at the last tick; ranAt: the last interval wake.
   userAt?: number, autopilot?: Autopilot, seen?: Record<string, TaskStatus>, ranAt?: number
   atRan?: number // the last scheduled wake at fixed times (autopilot.at), or when it was set
+  woke?: LastWake // the last wake the engine queued, and where tasks stood then
+  skipped?: DayCount // scheduled wakes skipped that day: nothing to do (or the new work limit reached)
+  lookAdded?: DayCount // tasks added that day in the turns of look-for-new-work wakes
 }
 
 export interface AutomationsFile { automations: Automation[], seen?: Record<string, Mark> }

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-// A coordinator's autopilot: its switch, today's counters against the limits,
-// and on demand its goal, interval, fixed times, events and limits (saved by the user
+// A coordinator's autopilot: its switch, whether it is active or asleep
+// (nothing to do: its scheduled wakes are skipped), today's counters against
+// the limits, and on demand its goal, interval, fixed times, events and limits (saved by the user
 // only), its latest wakes (created, delivered, acked) and "run now".
-import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
+import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, LOOK_PER_DAY, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Wake } from '#shared/pm/wakes'
 
@@ -12,8 +13,8 @@ const open = ref(false)
 const busy = ref(false)
 const error = ref('')
 const sent = ref(false)
-const form = reactive({ goal: '', every: '', at: '', events: [] as AutopilotEvent[], perDay: 0, atOnce: 0 })
-const fill = () => Object.assign(form, { goal: ap.value.goal, every: ap.value.every ?? '', at: ap.value.at ?? '', events: [...ap.value.events], perDay: ap.value.perDay, atOnce: ap.value.atOnce })
+const form = reactive({ goal: '', every: '', at: '', events: [] as AutopilotEvent[], perDay: 0, atOnce: 0, lookForWork: false, lookPerDay: LOOK_PER_DAY })
+const fill = () => Object.assign(form, { goal: ap.value.goal, every: ap.value.every ?? '', at: ap.value.at ?? '', events: [...ap.value.events], perDay: ap.value.perDay, atOnce: ap.value.atOnce, lookForWork: !!ap.value.lookForWork, lookPerDay: ap.value.lookPerDay ?? LOOK_PER_DAY })
 watch(ap, fill, { immediate: true })
 
 const EVENT_LABEL: Record<AutopilotEvent, [string, string]> = {
@@ -28,15 +29,28 @@ async function act(fn: () => Promise<unknown>) {
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = false }
 }
-const save = (more: Partial<Autopilot> = {}) => act(() => api('/api/pm/autopilot', {
-  project: props.c.project,
-  autopilot: { ...ap.value, goal: form.goal, every: form.every.trim(), at: form.at.trim(), events: form.events, perDay: Number(form.perDay), atOnce: Number(form.atOnce), ...more },
-}))
+const save = (more: Partial<Autopilot> = {}) => act(() => {
+  const { lookForWork: _, lookPerDay: __, ...kept } = ap.value
+  return api('/api/pm/autopilot', {
+    project: props.c.project,
+    autopilot: { ...kept, goal: form.goal, every: form.every.trim(), at: form.at.trim(), events: form.events, perDay: Number(form.perDay), atOnce: Number(form.atOnce), ...(form.lookForWork ? { lookForWork: true, lookPerDay: Number(form.lookPerDay) } : {}), ...more },
+  })
+})
 // The switch keeps the saved settings: only what Save sent counts.
 const setOn = (on: boolean) => act(() => api('/api/pm/autopilot', { project: props.c.project, autopilot: { ...ap.value, on } }))
 const runNow = () => act(async () => { await api('/api/pm/autopilot', { project: props.c.project, runNow: true }); sent.value = true })
 
 const time = (at?: number) => (at ? new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—')
+// Its last wake: the time today, else the day too.
+const when = (at: number) => (new Date(at).toDateString() === new Date().toDateString() ? time(at) : new Date(at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))
+const stateText = computed(() => {
+  if (!ap.value.on) return tl('Off', 'Arrêté')
+  if (!props.c.asleep) return tl('Active', 'Actif')
+  const woke = props.c.wokeAt ? tl(` · woke ${when(props.c.wokeAt)}`, ` · réveillé ${when(props.c.wokeAt)}`) : ''
+  return props.c.asleep === 'limit'
+    ? tl(`Asleep · new work limit reached until tomorrow${woke}`, `Endormi · limite de travail nouveau atteinte jusqu’à demain${woke}`)
+    : tl(`Asleep · nothing to do${woke}`, `Endormi · rien à faire${woke}`)
+})
 const ENDED: Record<NonNullable<Wake['ended']>, [string, string]> = {
   ack: ['Acked', 'Accusé'], idle: ['Ended idle', 'Fini inactif'], quit: ['Coordinator quit', 'Coordinateur parti'], timeout: ['Timed out', 'Expiré'],
   unanswered: ['No answer', 'Sans réponse'], merged: ['Merged into the next', 'Fusionné au suivant'],
@@ -56,7 +70,7 @@ const counters = computed(() => props.c.limits
   <section class="ap" data-testid="coordinator-autopilot">
     <div class="ap-head">
       <USwitch :model-value="ap.on" color="success" size="lg" :disabled="busy" :aria-label="tl('Autopilot', 'Autopilote')" data-testid="autopilot-on" @update:model-value="setOn" />
-      <span class="mono-label">{{ tl('Autopilot', 'Autopilote') }} · {{ ap.on ? tl('On', 'Actif') : tl('Off', 'Arrêté') }}</span>
+      <span class="mono-label" data-testid="autopilot-state" :data-asleep="ap.on && c.asleep ? '' : undefined">{{ tl('Autopilot', 'Autopilote') }} · {{ stateText }}</span>
       <span class="ap-count mono-label" data-testid="autopilot-counters">{{ counters }}</span>
       <UButton color="neutral" variant="ghost" size="lg" :trailing-icon="open ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" :aria-expanded="open" data-testid="autopilot-toggle" @click="open = !open">
         {{ tl('Details', 'Détails') }}
@@ -92,6 +106,15 @@ const counters = computed(() => props.c.limits
           {{ tl(...EVENT_LABEL[e]) }}
         </UButton>
       </div>
+      <USwitch v-model="form.lookForWork" size="lg" :label="tl('Look for new work', 'Chercher du travail')" data-testid="autopilot-look-for-work"
+        :description="tl('Keep the scheduled wakes when there is nothing to do, for a goal that adds its own tasks.', 'Garder les réveils programmés quand il n’y a rien à faire, pour un objectif qui crée ses propres tâches.')" />
+      <div v-if="form.lookForWork" class="ap-grid">
+        <div>
+          <label class="field-label" :for="`ap-look-${c.project}`">{{ tl('New tasks / day', 'Tâches nouvelles / jour') }}</label>
+          <UInput :id="`ap-look-${c.project}`" v-model="form.lookPerDay" type="number" min="0" max="20" inputmode="numeric" size="xl" class="w-full mono" data-testid="autopilot-look-per-day" />
+        </div>
+        <p class="muted ap-look-note">{{ tl('Added by those wakes; once reached, it sleeps until tomorrow.', 'Ajoutées par ces réveils ; une fois atteint, il dort jusqu’à demain.') }}</p>
+      </div>
       <div class="ap-actions">
         <UButton type="submit" color="primary" size="lg" :loading="busy" data-testid="autopilot-save">{{ t('Save') }}</UButton>
       </div>
@@ -121,6 +144,7 @@ const counters = computed(() => props.c.limits
 .ap-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ap-head > .mono-label:not(.ap-count) { color: var(--text); }
 .ap-count { flex: 1; color: var(--muted); white-space: nowrap; }
+.ap-look-note { align-self: end; }
 .ap-goal { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 .ap-form { display: grid; gap: 6px; max-height: 55vh; overflow-y: auto; overscroll-behavior: contain; }
 .ap-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
