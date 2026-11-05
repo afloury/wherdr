@@ -109,8 +109,8 @@ describe('screenshot upload', () => {
     await expect(up('after', png, 'image/jpeg')).rejects.toMatchObject({ code: 'bad_input' })
     await expect(up('before')).rejects.toMatchObject({ code: 'refused' })
     const [a, b] = await Promise.all([up('after'), up('after')])
-    // Both kept, even sent at once; only these two files are on disk.
-    expect((await store.task(task.id))?.step?.shots?.work?.map(s => s.file)).toEqual([a!.file, b!.file])
+    // Both kept, even sent at once (in either order); only these two files are on disk.
+    expect((await store.task(task.id))?.step?.shots?.work?.map(s => s.file).sort()).toEqual([a!.file, b!.file].sort())
     expect((await fs.readdir(path.join(dir, 'shots', task.id))).sort()).toEqual([a!.file, b!.file].sort())
     expect(await store.shot(task.id, a!.file)).toEqual(png)
     expect(await store.shot(task.id, '../tasks/UI-1.json')).toBeNull()
