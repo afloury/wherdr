@@ -44,6 +44,7 @@ export async function stepAction(deps: CoreAdminDeps & { store: PmStore }, id: u
   const { store } = deps
   const task = await store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
+  if (task.stopped) throw new HerdrError('refused', 'The task is stopped: continue it first')
   if (running.has(task.id)) throw new HerdrError('busy', 'Already checking')
   running.add(task.id)
   try { return await stepActionOf(deps, task, by) } finally { running.delete(task.id) }
@@ -69,6 +70,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     const result: ActionResult = run
       ? await runAction({ store, sh: actionShell(deps, machineOn(deps, p.machine).on) }, {
           task, step: act.step, attempt: act.attempt, action: act.action, by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
+          halted: async () => !!(await store.task(task.id))?.stopped,
         }).catch((e: Error) => ({ ok: false, error: e.message }))
       : { ok: false, error: 'No worktree: the task never started' }
     const evidence = { ...(result.link ? { link: result.link } : {}), ...(result.commit ? { commit: result.commit } : {}) }

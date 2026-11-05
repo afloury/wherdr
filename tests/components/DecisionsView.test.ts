@@ -9,7 +9,7 @@ import type { Pane } from '#shared/types'
 const posts: { url: string, body: Record<string, unknown> }[] = []
 let list: Decision[] = []
 registerEndpoint('/api/pm/decisions', () => list)
-for (const url of ['/api/pm/decide', '/api/pm/step-user', '/api/pm/template-proposal', '/api/pm/autopilot', '/api/pm/permission'])
+for (const url of ['/api/pm/task-resume', '/api/pm/decide', '/api/pm/step-user', '/api/pm/template-proposal', '/api/pm/autopilot', '/api/pm/permission'])
   registerEndpoint(url, { method: 'POST', handler: async (e) => { posts.push({ url, body: await readBody(e) }); return {} } })
 
 const d = (id: string, group: Decision['group'], more: Partial<Decision> = {}): Decision => ({ id, group, project: 'CO', task: id, title: `Task ${id}`, text: `About ${id}`, at: 1, ...more })
@@ -107,4 +107,14 @@ it('says when nothing waits', async () => {
   const b = await mountSuspended(DecisionsView)
   w = b
   await vi.waitFor(() => expect(b.find('[data-testid="decisions-empty"]').text()).toBe('Nothing waits for you.'))
+})
+
+it('a stopped task goes on from here; an agent waiting can be stopped', async () => {
+  list = [d('CO-8', 'stopped', { text: 'Stopped by the coordinator: it loops' }), d('CO-2', 'agent', { kind: 'question', terminal: 'host/t2' })]
+  const b = await mount()
+  expect(item(b, 'CO-8').findAll('[data-resume]').map(x => x.text())).toEqual(['Continue', 'Take it as it is', 'Archive'])
+  expect(item(b, 'CO-2').find('[data-testid="decision-stop"]').exists()).toBe(true)
+  expect(item(b, 'CO-8').find('[data-testid="decision-stop"]').exists()).toBe(false)
+  await item(b, 'CO-8').find('[data-resume="as-is"]').trigger('click')
+  await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/task-resume', body: { id: 'CO-8', how: 'as-is' } }]))
 })

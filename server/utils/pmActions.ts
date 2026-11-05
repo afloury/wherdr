@@ -25,6 +25,7 @@ export interface ActionJob {
   worktree: string
   branch: string
   allowed?: string[] // protected branches the task already reached through you
+  halted?: () => Promise<boolean> // the task was stopped meanwhile: no merge
 }
 
 // The shell of a project's machine, through herdr-core. stderr is kept: a
@@ -105,6 +106,7 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
         const ready = prReady(pr, head.trim(), a.checks)
         if (!ready.ok && ready.later && i < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[i]!); continue }
         if (!ready.ok) return { ok: false, error: `merge: ${ready.why}` }
+        if (await job.halted?.()) return { ok: false, error: 'merge: the task was stopped' }
         const m = await run(deps, SCRIPT.merge, [wt, pr!.url, head.trim(), a.method ?? ''])
         return m.code === 0 ? { ok: true, link: pr!.url, commit: head.trim(), reached: [pr!.baseRefName] } : fail(m)
       }

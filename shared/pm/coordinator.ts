@@ -50,6 +50,7 @@ export type Command =
   | { name: 'automation list' } | { name: 'automation show', id: string }
   | { name: 'tell', task: string, text: string }
   | { name: 'task start', task: string }
+  | { name: 'task stop', task: string, reason: string }
   | { name: 'task add', title: string, type: string, after?: string, description?: string }
 
 // One table for the parser, the skill and the role file.
@@ -68,7 +69,8 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, and what is left of today\'s limits' },
   { usage: 'automation list', does: 'the project\'s automations: on or off, schedule or event, last firing' },
   { usage: 'automation show <automation>', does: 'one automation, its prompt and its last firings; only the user adds or changes them, in wherdr' },
-  { usage: 'task start <task>', does: 'start a task to do, or one stopped on a failure again (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself)' },
+  { usage: 'task start <task>', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself)' },
+  { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done' },
   { usage: 'tell <task> "<text>"', does: 'a message to the task\'s agent; in a wake, only to answer its question (a permission request is the user\'s)' },
 ]
@@ -92,7 +94,7 @@ export function parseCommand(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known(...({ 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task add': ['type', 'after', 'description'] }[verb] ?? []))
+  const extra = known(...({ 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task add': ['type', 'after', 'description'] }[verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (verb === 'autopilot show' || verb === 'automation list') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
@@ -113,6 +115,11 @@ export function parseCommand(argv: unknown): Command | { error: string } {
     return { name: verb, title, type, ...(after ? { after } : {}), ...(description ? { description } : {}) }
   }
   if (verb === 'task start') return TASK_RE.test(task) && !w3 ? { name: verb, task } : usage(verb)
+  if (verb === 'task stop') {
+    const reason = (flags.reason ?? '').trim()
+    if (!TASK_RE.test(task) || w3 || !reason) return usage(verb)
+    return reason.length <= 300 && !reason.includes('\n') ? { name: verb, task, reason } : { error: '--reason is one sentence (300 characters at most)' }
+  }
   if (verb !== 'task tag' && verb !== 'task link' && verb !== 'step done' && verb !== 'task decide') return { error: `unknown command: ${words.join(' ') || '(none)'} (see wherdr pm help)` }
   if (!TASK_RE.test(task) || rest.length) return usage(verb)
   if (verb === 'task tag') {

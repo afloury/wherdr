@@ -1,12 +1,15 @@
 <script setup lang="ts">
 // A task's sheet: its Plan (the steps, the current one, what its holder was
 // told, the proofs and rounds), its links, the agent holding the step, and
-// the step's button when it waits for the user ("Merged").
-import type { Card } from '#shared/pm/board'
+// the step's button when it waits for the user ("Merged"), Stop (with its
+// reason, confirmed here), and how a stopped task goes on.
+import { canStop, type Card } from '#shared/pm/board'
+import { RESUMES, type Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
 import { shotMode } from '#shared/pm/shots'
 
-const props = defineProps<{ card: Card, pane?: Pane }>()
+// stopping: opened from the card menu's Stop, the confirmation shown.
+const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean }>()
 const emit = defineEmits<{ closed: [], changed: [] }>()
 const open = ref(true)
 const busy = ref(false)
@@ -19,13 +22,18 @@ const rounds = (id: string) => props.card.state?.rounds[id] ?? 0
 // The steps that have screenshots, to look at before the push, the PR or the merge.
 const shotSteps = computed(() => props.card.plan.filter(s => props.card.state?.shots?.[s.id]?.length))
 
-async function press() {
+async function run(fn: () => Promise<unknown>) {
   busy.value = true
   error.value = ''
-  try { await api('/api/pm/step-user', { id: props.card.id }); emit('changed') }
+  try { if (await fn() !== false) emit('changed') }
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = false }
 }
+const press = () => run(() => api('/api/pm/step-user', { id: props.card.id }))
+const confirmStop = ref(!!props.stopping)
+const why = ref('')
+const stop = () => run(async () => { await stopTaskApi(props.card.id, why.value); confirmStop.value = false })
+const resume = (how: Resume) => run(() => resumeTaskApi(props.card.id, how))
 </script>
 
 <template>
@@ -39,11 +47,22 @@ async function press() {
         <a v-for="l in card.links" :key="l.url" :href="l.url" target="_blank" rel="noopener" class="board-chip">{{ l.label }}</a>
       </div>
       <div class="task-sheet-actions">
-        <UButton v-if="card.userLabel" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="press">{{ card.userLabel }}</UButton>
+        <UButton v-if="card.userLabel && !card.stopped" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="press">{{ card.userLabel }}</UButton>
+        <UButton v-for="how in card.stopped ? RESUMES : []" :key="how" size="xl" :color="how === 'continue' ? 'primary' : 'neutral'" :variant="how === 'continue' ? 'solid' : 'outline'"
+          :disabled="busy" :data-resume="how" @click="resume(how)">{{ tl(...RESUME_LABEL[how]) }}</UButton>
         <UButton v-if="pane" color="neutral" variant="outline" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)">
           {{ card.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent') }}
         </UButton>
       </div>
+      <UButton v-if="canStop(card) && !confirmStop" color="error" variant="outline" size="xl" icon="i-lucide-square" class="task-stop" data-testid="task-stop" @click="confirmStop = true">{{ tl('Stop', 'Arrêter') }}</UButton>
+      <form v-if="canStop(card) && confirmStop" class="task-stop-confirm" data-testid="task-stop-confirm" @submit.prevent="stop">
+        <p>{{ tl('Stop this task? Its agent ends; the worktree, branch and work stay, and nothing is merged.', 'Arrêter cette tâche ? Son agent s’arrête ; le worktree, la branche et le travail restent, rien n’est fusionné.') }}</p>
+        <UInput v-model="why" size="xl" maxlength="300" :placeholder="tl('Why (optional)', 'Pourquoi (facultatif)')" data-testid="task-stop-why" />
+        <div class="task-sheet-actions">
+          <UButton type="submit" color="error" size="xl" :loading="busy" data-testid="task-stop-yes">{{ tl('Stop the task', 'Arrêter la tâche') }}</UButton>
+          <UButton color="neutral" variant="outline" size="xl" :disabled="busy" @click="confirmStop = false">{{ t('Cancel') }}</UButton>
+        </div>
+      </form>
       <p v-if="error" class="error">{{ error }}</p>
 
       <template v-if="shotSteps.length">
@@ -85,6 +104,8 @@ async function press() {
 .task-desc { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-shots { display: grid; gap: 6px; }
+.task-stop { align-self: flex-start; }
+.task-stop-confirm { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--danger); }
 .task-plan { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
 .task-plan li { display: flex; flex-direction: column; gap: 4px; padding: 8px 0 8px 12px; border-bottom: 1px solid var(--line-soft); border-left: 2px solid transparent; }
 .task-plan li.past { color: var(--muted); }
