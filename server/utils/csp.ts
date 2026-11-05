@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 
 export const CSP_BASE = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; manifest-src 'self'"
 
-// The on-device dictation worker's own policy (a worker follows the policy of
+// The on-device dictation workers' own policy (a worker follows the policy of
 // its script's response, not the page's): 'wasm-unsafe-eval' lets it compile
 // its WebAssembly runtime (sherpa-onnx, onnxruntime-web, served by
 // /models/runtime/). It allows compiling WebAssembly, never eval() of

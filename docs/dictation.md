@@ -55,6 +55,8 @@ insertion are shared; only the engine behind the interface changes.
 | `scripts/dictation-files.mjs`, `scripts/fetch-dictation-files.mjs` | Pinned downloads into `DATA_DIR/models`, checked by sha256 (the code, and its CLI) |
 | `server/utils/dictationServerFiles.ts`, `server/api/dictation/prepare.post.ts` | The server fetching a model's missing files when Install asks |
 | `public/workers/dictation-worker.js` | The sherpa-onnx worker: WASM runtime, recognizer, decode |
+| `public/workers/dictation-webgpu-worker.js` | The Qwen3-ASR ORT WebGPU worker; not selectable yet |
+| `public/workers/qwen3/*.js` | Qwen tokenizer, prompt, log-mel (real FFT) and fp16 helpers |
 | `public/workers/model-files.js` | Model-file access shared by the dictation workers (cached slices, Range-slice streaming) |
 
 ## The engine interface
@@ -360,6 +362,35 @@ mark, since a page can also be lost for another reason.
    French and English on an Android phone and an iPhone, noting load time, decode time and memory.
    Record the heap and peak in `memory` (see [Memory budget](#memory-budget)).
 6. Document the set in [On-device dictation files](installation.md#on-device-dictation-files).
+
+### Qwen WebGPU worker
+
+`dictation-webgpu-worker.js` loads the pinned Qwen3-ASR q4f16 export through the shared
+model-file loader and ORT WebGPU 1.23.2. It requires WebGPU and `shader-f16`, and uses the
+checked adapter and the same runtime-created device on all three sessions. It has no catalog entry or engine
+wiring yet: it cannot be selected in Settings or by a saved model ID.
+
+The load/decode protocol matches the CPU worker. A decode also accepts `terms` and `language`;
+its final message includes detected `language` and `truncated`. All operations are serialized.
+`{ t: 'cancel', id }` cancels only that request, including queued work, suppresses its result,
+and stops before the next ORT call; a running GPU call must finish first. A replacement load or
+`{ t: 'dispose' }` cancels pending takes and releases sessions after the current call ends.
+
+CPU tensors, logits, encoder outputs and GPU KV tensors are disposed on success, cancellation
+and failure. Partial loads release their successful sessions too. A failed run or lost device
+releases the model; the next decode reloads the last configuration on a fresh device. External
+weights leave the worker's own references after session creation; the embedding table remains
+for decoding. ORT heap/peak memory and full Qwen fp16 inference have not been measured here;
+there is no synthetic `heap` figure in worker messages. Activation and Android measurements
+remain F4's next part. A parent can terminate the worker to stop a stalled runtime or download.
+
+ORT 1.23.2's custom-device path fails GPU-to-CPU downloads
+([ORT #32257](https://github.com/microsoft/onnxruntime/issues/32257)). The worker therefore
+lets ORT create its native default device, temporarily binding adapter/device acquisition
+inside this worker to the checked adapter and requiring `shader-f16`. It captures the device
+for cleanup and verifies all sessions share it. Those methods are restored on cleanup.
+Reloading re-executes the classic ORT bundle to get fresh backend/WASM state after device
+loss or a cached initialization failure; old runtime references are dropped for collection.
 
 ### Content Security Policy
 
