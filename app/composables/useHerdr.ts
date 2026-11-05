@@ -97,6 +97,11 @@ async function checkSelectedSessions() {
   }
 }
 export const eventsOpen = ref(false)
+// Bumped once when a reconnected socket's first accepted state lands (see
+// connectEvents). reconnectEvents() replaces a zombie socket with onclose =
+// null, keeping eventsOpen true through the swap: only this counter tells a
+// listener the server answers again (ChatView's resume re-read).
+export const eventsGen = ref(0)
 export const netDown = ref(false)
 export const cachedAt = ref<number | null>(null)
 export const offlineView = computed(() => cachedAt.value !== null)
@@ -535,6 +540,10 @@ export function connectEvents() {
   eventProbe.cancel()
   const ws = new WebSocket(`${wsBase()}/ws/events`)
   evWs = ws
+  // This socket's first accepted state counts for eventsGen only on a
+  // reconnection: the first-ever connection must not drop the mount's
+  // initial read for a fresh one.
+  let genArmed = false
   // A CONNECTING socket fires nothing: no open, no close, no retry. If the
   // network is not actually back yet, the handshake hangs and the app would
   // sit offline forever -- close it on a deadline so onclose retries.
@@ -549,6 +558,7 @@ export function connectEvents() {
     evFirst = setTimeout(() => {
       if (evWs === ws) { try { ws.close() } catch { /* ignore */ } }
     }, 8000)
+    genArmed = everOpen
     if (everOpen) {
       settleUntil = Date.now() + SETTLE_MS
       // Reconnection = often a redeployment: we check right away whether
@@ -591,6 +601,10 @@ export function connectEvents() {
       lastStateAt = Date.now()
       cachedAt.value = null
       if (state.ok && mayReadOffline(readOfflineAccess())) saveHome(herdrState.value)
+      // A reconnected socket's first accepted state: ChatView re-reads at
+      // once. Not armed for the first-ever connection, and left armed when
+      // the applied state is not ok — the ok one that follows still counts.
+      if (genArmed && herdrState.value.ok) { genArmed = false; eventsGen.value++ }
     }
     catch { /* message illisible */ }
   }
