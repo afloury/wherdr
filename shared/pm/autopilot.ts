@@ -174,6 +174,7 @@ export const USER_ONLY: Record<string, string> = {
   merge: 'Merging is the user\'s gesture, or the engine\'s where the branch rule allows it',
   settings: 'Settings change only in wherdr, by the user',
   'autopilot set': 'The autopilot\'s goal and limits change only in wherdr, by the user',
+  pacing: 'The pace of each quota account changes only in wherdr, by the user',
   ...Object.fromEntries(['add', 'set', 'edit', 'remove', 'on', 'off', 'run'].map(v => [`automation ${v}`, 'Automations are added, changed and run only in wherdr, by the user'])),
 }
 
