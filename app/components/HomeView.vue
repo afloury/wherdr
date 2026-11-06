@@ -269,11 +269,31 @@ const soloMachine = computed<MachineInfo>(() => machines.value[0] || {
 })
 const baseKeyOf = (m: MachineInfo) => m.baseKey ?? m.key
 function machineMenuItems(m: MachineInfo): MenuItem[] {
-  // Machines are managed in Settings › Agents; the menu only suggests Claude quotas.
+  // Only what herdr-core can do from here; rename and forget live in Settings › Agents.
   const items: MenuItem[] = []
+  if (m.status === 'online') {
+    items.push({ label: tl('New agent here', 'Nouvel agent ici'), icon: 'i-lucide-plus', run: () => {
+      haptic()
+      newAgentMachine.value = m.key
+      newAgentOpen.value = true
+    } })
+  }
+  else if (!m.local) {
+    items.push({ label: t('Reconnect'), icon: 'i-lucide-plug', run: async () => {
+      try { await api('/api/machine/connect', { key: baseKeyOf(m) }) }
+      catch (err) { toast(t((err as Error).message)) }
+    } })
+  }
+  items.push({
+    label: tl('Machine settings', 'Réglages des machines'),
+    desc: m.local ? undefined : tl('Rename, forget', 'Renommer, oublier'),
+    icon: 'i-lucide-settings',
+    run: () => navigateTo({ path: '/settings', query: { section: 'agents' } }),
+  })
   const hint = claudeHint(m)
   if (hint) {
     items.push(
+      { kind: 'separator' },
       {
         label: hint.state === 'outdated' ? tl('Update Claude quotas', 'Mettre à jour les quotas Claude') : tl('Set up Claude quotas', 'Configurer les quotas Claude'),
         desc: tl('In Settings › Agents', 'Dans Réglages › Agents'),
@@ -634,7 +654,7 @@ function resetListWidth() {
                 {{ s.counted.length }}
               </span>
             </button>
-            <UDropdownMenu :items="machineMenu(s.m)" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
+            <UDropdownMenu v-if="machineMenuItems(s.m).length" :items="machineMenu(s.m)" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
               <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="machine-options icon-btn" :aria-label="`${t('Options')} : ${s.name}`" />
             </UDropdownMenu>
           </div>

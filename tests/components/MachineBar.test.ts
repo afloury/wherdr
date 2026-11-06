@@ -318,7 +318,7 @@ describe('a tab showing one machine', () => {
     el.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'touch', bubbles: true }))
   }
 
-  it('drops the machine header; the tab has no machine actions', async () => {
+  it('drops the machine header; a long press on the tab opens its actions', async () => {
     machineBarSaved.value = 'laptop'
     const w = await mountHome()
     expect(w.findAll('section.machine').map(s => s.attributes('data-machine'))).toEqual(['laptop'])
@@ -326,7 +326,8 @@ describe('a tab showing one machine', () => {
     expect(w.find('.machine-tab-offline').exists()).toBe(false)
     expect(w.findAll('section.machine .card')).toHaveLength(1)
     await press(w.find('[data-bar-id="laptop"]').element)
-    expect(menuState.open).toBe(false)
+    expect(menuState.open).toBe(true)
+    expect(menuState.items.map(i => 'label' in i ? i.label : '')).toContain('New agent here')
   })
 
   it('the local machine (key \'\') drops its header too', async () => {
