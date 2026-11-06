@@ -173,6 +173,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
   return code
 
   async function install() {
+    let leftForUser = false
     // 1. What is there.
     const v2 = detectV2({ ...o, home, env, run })
     say(describeV2(v2))
@@ -272,6 +273,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
       summary.import = { report: r.report, projects: r.projects.added.map(p => p.key), tasks: r.tasks.added.length, machines: r.machines.added.map(x => x.name), machinesMissing: r.machines.missing.map(x => `${x.target}: ${x.reason}`), settings: r.settings.carried }
       step('OK', `imported ${r.projects.added.length} projects, ${r.tasks.added.length} tasks, ${r.machines.added.length} machines, ${r.settings.carried.length} settings; report ${r.report}`)
       for (const x of r.machines.missing) next(`machine ${x.target}: ${x.reason}`)
+      if (r.machines.missing.length) leftForUser = true
     }
 
     fs.mkdirSync(path.join(o.dir, 'data'), { recursive: true, mode: 0o700 })
@@ -289,7 +291,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     fs.writeFileSync(path.join(o.dir, 'update.sh'), updateScript({ branch: o.branch, name, port: o.port }), { mode: 0o755 })
     step('OK', `${o.dir}/update.sh`)
 
-    let code = EXIT.ok
+    let code = leftForUser ? EXIT.todo : EXIT.ok
     if (ts && !serveDone) {
       const r = run('tailscale', ['serve', '--bg', `--https=${o.httpsPort}`, target])
       if (r.ok) { m.tailscale = o.httpsPort; save(m); serveDone = true; step('OK', `tailscale serve https:${o.httpsPort} → ${target}`) }
@@ -319,7 +321,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     const m = manifest
     const plan = [
       ...(m.tailscale ? [`tailscale serve --https=${m.tailscale} off`] : []),
-      ...(m.units || []).map(u => `stop, disable and remove ${u}.service`),
+      ...[...(m.units || [])].reverse().map(u => `stop, disable and remove ${u}.service`),
       ...((m.units || []).includes(`${m.name}-hc`) ? [] : (m.machines || []).map(x => `hc machine rm ${x} (session ${m.hcSession})`)),
       ...(m.hcStateCreated && (m.units || []).includes(`${m.name}-hc`) ? [`remove herdr-core's state of session ${m.hcSession} (${hcState(m.hcSession)})`] : []),
       o.keepData ? `remove what is in ${o.dir} except data/` : m.createdDir ? `remove ${o.dir}` : `empty ${o.dir} (it existed, empty, before)`,

@@ -153,6 +153,7 @@ describe('runImport', () => {
     expect(again.projects.added).toEqual([])
     expect(again.tasks.added).toEqual([])
     expect(fs.readdirSync(path.join(data, 'projects/tasks'))).toHaveLength(3)
+    expect(fs.readdirSync(path.join(data, 'migration')).filter(f => f.startsWith('report-'))).toHaveLength(1) // the first report is kept
     expect(hashTree(FIX)).toBe(before)
   })
 

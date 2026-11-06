@@ -59,7 +59,7 @@ done or plan printed, `2` bad option, `3` missing prerequisite, `4` conflict, `5
 
 | From v2 | In v3 |
 | --- | --- |
-| herdr-projects repos | Projects (Projects page): name, folder, key, and `workspace.from` as the base branch. Each needs a template before its tasks can start; the report lists the board settings to redo in it (reviewer, merge, worker…). Folders that no longer exist are skipped. |
+| herdr-projects repos | Projects (Settings › Projects): name, folder, key, and `workspace.from` as the base branch. Each needs a template before its tasks can start; the report lists the board settings to redo in it (reviewer, merge, worker…). Folders that no longer exist are skipped. |
 | Open board tasks (to do, under way, waiting) | Tasks to do in their project, with title, description and creation date. Done and archived tasks are not imported. |
 | Herdr SSH machines | herdr-core machines (`hc machine add` with the same target and name) when `ssh <target> 'command -v hc'` answers there without a password; otherwise the report says what is missing. |
 | Synced settings (appearance, home, conversation, files, notification rules), Do not disturb, this machine's name, recent folders | The same settings in v3. A setting already set in v3 is never replaced. |

@@ -357,6 +357,8 @@ export function runImport(o) {
       v: 1, at: res.at, tasks: { ...(state.tasks || {}), ...Object.fromEntries(t.tasks.map(x => [x.from, x.task.id])) },
     })
     res.report = path.join(data, 'migration-report.md')
+    // The report of an earlier run is kept: it lists what that run imported.
+    if (fs.existsSync(res.report)) fs.renameSync(res.report, path.join(data, 'migration', `report-${String(state.at || now).replace(/[:.]/g, '-')}.md`))
     fs.writeFileSync(res.report, renderReport(res), { mode: 0o600 })
   }
   return res
@@ -385,16 +387,16 @@ export function renderReport(r) {
   L.push('## Projects', '')
   if (!r.projects.board) L.push('No herdr-projects board found: no project imported.', '')
   if (r.projects.added.length) {
-    L.push(`Imported as v3 projects${r.projects.switchedOn ? ' (Projects switched on)' : ''}. Each needs a template before its tasks can start (Projects › the project › Template).`, '')
+    L.push(`Imported as v3 projects${r.projects.switchedOn ? ' (Projects switched on)' : ''}. Each needs a template before its tasks can start (Settings › Projects).`, '')
     row('Key', 'Name', 'Folder', 'Base branch', 'v2 settings to redo in the template'); row('---', '---', '---', '---', '---')
     for (const p of r.projects.added) row(p.key, p.name, p.path, p.base || '', p.left.join(', '))
     L.push('')
   }
-  if (r.projects.skipped.length) { L.push('Not imported:', ''); for (const s of r.projects.skipped) L.push(`- ${s.name} (${s.path}): ${s.reason}`); L.push('') }
+  if (r.projects.skipped.length) { L.push('Not imported this time:', ''); for (const s of r.projects.skipped) L.push(`- ${s.name} (${s.path}): ${s.reason}`); L.push('') }
   L.push('## Tasks', '')
   L.push(r.tasks.added.length ? 'Open board tasks imported as v3 tasks to do (type `task`; pick their type once the project has a template). Done and archived tasks were not imported.' : 'No open board task imported. Done and archived tasks are never imported.', '')
   for (const t of r.tasks.added) L.push(`- ${t.id} ← ${t.from} (${t.stage}): ${t.title}`)
-  if (r.tasks.listed.length) { L.push('', 'Open tasks not imported:', ''); for (const t of r.tasks.listed) L.push(`- ${t.id}: ${t.title || ''} (${t.reason})`) }
+  if (r.tasks.listed.length) { L.push('', 'Open tasks not imported this time:', ''); for (const t of r.tasks.listed) L.push(`- ${t.id}: ${t.title || ''} (${t.reason})`) }
   L.push('', '## Machines', '')
   if (!r.machines.added.length && !r.machines.missing.length && !r.machines.have.length) L.push('No SSH machine in Herdr.')
   for (const m of r.machines.added) L.push(`- ${m.planned ? 'Would add' : 'Added'} ${m.name} (${m.target})${m.note ? `: ${m.note}` : ''}`)
@@ -403,7 +405,7 @@ export function renderReport(r) {
   L.push('', '## Settings', '')
   L.push(r.settings.carried.length ? `Carried over: ${r.settings.carried.join(', ')}.` : 'No synced setting carried over.')
   if (r.settings.files.length) L.push('', `Copied: ${r.settings.files.join(', ')}.`)
-  if (r.settings.skipped.length) { L.push('', 'Not carried over:', ''); for (const s of r.settings.skipped) L.push(`- ${s.key}: ${s.reason}`) }
+  if (r.settings.skipped.length) { L.push('', 'Not carried over this time:', ''); for (const s of r.settings.skipped) L.push(`- ${s.key}: ${s.reason}`) }
   L.push('', '## What stays in v2 (do it again in v3)', '')
   for (const [k, v] of V2_ONLY) L.push(`- **${k}**: ${v}`)
   L.push('')
