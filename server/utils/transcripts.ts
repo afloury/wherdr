@@ -1259,7 +1259,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   // transcript with its first message, within those 8 s).
   async function locate(pane: TranscriptPane, fresh = false): Promise<Loc | null> {
     const hit = locCache.get(pane.id)
-    if (hit && (hit.loc || !fresh) && Date.now() - hit.at < (pane.agent === 'devin' ? 1500 : 8000) && hit.session === pane.agentSession) return hit.loc
+    if (hit && (hit.loc || !fresh) && Date.now() - hit.at < 8000 && hit.session === pane.agentSession) return hit.loc
     let loc: Loc | null = null
     let failed = false
     try {
