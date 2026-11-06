@@ -56,6 +56,7 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
       </span>
       <USwitch :model-value="data?.enabled ?? false" :disabled="!data || busy === 'switch'" color="success" size="xl" data-testid="pm-switch" @update:model-value="v => toggle(v)" />
     </label>
+    <UButton to="/board?guide=1" color="neutral" variant="ghost" size="lg" icon="i-lucide-list-checks" class="pm-guide-link" data-testid="pm-guide-link">{{ tl('Getting started', 'Pour commencer') }}</UButton>
 
     <template v-if="data?.enabled">
       <h3>{{ tl('Projects', 'Projets') }}</h3>
@@ -115,7 +116,7 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
 
 <style scoped>
 .pm-settings h3 { margin-top: 24px; }
-.pm-board { margin-top: 8px; }
+.pm-board, .pm-guide-link { margin-top: 8px; }
 .pm-settings .settings-card { padding: 0; }
 .pm-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
 .pm-row:last-child { border-bottom: 0; }
