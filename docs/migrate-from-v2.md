@@ -90,6 +90,53 @@ node ~/wherdr-v3/src/scripts/v2-import.mjs import --data-dir ~/wherdr-v3/data
 
 It skips what is already imported. `detect` instead of `import` only prints what it finds of v2.
 
+## Auto-deploy from a build machine
+
+A small machine (a Raspberry Pi) does not have to build v3. Another machine of the tailnet
+builds each new commit of `v3` once and serves it; the Pi pulls it within a few minutes.
+Nothing is published anywhere: the builds stay on the tailnet.
+
+**On the build machine** (any Linux machine with Node.js 22+, git, `systemd --user` and
+Tailscale; it never runs on the Pi), `scripts/v3-builder.sh` keeps its own clone in
+`~/wherdr-v3-builder/src`, builds `origin/v3` when it moves (under `flock /tmp/wherdr-heavy.lock`),
+packs it with `scripts/pi-v3-package.sh` (the archive holds no native code, so a build made on
+x86 runs on arm64), keeps the last 5 builds and serves `~/wherdr-v3-builder/www` read-only
+with `tailscale serve`:
+
+```sh
+sh scripts/v3-builder.sh setup          # prints the plan
+bash scripts/v3-builder.sh setup --yes  # timer every 3 min + tailscale serve on https port 8110
+```
+
+It prints the Pi's source URL, `https://<machine>.<tailnet>.ts.net:8110/`. Log:
+`~/wherdr-v3-builder/builds.log` (output of the last build: `last-build.log`); state:
+`bash ~/wherdr-v3-builder/v3-builder.sh status`. Off: `systemctl --user disable --now
+wherdr-v3-builder.timer` (`enable --now` turns it back on); `bash ~/wherdr-v3-builder/v3-builder.sh remove --yes`
+also removes the serve entry. A build that fails is not retried; the next commit is.
+
+**On the Pi**, install (or re-run the installer) with the source URL:
+
+```sh
+sh /tmp/wherdr-setup/scripts/install-v3-beside-v2.sh --auto-deploy https://<build machine>.<tailnet>.ts.net:8110/ --yes
+```
+
+The installer then never builds: it installs the latest build from that URL, and the
+`wherdr-v3-deploy.timer` runs `~/wherdr-v3/pi-deploy-v3.sh` every 3 minutes. When the source's
+`COMMIT` is not the installed one, it downloads the archive, checks its checksum, swaps
+`~/wherdr-v3/src/.output` (the running build is kept in `~/wherdr-v3/deploy/previous`),
+restarts `wherdr-v3` and checks that `/api/health` answers the new commit. If not, it puts the
+previous build back and does not try that commit again. It waits for `/tmp/wherdr-heavy.lock`
+and touches only `~/wherdr-v3/src/.output`, `~/wherdr-v3/deploy` and the `wherdr-v3` service:
+v2 is never touched. Once on, re-runs of the installer keep it.
+
+- Log: `~/wherdr-v3/deploy/deploy.log` (one line per deploy, rollback or error), and
+  `journalctl --user -u wherdr-v3-deploy`.
+- State: `bash ~/wherdr-v3/pi-deploy-v3.sh status` (installed, source, skipped commit).
+- Deploy now: `~/wherdr-v3/update.sh`.
+- Roll back: `bash ~/wherdr-v3/pi-deploy-v3.sh rollback` puts the previous build back; the
+  timer skips the rolled-back commit until a newer one is built.
+- Off: `systemctl --user disable --now wherdr-v3-deploy.timer`; `enable --now` turns it back on.
+
 ## Fall back to v2
 
 Nothing changes for v2: keep using its address (for example `https://<machine>.<tailnet>.ts.net:8103`).
