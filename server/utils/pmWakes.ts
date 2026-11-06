@@ -5,7 +5,7 @@
 // the persisted queue, then each coordinator's queue ticks (shared/pm/wakes.ts): delivery once it is idle and the user is quiet, the
 // end of an open wake, a missed ack tried again, then a push to the user.
 import { randomUUID } from 'node:crypto'
-import { coordinatorWake } from '../../shared/pm/coordinator'
+import { MAIN, coordinatorWake } from '../../shared/pm/coordinator'
 import { LOOK_REASON, autopilotEvents, bump, inHours, scheduledWake, sentence, skippedWake, today } from '../../shared/pm/autopilot'
 import { projectPace } from './pmPace'
 import { planSteps, durationMs } from '../../shared/pm/steps'
@@ -52,10 +52,17 @@ async function gather(deps: WakeDeps, now: number) {
     await store.saveTask({ ...task, step: has ? w.state : { ...w.state, told: task.step.told } })
     if (has) add(task.project, w.texts.map(x => `${task.id} (${task.title}): ${x}`))
   }
-  for (const p of projects) {
+  // The main coordinator's autopilot counts every task; a project's pace holds
+  // it only when no project may go.
+  const paceOf = async (k: string) => {
+    if (k !== MAIN) return (await projectPace(store, k, undefined, now))?.verdict
+    const all = await Promise.all(projects.map(async x => (await projectPace(store, x.key, undefined, now))?.verdict))
+    return all.find(v => v?.go) ?? all.find(Boolean)
+  }
+  for (const p of [...projects, { key: MAIN }]) {
     const c = await store.coordinator(p.key)
     if (!c) continue
-    const ap = c.autopilot, mine = tasks.filter(x => x.project === p.key)
+    const ap = c.autopilot, mine = tasks.filter(x => p.key === MAIN || x.project === p.key)
     const ev = autopilotEvents(ap ?? { on: false, goal: '', events: [], perDay: 0, atOnce: 0 }, mine, c.seen ?? {})
     const on = !!ap?.on && !!c.terminal && inHours(ap.hours, new Date(now))
     // The first look only notes where tasks stand.
@@ -68,7 +75,7 @@ async function gather(deps: WakeDeps, now: number) {
     // Nothing to do, or the worker's account ahead of its pace: the slot counts
     // as run, the paid turn is saved. The pace is read only for a wake that would go.
     let kind = due || atDue ? scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now)) : null
-    if (kind === 'send' || kind === 'look') kind = scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now), (await projectPace(store, p.key, undefined, now))?.verdict)
+    if (kind === 'send' || kind === 'look') kind = scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now), await paceOf(p.key))
     const skip = skippedWake(kind)
     if (kind && !skip) add(p.key, [`Scheduled wake (${due ? `every ${ap!.every}` : ap!.at}). ${kind === 'look' ? `${LOOK_REASON} ` : ''}${goal}`])
     const woke = !!reasons.get(p.key)?.length

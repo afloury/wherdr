@@ -28,13 +28,14 @@ const setDefault = (v: string) => act(() => api('/api/pm/coordinator-agent', { p
 const fresh = () => act(async () => { const p = await launchCoordinator(props.c.project); if (p) await navigateTo(panePath(p.id)) })
 const resume = () => { resumeCoordinator(props.c.terminal!); if (props.open && pane.value) navigateTo(panePath(pane.value.id)) }
 const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh())
+const title = computed(() => (props.c.main ? tl('Main coordinator · all projects', 'Coordinateur principal · tous les projets') : `${tl('Project coordinator', 'Coordinateur de projet')} · ${props.c.project}`))
 const answer = (accept: boolean) => act(() => api('/api/pm/template-proposal', { project: props.c.project, accept }))
 </script>
 
 <template>
   <div class="coord" data-testid="coordinator-bar">
     <div class="coord-head">
-      <span class="mono-label">{{ tl('Project coordinator', 'Coordinateur de projet') }} · {{ c.project }}</span>
+      <span class="mono-label">{{ title }}</span>
       <select class="pm-select coord-agent" :value="key(c.agent)" :disabled="busy" :aria-label="tl('Default agent', 'Agent par défaut')" data-testid="coordinator-agent" @change="setDefault(($event.target as HTMLSelectElement).value)">
         <option v-for="a in choices" :key="key(a)" :value="key(a)">{{ agentName(a) }}</option>
       </select>
