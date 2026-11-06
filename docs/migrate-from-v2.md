@@ -25,9 +25,10 @@ sh /tmp/wherdr-setup/scripts/install-v3-beside-v2.sh          # prints what it f
 sh /tmp/wherdr-setup/scripts/install-v3-beside-v2.sh --yes    # does it
 ```
 
-Without `--yes` (or with `--dry-run`) nothing changes. Running it again is safe: what is already
-done is kept. `--help` lists the options: `--dir` (default `~/wherdr-v3`), `--name` (`wherdr-v3`),
-`--port` (`7684`), `--https-port` (`8104`), `--hc-session` (`default`), `--no-tailscale`,
+Without `--yes` (or with `--dry-run`) nothing changes, and every missing prerequisite and conflict
+is listed at once. Running it again is safe: what is already done is kept, and the clone it made
+moves to the latest `v3` (the plan always shows the commit it builds). `--help` lists the options: `--dir` (default `~/wherdr-v3`), `--name` (`wherdr-v3`),
+`--port` (`7684`), `--https-port` (the first port from `8104` that `tailscale serve` does not use), `--hc-session` (`default`), `--no-tailscale`,
 `--skip-import`, and `--v2-dir`, `--v2-unit`, `--herdr-projects`, `--herdr-bin` when v2 is not
 where the installer looks.
 
@@ -37,18 +38,25 @@ What it does:
    `~/wherdr` and `wherdr.env`, its `DATA_DIR` and port, its `tailscale serve` entry, the
    herdr-projects board (`~/.herdr-projects`) and Herdr's SSH machines (`herdr machine list`).
    All of it is only read.
-2. **Checks** Node.js 22+, git, npm, `systemctl --user`, `hc` (it never installs it: get the build
-   for your architecture from the herdr-core releases), and that the port, folder, service names
-   and HTTPS port are free.
+2. **Checks** Node.js 22+, git, npm, `systemctl --user`, `hc` (it never installs it: its official
+   installer is `curl -fsSL https://releases.herdr.dev/core/install.sh | sh`, into `~/.local/bin`), and that the port, folder,
+   service names and HTTPS port are free.
 3. **Starts herdr-core** as the `wherdr-v3-hc` user service (`hc server start` with `HC_SESSION`),
    unless that session already runs. Started by systemd, it never inherits an agent's environment.
 4. **Clones and builds** v3 in `~/wherdr-v3/src` (log: `~/wherdr-v3/build.log`), with its own
-   data folder `~/wherdr-v3/data`.
-5. **Imports from v2** (below), then starts the `wherdr-v3` user service on `127.0.0.1:7684`.
-6. **Adds** `tailscale serve --bg --https=8104 http://127.0.0.1:7684` to the existing serve
+   data folder `~/wherdr-v3/data`. The build needs about 1.5 GB of memory: on a small machine
+   (a Raspberry Pi), where Node's heap is smaller, it builds with
+   `NODE_OPTIONS=--max-old-space-size=1536` under `nice -n 19 ionice -c3`.
+5. **Imports from v2** (below), then starts the `wherdr-v3` user service on `127.0.0.1:7684`, with its HTTPS
+   address as `APP_URL` and the `OOMScoreAdjust`, `MemoryLow` and `CPUWeight` of v2's unit (or
+   `-900`, `256M` and `200`).
+6. **Adds** `tailscale serve --bg --https=<port> http://127.0.0.1:7684` to the existing serve
    configuration (v2's entry stays). When Tailscale refuses, it prints the command to run once
    (`sudo tailscale set --operator=$USER`) instead of using `sudo`.
-7. Writes `~/wherdr-v3/update.sh`: fetch v3, rebuild, restart.
+7. Writes `~/wherdr-v3/update.sh`: fetch v3, rebuild (with the same memory rule), restart.
+
+The last `NEXT` lines say how to add the first passkey: its token is in the service's log,
+`journalctl --user -u wherdr-v3 | grep 'First passkey' | tail -1`.
 
 Each step prints one line (`OK`, `SKIP`, `PLAN`); a problem is one `ERROR <id>: …` line, and
 what is left for you is a `NEXT: …` line. `--json` prints one summary object. Exit codes: `0`
