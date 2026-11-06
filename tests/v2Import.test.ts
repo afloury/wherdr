@@ -130,7 +130,7 @@ describe('runImport', () => {
     const v2 = { ...detectV2({ ...v2Opts, run: fakeRun().run }), dataDir: path.join(FIX, 'wherdr/data') }
     const exists = (p: string) => /\/code\/(app|site)$/.test(p)
     const { run, calls } = fakeRun()
-    const r = runImport({ v2, dataDir: data, run, exists, hcSession: 'test', now: 1000 })
+    const r = runImport({ v2, dataDir: data, run, exists, hcSession: 'test', hcReachable: true, now: 1000 })
 
     const projects = JSON.parse(fs.readFileSync(path.join(data, 'projects/projects.json'), 'utf8')).projects
     expect(projects.map((p: { key: string }) => p.key)).toEqual(['APP', 'SITE'])
@@ -149,11 +149,19 @@ describe('runImport', () => {
     expect(report).toMatch(/\*\*To do:\*\* Build VPS \(vps\)/)
     expect(report).toMatch(/\*\*Passkeys\*\*: not moved/)
 
-    const again = runImport({ v2, dataDir: data, run: fakeRun().run, exists, hcSession: 'test', now: 2000 })
+    const again = runImport({ v2, dataDir: data, run: fakeRun().run, exists, hcSession: 'test', hcReachable: true, now: 2000 })
     expect(again.projects.added).toEqual([])
     expect(again.tasks.added).toEqual([])
     expect(fs.readdirSync(path.join(data, 'projects/tasks'))).toHaveLength(3)
     expect(hashTree(FIX)).toBe(before)
+  })
+
+  it('never calls hc when its session is not running (hc would start one)', () => {
+    const v2 = { ...detectV2({ ...v2Opts, run: fakeRun().run }), dataDir: path.join(FIX, 'wherdr/data') }
+    const { run, calls } = fakeRun()
+    const r = runImport({ v2, dataDir: tmp(), run, exists: () => true, hcSession: 'none', env: { XDG_RUNTIME_DIR: tmp() } })
+    expect(calls.filter(c => c.startsWith('hc '))).toEqual([])
+    expect(r.machines.missing.map((m: { reason: string }) => m.reason)).toEqual([expect.stringMatching(/session none is not running/), expect.stringMatching(/session none is not running/)])
   })
 
   it('writes nothing on a dry run', () => {

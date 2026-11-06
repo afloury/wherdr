@@ -226,6 +226,11 @@ export async function main(argv = process.argv.slice(2), io = {}) {
       !ts ? 'no tailscale serve (tailscale not found or --no-tailscale)' : serveDone ? `keep tailscale serve https:${o.httpsPort}` : `tailscale serve --bg --https=${o.httpsPort} ${target} (added beside v2's entries)`,
       `write ${o.dir}/update.sh`,
     ]
+    if (!o.skipImport && v2.found) {
+      const r = runImport({ ...o, v2, run, dataDir: path.join(o.dir, 'data'), hcSession: o.hcSession, hcBin: hc, dryRun: true, hcReachable: hcUp })
+      plan.splice(4, 0, `  projects: ${r.projects.added.map(p => `${p.key} (${p.path})`).join(', ') || 'none'}; open tasks: ${r.tasks.added.length}; settings: ${r.settings.carried.length}`,
+        `  machines to add: ${r.machines.added.map(x => `${x.name} (${x.target})`).join(', ') || 'none'}${r.machines.missing.length ? `; not reachable: ${r.machines.missing.map(x => `${x.target} (${x.reason})`).join(', ')}` : ''}`)
+    }
     summary.plan = plan
     for (const p of plan) say(`PLAN ${p}`)
     if (!o.yes) { say('Dry run: nothing changed. Run again with --yes to apply.'); return EXIT.ok }

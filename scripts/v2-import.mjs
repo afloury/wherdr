@@ -323,15 +323,18 @@ export function runImport(o) {
   res.settings = { carried: s.carried, skipped: s.skipped, files: [...copies, ...(copyDirs ? ['dirs.json (this machine\'s recent folders)'] : [])] }
 
   // Machines: added to hc when it can reach them, else listed with what is missing.
-  const hcEnv = { ...process.env, ...(o.hcSession ? { HC_SESSION: o.hcSession } : {}) }
+  const hcEnv = { ...(o.env || process.env), ...(o.hcSession ? { HC_SESSION: o.hcSession } : {}) }
   const hcBin = o.hcBin || 'hc'
-  const ls = o.hcReachable === false ? { ok: false } : run(hcBin, ['machine', 'ls', '--json'], { env: hcEnv })
+  // Any hc call starts a core when its session is not running: only call it when the socket is there.
+  const session = o.hcSession || hcEnv.HC_SESSION || 'default'
+  const reachable = o.hcReachable ?? hcSocketExists(session, hcEnv)
+  const ls = reachable ? run(hcBin, ['machine', 'ls', '--json'], { env: hcEnv }) : { ok: false }
   const hcList = ls.ok ? (readJsonText(ls.out)?.machines || []) : []
   const m = mapMachines(v2.machines || [], hcList)
   res.machines = { added: [], have: m.have, missing: [], hc: ls.ok }
   for (const x of m.add) {
     const note = x.session !== 'default' ? `its Herdr session was ${x.session}; hc uses the machine's default hc session` : undefined
-    if (!ls.ok) { res.machines.missing.push({ ...x, reason: 'herdr-core is not reachable here, so no machine was added', note }); continue }
+    if (!ls.ok && !(o.dryRun && !reachable)) { res.machines.missing.push({ ...x, reason: `herdr-core session ${session} is not running here, so no machine was added: start it and run the import again`, note }); continue }
     const why = sshProblem(run('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', x.target, 'command -v hc']))
     if (why) { res.machines.missing.push({ ...x, reason: why, note }); continue }
     if (o.dryRun) { res.machines.added.push({ ...x, note, planned: true }); continue }
@@ -357,6 +360,11 @@ export function runImport(o) {
     fs.writeFileSync(res.report, renderReport(res), { mode: 0o600 })
   }
   return res
+}
+
+export function hcSocketExists(session, env = process.env) {
+  const dir = env.XDG_RUNTIME_DIR || `/run/user/${process.getuid?.() ?? 0}`
+  try { return fs.statSync(path.join(dir, 'herdr-core', `${session}.sock`)).isSocket() } catch { return false }
 }
 
 function readJsonText(t) { try { return JSON.parse(t) } catch { return null } }
