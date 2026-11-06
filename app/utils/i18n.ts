@@ -315,6 +315,7 @@ const FR: Record<string, string> = {
   'Confirm': 'Confirmer', 'Turn off': 'Désactiver',
   'closed': 'fermé', 'Delete': 'Supprimer',
   'Preview': 'Aperçu', 'Replay': 'Rejouer',
+  'SVG preview': 'Aperçu SVG', 'Enlarge SVG preview': 'Agrandir l’aperçu SVG', 'SVG preview unavailable. Source shown below.': 'Aperçu SVG indisponible. Source affichée ci-dessous.',
   'Mark as read': 'Marquer comme lu', 'Mark as unread': 'Marquer comme non lu',
   'left': 'restant', 'Week': 'Semaine', 'reset': 'réinitialisé', 'new window': 'fenêtre neuve', 'just now': 'à l’instant', 'Remaining quotas': 'Quotas restants', 'Install': 'Installer', 'Copy command': 'Copier la commande', 'this machine': 'cette machine', 'They will show after the next exchange with a Claude.': 'Ils apparaîtront après le prochain échange avec un Claude.', 'updated': 'mis à jour', 'used': 'utilisé',
   'Agent': 'Agent', 'Previous': 'Précédent', 'Next': 'Suivant',

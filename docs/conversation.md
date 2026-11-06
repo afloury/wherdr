@@ -11,6 +11,14 @@ Claude Code and Codex terminals open in conversation mode; any other terminal sh
   timestamps, search and infinite scroll back to the first message. Reading a conversation never
   touches the terminal, so it never resizes it. A command the agent proposes (shell code block,
   or inline `! command`) can be copied without its prompt.
+- **SVG diagrams**: complete code fences labelled `svg` render as isolated, theme-aware images.
+  **Source / Preview**, beside **Copy** in the card header, switches the same card between the
+  diagram and its original markup; **Copy** always copies that markup. Click or use Enter/Space
+  on the image for the full-screen viewer. Static shapes, text and local definitions are
+  supported, up to 150,000 source characters, 2,000 source elements and 10,000 expanded
+  reference instances. Incomplete, unsupported or unsafe diagrams stay readable code. Scripts,
+  foreign HTML, animation and external resources are rejected; raw inline SVG is not inserted
+  into the page. Other fence languages and file-explorer document fences remain code.
 - **Questions and permissions**: native questions, approvals and menus show their options; a tap
   answers. wherdr reads the screen again right before answering and refuses the answer if the
   question changed meanwhile. A free answer selects its option, waits for the field, then types

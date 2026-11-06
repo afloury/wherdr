@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 - **omp context at a glance.** omp agent cards show their context usage as a thin line along their bottom edge, and the conversation header shows the percentage and estimated tokens, with omp's status line on demand. Read from omp's own gauge on screen (current and older layouts, every symbol preset); unknown readings stay hidden, old ones are marked. Thanks to [@guileen](https://github.com/guileen) (ported from 2.x).
 - **herdr-core 0.1.17: machines with an SSH port.** Settings › Agents › Machines › Add machine takes `user@host:port` when the core accepts one (read from its `rpc.discover`, not its version); on herdr-core 0.1.16 the form says so before sending.
+- **SVG diagrams in conversations.** Static `svg` code fences now show an isolated theme-aware preview with source, Copy and enlargement; incomplete or unsafe content stays readable code without executing or loading external resources (port of [#416](https://github.com/afloury/wherdr/pull/416) by [@guileen](https://github.com/guileen)).
 
 ## [2.5.0] — 2026-11-02
 
