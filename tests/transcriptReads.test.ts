@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createTranscripts } from '../server/utils/transcripts'
-import { type MachineFs, localFs } from '../server/utils/fsx'
+import { execFile } from 'node:child_process'
+import { type MachineFs, type ShellExec, createShellFs, localFs } from '../server/utils/fsx'
 
 const homes: string[] = []
 afterEach(() => { for (const h of homes.splice(0)) rmSync(h, { recursive: true, force: true }) })
@@ -108,7 +109,7 @@ describe('bottom read from a cursor while the transcript grows', () => {
 
   // An empty transcript of `kind`, a cached reader counting its bytes, and a
   // reader without any cache to compare with.
-  function grow(kind: 'claude' | 'codex') {
+  function grow(kind: 'claude' | 'codex', remote = false) {
     const home = mkdtempSync(path.join(tmpdir(), 'hw-grow-'))
     homes.push(home)
     const dir = kind === 'claude' ? path.join(home, '.claude/projects/-x') : path.join(home, '.codex/sessions/2026/09/25')
@@ -116,8 +117,10 @@ describe('bottom read from a cursor while the transcript grows', () => {
     const file = path.join(dir, kind === 'claude' ? 'abc-123.jsonl' : `rollout-2026-09-25T11-29-56-${codexId}.jsonl`)
     writeFileSync(file, '')
     let bytes = 0
-    const fs: MachineFs = { ...localFs, read: async (p, start, len) => {
-      const b = await localFs.read(p, start, len)
+    // A remote machine reads with shell commands (run here with sh, as over SSH).
+    const base = remote ? createShellFs(shell, { statTtlMs: 0 }) : localFs
+    const fs: MachineFs = { ...base, read: async (p, start, len) => {
+      const b = await base.read(p, start, len)
       if (p === file) bytes += b.length
       return b
     } }
@@ -169,6 +172,18 @@ describe('bottom read from a cursor while the transcript grows', () => {
     expect((await g.poll(0)).r.items!.length).toBeGreaterThan(0)
   })
 
+  it('remote machine: same reply as a whole read, reading only what was appended', async () => {
+    const g = grow('claude', true)
+    const longest = Math.max(...claude.toString('utf8').split('\n').map(l => Buffer.byteLength(l) + 1))
+    for (let at = 0; at < claude.length; at += 4000) {
+      const chunk = claude.subarray(at, at + 4000)
+      appendFileSync(g.file, chunk)
+      const { r, bytes } = await g.poll(0)
+      expect(r).toEqual(await g.fresh(0))
+      expect(bytes).toBeLessThanOrEqual(chunk.length + 2 * 4096 + longest)
+    }
+  })
+
   it('a transcript cut, replaced or rewritten is read again', async () => {
     const g = grow('claude')
     await feed(g, claude, 0)
@@ -186,5 +201,50 @@ describe('bottom read from a cursor while the transcript grows', () => {
     const r = (await g.poll(0)).r
     expect(r).toEqual(await g.fresh(0))
     expect(r.items!.map(i => i.text)).toEqual(['New file', 'Fresh!', 'More'])
+  })
+})
+
+const shell: ShellExec = (script, args = []) => new Promise((resolve) => {
+  execFile('sh', ['-c', script, 'sh', ...args], { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
+    resolve({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, stdout, stderr: stderr.toString('utf8') })
+  })
+})
+
+// A request whose client went away (chat.get.ts aborts its signal).
+describe('a read the client gave up', () => {
+  // A long transcript read backwards window by window (2 MB each), slowly.
+  function slow() {
+    const big = 'y'.repeat(1024 * 1024)
+    const s = setup(Array.from({ length: 12 }, (_, i) => user(`Question ${i} ${big}`)))
+    const fs: MachineFs = { ...localFs, read: async (p, start, len) => {
+      await new Promise(r => setTimeout(r, 30))
+      const b = await localFs.read(p, start, len)
+      if (p === s.file) s.reads.push(b.length)
+      return b
+    } }
+    const home = path.dirname(path.dirname(path.dirname(path.dirname(s.file))))
+    return { ...s, t: createTranscripts({ home, herdr: noHerdr, fs }) }
+  }
+
+  it('stops reading once no request waits on it', async () => {
+    const { t, reads } = slow()
+    const gone = new AbortController()
+    const r = t.chat(pane, { signal: gone.signal })
+    setTimeout(() => gone.abort(new Error('gone')), 50)
+    await expect(r).rejects.toThrow('gone')
+    const seen = reads.length
+    await new Promise(r => setTimeout(r, 200))
+    expect(reads.length).toBeLessThanOrEqual(seen + 1) // at most the read already started
+    expect(seen).toBeLessThan(6) // the whole bottom takes 6 windows
+  })
+
+  it('keeps reading for another request waiting on the same read', async () => {
+    const { t } = slow()
+    const gone = new AbortController()
+    const a = t.chat(pane, { signal: gone.signal })
+    const b = t.chat(pane, { signal: new AbortController().signal })
+    setTimeout(() => gone.abort(new Error('gone')), 50)
+    await expect(a).rejects.toThrow('gone')
+    expect((await b).items!.at(-1)!.text).toMatch(/^Question 11 /)
   })
 })

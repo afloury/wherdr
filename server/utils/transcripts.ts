@@ -1031,7 +1031,8 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   const locCache = new Map<string, { at: number, loc: Loc | null, session?: string | null }>()
   const lastLoc = new Map<string, Loc>() // last file found, fallback if a lookup fails
   const parseCache = new Map<string, { size: number, gen: string, settled: boolean, r: TailResult }>()
-  const tailReads = new Map<string, Promise<TailResult>>()
+  // Reads in progress, shared; stopped once every request waiting on one left.
+  const tailReads = new Map<string, { read: Promise<TailResult>, stop: AbortController, users: number }>()
   const previewCache = new Map<string, { size: number, gen: string, reply: { key: string, text: string } }>()
   const metaCache = new Map<string, Json>()
   // omp file commands of this machine (see parseOmp), re-read every 5 min.
@@ -1294,7 +1295,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   }
 
   // Goes back from `end` by windows up to PAGE_ITEMS messages (or the start).
-  async function readBackwards(file: string, end: number, kind: string | null): Promise<TailResult> {
+  async function readBackwards(file: string, end: number, kind: string | null, signal?: AbortSignal): Promise<TailResult> {
     const cwd = kind === 'omp' ? await ompCwd(file) : ''
     let start = end
     let items: ChatItem[] = []
@@ -1307,6 +1308,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
       let r: { start: number, text: string }
       for (;;) {
         const s0 = Math.max(0, start - w)
+        signal?.throwIfAborted()
         r = await readRange(file, s0, start)
         if (r.start < start || s0 === 0 || w >= MAX_READ_BYTES) break
         w *= 2
@@ -1328,28 +1330,56 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   // on first load, the last PAGE_ITEMS messages. Cached by
   // (file, kind, size, generation, from), when read once the state settled.
   // Reads in progress are shared: several devices on one pane cost one read
-  // and one parse per change.
-  async function tail(file: string, kind: string | null, size: number, gen: string, from: number | null, settled = true, ino?: number): Promise<TailResult> {
+  // and one parse per change. A request that gives up (`signal`: the client
+  // went away) stops waiting at once; the read itself stops before its next
+  // file read once no request waits on it any more.
+  async function tail(file: string, kind: string | null, size: number, gen: string, from: number | null, settled = true, ino?: number, signal?: AbortSignal): Promise<TailResult> {
+    signal?.throwIfAborted()
     const key = `${file}|${kind}|${from}`
     const c = parseCache.get(key)
     if (c && c.settled && c.size === size && c.gen === gen) return c.r
     const flight = `${key}|${size}|${gen}`
-    let read = tailReads.get(flight)
-    if (!read) {
-      read = readTail(file, kind, size, from, ino).finally(() => { tailReads.delete(flight) })
-      tailReads.set(flight, read)
+    let f = tailReads.get(flight)
+    if (!f || f.stop.signal.aborted) {
+      const stop = new AbortController()
+      const read: Promise<TailResult> = readTail(file, kind, size, from, ino, stop.signal)
+        .finally(() => { if (tailReads.get(flight)?.read === read) tailReads.delete(flight) })
+      read.catch(() => {}) // a stopped read may have no one left to await it
+      f = { read, stop, users: 0 }
+      tailReads.set(flight, f)
     }
-    const r = await read
+    const r = await waitRead(f, signal)
     parseCache.set(key, { size, gen, settled, r })
     if (parseCache.size > 16) parseCache.delete(parseCache.keys().next().value!)
     return r
   }
-  async function readTail(file: string, kind: string | null, size: number, from: number | null, ino?: number): Promise<TailResult> {
+  // One more request waits on a shared read, until it ends or `signal` aborts.
+  function waitRead(f: { read: Promise<TailResult>, stop: AbortController, users: number }, signal?: AbortSignal): Promise<TailResult> {
+    f.users++
+    if (!signal) return f.read // never gives up: the read always runs to its end
+    return new Promise((resolve, reject) => {
+      const leave = () => {
+        signal.removeEventListener('abort', leave)
+        if (--f.users === 0) f.stop.abort()
+        reject(signal.reason)
+      }
+      signal.addEventListener('abort', leave)
+      f.read.then(resolve, reject).finally(() => signal.removeEventListener('abort', leave))
+    })
+  }
+  async function readTail(file: string, kind: string | null, size: number, from: number | null, ino?: number, signal?: AbortSignal): Promise<TailResult> {
     if (from !== null && from <= size && size - from <= MAX_READ_BYTES) {
-      if (kind !== 'omp') return await locked(`${file}|${kind}|${from}`, () => readBelow(file, kind, size, from, ino))
+      if (kind !== 'omp') {
+        return await locked(`${file}|${kind}|${from}`, () => {
+          signal?.throwIfAborted() // given up while waiting for its turn
+          return readBelow(file, kind, size, from, ino)
+        })
+      }
+      signal?.throwIfAborted()
       return await readSlice(file, kind, size, from)
     }
-    const r = await readBackwards(file, size, kind)
+    const r = await readBackwards(file, size, kind, signal)
+    signal?.throwIfAborted()
     r.anchor = await anchorAt(file, r.start)
     return r
   }
@@ -1485,7 +1515,8 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   // opts.fresh : look for the file again if none was found lately (see locate)
   // opts.anchor: token as the client sent it, for the join check (anchorOf),
   //              when `since` was dropped (list the server no longer knows)
-  async function chat(pane: TranscriptPane, opts: { since?: string, from?: number | null, before?: number | null, fresh?: boolean, anchor?: string } = {}): Promise<ChatResponse> {
+  // opts.signal: the request was given up (client gone): reads stop
+  async function chat(pane: TranscriptPane, opts: { since?: string, from?: number | null, before?: number | null, fresh?: boolean, anchor?: string, signal?: AbortSignal } = {}): Promise<ChatResponse> {
     if (!hasTranscript(pane.agent)) return { available: false, reason: 'unsupported' }
     const loc = await locate(pane, Boolean(opts.fresh))
     if (!loc) return { available: false, reason: 'not_found' }
@@ -1509,7 +1540,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     const kind = transcriptKind(loc.file) || pane.agent
     if (kind === 'omp') await refreshOmpTemplates()
     if (opts.before !== null && opts.before !== undefined) {
-      const r = await readBackwards(loc.file, Math.min(opts.before, st.size), kind)
+      const r = await readBackwards(loc.file, Math.min(opts.before, st.size), kind, opts.signal)
       return { ...base, older: true, items: r.items, start: r.start }
     }
     const from = opts.from === undefined ? null : opts.from
@@ -1519,7 +1550,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     // once settled), then the anchor of the reply's start.
     const head = `${fileId}:${st.size}:${from}:${gen}`
     if (settled && opts.since && opts.since.split('/')[0] === head) return { ...base, unchanged: true, token: opts.since }
-    let r = await tail(loc.file, kind, st.size, gen, from, settled, st.ino)
+    let r = await tail(loc.file, kind, st.size, gen, from, settled, st.ino, opts.signal)
     // The client's list starts at the cursor, and the file was rewritten
     // above it: replaced by another file (inode), shorter, rewritten at the
     // same size (appends always grow it), or other bytes just above the cursor
@@ -1536,7 +1567,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
       || (same && st.size < prev.size)
       || (same && st.size === prev.size && prev.gen !== gen)
       || (same && prev.unsettled && !await stillThere(loc.file, prev)))
-    if (rewritten) r = await tail(loc.file, kind, st.size, gen, null, settled, st.ino)
+    if (rewritten) r = await tail(loc.file, kind, st.size, gen, null, settled, st.ino, opts.signal)
     const mark = `${head}${settled ? '' : '!'}`
     const token = r.anchor ? `${mark}/${r.start}.${r.anchor}` : mark
     return { ...base, token, items: r.items, start: r.start, queue: r.queue || [], ...(r.popped?.length ? { popped: r.popped } : {}), ...(rewritten ? { rewritten: true } : {}) }
