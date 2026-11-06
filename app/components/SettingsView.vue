@@ -12,6 +12,8 @@ import { ENGINES } from '~/utils/dictation/registry'
 import { DEFAULT_MAX_SESSION_DAYS, MAX_SESSION_DAYS, type MaxSessionDays } from '#shared/sessionLimit'
 
 const router = useRouter()
+// v3's own version (shared/v3Version.ts), also in /api/health.
+const appVersion = useRuntimeConfig().public.version
 // Sections: sidebar on a computer (one section shown), iOS Settings-style
 // list on the phone (a tap opens the section, Back returns to the list).
 // The section lives in the URL (`?section=plugins`):
@@ -559,7 +561,7 @@ onMounted(() => {
         <div v-show="activeSection === 'about'" class="settings-section">
           <div class="settings-group">
             <h3>{{ t('Application') }}</h3>
-            <p class="settings-version">wherdr · v3 · herdr-core</p>
+            <p class="settings-version">wherdr {{ appVersion }} · herdr-core</p>
             <button type="button" class="settings-action solo" @click="reloadApp"><UIcon name="i-lucide-refresh-cw" />{{ t('Reload app') }}</button>
           </div>
         </div>
