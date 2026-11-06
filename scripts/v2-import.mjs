@@ -92,7 +92,7 @@ export function parseHerdrMachines(raw) {
   if (isObj(list) && Array.isArray(list.machines)) list = list.machines
   if (!Array.isArray(list)) return []
   return list.filter(m => isObj(m) && m.enabled !== false && typeof m.target === 'string' && m.target.trim() && !/^-|\s/.test(m.target.trim()))
-    .map(m => ({ label: String(m.label || m.target).trim().slice(0, 40), target: m.target.trim(), session: String(m.session || 'default') }))
+    .map(m => ({ label: String(m.label || m.target).trim().slice(0, 40), target: m.target.trim(), session: String(m.session || 'default'), key: v2MachineKey(m.id) }))
 }
 
 // `tailscale serve status --json` → [{ https, proxy }] of the web entries.
@@ -205,9 +205,18 @@ export function mapProjects(board, existing = [], exists = p => fs.existsSync(p)
   return { projects, skipped, byRepo }
 }
 
+// How v2 showed a board task: KEY-n with the repo's key (WHR-37), else its id (app/1).
+export function v2TaskName(board, t) {
+  const key = String(board.settings?.[t.repo]?.repo?.key || '').toUpperCase()
+  const n = Number(t.n)
+  return KEY_RE.test(key) && Number.isInteger(n) && n > 0 ? `${key}-${n}` : String(t.id || `${t.repo}/${t.n}`)
+}
+
 // Open board tasks → v3 tasks to do. `imported`: board id → v3 id already made.
+// A task keeps its v2 number when it is free in v3; else it takes the next free
+// one and its description says which v2 task it was.
 export function mapTasks(board, byRepo, existingTasks = [], imported = {}, now = Date.now()) {
-  const tasks = [], listed = [], next = {}
+  const listed = [], open = []
   for (const t of board.tasks) {
     const id = String(t.id || `${t.repo}/${t.n}`)
     const stage = String(t.stage || 'todo')
@@ -215,17 +224,31 @@ export function mapTasks(board, byRepo, existingTasks = [], imported = {}, now =
     if (imported[id]) { listed.push({ id, title: t.title, reason: `already imported as ${imported[id]}` }); continue }
     const key = byRepo[t.repo]
     if (!key) { listed.push({ id, title: t.title, reason: `its project ${t.repo} was not imported` }); continue }
-    next[key] ??= 1 + Math.max(0, ...existingTasks.filter(x => x.project === key).map(x => Number(String(x.id).slice(key.length + 1)) || 0))
-    const title = String(t.title || '').trim().slice(0, 200) || `Task ${id}`
-    tasks.push({
-      from: id, stage,
-      task: {
-        id: `${key}-${next[key]++}`, project: key, title, description: String(t.description || '').slice(0, 20000),
-        type: 'task', state: 'todo', origin: 'user', createdAt: Number(t.created) || now, tags: ['from v2'],
-        log: [{ at: now, by: 'import', text: `Imported from herdr-projects ${id} (stage: ${stage})` }],
-      },
-    })
+    open.push({ t, id, stage, key })
   }
+  const used = new Set(existingTasks.map(x => String(x.id)))
+  const numbers = key => [...used].filter(i => i.startsWith(`${key}-`)).map(i => Number(i.slice(key.length + 1)) || 0)
+  // First the tasks whose number is free, so a renumbered one never takes a number another keeps.
+  for (const x of open) {
+    const n = Number(x.t.n)
+    if (Number.isInteger(n) && n > 0 && !used.has(`${x.key}-${n}`)) { x.newId = `${x.key}-${n}`; used.add(x.newId) }
+  }
+  for (const x of open) if (!x.newId) { x.newId = `${x.key}-${1 + Math.max(0, ...numbers(x.key))}`; used.add(x.newId) }
+  const tasks = open.map(({ t, id, stage, key, newId }) => {
+    const v2 = v2TaskName(board, t)
+    const renamed = newId !== v2
+    const title = String(t.title || '').trim().slice(0, 200) || `Task ${id}`
+    const text = String(t.description || '')
+    return {
+      from: id, v2, stage, renamed,
+      task: {
+        id: newId, project: key, title,
+        description: (renamed ? `From v2 ${v2}.${text ? `\n\n${text}` : ''}` : text).slice(0, 20000),
+        type: 'task', state: 'todo', origin: 'user', createdAt: Number(t.created) || now, tags: ['from v2'],
+        log: [{ at: now, by: 'import', text: `Imported from v2 ${v2}${v2 === id ? '' : ` (herdr-projects ${id})`}, stage ${stage}` }],
+      },
+    }
+  })
   return { tasks, listed }
 }
 
@@ -259,6 +282,42 @@ export function mapSettings(v2, v3 = {}, keys = v3SettingKeys()) {
 
 export const machineName = s => String(s).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 32) || 'machine'
 
+// A machine's key in the settings that name machines. v2: 8 hex characters of
+// its Herdr profile id (shared/ids.ts machineKey). v3: its hc name in hex
+// (shared/coreState.ts). The local machine is '' in both.
+export const v2MachineKey = id => String(id || '').toLowerCase().replace(/[^0-9a-f]/g, '').slice(0, 8)
+export const v3MachineKey = name => Buffer.from(String(name), 'utf8').toString('hex')
+
+// Synced settings that list machine keys: string arrays, or groups { id, name, machines }.
+export const MACHINE_SETTINGS = ['machineGroups', 'machineBarOrder', 'machineBarHidden', 'collapsedMachines']
+
+// The machine settings of `patch` with each v2 key turned into the key of the
+// v3 machine made from it (`keys`: v2 key → v3 key). A key with no v3 machine
+// is dropped; '' (local) and '*…' (All, groups) stay. `labels`: v2 key → name.
+export function remapMachineSettings(patch, keys, labels = {}) {
+  const out = { ...patch }, changes = []
+  const map = (list, setting, group) => {
+    const kept = []
+    for (const k of list) {
+      if (typeof k !== 'string') continue
+      if (k === '' || k.startsWith('*')) kept.push(k)
+      else if (keys[k]) { changes.push({ setting, group, from: k, label: labels[k], to: keys[k].name }); kept.push(keys[k].key) }
+      else changes.push({ setting, group, from: k, label: labels[k], to: null })
+    }
+    return [...new Set(kept)]
+  }
+  for (const setting of MACHINE_SETTINGS) {
+    if (out[setting] === undefined) continue
+    let v
+    try { v = JSON.parse(out[setting]) } catch { continue }
+    if (!Array.isArray(v)) continue
+    out[setting] = JSON.stringify(setting === 'machineGroups'
+      ? v.map(g => (isObj(g) && Array.isArray(g.machines) ? { ...g, machines: map(g.machines, setting, String(g.name || g.id)) } : g))
+      : map(v, setting))
+  }
+  return { patch: out, changes }
+}
+
 // Herdr's machines → `machine.add` calls, minus those hc already has.
 export function mapMachines(v2, hc = []) {
   const add = [], have = []
@@ -274,13 +333,17 @@ export function mapMachines(v2, hc = []) {
   return { add, have }
 }
 
-// Why `ssh <target> 'command -v hc'` failed, in one line.
+// Where hc is on a machine. A non-interactive SSH shell often has a short PATH
+// (macOS: /usr/bin:/bin:/usr/sbin:/sbin) while hc itself finds its usual places.
+export const HC_PROBE = 'command -v hc || for f in "$HOME/.local/bin/hc" /opt/homebrew/bin/hc /usr/local/bin/hc; do [ -x "$f" ] && { echo "$f"; exit 0; }; done; exit 1'
+
+// Why the SSH probe failed, in one line; null when SSH itself works (hc found or not).
 export function sshProblem(r) {
-  if (r.ok && r.out) return null
+  if (r.ok) return null
   if (r.code === 127 && !r.err) return 'ssh is not installed here'
   if (/Permission denied|Host key verification failed|password|publickey/i.test(r.err)) return `no SSH key login (${r.err.split('\n').pop()}): run ssh <target> true once and set up a key`
   if (r.code === 255) return `unreachable over SSH (${r.err.split('\n').pop() || 'no answer'})`
-  return 'herdr-core (hc) is not on the PATH of a non-interactive SSH shell there'
+  return null
 }
 
 // ---- import --------------------------------------------------------------
@@ -309,7 +372,7 @@ export function runImport(o) {
   const p = mapProjects(board, existing, o.exists)
   const t = mapTasks(board, p.byRepo, existingTasks, state.tasks || {}, now)
   res.projects = { added: p.projects.map(({ left, ...x }) => ({ ...x, left })), skipped: p.skipped, board: v2.board }
-  res.tasks = { added: t.tasks.map(x => ({ id: x.task.id, from: x.from, stage: x.stage, title: x.task.title })), listed: t.listed }
+  res.tasks = { added: t.tasks.map(x => ({ id: x.task.id, from: x.from, v2: x.v2, renamed: x.renamed, stage: x.stage, title: x.task.title })), listed: t.listed }
 
   // Settings and the small files v3 reads the same way.
   const v3Settings = readJson(path.join(data, 'settings.json'))?.settings || {}
@@ -335,13 +398,24 @@ export function runImport(o) {
   for (const x of m.add) {
     const note = x.session !== 'default' ? `its Herdr session was ${x.session}; hc uses the machine's default hc session` : undefined
     if (!ls.ok && !(o.dryRun && !reachable)) { res.machines.missing.push({ ...x, reason: `herdr-core session ${session} is not running here, so no machine was added: start it and run the import again`, note }); continue }
-    const why = sshProblem(run('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', x.target, 'command -v hc']))
+    const probe = run('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', x.target, HC_PROBE])
+    const why = sshProblem(probe)
     if (why) { res.machines.missing.push({ ...x, reason: why, note }); continue }
-    if (o.dryRun) { res.machines.added.push({ ...x, note, planned: true }); continue }
+    // hc not seen by the probe: hc machine add still looks for it itself, so only its own error counts.
+    const unseen = probe.out ? undefined : 'hc was not found on its PATH, in ~/.local/bin or /opt/homebrew/bin there; hc machine add looks for it itself'
+    if (o.dryRun) { res.machines.added.push({ ...x, note, planned: true, ...(unseen ? { check: unseen } : {}) }); continue }
     const r = run(hcBin, ['machine', 'add', x.target, '--name', x.name, '--json'], { env: hcEnv, timeout: 60000 })
     if (r.ok) res.machines.added.push({ ...x, note })
-    else res.machines.missing.push({ ...x, reason: `hc machine add failed: ${(r.err || r.out).split('\n').pop()}`, note })
+    else res.machines.missing.push({ ...x, reason: `hc machine add failed: ${(r.err || r.out).split('\n').pop() || `exit ${r.code}`}${unseen ? ' (hc was not found there either: install herdr-core on that machine)' : ''}`, note })
   }
+
+  // Settings that name machines: v2 keys → the v3 machines made from them (same SSH target).
+  const keys = {}, labels = {}
+  for (const x of [...res.machines.added, ...res.machines.have]) if (x.key) keys[x.key] = { key: v3MachineKey(x.name), name: x.name }
+  for (const x of v2.machines || []) if (x.key) labels[x.key] = x.label
+  const remapped = remapMachineSettings(s.patch, keys, labels)
+  s.patch = remapped.patch
+  res.settings.machines = remapped.changes
 
   if (!o.dryRun) {
     if (p.projects.length) {
@@ -394,17 +468,26 @@ export function renderReport(r) {
   }
   if (r.projects.skipped.length) { L.push('Not imported this time:', ''); for (const s of r.projects.skipped) L.push(`- ${s.name} (${s.path}): ${s.reason}`); L.push('') }
   L.push('## Tasks', '')
-  L.push(r.tasks.added.length ? 'Open board tasks imported as v3 tasks to do (type `task`; pick their type once the project has a template). Done and archived tasks were not imported.' : 'No open board task imported. Done and archived tasks are never imported.', '')
-  for (const t of r.tasks.added) L.push(`- ${t.id} ← ${t.from} (${t.stage}): ${t.title}`)
+  L.push(r.tasks.added.length ? 'Open board tasks imported as v3 tasks to do (type `task`; pick their type once the project has a template). They keep their v2 number when it is free in v3; a renumbered task says "From v2 …" at the top of its description. Done and archived tasks were not imported.' : 'No open board task imported. Done and archived tasks are never imported.', '')
+  for (const t of r.tasks.added) L.push(`- ${t.id} ← v2 ${t.v2} (${t.stage}): ${t.title}`)
   if (r.tasks.listed.length) { L.push('', 'Open tasks not imported this time:', ''); for (const t of r.tasks.listed) L.push(`- ${t.id}: ${t.title || ''} (${t.reason})`) }
   L.push('', '## Machines', '')
   if (!r.machines.added.length && !r.machines.missing.length && !r.machines.have.length) L.push('No SSH machine in Herdr.')
-  for (const m of r.machines.added) L.push(`- ${m.planned ? 'Would add' : 'Added'} ${m.name} (${m.target})${m.note ? `: ${m.note}` : ''}`)
+  // hc names are 1-32 of a-z 0-9 - _ . : say when the v2 name was changed.
+  const named = m => (m.label && m.label !== m.name ? `${m.name} (v2 name ${m.label} → ${m.name})` : m.name)
+  for (const m of r.machines.added) L.push(`- ${m.planned ? 'Would add' : 'Added'} ${named(m)}, ${m.target}${[m.note, m.check].filter(Boolean).map(x => `; ${x}`).join('')}`)
   for (const m of r.machines.have) L.push(`- ${m.name} (${m.target}): already in herdr-core`)
-  for (const m of r.machines.missing) L.push(`- **To do:** ${m.label} (${m.target}): ${m.reason}${m.note ? `; ${m.note}` : ''}. Then add it in Settings › Agents › Machines, or run \`hc machine add ${m.target} --name ${m.name}\`.`)
+  for (const m of r.machines.missing) L.push(`- **To do:** ${named(m)}, ${m.target}: ${m.reason}${m.note ? `; ${m.note}` : ''}. Then add it in Settings › Agents › Machines, or run \`hc machine add ${m.target} --name ${m.name}\`.`)
   L.push('', '## Settings', '')
   L.push(r.settings.carried.length ? `Carried over: ${r.settings.carried.join(', ')}.` : 'No synced setting carried over.')
   if (r.settings.files.length) L.push('', `Copied: ${r.settings.files.join(', ')}.`)
+  if (r.settings.machines?.length) {
+    L.push('', 'Machines named in the machine bar and groups, turned into the v3 machines made from them (same SSH target):', '')
+    for (const c of r.settings.machines) {
+      const v2 = `${c.label ? `${c.label} ` : ''}(v2 ${c.from})`
+      L.push(`- ${c.setting}${c.group ? `, group ${c.group}` : ''}: ${c.to ? `${v2} → ${c.to}` : `${v2} dropped: no v3 machine was made from it (once you add it, put it back in Settings › Appearance › Machine bar)`}`)
+    }
+  }
   if (r.settings.skipped.length) { L.push('', 'Not carried over this time:', ''); for (const s of r.settings.skipped) L.push(`- ${s.key}: ${s.reason}`) }
   L.push('', '## What stays in v2 (do it again in v3)', '')
   for (const [k, v] of V2_ONLY) L.push(`- **${k}**: ${v}`)
