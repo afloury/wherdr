@@ -23,7 +23,14 @@ export default defineApi(async (event) => {
   const count = num('n')
   const since = chatDelta.sinceOf(p.id, sent, count)
   const from = num('from')
+  // Client gone (it gives up after 8 s): stop the read instead of letting it
+  // hold the machine's SSH sessions to its end.
+  const gone = new AbortController()
+  const res = event.node.res
+  const onClose = () => { if (!res.writableFinished) gone.abort(new HerdrError('aborted', 'Request aborted')) }
+  res.once('close', onClose)
   const r = await transcripts.chat(p, {
+    signal: gone.signal,
     since: mark ? (since.endsWith(mark) ? since.slice(0, -mark.length) : '') : since,
     from, // re-read from this byte (bottom of the conversation already shown)
     anchor: sent, // join check above `from`, even for a list the server forgot
@@ -51,5 +58,7 @@ export default defineApi(async (event) => {
   }
   if (r.queue && r.queue.length) r.queue = withSentText(p.id, r.queue)
   // Current model ("Opus 5.5", "GPT-6-Sol"): cached by file size.
-  return r.available ? { ...r, model: await currentModel(p).catch(() => null) } : r
+  const out = r.available && !gone.signal.aborted ? { ...r, model: await currentModel(p).catch(() => null) } : r
+  res.off('close', onClose)
+  return out
 })
