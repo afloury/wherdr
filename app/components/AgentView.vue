@@ -235,7 +235,8 @@ function onSent(q: QueuedMessage | null) {
   chatRef.value?.scrollToEnd(true)
   chatRef.value?.reload()
 }
-// As soon as the server knows them (or 10 s after its answer), the server state wins.
+// As soon as the server lists them, the server state wins; once taken, they stay
+// until the transcript is read again (see utils/outbox.ts prune).
 watch(pane, p => outboxPrune(props.paneId, p?.queued || []))
 
 const prompt = computed(() => (pane.value && pane.value.status === 'blocked' && pane.value.prompt && pane.value.prompt.options ? pane.value.prompt : null))
