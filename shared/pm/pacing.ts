@@ -147,7 +147,8 @@ export function mergePolicy(base: PacePolicy, patch: unknown): PacePolicy {
   const p = (patch && typeof patch === 'object' ? patch : {}) as Record<string, unknown>
   const out: PacePolicy = { ...base, days: [...base.days], stale: { ...base.stale } }
   if (PACE_MODES.includes(p.mode as PaceMode)) out.mode = p.mode as PaceMode
-  if (Array.isArray(p.days)) out.days = [...new Set(p.days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6))].sort()
+  const days = Array.isArray(p.days) ? [...new Set(p.days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6))].sort() : []
+  if (days.length) out.days = days // no day at all: automatic work would wait until the reset
   out.cap = pctIn(p.cap, 10, 100) ?? out.cap
   out.reserve5h = pctIn(p.reserve5h, 0, 90) ?? out.reserve5h
   out.reservePerDay = pctIn(p.reservePerDay, 0, 14) ?? out.reservePerDay

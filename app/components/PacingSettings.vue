@@ -5,6 +5,7 @@
 // A program with no reading at all shows 'Quota unknown'.
 import type { PaceRow } from '#shared/pm/pace'
 import type { PaceMode, PacePolicy, PaceReason } from '#shared/pm/pacing'
+import { defaultAccountName } from '#shared/quotaAccount'
 
 const props = defineProps<{ active: boolean }>()
 const rows = ref<PaceRow[] | null>(null)
@@ -40,8 +41,30 @@ function rename(r: PaceRow) {
     await load()
   })
 }
-const numberOf = (e: Event) => Number((e.target as HTMLInputElement).value)
-const toggleDay = (r: PaceRow, d: number) => change(r.account!.key, { days: r.policy.days.includes(d) ? r.policy.days.filter(x => x !== d) : [...r.policy.days, d] })
+// A number field saves only a whole number in its range; anything else (an
+// emptied field included) keeps the saved value and says why.
+type NumField = 'cap' | 'reserve5h' | 'reservePerDay'
+const RANGES: Record<NumField, [number, number]> = { cap: [10, 100], reserve5h: [0, 90], reservePerDay: [0, 14] }
+const invalid = ref<{ key: string, field: NumField } | null>(null)
+function setNumber(r: PaceRow, field: NumField, e: Event) {
+  const el = e.target as HTMLInputElement
+  const [lo, hi] = RANGES[field]
+  const n = Number(el.value)
+  if (el.value.trim() === '' || !Number.isInteger(n) || n < lo || n > hi) {
+    el.value = String(r.policy[field])
+    invalid.value = { key: r.account!.key, field }
+    return
+  }
+  invalid.value = null
+  change(r.account!.key, { [field]: n })
+}
+const invalidText = (field: NumField) => tl(`Enter a whole number from ${RANGES[field][0]} to ${RANGES[field][1]}: the saved value is kept.`, `Saisis un nombre entier de ${RANGES[field][0]} à ${RANGES[field][1]} : la valeur enregistrée est gardée.`)
+// Working days: the last chosen day stays on (with none, automatic work would wait until the reset).
+const lastDay = (r: PaceRow, d: number) => r.policy.days.length === 1 && r.policy.days[0] === d
+const toggleDay = (r: PaceRow, d: number) => {
+  if (lastDay(r, d)) return
+  change(r.account!.key, { days: r.policy.days.includes(d) ? r.policy.days.filter(x => x !== d) : [...r.policy.days, d] })
+}
 
 const modeItems = computed(() => [
   { value: 'workdays', label: tl('Working days', 'Jours ouvrés') },
@@ -53,6 +76,12 @@ const days = computed(() => [1, 2, 3, 4, 5, 6, 0].map(d => ({ d, label: new Date
 
 const machineName = (key: string) => key ? (appConfig.value.machines?.find(m => m.key === key)?.label || key) : (appConfig.value.hostLabel || t('This machine'))
 const pct = (n: number) => `${Math.round(n)} %`
+// Same reading as the quota table (Settings › Appearance › Quotas): what is used, or what is left.
+const used = computed(() => quotaDisplay.value === 'used')
+const shown = (usedPct: number) => used.value ? usedPct : 100 - usedPct
+const amount = (usedPct: number) => used.value ? tl(`${pct(usedPct)} used`, `${pct(usedPct)} utilisés`) : tl(`${pct(100 - usedPct)} left`, `${pct(100 - usedPct)} restants`)
+const barStyle = (usedPct: number) => ({ width: `${Math.min(100, Math.max(0, shown(usedPct)))}%` })
+const tickStyle = (usedPct: number) => ({ left: `${Math.min(100, Math.max(0, shown(usedPct)))}%` })
 const when = (ms: number) => new Date(ms).toLocaleString(language, { weekday: 'short', hour: '2-digit', minute: '2-digit' })
 const limitLabel = (r: PaceRow) => r.week?.label === 'line' ? tl('line', 'ligne') : r.week?.label === 'burn cap' ? tl('burn cap', 'plafond brûler') : tl('limit', 'limite')
 function reasonText(reason: PaceReason) {
@@ -85,7 +114,7 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
         <template v-if="r.account">
           <div class="pace-head">
             <input
-              v-model="names[r.account.key]" class="pace-name" maxlength="40" :placeholder="r.account.key"
+              v-model="names[r.account.key]" class="pace-name" maxlength="40" :placeholder="defaultAccountName(r.account.key)"
               :aria-label="tl('Account name', 'Nom du compte')" data-testid="pace-name"
               @blur="rename(r)" @keydown.enter="($event.target as HTMLInputElement).blur()"
             >
@@ -106,13 +135,13 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
         <template v-else>
           <div v-if="r.week" class="pace-line">
             <span class="mono-label">{{ tl('Week', 'Semaine') }}</span>
-            <span class="pace-bar"><i :style="{ width: `${Math.min(100, r.week.used)}%` }" /><b :style="{ left: `${Math.min(100, r.week.limit)}%` }" /></span>
-            <span class="pace-num">{{ pct(r.week.used) }} · {{ limitLabel(r) }} {{ pct(r.week.limit) }}</span>
+            <span class="pace-bar"><i :style="barStyle(r.week.used)" /><b :style="tickStyle(r.week.limit)" /></span>
+            <span class="pace-num" data-testid="pace-week">{{ amount(r.week.used) }} · {{ limitLabel(r) }} {{ amount(r.week.limit) }}</span>
           </div>
           <div v-if="r.five" class="pace-line">
             <span class="mono-label">5 h</span>
-            <span class="pace-bar"><i :style="{ width: `${Math.min(100, r.five.used)}%` }" /><b :style="{ left: `${100 - r.policy.reserve5h}%` }" /></span>
-            <span class="pace-num">{{ pct(r.five.used) }}</span>
+            <span class="pace-bar"><i :style="barStyle(r.five.used)" /><b :style="tickStyle(100 - r.policy.reserve5h)" /></span>
+            <span class="pace-num">{{ amount(r.five.used) }}</span>
           </div>
           <p class="pace-meta">
             <span v-if="r.today !== null">{{ tl('Today', 'Aujourd’hui') }} +{{ pct(r.today) }}</span>
@@ -129,20 +158,22 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
             <div v-if="r.policy.mode === 'workdays'" class="pace-days" role="group" :aria-label="tl('Working days', 'Jours ouvrés')">
               <button
                 v-for="d in days" :key="d.d" type="button" :class="{ on: r.policy.days.includes(d.d) }" :aria-pressed="r.policy.days.includes(d.d)"
-                :disabled="busy !== ''" data-testid="pace-day" @click="toggleDay(r, d.d)"
+                :disabled="busy !== '' || lastDay(r, d.d)" data-testid="pace-day" @click="toggleDay(r, d.d)"
               >
                 {{ d.label }}
               </button>
             </div>
             <label v-if="r.policy.mode !== 'free'">{{ tl('Line cap', 'Plafond de la ligne') }} (%)
-              <input class="pm-select" type="number" min="10" max="100" :value="r.policy.cap" data-testid="pace-cap" @change="change(r.account.key, { cap: numberOf($event) })">
+              <input class="pm-select" type="number" min="10" max="100" :value="r.policy.cap" data-testid="pace-cap" @change="setNumber(r, 'cap', $event)">
             </label>
             <label v-else>{{ tl('Weekly reserve per day left', 'Réserve semaine par jour restant') }} (%)
-              <input class="pm-select" type="number" min="0" max="14" :value="r.policy.reservePerDay" data-testid="pace-per-day" @change="change(r.account.key, { reservePerDay: numberOf($event) })">
+              <input class="pm-select" type="number" min="0" max="14" :value="r.policy.reservePerDay" data-testid="pace-per-day" @change="setNumber(r, 'reservePerDay', $event)">
             </label>
             <label>{{ tl('5 h reserve', 'Réserve 5 h') }} (%)
-              <input class="pm-select" type="number" min="0" max="90" :value="r.policy.reserve5h" data-testid="pace-5h" @change="change(r.account.key, { reserve5h: numberOf($event) })">
+              <input class="pm-select" type="number" min="0" max="90" :value="r.policy.reserve5h" data-testid="pace-5h" @change="setNumber(r, 'reserve5h', $event)">
             </label>
+            <p v-if="invalid?.key === r.account.key" class="pace-error" data-testid="pace-invalid">{{ invalidText(invalid.field) }}</p>
+            <p v-if="r.policy.mode === 'workdays'" class="muted pace-hint">{{ tl('At least one day stays chosen. Days not chosen add nothing to the line.', 'Au moins un jour reste choisi. Les jours non choisis n’ajoutent rien à la ligne.') }}</p>
           </div>
         </template>
       </div>
@@ -166,11 +197,17 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
 .pace-bar i { display: block; height: 100%; background: var(--teal); }
 .pace-bar b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--text); }
 .pace-num { font: 500 13px var(--font-mono); white-space: nowrap; }
+/* Phone: the numbers go under the bar, which keeps its full width. */
+@media (max-width: 599px) {
+  .pace-line { grid-template-columns: 52px 1fr; row-gap: 4px; }
+  .pace-num { grid-column: 2; }
+}
 .pace-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; font: 500 12px var(--font-mono); color: var(--text-2); text-transform: uppercase; }
 .pace-state { color: var(--green); }
 .pace-state.wait { color: var(--ochre); }
 .pace-unknown { margin: 0; font-size: 13px; color: var(--text-2); }
-.pace-error { color: var(--rose); font-size: 13px; }
+.pace-error, .pace-hint { flex-basis: 100%; margin: 0; font-size: 13px; }
+.pace-error { color: var(--rose); }
 .pace-more { display: flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 32px; background: none; border: 0; padding: 0; cursor: pointer; }
 .pace-form { display: flex; flex-wrap: wrap; gap: 12px; }
 .pace-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-2); }

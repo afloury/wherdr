@@ -141,6 +141,7 @@ describe('policy per account (Settings › Pace)', () => {
     const p = mergePolicy(DEFAULT_PACE, { mode: 'workdays', days: [5, 1, 1, 9, 'x'], cap: 140, reserve5h: -3, reservePerDay: 'a', margin: 50 })
     expect(p).toEqual({ ...DEFAULT_PACE, mode: 'workdays', days: [1, 5], cap: 100, reserve5h: 0 })
     expect(mergePolicy(DEFAULT_PACE, { mode: 'turbo' }).mode).toBe('free')
+    expect(mergePolicy(DEFAULT_PACE, { days: [] }).days).toEqual([1, 2, 3, 4, 5]) // never no day at all
     expect(DEFAULT_PACE).toMatchObject({ mode: 'free', days: [1, 2, 3, 4, 5], cap: 90, reserve5h: 25, reservePerDay: 10 })
   })
 
