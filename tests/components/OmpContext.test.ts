@@ -21,7 +21,7 @@ it('shows omp\'s context as a card bar, a header gauge with details and a phone 
     expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('100')
     expect(wrapper.get('[role="progressbar"]').classes()).toContain('hi')
     await wrapper.setProps({ variant: 'text' })
-    expect(wrapper.text()).toBe('120% · 240K')
+    expect(wrapper.text()).toBe('120%')
     for (const other of [{ ...pane, ompStatus: undefined }, { ...pane, agent: 'claude' }]) {
       await wrapper.setProps({ pane: other as Pane })
       expect(wrapper.text()).toBe('')

@@ -2,7 +2,7 @@
 // omp's context usage (its own gauge, read from the screen by the server).
 // bar: a 2px line along the bottom of an agent card; head: a gauge in the
 // conversation header, its details on click; text: the figures alone (inside
-// the phone header, which is already a button).
+// the phone header, which is already a button and narrow: the percentage alone).
 import type { Pane } from '#shared/types'
 import { parseOmpContext } from '#shared/ompStatus'
 
@@ -29,7 +29,7 @@ const open = ref(false)
       v-if="variant === 'bar'" class="omp-context-bar" :class="{ 'last-known': stale, mid: context.pct >= 60, hi: context.pct >= 85 }"
       role="progressbar" :aria-label="label" :aria-valuenow="Math.min(context.pct, 100)" aria-valuemin="0" aria-valuemax="100" :style="{ width }"
     />
-    <span v-else-if="variant === 'text'" class="omp-context-text" :class="{ 'last-known': stale }">{{ short }}</span>
+    <span v-else-if="variant === 'text'" class="omp-context-text" :class="{ 'last-known': stale }">{{ Math.round(context.pct) }}%</span>
     <UPopover v-else v-model:open="open" :content="{ side: 'bottom', align: 'start' }">
       <button type="button" class="omp-context" :class="{ 'last-known': stale, mid: context.pct >= 60, hi: context.pct >= 85 }" :title="label" :aria-label="label" @click.stop @pointerdown.stop>
         <span class="omp-context-gauge" aria-hidden="true"><i :style="{ width }" /></span>{{ short }}

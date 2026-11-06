@@ -73,7 +73,7 @@ interface Parsed { agent: string | null | undefined, status: string | null | und
 
 export function createCoreScreens(deps: CoreScreenDeps) {
   const now = deps.now ?? Date.now
-  const cache = new Map<string, { at: number, text: string, open?: boolean, parsed?: Parsed }>()
+  const cache = new Map<string, { at: number, text: string, open?: boolean, working?: boolean, parsed?: Parsed }>()
   const born = new Map<string, number>()
   const failed = new Set<string>()
   const drafts = new Map<string, { text: string, since: number, real?: boolean }>()
@@ -87,7 +87,7 @@ export function createCoreScreens(deps: CoreScreenDeps) {
       const r = await deps.call('terminal.read', { terminal: p.coreAddress, lines: 0 }, 3000)
       const text = String(r?.text ?? '')
       const old = cache.get(p.id)
-      cache.set(p.id, { at: now(), text, ...(old?.text === text ? { parsed: old.parsed } : {}) })
+      cache.set(p.id, { at: now(), text, working: p.status === 'working', ...(old?.text === text ? { parsed: old.parsed } : {}) })
       failed.delete(p.id)
     } catch { failed.add(p.id) }
   }
@@ -128,6 +128,8 @@ export function createCoreScreens(deps: CoreScreenDeps) {
       const due = [...agents, ...ompWorking].filter(p => {
         const c = cache.get(p.id)
         if (!c || isKeyed(p.id) || (c.open && now() - (born.get(p.id) ?? 0) < STARTUP_MS)) return true
+        // A screen read during the turn (omp's gauge) says nothing of the question that ends it.
+        if (c.working && p.status !== 'working') return true
         return now() - c.at >= (deps.viewed(p.id) ? VIEWED_MS : IDLE_MS)
       }).sort((a, b) => Number(deps.viewed(b.id)) - Number(deps.viewed(a.id))).slice(0, MAX_READS)
       await Promise.all(due.map(read))

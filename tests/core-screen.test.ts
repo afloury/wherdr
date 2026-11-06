@@ -97,6 +97,20 @@ describe('enrich', () => {
     await screens.enrich([back])
     expect(back.ompStatus).toBeUndefined()
   })
+  it('reads omp again at once when its turn ends, so a question is not hidden behind a gauge read', async () => {
+    const texts: Record<string, string> = { 'm/o': input }
+    const { screens, reads, tick } = setup(texts, () => false)
+    await screens.enrich([pane('o', { agent: 'omp', status: 'idle' })])
+    tick(40_000)
+    await screens.enrich([pane('o', { agent: 'omp', status: 'working' })])
+    texts['m/o'] = fx('omp-approve-1814-bash.txt')
+    tick(2000)
+    const q = pane('o', { agent: 'omp', status: 'blocked' })
+    await screens.enrich([q])
+    expect(reads.length).toBe(3)
+    expect(q.interaction).toBe('native')
+    expect(q.prompt).toBeDefined()
+  })
   it('reads a working Claude only while its conversation is open (queue "send now")', async () => {
     const open = setup({ 'm/w': input })
     await open.screens.enrich([pane('w', { status: 'working' })])

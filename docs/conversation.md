@@ -28,7 +28,7 @@ Claude Code and Codex terminals open in conversation mode; any other terminal sh
   draft (text, quotes, attachments) is kept per agent, across reloads.
 - **omp context**: in the header, after the state, a small gauge with the percentage of omp's
   context window and the estimated tokens (`68% · 136K`); select it for the window, the exact
-  percentage and omp's status line (on a phone, the figures alone, under the title). The
+  percentage and omp's status line (on a phone, the percentage alone, under the title, in place of the agent kind). The
   estimate comes from omp's rounded percentage, not a token count. Unknown readings stay
   hidden; a reading taken while omp rests, or before its panel hid the gauge, is marked as
   the last one.
