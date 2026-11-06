@@ -137,3 +137,19 @@ export function paceVerdict(policy: PacePolicy, quota: Quota | null, now: number
   }
   return { go: true }
 }
+
+const PACE_MODES: PaceMode[] = ['workdays', 'everyday', 'free']
+const pctIn = (v: unknown, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : undefined)
+
+// The user's changes to a policy (Settings › Pace), checked field by field over
+// `base`: unknown or invalid fields keep the base value. The burn stays as it is.
+export function mergePolicy(base: PacePolicy, patch: unknown): PacePolicy {
+  const p = (patch && typeof patch === 'object' ? patch : {}) as Record<string, unknown>
+  const out: PacePolicy = { ...base, days: [...base.days], stale: { ...base.stale } }
+  if (PACE_MODES.includes(p.mode as PaceMode)) out.mode = p.mode as PaceMode
+  if (Array.isArray(p.days)) out.days = [...new Set(p.days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6))].sort()
+  out.cap = pctIn(p.cap, 10, 100) ?? out.cap
+  out.reserve5h = pctIn(p.reserve5h, 0, 90) ?? out.reserve5h
+  out.reservePerDay = pctIn(p.reservePerDay, 0, 14) ?? out.reservePerDay
+  return out
+}
