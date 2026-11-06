@@ -49,7 +49,8 @@ What it does:
    `NODE_OPTIONS=--max-old-space-size=1536` under `nice -n 19 ionice -c3`.
 5. **Imports from v2** (below), then starts the `wherdr-v3` user service on `127.0.0.1:7684`, with its HTTPS
    address as `APP_URL` and the `OOMScoreAdjust`, `MemoryLow` and `CPUWeight` of v2's unit (or
-   `-900`, `256M` and `200`).
+   `-900`, `256M` and `200`). A user service cannot lower its own OOM score: a negative
+   `OOMScoreAdjust` is ignored unless a tool run as root sets it (a guard script, for example).
 6. **Adds** `tailscale serve --bg --https=<port> http://127.0.0.1:7684` to the existing serve
    configuration (v2's entry stays). When Tailscale refuses, it prints the command to run once
    (`sudo tailscale set --operator=$USER`) instead of using `sudo`.
@@ -68,9 +69,9 @@ done or plan printed, `2` bad option, `3` missing prerequisite, `4` conflict, `5
 | From v2 | In v3 |
 | --- | --- |
 | herdr-projects repos | Projects (Settings › Projects): name, folder, key, and `workspace.from` as the base branch. Each needs a template before its tasks can start; the report lists the board settings to redo in it (reviewer, merge, worker…). Folders that no longer exist are skipped. |
-| Open board tasks (to do, under way, waiting) | Tasks to do in their project, with title, description and creation date. Done and archived tasks are not imported. |
-| Herdr SSH machines | herdr-core machines (`hc machine add` with the same target and name) when `ssh <target> 'command -v hc'` answers there without a password; otherwise the report says what is missing. |
-| Synced settings (appearance, home, conversation, files, notification rules), Do not disturb, this machine's name, recent folders | The same settings in v3. A setting already set in v3 is never replaced. |
+| Open board tasks (to do, under way, waiting) | Tasks to do in their project, with title, description and creation date. A task keeps its v2 number (WHR-37 stays WHR-37) when that number is free in v3; otherwise it takes the next free one and its description starts with "From v2 WHR-37.". Done and archived tasks are not imported. |
+| Herdr SSH machines | herdr-core machines (`hc machine add` with the same target) when SSH logs in there without a password; otherwise the report says what is missing. The name is made valid for hc (1-32 of a-z 0-9 - _ ., unique), and the report shows a change (`Beast → beast`). hc is looked for on the PATH, in `~/.local/bin` and in `/opt/homebrew/bin`; when it is not seen there, `hc machine add` is still tried and its own error is reported. |
+| Synced settings (appearance, home, conversation, files, notification rules), Do not disturb, this machine's name, recent folders | The same settings in v3. A setting already set in v3 is never replaced. The machine bar's order, hidden items and groups name each v2 machine by its v2 id: the import turns each into the v3 machine made from it (same SSH target) and drops those with none; the report lists both. |
 
 Not moved, to do again in v3: **passkeys** (add one in v3 on each device), **devices and push
 notifications** (install the app from v3's address and turn notifications on), per-device settings
