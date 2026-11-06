@@ -181,7 +181,7 @@ export interface Pane {
   // Codex resting, conversation shown: first line of the text left in its
   // input field.
   codexField?: string
-  // omp shown: its status line (model, folder, branch) and its gauges (context, quotas).
+  // omp: its status line (model, folder, branch) and its gauges (context, quotas), on cards too.
   ompStatus?: OmpStatus
   // omp working, conversation shown: the running step ("Finding Fixed section",
   // null before the first tool) and when the turn started (ms, null if unknown).
@@ -189,7 +189,8 @@ export interface Pane {
   // omp shown: the "!" / "$" command the user is running (omp stays idle meanwhile).
   ompShell?: ShellRun
 }
-export interface OmpStatus { line: string, meters: string | null }
+// metersFresh: the latest screen read, taken while omp works, showed these gauges (not a kept reading).
+export interface OmpStatus { line: string, meters: string | null, metersFresh?: boolean }
 export interface OmpActivity { step: string | null, since: number | null }
 
 // Model of an agent: readable label ("Opus 5.5", "GPT-6-Sol") and raw
