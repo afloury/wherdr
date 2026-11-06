@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Pane, Workspace } from '#shared/types'
 import { leadPane } from '#shared/spaces'
+import { parseOmpContext } from '#shared/ompStatus'
 
 const props = defineProps<{ pane: Pane, workspace?: Workspace | null }>()
 const emit = defineEmits<{ overview: [] }>()
@@ -11,6 +12,7 @@ const tabs = computed(() => spaceTabs(props.pane.workspace))
 const title = computed(() => props.pane.label || props.pane.name || paneOwnTitle(props.pane))
 const kind = computed(() => kindLabel(props.pane.agent))
 // No " · omp" under a pane already titled "omp".
+const context = computed(() => props.pane.agent === 'omp' ? parseOmpContext(props.pane.ompStatus?.meters) : null)
 const showKind = computed(() => Boolean(props.pane.agent) && title.value.toLocaleLowerCase() !== kind.value.toLocaleLowerCase())
 const position = computed(() => `${panes.value.findIndex(p => p.id === props.pane.id) + 1}/${panes.value.length}`)
 const host = computed(() => machineInfo(props.pane.machine))
@@ -21,6 +23,7 @@ const stateLabel = computed(() => disconnected.value
 const tone = computed(() => disconnected.value ? 'blocked' : statusKey(props.pane))
 const label = computed(() => [
   tl('Panes and tabs', 'Panneaux et onglets'), title.value, showKind.value ? kind.value : null, stateLabel.value,
+  context.value ? tl(`Context ${Math.round(context.value.pct)}%`, `Contexte ${Math.round(context.value.pct)} %`) : null,
   ...(panes.value.length > 1 ? [`${t('Pane')} ${position.value}`] : []), props.workspace?.label, hostLabel.value,
 ].filter(Boolean).join(', '))
 // Navigation lists only when there is somewhere to go; the actions are always
@@ -59,7 +62,7 @@ function tabStatus(e: typeof tabs.value[number]) {
   <button type="button" class="phone-identity" :aria-label="label" aria-haspopup="dialog" :aria-expanded="open" @click="open = true">
     <span class="phone-identity-copy" aria-hidden="true">
       <span class="phone-identity-title">{{ title }}</span>
-      <span class="phone-identity-meta"><span v-if="stateLabel" class="pill" :class="tone"><i />{{ stateLabel }}</span><template v-if="showKind"><span>·</span><span class="phone-identity-kind">{{ kind }}</span></template></span>
+      <span class="phone-identity-meta"><span v-if="stateLabel" class="pill" :class="tone"><i />{{ stateLabel }}</span><template v-if="showKind"><span>·</span><span class="phone-identity-kind">{{ kind }}</span></template><template v-if="context"><span>·</span><OmpContext :pane="pane" variant="text" /></template></span>
     </span>
     <UIcon v-if="paneNotificationsMuted(pane)" name="i-lucide-bell-off" mode="svg" class="phone-identity-muted" aria-hidden="true" />
     <!-- Drawn like the header's .icon-btn (terminal button): the whole identity stays the one tap target.

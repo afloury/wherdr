@@ -2,10 +2,11 @@
 // for Claude Code (no OSC 7501) and never describes a question, so the visible
 // screen (terminal.read) fills in `prompt`, `interaction` and, when core
 // reports nothing, the status. Reads are cached, bounded and never fatal.
-import type { Choices, Pane } from '../../shared/types'
+import type { Choices, OmpStatus, Pane } from '../../shared/types'
 import { classifyScreen, confirmedInput } from '../../shared/interactiveScreen'
 import { codexError } from '../../shared/codexError'
 import { hasTranscript } from '../../shared/agentKind'
+import { parseOmpStatus } from '../../shared/ompStatus'
 import { parseChoices, parseOmpPrompt, promptIdentity, completeClaudeAsk, type ClaudeAsked } from './choices'
 import { queueSendNow, readDraft, sameText } from './coreDraft'
 
@@ -77,6 +78,9 @@ export function createCoreScreens(deps: CoreScreenDeps) {
   const failed = new Set<string>()
   const drafts = new Map<string, { text: string, since: number, real?: boolean }>()
   const keyed = new Map<string, number>()
+  // omp's status line and context gauge, kept between reads (an unviewed resting omp
+  // is read at the background pace).
+  const omps = new Map<string, { at: number, status: OmpStatus | null }>()
   const isKeyed = (id: string) => (keyed.get(id) ?? -Infinity) > now()
   const read = async (p: Pane) => {
     try {
@@ -86,6 +90,20 @@ export function createCoreScreens(deps: CoreScreenDeps) {
       cache.set(p.id, { at: now(), text, ...(old?.text === text ? { parsed: old.parsed } : {}) })
       failed.delete(p.id)
     } catch { failed.add(p.id) }
+  }
+  function readOmpStatus(p: Pane) {
+    const c = cache.get(p.id)
+    let o = omps.get(p.id)
+    if (c && !failed.has(p.id) && o?.at !== c.at) {
+      const parsed = parseOmpStatus(c.text)
+      // A screen without the gauge (a full-screen panel) keeps the last one, marked old.
+      const status = parsed ? { ...parsed, meters: parsed.meters ?? o?.status?.meters ?? null, metersFresh: Boolean(parsed.meters) && p.status === 'working' }
+        : o?.status ? { ...o.status, metersFresh: false } : null
+      omps.set(p.id, o = { at: c.at, status })
+    }
+    if (!o?.status) return
+    // Read before this turn, or not read lately: the last known value.
+    p.ompStatus = p.status === 'working' && !failed.has(p.id) ? o.status : { ...o.status, metersFresh: false }
   }
   return {
     forget: (id: string) => { cache.delete(id) },
@@ -105,7 +123,9 @@ export function createCoreScreens(deps: CoreScreenDeps) {
     async enrich(panes: Pane[]): Promise<void> {
       const agents = panes.filter(p => p.coreAddress && p.agent && hasTranscript(p.agent)
         && (p.status !== 'working' || (p.agent === 'claude' && deps.viewed(p.id))))
-      const due = agents.filter(p => {
+      // A working omp is read too, for its context gauge only.
+      const ompWorking = panes.filter(p => p.coreAddress && p.agent === 'omp' && p.status === 'working')
+      const due = [...agents, ...ompWorking].filter(p => {
         const c = cache.get(p.id)
         if (!c || isKeyed(p.id) || (c.open && now() - (born.get(p.id) ?? 0) < STARTUP_MS)) return true
         return now() - c.at >= (deps.viewed(p.id) ? VIEWED_MS : IDLE_MS)
@@ -116,6 +136,8 @@ export function createCoreScreens(deps: CoreScreenDeps) {
       for (const id of born.keys()) if (!alive.has(id)) born.delete(id)
       for (const id of drafts.keys()) if (!alive.has(id)) drafts.delete(id)
       for (const id of keyed.keys()) if (!alive.has(id) || !isKeyed(id)) keyed.delete(id)
+      for (const id of omps.keys()) if (!alive.has(id) || panes.find(p => p.id === id)?.agent !== 'omp') omps.delete(id)
+      for (const p of panes) if (p.agent === 'omp') readOmpStatus(p)
       for (const p of agents) {
         const c = cache.get(p.id)
         if (!c) continue

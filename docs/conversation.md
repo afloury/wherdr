@@ -26,6 +26,12 @@ Claude Code and Codex terminals open in conversation mode; any other terminal sh
   "Pasted text · N lines" card, sent to the agent as it is and shown the same way in the
   conversation, where it opens in full with Copy; long typed messages fold with Show more. The
   draft (text, quotes, attachments) is kept per agent, across reloads.
+- **omp context**: in the header, after the state, a small gauge with the percentage of omp's
+  context window and the estimated tokens (`68% · 136K`); select it for the window, the exact
+  percentage and omp's status line (on a phone, the figures alone, under the title). The
+  estimate comes from omp's rounded percentage, not a token count. Unknown readings stay
+  hidden; a reading taken while omp rests, or before its panel hid the gauge, is marked as
+  the last one.
 - **Composer and terminal together** on a computer: under an agent's terminal, the composer stays
   available; typing in it takes control of the terminal's size ([Terminal](terminal.md)).
 - The model and effort pickers, the slash-command list and Codex update cards are v2 only.
