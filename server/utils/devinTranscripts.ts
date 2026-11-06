@@ -30,6 +30,8 @@ const READ_CHUNK_BYTES = 4 * 1024 * 1024
 const MAX_TEXT = 20000
 const FAIL_QUIET_MS = 1500
 const IMAGE_CACHE_MS = 2000
+// A host may be a Raspberry Pi; do not retain dozens of parsed transcripts.
+const DOCUMENT_CACHE_ENTRIES = 4
 const IMAGE_TYPES = /^image\/(?:png|jpeg|gif|webp|avif)$/
 const hash12 = (s: string) => createHash('sha1').update(s).digest('hex').slice(0, 12)
 const clip = (s: unknown) => typeof s === 'string' ? s.slice(0, MAX_TEXT) : ''
@@ -322,6 +324,12 @@ export function createDevinTranscripts({
   let imageDoc: { key: string, at: number, doc: AtifDoc } | undefined
   let imageExpiry: ReturnType<typeof setTimeout> | undefined
 
+  function remember<T>(cache: Map<string, T>, key: string, value: T, limit = 32) {
+    cache.delete(key)
+    cache.set(key, value)
+    if (cache.size > limit) cache.delete(cache.keys().next().value!)
+  }
+
   function pathOf(session: string): string | null {
     return transcriptPath(home, session, honorEnv)
   }
@@ -371,8 +379,7 @@ export function createDevinTranscripts({
           mimeType: img.mimeType,
           hash: hash12(img.data || `${ref}:${n}`),
         }))]))
-        loaded.set(file, { gen, size, doc })
-        if (loaded.size > 32) loaded.delete(loaded.keys().next().value!)
+        remember(loaded, file, { gen, size, doc }, DOCUMENT_CACHE_ENTRIES)
       } else {
         imageDoc = { key: imageKey, at: now(), doc }
         clearTimeout(imageExpiry)
@@ -395,7 +402,7 @@ export function createDevinTranscripts({
     }
     const good = lastGood.get(session)
     const first = !failAt.has(session)
-    failAt.set(session, now())
+    remember(failAt, session, now())
     if (good && opts.since === good.token && opts.before == null) return { available: true, file: good.file, session, token: good.token, unchanged: true }
     if (first) throw e
     throw new HerdrError('internal', 'Unable to read Devin conversation')
@@ -480,11 +487,10 @@ export function createDevinTranscripts({
         : { ...base, file: fileId, token, items, start, queue: [], ...(rewritten ? { rewritten: true } : {}) }
       if (before == null) {
         // The HTTP layer adds marks/delta fingerprints to its response object.
-        lastGood.set(session, { file: reply.file, token: reply.token })
-        if (lastGood.size > 32) lastGood.delete(lastGood.keys().next().value!)
+        remember(lastGood, session, { file: reply.file, token: reply.token })
       }
       const model = latestModel(doc)
-      lastModel.set(session, model ? { id: model, label: ompModelLabel(model) } : null)
+      remember(lastModel, session, model ? { id: model, label: ompModelLabel(model) } : null)
       return reply
     } catch (e) {
       return failOpen(session, e, opts)
@@ -546,7 +552,7 @@ export function createDevinTranscripts({
       failAt.delete(session)
       const name = latestModel(got.doc)
       const info = name ? { id: name, label: ompModelLabel(name) } : null
-      lastModel.set(session, info)
+      remember(lastModel, session, info)
       return info
     } catch (e) {
       if (isMissing(e)) {

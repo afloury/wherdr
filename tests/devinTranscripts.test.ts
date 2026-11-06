@@ -282,6 +282,22 @@ it('answers unchanged polls from a cheap file signature without rereading the tr
   expect(counts.stat).toBeGreaterThanOrEqual(2)
 })
 
+it('bounds retained conversation documents across sessions', async () => {
+  const { home } = fixture()
+  const { fs, counts } = countingFs()
+  const reader = createDevinTranscripts({ home, fs })
+  for (let i = 0; i < 5; i++) {
+    const session = `session-${i}`
+    writeDevinFixture(home, { session, rows: [{ id: 0, message: devinMessage('assistant', session) }] })
+    await reader.chat({ ...pane, agentSession: session })
+  }
+  expect(counts.read).toBe(5)
+  expect((await reader.chat({ ...pane, agentSession: 'session-4' })).items?.[0]?.text).toBe('session-4')
+  expect(counts.read).toBe(5)
+  expect((await reader.chat({ ...pane, agentSession: 'session-0' })).items?.[0]?.text).toBe('session-0')
+  expect(counts.read).toBe(6)
+})
+
 it('reports malformed transcripts instead of erasing the conversation', async () => {
   const { home } = fixture()
   const file = writeDevinFixture(home, { rows: [{ id: 0, message: devinMessage('assistant', 'ok') }] })
