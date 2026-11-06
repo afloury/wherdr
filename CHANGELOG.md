@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **Devin conversations on herdr-core.** Read saved ATIF transcripts from the running process, locally or on a core machine, with tools, inline images, search and previews. Updates arrive when Devin saves a turn; only history retained after compaction is available.
+
 - **herdr-core 0.1.17: machines with an SSH port.** Settings › Agents › Machines › Add machine takes `user@host:port` when the core accepts one (read from its `rpc.discover`, not its version); on herdr-core 0.1.16 the form says so before sending.
 - **SVG diagrams in conversations.** Static `svg` code fences now show an isolated theme-aware preview with source, Copy and enlargement; incomplete or unsafe content stays readable code without executing or loading external resources (port of [#416](https://github.com/afloury/wherdr/pull/416) by [@guileen](https://github.com/guileen)).
 
