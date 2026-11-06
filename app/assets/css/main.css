@@ -1570,6 +1570,9 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
 .choices-keys button:hover { background: var(--surface-2); }
 .choices-keys button:active { background: var(--surface-3); }
 .choices-keys button:disabled { opacity: .5; }
+/* Dismiss (Esc): a quiet ghost button, the options stay the main actions. */
+.choices-keys .choices-dismiss { background: transparent; border-color: transparent; color: var(--muted); padding-left: 2px; padding-right: 8px; }
+.choices-keys .choices-dismiss:hover { color: var(--text); background: transparent; border-bottom-color: var(--line); }
 /* Keyboard keys captured by the card (computer): discreet, at the end of the line. */
 .choices-keys .card-kbd { display: inline-flex; align-items: center; gap: 4px; align-self: center; margin-left: auto; }
 .choices-keys .card-kbd kbd { margin-left: 0; color: var(--muted); }
