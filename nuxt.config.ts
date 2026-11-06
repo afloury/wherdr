@@ -4,6 +4,8 @@
 import { CSP_BASE, CSP_DICTATION_WORKER, DICTATION_WORKER_PATH } from './server/utils/csp'
 import { ICON_SCAN_GLOBS } from './shared/iconScan'
 import { lazyChunks, PRECACHE_GLOBS, RUNTIME_ONLY_GLOBS } from './shared/precache'
+import { execFileSync } from 'node:child_process'
+import { v3Version } from './shared/v3Version'
 
 // Demo build (`VITE_WHERDR_DEMO=1 nuxt generate`, served at wherdr.dev/demo/):
 // the same app, static, with no server at all — app/demo/ answers the API in
@@ -11,11 +13,16 @@ import { lazyChunks, PRECACHE_GLOBS, RUNTIME_ONLY_GLOBS } from './shared/precach
 const demo = process.env.VITE_WHERDR_DEMO === '1'
 // Chunks left out of the service worker precache (shared/precache.ts).
 const lazy = lazyChunks()
+// v3's own version (shared/v3Version.ts), from the commit being built.
+const buildCommit = (() => {
+  if (process.env.WHERDR_COMMIT) return process.env.WHERDR_COMMIT
+  try { return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) } catch { return process.env.GITHUB_SHA }
+})()
 
 export default defineNuxtConfig({
   ssr: false,
   // Server and app run on herdr-core only (the demo answers the API itself).
-  runtimeConfig: { public: { core: !demo } },
+  runtimeConfig: { public: { core: !demo, version: v3Version(buildCommit) } },
   modules: demo ? ['@nuxt/ui'] : ['@nuxt/ui', '@vite-pwa/nuxt'],
   plugins: demo ? ['~/demo/plugin.client'] : [],
   // No server code in the demo build (nothing to prerender against, nothing that
