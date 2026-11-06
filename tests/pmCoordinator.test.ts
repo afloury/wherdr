@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
 import { answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, userMessageTo } from '../server/utils/pmCoordinator'
-import { parseCommand, roleFiles, coordinatorArgs } from '../shared/pm/coordinator'
+import { MAIN, mainRoleFiles, parseCommand, roleFiles, coordinatorArgs } from '../shared/pm/coordinator'
 import { EXAMPLES, common, company } from '../shared/pm/examples'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
 import type { Finding } from '../shared/pm/verdict'
@@ -64,6 +64,56 @@ describe('the token', () => {
     const saved = (await store.task(task.id))!
     expect(saved).toMatchObject({ tags: ['CTP-264'], links: [{ label: 'PR', url: 'https://example.com/pr/7' }] })
     expect(saved.log!.map(l => [l.by, l.text])).toEqual([['coordinator CO', 'tag CTP-264'], ['coordinator CO', 'link PR https://example.com/pr/7']])
+  })
+})
+
+describe('the main coordinator (WHR-398)', () => {
+  const ids = (r: unknown) => (r as { tasks: { id: string }[] }).tasks.map(t => t.id)
+
+  it('acts on every project; a project token still cannot leave its project', async () => {
+    const main = await issueToken(store, MAIN)
+    const co = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
+    const st = await store.addTask({ project: 'ST', title: 'Study', type: 'study' })
+    expect(ids(await cli(['list'], undefined, main))).toEqual([co.id, st.id])
+    expect(ids(await cli(['list', '--project', 'ST'], undefined, main))).toEqual([st.id])
+    await cli(['task', 'tag', st.id, 'X-1'], undefined, main)
+    expect((await store.task(st.id))!.log!.at(-1)).toMatchObject({ by: 'main coordinator', text: 'tag X-1' })
+    // A task needs its project named; the template stays the project's.
+    await noteTurn(store, MAIN, 'user', 'add a study')
+    await refused(cli(['task', 'add', 'More', '--type', 'study'], undefined, main), 'Name the project')
+    const added = await cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST'], undefined, main) as { task: { project: string } }
+    expect(added.task.project).toBe('ST')
+    await refused(cli(['template', 'edit'], '{}', main), 'project coordinator')
+    await refused(cli(['list', '--project', 'NO'], undefined, main), 'Unknown project')
+    // The project's token: its project only, whatever it names.
+    await refused(cli(['list', '--project', 'ST']), 'project CO only')
+    await refused(cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST']), 'project CO only')
+    await refused(cli(['task', 'tag', st.id, 'Y']), 'Unknown task')
+    expect(ids(await cli(['list']))).toEqual([co.id])
+    expect(parseCommand(['show', 'CO-1', '--project', 'CO'])).toEqual({ error: expect.stringContaining('--project is for') })
+  })
+
+  it('starts on wherdr\'s machine in its own folder, with no repository, and comes first in the view', async () => {
+    const runs: Record<string, unknown>[] = [], written: string[] = []
+    const call = async (method: string, params: Record<string, unknown>) => {
+      const argv = params.argv as string[] | undefined
+      if (method === 'machine.exec' && argv?.[2] === 'printf %s "$HOME"') return { code: 0, stdout: Buffer.from('/h').toString('base64') }
+      if (method === 'machine.exec') return written.push(argv![4]!), { code: 0, stdout: '' }
+      runs.push(params)
+      return { address: 'host/t9' }
+    }
+    const machines = () => [{ key: 'pi', label: 'pi', local: false, status: 'online' }, { key: '', label: 'here', local: true, status: 'online' }]
+    await setCoordinatorAgent(store, MAIN, { program: 'claude', model: 'sonnet' })
+    const r = await startCoordinator({ store, call, machines } as never, MAIN, {}, { local: 'http://127.0.0.1:7690' })
+    expect(r.folder).toBe('/h/.wherdr/pm/coordinators/_main')
+    expect(written).toContain('/h/.wherdr/pm/coordinators/_main/AGENTS.md')
+    expect(runs[0]).toMatchObject({ labels: { 'wherdr.coordinator': MAIN }, env: { WHERDR_URL: 'http://127.0.0.1:7690' } })
+    expect(runs[0]!.on).toBeUndefined()
+    expect(runs[0]!.line).toMatch(/exec 'claude' '--model' 'sonnet'$/)
+    const view = await coordinatorsView(store)
+    expect(view.map(c => c.project)).toEqual([MAIN, 'CO', 'ST'])
+    expect(view[0]).toMatchObject({ main: true, terminal: 'host/t9', agent: { model: 'sonnet' } })
+    expect(mainRoleFiles([{ key: 'CO', name: 'Company', path: '/src/co', template: 'company' }])['AGENTS.md']).toContain('only through the board')
   })
 })
 

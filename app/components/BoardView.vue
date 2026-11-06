@@ -29,7 +29,8 @@ const cards = computed(() => (data.value?.cards ?? [])
   .filter(c => (!project.value || c.project === project.value) && (!tag.value || c.tags.includes(tag.value)))
   .map(c => (!c.yourTurn && waitsForYou(c) ? { ...c, yourTurn: tl('Answer the agent', 'Réponds à l’agent') } : c)))
 const tags = computed(() => boardTags((data.value?.cards ?? []).filter(c => !project.value || c.project === project.value)))
-const coordinator = computed(() => coordinators.value.find(c => c.project === project.value))
+// All projects: the main coordinator.
+const coordinator = computed(() => (project.value ? coordinators.value.find(c => c.project === project.value) : mainCoordinator.value))
 const columns = computed(() => (project.value ? data.value?.projects.find(p => p.key === project.value)?.columns ?? [] : null))
 const lanes = computed(() => boardLanes(cards.value, columns.value))
 const PHASE_LABEL: Record<string, string> = { 'your-turn': 'Your turn', 'todo': 'To do', 'working': 'Working', 'done': 'Done' }

@@ -1,9 +1,11 @@
-// The project coordinators (GET /api/pm/coordinators), shared by the board
-// and the conversation view, which shows its coordinator bar on their panes.
+// The coordinators (GET /api/pm/coordinators: the main one, then each
+// project's), shared by the sidebar, the board and the conversation view,
+// which shows its coordinator bar on their panes.
 import type { CoordinatorAgent, CoordinatorView } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
 
 export const coordinators = ref<CoordinatorView[]>([])
+export const mainCoordinator = computed(() => coordinators.value.find(c => c.main))
 let loading: Promise<void> | null = null
 // Kept conversations of another agent the user chose to resume: no warning
 // any more, also after a reload (this browser only).
@@ -40,4 +42,10 @@ export async function launchCoordinator(project: string, agent?: CoordinatorAgen
     await new Promise(r => setTimeout(r, 250))
   }
   return undefined
+}
+
+// One tap: its conversation while it runs, else a new one with its default agent.
+export async function openCoordinator(c: CoordinatorView) {
+  const p = coordinatorPane(c) ?? await launchCoordinator(c.project)
+  if (p) await navigateTo(panePath(p.id))
 }
