@@ -45,6 +45,7 @@ function harness() {
   let sequence = [111, 107, 251], token = 0, inFlight = 0, maxInFlight = 0
   let failRun: Stage | undefined, failCreate: Stage | undefined, missingGpu = false, missingF16 = false, rejectAdapter = false
   let precision = 'float16', failRelease = false
+  let onLoaded: (() => void) | undefined
   let gate: { kind: Stage, started: ReturnType<typeof deferred>, done: ReturnType<typeof deferred> } | undefined
   class Tensor {
     disposed = 0
@@ -75,7 +76,11 @@ function harness() {
       const record = { kind, released: 0 }; sessions.push(record)
       return {
         inputNames: kind === 'encoder' ? ['mel'] : ['input_embeds', 'position_ids'],
-        inputMetadata: [{ type: precision }, { type: 'int64' }],
+        get inputMetadata() {
+          // The last synchronous initialization work, before load's await resumes.
+          if (kind === 'step') { const callback = onLoaded; onLoaded = undefined; callback?.() }
+          return [{ type: precision }, { type: 'int64' }]
+        },
         release: async () => { record.released++; if (failRelease) { failRelease = false; throw new Error('synthetic release failure') } },
         run: async (feeds: Record<string, Tensor>) => {
           calls.push({ kind, feeds }); inFlight++; maxInFlight = Math.max(maxInFlight, inFlight)
@@ -136,6 +141,7 @@ function harness() {
     gate: (kind: Stage) => { const g = { kind, started: deferred(), done: deferred() }; gate = g; return g },
     maxInFlight: () => maxInFlight,
     lose: () => devices.at(-1)!.loss.resolve(),
+    onLoaded: (callback: () => void) => { onLoaded = callback },
     setBudget: (n: number) => { config.prompt.max_new_tokens = n; files.set('prompt_config.json', encode(config)) },
   }
 }
@@ -165,6 +171,45 @@ describe('the ORT WebGPU worker', () => {
     const h = harness(); h.gpu(mode); h.load(); await h.idle()
     expect(h.messages.some(m => m.t === 'error')).toBe(true)
     expect(h.fakeOrt.InferenceSession.create).not.toHaveBeenCalled()
+  })
+  it('reports loss at the load completion boundary without publishing ready, then reloads on a fresh device', async () => {
+    const h = harness(); h.onLoaded(h.lose); h.load(); await h.idle(); await h.idle()
+    expect(h.messages.filter(m => m.t === 'ready' || m.t === 'error')).toEqual([
+      expect.objectContaining({ t: 'error', error: 'Speech GPU device lost' }),
+    ])
+    expect(h.sessions.map(s => s.released)).toEqual([1, 1, 1])
+    expect(h.devices[0]!.destroy).toHaveBeenCalledOnce()
+    expect(h.adapter.requestDevice).toBe(h.nativeDeviceRequest)
+    h.load(); await h.idle(); await h.idle()
+    expect(h.messages.filter(m => m.t === 'ready')).toHaveLength(1)
+    expect(h.sessions.slice(3).map(s => s.released)).toEqual([0, 0, 0])
+    h.decode(1); await h.idle()
+    expect(h.messages.find(m => m.id === 1)).toMatchObject({ t: 'final', text: 'ok' })
+    h.send({ t: 'dispose' }); await h.idle()
+    expect(h.sessions.map(s => s.released)).toEqual([1, 1, 1, 1, 1, 1])
+    expect(h.devices).toHaveLength(2)
+    for (const device of h.devices) expect(device.destroy).toHaveBeenCalledOnce()
+    expect(h.tensors.every(t => t.disposed === 1)).toBe(true)
+  })
+  it.each([false, true])('handles completion loss during automatic reload with cancellation=%s', async cancelled => {
+    const h = harness(); h.load(); await h.idle()
+    h.lose(); await Promise.resolve(); await h.idle(); h.messages.length = 0
+    h.onLoaded(() => { h.lose(); if (cancelled) h.send({ t: 'cancel', id: 1 }) })
+    h.decode(1); h.decode(2); h.send({ t: 'cancel', id: 2 }); await h.idle(); await h.idle()
+    expect(h.messages.filter(m => ['ready', 'final', 'error'].includes(m.t))).toEqual(cancelled ? [] : [
+      expect.objectContaining({ t: 'error', id: 1, error: 'Speech GPU device lost' }),
+    ])
+    expect(h.calls).toHaveLength(0)
+    expect(h.sessions.map(s => s.released)).toEqual([1, 1, 1, 1, 1, 1])
+    for (const device of h.devices) expect(device.destroy).toHaveBeenCalledOnce()
+    h.decode(3); await h.idle(); await h.idle()
+    expect(h.messages.find(m => m.id === 3)).toMatchObject({ t: 'final', text: 'ok' })
+    expect(h.devices).toHaveLength(3)
+    expect(h.sessions.slice(6).map(s => s.released)).toEqual([0, 0, 0])
+    h.send({ t: 'dispose' }); await h.idle()
+    expect(h.sessions.every(s => s.released === 1)).toBe(true)
+    for (const device of h.devices) expect(device.destroy).toHaveBeenCalledOnce()
+    expect(h.tensors.every(t => t.disposed === 1)).toBe(true)
   })
   it('strips the automatic language header and reports token exhaustion', async () => {
     const h = harness(); h.load(); await h.idle()

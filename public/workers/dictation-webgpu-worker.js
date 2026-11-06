@@ -199,7 +199,8 @@ async function handle(msg, job) {
     if (msg.t === 'dispose') { loadConfig = null; await reset() }
     else if (msg.t === 'load') {
       loadConfig = msg
-      await load(msg)
+      const state = await load(msg)
+      check(state) // Device loss can settle before this await continuation.
       postMessage({ t: 'ready', ms: Math.round(performance.now() - t0) })
     } else {
       if (model?.failure) await reset()

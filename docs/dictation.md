@@ -370,7 +370,9 @@ model-file loader and ORT WebGPU 1.23.2. It requires WebGPU and `shader-f16`, an
 checked adapter and the same runtime-created device on all three sessions. It has no catalog entry or engine
 wiring yet: it cannot be selected in Settings or by a saved model ID.
 
-The load/decode protocol matches the CPU worker. A decode also accepts `terms` and `language`;
+The load/decode protocol matches the CPU worker. A load checks for device loss before
+publishing `ready`; a failed load reports an error and releases its resources.
+A decode also accepts `terms` and `language`;
 its final message includes detected `language` and `truncated`. All operations are serialized.
 `{ t: 'cancel', id }` cancels only that request, including queued work, suppresses its result,
 and stops before the next ORT call; a running GPU call must finish first. A replacement load or
