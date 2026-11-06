@@ -393,18 +393,32 @@ it('preserves image hashes when paging into older history', async () => {
   expect(older.items?.find(i => i.images)).toMatchObject({ hashes: [expect.any(String)] })
 })
 
-it('loads image bytes on demand instead of retaining payloads in the polling cache', async () => {
+it('reuses one recent image document, expiring it and invalidating changed files', async () => {
   const { home } = fixture()
   const image = { type: 'image', data: Buffer.from('on-demand-shot').toString('base64'), mimeType: 'image/png' }
-  writeDevinFixture(home, { rows: [{ id: 0, message: devinMessage('assistant', [image]) }] })
+  const file = writeDevinFixture(home, { rows: [{ id: 0, message: devinMessage('assistant', [image, image]) }] })
   const { fs, counts } = countingFs()
-  const reader = createDevinTranscripts({ home, fs })
+  let clock = 1000
+  const reader = createDevinTranscripts({ home, fs, now: () => clock })
   const page = await reader.chat(pane)
   expect(counts.read).toBe(1)
   expect((await reader.image(pane, page.file!, page.items![0]!.ref!, 0))?.body.toString()).toBe('on-demand-shot')
+  expect((await reader.image(pane, page.file!, page.items![0]!.ref!, 1))?.body.toString()).toBe('on-demand-shot')
   expect(counts.read).toBe(2)
   expect(await reader.chat(pane, { since: page.token })).toMatchObject({ unchanged: true })
   expect(counts.read).toBe(2)
+  clock += 2001
+  await reader.image(pane, page.file!, page.items![0]!.ref!, 0)
+  expect(counts.read).toBe(3)
+  const doc = JSON.parse(readFileSync(file, 'utf8'))
+  doc.steps[0].message[0].data = Buffer.from('updated-shot').toString('base64')
+  writeFileSync(file, JSON.stringify(doc))
+  expect((await reader.image(pane, page.file!, page.items![0]!.ref!, 0))?.body.toString()).toBe('updated-shot')
+  expect(counts.read).toBe(4)
+  writeDevinFixture(home, { session: 'other', rows: [{ id: 0, message: devinMessage('assistant', [image]) }] })
+  await reader.image({ ...pane, agentSession: 'other' }, 'other.json', '1:a', 0)
+  await reader.image(pane, page.file!, page.items![0]!.ref!, 0)
+  expect(counts.read).toBe(6)
 })
 
 it('keeps images from different tool results in the same step separate', async () => {

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import path from 'node:path'
+import { clearTimeout, setTimeout } from 'node:timers'
 import type { ChatItem, ChatResponse, ModelInfo } from '../../shared/types'
 import type { TranscriptPane } from './transcripts'
 import { excerpt, matchAt } from '../../shared/searchText'
@@ -28,6 +29,7 @@ const MAX_READ_BYTES = 24 * 1024 * 1024
 const READ_CHUNK_BYTES = 4 * 1024 * 1024
 const MAX_TEXT = 20000
 const FAIL_QUIET_MS = 1500
+const IMAGE_CACHE_MS = 2000
 const IMAGE_TYPES = /^image\/(?:png|jpeg|gif|webp|avif)$/
 const hash12 = (s: string) => createHash('sha1').update(s).digest('hex').slice(0, 12)
 const clip = (s: unknown) => typeof s === 'string' ? s.slice(0, MAX_TEXT) : ''
@@ -317,6 +319,8 @@ export function createDevinTranscripts({
   const lastModel = new Map<string, ModelInfo | null>()
   const failAt = new Map<string, number>()
   const inflight = new Map<string, Promise<AtifDoc>>()
+  let imageDoc: { key: string, at: number, doc: AtifDoc } | undefined
+  let imageExpiry: ReturnType<typeof setTimeout> | undefined
 
   function pathOf(session: string): string | null {
     return transcriptPath(home, session, honorEnv)
@@ -334,6 +338,12 @@ export function createDevinTranscripts({
   }
 
   async function readDoc(file: string, size: number, gen: string, withImages = false): Promise<AtifDoc> {
+    const imageKey = `${file}|${gen}|${size}`
+    if (imageDoc && now() - imageDoc.at >= IMAGE_CACHE_MS) {
+      clearTimeout(imageExpiry)
+      imageDoc = undefined
+    }
+    if (withImages && imageDoc?.key === imageKey) return imageDoc.doc
     const hit = withImages ? null : loaded.get(file)
     if (hit && hit.gen === gen && hit.size === size) return hit.doc
     const key = `${file}|${gen}|${size}|${withImages}`
@@ -355,14 +365,19 @@ export function createDevinTranscripts({
       if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.schema_version !== 'ATIF-v1.7' || !Array.isArray(raw.steps) || raw.session_id !== path.basename(file, '.json')) throw new Error('Unsupported Devin transcript format')
       const doc = normalize(raw, path.basename(file))
       if (!withImages) {
-        // Polling retains only metadata and hashes; image views re-read the
-        // bounded source on demand rather than pinning base64 across sessions.
+        // Polling retains only metadata and hashes. Image payloads have their
+        // own single-entry cache, shared by pictures opened together.
         doc.images = new Map([...doc.images].map(([ref, list]) => [ref, list.map((img, n) => ({
           mimeType: img.mimeType,
           hash: hash12(img.data || `${ref}:${n}`),
         }))]))
         loaded.set(file, { gen, size, doc })
         if (loaded.size > 32) loaded.delete(loaded.keys().next().value!)
+      } else {
+        imageDoc = { key: imageKey, at: now(), doc }
+        clearTimeout(imageExpiry)
+        imageExpiry = setTimeout(() => { imageDoc = undefined; imageExpiry = undefined }, IMAGE_CACHE_MS)
+        imageExpiry.unref()
       }
       return doc
     })()
