@@ -5,8 +5,8 @@
 // runs the board's upkeep): the task folders, the coordinators' state files
 // and the repos' keys. On an SSH machine over its connection: a few `readdir`,
 // one `stat` of every file, and only the files that changed since are read
-// again. A machine's answer is reused for REUSE_MS; an unreachable machine
-// keeps its last one.
+// again. A machine's answer is reused for REUSE_MS, then answered while it is
+// read again; an unreachable machine keeps its last one.
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
@@ -32,9 +32,15 @@ const caches = new Map<string, Cache>()
 const reading = new Map<string, Promise<MachineLinks>>()
 
 const dataDir = (m: Machine) => path.posix.join(m.home, '.herdr-projects/data')
+// A missing folder lists nothing; any other failure (an SSH read that timed
+// out) fails the read, so the machine keeps its last links.
 async function names(m: Machine, dir: string): Promise<string[]> {
   try { return (await m.fs.readdir(dir)).filter(n => DIR_RE.test(n)) }
-  catch { return [] }
+  catch (e) {
+    const code = (e as { code?: unknown }).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return []
+    throw e
+  }
 }
 
 // The files' contents, parsed: read again only when their size or time changed.
@@ -60,18 +66,25 @@ async function readMachine(m: Machine, files: Map<string, Seen>): Promise<Machin
   const data = dataDir(m)
   const tasksDir = path.posix.join(data, 'tasks')
   const coordDir = path.posix.join(data, 'coordinator')
+  // The folders are listed side by side: over SSH each listing is a round
+  // trip, which may wait behind the machine's other reads.
+  const [repos, sessions] = await Promise.all([names(m, tasksDir), names(m, coordDir)])
+  const [repoDirs, projectDirs] = await Promise.all([
+    Promise.all(repos.map(repo => names(m, path.posix.join(tasksDir, repo)))),
+    Promise.all(sessions.map(s => names(m, path.posix.join(coordDir, s, 'projects')))),
+  ])
   const taskPaths: string[] = []
-  for (const repo of await names(m, tasksDir)) {
-    const dirs = (await names(m, path.posix.join(tasksDir, repo))).filter(n => TASK_DIR_RE.test(n))
+  repos.forEach((repo, i) => {
+    const dirs = repoDirs[i]!.filter(n => TASK_DIR_RE.test(n))
       .sort((a, b) => parseInt(b, 10) - parseInt(a, 10) || a.localeCompare(b)).slice(0, PER_REPO_MAX)
     for (const n of dirs) taskPaths.push(path.posix.join(tasksDir, repo, n, 'task.json'))
-  }
+  })
   const coordPaths: { p: string, level: LinkedCoordinator['level'], session: string, folder?: string }[] = []
-  for (const s of await names(m, coordDir)) {
+  sessions.forEach((s, i) => {
     const top = path.posix.join(coordDir, s)
     coordPaths.push({ p: path.posix.join(top, 'state.json'), level: 'top', session: s }, { p: path.posix.join(top, 'machine/state.json'), level: 'machine', session: s })
-    for (const r of await names(m, path.posix.join(top, 'projects'))) coordPaths.push({ p: path.posix.join(top, 'projects', r, 'state.json'), level: 'project', session: s, folder: r })
-  }
+    for (const r of projectDirs[i]!) coordPaths.push({ p: path.posix.join(top, 'projects', r, 'state.json'), level: 'project', session: s, folder: r })
+  })
   const keysPath = path.posix.join(data, 'repo-keys.json')
   const all = [...taskPaths.slice(0, FILES_MAX), ...coordPaths.map(c => c.p), keysPath, path.posix.join(data, 'repos.json')]
   const read = await readChanged(m, files, all)
@@ -115,8 +128,13 @@ function machineLinks(m: Machine): Promise<MachineLinks> | MachineLinks | null {
   const last = caches.get(m.key)
   if (!m.local && m.status !== 'online') return last?.links ?? null
   if (last && Date.now() - last.at < REUSE_MS) return last.links
-  const now = reading.get(m.key)
-  if (now) return now
+  // Older than that: the last links answer now, read again behind them (a
+  // reloaded page must not wait for a slow machine's whole read).
+  const job = reading.get(m.key) ?? readAgain(m, last)
+  return last ? last.links : job
+}
+
+function readAgain(m: Machine, last: Cache | undefined): Promise<MachineLinks> {
   const files = last?.files ?? new Map<string, Seen>()
   const job = readMachine(m, files)
     .then((links) => { caches.set(m.key, { at: Date.now(), links, files }); return links })
