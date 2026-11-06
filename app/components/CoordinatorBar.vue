@@ -3,7 +3,7 @@
 // changed in one gesture), its autopilot, a warning when its kept conversation ran with
 // another agent, and the template change it proposed, to accept or refuse.
 // On the board (`open`), also the button that opens or starts it.
-import { COORDINATOR_AGENTS, agentName, sameAgent, type CoordinatorAgent, type CoordinatorView } from '#shared/pm/coordinator'
+import { agentChoices, agentKey as key, agentName, sameAgent, type CoordinatorView } from '#shared/pm/coordinator'
 
 const props = defineProps<{ c: CoordinatorView, open?: boolean }>()
 const busy = ref(false)
@@ -11,8 +11,7 @@ const busy = ref(false)
 const showDiff = ref(!!props.open)
 const error = ref('')
 
-const key = (a: CoordinatorAgent) => `${a.program}:${a.model}`
-const choices = computed(() => [...COORDINATOR_AGENTS, ...[props.c.agent, props.c.ran].filter(a => a && !COORDINATOR_AGENTS.some(b => sameAgent(a, b))) as CoordinatorAgent[]])
+const choices = computed(() => agentChoices(props.c))
 const pane = computed(() => coordinatorPane(props.c))
 // The kept conversation is another agent's: warn, a new one first.
 const other = computed(() => !!pane.value && !!props.c.ran && !sameAgent(props.c.ran, props.c.agent) && !resumedCoordinators.value.includes(props.c.terminal!))
