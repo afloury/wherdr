@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { getEventListeners } from 'node:events'
 import { chatHoverIntent, chatIntentKey, createChatIntentCache, withDeadline } from '../app/utils/chatIntent'
 import type { ChatResponse, Pane } from '../shared/types'
 
@@ -116,4 +117,25 @@ it('uses AbortSignal.any where it exists', () => {
   const s = withDeadline(caller.signal, 8000)
   caller.abort()
   expect(s.aborted).toBe(true)
+})
+
+it('releases a settled speculative read\'s fallback deadline while keeping its cached result', async () => {
+  vi.useFakeTimers()
+  const any = AbortSignal.any
+  // @ts-expect-error -- simulate Safari before AbortSignal.any
+  AbortSignal.any = undefined
+  let caller!: AbortSignal
+  try {
+    const cache = createChatIntentCache(async (_pane, signal) => {
+      caller = signal
+      withDeadline(signal, 8000)
+      return response
+    })
+    cache.preload('a', 'pane')
+    expect(vi.getTimerCount()).toBe(1)
+    expect(getEventListeners(caller, 'abort')).toHaveLength(1)
+    expect(await cache.take('a')).toBe(response)
+    expect(vi.getTimerCount()).toBe(0)
+    expect(getEventListeners(caller, 'abort')).toHaveLength(0)
+  } finally { AbortSignal.any = any }
 })

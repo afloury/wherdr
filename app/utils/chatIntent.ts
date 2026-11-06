@@ -39,6 +39,10 @@ export function createChatIntentCache(read: (pane: string, signal: AbortSignal) 
     }).catch(() => {
       if (entries.get(key) === entry) drop(key)
       return undefined
+    }).finally(() => {
+      // The result stays cached, but a settled read no longer needs its abort
+      // listener or deadline timer (including the older Safari fallback).
+      controller.abort()
     })
   }
   async function take(key: string) {
