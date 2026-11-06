@@ -13,7 +13,8 @@ const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigate)
 const connect = vi.fn(() => ({ ok: true }))
 registerEndpoint('/api/machine/connect', { method: 'POST', handler: connect })
-registerEndpoint('/api/pm/overview', () => ({ enabled: true, projects: [{ key: 'demo', name: 'Demo', machine: '', path: '/tmp/demo', base: 'main', template: 'default' }], templates: [] }))
+// Off: the button must read this overview to land anywhere but the board.
+registerEndpoint('/api/pm/overview', () => ({ enabled: false, projects: [], templates: [] }))
 
 const machine = (key: string, label: string, status: MachineInfo['status'] = 'online'): MachineInfo =>
   ({ key, label, local: key === '', status, error: null, session: 'default' })
@@ -48,10 +49,10 @@ describe('home list header', () => {
     navigate.mockClear()
   })
 
-  it('the Board button reads the overview and opens the board', async () => {
+  it('the Board button reads the overview: project management off opens Settings › Projects', async () => {
     const w = await mountHome()
     await w.get('[data-testid="home-board"]').trigger('click')
-    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/board'))
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/settings?section=projects'))
     w.unmount()
   })
 
