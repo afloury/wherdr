@@ -114,10 +114,11 @@ it.each([
   vi.stubGlobal('WebSocket', Socket)
   pageVisible.value = true
   terminalRenderer.value = 'html'
+  const setBanner = vi.fn()
   let ctl!: ReturnType<typeof createTerminal>
   const wrapper = mount(defineComponent({
     setup() {
-      ctl = createTerminal('w1:p1', { setBanner: vi.fn(), hasBanner: () => false })
+      ctl = createTerminal('w1:p1', { setBanner, hasBanner: () => false })
       return () => h('div')
     },
   }))
@@ -161,6 +162,18 @@ it.each([
       await vi.advanceTimersByTimeAsync(1)
       expect(sockets).toHaveLength(2)
       expect(ctl.loading.value).toBe(true)
+      // After four silent attaches, the user gets a plain Retry banner.
+      for (let attempt = 1; attempt < 4; attempt++) {
+        const retry = sockets[attempt]!
+        retry.readyState = 1
+        retry.onopen!()
+        await vi.advanceTimersByTimeAsync(12000)
+        if (attempt < 3) await vi.advanceTimersByTimeAsync(400 * 2 ** attempt)
+      }
+      expect(sockets).toHaveLength(4)
+      expect(setBanner).toHaveBeenLastCalledWith(expect.objectContaining({
+        text: 'Terminal unavailable: the machine sent nothing in time', btn: 'Retry',
+      }))
     } else {
       // This is an initial-paint deadline, not a timer for subsequent output.
       await vi.advanceTimersByTimeAsync(24000)

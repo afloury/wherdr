@@ -430,7 +430,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       clearTimeout(handshake)
       frameWait = setTimeout(() => {
         if (tws !== ws || gotFrame) return
-        lastErr = lastErr || 'no terminal frame'
+        lastErr = lastErr || t('the machine sent nothing in time')
         try { ws.close() } catch { /* already closed */ }
       }, 12000)
       if (term) lastSize = { cols: term.cols, rows: term.rows }

@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **Clearer terminal recovery messages.** A silent terminal reports that the machine sent nothing in time and offers Retry after four failed attaches.
+
 - **Faster Tailscale checks (#324).** Status and Serve reads run together with 4.5-second CLI deadlines, inside the socket handshake window; unreadable results remain unknown.
 
 - **Startup updates (#324).** Cached pages open immediately and show the existing Reload banner when a newer build is served, preserving the current view until the user reloads.
