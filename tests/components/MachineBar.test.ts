@@ -312,10 +312,15 @@ describe('a tab showing one machine', () => {
   beforeEach(() => { reset(); setState(); menuState.open = false })
   afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] }; eventsOpen.value = false; menuState.open = false; reset() })
   // Long press with a finger: the phone's menu sheet.
+  // Fake timers: a real press costs half a second each.
   async function press(el: Element) {
-    el.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch', clientX: 5, clientY: 5, bubbles: true }))
-    await new Promise(r => setTimeout(r, 500))
-    el.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'touch', bubbles: true }))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      el.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch', clientX: 5, clientY: 5, bubbles: true }))
+      vi.advanceTimersByTime(500)
+      el.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'touch', bubbles: true }))
+      vi.runOnlyPendingTimers()
+    } finally { vi.useRealTimers() }
   }
 
   it('drops the machine header; a long press on the tab opens its actions', async () => {

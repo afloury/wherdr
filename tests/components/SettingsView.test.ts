@@ -38,8 +38,14 @@ for (const device of ['desktop', 'phone', 'tablet']) {
       // Exercise a direct entry: Settings inserts Home underneath on mount.
       history.replaceState({ ...history.state, back: null }, '')
     }
-    const w = await mountSuspended(SettingsView, { route: '/settings?section=conversation', global })
+    // Desktop enters through the former Desktop query, which redirects to Conversation.
+    const w = await mountSuspended(SettingsView, { route: `/settings?section=${device === 'desktop' ? 'desktop' : 'conversation'}`, global })
     try {
+      if (device === 'desktop') {
+        // The desktop layout can render a fallback before the redirect finishes.
+        await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/settings?section=conversation'))
+        await vi.waitFor(() => expect(w.findAll('.settings-group').find(g => g.text().includes('Default pane view'))!.isVisible()).toBe(true))
+      }
       if (device === 'phone') {
         // mountSuspended does not await async onMounted hooks. Wait for both
         // replace('/') and push(here) before assertions or tearing down the DOM.
@@ -69,17 +75,6 @@ it('shows the same reference component in Settings and the shortcut sheet', asyn
     expect(w.getComponent(ShortcutsReference).findAll('.shortcut-row')).toHaveLength(17)
     expect(sheet.findComponent(ShortcutsReference).exists()).toBe(true)
   } finally { w.unmount(); sheet.unmount() }
-})
-
-it('redirects the former Desktop query to Conversation', async () => {
-  desk.value = true
-  const router = useRouter()
-  const w = await mountSuspended(SettingsView, { route: '/settings?section=desktop', global })
-  try {
-    // The desktop layout can render a fallback before the redirect finishes.
-    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/settings?section=conversation'))
-    await vi.waitFor(() => expect(w.findAll('.settings-group').find(g => g.text().includes('Default pane view'))!.isVisible()).toBe(true))
-  } finally { w.unmount() }
 })
 
 it('Terminal: smooth touch scrolling defaults to off and the switch persists across remounts', async () => {
