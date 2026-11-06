@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Quota } from '../shared/types'
-import { accountFor, accountKey, cleanAccountName, uniqueKey } from '../shared/quotaAccount'
+import { accountFor, accountKey, cleanAccountName, defaultAccountName, uniqueKey } from '../shared/quotaAccount'
 import { type PacingEntry, changed, parseEntry, pacingEntry, usedToday } from '../shared/pacingLog'
 import { mergeQuotas, pacingEntries } from '../server/utils/quotas'
 import { forgetPacingLog, readPacingLog, recordReadings } from '../server/utils/pacingLog'
@@ -132,4 +132,9 @@ describe('account names', () => {
       expect(await setAccountName('codex:ffeeddcc', ' ', file)).toEqual({ 'claude:a1b2c3d4': 'Work Pro' })
     } finally { fs.rmSync(dir, { recursive: true, force: true }) }
   })
+})
+
+it('names an unnamed account by its program and a short id', () => {
+  expect(['claude:a1b2c3d4', 'claude:reset-mon08', 'codex:machine-local', 'codex:ffeeddcc-2'].map(defaultAccountName))
+    .toEqual(['Claude a1b2', 'Claude mon08', 'Codex local', 'Codex ffee'])
 })

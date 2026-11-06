@@ -3,17 +3,14 @@
 // reading and verdict. Read only when an automatic start or a scheduled wake
 // asks for it.
 import { accountFor } from '../../shared/quotaAccount'
-import { DEFAULT_PACE, paceVerdict, type PacePolicy } from '../../shared/pm/pacing'
-import { accountQuota, type PaceState } from '../../shared/pm/pace'
+import { DEFAULT_PACE, paceVerdict } from '../../shared/pm/pacing'
+import { accountQuota, paceRows, type PaceRow, type PaceState } from '../../shared/pm/pace'
 import { workerPlan, type Task } from '../../shared/pm/run'
 import type { Quotas } from '../../shared/types'
 import type { PmStore } from './pmStore'
 import { readQuotas } from './quotas'
 import { accountUsedToday } from './pacingLog'
-
-// Each account's rule is stored by the Settings › Pace row (lot 3); until then
-// every account keeps the default, 'free with reserve'.
-const policyOf = (_key: string): PacePolicy => DEFAULT_PACE
+import { policyIn, readPolicies } from './pacingPolicies'
 
 // `task`: the one to start (its type and prefs pick the program); none: the
 // template's first task type. `withToday`: also the weekly % used today
@@ -30,7 +27,15 @@ export async function projectPace(store: PmStore, project: string, task?: Pick<T
   const q: Quotas | null = await readQuotas().catch(() => null)
   const account = accountFor(q?.accounts, p.machine, program)
   const quota = q && account ? accountQuota(q, account) : null
-  const policy = account ? policyOf(account.key) : DEFAULT_PACE
+  const policy = account ? policyIn(await readPolicies(), account.key) : DEFAULT_PACE
   const today = account && withToday ? await accountUsedToday(account.key, now).catch(() => null) : null
   return { program, account, quota, policy, verdict: paceVerdict(policy, quota, now), today }
+}
+
+// Settings › Pace: every account read, plus a program with no reading at all.
+export async function pacingView(now = Date.now()): Promise<{ rows: PaceRow[] }> {
+  const q: Quotas | null = await readQuotas().catch(() => null)
+  const policies = await readPolicies()
+  const today = Object.fromEntries(await Promise.all((q?.accounts ?? []).map(async a => [a.key, await accountUsedToday(a.key, now).catch(() => null)] as const)))
+  return { rows: paceRows(q, key => policyIn(policies, key), today, now) }
 }

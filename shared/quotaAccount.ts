@@ -45,3 +45,11 @@ export function cleanAccountName(name: unknown): string {
 export function accountFor(accounts: QuotaAccount[] | undefined, machine: string, program: QuotaProgram): QuotaAccount | null {
   return accounts?.find(a => a.program === program && a.machines.includes(machine)) ?? null
 }
+
+// A readable name for an account the user has not named: its program and a
+// short id ('Claude a1b2', 'Claude mon08', 'Codex local').
+export function defaultAccountName(key: string): string {
+  const [program = '', id = ''] = key.split(':')
+  const short = /^[0-9a-f]{8}/.test(id) ? id.slice(0, 4) : id.replace(/^(reset|machine)-/, '')
+  return `${program.charAt(0).toUpperCase()}${program.slice(1)} ${short}`.trim()
+}
