@@ -5,7 +5,7 @@ import { defineComponent, getCurrentInstance, h, nextTick, shallowRef } from 'vu
 import { UApp } from '#components'
 import ChatView from '~/components/ChatView.vue'
 import { herdrState } from '~/composables/useHerdr'
-import { outboxAdd, outboxDrop, outboxFor, outboxPrune } from '~/composables/useOutbox'
+import { outboxDrop, outboxFor, outboxPrune, outboxSend } from '~/composables/useOutbox'
 import type { ChatItem, ChatResponse, Pane } from '#shared/types'
 
 const idle: Pane = { id: 'w1:p7', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'claude', name: null, label: null, status: 'idle', title: null, cwd: '/home/user/demo', agentSession: null }
@@ -22,6 +22,8 @@ registerEndpoint('/api/chat', () => {
   reads++
   return reply()
 })
+// herdr-core's answer to a message: no record of it, it is typed at once.
+registerEndpoint('/api/prompt', { method: 'POST', handler: () => ({ ok: true, started: true }) })
 
 // The pane as the live state hands it to the view: a new object on each push.
 const current = shallowRef<Pane>(idle)
@@ -161,30 +163,34 @@ describe('conversation blocks', () => {
   })
 })
 
-describe('sent message taken by the agent', () => {
+describe('sent message typed into the agent', () => {
   afterEach(() => { reply = polling; herdrState.value = { ok: false, workspaces: [], panes: [] } })
 
-  // The agent took a sent message (no longer in the server's queue), then
-  // every read of the transcript failed: the bubble went 10 s later, and the
-  // view stayed without it until a read succeeded.
+  // herdr-core keeps no queue: the send answers {ok, started} and the pane
+  // never lists the message. With every read of the transcript failing, the
+  // bubble went as soon as the send was answered, and the view stayed
+  // without the message until a read succeeded.
   it('stays shown while the transcript cannot be read, until it is in it', async () => {
     // After the reads earlier tests made of the same pane (real time).
     const T = Date.now() + 3_600_000
     let clock = T
     const now = vi.spyOn(Date, 'now').mockImplementation(() => clock)
-    outboxAdd(idle.id, { id: 'w-x', text: 'Ship the fix', at: T })
     herdrState.value = { ok: true, workspaces: [], panes: [idle] }
     const Host = defineComponent({ render: () => h(UApp, null, () => h(ChatView, { pane: idle, localQueued: outboxFor(idle.id) })) })
     const w = await mountSuspended(Host)
     const vm = w.findComponent(ChatView).vm as unknown as { loadChat: () => Promise<void> }
     const bubbles = () => w.findAll('.msg-pending').filter(b => b.text().includes('Ship the fix')).length
+    let id = ''
     try {
       await expect.poll(() => w.find('.chat').text()).toContain('Renamed.')
-      expect(bubbles()).toBe(1)
-      // The agent takes it: the server stops listing it.
+      reply = () => { throw new Error('read timed out') }
+      // Sent from the composer; the server answers without a record and the
+      // pane does not list it (AgentView prunes on each pane push).
+      expect(await outboxSend(idle, idle.id, 'Ship the fix')).toBe(null)
+      id = outboxFor(idle.id)[0]?.id || ''
       clock = T + 1000
       outboxPrune(idle.id, [])
-      reply = () => { throw new Error('read timed out') }
+      await expect.poll(bubbles).toBe(1)
       for (let i = 0; i < 4; i++) {
         clock += 15_000
         await vm.loadChat()
@@ -202,7 +208,7 @@ describe('sent message taken by the agent', () => {
       expect(w.find('.chat').text().split('Ship the fix').length - 1).toBe(1)
     } finally {
       now.mockRestore()
-      outboxDrop(idle.id, 'w-x')
+      if (id) outboxDrop(idle.id, id)
       w.unmount()
     }
   })

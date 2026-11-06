@@ -32,11 +32,12 @@ export function addSending(list: OutboxItem[], id: string, text: string, at: num
 }
 
 // The server answered: its record replaces the bubble (same id; the time of
-// the tap is kept, so messages typed in a row stay in order). No record (typed
-// as an answer, agent not ready yet…): the bubble goes.
+// the tap is kept, so messages typed in a row stay in order). No record
+// (herdr-core keeps no queue: the message was typed into the agent): the
+// bubble stays as a sent message, unlisted, until the transcript has been read
+// again (see prune) — it shows there once in it (see pendingQueue.ts).
 export function settle(list: OutboxItem[], id: string, server: QueuedMessage | null, now: number): OutboxItem[] {
-  if (!server) return list.filter(q => q.id !== id)
-  return list.map(q => (q.id === id ? { ...server, id, at: q.at ?? server.at, settledAt: now } : q))
+  return list.map(q => (q.id !== id ? q : server ? { ...server, id, at: q.at ?? server.at, settledAt: now } : { id, text: q.text, at: q.at, settledAt: now }))
 }
 
 // The request failed: the bubble stays, "Not sent", with Retry / Cancel.

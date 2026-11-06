@@ -37,8 +37,18 @@ describe('outbox: one bubble from the tap to the transcript', () => {
     expect(shown([], box, items)).toEqual([])
   })
 
-  it('removes the bubble when the server keeps no record (typed as an answer)', () => {
-    expect(settle(addSending([], 'w-a', 'yes', T0), 'w-a', null, T0 + 300)).toEqual([])
+  // herdr-core answers {ok, started}, never a record: the message was typed
+  // into the agent. The bubble stayed "sending" a moment, then vanished.
+  it('keeps the bubble as a sent message when the server keeps no record', () => {
+    const box = settle(addSending([], 'w-a', 'Fix the build', T0), 'w-a', null, T0 + 300)
+    expect(box).toEqual([{ id: 'w-a', text: 'Fix the build', at: T0, settledAt: T0 + 300 }])
+    expect(shown([], box)).toEqual([expect.objectContaining({ id: 'w-a', state: null })])
+    // Typed into an idle agent: shown as sent, not as still sending.
+    expect(pendingQueue({ mine: box, claude: [], items: [], screen: null, idle: true })).toEqual([expect.objectContaining({ id: 'w-a', phase: 'sent' })])
+    // Until a read made long enough after the send (see prune).
+    const gone = prune(box, [], T0 + 1000, T0 + 900)
+    expect(gone).toHaveLength(1)
+    expect(prune(gone, [], T0 + 12_000, T0 + 11_000)).toEqual([])
   })
 
   it('keeps messages typed in a row in the order of the taps', () => {

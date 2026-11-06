@@ -101,8 +101,10 @@ export function pendingQueue(o: {
     id: q.id,
     raw: q.text,
     mine: !q.id.startsWith('cc-'),
-    // Held or failed on the server: never typed yet, so never "sent".
-    phase: q.state ? 'queued' : phases[i]!,
+    // Held or failed on the server: never typed yet, so never "sent". Answered
+    // with no record (herdr-core types it at once, see outbox.ts settle) while
+    // the agent is idle: the agent has it, it is just not in the transcript yet.
+    phase: q.state ? 'queued' : q.settledAt && o.idle && !o.screen && !q.id.startsWith('cc-') ? 'sent' : phases[i]!,
     state: q.state || null,
     ...(q.local ? { local: true } : {}),
     photos: uploadNames(q.text),
