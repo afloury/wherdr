@@ -32,7 +32,7 @@ const fixedMachine = computed(() => newTabSpace.value)
 // Folder suggested for the new tab: that of a pane of its space.
 const spaceCwd = (ws: string) => herdrState.value.panes.find(p => p.workspace === ws && p.cwd)?.cwd || null
 watch(newAgentOpen, (o) => {
-  if (!o) newTabSpace.value = null
+  if (!o) { newTabSpace.value = null; newAgentMachine.value = null }
 })
 
 // ------------------------------------------------------------ machine
@@ -77,6 +77,9 @@ watch(newAgentOpen, async (open) => {
   launching.value = false
   syncKind()
   await loadConfig()
+  // Opened from a machine's "…" menu: that machine, once its config (home) is in.
+  const want = newAgentMachine.value
+  if (!fixedMachine.value && want !== null && machineList.value?.some(m => m.key === want && online(m))) setMachine(want)
   syncKind()
 })
 // A machine (re)connects while the sheet is open: its home folder.
