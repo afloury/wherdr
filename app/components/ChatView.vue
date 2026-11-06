@@ -305,7 +305,8 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     if (ready) return true
   } catch (err) {
     if (stale()) return false
-    if (!items.value.length) loadError.value = (err as Error).message
+    if (!items.value.length) loadError.value = (err as Error).name === 'TimeoutError'
+      ? t('The conversation took too long to load. Retry.') : (err as Error).message
     else misses.value = onError(misses.value)
   }
   return false

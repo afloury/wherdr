@@ -44,6 +44,19 @@ function reader() {
   return { hang: () => { silent = true }, recover: () => { silent = false; text = 'Recovered reply' }, lastRead: (older = false) => requests.findLast(request => request.older === older)! }
 }
 
+it('shows a plain retry message when the first conversation read times out', async () => {
+  const read = reader()
+  read.hang()
+  const deadline = new AbortController()
+  vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal)
+  const wrapper = await mountSuspended(ChatView, { props: { pane, localQueued: [] } })
+  try {
+    deadline.abort(new DOMException('signal timed out', 'TimeoutError'))
+    await expect.poll(() => wrapper.find('.chat-empty').text()).toBe('The conversation took too long to load. Retry.')
+    expect(wrapper.text()).not.toContain('signal timed out')
+  } finally { wrapper.unmount() }
+})
+
 it('releases a silent bottom read after 8 seconds so the next refresh can recover', async () => {
   const read = reader()
   const wrapper = await mountSuspended(ChatView, { props: { pane, localQueued: [] } })

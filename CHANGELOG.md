@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-- **Clearer terminal recovery messages.** A silent terminal reports that the machine sent nothing in time and offers Retry after four failed attaches.
+- **Clearer recovery messages.** A first conversation read that times out asks you to retry. A silent terminal reports that the machine sent nothing in time and offers Retry after four failed attaches.
 
 - **Faster Tailscale checks (#324).** Status and Serve reads run together with 4.5-second CLI deadlines, inside the socket handshake window; unreadable results remain unknown.
 
