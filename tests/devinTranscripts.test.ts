@@ -609,3 +609,24 @@ it('paginates by the call step when its image result is in a later step', async 
   expect(next.items?.slice(0, -1)).toEqual(tail.items)
   expect(next.items?.at(-1)?.text).toBe('New reply')
 })
+
+it('yields during a large cached search and stops when its deadline expires', async () => {
+  const raw = Buffer.from(JSON.stringify({ schema_version: 'ATIF-v1.7', session_id: pane.agentSession,
+    steps: Array.from({ length: 8000 }, (_, i) => ({ step_id: i + 1, source: 'agent', message: i ? 'Unrelated text '.repeat(60) : 'Oldest needle' })),
+  }))
+  const reader = createDevinTranscripts({ home: '/home/user', fs: { ...localFs,
+    stat: async () => ({ size: raw.length, mtimeMs: 1.5, isFile: true, isDir: false }),
+    read: async (_p, start, len) => raw.subarray(start, start + len),
+  } })
+  await reader.chat(pane) // Exclude filesystem I/O and the initial JSON parse from the yield check.
+  let clock = 0
+  let yielded = false
+  const time = vi.spyOn(Date, 'now').mockImplementation(() => clock)
+  try {
+    const pending = reader.search(pane, 'needle', 1)
+    setImmediate(() => { yielded = true; clock = 1 })
+    const result = await pending
+    expect(yielded).toBe(true)
+    expect(result).toMatchObject({ hits: [], limited: true })
+  } finally { time.mockRestore() }
+})

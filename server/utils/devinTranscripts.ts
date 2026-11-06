@@ -497,11 +497,25 @@ export function createDevinTranscripts({
     if (!pane.agentSession || Date.now() >= deadline) return { hits: [], limited: Date.now() >= deadline, kind: 'devin' }
     const got = await load(pane.agentSession).catch(e => { if (isMissing(e)) return null; throw e })
     if (!got) return { hits: [], limited: false, kind: 'devin' }
-    const hits = parseDevin(got.doc.steps, got.doc.steps, got.doc.images, got.doc.results).filter(i => i.role === 'user' || i.role === 'assistant').reverse().flatMap(i => {
-      const at = matchAt(i.text, text)
-      return at < 0 ? [] : [{ role: i.role, text: i.text.slice(0, 180), excerpt: excerpt(i.text, at, 120, text), ts: i.ts, offset: Number(i.ref!.split(':')[0]) }]
-    }).slice(0, 8)
-    return { hits, limited: Date.now() >= deadline, kind: 'devin' }
+    const hits: { role: 'user' | 'assistant', text: string, excerpt: string, ts: string | null, offset: number }[] = []
+    const steps = got.doc.steps
+    for (let i = steps.length - 1, scanned = 0; i >= 0; i--, scanned++) {
+      if (scanned && scanned % 256 === 0) await new Promise<void>(resolve => setImmediate(resolve))
+      if (Date.now() >= deadline) return { hits, limited: true, kind: 'devin' }
+      const step = steps[i]!
+      const id = Number(step.step_id)
+      if (step.is_copied_context === true || step.source === 'system' || !Number.isSafeInteger(id) || id < 1) continue
+      const user = isUserStep(step)
+      if (!user && step.source !== 'agent' && step.source !== undefined) continue
+      const message = clip(contentText(step.message) || (user ? contentText(extraBlocks(step)) : ''))
+      const at = matchAt(message, text)
+      if (at < 0) continue
+      const ts = typeof step.timestamp === 'string' ? step.timestamp
+        : typeof step.metadata?.created_at === 'string' ? step.metadata.created_at : null
+      hits.push({ role: user ? 'user' : 'assistant', text: message.slice(0, 180), excerpt: excerpt(message, at, 120, text), ts, offset: id })
+      if (hits.length === 8) return { hits, limited: i > 0, kind: 'devin' }
+    }
+    return { hits, limited: false, kind: 'devin' }
   }
 
   async function model(pane: TranscriptPane): Promise<ModelInfo | null> {
