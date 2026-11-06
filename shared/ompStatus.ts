@@ -30,33 +30,61 @@ const NUM = '\\d+(?:\\.\\d+)?'
 const TAIL_GAUGE = new RegExp(`[▶>\\u{e0b0}](${SEP}*(?:${NUM}%${SEP}*${NUM}[kKmM]?|${NUM}[kKmM]?${SEP}+${NUM}%)${SEP}*)◀?\\s*$`, 'u')
 
 export function parseOmpStatus(text: string | null | undefined): OmpStatus | null {
+  return findOmpStatus(text)?.status ?? null
+}
+
+// The welcome screen's version under the logo ("██       v18.6.1") and its tip, whose
+// lines run until the next blank one.
+const VERSION = /^[\s█▉▊▋▌▍▎▏▐░▒▓▄▀]*v\d+\.\d+\.\d+\s*$/u
+const TIP = /^\s*Tip:\s/
+
+// The screen without omp's own chrome (status line, gauge rule, welcome version and tip):
+// what a card preview may show. The context has its own place, the card's bar.
+export function ompPreviewText(text: string): string {
+  const drop = new Set(findOmpStatus(text)?.lines ?? [])
+  const lines = text.split('\n')
+  let tip = false
+  lines.forEach((l, i) => {
+    tip = TIP.test(l) || (tip && l.trim() !== '')
+    if (tip || VERSION.test(l)) drop.add(i)
+  })
+  return lines.filter((_, i) => !drop.has(i)).join('\n')
+}
+
+// The reading, and the indices (in text.split('\n')) of the screen lines it came from.
+function findOmpStatus(text: string | null | undefined): { status: OmpStatus, lines: number[] } | null {
   if (!text) return null
-  const lines = text.split('\n').map(l => l.trimEnd()).filter(Boolean)
-  const status = lines[lines.length - 1]
-  const below = lines[lines.length - 2]
+  const all = text.split('\n').map(l => l.trimEnd())
+  const at = all.map((l, i) => l ? i : -1).filter(i => i >= 0)
+  const lines = at.map(i => all[i]!)
+  const n = lines.length
+  const status = lines[n - 1]
+  const below = lines[n - 2]
   if (status && /^\s*╰[─━]/.test(status)) {
     // Only the box's own border: gauges in older output above it are history.
-    const border = lines.slice(-16, -1).findLast(l => /^\s*╭[─━]/.test(l) && l.includes('▶'))
-    if (border) {
+    const b = lines.findLastIndex((l, i) => i >= n - 16 && i < n - 1 && /^\s*╭[─━]/.test(l) && l.includes('▶'))
+    if (b >= 0) {
+      const border = lines[b]!
       const meters = /▶[^◀\n]*◀/.exec(border)?.[0] ?? null
       const line = border.replace(/^\s*╭[─━]+\s*/, '').replace(/▶[^◀\n]*◀/, ' ').replace(/\s*[─━]*╮\s*$/, '').trim().slice(0, 300)
-      return { line, meters }
+      return { status: { line, meters }, lines: [at[b]!] }
     }
     if (below && !/^\s*[─━│╭╰├┌└]/.test(below)) {
       const gauge = TAIL_GAUGE.exec(below)
       // Kept as ▶…◀, the form parseOmpContext reads.
       const meters = gauge ? `▶${gauge[1]!.trim()}◀` : null
       const line = (gauge ? below.slice(0, gauge.index) : below).replace(/[\s─━-]+$/, '').trim().slice(0, 300)
-      return { line, meters: meters && meters.slice(0, 200) }
+      return { status: { line, meters: meters && meters.slice(0, 200) }, lines: [at[n - 2]!] }
     }
   }
   if (!status || !below || !RULE.test(below) || /^\s*[─━│╭╰├┌└]/.test(status)) return null
   let meters: string | null = null
-  for (let i = lines.length - 3; i >= Math.max(0, lines.length - 15) && meters === null; i--) {
+  const used = [at[n - 1]!]
+  for (let i = n - 3; i >= Math.max(0, n - 15) && meters === null; i--) {
     const m = METERS.exec(lines[i]!)
-    if (m) meters = m[1]!.trim()
+    if (m) { meters = m[1]!.trim(); used.push(at[i]!) }
   }
-  return { line: status.trim().slice(0, 300), meters: meters && meters.slice(0, 200) }
+  return { status: { line: status.trim().slice(0, 300), meters: meters && meters.slice(0, 200) }, lines: used }
 }
 
 const CONTEXT = /◫\s*(\d+(?:\.\d+)?)%\s*\/\s*(\d+(?:\.\d+)?)\s*([kKmM])?\b/

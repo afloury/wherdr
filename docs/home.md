@@ -18,7 +18,8 @@
   list stays visible, marked offline, and the home says **herdr-core is not responding**.
   An omp card also shows its context usage as a thin line along its bottom edge (green, ochre
   from 60 %, rose from 85 %; paler when it is the last reading); the figures are in the
-  conversation header.
+  conversation header. omp's own status line, gauge and welcome screen never stand as the card's
+  preview.
 - **Quick answers**: a waiting agent's card shows its question and options; **answer in one tap**
   without opening it. The question is read again before the answer is sent; if it changed, the
   answer is refused.

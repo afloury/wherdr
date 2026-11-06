@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { parseOmpContext, parseOmpStatus } from '../shared/ompStatus'
+import { ompPreviewText, parseOmpContext, parseOmpStatus } from '../shared/ompStatus'
+import { lastLine } from '../server/utils/corePreview'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 
@@ -36,5 +37,26 @@ describe('parseOmpContext', () => {
   })
   it('invents nothing for missing or invalid gauges', () => {
     for (const text of [null, '', '51%/1M', '◫ 10%/0K', '◫ --/1M', '▶────500K─◀', '▶──27%────◀', '▶──27%──500GB─◀', '▶──27%──500Kgarbage─◀']) expect(parseOmpContext(text)).toBeNull()
+  })
+})
+
+describe('ompPreviewText', () => {
+  const preview = (text: string) => lastLine(ompPreviewText(text))
+  it('drops the status line and its gauge, in every layout, keeping what came before', () => {
+    expect(preview('Tests pass.\n ⠸ 4s > ⬢ Model > 🗑 ~/demo > ⑂ main ▶────100%──────╎───┃─────1M─\n╰─')).toBe('Tests pass.')
+    expect(preview(fx('omp-idle-powerline.txt'))).toBe('Write hello to out.txt')
+    expect(preview('Done.\n╭── ⠦ 4m > ◒ GPT > 📁 ~/project ▶──27%────┃──500K─◀ ⚙ 1 ──╮\n│ │\n╰─ ─╯')).toBe('Done.')
+    // Older footer: the status line and the gauge rule above the field.
+    const footer = ompPreviewText(fx('omp-idle-footer.txt'))
+    expect(footer).not.toContain('◫ 52.7%')
+    expect(footer).not.toContain('⑂ omp-support')
+    expect(lastLine(footer)).not.toBeNull()
+  })
+  it('shows nothing for the welcome screen: logo, version and tip are chrome', () => {
+    expect(lastLine(fx('omp-fresh-nerd.txt'))).toContain('1M')
+    expect(preview(fx('omp-fresh-nerd.txt'))).toBeNull()
+  })
+  it('leaves a screen without omp chrome as it is', () => {
+    expect(ompPreviewText('build ok\nuser@host:~$ ')).toBe('build ok\nuser@host:~$ ')
   })
 })
