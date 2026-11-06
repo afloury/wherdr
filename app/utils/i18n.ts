@@ -227,7 +227,7 @@ const FR: Record<string, string> = {
   'Rendering is saved on this device.': 'Le rendu est enregistré sur cet appareil.',
   'Typewriter': 'Machine à écrire',
   'Desktop': 'Ordinateur', 'Shortcuts': 'Raccourcis', 'Normal': 'Normale', 'Wide': 'Large', 'Full width': 'Pleine largeur',
-  'Content width': 'Largeur du contenu', 'Appearance': 'Apparence', 'Home screen': 'Accueil',
+  'Content width': 'Largeur du contenu', 'Appearance': 'Apparence', 'Pace': 'Rythme', 'Home screen': 'Accueil',
   'Reorder automatically': 'Réorganiser automatiquement',
   'Unread': 'Non lus', 'Read': 'Lus',
   'In Ready, show unread agents before read ones. Follows you on every device.': 'Dans Prêts, placer les non lus avant les lus. Te suit sur tous tes appareils.',
