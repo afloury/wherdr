@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_BURN, DEFAULT_PACE, dayShares, paceVerdict, targetLine, type PacePolicy } from '../shared/pm/pacing'
-import type { Quota } from '../shared/types'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { DEFAULT_BURN, DEFAULT_PACE, dayShares, mergePolicy, paceVerdict, targetLine, type PacePolicy } from '../shared/pm/pacing'
+import { paceRows } from '../shared/pm/pace'
+import { policyIn, readPolicies, setPolicy } from '../server/utils/pacingPolicies'
+import type { Quota, Quotas } from '../shared/types'
 
 // Week of Sunday 8 → Sunday 15 November 2026, reset on Sunday at 21:00 (local).
 const at = (day: number, h = 12, m = 0) => new Date(2026, 10, day, h, m).getTime()
@@ -128,5 +133,39 @@ describe('user requests', () => {
     expect(paceVerdict(workdays, quota(60, 0, now), now, 'user')).toEqual({ go: true, warn: 'ahead' })
     expect(paceVerdict(workdays, quota(null, null, now, { limited: { resetsAt: null } }), now, 'user')).toEqual({ go: true, warn: 'limited' })
     expect(paceVerdict(workdays, quota(10, 0, now), now, 'user')).toEqual({ go: true })
+  })
+})
+
+describe('policy per account (Settings › Pace)', () => {
+  it('merges the user\'s changes field by field, clamped, invalid ones ignored', () => {
+    const p = mergePolicy(DEFAULT_PACE, { mode: 'workdays', days: [5, 1, 1, 9, 'x'], cap: 140, reserve5h: -3, reservePerDay: 'a', margin: 50 })
+    expect(p).toEqual({ ...DEFAULT_PACE, mode: 'workdays', days: [1, 5], cap: 100, reserve5h: 0 })
+    expect(mergePolicy(DEFAULT_PACE, { mode: 'turbo' }).mode).toBe('free')
+    expect(mergePolicy(DEFAULT_PACE, { days: [] }).days).toEqual([1, 2, 3, 4, 5]) // never no day at all
+    expect(DEFAULT_PACE).toMatchObject({ mode: 'free', days: [1, 2, 3, 4, 5], cap: 90, reserve5h: 25, reservePerDay: 10 })
+  })
+
+  it('rows: each account with its policy, line and verdict; a program with no reading is unknown', () => {
+    const now = at(11, 12)
+    const q: Quotas = {
+      claude: quota(60, 30, now), codex: null,
+      accounts: [{ key: 'claude:a1b2c3d4', program: 'claude', name: 'Work', machines: [''] }],
+    }
+    const rows = paceRows(q, () => workdays, { 'claude:a1b2c3d4': 9 }, now)
+    expect(rows.map(r => r.program)).toEqual(['claude', 'codex'])
+    expect(rows[0]).toMatchObject({ today: 9, five: { used: 30 }, week: { used: 60, label: 'line' }, verdict: { go: false, reason: 'ahead' } })
+    expect(Math.round(rows[0]!.week!.limit)).toBe(54)
+    expect(rows[1]).toMatchObject({ account: null, verdict: { go: true, unknown: true } })
+  })
+
+  it('stores one policy per account key in pacing.json', async () => {
+    const dir = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), 'pace-'))
+    const file = path.join(dir, 'pacing.json')
+    try {
+      expect(policyIn(await readPolicies(file), 'claude:a1b2c3d4')).toBe(DEFAULT_PACE)
+      await setPolicy('claude:a1b2c3d4', { mode: 'everyday' }, file)
+      await setPolicy('claude:a1b2c3d4', { cap: 80 }, file)
+      expect(await readPolicies(file)).toEqual({ 'claude:a1b2c3d4': { ...DEFAULT_PACE, mode: 'everyday', cap: 80 } })
+    } finally { fs.rmSync(dir, { recursive: true }) }
   })
 })
