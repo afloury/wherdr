@@ -26,6 +26,8 @@ const slow = async <T>(f: () => T, listing = false): Promise<T> => {
   return f()
 }
 const children = (dir: string) => {
+  // `cd` into a file, as the shell fs reports it.
+  if (dir in files) throw new FsError('remote', `not a directory: ${dir}`)
   const pre = `${dir}/`
   const out = new Set(Object.keys(files).filter(p => p.startsWith(pre)).map(p => p.slice(pre.length).split('/')[0]!))
   if (!out.size) throw new FsError('ENOENT', `no such file: ${dir}`)
@@ -43,10 +45,10 @@ const remote = {
 } as unknown as Machine
 
 // The time (simulated) a read of the links takes.
-async function timed() {
+async function timed(stale = true) {
   const start = Date.now()
   let done = false
-  const p = readBoardLinks().finally(() => { done = true })
+  const p = readBoardLinks(undefined, { stale }).finally(() => { done = true })
   while (!done) await vi.advanceTimersByTimeAsync(100)
   return { ms: Date.now() - start, links: await p }
 }
@@ -92,5 +94,20 @@ it('a folder listing that times out keeps the last board', async () => {
   await vi.advanceTimersByTimeAsync(20000)
   await timed()
   await vi.advanceTimersByTimeAsync(60000)
+  expect(coordinators((await timed()).links)).toEqual(REPOS)
+})
+
+it('notifications wait for the fresh read: a task created since is found', async () => {
+  await timed()
+  await vi.advanceTimersByTimeAsync(3600_000)
+  files[`${DATA}/tasks/shop/2/task.json`] = JSON.stringify({ id: 'shop/2', link: { pane: 'w3:p1' } })
+  const { links } = await timed(false)
+  const tasks = 'machines' in links ? links.machines.flatMap(m => m.tasks.map(t => t.id)) : []
+  expect(tasks).toContain('shop/2')
+})
+
+it('a stray file among the board\'s folders lists nothing and leaves the rest', async () => {
+  files[`${DATA}/tasks/notes.txt`] = 'x'
+  files[`${DATA}/coordinator/readme`] = 'x'
   expect(coordinators((await timed()).links)).toEqual(REPOS)
 })

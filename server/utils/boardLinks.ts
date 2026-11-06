@@ -5,8 +5,8 @@
 // runs the board's upkeep): the task folders, the coordinators' state files
 // and the repos' keys. On an SSH machine over its connection: a few `readdir`,
 // one `stat` of every file, and only the files that changed since are read
-// again. A machine's answer is reused for REUSE_MS, then answered while it is
-// read again; an unreachable machine keeps its last one.
+// again. A machine's answer is reused for REUSE_MS (for the home list, then
+// answered while it is read again); an unreachable machine keeps its last one.
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
@@ -32,14 +32,14 @@ const caches = new Map<string, Cache>()
 const reading = new Map<string, Promise<MachineLinks>>()
 
 const dataDir = (m: Machine) => path.posix.join(m.home, '.herdr-projects/data')
-// A missing folder lists nothing; any other failure (an SSH read that timed
-// out) fails the read, so the machine keeps its last links.
+// A folder that cannot be listed (missing, a file) lists nothing; an SSH
+// session that failed (timed out in the queue) fails the read, so the
+// machine keeps its last links.
 async function names(m: Machine, dir: string): Promise<string[]> {
   try { return (await m.fs.readdir(dir)).filter(n => DIR_RE.test(n)) }
   catch (e) {
-    const code = (e as { code?: unknown }).code
-    if (code === 'ENOENT' || code === 'ENOTDIR') return []
-    throw e
+    if ((e as { code?: unknown }).code === 'unreachable') throw e
+    return []
   }
 }
 
@@ -124,14 +124,15 @@ async function reposOf(m: Machine, file: unknown): Promise<RepoInfo[]> {
   }))
 }
 
-function machineLinks(m: Machine): Promise<MachineLinks> | MachineLinks | null {
+function machineLinks(m: Machine, stale: boolean): Promise<MachineLinks> | MachineLinks | null {
   const last = caches.get(m.key)
   if (!m.local && m.status !== 'online') return last?.links ?? null
   if (last && Date.now() - last.at < REUSE_MS) return last.links
-  // Older than that: the last links answer now, read again behind them (a
-  // reloaded page must not wait for a slow machine's whole read).
+  // Older than that: read again. `stale` (the home list): the last links
+  // answer now, read again behind them (a reloaded page must not wait for a
+  // slow machine's whole read).
   const job = reading.get(m.key) ?? readAgain(m, last)
-  return last ? last.links : job
+  return stale && last ? last.links : job
 }
 
 function readAgain(m: Machine, last: Cache | undefined): Promise<MachineLinks> {
@@ -145,8 +146,10 @@ function readAgain(m: Machine, last: Cache | undefined): Promise<MachineLinks> {
 }
 
 // Every board's links. `since`: the version the client has; `{ same: true }` when nothing changed.
-export async function readBoardLinks(since?: string): Promise<BoardLinks | { same: true, version: string }> {
-  const machines = (await Promise.all(baseMachines().map(machineLinks))).filter((x): x is MachineLinks => x !== null)
+// `stale`: a machine's links older than REUSE_MS answer while they are read
+// again (the home list); otherwise (notifications) the fresh read is awaited.
+export async function readBoardLinks(since?: string, opts: { stale?: boolean } = {}): Promise<BoardLinks | { same: true, version: string }> {
+  const machines = (await Promise.all(baseMachines().map(m => machineLinks(m, Boolean(opts.stale))))).filter((x): x is MachineLinks => x !== null)
   const version = createHash('sha1').update(JSON.stringify(machines)).digest('hex').slice(0, 16)
   return since === version ? { same: true, version } : { version, machines }
 }
