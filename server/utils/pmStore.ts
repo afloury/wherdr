@@ -2,7 +2,9 @@
 // host): pm.json (the on/off switch and this install's id), projects.json,
 // templates/<id>.json, template-log/<id>.json, tasks/<KEY>-<n>.json, runs/<id>.json, receipts/<id>.json,
 // shots/<KEY>-<n>/<file> (a task's screenshots),
-// coordinators/<KEY>.json (the hash of the coordinator's token, its current turn).
+// coordinators/<KEY>.json (the hash of the coordinator's token, its current turn, its autopilot),
+// wakes.jsonl (the coordinators' wake queue, append-only: the last line of an id wins),
+// automations/<KEY>.json (the project's automations and where its tasks stood at the last tick).
 // Atomic writes (temp file + rename), one at a time. Switched off, every
 // write is refused except turning it back on.
 import fs from 'node:fs/promises'
@@ -12,14 +14,32 @@ import { cleanProjectInput, isTemplateId, type PmOverview, type Project, type Te
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
 import { publicTask, type Run, type Task } from '../../shared/pm/run'
+import { afterIds } from '../../shared/pm/advance'
 import type { Receipt } from '../../shared/pm/actions'
 import { SHOT_FILE_RE } from '../../shared/pm/shots'
 import { HerdrError } from './herdr'
+import type { CoordinatorAgent, Proposal, ProposalOutcome } from '../../shared/pm/coordinator'
+import type { Autopilot, DayCount, LastWake, TaskStatus } from '../../shared/pm/autopilot'
+import { readQueue, type Wake } from '../../shared/pm/wakes'
+import type { Automation, Mark } from '../../shared/pm/automations'
 import { DATA_DIR } from './env'
 
 // A project coordinator: the sha256 of its token, its terminal (herdr-core
-// address), and where its current turn comes from (said: the user's message).
-export interface CoordinatorRecord { project: string, tokenHash: string, terminal?: string, turn?: { kind: 'user' | 'wake', at: number, said?: string } }
+// address), where its current turn comes from (said: the user's message), the
+// project's default agent, the agent its conversation ran with, and a template
+// change waiting for the user.
+export interface CoordinatorRecord {
+  project: string, tokenHash: string, terminal?: string, turn?: { kind: 'user' | 'wake', at: number, said?: string, look?: true }
+  agent?: CoordinatorAgent, ran?: CoordinatorAgent, proposal?: Proposal, answered?: { outcome: ProposalOutcome, at: number }
+  // userAt: the user's last message. seen: each task's status at the last tick; ranAt: the last interval wake.
+  userAt?: number, autopilot?: Autopilot, seen?: Record<string, TaskStatus>, ranAt?: number
+  atRan?: number // the last scheduled wake at fixed times (autopilot.at), or when it was set
+  woke?: LastWake // the last wake the engine queued, and where tasks stood then
+  skipped?: DayCount // scheduled wakes skipped that day: nothing to do (or the new work limit reached)
+  lookAdded?: DayCount // tasks added that day in the turns of look-for-new-work wakes
+}
+
+export interface AutomationsFile { automations: Automation[], seen?: Record<string, Mark> }
 
 // The checks the store cannot make itself: the machine, a git folder there.
 // Resolves to the folder's absolute path.
@@ -53,7 +73,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   const files = {
     pm: path.join(dir, 'pm.json'), projects: path.join(dir, 'projects.json'), templates: path.join(dir, 'templates'), templateLog: path.join(dir, 'template-log'),
     tasks: path.join(dir, 'tasks'), runs: path.join(dir, 'runs'), receipts: path.join(dir, 'receipts'), shots: path.join(dir, 'shots'),
-    coordinators: path.join(dir, 'coordinators'),
+    coordinators: path.join(dir, 'coordinators'), wakes: path.join(dir, 'wakes.jsonl'), automations: path.join(dir, 'automations'),
   }
   let queue: Promise<unknown> = Promise.resolve()
   const serial = <T>(fn: () => Promise<T>): Promise<T> => {
@@ -140,11 +160,36 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     coordinator: (key: string) => readJson<CoordinatorRecord>(path.join(files.coordinators, `${key}.json`)),
     coordinators: () => readAll<CoordinatorRecord>(files.coordinators),
     saveCoordinator: (c: CoordinatorRecord) => write(() => writeJson(path.join(files.coordinators, `${c.project}.json`), c)),
+    wakes: async () => readQueue((await fs.readFile(files.wakes, 'utf8').catch(() => '')).split('\n'), Date.now()),
+    // Appends the changed wakes; the file is rewritten (atomically) once it holds many old lines.
+    saveWakes: (changed: Wake[]) => write(async () => {
+      if (!changed.length) return
+      const lines = (await fs.readFile(files.wakes, 'utf8').catch(() => '')).split('\n').filter(Boolean)
+      if (lines.length < 500) {
+        await fs.mkdir(dir, { recursive: true, mode: 0o700 })
+        return fs.appendFile(files.wakes, changed.map(w => JSON.stringify(w) + '\n').join(''), { mode: 0o600 })
+      }
+      const ids = new Set(changed.map(w => w.id))
+      const keep = [...readQueue(lines, Date.now()).filter(w => !ids.has(w.id)), ...changed]
+      const temp = `${files.wakes}.${randomUUID()}.tmp`
+      await fs.writeFile(temp, keep.map(w => JSON.stringify(w) + '\n').join(''), { mode: 0o600 })
+      await fs.rename(temp, files.wakes)
+    }),
+    automations: async (key: string): Promise<AutomationsFile> =>
+      ({ automations: [], ...(TASK_ID_RE.test(`${key}-1`) ? await readJson<AutomationsFile>(path.join(files.automations, `${key}.json`)) : null) }),
+    // `change` gets the file as it is now, inside the write: no firing is lost to a concurrent save.
+    changeAutomations: <T>(key: string, change: (f: AutomationsFile) => { file: AutomationsFile, out: T }) => write(async () => {
+      if (!TASK_ID_RE.test(`${key}-1`)) throw new HerdrError('not_found', 'Unknown project')
+      const file = path.join(files.automations, `${key}.json`)
+      const r = change({ automations: [], ...(await readJson<AutomationsFile>(file)) })
+      await writeJson(file, { v: 1, ...r.file })
+      return r.out
+    }),
     saveRun: (r: Run) => write(() => writeJson(path.join(files.runs, `${r.id}.json`), r)),
     receipt: (id: string) => readJson<Receipt>(path.join(files.receipts, `${id}.json`)),
     saveReceipt: (r: Receipt) => write(() => writeJson(path.join(files.receipts, `${r.id}.json`), r)),
 
-    // { project, title, description?, type }: a new task, to do.
+    // { project, title, description?, type, after?, auto?, origin? }: a new task, to do (origin: 'user' when unset).
     addTask: (raw: unknown) => write(async () => {
       const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
       const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string).trim() : '')
@@ -154,7 +199,12 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       if (!title || title.length > 200) throw badInput([{ path: 'title', message: '1 to 200 characters' }])
       if (!type) throw badInput([{ path: 'type', message: 'is required' }])
       const n = 1 + Math.max(0, ...(await tasks()).filter(t => t.project === p.key).map(t => Number(t.id.slice(p.key.length + 1)) || 0))
-      const task: Task = { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', createdAt: Date.now() }
+      const after = afterIds({ after: str('after') }).join(',')
+      const known = await tasks()
+      if (afterIds({ after }).some(a => !known.some(t => t.id === a && t.project === p.key))) throw badInput([{ path: 'after', message: 'tasks of the same project, comma-separated' }])
+      const auto = str('auto')
+      const origin = (['coordinator', 'automation', 'mission'] as const).find(x => x === o.origin) ?? 'user'
+      const task: Task = { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(after ? { after } : {}), ...(auto ? { auto } : {}) }
       await writeJson(path.join(files.tasks, `${task.id}.json`), task)
       return task
     }),

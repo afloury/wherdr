@@ -1,7 +1,11 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
 import { marked } from 'marked'
-import { md } from '~/utils/markdown'
-import { parseReplyStyle, replyTargets, rowOf, withQuestions } from '~/utils/questionReply'
+import { md } from '../app/utils/markdown'
+import { parseReplyStyle, replyTargets, rowOf, withQuestions } from '../app/utils/questionReply'
+
+// Nuxt auto-imports t() (app/utils/i18n.ts); English is the active language.
+;(globalThis as { t?: (s: string) => string }).t = s => s
 
 // The first call installs the app's renderers (inline code, code blocks).
 md('')

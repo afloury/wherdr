@@ -1,0 +1,1 @@
+[{"id":"m-laptop-0001","label":"Laptop","target":"user@laptop","session":"default"},{"id":"m-vps-0002","label":"Build VPS","target":"vps","session":"work"},{"id":"m-off-0003","label":"Off","target":"off","enabled":false}]

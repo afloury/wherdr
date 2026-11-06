@@ -7,6 +7,9 @@ import { reconcileRuns, startTask, wherdrBase, type PmLaunchDeps } from '../serv
 import { uploadShot } from '../server/utils/pmBoard'
 import { agentLine, publicTask, reconcile, workerPlan, type Run, type Task } from '../shared/pm/run'
 import type { Template } from '../shared/pm/workflow'
+import { wherdr } from '../shared/pm/examples'
+import { planSteps } from '../shared/pm/steps'
+import { dueText } from '../shared/pm/advance'
 
 const template: Template = {
   id: 'vibe', instructions: 'Small commits.', prefs: { agent: 'claude', model: 'opus' },
@@ -58,7 +61,7 @@ let dir = '', n = 0
 beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-launch-')) })
 afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 
-async function setup(opts: { installed?: string[], exits?: (number | null)[], template?: Template } = {}) {
+async function setup(opts: { installed?: string[], exits?: (number | null)[], template?: Template, screen?: string } = {}) {
   const store: PmStore = createPmStore(dir)
   await store.setEnabled(true)
   await store.saveTemplate(opts.template ?? template)
@@ -78,7 +81,7 @@ async function setup(opts: { installed?: string[], exits?: (number | null)[], te
     }
     if (method === 'terminal.run') { runs.push(p); const a = `${machine}/t${runs.length}`; states[a] = exits.shift(); return { address: a } }
     if (method === 'terminal.get') return states[p.terminal as string] === undefined ? { state: 'running' } : { state: 'finished', exit_code: states[p.terminal as string] }
-    if (method === 'terminal.read') return { text: 'claude: bad flag\n' }
+    if (method === 'terminal.read') return { text: opts.screen ?? 'claude: bad flag\n' }
     throw new Error(`unexpected ${method}`)
   }
   const deps = {
@@ -104,6 +107,17 @@ describe('startTask', () => {
     expect(files['/home/u/.wherdr/pm/tasks/WEB-1/instructions.md']).toMatch(/# WEB-1: Fix it[\s\S]*Small commits\.\nRun the tests\./)
     expect((await store.runs())[0]).toMatchObject({ id: t.run, state: 'running', terminal: expect.stringMatching(/\/t1$/) })
     await expect(startTask(deps, 'WEB-1')).rejects.toMatchObject({ code: 'busy' })
+  })
+
+  it('a task stopped at its review starts no new worker: the review is told again by the next advance pass', async () => {
+    const { store, deps, runs } = await setup({ template: { ...wherdr, id: 'vibe' } })
+    const stopped = { ...(await store.task('WEB-1'))!, state: 'waiting' as const, waiting: 'The reviewer (claude) stopped right after starting', step: { at: 3, started: true, since: 5, told: 5, proofs: {}, rounds: {} } }
+    await store.saveTask(stopped)
+    const t = await startTask(deps, 'WEB-1')
+    expect(runs).toHaveLength(0)
+    expect(t).toMatchObject({ state: 'working', waiting: undefined, step: { at: 3 } })
+    expect(t.step!.told).toBeUndefined()
+    expect(dueText(planSteps(wherdr, { type: 'simple' }), t.step)).toMatchObject({ holder: 'reviewer' })
   })
 
   it('a visual task: the instructions file says how to upload the screenshots, with the task\'s key, and that upload passes', async () => {
@@ -136,10 +150,16 @@ describe('startTask', () => {
     expect(runs).toHaveLength(0)
   })
 
+  it('an agent that stops on its login: the task waits for the login (the engine restarts it once back)', async () => {
+    const { deps } = await setup({ exits: [1, 1], screen: 'Invalid API key · Please run /login\n' })
+    expect(await startTask(deps, 'WEB-1')).toMatchObject({ state: 'waiting', waitKind: 'auth' })
+  })
+
   it('an agent that exits at once gets one more attempt, never a third', async () => {
     const { store, deps, runs } = await setup({ exits: [1, 1, 1] })
     const t = await startTask(deps, 'WEB-1')
     expect(t).toMatchObject({ state: 'waiting', waiting: expect.stringContaining('exit code 1') })
+    expect(t.waitKind).toBeUndefined() // not a login
     expect(runs).toHaveLength(2)
     expect((await store.runs()).map(r => [r.attempt, r.state])).toEqual(expect.arrayContaining([[1, 'ended'], [2, 'ended']]))
   })

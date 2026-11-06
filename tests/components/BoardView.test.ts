@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
+import { readBody } from 'h3'
 import BoardView from '~/components/BoardView.vue'
 import { herdrState } from '~/composables/useHerdr'
 import { boardColumns, cardOf, type Board } from '#shared/pm/board'
@@ -24,14 +25,21 @@ const reset = (co1: Partial<StepState> = {}) => {
   board = {
     projects: [{ key: 'VIB', name: 'Vibe', columns: columns(vibe) }, { key: 'CO', name: 'Company', columns: columns(company) }],
     cards: [
-      vibeTask('VIB-1', at(1)),
-      coTask(task('CO-1', at(2, co1), { tags: ['CTP-1', 'client', 'x'], links: [{ label: 'PR', url: 'https://example.com/pr/1' }] })),
+      cardOf(task('VIB-1', at(1), { type: 'simple', tags: ['client'], links: [{ label: 'Ticket', url: 'https://example.com/t/1' }, { label: 'PR', url: 'https://example.com/pr/2' }] }), planSteps(vibe, { type: 'simple' }), runs),
+      coTask(task('CO-1', at(2, co1), {
+        tags: ['CTP-1', 'client', 'x'], links: [{ label: 'PR', url: 'https://example.com/pr/1' }],
+        log: [{ at: 1, by: 'coordinator CO', text: 'review: coordinator chose pass (advice: pass, nothing above minor). Only a naming nit is left.' }],
+      })),
       coTask(task('CO-2', at(4, { yourTurn: { reason: 'user', badge: 'Merge the PR' } }))),
     ],
   }
 }
 reset()
 registerEndpoint('/api/pm/board', () => board)
+registerEndpoint('/api/pm/coordinators', () => [])
+const posts: { url: string, body: Record<string, unknown> }[] = []
+for (const url of ['/api/pm/task-stop', '/api/pm/task-resume'])
+  registerEndpoint(url, { method: 'POST', handler: async (e) => { posts.push({ url, body: await readBody(e) }); return {} } })
 const pane = (coreAddress: string, status: Pane['status']) => ({ id: coreAddress, coreAddress, status, agent: 'claude', workspace: 'w', tab: 't' }) as Pane
 herdrState.value = { ok: true, workspaces: [], panes: [pane('host-a/t1', 'working'), pane('host-a/t2', 'idle'), pane('host-a/t3', 'working')] }
 
@@ -91,4 +99,53 @@ it('moves a card to Your turn whatever its step, and keeps its step and indicato
   expect(card(w, 'CO-1').text()).toContain('review')
   expect(card(w, 'CO-1').find('[data-testid="holder-state"]').exists()).toBe(true)
   expect(w.find('[data-lane="Review"]').findAll('[data-testid="board-card"]')).toHaveLength(0)
+})
+
+it('filters the board by tag, and the card\'s one-tap link is its PR', async () => {
+  const w = await mount()
+  expect(card(w, 'VIB-1').find('[data-testid="board-link"]').attributes('href')).toBe('https://example.com/pr/2')
+  expect(w.findAll('[data-testid="board-tag"] option').map(o => o.text())).toEqual(['Tags', 'CTP-1', 'client', 'x'])
+  await w.find('[data-testid="board-tag"]').setValue('client')
+  expect(w.findAll('[data-testid="board-card"]').map(c => c.attributes('data-task'))).toEqual(['VIB-1', 'CO-1'])
+  await w.find('[data-testid="board-tag"]').setValue('x')
+  expect(w.findAll('[data-testid="board-card"]').map(c => c.attributes('data-task'))).toEqual(['CO-1'])
+})
+
+it('shows the coordinator\'s choice and its reason in the task\'s log', async () => {
+  const w = await mount()
+  await card(w, 'CO-1').trigger('click')
+  await vi.waitFor(() => expect(document.querySelector('[data-testid="task-log"]')?.textContent).toContain('coordinator CO'))
+  expect(document.querySelector('[data-testid="task-log"]')!.textContent).toContain('chose pass (advice: pass, nothing above minor). Only a naming nit is left.')
+})
+
+it('stops a task from its sheet, after a confirmation with its reason', async () => {
+  posts.length = 0
+  const w = await mount()
+  await card(w, 'VIB-1').trigger('click')
+  const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)
+  await vi.waitFor(() => expect(q('task-stop')).not.toBeNull())
+  q('task-stop')!.click()
+  await vi.waitFor(() => expect(q('task-stop-confirm')?.textContent).toContain('nothing is merged'))
+  const why = q('task-stop-why')!.querySelector('input') ?? q('task-stop-why') as HTMLInputElement
+  ;(why as HTMLInputElement).value = 'it loops'
+  why.dispatchEvent(new Event('input'))
+  q('task-stop-yes')!.click()
+  await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/task-stop', body: { id: 'VIB-1', why: 'it loops' } }]))
+  expect(card(w, 'VIB-1').element.parentElement!.querySelector('[data-testid="card-menu"]')).not.toBeNull()
+})
+
+it('a stopped card waits in Your turn with who stopped it; its sheet offers Continue, Take it as it is, Archive', async () => {
+  posts.length = 0
+  const stopped = { by: 'the user', why: 'it loops', at: 3 }
+  board.cards[0] = cardOf(task('VIB-1', at(1), { type: 'simple', state: 'waiting', waiting: 'Stopped by the user: it loops', stopped }), planSteps(vibe, { type: 'simple' }), [])
+  const w = await mount()
+  expect(laneOf(w, 'VIB-1')).toBe('your-turn')
+  expect(card(w, 'VIB-1').text()).toContain('Stopped by the user: it loops')
+  expect(card(w, 'VIB-1').find('[data-testid="holder-state"]').exists()).toBe(true)
+  await card(w, 'VIB-1').trigger('click')
+  await vi.waitFor(() => expect(document.querySelectorAll('[data-resume]')).toHaveLength(3))
+  expect(document.querySelector('[data-testid="task-stop"]')).toBeNull()
+  expect([...document.querySelectorAll('[data-resume]')].map(b => b.textContent!.trim())).toEqual(['Continue', 'Take it as it is', 'Archive'])
+  document.querySelector<HTMLElement>('[data-resume="continue"]')!.click()
+  await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/task-resume', body: { id: 'VIB-1', how: 'continue' } }]))
 })

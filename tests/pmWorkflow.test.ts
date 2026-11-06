@@ -55,6 +55,20 @@ describe('validateTemplate', () => {
     ])
   })
 
+  it('takes a merge method and required checks on github.merge only', () => {
+    const t = template() as any
+    const steps = t.taskTypes.simple.steps
+    steps.splice(4, 1, { id: 'merge', ends: 'action', action: { kind: 'github.merge', method: 'squash', checks: ['smoke'] } })
+    expect(validateTemplate(t)).toEqual([])
+    steps[4].action = { kind: 'github.merge', method: 'fast', checks: [''] }
+    steps[2].action.method = 'squash'
+    expect(validateTemplate(t)).toEqual([
+      { path: 'taskTypes.simple.steps[2].action.method', message: 'only for github.merge' },
+      { path: 'taskTypes.simple.steps[4].action.method', message: 'must be one of merge, squash, rebase' },
+      { path: 'taskTypes.simple.steps[4].action.checks', message: 'must be a list of check names' },
+    ])
+  })
+
   it('checks a shared step against the task type that reuses it', () => {
     const t = template()
     t.taskTypes.simple.steps.splice(1, 1) // remove "work", the review's sendBack

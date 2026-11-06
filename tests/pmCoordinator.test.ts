@@ -1,17 +1,26 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
-import { deliverWakes, issueToken, noteTurn, runCommand, startCoordinator, userMessageTo } from '../server/utils/pmCoordinator'
+import { answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, userMessageTo } from '../server/utils/pmCoordinator'
 import { parseCommand, roleFiles, coordinatorArgs } from '../shared/pm/coordinator'
 import { EXAMPLES, common, company } from '../shared/pm/examples'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
 import type { Finding } from '../shared/pm/verdict'
 import type { Template } from '../shared/pm/workflow'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
+import { runNow, wakeTick } from '../server/utils/pmWakes'
+import { WAKE } from '../shared/pm/wakes'
+import { DEFAULT_AUTOPILOT } from '../shared/pm/autopilot'
 // @ts-expect-error plain JavaScript module
 import { pm } from '../bin/lib/pm.mjs'
+
+// The quota readings the pace reads; none by default (quota unknown).
+const quotas = vi.hoisted(() => ({ q: null as Quotas | null }))
+vi.mock('../server/utils/quotas', async orig => ({ ...(await orig<object>()), readQuotas: async () => quotas.q ?? { claude: null, codex: null } }))
+afterEach(() => { quotas.q = null })
 
 let dir = '', store: ReturnType<typeof createPmStore>, token = ''
 const deps = () => ({ store }) as unknown as CoreAdminDeps & { store: typeof store }
@@ -40,6 +49,9 @@ describe('the token', () => {
     await refused(cli(['list'], undefined, 'f'.repeat(64)), 'Unknown coordinator token')
     const mine = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
     expect((await cli(['list']) as { tasks: { id: string }[] }).tasks.map(t => t.id)).toEqual([mine.id])
+    // A finished task reads done, not the state it kept while working.
+    await store.saveTask({ ...mine, state: 'working', step: { at: 5, started: true, done: true, proofs: {}, rounds: {} } })
+    expect((await cli(['list']) as { tasks: { state: string }[] }).tasks[0]!.state).toBe('done')
     const fresh = await issueToken(store, 'CO')
     await refused(cli(['list']), 'Unknown coordinator token')
     await expect(cli(['list'], undefined, fresh)).resolves.toBeTruthy()
@@ -70,14 +82,43 @@ describe('template edit', () => {
     expect((await store.template('company'))!.version).toBe(1)
   })
 
-  it('in a user turn: saved, with the diff, and logged with the user\'s sentence', async () => {
+  it('in a user turn: proposed with its diff; saved only once the user accepts, logged with their sentence', async () => {
     await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9' })
     await userMessageTo(store, 'host/t9', 'Tell agents to never run the full suite')
-    const r = await cli(['template', 'edit'], moreInstructions) as { version: number, changes: string[], diff: string }
-    expect(r.version).toBe(2)
-    expect(r.diff).toBe('-   "instructions": "Base branch is develop.",\n+   "instructions": "Base branch is develop. Never run the full suite locally.",')
+    const r = await cli(['template', 'edit'], moreInstructions) as { proposed: boolean, changes: string[], diff: string }
+    const diff = '-   "instructions": "Base branch is develop.",\n+   "instructions": "Base branch is develop. Never run the full suite locally.",'
+    expect(r).toMatchObject({ proposed: true, diff })
     expect(r.changes.length).toBeGreaterThan(0)
+    expect((await store.template('company'))!.version).toBe(1)
+    expect((await coordinatorsView(store)).find(c => c.project === 'CO')!.proposal).toMatchObject({ diff, said: 'Tell agents to never run the full suite' })
+    expect(await cli(['template', 'show'])).toMatchObject({ diff })
+    // No core: the role files are not rewritten, the template is saved all the same.
+    await expect(answerProposal(deps(), 'CO', true)).resolves.toEqual({ accepted: true })
+    expect((await store.template('company'))!.version).toBe(2)
     expect((await store.templateLog('company')).at(-1)).toMatchObject({ by: 'coordinator CO', version: 2, said: 'Tell agents to never run the full suite' })
+    expect((await store.coordinator('CO'))!.proposal).toBeUndefined()
+    expect(await cli(['template', 'show'])).toMatchObject({ lastProposal: 'accepted' })
+  })
+
+  it('is not saved over a change the user made after it', async () => {
+    await noteTurn(store, 'CO', 'user', 'add a line')
+    await cli(['template', 'edit'], moreInstructions)
+    await store.saveTemplate({ ...structuredClone(company), instructions: 'USER EDIT' }, { replace: true })
+    await refused(answerProposal(deps(), 'CO', true), 'The template changed since this proposal')
+    expect((await store.template('company'))!.instructions).toBe('USER EDIT')
+    expect((await store.coordinator('CO'))!.proposal).toBeUndefined()
+    expect(await cli(['template', 'show'])).toMatchObject({ lastProposal: expect.stringContaining('outdated') })
+  })
+
+  it('refused by the user: nothing saved, nothing logged', async () => {
+    await noteTurn(store, 'CO', 'user', 'shorter instructions')
+    await cli(['template', 'edit'], moreInstructions)
+    const log = await store.templateLog('company')
+    await answerProposal(deps(), 'CO', false)
+    expect((await store.template('company'))!.version).toBe(1)
+    expect(await store.templateLog('company')).toEqual(log)
+    expect(await cli(['template', 'show'])).toMatchObject({ lastProposal: 'refused' })
+    await refused(answerProposal(deps(), 'CO', true), 'No template change waits for you')
   })
 
   it('never changes a guard with the token, even in a user turn', async () => {
@@ -146,6 +187,8 @@ describe('arbitration after N send-backs', () => {
 
   it('needs one sentence of reason', () => {
     expect(parseCommand(['task', 'decide', 'CO-1', 'round'])).toMatchObject({ error: expect.stringContaining('one sentence') })
+    expect(parseCommand(['task', 'start', 'CO-1'])).toEqual({ name: 'task start', task: 'CO-1' })
+    expect(parseCommand(['task', 'start', 'CO-1', 'x'])).toEqual({ error: 'usage: wherdr pm task start <task>' })
     expect(parseCommand(['task', 'decide', 'CO-1', 'round', '--reason', 'a\nb'])).toMatchObject({ error: expect.stringContaining('one sentence') })
     expect(parseCommand(['task', 'decide', 'CO-1', 'maybe', '--reason', 'x'])).toMatchObject({ error: expect.stringContaining('choice') })
   })
@@ -159,8 +202,8 @@ describe('role files', () => {
       const argv = params.argv as string[] | undefined
       if (method === 'machine.exec' && argv?.[2] === 'printf %s "$HOME"') return { code: 0, stdout: Buffer.from('/h').toString('base64') }
       if (method === 'machine.exec') return written.push(argv![4]!), { code: 0, stdout: '' }
-      runs.push(params)
-      return { address: 'host/t5' }
+      runs.push({ method, ...params })
+      return { address: `host/t${runs.length + 4}` }
     }
     const machines = () => [{ key: '', label: 'here', local, status: 'online' }]
     return { written, runs, deps: { store, call, machines } as unknown as Parameters<typeof startCoordinator>[0] }
@@ -181,6 +224,21 @@ describe('role files', () => {
     expect((await store.coordinator('CO'))!.terminal).toBe('host/t5')
   })
 
+  it('start with the project\'s default agent, remember the agent that ran, and a new conversation replaces the old one', async () => {
+    const { runs, deps } = fakeCore()
+    await setCoordinatorAgent(store, 'CO', { program: 'claude', model: 'sonnet' })
+    await startCoordinator(deps, 'CO', {}, urls)
+    expect(runs[0]!.line).toContain(`exec 'claude' '--model' 'sonnet'`)
+    await setCoordinatorAgent(store, 'CO', { program: 'codex', model: 'gpt-5' })
+    // The default and the agent of the kept conversation stay apart, and survive a new token.
+    expect((await coordinatorsView(store)).find(c => c.project === 'CO')).toMatchObject({ agent: { program: 'codex', model: 'gpt-5' }, ran: { program: 'claude', model: 'sonnet' }, terminal: 'host/t5' })
+    await startCoordinator(deps, 'CO', {}, urls)
+    expect(runs.map(r => [r.method, r.terminal ?? r.cwd])).toEqual([['terminal.run', '/h/.wherdr/pm/coordinators/CO'], ['terminal.run', '/h/.wherdr/pm/coordinators/CO'], ['terminal.kill', 'host/t5']])
+    expect((await store.coordinator('CO'))).toMatchObject({ agent: { program: 'codex' }, ran: { program: 'codex', model: 'gpt-5' }, terminal: 'host/t6' })
+    await refused(setCoordinatorAgent(store, 'CO', { program: 'omp', model: 'x' }), 'claude or codex')
+    await refused(setCoordinatorAgent(store, 'NOPE', { program: 'claude', model: 'opus' }), 'Unknown project')
+  })
+
   it('on another machine, the coordinator gets wherdr\'s published address, never loopback', async () => {
     const remote = fakeCore(false)
     await startCoordinator(remote.deps, 'CO', { program: 'codex', model: 'gpt-5' }, urls)
@@ -197,6 +255,7 @@ describe('role files', () => {
     expect(agents).toContain('- deploy (Deploy): holder coordinator, ends report, recheck 5m, timeout 90m')
     expect(agents).toContain('- Base branch is develop.')
     expect(agents).toContain('"id":"vibe"')
+    expect(agents).toContain('with its absolute path (`/src/co/README.md`)')
     expect(files['CLAUDE.md']).toBe('@AGENTS.md\n')
     expect(JSON.parse(files['.claude/settings.json']!).permissions.deny).toEqual(['Edit(//src/co/**)'])
     const codex = coordinatorArgs('codex', 'gpt-5', '/h/c', '/src/co')
@@ -266,13 +325,15 @@ it('the folder\'s wherdr script sends any words and stdin, and fails on a refusa
 
 describe('wakes', () => {
   const deliver = (status: string, now: number) => {
-    const sent: { terminal: string, text: string }[] = []
+    const sent: { terminal: string, text: string }[] = [], pushed: string[] = []
     const call = async (method: string, params: Record<string, string>) => {
       if (method === 'terminal.get') return { status }
       if (method === 'terminal.send') sent.push({ terminal: params.terminal!, text: params.text! })
       return {}
     }
-    return { sent, run: () => deliverWakes({ store, call } as unknown as Parameters<typeof deliverWakes>[0], now) }
+    const notify = async (title: string) => { pushed.push(title) }
+    const d = { store, call, notify } as unknown as Parameters<typeof wakeTick>[0]
+    return { sent, pushed, d, run: () => wakeTick(d, now) }
   }
   const atDeploy = async (since: number) => {
     await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9' })
@@ -280,31 +341,233 @@ describe('wakes', () => {
     await store.saveTask({ ...task, state: 'working', step: state(5, { since, recheckAt: since + 300_000 }) })
     return task.id
   }
+  const wakeId = (text: string) => /wherdr pm ack ([0-9a-f]{8})/.exec(text)![1]!
 
   it('tells the coordinator its step once, then each recheck, as an Autopilot wake turn', async () => {
     const id = await atDeploy(1000)
     const first = deliver('idle', 2000)
     expect(await first.run()).toEqual(['CO'])
-    expect(first.sent).toEqual([{ terminal: 'host/t9', text: expect.stringMatching(/^Autopilot:\n\nCO-1 \(Fix\): Base branch is develop\.[\s\S]*Watch the develop pipeline/) }])
+    expect(first.sent).toEqual([{ terminal: 'host/t9', text: expect.stringMatching(/^Autopilot: wake [0-9a-f]{8}\n\nCO-1 \(Fix\): Base branch is develop\.[\s\S]*Watch the develop pipeline/) }])
     expect((await store.coordinator('CO'))!.turn).toMatchObject({ kind: 'wake' })
     // A wake turn: the user's words cannot be claimed.
     await store.saveTask({ ...(await store.task(id))!, step: { ...(await store.task(id))!.step!, at: 4, yourTurn: { reason: 'user', badge: 'Merge the PR' } } })
     await refused(cli(['step', 'done', id, '--user-said', 'merged']), 'not a wake')
     await store.saveTask({ ...(await store.task(id))!, step: { ...(await store.task(id))!.step!, at: 5, yourTurn: undefined } })
-    const again = deliver('idle', 3000)
-    expect(await again.run()).toEqual([])
+    expect(await deliver('idle', 3000).run()).toEqual([])
+    await cli(['ack', wakeId(first.sent[0]!.text)])
     const recheck = deliver('idle', 1000 + 300_000)
     await recheck.run()
     expect(recheck.sent[0]!.text).toContain('Check again: ')
   })
 
-  it('waits while the coordinator works or the user just wrote', async () => {
+  it('waits while the coordinator works or the user just wrote; the queue keeps the reason', async () => {
     await atDeploy(1000)
-    const busy = deliver('working', 2000)
-    expect(await busy.run()).toEqual([])
-    await noteTurn(store, 'CO', 'user', 'hi')
+    expect(await deliver('working', 2000).run()).toEqual([])
+    expect(await store.wakes()).toHaveLength(1)
+    await userMessageTo(store, 'host/t9', 'hi')
     const quiet = deliver('idle', Date.now() + 10_000)
     expect(await quiet.run()).toEqual([])
-    expect(quiet.sent).toEqual([])
+    const later = deliver('idle', Date.now() + WAKE.QUIET_MS)
+    expect(await later.run()).toEqual(['CO'])
+    expect(later.sent[0]!.text).toContain('CO-1 (Fix)')
+  })
+
+  it('an unacked wake comes back once, then the user gets a push', async () => {
+    await atDeploy(1000)
+    await deliver('idle', 2000).run()
+    // Its turn ends after 2 min idle; 15 min without ack: again.
+    await deliver('idle', 3000).run()
+    const again = deliver('idle', 2000 + WAKE.ACK_MS + WAKE.IDLE_MS)
+    await again.run()
+    expect(again.sent[0]!.text).toContain('(again: no ack after 15 min)')
+    await deliver('idle', 3000 + WAKE.ACK_MS + WAKE.IDLE_MS).run()
+    const last = deliver('idle', 3000 + 2 * (WAKE.ACK_MS + WAKE.IDLE_MS))
+    await last.run()
+    expect(last.pushed).toEqual(['CO: the coordinator is not answering'])
+    await refused(cli(['ack', 'deadbeef']), 'No wake deadbeef')
+  })
+
+  it('run now goes over an open wake; the autopilot wakes for its events', async () => {
+    const ap = { on: true, goal: 'Ship lot 10', events: ['added'], perDay: 3, atOnce: 1 }
+    await atDeploy(1000)
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { ...ap, events: ['added'] } })
+    const first = deliver('idle', 2000)
+    await first.run() // notes where tasks stand: no "added" for what was there
+    expect(first.sent[0]!.text).not.toContain('added')
+    await store.addTask({ project: 'CO', title: 'New', type: 'feature' })
+    const now = deliver('idle', 4000)
+    await runNow(now.d, 'CO', 4000)
+    expect(now.sent[0]!.text).toContain('The user asked you to run now. Your goal: Ship lot 10.')
+    expect(now.sent[0]!.text).toContain('CO-2 (New): added')
+  })
+
+  it('wakes at its fixed times, once for slots missed while down', async () => {
+    const day = (d: number, h: number) => new Date(2026, 10, d, h).getTime()
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9', atRan: day(1, 9), autopilot: { on: true, goal: 'Triage', at: 'daily 08:00', events: [], perDay: 3, atOnce: 1 } })
+    expect(await deliver('idle', day(2, 7)).run()).toEqual([])
+    const late = deliver('idle', day(5, 10))
+    expect(await late.run()).toEqual(['CO'])
+    expect(late.sent[0]!.text).toContain('Scheduled wake (daily 08:00). Your goal: Triage.')
+    expect((await store.coordinator('CO'))!.atRan).toBe(day(5, 10))
+    expect((await store.wakes()).filter(w => w.reasons.some(r => r.startsWith('Scheduled')))).toHaveLength(1)
+  })
+
+  describe('nothing to do', () => {
+    // Day 2 is today: the skipped wakes are counted per local day.
+    const day = (d: number, h: number, m = 0) => { const x = new Date(); x.setDate(x.getDate() + d - 2); x.setHours(h, m, 0, 0); return x.getTime() }
+    const scheduled = async () => (await store.wakes()).filter(w => w.reasons.some(r => r.startsWith('Scheduled'))).length
+    // A project whose tasks are all done, woken once since: asleep.
+    const asleep = async (more: Partial<typeof DEFAULT_AUTOPILOT> = {}) => {
+      const task = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
+      await store.saveTask({ ...task, step: state(5, { done: true }) })
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9', atRan: day(1, 9), ranAt: day(2, 6), seen: { 'CO-1': 'done' }, woke: { at: day(2, 6), seen: { 'CO-1': 'done' } },
+        autopilot: { on: true, goal: 'Triage', every: '30m', at: 'daily 08:00', events: ['added', 'done', 'stuck'], perDay: 3, atOnce: 1, ...more } })
+      return task
+    }
+
+    it('skips the interval and fixed-time wakes, marks the slots run and counts them', async () => {
+      await asleep()
+      expect(await deliver('idle', day(2, 8, 1)).run()).toEqual([])
+      expect(await scheduled()).toBe(0)
+      const c = (await store.coordinator('CO'))!
+      expect(c).toMatchObject({ ranAt: day(2, 8, 1), atRan: day(2, 8, 1), skipped: { n: 1 } })
+      // Marked run: the slot does not fire again.
+      expect(await deliver('idle', day(2, 8, 2)).run()).toEqual([])
+      expect((await store.coordinator('CO'))!.skipped!.n).toBe(1)
+      expect(await cli(['autopilot', 'show'])).toMatchObject({ lookForWork: false, today: { skippedWakes: 1 }, pacing: 'claude · quota unknown (no reading of claude on this project\'s machine) · task-count limits only' })
+      expect((await coordinatorsView(store)).find(v => v.project === 'CO')).toMatchObject({ asleep: 'idle', wokeAt: day(2, 6), skippedToday: 1 })
+    })
+
+    it('skips a scheduled wake while the worker\'s account is ahead of its pace, marked run', async () => {
+      const task = await asleep()
+      await store.saveTask({ ...task, state: 'waiting', step: state(5) })
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, seen: { 'CO-1': 'waiting' } })
+      const now = day(2, 8, 1)
+      // The 5-hour window at 90 %: past the 25 % reserve.
+      quotas.q = { codex: null, claude: { at: now, five: { used: 90, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
+      expect(await deliver('idle', now).run()).toEqual([])
+      expect(await scheduled()).toBe(0)
+      expect((await store.coordinator('CO'))!).toMatchObject({ ranAt: now, atRan: now, skipped: { n: 1 } })
+      // Marked run: the next tick does not try again.
+      expect(await deliver('idle', day(2, 8, 2)).run()).toEqual([])
+      expect((await store.coordinator('CO'))!.skipped!.n).toBe(1)
+    })
+
+    it('wakes when a task is not done, or something changed since the last wake', async () => {
+      const task = await asleep()
+      await store.saveTask({ ...task, state: 'waiting', step: state(5) })
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, seen: { 'CO-1': 'waiting' } })
+      expect(await deliver('idle', day(2, 8, 1)).run()).toEqual(['CO'])
+      expect(await scheduled()).toBe(1)
+      // Done again (an event wake), then the user wrote since that wake.
+      await store.saveTask({ ...task, step: state(5, { done: true }) })
+      await deliver('idle', day(2, 8, 2)).run()
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, userAt: day(2, 8, 3) })
+      const t = day(2, 8, 40)
+      await deliver('idle', t).run()
+      expect((await store.coordinator('CO'))!).toMatchObject({ ranAt: t, woke: { at: t, seen: { 'CO-1': 'done' } } })
+      expect((await store.coordinator('CO'))!.skipped).toBeUndefined()
+      // That wake noted where tasks stand: the next slot sleeps.
+      await deliver('idle', t + 31 * 60_000).run()
+      expect((await store.coordinator('CO'))!).toMatchObject({ woke: { at: t }, skipped: { n: 1 } })
+    })
+
+    it('keeps the scheduled wakes with "look for new work", within its daily limit', async () => {
+      await asleep({ lookForWork: true, lookPerDay: 1 })
+      expect((await coordinatorsView(store)).find(v => v.project === 'CO')!.asleep).toBeUndefined()
+      const r = deliver('idle', day(2, 8, 1))
+      expect(await r.run()).toEqual(['CO'])
+      expect(r.sent[0]!.text).toContain('Scheduled wake (every 30m). Nothing is under way: look for new work toward your goal. Your goal: Triage.')
+      // Its turn adds one task, then the limit holds until tomorrow.
+      expect((await store.coordinator('CO'))!.turn).toMatchObject({ kind: 'wake', look: true })
+      await cli(['task', 'add', 'More', 'tests', '--type', 'feature'])
+      await refused(cli(['task', 'add', 'Even', 'more', '--type', 'feature']), 'limit of new work is reached (1 tasks')
+      expect(await cli(['autopilot', 'show'])).toMatchObject({ lookForWork: true, today: { newWorkAdded: 1, newWorkPerDay: 1 } })
+      // That task done and seen: idle again, and the limit is reached.
+      const added = (await store.tasks()).find(t => t.title === 'More tests')!
+      await store.saveTask({ ...added, step: state(5, { done: true }) })
+      const seen = { 'CO-1': 'done', [added.id]: 'done' } as const
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, seen: { ...seen }, woke: { at: day(2, 8, 2), seen: { ...seen } } })
+      expect(await deliver('idle', day(2, 8, 40)).run()).toEqual([])
+      expect((await store.coordinator('CO'))!).toMatchObject({ ranAt: day(2, 8, 40), skipped: { n: 1 } })
+      expect((await coordinatorsView(store)).find(v => v.project === 'CO')!.asleep).toBe('limit')
+      // A user's turn is never limited by it.
+      await noteTurn(store, 'CO', 'user', 'add one')
+      await cli(['task', 'add', 'Mine', '--type', 'feature'])
+    })
+
+    it('the new work limit ends with the day', async () => {
+      await asleep({ lookForWork: true, lookPerDay: 1 })
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, lookAdded: { day: new Date(day(1, 12)).toDateString(), n: 1 } })
+      expect(await deliver('idle', day(2, 8, 1)).run()).toEqual(['CO'])
+    })
+
+    it('event wakes are unaffected', async () => {
+      await asleep({ every: undefined, at: undefined })
+      await store.addTask({ project: 'CO', title: 'New', type: 'feature' })
+      const r = deliver('idle', day(2, 8, 1))
+      expect(await r.run()).toEqual(['CO'])
+      expect(r.sent[0]!.text).toContain('CO-2 (New): added')
+    })
+  })
+})
+
+describe('commands of lot 10', () => {
+  it('a new token (the coordinator started again) keeps the autopilot the user set', async () => {
+    const autopilot = { on: true, goal: 'ship lot 10', every: '2h', events: ['done' as const], perDay: 4, atOnce: 1, hours: { from: 22, to: 6 } }
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot, seen: { 'CO-1': 'working' }, ranAt: 5, userAt: 6, terminal: 'host/t1', turn: { kind: 'wake', at: 1 } })
+    await issueToken(store, 'CO')
+    const c = (await store.coordinator('CO'))!
+    expect(c).toMatchObject({ autopilot, seen: { 'CO-1': 'working' }, ranAt: 5, userAt: 6 })
+    expect([c.terminal, c.turn]).toEqual([undefined, undefined])
+  })
+
+  it('approve, merge, settings and the autopilot\'s limits are the user\'s', async () => {
+    await refused(cli(['approve', 'CO-1']), 'Approving is the user\'s')
+    await refused(cli(['merge', 'CO-1']), 'Merging is the user\'s gesture')
+    await refused(cli(['settings']), 'Settings change only in wherdr')
+    await refused(cli(['autopilot', 'set', '--perDay', '50']), 'change only in wherdr')
+  })
+
+  it('autopilot show gives the goal and what is left today', async () => {
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { on: true, goal: 'Ship', events: [], perDay: 4, atOnce: 2 } })
+    await store.saveTask({ ...(await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })), state: 'working' })
+    expect(await cli(['autopilot', 'show'])).toMatchObject({ autopilot: { goal: 'Ship' }, today: { started: 0, perDay: 4, working: 1, atOnce: 2, startLeft: 1 } })
+  })
+
+  it('task add: a task to do, chained with --after; in a wake only with the autopilot on', async () => {
+    expect(parseCommand(['task', 'add', 'Fix', 'the', 'docs', '--type', 'feature', '--after', 'CO-1'])).toEqual({ name: 'task add', title: 'Fix the docs', type: 'feature', after: 'CO-1' })
+    expect(parseCommand(['task', 'add', 'Fix'])).toMatchObject({ error: expect.stringMatching(/^usage: wherdr pm task add/) })
+    expect(parseCommand(['task', 'add', 'Fix', '--type', 'feature', '--after', 'next'])).toEqual({ error: '--after is a list of tasks: A-1,A-2' })
+    await noteTurn(store, 'CO', 'user', 'add two tasks')
+    const first = (await cli(['task', 'add', 'Tidy the docs', '--type', 'feature', '--description', 'One typo.'])).task
+    expect(first).toMatchObject({ id: 'CO-1', state: 'todo', description: 'One typo.', log: [{ by: 'coordinator CO', text: 'added the task' }] })
+    await refused(cli(['task', 'add', 'X', '--type', 'study']), 'No task type "study": feature')
+    await refused(cli(['task', 'add', 'X', '--type', 'feature', '--after', 'ST-1']), 'after: tasks of the same project')
+    await noteTurn(store, 'CO', 'wake')
+    await refused(cli(['task', 'add', 'Next', '--type', 'feature']), 'only with the autopilot on')
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { ...DEFAULT_AUTOPILOT, on: true } })
+    expect((await cli(['task', 'add', 'Next', '--type', 'feature', '--after', 'CO-1'])).task).toMatchObject({ id: 'CO-2', after: 'CO-1' })
+  })
+
+  it('tell: an agent\'s question in a wake; never a permission', async () => {
+    const sent: string[] = []
+    const call = async (method: string, p: { text: string }) => { if (method === 'terminal.send') sent.push(p.text); return {} }
+    const tell = (argv: string[]) => runCommand({ store, call } as unknown as Parameters<typeof runCommand>[0], token, { argv })
+    const task = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
+    await store.saveRun({ id: 'r1', task: task.id, role: 'worker', program: 'claude', model: 'opus', machine: '', worktree: '/w', branch: 'b', instructions: '', terminal: 'host/t3', attempt: 1, state: 'running', startedAt: 1 })
+    await store.saveTask({ ...task, run: 'r1', state: 'waiting', waiting: 'Run the migration?', waitKind: 'permission' })
+    await refused(tell(['tell', task.id, 'yes']), 'permission request is the user\'s')
+    await store.saveTask({ ...(await store.task(task.id))!, waiting: 'Which DB?', waitKind: 'question' })
+    await noteTurn(store, 'CO', 'wake')
+    await tell(['tell', task.id, 'Postgres,', 'as in the README'])
+    expect(sent).toEqual(['From the project coordinator: Postgres, as in the README'])
+    const told = (await store.task(task.id))!
+    expect([told.state, told.waitKind, told.log?.at(-1)?.text]).toEqual(['working', undefined, 'told the agent: Postgres, as in the README'])
+    await refused(tell(['tell', task.id, 'and also…']), 'only answers an agent\'s question')
+    // A permission prompt on its screen, even in the user's turn: never typed into.
+    await noteTurn(store, 'CO', 'user', 'tell it')
+    const blocked = async (method: string, p: { text: string }) => (method === 'terminal.get' ? { status: { state: 'blocked' } } : call(method, p))
+    await refused(runCommand({ store, call: blocked } as unknown as Parameters<typeof runCommand>[0], token, { argv: ['tell', task.id, 'yes'] }), 'permission request is the user\'s')
   })
 })

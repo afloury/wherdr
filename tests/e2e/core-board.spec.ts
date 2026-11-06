@@ -6,8 +6,8 @@ import { common, company } from '../../shared/pm/examples'
 
 // The board on the built server: tasks saved by the engine show in their columns,
 // the reviewer's live state comes from herdr-core, and the step's button in the
-// task sheet moves a task out of Your turn. Columns, indicators and badges are
-// covered lower, in tests/components/BoardView.test.ts.
+// task sheet moves a task out of Your turn. Columns (also per project), indicators
+// and badges are covered lower, in tests/components/BoardView.test.ts.
 test('board: Your turn, the reviewer\'s state and the step button', async ({ page }) => {
   const terminal = fixture.inventory.terminals[0]!
   const step = (at: number, more = {}) => ({ at, started: true, proofs: {}, rounds: {}, ...more })
@@ -46,11 +46,6 @@ test('board: Your turn, the reviewer\'s state and the step button', async ({ pag
     await page.screenshot({ path: `.shots/board-sheet-${test.info().project.name}.png` })
     await page.getByTestId('step-user').click()
     await expect(page.locator('[data-lane="done"]').locator('[data-task="CM-1"]')).toBeVisible()
-    // One project: its template's columns.
-    await page.keyboard.press('Escape')
-    await page.getByTestId('board-project').selectOption('CO')
-    await expect(page.locator('[data-lane="Review"]').locator('[data-task="CO-1"]')).toBeVisible()
-    await page.screenshot({ path: `.shots/board-project-${test.info().project.name}.png` })
   } finally {
     await core.stop()
   }

@@ -1,5 +1,6 @@
+// @vitest-environment happy-dom
 import { afterEach, expect, it } from 'vitest'
-import { pasteJournal, pasteJournalEnabled, setPasteJournal, tracePaste } from '~/utils/pasteJournal'
+import { pasteJournal, pasteJournalEnabled, setPasteJournal, tracePaste } from '../app/utils/pasteJournal'
 
 const settle = () => new Promise(r => setTimeout(r, 10))
 afterEach(() => { setPasteJournal(false) })

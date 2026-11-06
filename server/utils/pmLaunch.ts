@@ -9,16 +9,24 @@ import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, kindsOf, launchFailure, machineOn, type CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
 import { initialState, onEvent, planSteps } from '../../shared/pm/steps'
-import { LABEL, agentLine, instructionsText, shotStep, reconcile, runLabels, taskPaths, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { doneSection, runFiles } from '../../shared/pm/advance'
+import { LABEL, agentLine, isAuthFailure, instructionsText, shotStep, reconcile, runLabels, taskPaths, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 
-// Reuses the worktree of an earlier attempt; else a new branch from the base.
-// Records where the branch started (its fork from the base), once: verify
-// counts only the commits made on it since.
+// Reuses the worktree of an earlier attempt; else a new branch from the base,
+// origin's as fetched now when origin has it (a local one may be stale: a
+// chained task needs the task merged before it; and with no local one, git
+// would check out a new local base branch instead of the task's), not
+// tracking it: the agent's git status must not read as being on the base. Records where the
+// branch started (its fork from the base), once: verify counts only the
+// commits made on it since.
 export const WORKTREE_SCRIPT = `repo=$1 dir=$2 branch=$3 base=$4
 [ -e "$dir/.git" ] && exit 0
 mkdir -p "$(dirname "$dir")" || exit 1
+from=$base
+if [ -n "$base" ] && git -C "$repo" rev-parse -q --verify "refs/remotes/origin/$base" >/dev/null; then
+  git -C "$repo" fetch -q origin "$base" 2>/dev/null; from=origin/$base; fi
 if git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then git -C "$repo" worktree add "$dir" "$branch" 2>&1
-else git -C "$repo" worktree add -b "$branch" "$dir" \${base:+"$base"} 2>&1 && base=HEAD; fi || exit 1
+else git -C "$repo" worktree add --no-track -b "$branch" "$dir" \${from:+"$from"} 2>&1 && base=HEAD; fi || exit 1
 k="branch.$branch.wherdrstart"
 [ -z "$base" ] || git -C "$repo" config "$k" >/dev/null || git -C "$repo" config "$k" "$(git -C "$dir" merge-base HEAD "$base")"`
 export const WRITE_SCRIPT = 'mkdir -p "$(dirname "$1")" && cat > "$1"'
@@ -43,11 +51,13 @@ export function wherdrBase(machine: string, origin = '', appUrl = process.env.AP
   return (appUrl || origin).replace(/\/+$/, '')
 }
 
-const wait = (store: PmStore, task: Task, reason: string) => store.saveTask({ ...task, state: 'waiting', waiting: reason })
+const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitKind']) => store.saveTask({ ...task, state: 'waiting', waiting: reason, waitKind })
 
 // Starts the worker of a task to do (or waiting, to try again). Any reason it
 // cannot start puts the task in 'waiting' with that reason, after one attempt.
-export async function startTask(deps: PmLaunchDeps, id: unknown): Promise<Task> {
+// handover: a note for a worker that takes up a stopped task (stop.ts). A
+// stopped task stays stopped until its agent starts: never seen as a failure meanwhile.
+export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: { handover?: string } = {}): Promise<Task> {
   const { store } = deps
   const task = await store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
@@ -58,6 +68,14 @@ export async function startTask(deps: PmLaunchDeps, id: unknown): Promise<Task> 
   if (!t) return wait(store, task, 'The project has no template: pick one in Settings › Projects')
   const plan = workerPlan(t, task)
   if ('reason' in plan) return wait(store, task, plan.reason)
+  // Stopped at a step the worker does not hold (the review): no new worker. That
+  // step's holder is told again (the reviewer started again) by the next advance pass.
+  const s = task.step
+  const held = s?.started && !s.done ? planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) })[s.at] : undefined
+  if (held && held.holder !== 'worker') {
+    const { told: _told, ...step } = s!
+    return store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, step })
+  }
   let on: string | undefined, label = ''
   try { ({ on, m: { label } } = machineOn(deps, p.machine)) } catch (e) { return wait(store, task, (e as Error).message) }
   if (!(await kindsOf(deps, on)).includes(plan.program)) return wait(store, task, `${plan.program} is not installed on ${label}`)
@@ -69,16 +87,19 @@ export async function startTask(deps: PmLaunchDeps, id: unknown): Promise<Task> 
   // A visual task: the worker's key to upload its screenshots, kept with the task.
   const shotToken = shotStep(t, task.type) ? task.shotToken || randomBytes(16).toString('hex') : undefined
   const text = instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(p.machine, deps.origin), token: shotToken } : undefined)
+    + ['', ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n')
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')
 
   // The engine's start: the task enters its first step (the worker's); the
   // instructions file already tells the worker what to do.
-  const step = task.step?.started ? task.step : onEvent(planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }), initialState(), { kind: 'start' }, Date.now()).state
+  // Its first step's text is in the instructions file: told already.
+  const first = onEvent(planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }), initialState(), { kind: 'start' }, Date.now()).state
+  const step = task.step?.started ? task.step : { ...first, told: first.since }
   const install = await store.install()
   let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine: p.machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now() }
   for (;;) {
     await store.saveRun(run) // the receipt, before the terminal exists
-    await store.saveTask({ ...task, state: 'working', waiting: undefined, run: run.id, step, ...(shotToken ? { shotToken } : {}) })
+    await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, run: run.id, step, ...(shotToken ? { shotToken } : {}) })
     let address: string
     try {
       address = (await deps.call<{ address: string }>('terminal.run', {
@@ -99,7 +120,7 @@ export async function startTask(deps: PmLaunchDeps, id: unknown): Promise<Task> 
     await store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
     // An agent that exits at once gets one more attempt, never a loop.
     if (run.attempt > 1 || failed.code === NOT_FOUND)
-      return wait(store, task, `${plan.program} stopped right after starting (exit code ${failed.code}). Last output:\n${failed.lines || '(none)'}`)
+      return wait(store, task, `${plan.program} stopped right after starting (exit code ${failed.code}). Last output:\n${failed.lines || '(none)'}`, isAuthFailure(failed.lines) ? 'auth' : undefined)
     run = { ...run, id: randomUUID().replace(/-/g, '').slice(0, 12), terminal: undefined, attempt: 2, state: 'starting' }
   }
 }
