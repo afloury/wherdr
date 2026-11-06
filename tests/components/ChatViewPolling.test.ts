@@ -5,7 +5,8 @@ import { defineComponent, getCurrentInstance, h, nextTick, shallowRef } from 'vu
 import { UApp } from '#components'
 import ChatView from '~/components/ChatView.vue'
 import { herdrState } from '~/composables/useHerdr'
-import type { ChatItem, Pane } from '#shared/types'
+import { outboxAdd, outboxDrop, outboxFor, outboxPrune } from '~/composables/useOutbox'
+import type { ChatItem, ChatResponse, Pane } from '#shared/types'
 
 const idle: Pane = { id: 'w1:p7', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'claude', name: null, label: null, status: 'idle', title: null, cwd: '/home/user/demo', agentSession: null }
 const items: ChatItem[] = [
@@ -14,9 +15,12 @@ const items: ChatItem[] = [
   { role: 'assistant', text: 'Renamed.', ts: '2026-01-01T00:00:05Z' },
 ]
 let reads = 0
+const FILE = '/home/user/demo/transcript.jsonl'
+const polling = (): ChatResponse => ({ available: true, token: 'polling', file: FILE, start: 0, items })
+let reply = polling
 registerEndpoint('/api/chat', () => {
   reads++
-  return { available: true, token: 'polling', file: '/home/user/demo/transcript.jsonl', start: 0, items }
+  return reply()
 })
 
 // The pane as the live state hands it to the view: a new object on each push.
@@ -154,5 +158,52 @@ describe('conversation blocks', () => {
       expect(verbs.get('ChatStatusLine')).toBe(10)
       expect(w.find('.claude-verb').text()).toContain('Step 9')
     } finally { w.unmount() }
+  })
+})
+
+describe('sent message taken by the agent', () => {
+  afterEach(() => { reply = polling; herdrState.value = { ok: false, workspaces: [], panes: [] } })
+
+  // The agent took a sent message (no longer in the server's queue), then
+  // every read of the transcript failed: the bubble went 10 s later, and the
+  // view stayed without it until a read succeeded.
+  it('stays shown while the transcript cannot be read, until it is in it', async () => {
+    // After the reads earlier tests made of the same pane (real time).
+    const T = Date.now() + 3_600_000
+    let clock = T
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => clock)
+    outboxAdd(idle.id, { id: 'w-x', text: 'Ship the fix', at: T })
+    herdrState.value = { ok: true, workspaces: [], panes: [idle] }
+    const Host = defineComponent({ render: () => h(UApp, null, () => h(ChatView, { pane: idle, localQueued: outboxFor(idle.id) })) })
+    const w = await mountSuspended(Host)
+    const vm = w.findComponent(ChatView).vm as unknown as { loadChat: () => Promise<void> }
+    const bubbles = () => w.findAll('.msg-pending').filter(b => b.text().includes('Ship the fix')).length
+    try {
+      await expect.poll(() => w.find('.chat').text()).toContain('Renamed.')
+      expect(bubbles()).toBe(1)
+      // The agent takes it: the server stops listing it.
+      clock = T + 1000
+      outboxPrune(idle.id, [])
+      reply = () => { throw new Error('read timed out') }
+      for (let i = 0; i < 4; i++) {
+        clock += 15_000
+        await vm.loadChat()
+        outboxPrune(idle.id, [])
+      }
+      await expect.poll(() => w.text()).toContain('not up to date')
+      expect(bubbles()).toBe(1)
+      // The transcript is read again, with the message: one copy, in the conversation.
+      clock += 1500
+      reply = () => ({ available: true, token: 'tok-2', file: FILE, start: 0, items: [...items, { role: 'user', text: 'Ship the fix', ts: new Date(T + 1500).toISOString() }] })
+      await vm.loadChat()
+      outboxPrune(idle.id, [])
+      await expect.poll(() => w.text()).not.toContain('not up to date')
+      expect(outboxFor(idle.id)).toEqual([])
+      expect(w.find('.chat').text().split('Ship the fix').length - 1).toBe(1)
+    } finally {
+      now.mockRestore()
+      outboxDrop(idle.id, 'w-x')
+      w.unmount()
+    }
   })
 })
