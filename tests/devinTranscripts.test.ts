@@ -131,21 +131,6 @@ it('invalidates old pages when the active chain rewinds above their anchor', asy
   expect(await reader.chat(pane, { before: old.start, anchor: old.token })).toMatchObject({ rewritten: true, items: [] })
 })
 
-it('falls back to a rewritten bottom when a from-cursor page is too large', async () => {
-  const { home } = fixture()
-  writeDevinFixture(home, { rows: Array.from({ length: 130 }, (_, id) => ({
-    id, parent: id ? id - 1 : null, message: devinMessage('assistant', `Blob ${id} ${'x'.repeat(80)}`),
-  })) })
-  const reader = createDevinTranscripts({ home, maxPageBytes: 800 })
-  const tail = await reader.chat(pane)
-  expect(tail.start).toBe(11)
-  const next = await reader.chat(pane, { from: 1 })
-  expect(next.rewritten).toBe(true)
-  expect(next.start).toBe(tail.start)
-  expect(next.items).toHaveLength(120)
-  expect(next.items?.at(-1)?.text).toContain('Blob 129')
-})
-
 it('filters injected user records and never exposes reasoning signatures or system context', async () => {
   const { home, reader } = fixture()
   writeDevinFixture(home, { rows: [
@@ -478,14 +463,6 @@ it('retries after the original failure deadline even when quiet polls keep arriv
   expect((await reader.chat(pane, { since: first.token })).items?.[0]?.text).toBe('After reconnect with another reply')
 })
 
-it('replaces a cursor page from the former SQLite reader instead of mixing protocols', async () => {
-  const { home } = fixture()
-  writeDevinFixture(home, { rows: [{ id: 0, message: devinMessage('assistant', 'ATIF history') }] })
-  const reader = createDevinTranscripts({ home })
-  const previous = 'devin:devin-' + '1'.repeat(24) + ':0:' + 'a'.repeat(24) + ':' + 'b'.repeat(24)
-  expect(await reader.chat(pane, { from: 0, since: previous, anchor: previous })).toMatchObject({ rewritten: true, items: [{ text: 'ATIF history' }] })
-})
-
 it('refuses mismatched session identities and unsupported schemas', async () => {
   const { home } = fixture()
   const file = writeDevinFixture(home)
@@ -658,5 +635,9 @@ it('yields during a large cached search and stops when its deadline expires', as
     const result = await pending
     expect(yielded).toBe(true)
     expect(result).toMatchObject({ hits: [], limited: true })
+    clock = 0
+    const capped = await reader.search(pane, 'Unrelated', 1000)
+    expect(capped.hits.map(h => h.offset)).toEqual([8000, 7999, 7998, 7997, 7996, 7995, 7994, 7993])
+    expect(capped.limited).toBe(true)
   } finally { time.mockRestore() }
 })

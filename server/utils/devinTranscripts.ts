@@ -243,15 +243,6 @@ function normalize(raw: Json, file: string): AtifDoc {
   return { file, model, steps, images: collectImages(original, found), fingerprints, results }
 }
 
-function pageTooLarge(steps: Step[], maxPageBytes: number): boolean {
-  let used = 0
-  for (const step of steps) {
-    used += Buffer.byteLength(JSON.stringify(step))
-    if (used > maxPageBytes) return true
-  }
-  return false
-}
-
 function takeVisible(steps: Step[], doc: AtifDoc, limit: number): { steps: Step[], start: number, items: ChatItem[] } {
   const kept: Step[] = []
   let visible = 0
@@ -307,12 +298,11 @@ function hasStep(steps: Step[], id: number): boolean {
 }
 
 export function createDevinTranscripts({
-  home, fs = localFs, now = Date.now, maxPageBytes = MAX_READ_BYTES, failQuietMs = FAIL_QUIET_MS,
+  home, fs = localFs, now = Date.now, failQuietMs = FAIL_QUIET_MS,
 }: {
   home: string
   fs?: MachineFs
   now?: () => number
-  maxPageBytes?: number
   failQuietMs?: number
 }) {
   const honorEnv = fs === localFs
@@ -464,16 +454,8 @@ export function createDevinTranscripts({
       } else if (from != null && !rewritten) {
         const lo = from === 0 ? 0 : doc.steps.findIndex(s => Number(s.step_id) >= from)
         selected = lo < 0 ? doc.steps : doc.steps.slice(lo)
-        if (pageTooLarge(selected, maxPageBytes)) {
-          rewritten = true
-          const page = takeVisible(doc.steps, doc, PAGE_ITEMS)
-          selected = page.steps
-          start = page.start
-          items = page.items
-        } else {
-          items = parseDevin(selected, doc.steps, doc.images, doc.results)
-          start = selected[0] && selected.length < doc.steps.length ? Number(selected[0].step_id) || 0 : 0
-        }
+        items = parseDevin(selected, doc.steps, doc.images, doc.results)
+        start = selected[0] && selected.length < doc.steps.length ? Number(selected[0].step_id) || 0 : 0
       } else {
         const page = takeVisible(doc.steps, doc, PAGE_ITEMS)
         selected = page.steps
@@ -506,10 +488,9 @@ export function createDevinTranscripts({
     if (!img) return null
     let body: Buffer | null = null
     if (img.data) {
-      if (img.data.length > 80 * 1024 * 1024) return null
       body = Buffer.from(img.data, 'base64')
     }
-    if (!body || body.length > 60 * 1024 * 1024) return null
+    if (!body) return null
     const mime = img.mimeType.toLowerCase()
     return { type: IMAGE_TYPES.test(mime) ? mime : 'application/octet-stream', body }
   }
