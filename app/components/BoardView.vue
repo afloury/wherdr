@@ -73,6 +73,9 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
       </select>
     </header>
     <CoordinatorBar v-if="coordinator" :c="coordinator" open />
+    <!-- One scroll on the phone, so a tall guide does not hide the lanes. -->
+    <div class="board-body">
+    <PmGuide :always="route.query.guide === '1'" />
     <p v-if="error" class="error board-note">{{ error }}</p>
     <p v-else-if="data && !data.cards.length" class="muted board-note">{{ tl('No task yet.', 'Aucune tâche pour l’instant.') }}</p>
     <div class="board-lanes">
@@ -99,6 +102,7 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
         </div>
       </section>
     </div>
+    </div>
     <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}`" :card="selected" :pane="paneOf(selected)" :stopping="stopping" @closed="open = null; stopping = false" @changed="load" />
   </section>
 </template>
@@ -110,7 +114,8 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
 .board-decisions-n { margin-left: 6px; color: inherit; }
 .board-top .pm-select { min-width: 0; flex: 0 1 auto; }
 .board-note { padding: 12px 16px; }
-.board-lanes { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding-bottom: var(--safe-bottom, 0px); }
+.board-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+.board-lanes { flex: 1 0 auto; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding-bottom: var(--safe-bottom, 0px); }
 .board-lane { flex: none; border-bottom: 1px solid var(--line); padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
 .board-lane h2 { margin: 0; display: flex; justify-content: space-between; color: var(--muted); }
 .board-lane.mine h2 { color: var(--blocked); }
@@ -121,7 +126,8 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
 .board-card:active { background: var(--surface-2); }
 .board-card-head { display: flex; align-items: center; gap: 8px; }
 @media (min-width: 900px) {
-  .board-lanes { flex-direction: row; align-items: stretch; overflow-x: auto; }
+  .board-body { overflow-y: hidden; }
+  .board-lanes { flex: 1; flex-direction: row; align-items: stretch; overflow-x: auto; }
   .board-lane { flex: 1 0 220px; max-width: 360px; border-bottom: 0; border-right: 1px solid var(--line); }
 }
 </style>
