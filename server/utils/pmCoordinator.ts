@@ -2,7 +2,7 @@
 // it), where its current turn comes from, the `wherdr pm` commands it runs,
 // and its role files, written in its own folder on the project's machine.
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import { COORDINATOR_AGENTS, coordinatorArgs, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
+import { COORDINATOR_AGENTS, MAIN, coordinatorArgs, mainRoleFiles, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { validateTemplate } from '../../shared/pm/workflow'
@@ -73,11 +73,13 @@ const summary = (t: Template | null, task: Task) => {
 const unb64 = (v: unknown) => (typeof v === 'string' ? Buffer.from(v, 'base64').toString('utf8') : v)
 
 // POST /api/pm/cli: { argv, input? } with the coordinator's token, or
-// { argv64, input64 } from the folder's `wherdr` script.
+// { argv64, input64 } from the folder's `wherdr` script. A project's token
+// acts on its project only; the main coordinator's on every project.
 export async function runCommand(deps: Deps, token: unknown, body: { argv?: unknown, input?: unknown, argv64?: unknown, input64?: unknown }) {
   const { store } = deps
-  const key = await scopeOf(store, token)
-  if (!key) throw new HerdrError('forbidden', 'Unknown coordinator token')
+  const scope = await scopeOf(store, token)
+  if (!scope) throw new HerdrError('forbidden', 'Unknown coordinator token')
+  const main = scope === MAIN
   if (Array.isArray(body.argv64)) body = { argv: body.argv64.map(unb64), input: unb64(body.input64) }
   const words = Array.isArray(body.argv) ? body.argv.filter(a => typeof a === 'string' && !a.startsWith('--')) : []
   const userOnly = USER_ONLY[words.slice(0, 2).join(' ')] ?? USER_ONLY[words[0] ?? '']
@@ -85,30 +87,40 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
   const cmd = parseCommand(body.argv)
   if ('error' in cmd) throw new HerdrError('bad_input', cmd.error)
   const projects = await store.projects()
-  const p = projects.find(x => x.key === key)
-  if (!p) throw new HerdrError('not_found', 'Unknown project')
-  const t = p.template ? await store.template(p.template) : null
-  const rec = await store.coordinator(key)
-  // A turn the server saw start over an hour ago is not trusted any more.
-  const turn: Turn = rec?.turn && Date.now() - rec.turn.at < TURN_MS ? rec.turn.kind : 'none'
-  const by = `coordinator ${key}`
-  // Another project's task reads as unknown: the token sees its project only.
+  if (!main && cmd.project && cmd.project !== scope) throw new HerdrError('refused', `Your token acts on project ${scope} only`)
+  // Another project's task reads as unknown to a project's token.
   const taskOf = async (id: string) => {
     const task = await store.task(id)
-    if (!task || task.project !== key) throw new HerdrError('not_found', 'Unknown task')
+    if (!task || (!main && task.project !== scope)) throw new HerdrError('not_found', 'Unknown task')
     return task
   }
-  const needPlan = () => { if (!t) throw new HerdrError('not_found', 'The project has no template'); return t }
+  // The command's project: its task's, the one named, or the token's.
+  const key = 'task' in cmd ? (await taskOf(cmd.task)).project : cmd.project ?? (main ? '' : scope)
+  const p = projects.find(x => x.key === key)
+  if (key && !p) throw new HerdrError('not_found', 'Unknown project')
+  const t = p?.template ? await store.template(p.template) : null
+  const rec = await store.coordinator(scope)
+  // A turn the server saw start over an hour ago is not trusted any more.
+  const turn: Turn = rec?.turn && Date.now() - rec.turn.at < TURN_MS ? rec.turn.kind : 'none'
+  const by = main ? 'main coordinator' : `coordinator ${key}`
+  const needProject = () => { if (!p) throw new HerdrError('bad_input', `Name the project: --project <KEY> (${projects.map(x => x.key).join(', ')})`); return p }
+  const needPlan = () => { needProject(); if (!t) throw new HerdrError('not_found', 'The project has no template'); return t }
+  // The tasks the token's limits count: its project's, or every task for the main coordinator.
+  const mineOf = async () => (await store.tasks()).filter(x => main || x.project === key)
 
   switch (cmd.name) {
-    case 'list': return { tasks: (await store.tasks()).filter(x => x.project === key).map(x => summary(t, x)) }
+    case 'list': {
+      const ts = new Map(await Promise.all(projects.map(async x => [x.key, x.template ? await store.template(x.template) : null] as const)))
+      return { tasks: (await store.tasks()).filter(x => !key || x.project === key).map(x => summary(ts.get(x.project) ?? null, x)) }
+    }
     case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task) : [] } }
     case 'plan': return { template: t && { id: t.id, version: t.version }, plans: Object.fromEntries(Object.keys(needPlan().taskTypes).map(type => [type, planSteps(t!, { type })])) }
     case 'template show': return {
       template: needPlan(),
-      ...(rec?.proposal ? { proposal: 'waiting for the user in wherdr', diff: rec.proposal.diff } : rec?.answered ? { lastProposal: rec.answered.outcome } : {}),
+      ...(main ? {} : rec?.proposal ? { proposal: 'waiting for the user in wherdr', diff: rec.proposal.diff } : rec?.answered ? { lastProposal: rec.answered.outcome } : {}),
     }
     case 'template edit': {
+      if (main) throw new HerdrError('refused', 'template edit is the project coordinator\'s or the user\'s: add a task or tell the user')
       let next: Template
       try { next = JSON.parse(String(body.input ?? '')) as Template } catch { throw new HerdrError('bad_input', 'The new template is not valid JSON') }
       await editRefusal(store, key, t, next, turn)
@@ -144,26 +156,26 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       return { task: await store.logTask({ ...task, step: r.state }, by, `${step}: done`) }
     }
     case 'ack': {
-      const r = ackWakes(await store.wakes(), key, cmd.wakes, Date.now())
+      const r = ackWakes(await store.wakes(), scope, cmd.wakes, Date.now())
       if (r.unknown.length) throw new HerdrError('not_found', `No wake ${r.unknown.join(', ')} was delivered to you`)
       await store.saveWakes(r.changed)
       return { acked: cmd.wakes }
     }
     case 'autopilot show': {
       const ap = rec?.autopilot ?? DEFAULT_AUTOPILOT
-      const mine = (await store.tasks()).filter(x => x.project === key)
+      const mine = await mineOf()
       const now = Date.now()
-      const pace = await projectPace(store, key, undefined, now, true)
+      const line = async (k: string) => { const pace = await projectPace(store, k, undefined, now, true); return pace ? paceLine(pace, now) : 'unknown: the project has no template or no worker program' }
       return {
         autopilot: ap, lookForWork: !!ap.lookForWork,
-        pacing: pace ? paceLine(pace, now) : 'unknown: the project has no template or no worker program',
+        pacing: key ? await line(key) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await line(x.key)]))),
         today: { ...limitsLeft(ap, mine, await store.runs(), now), skippedWakes: today(rec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(rec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
         note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are',
       }
     }
-    case 'automation list': return { automations: (await store.automations(key)).automations.map(automationLine), note: 'Only the user adds or changes automations, in wherdr' }
+    case 'automation list': return { automations: (await store.automations(needProject().key)).automations.map(automationLine), note: 'Only the user adds or changes automations, in wherdr' }
     case 'automation show': {
-      const a = (await store.automations(key)).automations.find(x => x.id === cmd.id)
+      const a = (await store.automations(needProject().key)).automations.find(x => x.id === cmd.id)
       if (!a) throw new HerdrError('not_found', 'Unknown automation')
       return { automation: a }
     }
@@ -175,13 +187,13 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const live = waitOf(await deps.call<Parameters<typeof waitOf>[0]>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null))
       const why = tellRefusal({ state: live ? 'waiting' : task.state, waitKind: live ?? task.waitKind }, turn !== 'user')
       if (why) throw new HerdrError('refused', why)
-      await deps.call('terminal.send', { terminal: run.terminal, text: `From the project coordinator: ${cmd.text}` }, 30000)
+      await deps.call('terminal.send', { terminal: run.terminal, text: `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}` }, 30000)
       const saved = await store.logTask(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task, by, `told the agent: ${cmd.text.slice(0, 300)}`)
       return { task: saved }
     }
     case 'task start': {
       const task = await taskOf(cmd.task)
-      const mine = (await store.tasks()).filter(x => x.project === key)
+      const mine = await mineOf()
       const wake = turn !== 'user', who = { who: 'coordinator' as const, wake }, now = Date.now()
       const pace = pacedStart(task, wake ? 'wake' : 'user') ? (await projectPace(store, key, task, now))?.verdict : undefined
       const why = (task.stopped ? resumeRefusal(task, 'continue', who, undefined) : undefined)
@@ -257,11 +269,15 @@ const agentOf = (v: { program?: unknown, model?: unknown }): CoordinatorAgent | 
   return program && typeof v.model === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:[\]/-]{0,63}$/.test(v.model) ? { program, model: v.model } : null
 }
 
+// A project's key, or the main coordinator's.
+export const isCoordinatorKey = async (store: PmStore, key: unknown) =>
+  key === MAIN || (typeof key === 'string' && (await store.projects()).some(p => p.key === key))
+
 // The project's default coordinator agent, changed in one gesture.
 export async function setCoordinatorAgent(store: PmStore, key: unknown, agent: { program?: unknown, model?: unknown }) {
   const a = agentOf(agent)
   if (!a) throw new HerdrError('bad_input', 'program: claude or codex, and a model')
-  if (typeof key !== 'string' || !(await store.projects()).some(p => p.key === key)) throw new HerdrError('not_found', 'Unknown project')
+  if (typeof key !== 'string' || !(await isCoordinatorKey(store, key))) throw new HerdrError('not_found', 'Unknown project')
   await store.saveCoordinator({ project: key, tokenHash: '', ...(await store.coordinator(key)), agent: a })
   return { agent: a }
 }
@@ -276,10 +292,12 @@ function asleepOf(ap: Autopilot, tasks: Task[], c: CoordinatorRecord | null | un
 export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[]> {
   if (!(await store.enabled())) return []
   const [tasks, runs, wakes, now] = [await store.tasks(), await store.runs(), await store.wakes(), Date.now()]
-  return Promise.all((await store.projects()).map(async (p) => {
+  // The main coordinator first: every project's tasks are its own.
+  return Promise.all([{ key: MAIN, name: 'Main coordinator', template: '' }, ...await store.projects()].map(async (p) => {
     const c = await store.coordinator(p.key)
-    const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => t.project === p.key)
+    const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => p.key === MAIN || t.project === p.key)
     return {
+      ...(p.key === MAIN ? { main: true } : {}),
       autopilot, limits: limitsLeft(autopilot, mine, runs, now),
       ...asleepOf(autopilot, mine, c, now), skippedToday: today(c?.skipped, now),
       ...(c?.woke?.at ? { wokeAt: c.woke.at } : {}),
@@ -294,16 +312,18 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
 // The role files (and the `wherdr` script) in the coordinator's own folder,
 // ~/.wherdr/pm/coordinators/<KEY> on the project's machine; never ~/.claude
 // or ~/.codex.
+// The main coordinator's: on wherdr's own machine, no repository.
 async function writeRoleFiles(deps: Deps, key: string) {
   const { store } = deps
-  const p = (await store.projects()).find(x => x.key === key)
-  if (!p) throw new HerdrError('not_found', 'Unknown project')
-  const t = p.template ? await store.template(p.template) : null
-  const { m, on } = machineOn(deps, p.machine)
+  const projects = await store.projects()
+  const p = projects.find(x => x.key === key)
+  if (!p && key !== MAIN) throw new HerdrError('not_found', 'Unknown project')
+  const t = p?.template ? await store.template(p.template) : null
+  const { m, on } = machineOn(deps, p ? p.machine : deps.machines().find(x => x.local)?.key)
   const home = await homeOf(deps, on)
   if (!home) throw new HerdrError('core', 'Home folder not found on the project\'s machine')
   const folder = `${home}/.wherdr/pm/coordinators/${key}`
-  for (const [file, text] of Object.entries(roleFiles(p, t, EXAMPLES)))
+  for (const [file, text] of Object.entries(p ? roleFiles(p, t, EXAMPLES) : mainRoleFiles(projects)))
     if ((await exec(deps, on, WRITE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not write ${file}`)
   await exec(deps, on, 'chmod 755 "$1"', [`${folder}/bin/wherdr`])
   return { p, local: !!m.local, on, folder }
@@ -319,7 +339,7 @@ export async function prepareCoordinator(deps: Deps, key: string, agent: { progr
   const url = local ? urls.local : urls.remote
   if (!url) throw new HerdrError('unreachable', 'The project\'s machine cannot reach this wherdr: publish it on your tailnet first (Settings › Phone)')
   const token = await issueToken(deps.store, key)
-  return { on, folder, argv: coordinatorArgs(agent.program, agent.model, folder, p.path), env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
+  return { on, folder, argv: coordinatorArgs(agent.program, agent.model, folder, p?.path), env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
 }
 
 // Starts the coordinator in its folder, model pinned, token in its environment,

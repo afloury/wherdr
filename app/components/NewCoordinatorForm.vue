@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // "New" sheet › Coordinator: the project (key and name, whether its
 // coordinator runs) and the agent to start it with (the project's default
-// first). A project without a template points to Settings › Projects.
+// first). A project without a template points to Settings › Projects; the
+// main coordinator (all projects) needs none.
 // Its actions (NewCoordinatorActions) sit in the sheet's footer.
 import { agentChoices, agentKey, agentName } from '#shared/pm/coordinator'
 
@@ -32,14 +33,14 @@ watch(current, (c) => { if (c) agent.value = agentKey(c.agent) }, { immediate: t
         v-for="c in coordinators" :key="c.project" type="button" role="radio" :class="{ on: c.project === project }"
         :aria-checked="c.project === project" :data-project="c.project" @click="pick(c.project)"
       >
-        <span class="coord-key">{{ c.project }}</span>
-        <span class="coord-name">{{ c.name }}</span>
+        <span class="coord-key">{{ c.main ? tl('Main', 'Principal') : c.project }}</span>
+        <span class="coord-name">{{ c.main ? tl('All projects', 'Tous les projets') : c.name }}</span>
         <span v-if="running(c.project)" class="coord-state run">{{ tl('Running', 'En cours') }}</span>
-        <span v-else-if="!c.template" class="coord-state">{{ tl('No template', 'Sans modèle') }}</span>
+        <span v-else-if="!c.main && !c.template" class="coord-state">{{ tl('No template', 'Sans modèle') }}</span>
       </button>
     </div>
 
-    <template v-if="current && !current.template">
+    <template v-if="current && !current.main && !current.template">
       <p class="coord-note" data-testid="coordinator-no-template">
         {{ tl('This project needs a template before its coordinator can start.', 'Ce projet a besoin d’un modèle avant de lancer son coordinateur.') }}
         <NuxtLink to="/settings?section=projects" data-testid="coordinator-settings" @click="emit('settings')">{{ tl('Settings › Projects', 'Réglages › Projets') }}</NuxtLink>
