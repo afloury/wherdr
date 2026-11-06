@@ -14,6 +14,7 @@ or [Development and tests](development.md) for repository changes.
 - [Installation and updates](installation.md) — Requirements, running as a service, updating.
 - [Install with an agent](install-with-an-agent.md) — Ready-to-paste agent prompts: new install, v3 beside v2 with import, update.
 - [Migrate from v2](migrate-from-v2.md) — Install v3 next to a running v2, import projects, machines and settings, fall back, uninstall.
+- [Project management](project-management.md) — Getting started: turn it on, templates, projects, the board and its coordinator.
 - [Home and agent list](home.md) — Machine tabs, spaces and tabs, states, new agents and search.
 - [Conversation and replies](conversation.md) — Read transcripts, answer questions, attach files and quote replies.
 - [Terminal](terminal.md) — The real terminal, shared viewers and taking control.
