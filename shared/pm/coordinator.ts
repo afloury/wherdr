@@ -22,6 +22,11 @@ export const sameAgent = (a?: CoordinatorAgent, b?: CoordinatorAgent) => !!a && 
 export const agentName = (a: CoordinatorAgent) => (a.program === 'claude'
   ? `Claude ${a.model.charAt(0).toUpperCase()}${a.model.slice(1)}`
   : `Codex ${a.model.replace(/^gpt/i, 'GPT')}`)
+export const agentKey = (a: CoordinatorAgent) => `${a.program}:${a.model}`
+// The agents a coordinator can run: the usual ones, plus its default and its
+// kept conversation's agent when they are another.
+export const agentChoices = (c: { agent: CoordinatorAgent, ran?: CoordinatorAgent }) =>
+  [...COORDINATOR_AGENTS, ...[c.agent, c.ran].filter((a, i, all) => a && !COORDINATOR_AGENTS.some(b => sameAgent(a, b)) && all.findIndex(b => sameAgent(a, b)) === i) as CoordinatorAgent[]]
 
 // A template change the coordinator proposed: the user accepts or refuses it
 // in the interface; only an accepted one is saved and goes to the template's log.
@@ -33,7 +38,7 @@ export type ProposalOutcome = 'accepted' | 'refused' | 'outdated: the template c
 // GET /api/pm/coordinators: one per project.
 export interface CoordinatorView {
   // main: the main coordinator (project is MAIN).
-  project: string, name: string, main?: boolean, agent: CoordinatorAgent, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'>
+  project: string, name: string, main?: boolean, agent: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'>
   // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
   autopilot?: Autopilot, limits?: ReturnType<typeof limitsLeft>, wakes?: Wake[]
   // Nothing to do: its scheduled wakes are skipped (asleep), since its last wake.

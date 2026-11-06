@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // New agent (Claude, Codex) or terminal: folder (browser + recent ones),
-// conversation resume, first message.
+// conversation resume, first message. With project management on, also a
+// project's coordinator (NewCoordinatorForm), not in a new tab.
 // Several machines: choice of the machine, its folders and recent ones.
 // "New tab" (`newTabSpace`): a new terminal labelled for that space, on its
 // machine.
@@ -20,6 +21,11 @@ const name = ref('')
 const error = ref<string | null>(null)
 const launching = ref(false)
 const browsing = ref(false)
+const coordinator = ref(false)
+const coordProject = ref('')
+const coordAgent = ref('')
+const canCoordinate = computed(() => !newTabSpace.value && coordinators.value.length > 0)
+watch(canCoordinate, (can) => { if (!can) coordinator.value = false })
 
 const kinds = computed(() => visibleAgentKinds(machineCfg.value?.kinds || appConfig.value.kinds || [], hiddenAgents.value))
 const shell = computed(() => kind.value === 'shell')
@@ -75,6 +81,7 @@ watch(newAgentOpen, async (open) => {
   error.value = null
   browsing.value = false
   launching.value = false
+  if (!newTabSpace.value) loadCoordinators()
   syncKind()
   await loadConfig()
   // Opened from a machine's "…" menu: that machine, once its config (home) is in.
@@ -89,7 +96,12 @@ watch(() => machines.value.map(m => `${m.key}:${m.status}`).join(','), async () 
   syncKind()
 })
 watch(kinds, syncKind)
+function pickCoordinator() {
+  coordinator.value = true
+  if (!coordinators.value.some(c => c.project === coordProject.value)) coordProject.value = coordinators.value[0]?.project ?? ''
+}
 function pickKind(k: string) {
+  coordinator.value = false
   kind.value = k
   lastKind.value = k
 }
@@ -149,7 +161,7 @@ async function launch() {
 </script>
 
 <template>
-  <AppSheet v-model:open="open" :title="newTabSpace ? t('Start in a new tab') : t(shell ? 'New terminal' : 'New agent')" tall screen>
+  <AppSheet v-model:open="open" :title="newTabSpace ? t('Start in a new tab') : coordinator ? tl('Project coordinator', 'Coordinateur de projet') : t(shell ? 'New terminal' : 'New agent')" tall screen>
     <div v-if="!browsing" class="sheet-form">
       <div v-if="newTabSpace" class="into-pane">
         <span class="tabmap" aria-hidden="true"><i class="cur" style="inset: 0" /></span>
@@ -158,45 +170,52 @@ async function launch() {
           <small>{{ [targetWs?.label, machineList ? machineName(machine) : null].filter(Boolean).join(' · ') }}</small>
         </span>
       </div>
-      <template v-else-if="machineList">
+      <template v-else-if="machineList && !coordinator">
         <label class="field-label">{{ t('Machine') }}</label>
         <MachineChoice :machines="machineList" :model-value="machine" @pick="pickMachine" />
       </template>
 
       <label class="field-label">{{ t('Type') }}</label>
-      <div class="segmented agent-kinds" :style="{ '--segment-count': kinds.length }">
-        <button v-for="k in kinds" :key="k" type="button" :class="{ on: k === kind }" :data-kind="k" @click="pickKind(k)">
+      <div class="segmented agent-kinds" :style="{ '--segment-count': kinds.length + (canCoordinate ? 1 : 0) }">
+        <button v-for="k in kinds" :key="k" type="button" :class="{ on: !coordinator && k === kind }" :data-kind="k" @click="pickKind(k)">
           <AgentAvatar :agent="k === 'shell' ? null : k" /><span>{{ k === 'shell' ? 'Terminal' : kindLabel(k) }}</span>
+        </button>
+        <button v-if="canCoordinate" type="button" :class="{ on: coordinator }" data-kind="coordinator" @click="pickCoordinator">
+          <span class="avatar"><UIcon name="i-lucide-message-square-text" /></span><span>{{ tl('Coordinator', 'Coordinateur') }}</span>
         </button>
       </div>
 
-      <label class="field-label">{{ t('Folder') }}</label>
-      <DirField :key="machine" v-model="dir" :recents="recents" @browse="browsing = true" />
+      <NewCoordinatorForm v-if="coordinator" v-model:project="coordProject" v-model:agent="coordAgent" @settings="open = false" />
+      <template v-else>
+        <label class="field-label">{{ t('Folder') }}</label>
+        <DirField :key="machine" v-model="dir" :recents="recents" @browse="browsing = true" />
 
-      <label v-if="canResume" class="toggle-row">
-        <span><b>{{ t('Resume the last conversation') }}</b><small>{{ t('for this agent in this folder') }}</small></span>
-        <USwitch v-model="resume" color="success" size="xl" />
-      </label>
+        <label v-if="canResume" class="toggle-row">
+          <span><b>{{ t('Resume the last conversation') }}</b><small>{{ t('for this agent in this folder') }}</small></span>
+          <USwitch v-model="resume" color="success" size="xl" />
+        </label>
 
-      <label class="field-label" for="newPrompt">{{ t(shell ? 'Command to run' : 'First message') }} <span class="muted">{{ t('(optional)') }}</span></label>
-      <UTextarea
-        id="newPrompt" v-model="prompt" :rows="2" autoresize size="xl" class="w-full" :class="{ mono: shell }"
-        :placeholder="t(shell ? 'E.g. npm run dev' : 'E.g. Summarize the project TODOs')"
-      />
-
-      <template v-if="!shell">
-        <label class="field-label" for="newName">{{ t('Name') }} <span class="muted">{{ t('(optional)') }}</span></label>
-        <UInput
-          id="newName" v-model="name" size="xl" class="w-full" autocapitalize="none" autocorrect="off"
-          :spellcheck="false" placeholder="reviewer" maxlength="60"
+        <label class="field-label" for="newPrompt">{{ t(shell ? 'Command to run' : 'First message') }} <span class="muted">{{ t('(optional)') }}</span></label>
+        <UTextarea
+          id="newPrompt" v-model="prompt" :rows="2" autoresize size="xl" class="w-full" :class="{ mono: shell }"
+          :placeholder="t(shell ? 'E.g. npm run dev' : 'E.g. Summarize the project TODOs')"
         />
+
+        <template v-if="!shell">
+          <label class="field-label" for="newName">{{ t('Name') }} <span class="muted">{{ t('(optional)') }}</span></label>
+          <UInput
+            id="newName" v-model="name" size="xl" class="w-full" autocapitalize="none" autocorrect="off"
+            :spellcheck="false" placeholder="reviewer" maxlength="60"
+          />
+        </template>
       </template>
     </div>
 
     <DirBrowser v-else :start="dir" :machine="machine" @choose="chooseDir" @cancel="browsing = false" />
 
     <template #footer>
-      <div v-if="!browsing" class="sheet-form">
+      <NewCoordinatorActions v-if="coordinator && !browsing" :project="coordProject" :agent="coordAgent" @done="open = false" />
+      <div v-else-if="!browsing" class="sheet-form">
         <p v-if="error" class="form-error">{{ t(error) }}</p>
         <UButton block size="xl" color="primary" variant="solid" class="launch-btn hw-cta" icon="i-lucide-play" :loading="launching" :disabled="!kind" @click="launch">
           {{ launching ? t('Starting…') : t('Launch') }}

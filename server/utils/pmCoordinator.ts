@@ -293,7 +293,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
   if (!(await store.enabled())) return []
   const [tasks, runs, wakes, now] = [await store.tasks(), await store.runs(), await store.wakes(), Date.now()]
   // The main coordinator first: every project's tasks are its own.
-  return Promise.all([{ key: MAIN, name: 'Main coordinator' }, ...await store.projects()].map(async (p) => {
+  return Promise.all([{ key: MAIN, name: 'Main coordinator', template: '' }, ...await store.projects()].map(async (p) => {
     const c = await store.coordinator(p.key)
     const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => p.key === MAIN || t.project === p.key)
     return {
@@ -302,7 +302,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
       ...asleepOf(autopilot, mine, c, now), skippedToday: today(c?.skipped, now),
       ...(c?.woke?.at ? { wokeAt: c.woke.at } : {}),
       wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
-      project: p.key, name: p.name, agent: c?.agent ?? COORDINATOR_AGENTS[0]!,
+      project: p.key, name: p.name, agent: c?.agent ?? COORDINATOR_AGENTS[0]!, ...(p.template ? { template: p.template } : {}),
       ...(c?.ran ? { ran: c.ran } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
       ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, ...(c.proposal.said ? { said: c.proposal.said } : {}) } } : {}),
     }
