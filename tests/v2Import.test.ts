@@ -8,7 +8,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanProjectInput } from '../shared/pm/project'
 import { detectV2, mapMachines, mapProjects, mapSettings, mapTasks, parseEnvFile, parseUnit, readBoard, remapMachineSettings, runImport, sshProblem, v3MachineKey } from '../scripts/v2-import.mjs'
-import { EXIT, hcUnit, main, parseArgs, v3Unit } from '../scripts/install-v3-beside-v2.mjs'
+import { EXIT, buildCommand, buildTuning, hcTarget, hcUnit, main, parseArgs, pickHttpsPort, unitProtections, updateScript, v3Unit } from '../scripts/install-v3-beside-v2.mjs'
 
 const FIX = path.resolve(__dirname, 'fixtures/v2-install')
 const machinesJson = fs.readFileSync(path.join(FIX, 'herdr-machines.json'), 'utf8')
@@ -230,7 +230,7 @@ describe('runImport', () => {
 
 describe('installer', () => {
   it('parses options and refuses bad ones', () => {
-    expect(parseArgs([], '/home/user')).toMatchObject({ dir: '/home/user/wherdr-v3', port: '7684', httpsPort: '8104', hcSession: 'default', name: 'wherdr-v3' })
+    expect(parseArgs([], '/home/user')).toMatchObject({ dir: '/home/user/wherdr-v3', port: '7684', httpsPort: null, hcSession: 'default', name: 'wherdr-v3' })
     expect(parseArgs(['--yes', '--dry-run'], '/h').yes).toBe(false)
     expect(() => parseArgs(['--port', 'x'])).toThrow(/port/)
     expect(() => parseArgs(['--rm'])).toThrow(/unknown option/)
@@ -245,6 +245,39 @@ describe('installer', () => {
     expect(v3).toContain('Environment="HC_SOCKET=/run/user/1/herdr-core/s1.sock"')
     expect(v3).toContain('Wants=wherdr-v3-hc.service')
     expect(v3).toContain('Environment="DATA_DIR=/home/user/wherdr-v3/data"')
+    expect(v3).toContain('OOMScoreAdjust=-900')
+    expect(v3).not.toContain('APP_URL')
+  })
+
+  it('starts v3 with its HTTPS address and the protections of v2\'s unit', () => {
+    const protect = unitProtections('[Service]\nOOMScoreAdjust=-800\nCPUWeight=500\n')
+    expect(protect).toMatchObject({ OOMScoreAdjust: '-800', MemoryLow: '256M', CPUWeight: '500', from: "v2's unit" })
+    expect(unitProtections('')).toMatchObject({ OOMScoreAdjust: '-900', from: 'defaults' })
+    const v3 = v3Unit({ node: '/usr/bin/node', dir: '/d', socket: '/s', port: '7684', hcService: null, appUrl: 'https://host-a.tail.ts.net:8106/', protect })
+    expect(v3).toContain('Environment="APP_URL=https://host-a.tail.ts.net:8106/"')
+    expect(v3).toMatch(/OOMScoreAdjust=-800\nMemoryLow=256M\nCPUWeight=500/)
+  })
+
+  it('picks the first free https port, keeps its own, and names a free one on a conflict', () => {
+    const entries = [{ https: '8103', proxy: 'http://127.0.0.1:7683' }, { https: '8104', proxy: 'http://127.0.0.1:7685' }, { https: '8105', proxy: 'http://127.0.0.1:7686' }]
+    expect(pickHttpsPort({ entries, port: '7684' })).toEqual({ port: '8106', free: '8106', done: false })
+    expect(pickHttpsPort({ entries, port: '7684', wanted: '8104' })).toMatchObject({ port: '8104', free: '8106', conflict: entries[1] })
+    expect(pickHttpsPort({ entries: [...entries, { https: '8110', proxy: 'http://127.0.0.1:7684' }], port: '7684' })).toMatchObject({ port: '8110', done: true })
+    expect(pickHttpsPort({ entries, port: '7684', previous: '8120' })).toMatchObject({ port: '8120', done: false })
+  })
+
+  it('gives the build 1.5 GB of heap on small machines, in the installer and update.sh', () => {
+    expect(buildTuning(574 * 1048576)).toEqual({ heapMb: 574, nodeOptions: '--max-old-space-size=1536', prefix: 'nice -n 19 ionice -c3' })
+    expect(buildTuning(574 * 1048576, false)?.prefix).toBe('nice -n 19')
+    expect(buildTuning(2048 * 1048576)).toBeNull()
+    expect(buildCommand('/d/src', buildTuning(574 * 1048576))).toContain('export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=1536"; { nice -n 19 ionice -c3 npm ci')
+    expect(buildCommand('/d/src', null)).not.toContain('NODE_OPTIONS')
+    const up = updateScript({ branch: 'v3', name: 'wherdr-v3', port: '7684' })
+    expect(up).toContain(`-lt ${1536 * 1048576} ]`)
+    expect(up).toContain('--max-old-space-size=1536')
+    expect(up).toContain('$run npm run build')
+    expect(hcTarget('linux', 'arm64')).toBe('linux-aarch64')
+    expect(hcTarget('linux', 'x64')).toBe('linux-x86_64')
   })
 
   const io = (home: string, over: Record<string, Res> = {}) => fakeRun({ ...over, 'sh -c command -v': ok('/usr/bin/x'), 'systemctl --user show-environment': ok(), 'systemctl --user is-active': ok('inactive'), '/usr/bin/x --version': ok('hc 0.1.16') })
@@ -270,9 +303,46 @@ describe('installer', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     const args = ['--v2-unit', v2Opts.unit, '--v2-dir', v2Opts.v2Dir, '--port', '7699']
     expect(await main(args, { run: io(home, { 'sh -c command -v hc': fail(1) }).run, home, env: {} })).toBe(EXIT.missing)
-    expect(log.mock.calls.flat().join('\n')).toMatch(/ERROR missing-hc: .*herdr-core/)
+    expect(log.mock.calls.flat().join('\n')).toContain('ERROR missing-hc: herdr-core (hc) not found: install it with its official installer, curl -fsSL https://releases.herdr.dev/core/install.sh | sh')
     expect(await main([...args, '--https-port', '8103'], { run: io(home).run, home, env: {} })).toBe(EXIT.conflict)
-    expect(log.mock.calls.flat().join('\n')).toMatch(/ERROR https-port-taken/)
+    expect(log.mock.calls.flat().join('\n')).toMatch(/ERROR https-port-taken: .*8103.*\(8104 is free\)/)
     err.mockRestore(); log.mockRestore()
+  })
+
+  it.runIf(process.platform === 'linux')('lists every problem of a dry run at once', async () => {
+    const home = tmp()
+    fs.mkdirSync(path.join(home, 'wherdr-v3'))
+    fs.writeFileSync(path.join(home, 'wherdr-v3', 'mine'), '')
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const serve = { Web: { 'h:8103': { Handlers: { '/': { Proxy: 'http://127.0.0.1:7683' } } }, 'h:8104': { Handlers: { '/': { Proxy: 'http://127.0.0.1:7685' } } } } }
+    const { run } = io(home, { 'sh -c command -v hc': fail(1), 'sh -c command -v git': fail(1), 'tailscale serve status --json': ok(JSON.stringify(serve)) })
+    const code = await main(['--v2-unit', v2Opts.unit, '--v2-dir', v2Opts.v2Dir, '--port', '7683', '--https-port', '8104'], { run, home, env: {} })
+    const errors = log.mock.calls.flat().filter(l => String(l).startsWith('ERROR')).map(l => String(l).split(':')[0])
+    log.mockRestore()
+    expect(code).toBe(EXIT.missing)
+    expect(errors).toEqual(['ERROR missing-git', 'ERROR missing-hc', 'ERROR dir-exists', 'ERROR port-taken', 'ERROR https-port-taken'])
+  })
+
+  it.runIf(process.platform === 'linux')('plans a free https port, the commit, the build heap and the HTTPS address', async () => {
+    const home = tmp()
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const serve = { Web: Object.fromEntries([['8103', 7683], ['8104', 7685], ['8105', 7686]].map(([h, p]) => [`host-a.tail.ts.net:${h}`, { Handlers: { '/': { Proxy: `http://127.0.0.1:${p}` } } }])) }
+    const { run } = io(home, {
+      'tailscale serve status --json': ok(JSON.stringify(serve)),
+      'tailscale status --json': ok(JSON.stringify({ Self: { DNSName: 'host-a.tail.ts.net.' } })),
+      'git ls-remote': ok('0123456789abcdef0123456789abcdef01234567\trefs/heads/v3'),
+    })
+    const code = await main(['--json', '--port', '7699', '--v2-unit', v2Opts.unit, '--v2-dir', v2Opts.v2Dir, '--herdr-projects', v2Opts.hpDir], { run, home, env: { XDG_RUNTIME_DIR: home }, heapLimit: 574 * 1048576 })
+    const out = JSON.parse(log.mock.calls.at(-1)![0])
+    vi.spyOn(console, 'error').mockRestore()
+    log.mockRestore()
+    expect(code).toBe(EXIT.ok)
+    expect(out).toMatchObject({ httpsPort: '8106', commit: '0123456789abcdef0123456789abcdef01234567' })
+    const plan = out.plan.join('\n')
+    expect(plan).toContain('(v3 at 0123456)')
+    expect(plan).toContain("Node's heap is 574 MB, the build needs ~1.5 GB: NODE_OPTIONS=--max-old-space-size=1536, nice -n 19 ionice -c3")
+    expect(plan).toContain('APP_URL https://host-a.tail.ts.net:8106/')
+    expect(plan).toContain('OOMScoreAdjust=-900 MemoryLow=256M CPUWeight=200 from defaults')
+    expect(plan).toContain('tailscale serve --bg --https=8106 http://127.0.0.1:7699 (added beside the existing entries, which use 8103, 8104, 8105)')
   })
 })

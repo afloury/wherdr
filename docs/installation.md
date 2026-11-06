@@ -10,8 +10,10 @@ npm and Homebrew packages, the one-tap update and Docker belong to wherdr v2: se
 
 - **An hc session** (herdr-core) running on the server, with protocol generation 1 and the
   methods listed in [herdr-core › Setup](core.md#setup). Know its socket path: wherdr needs it in
-  `HC_SOCKET`.
+  `HC_SOCKET`. To install hc: `curl -fsSL https://releases.herdr.dev/core/install.sh | sh` (into `~/.local/bin`).
 - **Linux or macOS** with **Node.js 22** or newer and Git. wherdr runs as the user who runs hc.
+  The build needs about 1.5 GB of memory: on a small machine (a Raspberry Pi), build with
+  `NODE_OPTIONS=--max-old-space-size=1536`.
 - The agents you use (Claude Code, Codex) installed on each machine, in a folder of the usual
   user `PATH` (`~/.local/bin`, `~/.bun/bin`, `~/.cargo/bin`, `~/.npm-global/bin`, Homebrew…):
   agents are started through the machine's shell with those folders added.
