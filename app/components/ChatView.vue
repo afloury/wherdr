@@ -286,6 +286,7 @@ async function loadStep(current: () => boolean): Promise<boolean> {
   try {
     const ready = chat.value.tailStart === null && !recorded.value ? await chatIntent.take(props.pane) : undefined
     if (stale()) return false
+    const startedAt = Date.now()
     const r = ready || await api<ChatResponse>(chatUrl(tailQuery(pane, chat.value)), undefined, AbortSignal.timeout(CHAT_READ_MS))
     if (stale()) return false
     if (!r.available) {
@@ -302,6 +303,8 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     unavailable.value = null
     integration.value = null
     loadError.value = null
+    // The transcript as it was at `startedAt`: sent messages it lacks may go (see utils/outbox.ts).
+    if (!ready && !recorded.value) outboxRead(pane, startedAt)
     if (misses.value.misses || misses.value.errors) misses.value = noMisses()
     if (r.unchanged) return false
     savedAt.value = null

@@ -6,10 +6,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import type { VueWrapper } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
 import ChatView from '~/components/ChatView.vue'
 import { cachedAt, connectEvents, eventsOpen, herdrState, locked, netDown, pageVisible, reconnectEvents, reducedMotion } from '~/composables/useHerdr'
 import * as herdr from '~/composables/useHerdr'
+import { outboxAdd, outboxDrop, outboxFor, outboxPrune } from '~/composables/useOutbox'
 import type { ChatItem, ChatResponse, Pane } from '#shared/types'
 
 // Markdown render calls (utils/markdown.ts): the equal re-read must not ask
@@ -319,6 +320,50 @@ describe('re-read that keeps the current blocks', () => {
       expect(asks.at(-1)!.since).toBe('tok-2')
     } finally {
       dropSocket(socks.at(-1))
+      w.unmount()
+    }
+  })
+
+  // WHR-384: the agent took a sent message (no longer in the server's queue),
+  // then every read of the transcript failed: the bubble went 10 s later,
+  // and the view stayed without it until the next answer.
+  it('a sent message stays shown while the transcript cannot be read, until it is in it', async () => {
+    // After the reads earlier tests made of the same pane (real time).
+    const T = Date.now() + 3_600_000
+    let clock = T
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => clock)
+    outboxAdd(pane.id, { id: 'w-x', text: 'Ship the fix', at: T })
+    const Host = defineComponent({ render: () => h(ChatView, { ...mountOptions.props, localQueued: outboxFor(pane.id) }) })
+    herdrState.value = { ok: true, workspaces: [], panes: [pane] }
+    reply = () => ({ available: true, file: FILE, token: 'tok-1', start: 0, items: structuredClone(ITEMS) })
+    const w = await mountSuspended(Host, { global: mountOptions.global })
+    const v = view(w.findComponent(ChatView))
+    const bubbles = () => w.findAll('.msg-pending').filter(b => b.text().includes('Ship the fix')).length
+    try {
+      await expect.poll(() => w.find('.chat').text()).toContain('keeps')
+      expect(bubbles()).toBe(1)
+      // The agent takes it: the server stops listing it.
+      clock = T + 1000
+      outboxPrune(pane.id, [])
+      reply = () => { throw new Error('read timed out') }
+      for (let i = 0; i < 4; i++) {
+        clock += 15_000
+        await v.loadChat()
+        outboxPrune(pane.id, [])
+      }
+      await expect.poll(() => w.text()).toContain('not up to date')
+      expect(bubbles()).toBe(1)
+      // The transcript is read again, with the message: one copy, in the conversation.
+      clock += 1500
+      reply = () => ({ available: true, file: FILE, token: 'tok-2', start: 0, items: [...structuredClone(ITEMS), { role: 'user', text: 'Ship the fix', ts: new Date(T + 1500).toISOString() }] })
+      await v.loadChat()
+      outboxPrune(pane.id, [])
+      await expect.poll(() => w.text()).not.toContain('not up to date')
+      expect(outboxFor(pane.id)).toEqual([])
+      expect(w.find('.chat').text().split('Ship the fix').length - 1).toBe(1)
+    } finally {
+      now.mockRestore()
+      outboxDrop(pane.id, 'w-x')
       w.unmount()
     }
   })
