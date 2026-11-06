@@ -1,5 +1,6 @@
-// WHR-394: a machine's "…" button opened an empty menu unless a Claude quota
-// suggestion applied. It now always carries the actions herdr-core can do.
+// The home list's header: the Board button (WHR-395, where it leads:
+// tests/boardEntry.test.ts) and each machine's "…" menu, which always carries the
+// actions herdr-core can do (WHR-394: it was empty without a Claude quota suggestion).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
@@ -12,6 +13,8 @@ const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigate)
 const connect = vi.fn(() => ({ ok: true }))
 registerEndpoint('/api/machine/connect', { method: 'POST', handler: connect })
+// Off: the button must read this overview to land anywhere but the board.
+registerEndpoint('/api/pm/overview', () => ({ enabled: false, projects: [], templates: [] }))
 
 const machine = (key: string, label: string, status: MachineInfo['status'] = 'online'): MachineInfo =>
   ({ key, label, local: key === '', status, error: null, session: 'default' })
@@ -30,7 +33,7 @@ const pass = { template: '<div><slot /></div>' }
 const mountHome = () => mountSuspended(HomeView, { global: { stubs: { UDropdownMenu: Dropdown, UContextMenu: pass, UTooltip: pass } } })
 const menuOf = (w: Awaited<ReturnType<typeof mountHome>>, key: string) => w.find(`section.machine[data-machine="${key}"] .machine-row .dd`)
 
-describe('machine header menu', () => {
+describe('home list header', () => {
   beforeEach(() => {
     homeGrouping.value = 'machine'
     const panes = [pane('dell/w1:p1', 'dell')]
@@ -44,6 +47,13 @@ describe('machine header menu', () => {
     newAgentOpen.value = false
     newAgentMachine.value = null
     navigate.mockClear()
+  })
+
+  it('the Board button reads the overview: project management off opens Settings › Projects', async () => {
+    const w = await mountHome()
+    await w.get('[data-testid="home-board"]').trigger('click')
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/settings?section=projects'))
+    w.unmount()
   })
 
   it('a machine with no agents gets actions, and New agent here preselects it', async () => {
