@@ -4,8 +4,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
-import { answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, userMessageTo } from '../server/utils/pmCoordinator'
-import { MAIN, mainRoleFiles, parseCommand, roleFiles, coordinatorArgs } from '../shared/pm/coordinator'
+import { alfredView, answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, userMessageTo } from '../server/utils/pmCoordinator'
+import { MAIN, parseCommand, roleFiles, coordinatorArgs } from '../shared/pm/coordinator'
 import { EXAMPLES, common, company } from '../shared/pm/examples'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
 import type { Finding } from '../shared/pm/verdict'
@@ -93,27 +93,43 @@ describe('the main coordinator (WHR-398)', () => {
     expect(parseCommand(['show', 'CO-1', '--project', 'CO'])).toEqual({ error: expect.stringContaining('--project is for') })
   })
 
-  it('starts on wherdr\'s machine in its own folder, with no repository, and comes first in the view', async () => {
-    const runs: Record<string, unknown>[] = [], written: string[] = []
+  it('is Alfred: starts in its home in the data dir, greets once, keeps its own files and the agent picked', async () => {
+    const runs: Record<string, unknown>[] = [], killed: unknown[] = []
     const call = async (method: string, params: Record<string, unknown>) => {
-      const argv = params.argv as string[] | undefined
-      if (method === 'machine.exec' && argv?.[2] === 'printf %s "$HOME"') return { code: 0, stdout: Buffer.from('/h').toString('base64') }
-      if (method === 'machine.exec') return written.push(argv![4]!), { code: 0, stdout: '' }
+      if (method === 'terminal.kill') return killed.push(params.terminal), {}
       runs.push(params)
-      return { address: 'host/t9' }
+      return { address: `host/t${runs.length}` }
     }
-    const machines = () => [{ key: 'pi', label: 'pi', local: false, status: 'online' }, { key: '', label: 'here', local: true, status: 'online' }]
-    await setCoordinatorAgent(store, MAIN, { program: 'claude', model: 'sonnet' })
-    const r = await startCoordinator({ store, call, machines } as never, MAIN, {}, { local: 'http://127.0.0.1:7690' })
-    expect(r.folder).toBe('/h/.wherdr/pm/coordinators/_main')
-    expect(written).toContain('/h/.wherdr/pm/coordinators/_main/AGENTS.md')
-    expect(runs[0]).toMatchObject({ labels: { 'wherdr.coordinator': MAIN }, env: { WHERDR_URL: 'http://127.0.0.1:7690' } })
+    const home = path.join(dir, 'alfred')
+    const d = { store, call, machines: () => [], alfredHome: home } as never
+    const r = await startCoordinator(d, MAIN, { program: 'claude', model: 'sonnet' }, { local: 'http://127.0.0.1:7690' })
+    expect(r.folder).toBe(home)
+    expect(await fs.readFile(path.join(home, 'CLAUDE.md'), 'utf8')).toBe('@AGENTS.md\n')
+    expect(await fs.readFile(path.join(home, 'AGENTS.md'), 'utf8')).toContain('only through the board')
+    expect(runs[0]).toMatchObject({ cwd: home, labels: { 'wherdr.coordinator': MAIN }, env: { WHERDR_URL: 'http://127.0.0.1:7690' } })
     expect(runs[0]!.on).toBeUndefined()
-    expect(runs[0]!.line).toMatch(/exec 'claude' '--model' 'sonnet'$/)
+    expect(runs[0]!.line).toMatch(/exec 'claude' '--model' 'sonnet' 'Follow .*give me another name\?"'$/)
+    // Renamed by Alfred, then restarted with another agent: same home, its files kept, the old session stopped.
+    await fs.writeFile(path.join(home, 'identity.md'), 'Name: Jeeves\n')
+    await fs.writeFile(path.join(home, 'memory.md'), '- likes short answers\n')
+    await startCoordinator(d, MAIN, { program: 'codex', model: 'gpt-6-sol' }, { local: 'http://127.0.0.1:7690' })
+    expect(runs[1]!.line).toMatch(/greet the user in one short line as Jeeves\.'$/)
+    expect(await fs.readFile(path.join(home, 'memory.md'), 'utf8')).toBe('- likes short answers\n')
+    expect(killed).toEqual(['host/t1'])
+    expect(await alfredView(d)).toEqual({ name: 'Jeeves', agent: { program: 'codex', model: 'gpt-6-sol' }, ran: { program: 'codex', model: 'gpt-6-sol' }, terminal: 'host/t2' })
     const view = await coordinatorsView(store)
     expect(view.map(c => c.project)).toEqual([MAIN, 'CO', 'ST'])
-    expect(view[0]).toMatchObject({ main: true, terminal: 'host/t9', agent: { model: 'sonnet' } })
-    expect(mainRoleFiles([{ key: 'CO', name: 'Company', path: '/src/co', template: 'company' }])['AGENTS.md']).toContain('only through the board')
+    expect(view[0]).toMatchObject({ main: true, terminal: 'host/t2' })
+  })
+
+  it('runs Alfred with projects off: its record is saved, its instructions say how to switch them on', async () => {
+    await store.setEnabled(false)
+    const home = path.join(dir, 'alfred')
+    const d = { store, call: async () => ({ address: 'host/t1' }), machines: () => [], alfredHome: home } as never
+    await startCoordinator(d, MAIN, { program: 'claude', model: 'opus' }, { local: 'http://127.0.0.1:7690' })
+    expect(await alfredView(d)).toMatchObject({ name: 'Alfred', agent: { model: 'opus' }, terminal: 'host/t1' })
+    expect(await fs.readFile(path.join(home, 'AGENTS.md'), 'utf8')).toContain('Project management is off')
+    await expect(store.saveCoordinator({ project: 'CO', tokenHash: '' })).rejects.toThrow('switched off')
   })
 })
 

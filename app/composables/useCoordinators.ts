@@ -26,6 +26,13 @@ export function loadCoordinators() {
     .finally(() => { loading = null }))
 }
 
+// Alfred, wherdr's assistant (GET /api/alfred, with projects on or off): its
+// name, the agent the user chose (none before its first start), its conversation.
+export interface AlfredView { name: string, agent?: CoordinatorAgent, ran?: CoordinatorAgent, terminal?: string }
+export const alfred = ref<AlfredView | null>(null)
+export const loadAlfred = () => api<AlfredView>('/api/alfred').then((v) => { alfred.value = v }, () => {})
+export const alfredPane = computed(() => (alfred.value?.terminal ? herdrState.value?.panes.find(p => p.coreAddress === alfred.value!.terminal) : undefined))
+
 // The coordinator a pane is, by its herdr-core address.
 export const coordinatorOf = (p?: Pane | null) => (p?.coreAddress ? coordinators.value.find(c => c.terminal === p.coreAddress) : undefined)
 // The pane of a coordinator's kept conversation, while it runs.

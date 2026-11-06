@@ -2,6 +2,8 @@
 // it), where its current turn comes from, the `wherdr pm` commands it runs,
 // and its role files, written in its own folder on the project's machine.
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import fs from 'node:fs/promises'
+import path from 'node:path'
 import { COORDINATOR_AGENTS, MAIN, coordinatorArgs, mainRoleFiles, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
@@ -21,8 +23,13 @@ import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
 import { projectPace } from './pmPace'
 import type { CoordinatorRecord, PmStore } from './pmStore'
+import { OWN_FILES, alfredFiles, alfredName, startPrompt } from '../../shared/pm/alfred'
+import { DATA_DIR } from './env'
+import pkg from '../../package.json'
 
-type Deps = CoreAdminDeps & { store: PmStore }
+// alfredHome: Alfred's home folder (DATA_DIR/alfred by default).
+type Deps = CoreAdminDeps & { store: PmStore, alfredHome?: string }
+const homeOfAlfred = (deps: { alfredHome?: string }) => deps.alfredHome ?? path.join(DATA_DIR, 'alfred')
 const sha = (s: string) => createHash('sha256').update(s).digest()
 
 // A new token for the project's coordinator; the one before stops working.
@@ -293,7 +300,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
   if (!(await store.enabled())) return []
   const [tasks, runs, wakes, now] = [await store.tasks(), await store.runs(), await store.wakes(), Date.now()]
   // The main coordinator first: every project's tasks are its own.
-  return Promise.all([{ key: MAIN, name: 'Main coordinator', template: '' }, ...await store.projects()].map(async (p) => {
+  return Promise.all([{ key: MAIN, name: await readAlfredName({}), template: '' }, ...await store.projects()].map(async (p) => {
     const c = await store.coordinator(p.key)
     const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => p.key === MAIN || t.project === p.key)
     return {
@@ -312,21 +319,54 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
 // The role files (and the `wherdr` script) in the coordinator's own folder,
 // ~/.wherdr/pm/coordinators/<KEY> on the project's machine; never ~/.claude
 // or ~/.codex.
-// The main coordinator's: on wherdr's own machine, no repository.
+// The main coordinator's: Alfred's home (writeAlfredHome).
 async function writeRoleFiles(deps: Deps, key: string) {
   const { store } = deps
+  if (key === MAIN) return { p: undefined, local: true, on: undefined, ...await writeAlfredHome(deps) }
   const projects = await store.projects()
   const p = projects.find(x => x.key === key)
-  if (!p && key !== MAIN) throw new HerdrError('not_found', 'Unknown project')
+  if (!p) throw new HerdrError('not_found', 'Unknown project')
   const t = p?.template ? await store.template(p.template) : null
-  const { m, on } = machineOn(deps, p ? p.machine : deps.machines().find(x => x.local)?.key)
+  const { m, on } = machineOn(deps, p.machine)
   const home = await homeOf(deps, on)
   if (!home) throw new HerdrError('core', 'Home folder not found on the project\'s machine')
   const folder = `${home}/.wherdr/pm/coordinators/${key}`
-  for (const [file, text] of Object.entries(p ? roleFiles(p, t, EXAMPLES) : mainRoleFiles(projects)))
+  for (const [file, text] of Object.entries(roleFiles(p, t, EXAMPLES)))
     if ((await exec(deps, on, WRITE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not write ${file}`)
   await exec(deps, on, 'chmod 755 "$1"', [`${folder}/bin/wherdr`])
-  return { p, local: !!m.local, on, folder }
+  return { p, local: !!m.local, on, folder, first: false }
+}
+
+const readAlfredName = (deps: { alfredHome?: string }) => fs.readFile(path.join(homeOfAlfred(deps), 'identity.md'), 'utf8').then(alfredName, () => alfredName(''))
+
+// Alfred's home, on wherdr's own machine: wherdr's files rewritten at each
+// start (an update ships new ones), its own files created once.
+// first: identity.md was just created, so this is its very first start.
+export async function writeAlfredHome(deps: Deps) {
+  const folder = homeOfAlfred(deps)
+  const projects = await deps.store.projects()
+  const docs = path.join(process.env.WHERDR_ROOT || process.cwd(), 'docs')
+  const docFiles = (await fs.readdir(docs).catch(() => [] as string[])).filter(n => n.endsWith('.md')).sort()
+  const main = mainRoleFiles(projects)
+  const files = { ...main, ...alfredFiles({ home: folder, version: pkg.version, docs, docFiles, pm: await deps.store.enabled(), projects }, main['AGENTS.md']!.split('\n')) }
+  for (const [file, text] of Object.entries(files)) {
+    await fs.mkdir(path.dirname(path.join(folder, file)), { recursive: true, mode: 0o700 })
+    await fs.writeFile(path.join(folder, file), text, { mode: 0o600 })
+  }
+  await fs.chmod(path.join(folder, 'bin/wherdr'), 0o755)
+  let first = false
+  for (const [file, text] of Object.entries(OWN_FILES)) {
+    try { await fs.writeFile(path.join(folder, file), text, { flag: 'wx', mode: 0o600 }); if (file === 'identity.md') first = true }
+    catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e }
+  }
+  return { folder, first }
+}
+
+// The sidebar's Alfred row: its name (identity.md), the agent the user chose
+// (none yet: the sheet asks before its first start), and its conversation.
+export async function alfredView(deps: { store: PmStore, alfredHome?: string }) {
+  const c = await deps.store.coordinator(MAIN)
+  return { name: await readAlfredName(deps), ...(c?.agent ? { agent: c.agent } : {}), ...(c?.ran ? { ran: c.ran } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}) }
 }
 
 // Where the coordinator reaches wherdr: loopback on the wherdr host; from
@@ -335,11 +375,13 @@ export interface CoordinatorUrls { local: string, remote?: string }
 
 // When a project coordinator starts: its files, a new token, how to start it.
 export async function prepareCoordinator(deps: Deps, key: string, agent: { program: 'claude' | 'codex', model: string }, urls: CoordinatorUrls) {
-  const { p, local, on, folder } = await writeRoleFiles(deps, key)
+  const { p, local, on, folder, first } = await writeRoleFiles(deps, key)
   const url = local ? urls.local : urls.remote
   if (!url) throw new HerdrError('unreachable', 'The project\'s machine cannot reach this wherdr: publish it on your tailnet first (Settings › Phone)')
   const token = await issueToken(deps.store, key)
-  return { on, folder, argv: coordinatorArgs(agent.program, agent.model, folder, p?.path), env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
+  // Alfred starts with its greeting (startPrompt).
+  const prompt = key === MAIN ? [startPrompt(first, await readAlfredName(deps))] : []
+  return { on, folder, argv: [...coordinatorArgs(agent.program, agent.model, folder, p?.path), ...prompt], env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
 }
 
 // Starts the coordinator in its folder, model pinned, token in its environment,
@@ -358,7 +400,8 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
     labels: { 'wherdr.install': await deps.store.install(), 'wherdr.coordinator': key },
     line: `${PATH_SETUP}; export PATH=${quote(`${c.folder}/bin`)}:"$PATH"; exec ${c.argv.map(quote).join(' ')}`,
   }, 30000)
-  await deps.store.saveCoordinator({ ...(await deps.store.coordinator(key))!, terminal: address, ran: { program, model } })
+  // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
+  await deps.store.saveCoordinator({ ...(await deps.store.coordinator(key))!, terminal: address, ran: { program, model }, ...(key === MAIN ? { agent: a } : {}) })
   // A new conversation replaces the one before (another agent's, or ended).
   if (before?.terminal && before.terminal !== address) await deps.call('terminal.kill', { terminal: before.terminal }, 15000).catch(() => {})
   return { terminal: address, folder: c.folder }

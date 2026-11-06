@@ -29,6 +29,19 @@
 - **Group by**: Settings › Appearance › Home screen › **Group by** chooses **Machine** or
   **State** (Your turn, Working, Ready across online machines).
 
+### Alfred
+
+Alfred, wherdr's assistant, is always the first row of the agent list, even
+with no agent and projects off. It helps you get started and, with projects
+on, coordinates all of them. The first *Start* asks which agent and model runs
+it; the choice is kept. Its ••• menu, *Restart with…*, moves it to another
+agent (when an account runs out of tokens, for instance): the old session
+stops and the new one carries on from the same home folder, `alfred/` in
+wherdr's data folder. There, `AGENTS.md` is wherdr's and rewritten at each
+start; `identity.md` (its name and tone) and `memory.md` (what it learns about
+you, cleaned up at each start) are its own. Give it another name and the row
+shows it.
+
 ### Machines as tabs
 
 The **machine bar** at the top of the list has **All**, then one tab per machine (this core and

@@ -18,7 +18,7 @@ import { afterIds } from '../../shared/pm/advance'
 import type { Receipt } from '../../shared/pm/actions'
 import { SHOT_FILE_RE } from '../../shared/pm/shots'
 import { HerdrError } from './herdr'
-import type { CoordinatorAgent, Proposal, ProposalOutcome } from '../../shared/pm/coordinator'
+import { MAIN, type CoordinatorAgent, type Proposal, type ProposalOutcome } from '../../shared/pm/coordinator'
 import type { Autopilot, DayCount, LastWake, TaskStatus } from '../../shared/pm/autopilot'
 import { readQueue, type Wake } from '../../shared/pm/wakes'
 import type { Automation, Mark } from '../../shared/pm/automations'
@@ -159,7 +159,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     }),
     coordinator: (key: string) => readJson<CoordinatorRecord>(path.join(files.coordinators, `${key}.json`)),
     coordinators: () => readAll<CoordinatorRecord>(files.coordinators),
-    saveCoordinator: (c: CoordinatorRecord) => write(() => writeJson(path.join(files.coordinators, `${c.project}.json`), c)),
+    // Alfred (the main coordinator) also runs with projects off: its record is saved then too.
+    saveCoordinator: (c: CoordinatorRecord) => (c.project === MAIN ? serial : write)(() => writeJson(path.join(files.coordinators, `${c.project}.json`), c)),
     wakes: async () => readQueue((await fs.readFile(files.wakes, 'utf8').catch(() => '')).split('\n'), Date.now()),
     // Appends the changed wakes; the file is rewritten (atomically) once it holds many old lines.
     saveWakes: (changed: Wake[]) => write(async () => {
