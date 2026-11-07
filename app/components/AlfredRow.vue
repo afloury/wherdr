@@ -112,7 +112,8 @@ onUnmounted(() => clearInterval(timer))
 .alfred-text small { overflow: hidden; color: var(--muted); font: 12px/1.4 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .alfred-go { flex: none; color: var(--dim); }
 .alfred-start { flex: none; color: var(--mauve); font: 500 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
-.alfred-more { flex: none; align-self: center; margin-right: 4px; }
+/* :deep: on a mouse computer SpaceMenu renders through UDropdownMenu, which drops the scoped attribute. */
+.alfred :deep(.alfred-more) { flex: none; align-self: center; margin-right: 4px; }
 .alfred-error { margin: -14px 0 14px; }
 .alfred-note { margin: 0 2px 14px; color: var(--text-2); font-size: 14px; }
 .alfred-agents button { text-transform: none; letter-spacing: .02em; }
