@@ -1,5 +1,6 @@
 // Messages sent while Claude works: "Queued by Claude" while its transcript
-// still lists them in its queue, "Read by the agent" only once it took them.
+// still lists them in its queue. When a message counts as taken ("Read by the
+// agent") is decided lower, in tests/pendingLabel.test.ts.
 import { afterEach, describe, expect, it } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import ChatView from '~/components/ChatView.vue'
@@ -33,9 +34,5 @@ describe('labels of messages sent while Claude works', () => {
   it('still in Claude\'s queue: queued by Claude, not read', async () => {
     await tags([{ text: ONE, ts: '2026-01-01T00:00:01Z' }, { text: TWO, ts: '2026-01-01T00:00:02Z' }], pane,
       ['Queued by Claude · sent when it finishes', 'Queued by Claude · sent when it finishes'])
-  })
-
-  it('typed into an idle Claude, transcript not caught up yet: read by the agent', async () => {
-    await tags([], { ...pane, status: 'idle' }, ['Read by the agent', 'Read by the agent'])
   })
 })

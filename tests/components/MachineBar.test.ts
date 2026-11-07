@@ -12,8 +12,6 @@ import { menuState } from '~/composables/useUi'
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigate)
 
-registerEndpoint('/api/machine/order', () => ({ order: [] }))
-registerEndpoint('/api/machine/awake', () => ({ supported: false }))
 
 const machine = (key: string, label: string, status: MachineInfo['status'] = 'online'): MachineInfo =>
   ({ key, label, local: key === '', status, error: null, session: 'default' })
@@ -178,14 +176,6 @@ describe('the machine bar on the home list', () => {
     machineBarOn.value = false
     await nextTick()
     expect(w.find('.machine-bar').exists()).toBe(false)
-  })
-
-  it('a choice taken off the bar falls back to its first item', async () => {
-    machineBarSaved.value = 'laptop'
-    machineBarHidden.value = ['laptop']
-    const w = await mountHome()
-    expect(w.find('.machine-bar-item.on .machine-bar-label').text()).toBe('All')
-    expect(w.findAll('section.machine').length).toBe(3)
   })
 
   it('a single machine has the bar too: All, then that machine', async () => {

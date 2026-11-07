@@ -5,8 +5,6 @@ import type { VueWrapper } from '@vue/test-utils'
 import type { Pane } from '#shared/types'
 
 registerEndpoint('/api/quotas', () => ({ claude: null, codex: null }))
-registerEndpoint('/api/machine/order', () => ({ order: [] }))
-registerEndpoint('/api/machine/awake', () => ({ supported: false }))
 const pane: Pane = { id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'claude', name: null, label: null, status: 'idle', title: 'Sample agent', cwd: '/tmp/demo', agentSession: null }
 const pass = { template: '<div><slot /></div>' }
 
