@@ -2,6 +2,7 @@
 // project's), shared by the sidebar, the board and the conversation view,
 // which shows its coordinator bar on their panes.
 import type { CoordinatorAgent, CoordinatorView } from '#shared/pm/coordinator'
+import type { AlfredProgram } from '#shared/pm/alfred'
 import type { Pane } from '#shared/types'
 
 export const coordinators = ref<CoordinatorView[]>([])
@@ -25,6 +26,14 @@ export function loadCoordinators() {
     .then((v) => { coordinators.value = Array.isArray(v) ? v : [] }, () => {})
     .finally(() => { loading = null }))
 }
+
+// Alfred, wherdr's assistant (GET /api/alfred, with projects on or off): its
+// name, the program the user chose (none before its first start), the one
+// running, its conversation. No model: each harness runs its own default.
+export interface AlfredView { name: string, program?: AlfredProgram, ran?: AlfredProgram, terminal?: string }
+export const alfred = ref<AlfredView | null>(null)
+export const loadAlfred = () => api<AlfredView>('/api/alfred').then((v) => { alfred.value = v }, () => {})
+export const alfredPane = computed(() => (alfred.value?.terminal ? herdrState.value?.panes.find(p => p.coreAddress === alfred.value!.terminal) : undefined))
 
 // The coordinator a pane is, by its herdr-core address.
 export const coordinatorOf = (p?: Pane | null) => (p?.coreAddress ? coordinators.value.find(c => c.terminal === p.coreAddress) : undefined)

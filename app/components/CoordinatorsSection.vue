@@ -1,13 +1,12 @@
 <script setup lang="ts">
-// The COORDINATORS section pinned at the top of the agent list (as in v2.5):
-// the main coordinator first, then the project coordinators that run. One tap
-// opens its conversation; a main coordinator that is not running starts with
-// its default agent. Hidden while project management is off.
+// The COORDINATORS section under Alfred (AlfredRow, the main coordinator) at
+// the top of the agent list: the project coordinators that run. One tap opens
+// its conversation. Hidden while project management is off.
 import { agentName, type CoordinatorView } from '#shared/pm/coordinator'
 
 const busy = ref('')
 const error = ref('')
-const rows = computed(() => coordinators.value.filter(c => c.main || coordinatorPane(c)))
+const rows = computed(() => coordinators.value.filter(c => !c.main && coordinatorPane(c)))
 
 async function open(c: CoordinatorView) {
   if (busy.value) return
@@ -18,7 +17,7 @@ async function open(c: CoordinatorView) {
   finally { busy.value = '' }
 }
 
-const name = (c: CoordinatorView) => (c.main ? tl('Coordinator', 'Coordinateur') : tl(`${c.project} coordinator`, `Coordinateur ${c.project}`))
+const name = (c: CoordinatorView) => tl(`${c.project} coordinator`, `Coordinateur ${c.project}`)
 const sub = (c: CoordinatorView) => {
   const p = coordinatorPane(c)
   if (p) return `${agentName(c.ran ?? c.agent)} · ${statusLabel(p)}`
@@ -34,8 +33,8 @@ onUnmounted(() => clearInterval(timer))
   <section v-if="rows.length" class="agent-group coord-list" data-testid="coordinators">
     <h2 class="group-title"><span>{{ tl('Coordinators', 'Coordinateurs') }}</span><span class="count">{{ rows.length }}</span></h2>
     <button
-      v-for="c in rows" :key="c.project" type="button" class="coord-row" :class="{ on: !!coordinatorPane(c), main: c.main }"
-      :disabled="!!busy" :data-testid="c.main ? 'coordinator-main' : 'coordinator-row'" @click="open(c)"
+      v-for="c in rows" :key="c.project" type="button" class="coord-row" :class="{ on: !!coordinatorPane(c) }"
+      :disabled="!!busy" data-testid="coordinator-row" @click="open(c)"
     >
       <i class="coord-dot" aria-hidden="true" />
       <span class="coord-text"><b>{{ name(c) }}</b><small>{{ busy === c.project ? tl('Starting…', 'Lancement…') : sub(c) }}</small></span>
