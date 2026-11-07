@@ -20,8 +20,9 @@ is done and has a button that takes you there.
    have none, and their tasks cannot start without it.
 4. **Open the board and start the project coordinator.** Pick the project on
    the Board and press *Start*: the coordinator is the agent you talk to about
-   the project. It adds tasks and follows them on the board. A main
-   coordinator, across all projects, is planned and will be added here.
+   the project. It adds tasks and follows them on the board. Alfred, wherdr's
+   assistant at the top of the agent list, coordinates all projects at once
+   (see [Home](home.md#alfred)).
 
 Then ask the coordinator for tasks, and answer
 what shows under *Your turn* and *Decisions*.
