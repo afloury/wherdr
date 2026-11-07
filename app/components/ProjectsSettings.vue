@@ -51,6 +51,13 @@ const setVisibility = (key: string, body: { value: string } | { check: true }) =
 const visibilityNote = (v?: RepoVisibility) => !v ? tl('Not checked yet', 'Pas encore vérifié')
   : v.by === 'user' ? tl('Set by you', 'Choisi par vous')
   : `${v.value === 'unknown' ? tl('Not found', 'Introuvable') : tl('Checked', 'Vérifié')} ${new Date(v.at).toLocaleDateString()}`
+const templateItems = computed(() => [{ label: tl('No template', 'Aucun modèle'), value: NONE }, ...(data.value?.templates ?? []).map(tp => ({ label: tp.id, value: tp.id }))])
+const visibilityItems = (v?: RepoVisibility) => [
+  ...((v?.value ?? 'unknown') === 'unknown' ? [{ label: tl('Repository: unknown', 'Dépôt : inconnu'), value: 'unknown', disabled: true }] : []),
+  { label: tl('Public repository', 'Dépôt public'), value: 'public' },
+  { label: tl('Private repository', 'Dépôt privé'), value: 'private' },
+]
+const formTemplate = computed({ get: () => orNone(form.template), set: (v: string) => { form.template = fromNone(v) } })
 const remove = (key: string) => run(`rm:${key}`, async () => {
   await api('/api/pm/project-remove', { key })
   await load()
@@ -73,23 +80,16 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
       <div v-if="data.projects.length" class="settings-card">
         <div v-for="p in data.projects" :key="p.key" class="pm-row" data-testid="pm-project">
           <span class="pm-id"><b>{{ p.name }}<span v-if="p.visibility?.value === 'public'" class="pm-public" data-testid="pm-public">{{ tl('Public', 'Public') }}</span></b><small class="mono-label">{{ p.key }} · {{ machineName(p.machine) }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
-          <select
-            class="pm-select" :value="p.template || ''" :disabled="busy !== ''" :aria-label="tl(`Template of ${p.name}`, `Modèle de ${p.name}`)"
-            data-testid="pm-project-template" @change="pickTemplate(p.key, ($event.target as HTMLSelectElement).value)"
-          >
-            <option value="">{{ tl('No template', 'Aucun modèle') }}</option>
-            <option v-for="tp in data.templates" :key="tp.id" :value="tp.id">{{ tp.id }}</option>
-          </select>
+          <USelect
+            :model-value="orNone(p.template)" :items="templateItems" size="lg" class="pm-row-template" :disabled="busy !== ''" :aria-label="tl(`Template of ${p.name}`, `Modèle de ${p.name}`)"
+            data-testid="pm-project-template" @update:model-value="v => pickTemplate(p.key, fromNone(v))"
+          />
           <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-trash-2" :aria-label="tl(`Remove ${p.name}`, `Retirer ${p.name}`)" :loading="busy === `rm:${p.key}`" @click="remove(p.key)" />
           <span class="pm-vis">
-            <select
-              class="pm-select" :value="p.visibility?.value ?? 'unknown'" :disabled="busy !== ''" :aria-label="tl(`Repository of ${p.name}`, `Dépôt de ${p.name}`)"
-              data-testid="pm-visibility" @change="setVisibility(p.key, { value: ($event.target as HTMLSelectElement).value })"
-            >
-              <option v-if="(p.visibility?.value ?? 'unknown') === 'unknown'" value="unknown" disabled>{{ tl('Repository: unknown', 'Dépôt : inconnu') }}</option>
-              <option value="public">{{ tl('Public repository', 'Dépôt public') }}</option>
-              <option value="private">{{ tl('Private repository', 'Dépôt privé') }}</option>
-            </select>
+            <USelect
+              :model-value="p.visibility?.value ?? 'unknown'" :items="visibilityItems(p.visibility)" size="lg" :disabled="busy !== ''" :aria-label="tl(`Repository of ${p.name}`, `Dépôt de ${p.name}`)"
+              data-testid="pm-visibility" @update:model-value="v => setVisibility(p.key, { value: String(v) })"
+            />
             <small class="mono-label">{{ visibilityNote(p.visibility) }}</small>
             <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-refresh-cw" :loading="busy === `vis:${p.key}`" :disabled="busy !== ''" data-testid="pm-visibility-check" @click="setVisibility(p.key, { check: true })">{{ tl('Check again', 'Revérifier') }}</UButton>
           </span>
@@ -124,10 +124,7 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
         <label class="field-label" for="pmBase">{{ tl('Base branch', 'Branche de base') }} <span class="muted">{{ t('(optional)') }}</span></label>
         <UInput id="pmBase" v-model="form.base" size="xl" class="w-full mono" autocapitalize="none" autocorrect="off" :spellcheck="false" placeholder="main" maxlength="100" />
         <label class="field-label" for="pmTemplate">{{ tl('Template', 'Modèle') }}</label>
-        <select id="pmTemplate" v-model="form.template" class="pm-select" data-testid="pm-template">
-          <option value="">{{ tl('No template', 'Aucun modèle') }}</option>
-          <option v-for="tp in data.templates" :key="tp.id" :value="tp.id">{{ tp.id }}</option>
-        </select>
+        <USelect id="pmTemplate" v-model="formTemplate" :items="templateItems" size="lg" class="w-full" data-testid="pm-template" />
         <p v-if="!data.templates.length" class="muted settings-hint">{{ tl('No template saved yet: tasks cannot start until the project has one.', 'Aucun modèle enregistré : les tâches ne pourront pas démarrer tant que le projet n’en a pas.') }}</p>
         <UButton type="submit" size="xl" color="primary" variant="solid" class="hw-cta" icon="i-lucide-plus" :loading="busy === 'add'" :disabled="!canAdd">{{ tl('Add project', 'Ajouter le projet') }}</UButton>
       </form>
@@ -146,11 +143,10 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
 .pm-public { margin-left: 8px; padding: 2px 6px; border: 1px solid var(--blocked); color: var(--blocked); font: 600 11px/1 var(--font-mono, 'JetBrains Mono', monospace); letter-spacing: .08em; text-transform: uppercase; vertical-align: 2px; }
 .pm-vis { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .pm-path { color: var(--muted); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; }
-form .pm-select { width: 100%; }
 .pm-settings form.sheet-form { margin-top: 8px; }
 .pm-settings form .settings-hint { margin-bottom: 16px; }
 @media (max-width: 520px) {
   .pm-row { grid-template-columns: minmax(0, 1fr) auto; }
-  .pm-row > .pm-select { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+  .pm-row > :deep(.pm-row-template) { grid-column: 1 / -1; grid-row: 2; width: 100%; }
 }
 </style>

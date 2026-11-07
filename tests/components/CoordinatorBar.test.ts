@@ -7,6 +7,7 @@ import { herdrState } from '~/composables/useHerdr'
 import { coordinators, resumedCoordinators } from '~/composables/useCoordinators'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
+import { pick } from '../helpers/select'
 
 const posts: { url: string, body: Record<string, unknown> }[] = []
 let views: CoordinatorView[] = []
@@ -27,7 +28,7 @@ it('says who you talk to and which agent answers, and changes the default in one
   expect(b.text()).toContain('Project coordinator · CO')
   // No conversation yet: the button says which agent will answer.
   expect(b.find('[data-testid="coordinator-open"]').text()).toBe('Start with Claude Opus')
-  await b.find('[data-testid="coordinator-agent"]').setValue('claude:sonnet')
+  await pick(b, 'coordinator-agent', 'claude:sonnet')
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: 'CO', program: 'claude', model: 'sonnet' } }]))
 })
 
