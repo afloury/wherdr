@@ -5,6 +5,7 @@ import type { Prefs, Step, Template } from './workflow'
 import type { StepState } from './steps'
 import { needsShots, shotMode } from './shots'
 import type { Stopped } from './stop'
+import { isPublic, publicWorkerSection } from './visibility'
 
 // Who made a task: the user (the board, their turn), the coordinator in a
 // wake, an automation, a mission.
@@ -150,8 +151,9 @@ export function shotsSection(step: Step, task: Pick<Task, 'id'>, shots: { base: 
 }
 
 // The instructions file: the task, then every level's instructions, broadest
-// first, then how to upload screenshots when a worker step asks for them.
-export function instructionsText(p: Project, t: Template, task: Task, run: Pick<Run, 'worktree' | 'branch'>, shots?: { base: string, token: string }) {
+// first, then how to upload screenshots when a worker step asks for them, then
+// a public repository's rule (leakCheck: its own check, see ownLeakCheck).
+export function instructionsText(p: Project, t: Template, task: Task, run: Pick<Run, 'worktree' | 'branch'>, shots?: { base: string, token: string }, leakCheck?: string) {
   const step = typeSteps(t, task.type).find(s => s.holder === 'worker')
   const parts = [t.instructions, t.taskTypes[task.type]?.instructions, step?.instructions].map(s => s?.trim()).filter(Boolean)
   const visual = shotStep(t, task.type)
@@ -159,6 +161,7 @@ export function instructionsText(p: Project, t: Template, task: Task, run: Pick<
     `# ${task.id}: ${task.title}`, '', task.description.trim() || '(no description)', '',
     '## Instructions', '', ...(parts.length ? parts : ['(none)']), '',
     ...(visual && shots ? shotsSection(visual, task, shots) : []),
+    ...(isPublic(p) ? publicWorkerSection(leakCheck) : []),
     `You work in ${run.worktree} on branch ${run.branch} of project ${p.name}.`, '',
   ].join('\n')
 }

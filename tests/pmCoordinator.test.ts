@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
 import { answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, userMessageTo } from '../server/utils/pmCoordinator'
+import { REMOTE_SCRIPT } from '../server/utils/pmVisibility'
 import { MAIN, mainRoleFiles, parseCommand, roleFiles, coordinatorArgs } from '../shared/pm/coordinator'
 import { EXAMPLES, common, company } from '../shared/pm/examples'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
@@ -98,6 +99,8 @@ describe('the main coordinator (WHR-398)', () => {
     const call = async (method: string, params: Record<string, unknown>) => {
       const argv = params.argv as string[] | undefined
       if (method === 'machine.exec' && argv?.[2] === 'printf %s "$HOME"') return { code: 0, stdout: Buffer.from('/h').toString('base64') }
+      // The repository's remote and gh's answer: a public GitHub repository.
+      if (method === 'machine.exec' && argv?.[2] === REMOTE_SCRIPT) return { code: 0, stdout: Buffer.from('git@github.com:o/co.git\n{"visibility":"PUBLIC"}').toString('base64') }
       if (method === 'machine.exec') return written.push(argv![4]!), { code: 0, stdout: '' }
       runs.push(params)
       return { address: 'host/t9' }
@@ -251,6 +254,8 @@ describe('role files', () => {
     const call = async (method: string, params: Record<string, unknown>) => {
       const argv = params.argv as string[] | undefined
       if (method === 'machine.exec' && argv?.[2] === 'printf %s "$HOME"') return { code: 0, stdout: Buffer.from('/h').toString('base64') }
+      // The repository's remote and gh's answer: a public GitHub repository.
+      if (method === 'machine.exec' && argv?.[2] === REMOTE_SCRIPT) return { code: 0, stdout: Buffer.from('git@github.com:o/co.git\n{"visibility":"PUBLIC"}').toString('base64') }
       if (method === 'machine.exec') return written.push(argv![4]!), { code: 0, stdout: '' }
       runs.push({ method, ...params })
       return { address: `host/t${runs.length + 4}` }
@@ -272,6 +277,8 @@ describe('role files', () => {
     await refused(cli(['list']), 'Unknown coordinator token')
     await expect(cli(['list'], undefined, fresh)).resolves.toBeTruthy()
     expect((await store.coordinator('CO'))!.terminal).toBe('host/t5')
+    // Its repository's visibility, checked once at its first start.
+    expect((await store.projects()).find(p => p.key === 'CO')!.visibility).toMatchObject({ value: 'public', by: 'check' })
   })
 
   it('start with the project\'s default agent, remember the agent that ran, and a new conversation replaces the old one', async () => {
