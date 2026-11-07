@@ -19,6 +19,7 @@ import { afterIds } from '../../shared/pm/advance'
 import type { Receipt } from '../../shared/pm/actions'
 import { SHOT_FILE_RE } from '../../shared/pm/shots'
 import { HerdrError } from './herdr'
+import type { FolderOptions } from '../../shared/pm/newProject'
 import { MAIN, type CoordinatorAgent, type Proposal, type ProposalOutcome } from '../../shared/pm/coordinator'
 import type { Autopilot, DayCount, LastWake, TaskStatus } from '../../shared/pm/autopilot'
 import { readQueue, type Wake } from '../../shared/pm/wakes'
@@ -43,9 +44,10 @@ export interface CoordinatorRecord {
 
 export interface AutomationsFile { automations: Automation[], seen?: Record<string, Mark> }
 
-// The checks the store cannot make itself: the machine, a git folder there.
-// Resolves to the folder's absolute path.
-export type FolderCheck = (machine: string, folder: string) => Promise<string>
+// The checks the store cannot make itself: the machine, a git folder there
+// (or, with plain, any folder). Resolves to the folder's absolute path, and
+// whether it is a git repository (a bare path: it is).
+export type FolderCheck = (machine: string, folder: string, opts?: FolderOptions) => Promise<string | { path: string, git: boolean }>
 
 async function readJson<T>(file: string): Promise<T | null> {
   try { return JSON.parse(await fs.readFile(file, 'utf8')) as T }
@@ -212,15 +214,16 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       return task
     }),
 
-    addProject: (raw: unknown, check: FolderCheck) => write(async () => {
+    addProject: (raw: unknown, check: FolderCheck, opts?: FolderOptions) => write(async () => {
       const { project, errors } = cleanProjectInput(raw)
       if (!project) throw badInput(errors)
       const list = await projects()
       if (list.some(p => p.key === project.key)) throw new HerdrError('exists', 'A project already has this key')
       await knownTemplate(project.template)
-      const folder = await check(project.machine, project.path)
+      const checked = await check(project.machine, project.path, opts)
+      const { path: folder, git } = typeof checked === 'string' ? { path: checked, git: true } : checked
       if (list.some(p => p.machine === project.machine && p.path === folder)) throw new HerdrError('exists', 'This folder is already a project')
-      const added: Project = { ...project, path: folder, addedAt: Date.now() }
+      const added: Project = { ...project, path: folder, ...(git ? {} : { git: false as const }), addedAt: Date.now() }
       await saveProjects([...list, added])
       return added
     }),

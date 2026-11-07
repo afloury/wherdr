@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // New agent (Claude, Codex) or terminal: folder (browser + recent ones),
 // conversation resume, first message. With project management on, also a
-// project's coordinator (NewCoordinatorForm), not in a new tab.
+// project: open or start its coordinator, or add one (NewProjectForm), not in a new tab.
 // Several machines: choice of the machine, its folders and recent ones.
 // "New tab" (`newTabSpace`): a new terminal labelled for that space, on its
 // machine.
 // On the phone it opens full screen, Launch pinned at the bottom.
 import type { MachineConfig } from '#shared/types'
+import type { ProjectDraft } from '#shared/pm/newProject'
 import { machineOf } from '#shared/ids'
 import { selectedAgentKind, visibleAgentKinds } from '~/utils/agentChoices'
 
@@ -24,6 +25,7 @@ const browsing = ref(false)
 const coordinator = ref(false)
 const coordProject = ref('')
 const coordAgent = ref('')
+const draft = ref<ProjectDraft | null>(null)
 const canCoordinate = computed(() => !newTabSpace.value && coordinators.value.length > 0)
 watch(canCoordinate, (can) => { if (!can) coordinator.value = false })
 
@@ -82,6 +84,7 @@ watch(newAgentOpen, async (open) => {
   error.value = null
   browsing.value = false
   launching.value = false
+  draft.value = null
   // Each opening starts on the user's first agent.
   kind.value = ''
   if (!newTabSpace.value) loadCoordinators()
@@ -101,6 +104,7 @@ watch(() => machines.value.map(m => `${m.key}:${m.status}`).join(','), async () 
 watch(kinds, syncKind)
 function pickCoordinator() {
   coordinator.value = true
+  draft.value = null
   if (!coordinators.value.some(c => c.project === coordProject.value)) coordProject.value = coordinators.value[0]?.project ?? ''
 }
 function pickKind(k: string) {
@@ -110,7 +114,8 @@ function pickKind(k: string) {
 
 // ------------------------------------------------------------ navigateur de dossiers
 function chooseDir(d: string) {
-  dir.value = d
+  if (coordinator.value && draft.value) draft.value.path = d
+  else dir.value = d
   browsing.value = false
 }
 
@@ -163,7 +168,7 @@ async function launch() {
 </script>
 
 <template>
-  <AppSheet v-model:open="open" :title="newTabSpace ? t('Start in a new tab') : coordinator ? tl('Project coordinator', 'Coordinateur de projet') : t(shell ? 'New terminal' : 'New agent')" tall screen>
+  <AppSheet v-model:open="open" :title="newTabSpace ? t('Start in a new tab') : coordinator ? tl('Project', 'Projet') : t(shell ? 'New terminal' : 'New agent')" tall screen>
     <div v-if="!browsing" class="sheet-form">
       <div v-if="newTabSpace" class="into-pane">
         <span class="tabmap" aria-hidden="true"><i class="cur" style="inset: 0" /></span>
@@ -182,12 +187,15 @@ async function launch() {
         <button v-for="k in kinds" :key="k" type="button" :class="{ on: !coordinator && k === kind }" :data-kind="k" @click="pickKind(k)">
           <AgentAvatar :agent="k === 'shell' ? null : k" /><span>{{ k === 'shell' ? 'Terminal' : kindLabel(k) }}</span>
         </button>
-        <button v-if="canCoordinate" type="button" :class="{ on: coordinator }" data-kind="coordinator" @click="pickCoordinator">
-          <span class="avatar"><UIcon name="i-lucide-message-square-text" /></span><span>{{ tl('Coordinator', 'Coordinateur') }}</span>
+        <button v-if="canCoordinate" type="button" :class="{ on: coordinator }" data-kind="project" @click="pickCoordinator">
+          <span class="avatar"><UIcon name="i-lucide-folder-git-2" /></span><span>{{ tl('Project', 'Projet') }}</span>
         </button>
       </div>
 
-      <NewCoordinatorForm v-if="coordinator" v-model:project="coordProject" v-model:agent="coordAgent" @settings="open = false" />
+      <NewProjectForm
+        v-if="coordinator" v-model:project="coordProject" v-model:agent="coordAgent" v-model:draft="draft" :machine="machine" :machines="machineList"
+        @settings="open = false" @browse="browsing = true" @machine="pickMachine"
+      />
       <template v-else>
         <label class="field-label">{{ t('Folder') }}</label>
         <DirField :key="machine" v-model="dir" :recents="recents" @browse="browsing = true" />
@@ -213,10 +221,13 @@ async function launch() {
       </template>
     </div>
 
-    <DirBrowser v-else :start="dir" :machine="machine" @choose="chooseDir" @cancel="browsing = false" />
+    <DirBrowser v-else :start="coordinator && draft ? (draft.probe?.exists ? draft.probe.path : null) : dir" :machine="machine" @choose="chooseDir" @cancel="browsing = false" />
 
     <template #footer>
-      <NewCoordinatorActions v-if="coordinator && !browsing" :project="coordProject" :agent="coordAgent" @done="open = false" />
+      <NewProjectActions
+        v-if="coordinator && !browsing" :project="coordProject" :agent="coordAgent" :draft="draft"
+        @done="open = false" @added="k => { draft = null; coordProject = k }"
+      />
       <div v-else-if="!browsing" class="sheet-form">
         <p v-if="error" class="form-error">{{ t(error) }}</p>
         <UButton block size="xl" color="primary" variant="solid" class="launch-btn hw-cta" icon="i-lucide-play" :loading="launching" :disabled="!kind" @click="launch">

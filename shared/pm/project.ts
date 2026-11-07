@@ -1,4 +1,4 @@
-// A managed project: a git folder on a machine reached through herdr-core,
+// A managed project: a folder (git, unless git: false) on a machine reached through herdr-core,
 // and the template its tasks follow. Stored in DATA_DIR/projects/projects.json.
 import type { WorkflowError } from './workflow'
 import type { Task } from './run'
@@ -9,6 +9,7 @@ export interface Project {
   name: string
   machine: string // herdr-core machine key, '' = the wherdr host
   path: string
+  git?: false // a folder without git: its coordinator works in it, no task worktree
   base?: string // branch tasks start from (default: the repo's current one)
   template?: string // template id; none yet = no task can start
   visibility?: RepoVisibility // public repository: guardrails for its coordinator and tasks

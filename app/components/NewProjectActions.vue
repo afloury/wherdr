@@ -1,18 +1,22 @@
 <script setup lang="ts">
-// "New" sheet › Coordinator, footer: open the project's coordinator when it
+// "New" sheet › Project, footer: open the project's coordinator when it
 // runs with the chosen agent, else start it (same API and rules as the
 // CoordinatorBar: a running conversation of another agent offers a new
-// conversation first, or resuming it).
+// conversation first, or resuming it). A project being added (draft) is
+// saved first (and an example template it picked), then its coordinator starts.
 import { isCoordinatorProgram, sameAgent } from '#shared/pm/coordinator'
+import { EXAMPLES } from '#shared/pm/examples'
+import { draftBody, type ProjectDraft } from '#shared/pm/newProject'
 
-const props = defineProps<{ project: string, agent: string }>()
-const emit = defineEmits<{ done: [] }>()
+const props = defineProps<{ project: string, agent: string, draft?: ProjectDraft | null }>()
+const emit = defineEmits<{ done: [], added: [key: string] }>()
 const busy = ref(false)
 const error = ref('')
 
 const c = computed(() => coordinators.value.find(x => x.project === props.project))
 const fallback = computed(() => (c.value ? coordinatorAgent(c.value) : undefined))
 const chosen = computed(() => (isCoordinatorProgram(props.agent) ? { program: props.agent } : fallback.value))
+const ready = computed(() => !!props.draft?.probe && !!props.draft.key.trim() && !!props.draft.template)
 const agentName = (a: { program: string }) => kindLabel(a.program)
 const pane = computed(() => (c.value ? coordinatorPane(c.value) : undefined))
 // Its conversation runs with another agent than the chosen one (a resume the
@@ -25,12 +29,23 @@ function go(id: string) {
   emit('done')
   navigateTo(panePath(id))
 }
+async function add(d: ProjectDraft) {
+  const example = d.template.startsWith('example:') ? EXAMPLES.find(e => `example:${e.id}` === d.template) : undefined
+  if (example) await api('/api/pm/template', { template: example })
+  const template = example?.id ?? d.template
+  const { project } = await api<{ project: { key: string } }>('/api/pm/project', draftBody(d, template))
+  try { localStorage.setItem('wherdr.lastTemplate', d.template.startsWith('example:') ? template : d.template) } catch {}
+  await loadCoordinators()
+  emit('added', project.key) // a failed start is tried again on the project, not added twice
+  return project.key
+}
 async function start() {
-  if (!c.value || !chosen.value) return
+  const d = props.draft
+  if ((!d && !c.value) || !chosen.value) return
   busy.value = true
   error.value = ''
   try {
-    const p = await launchCoordinator(c.value.project, chosen.value)
+    const p = await launchCoordinator(d ? await add(d) : c.value!.project, chosen.value)
     if (p) go(p.id)
     else emit('done')
   } catch (e) { error.value = (e as Error).message }
@@ -45,7 +60,10 @@ function resume() {
 <template>
   <div class="sheet-form coord-new-actions" data-testid="coordinator-actions">
     <p v-if="error" class="form-error">{{ error }}</p>
-    <template v-if="c && other && c.ran">
+    <UButton v-if="draft" block size="xl" color="primary" class="hw-cta" icon="i-lucide-play" :loading="busy" :disabled="!ready || !chosen" data-testid="project-start" @click="start">
+      {{ tl('Start', 'Lancer') }}
+    </UButton>
+    <template v-else-if="c && other && c.ran">
       <p class="coord-warn muted" data-testid="coordinator-other-agent">
         {{ tl(`Its conversation runs with ${agentName(c.ran)}.`, `Sa conversation tourne avec ${agentName(c.ran)}.`) }}
       </p>

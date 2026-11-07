@@ -18,6 +18,11 @@ is done and has a button that takes you there.
    folder on a machine herdr-core reaches) or pick a template for each one in
    the list. Projects imported from v2 ([Migrate from v2](migrate-from-v2.md))
    have none, and their tasks cannot start without it.
+   Quicker: **New › Project** opens a project's coordinator, or adds one from
+   a git repository found on the machine, a new or empty folder (created at
+   start, `git init` offered), or any folder without git (a folder of several
+   projects, for instance): its coordinator works in it, but tasks need git
+   for their own worktree.
 4. **Open the board and start the project coordinator.** Pick the project on
    the Board and press *Start*: the coordinator is the agent you talk to about
    the project. It adds tasks and follows them on the board. Alfred, wherdr's

@@ -48,8 +48,9 @@ export async function checkVisibility(deps: Deps, key: unknown, fetcher?: typeof
 
 // Before a coordinator or a task starts: checked once, never again on its own.
 // A machine that cannot answer leaves it unchecked (tried at the next start).
+// A folder without git has no remote to check.
 export async function ensureVisibility(deps: Deps, p: Project, fetcher?: typeof fetch): Promise<Project> {
-  if (p.visibility) return p
+  if (p.visibility || p.git === false) return p
   return checkVisibility(deps, p.key, fetcher).catch(() => p)
 }
 
