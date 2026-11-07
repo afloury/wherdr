@@ -13,7 +13,7 @@ function toggle(event: NotificationEvent, on: boolean) {
 
 <template>
   <div class="notification-level">
-    <select :value="level" :aria-label="label" @change="pick(($event.target as HTMLSelectElement).value)">
+    <select class="pm-select" :value="level" :aria-label="label" @change="pick(($event.target as HTMLSelectElement).value)">
       <option v-if="level === 'custom'" value="custom" disabled>{{ levelLabel('custom') }}</option>
       <option v-for="l in NOTIFICATION_LEVELS" :key="l" :value="l">{{ levelLabel(l) }}</option>
     </select>
@@ -29,7 +29,7 @@ function toggle(event: NotificationEvent, on: boolean) {
 
 <style scoped>
 .notification-level { display:flex; flex-direction:column; gap:6px; min-width:0; }
-.notification-level select { max-width:100%; min-height:44px; padding:8px; border:1px solid var(--line); border-radius:0; background:var(--bg); color:var(--text); font:inherit; }
+.notification-level .pm-select { font-family:inherit; }
 .notification-level-hint { color:var(--muted); font-size:12px; }
 .notification-customize summary { cursor:pointer; min-height:36px; display:flex; align-items:center; gap:4px; color:var(--muted); font-size:13px; list-style:none; }
 .notification-customize summary::-webkit-details-marker { display:none; }
