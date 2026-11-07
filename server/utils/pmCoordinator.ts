@@ -328,7 +328,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
       ...asleepOf(autopilot, mine, c, now), skippedToday: today(c?.skipped, now),
       ...(c?.woke?.at ? { wokeAt: c.woke.at } : {}),
       wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
-      project: p.key, name: p.name, ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...(p.template ? { template: p.template } : {}),
+      project: p.key, name: p.name, ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...(p.template ? { template: p.template } : {}),
       ...(c?.ran ? { ran: agentOf(c.ran) ?? FALLBACK } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
       ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, ...(c.proposal.said ? { said: c.proposal.said } : {}) } } : {}),
     }
@@ -412,7 +412,7 @@ export async function prepareCoordinator(deps: Deps, key: string, program: Coord
   if (key === MAIN) await issueAlfredToken(deps.store, folder!)
   // Alfred starts with its greeting (startPrompt).
   const prompt = key === MAIN ? [startPrompt(first, await readAlfredName(deps))] : []
-  return { on, folder, argv: coordinatorArgs(program, folder, p?.path), prompt, env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
+  return { on, folder, argv: coordinatorArgs(program, folder, p?.path, p?.git === false), prompt, env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
 }
 
 // Starts the coordinator in its folder, its harness's default model, token in its environment,

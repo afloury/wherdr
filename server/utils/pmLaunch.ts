@@ -66,6 +66,7 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: {
   if (task.state === 'working') throw new HerdrError('busy', 'This task is already working')
   const found = (await store.projects()).find(x => x.key === task.project)
   if (!found) throw new HerdrError('not_found', 'Unknown project')
+  if (found.git === false) return wait(store, task, 'The project folder is not a git repository: a task needs git for its own worktree')
   const p = await ensureVisibility(deps, found)
   const t = p.template ? await store.template(p.template) : null
   if (!t) return wait(store, task, 'The project has no template: pick one in Settings › Projects')
