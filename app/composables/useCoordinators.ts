@@ -55,6 +55,6 @@ export async function launchCoordinator(project: string, agent?: CoordinatorAgen
 
 // One tap: its conversation while it runs, else a new one with its default agent.
 export async function openCoordinator(c: CoordinatorView) {
-  const p = coordinatorPane(c) ?? await launchCoordinator(c.project)
+  const p = coordinatorPane(c) ?? await launchCoordinator(c.project, coordinatorAgent(c))
   if (p) await navigateTo(panePath(p.id))
 }

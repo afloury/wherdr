@@ -11,23 +11,21 @@ import { PUBLIC_RULE, isPublic } from './visibility'
 
 // The agent of a coordinator: the project's default, and the one its kept
 // conversation ran with (changing it starts a new conversation, never a
-// resume of another program's session).
-export interface CoordinatorAgent { program: 'claude' | 'codex', model: string }
-export const COORDINATOR_AGENTS: CoordinatorAgent[] = [
-  { program: 'claude', model: 'opus' }, { program: 'claude', model: 'sonnet' }, { program: 'codex', model: 'gpt-6-sol' },
-]
+// resume of another program's session). A program only: it runs with its
+// harness's default model, changed inside the agent.
+export interface CoordinatorAgent { program: CoordinatorProgram }
+// The harnesses that can carry a coordinator or Alfred: each reads its role
+// from AGENTS.md in its folder, or from its own file that imports it
+// (ROLE_POINTERS). Others (no known instructions file) are not offered there.
+export const COORDINATOR_PROGRAMS = ['claude', 'codex', 'omp', 'pi', 'opencode', 'kimi', 'gemini', 'qwen', 'copilot', 'amp', 'droid'] as const
+export type CoordinatorProgram = typeof COORDINATOR_PROGRAMS[number]
+export const isCoordinatorProgram = (v: unknown): v is CoordinatorProgram => COORDINATOR_PROGRAMS.includes(v as CoordinatorProgram)
+// Each harness's own instructions file, pointing to AGENTS.md.
+export const ROLE_POINTERS: Record<string, string> = { 'CLAUDE.md': '@AGENTS.md\n', 'GEMINI.md': '@AGENTS.md\n', 'QWEN.md': '@AGENTS.md\n' }
 // The main coordinator: one for all projects, kept under this reserved key
 // (never a project key: those start with a letter).
 export const MAIN = '_main'
-export const sameAgent = (a?: CoordinatorAgent, b?: CoordinatorAgent) => !!a && !!b && a.program === b.program && a.model === b.model
-export const agentName = (a: CoordinatorAgent) => (!a.model ? (a.program === 'claude' ? 'Claude' : 'Codex') : a.program === 'claude'
-  ? `Claude ${a.model.charAt(0).toUpperCase()}${a.model.slice(1)}`
-  : `Codex ${a.model.replace(/^gpt/i, 'GPT')}`)
-export const agentKey = (a: CoordinatorAgent) => `${a.program}:${a.model}`
-// The agents a coordinator can run: the usual ones, plus its default and its
-// kept conversation's agent when they are another.
-export const agentChoices = (c: { agent: CoordinatorAgent, ran?: CoordinatorAgent }) =>
-  [...COORDINATOR_AGENTS, ...[c.agent, c.ran].filter((a, i, all) => a && !COORDINATOR_AGENTS.some(b => sameAgent(a, b)) && all.findIndex(b => sameAgent(a, b)) === i) as CoordinatorAgent[]]
+export const sameAgent = (a?: CoordinatorAgent, b?: CoordinatorAgent) => !!a && !!b && a.program === b.program
 
 // A template change the coordinator proposed: the user accepts or refuses it
 // in the interface; only an accepted one is saved and goes to the template's log.
@@ -39,7 +37,8 @@ export type ProposalOutcome = 'accepted' | 'refused' | 'outdated: the template c
 // GET /api/pm/coordinators: one per project.
 export interface CoordinatorView {
   // main: the main coordinator (project is MAIN).
-  project: string, name: string, main?: boolean, agent: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'>
+  // agent: the default the user set for it, if any (else the first of their agents).
+  project: string, name: string, main?: boolean, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'>
   // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
   autopilot?: Autopilot, limits?: ReturnType<typeof limitsLeft>, wakes?: Wake[]
   // Nothing to do: its scheduled wakes are skipped (asleep), since its last wake.
@@ -199,19 +198,21 @@ export function stepDoneEvent(step: PlannedStep | undefined, cmd: { userSaid?: s
   return { kind: 'report', from: 'coordinator', ...(cmd.link ? { evidence: { link: cmd.link } } : {}) }
 }
 
-// How the coordinator starts, in its own folder. Claude: the repo added with
-// --add-dir, its edits denied in the folder's .claude/settings.json. Codex:
-// its --add-dir makes a folder writable, so none. Its `workspace-write`
-// sandbox has no network, which `wherdr pm` needs: a permission profile given
-// only by -c (nothing in ~/.codex) extends :workspace (reads everywhere, writes
-// in its folder and temp folders) with the network on.
-export function coordinatorArgs(program: 'claude' | 'codex', model: string, folder: string, repo?: string): string[] {
-  // No model (Alfred): the harness's own default, changed inside it.
-  const m = model ? ['--model', model] : []
-  return program === 'claude'
-    ? ['claude', ...m, ...(repo ? ['--add-dir', repo] : [])]
-    : ['codex', ...m, '-C', folder, '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true']
+// How the coordinator starts, in its own folder, with its harness's default
+// model. Claude: the repo added with --add-dir, its edits denied in the
+// folder's .claude/settings.json. Codex: its --add-dir makes a folder
+// writable, so none. Its `workspace-write` sandbox has no network, which
+// `wherdr pm` needs: a permission profile given only by -c (nothing in
+// ~/.codex) extends :workspace (reads everywhere, writes in its folder and
+// temp folders) with the network on. The others start bare in the folder.
+export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string): string[] {
+  if (program === 'claude') return ['claude', ...(repo ? ['--add-dir', repo] : [])]
+  if (program === 'codex') return ['codex', '-C', folder, '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true']
+  return [program]
 }
+// Claude and Codex take the first message as an argument; the others get it
+// typed once they are ready.
+export const promptAsArg = (program: CoordinatorProgram) => program === 'claude' || program === 'codex'
 
 // `wherdr` in the coordinator's folder (bin/, first in its PATH): the project's
 // machine may have no wherdr installed, and a build ships none. sh, base64 and
@@ -299,7 +300,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[]):
   const deny = [`Edit(/${p.path.replace(/\/$/, '')}/**)`]
   return {
     'AGENTS.md': agents,
-    'CLAUDE.md': '@AGENTS.md\n',
+    ...ROLE_POINTERS,
     '.claude/skills/wherdr-pm/SKILL.md': skill,
     '.claude/settings.json': `${JSON.stringify({ permissions: { deny } }, null, 2)}\n`,
     'bin/wherdr': WHERDR_SCRIPT,
@@ -329,5 +330,5 @@ export function mainRoleFiles(projects: Pick<Project, 'key' | 'name' | 'path' | 
   ].join('\n')
   const skill = ['---', 'name: wherdr-pm', 'description: Act on every project\'s board with the wherdr pm command (tasks, steps, tags, links).', '---', '',
     '# wherdr pm', '', 'Your token is in WHERDR_PM_TOKEN; the server checks every right. Add --project <KEY> to name a project.', '', ...commandList, ''].join('\n')
-  return { 'AGENTS.md': agents, 'CLAUDE.md': '@AGENTS.md\n', '.claude/skills/wherdr-pm/SKILL.md': skill, 'bin/wherdr': WHERDR_SCRIPT }
+  return { 'AGENTS.md': agents, ...ROLE_POINTERS, '.claude/skills/wherdr-pm/SKILL.md': skill, 'bin/wherdr': WHERDR_SCRIPT }
 }

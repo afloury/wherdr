@@ -3,7 +3,7 @@
 // changed in one gesture), its autopilot, a warning when its kept conversation ran with
 // another agent, and the template change it proposed, to accept or refuse.
 // On the board (`open`), also the button that opens or starts it.
-import { agentChoices, agentKey as key, agentName, sameAgent, type CoordinatorView } from '#shared/pm/coordinator'
+import { sameAgent, type CoordinatorView } from '#shared/pm/coordinator'
 
 const props = defineProps<{ c: CoordinatorView, open?: boolean }>()
 const busy = ref(false)
@@ -11,10 +11,12 @@ const busy = ref(false)
 const showDiff = ref(!!props.open)
 const error = ref('')
 
-const choices = computed(() => agentChoices(props.c))
+// Its default: the one set for it, else the user's first agent (Settings › Agents).
+const agent = computed(() => coordinatorAgent(props.c))
+const agentName = (a?: { program: string }) => (a ? kindLabel(a.program) : '')
 const pane = computed(() => coordinatorPane(props.c))
 // The kept conversation is another agent's: warn, a new one first.
-const other = computed(() => !!pane.value && !!props.c.ran && !sameAgent(props.c.ran, props.c.agent) && !resumedCoordinators.value.includes(props.c.terminal!))
+const other = computed(() => !!pane.value && !!props.c.ran && !sameAgent(props.c.ran, agent.value) && !resumedCoordinators.value.includes(props.c.terminal!))
 const diff = computed(() => (props.c.proposal?.diff ?? '').split('\n').map(l => ({ l, k: l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : '' })))
 
 async function act(fn: () => Promise<unknown>) {
@@ -24,9 +26,9 @@ async function act(fn: () => Promise<unknown>) {
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = false }
 }
-const agentItems = computed(() => choices.value.map(a => ({ label: agentName(a), value: key(a) })))
-const setDefault = (v: string) => act(() => api('/api/pm/coordinator-agent', { project: props.c.project, ...choices.value.find(a => key(a) === v)! }))
-const fresh = () => act(async () => { const p = await launchCoordinator(props.c.project); if (p) await navigateTo(panePath(p.id)) })
+const agentItems = computed(() => offerCoordinators().map(p => ({ label: kindLabel(p), value: p })))
+const setDefault = (program: string) => act(() => api('/api/pm/coordinator-agent', { project: props.c.project, program }))
+const fresh = () => act(async () => { const p = await launchCoordinator(props.c.project, agent.value); if (p) await navigateTo(panePath(p.id)) })
 const resume = () => { resumeCoordinator(props.c.terminal!); if (props.open && pane.value) navigateTo(panePath(pane.value.id)) }
 const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh())
 const title = computed(() => (props.c.main ? tl('Main coordinator · all projects', 'Coordinateur principal · tous les projets') : `${tl('Project coordinator', 'Coordinateur de projet')} · ${props.c.project}`))
@@ -37,16 +39,16 @@ const answer = (accept: boolean) => act(() => api('/api/pm/template-proposal', {
   <div class="coord" data-testid="coordinator-bar">
     <div class="coord-head">
       <span class="mono-label">{{ title }}</span>
-      <USelect :model-value="key(c.agent)" :items="agentItems" size="lg" class="coord-agent" :disabled="busy" :aria-label="tl('Default agent', 'Agent par défaut')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
+      <USelect :model-value="agent?.program" :items="agentItems" size="lg" class="coord-agent" :disabled="busy" :aria-label="tl('Default agent', 'Agent par défaut')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
       <UButton v-if="open && !other" color="primary" size="lg" :loading="busy" data-testid="coordinator-open" @click="openIt">
-        {{ pane ? tl('Open', 'Ouvrir') : tl(`Start with ${agentName(c.agent)}`, `Lancer avec ${agentName(c.agent)}`) }}
+        {{ pane ? tl('Open', 'Ouvrir') : tl(`Start with ${agentName(agent)}`, `Lancer avec ${agentName(agent)}`) }}
       </UButton>
     </div>
     <CoordinatorAutopilot :c="c" />
     <div v-if="other && c.ran" class="term-banner coord-warn" data-testid="coordinator-other-agent">
       <UIcon name="i-lucide-triangle-alert" class="term-banner-icon" />
-      <span class="coord-warn-text">{{ tl(`The previous conversation used ${agentName(c.ran)}. The default is ${agentName(c.agent)}.`, `La conversation précédente utilisait ${agentName(c.ran)}. Le défaut est ${agentName(c.agent)}.`) }}</span>
-      <UButton size="xs" color="warning" :loading="busy" data-testid="coordinator-new" @click="fresh">{{ tl(`New conversation with ${agentName(c.agent)}`, `Nouvelle conversation avec ${agentName(c.agent)}`) }}</UButton>
+      <span class="coord-warn-text">{{ tl(`The previous conversation used ${agentName(c.ran)}. The default is ${agentName(agent)}.`, `La conversation précédente utilisait ${agentName(c.ran)}. Le défaut est ${agentName(agent)}.`) }}</span>
+      <UButton size="xs" color="warning" :loading="busy" data-testid="coordinator-new" @click="fresh">{{ tl(`New conversation with ${agentName(agent)}`, `Nouvelle conversation avec ${agentName(agent)}`) }}</UButton>
       <UButton size="xs" color="warning" variant="outline" data-testid="coordinator-resume" @click="resume">{{ tl(`Resume with ${agentName(c.ran)}`, `Reprendre avec ${agentName(c.ran)}`) }}</UButton>
     </div>
     <section v-if="c.proposal" class="coord-proposal" data-testid="template-proposal">

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 // Alfred, wherdr's assistant: the first row of the agent list, always there
 // (projects on or off). Not started: a greyed row; the first time, a sheet
-// asks for its program (one tile per one installed on wherdr's machine; no
-// model: the user changes it inside Alfred), remembered after. Its ••• menu
+// asks for its program (the offered agents of Settings › Agents installed on
+// wherdr's machine, in the user's order; no model: the user changes it inside Alfred), remembered after. Its ••• menu
 // restarts it with another program: the same Alfred (home folder, identity,
 // memory), the old session stopped.
 import { MAIN } from '#shared/pm/coordinator'
-import { alfredPrograms, type AlfredProgram } from '#shared/pm/alfred'
+import type { AlfredProgram } from '#shared/pm/alfred'
 
 const busy = ref(false)
 const error = ref('')
@@ -15,8 +15,8 @@ const pick = ref('')
 
 const name = computed(() => alfred.value?.name || 'Alfred')
 const current = computed(() => (alfredPane.value ? alfred.value?.ran : undefined) ?? alfred.value?.program)
-// The programs installed on wherdr's own machine, minus those hidden in Settings › Agents.
-const choices = computed(() => alfredPrograms(appConfig.value.machines?.find(m => m.local)?.kinds ?? appConfig.value.kinds, hiddenAgents.value))
+// The offered agents installed on wherdr's own machine that can carry Alfred.
+const choices = computed(() => offerCoordinators(appConfig.value.machines?.find(m => m.local)?.kinds ?? appConfig.value.kinds))
 const sub = computed(() => {
   if (busy.value) return tl('Starting…', 'Lancement…')
   if (alfredPane.value) return `${current.value ? `${kindLabel(current.value)} · ` : ''}${statusLabel(alfredPane.value)}`
@@ -37,7 +37,7 @@ async function start(program: AlfredProgram) {
   error.value = ''
   sheet.value = false
   try {
-    const p = await launchCoordinator(MAIN, { program, model: '' })
+    const p = await launchCoordinator(MAIN, { program })
     await loadAlfred()
     if (p) await navigateTo(panePath(p.id))
   }
@@ -47,7 +47,8 @@ async function start(program: AlfredProgram) {
 // One tap: its conversation, else a start with its agent (chosen first, the first time).
 async function open() {
   if (alfredPane.value) return navigateTo(panePath(alfredPane.value.id))
-  if (!alfred.value?.program) return choose()
+  // Its program unchecked in Settings since: pick another.
+  if (!alfred.value?.program || !choices.value.includes(alfred.value.program)) return choose()
   await start(alfred.value.program)
 }
 const picked = () => choices.value.find(p => p === pick.value)
@@ -77,15 +78,8 @@ onUnmounted(() => clearInterval(timer))
           : tl('Alfred is wherdr’s assistant: it helps you get started and coordinates your projects. Pick the agent it runs on; you can change it later from its ••• menu.', 'Alfred est l’assistant de wherdr : il t’aide à démarrer et coordonne tes projets. Choisis l’agent qui le fait tourner ; tu pourras en changer depuis son menu •••.') }}
       </p>
       <label class="field-label">{{ tl('Agent', 'Agent') }}</label>
-      <div v-if="choices.length" class="segmented alfred-agents" role="radiogroup" :aria-label="tl('Agent', 'Agent')" :style="{ '--segment-count': choices.length }">
-        <button
-          v-for="p in choices" :key="p" type="button" role="radio" :class="{ on: p === pick }"
-          :aria-checked="p === pick" :data-agent="p" @click="pick = p"
-        >
-          <AgentAvatar :agent="p" /><span>{{ kindLabel(p) }}</span>
-        </button>
-      </div>
-      <p v-else class="alfred-note" data-testid="alfred-none">{{ tl('Install Claude Code or Codex on this machine to start Alfred.', 'Installe Claude Code ou Codex sur cette machine pour lancer Alfred.') }}</p>
+      <AgentPicker v-if="choices.length" v-model="pick" :programs="choices" class="alfred-agents" />
+      <p v-else class="alfred-note" data-testid="alfred-none">{{ tl('No offered agent on this machine can run Alfred: install one (Claude Code, Codex, OMP…) or check it in Settings › Agents.', 'Aucun agent proposé sur cette machine ne peut faire tourner Alfred : installe-en un (Claude Code, Codex, OMP…) ou coche-le dans Réglages › Agents.') }}</p>
       <p v-if="choices.length" class="alfred-hint muted">{{ tl('It runs with the agent’s default model; change the model inside Alfred.', 'Il tourne avec le modèle par défaut de l’agent ; change de modèle dans Alfred.') }}</p>
     </div>
     <template #footer>
@@ -114,6 +108,5 @@ onUnmounted(() => clearInterval(timer))
 .alfred-more { flex: none; align-self: center; margin-right: 4px; }
 .alfred-error { margin: -14px 0 14px; }
 .alfred-note { margin: 0 2px 14px; color: var(--text-2); font-size: 14px; }
-.alfred-agents button { text-transform: none; letter-spacing: .02em; }
 .alfred-hint { margin: 8px 2px 0; font-size: 13px; }
 </style>

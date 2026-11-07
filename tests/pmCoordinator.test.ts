@@ -123,10 +123,25 @@ describe('the main coordinator (WHR-398)', () => {
     // No program given: the one picked last.
     await startCoordinator(d, MAIN, {}, { local: 'http://127.0.0.1:7690' })
     expect(runs[2]!.line).toMatch(/exec 'codex' '-C'/)
-    await expect(startCoordinator(d, MAIN, { program: 'gemini' }, { local: 'http://127.0.0.1:7690' })).rejects.toThrow('program')
+    await expect(startCoordinator(d, MAIN, { program: 'cline' }, { local: 'http://127.0.0.1:7690' })).rejects.toThrow('program')
     const view = await coordinatorsView(store)
     expect(view.map(c => c.project)).toEqual([MAIN, 'CO', 'ST'])
     expect(view[0]).toMatchObject({ main: true, terminal: 'host/t3' })
+  })
+
+  it('runs Alfred with OMP too: started bare in its home, its greeting typed once it is ready', async () => {
+    const lines: string[] = [], sent: unknown[] = []
+    const call = async (method: string, params: Record<string, unknown>) => {
+      if (method === 'terminal.run') return lines.push(params.line as string), { address: 'host/t1' }
+      if (method === 'terminal.get') return { state: 'running', status: 'idle' }
+      if (method === 'terminal.read') return { text: 'omp ready' }
+      if (method === 'terminal.send') sent.push(params.text)
+      return {}
+    }
+    const d = { store, call, machines: () => [], alfredHome: path.join(dir, 'alfred'), pollMs: 1 } as never
+    await startCoordinator(d, MAIN, { program: 'omp' }, { local: 'http://127.0.0.1:7690' })
+    expect(lines[0]).toMatch(/exec 'omp'$/)
+    await vi.waitFor(() => expect(sent).toEqual([expect.stringContaining('give me another name?')]))
   })
 
   it('runs Alfred with projects off: its record is saved, its instructions say how to switch them on', async () => {
@@ -292,7 +307,7 @@ describe('role files', () => {
     expect(written.every(f => f.startsWith('/h/.wherdr/pm/coordinators/CO/'))).toBe(true)
     expect(written).toContain('/h/.wherdr/pm/coordinators/CO/bin/wherdr')
     expect(runs[0]).toMatchObject({ cwd: '/h/.wherdr/pm/coordinators/CO', labels: { 'wherdr.coordinator': 'CO' }, env: { DISABLE_AUTOUPDATER: '1', WHERDR_URL: urls.local } })
-    expect(runs[0]!.line).toContain(`export PATH='/h/.wherdr/pm/coordinators/CO/bin':"$PATH"; exec 'claude' '--model' 'opus' '--add-dir' '/src/co'`)
+    expect(runs[0]!.line).toContain(`export PATH='/h/.wherdr/pm/coordinators/CO/bin':"$PATH"; exec 'claude' '--add-dir' '/src/co'`)
     const fresh = (runs[0]!.env as { WHERDR_PM_TOKEN: string }).WHERDR_PM_TOKEN
     await refused(cli(['list']), 'Unknown coordinator token')
     await expect(cli(['list'], undefined, fresh)).resolves.toBeTruthy()
@@ -303,16 +318,19 @@ describe('role files', () => {
 
   it('start with the project\'s default agent, remember the agent that ran, and a new conversation replaces the old one', async () => {
     const { runs, deps } = fakeCore()
+    // No default set yet: none in the view (the client offers the user's first agent).
+    expect((await coordinatorsView(store)).find(c => c.project === 'CO')!.agent).toBeUndefined()
     await setCoordinatorAgent(store, 'CO', { program: 'claude', model: 'sonnet' })
     await startCoordinator(deps, 'CO', {}, urls)
-    expect(runs[0]!.line).toContain(`exec 'claude' '--model' 'sonnet'`)
-    await setCoordinatorAgent(store, 'CO', { program: 'codex', model: 'gpt-5' })
+    expect(runs[0]!.line).toMatch(/exec 'claude' '--add-dir' '\/src\/co'$/)
+    await setCoordinatorAgent(store, 'CO', { program: 'codex' })
     // The default and the agent of the kept conversation stay apart, and survive a new token.
-    expect((await coordinatorsView(store)).find(c => c.project === 'CO')).toMatchObject({ agent: { program: 'codex', model: 'gpt-5' }, ran: { program: 'claude', model: 'sonnet' }, terminal: 'host/t5' })
+    expect((await coordinatorsView(store)).find(c => c.project === 'CO')).toMatchObject({ agent: { program: 'codex' }, ran: { program: 'claude' }, terminal: 'host/t5' })
     await startCoordinator(deps, 'CO', {}, urls)
     expect(runs.map(r => [r.method, r.terminal ?? r.cwd])).toEqual([['terminal.run', '/h/.wherdr/pm/coordinators/CO'], ['terminal.run', '/h/.wherdr/pm/coordinators/CO'], ['terminal.kill', 'host/t5']])
-    expect((await store.coordinator('CO'))).toMatchObject({ agent: { program: 'codex' }, ran: { program: 'codex', model: 'gpt-5' }, terminal: 'host/t6' })
-    await refused(setCoordinatorAgent(store, 'CO', { program: 'omp', model: 'x' }), 'claude or codex')
+    expect((await store.coordinator('CO'))).toMatchObject({ agent: { program: 'codex' }, ran: { program: 'codex' }, terminal: 'host/t6' })
+    await setCoordinatorAgent(store, 'CO', { program: 'omp' })
+    await refused(setCoordinatorAgent(store, 'CO', { program: 'cline' }), 'an agent that can coordinate')
     await refused(setCoordinatorAgent(store, 'NOPE', { program: 'claude', model: 'opus' }), 'Unknown project')
   })
 
@@ -325,7 +343,7 @@ describe('role files', () => {
 
   it('say who it is, its commands, each plan and the user\'s instructions, all inside its own folder', () => {
     const files = roleFiles({ key: 'CO', name: 'Company', machine: '', path: '/src/co', template: 'company', addedAt: 1 }, company, EXAMPLES)
-    expect(Object.keys(files).sort()).toEqual(['.claude/settings.json', '.claude/skills/wherdr-pm/SKILL.md', 'AGENTS.md', 'CLAUDE.md', 'bin/wherdr'])
+    expect(Object.keys(files).sort()).toEqual(['.claude/settings.json', '.claude/skills/wherdr-pm/SKILL.md', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'QWEN.md', 'bin/wherdr'])
     const agents = files['AGENTS.md']!
     expect(agents).toContain('You coordinate project CO only')
     expect(agents).toContain('`wherdr pm task link <task> <url> --label <label>`')
@@ -335,7 +353,9 @@ describe('role files', () => {
     expect(agents).toContain('with its absolute path (`/src/co/README.md`)')
     expect(files['CLAUDE.md']).toBe('@AGENTS.md\n')
     expect(JSON.parse(files['.claude/settings.json']!).permissions.deny).toEqual(['Edit(//src/co/**)'])
-    const codex = coordinatorArgs('codex', 'gpt-5', '/h/c', '/src/co')
+    const codex = coordinatorArgs('codex', '/h/c', '/src/co')
+    expect(codex).not.toContain('--model')
+    expect(coordinatorArgs('omp', '/h/c', '/src/co')).toEqual(['omp'])
     expect(codex).not.toContain('--add-dir')
     expect(codex).not.toContain('-s') // a sandbox mode would bring back the profile-less sandbox, without network
     expect(codex).toEqual(expect.arrayContaining(['default_permissions="wherdr"', 'permissions.wherdr.extends=":workspace"', 'permissions.wherdr.network.enabled=true']))

@@ -2,7 +2,7 @@
 // The COORDINATORS section under Alfred (AlfredRow, the main coordinator) at
 // the top of the agent list: the project coordinators that run. One tap opens
 // its conversation. Hidden while project management is off.
-import { agentName, type CoordinatorView } from '#shared/pm/coordinator'
+import type { CoordinatorView } from '#shared/pm/coordinator'
 
 const busy = ref('')
 const error = ref('')
@@ -20,8 +20,9 @@ async function open(c: CoordinatorView) {
 const name = (c: CoordinatorView) => tl(`${c.project} coordinator`, `Coordinateur ${c.project}`)
 const sub = (c: CoordinatorView) => {
   const p = coordinatorPane(c)
-  if (p) return `${agentName(c.ran ?? c.agent)} · ${statusLabel(p)}`
-  return tl(`Start with ${agentName(c.agent)}`, `Lancer avec ${agentName(c.agent)}`)
+  const program = kindLabel((c.ran ?? coordinatorAgent(c))?.program)
+  if (p) return `${program} · ${statusLabel(p)}`
+  return tl(`Start with ${program}`, `Lancer avec ${program}`)
 }
 
 let timer: ReturnType<typeof setInterval> | undefined

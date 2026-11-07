@@ -27,7 +27,8 @@ const coordAgent = ref('')
 const canCoordinate = computed(() => !newTabSpace.value && coordinators.value.length > 0)
 watch(canCoordinate, (can) => { if (!can) coordinator.value = false })
 
-const kinds = computed(() => visibleAgentKinds(machineCfg.value?.kinds || appConfig.value.kinds || [], hiddenAgents.value))
+// Settings › Agents: the offered agents of this machine, in the user's order (the first is the default).
+const kinds = computed(() => visibleAgentKinds(machineCfg.value?.kinds || appConfig.value.kinds || [], hiddenAgents.value, agentOrder.value))
 const shell = computed(() => kind.value === 'shell')
 const canResume = computed(() => kind.value === 'claude' || kind.value === 'codex')
 
@@ -57,7 +58,7 @@ function syncKind() {
     const last = list.find(m => m.key === lastMachine.value && online(m))
     setMachine(last ? last.key : '')
   } else if (!list && machine.value) setMachine('')
-  kind.value = selectedAgentKind(kind.value, kinds.value, lastKind.value)
+  kind.value = selectedAgentKind(kind.value, kinds.value)
   if (!dir.value) dir.value = recents.value[0] || home.value || '~'
 }
 function setMachine(k: string) {
@@ -81,6 +82,8 @@ watch(newAgentOpen, async (open) => {
   error.value = null
   browsing.value = false
   launching.value = false
+  // Each opening starts on the user's first agent.
+  kind.value = ''
   if (!newTabSpace.value) loadCoordinators()
   syncKind()
   await loadConfig()
@@ -103,7 +106,6 @@ function pickCoordinator() {
 function pickKind(k: string) {
   coordinator.value = false
   kind.value = k
-  lastKind.value = k
 }
 
 // ------------------------------------------------------------ navigateur de dossiers
