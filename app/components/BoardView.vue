@@ -33,8 +33,8 @@ const tagPick = noneModel(tag)
 const projectItems = computed(() => [{ label: tl('All projects', 'Tous les projets'), value: NONE }, ...(data.value?.projects ?? []).map(p => ({ label: p.name, value: p.key }))])
 const tagItems = computed(() => [{ label: tl('Tags', 'Étiquettes'), value: NONE }, ...tags.value.map(x => ({ label: x, value: x }))])
 const tags = computed(() => boardTags((data.value?.cards ?? []).filter(c => !project.value || c.project === project.value)))
-// All projects: the main coordinator.
-const coordinator = computed(() => (project.value ? coordinators.value.find(c => c.project === project.value) : mainCoordinator.value))
+// A project's coordinator; All projects is Alfred's (AlfredRow as a banner).
+const coordinator = computed(() => (project.value ? coordinators.value.find(c => c.project === project.value) : undefined))
 const columns = computed(() => (project.value ? data.value?.projects.find(p => p.key === project.value)?.columns ?? [] : null))
 const lanes = computed(() => boardLanes(cards.value, columns.value))
 const PHASE_LABEL: Record<string, string> = { 'your-turn': 'Your turn', 'todo': 'To do', 'working': 'Working', 'done': 'Done' }
@@ -72,6 +72,7 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
       <USelect v-if="tags.length || tag" v-model="tagPick" :items="tagItems" size="lg" class="board-select" :aria-label="tl('Tag', 'Étiquette')" data-testid="board-tag" />
     </header>
     <CoordinatorBar v-if="coordinator" :c="coordinator" open />
+    <AlfredRow v-else-if="!project" banner />
     <!-- One scroll on the phone, so a tall guide does not hide the lanes. -->
     <div class="board-body">
     <PmGuide :always="route.query.guide === '1'" />

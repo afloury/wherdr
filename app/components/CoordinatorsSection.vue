@@ -1,12 +1,12 @@
 <script setup lang="ts">
-// The COORDINATORS section under Alfred (AlfredRow, the main coordinator) at
+// The COORDINATORS section under Alfred (AlfredRow, which coordinates all projects) at
 // the top of the agent list: the project coordinators that run. One tap opens
 // its conversation. Hidden while project management is off.
 import type { CoordinatorView } from '#shared/pm/coordinator'
 
 const busy = ref('')
 const error = ref('')
-const rows = computed(() => coordinators.value.filter(c => !c.main && coordinatorPane(c)))
+const rows = computed(() => projectCoordinators.value.filter(c => coordinatorPane(c)))
 
 async function open(c: CoordinatorView) {
   if (busy.value) return

@@ -1,4 +1,4 @@
-// The coordinators (GET /api/pm/coordinators: the main one, then each
+// The coordinators (GET /api/pm/coordinators: Alfred's, then each
 // project's), shared by the sidebar, the board and the conversation view,
 // which shows its coordinator bar on their panes.
 import type { CoordinatorAgent, CoordinatorView } from '#shared/pm/coordinator'
@@ -6,7 +6,8 @@ import type { AlfredProgram } from '#shared/pm/alfred'
 import type { Pane } from '#shared/types'
 
 export const coordinators = ref<CoordinatorView[]>([])
-export const mainCoordinator = computed(() => coordinators.value.find(c => c.main))
+// The projects' own coordinators: Alfred (the main one) has its own row.
+export const projectCoordinators = computed(() => coordinators.value.filter(c => !c.main))
 let loading: Promise<void> | null = null
 // Kept conversations of another agent the user chose to resume: no warning
 // any more, also after a reload (this browser only).

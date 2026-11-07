@@ -33,6 +33,12 @@ it('says who you talk to and which agent answers, and changes the default in one
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: 'CO', program: 'codex' } }]))
 })
 
+it('in Alfred\'s conversation: its name, no agent select (its row\'s "Restart with…" changes it)', async () => {
+  const b = await mount(view({ project: '_main', name: 'Jarvis', main: true }))
+  expect(b.get('.mono-label').text()).toBe('Jarvis · all projects')
+  expect(b.find('[data-testid="coordinator-agent"]').exists()).toBe(false)
+})
+
 it('with no default set, or its default unchecked in Settings › Agents, offers the user\'s first agent', async () => {
   agentOrder.value = ['codex']
   const b = await mount(view({ agent: undefined }), true)

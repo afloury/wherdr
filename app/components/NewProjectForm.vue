@@ -16,7 +16,7 @@ const draft = defineModel<ProjectDraft | null>('draft', { required: true })
 const props = defineProps<{ machine: string, machines?: MachineConfig[] | null }>()
 const emit = defineEmits<{ settings: [], browse: [], machine: [m: MachineConfig] }>()
 
-const current = computed(() => coordinators.value.find(c => c.project === project.value))
+const current = computed(() => projectCoordinators.value.find(c => c.project === project.value))
 const choices = computed(() => (current.value ? offerCoordinators(undefined, current.value.project) : draft.value ? offerCoordinators(undefined, 'NEW') : []))
 const fallback = computed(() => (current.value ? coordinatorAgent(current.value)?.program ?? '' : choices.value[0] ?? ''))
 const running = (project: string) => {
@@ -96,6 +96,8 @@ watch(() => draft.value && `${draft.value.machine}\n${draft.value.path}`, () => 
   }, 300)
 })
 onBeforeUnmount(() => clearTimeout(timer))
+// No project yet: straight to adding one.
+onMounted(() => { if (!project.value && !draft.value && !projectCoordinators.value.length) add() })
 const kind = computed(() => (draft.value?.probe ? folderKind(draft.value.probe) : null))
 const notes = {
   git: () => tl('Git repository: each task gets its own worktree and pull request.', 'Dépôt git : chaque tâche a son worktree et sa pull request.'),
@@ -110,13 +112,13 @@ const notes = {
     <label class="field-label">{{ tl('Project', 'Projet') }}</label>
     <div class="coord-projects" role="radiogroup" :aria-label="tl('Project', 'Projet')">
       <button
-        v-for="c in coordinators" :key="c.project" type="button" role="radio" :class="{ on: !draft && c.project === project }"
+        v-for="c in projectCoordinators" :key="c.project" type="button" role="radio" :class="{ on: !draft && c.project === project }"
         :aria-checked="!draft && c.project === project" :data-project="c.project" @click="pick(c.project)"
       >
-        <span class="coord-key">{{ c.main ? tl('Main', 'Principal') : c.project }}</span>
-        <span class="coord-name">{{ c.main ? tl('All projects', 'Tous les projets') : c.name }}</span>
+        <span class="coord-key">{{ c.project }}</span>
+        <span class="coord-name">{{ c.name }}</span>
         <span v-if="running(c.project)" class="coord-state run">{{ tl('Running', 'En cours') }}</span>
-        <span v-else-if="!c.main && !c.template && c.git !== false" class="coord-state">{{ tl('No template', 'Sans modèle') }}</span>
+        <span v-else-if="!c.template && c.git !== false" class="coord-state">{{ tl('No template', 'Sans modèle') }}</span>
       </button>
       <button type="button" role="radio" :class="{ on: !!draft }" :aria-checked="!!draft" data-testid="project-add" @click="add">
         <UIcon name="i-lucide-plus" class="coord-key" /><span class="coord-name">{{ tl('Add a project', 'Ajouter un projet') }}</span>
@@ -175,7 +177,7 @@ const notes = {
       </template>
     </template>
 
-    <template v-if="current && !current.main && !current.template && current.git !== false">
+    <template v-if="current && !current.template && current.git !== false">
       <p class="coord-note" data-testid="coordinator-no-template">
         {{ tl('This project needs a template before its coordinator can start.', 'Ce projet a besoin d’un modèle avant de lancer son coordinateur.') }}
         <NuxtLink to="/settings?section=projects" data-testid="coordinator-settings" @click="emit('settings')">{{ tl('Settings › Projects', 'Réglages › Projets') }}</NuxtLink>
