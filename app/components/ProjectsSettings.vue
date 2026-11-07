@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // Settings › Projects: the project management switch, the projects (a git
 // folder on a machine herdr-core reaches), the template each one follows,
+// whether its repository is public (checked by wherdr, or set by the user),
 // each project's automations and the template editor.
 // Off, the server refuses every change but the switch.
 import type { PmOverview } from '#shared/pm/project'
+import type { RepoVisibility } from '#shared/pm/visibility'
 
 const props = defineProps<{ active: boolean }>()
 const data = ref<PmOverview | null>(null)
@@ -41,6 +43,14 @@ const pickTemplate = (key: string, template: string) => run(`tpl:${key}`, async 
   await api('/api/pm/project-template', { key, template })
   await load()
 })
+// The user's override (public or private), or wherdr's check again.
+const setVisibility = (key: string, body: { value: string } | { check: true }) => run(`vis:${key}`, async () => {
+  await api('/api/pm/project-visibility', { key, ...body })
+  await load()
+})
+const visibilityNote = (v?: RepoVisibility) => !v ? tl('Not checked yet', 'Pas encore vérifié')
+  : v.by === 'user' ? tl('Set by you', 'Choisi par vous')
+  : `${v.value === 'unknown' ? tl('Not found', 'Introuvable') : tl('Checked', 'Vérifié')} ${new Date(v.at).toLocaleDateString()}`
 const remove = (key: string) => run(`rm:${key}`, async () => {
   await api('/api/pm/project-remove', { key })
   await load()
@@ -62,7 +72,7 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
       <h3>{{ tl('Projects', 'Projets') }}</h3>
       <div v-if="data.projects.length" class="settings-card">
         <div v-for="p in data.projects" :key="p.key" class="pm-row" data-testid="pm-project">
-          <span class="pm-id"><b>{{ p.name }}</b><small class="mono-label">{{ p.key }} · {{ machineName(p.machine) }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
+          <span class="pm-id"><b>{{ p.name }}<span v-if="p.visibility?.value === 'public'" class="pm-public" data-testid="pm-public">{{ tl('Public', 'Public') }}</span></b><small class="mono-label">{{ p.key }} · {{ machineName(p.machine) }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
           <select
             class="pm-select" :value="p.template || ''" :disabled="busy !== ''" :aria-label="tl(`Template of ${p.name}`, `Modèle de ${p.name}`)"
             data-testid="pm-project-template" @change="pickTemplate(p.key, ($event.target as HTMLSelectElement).value)"
@@ -71,6 +81,18 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
             <option v-for="tp in data.templates" :key="tp.id" :value="tp.id">{{ tp.id }}</option>
           </select>
           <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-trash-2" :aria-label="tl(`Remove ${p.name}`, `Retirer ${p.name}`)" :loading="busy === `rm:${p.key}`" @click="remove(p.key)" />
+          <span class="pm-vis">
+            <select
+              class="pm-select" :value="p.visibility?.value ?? 'unknown'" :disabled="busy !== ''" :aria-label="tl(`Repository of ${p.name}`, `Dépôt de ${p.name}`)"
+              data-testid="pm-visibility" @change="setVisibility(p.key, { value: ($event.target as HTMLSelectElement).value })"
+            >
+              <option v-if="(p.visibility?.value ?? 'unknown') === 'unknown'" value="unknown" disabled>{{ tl('Repository: unknown', 'Dépôt : inconnu') }}</option>
+              <option value="public">{{ tl('Public repository', 'Dépôt public') }}</option>
+              <option value="private">{{ tl('Private repository', 'Dépôt privé') }}</option>
+            </select>
+            <small class="mono-label">{{ visibilityNote(p.visibility) }}</small>
+            <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-refresh-cw" :loading="busy === `vis:${p.key}`" :disabled="busy !== ''" data-testid="pm-visibility-check" @click="setVisibility(p.key, { check: true })">{{ tl('Check again', 'Revérifier') }}</UButton>
+          </span>
         </div>
       </div>
       <UButton v-if="data.projects.length" to="/board" color="neutral" variant="outline" size="xl" icon="i-lucide-kanban" class="pm-board" data-testid="pm-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
@@ -121,12 +143,14 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
 .pm-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
 .pm-row:last-child { border-bottom: 0; }
 .pm-id { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.pm-public { margin-left: 8px; padding: 2px 6px; border: 1px solid var(--blocked); color: var(--blocked); font: 600 11px/1 var(--font-mono, 'JetBrains Mono', monospace); letter-spacing: .08em; text-transform: uppercase; vertical-align: 2px; }
+.pm-vis { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .pm-path { color: var(--muted); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; }
 form .pm-select { width: 100%; }
 .pm-settings form.sheet-form { margin-top: 8px; }
 .pm-settings form .settings-hint { margin-bottom: 16px; }
 @media (max-width: 520px) {
   .pm-row { grid-template-columns: minmax(0, 1fr) auto; }
-  .pm-row .pm-select { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+  .pm-row > .pm-select { grid-column: 1 / -1; grid-row: 2; width: 100%; }
 }
 </style>

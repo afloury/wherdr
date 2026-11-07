@@ -10,6 +10,8 @@ import { PATH_SETUP, homeOf, kindsOf, launchFailure, machineOn, type CoreAdminDe
 import type { PmStore } from './pmStore'
 import { initialState, onEvent, planSteps } from '../../shared/pm/steps'
 import { doneSection, runFiles } from '../../shared/pm/advance'
+import { isPublic } from '../../shared/pm/visibility'
+import { ensureVisibility, readLeakCheck } from './pmVisibility'
 import { LABEL, agentLine, isAuthFailure, instructionsText, shotStep, reconcile, runLabels, taskPaths, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 
 // Reuses the worktree of an earlier attempt; else a new branch from the base,
@@ -62,8 +64,9 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: {
   const task = await store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
   if (task.state === 'working') throw new HerdrError('busy', 'This task is already working')
-  const p = (await store.projects()).find(x => x.key === task.project)
-  if (!p) throw new HerdrError('not_found', 'Unknown project')
+  const found = (await store.projects()).find(x => x.key === task.project)
+  if (!found) throw new HerdrError('not_found', 'Unknown project')
+  const p = await ensureVisibility(deps, found)
   const t = p.template ? await store.template(p.template) : null
   if (!t) return wait(store, task, 'The project has no template: pick one in Settings › Projects')
   const plan = workerPlan(t, task)
@@ -86,7 +89,8 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: {
   if (wt.code !== 0) return wait(store, task, `git worktree failed: ${wt.out.split('\n').slice(-3).join(' ') || 'timeout'}`)
   // A visual task: the worker's key to upload its screenshots, kept with the task.
   const shotToken = shotStep(t, task.type) ? task.shotToken || randomBytes(16).toString('hex') : undefined
-  const text = instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(p.machine, deps.origin), token: shotToken } : undefined)
+  const leakCheck = isPublic(p) ? (await readLeakCheck(deps, on, paths).catch(() => ({ check: undefined }))).check : undefined
+  const text = instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(p.machine, deps.origin), token: shotToken } : undefined, leakCheck)
     + ['', ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n')
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')
 

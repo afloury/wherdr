@@ -11,6 +11,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { cleanProjectInput, isTemplateId, type PmOverview, type Project, type TemplateInfo } from '../../shared/pm/project'
+import type { RepoVisibility } from '../../shared/pm/visibility'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
 import { publicTask, type Run, type Task } from '../../shared/pm/run'
@@ -230,6 +231,15 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const { list, i } = await findProject(key)
       const { template: _old, ...rest } = list[i]!
       list[i] = id ? { ...rest, template: id } : rest
+      await saveProjects(list)
+      return list[i]!
+    }),
+
+    // A public repository's guardrails: its visibility, checked by wherdr or set by the user.
+    setVisibility: (key: unknown, v: RepoVisibility) => write(async () => {
+      if (!['public', 'private', 'unknown'].includes(v?.value)) throw badInput([{ path: 'value', message: 'public or private' }])
+      const { list, i } = await findProject(key)
+      list[i] = { ...list[i]!, visibility: v }
       await saveProjects(list)
       return list[i]!
     }),
