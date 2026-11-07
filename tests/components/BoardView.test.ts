@@ -9,6 +9,7 @@ import { company, vibe } from '#shared/pm/examples'
 import type { Run, Task } from '#shared/pm/run'
 import type { Template } from '#shared/pm/workflow'
 import type { Pane } from '#shared/types'
+import { pick, selectLabels } from '../helpers/select'
 
 // Cards built by the same code as the server (server/utils/pmBoard.ts).
 const run = (task: string, role: Run['role'], terminal: string): Run =>
@@ -58,10 +59,10 @@ const laneOf = (w: Awaited<ReturnType<typeof mount>>, id: string) => card(w, id)
 it('shows the columns of a template without review, and of all projects', async () => {
   const w = await mount()
   expect(lanes(w)).toEqual(['your-turn', 'todo', 'working', 'done'])
-  await w.find('[data-testid="board-project"]').setValue('VIB')
+  await pick(w, 'board-project', 'VIB')
   expect(lanes(w)).toEqual(['your-turn', 'To do', 'Working', 'Done'])
   expect(laneOf(w, 'VIB-1')).toBe('Working')
-  await w.find('[data-testid="board-project"]').setValue('CO')
+  await pick(w, 'board-project', 'CO')
   expect(lanes(w)).toEqual(['your-turn', 'To do', 'Working', 'Review', 'Deploy', 'Done'])
 })
 
@@ -94,7 +95,7 @@ it('moves a card to Your turn when its agent waits for the user', async () => {
 it('moves a card to Your turn whatever its step, and keeps its step and indicator', async () => {
   reset({ yourTurn: { reason: 'timeout', badge: 'Check review: over 90m' } })
   const w = await mount()
-  await w.find('[data-testid="board-project"]').setValue('CO')
+  await pick(w, 'board-project', 'CO')
   expect(laneOf(w, 'CO-1')).toBe('your-turn')
   expect(card(w, 'CO-1').text()).toContain('review')
   expect(card(w, 'CO-1').find('[data-testid="holder-state"]').exists()).toBe(true)
@@ -104,10 +105,10 @@ it('moves a card to Your turn whatever its step, and keeps its step and indicato
 it('filters the board by tag, and the card\'s one-tap link is its PR', async () => {
   const w = await mount()
   expect(card(w, 'VIB-1').find('[data-testid="board-link"]').attributes('href')).toBe('https://example.com/pr/2')
-  expect(w.findAll('[data-testid="board-tag"] option').map(o => o.text())).toEqual(['Tags', 'CTP-1', 'client', 'x'])
-  await w.find('[data-testid="board-tag"]').setValue('client')
+  expect(selectLabels(w, 'board-tag')).toEqual(['Tags', 'CTP-1', 'client', 'x'])
+  await pick(w, 'board-tag', 'client')
   expect(w.findAll('[data-testid="board-card"]').map(c => c.attributes('data-task'))).toEqual(['VIB-1', 'CO-1'])
-  await w.find('[data-testid="board-tag"]').setValue('x')
+  await pick(w, 'board-tag', 'x')
   expect(w.findAll('[data-testid="board-card"]').map(c => c.attributes('data-task'))).toEqual(['CO-1'])
 })
 

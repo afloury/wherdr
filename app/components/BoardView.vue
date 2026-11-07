@@ -28,6 +28,10 @@ const waitsForYou = (c: Card) => { const p = paneOf(c); return !!p && hasAgent(c
 const cards = computed(() => (data.value?.cards ?? [])
   .filter(c => (!project.value || c.project === project.value) && (!tag.value || c.tags.includes(tag.value)))
   .map(c => (!c.yourTurn && waitsForYou(c) ? { ...c, yourTurn: tl('Answer the agent', 'Réponds à l’agent') } : c)))
+const projectPick = noneModel(project)
+const tagPick = noneModel(tag)
+const projectItems = computed(() => [{ label: tl('All projects', 'Tous les projets'), value: NONE }, ...(data.value?.projects ?? []).map(p => ({ label: p.name, value: p.key }))])
+const tagItems = computed(() => [{ label: tl('Tags', 'Étiquettes'), value: NONE }, ...tags.value.map(x => ({ label: x, value: x }))])
 const tags = computed(() => boardTags((data.value?.cards ?? []).filter(c => !project.value || c.project === project.value)))
 // All projects: the main coordinator.
 const coordinator = computed(() => (project.value ? coordinators.value.find(c => c.project === project.value) : mainCoordinator.value))
@@ -64,14 +68,8 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
       <UButton :color="decisions ? 'warning' : 'neutral'" :variant="decisions ? 'solid' : 'outline'" size="lg" to="/decisions" data-testid="board-decisions">
         {{ tl('Decisions', 'Décisions') }}<span v-if="decisions" class="mono-label board-decisions-n">{{ decisions }}</span>
       </UButton>
-      <select v-model="project" class="pm-select" :aria-label="tl('Project', 'Projet')" data-testid="board-project">
-        <option value="">{{ tl('All projects', 'Tous les projets') }}</option>
-        <option v-for="p in data?.projects" :key="p.key" :value="p.key">{{ p.name }}</option>
-      </select>
-      <select v-if="tags.length || tag" v-model="tag" class="pm-select" :aria-label="tl('Tag', 'Étiquette')" data-testid="board-tag">
-        <option value="">{{ tl('Tags', 'Étiquettes') }}</option>
-        <option v-for="x in tags" :key="x" :value="x">{{ x }}</option>
-      </select>
+      <USelect v-model="projectPick" :items="projectItems" size="lg" class="board-select" :aria-label="tl('Project', 'Projet')" data-testid="board-project" />
+      <USelect v-if="tags.length || tag" v-model="tagPick" :items="tagItems" size="lg" class="board-select" :aria-label="tl('Tag', 'Étiquette')" data-testid="board-tag" />
     </header>
     <CoordinatorBar v-if="coordinator" :c="coordinator" open />
     <!-- One scroll on the phone, so a tall guide does not hide the lanes. -->
@@ -113,7 +111,7 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
 .board-top { flex: none; display: flex; align-items: center; gap: 8px; min-height: calc(44px + var(--safe-top, 0px)); padding: var(--safe-top, 0px) 8px 0; border-bottom: 1px solid var(--line); }
 .board-top h1 { flex: 1; margin: 0; font-size: 20px; }
 .board-decisions-n { margin-left: 6px; color: inherit; }
-.board-top .pm-select { min-width: 0; flex: 0 1 auto; }
+.board-top :deep(.board-select) { min-width: 0; flex: 0 1 auto; }
 .board-note { padding: 12px 16px; }
 .board-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
 .board-lanes { flex: 1 0 auto; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding-bottom: var(--safe-bottom, 0px); }

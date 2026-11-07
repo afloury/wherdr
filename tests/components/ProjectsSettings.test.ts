@@ -3,6 +3,7 @@ import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import ProjectsSettings from '~/components/ProjectsSettings.vue'
 import type { PmOverview } from '#shared/pm/project'
+import { pick } from '../helpers/select'
 
 // A fake server: the same rules as server/utils/pmStore.ts, in memory.
 let state: PmOverview
@@ -54,14 +55,14 @@ it('switches project management on, adds a project with its template, then chang
 
   await w.find('#pmKey').setValue('web')
   await w.find('#pmPath').setValue(' ~/src/web ')
-  await w.find('[data-testid="pm-template"]').setValue('vibe')
+  await pick(w, 'pm-template', 'vibe')
   await w.find('form').trigger('submit')
   await vi.waitFor(() => expect(w.findAll('[data-testid="pm-project"]')).toHaveLength(1))
   expect(calls[1]).toEqual({ url: '/api/pm/project', body: { key: 'web', name: '', machine: '', path: '~/src/web', base: '', template: 'vibe' } })
   expect(w.find('[data-testid="pm-project"]').text()).toContain('/src/web')
   expect((w.find('#pmKey').element as HTMLInputElement).value).toBe('')
 
-  await w.find('[data-testid="pm-project-template"]').setValue('company')
+  await pick(w, 'pm-project-template', 'company')
   await vi.waitFor(() => expect(calls[2]).toEqual({ url: '/api/pm/project-template', body: { key: 'WEB', template: 'company' } }))
 })
 
@@ -71,7 +72,7 @@ it('shows a public repository\'s badge, lets the user override it and check it a
   mounted = w
   await vi.waitFor(() => expect(w.find('[data-testid="pm-public"]').text()).toBe('Public'))
 
-  await w.find('[data-testid="pm-visibility"]').setValue('private')
+  await pick(w, 'pm-visibility', 'private')
   await vi.waitFor(() => expect(w.find('[data-testid="pm-public"]').exists()).toBe(false))
   expect(calls[0]).toEqual({ url: '/api/pm/project-visibility', body: { key: 'WEB', value: 'private' } })
   expect(w.find('[data-testid="pm-project"]').text()).toContain('Set by you')
