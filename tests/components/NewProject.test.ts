@@ -137,7 +137,7 @@ it('adds a project from a git repository, a new folder or a folder without git, 
   await w.get('[data-repo="/repos/web"]').trigger('click')
   expect(await folder('git')).toBe(false)
   expect((w.get('#projectName').element as HTMLInputElement).value).toBe('web')
-  expect((w.get('#projectKey').element as HTMLInputElement).value).toBe('WB')
+  expect((w.get('#projectKey').element as HTMLInputElement).value).toBe('WEB')
   // A folder without git: taken as it is, no git option either.
   await w.get('#projectPath').setValue('~/clients')
   expect(await folder('plain')).toBe(false)

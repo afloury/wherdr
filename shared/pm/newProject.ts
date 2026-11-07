@@ -18,7 +18,7 @@ export const proposeName = (folder: string) => folder.replace(/\/+$/, '').split(
 
 // A key tasks are numbered with (WHR-12): 2 to 10 letters or digits, starting
 // with a letter. Several words give their initials (my-web-app → MWA), one word
-// its first letter and next consonants (wherdr → WHR). A taken key gets a digit.
+// its first letter and next consonants (wherdr → WHR), a short one itself (api → API). A taken key gets a digit.
 export function proposeKey(name: string, taken: readonly string[] = []): string {
   const words = name.replace(/([a-z])([A-Z])/g, '$1 $2').split(/[^A-Za-z0-9]+/).filter(Boolean)
   const first = words.findIndex(w => /^[A-Za-z]/.test(w))
@@ -27,7 +27,7 @@ export function proposeKey(name: string, taken: readonly string[] = []): string 
   let key = rest.length > 1 ? rest.map(w => w[0]).join('').slice(0, 4) : ''
   if (key.length < 2) {
     const w = rest[0]!.toUpperCase()
-    key = (w[0]! + w.slice(1).replace(/[AEIOUY]/g, '')).slice(0, 3)
+    key = w.length <= 3 ? w : (w[0]! + w.slice(1).replace(/[AEIOUY]/g, '')).slice(0, 3)
     if (key.length < 2) key = w.slice(0, 3)
     if (key.length < 2) key = `${key}P`
   }

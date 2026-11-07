@@ -23,7 +23,7 @@ describe('name and key proposal', () => {
     expect(proposeKey('my-web-app')).toBe('MWA')
     expect(proposeKey('myWebApp')).toBe('MWA')
     expect(proposeKey('wherdr')).toBe('WHR')
-    expect(proposeKey('api')).toBe('AP')
+    expect(proposeKey('api')).toBe('API')
     expect(proposeKey('2024-reports')).toBe('RPR') // a key starts with a letter
     expect(proposeKey('___')).toBe('PRJ')
     expect(proposeKey('wherdr', ['WHR', 'WHR2'])).toBe('WHR3')

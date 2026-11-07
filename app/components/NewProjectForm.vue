@@ -130,11 +130,11 @@ const notes = {
       </template>
       <label class="field-label" for="projectSearch">{{ tl('Git repositories', 'Dépôts git') }}</label>
       <UInput
-        id="projectSearch" v-model="search" size="xl" class="w-full" icon="i-lucide-search" autocapitalize="none" autocorrect="off" :spellcheck="false"
-        :placeholder="tl('Search', 'Rechercher')"
+        id="projectSearch" v-model="search" size="xl" class="w-full" autocapitalize="none" autocorrect="off" :spellcheck="false"
+        :placeholder="tl('Search the repositories', 'Chercher un dépôt')"
       />
       <div v-if="shown.length" class="coord-projects repo-list" data-testid="project-repos">
-        <button v-for="p in shown" :key="p" type="button" :class="{ on: p === draft.path }" :data-repo="p" @click="draft.path = p">
+        <button v-for="p in shown" :key="p" type="button" :class="{ on: short(p) === draft.path }" :data-repo="p" @click="draft.path = short(p)">
           <span class="coord-name">{{ proposeName(p) }}</span><span class="repo-path">{{ short(p) }}</span>
         </button>
       </div>
