@@ -40,7 +40,7 @@ it.each([false, true])('shares wake probes while preserving touch beta=%s frame 
     },
   }))
   try {
-    ctl.mount(wrapper.element as HTMLElement)
+    await ctl.mount(wrapper.element as HTMLElement)
     ctl.connect(false)
     const ws = sockets[0]!
     const pings = () => ws.send.mock.calls.filter(([data]) => JSON.parse(data).type === 'ping').length

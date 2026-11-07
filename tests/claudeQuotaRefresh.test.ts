@@ -6,7 +6,8 @@ import { localFs } from '../server/utils/fsx'
 import { machineQuotaRows } from '../app/utils/quotas'
 
 const state = vi.hoisted(() => ({ machines: [] as unknown[] }))
-vi.mock('../server/utils/machines', () => ({ allMachines: () => state.machines }))
+vi.mock('../server/utils/coreQuotaMachines', () => ({ coreQuotaMachines: async () => state.machines }))
+vi.mock('../server/utils/coreAdminDeps', () => ({ coreAdminDeps: () => ({}) }))
 import { readQuotas } from '../server/utils/quotas'
 
 const homes: string[] = []
