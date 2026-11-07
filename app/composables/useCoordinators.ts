@@ -6,7 +6,6 @@ import type { AlfredProgram } from '#shared/pm/alfred'
 import type { Pane } from '#shared/types'
 
 export const coordinators = ref<CoordinatorView[]>([])
-export const mainCoordinator = computed(() => coordinators.value.find(c => c.main))
 // The projects' own coordinators: Alfred (the main one) has its own row.
 export const projectCoordinators = computed(() => coordinators.value.filter(c => !c.main))
 let loading: Promise<void> | null = null

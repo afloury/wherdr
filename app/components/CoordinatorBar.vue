@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// A project coordinator, or Alfred for all projects: who you talk to and which agent answers (its default
+// A project coordinator, or Alfred in its conversation (its program changes
+// from its row's "Restart with…", not here): who you talk to and which agent answers (its default
 // changed in one gesture), its autopilot, a warning when its kept conversation ran with
 // another agent, and the template change it proposed, to accept or refuse.
 // On the board (`open`), also the button that opens or starts it.
@@ -39,7 +40,7 @@ const answer = (accept: boolean) => act(() => api('/api/pm/template-proposal', {
   <div class="coord" data-testid="coordinator-bar">
     <div class="coord-head">
       <span class="mono-label">{{ title }}</span>
-      <USelect :model-value="agent?.program" :items="agentItems" size="lg" class="coord-agent" :disabled="busy" :aria-label="tl('Default agent', 'Agent par défaut')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
+      <USelect v-if="!c.main" :model-value="agent?.program" :items="agentItems" size="lg" class="coord-agent" :disabled="busy" :aria-label="tl('Default agent', 'Agent par défaut')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
       <UButton v-if="open && !other" color="primary" size="lg" :loading="busy" data-testid="coordinator-open" @click="openIt">
         {{ pane ? tl('Open', 'Ouvrir') : tl(`Start with ${agentName(agent)}`, `Lancer avec ${agentName(agent)}`) }}
       </UButton>

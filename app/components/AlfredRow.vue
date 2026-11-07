@@ -4,10 +4,12 @@
 // asks for its program (the offered agents of Settings › Agents installed on
 // wherdr's machine, in the user's order; no model: the user changes it inside Alfred), remembered after. Its ••• menu
 // restarts it with another program: the same Alfred (home folder, identity,
-// memory), the old session stopped.
+// memory), the old session stopped. As a banner (the board's All projects):
+// the same one tap, no ••• menu.
 import { MAIN } from '#shared/pm/coordinator'
 import type { AlfredProgram } from '#shared/pm/alfred'
 
+defineProps<{ banner?: boolean }>()
 const busy = ref(false)
 const error = ref('')
 const sheet = ref(false)
@@ -59,14 +61,14 @@ onUnmounted(() => clearInterval(timer))
 </script>
 
 <template>
-  <div class="alfred" :class="{ on: !!alfredPane }" data-testid="alfred">
+  <div class="alfred" :class="{ on: !!alfredPane, banner }" data-testid="alfred">
     <button type="button" class="alfred-open" :disabled="busy" data-testid="alfred-open" @click="open">
       <i class="alfred-dot" aria-hidden="true" />
-      <span class="alfred-text"><b data-testid="alfred-name">{{ name }}</b><small data-testid="alfred-sub">{{ sub }}</small></span>
+      <span class="alfred-text"><b data-testid="alfred-name">{{ name }}</b><small data-testid="alfred-sub">{{ banner ? `${tl('All projects', 'Tous les projets')} · ${sub}` : sub }}</small></span>
       <UIcon v-if="alfredPane" name="i-lucide-chevron-right" class="alfred-go" />
       <span v-else-if="!busy" class="alfred-start">{{ tl('Start', 'Lancer') }}</span>
     </button>
-    <SpaceMenu :items="menu" :title="name" :label="`${t('Options')} : ${name}`" class="alfred-more" data-testid="alfred-more" />
+    <SpaceMenu v-if="!banner" :items="menu" :title="name" :label="`${t('Options')} : ${name}`" class="alfred-more" data-testid="alfred-more" />
   </div>
   <p v-if="error" class="error alfred-error">{{ error }}</p>
 
@@ -94,6 +96,8 @@ onUnmounted(() => clearInterval(timer))
 
 <style scoped>
 .alfred { display: flex; align-items: stretch; margin-bottom: 20px; border: 1px solid var(--line); background: var(--surface); }
+.alfred.banner { flex: none; margin: 0; border-width: 0 0 1px; }
+.alfred.banner .alfred-open { padding: 8px 16px; }
 .alfred-open { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; min-height: 52px; padding: 8px 4px 8px 12px; color: var(--text); text-align: left; cursor: pointer; }
 .alfred-open:hover:not(:disabled) { background: var(--surface-2); }
 .alfred-open:disabled { cursor: progress; }
@@ -109,6 +113,7 @@ onUnmounted(() => clearInterval(timer))
 /* :deep: on a mouse computer SpaceMenu renders through UDropdownMenu, which drops the scoped attribute. */
 .alfred :deep(.alfred-more) { flex: none; align-self: center; margin-right: 4px; }
 .alfred-error { margin: -14px 0 14px; }
+.alfred.banner + .alfred-error { margin: 8px 16px; }
 .alfred-note { margin: 0 2px 14px; color: var(--text-2); font-size: 14px; }
 .alfred-hint { margin: 8px 2px 0; font-size: 13px; }
 </style>
