@@ -50,6 +50,7 @@ onUnmounted(() => clearInterval(timer))
 .coord-row:first-of-type { border-top-width: 1px; }
 .coord-row:hover:not(:disabled) { background: var(--surface-2); }
 .coord-row:disabled { cursor: progress; }
+.coord-row:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 .coord-dot { flex: none; width: 8px; height: 8px; background: var(--dim); }
 .coord-row.on .coord-dot { background: var(--green); }
 .coord-text { display: grid; flex: 1; min-width: 0; }
