@@ -145,7 +145,7 @@ const FR: Record<string, string> = {
   'Sort ready': 'Trier les prêts', 'Default order': 'Ordre par défaut', 'Recent activity': 'Activité récente',
   'Queued': 'En attente', 'agent stopped': 'agent arrêté',
   'Send now': 'Envoyer maintenant',
-  'Queued · ': 'En attente · ', 'Sent · read by the agent': 'Envoyé · lu par l’agent', 'Running': 'En cours d’exécution', 'No output yet': 'Pas encore de sortie',
+  'Queued · ': 'En attente · ', 'Read by the agent': 'Lu par l’agent', 'Queued by Claude · sent when it finishes': 'Dans la file de Claude · envoyé à la fin de son tour', 'Queued by Codex · sent when it finishes': 'Dans la file de Codex · envoyé à la fin de son tour', 'Queued by the agent · sent when it finishes': 'Dans la file de l’agent · envoyé à la fin de son tour', 'Running': 'En cours d’exécution', 'No output yet': 'Pas encore de sortie',
   'after you answer the question': 'après ta réponse à la question', 'sending…': 'envoi…',
   'Photo is uploading…': 'Photo en cours d’envoi…', 'Remove': 'Retirer',
   'Photo upload failed': 'Photo non envoyée',
