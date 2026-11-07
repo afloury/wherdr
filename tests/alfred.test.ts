@@ -29,7 +29,10 @@ describe('alfredFiles', () => {
     expect(a).toContain('overview.md, quick-start.md')
     expect(a).toContain('only after the user\'s yes')
     expect(a).toContain('Never touch a remote machine')
-    expect(a).toContain('never build, install dependencies, run test suites or long jobs here')
+    expect(a).not.toMatch(/never build|stay light/i)
+    expect(a).toContain('You do no coding task yourself and work on no particular project')
+    expect(a).toContain('start an agent or a task that does it in the right place')
+    expect(a).toContain('honour what memory.md says')
     // Projects off: no coordinator section, a pointer to switch them on.
     expect(a).not.toContain('## Coordinating')
     expect(a).toContain('Settings › Projects')
