@@ -29,7 +29,7 @@ export type AlfredCommand =
   // Changes: a dry run unless apply.
   | { name: 'project add', apply: boolean, input: { key: string, machine: string, path: string, name?: string, template?: string } }
   | { name: 'project template', apply: boolean, key: string, template: string } // '' clears it
-  | { name: 'coordinator start', apply: boolean, key: string, program?: 'claude' | 'codex', model?: string }
+  | { name: 'coordinator start', apply: boolean, key: string, program?: 'claude' | 'codex' }
   | { name: 'setting set', apply: boolean, key: SyncedSetting, value: string }
 
 // One table for the parser's usage errors, `help` and AGENTS.md.
@@ -43,16 +43,15 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'settings', does: 'the synced settings, their values, and the values each one Alfred may change accepts (1 = on, 0 = off)' },
   { usage: 'project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]', does: 'add a project: a git folder on a machine' },
   { usage: 'project template <KEY> <id|none>', does: 'give the project a template, or none' },
-  { usage: 'coordinator start <KEY> [--program claude|codex --model <model>]', does: 'start the project\'s coordinator (a new conversation replaces a running one)' },
+  { usage: 'coordinator start <KEY> [--program claude|codex]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one)' },
   { usage: 'setting set <key> <value>', does: 'change a setting to one of the values `settings` lists for it' },
 ]
 
 const KEY_RE = /^[A-Za-z][A-Za-z0-9]{1,9}$/
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/
-const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:[\]/-]{0,63}$/
 const FLAGS: Record<string, string[]> = {
   'project add': ['machine', 'path', 'name', 'template'],
-  'coordinator start': ['program', 'model'],
+  'coordinator start': ['program'],
 }
 
 export const CHANGES = ['project add', 'project template', 'coordinator start', 'setting set']
@@ -96,12 +95,11 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
     return { name: verb, apply, key: key(w2), template: w3 === 'none' ? '' : w3 }
   }
   if (verb === 'coordinator start') {
-    const { program, model } = flags
+    // A program only: it runs with its harness's default model.
+    const { program } = flags
     if (!key(w2) || w3) return usage(verb)
-    if ((program === undefined) !== (model === undefined)) return { error: '--program and --model go together' }
     if (program !== undefined && program !== 'claude' && program !== 'codex') return { error: '--program is claude or codex' }
-    if (model !== undefined && !MODEL_RE.test(model)) return { error: 'invalid --model' }
-    return { name: verb, apply, key: key(w2), ...(program ? { program: program as 'claude' | 'codex', model } : {}) }
+    return { name: verb, apply, key: key(w2), ...(program ? { program: program as 'claude' | 'codex' } : {}) }
   }
   if (verb === 'setting set') {
     if (!w2 || w3 === undefined || rest.length) return usage(verb)

@@ -4,17 +4,14 @@
 // of its own that wherdr creates once and never overwrites. Pure: the server
 // (server/utils/pmCoordinator.ts) reads and writes.
 import type { Project } from './project'
+import { ROLE_POINTERS, isCoordinatorProgram, type CoordinatorProgram } from './coordinator'
 import { alfredCommandList } from './alfredCli'
 
 export const ALFRED = 'Alfred'
-// The programs wherdr can run Alfred with, each with its own default model
-// (no --model: the user changes the model inside Alfred).
-export const ALFRED_PROGRAMS = ['claude', 'codex'] as const
-export type AlfredProgram = typeof ALFRED_PROGRAMS[number]
-// The tiles of Alfred's agent sheet: those installed on wherdr's machine and not hidden.
-export const alfredPrograms = (installed: readonly string[], hidden: readonly string[] = []) =>
-  ALFRED_PROGRAMS.filter(p => installed.includes(p) && !hidden.includes(p))
-export const isAlfredProgram = (v: unknown): v is AlfredProgram => ALFRED_PROGRAMS.includes(v as AlfredProgram)
+// Alfred runs with any harness that can carry a coordinator, with its own
+// default model (no --model: the user changes the model inside Alfred).
+export type AlfredProgram = CoordinatorProgram
+export const isAlfredProgram = isCoordinatorProgram
 export const MEMORY_CAP = 4000
 
 // Alfred's own files: created when missing, never overwritten.
@@ -55,7 +52,7 @@ export function alfredFiles(c: AlfredContext, pmSection: string[]): Record<strin
     `This folder (\`${c.home}\`) is your home: wherdr always starts you here. Stay in it; never change files elsewhere unless the user asks.`,
     '- `identity.md`: your name and tone. Yours: wherdr never overwrites it, and the sidebar shows its "Name:" line.',
     `- \`memory.md\`: what you learn about the user and their setup, one fact per line, under ${MEMORY_CAP} characters.`,
-    '- `AGENTS.md` (this file) and `CLAUDE.md`: wherdr\'s, rewritten at each start.',
+    `- \`AGENTS.md\` (this file) and ${Object.keys(ROLE_POINTERS).map(f => `\`${f}\``).join(', ')}: wherdr's, rewritten at each start.`,
     'The user may restart you with another agent or model (when an account runs out of tokens, for instance): these files are how you pick up where you left off.', '',
     '## At start', '',
     '1. Read identity.md and memory.md; use the name and tone of identity.md, and honour what memory.md says: the user\'s preferences there (what not to run on a machine, for instance) come before your defaults.',
@@ -81,5 +78,5 @@ export function alfredFiles(c: AlfredContext, pmSection: string[]): Record<strin
     'You do no coding task yourself and work on no particular project: when the user asks for such work, start an agent or a task that does it in the right place (the project\'s machine).', '',
     ...(c.pm ? pmSection : ['## Projects', '', 'Project management is off: the user switches it on in Settings › Projects. You then coordinate their projects too.', '']),
   ].join('\n')
-  return { 'AGENTS.md': agents, 'CLAUDE.md': '@AGENTS.md\n' }
+  return { 'AGENTS.md': agents, ...ROLE_POINTERS }
 }

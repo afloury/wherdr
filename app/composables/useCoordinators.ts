@@ -40,10 +40,11 @@ export const coordinatorOf = (p?: Pane | null) => (p?.coreAddress ? coordinators
 // The pane of a coordinator's kept conversation, while it runs.
 export const coordinatorPane = (c: CoordinatorView) => (c.terminal ? herdrState.value?.panes.find(p => p.coreAddress === c.terminal) : undefined)
 
-// A new conversation (the project's default agent unless one is given), then
-// its pane once herdr-core shows it.
+// A new conversation (its default agent, or the user's first that can run it,
+// unless one is given), then its pane once herdr-core shows it.
 export async function launchCoordinator(project: string, agent?: CoordinatorAgent) {
-  const { terminal } = await api<{ terminal: string }>('/api/pm/coordinator-start', { project, ...agent })
+  const c = coordinators.value.find(x => x.project === project)
+  const { terminal } = await api<{ terminal: string }>('/api/pm/coordinator-start', { project, ...(agent ?? (c ? coordinatorAgent(c) : undefined)) })
   await loadCoordinators()
   for (let i = 0; i < 40; i++) {
     const p = herdrState.value?.panes.find(x => x.coreAddress === terminal)
@@ -55,6 +56,6 @@ export async function launchCoordinator(project: string, agent?: CoordinatorAgen
 
 // One tap: its conversation while it runs, else a new one with its default agent.
 export async function openCoordinator(c: CoordinatorView) {
-  const p = coordinatorPane(c) ?? await launchCoordinator(c.project)
+  const p = coordinatorPane(c) ?? await launchCoordinator(c.project, coordinatorAgent(c))
   if (p) await navigateTo(panePath(p.id))
 }

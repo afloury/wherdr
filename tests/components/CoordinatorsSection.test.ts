@@ -17,7 +17,7 @@ registerEndpoint('/api/pm/coordinators', () => views)
 registerEndpoint('/api/pm/coordinator-start', { method: 'POST', handler: async (e) => { posts.push(await readBody(e)); return { terminal: 'host/t9' } } })
 
 const pane = (id: string, coreAddress: string) => ({ id, coreAddress, status: 'idle', agent: 'claude', workspace: 'w', tab: 't' }) as Pane
-const view = (project: string, more: Partial<CoordinatorView> = {}): CoordinatorView => ({ project, name: project, agent: { program: 'claude', model: 'opus' }, ...more })
+const view = (project: string, more: Partial<CoordinatorView> = {}): CoordinatorView => ({ project, name: project, agent: { program: 'claude' }, ...more })
 let w: Awaited<ReturnType<typeof mountSuspended>> | null = null
 afterEach(() => { w?.unmount(); w = null; posts.length = 0; navigate.mockReset() })
 

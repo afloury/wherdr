@@ -1,4 +1,4 @@
-// { project, program, model }: starts the project's coordinator in its own
+// { project, program }: starts the project's coordinator in its own
 // folder, with its role files and a new token (the one before stops working).
 // It reaches wherdr on loopback when it runs on this machine; from another
 // machine, at wherdr's published address (or the one this request came to,

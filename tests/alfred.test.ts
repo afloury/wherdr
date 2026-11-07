@@ -1,6 +1,6 @@
 // WHR-403: Alfred's home files, the name read from its identity.md, and its start message.
 import { describe, expect, it } from 'vitest'
-import { ALFRED, FIRST_MESSAGE, OWN_FILES, alfredFiles, alfredPrograms, alfredName, startPrompt, type AlfredContext } from '../shared/pm/alfred'
+import { ALFRED, FIRST_MESSAGE, OWN_FILES, alfredFiles, alfredName, startPrompt, type AlfredContext } from '../shared/pm/alfred'
 
 const ctx: AlfredContext = { home: '/data/alfred', version: '3.0.0', docs: '/opt/wherdr/docs', docFiles: ['overview.md', 'quick-start.md'], pm: false, projects: [] }
 
@@ -18,8 +18,9 @@ describe('alfredName', () => {
 describe('alfredFiles', () => {
   it('ships AGENTS.md (for every agent kind) with its home, own files, the installed docs and the rules', () => {
     const f = alfredFiles(ctx, ['## Coordinating'])
-    expect(Object.keys(f)).toEqual(['AGENTS.md', 'CLAUDE.md'])
+    expect(Object.keys(f)).toEqual(['AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'QWEN.md'])
     expect(f['CLAUDE.md']).toBe('@AGENTS.md\n')
+    expect(f['GEMINI.md']).toBe('@AGENTS.md\n')
     const a = f['AGENTS.md']!
     expect(a).toContain('wherdr 3.0.0')
     expect(a).toContain('`/data/alfred`')
@@ -53,8 +54,3 @@ it('greets with the rename question on the first start only', () => {
   expect(startPrompt(false, 'Jeeves')).not.toContain(FIRST_MESSAGE)
 })
 
-it('offers one tile per program installed and not hidden, those wherdr can run Alfred with', () => {
-  expect(alfredPrograms(['codex', 'gemini', 'claude', 'shell'])).toEqual(['claude', 'codex'])
-  expect(alfredPrograms(['claude', 'codex'], ['claude'])).toEqual(['codex'])
-  expect(alfredPrograms(['gemini'])).toEqual([])
-})

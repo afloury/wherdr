@@ -3,7 +3,8 @@
 // A change is only described unless the call says --apply; Alfred applies it
 // after the user's yes. Nothing here removes data.
 import { CHANGES, SETTING_VALUES, alfredCommandList, dryRun, parseAlfredCommand, type AlfredPlan } from '../../shared/pm/alfredCli'
-import { MAIN, agentName } from '../../shared/pm/coordinator'
+import { GUARDED_PROGRAMS, MAIN, type CoordinatorAgent } from '../../shared/pm/coordinator'
+import { offeredAgents, readAgentOrder, readHiddenAgents } from '../../shared/agentList'
 import { cleanProjectInput } from '../../shared/pm/project'
 import { HerdrError } from './herdr'
 import { alfredTokenOk, coordinatorsView, startCoordinator, type CoordinatorUrls } from './pmCoordinator'
@@ -35,6 +36,14 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
   const knownTemplate = async (id: string) => {
     if (id && !(await store.overview()).templates.some(t => t.id === id)) throw new HerdrError('not_found', `No template ${id} (see wherdr alfred templates)`)
   }
+  // A project coordinator's agent: its default while the user offers it, else
+  // their first offered agent that can run it (Settings › Agents), else Claude.
+  const projectAgent = async (key: string): Promise<CoordinatorAgent> => {
+    const s = await readSettings(deps.settingsFile)
+    const offered = offeredAgents(GUARDED_PROGRAMS, readHiddenAgents(s.hiddenAgents ?? null), readAgentOrder(s.agentOrder ?? null)) as CoordinatorAgent['program'][]
+    const own = (await coordinatorsView(store)).find(x => x.project === key)?.agent
+    return own && offered.includes(own.program) ? own : { program: offered[0] ?? 'claude' }
+  }
   // A change: its plan, then (with --apply) the change itself.
   const change = async (plan: AlfredPlan, make: () => Promise<unknown>) => ('apply' in cmd && cmd.apply ? { applied: true, change: plan.change, result: await make() } : dryRun(argv as string[], plan))
 
@@ -46,11 +55,11 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       const c = (await coordinatorsView(store)).find(x => x.project === p.key)
       const tasks: Record<string, number> = {}
       for (const t of await store.tasks()) if (t.project === p.key) tasks[t.state] = (tasks[t.state] ?? 0) + 1
-      return { project: { ...p, machineName: machineName(p.machine) }, coordinator: c && { agent: agentName(c.agent), running: !!c.terminal }, tasks }
+      return { project: { ...p, machineName: machineName(p.machine) }, coordinator: c && { agent: (await projectAgent(p.key)).program, running: !!c.terminal }, tasks }
     }
     case 'templates': return { templates: (await store.overview()).templates }
     case 'machines': return { machines: machines.map(m => ({ key: m.key, label: m.label, local: m.local, status: m.status })) }
-    case 'coordinators': return { coordinators: (await coordinatorsView(store)).map(c => ({ project: c.project, name: c.name, agent: agentName(c.agent), running: !!c.terminal })) }
+    case 'coordinators': return { coordinators: await Promise.all((await coordinatorsView(store)).map(async c => ({ project: c.project, name: c.name, agent: c.main ? c.agent?.program : (await projectAgent(c.project)).program, running: !!c.terminal }))) }
     case 'coordinator open': {
       const c = (await coordinatorsView(store)).find(x => x.project === cmd.key)
       const pane = c?.terminal ? deps.panes().find(p => p.coreAddress === c.terminal) : undefined
@@ -97,9 +106,9 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       await needPm()
       const p = projectOf(cmd.key)
       const rec = await store.coordinator(p.key)
-      const agent = cmd.program ? { program: cmd.program, model: cmd.model! } : (await coordinatorsView(store)).find(x => x.project === p.key)!.agent
+      const agent = cmd.program ? { program: cmd.program } : await projectAgent(p.key)
       return change({
-        change: [`start the coordinator of ${p.key} with ${agentName(agent)} on ${machineName(p.machine)}`, ...(rec?.terminal ? ['its running conversation is stopped and replaced by a new one'] : [])],
+        change: [`start the coordinator of ${p.key} with ${agent.program} on ${machineName(p.machine)}`, ...(rec?.terminal ? ['its running conversation is stopped and replaced by a new one'] : [])],
         remote: remoteOf(p.machine),
       }, () => startCoordinator(deps, p.key, agent, deps.urls))
     }

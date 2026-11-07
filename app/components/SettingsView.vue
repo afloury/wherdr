@@ -140,25 +140,6 @@ const backdropItems = computed(() => [
   { label: 'herdr grid', description: t('Flat line grid, like herdr.dev.'), value: 'herdr' },
 ])
 
-// Inventory of the reachable machines; the preferences follow the user across devices.
-const agentMachines = computed(() => {
-  const configured = appConfig.value.machines
-  return configured?.filter(m => m.local || (Boolean(m.home) && (machineInfo(m.key)?.status === 'online' || (!machineInfo(m.key) && m.online))))
-    || [{ key: '', label: hostLabel.value || t('This machine'), kinds: appConfig.value.kinds }]
-})
-const installedAgents = computed(() => [...new Set(agentMachines.value.flatMap(m => m.kinds || []))])
-function agentChecked(kind: string) { return !hiddenAgents.value.includes(kind) }
-function setAgentChecked(kind: string, checked: boolean) {
-  hiddenAgents.value = checked
-    ? hiddenAgents.value.filter(k => k !== kind)
-    : [...hiddenAgents.value, kind]
-}
-function agentMachineHint(kind: string) {
-  const available = agentMachines.value.filter(m => m.kinds.includes(kind))
-  if (available.length === agentMachines.value.length) return ''
-  return available.map(m => m.label || t('This machine')).join(', ')
-}
-
 // ------------------------------------------------------------ notifications
 const subscribed = pushOn
 const refreshPush = refreshPushOn
@@ -468,18 +449,7 @@ onMounted(() => {
 
         <div v-show="activeSection === 'agents'" class="settings-section">
           <CoreMachines />
-          <div class="settings-group">
-            <h3>{{ t('Offered agents') }}</h3>
-            <p class="muted agent-pref-intro">{{ t('Agents offered wherever an agent is chosen. Terminal is always available.') }}</p>
-            <div v-if="installedAgents.length" class="agent-pref-list">
-              <label v-for="agent in installedAgents" :key="agent" class="settings-toggle">
-                <span><b>{{ kindLabel(agent) }}</b><small v-if="agentMachineHint(agent)">{{ agentMachineHint(agent) }}</small></span>
-                <input class="agent-pref-check" type="checkbox" :checked="agentChecked(agent)" @change="setAgentChecked(agent, ($event.target as HTMLInputElement).checked)">
-              </label>
-            </div>
-            <p v-else class="muted agent-pref-intro">{{ t('No agents installed on online machines.') }}</p>
-            <p class="muted agent-pref-note">{{ t('Choices follow you on every device.') }}</p>
-          </div>
+          <OfferedAgentsSettings />
           <div id="claude-quotas" class="settings-group">
             <h3>{{ tl('Claude quotas', 'Quotas Claude') }}</h3>
             <ClaudeQuotaSetup v-if="activeSection === 'agents'" />

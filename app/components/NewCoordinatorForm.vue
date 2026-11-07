@@ -1,17 +1,17 @@
 <script setup lang="ts">
 // "New" sheet › Coordinator: the project (key and name, whether its
-// coordinator runs) and the agent to start it with (the project's default
-// first). A project without a template points to Settings › Projects; the
+// coordinator runs) and the agent to start it with: the user's offered agents
+// (Settings › Agents) that can coordinate, the project's default picked. A project without a template points to Settings › Projects; the
 // main coordinator (all projects) needs none.
 // Its actions (NewCoordinatorActions) sit in the sheet's footer.
-import { agentChoices, agentKey, agentName } from '#shared/pm/coordinator'
 
 const project = defineModel<string>('project', { required: true })
 const agent = defineModel<string>('agent', { required: true })
 const emit = defineEmits<{ settings: [] }>()
 
 const current = computed(() => coordinators.value.find(c => c.project === project.value))
-const choices = computed(() => (current.value ? agentChoices(current.value) : []))
+const choices = computed(() => (current.value ? offerCoordinators(undefined, current.value.project) : []))
+const fallback = computed(() => (current.value ? coordinatorAgent(current.value)?.program ?? '' : ''))
 const running = (project: string) => {
   const c = coordinators.value.find(x => x.project === project)
   return !!c && !!coordinatorPane(c)
@@ -22,7 +22,7 @@ function pick(key: string) {
   project.value = key
 }
 // Another project: its own default agent.
-watch(current, (c) => { if (c) agent.value = agentKey(c.agent) }, { immediate: true })
+watch([() => current.value?.project, fallback], ([, p]) => { agent.value = p }, { immediate: true })
 </script>
 
 <template>
@@ -48,17 +48,11 @@ watch(current, (c) => { if (c) agent.value = agentKey(c.agent) }, { immediate: t
     </template>
     <template v-else-if="current">
       <label class="field-label">{{ tl('Agent', 'Agent') }}</label>
-      <div class="segmented coord-agents" role="radiogroup" :aria-label="tl('Agent', 'Agent')" :style="{ '--segment-count': choices.length }">
-        <button
-          v-for="a in choices" :key="agentKey(a)" type="button" role="radio" :class="{ on: agentKey(a) === agent }"
-          :aria-checked="agentKey(a) === agent" :data-agent="agentKey(a)" @click="agent = agentKey(a)"
-        >
-          <AgentAvatar :agent="a.program" /><span>{{ agentName(a) }}</span>
-        </button>
-      </div>
-      <p class="coord-hint muted">
-        {{ agentKey(current.agent) === agent ? tl('The project’s default agent.', 'L’agent par défaut du projet.') : tl(`The default stays ${agentName(current.agent)}.`, `Le défaut reste ${agentName(current.agent)}.`) }}
+      <AgentPicker v-model="agent" :programs="choices" />
+      <p v-if="fallback" class="coord-hint muted">
+        {{ fallback === agent ? tl('The project’s default agent.', 'L’agent par défaut du projet.') : tl(`The default stays ${kindLabel(fallback)}.`, `Le défaut reste ${kindLabel(fallback)}.`) }}
       </p>
+      <p v-else class="coord-hint muted" data-testid="coordinator-no-agent">{{ tl('No offered agent can coordinate: check Settings › Agents.', 'Aucun agent proposé ne peut coordonner : vois Réglages › Agents.') }}</p>
     </template>
   </div>
 </template>
@@ -76,7 +70,6 @@ watch(current, (c) => { if (c) agent.value = agentKey(c.agent) }, { immediate: t
 .coord-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
 .coord-state { flex: none; font: 500 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
 .coord-state.run { color: var(--green); }
-.coord-agents button { text-transform: none; letter-spacing: .02em; }
 .coord-note { margin: 14px 2px 0; font-size: 14px; color: var(--text-2); }
 .coord-note a { color: var(--mauve); text-decoration: underline; }
 .coord-hint { margin: 8px 2px 0; font-size: 13px; }

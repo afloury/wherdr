@@ -3,7 +3,7 @@
 // runs with the chosen agent, else start it (same API and rules as the
 // CoordinatorBar: a running conversation of another agent offers a new
 // conversation first, or resuming it).
-import { agentChoices, agentKey, agentName, sameAgent } from '#shared/pm/coordinator'
+import { isCoordinatorProgram, sameAgent } from '#shared/pm/coordinator'
 
 const props = defineProps<{ project: string, agent: string }>()
 const emit = defineEmits<{ done: [] }>()
@@ -11,12 +11,14 @@ const busy = ref(false)
 const error = ref('')
 
 const c = computed(() => coordinators.value.find(x => x.project === props.project))
-const chosen = computed(() => (c.value ? agentChoices(c.value).find(a => agentKey(a) === props.agent) ?? c.value.agent : undefined))
+const fallback = computed(() => (c.value ? coordinatorAgent(c.value) : undefined))
+const chosen = computed(() => (isCoordinatorProgram(props.agent) ? { program: props.agent } : fallback.value))
+const agentName = (a: { program: string }) => kindLabel(a.program)
 const pane = computed(() => (c.value ? coordinatorPane(c.value) : undefined))
 // Its conversation runs with another agent than the chosen one (a resume the
 // user already chose for the default agent is no longer asked).
 const other = computed(() => !!pane.value && !!c.value?.ran && !sameAgent(c.value.ran, chosen.value)
-  && !(sameAgent(chosen.value, c.value.agent) && resumedCoordinators.value.includes(c.value.terminal!)))
+  && !(sameAgent(chosen.value, fallback.value) && resumedCoordinators.value.includes(c.value.terminal!)))
 
 function go(id: string) {
   haptic()
@@ -28,7 +30,7 @@ async function start() {
   busy.value = true
   error.value = ''
   try {
-    const p = await launchCoordinator(c.value.project, sameAgent(chosen.value, c.value.agent) ? undefined : chosen.value)
+    const p = await launchCoordinator(c.value.project, chosen.value)
     if (p) go(p.id)
     else emit('done')
   } catch (e) { error.value = (e as Error).message }

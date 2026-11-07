@@ -27,15 +27,14 @@ describe('parseAlfredCommand', () => {
       name: 'project add', apply: false, input: { key: 'WEB', machine: '', path: '/src/web', template: 'common' },
     })
     expect(parseAlfredCommand(['project', 'template', 'WEB', 'none', '--apply'])).toEqual({ name: 'project template', apply: true, key: 'WEB', template: '' })
-    expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'codex', '--model', 'gpt-6'])).toEqual({ name: 'coordinator start', apply: false, key: 'WEB', program: 'codex', model: 'gpt-6' })
+    expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'codex'])).toEqual({ name: 'coordinator start', apply: false, key: 'WEB', program: 'codex' })
     expect(parseAlfredCommand(['setting', 'set', 'theme', 'catppuccin-latte', '--apply'])).toEqual({ name: 'setting set', apply: true, key: 'theme', value: 'catppuccin-latte' })
   })
 
   it('says what is wrong', () => {
     expect(parseAlfredCommand(['project', 'add', 'WEB', '--path', '/x'])).toEqual({ error: 'usage: wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>] [--apply]' })
     expect(parseAlfredCommand(['project', 'add', 'WEB', '--machine', '', '--path', '/x', '--force', 'y'])).toEqual({ error: 'unknown option --force' })
-    expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'gemini', '--model', 'x'])).toEqual({ error: '--program is claude or codex' })
-    expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--model', 'x'])).toEqual({ error: '--program and --model go together' })
+    expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'omp'])).toEqual({ error: '--program is claude or codex' })
     expect(parseAlfredCommand(['setting', 'set', 'password', 'x'])).toMatchObject({ error: /^password is not a setting Alfred changes/ })
     // Only a value the app reads: no theme "light", no list setting.
     expect(parseAlfredCommand(['setting', 'set', 'theme', 'light'])).toMatchObject({ error: /^light is not a value of theme: one of herdr, claude-code/ })
@@ -117,6 +116,17 @@ describe('runAlfredCommand', () => {
     expect(await run('settings')).toMatchObject({ settings: { theme: 'nord' } })
     expect(await run('setting', 'set', 'theme', 'nord')).toEqual({ unchanged: true, theme: 'nord' })
     await expect(run('setting', 'set', 'theme', 'light', '--apply')).rejects.toThrow('light is not a value of theme')
+  })
+
+  it('starts a project coordinator with the user\'s first offered agent that can run it, no model', async () => {
+    await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--apply')
+    expect(await run('coordinator', 'start', 'WEB')).toMatchObject({ dryRun: true, change: ['start the coordinator of WEB with claude on this machine'] })
+    // Settings › Agents: OMP first (it cannot run a project coordinator), Claude unchecked.
+    await fs.writeFile(path.join(dir, 'settings.json'), JSON.stringify({ v: 1, settings: { agentOrder: '["omp","claude","codex"]', hiddenAgents: '["claude"]' } }))
+    expect(await run('coordinator', 'start', 'WEB')).toMatchObject({ change: ['start the coordinator of WEB with codex on this machine'] })
+    expect(await run('coordinators')).toMatchObject({ coordinators: [{ project: '_main' }, { project: 'WEB', agent: 'codex' }] })
+    expect(await run('coordinator', 'start', 'WEB', '--program', 'claude')).toMatchObject({ change: ['start the coordinator of WEB with claude on this machine'] })
+    await expect(run('coordinator', 'start', 'WEB', '--program', 'codex', '--model', 'gpt-6')).rejects.toThrow()
   })
 })
 
