@@ -2,6 +2,7 @@
 // it), where its current turn comes from, the `wherdr pm` commands it runs,
 // and its role files, written in its own folder on the project's machine.
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { COORDINATOR_AGENTS, MAIN, coordinatorArgs, mainRoleFiles, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
@@ -25,7 +26,7 @@ import { pacedStart, paceLine } from '../../shared/pm/pace'
 import { projectPace } from './pmPace'
 import type { CoordinatorRecord, PmStore } from './pmStore'
 import { OWN_FILES, alfredFiles, alfredName, isAlfredProgram, startPrompt } from '../../shared/pm/alfred'
-import { DATA_DIR } from './env'
+import { APP_URL_FILE, DATA_DIR, ENV_APP_URL } from './env'
 import pkg from '../../package.json'
 
 // alfredHome: Alfred's home folder (DATA_DIR/alfred by default).
@@ -50,6 +51,20 @@ export async function scopeOf(store: PmStore, token: unknown) {
   for (const c of await store.coordinators())
     if (/^[0-9a-f]{64}$/.test(c.tokenHash) && timingSafeEqual(Buffer.from(c.tokenHash, 'hex'), h)) return c.project
   return null
+}
+
+// Alfred's token for `wherdr alfred` (server/utils/alfredCli.ts): a new one
+// in a file of its home (mode 600) at each start, the one before stops working.
+export const ALFRED_TOKEN_FILE = '.alfred-token'
+export async function issueAlfredToken(store: PmStore, home: string) {
+  const token = randomBytes(32).toString('hex'), file = path.join(home, ALFRED_TOKEN_FILE)
+  await fs.writeFile(file, `${token}\n`, { mode: 0o600 })
+  await fs.chmod(file, 0o600)
+  await store.saveCoordinator({ project: MAIN, tokenHash: '', ...(await store.coordinator(MAIN)), cliHash: sha(token).toString('hex') })
+}
+export async function alfredTokenOk(store: PmStore, token: unknown) {
+  const h = (await store.coordinator(MAIN))?.cliHash
+  return typeof token === 'string' && /^[0-9a-f]{64}$/.test(token) && /^[0-9a-f]{64}$/.test(h ?? '') && timingSafeEqual(Buffer.from(h!, 'hex'), sha(token))
 }
 
 // Called by whatever delivers a message to the coordinator: the user's
@@ -375,6 +390,15 @@ export async function alfredView(deps: { store: PmStore, alfredHome?: string }) 
 // Where the coordinator reaches wherdr: loopback on the wherdr host; from
 // another machine, wherdr's published (tailnet) address.
 export interface CoordinatorUrls { local: string, remote?: string }
+const LOOPBACK = /^(localhost|127\.|\[::1\])/
+// here: the address the request came to (used when wherdr has no published one).
+export function coordinatorUrls(here: URL): CoordinatorUrls {
+  const port = process.env.NITRO_PORT || process.env.PORT || '7683'
+  let published = ''
+  try { published = JSON.parse(fsSync.readFileSync(APP_URL_FILE, 'utf8'))?.url || '' } catch {}
+  const remote = published || ENV_APP_URL || (LOOPBACK.test(here.hostname) ? '' : here.origin)
+  return { local: `http://127.0.0.1:${port}`, ...(remote ? { remote: remote.replace(/\/$/, '') } : {}) }
+}
 
 // When a project coordinator starts: its files, a new token, how to start it.
 export async function prepareCoordinator(deps: Deps, key: string, agent: { program: 'claude' | 'codex', model: string }, urls: CoordinatorUrls) {
@@ -382,6 +406,7 @@ export async function prepareCoordinator(deps: Deps, key: string, agent: { progr
   const url = local ? urls.local : urls.remote
   if (!url) throw new HerdrError('unreachable', 'The project\'s machine cannot reach this wherdr: publish it on your tailnet first (Settings › Phone)')
   const token = await issueToken(deps.store, key)
+  if (key === MAIN) await issueAlfredToken(deps.store, folder!)
   // Alfred starts with its greeting (startPrompt).
   const prompt = key === MAIN ? [startPrompt(first, await readAlfredName(deps))] : []
   return { on, folder, argv: [...coordinatorArgs(agent.program, agent.model, folder, p?.path), ...prompt], env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }

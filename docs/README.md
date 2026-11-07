@@ -16,6 +16,7 @@ or [Development and tests](development.md) for repository changes.
 - [Migrate from v2](migrate-from-v2.md) — Install v3 next to a running v2, import projects, machines and settings, auto-deploy from a build machine, fall back, uninstall.
 - [Project management](project-management.md) — Getting started: turn it on, templates, projects, the board and its coordinator.
 - [Home and agent list](home.md) — Machine tabs, spaces and tabs, states, new agents and search.
+- [Alfred's command](alfred.md) — `wherdr alfred`: what Alfred reads and changes, shown before it is done.
 - [Conversation and replies](conversation.md) — Read transcripts, answer questions, attach files and quote replies.
 - [Terminal](terminal.md) — The real terminal, shared viewers and taking control.
 - [Files](files.md) — Browse, read and download the files of an agent's folder.
