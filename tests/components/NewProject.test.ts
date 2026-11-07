@@ -23,6 +23,26 @@ registerEndpoint('/api/pm/coordinator-start', { method: 'POST', handler: async (
   return { terminal: 'host/t9' }
 } })
 
+const folders: Record<string, { exists: boolean, git: boolean, empty: boolean }> = {
+  '/repos/web': { exists: true, git: true, empty: false },
+  '/repos/new-app': { exists: false, git: false, empty: false },
+  '/repos/clients': { exists: true, git: false, empty: false },
+}
+registerEndpoint('/api/pm/overview', () => ({ enabled: true, projects: [], templates: [] }))
+registerEndpoint('/api/pm/repos', () => ({ home: '/repos', repos: ['/repos/api', '/repos/web'] }))
+registerEndpoint('/api/pm/folder', (e) => {
+  const at = String(new URL(e.node.req.url!, 'http://x').searchParams.get('path')).replace(/^~/, '/repos')
+  return { path: at, ...folders[at]! }
+})
+for (const url of ['/api/pm/template', '/api/pm/project']) {
+  registerEndpoint(url, { method: 'POST', handler: async (e) => {
+    const body = await readBody(e)
+    posts.push({ url, body })
+    if (url === '/api/pm/project') views = [...views, { project: body.key, name: body.name, template: body.template }]
+    return url === '/api/pm/project' ? { project: { key: body.key } } : { template: { id: 'vibe' } }
+  } })
+}
+
 const stubs = { AppSheet: { template: '<section><slot /><slot name="footer" /></section>' } }
 const running = { id: 'w1:p1', coreAddress: 'host/t1', status: 'idle', agent: 'codex', workspace: 'w1', tab: 't' } as Pane
 async function openSheet(v: CoordinatorView[], panes: Pane[] = []) {
@@ -30,8 +50,8 @@ async function openSheet(v: CoordinatorView[], panes: Pane[] = []) {
   herdrState.value = { ok: true, workspaces: [], panes }
   const w = await mountSuspended(NewAgentSheet, { global: { stubs } })
   newAgentOpen.value = true
-  await vi.waitFor(() => expect(w.find('[data-kind="coordinator"]').exists()).toBe(true))
-  await w.get('[data-kind="coordinator"]').trigger('click')
+  await vi.waitFor(() => expect(w.find('[data-kind="project"]').exists()).toBe(true))
+  await w.get('[data-kind="project"]').trigger('click')
   await flushPromises()
   return w
 }
@@ -105,12 +125,48 @@ it('the main coordinator (all projects) starts with no template', async () => {
   w.unmount()
 })
 
-it('offers no coordinator without project management', async () => {
+it('adds a project from a git repository, a new folder or a folder without git, then starts its coordinator', async () => {
+  const w = await openSheet([{ project: '_main', name: 'Main coordinator', main: true, agent: opus }])
+  await w.get('[data-testid="project-add"]').trigger('click')
+  const folder = async (kind: string) => {
+    await vi.waitFor(() => expect(w.find('[data-testid="project-folder"]').attributes('data-folder')).toBe(kind), { timeout: 2000 })
+    return w.find('[data-testid="project-git-init"]').exists()
+  }
+  // A repository found on the machine: one tap, name and key from its folder, no git option.
+  await vi.waitFor(() => expect(w.findAll('[data-repo]').map(b => b.text())).toEqual(['api~/api', 'web~/web']))
+  await w.get('[data-repo="/repos/web"]').trigger('click')
+  expect(await folder('git')).toBe(false)
+  expect((w.get('#projectName').element as HTMLInputElement).value).toBe('web')
+  expect((w.get('#projectKey').element as HTMLInputElement).value).toBe('WEB')
+  // A folder without git: taken as it is, no git option either.
+  await w.get('#projectPath').setValue('~/clients')
+  expect(await folder('plain')).toBe(false)
+  expect((w.get('#projectKey').element as HTMLInputElement).value).toBe('CLN')
+  expect(w.find('[data-testid="project-template"]').exists()).toBe(false) // no git: no template, no tasks
+  // A new folder: created at start, git init offered (off).
+  await w.get('#projectName').setValue('Shop')
+  await w.get('#projectPath').setValue('~/new-app')
+  expect(await folder('new')).toBe(true)
+  expect((w.get('#projectName').element as HTMLInputElement).value).toBe('Shop') // the user's name stays
+  expect(w.find('[data-testid="project-template"]').exists()).toBe(false)
+  await w.get('[data-testid="project-git-init"]').trigger('click')
+  await vi.waitFor(() => expect(w.find('[data-testid="project-template"]').exists()).toBe(true))
+  expect(w.get('[data-testid="project-template"]').text()).toContain('vibe (example)')
+  expect(w.text()).toContain('Settings › Projects › Templates')
+  await w.get('[data-testid="project-start"]').trigger('click')
+  await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w2%3Ap1'))
+  expect(posts.map(p => p.url)).toEqual(['/api/pm/template', '/api/pm/project', '/api/pm/coordinator-start'])
+  expect(posts[1]!.body).toEqual({ key: 'NA', name: 'Shop', machine: '', path: '/repos/new-app', template: 'vibe', plain: true, create: true, gitInit: true })
+  expect(posts[2]!.body).toEqual({ project: 'NA', program: 'claude' })
+  w.unmount()
+})
+
+it('offers no project without project management', async () => {
   views = []
   const w = await mountSuspended(NewAgentSheet, { global: { stubs } })
   newAgentOpen.value = true
   await flushPromises()
   expect(w.find('[data-kind="claude"]').exists()).toBe(true)
-  expect(w.find('[data-kind="coordinator"]').exists()).toBe(false)
+  expect(w.find('[data-kind="project"]').exists()).toBe(false)
   w.unmount()
 })
