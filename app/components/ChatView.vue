@@ -10,7 +10,7 @@ import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { restoreDraft } from '~/utils/queuedCancel'
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
-import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
+import { type PendingMessage, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
 import { createTailLoader, nextTail, restartsTail, tailQuery } from '~/utils/chatTail'
@@ -1015,12 +1015,17 @@ async function retryQueued(q: { id: string }) {
     retrying.value = null
   }
 }
-function queuedLabel(q: { state: string | null }) {
-  if (q.state === 'sending') return t('Queued · ') + t('sending…')
-  switch (waitFor.value) {
+function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue'>) {
+  const l = pendingLabel(q, waitFor.value, props.pane.agent)
+  switch (l.kind) {
+    case 'read': return t('Read by the agent')
     case 'stopped': return t('Queued · ') + t('agent stopped')
     case 'question': return t('Queued · ') + t('after you answer the question')
-    case 'working': return t('Queued')
+    case 'agent-queue':
+      if (l.agent === 'claude') return t('Queued by Claude · sent when it finishes')
+      if (l.agent === 'codex') return t('Queued by Codex · sent when it finishes')
+      return t('Queued by the agent · sent when it finishes')
+    case 'queued': return t('Queued')
     default: return t('Queued · ') + t('sending…')
   }
 }
@@ -1545,7 +1550,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </span><UserText :text="q.body" :pasted="q.pasted" />
               </template>
             </UChatMessage>
-            <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Sent · read by the agent') }}</span></div>
+            <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ queuedLabel(q) }}</span></div>
           </div>
           <!-- "!" command running: live output read from the screen. -->
           <div v-if="liveShell" class="msg-user-wrap">
