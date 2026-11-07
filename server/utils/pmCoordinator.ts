@@ -23,7 +23,7 @@ import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
 import { projectPace } from './pmPace'
 import type { CoordinatorRecord, PmStore } from './pmStore'
-import { OWN_FILES, alfredFiles, alfredName, startPrompt } from '../../shared/pm/alfred'
+import { OWN_FILES, alfredFiles, alfredName, isAlfredProgram, startPrompt } from '../../shared/pm/alfred'
 import { DATA_DIR } from './env'
 import pkg from '../../package.json'
 
@@ -337,6 +337,7 @@ async function writeRoleFiles(deps: Deps, key: string) {
   return { p, local: !!m.local, on, folder, first: false }
 }
 
+const alfredAgent = (program: unknown): CoordinatorAgent | null => (isAlfredProgram(program) ? { program, model: '' } : null)
 const readAlfredName = (deps: { alfredHome?: string }) => fs.readFile(path.join(homeOfAlfred(deps), 'identity.md'), 'utf8').then(alfredName, () => alfredName(''))
 
 // Alfred's home, on wherdr's own machine: wherdr's files rewritten at each
@@ -362,11 +363,11 @@ export async function writeAlfredHome(deps: Deps) {
   return { folder, first }
 }
 
-// The sidebar's Alfred row: its name (identity.md), the agent the user chose
-// (none yet: the sheet asks before its first start), and its conversation.
+// The sidebar's Alfred row: its name (identity.md), the program the user chose
+// (none yet: the sheet asks before its first start), the one running, and its conversation.
 export async function alfredView(deps: { store: PmStore, alfredHome?: string }) {
   const c = await deps.store.coordinator(MAIN)
-  return { name: await readAlfredName(deps), ...(c?.agent ? { agent: c.agent } : {}), ...(c?.ran ? { ran: c.ran } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}) }
+  return { name: await readAlfredName(deps), ...(c?.agent ? { program: c.agent.program } : {}), ...(c?.ran ? { ran: c.ran.program } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}) }
 }
 
 // Where the coordinator reaches wherdr: loopback on the wherdr host; from
@@ -388,8 +389,9 @@ export async function prepareCoordinator(deps: Deps, key: string, agent: { progr
 // its folder's bin/ (the `wherdr` script) first in its PATH.
 export async function startCoordinator(deps: Deps, key: unknown, agent: { program?: unknown, model?: unknown }, urls: CoordinatorUrls) {
   if (typeof key !== 'string') throw new HerdrError('not_found', 'Unknown project')
-  // No agent given: the project's default.
-  const a = agent.program === undefined ? (await deps.store.coordinator(key))?.agent ?? COORDINATOR_AGENTS[0]! : agentOf(agent)
+  // No agent given: the project's default. Alfred: a program only, with its own default model.
+  const a = key === MAIN ? alfredAgent(agent.program ?? (await deps.store.coordinator(key))?.agent?.program)
+    : agent.program === undefined ? (await deps.store.coordinator(key))?.agent ?? COORDINATOR_AGENTS[0]! : agentOf(agent)
   if (!a) throw new HerdrError('bad_input', 'program: claude or codex, and a model')
   const { program, model } = a
   const before = await deps.store.coordinator(key)

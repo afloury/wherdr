@@ -103,12 +103,13 @@ describe('the main coordinator (WHR-398)', () => {
     const home = path.join(dir, 'alfred')
     const d = { store, call, machines: () => [], alfredHome: home } as never
     const r = await startCoordinator(d, MAIN, { program: 'claude', model: 'sonnet' }, { local: 'http://127.0.0.1:7690' })
+    // A program only: its own default model, no --model (the model given is ignored).
     expect(r.folder).toBe(home)
     expect(await fs.readFile(path.join(home, 'CLAUDE.md'), 'utf8')).toBe('@AGENTS.md\n')
     expect(await fs.readFile(path.join(home, 'AGENTS.md'), 'utf8')).toContain('only through the board')
     expect(runs[0]).toMatchObject({ cwd: home, labels: { 'wherdr.coordinator': MAIN }, env: { WHERDR_URL: 'http://127.0.0.1:7690' } })
     expect(runs[0]!.on).toBeUndefined()
-    expect(runs[0]!.line).toMatch(/exec 'claude' '--model' 'sonnet' 'Follow .*give me another name\?"'$/)
+    expect(runs[0]!.line).toMatch(/exec 'claude' 'Follow .*give me another name\?"'$/)
     // Renamed by Alfred, then restarted with another agent: same home, its files kept, the old session stopped.
     await fs.writeFile(path.join(home, 'identity.md'), 'Name: Jeeves\n')
     await fs.writeFile(path.join(home, 'memory.md'), '- likes short answers\n')
@@ -116,10 +117,15 @@ describe('the main coordinator (WHR-398)', () => {
     expect(runs[1]!.line).toMatch(/greet the user in one short line as Jeeves\.'$/)
     expect(await fs.readFile(path.join(home, 'memory.md'), 'utf8')).toBe('- likes short answers\n')
     expect(killed).toEqual(['host/t1'])
-    expect(await alfredView(d)).toEqual({ name: 'Jeeves', agent: { program: 'codex', model: 'gpt-6-sol' }, ran: { program: 'codex', model: 'gpt-6-sol' }, terminal: 'host/t2' })
+    expect(runs[1]!.line).not.toContain('--model')
+    expect(await alfredView(d)).toEqual({ name: 'Jeeves', program: 'codex', ran: 'codex', terminal: 'host/t2' })
+    // No program given: the one picked last.
+    await startCoordinator(d, MAIN, {}, { local: 'http://127.0.0.1:7690' })
+    expect(runs[2]!.line).toMatch(/exec 'codex' '-C'/)
+    await expect(startCoordinator(d, MAIN, { program: 'gemini' }, { local: 'http://127.0.0.1:7690' })).rejects.toThrow('program')
     const view = await coordinatorsView(store)
     expect(view.map(c => c.project)).toEqual([MAIN, 'CO', 'ST'])
-    expect(view[0]).toMatchObject({ main: true, terminal: 'host/t2' })
+    expect(view[0]).toMatchObject({ main: true, terminal: 'host/t3' })
   })
 
   it('runs Alfred with projects off: its record is saved, its instructions say how to switch them on', async () => {
@@ -127,7 +133,7 @@ describe('the main coordinator (WHR-398)', () => {
     const home = path.join(dir, 'alfred')
     const d = { store, call: async () => ({ address: 'host/t1' }), machines: () => [], alfredHome: home } as never
     await startCoordinator(d, MAIN, { program: 'claude', model: 'opus' }, { local: 'http://127.0.0.1:7690' })
-    expect(await alfredView(d)).toMatchObject({ name: 'Alfred', agent: { model: 'opus' }, terminal: 'host/t1' })
+    expect(await alfredView(d)).toMatchObject({ name: 'Alfred', program: 'claude', terminal: 'host/t1' })
     expect(await fs.readFile(path.join(home, 'AGENTS.md'), 'utf8')).toContain('Project management is off')
     await expect(store.saveCoordinator({ project: 'CO', tokenHash: '' })).rejects.toThrow('switched off')
   })

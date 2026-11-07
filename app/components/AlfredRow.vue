@@ -1,9 +1,12 @@
 <script setup lang="ts">
 // Alfred, wherdr's assistant: the first row of the agent list, always there
 // (projects on or off). Not started: a greyed row; the first time, a sheet
-// asks for its agent, remembered after. Its ••• menu restarts it with another
-// agent: the same Alfred (home folder, identity, memory), the old session stopped.
-import { COORDINATOR_AGENTS, MAIN, agentChoices, agentKey, agentName, type CoordinatorAgent } from '#shared/pm/coordinator'
+// asks for its program (one tile per one installed on wherdr's machine; no
+// model: the user changes it inside Alfred), remembered after. Its ••• menu
+// restarts it with another program: the same Alfred (home folder, identity,
+// memory), the old session stopped.
+import { MAIN } from '#shared/pm/coordinator'
+import { alfredPrograms, type AlfredProgram } from '#shared/pm/alfred'
 
 const busy = ref(false)
 const error = ref('')
@@ -11,12 +14,13 @@ const sheet = ref(false)
 const pick = ref('')
 
 const name = computed(() => alfred.value?.name || 'Alfred')
-const current = computed(() => (alfredPane.value ? alfred.value?.ran : undefined) ?? alfred.value?.agent)
-const choices = computed(() => agentChoices({ agent: alfred.value?.agent ?? COORDINATOR_AGENTS[0]!, ran: alfred.value?.ran }))
+const current = computed(() => (alfredPane.value ? alfred.value?.ran : undefined) ?? alfred.value?.program)
+// The programs installed on wherdr's own machine, minus those hidden in Settings › Agents.
+const choices = computed(() => alfredPrograms(appConfig.value.machines?.find(m => m.local)?.kinds ?? appConfig.value.kinds, hiddenAgents.value))
 const sub = computed(() => {
   if (busy.value) return tl('Starting…', 'Lancement…')
-  if (alfredPane.value) return `${current.value ? `${agentName(current.value)} · ` : ''}${statusLabel(alfredPane.value)}`
-  return current.value ? tl(`not started · ${agentName(current.value)}`, `pas lancé · ${agentName(current.value)}`) : tl('not started', 'pas lancé')
+  if (alfredPane.value) return `${current.value ? `${kindLabel(current.value)} · ` : ''}${statusLabel(alfredPane.value)}`
+  return current.value ? tl(`not started · ${kindLabel(current.value)}`, `pas lancé · ${kindLabel(current.value)}`) : tl('not started', 'pas lancé')
 })
 const menu = (): MenuItem[] => [{
   label: alfredPane.value ? tl('Restart with…', 'Relancer avec…') : tl('Start with…', 'Lancer avec…'),
@@ -24,16 +28,16 @@ const menu = (): MenuItem[] => [{
 }]
 
 function choose() {
-  pick.value = agentKey(current.value ?? COORDINATOR_AGENTS[0]!)
+  pick.value = current.value && choices.value.includes(current.value) ? current.value : choices.value[0] ?? ''
   sheet.value = true
 }
-async function start(a: CoordinatorAgent) {
+async function start(program: AlfredProgram) {
   if (busy.value) return
   busy.value = true
   error.value = ''
   sheet.value = false
   try {
-    const p = await launchCoordinator(MAIN, a)
+    const p = await launchCoordinator(MAIN, { program, model: '' })
     await loadAlfred()
     if (p) await navigateTo(panePath(p.id))
   }
@@ -43,10 +47,10 @@ async function start(a: CoordinatorAgent) {
 // One tap: its conversation, else a start with its agent (chosen first, the first time).
 async function open() {
   if (alfredPane.value) return navigateTo(panePath(alfredPane.value.id))
-  if (!alfred.value?.agent) return choose()
-  await start(alfred.value.agent)
+  if (!alfred.value?.program) return choose()
+  await start(alfred.value.program)
 }
-const picked = () => choices.value.find(a => agentKey(a) === pick.value)
+const picked = () => choices.value.find(p => p === pick.value)
 
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { loadAlfred(); timer = setInterval(loadAlfred, 30_000) })
@@ -65,22 +69,24 @@ onUnmounted(() => clearInterval(timer))
   </div>
   <p v-if="error" class="error alfred-error">{{ error }}</p>
 
-  <AppSheet v-model:open="sheet" :title="alfredPane ? tl(`Restart ${name} with…`, `Relancer ${name} avec…`) : alfred?.agent ? tl(`Start ${name} with…`, `Lancer ${name} avec…`) : tl('Your assistant’s agent', 'L’agent de ton assistant')">
+  <AppSheet v-model:open="sheet" :title="alfredPane ? tl(`Restart ${name} with…`, `Relancer ${name} avec…`) : alfred?.program ? tl(`Start ${name} with…`, `Lancer ${name} avec…`) : tl('Your assistant’s agent', 'L’agent de ton assistant')">
     <div class="sheet-form" data-testid="alfred-sheet">
       <p class="alfred-note">
-        {{ alfred?.agent
+        {{ alfred?.program
           ? tl(`The same ${name} carries on: its home folder, identity and memory stay.${alfredPane ? ' The current session stops.' : ''}`, `${name} reprend où il en était : son dossier, son identité et sa mémoire restent.${alfredPane ? ' La session en cours s’arrête.' : ''}`)
           : tl('Alfred is wherdr’s assistant: it helps you get started and coordinates your projects. Pick the agent it runs on; you can change it later from its ••• menu.', 'Alfred est l’assistant de wherdr : il t’aide à démarrer et coordonne tes projets. Choisis l’agent qui le fait tourner ; tu pourras en changer depuis son menu •••.') }}
       </p>
       <label class="field-label">{{ tl('Agent', 'Agent') }}</label>
-      <div class="segmented alfred-agents" role="radiogroup" :aria-label="tl('Agent', 'Agent')" :style="{ '--segment-count': choices.length }">
+      <div v-if="choices.length" class="segmented alfred-agents" role="radiogroup" :aria-label="tl('Agent', 'Agent')" :style="{ '--segment-count': choices.length }">
         <button
-          v-for="a in choices" :key="agentKey(a)" type="button" role="radio" :class="{ on: agentKey(a) === pick }"
-          :aria-checked="agentKey(a) === pick" :data-agent="agentKey(a)" @click="pick = agentKey(a)"
+          v-for="p in choices" :key="p" type="button" role="radio" :class="{ on: p === pick }"
+          :aria-checked="p === pick" :data-agent="p" @click="pick = p"
         >
-          <AgentAvatar :agent="a.program" /><span>{{ agentName(a) }}</span>
+          <AgentAvatar :agent="p" /><span>{{ kindLabel(p) }}</span>
         </button>
       </div>
+      <p v-else class="alfred-note" data-testid="alfred-none">{{ tl('Install Claude Code or Codex on this machine to start Alfred.', 'Installe Claude Code ou Codex sur cette machine pour lancer Alfred.') }}</p>
+      <p v-if="choices.length" class="alfred-hint muted">{{ tl('It runs with the agent’s default model; change the model inside Alfred.', 'Il tourne avec le modèle par défaut de l’agent ; change de modèle dans Alfred.') }}</p>
     </div>
     <template #footer>
       <div class="sheet-form">
@@ -109,4 +115,5 @@ onUnmounted(() => clearInterval(timer))
 .alfred-error { margin: -14px 0 14px; }
 .alfred-note { margin: 0 2px 14px; color: var(--text-2); font-size: 14px; }
 .alfred-agents button { text-transform: none; letter-spacing: .02em; }
+.alfred-hint { margin: 8px 2px 0; font-size: 13px; }
 </style>

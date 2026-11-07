@@ -19,7 +19,7 @@ export const COORDINATOR_AGENTS: CoordinatorAgent[] = [
 // (never a project key: those start with a letter).
 export const MAIN = '_main'
 export const sameAgent = (a?: CoordinatorAgent, b?: CoordinatorAgent) => !!a && !!b && a.program === b.program && a.model === b.model
-export const agentName = (a: CoordinatorAgent) => (a.program === 'claude'
+export const agentName = (a: CoordinatorAgent) => (!a.model ? (a.program === 'claude' ? 'Claude' : 'Codex') : a.program === 'claude'
   ? `Claude ${a.model.charAt(0).toUpperCase()}${a.model.slice(1)}`
   : `Codex ${a.model.replace(/^gpt/i, 'GPT')}`)
 export const agentKey = (a: CoordinatorAgent) => `${a.program}:${a.model}`
@@ -205,9 +205,11 @@ export function stepDoneEvent(step: PlannedStep | undefined, cmd: { userSaid?: s
 // only by -c (nothing in ~/.codex) extends :workspace (reads everywhere, writes
 // in its folder and temp folders) with the network on.
 export function coordinatorArgs(program: 'claude' | 'codex', model: string, folder: string, repo?: string): string[] {
+  // No model (Alfred): the harness's own default, changed inside it.
+  const m = model ? ['--model', model] : []
   return program === 'claude'
-    ? ['claude', '--model', model, ...(repo ? ['--add-dir', repo] : [])]
-    : ['codex', '--model', model, '-C', folder, '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true']
+    ? ['claude', ...m, ...(repo ? ['--add-dir', repo] : [])]
+    : ['codex', ...m, '-C', folder, '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true']
 }
 
 // `wherdr` in the coordinator's folder (bin/, first in its PATH): the project's

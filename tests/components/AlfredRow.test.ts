@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import AlfredRow from '~/components/AlfredRow.vue'
-import { herdrState } from '~/composables/useHerdr'
+import { appConfig, herdrState } from '~/composables/useHerdr'
 import { MAIN } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
 
@@ -26,8 +26,9 @@ const mount = async () => {
   return w
 }
 
-it('not started, no agent yet: a greyed row, and the first tap asks which agent, then starts it', async () => {
+it('not started, no agent yet: a greyed row, and the first tap asks which installed program, then starts it', async () => {
   herdrState.value = { ok: true, workspaces: [], panes: [] }
+  appConfig.value = { ...appConfig.value, kinds: ['claude', 'gemini', 'codex'] }
   view = { name: 'Alfred' }
   await mount()
   expect(w!.find('[data-testid="alfred"]').classes()).not.toContain('on')
@@ -36,26 +37,28 @@ it('not started, no agent yet: a greyed row, and the first tap asks which agent,
   await w!.find('[data-testid="alfred-open"]').trigger('click')
   await vi.waitFor(() => expect(document.querySelector('[data-testid="alfred-sheet"]')).not.toBeNull())
   expect(posts).toEqual([])
-  ;(document.querySelector('[data-agent="codex:gpt-6-sol"]') as HTMLElement).click()
+  // One tile per program, no models.
+  expect([...document.querySelectorAll('[data-agent]')].map(b => b.textContent!.trim())).toEqual(['Claude', 'Codex'])
+  ;(document.querySelector('[data-agent="codex"]') as HTMLElement).click()
   ;(document.querySelector('[data-testid="alfred-start"]') as HTMLElement).click()
-  await vi.waitFor(() => expect(posts).toEqual([{ project: MAIN, program: 'codex', model: 'gpt-6-sol' }]))
+  await vi.waitFor(() => expect(posts).toEqual([{ project: MAIN, program: 'codex', model: '' }]))
 })
 
 it('not started with a remembered agent: one tap starts it with that agent', async () => {
   herdrState.value = { ok: true, workspaces: [], panes: [] }
-  view = { name: 'Alfred', agent: { program: 'claude', model: 'sonnet' } }
+  view = { name: 'Alfred', program: 'claude' }
   await mount()
-  await vi.waitFor(() => expect(w!.find('[data-testid="alfred-sub"]').text()).toBe('not started · Claude Sonnet'))
+  await vi.waitFor(() => expect(w!.find('[data-testid="alfred-sub"]').text()).toBe('not started · Claude'))
   await w!.find('[data-testid="alfred-open"]').trigger('click')
-  await vi.waitFor(() => expect(posts).toEqual([{ project: MAIN, program: 'claude', model: 'sonnet' }]))
+  await vi.waitFor(() => expect(posts).toEqual([{ project: MAIN, program: 'claude', model: '' }]))
 })
 
 it('running and renamed: its name, its current agent, one tap opens the conversation', async () => {
   herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p1', 'host/t1')] }
-  view = { name: 'Jeeves', agent: { program: 'claude', model: 'opus' }, ran: { program: 'claude', model: 'opus' }, terminal: 'host/t1' }
+  view = { name: 'Jeeves', program: 'claude', ran: 'claude', terminal: 'host/t1' }
   await mount()
   expect(w!.find('[data-testid="alfred"]').classes()).toContain('on')
-  expect(w!.find('[data-testid="alfred-sub"]').text()).toMatch(/^Claude Opus · /)
+  expect(w!.find('[data-testid="alfred-sub"]').text()).toMatch(/^Claude · /)
   await w!.find('[data-testid="alfred-open"]').trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w%3Ap1'))
   expect(posts).toEqual([])

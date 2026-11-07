@@ -6,6 +6,14 @@
 import type { Project } from './project'
 
 export const ALFRED = 'Alfred'
+// The programs wherdr can run Alfred with, each with its own default model
+// (no --model: the user changes the model inside Alfred).
+export const ALFRED_PROGRAMS = ['claude', 'codex'] as const
+export type AlfredProgram = typeof ALFRED_PROGRAMS[number]
+// The tiles of Alfred's agent sheet: those installed on wherdr's machine and not hidden.
+export const alfredPrograms = (installed: readonly string[], hidden: readonly string[] = []) =>
+  ALFRED_PROGRAMS.filter(p => installed.includes(p) && !hidden.includes(p))
+export const isAlfredProgram = (v: unknown): v is AlfredProgram => ALFRED_PROGRAMS.includes(v as AlfredProgram)
 export const MEMORY_CAP = 4000
 
 // Alfred's own files: created when missing, never overwritten.

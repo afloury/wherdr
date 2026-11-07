@@ -1,6 +1,6 @@
 // WHR-403: Alfred's home files, the name read from its identity.md, and its start message.
 import { describe, expect, it } from 'vitest'
-import { ALFRED, FIRST_MESSAGE, OWN_FILES, alfredFiles, alfredName, startPrompt, type AlfredContext } from '../shared/pm/alfred'
+import { ALFRED, FIRST_MESSAGE, OWN_FILES, alfredFiles, alfredPrograms, alfredName, startPrompt, type AlfredContext } from '../shared/pm/alfred'
 
 const ctx: AlfredContext = { home: '/data/alfred', version: '3.0.0', docs: '/opt/wherdr/docs', docFiles: ['overview.md', 'quick-start.md'], pm: false, projects: [] }
 
@@ -44,4 +44,10 @@ it('greets with the rename question on the first start only', () => {
   expect(startPrompt(true, ALFRED)).toContain(FIRST_MESSAGE)
   expect(startPrompt(false, 'Jeeves')).toMatch(/as Jeeves\.$/)
   expect(startPrompt(false, 'Jeeves')).not.toContain(FIRST_MESSAGE)
+})
+
+it('offers one tile per program installed and not hidden, those wherdr can run Alfred with', () => {
+  expect(alfredPrograms(['codex', 'gemini', 'claude', 'shell'])).toEqual(['claude', 'codex'])
+  expect(alfredPrograms(['claude', 'codex'], ['claude'])).toEqual(['codex'])
+  expect(alfredPrograms(['gemini'])).toEqual([])
 })
