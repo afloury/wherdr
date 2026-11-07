@@ -2,6 +2,7 @@
 // and the template its tasks follow. Stored in DATA_DIR/projects/projects.json.
 import type { WorkflowError } from './workflow'
 import type { Task } from './run'
+import type { RepoVisibility } from './visibility'
 
 export interface Project {
   key: string // task ids are <key>-<n>: WHR-344
@@ -10,6 +11,7 @@ export interface Project {
   path: string
   base?: string // branch tasks start from (default: the repo's current one)
   template?: string // template id; none yet = no task can start
+  visibility?: RepoVisibility // public repository: guardrails for its coordinator and tasks
   addedAt: number
 }
 

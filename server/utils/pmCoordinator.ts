@@ -18,6 +18,7 @@ import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, type CoreAdminDeps } from './coreCreate'
 import { WRITE_SCRIPT, exec, startTask } from './pmLaunch'
 import { userStep } from './pmBoard'
+import { ensureVisibility } from './pmVisibility'
 import { resumeTask, stopTask } from './pmStop'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
@@ -324,7 +325,8 @@ async function writeRoleFiles(deps: Deps, key: string) {
   const { store } = deps
   if (key === MAIN) return { p: undefined, local: true, on: undefined, ...await writeAlfredHome(deps) }
   const projects = await store.projects()
-  const p = projects.find(x => x.key === key)
+  const found = projects.find(x => x.key === key)
+  const p = found && await ensureVisibility(deps, found)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
   const t = p?.template ? await store.template(p.template) : null
   const { m, on } = machineOn(deps, p.machine)

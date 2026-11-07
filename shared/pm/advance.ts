@@ -5,6 +5,7 @@
 import type { Evidence } from './workflow'
 import { LABEL, type Run, type Task } from './run'
 import { parseFindings, reviewText, sendBackText } from './verdict'
+import { publicReviewSection } from './visibility'
 import type { PlannedStep, StepEvent, StepState } from './steps'
 
 // The agent's own end signal, typed in its terminal (hc sets HC_TERMINAL_ID).
@@ -26,12 +27,13 @@ export const doneSection = (note: string) => [
 ]
 
 // The reviewer's instructions file: the task, what to review, how to answer.
-export function reviewFile(task: Pick<Task, 'id' | 'title' | 'description'>, run: Pick<Run, 'worktree' | 'branch'>, text: string, verdict: string) {
+export function reviewFile(task: Pick<Task, 'id' | 'title' | 'description'>, run: Pick<Run, 'worktree' | 'branch'>, text: string, verdict: string, publicRepo = false) {
   return [
     `# Review of ${task.id}: ${task.title}`, '', task.description.trim() || '(no description)', '',
     `The work is on branch ${run.branch}, in ${run.worktree}. Its changes: \`git diff $(git config branch.${run.branch}.wherdrstart)..HEAD\`.`,
     'Read and run what you need, but change nothing: no edit, no commit, no push.', '',
     '## Instructions', '', text, '',
+    ...(publicRepo ? publicReviewSection() : []),
     '## When you are done', '',
     `Write the verdict JSON (only the {"findings":[…]} object) to ${verdict}, then run:`, '', `    ${DONE_CMD}`, '',
   ].join('\n')
