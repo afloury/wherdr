@@ -20,7 +20,7 @@ export const COORDINATOR_AGENTS: CoordinatorAgent[] = [
 // (never a project key: those start with a letter).
 export const MAIN = '_main'
 export const sameAgent = (a?: CoordinatorAgent, b?: CoordinatorAgent) => !!a && !!b && a.program === b.program && a.model === b.model
-export const agentName = (a: CoordinatorAgent) => (a.program === 'claude'
+export const agentName = (a: CoordinatorAgent) => (!a.model ? (a.program === 'claude' ? 'Claude' : 'Codex') : a.program === 'claude'
   ? `Claude ${a.model.charAt(0).toUpperCase()}${a.model.slice(1)}`
   : `Codex ${a.model.replace(/^gpt/i, 'GPT')}`)
 export const agentKey = (a: CoordinatorAgent) => `${a.program}:${a.model}`
@@ -206,9 +206,11 @@ export function stepDoneEvent(step: PlannedStep | undefined, cmd: { userSaid?: s
 // only by -c (nothing in ~/.codex) extends :workspace (reads everywhere, writes
 // in its folder and temp folders) with the network on.
 export function coordinatorArgs(program: 'claude' | 'codex', model: string, folder: string, repo?: string): string[] {
+  // No model (Alfred): the harness's own default, changed inside it.
+  const m = model ? ['--model', model] : []
   return program === 'claude'
-    ? ['claude', '--model', model, ...(repo ? ['--add-dir', repo] : [])]
-    : ['codex', '--model', model, '-C', folder, '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true']
+    ? ['claude', ...m, ...(repo ? ['--add-dir', repo] : [])]
+    : ['codex', ...m, '-C', folder, '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true']
 }
 
 // `wherdr` in the coordinator's folder (bin/, first in its PATH): the project's
@@ -304,20 +306,21 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[]):
   }
 }
 
-// The main coordinator's folder: every project, through the board only.
+// The main coordinator's part of Alfred's home (shared/pm/alfred.ts): every
+// project, through the board only. Its AGENTS.md is a section of Alfred's.
 export function mainRoleFiles(projects: Pick<Project, 'key' | 'name' | 'path' | 'template'>[]): Record<string, string> {
   const list = projects.length ? projects.map(p => `- ${p.key}: ${p.name} (repository ${p.path}, template ${p.template || 'none'})`) : ['(no project yet)']
   const agents = [
-    '# Main coordinator', '',
-    'You coordinate every project of the user\'s board, and answer the user about all of them. You change no repository: task agents do the work in their own worktrees.',
+    '## Coordinating the projects', '',
+    'You are also the main coordinator: you coordinate every project of the user\'s board, and answer the user about all of them. You change no repository: task agents do the work in their own worktrees.',
     'Messages that start with "Autopilot:" are wakes sent by the engine; the others come from the user. The server knows which, and refuses what a wake may not do.', '',
-    '## Projects', '', ...list, '',
-    '## Commands (your token: every project)', '', ...commandList, '',
+    '### Projects', '', ...list, '',
+    '### Commands (your token: every project)', '', ...commandList, '',
     'A task names its project (`WHR-12` is project WHR). `list` alone shows every project\'s tasks; `list`, `plan`, `template show`, `automation list`, `automation show` and `task add` take `--project <KEY>` for one project (`task add` needs it). `template edit` is not yours: the project\'s coordinator or the user changes a template.',
     'Every change you make is written to the task\'s log as the main coordinator\'s.', '',
-    '## Project coordinators', '',
+    '### Project coordinators', '',
     'Each project may have its own coordinator. You reach it only through the board: add a task, a tag or a link it will see. There is no other channel, and you never type into its terminal.', '',
-    '## What you never do', '',
+    '### What you never do', '',
     '- approve, merge, change settings, guards or your autopilot\'s limits; answer a permission request: those are the user\'s;',
     '- end a step that waits for the user unless they just told you so (`--user-said` with their words);',
     '- do the work yourself: work goes to tasks.',

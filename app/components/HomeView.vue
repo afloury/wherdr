@@ -550,6 +550,7 @@ function resetListWidth() {
       </div>
       <NuxtLink v-if="quietHint" :to="quietSettings" class="home-quiet" :aria-label="quietLabel"><UIcon name="i-lucide-bell-off" /><span>{{ quietHint }}</span></NuxtLink>
 
+      <AlfredRow v-if="st.ok" />
       <CoordinatorsSection v-if="st.ok" />
       <div v-if="showCounters && agents.length" class="stats">
         <div v-for="c in stats" :key="c.s" class="stat" :class="[c.s, { zero: !c.n }]">
