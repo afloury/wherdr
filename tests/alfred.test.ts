@@ -29,6 +29,7 @@ describe('alfredFiles', () => {
     expect(a).toContain('overview.md, quick-start.md')
     expect(a).toContain('only after the user\'s yes')
     expect(a).toContain('Never touch a remote machine')
+    expect(a).toContain('never build, install dependencies, run test suites or long jobs here')
     // Projects off: no coordinator section, a pointer to switch them on.
     expect(a).not.toContain('## Coordinating')
     expect(a).toContain('Settings › Projects')
