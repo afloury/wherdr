@@ -32,6 +32,12 @@ post('/api/pm/project-template', (b) => {
   return { project: {} }
 })
 
+post('/api/pm/project-visibility', (b) => {
+  const visibility = b.check ? { value: 'public' as const, at: 2, by: 'check' as const } : { value: b.value as 'public' | 'private', at: 2, by: 'user' as const }
+  state = { ...state, projects: state.projects.map(p => p.key === b.key ? { ...p, visibility } : p) }
+  return { project: {} }
+})
+
 let mounted: { unmount: () => void } | null = null
 afterEach(() => { mounted?.unmount(); mounted = null; reset() })
 
@@ -57,4 +63,20 @@ it('switches project management on, adds a project with its template, then chang
 
   await w.find('[data-testid="pm-project-template"]').setValue('company')
   await vi.waitFor(() => expect(calls[2]).toEqual({ url: '/api/pm/project-template', body: { key: 'WEB', template: 'company' } }))
+})
+
+it('shows a public repository\'s badge, lets the user override it and check it again', async () => {
+  state = { ...state, enabled: true, projects: [{ key: 'WEB', name: 'Web', machine: '', path: '/home/u/src/web', addedAt: 1, visibility: { value: 'public', at: 1, by: 'check' } }] }
+  const w = await mountSuspended(ProjectsSettings, { props: { active: true } })
+  mounted = w
+  await vi.waitFor(() => expect(w.find('[data-testid="pm-public"]').text()).toBe('Public'))
+
+  await w.find('[data-testid="pm-visibility"]').setValue('private')
+  await vi.waitFor(() => expect(w.find('[data-testid="pm-public"]').exists()).toBe(false))
+  expect(calls[0]).toEqual({ url: '/api/pm/project-visibility', body: { key: 'WEB', value: 'private' } })
+  expect(w.find('[data-testid="pm-project"]').text()).toContain('Set by you')
+
+  await w.find('[data-testid="pm-visibility-check"]').trigger('click')
+  await vi.waitFor(() => expect(w.find('[data-testid="pm-public"]').exists()).toBe(true))
+  expect(calls[1]).toEqual({ url: '/api/pm/project-visibility', body: { key: 'WEB', check: true } })
 })
