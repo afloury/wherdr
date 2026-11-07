@@ -24,6 +24,7 @@ async function act(fn: () => Promise<unknown>) {
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = false }
 }
+const agentItems = computed(() => choices.value.map(a => ({ label: agentName(a), value: key(a) })))
 const setDefault = (v: string) => act(() => api('/api/pm/coordinator-agent', { project: props.c.project, ...choices.value.find(a => key(a) === v)! }))
 const fresh = () => act(async () => { const p = await launchCoordinator(props.c.project); if (p) await navigateTo(panePath(p.id)) })
 const resume = () => { resumeCoordinator(props.c.terminal!); if (props.open && pane.value) navigateTo(panePath(pane.value.id)) }
@@ -36,9 +37,7 @@ const answer = (accept: boolean) => act(() => api('/api/pm/template-proposal', {
   <div class="coord" data-testid="coordinator-bar">
     <div class="coord-head">
       <span class="mono-label">{{ title }}</span>
-      <select class="pm-select coord-agent" :value="key(c.agent)" :disabled="busy" :aria-label="tl('Default agent', 'Agent par défaut')" data-testid="coordinator-agent" @change="setDefault(($event.target as HTMLSelectElement).value)">
-        <option v-for="a in choices" :key="key(a)" :value="key(a)">{{ agentName(a) }}</option>
-      </select>
+      <USelect :model-value="key(c.agent)" :items="agentItems" size="lg" class="coord-agent" :disabled="busy" :aria-label="tl('Default agent', 'Agent par défaut')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
       <UButton v-if="open && !other" color="primary" size="lg" :loading="busy" data-testid="coordinator-open" @click="openIt">
         {{ pane ? tl('Open', 'Ouvrir') : tl(`Start with ${agentName(c.agent)}`, `Lancer avec ${agentName(c.agent)}`) }}
       </UButton>
@@ -73,7 +72,7 @@ const answer = (accept: boolean) => act(() => api('/api/pm/template-proposal', {
 .coord-head .mono-label { flex: 1; white-space: nowrap; color: var(--muted); }
 .coord-warn { flex-wrap: wrap; }
 .coord-warn-text { flex: 1 1 calc(100% - 40px); }
-.coord-agent { min-height: 36px; padding: 4px 8px; }
+.coord-head :deep(.coord-agent) { min-width: 0; max-width: 100%; }
 .coord-proposal { display: grid; gap: 6px; padding: 8px 16px 12px; border-top: 1px solid var(--line); }
 .coord-proposal p { margin: 0; overflow-wrap: anywhere; }
 .coord-said { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

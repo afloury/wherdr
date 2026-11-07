@@ -4,6 +4,8 @@ import { createError, getQuery, readBody } from 'h3'
 import TemplateEditor from '~/components/TemplateEditor.vue'
 import { company, vibe } from '#shared/pm/examples'
 import type { Template } from '#shared/pm/workflow'
+import { pick, selects, selectValue } from '../helpers/select'
+import { NONE } from '~/utils/selectNone'
 
 // A fake server keeping one saved template and its log.
 let saved: Record<string, { template: Template, log: { at: number, by: 'user', version: number, changes: string[] }[] }> = {}
@@ -36,24 +38,24 @@ const plan = (w: W) => w.findAll('[data-testid="tpl-plan"] li').map(l => l.text(
 it('copies an example, edits its steps in the form, previews the plan and saves it', async () => {
   const w = await mount()
   // vibe is saved: its copy takes a free id. company is not: the copy keeps its id.
-  await w.find('[data-testid="tpl-open"]').setValue('example:vibe')
+  await pick(w, 'tpl-open', 'example:vibe')
   await w.find('[data-testid="tpl-mode-json"]').trigger('click')
   expect(JSON.parse((w.find(json).element as HTMLTextAreaElement).value).id).toBe('vibe-copy')
   await w.find('[data-testid="tpl-mode-steps"]').trigger('click')
-  await w.find('[data-testid="tpl-open"]').setValue('example:company')
+  await pick(w, 'tpl-open', 'example:company')
   expect(w.findAll('[data-testid="tpl-step"]')).toHaveLength(7)
   expect(plan(w)).toEqual(['todo', 'work', 'review', 'pr', 'merge', 'deploy', 'done'])
 
   // The worker step held by no one: refused, with its line in the JSON.
-  expect((w.findAll('[data-testid="tpl-holder"]')[4]!.element as HTMLSelectElement).value).toBe('none') // merge
-  await w.findAll('[data-testid="tpl-holder"]')[1]!.setValue('none')
+  expect(selectValue(w, 'tpl-holder', 4)).toBe('none') // merge
+  await pick(w, 'tpl-holder', 'none', 1)
   // The line of the work step's holder.
   const src = JSON.stringify(company, null, 2).split('\n')
   const line = src.findIndex((l, n) => n > src.findIndex(x => x.includes('"id": "work"')) && l.includes('"holder"')) + 1
   expect(errors(w)).toEqual([`Line ${line} · taskTypes.feature.steps[1].holder: an agent must hold a step that ends with report`])
   expect(w.find('[data-testid="tpl-save"]').attributes('disabled')).toBeDefined()
   expect(plan(w)).toEqual([])
-  await w.findAll('[data-testid="tpl-holder"]')[1]!.setValue('worker')
+  await pick(w, 'tpl-holder', 'worker', 1)
   expect(errors(w)).toEqual([])
 
   await w.find('[data-testid="tpl-add"]').trigger('click')
@@ -68,11 +70,8 @@ it('copies an example, edits its steps in the form, previews the plan and saves 
 it('refuses invalid JSON with the faulty line, then saves the fixed text', async () => {
   saved.vibe = { template: { ...vibe, version: 1 }, log: [{ at: 0, by: 'user', version: 1, changes: [] }] }
   const w = await mount()
-  await w.find('[data-testid="tpl-open"]').setValue('saved:vibe')
+  await pick(w, 'tpl-open', 'saved:vibe')
   await vi.waitFor(() => expect(w.find('[data-testid="tpl-log"]').text()).toContain('created'))
-  // The placeholder option asks nothing and keeps the template open.
-  await w.find('[data-testid="tpl-open"]').setValue('')
-  expect(w.find('[role="alert"]').exists()).toBe(false)
   await w.find('[data-testid="tpl-mode-json"]').trigger('click')
   const area = w.find(json)
   const good = (area.element as HTMLTextAreaElement).value
@@ -99,20 +98,20 @@ it('refuses invalid JSON with the faulty line, then saves the fixed text', async
 
 it('sets screenshots as a step\'s evidence: after only, before and after, or none', async () => {
   const w = await mount()
-  await w.find('[data-testid="tpl-open"]').setValue('example:company')
-  const shots = () => w.findAll('[data-testid="tpl-shots"]') // work, pr, deploy: the report steps
+  await pick(w, 'tpl-open', 'example:company')
+  const shots = () => selects(w, 'tpl-shots') // work, pr, deploy: the report steps
   const step = (id: string) => JSON.parse((w.find(json).element as HTMLTextAreaElement).value).taskTypes.feature.steps.find((s: { id?: string }) => s.id === id)
   expect(shots()).toHaveLength(3)
-  await shots()[1]!.setValue('before-after')
-  await shots()[0]!.setValue('after')
-  expect((shots()[1]!.element as HTMLSelectElement).value).toBe('before-after')
+  await pick(w, 'tpl-shots', 'before-after', 1)
+  await pick(w, 'tpl-shots', 'after', 0)
+  expect(selectValue(w, 'tpl-shots', 1)).toBe('before-after')
   expect(errors(w)).toEqual([])
   await w.find('[data-testid="tpl-mode-json"]').trigger('click')
   expect(step('pr')).toMatchObject({ evidence: ['link', 'screenshots'], screenshots: 'before-after' })
   expect(step('work').evidence).toEqual(['screenshots'])
   expect(step('work').screenshots).toBeUndefined()
   await w.find('[data-testid="tpl-mode-steps"]').trigger('click')
-  await shots()[1]!.setValue('')
+  await pick(w, 'tpl-shots', NONE, 1)
   await w.find('[data-testid="tpl-mode-json"]').trigger('click')
   expect(step('pr').evidence).toEqual(['link'])
   expect(step('pr').screenshots).toBeUndefined()
@@ -120,14 +119,15 @@ it('sets screenshots as a step\'s evidence: after only, before and after, or non
 
 it('shows a step\'s action as fields, edits it, and says what each step does', async () => {
   const w = await mount()
-  await w.find('[data-testid="tpl-open"]').setValue('example:vibe')
+  await pick(w, 'tpl-open', 'example:vibe')
   const step = (id: string) => JSON.parse((w.find(json).element as HTMLTextAreaElement).value).taskTypes.simple.steps.find((s: { id?: string }) => s.id === id)
   const kind = () => w.find('[data-testid="tpl-action"]')
-  const chosen = (sel: Omit<W, 'unmount'>) => { const e = sel.element as HTMLSelectElement; return e.options[e.selectedIndex]!.text }
+  // The trigger shows the chosen item's label.
+  const chosen = (sel: Omit<W, 'unmount'>) => sel.text()
   const input = (id: string) => w.find(`input[data-testid="${id}"], [data-testid="${id}"] input`)
   const says = () => w.findAll('[data-testid="tpl-say"]').map(p => p.text())
   // land: merge into dev, no PR, with its plain label and sentence.
-  expect((kind().element as HTMLSelectElement).value).toBe('git.land')
+  expect(selectValue(w, 'tpl-action')).toBe('git.land')
   expect(chosen(kind())).toBe('Merge into dev (no PR)')
   expect((input('tpl-action-branch').element as HTMLInputElement).value).toBe('dev')
   expect(says()).toEqual([
@@ -143,18 +143,18 @@ it('shows a step\'s action as fields, edits it, and says what each step does', a
   await input('tpl-action-branch').setValue('main')
   expect(says()[2]).toContain('main is protected: it waits for you to merge.')
   // Another kind keeps the branch, as the PR's base.
-  await kind().setValue('github.pr')
+  await pick(w, 'tpl-action', 'github.pr')
   await w.find('[data-testid="tpl-mode-json"]').trigger('click')
   expect(step('land').action).toEqual({ kind: 'github.pr', base: 'main' })
   await w.find('[data-testid="tpl-mode-steps"]').trigger('click')
-  await kind().setValue('github.merge')
-  await w.find('[data-testid="tpl-action-method"]').setValue('squash')
+  await pick(w, 'tpl-action', 'github.merge')
+  await pick(w, 'tpl-action-method', 'squash')
   await input('tpl-action-checks').setValue('smoke, lint')
   await input('tpl-action-checks').trigger('change')
   expect(says()[2]).toBe('The engine merges the GitHub PR (squash) once smoke, lint are green.')
   expect(errors(w)).toEqual([])
   // A step that no longer ends with an action drops it.
-  await w.findAll('[data-testid="tpl-ends"]')[2]!.setValue('')
+  await pick(w, 'tpl-ends', NONE, 2)
   expect(w.find('[data-testid="tpl-action"]').exists()).toBe(false)
   await w.find('[data-testid="tpl-mode-json"]').trigger('click')
   expect(step('land')).toEqual({ id: 'land', column: 'Working' })

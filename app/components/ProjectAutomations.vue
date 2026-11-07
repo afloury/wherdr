@@ -13,11 +13,14 @@ const busy = ref('')
 const error = ref('')
 const blank = () => ({ name: '', prompt: '', type: '', kind: 'schedule' as 'schedule' | 'event', schedule: '', event: 'merged' as AutomationEvent, filter: '' })
 const form = reactive(blank())
+const typePick = computed({ get: () => orNone(form.type), set: (v: string) => { form.type = fromNone(v) } })
+const typeItems = computed(() => [{ label: tl('The template\'s first', 'Le premier du modèle'), value: NONE }, ...types.value.map(ty => ({ label: ty, value: ty }))])
 
 const EVENT_LABEL: Record<AutomationEvent, [string, string]> = {
   'added': ['Task added', 'Tâche ajoutée'], 'approval': ['Approval', 'Approbation'], 'review-failed': ['Review failed', 'Relecture refusée'],
   'failed': ['Failed', 'Échec'], 'needs-you': ['Needs you', 'Te demande'], 'merged': ['Merged', 'Fusionnée'],
 }
+const eventItems = computed(() => AUTOMATION_EVENTS.map(e => ({ label: tl(...EVENT_LABEL[e]), value: e })))
 const trigger = (a: Automation) => a.schedule ?? `${tl('On', 'Si')} ${tl(...EVENT_LABEL[a.event!]).toLowerCase()}${a.filter ? ` · ${a.filter}` : ''}`
 const when = (at: number) => new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 const BY: Record<string, [string, string]> = { schedule: ['Schedule', 'Horaire'], event: ['Event', 'Événement'], user: ['Run now', 'Lancée'] }
@@ -89,10 +92,7 @@ const remove = (a: Automation) => run(`rm:${a.id}`, async () => { await api('/ap
       <label class="field-label" :for="`pa-prompt-${project}`">{{ tl('Prompt (the task\'s description)', 'Consigne (la description de la tâche)') }}</label>
       <UTextarea :id="`pa-prompt-${project}`" v-model="form.prompt" :rows="3" autoresize :maxrows="10" size="xl" class="w-full" :maxlength="20000" />
       <label class="field-label" :for="`pa-type-${project}`">{{ tl('Task type', 'Type de tâche') }}</label>
-      <select :id="`pa-type-${project}`" v-model="form.type" class="pm-select">
-        <option value="">{{ tl('The template\'s first', 'Le premier du modèle') }}</option>
-        <option v-for="ty in types" :key="ty" :value="ty">{{ ty }}</option>
-      </select>
+      <USelect :id="`pa-type-${project}`" v-model="typePick" :items="typeItems" size="lg" class="w-full" data-testid="automation-type" />
       <span class="field-label">{{ tl('Trigger', 'Déclencheur') }}</span>
       <div class="pa-kind" role="group">
         <UButton v-for="k in (['schedule', 'event'] as const)" :key="k" type="button" size="lg" :color="form.kind === k ? 'primary' : 'neutral'" :variant="form.kind === k ? 'solid' : 'outline'"
@@ -105,9 +105,7 @@ const remove = (a: Automation) => run(`rm:${a.id}`, async () => { await api('/ap
         <small class="muted">{{ tl('every 2h · daily 09:00 · mon,thu 09:00 · or a cron. This machine\'s time.', 'every 2h · daily 09:00 · mon,thu 09:00 · ou un cron. Heure de cette machine.') }}</small>
       </template>
       <template v-else>
-        <select v-model="form.event" class="pm-select" :aria-label="tl('Event', 'Événement')" data-testid="automation-event">
-          <option v-for="e in AUTOMATION_EVENTS" :key="e" :value="e">{{ tl(...EVENT_LABEL[e]) }}</option>
-        </select>
+        <USelect v-model="form.event" :items="eventItems" size="lg" class="w-full" :aria-label="tl('Event', 'Événement')" data-testid="automation-event" />
         <UInput :id="`pa-filter-${project}`" v-model="form.filter" size="xl" class="w-full mono" placeholder="docs*" maxlength="100" autocapitalize="none" autocorrect="off" :spellcheck="false" :aria-label="tl('Filter', 'Filtre')" />
         <small class="muted">{{ tl('Optional: a title (or task/W3-*) like docs*. Never on a task an automation added.', 'Facultatif : un titre (ou task/W3-*) comme docs*. Jamais sur une tâche ajoutée par une automatisation.') }}</small>
       </template>
@@ -135,7 +133,6 @@ const remove = (a: Automation) => run(`rm:${a.id}`, async () => { await api('/ap
 .pa-firings li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-top: 1px solid var(--line-soft); overflow-wrap: anywhere; }
 .pa-firings li.err { color: var(--rose); }
 .pa-form { display: grid; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
-.pa-form .pm-select { width: 100%; }
 .pa-kind, .pa-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .pa-actions { justify-content: flex-end; }
 </style>

@@ -3,6 +3,7 @@ import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import ProjectAutomations from '~/components/ProjectAutomations.vue'
 import type { Automation } from '#shared/pm/automations'
+import { pick } from '../helpers/select'
 
 const posts: Record<string, unknown>[] = []
 let list: Automation[] = []
@@ -42,7 +43,7 @@ it('edits one: its last firings, newest first, and the changes saved', async () 
   expect(firings.map(f => f.classes('err'))).toEqual([true, false])
   expect(firings[1]!.text()).toContain('W3-4')
   await b.find('input#pa-schedule-W3').setValue('mon,thu 08:10')
-  await b.find('select#pa-type-W3').setValue('study')
+  await pick(b, 'automation-type', 'study')
   await b.find('[data-testid="automation-form"]').trigger('submit')
   await vi.waitFor(() => expect(posts).toEqual([{ project: 'W3', automation: { id: 'clean', on: false, name: 'Test cleanup', prompt: 'Remove dead tests', type: 'study', schedule: 'mon,thu 08:10' } }]))
 })
@@ -56,7 +57,7 @@ it('adds one on an event, switched off, and removes one', async () => {
   await b.find('input#pa-name-W3').setValue('Docs check')
   await b.find('textarea#pa-prompt-W3').setValue('Check the docs')
   await b.find('[data-testid="automation-kind-event"]').trigger('click')
-  await b.find('[data-testid="automation-event"]').setValue('failed')
+  await pick(b, 'automation-event', 'failed')
   await b.find('input#pa-filter-W3').setValue('docs*')
   await b.find('[data-testid="automation-form"]').trigger('submit')
   await vi.waitFor(() => expect(posts).toEqual([{ project: 'W3', automation: { on: false, name: 'Docs check', prompt: 'Check the docs', type: '', event: 'failed', filter: 'docs*' } }]))
