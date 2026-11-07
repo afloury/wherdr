@@ -30,7 +30,8 @@ import { DATA_DIR } from './env'
 // project's default agent, the agent its conversation ran with, and a template
 // change waiting for the user.
 export interface CoordinatorRecord {
-  project: string, tokenHash: string, terminal?: string, turn?: { kind: 'user' | 'wake', at: number, said?: string, look?: true }
+  // cliHash: Alfred's `wherdr alfred` token (the main coordinator's record only).
+  project: string, tokenHash: string, cliHash?: string, terminal?: string, turn?: { kind: 'user' | 'wake', at: number, said?: string, look?: true }
   agent?: CoordinatorAgent, ran?: CoordinatorAgent, proposal?: Proposal, answered?: { outcome: ProposalOutcome, at: number }
   // userAt: the user's last message. seen: each task's status at the last tick; ranAt: the last interval wake.
   userAt?: number, autopilot?: Autopilot, seen?: Record<string, TaskStatus>, ranAt?: number
