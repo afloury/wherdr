@@ -22,7 +22,7 @@ function pick(key: string) {
   project.value = key
 }
 // Another project: its own default agent.
-watch(fallback, (p) => { agent.value = p }, { immediate: true })
+watch([() => current.value?.project, fallback], ([, p]) => { agent.value = p }, { immediate: true })
 </script>
 
 <template>
