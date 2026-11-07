@@ -8,7 +8,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanProjectInput } from '../shared/pm/project'
 import { detectV2, mapMachines, mapProjects, mapSettings, mapTasks, parseEnvFile, parseUnit, readBoard, remapMachineSettings, runImport, sshProblem, v3MachineKey } from '../scripts/v2-import.mjs'
-import { EXIT, buildCommand, buildTuning, hcTarget, hcUnit, main, parseArgs, pickHttpsPort, unitProtections, updateScript, v3Unit } from '../scripts/install-v3-beside-v2.mjs'
+import { EXIT, buildCommand, buildTuning, deployUnits, hcTarget, hcUnit, main, parseArgs, pickHttpsPort, unitProtections, updateScript, v3Unit } from '../scripts/install-v3-beside-v2.mjs'
 
 const FIX = path.resolve(__dirname, 'fixtures/v2-install')
 const machinesJson = fs.readFileSync(path.join(FIX, 'herdr-machines.json'), 'utf8')
@@ -295,6 +295,25 @@ describe('installer', () => {
     expect(out.plan.join('\n')).toMatch(/wherdr-v3-hc\.service[\s\S]*tailscale serve --bg --https=8105 http:\/\/127\.0\.0\.1:7699/)
     expect(fs.readdirSync(home)).toEqual([])
     expect(calls.filter(c => /enable|clone|serve --bg|machine add/.test(c))).toEqual([])
+  })
+
+  it.runIf(process.platform === 'linux')('with --auto-deploy, plans the prebuilt source and the timer, never a build', async () => {
+    expect(() => parseArgs(['--auto-deploy', 'ftp://x'])).toThrow(/--auto-deploy/)
+    expect(parseArgs(['--auto-deploy', 'https://b.tail.ts.net:8110/']).deploySource).toBe('https://b.tail.ts.net:8110/')
+    const d = deployUnits({ dir: '/home/u/wherdr-v3', name: 'wherdr-v3', port: '7684', source: 'https://b.tail.ts.net:8110/' })
+    expect(d.service).toContain('Environment="WHERDR_V3_SOURCE=https://b.tail.ts.net:8110/"')
+    expect(d.service).toContain('ExecStart=/bin/bash "/home/u/wherdr-v3/pi-deploy-v3.sh"')
+    expect(d.timer).toContain('OnUnitInactiveSec=3min')
+    const home = tmp()
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const code = await main(['--json', '--port', '7699', '--https-port', '8105', '--auto-deploy', 'https://b.tail.ts.net:8110/', '--skip-import'], { run: io(home).run, home, env: { XDG_RUNTIME_DIR: home } })
+    const plan = JSON.parse(log.mock.calls.at(-1)![0]).plan.join('\n')
+    vi.spyOn(console, 'error').mockRestore()
+    log.mockRestore()
+    expect(code).toBe(EXIT.ok)
+    expect(plan).toContain('install the latest prebuilt v3 from https://b.tail.ts.net:8110/')
+    expect(plan).toContain('wherdr-v3-deploy.timer runs')
+    expect(plan).not.toContain('npm ci')
   })
 
   it.runIf(process.platform === 'linux')('stops with a clear code when hc is missing or the https port is taken', async () => {

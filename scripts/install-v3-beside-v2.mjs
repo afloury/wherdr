@@ -38,12 +38,14 @@ Without --yes, prints the plan and changes nothing (--dry-run says so explicitly
   --hc-session <s>      herdr-core session (default: default); --hc-bin <path>
   --repo <url|path>     wherdr repository (default: package.json's repository); --branch <b> (v3)
   --skip-import         do not import from v2
+  --auto-deploy <url>   never build here: install prebuilt v3 builds from <url> (scripts/v3-builder.sh
+                        on another machine) and keep up with them: <name>-deploy.timer, every 3 min
   v2 (default: found here): --v2-dir <dir> --v2-unit <file> --herdr-projects <dir> --herdr-bin <path>`
 
 export function parseArgs(argv, home = os.homedir()) {
   const o = { dir: path.join(home, 'wherdr-v3'), name: 'wherdr-v3', port: '7684', httpsPort: null, hcSession: 'default', repo: REPO, branch: 'v3' }
   const flags = { '--yes': 'yes', '--dry-run': 'dryRun', '--json': 'json', '--uninstall': 'uninstall', '--keep-data': 'keepData', '--no-tailscale': 'noTailscale', '--skip-import': 'skipImport', '--help': 'help', '-h': 'help' }
-  const values = { '--dir': 'dir', '--name': 'name', '--port': 'port', '--https-port': 'httpsPort', '--hc-session': 'hcSession', '--hc-bin': 'hcBin', '--repo': 'repo', '--branch': 'branch', '--v2-dir': 'v2Dir', '--v2-unit': 'unit', '--herdr-projects': 'hpDir', '--herdr-bin': 'herdrBin' }
+  const values = { '--dir': 'dir', '--name': 'name', '--port': 'port', '--https-port': 'httpsPort', '--hc-session': 'hcSession', '--hc-bin': 'hcBin', '--repo': 'repo', '--branch': 'branch', '--v2-dir': 'v2Dir', '--v2-unit': 'unit', '--herdr-projects': 'hpDir', '--herdr-bin': 'herdrBin', '--auto-deploy': 'deploySource' }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (flags[a]) o[flags[a]] = true
@@ -54,6 +56,7 @@ export function parseArgs(argv, home = os.homedir()) {
   for (const k of ['port', 'httpsPort']) if (o[k] !== null && (!/^\d+$/.test(o[k]) || +o[k] < 1 || +o[k] > 65535)) throw new Error(`--${k === 'port' ? 'port' : 'https-port'} must be a port number`)
   if (!/^[\w.-]{1,40}$/.test(o.name)) throw new Error('--name: letters, digits, . _ -')
   if (!/^[\w.-]{1,32}$/.test(o.hcSession)) throw new Error('--hc-session: letters, digits, . _ -')
+  if (o.deploySource !== undefined && !/^(https?|file):\/\/\S+$|^\/\S*$/.test(o.deploySource)) throw new Error('--auto-deploy: an http(s):// URL or a folder')
   o.dir = path.resolve(o.dir.replace(/^~(?=\/|$)/, home))
   return o
 }
@@ -167,6 +170,39 @@ for i in $(seq 1 60); do curl -fsS http://127.0.0.1:${port}/api/health >/dev/nul
 curl -fsS http://127.0.0.1:${port}/api/health >/dev/null || { echo "ERROR not-answering: ${name} does not answer; journalctl --user -u ${name}"; exit 5; }
 echo "OK wherdr v3 at $(git rev-parse --short HEAD) answers on http://127.0.0.1:${port}"
 `
+}
+
+// Auto-deploy (--auto-deploy): a oneshot service run every 3 minutes by its timer.
+export const DEPLOY_SCRIPT = 'pi-deploy-v3.sh'
+export function deployUnits({ dir, name, port, source }) {
+  const env = [`WHERDR_V3_SOURCE=${source}`, `WHERDR_V3_DIR=${dir}`, `WHERDR_V3_SERVICE=${name}`, `WHERDR_V3_PORT=${port}`]
+  const head = `# wherdr v3 auto-deploy (install-v3-beside-v2 --auto-deploy). Off: systemctl --user disable --now ${name}-deploy.timer`
+  return {
+    service: `${head}
+[Unit]
+Description=Install the latest prebuilt wherdr v3
+After=network-online.target
+
+[Service]
+Type=oneshot
+${env.map(e => `Environment=${sq(e)}`).join('\n')}
+${UNSET}
+Nice=10
+ExecStart=/bin/bash ${sq(path.join(dir, DEPLOY_SCRIPT))}
+`,
+    timer: `${head}
+[Unit]
+Description=Check for a new wherdr v3 build every 3 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=3min
+Persistent=false
+
+[Install]
+WantedBy=timers.target
+`,
+  }
 }
 
 const portFree = port => new Promise(resolve => {
@@ -288,7 +324,11 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     const remote = run('git', ['ls-remote', o.repo, `refs/heads/${o.branch}`], { timeout: 60000 }).out.split(/\s/)[0] || null
     const hasSrc = fs.existsSync(src)
     const head = hasSrc ? git('rev-parse', 'HEAD').out || null : null
-    const follow = hasSrc && !!mine.createdSrc
+    // Kept on re-runs: once on, the installer never builds here again.
+    const deploySource = o.deploySource || mine.deploySource || null
+    const autoDeploy = !!deploySource
+    // With auto-deploy, src/ is only the service's folder: the build comes from the source.
+    const follow = hasSrc && !!mine.createdSrc && !autoDeploy
     const moves = follow && remote && remote !== head
     const built = fs.existsSync(path.join(src, '.output', 'server', 'index.mjs'))
     const needsBuild = !built || moves || (!!mine.builtCommit && mine.builtCommit !== head)
@@ -305,12 +345,14 @@ export async function main(argv = process.argv.slice(2), io = {}) {
         : !follow ? `keep ${src} at ${short(head)} (not cloned by this installer: not updated)`
           : moves ? `update ${src}: git fetch, then ${short(head)} → origin/${o.branch} at ${short(remote)}`
             : `keep ${src} at ${short(head)}${remote ? ` (= origin/${o.branch})` : ` (git ls-remote ${o.repo} failed)`}`,
-      !needsBuild ? 'keep the existing build'
+      autoDeploy ? `install the latest prebuilt v3 from ${deploySource} into ${src}/.output (no build here)`
+        : !needsBuild ? 'keep the existing build'
         : `npm ci && npm run build (log: ${o.dir}/build.log)${tuning ? `; Node's heap is ${tuning.heapMb} MB, the build needs ~1.5 GB: NODE_OPTIONS=${tuning.nodeOptions}, ${tuning.prefix}` : ''}`,
       o.skipImport || !v2.found ? 'no import' : `import from v2 into ${o.dir}/data (v2 is only read)`,
       `${running ? 'restart' : 'start'} ${name}.service on ${target} (DATA_DIR ${o.dir}/data${appUrl ? `, APP_URL ${appUrl}` : ''}; ${protectText} from ${protect.from})`,
       !ts ? 'no tailscale serve (tailscale not found or --no-tailscale)' : serveDone ? `keep tailscale serve https:${httpsPort}` : `tailscale serve --bg --https=${httpsPort} ${target} (added beside the existing entries${v2.tailscale.entries.length ? `, which use ${[...new Set(v2.tailscale.entries.map(e => e.https))].join(', ')}` : ''})`,
       `write ${o.dir}/update.sh`,
+      ...(autoDeploy ? [`auto-deploy: ${name}-deploy.timer runs ${o.dir}/${DEPLOY_SCRIPT} every 3 min (log: ${o.dir}/deploy/deploy.log)`] : []),
     ]
     if (!o.skipImport && v2.found) {
       const r = runImport({ ...o, v2, run, dataDir: path.join(o.dir, 'data'), hcSession: o.hcSession, hcBin: hc, dryRun: true, hcReachable: hcUp })
@@ -353,7 +395,15 @@ export async function main(argv = process.argv.slice(2), io = {}) {
       step('OK', `${src} at ${short(git('rev-parse', 'HEAD').out)} (origin/${o.branch})`)
     } else step('SKIP', `${src} exists, at ${short(head)} (not cloned by this installer)`)
     const now = git('rev-parse', 'HEAD').out || null
-    if (!built || (m.builtCommit ? m.builtCommit !== now : now !== head)) {
+    const deployEnv = { ...env, WHERDR_V3_SOURCE: deploySource, WHERDR_V3_DIR: o.dir, WHERDR_V3_SERVICE: name, WHERDR_V3_PORT: o.port }
+    if (autoDeploy) {
+      fs.copyFileSync(fileURLToPath(new URL(`./${DEPLOY_SCRIPT}`, import.meta.url)), path.join(o.dir, DEPLOY_SCRIPT))
+      fs.chmodSync(path.join(o.dir, DEPLOY_SCRIPT), 0o755)
+      m.deploySource = deploySource; save(m)
+      const r = run('bash', [path.join(o.dir, DEPLOY_SCRIPT), 'prepare'], { env: deployEnv, timeout: 1200000 })
+      if (!r.ok || !fs.existsSync(path.join(src, '.output', 'server', 'index.mjs'))) throw new Stop(EXIT.failed, 'deploy-failed', `could not install a build from ${deploySource}: ${r.err.split('\n').pop() || 'no build'} (${o.dir}/deploy/deploy.log)`)
+      step('OK', `prebuilt ${short(fs.readFileSync(path.join(o.dir, 'deploy', 'commit'), 'utf8').trim())} in ${src}/.output`)
+    } else if (!built || (m.builtCommit ? m.builtCommit !== now : now !== head)) {
       const r = run('sh', ['-c', buildCommand(src, tuning)], { timeout: 3600000 })
       if (!r.ok) throw new Stop(EXIT.failed, 'build-failed', `the build failed: see ${o.dir}/build.log${tuning ? '' : " (out of memory? the build needs about 1.5 GB of Node heap: NODE_OPTIONS=--max-old-space-size=1536)"}`)
       m.builtCommit = now; save(m)
@@ -382,8 +432,21 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     step('OK', `${name}.service answers on ${target} (${h.version})`)
     summary.local = target
 
-    fs.writeFileSync(path.join(o.dir, 'update.sh'), updateScript({ branch: o.branch, name, port: o.port }), { mode: 0o755 })
+    fs.writeFileSync(path.join(o.dir, 'update.sh'), autoDeploy
+      ? `#!/usr/bin/env bash\n# Auto-deploy is on: install the latest prebuilt v3 now (never builds here).\nWHERDR_V3_SOURCE=${JSON.stringify(deploySource)} WHERDR_V3_DIR=${JSON.stringify(o.dir)} WHERDR_V3_SERVICE=${name} WHERDR_V3_PORT=${o.port} exec bash ${JSON.stringify(path.join(o.dir, DEPLOY_SCRIPT))} "$@"\n`
+      : updateScript({ branch: o.branch, name, port: o.port }), { mode: 0o755 })
     step('OK', `${o.dir}/update.sh`)
+    if (autoDeploy) {
+      const d = deployUnits({ dir: o.dir, name, port: o.port, source: deploySource })
+      fs.writeFileSync(path.join(unitDir, `${name}-deploy.service`), d.service)
+      fs.writeFileSync(path.join(unitDir, `${name}-deploy.timer`), d.timer)
+      if (!m.units.includes(`${name}-deploy`)) m.units.push(`${name}-deploy`)
+      save(m)
+      sctl('daemon-reload')
+      const r = sctl('enable', '--now', `${name}-deploy.timer`)
+      if (!r.ok) throw new Stop(EXIT.failed, 'timer-failed', `${name}-deploy.timer did not start: ${r.err.split('\n').pop()}`)
+      step('OK', `${name}-deploy.timer: every 3 min (log: ${o.dir}/deploy/deploy.log)`)
+    }
 
     let code = leftForUser ? EXIT.todo : EXIT.ok
     if (ts && !serveDone) {
@@ -430,8 +493,9 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     const ownHc = (m.units || []).includes(`${m.name}-hc`)
     if (!ownHc) for (const x of m.machines || []) run(o.hcBin || 'hc', ['machine', 'rm', x], { env: { ...env, HC_SESSION: m.hcSession } })
     for (const u of [...(m.units || [])].reverse()) {
+      if (fs.existsSync(path.join(unitDir, `${u}.timer`))) sctl('disable', '--now', `${u}.timer`)
       sctl('disable', '--now', `${u}.service`)
-      fs.rmSync(path.join(unitDir, `${u}.service`), { force: true })
+      for (const ext of ['service', 'timer']) fs.rmSync(path.join(unitDir, `${u}.${ext}`), { force: true })
       step('OK', `removed ${u}.service`)
     }
     sctl('daemon-reload')
