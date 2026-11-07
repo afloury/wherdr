@@ -103,6 +103,7 @@ onUnmounted(() => clearInterval(timer))
 .alfred-open { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; min-height: 52px; padding: 8px 4px 8px 12px; color: var(--text); text-align: left; cursor: pointer; }
 .alfred-open:hover:not(:disabled) { background: var(--surface-2); }
 .alfred-open:disabled { cursor: progress; }
+.alfred-open:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 .alfred-dot { flex: none; width: 8px; height: 8px; background: var(--dim); }
 .alfred.on .alfred-dot { background: var(--green); }
 .alfred-text { display: grid; flex: 1; min-width: 0; }

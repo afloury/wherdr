@@ -484,6 +484,9 @@ body.short-bottom { --safe-bottom: 0px; }
 .machine.collapsed .machine-row { margin-bottom: 0; }
 .machine-head:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 .machine-options { flex: none; }
+/* ••• buttons: a 1 px ring inside the button, like the rows, not Nuxt UI's 3 px
+   outer ring that touches a bordered row's edge. */
+:is(.machine-options, .space-menu).icon-btn:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 .machine-chev { width: 15px; height: 15px; color: var(--dim); transition: transform .15s ease; }
 .machine.collapsed .machine-chev { transform: rotate(-90deg); }
 .machine-icon { width: 16px; height: 16px; color: var(--muted); }
