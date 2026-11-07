@@ -2,7 +2,7 @@
 // (never in its environment, never sent off this machine), and its commands.
 // A change is only described unless the call says --apply; Alfred applies it
 // after the user's yes. Nothing here removes data.
-import { CHANGES, alfredCommandList, dryRun, parseAlfredCommand, type AlfredPlan } from '../../shared/pm/alfredCli'
+import { CHANGES, SETTING_VALUES, alfredCommandList, dryRun, parseAlfredCommand, type AlfredPlan } from '../../shared/pm/alfredCli'
 import { MAIN, agentName } from '../../shared/pm/coordinator'
 import { cleanProjectInput } from '../../shared/pm/project'
 import { HerdrError } from './herdr'
@@ -57,7 +57,7 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       if (!pane) throw new HerdrError('not_found', `The coordinator of ${cmd.key} is not running: start it with wherdr alfred coordinator start ${cmd.key}`)
       return { link: `${deps.urls.remote ?? deps.urls.local}/#/a/${encodeURIComponent(pane.id)}`, note: 'Give the user this link; the sidebar shows it too' }
     }
-    case 'settings': return { settings: await readSettings(deps.settingsFile) }
+    case 'settings': return { settings: await readSettings(deps.settingsFile), values: SETTING_VALUES, note: 'Alfred changes only the settings listed in values, to one of their values (1 = on, 0 = off)' }
     case 'setting set': {
       const old = (await readSettings(deps.settingsFile))[cmd.key]
       if (old === cmd.value) return { unchanged: true, [cmd.key]: old }
@@ -73,9 +73,17 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       if (!project) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
       if (projects.some(p => p.key === project.key)) throw new HerdrError('exists', 'A project already has this key')
       await knownTemplate(project.template ?? '')
+      // The folder checks --apply makes (inside the home folder, a git
+      // repository, not already a project): read-only, so run before the
+      // user's yes on this machine; on another, only once the user asked.
+      const remote = remoteOf(project.machine)
+      const folder = remote ? project.path : await deps.check(project.machine, project.path)
+      if (projects.some(p => p.machine === project.machine && p.path === folder)) throw new HerdrError('exists', 'This folder is already a project')
       return change({
-        change: [`add project ${project.key} "${project.name}"`, `folder ${project.path} on ${machineName(project.machine)} (checked to be a git repository)`, `template ${project.template ?? 'none'}`],
-        remote: remoteOf(project.machine),
+        change: [`add project ${project.key} "${project.name}"`,
+          remote ? `folder ${folder} on ${machineName(project.machine)} (checked when applied: inside the home folder, a git repository, not already a project)` : `folder ${folder} on ${machineName(project.machine)} (checked: a git repository)`,
+          `template ${project.template ?? 'none'}`],
+        remote,
       }, () => store.addProject(project, deps.check))
     }
     case 'project template': {

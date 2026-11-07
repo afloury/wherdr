@@ -2,7 +2,25 @@
 // projects, coordinators and settings. Pure: the parser, the command table
 // (also written in Alfred's AGENTS.md) and the "show, then do" text; the
 // server (server/utils/alfredCli.ts) reads and writes.
-import { isSyncedSetting, SETTING_MAX, SYNCED_SETTINGS, type SyncedSetting } from '../settings'
+import type { SyncedSetting } from '../settings'
+import { READY_SORTS } from '../spaces'
+import { THEMES } from '../../app/utils/themes'
+import { FOCUS_BORDERS } from '../../app/utils/focusBorder'
+import { BACKDROPS } from '../../app/utils/backdrop'
+
+// The settings Alfred may change, each with the values the app reads (any
+// other value would be ignored by it). Lists (groups, hidden agents, folds…)
+// are changed in wherdr's Settings only.
+const ON_OFF = ['1', '0']
+export const SETTING_VALUES: Partial<Record<SyncedSetting, readonly string[]>> = {
+  'theme': THEMES.map(t => t.id), 'focusBorder': FOCUS_BORDERS, 'backdrop': BACKDROPS, 'backdropPackets': ['on', 'off'],
+  'machineBar': ON_OFF, 'compactListV2': ON_OFF, 'homeGrouping': ['machine', 'state'],
+  'showShells': ON_OFF, 'showCounters': ON_OFF, 'showQuotas': ON_OFF, 'quotaDisplay': ['left', 'used'],
+  'autoReorderReady': ON_OFF, 'readySort': READY_SORTS,
+  'typewriterSpeed': ['off', 'fast', 'medium', 'slow'], 'encryptedText': ON_OFF, 'replyStyle': ['icon', 'text', 'list'], 'defaultViewMode': ['chat', 'term'],
+  'wherdr.files.hidden': ON_OFF, 'wherdr.files.md': ['rendered', 'source'],
+}
+const settable = (k: string): k is SyncedSetting => Object.hasOwn(SETTING_VALUES, k)
 
 export type AlfredCommand =
   | { name: 'help' | 'projects' | 'templates' | 'machines' | 'coordinators' | 'settings' }
@@ -22,11 +40,11 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'machines', does: 'the machines herdr-core knows (key, label, status); the key "" is this machine' },
   { usage: 'coordinators', does: 'each coordinator: its agent and whether it runs' },
   { usage: 'coordinator open <KEY>', does: 'the link that opens a running project coordinator, to give the user' },
-  { usage: 'settings', does: 'the synced settings and their values' },
+  { usage: 'settings', does: 'the synced settings, their values, and the values each one Alfred may change accepts (1 = on, 0 = off)' },
   { usage: 'project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]', does: 'add a project: a git folder on a machine' },
   { usage: 'project template <KEY> <id|none>', does: 'give the project a template, or none' },
   { usage: 'coordinator start <KEY> [--program claude|codex --model <model>]', does: 'start the project\'s coordinator (a new conversation replaces a running one)' },
-  { usage: 'setting set <key> <value>', does: 'change a synced setting' },
+  { usage: 'setting set <key> <value>', does: 'change a setting to one of the values `settings` lists for it' },
 ]
 
 const KEY_RE = /^[A-Za-z][A-Za-z0-9]{1,9}$/
@@ -87,8 +105,8 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
   }
   if (verb === 'setting set') {
     if (!w2 || w3 === undefined || rest.length) return usage(verb)
-    if (!isSyncedSetting(w2)) return { error: `Unknown setting ${w2}: one of ${SYNCED_SETTINGS.join(', ')}` }
-    if (w3.length > SETTING_MAX) return { error: `A value is ${SETTING_MAX} characters at most` }
+    if (!settable(w2)) return { error: `${w2} is not a setting Alfred changes: one of ${Object.keys(SETTING_VALUES).join(', ')}; the others are changed in wherdr's Settings` }
+    if (!SETTING_VALUES[w2]!.includes(w3)) return { error: `${w3} is not a value of ${w2}: one of ${SETTING_VALUES[w2]!.join(', ')}` }
     return { name: verb, apply, key: w2, value: w3 }
   }
   return { error: `unknown command: ${words.join(' ') || '(none)'} (see wherdr alfred help)` }

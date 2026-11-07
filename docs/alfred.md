@@ -16,17 +16,17 @@ Reading:
 | `wherdr alfred machines` | the machines herdr-core knows (key, label, status); `""` is this machine |
 | `wherdr alfred coordinators` | each coordinator, its agent and whether it runs |
 | `wherdr alfred coordinator open <KEY>` | the link that opens a running project coordinator |
-| `wherdr alfred settings` | the synced settings and their values |
+| `wherdr alfred settings` | the synced settings, their values, and the values each setting Alfred may change accepts (`1` on, `0` off) |
 | `wherdr alfred help` | this list |
 
 Changing (show, then do):
 
 | Command | Does |
 | --- | --- |
-| `wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]` | adds a project: a git folder on a machine |
+| `wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]` | adds a project: a git folder inside the home folder of a machine, not already a project (on this machine, checked before the yes too) |
 | `wherdr alfred project template <KEY> <id\|none>` | gives the project a template, or none |
 | `wherdr alfred coordinator start <KEY> [--program claude\|codex --model <model>]` | starts the project's coordinator (a new conversation replaces a running one) |
-| `wherdr alfred setting set <key> <value>` | changes a synced setting |
+| `wherdr alfred setting set <key> <value>` | changes a setting to one of the values `settings` lists for it (a theme id from the theme list, for instance); lists such as machine groups or hidden agents stay in Settings |
 
 A change without `--apply` changes nothing: it prints what it would do (`dryRun`, `change`) and
 the command that makes it. Alfred shows you those lines and runs that command, with `--apply`,
