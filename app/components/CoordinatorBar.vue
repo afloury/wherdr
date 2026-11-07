@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// A project coordinator: who you talk to and which agent answers (its default
+// A project coordinator, or Alfred for all projects: who you talk to and which agent answers (its default
 // changed in one gesture), its autopilot, a warning when its kept conversation ran with
 // another agent, and the template change it proposed, to accept or refuse.
 // On the board (`open`), also the button that opens or starts it.
@@ -28,10 +28,10 @@ async function act(fn: () => Promise<unknown>) {
 }
 const agentItems = computed(() => offerCoordinators(undefined, props.c.project).map(p => ({ label: kindLabel(p), value: p })))
 const setDefault = (program: string) => act(() => api('/api/pm/coordinator-agent', { project: props.c.project, program }))
-const fresh = () => act(async () => { const p = await launchCoordinator(props.c.project, agent.value); if (p) await navigateTo(panePath(p.id)) })
+const fresh = () => act(async () => { const p = await launchCoordinator(props.c.project, agent.value); if (props.c.main) await loadAlfred(); if (p) await navigateTo(panePath(p.id)) })
 const resume = () => { resumeCoordinator(props.c.terminal!); if (props.open && pane.value) navigateTo(panePath(pane.value.id)) }
 const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh())
-const title = computed(() => (props.c.main ? tl('Main coordinator · all projects', 'Coordinateur principal · tous les projets') : `${tl('Project coordinator', 'Coordinateur de projet')} · ${props.c.project}`))
+const title = computed(() => (props.c.main ? `${props.c.name || 'Alfred'} · ${tl('all projects', 'tous les projets')}` : `${tl('Project coordinator', 'Coordinateur de projet')} · ${props.c.project}`))
 const answer = (accept: boolean) => act(() => api('/api/pm/template-proposal', { project: props.c.project, accept }))
 </script>
 

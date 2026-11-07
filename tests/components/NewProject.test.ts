@@ -115,13 +115,11 @@ it('a project without a template says it needs one and links to Settings › Pro
   w.unmount()
 })
 
-it('the main coordinator (all projects) starts with no template', async () => {
-  const w = await openSheet([{ project: '_main', name: 'Main coordinator', main: true, agent: opus }])
-  expect(w.get('[data-project="_main"]').text()).toBe('MainAll projects')
-  expect(w.find('[data-testid="coordinator-no-template"]').exists()).toBe(false)
-  await w.get('[data-testid="coordinator-start"]').trigger('click')
-  await vi.waitFor(() => expect(posts[0]?.body).toMatchObject({ project: '_main' }))
-  await vi.waitFor(() => expect(navigate).toHaveBeenCalled())
+it('lists the projects only (Alfred has its own row); with none, goes straight to adding one', async () => {
+  const w = await openSheet([{ project: '_main', name: 'Alfred', main: true, agent: opus }])
+  expect(w.find('[data-project="_main"]').exists()).toBe(false)
+  expect(w.text()).not.toContain('All projects')
+  await vi.waitFor(() => expect(w.get('[data-testid="project-add"]').attributes('aria-checked')).toBe('true'))
   w.unmount()
 })
 

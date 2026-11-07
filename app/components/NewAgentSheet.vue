@@ -105,7 +105,7 @@ watch(kinds, syncKind)
 function pickCoordinator() {
   coordinator.value = true
   draft.value = null
-  if (!coordinators.value.some(c => c.project === coordProject.value)) coordProject.value = coordinators.value[0]?.project ?? ''
+  if (!projectCoordinators.value.some(c => c.project === coordProject.value)) coordProject.value = projectCoordinators.value[0]?.project ?? ''
 }
 function pickKind(k: string) {
   coordinator.value = false

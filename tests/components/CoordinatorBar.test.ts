@@ -33,6 +33,11 @@ it('says who you talk to and which agent answers, and changes the default in one
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: 'CO', program: 'codex' } }]))
 })
 
+it('on the board\'s All projects, it is Alfred, by its name', async () => {
+  const b = await mount(view({ project: '_main', name: 'Jarvis', main: true }), true)
+  expect(b.get('.mono-label').text()).toBe('Jarvis · all projects')
+})
+
 it('with no default set, or its default unchecked in Settings › Agents, offers the user\'s first agent', async () => {
   agentOrder.value = ['codex']
   const b = await mount(view({ agent: undefined }), true)

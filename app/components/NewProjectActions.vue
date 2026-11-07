@@ -79,7 +79,7 @@ function resume() {
       {{ tl('Open', 'Ouvrir') }}
     </UButton>
     <UButton
-      v-else block size="xl" color="primary" class="hw-cta" icon="i-lucide-play" :loading="busy" :disabled="!(c?.main || c?.template || c?.git === false) || !chosen"
+      v-else block size="xl" color="primary" class="hw-cta" icon="i-lucide-play" :loading="busy" :disabled="!(c?.template || c?.git === false) || !chosen"
       data-testid="coordinator-start" @click="start"
     >
       {{ chosen ? tl(`Start with ${agentName(chosen)}`, `Lancer avec ${agentName(chosen)}`) : tl('Start', 'Lancer') }}
