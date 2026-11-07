@@ -6,7 +6,7 @@
 // saved first (and an example template it picked), then its coordinator starts.
 import { isCoordinatorProgram, sameAgent } from '#shared/pm/coordinator'
 import { EXAMPLES } from '#shared/pm/examples'
-import { draftBody, type ProjectDraft } from '#shared/pm/newProject'
+import { draftBody, draftGit, type ProjectDraft } from '#shared/pm/newProject'
 
 const props = defineProps<{ project: string, agent: string, draft?: ProjectDraft | null }>()
 const emit = defineEmits<{ done: [], added: [key: string] }>()
@@ -16,7 +16,7 @@ const error = ref('')
 const c = computed(() => coordinators.value.find(x => x.project === props.project))
 const fallback = computed(() => (c.value ? coordinatorAgent(c.value) : undefined))
 const chosen = computed(() => (isCoordinatorProgram(props.agent) ? { program: props.agent } : fallback.value))
-const ready = computed(() => !!props.draft?.probe && !!props.draft.key.trim() && !!props.draft.template)
+const ready = computed(() => !!props.draft?.probe && !!props.draft.key.trim() && (!!props.draft.template || !draftGit(props.draft)))
 const agentName = (a: { program: string }) => kindLabel(a.program)
 const pane = computed(() => (c.value ? coordinatorPane(c.value) : undefined))
 // Its conversation runs with another agent than the chosen one (a resume the
@@ -30,11 +30,12 @@ function go(id: string) {
   navigateTo(panePath(id))
 }
 async function add(d: ProjectDraft) {
-  const example = d.template.startsWith('example:') ? EXAMPLES.find(e => `example:${e.id}` === d.template) : undefined
+  const git = draftGit(d)
+  const example = git ? EXAMPLES.find(e => `example:${e.id}` === d.template) : undefined
   if (example) await api('/api/pm/template', { template: example })
   const template = example?.id ?? d.template
   const { project } = await api<{ project: { key: string } }>('/api/pm/project', draftBody(d, template))
-  try { localStorage.setItem('wherdr.lastTemplate', d.template.startsWith('example:') ? template : d.template) } catch {}
+  if (git) try { localStorage.setItem('wherdr.lastTemplate', d.template.startsWith('example:') ? template : d.template) } catch {}
   await loadCoordinators()
   emit('added', project.key) // a failed start is tried again on the project, not added twice
   return project.key
@@ -78,7 +79,7 @@ function resume() {
       {{ tl('Open', 'Ouvrir') }}
     </UButton>
     <UButton
-      v-else block size="xl" color="primary" class="hw-cta" icon="i-lucide-play" :loading="busy" :disabled="!(c?.main || c?.template) || !chosen"
+      v-else block size="xl" color="primary" class="hw-cta" icon="i-lucide-play" :loading="busy" :disabled="!(c?.main || c?.template || c?.git === false) || !chosen"
       data-testid="coordinator-start" @click="start"
     >
       {{ chosen ? tl(`Start with ${agentName(chosen)}`, `Lancer avec ${agentName(chosen)}`) : tl('Start', 'Lancer') }}

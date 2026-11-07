@@ -21,8 +21,9 @@ is done and has a button that takes you there.
    Quicker: **New › Project** opens a project's coordinator, or adds one from
    a git repository found on the machine, a new or empty folder (created at
    start, `git init` offered), or any folder without git (a folder of several
-   projects, for instance): its coordinator works in it, but tasks need git
-   for their own worktree.
+   projects, for instance). A folder without git needs no template: it has no
+   tasks (a task needs git for its own worktree), and its coordinator does the
+   work in it directly.
 4. **Open the board and start the project coordinator.** Pick the project on
    the Board and press *Start*: the coordinator is the agent you talk to about
    the project. It adds tasks and follows them on the board. Alfred, wherdr's

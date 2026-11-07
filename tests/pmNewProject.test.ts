@@ -10,6 +10,7 @@ import { draftBody, folderKind, proposeKey, proposeName, type ProjectDraft } fro
 import { findRepos, parseRepos } from '../server/utils/pmRepos'
 import { pmFolderCheck, probeFolder } from '../server/utils/pmFolder'
 import { createPmStore } from '../server/utils/pmStore'
+import { coordinatorArgs, roleFiles } from '../shared/pm/coordinator'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 
 describe('name and key proposal', () => {
@@ -38,8 +39,10 @@ describe('folder kinds', () => {
     expect(folderKind({ ...probe, empty: true })).toBe('empty')
     expect(folderKind(probe)).toBe('plain')
     const d: ProjectDraft = { machine: '', path: '~/x', name: ' X ', key: 'x', template: 'vibe', gitInit: true, probe }
-    expect(draftBody(d, 'vibe')).toEqual({ key: 'x', name: 'X', machine: '', path: '/home/user/x', template: 'vibe', plain: true, create: false, gitInit: false })
-    expect(draftBody({ ...d, probe: { ...probe, exists: false } }, 'vibe')).toMatchObject({ create: true, gitInit: true })
+    expect(draftBody(d, 'vibe')).toEqual({ key: 'x', name: 'X', machine: '', path: '/home/user/x', template: '', plain: true, create: false, gitInit: false })
+    expect(draftBody(d, 'vibe').template).toBe('') // no git: no template
+    expect(draftBody({ ...d, probe: { ...probe, exists: false } }, 'vibe')).toMatchObject({ create: true, gitInit: true, template: 'vibe' })
+    expect(draftBody({ ...d, gitInit: false, probe: { ...probe, empty: true } }, 'vibe')).toMatchObject({ gitInit: false, template: '' })
   })
 })
 
@@ -103,5 +106,24 @@ describe('folder check', () => {
     const check = async (_m: string, p: string) => ({ path: p, git: false })
     expect(await store.addProject({ key: 'ALL', machine: '', path: '/home/user/all', template: 'vibe' }, check, { plain: true }))
       .toMatchObject({ key: 'ALL', path: '/home/user/all', git: false })
+  })
+})
+
+describe('coordinator of a folder without git', () => {
+  const project = { key: 'ALL', name: 'Clients', machine: '', path: '/home/user/clients', addedAt: 1 }
+  it('works in the folder itself, which a git repository\'s coordinator never changes', () => {
+    const plain = roleFiles({ ...project, git: false }, null, [])
+    expect(plain['AGENTS.md']).toContain('you do the work yourself, directly in that folder')
+    expect(plain['AGENTS.md']).not.toContain('never change it')
+    expect(JSON.parse(plain['.claude/settings.json']!).permissions.deny).toEqual([])
+    const git = roleFiles(project, null, [])
+    expect(git['AGENTS.md']).toContain('read it, never change it')
+    expect(JSON.parse(git['.claude/settings.json']!).permissions.deny).toEqual(['Edit(//home/user/clients/**)'])
+  })
+
+  it('gives Codex the folder as a writable directory only then', () => {
+    expect(coordinatorArgs('codex', '/c', '/home/user/clients', true)).toContain('--add-dir')
+    expect(coordinatorArgs('codex', '/c', '/home/user/clients')).not.toContain('--add-dir')
+    expect(coordinatorArgs('claude', '/c', '/home/user/clients', true)).toEqual(['claude', '--add-dir', '/home/user/clients'])
   })
 })

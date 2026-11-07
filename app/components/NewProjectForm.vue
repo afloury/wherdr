@@ -8,7 +8,7 @@
 import type { MachineConfig } from '#shared/types'
 import type { PmOverview } from '#shared/pm/project'
 import { EXAMPLES } from '#shared/pm/examples'
-import { canGitInit, folderKind, proposeKey, proposeName, type FolderProbe, type ProjectDraft } from '#shared/pm/newProject'
+import { canGitInit, draftGit, folderKind, proposeKey, proposeName, type FolderProbe, type ProjectDraft } from '#shared/pm/newProject'
 
 const project = defineModel<string>('project', { required: true })
 const agent = defineModel<string>('agent', { required: true })
@@ -101,7 +101,7 @@ const notes = {
   git: () => tl('Git repository: each task gets its own worktree and pull request.', 'Dépôt git : chaque tâche a son worktree et sa pull request.'),
   new: () => tl('New folder: it is created at start.', 'Nouveau dossier : il est créé au lancement.'),
   empty: () => tl('Empty folder.', 'Dossier vide.'),
-  plain: () => tl('Folder without git: the coordinator works in it as a whole.', 'Dossier sans git : le coordinateur y travaille en entier.'),
+  plain: () => tl('Folder without git: the coordinator does the work in it directly, with no tasks or template.', 'Dossier sans git : le coordinateur y travaille directement, sans tâches ni modèle.'),
 }
 </script>
 
@@ -116,7 +116,7 @@ const notes = {
         <span class="coord-key">{{ c.main ? tl('Main', 'Principal') : c.project }}</span>
         <span class="coord-name">{{ c.main ? tl('All projects', 'Tous les projets') : c.name }}</span>
         <span v-if="running(c.project)" class="coord-state run">{{ tl('Running', 'En cours') }}</span>
-        <span v-else-if="!c.main && !c.template" class="coord-state">{{ tl('No template', 'Sans modèle') }}</span>
+        <span v-else-if="!c.main && !c.template && c.git !== false" class="coord-state">{{ tl('No template', 'Sans modèle') }}</span>
       </button>
       <button type="button" role="radio" :class="{ on: !!draft }" :aria-checked="!!draft" data-testid="project-add" @click="add">
         <UIcon name="i-lucide-plus" class="coord-key" /><span class="coord-name">{{ tl('Add a project', 'Ajouter un projet') }}</span>
@@ -165,15 +165,17 @@ const notes = {
         </span>
       </div>
 
-      <label class="field-label" for="projectTemplate">{{ tl('Template', 'Modèle') }}</label>
-      <USelect id="projectTemplate" v-model="template" :items="templateItems" size="xl" class="w-full" data-testid="project-template" />
-      <p class="coord-hint muted">
-        {{ tl('Templates are created and edited in', 'Les modèles se créent et se modifient dans') }}
-        <NuxtLink to="/settings?section=projects" @click="emit('settings')">{{ tl('Settings › Projects › Templates', 'Réglages › Projets › Modèles') }}</NuxtLink>.
-      </p>
+      <template v-if="!draft.probe || draftGit(draft)">
+        <label class="field-label" for="projectTemplate">{{ tl('Template', 'Modèle') }}</label>
+        <USelect id="projectTemplate" v-model="template" :items="templateItems" size="xl" class="w-full" data-testid="project-template" />
+        <p class="coord-hint muted">
+          {{ tl('Templates are created and edited in', 'Les modèles se créent et se modifient dans') }}
+          <NuxtLink to="/settings?section=projects" @click="emit('settings')">{{ tl('Settings › Projects › Templates', 'Réglages › Projets › Modèles') }}</NuxtLink>.
+        </p>
+      </template>
     </template>
 
-    <template v-if="current && !current.main && !current.template">
+    <template v-if="current && !current.main && !current.template && current.git !== false">
       <p class="coord-note" data-testid="coordinator-no-template">
         {{ tl('This project needs a template before its coordinator can start.', 'Ce projet a besoin d’un modèle avant de lancer son coordinateur.') }}
         <NuxtLink to="/settings?section=projects" data-testid="coordinator-settings" @click="emit('settings')">{{ tl('Settings › Projects', 'Réglages › Projets') }}</NuxtLink>

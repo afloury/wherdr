@@ -45,7 +45,8 @@ export type ProposalOutcome = 'accepted' | 'refused' | 'outdated: the template c
 export interface CoordinatorView {
   // main: the main coordinator (project is MAIN).
   // agent: the default the user set for it, if any (else the first of their agents).
-  project: string, name: string, main?: boolean, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'>
+  // git: false: a folder without git, its coordinator works in it (no template needed).
+  project: string, name: string, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'>
   // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
   autopilot?: Autopilot, limits?: ReturnType<typeof limitsLeft>, wakes?: Wake[]
   // Nothing to do: its scheduled wakes are skipped (asleep), since its last wake.
@@ -212,9 +213,10 @@ export function stepDoneEvent(step: PlannedStep | undefined, cmd: { userSaid?: s
 // `wherdr pm` needs: a permission profile given only by -c (nothing in
 // ~/.codex) extends :workspace (reads everywhere, writes in its folder and
 // temp folders) with the network on. The others start bare in the folder.
-export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string): string[] {
+// works: the project's folder is the coordinator's to change (a folder without git).
+export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string, works = false): string[] {
   if (program === 'claude') return ['claude', ...(repo ? ['--add-dir', repo] : [])]
-  if (program === 'codex') return ['codex', '-C', folder, '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true']
+  if (program === 'codex') return ['codex', '-C', folder, ...(repo && works ? ['--add-dir', repo] : []), '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true']
   return [program]
 }
 // Claude and Codex take the first message as an argument; the others get it
@@ -278,11 +280,15 @@ const commandList = COMMANDS.map(c => `- \`wherdr pm ${c.usage}\`: ${c.does}`)
 
 // The files of the coordinator's folder, path → text. Nothing outside it.
 export function roleFiles(p: Project, t: Template | null, examples: Template[]): Record<string, string> {
+  // A folder without git: no task worktree, the coordinator does the work there itself.
+  const plain = p.git === false
   const plans = t ? Object.entries(t.taskTypes).flatMap(([type]) => [`### ${type}`, ...planSteps(t, { type }).map(stepLine), '']) : ['(no template yet)']
   const own = t ? [t.instructions, ...Object.entries(t.taskTypes).map(([k, tt]) => tt.instructions && `${k}: ${tt.instructions}`)].filter(Boolean).map(s => `- ${s}`) : []
   const agents = [
     `# Coordinator of project ${p.name} (${p.key})`, '',
-    `You coordinate project ${p.key} only. Its repository is ${p.path}: read it, never change it; task agents do the work in their own worktrees.`,
+    plain
+      ? `You coordinate project ${p.key} only. Its folder is ${p.path}, without git: its tasks cannot start (a task needs git for its own worktree), so you do the work yourself, directly in that folder: read and change its files as the user asks. Add no task for that work.`
+      : `You coordinate project ${p.key} only. Its repository is ${p.path}: read it, never change it; task agents do the work in their own worktrees.`,
     'Messages that start with "Autopilot:" are wakes sent by the engine; the others come from the user. The server knows which, and refuses what a wake may not do.', '',
     '## Commands (your token: this project only)', '', ...commandList, '',
     'Every change you make is written to the task\'s or the template\'s log with your name.',
@@ -296,8 +302,8 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[]):
     ...(isPublic(p) ? ['## Public repository', '', PUBLIC_RULE,
       'This holds for what you write too: each task description you write (`task add --description`) says the repository is public and repeats this rule. wherdr gives every task\'s worker and reviewer the rule as well.', ''] : []),
     'Each Autopilot wake ends with its id: once you have handled it, run `wherdr pm ack <id>`. The engine already fixes PR bases, re-runs CI, retries pushes, catches up branches, sends red CI back and merges what the branch rule allows: leave those to it.',
-    'The engine also moves each started task through its steps: when the worker says it is done, it runs the next step (a PR, a reviewer of another model, a merge the branch rule allows) and sends a review\'s findings back to the worker. It starts a task with "after" once those tasks are done, and makes it wait for the user when one of them failed. It starts no other task: add the tasks your goal needs with `task add` (chain a follow-up with `--after`), and start the next one with `task start`.', '',
-    '## Plans of this project\'s task types', '', `Template: ${t ? `${t.id} v${t.version ?? 1}` : 'none'}`, '', ...plans,
+    ...(plain ? [''] : ['The engine also moves each started task through its steps: when the worker says it is done, it runs the next step (a PR, a reviewer of another model, a merge the branch rule allows) and sends a review\'s findings back to the worker. It starts a task with "after" once those tasks are done, and makes it wait for the user when one of them failed. It starts no other task: add the tasks your goal needs with `task add` (chain a follow-up with `--after`), and start the next one with `task start`.', '',
+    '## Plans of this project\'s task types', '', `Template: ${t ? `${t.id} v${t.version ?? 1}` : 'none'}`, '', ...plans]),
     '## Turning a workflow request into steps', '',
     'wherdr imposes no workflow: it knows ordered steps, who holds each (worker, reviewer, coordinator, none), how it ends (report, verdict, user, action), the proofs it needs (evidence) and the user\'s guards. What an agent must do is plain text in `instructions`.',
     'When the user says "after each task, create the PR with my Bitbucket tool, then wait until I say it is merged", write a worker step with that instruction and `evidence: ["link"]`, then a step `{ holder: "none", ends: "user", userLabel: "Merged", action: { kind: "git.verify-merged", target } }`. "Watch the deploy" is a step you hold: `holder: "coordinator", ends: "report", recheck: "5m"`.',
@@ -310,7 +316,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[]):
   const skill = ['---', 'name: wherdr-pm', `description: Act on project ${p.key}'s board with the wherdr pm command (tasks, steps, tags, links, template).`, '---', '',
     '# wherdr pm', '', 'Your token is in WHERDR_PM_TOKEN; the server checks every right.', '', ...commandList, ''].join('\n')
   // Claude's Edit rule covers every file-writing tool.
-  const deny = [`Edit(/${p.path.replace(/\/$/, '')}/**)`]
+  const deny = plain ? [] : [`Edit(/${p.path.replace(/\/$/, '')}/**)`]
   return {
     'AGENTS.md': agents,
     ...ROLE_POINTERS,

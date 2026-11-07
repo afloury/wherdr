@@ -142,17 +142,21 @@ it('adds a project from a git repository, a new folder or a folder without git, 
   await w.get('#projectPath').setValue('~/clients')
   expect(await folder('plain')).toBe(false)
   expect((w.get('#projectKey').element as HTMLInputElement).value).toBe('CLN')
+  expect(w.find('[data-testid="project-template"]').exists()).toBe(false) // no git: no template, no tasks
   // A new folder: created at start, git init offered (off).
   await w.get('#projectName').setValue('Shop')
   await w.get('#projectPath').setValue('~/new-app')
   expect(await folder('new')).toBe(true)
   expect((w.get('#projectName').element as HTMLInputElement).value).toBe('Shop') // the user's name stays
+  expect(w.find('[data-testid="project-template"]').exists()).toBe(false)
+  await w.get('[data-testid="project-git-init"]').trigger('click')
+  await vi.waitFor(() => expect(w.find('[data-testid="project-template"]').exists()).toBe(true))
   expect(w.get('[data-testid="project-template"]').text()).toContain('vibe (example)')
   expect(w.text()).toContain('Settings › Projects › Templates')
   await w.get('[data-testid="project-start"]').trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w2%3Ap1'))
   expect(posts.map(p => p.url)).toEqual(['/api/pm/template', '/api/pm/project', '/api/pm/coordinator-start'])
-  expect(posts[1]!.body).toEqual({ key: 'NA', name: 'Shop', machine: '', path: '/repos/new-app', template: 'vibe', plain: true, create: true, gitInit: false })
+  expect(posts[1]!.body).toEqual({ key: 'NA', name: 'Shop', machine: '', path: '/repos/new-app', template: 'vibe', plain: true, create: true, gitInit: true })
   expect(posts[2]!.body).toEqual({ project: 'NA', program: 'claude' })
   w.unmount()
 })
