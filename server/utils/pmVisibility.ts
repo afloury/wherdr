@@ -12,13 +12,16 @@ import { apiUrl, ownLeakCheck, parseRemote, visibilityFromApi, visibilityFromGh,
 type Deps = CoreAdminDeps & { store: PmStore }
 const SEP = '--wherdr-leak--'
 
-// The remote's URL (origin, else the first one), then gh's answer when gh is there.
+// The remote's URL (origin, else the first one), then gh's answer when gh is
+// there and logged in. Only a missing folder fails: gh's own failure (absent,
+// logged out, not a GitHub remote) leaves the host's API to answer.
 export const REMOTE_SCRIPT = `cd "$1" 2>/dev/null || exit 1
 r=$(git remote | grep -qx origin && echo origin || git remote | head -n 1)
 [ -n "$r" ] || exit 0
 u=$(git remote get-url "$r") || exit 0
 echo "$u"
-command -v gh >/dev/null 2>&1 && GH_PROMPT_DISABLED=1 gh repo view "$u" --json visibility 2>/dev/null`
+command -v gh >/dev/null 2>&1 && GH_PROMPT_DISABLED=1 gh repo view "$u" --json visibility 2>/dev/null
+exit 0`
 
 export async function detectVisibility(deps: CoreAdminDeps, p: Pick<Project, 'machine' | 'path'>, fetcher: typeof fetch = fetch): Promise<Visibility> {
   const r = await exec(deps, machineOn(deps, p.machine).on, REMOTE_SCRIPT, [p.path])
@@ -61,6 +64,8 @@ git diff -U0 --no-color \${s:+"$s"} HEAD 2>/dev/null | head -c 4000000`
 
 export async function readLeakCheck(deps: CoreAdminDeps, on: string | undefined, run: { worktree: string, branch: string }, diff = false) {
   const r = await exec(deps, on, LEAK_READ_SCRIPT, [run.worktree, run.branch, diff ? 'diff' : ''])
+  // Unread: never a silent pass (the signal is tried again at the next tick).
+  if (r.code !== 0) throw new HerdrError('core', 'Could not read the task\'s worktree for the leak scan')
   const [pkg = '', names = '', d = ''] = r.out.split(new RegExp(`${SEP}\\n?`))
   return { check: ownLeakCheck(pkg, names.split('\n').map(n => n.trim())), diff: d }
 }

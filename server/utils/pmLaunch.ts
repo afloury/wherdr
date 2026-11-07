@@ -89,7 +89,7 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: {
   if (wt.code !== 0) return wait(store, task, `git worktree failed: ${wt.out.split('\n').slice(-3).join(' ') || 'timeout'}`)
   // A visual task: the worker's key to upload its screenshots, kept with the task.
   const shotToken = shotStep(t, task.type) ? task.shotToken || randomBytes(16).toString('hex') : undefined
-  const leakCheck = isPublic(p) ? (await readLeakCheck(deps, on, paths)).check : undefined
+  const leakCheck = isPublic(p) ? (await readLeakCheck(deps, on, paths).catch(() => ({ check: undefined }))).check : undefined
   const text = instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(p.machine, deps.origin), token: shotToken } : undefined, leakCheck)
     + ['', ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n')
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')

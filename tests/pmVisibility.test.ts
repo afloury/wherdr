@@ -1,3 +1,7 @@
+import { execFileSync, spawnSync } from 'node:child_process'
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { apiUrl, ownLeakCheck, parseRemote, scanDiff, visibilityFromApi, visibilityFromGh } from '../shared/pm/visibility'
 import { roleFiles } from '../shared/pm/coordinator'
@@ -47,6 +51,35 @@ describe('visibility detection', () => {
     expect(await detectVisibility(deps('git@git.example.com:o/r.git'), p, fetcher)).toBe('unknown')
     expect(fetcher).toHaveBeenCalledTimes(1)
     await expect(detectVisibility(deps('', 1), p, fetcher)).rejects.toThrow('git remote')
+  })
+
+  it('runs the real script: gh absent, logged out or not on GitHub leaves the host\'s API to answer', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'vis-'))
+    // A PATH with git and the tools the script uses, no gh; then one with a gh that is logged out.
+    const bin = join(root, 'bin'), out = join(root, 'out')
+    mkdirSync(bin); mkdirSync(out)
+    for (const tool of ['git', 'grep', 'head']) symlinkSync(execFileSync('sh', ['-c', `command -v ${tool}`]).toString().trim(), join(bin, tool))
+    writeFileSync(join(out, 'gh'), '#!/bin/sh\necho "not logged in" >&2\nexit 4\n', { mode: 0o755 })
+    const repo = (remote: string) => {
+      const dir = mkdtempSync(join(root, 'r-'))
+      execFileSync('git', ['init', '-q', dir])
+      execFileSync('git', ['-C', dir, 'remote', 'add', 'origin', remote])
+      return { machine: '', path: dir }
+    }
+    const real = (path: string) => ({
+      call: async (_m: string, q: { argv: string[] }) => {
+        const r = spawnSync('/bin/sh', q.argv.slice(1), { env: { PATH: path, HOME: root } })
+        return { code: r.status, stdout: r.stdout.toString('base64') }
+      },
+      machines: () => [{ key: '', label: 'here', local: true, status: 'online' }],
+    }) as never
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ private: false, visibility: 'public' }), { status: 200 }))
+    const github = repo('https://github.com/o/r.git'), gitlab = repo('git@gitlab.com:g/r.git')
+    expect(await detectVisibility(real(bin), github, fetcher)).toBe('public') // no gh
+    expect(await detectVisibility(real(`${out}:${bin}`), github, fetcher)).toBe('public') // gh logged out
+    expect(await detectVisibility(real(`${out}:${bin}`), gitlab, fetcher)).toBe('public')
+    expect(fetcher).toHaveBeenLastCalledWith('https://gitlab.com/api/v4/projects/g%2Fr', expect.anything())
+    await expect(detectVisibility(real(bin), { machine: '', path: join(root, 'missing') }, fetcher)).rejects.toThrow('git remote')
   })
 })
 
