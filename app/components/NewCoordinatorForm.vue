@@ -10,7 +10,7 @@ const agent = defineModel<string>('agent', { required: true })
 const emit = defineEmits<{ settings: [] }>()
 
 const current = computed(() => coordinators.value.find(c => c.project === project.value))
-const choices = computed(() => offerCoordinators())
+const choices = computed(() => (current.value ? offerCoordinators(undefined, current.value.project) : []))
 const fallback = computed(() => (current.value ? coordinatorAgent(current.value)?.program ?? '' : ''))
 const running = (project: string) => {
   const c = coordinators.value.find(x => x.project === project)

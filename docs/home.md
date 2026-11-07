@@ -49,9 +49,10 @@ Settings › Agents › **Offered agents** is the one list behind every agent ch
 sheet, a project coordinator's agent, Alfred's. Uncheck a program to hide it everywhere; drag
 a row by its ⠿ handle (or use its arrows) to reorder: the first is the default and comes first
 in every picker. Programs only: each starts with its own default model, changed inside the
-agent. A coordinator or Alfred runs with any of Claude, Codex, OMP, Pi, OpenCode, Kimi, Gemini
-CLI, Qwen Code, Copilot, Amp and Droid; other programs are left out of those pickers, since
-wherdr knows no instructions file they read. Choices and order follow you on every device.
+agent. Alfred runs with any of Claude, Codex, OMP, Pi, OpenCode, Kimi, Gemini CLI, Qwen Code,
+Copilot, Amp and Droid (other programs are left out of its picker: wherdr knows no instructions
+file they read). A project's coordinator runs with Claude or Codex only: they are the ones wherdr
+can keep out of the project's repository (a deny rule for Claude, the sandbox for Codex). Choices and order follow you on every device.
 
 ### Machines as tabs
 

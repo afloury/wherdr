@@ -53,3 +53,22 @@ it('with no project yet, the coordinator step is disabled', async () => {
   expect(w.findAll('[data-testid="pm-guide-action"]')[3]!.attributes('disabled')).toBeDefined()
   w.unmount()
 })
+
+it('starts the project coordinator with the user\'s first offered agent that can run it (Settings › Agents)', async () => {
+  const { readBody } = await import('h3')
+  const { agentOrder, appConfig, hiddenAgents } = await import('~/composables/useHerdr')
+  const posts: unknown[] = []
+  registerEndpoint('/api/pm/coordinator-start', { method: 'POST', handler: async (e) => { posts.push(await readBody(e)); return { terminal: 'host/t9' } } })
+  appConfig.value = { ...appConfig.value, machines: undefined, kinds: ['claude', 'omp', 'codex'] }
+  agentOrder.value = ['omp', 'claude', 'codex']
+  hiddenAgents.value = ['claude']
+  overview = { enabled: true, projects: [project('WEB', 'vibe')], templates: [{ id: 'vibe' }] }
+  coords = [{ project: 'WEB' }]
+  const w = await mountSuspended(PmGuide, { props: { always: true } })
+  mounted = w
+  await vi.waitFor(() => expect(w.findAll('[data-testid="pm-guide-action"]')[3]!.attributes('disabled')).toBeUndefined())
+  await w.findAll('[data-testid="pm-guide-action"]')[3]!.trigger('click')
+  // OMP comes first but cannot run a project coordinator; Claude is unchecked.
+  await vi.waitFor(() => expect(posts).toEqual([{ project: 'WEB', program: 'codex' }]))
+  hiddenAgents.value = []; agentOrder.value = []
+})

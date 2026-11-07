@@ -4,7 +4,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { MAIN, coordinatorArgs, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
+import { MAIN, canRunCoordinator, coordinatorArgs, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { validateTemplate } from '../../shared/pm/workflow'
@@ -275,6 +275,7 @@ export async function answerProposal(deps: Deps, key: unknown, accept: unknown) 
 // A program only (a model sent by an older client is ignored).
 const agentOf = (v: { program?: unknown }): CoordinatorAgent | null => (isCoordinatorProgram(v.program) ? { program: v.program } : null)
 const BAD_AGENT = 'program: an agent that can coordinate (claude, codex, omp…)'
+const BAD_PROJECT_AGENT = 'program: claude or codex (a project coordinator needs one wherdr can keep out of the repository)'
 // No agent chosen yet: Claude, as before (the client sends the user's first agent).
 const FALLBACK: CoordinatorAgent = { program: 'claude' }
 
@@ -286,6 +287,7 @@ export const isCoordinatorKey = async (store: PmStore, key: unknown) =>
 export async function setCoordinatorAgent(store: PmStore, key: unknown, agent: { program?: unknown }) {
   const a = agentOf(agent)
   if (!a) throw new HerdrError('bad_input', BAD_AGENT)
+  if (typeof key === 'string' && !canRunCoordinator(a.program, key)) throw new HerdrError('bad_input', BAD_PROJECT_AGENT)
   if (typeof key !== 'string' || !(await isCoordinatorKey(store, key))) throw new HerdrError('not_found', 'Unknown project')
   await store.saveCoordinator({ project: key, tokenHash: '', ...(await store.coordinator(key)), agent: a })
   return { agent: a }
@@ -396,6 +398,7 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   const a = key === MAIN ? alfredAgent(agent.program ?? (await deps.store.coordinator(key))?.agent?.program)
     : agentOf(agent.program === undefined ? (await deps.store.coordinator(key))?.agent ?? FALLBACK : agent)
   if (!a) throw new HerdrError('bad_input', BAD_AGENT)
+  if (!canRunCoordinator(a.program, key)) throw new HerdrError('bad_input', BAD_PROJECT_AGENT)
   const { program } = a
   const before = await deps.store.coordinator(key)
   const c = await prepareCoordinator(deps, key, program, urls)

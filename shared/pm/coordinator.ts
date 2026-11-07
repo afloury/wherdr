@@ -20,6 +20,13 @@ export interface CoordinatorAgent { program: CoordinatorProgram }
 export const COORDINATOR_PROGRAMS = ['claude', 'codex', 'omp', 'pi', 'opencode', 'kimi', 'gemini', 'qwen', 'copilot', 'amp', 'droid'] as const
 export type CoordinatorProgram = typeof COORDINATOR_PROGRAMS[number]
 export const isCoordinatorProgram = (v: unknown): v is CoordinatorProgram => COORDINATOR_PROGRAMS.includes(v as CoordinatorProgram)
+// A project's coordinator must not change the project's repository: only
+// Claude (Edit deny rule in .claude/settings.json) and Codex (its sandbox) can
+// be held to that. The others start bare, so they run Alfred (its own home,
+// no repository) but not a project coordinator.
+export const GUARDED_PROGRAMS = ['claude', 'codex'] as const satisfies readonly CoordinatorProgram[]
+export const canRunCoordinator = (program: unknown, key: string): program is CoordinatorProgram =>
+  key === MAIN ? isCoordinatorProgram(program) : (GUARDED_PROGRAMS as readonly unknown[]).includes(program)
 // Each harness's own instructions file, pointing to AGENTS.md.
 export const ROLE_POINTERS: Record<string, string> = { 'CLAUDE.md': '@AGENTS.md\n', 'GEMINI.md': '@AGENTS.md\n', 'QWEN.md': '@AGENTS.md\n' }
 // The main coordinator: one for all projects, kept under this reserved key

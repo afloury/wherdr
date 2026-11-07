@@ -329,7 +329,10 @@ describe('role files', () => {
     await startCoordinator(deps, 'CO', {}, urls)
     expect(runs.map(r => [r.method, r.terminal ?? r.cwd])).toEqual([['terminal.run', '/h/.wherdr/pm/coordinators/CO'], ['terminal.run', '/h/.wherdr/pm/coordinators/CO'], ['terminal.kill', 'host/t5']])
     expect((await store.coordinator('CO'))).toMatchObject({ agent: { program: 'codex' }, ran: { program: 'codex' }, terminal: 'host/t6' })
-    await setCoordinatorAgent(store, 'CO', { program: 'omp' })
+    // OMP runs Alfred, but nothing would keep it out of a project's repository.
+    await refused(setCoordinatorAgent(store, 'CO', { program: 'omp' }), 'claude or codex')
+    await refused(startCoordinator(deps, 'CO', { program: 'omp' }, urls), 'claude or codex')
+    await setCoordinatorAgent(store, MAIN, { program: 'omp' })
     await refused(setCoordinatorAgent(store, 'CO', { program: 'cline' }), 'an agent that can coordinate')
     await refused(setCoordinatorAgent(store, 'NOPE', { program: 'claude', model: 'opus' }), 'Unknown project')
   })

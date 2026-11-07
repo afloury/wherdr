@@ -26,7 +26,7 @@ async function act(fn: () => Promise<unknown>) {
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = false }
 }
-const agentItems = computed(() => offerCoordinators().map(p => ({ label: kindLabel(p), value: p })))
+const agentItems = computed(() => offerCoordinators(undefined, props.c.project).map(p => ({ label: kindLabel(p), value: p })))
 const setDefault = (program: string) => act(() => api('/api/pm/coordinator-agent', { project: props.c.project, program }))
 const fresh = () => act(async () => { const p = await launchCoordinator(props.c.project, agent.value); if (p) await navigateTo(panePath(p.id)) })
 const resume = () => { resumeCoordinator(props.c.terminal!); if (props.open && pane.value) navigateTo(panePath(pane.value.id)) }
