@@ -8,6 +8,7 @@ import type { Wake } from './wakes'
 import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
 import { PUBLIC_RULE, isPublic } from './visibility'
+import { projectPlace } from './places'
 import { MERGE_METHODS, contributorPrsLine, type MergeMethod } from './contributorPr'
 
 // The agent of a coordinator: the project's default, and the one its kept
@@ -205,18 +206,13 @@ const guardsOf = (t: Template | null) =>
 // Whether two workflows have the same guards (the project's and each task type's).
 export const sameGuards = (a: Template | null, b: Template | null) => guardsOf(a) === guardsOf(b)
 
-// Where the user changes a project's guards (the coordinator's refusals name it).
-export const guardsPlace = (key: string) => `Settings › Projects › ${key.toUpperCase()} › Guards`
-// Where the user reviews the coordinator's proposed workflow change.
-export const workflowPlace = (key: string) => `Settings › Projects › ${key.toUpperCase()} › Workflow`
-
 // Why the coordinator may not save `next` over `old`, or undefined. Guards
-// change only through the user's own gesture in the interface.
-export function templateEditRefusal(old: Template | null, next: Template, turn: Turn): string | undefined {
+// change only through the user's own gesture in the interface. key: the project's.
+export function templateEditRefusal(old: Template | null, next: Template, turn: Turn, key?: string): string | undefined {
   if (turn !== 'user') return 'template edit is only for a turn that comes from the user: propose the change and wait for their yes'
-  if (!old) return 'The project has no workflow: the user starts it from a template in Settings › Projects'
+  if (!old) return `The project has no workflow: the user starts it from a template in ${projectPlace(key, 'workflow', true)}`
   if (next?.id !== old.id) return `The coordinator edits its project's workflow only (${old.id})`
-  if (!sameGuards(old, next)) return `Guards (protected branches, who merges) are changed by the user in ${guardsPlace(old.id)}, or by Alfred, never with a project coordinator's token`
+  if (!sameGuards(old, next)) return `Guards (protected branches, who merges) are changed by the user in ${projectPlace(key ?? old.id, 'guards', true)}, or by Alfred, never with a project coordinator's token`
 }
 
 // `step done` → the engine's event, or why it is refused. --user-said ends a
@@ -358,7 +354,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     `Quote a file as inline code with its absolute path (\`${p.path.replace(/\/$/, '')}/README.md\`): the user's interface makes it a link.`, '',
     ...docsRule(docs, '`wherdr pm help`'),
     '## What you never do', '',
-    `- change a guard (protected branches, who merges): the user does it in ${guardsPlace(p.key)};`,
+    `- change a guard (protected branches, who merges): the user does it in ${projectPlace(p.key, 'guards', true)};`,
     '- end a step that waits for the user unless they just told you so (`--user-said` with their words);',
     '- edit the template on your own: only the user\'s request starts a proposal, and only their yes in wherdr saves it;',
     '- pass a critical finding with proof, or a send-back whose next step is a guarded merge: those go to the user;',
@@ -371,7 +367,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     '## Plans of this project\'s task types', '', `Template: ${t ? `${t.id} v${t.version ?? 1}` : 'none'}`, `Working branch: ${p.base || 'none set'}`, '', ...plans]),
     '## Turning a workflow request into steps', '',
     'wherdr imposes no workflow: it knows ordered steps, who holds each (worker, reviewer, coordinator, none), how it ends (report, verdict, user, action), the proofs it needs (evidence) and the user\'s guards. What an agent must do is plain text in `instructions`.',
-    'The project\'s working branch (set by the user in Settings › Projects) is where tasks start; a `github.pr`, `git.land` or `git.verify-merged` step without its own branch uses it, and `{base}` in any instructions becomes its name. Prefer these to a branch written in the template.',
+    `The project's working branch (set by the user in ${projectPlace(p.key, 'general', true)}) is where tasks start; a \`github.pr\`, \`git.land\` or \`git.verify-merged\` step without its own branch uses it, and \`{base}\` in any instructions becomes its name. Prefer these to a branch written in the template.`,
     'When the user says "after each task, create the PR with my Bitbucket tool, then wait until I say it is merged", write a worker step with that instruction and `evidence: ["link"]`, then a step `{ holder: "none", ends: "user", userLabel: "Merged", action: { kind: "git.verify-merged", target } }`. "Watch the deploy" is a step you hold: `holder: "coordinator", ends: "report", recheck: "5m"`.',
     'Read the template, write the new one and run `template edit`: wherdr shows the user its diff, to accept or refuse; `template show` tells you which. Examples to copy from:', '',
     ...examples.map(e => `\`\`\`json\n${JSON.stringify(e)}\n\`\`\``), '',

@@ -17,7 +17,7 @@ export interface ActionDeps {
   sleep?: (ms: number) => Promise<void>
 }
 export interface ActionJob {
-  task: { id: string, title: string, description: string }
+  task: { id: string, title: string, description: string, project?: string }
   step: string
   attempt: number // from the step engine's action effect
   action: StepAction
@@ -51,7 +51,7 @@ export async function runAction(deps: ActionDeps, job: ActionJob): Promise<Actio
     await store.saveReceipt({ ...prev, state: 'uncertain' })
     return { ok: false, error: `${job.action.kind} was interrupted before its result was known: check by hand, then try again` }
   }
-  const refused = guardAction(job.guards, job.action, { branch: job.branch, by: job.by })
+  const refused = guardAction(job.guards, job.action, { branch: job.branch, by: job.by, project: job.task.project })
   if (refused) return finish({ ok: false, error: refused })
   await store.saveReceipt({ ...base, state: 'pending', at: Date.now() })
   return finish(await perform(deps, job))

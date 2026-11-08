@@ -13,6 +13,7 @@ import type { CoreAdminDeps } from './coreCreate'
 import type { FolderCheck, PmStore } from './pmStore'
 import { patchSettings, readSettings } from './settings'
 import { saveProjectGuards } from './pmProject'
+import { projectPlace } from '../../shared/pm/places'
 
 type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string }
 
@@ -34,7 +35,7 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
   }
   const machineName = (key: string) => (key ? machines.find(m => m.key === key)?.label ?? key : 'this machine')
   const remoteOf = (key: string) => (key && !machines.find(m => m.key === key)?.local ? machineName(key) : undefined)
-  const needPm = async () => { if (!(await store.enabled())) throw new HerdrError('pm_off', 'Projects are off: the user switches them on in Settings › Projects') }
+  const needPm = async () => { if (!(await store.enabled())) throw new HerdrError('pm_off', `Projects are off: the user switches them on in ${projectPlace(undefined, 'general', true)}`) }
   const knownTemplate = async (id: string) => {
     if (id && !(await store.overview()).templates.some(t => t.id === id)) throw new HerdrError('not_found', `No template ${id} (see wherdr alfred templates)`)
   }
@@ -115,7 +116,7 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       const branches = protect ?? old.protected
       const cp = contributorPrs ? (contributorPrs === 'off' ? undefined : contributorPrs) : old.contributorPrs
       const guards = { ...(branches ? { protected: branches } : {}), ...(Object.keys(merge).length ? { merge } : {}), ...(cp ? { contributorPrs: cp } : {}) }
-      return change({ change: [`project ${p.key} guards: ${JSON.stringify(old)} → ${JSON.stringify(guards)}`] }, () => saveProjectGuards(store, p.key, guards, 'Alfred'))
+      return change({ change: [`project ${p.key} guards: ${JSON.stringify(old)} → ${JSON.stringify(guards)}`] }, () => saveProjectGuards(store, p.key, guards, 'Alfred', deps))
     }
     case 'coordinator start': {
       await needPm()
