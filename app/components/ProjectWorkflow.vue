@@ -165,8 +165,7 @@ async function pickStart(v: string) {
   }
   catch (e) { error.value = (e as Error).message }
 }
-const startDiff = computed(() => (startNext.value ? templateDiff(props.workflow, startNext.value) : '').split('\n').filter(Boolean)
-  .map(l => ({ l, k: l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : '' })))
+const startDiff = computed(() => diffLines(startNext.value ? templateDiff(props.workflow, startNext.value) : ''))
 async function startOver() {
   const template = startPick.value
   if (await run('start', () => api('/api/pm/project-apply', { key: props.project.key, template }))) dialog.value = ''

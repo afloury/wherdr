@@ -203,6 +203,8 @@ export const sameGuards = (a: Template | null, b: Template | null) => guardsOf(a
 
 // Where the user changes a project's guards (the coordinator's refusals name it).
 export const guardsPlace = (key: string) => `Settings › Projects › ${key.toUpperCase()} › Guards`
+// Where the user reviews the coordinator's proposed workflow change.
+export const workflowPlace = (key: string) => `Settings › Projects › ${key.toUpperCase()} › Workflow`
 
 // Why the coordinator may not save `next` over `old`, or undefined. Guards
 // change only through the user's own gesture in the interface.
