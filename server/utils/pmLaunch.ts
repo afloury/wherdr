@@ -11,6 +11,7 @@ import type { PmStore } from './pmStore'
 import { initialState, onEvent } from '../../shared/pm/steps'
 import { doneSection, runFiles } from '../../shared/pm/advance'
 import { isPublic } from '../../shared/pm/visibility'
+import { cloneOn, taskMachine } from '../../shared/pm/project'
 import { ensureVisibility, readLeakCheck } from './pmVisibility'
 import { DEPS_SCRIPT, depsNote } from './pmDeps'
 import { LABEL, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
@@ -67,13 +68,18 @@ const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitK
 // stopped task stays stopped until its agent starts: never seen as a failure meanwhile.
 // revive: the worker the engine released (release.ts) starts again in its
 // worktree, whatever the task's state and the holder of its current step.
-export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, revive }: { handover?: string, revive?: true } = {}): Promise<Task> {
+// on: the machine key a new task goes to (one its project allows); a started
+// task always goes back to its own (taskMachine).
+export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, revive, on: asked }: { handover?: string, revive?: true, on?: string } = {}): Promise<Task> {
   const { store } = deps
-  const task = await store.task(id)
-  if (!task) throw new HerdrError('not_found', 'Unknown task')
+  const asRead = await store.task(id)
+  if (!asRead) throw new HerdrError('not_found', 'Unknown task')
+  let task = asRead
   if (task.state === 'working' && !revive) throw new HerdrError('busy', 'This task is already working')
-  const found = (await store.projects()).find(x => x.key === task.project)
+  const found = (await store.projects()).find(x => x.key === asRead.project)
   if (!found) throw new HerdrError('not_found', 'Unknown project')
+  const placed = taskMachine(task, found, asked)
+  if ('refused' in placed) throw new HerdrError('refused', placed.refused)
   if (found.git === false) return wait(store, task, 'The project folder is not a git repository: a task needs git for its own worktree')
   const p = await ensureVisibility(deps, found)
   const t = p ? await store.workflow(p.key) : null
@@ -88,20 +94,23 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, rev
     const { told: _told, ...step } = s!
     return store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, step })
   }
-  // The machine this run goes to: the project's for now.
-  const machine = p.machine
+  const { machine } = placed
   let on: string | undefined, label = ''
   try { ({ on, m: { label } } = machineOn(deps, machine)) } catch (e) { return wait(store, task, (e as Error).message) }
+  const repo = cloneOn(p, machine)
+  if (!repo) return wait(store, task, `wherdr knows no clone of the project on ${label}: allow that machine again in the project's settings`)
   if (!(await kindsOf(deps, on)).includes(plan.program)) return wait(store, task, `${plan.program} is not installed on ${label}`)
   const home = await homeOf(deps, on)
   if (!home) return wait(store, task, `${label}: home folder not found`)
   const paths = taskPaths(home, task.id)
   // Recorded at the first start: changing the project's branch later leaves this task alone.
   const base = taskBase(task, p) ?? ''
-  const wt = await exec(deps, on, WORKTREE_SCRIPT, [p.path, paths.worktree, paths.branch, base])
+  const wt = await exec(deps, on, WORKTREE_SCRIPT, [repo, paths.worktree, paths.branch, base])
   if (wt.code !== 0) return wait(store, task, `git worktree failed: ${wt.out.split('\n').slice(-3).join(' ') || 'timeout'}`)
+  // Its worktree is there now: the task stays on this machine.
+  if (task.machine !== machine) task = await store.saveTask({ ...task, machine })
   // A copy of a large node_modules on a cold disk can take minutes.
-  const depsLine = depsNote((await exec(deps, on, DEPS_SCRIPT, [p.path, paths.worktree], undefined, 300).catch(() => ({ out: '' }))).out)
+  const depsLine = depsNote((await exec(deps, on, DEPS_SCRIPT, [repo, paths.worktree], undefined, 300).catch(() => ({ out: '' }))).out)
   // A visual task: the worker's key to upload its screenshots, kept with the task.
   const shotToken = shotStep(t, task.type) ? task.shotToken || randomBytes(16).toString('hex') : undefined
   const leakCheck = isPublic(p) ? (await readLeakCheck(deps, on, paths).catch(() => ({ check: undefined }))).check : undefined

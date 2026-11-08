@@ -22,6 +22,7 @@ export interface Task {
   waitKind?: 'question' | 'permission' | 'auth' // what it waits for
   mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
   run?: string // the current run
+  machine?: string // where its first start put it: it always goes back there (none, once started: its project's machine)
   step?: StepState // where the step engine has it
   base?: string // the project's working branch when it started ('' none): a later change leaves it alone
   prefs?: Prefs

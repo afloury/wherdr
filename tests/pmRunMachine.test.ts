@@ -6,6 +6,7 @@ import { createPmStore } from '../server/utils/pmStore'
 import { advanceTick } from '../server/utils/pmAdvance'
 import { mechanicTick } from '../server/utils/pmMechanic'
 import { cleanTask } from '../server/utils/pmCleanup'
+import { startTask } from '../server/utils/pmLaunch'
 import { READ_SEP } from '../shared/pm/advance'
 import { github } from '../shared/pm/examples'
 import { initialState, onEvent, planSteps } from '../shared/pm/steps'
@@ -24,7 +25,7 @@ const call = async (method: string, p: Record<string, unknown>) => {
   if (method === 'terminal.get') return { state: 'running' }
   if (method !== 'machine.exec') return {}
   const script = (p.argv as string[])[2]!
-  const out = script.includes(READ_SEP) ? ['abc1234', '5', '', ''].join(`\n${READ_SEP}\n`)
+  const out = script.includes('command -v') ? 'claude' : script.includes(READ_SEP) ? ['abc1234', '5', '', ''].join(`\n${READ_SEP}\n`)
     : script.includes('gh pr create') ? 'https://github.com/o/r/pull/9'
       : script.includes('$HOME') ? '/h' : script.includes('worktree list') ? '1 1 0 0' : ''
   // The login check fails: the task stays waiting, nothing restarts.
@@ -48,6 +49,33 @@ async function setup(machine = '') {
   await store().addProject({ key: 'CO', machine, path: '/src', template: 'github' }, async (_m, p) => p)
   return store().addTask({ project: 'CO', title: 'Fix', type: 'simple' })
 }
+const allowB = () => store().updateProject('CO', { machines: ['b'], clones: { b: '/src-b' } })
+const worktreeCall = () => calls.find(([m, p]) => m === 'machine.exec' && (p.argv as string[])[2]!.includes('worktree add'))?.[1]
+
+it('starts a task of a two-machine project on either; a started task goes back to its own', async () => {
+  const t = await setup()
+  await allowB()
+  await expect(startTask(deps(), t.id, { on: 'c' })).rejects.toThrow('not allowed for the project')
+  const started = await startTask(deps(), t.id, { on: 'b' })
+  expect(started).toMatchObject({ state: 'working', machine: 'b' })
+  expect(worktreeCall()).toMatchObject({ on: 'machine-b', argv: expect.arrayContaining(['/src-b']) })
+  expect((await store().runs()).at(-1)).toMatchObject({ machine: 'b' })
+
+  // Resume (stopped, a retry): back on B, never home.
+  await store().saveTask({ ...started, state: 'waiting' })
+  calls = []
+  expect(await startTask(deps(), t.id)).toMatchObject({ state: 'working', machine: 'b' })
+  expect(worktreeCall()).toMatchObject({ on: 'machine-b' })
+  await store().saveTask({ ...started, state: 'waiting' })
+  await expect(startTask(deps(), t.id, { on: '' })).rejects.toThrow('stays there')
+
+  // Another task with no machine asked: the home machine, its own clone.
+  const home = await store().addTask({ project: 'CO', title: 'Docs', type: 'simple' })
+  calls = []
+  expect(await startTask(deps(), home.id)).toMatchObject({ machine: '' })
+  expect(worktreeCall()).not.toHaveProperty('on')
+  expect(worktreeCall()!.argv).toContain('/src')
+})
 
 it('reads the signal, runs the PR action and starts the reviewer on the run\'s machine', async () => {
   const t = await setup()
@@ -74,19 +102,20 @@ it('checks the login of a task waiting on it on the run\'s machine', async () =>
   expect(login?.[1]).toMatchObject({ on: 'machine-b', argv: expect.arrayContaining(['claude']) })
 })
 
-it('cleans up on the run\'s machine; a run elsewhere than the project keeps its worktree, with why', async () => {
+it('cleans up on the run\'s machine, in its clone there; a machine with no known clone keeps its worktree, with why', async () => {
   const t = await setup()
   const done = { ...t, state: 'done' as const, run: 'r1', step: { at: 9, started: true, since: 1, done: true, proofs: {}, rounds: {} } }
   await store().saveRun(worker({ state: 'ended' }))
   await store().saveTask(done)
   await cleanTask(deps(), t.id)
   expect(execs()).toEqual([])
-  expect((await store().task(t.id))!.cleanup).toEqual({ skipped: 'it is on another machine than the project\'s, whose clone wherdr does not know yet' })
+  expect((await store().task(t.id))!.cleanup).toEqual({ skipped: 'wherdr knows no clone of the project on its machine (no longer allowed for the project)' })
 
-  // The project on B too: removed there.
-  await fs.writeFile(store().files.projects, JSON.stringify({ v: 1, projects: [{ key: 'CO', name: 'CO', machine: 'b', path: '/src', template: 'github', addedAt: 1 }] }))
+  // B allowed, with its clone: removed there, in that clone.
+  await allowB()
   await cleanTask(deps(), t.id)
   expect(execs().length).toBeGreaterThan(1)
   expect(execs().every(on => on === 'machine-b')).toBe(true)
+  expect(calls.filter(([, p]) => String((p.argv as string[])[2]).includes('git -C')).every(([, p]) => (p.argv as string[]).includes('/src-b'))).toBe(true)
   expect((await store().task(t.id))!.cleanup).toEqual({ done: true })
 })

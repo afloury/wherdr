@@ -65,6 +65,16 @@ describe('project settings', () => {
     await expect(updateProject(store, 'CO', { base: 'a..b' })).rejects.toThrow('base: invalid branch name')
   })
 
+  it('allows other machines, each with its clone; back to home only drops both fields', async () => {
+    await expect(updateProject(store, 'CO', { machines: ['', 'b'] })).rejects.toThrow('clones.b: the clone\'s folder on that machine')
+    await expect(updateProject(store, 'CO', { machines: ['b'], clones: { b: 'src' } })).rejects.toThrow('clones.b: an absolute folder path')
+    expect((await updateProject(store, 'CO', { machines: ['b'], clones: { b: '~/co', c: '/c' } })).project).toMatchObject({ machines: ['', 'b'], clones: { b: '~/co' } })
+    expect((await updateProject(store, 'CO', { name: 'Co' })).project).toMatchObject({ machines: ['', 'b'] })
+    const back = (await updateProject(store, 'CO', { machines: [] })).project
+    expect(back).not.toHaveProperty('machines')
+    expect(back).not.toHaveProperty('clones')
+  })
+
   it('saves the workflow as a library template; the project is untouched, a taken id refused', async () => {
     const before = (await store.workflow('CO'))!
     expect(await templateFromProject(store, 'CO', 'co-flow')).toEqual({ template: { id: 'co-flow', version: 1 } })
