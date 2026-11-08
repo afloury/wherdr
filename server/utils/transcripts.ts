@@ -13,8 +13,6 @@ import { type CommandTemplate, ompCommandTemplates } from './slash'
 import { fmt } from '../../shared/message'
 import { pastedBlocks } from '../../shared/pastedText'
 import { createActivity } from '../../shared/integrations'
-import { createDevinTranscripts } from './devinTranscripts'
-import { devinSession } from './devinSessions'
 
 // Backward reading by windows until there are enough messages: Claude's
 // transcripts embed images in base64, a few screenshots
@@ -1023,7 +1021,6 @@ export function isMissing(e: unknown): boolean {
 }
 
 export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }: { home: string, herdr: HerdrCall, fs?: MachineFs, now?: () => number }) {
-  const devin = createDevinTranscripts({ home, fs, now })
   // File -> state (size, generation) and when this server first saw it, for
   // whole-second mtimes (see SETTLE_MS); `file|size|gen` -> checksum of the
   // file at first sight (null: could not be taken).
@@ -1074,7 +1071,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     const r = await herdr('pane.process_info', { pane_id: paneId }, 4000)
     const procs: Json[] = (r.process_info && r.process_info.foreground_processes) || []
     const match = procs.find(p => p.name === kind || path.basename((p.argv && p.argv[0]) || '') === kind)
-    return match || (kind === 'devin' ? null : procs[0]) || null
+    return match || procs[0] || null
   }
 
   const encodeCwd = (cwd: string) => cwd.replace(/[^A-Za-z0-9]/g, '-')
@@ -1263,12 +1260,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     let loc: Loc | null = null
     let failed = false
     try {
-      if (pane.agent === 'devin') {
-        const proc = await paneProcess(pane.id, 'devin')
-        const id = proc ? await devinSession(fs, home, proc, fs === localFs) : pane.agentSession
-        const file = id && devin.pathOf(id)
-        if (file) loc = { file, session: id! }
-      } else if (pane.agent === 'codex') loc = await locateCodexPane(pane)
+      if (pane.agent === 'codex') loc = await locateCodexPane(pane)
       else if (pane.agentSession) {
         const f = await findSessionFile(pane.agent, pane.agentSession)
         if (f) loc = { file: f, session: pane.agentSession }
@@ -1536,7 +1528,6 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     if (!hasTranscript(pane.agent)) return { hits: [], limited: false, kind: null }
     const loc = await locate(pane)
     if (!loc || Date.now() >= deadline) return { hits: [], limited: Date.now() >= deadline, kind: null }
-    if (pane.agent === 'devin') return devin.search({ ...pane, agentSession: loc.session }, query, deadline)
     // The transcript path tells the real kind (closed agent mislabeled).
     const kind = transcriptKind(loc.file) || pane.agent
     return { ...await searchFile(fs, loc.file, kind, home, query, deadline), kind }
@@ -1552,11 +1543,6 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     if (!hasTranscript(pane.agent)) return { available: false, reason: 'unsupported' }
     const loc = await locate(pane, Boolean(opts.fresh))
     if (!loc) return { available: false, reason: 'not_found' }
-    if (pane.agent === 'devin') {
-      const r = await devin.chat({ ...pane, agentSession: loc.session }, opts)
-      for (const item of r.items || []) if (item.role === 'assistant' && item.ref) replyKeys.set(item, `devin:${r.session}:${item.ref}`)
-      return r
-    }
     let st
     try { st = await fs.stat(loc.file) }
     catch (e) {
@@ -1627,7 +1613,6 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     return null
   }
   async function tailReply(pane: TranscriptPane): Promise<{ key: string, text: string } | null> {
-    if (pane.agent === 'devin') return null // ATIF is a single JSON document, not JSONL.
     if (!hasTranscript(pane.agent)) return null
     const loc = await locate(pane)
     if (!loc) return null
@@ -1668,7 +1653,6 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   async function image(pane: TranscriptPane, fileId: string | null, ref: string | null, index: number) {
     const loc = await locate(pane)
     if (!loc || path.basename(loc.file) !== fileId) return null
-    if (pane.agent === 'devin') return devin.image({ ...pane, agentSession: loc.session }, fileId, ref, index)
     const m = /^(\d+):(\d+)$/.exec(String(ref || ''))
     if (!m) return null
     const off = Number(m[1])
@@ -1694,10 +1678,6 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   const MODEL_MAX_BYTES = 16 * 1024 * 1024
   const modelCache = new Map<string, { file: string, size: number, raw: ModelInfo | null, info: ModelInfo | null }>()
   async function model(pane: TranscriptPane): Promise<ModelInfo | null> {
-    if (pane.agent === 'devin') {
-      const loc = await locate(pane)
-      return loc ? devin.model({ ...pane, agentSession: loc.session }) : null
-    }
     if (!pane.agent || !['claude', 'codex', 'omp'].includes(pane.agent)) return null
     const loc = await locate(pane)
     if (!loc) return null
