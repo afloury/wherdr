@@ -378,6 +378,47 @@ describe('role files', () => {
     expect(codex).not.toContain('-s') // a sandbox mode would bring back the profile-less sandbox, without network
     expect(codex).toEqual(expect.arrayContaining(['default_permissions="wherdr"', 'permissions.wherdr.extends=":workspace"', 'permissions.wherdr.network.enabled=true']))
   })
+  it('mention pr merge only when the project\'s contributorPrs guard is on', () => {
+    const p = { key: 'CO', name: 'Company', machine: '', path: '/src/co', addedAt: 1 }
+    const off = roleFiles(p, company, EXAMPLES), on = roleFiles(p, { ...company, guards: { ...company.guards, contributorPrs: 'others' } }, EXAMPLES)
+    for (const f of ['AGENTS.md', '.claude/skills/wherdr-pm/SKILL.md']) {
+      expect(off[f]).not.toContain('pr merge')
+      expect(on[f]).toContain('`wherdr pm pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]`')
+    }
+    expect(on['AGENTS.md']).toContain('never into a branch reserved for the user; never a board task\'s PR')
+  })
+})
+
+describe('pr merge (WHR-42)', () => {
+  // A fake herdr-core: gh answers the PR's details, and records the merge.
+  const fake = (view: object) => {
+    const merged: string[][] = []
+    const call = async (_m: string, params: { argv: string[] }) => {
+      const [script, ...args] = params.argv.slice(2)
+      if (script!.includes('gh pr view')) return { code: 0, stdout: Buffer.from(JSON.stringify(view)).toString('base64') }
+      if (script!.includes('gh pr merge')) return merged.push(args.slice(1)), { code: 0, stdout: '' }
+      throw new Error('unexpected call')
+    }
+    return { merged, deps: { store, call, machines: () => [{ key: '', local: true }] } as unknown as Parameters<typeof runCommand>[0] }
+  }
+  const view = { number: 9, url: 'https://github.com/o/co/pull/9', state: 'OPEN', baseRefName: 'docs', headRefName: 'fix-typo', headRefOid: 'abc', mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', statusCheckRollup: [] }
+  const argv = ['pr', 'merge', '9', '--user-said', 'yes, merge it', '--method', 'squash']
+
+  it('merges after the user\'s yes with the guard on, and writes it to the project\'s log', async () => {
+    expect(parseCommand(['pr', 'merge', '9'])).toEqual({ error: '--user-said needs the user\'s words' })
+    const { merged, deps: d } = fake(view)
+    await noteTurn(store, 'CO', 'user', 'yes, merge it')
+    await refused(runCommand(d, token, { argv }), 'is off')
+    const t = (await store.workflow('CO'))!
+    await store.saveWorkflow('CO', { ...t, guards: { ...t.guards, contributorPrs: 'others' } })
+    await noteTurn(store, 'CO', 'wake')
+    await refused(runCommand(d, token, { argv }), 'never a wake')
+    expect(merged).toEqual([])
+    await noteTurn(store, 'CO', 'user', 'yes, merge it')
+    expect(await runCommand(d, token, { argv })).toEqual({ merged: view.url, into: 'docs' })
+    expect(merged).toEqual([['/src/co', view.url, 'abc', 'squash']])
+    expect(await store.projectLog('CO')).toEqual([{ at: expect.any(Number), by: 'coordinator CO', pr: 9, said: 'yes, merge it', text: 'merged contributor PR #9 into docs (squash) on the user\'s yes: "yes, merge it"' }])
+  })
 })
 
 it('wherdr pm sends its words with the token, and template edit sends stdin', async () => {

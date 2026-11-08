@@ -19,6 +19,9 @@ import { taskPlan, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
 import { WRITE_SCRIPT, exec, startTask } from './pmLaunch'
+import { actionShell } from './pmActions'
+import { SCRIPT } from '../../shared/pm/actions'
+import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from '../../shared/pm/contributorPr'
 import { userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
 import { removeTask, resumeTask, stopTask } from './pmStop'
@@ -252,6 +255,27 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const task = turn !== 'user' ? { ...added, autopilot: true as const } : added
       if (look) await store.saveCoordinator({ ...rec!, lookAdded: bump(rec!.lookAdded, Date.now()) })
       return { task: await store.logTask(task, by, `added the task${cmd.after ? `, after ${cmd.after}` : ''}`) }
+    }
+    case 'pr merge': {
+      if (main) throw new HerdrError('refused', 'pr merge is the project coordinator\'s')
+      const proj = needProject()
+      if (proj.git === false) throw new HerdrError('refused', 'The project has no git repository')
+      const base = { guards: t?.guards, turn, userSaid: cmd.userSaid }
+      // No GitHub call in a wake or with the guard off.
+      const ask = prMergeAskRefusal(base)
+      if (ask) throw new HerdrError('refused', ask)
+      const taskLinks = (await store.tasks()).flatMap(x => (x.links ?? []).map(l => l.url))
+      const sh = actionShell(deps, machineOn(deps, proj.machine).on)
+      const view = await sh(`cd "$1" || exit 1; gh pr view "$2" --json ${PR_FIELDS}`, [proj.path, String(cmd.pr)])
+      let pr: ContributorPr | null = null
+      if (view.code === 0) try { pr = JSON.parse(view.out.trim().split('\n').find(l => l.startsWith('{')) ?? '') as ContributorPr } catch { throw new HerdrError('failed', 'Unreadable PR details') }
+      else if (!/could not resolve|not found/i.test(view.out)) throw new HerdrError('failed', `gh pr view: ${view.out.trim().split('\n').pop() ?? ''}`)
+      const why = prMergeRefusal({ ...base, pr, taskLinks })
+      if (why) throw new HerdrError('refused', why)
+      const m = await sh(SCRIPT.merge, [proj.path, pr!.url, pr!.headRefOid, cmd.method ?? ''])
+      if (m.code !== 0) throw new HerdrError('failed', `gh pr merge: ${m.out.trim().split('\n').pop() ?? ''}`)
+      await store.logProject(proj.key, { by, pr: pr!.number, text: `merged contributor PR #${pr!.number} into ${pr!.baseRefName}${cmd.method ? ` (${cmd.method})` : ''} on the user's yes: "${cmd.userSaid}"`, ...(rec?.turn?.said ? { said: rec.turn.said } : {}) })
+      return { merged: pr!.url, into: pr!.baseRefName }
     }
     case 'task decide': {
       const task = await taskOf(cmd.task)

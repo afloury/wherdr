@@ -71,8 +71,9 @@ async function writeJson(file: string, data: unknown) {
   }
 }
 
-// A line of a project's log: a task removed, by whom and why.
-export interface ProjectLogEntry extends TaskLogEntry { task: string }
+// A line of a project's log: a task removed (task), or a contributor's PR
+// merged on the user's yes (pr, said: the user's own message), by whom and why.
+export interface ProjectLogEntry extends TaskLogEntry { task?: string, pr?: number, said?: string }
 
 const TASK_ID_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/
 const badInput = (errors: { path: string, message: string }[]) =>
@@ -242,6 +243,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await fs.rm(path.join(files.tasks, `${t.id}.json`), { force: true })
     }),
     projectLog,
+    logProject: (key: string, entry: Omit<ProjectLogEntry, 'at'>) => write(async () => {
+      if (!KEY_RE.test(key)) throw new HerdrError('not_found', 'Unknown project')
+      const entries = await projectLog(key)
+      await writeJson(path.join(files.projectLog, `${key}.json`), { v: 1, entries: [...entries, { at: Date.now(), ...entry }].slice(-500) })
+    }),
     coordinator: (key: string) => readJson<CoordinatorRecord>(path.join(files.coordinators, `${key}.json`)),
     coordinators: () => readAll<CoordinatorRecord>(files.coordinators),
     // Alfred (the main coordinator) also runs with projects off: its record is saved then too.
@@ -285,7 +291,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       if (!title || title.length > 200) throw badInput([{ path: 'title', message: '1 to 200 characters' }])
       if (!type) throw badInput([{ path: 'type', message: 'is required' }])
       // A removed task's number is never given again.
-      const ids = [...(await tasks()).filter(t => t.project === p.key).map(t => t.id), ...(await projectLog(p.key)).map(e => e.task)]
+      const ids = [...(await tasks()).filter(t => t.project === p.key).map(t => t.id), ...(await projectLog(p.key)).flatMap(e => (e.task ? [e.task] : []))]
       const n = 1 + Math.max(0, ...ids.map(id => Number(id.slice(p.key.length + 1)) || 0))
       const after = afterIds({ after: str('after') }).join(',')
       const known = await tasks()
