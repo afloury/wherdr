@@ -111,6 +111,7 @@ async function reconnect(key: string) {
         </template>
       </div>
     </div>
+    <MachineMemorySettings edit />
     <p v-if="coreLine" class="mono-label core-line" data-testid="core-line">{{ coreLine }}</p>
     <form class="sheet-form" @submit.prevent="add">
       <label class="field-label" for="machineTarget">{{ t('SSH target') }}</label>

@@ -2,20 +2,21 @@
 // A task's sheet: its Plan (the steps, the current one, what its holder was
 // told, the proofs and rounds), its links, the agent holding the step, and
 // the step's button when it waits for the user ("Merged"; busy while it runs, a
-// refused action said in plain words under it), Stop (with its
+// refused action said in plain words under it), Start for a task to do (or
+// the tasks it waits for; a refusal said under it), Stop (with its
 // reason, confirmed here), how a stopped task goes on, and Delete for a task
 // never started (confirmed). Those stay at the top; below, tabs (the app's
 // segmented style) for the rest, only the open one scrolling: Description (the
 // text, tags and links, the PR among them), Plan (each step with its
 // screenshots), Log.
-import { canStop, cardStatus, linkLabel, type Card } from '#shared/pm/board'
+import { canStart, canStop, cardStatus, linkLabel, type Card } from '#shared/pm/board'
 import { RESUMES, type Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
 import type { Task } from '#shared/pm/run'
 import { shotMode } from '#shared/pm/shots'
 
 // stopping: opened from the card menu's Stop, the confirmation shown.
-const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean }>()
+const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean, waitsFor?: string[] }>()
 const emit = defineEmits<{ closed: [], changed: [] }>()
 const open = ref(true)
 const busy = ref(false)
@@ -65,6 +66,7 @@ watch(() => props.card.yourTurn, (b) => { if (b !== refused.value) refused.value
 const confirmStop = ref(!!props.stopping)
 const why = ref('')
 const stop = () => run(async () => { await stopTaskApi(props.card.id, why.value); confirmStop.value = false })
+const start = () => run(() => startTaskApi(props.card.id))
 const resume = (how: Resume) => run(() => resumeTaskApi(props.card.id, how))
 // Removed: the sheet closes, the board reloads without it.
 const remove = () => run(async () => { const yes = await removeTaskApi(props.card.id); if (yes) open.value = false; return yes })
@@ -79,6 +81,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
         <p v-if="card.yourTurn && !refused" class="board-badge" :title="card.yourTurn" data-testid="task-badge">{{ stepRefusalText(card.yourTurn) }}</p>
         <div class="task-sheet-actions">
           <UButton v-if="card.userLabel && !card.stopped" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="press">{{ card.userLabel }}</UButton>
+          <UButton v-if="canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ tl('Start', 'Lancer') }}</UButton>
           <UButton v-for="how in card.stopped ? RESUMES : []" :key="how" size="xl" :color="how === 'continue' ? 'primary' : 'neutral'" :variant="how === 'continue' ? 'solid' : 'outline'"
             :disabled="busy" :data-resume="how" @click="resume(how)">{{ tl(...RESUME_LABEL[how]) }}</UButton>
           <UButton v-if="pane" color="neutral" variant="outline" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)">
@@ -87,6 +90,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
           <UButton v-if="canStop(card) && !confirmStop" color="error" variant="outline" size="xl" icon="i-lucide-square" data-testid="task-stop" @click="confirmStop = true">{{ tl('Stop', 'Arrêter') }}</UButton>
           <UButton v-if="card.removable" color="error" variant="outline" size="xl" icon="i-lucide-trash-2" :loading="busy" data-testid="task-remove" @click="remove">{{ tl('Delete…', 'Supprimer…') }}</UButton>
         </div>
+        <p v-if="canStart(card) && waitsFor?.length" class="muted" data-testid="task-waits">{{ tl(`Starts once ${waitsFor.join(', ')} ${waitsFor.length > 1 ? 'are' : 'is'} done.`, `Démarre une fois ${waitsFor.join(', ')} terminée${waitsFor.length > 1 ? 's' : ''}.`) }}</p>
         <p v-if="pressing" class="muted" role="status" data-testid="step-user-busy">{{ tl('Running this step… A merge waits for the PR\'s checks, which can take a few minutes.', 'Étape en cours… Une fusion attend les vérifications de la PR, ce qui peut prendre quelques minutes.') }}</p>
         <p v-else-if="refused" class="error" role="alert" :title="refused" data-testid="step-user-refused">{{ stepRefusalText(refused) }}</p>
         <form v-if="canStop(card) && confirmStop" class="task-stop-confirm" data-testid="task-stop-confirm" @submit.prevent="stop">

@@ -6,6 +6,7 @@ import type { Holder } from './workflow'
 import type { PlannedStep, StepState } from './steps'
 import type { Run, Task } from './run'
 import { notStarted, type Stopped } from './stop'
+import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
 
 export type Phase = 'todo' | 'working' | 'done'
@@ -30,10 +31,13 @@ export interface Card {
   state?: StepState
   stopped?: Stopped // who stopped it and why: Continue, Take it as it is or Archive
   removable?: true // never started (no agent, worktree or branch): the user may remove it
+  after?: string[] // tasks of the same project it starts after
   prNow?: string // its PR as the engine last read it (prNow)
+  held?: string // waits for memory on its machine
 }
 
-export interface BoardProject { key: string, name: string, columns: string[] }
+// types: the project's task types, each with its steps in one line ("work → review → merge").
+export interface BoardProject { key: string, name: string, columns: string[], types: { id: string, plan: string }[] }
 // GET /api/pm/board
 export interface Board { projects: BoardProject[], cards: Card[] }
 
@@ -82,13 +86,23 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
     plan,
     ...(s ? { state: s } : {}),
     ...(task.stopped ? { stopped: task.stopped } : {}),
+    ...(task.held && task.state === 'todo' ? { held: task.held } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
+    ...(task.after ? { after: afterIds(task) } : {}),
   }
 }
 
 // The card's one-tap link: its PR when it has one, else its first link.
 // A task the user may stop: started, not done, not stopped already.
 export const canStop = (c: Pick<Card, 'state' | 'stopped'>) => !!c.state?.started && !c.state.done && !c.stopped
+
+// A task the user may start by hand: to do, not stopped (its sheet resumes it).
+// One that waits for others shows them instead (waitsFor).
+export const canStart = (c: Pick<Card, 'phase' | 'stopped' | 'state'>) => c.phase === 'todo' && !c.state?.started && !c.stopped
+
+// The tasks a card still waits for: its 'after' ones not done yet (a removed one is not waited for).
+export const waitsFor = (c: Pick<Card, 'after'>, cards: Pick<Card, 'id' | 'phase'>[]) =>
+  (c.after ?? []).filter(id => cards.some(x => x.id === id && x.phase !== 'done'))
 
 export const mainLink = (c: Pick<Card, 'links'>) => c.links.find(l => /^pr$/i.test(l.label)) ?? c.links[0]
 // A GitHub PR's link reads 'PR #12'; any other keeps its label.
@@ -137,8 +151,9 @@ const ofPr = (pr: string): CardStatus => (pr === 'merged'
 // Where a task's PR and merge stand, in one short line: from its step state
 // and what the engine last read of its PR. None before a PR, or once stopped.
 // A done task merged by a step: 'merged', at the time it was done.
-export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow'>): CardStatus | undefined {
+export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' | 'held'>): CardStatus | undefined {
   const s = c.state
+  if (c.held) return { text: c.held, tone: 'wait' }
   if (!s?.started || c.stopped) return
   if (s.done) {
     const merged = c.plan.some(p => p.action && MERGES.includes(p.action.kind) && s.proofs[p.id] && Object.keys(s.proofs[p.id]!).length)
