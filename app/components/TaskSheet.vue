@@ -9,7 +9,7 @@
 // segmented style) for the rest, only the open one scrolling: Description (the
 // text, tags and links, the PR among them), Plan (each step with its
 // screenshots), Log.
-import { canStart, canStop, type Card } from '#shared/pm/board'
+import { canStart, canStop, cardStatus, linkLabel, type Card } from '#shared/pm/board'
 import { RESUMES, type Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
 import type { Task } from '#shared/pm/run'
@@ -28,6 +28,8 @@ const proofs = (id: string) => Object.entries(props.card.state?.proofs[id] ?? {}
 const rounds = (id: string) => props.card.state?.rounds[id] ?? 0
 // The steps that have screenshots, to look at before the push, the PR or the merge.
 const shots = (id: string) => props.card.state?.shots?.[id] ?? []
+// Where its PR and merge stand (the card's line), with the full time.
+const status = computed(() => { const s = cardStatus(props.card); return s && { ...s, text: s.at ? `${s.text} ${fmtDateTime(s.at)}` : s.text } })
 
 type Tab = 'description' | 'plan' | 'log'
 const TAB_LABEL: Record<Tab, [string, string]> = { description: ['Description', 'Description'], plan: ['Plan', 'Plan'], log: ['Log', 'Journal'] }
@@ -75,6 +77,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
     <div class="task-sheet" data-testid="task-sheet">
       <div class="task-sheet-top">
         <p class="mono-label">{{ card.id }}<template v-if="card.step"> · {{ card.step }}</template></p>
+        <p v-if="status" class="task-status" :class="status.tone" data-testid="task-status">{{ status.text }}</p>
         <p v-if="card.yourTurn && !refused" class="board-badge" :title="card.yourTurn" data-testid="task-badge">{{ stepRefusalText(card.yourTurn) }}</p>
         <div class="task-sheet-actions">
           <UButton v-if="card.userLabel && !card.stopped" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="press">{{ card.userLabel }}</UButton>
@@ -112,7 +115,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
           <p v-if="card.description" class="task-desc">{{ card.description }}</p>
           <div v-if="card.tags.length || card.links.length" class="board-tags">
             <span v-for="tag in card.tags" :key="tag" class="board-chip">{{ tag }}</span>
-            <a v-for="l in card.links" :key="l.url" :href="l.url" target="_blank" rel="noopener" class="board-chip">{{ l.label }}</a>
+            <a v-for="l in card.links" :key="l.url" :href="l.url" target="_blank" rel="noopener" class="board-chip">{{ linkLabel(l) }}</a>
           </div>
         </template>
 
@@ -145,6 +148,10 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-sheet-top { display: flex; flex-direction: column; gap: 10px; flex: none; }
 .task-sheet p { margin: 0; }
 .task-tabs { flex: none; }
+.task-status { font-size: 13px; overflow-wrap: anywhere; color: var(--muted); }
+.task-status.wait { color: var(--working); }
+.task-status.bad { color: var(--danger); }
+.task-status.ok { color: var(--done); }
 .task-panel { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; }
 .task-desc { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }

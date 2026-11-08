@@ -14,7 +14,8 @@ export interface PlannedStep extends Step { text: string, guarded?: true }
 
 // Why the task is in Your turn, and the badge that says what to do. After N
 // send-backs, the engine's advice comes with it.
-export interface YourTurn { reason: 'user' | 'timeout' | 'rounds' | 'action', badge: string, advice?: Advice }
+// error: what the failed engine action said (reason 'action').
+export interface YourTurn { reason: 'user' | 'timeout' | 'rounds' | 'action', badge: string, advice?: Advice, error?: string }
 
 export interface StepState {
   at: number // index of the current step
@@ -263,7 +264,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       }
       // The step stays open; the badge says what went wrong.
       const badge = `${step.badge || step.userLabel || step.id}: ${ev.error || `${step.action!.kind} failed`}`
-      return { state: { ...state, acting: undefined, yourTurn: { reason: 'action', badge } }, effects }
+      return { state: { ...state, acting: undefined, yourTurn: { reason: 'action', badge, ...(ev.error ? { error: ev.error } : {}) } }, effects }
     }
     case 'skip': return { state: enter(plan, { ...state, backFrom: undefined }, state.at + 1, now, effects), effects }
     case 'tick': {

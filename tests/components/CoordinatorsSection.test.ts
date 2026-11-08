@@ -5,7 +5,7 @@ import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-uti
 import { readBody } from 'h3'
 import CoordinatorsSection from '~/components/CoordinatorsSection.vue'
 import { nextTick } from 'vue'
-import { appConfig, coarse, desk, herdrState } from '~/composables/useHerdr'
+import { appConfig, coarse, curPane, desk, herdrState } from '~/composables/useHerdr'
 import { alfred, coordinators, paneCoordinatorName } from '~/composables/useCoordinators'
 import { menuState } from '~/composables/useUi'
 import { MAIN, type CoordinatorView } from '#shared/pm/coordinator'
@@ -36,6 +36,22 @@ it('lists the running project coordinators only (Alfred, the main one, has its o
   await co.trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w%3Ap1'))
   expect(posts).toEqual([])
+})
+
+it('shows the coordinator whose conversation is open as selected, one at a time, following navigation', async () => {
+  herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p1', 'host/t1'), pane('w:p2', 'host/t2'), pane('w:p3', 'host/t3')] }
+  views = [view('CO', { terminal: 'host/t1' }), view('ST', { terminal: 'host/t2' })]
+  curPane.value = 'w:p2'
+  try {
+    w = await mountSuspended(CoordinatorsSection)
+    await vi.waitFor(() => expect(w!.findAll('[data-testid="coordinator-row"]')).toHaveLength(2))
+    const current = () => w!.findAll('[data-testid="coordinator-row"]').map(r => [r.classes().includes('sel'), r.attributes('aria-current')])
+    expect(current()).toEqual([[false, undefined], [true, 'page']])
+    // An agent's conversation opened: no coordinator selected.
+    curPane.value = 'w:p3'
+    await nextTick()
+    expect(current()).toEqual([[false, undefined], [false, undefined]])
+  } finally { curPane.value = null }
 })
 
 it('is hidden while project management is off', async () => {

@@ -20,7 +20,6 @@ import { keepIfSame } from '~/utils/keepIfSame'
 import { migrateContentWidth } from '~/utils/contentWidth'
 import { readQuotaDisplay } from '~/utils/quotas'
 import { readShowShells } from '~/utils/terminalVisibility'
-import { readHomeGrouping } from '~/utils/homeGrouping'
 import { COMPACT_LIST_KEY, LEGACY_COMPACT_LIST_KEY, readCompactList } from '~/utils/compactCard'
 import { paneFallback } from '~/utils/viewMode'
 import { menuAsSheet } from '~/utils/menuRoute'
@@ -74,8 +73,6 @@ export const socketWake = ref(0)
 export const showShells = syncedRef('showShells', readShowShells, flag.write)
 export const showCounters = syncedRef('showCounters', flag.read(true), flag.write)
 export const showQuotas = syncedRef('showQuotas', flag.read(true), flag.write)
-// Existing devices keep Machine.
-export const homeGrouping = syncedRef('homeGrouping', readHomeGrouping, v => v)
 
 // Compact list: one line per card (sidebar on a computer, home list on the phone).
 // Read before the first render, so the list never changes density after it.
@@ -297,8 +294,6 @@ function readList(raw: string | null): string[] {
     return Array.isArray(v) ? v.map(String) : []
   } catch { return [] }
 }
-// Collapsed machine sections (kept on the server, like the other home settings).
-export const collapsedMachines = syncedRef<string[]>('collapsedMachines', readList, v => JSON.stringify(v), { deep: true })
 // Collapsed repo groups of the home list, `<machine>|<group id>`.
 export const collapsedRepos = syncedRef<string[]>('collapsedRepos', readList, v => JSON.stringify(v.slice(-200)), { deep: true })
 // Last machine chosen in "New".

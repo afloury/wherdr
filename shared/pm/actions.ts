@@ -122,12 +122,12 @@ for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
   contains: `${IN} git fetch -q origin 2>&1 || exit 1; git branch -r --contains HEAD --format='%(refname:short)'`,
 }
 
-interface Check { name?: string, context?: string, status?: string, conclusion?: string, state?: string }
+export interface Check { name?: string, context?: string, status?: string, conclusion?: string, state?: string }
 // merged: no PR open, this one of the branch is merged already and holds the
 // task's commit; stray: merged, but at a head without the task's commit.
 export interface PrInfo { url: string, baseRefName: string, headRefOid: string, statusCheckRollup?: Check[], merged?: boolean, stray?: boolean }
 
-const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
+export const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
 // May the open PR be merged now? Its head must be the task's commit, every
 // check green and each required one there; a check still running, or a
 // required one not reported yet, means later.

@@ -1,5 +1,5 @@
 // The board's data, and the user's button on a step that waits for them.
-import { boardColumns, cardOf, type Board } from '../../shared/pm/board'
+import { boardColumns, cardOf, type Board, type Card } from '../../shared/pm/board'
 import { initialState, onEvent, planSteps, reviewedCommit } from '../../shared/pm/steps'
 import { taskGuards, type ActionResult } from '../../shared/pm/actions'
 import type { MergeBy, Template } from '../../shared/pm/workflow'
@@ -21,6 +21,11 @@ async function templatesOf(store: PmStore) {
   return out
 }
 
+// What the mechanic last read of each task's PR (prNow), for the cards' status
+// line. In memory: read again within a minute of a restart.
+export const prSeen = new Map<string, string>()
+const withPr = (c: Card): Card => (prSeen.has(c.id) ? { ...c, prNow: prSeen.get(c.id)! } : c)
+
 export async function board(store: PmStore): Promise<Board> {
   const [projects, templates, tasks, runs] = [await store.projects(), await templatesOf(store), await store.tasks(), await store.runs()]
   return {
@@ -29,7 +34,7 @@ export async function board(store: PmStore): Promise<Board> {
       const plans = t ? Object.keys(t.taskTypes).map(type => ({ id: type, steps: planSteps(t, { type }, p.base) })) : []
       return { key: p.key, name: p.name, columns: boardColumns(plans.map(x => x.steps)), types: plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → ') })) }
     }),
-    cards: tasks.map(task => cardOf(task, planOf(templates.get(task.project) ?? null, task, projects.find(p => p.key === task.project)), runs)),
+    cards: tasks.map(task => withPr(cardOf(task, planOf(templates.get(task.project) ?? null, task, projects.find(p => p.key === task.project)), runs))),
   }
 }
 

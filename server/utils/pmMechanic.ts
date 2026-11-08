@@ -7,7 +7,8 @@ import { nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/
 import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP, machineOn } from './coreCreate'
 import { actionShell } from './pmActions'
-import { stepAction } from './pmBoard'
+import { prSeen, stepAction } from './pmBoard'
+import { prNow, requiredChecks } from '../../shared/pm/board'
 import { exec, startTask, type PmLaunchDeps } from './pmLaunch'
 import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
 import { pacedStart } from '../../shared/pm/pace'
@@ -92,7 +93,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
   for (const task of await store.tasks()) {
-    if (task.state === 'todo' || task.step?.done) continue
+    if (task.state === 'todo' || task.step?.done) { prSeen.delete(task.id); continue }
     const p = projects.find(x => x.key === task.project)
     const t = p ? await store.workflow(p.key) : null
     if (!p || !t) continue
@@ -111,6 +112,9 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       const lines = r.out.split('\n')
       try { facts.pr = (JSON.parse(lines.at(-1) || '[]') as PrInfo[])[0] } catch { continue }
       facts.head = lines[0]?.trim()
+      const seen = prNow(facts.pr, requiredChecks(plan))
+      if (seen) prSeen.set(task.id, seen)
+      else prSeen.delete(task.id)
       const st = run.terminal ? await deps.call<{ status?: string | { state?: string } }>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null) : null
       const s = typeof st?.status === 'string' ? st.status : st?.status?.state
       facts.agentBusy = s === 'working' || s === 'blocked'

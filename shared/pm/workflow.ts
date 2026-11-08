@@ -47,9 +47,14 @@ export interface Step {
   action?: StepAction
 }
 
+// contributorPrs (the project's guards only; off when absent): the coordinator
+// may merge an outside contributor's PR after the user's yes, into the
+// branches not reserved for the user ('others') or into any ('all').
+export const CONTRIBUTOR_PRS = ['others', 'all'] as const
 export interface Guards {
   protected?: string[]
   merge?: { protected?: MergeBy, others?: MergeBy }
+  contributorPrs?: typeof CONTRIBUTOR_PRS[number]
 }
 
 export interface Prefs { agent?: string, model?: string, reviewAgent?: string, reviewModel?: string }
@@ -93,10 +98,12 @@ function checkKeys(obj: Record<string, unknown>, allowed: readonly string[], pat
   for (const k of Object.keys(obj)) if (!allowed.includes(k)) errs.push({ path: path ? `${path}.${k}` : k, message: 'unknown field' })
 }
 
-function checkGuards(g: unknown, path: string, errs: WorkflowError[]) {
+function checkGuards(g: unknown, path: string, errs: WorkflowError[], project = false) {
   if (g === undefined) return
   if (!isObj(g)) return void errs.push({ path, message: 'must be an object' })
-  checkKeys(g, ['protected', 'merge'], path, errs)
+  checkKeys(g, ['protected', 'merge', ...(project ? ['contributorPrs'] : [])], path, errs)
+  if (g.contributorPrs !== undefined && !CONTRIBUTOR_PRS.includes(g.contributorPrs as 'all'))
+    errs.push({ path: `${path}.contributorPrs`, message: `must be one of ${CONTRIBUTOR_PRS.join(', ')}` })
   if (g.protected !== undefined && !(Array.isArray(g.protected) && g.protected.every(isStr)))
     errs.push({ path: `${path}.protected`, message: 'must be a list of branch names' })
   if (g.merge === undefined) return
@@ -161,7 +168,7 @@ export function validateTemplate(t: unknown): WorkflowError[] {
   if (!isStr(t.id)) errs.push({ path: 'id', message: 'is required' })
   if (t.version !== undefined && !Number.isInteger(t.version)) errs.push({ path: 'version', message: 'must be a whole number' })
   if (t.instructions !== undefined && typeof t.instructions !== 'string') errs.push({ path: 'instructions', message: 'must be text' })
-  checkGuards(t.guards, 'guards', errs)
+  checkGuards(t.guards, 'guards', errs, true)
   checkPrefs(t.prefs, 'prefs', errs)
   const shared = isObj(t.steps) ? t.steps : {}
   if (t.steps !== undefined && !isObj(t.steps)) errs.push({ path: 'steps', message: 'must be an object' })
