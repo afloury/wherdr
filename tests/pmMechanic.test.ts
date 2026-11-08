@@ -108,6 +108,11 @@ describe('mechanical moves', () => {
       const review = { ...onEvent(visual, refused, { kind: 'caught-up', head: 'fff0000', review: { since: 'abc1234', head: 'fff0000' } }, 12).state }
       const back = onEvent(visual, review, { kind: 'verdict', from: 'reviewer', findings: [{ id: 'beyond-conflicts', severity: 'minor', title: 'the header changes' }] }, 13).state
       expect(back).toMatchObject({ at: 3, approved: undefined, yourTurn: { reason: 'user', badge: 'Look again, then merge: the header changes' } })
+      // A Send back after the click drops the approval: the reworked task waits for the user again.
+      const failed = onEvent(visual, clicked, { kind: 'action-result', ok: false, error: 'merge: 1 check(s) failed' }, 14).state
+      const sentBack = onEvent(visual, failed, { kind: 'back', note: 'make the button blue' }, 15)
+      expect(sentBack.state).toMatchObject({ at: 0, approved: undefined })
+      expect(sentBack.effects).toContainEqual({ kind: 'log', text: 'merge: sent back by the user, approval dropped. make the button blue' })
     })
   })
 

@@ -310,10 +310,11 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       if (back < 0) return refuse('No earlier step of the agent to send it back to')
       if (!ev.note.trim()) return refuse('Say what to change')
       const fix = `The user sent it back from "${step.id}": ${ev.note.trim()}\nFix it, commit, then say you are done.`
-      effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: fix }, { kind: 'log', text: `${step.id}: sent back by the user. ${ev.note.trim()}` })
+      effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: fix }, { kind: 'log', text: `${step.id}: sent back by the user${state.approved ? ', approval dropped' : ''}. ${ev.note.trim()}` })
       // The screens sent back are dropped: the worker gives new ones, and the merge shows only those.
       const { [plan[back]!.id]: _sentBack, ...shots } = state.shots ?? {}
-      return { state: { ...enter(plan, { ...state, shots }, back, now, []), fix }, effects }
+      // The reworked task waits for the user's look again: an earlier Merge click no longer counts.
+      return { state: { ...enter(plan, { ...state, shots, approved: undefined }, back, now, []), fix }, effects }
     }
     case 'catch-up': {
       if (!waitsToMerge(step) || state.acting || state.catchUp) return refuse('No merge waits to be updated')
