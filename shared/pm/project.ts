@@ -48,10 +48,11 @@ export interface ProjectUpdate { name?: string, base?: string, key?: string, col
 // The machines a project's tasks may run on, its home machine first.
 export const allowedMachines = (p: Pick<Project, 'machine' | 'machines'>) => [p.machine, ...(p.machines ?? []).filter(m => m !== p.machine)]
 
-// The project's clone on a machine: undefined when that machine is not allowed or has none.
-export function cloneOn(p: Pick<Project, 'machine' | 'machines' | 'path' | 'clones'>, machine: string) {
-  if (machine === p.machine) return p.path
-  return allowedMachines(p).includes(machine) ? p.clones?.[machine] : undefined
+// The project's clone on a machine, a leading ~ made that machine's home (the
+// shell does not expand a quoted one): undefined when that machine is not allowed or has none.
+export function cloneOn(p: Pick<Project, 'machine' | 'machines' | 'path' | 'clones'>, machine: string, home: string) {
+  const path = machine === p.machine ? p.path : allowedMachines(p).includes(machine) ? p.clones?.[machine] : undefined
+  return path?.replace(/^~(?=\/|$)/, () => home)
 }
 
 // The machine a task starts on (a key; the reason when refused). A task stays
@@ -65,7 +66,7 @@ export function taskMachine(task: Pick<Task, 'machine' | 'run'>, p: Pick<Project
   return allowedMachines(p).includes(asked) ? { machine: asked } : { refused: 'This machine is not allowed for the project: allow it in the project\'s settings' }
 }
 
-const badFolder = (path: unknown) => typeof path !== 'string' || !/^[/~]/.test(path) || path.length > 1024 || path.includes('\0')
+const badFolder = (path: unknown) => typeof path !== 'string' || !/^(\/|~(\/|$))/.test(path) || path.length > 1024 || path.includes('\0')
 
 // The allowed machines once an update applies: each one but home needs a clone
 // path. Returns the fields to store (none: only the home machine), or the errors.

@@ -97,11 +97,11 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, rev
   const { machine } = placed
   let on: string | undefined, label = ''
   try { ({ on, m: { label } } = machineOn(deps, machine)) } catch (e) { return wait(store, task, (e as Error).message) }
-  const repo = cloneOn(p, machine)
-  if (!repo) return wait(store, task, `wherdr knows no clone of the project on ${label}: allow that machine again in the project's settings`)
   if (!(await kindsOf(deps, on)).includes(plan.program)) return wait(store, task, `${plan.program} is not installed on ${label}`)
   const home = await homeOf(deps, on)
   if (!home) return wait(store, task, `${label}: home folder not found`)
+  const repo = cloneOn(p, machine, home)
+  if (!repo) return wait(store, task, `wherdr knows no clone of the project on ${label}: allow that machine again in the project's settings`)
   const paths = taskPaths(home, task.id)
   // Recorded at the first start: changing the project's branch later leaves this task alone.
   const base = taskBase(task, p) ?? ''

@@ -49,7 +49,8 @@ async function setup(machine = '') {
   await store().addProject({ key: 'CO', machine, path: '/src', template: 'github' }, async (_m, p) => p)
   return store().addTask({ project: 'CO', title: 'Fix', type: 'simple' })
 }
-const allowB = () => store().updateProject('CO', { machines: ['b'], clones: { b: '/src-b' } })
+// B's clone under its home (~ is made B's home folder, /h here).
+const allowB = () => store().updateProject('CO', { machines: ['b'], clones: { b: '~/src-b' } })
 const worktreeCall = () => calls.find(([m, p]) => m === 'machine.exec' && (p.argv as string[])[2]!.includes('worktree add'))?.[1]
 
 it('starts a task of a two-machine project on either; a started task goes back to its own', async () => {
@@ -58,7 +59,7 @@ it('starts a task of a two-machine project on either; a started task goes back t
   await expect(startTask(deps(), t.id, { on: 'c' })).rejects.toThrow('not allowed for the project')
   const started = await startTask(deps(), t.id, { on: 'b' })
   expect(started).toMatchObject({ state: 'working', machine: 'b' })
-  expect(worktreeCall()).toMatchObject({ on: 'machine-b', argv: expect.arrayContaining(['/src-b']) })
+  expect(worktreeCall()).toMatchObject({ on: 'machine-b', argv: expect.arrayContaining(['/h/src-b']) })
   expect((await store().runs()).at(-1)).toMatchObject({ machine: 'b' })
 
   // Resume (stopped, a retry): back on B, never home.
@@ -116,6 +117,6 @@ it('cleans up on the run\'s machine, in its clone there; a machine with no known
   await cleanTask(deps(), t.id)
   expect(execs().length).toBeGreaterThan(1)
   expect(execs().every(on => on === 'machine-b')).toBe(true)
-  expect(calls.filter(([, p]) => String((p.argv as string[])[2]).includes('git -C')).every(([, p]) => (p.argv as string[]).includes('/src-b'))).toBe(true)
+  expect(calls.filter(([, p]) => String((p.argv as string[])[2]).includes('git -C')).every(([, p]) => (p.argv as string[]).includes('/h/src-b'))).toBe(true)
   expect((await store().task(t.id))!.cleanup).toEqual({ done: true })
 })

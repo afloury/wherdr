@@ -64,11 +64,11 @@ async function clean(deps: Deps, id: string) {
     if (fresh.cleanup?.skipped !== why) await store.logTask({ ...fresh, cleanup: { skipped: why } }, 'engine', `worktree kept: ${why}`)
   }
   if (!run) return finish() // never started: no worktree
-  const repo = cloneOn(p, run.machine)
-  if (!repo) return keep('wherdr knows no clone of the project on its machine (no longer allowed for the project)')
+  if (!cloneOn(p, run.machine, '~')) return keep('wherdr knows no clone of the project on its machine (no longer allowed for the project)')
   const on = runOn(deps, run)
   const home = await homeOf(deps, on)
   if (!home) return
+  const repo = cloneOn(p, run.machine, home)!
   const root = taskPaths(home, task.id).worktree.replace(/\/[^/]+$/, '')
   const refused = cleanupRefusal(task, runs, run.worktree, root)
   if (refused) return keep(refused)

@@ -67,7 +67,7 @@ describe('project settings', () => {
 
   it('allows other machines, each with its clone; back to home only drops both fields', async () => {
     await expect(updateProject(store, 'CO', { machines: ['', 'b'] })).rejects.toThrow('clones.b: the clone\'s folder on that machine')
-    await expect(updateProject(store, 'CO', { machines: ['b'], clones: { b: 'src' } })).rejects.toThrow('clones.b: an absolute folder path')
+    await expect(updateProject(store, 'CO', { machines: ['b'], clones: { b: '~me/src' } })).rejects.toThrow('clones.b: an absolute folder path')
     expect((await updateProject(store, 'CO', { machines: ['b'], clones: { b: '~/co', c: '/c' } })).project).toMatchObject({ machines: ['', 'b'], clones: { b: '~/co' } })
     expect((await updateProject(store, 'CO', { name: 'Co' })).project).toMatchObject({ machines: ['', 'b'] })
     const back = (await updateProject(store, 'CO', { machines: [] })).project
