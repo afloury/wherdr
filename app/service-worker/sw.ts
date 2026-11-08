@@ -27,7 +27,9 @@ const sw = self as unknown as SwGlobal
 const CACHE = 'wherdr-v1'
 // Silent server: the cached copy past this delay (see networkFirst.ts).
 const NETWORK_WAIT_MS = 3000
-// Files of the built app (hashes in the name) + the page.
+// Files of the built app (hashes in the name) + the page. Not all of them: the
+// terminal (xterm.js, icon fonts) and PDF.js are kept on first use by the
+// /_nuxt/ branch of the fetch handler (shared/precache.ts).
 // (written as is: workbox looks for "self.__WB_MANIFEST" to inject the list there)
 const WB_MANIFEST = self.__WB_MANIFEST
 const PRECACHE = ['/', ...WB_MANIFEST.map(e => '/' + (typeof e === 'string' ? e : e.url).replace(/^\//, ''))]
@@ -48,7 +50,9 @@ sw.addEventListener('message', (e) => {
 
 sw.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
-    for (const k of await caches.keys()) if (k !== CACHE) await caches.delete(k)
+    // wherdr-asr-* holds the on-device dictation models and runtimes (100 MB
+    // to 1 GB): clearing them on each update would download them again.
+    for (const k of await caches.keys()) if (k !== CACHE && !k.startsWith('wherdr-asr-')) await caches.delete(k)
     await sw.clients.claim()
   })())
 })
@@ -64,7 +68,9 @@ sw.addEventListener('fetch', (e) => {
   const req: Request = e.request
   const url = new URL(req.url)
   if (req.method !== 'GET' || url.origin !== sw.location.origin
-    || url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws/') || url.pathname.startsWith('/uploads/')) return
+    || url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws/') || url.pathname.startsWith('/uploads/')
+    // Dictation files: the dictation worker keeps them in its own wherdr-asr-* caches.
+    || url.pathname.startsWith('/models/')) return
   // Fingerprinted build files never change under their name: once cached, no
   // round trip (a silent server would otherwise hold up each file of the shell).
   if (url.pathname.startsWith('/_nuxt/') && !url.pathname.startsWith('/_nuxt/builds/')) {
