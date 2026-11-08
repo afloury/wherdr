@@ -2,7 +2,7 @@
 // Settings › Projects: the project management switch, the projects (a git
 // folder on a machine herdr-core reaches), the template each one follows,
 // whether its repository is public (checked by wherdr, or set by the user),
-// each project's automations and the template editor.
+// its working branch (the repo's remote branches, or any name), each project's automations and the template editor.
 // Off, the server refuses every change but the switch.
 import type { PmOverview } from '#shared/pm/project'
 import type { RepoVisibility } from '#shared/pm/visibility'
@@ -48,6 +48,21 @@ const setVisibility = (key: string, body: { value: string } | { check: true }) =
   await api('/api/pm/project-visibility', { key, ...body })
   await load()
 })
+// The working branch: a remote branch of the repo, or a name typed in.
+const branches = reactive<Record<string, string[]>>({})
+const loadBranches = async (key: string) => {
+  if (branches[key]) return
+  try { branches[key] = (await api<{ branches: string[] }>(`/api/pm/branches?key=${encodeURIComponent(key)}`)).branches }
+  catch (e) { branches[key] = []; error.value = (e as Error).message }
+}
+const branchItems = (p: { key: string, base?: string }) => [
+  { label: tl('Current branch of the repo', 'Branche actuelle du dépôt'), value: NONE },
+  ...[...new Set([...(p.base ? [p.base] : []), ...(branches[p.key] ?? [])])].map(b => ({ label: b, value: b })),
+]
+const setBase = (key: string, base: string) => run(`base:${key}`, async () => {
+  await api('/api/pm/project-base', { key, base })
+  await load()
+})
 const visibilityNote = (v?: RepoVisibility) => !v ? tl('Not checked yet', 'Pas encore vérifié')
   : v.by === 'user' ? tl('Set by you', 'Choisi par vous')
   : `${v.value === 'unknown' ? tl('Not found', 'Introuvable') : tl('Checked', 'Vérifié')} ${new Date(v.at).toLocaleDateString()}`
@@ -85,6 +100,16 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
             data-testid="pm-project-template" @update:model-value="v => pickTemplate(p.key, fromNone(v))"
           />
           <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-trash-2" :aria-label="tl(`Remove ${p.name}`, `Retirer ${p.name}`)" :loading="busy === `rm:${p.key}`" @click="remove(p.key)" />
+          <span class="pm-base">
+            <span class="field-label">{{ tl('Working branch', 'Branche de travail') }}</span>
+            <USelectMenu
+              :model-value="orNone(p.base)" :items="branchItems(p)" value-key="value" size="lg" class="pm-base-pick mono" :disabled="busy !== ''" create-item
+              :search-input="{ placeholder: tl('Branch name', 'Nom de branche'), autocomplete: 'off', ui: { base: 'pointer-coarse:text-[16px]' } }"
+              :aria-label="tl(`Working branch of ${p.name}`, `Branche de travail de ${p.name}`)" data-testid="pm-base"
+              @update:open="o => o && loadBranches(p.key)" @update:model-value="v => setBase(p.key, fromNone(String(v)))" @create="v => setBase(p.key, v.trim())"
+            />
+            <small class="muted">{{ tl('New tasks start from it, and a step that names no branch opens its PR to it or merges into it. Running tasks keep theirs.', 'Les nouvelles tâches en partent, et une étape sans branche y ouvre sa PR ou y fusionne. Les tâches en cours gardent la leur.') }}</small>
+          </span>
           <span class="pm-vis">
             <USelect
               :model-value="p.visibility?.value ?? 'unknown'" :items="visibilityItems(p.visibility)" size="lg" :disabled="busy !== ''" :aria-label="tl(`Repository of ${p.name}`, `Dépôt de ${p.name}`)"
@@ -121,7 +146,7 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
         </template>
         <label class="field-label" for="pmPath">{{ tl('Git folder', 'Dossier git') }}</label>
         <UInput id="pmPath" v-model="form.path" size="xl" class="w-full mono" autocapitalize="none" autocorrect="off" :spellcheck="false" placeholder="~/src/web" maxlength="1024" />
-        <label class="field-label" for="pmBase">{{ tl('Base branch', 'Branche de base') }} <span class="muted">{{ t('(optional)') }}</span></label>
+        <label class="field-label" for="pmBase">{{ tl('Working branch', 'Branche de travail') }} <span class="muted">{{ t('(optional)') }}</span></label>
         <UInput id="pmBase" v-model="form.base" size="xl" class="w-full mono" autocapitalize="none" autocorrect="off" :spellcheck="false" placeholder="main" maxlength="100" />
         <label class="field-label" for="pmTemplate">{{ tl('Template', 'Modèle') }}</label>
         <USelect id="pmTemplate" v-model="formTemplate" :items="templateItems" size="lg" class="w-full" data-testid="pm-template" />
@@ -141,6 +166,8 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
 .pm-row:last-child { border-bottom: 0; }
 .pm-id { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .pm-public { margin-left: 8px; padding: 2px 6px; border: 1px solid var(--blocked); color: var(--blocked); font: 600 11px/1 var(--font-mono, 'JetBrains Mono', monospace); letter-spacing: .08em; text-transform: uppercase; vertical-align: 2px; }
+.pm-base { grid-column: 1 / -1; display: grid; gap: 4px; }
+.pm-base-pick { width: min(100%, 320px); }
 .pm-vis { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .pm-path { color: var(--muted); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; }
 .pm-settings form.sheet-form { margin-top: 8px; }

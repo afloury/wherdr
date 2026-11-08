@@ -6,6 +6,7 @@ import { posix as px } from 'node:path'
 import { machineOn, type CoreAdminDeps } from './coreCreate'
 import { exec } from './pmLaunch'
 import { HerdrError } from './herdr'
+import type { Project } from '../../shared/pm/project'
 
 export const REPO_DEPTH = 4 // ~/a/b/c/.git: a repository three folders down
 const MAX = 500
@@ -37,4 +38,17 @@ export async function findRepos(deps: CoreAdminDeps, machine: string, { refresh 
   const found = parseRepos(r.out)
   cache.set(machine, { at: now, ...found })
   return found
+}
+
+// The remote branches of a project's repository (origin, as last fetched),
+// for its working branch field. A repository without origin: none.
+export const BRANCHES_SCRIPT = `git -C "$1" for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin 2>/dev/null | grep -vx HEAD | head -n ${MAX}
+exit 0`
+export const parseBranches = (out: string) => [...new Set(out.split('\n').map(l => l.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b))
+
+export async function remoteBranches(deps: CoreAdminDeps, p: Pick<Project, 'machine' | 'path'>) {
+  const { on } = machineOn(deps, p.machine)
+  const r = await exec(deps, on, BRANCHES_SCRIPT, [p.path])
+  if (r.code !== 0) throw new HerdrError('core', 'Could not read the branches of this repository')
+  return parseBranches(r.out)
 }

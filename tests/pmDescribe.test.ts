@@ -76,7 +76,7 @@ it('labels every action, holder and end, in French too', () => {
   expect(ACTIONS.map(kind => actionLabel({ kind, target: 'dev', base: 'dev' }))).toEqual([
     'Merge into dev (no PR)', 'Push the branch', 'Open a GitHub PR to dev', 'Merge the GitHub PR', 'Check it is merged into dev',
   ])
-  expect(actionLabel({ kind: 'github.pr' })).toBe('Open a GitHub PR to …')
+  expect(actionLabel({ kind: 'github.pr' })).toBe('Open a GitHub PR to the working branch')
   for (const h of HOLDERS) expect(holderHint(h, fr)).not.toBe(holderHint(h))
   for (const e of [...ENDS, ''] as const) expect(endHint(e, fr)).not.toBe(endHint(e))
   expect(describeStep(vibe.taskTypes.simple!.steps[2] as never, fr)).toBe('Le moteur fusionne la branche de la tâche dans dev et la pousse, sans PR. Un conflit la renvoie à l’agent.')

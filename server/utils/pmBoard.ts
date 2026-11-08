@@ -5,14 +5,15 @@ import { taskGuards, type ActionResult } from '../../shared/pm/actions'
 import type { MergeBy, Template } from '../../shared/pm/workflow'
 import { addShot, isImage, SHOT_TYPES, type Shot } from '../../shared/pm/shots'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
-import type { Task } from '../../shared/pm/run'
+import { taskPlan, type Task } from '../../shared/pm/run'
+import type { Project } from '../../shared/pm/project'
 import { CHOICES, type Choice } from '../../shared/pm/verdict'
 import { actionShell, runAction } from './pmActions'
 import { machineOn, type CoreAdminDeps } from './coreCreate'
 import { HerdrError } from './herdr'
 import type { PmStore } from './pmStore'
 
-const planOf = (t: Template | null, task: Task) => (t ? planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }) : [])
+const planOf = (t: Template | null, task: Task, p?: Project) => (t ? taskPlan(t, task, p) : [])
 
 async function templatesOf(store: PmStore) {
   const out = new Map<string, Template | null>()
@@ -25,9 +26,9 @@ export async function board(store: PmStore): Promise<Board> {
   return {
     projects: projects.map((p) => {
       const t = templates.get(p.key)
-      return { key: p.key, name: p.name, columns: t ? boardColumns(Object.keys(t.taskTypes).map(type => planSteps(t, { type }))) : [] }
+      return { key: p.key, name: p.name, columns: t ? boardColumns(Object.keys(t.taskTypes).map(type => planSteps(t, { type }, p.base))) : [] }
     }),
-    cards: tasks.map(task => cardOf(task, planOf(templates.get(task.project) ?? null, task), runs)),
+    cards: tasks.map(task => cardOf(task, planOf(templates.get(task.project) ?? null, task, projects.find(p => p.key === task.project)), runs)),
   }
 }
 
@@ -55,7 +56,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
   const p = (await store.projects()).find(x => x.key === task.project)
   const t = p ? await store.workflow(p.key) : null
   if (!p || !t) throw new HerdrError('not_found', 'The project has no template')
-  const plan = planOf(t, task)
+  const plan = planOf(t, task, p)
   const cur = task.step ?? initialState()
   const step = plan[cur.at]
   const r = by === 'engine' && cur.acting && step?.action
@@ -89,7 +90,7 @@ export async function userDecide(store: PmStore, id: unknown, choice: unknown) {
   const p = (await store.projects()).find(x => x.key === task.project)
   const t = p ? await store.workflow(p.key) : null
   if (!t) throw new HerdrError('not_found', 'The project has no template')
-  const r = onEvent(planOf(t, task), task.step ?? initialState(), { kind: 'decide', by: 'user', choice: choice as Choice }, Date.now())
+  const r = onEvent(planOf(t, task, p), task.step ?? initialState(), { kind: 'decide', by: 'user', choice: choice as Choice }, Date.now())
   if (r.refused) throw new HerdrError('refused', r.refused)
   return store.logTask({ ...task, step: r.state }, 'user', r.effects.flatMap(e => (e.kind === 'log' ? [e.text] : [])).join('; '))
 }
@@ -107,7 +108,7 @@ export async function uploadShot(store: PmStore, id: unknown, phase: unknown, da
   if (!ext || !isImage(data, ext)) throw new HerdrError('bad_input', 'A PNG, JPEG or WebP image, matching its Content-Type')
   if (phase !== 'before' && phase !== 'after') throw new HerdrError('bad_input', 'phase: before or after')
   const p = (await store.projects()).find(x => x.key === task.project)
-  const plan = planOf(p ? await store.workflow(p.key) : null, task)
+  const plan = planOf(p ? await store.workflow(p.key) : null, task, p)
   const shot: Shot = { file: `${randomUUID().replace(/-/g, '').slice(0, 12)}.${ext}`, phase, at: Date.now() }
   await store.addShot(task.id, shot.file, data, (fresh) => {
     const r = addShot(plan, fresh.step, shot)

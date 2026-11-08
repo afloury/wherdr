@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { EXAMPLES, common, company, github, vibe, wherdr } from '../shared/pm/examples'
-import { currentStep, initialState, onEvent, planSteps, type Effect, type StepEvent, type StepState } from '../shared/pm/steps'
+import { currentStep, initialState, onEvent, planSteps, withBase, type Effect, type StepEvent, type StepState } from '../shared/pm/steps'
 import { validateTemplate, type Template } from '../shared/pm/workflow'
 import type { Finding } from '../shared/pm/verdict'
+import { taskBase } from '../shared/pm/run'
+import { guardAction } from '../shared/pm/actions'
+import { combineGuards } from '../shared/pm/guards'
 
 const MIN = 60_000
 const bug: Finding = { id: 'bug', severity: 'major', title: 'Crashes on empty input', proof: 'npm test: 1 failed' }
@@ -151,6 +154,32 @@ describe('step engine, GitHub flow', () => {
     expect(kinds(r.effects)).toEqual(['instruct:work', 'action:pr', 'instruct:review', 'action:merge', 'done'])
     expect(r.state.done).toBe(true)
     expect(onEvent(r.plan, r.state, { kind: 'tick' }, 5 * MIN).refused).toBe('The task is done')
+  })
+})
+
+describe('working branch', () => {
+  it('fills the branch a step leaves out: its own first, then the project\'s, else none', () => {
+    expect(withBase({ kind: 'github.pr', base: 'next' }, 'v3')).toEqual({ kind: 'github.pr', base: 'next' })
+    expect(withBase({ kind: 'github.pr' }, 'v3')).toEqual({ kind: 'github.pr', base: 'v3' })
+    expect(withBase({ kind: 'git.land' }, 'v3')).toEqual({ kind: 'git.land', target: 'v3' })
+    expect(withBase({ kind: 'git.push' }, 'v3')).toEqual({ kind: 'git.push' })
+    expect(withBase({ kind: 'github.pr' })).toEqual({ kind: 'github.pr' })
+    expect(guardAction(combineGuards([]), { kind: 'github.pr' }, { branch: 'task/X-1', by: 'engine' })).toMatch(/has no branch/)
+  })
+
+  it('reaches the plan, the merge guard and {base} in the instructions', () => {
+    const t: Template = { ...github, instructions: 'Merge origin/{base} first.', taskTypes: { simple: { steps: github.taskTypes.simple!.steps.map(s => (typeof s !== 'string' && s.id === 'pr' ? { ...s, action: { kind: 'github.pr' as const } } : s)) } } }
+    const plan = planSteps(t, { type: 'simple' }, 'main')
+    expect(plan.find(s => s.id === 'pr')?.action).toEqual({ kind: 'github.pr', base: 'main' })
+    expect(plan.find(s => s.id === 'merge')?.guarded).toBe(true) // main is protected
+    expect(plan.find(s => s.id === 'work')?.text).toMatch(/^Merge origin\/main first\./)
+    expect(planSteps(t, { type: 'simple' }).find(s => s.id === 'work')?.text).toMatch(/^Merge origin\/the base branch first\./)
+  })
+
+  it('stays the one a task started with', () => {
+    expect(taskBase({}, { base: 'v3' })).toBe('v3')
+    expect(taskBase({ base: 'main' }, { base: 'v3' })).toBe('main')
+    expect(taskBase({ base: '' }, { base: 'v3' })).toBeUndefined()
   })
 })
 

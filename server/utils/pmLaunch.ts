@@ -8,11 +8,11 @@ import { CoreError } from './core'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, kindsOf, launchFailure, machineOn, type CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
-import { initialState, onEvent, planSteps } from '../../shared/pm/steps'
+import { initialState, onEvent } from '../../shared/pm/steps'
 import { doneSection, runFiles } from '../../shared/pm/advance'
 import { isPublic } from '../../shared/pm/visibility'
 import { ensureVisibility, readLeakCheck } from './pmVisibility'
-import { LABEL, agentLine, isAuthFailure, instructionsText, shotStep, reconcile, runLabels, taskPaths, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 
 // Reuses the worktree of an earlier attempt; else a new branch from the base,
 // origin's as fetched now when origin has it (a local one may be stale: a
@@ -75,7 +75,7 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: {
   // Stopped at a step the worker does not hold (the review): no new worker. That
   // step's holder is told again (the reviewer started again) by the next advance pass.
   const s = task.step
-  const held = s?.started && !s.done ? planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) })[s.at] : undefined
+  const held = s?.started && !s.done ? taskPlan(t, task, p)[s.at] : undefined
   if (held && held.holder !== 'worker') {
     const { told: _told, ...step } = s!
     return store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, step })
@@ -86,7 +86,9 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: {
   const home = await homeOf(deps, on)
   if (!home) return wait(store, task, `${label}: home folder not found`)
   const paths = taskPaths(home, task.id)
-  const wt = await exec(deps, on, WORKTREE_SCRIPT, [p.path, paths.worktree, paths.branch, p.base || ''])
+  // Recorded at the first start: changing the project's branch later leaves this task alone.
+  const base = taskBase(task, p) ?? ''
+  const wt = await exec(deps, on, WORKTREE_SCRIPT, [p.path, paths.worktree, paths.branch, base])
   if (wt.code !== 0) return wait(store, task, `git worktree failed: ${wt.out.split('\n').slice(-3).join(' ') || 'timeout'}`)
   // A visual task: the worker's key to upload its screenshots, kept with the task.
   const shotToken = shotStep(t, task.type) ? task.shotToken || randomBytes(16).toString('hex') : undefined
@@ -98,13 +100,13 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: {
   // The engine's start: the task enters its first step (the worker's); the
   // instructions file already tells the worker what to do.
   // Its first step's text is in the instructions file: told already.
-  const first = onEvent(planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }), initialState(), { kind: 'start' }, Date.now()).state
+  const first = onEvent(taskPlan(t, task, p), initialState(), { kind: 'start' }, Date.now()).state
   const step = task.step?.started ? task.step : { ...first, told: first.since }
   const install = await store.install()
   let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine: p.machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now() }
   for (;;) {
     await store.saveRun(run) // the receipt, before the terminal exists
-    await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, run: run.id, step, ...(shotToken ? { shotToken } : {}) })
+    await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, run: run.id, step, base, ...(shotToken ? { shotToken } : {}) })
     let address: string
     try {
       address = (await deps.call<{ address: string }>('terminal.run', {

@@ -8,7 +8,8 @@ import { randomUUID } from 'node:crypto'
 import { MAIN, coordinatorWake } from '../../shared/pm/coordinator'
 import { LOOK_REASON, autopilotEvents, bump, inHours, scheduledWake, sentence, skippedWake, today } from '../../shared/pm/autopilot'
 import { projectPace } from './pmPace'
-import { planSteps, durationMs } from '../../shared/pm/steps'
+import { durationMs } from '../../shared/pm/steps'
+import { taskPlan } from '../../shared/pm/run'
 import { due as isDue, parseSchedule } from '../../shared/pm/schedule'
 import { enqueue, tickWakes, wakeText, type CoordStatus } from '../../shared/pm/wakes'
 import type { Template } from '../../shared/pm/workflow'
@@ -45,7 +46,7 @@ async function gather(deps: WakeDeps, now: number) {
   for (const task of tasks) {
     const t = templates.get(task.project)
     if (!task.step?.started || task.step.done || !t) continue
-    const w = coordinatorWake(planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }), task.step, now)
+    const w = coordinatorWake(taskPlan(t, task, projects.find(p => p.key === task.project)), task.step, now)
     if (JSON.stringify(w.state) === JSON.stringify(task.step)) continue
     // No coordinator: the tick still counts (timeouts), the step start stays to announce.
     const has = !!(await store.coordinator(task.project))?.terminal

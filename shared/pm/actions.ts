@@ -2,7 +2,7 @@
 // and gh scripts it runs in the task's worktree, and how it reads their output.
 // Pure: the server runs the scripts on the project's machine (pmActions.ts).
 import { combineGuards, isProtected, mayMerge, type ResolvedGuards } from './guards'
-import type { MergeBy, StepAction, Template } from './workflow'
+import { actionField, type MergeBy, type StepAction, type Template } from './workflow'
 
 // The guards of a task: the project's, hardened by its task type.
 export const taskGuards = (t: Template, type: string) =>
@@ -12,6 +12,8 @@ export const taskGuards = (t: Template, type: string) =>
 // gesture started it, else 'engine'. `base`: the PR's base, for github.merge.
 export function guardAction(g: ResolvedGuards, a: StepAction, ctx: { branch: string, by: MergeBy, base?: string }): string | undefined {
   const onlyYou = (b: string) => `${b} is protected: only you may merge into it`
+  const f = actionField(a.kind)
+  if (f && !a[f]) return `${a.kind} has no branch: name one in the step, or set the project's working branch in Settings › Projects`
   if (a.kind === 'git.land' && !mayMerge(g, a.target!, ctx.by)) return onlyYou(a.target!)
   if ((a.kind === 'git.push' || a.kind === 'github.pr') && isProtected(g, ctx.branch)) return `${ctx.branch} is protected: the engine never pushes to it`
   if (a.kind === 'github.merge' && ctx.base !== undefined && !mayMerge(g, ctx.base, ctx.by)) return onlyYou(ctx.base)

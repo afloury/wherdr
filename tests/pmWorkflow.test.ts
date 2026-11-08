@@ -37,7 +37,7 @@ describe('validateTemplate', () => {
     const t = template() as any
     const steps = t.taskTypes.simple.steps
     steps[1].holder = 'robot'
-    steps[2].action = { kind: 'github.pr' }
+    steps[2].action = { kind: 'github.pr', base: 7 }
     steps[5].recheck = 'soon'
     steps.push({ id: 'again', holder: 'reviewer', ends: 'verdict', sendBack: 'later', rounds: 0 })
     steps.push({ id: 'todo' })

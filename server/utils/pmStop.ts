@@ -4,16 +4,16 @@
 import { HerdrError } from './herdr'
 import { startTask, type PmLaunchDeps } from './pmLaunch'
 import { cleanTask } from './pmCleanup'
-import { onEvent, planSteps } from '../../shared/pm/steps'
+import { onEvent } from '../../shared/pm/steps'
 import { handoverText, removeRefusal, resumeRefusal, stopRefusal, stoppedTask, type Resume, type Stopper } from '../../shared/pm/stop'
-import type { Task } from '../../shared/pm/run'
+import { taskPlan, type Task } from '../../shared/pm/run'
 
 async function load(deps: PmLaunchDeps, id: unknown) {
   const task = await deps.store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
   const p = (await deps.store.projects()).find(x => x.key === task.project)
   const t = p ? await deps.store.workflow(p.key) : null
-  return { task, plan: t ? planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }) : [] }
+  return { task, plan: t ? taskPlan(t, task, p) : [] }
 }
 
 // logBy: the task log's author ('user', 'coordinator KEY').

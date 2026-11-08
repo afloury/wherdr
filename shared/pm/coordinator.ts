@@ -290,7 +290,7 @@ const commandList = COMMANDS.map(c => `- \`wherdr pm ${c.usage}\`: ${c.does}`)
 export function roleFiles(p: Project, t: Template | null, examples: Template[]): Record<string, string> {
   // A folder without git: no task worktree, the coordinator does the work there itself.
   const plain = p.git === false
-  const plans = t ? Object.entries(t.taskTypes).flatMap(([type]) => [`### ${type}`, ...planSteps(t, { type }).map(stepLine), '']) : ['(no template yet)']
+  const plans = t ? Object.entries(t.taskTypes).flatMap(([type]) => [`### ${type}`, ...planSteps(t, { type }, p.base).map(stepLine), '']) : ['(no template yet)']
   const own = t ? [t.instructions, ...Object.entries(t.taskTypes).map(([k, tt]) => tt.instructions && `${k}: ${tt.instructions}`)].filter(Boolean).map(s => `- ${s}`) : []
   const agents = [
     `# Coordinator of project ${p.name} (${p.key})`, '',
@@ -311,9 +311,10 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[]):
       'This holds for what you write too: each task description you write (`task add --description`) says the repository is public and repeats this rule. wherdr gives every task\'s worker and reviewer the rule as well.', ''] : []),
     'Each Autopilot wake ends with its id: once you have handled it, run `wherdr pm ack <id>`. The engine already fixes PR bases, re-runs CI, retries pushes, catches up branches, sends red CI back and merges what the branch rule allows: leave those to it.',
     ...(plain ? [''] : ['The engine also moves each started task through its steps: when the worker says it is done, it runs the next step (a PR, a reviewer of another model, a merge the branch rule allows) and sends a review\'s findings back to the worker. It starts a task with "after" once those tasks are done, and makes it wait for the user when one of them failed. It starts no other task: add the tasks your goal needs with `task add` (chain a follow-up with `--after`), and start the next one with `task start`.', '',
-    '## Plans of this project\'s task types', '', `Template: ${t ? `${t.id} v${t.version ?? 1}` : 'none'}`, '', ...plans]),
+    '## Plans of this project\'s task types', '', `Template: ${t ? `${t.id} v${t.version ?? 1}` : 'none'}`, `Working branch: ${p.base || 'none set'}`, '', ...plans]),
     '## Turning a workflow request into steps', '',
     'wherdr imposes no workflow: it knows ordered steps, who holds each (worker, reviewer, coordinator, none), how it ends (report, verdict, user, action), the proofs it needs (evidence) and the user\'s guards. What an agent must do is plain text in `instructions`.',
+    'The project\'s working branch (set by the user in Settings › Projects) is where tasks start; a `github.pr`, `git.land` or `git.verify-merged` step without its own branch uses it, and `{base}` in any instructions becomes its name. Prefer these to a branch written in the template.',
     'When the user says "after each task, create the PR with my Bitbucket tool, then wait until I say it is merged", write a worker step with that instruction and `evidence: ["link"]`, then a step `{ holder: "none", ends: "user", userLabel: "Merged", action: { kind: "git.verify-merged", target } }`. "Watch the deploy" is a step you hold: `holder: "coordinator", ends: "report", recheck: "5m"`.',
     'Read the template, write the new one and run `template edit`: wherdr shows the user its diff, to accept or refuse; `template show` tells you which. Examples to copy from:', '',
     ...examples.map(e => `\`\`\`json\n${JSON.stringify(e)}\n\`\`\``), '',

@@ -11,7 +11,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { cleanProjectInput, isTemplateId, KEY_RE, type PmOverview, type Project, type TemplateInfo } from '../../shared/pm/project'
+import { cleanProjectInput, isBranch, isTemplateId, KEY_RE, type PmOverview, type Project, type TemplateInfo } from '../../shared/pm/project'
 import type { RepoVisibility } from '../../shared/pm/visibility'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
@@ -351,6 +351,18 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       if (!['public', 'private', 'unknown'].includes(v?.value)) throw badInput([{ path: 'value', message: 'public or private' }])
       const { list, i } = await findProject(key)
       list[i] = { ...list[i]!, visibility: v }
+      await saveProjects(list)
+      return list[i]!
+    }),
+
+    // The working branch ('' clears it). Only new starts use it: a running
+    // task's worktree and its planned branches stay as they are.
+    setBase: (key: unknown, base: unknown) => write(async () => {
+      const b = typeof base === 'string' ? base.trim() : ''
+      if (b && !isBranch(b)) throw badInput([{ path: 'base', message: 'invalid branch name' }])
+      const { list, i } = await findProject(key)
+      const { base: _old, ...rest } = list[i]!
+      list[i] = b ? { ...rest, base: b } : rest
       await saveProjects(list)
       return list[i]!
     }),

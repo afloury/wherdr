@@ -6,8 +6,8 @@
 // nothing (shared/pm/advance.ts holds the rules).
 import { randomUUID } from 'node:crypto'
 import { DONE_CMD, READ_SEP, dueText, parseRead, reviewFile, runFiles, runsNow, signalEvent } from '../../shared/pm/advance'
-import { onEvent, planSteps } from '../../shared/pm/steps'
-import { LABEL, agentLine, reviewerPlan, runLabels, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { onEvent, type PlannedStep } from '../../shared/pm/steps'
+import { LABEL, agentLine, reviewerPlan, runLabels, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP, launchFailure, machineOn } from './coreCreate'
 import { WRITE_SCRIPT, exec, type PmLaunchDeps } from './pmLaunch'
 import { stepAction } from './pmBoard'
@@ -24,7 +24,7 @@ git -C "$wt" diff --numstat \${s:+"$s"} HEAD 2>/dev/null | awk '{n+=$1+$2} END {
 cat "$3" 2>/dev/null; echo; echo "${READ_SEP}"
 cat "$4" 2>/dev/null`
 
-type Ctx = { task: Task, p: Project, on: string | undefined, plan: ReturnType<typeof planSteps>, t: NonNullable<Awaited<ReturnType<PmLaunchDeps['store']['template']>>> }
+type Ctx = { task: Task, p: Project, on: string | undefined, plan: PlannedStep[], t: NonNullable<Awaited<ReturnType<PmLaunchDeps['store']['template']>>> }
 
 async function context(deps: PmLaunchDeps, id: string): Promise<Ctx | null> {
   const task = await deps.store.task(id)
@@ -33,7 +33,7 @@ async function context(deps: PmLaunchDeps, id: string): Promise<Ctx | null> {
   if (!task?.step?.started || !p || !t) return null
   let on: string | undefined
   try { on = machineOn(deps, p.machine).on } catch { return null }
-  return { task, p, on, t, plan: planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }) }
+  return { task, p, on, t, plan: taskPlan(t, task, p) }
 }
 
 const latest = (runs: Run[], task: string, role: Run['role']) =>
