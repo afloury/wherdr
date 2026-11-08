@@ -82,7 +82,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
   <AppSheet v-model:open="open" :title="card.title" tall hide-close @closed="emit('closed')">
     <div class="task-sheet" data-testid="task-sheet">
       <div class="task-sheet-top">
-        <p class="mono-label">{{ card.id }}<template v-if="card.step"> · {{ card.step }}</template></p>
+        <p class="mono-label">{{ card.shown }}<template v-if="card.step"> · {{ card.step }}</template></p>
         <p v-if="status" class="task-status" :class="status.tone" data-testid="task-status">{{ status.text }}</p>
         <div class="task-sheet-actions">
           <UButton v-if="!todo && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ tl('Start', 'Lancer') }}</UButton>

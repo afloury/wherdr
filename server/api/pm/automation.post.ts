@@ -11,7 +11,7 @@ import { pmStore } from '../../utils/pmStore'
 export default defineApi(async (event, body) => {
   const store = pmStore()
   const key = typeof body.project === 'string' ? body.project : ''
-  const p = (await store.projects()).find(x => x.key === key)
+  const p = await store.project(key)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
   const types = Object.keys(((await store.workflow(p.key))?.taskTypes) || {})
   const id = typeof body.id === 'string' ? body.id : typeof body.automation?.id === 'string' ? body.automation.id : ''
