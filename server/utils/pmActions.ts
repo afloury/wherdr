@@ -100,8 +100,9 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
       return r.code === 0 ? { ok: true, link: lastLine(r.out) } : fail(r)
     }
     case 'github.merge': {
-      let pushed = false, lag = 0
-      for (let i = 0; ; i++) {
+      // lag: waits for GitHub to show a fresh push; ci: waits for its checks. Counted apart.
+      let pushed = false, lag = 0, ci = 0
+      for (;;) {
         const r = await run(deps, SCRIPT.prInfo, [wt, branch])
         if (r.code !== 0) return fail(r)
         const lines = r.out.split('\n'), head = lines[0] ?? ''
@@ -147,7 +148,7 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
           }
         }
         const ready = prReady(pr, head.trim(), a.checks)
-        if (!ready.ok && ready.later && i < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[i]!); continue }
+        if (!ready.ok && ready.later && ci < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[ci++]!); continue }
         if (!ready.ok) return { ok: false, error: `merge: ${ready.why}` }
         if (await job.halted?.()) return { ok: false, error: 'merge: the task was stopped' }
         const m = await run(deps, SCRIPT.merge, [wt, pr!.url, head.trim(), a.method ?? ''])

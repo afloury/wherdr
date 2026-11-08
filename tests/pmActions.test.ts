@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { SCRIPT, guardAction, isTransient, leaks, prReady, taskGuards, type Receipt } from '../shared/pm/actions'
+import { RETRY_MS, SCRIPT, guardAction, isTransient, leaks, prReady, taskGuards, type Receipt } from '../shared/pm/actions'
 import { runAction, type ActionDeps, type ActionJob } from '../server/utils/pmActions'
 import { WORKTREE_SCRIPT } from '../server/utils/pmLaunch'
 import { initialState, onEvent, planSteps, reviewedCommit } from '../shared/pm/steps'
@@ -112,6 +112,11 @@ describe('runAction', () => {
     const n = fakeDeps([stale, behind, { code: 0, out: 'abc' }, stale, behind, { code: 0, out: 'old' }])
     expect(await runAction(n.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toEqual({ ok: false, error: 'merge: the push did not move origin/task/A-1 (at old, the task at abc): push the branch by hand, then try the step again' })
     expect(n.sleeps).toEqual([])
+    // GitHub's lag, then checks running at the new head: the lag waits take none of the CI waits.
+    const fresh = (state: string) => ({ code: 0, out: `abc\n${JSON.stringify([{ url: 'https://pr/1', baseRefName: 'dev', headRefOid: 'abc', statusCheckRollup: [{ status: state, conclusion: 'SUCCESS' }] }])}` }), same = { code: 0, out: 'same' }
+    const l = fakeDeps([stale, behind, { code: 0, out: 'abc' }, ...[1, 2, 3].flatMap(() => [stale, behind, { code: 0, out: 'abc' }]), fresh('IN_PROGRESS'), same, fresh('IN_PROGRESS'), same, fresh('COMPLETED'), same, { code: 0, out: 'https://pr/1' }])
+    expect(await runAction(l.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toMatchObject({ ok: true, commit: 'abc' })
+    expect(l.sleeps).toEqual([2_000, 4_000, 8_000, ...RETRY_MS.slice(0, 2)])
     // GitHub's conflict ends with the commands to fix it: the error keeps none of them.
     const x = fakeDeps([info('COMPLETED'), { code: 0, out: 'same' }, { code: 1, out: 'X Pull request #505 is not mergeable: the merge commit cannot be cleanly created.\nRun the following to resolve the merge conflicts locally:\n  gh pr checkout 505 && git fetch origin dev && git merge origin/dev' }])
     expect(await runAction(x.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toEqual({ ok: false, error: 'merge: the PR conflicts with dev' })
