@@ -6,6 +6,7 @@ import { CHANGES, SETTING_VALUES, alfredCommandList, dryRun, parseAlfredCommand,
 import { GUARDED_PROGRAMS, MAIN, type CoordinatorAgent } from '../../shared/pm/coordinator'
 import { offeredAgents, readAgentOrder, readHiddenAgents } from '../../shared/agentList'
 import { cleanProjectInput } from '../../shared/pm/project'
+import { keyClash, projectOf as findProject, shownKey } from '../../shared/pm/projectKey'
 import { HerdrError } from './herdr'
 import { alfredTokenOk, coordinatorsView, startCoordinator, type CoordinatorUrls } from './pmCoordinator'
 import type { CoreAdminDeps } from './coreCreate'
@@ -27,8 +28,8 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
   const projects = await store.projects()
   const machines = deps.machines()
   const projectOf = (key: string) => {
-    const p = projects.find(x => x.key === key)
-    if (!p) throw new HerdrError('not_found', `Unknown project ${key}: ${projects.map(x => x.key).join(', ') || 'none yet'}`)
+    const p = findProject(projects, key)
+    if (!p) throw new HerdrError('not_found', `Unknown project ${key}: ${projects.map(shownKey).join(', ') || 'none yet'}`)
     return p
   }
   const machineName = (key: string) => (key ? machines.find(m => m.key === key)?.label ?? key : 'this machine')
@@ -62,7 +63,7 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
     case 'machines': return { machines: machines.map(m => ({ key: m.key, label: m.label, local: m.local, status: m.status })) }
     case 'coordinators': return { coordinators: await Promise.all((await coordinatorsView(store)).map(async c => ({ project: c.project, name: c.name, agent: c.main ? c.agent?.program : (await projectAgent(c.project)).program, running: !!c.terminal }))) }
     case 'coordinator open': {
-      const c = (await coordinatorsView(store)).find(x => x.project === cmd.key)
+      const c = (await coordinatorsView(store)).find(x => x.project === (findProject(projects, cmd.key)?.key ?? cmd.key))
       const pane = c?.terminal ? deps.panes().find(p => p.coreAddress === c.terminal) : undefined
       if (!pane) throw new HerdrError('not_found', `The coordinator of ${cmd.key} is not running: start it with wherdr alfred coordinator start ${cmd.key}`)
       return { link: `${deps.urls.remote ?? deps.urls.local}/#/a/${encodeURIComponent(pane.id)}`, note: 'Give the user this link; the sidebar shows it too' }
@@ -81,7 +82,7 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       if (!m && cmd.input.machine) throw new HerdrError('not_found', `Unknown machine ${cmd.input.machine} (see wherdr alfred machines)`)
       const { project, errors } = cleanProjectInput({ ...cmd.input, machine: m?.key ?? '' })
       if (!project) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
-      if (projects.some(p => p.key === project.key)) throw new HerdrError('exists', 'A project already has this key')
+      if (keyClash(projects, project.key)) throw new HerdrError('exists', 'A project already has this key')
       await knownTemplate(project.template ?? '')
       // The folder checks --apply makes (inside the home folder, a git
       // repository, not already a project): read-only, so run before the

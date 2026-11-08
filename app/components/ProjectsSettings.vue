@@ -5,6 +5,7 @@
 // Add project opens the New sheet on a new project.
 // Off, the server refuses every change but the switch.
 import type { PmOverview } from '#shared/pm/project'
+import { shownKey } from '#shared/pm/projectKey'
 import { projectTab, type ProjectTab } from '~/utils/projectTabs'
 
 const props = defineProps<{ active: boolean }>()
@@ -61,7 +62,7 @@ const show = (project?: string, tab?: ProjectTab) => {
       <h3>{{ tl('Projects', 'Projets') }}</h3>
       <div v-if="data.projects.length" class="settings-card">
         <button v-for="p in data.projects" :key="p.key" type="button" class="pm-row" data-testid="pm-project" @click="show(p.key)">
-          <span class="pm-id"><b>{{ p.name }}<span v-if="p.visibility?.value === 'public'" class="pm-public" data-testid="pm-public">{{ tl('Public', 'Public') }}</span></b><small class="mono-label">{{ p.key }} · {{ machineName(p.machine) }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
+          <span class="pm-id"><b>{{ p.name }}<span v-if="p.visibility?.value === 'public'" class="pm-public" data-testid="pm-public">{{ tl('Public', 'Public') }}</span></b><small class="mono-label">{{ shownKey(p) }} · {{ machineName(p.machine) }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
           <UIcon name="i-lucide-chevron-right" class="pm-chevron" />
         </button>
       </div>

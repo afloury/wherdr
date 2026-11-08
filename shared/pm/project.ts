@@ -3,9 +3,13 @@
 import type { WorkflowError } from './workflow'
 import type { Task } from './run'
 import type { RepoVisibility } from './visibility'
+import { isProjectColor, type ProjectColor } from './projectKey'
 
 export interface Project {
-  key: string // task ids are <key>-<n>: WHR-344
+  key: string // the fixed id (see projectKey.ts): task ids are <key>-<n>: WHR-344
+  label?: string // the key shown and edited, when it is not the id
+  aliases?: string[] // the keys shown before: they still resolve
+  color?: ProjectColor // its badge's color, from the palette
   name: string
   machine: string // herdr-core machine key, '' = the wherdr host
   path: string
@@ -21,7 +25,7 @@ export interface Project {
 }
 
 // template: a library template id or example:<id>, copied into the project's workflow.
-export type ProjectInput = Omit<Project, 'addedAt' | 'from'> & { template?: string }
+export type ProjectInput = Omit<Project, 'addedAt' | 'from' | 'label' | 'aliases'> & { template?: string }
 export interface TemplateInfo { id: string, version?: number }
 // GET /api/pm/overview
 export interface PmOverview { enabled: boolean, projects: Project[], templates: TemplateInfo[], tasks?: Task[] }
@@ -34,10 +38,23 @@ const BRANCH_RE = /^(?!.*\.\.)(?!.*@\{)(?!\/)(?!.*\/$)[A-Za-z0-9._/-]{1,100}$/
 export const isBranch = (b: string) => BRANCH_RE.test(b)
 export const isTemplateId = (id: unknown): id is string => typeof id === 'string' && ID_RE.test(id)
 
-// The fields the user changes on a project (General tab): name, and base ('' clears it).
-export function cleanProjectUpdate(raw: unknown): { update?: { name?: string, base?: string }, errors: WorkflowError[] } {
+const KEY_HINT = '2 to 10 letters or digits, starting with a letter'
+export interface ProjectUpdate { name?: string, base?: string, key?: string, color?: ProjectColor }
+
+// The fields the user changes on a project (General tab): name, base ('' clears it), key, color.
+export function cleanProjectUpdate(raw: unknown): { update?: ProjectUpdate, errors: WorkflowError[] } {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const errors: WorkflowError[] = [], update: { name?: string, base?: string } = {}
+  const errors: WorkflowError[] = [], update: ProjectUpdate = {}
+  // `key` names the project; `newKey` is its new shown key.
+  if (o.newKey !== undefined) {
+    const key = typeof o.newKey === 'string' ? o.newKey.trim().toUpperCase() : ''
+    if (!KEY_RE.test(key)) errors.push({ path: 'key', message: KEY_HINT })
+    else update.key = key
+  }
+  if (o.color !== undefined) {
+    if (!isProjectColor(o.color)) errors.push({ path: 'color', message: 'not a palette color' })
+    else update.color = o.color
+  }
   if (o.name !== undefined) {
     const name = typeof o.name === 'string' ? o.name.trim() : ''
     if (!name || name.length > 80) errors.push({ path: 'name', message: '1 to 80 characters' })
@@ -57,7 +74,7 @@ export function cleanProjectInput(raw: unknown): { project?: ProjectInput, error
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string).trim() : '')
   const key = str('key').toUpperCase()
-  if (!KEY_RE.test(key)) errors.push({ path: 'key', message: '2 to 10 letters or digits, starting with a letter' })
+  if (!KEY_RE.test(key)) errors.push({ path: 'key', message: KEY_HINT })
   const name = str('name') || key
   if (name.length > 80) errors.push({ path: 'name', message: 'at most 80 characters' })
   if (typeof o.machine !== 'string' || o.machine.length > 64) errors.push({ path: 'machine', message: 'unknown machine' })
@@ -66,11 +83,12 @@ export function cleanProjectInput(raw: unknown): { project?: ProjectInput, error
   else if (path.length > 1024 || path.includes('\0')) errors.push({ path: 'path', message: 'invalid folder' })
   const base = str('base')
   if (base && !isBranch(base)) errors.push({ path: 'base', message: 'invalid branch name' })
+  if (o.color !== undefined && !isProjectColor(o.color)) errors.push({ path: 'color', message: 'not a palette color' })
   const template = str('template')
   if (template && !isTemplateId(template.replace(/^example:/, ''))) errors.push({ path: 'template', message: 'invalid template id' })
   if (errors.length) return { errors }
   return {
     errors,
-    project: { key, name, machine: o.machine as string, path, ...(base ? { base } : {}), ...(template ? { template } : {}) },
+    project: { key, name, machine: o.machine as string, path, ...(base ? { base } : {}), ...(isProjectColor(o.color) ? { color: o.color } : {}), ...(template ? { template } : {}) },
   }
 }

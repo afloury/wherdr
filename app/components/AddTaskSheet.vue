@@ -25,7 +25,7 @@ const projectItems = computed(() => [{ label: tl('Pick a project', 'Choisis un p
 const types = computed(() => props.projects.find(p => p.key === project.value)?.types ?? [])
 const typeItems = computed(() => types.value.map(x => ({ label: x.id, value: x.id, description: x.plan })))
 const plan = computed(() => types.value.find(x => x.id === type.value)?.plan)
-const afterItems = computed(() => props.cards.filter(c => c.project === project.value && c.phase !== 'done').map(c => ({ label: `${c.id} · ${c.title}`, value: c.id })))
+const afterItems = computed(() => props.cards.filter(c => c.project === project.value && c.phase !== 'done').map(c => ({ label: `${c.shown} · ${c.title}`, value: c.id })))
 // A new project: its first type, and no 'after' from another project.
 watch(project, () => { type.value = types.value[0]?.id ?? ''; after.value = [] }, { immediate: true })
 

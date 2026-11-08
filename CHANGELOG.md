@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **Conversations open on their last read.** After a reload, an update or a network cut, the conversation kept on the device shows at once (the home state no longer waits for the server's first answer), then the server's answer merges in without moving what is on screen; replies that arrived meanwhile come in at the bottom like live ones. The startup background is the theme last shown on the device, so a reload no longer flashes another colour.
 - **Devin conversations on herdr-core.** Read saved ATIF transcripts from the running process, locally or on a core machine, with tools, inline images, search and previews. Updates arrive when Devin saves a turn; only history retained after compaction is available.
 
 - **App start, per device.** Settings › Phone › App start: **Up to date** (default, the current version, the saved copy past 3 seconds) or **Instant** (the saved copy at once, with the Reload banner for a newer version). After an update, the server keeps the previous two versions' files, so a page opened before it no longer reloads itself on a missing file.

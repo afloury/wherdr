@@ -33,6 +33,24 @@ is done and has a button that takes you there.
 Then ask the coordinator for tasks, and answer
 what shows under *Your turn* and *Decisions*.
 
+## A task waiting for you
+
+Open a task under *Your turn* and its sheet starts on **To do**: what the task
+needs from you and the buttons for it, before its Description, Plan and Log.
+
+- **A visual change to merge**: its screenshots large (swipe between them, tap
+  one to zoom; each is labelled phone or desktop), the review's verdict, the PR,
+  then *Merge*, or *Send back* with a note: the agent gets your note as what to fix.
+- **A review to settle** after several send-backs: each choice the engine offers,
+  with what it does.
+- **A stopped task**: who stopped it and why, then *Continue*, *Take it as it is*
+  or *Archive*, each with what it does.
+- **A step that ends with you** (*Merged*, or the step's own button): what to do,
+  and its button.
+- **An agent's question or permission**: its text, and a button to open that agent.
+- **A refused merge or a blocked task**: the reason in plain words, and what you
+  can do (try again, start it, open its agent).
+
 ## Agents of a task that waits for you
 
 A task under *Your turn* (a step you end, a merge only you may do, a failure)

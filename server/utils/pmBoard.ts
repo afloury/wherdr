@@ -1,12 +1,13 @@
 // The board's data, and the user's button on a step that waits for them.
 import { boardColumns, cardOf, type Board, type Card } from '../../shared/pm/board'
-import { initialState, onEvent, planSteps, reviewedCommit } from '../../shared/pm/steps'
+import { initialState, onEvent, planSteps, reviewedCommit, type StepEvent } from '../../shared/pm/steps'
 import { taskGuards, type ActionResult } from '../../shared/pm/actions'
 import type { MergeBy, Template } from '../../shared/pm/workflow'
 import { addShot, isImage, SHOT_TYPES, type Shot } from '../../shared/pm/shots'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { taskPlan, type Task } from '../../shared/pm/run'
 import type { Project } from '../../shared/pm/project'
+import { shownTaskId } from '../../shared/pm/projectKey'
 import { CHOICES, type Choice } from '../../shared/pm/verdict'
 import { actionShell, runAction } from './pmActions'
 import { machineOn, type CoreAdminDeps } from './coreCreate'
@@ -32,9 +33,9 @@ export async function board(store: PmStore): Promise<Board> {
     projects: projects.map((p) => {
       const t = templates.get(p.key)
       const plans = t ? Object.keys(t.taskTypes).map(type => ({ id: type, steps: planSteps(t, { type }, p.base) })) : []
-      return { key: p.key, name: p.name, columns: boardColumns(plans.map(x => x.steps)), types: plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → ') })) }
+      return { key: p.key, ...(p.label ? { label: p.label } : {}), ...(p.aliases ? { aliases: p.aliases } : {}), ...(p.color ? { color: p.color } : {}), name: p.name, columns: boardColumns(plans.map(x => x.steps)), types: plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → ') })) }
     }),
-    cards: tasks.map(task => withPr(cardOf(task, planOf(templates.get(task.project) ?? null, task, projects.find(p => p.key === task.project)), runs))),
+    cards: tasks.map(task => withPr({ ...cardOf(task, planOf(templates.get(task.project) ?? null, task, projects.find(p => p.key === task.project)), runs), shown: shownTaskId(projects, task.id) })),
   }
 }
 
@@ -95,13 +96,23 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
 // The user's choice on a review the after-N rule handed to them (Decisions):
 // any choice, like the coordinator's `task decide` but not limited to its options.
 export async function userDecide(store: PmStore, id: unknown, choice: unknown) {
+  if (!CHOICES.includes(choice as Choice)) throw new HerdrError('bad_input', `choice: one of ${CHOICES.join(', ')}`)
+  return userEvent(store, id, { kind: 'decide', by: 'user', choice: choice as Choice })
+}
+
+// The user sends their step (a visual merge) back to the worker, saying what to change.
+export async function userSendBack(store: PmStore, id: unknown, note: unknown) {
+  if (typeof note !== 'string' || note.length > 2000) throw new HerdrError('bad_input', 'note: what to change, 2000 characters at most')
+  return userEvent(store, id, { kind: 'back', note })
+}
+
+async function userEvent(store: PmStore, id: unknown, ev: StepEvent) {
   const task = await store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
-  if (!CHOICES.includes(choice as Choice)) throw new HerdrError('bad_input', `choice: one of ${CHOICES.join(', ')}`)
   const p = (await store.projects()).find(x => x.key === task.project)
   const t = p ? await store.workflow(p.key) : null
   if (!t) throw new HerdrError('not_found', 'The project has no template')
-  const r = onEvent(planOf(t, task, p), task.step ?? initialState(), { kind: 'decide', by: 'user', choice: choice as Choice }, Date.now())
+  const r = onEvent(planOf(t, task, p), task.step ?? initialState(), ev, Date.now())
   if (r.refused) throw new HerdrError('refused', r.refused)
   return store.logTask({ ...task, step: r.state }, 'user', r.effects.flatMap(e => (e.kind === 'log' ? [e.text] : [])).join('; '))
 }

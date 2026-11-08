@@ -4,7 +4,7 @@
 // puts it in Your turn, whatever its step, with a badge saying what to do.
 import type { Holder } from './workflow'
 import type { PlannedStep, StepState } from './steps'
-import type { Run, Task } from './run'
+import type { Run, Task, WaitKind } from './run'
 import { notStarted, type Stopped } from './stop'
 import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
@@ -14,6 +14,7 @@ export const PHASES: Phase[] = ['todo', 'working', 'done']
 
 export interface Card {
   id: string
+  shown: string // the id as the user sees it, with the project's current key (projectKey.ts)
   project: string
   title: string
   description: string
@@ -34,10 +35,11 @@ export interface Card {
   after?: string[] // tasks of the same project it starts after
   prNow?: string // its PR as the engine last read it (prNow)
   held?: string // waits for memory on its machine
+  asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
 }
 
 // types: the project's task types, each with its steps in one line ("work → review → merge").
-export interface BoardProject { key: string, name: string, columns: string[], types: { id: string, plan: string }[] }
+export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string }[] }
 // GET /api/pm/board
 export interface Board { projects: BoardProject[], cards: Card[] }
 
@@ -70,7 +72,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
     : undefined
   const yourTurn = s?.yourTurn?.badge || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
   return {
-    id: task.id, project: task.project, title: task.title, description: task.description,
+    id: task.id, shown: task.id, project: task.project, title: task.title, description: task.description,
     column: plan.length ? columnOf((s?.done ? plan.at(-1) : step) ?? plan[0]!) : 'To do',
     phase: s?.done ? 'done' : started || running ? 'working' : 'todo',
     ...(step ? { step: step.id } : {}),
@@ -86,6 +88,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
     plan,
     ...(s ? { state: s } : {}),
     ...(task.stopped ? { stopped: task.stopped } : {}),
+    ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '' } } : {}),
     ...(task.held && task.state === 'todo' ? { held: task.held } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
     ...(task.after ? { after: afterIds(task) } : {}),

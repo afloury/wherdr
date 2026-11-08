@@ -10,6 +10,12 @@ export const RESUME_LABEL: Record<Resume, [string, string]> = {
   'archive': ['Archive', 'Archiver'],
 }
 
+export const RESUME_MEANING: Record<Resume, string> = {
+  'continue': 'Its agent starts again in the same worktree, with a note on why it stopped.',
+  'as-is': 'Its work is taken as it is: on to the next step.',
+  'archive': 'The task ends: its worktree is removed, its branch kept.',
+}
+
 // The server's refusal (a limit, no template, no machine…) comes back as a
 // task waiting with its reason: thrown here, so it is said like an error.
 export async function startTaskApi(id: string) {
