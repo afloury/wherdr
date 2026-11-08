@@ -67,8 +67,8 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   const prStep = plan.slice(0, s.at).findLast(p => p.action?.kind === 'github.pr')
   const base = prStep?.action?.base
   if (!pr || !head || !base) return
-  const engineMerges = step.action?.kind === 'github.merge' && step.ends === 'action' && !step.guarded && !isProtected(guards, pr.baseRefName)
-    && mayMerge(guards, pr.baseRefName, 'engine')
+  // The guards decide, a protected branch too (merge.protected: engine).
+  const engineMerges = step.action?.kind === 'github.merge' && step.ends === 'action' && !step.guarded && mayMerge(guards, pr.baseRefName, 'engine')
   // One per commit and merge attempt: a head reviewed again is merged on the step's next attempt.
   const n = s.tries?.[step.id] ?? 0
   const mergeKey = `merge:${head}${n > 1 ? `:${n}` : ''}`
@@ -91,8 +91,7 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
     const sent = Object.keys(task.mech ?? {}).filter(k => k.startsWith('red:')).length
     return sent < DEFAULT_ROUNDS ? pick(`red:${head}`, { kind: 'ci-to-agent', checks: red.map(checkName) }) : undefined
   }
-  // A merge step the branch rule gives the engine. A protected branch is never
-  // merged without the user's gesture, whatever the rule or the autopilot.
+  // A merge step the guards give the engine; any other waits for the user's gesture.
   return mergeMove()
 }
 

@@ -159,7 +159,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       try { next = JSON.parse(String(body.input ?? '')) as Template } catch { throw new HerdrError('bad_input', 'The new template is not valid JSON') }
       // Always the project's own workflow, whatever id the JSON names.
       if (t && next && typeof next === 'object') next = { ...next, id: t.id }
-      editRefusal(t, next, turn)
+      editRefusal(t, next, turn, key)
       const errors = validateTemplate(next)
       if (errors.length) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
       // The user accepts or refuses it in the interface; nothing is saved yet.
@@ -301,8 +301,8 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
 
 // Why the coordinator may not change the template to `next`; the same checks
 // when the user accepts it later, against the template as it is then.
-function editRefusal(t: Template | null, next: Template, turn: Turn) {
-  const why = templateEditRefusal(t, next, turn)
+function editRefusal(t: Template | null, next: Template, turn: Turn, key?: string) {
+  const why = templateEditRefusal(t, next, turn, key)
   if (why) throw new HerdrError('refused', why)
 }
 
@@ -326,7 +326,7 @@ export async function answerProposal(deps: Deps, key: unknown, accept: unknown) 
   }
   // The project's own workflow (a proposal made before workflows names the template it was copied from).
   const next = t ? { ...proposal.template, id: t.id } : proposal.template
-  editRefusal(t, next, 'user')
+  editRefusal(t, next, 'user', rec.project)
   await store.saveWorkflow(rec.project, next, { by: `coordinator ${rec.project}`, said: proposal.said })
   await done('accepted')
   await writeRoleFiles(deps, rec.project).catch(() => {})
