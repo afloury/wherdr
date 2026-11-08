@@ -42,7 +42,8 @@ machine with its state (connected, connecting…, offline) and last error:
   changes; links that use the old name stop working.
 - **Forget** (`machine.rm`): this core drops the machine, but its terminals keep running there,
   and the machine can be added again later.
-- **Memory**: each machine's free memory and its agents at once (all projects), with two
+- **Memory**: each machine's free memory, cores and load (read on Linux and macOS; on macOS the
+  free figure is close to Activity Monitor's, not exact) and its agents at once (all projects), with two
   settings: **Agents at once, all projects** (empty: one agent per 1.5 GB of RAM) and
   **Automatic starts wait under (GB free)**. Automatic starts (autopilot, chains, automations)
   wait while a machine is short on memory, its swap is over 90 % used or it runs its cap of

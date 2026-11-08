@@ -46,9 +46,10 @@ export interface Card {
 
 // A machine a project allows, for "Start on…": unready, the last check's failures ('' ready, none never checked).
 export interface BoardMachine { key: string, label: string, online: boolean, unready?: string }
-// types: the project's task types, each with its steps in one line ("work → review → merge").
+// types: the project's task types, each with its steps in one line ("work → review → merge")
+// and the weight its tasks get when none is set ("heavy (screenshots)").
 // machines: only for a project that allows more than its own, home first.
-export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string }[], machines?: BoardMachine[] }
+export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string, weight?: string }[], machines?: BoardMachine[] }
 // GET /api/pm/board
 export interface Board { projects: BoardProject[], cards: Card[] }
 
@@ -80,7 +81,8 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ? runs.filter(r => r.task === task.id && r.role === holder && r.state !== 'ended').sort((a, b) => b.startedAt - a.startedAt)[0]
     : undefined
   const stall = stallOf(task, plan, now)
-  const yourTurn = s?.yourTurn?.badge || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
+  // A done task (merged, archived) is never the user's turn.
+  const yourTurn = s?.done ? undefined : s?.yourTurn?.badge || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
     || (stall && now - stall.since >= HANDLE_AFTER_MS ? stallTurn(stall) : undefined)
   return {
     id: task.id, shown: task.id, project: task.project, title: task.title, description: task.description,

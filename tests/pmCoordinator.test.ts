@@ -179,7 +179,7 @@ describe('template edit', () => {
     expect(r).toMatchObject({ proposed: true, diff })
     expect(r.changes.length).toBeGreaterThan(0)
     expect((await store.workflow('CO'))!.version).toBe(1)
-    expect((await coordinatorsView(store)).find(c => c.project === 'CO')!.proposal).toMatchObject({ diff, said: 'Tell agents to never run the full suite' })
+    expect((await coordinatorsView(store)).find(c => c.project === 'CO')!.proposal).toMatchObject({ diff, by: 'CO', said: 'Tell agents to never run the full suite', saidAt: expect.any(Number) })
     expect(await cli(['template', 'show'])).toMatchObject({ diff })
     // No core: the role files are not rewritten, the template is saved all the same.
     await expect(answerProposal(deps(), 'CO', true)).resolves.toEqual({ accepted: true })
@@ -362,13 +362,14 @@ describe('role files', () => {
   })
 
   it('say who it is, its commands, each plan and the user\'s instructions, all inside its own folder', () => {
-    const files = roleFiles({ key: 'CO', name: 'Company', machine: '', path: '/src/co', template: 'company', addedAt: 1 }, company, EXAMPLES)
+    const files = roleFiles({ key: 'CO', name: 'Company', machine: '', path: '/src/co', from: { template: 'company', version: 1 }, addedAt: 1 }, company, EXAMPLES)
     expect(Object.keys(files).sort()).toEqual(['.claude/settings.json', '.claude/skills/wherdr-pm/SKILL.md', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'QWEN.md', 'bin/wherdr'])
     const agents = files['AGENTS.md']!
     expect(agents).toContain('You coordinate project CO only')
     expect(agents).toContain('`wherdr pm task link <task> <url> --label <label>`')
     expect(agents).toContain('- deploy (Deploy): holder coordinator, ends report, recheck 5m, timeout 90m')
     expect(agents).toContain('- Base branch is develop.')
+    expect(agents).toContain('copied from template company v1 (the template library never changes it)')
     expect(agents).toContain('"id":"vibe"')
     expect(agents).toContain('with its absolute path (`/src/co/README.md`)')
     expect(files['CLAUDE.md']).toBe('@AGENTS.md\n')
@@ -715,19 +716,23 @@ describe('commands of lot 10', () => {
     expect(await cli(['autopilot', 'show'])).toMatchObject({ autopilot: { goal: 'Ship' }, today: { started: 0, perDay: 4, working: 1, atOnce: 2, startLeft: 1 } })
   })
 
-  it('task add: a task to do, chained with --after; in a wake only with the autopilot on', async () => {
+  it('task add: a task to do, chained with --after, with --weight; show gives its weight; in a wake only with the autopilot on', async () => {
     expect(parseCommand(['task', 'add', 'Fix', 'the', 'docs', '--type', 'feature', '--after', 'CO-1'])).toEqual({ name: 'task add', title: 'Fix the docs', type: 'feature', after: 'CO-1' })
     expect(parseCommand(['task', 'add', 'Fix'])).toMatchObject({ error: expect.stringMatching(/^usage: wherdr pm task add/) })
     expect(parseCommand(['task', 'add', 'Fix', '--type', 'feature', '--after', 'next'])).toEqual({ error: '--after is a list of tasks: A-1,A-2' })
+    expect(parseCommand(['task', 'add', 'Fix', '--type', 'feature', '--weight', 'huge'])).toEqual({ error: '--weight is one of light, standard, heavy' })
     await noteTurn(store, 'CO', 'user', 'add two tasks')
     const first = (await cli(['task', 'add', 'Tidy the docs', '--type', 'feature', '--description', 'One typo.'])).task
     expect(first).toMatchObject({ id: 'CO-1', state: 'todo', description: 'One typo.', log: [{ by: 'coordinator CO', text: 'added the task' }] })
+    expect((await cli(['show', 'CO-1'])).task.weight).toBe('standard (its steps)')
+    const heavy = (await cli(['task', 'add', 'Run e2e', '--type', 'feature', '--weight', 'heavy'])).task
+    expect((await cli(['show', heavy.id])).task.weight).toBe('heavy (set on the task)')
     await refused(cli(['task', 'add', 'X', '--type', 'study']), 'No task type "study": feature')
     await refused(cli(['task', 'add', 'X', '--type', 'feature', '--after', 'ST-1']), 'after: tasks of the same project')
     await noteTurn(store, 'CO', 'wake')
     await refused(cli(['task', 'add', 'Next', '--type', 'feature']), 'only with the autopilot on')
     await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { ...DEFAULT_AUTOPILOT, on: true } })
-    expect((await cli(['task', 'add', 'Next', '--type', 'feature', '--after', 'CO-1'])).task).toMatchObject({ id: 'CO-2', after: 'CO-1' })
+    expect((await cli(['task', 'add', 'Next', '--type', 'feature', '--after', 'CO-1'])).task).toMatchObject({ id: 'CO-3', after: 'CO-1' })
   })
 
   it('task remove: a task never started, with a reason in the project\'s log; in a wake only the autopilot\'s own', async () => {
