@@ -4,7 +4,7 @@ import { createSocketProbe } from '~/utils/socketProbe'
 import { DESK_QUERY, SLIM_QUERY, TABLET_QUERY, provesHardwareKeyboard } from '~/utils/layoutMode'
 import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, Pane, Quotas } from '#shared/types'
 import { LOCAL, splitId } from '#shared/ids'
-import { clearOffline, readHome, saveHome } from '~/utils/offlineCache'
+import { clearOffline, readHome, saveHome, type SavedHome } from '~/utils/offlineCache'
 import { coreRouteAllowed } from '#shared/coreRoutes'
 import { leaseFromStatus, mayReadOffline, readOfflineAccess, setOfflineAccess, type OfflineAccess } from '~/utils/offlineAccess'
 import { activeTerminalRenderer, parseTerminalRenderer } from '~/utils/terminalRenderer'
@@ -680,9 +680,14 @@ export function showLock() {
 // resume: see confirmLock.
 export async function start({ resume = false } = {}) {
   let access = readOfflineAccess()
-  // The last known state is read while the server is asked (it shows only once
-  // the answer allows it): one round trip less before the home list.
+  // The last known state is read while the server is asked, and shown as soon
+  // as it is read when this device's lease allows it (the rule of offline
+  // reading): no empty frame on reload while the answer comes. A server that
+  // says the session is locked hides it again (showLock).
   const early = mayReadOffline(access) ? readHome() : null
+  early?.then((saved) => {
+    if (saved && !locked.value && !eventsOpen.value && !herdrState.value.ok) showSaved(saved)
+  })
   try {
     const st = await api<AuthStatus>(resume ? '/api/auth/status?resume=1' : '/api/auth/status', undefined,
       AbortSignal.timeout(resume ? STATUS_WAIT_MS : AUTH_STATUS_WAIT_MS))
@@ -698,12 +703,13 @@ export async function start({ resume = false } = {}) {
   }
   if (mayReadOffline(access)) {
     const saved = await (early || readHome())
-    if (saved && !eventsOpen.value) {
-      fullState = saved.state
-      allSessionsState.value = fullState
-      herdrState.value = fullState
-      cachedAt.value = saved.at
-    }
+    if (saved && !eventsOpen.value) showSaved(saved)
   }
   boot()
+}
+function showSaved(saved: SavedHome) {
+  fullState = saved.state
+  allSessionsState.value = fullState
+  herdrState.value = fullState
+  cachedAt.value = saved.at
 }

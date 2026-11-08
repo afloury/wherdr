@@ -22,6 +22,7 @@ export interface Task {
   waitKind?: 'question' | 'permission' | 'auth' // what it waits for
   mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
   ci?: { head: string, red: boolean } // its PR's CI at the task's commit, as the engine last read it
+  idle?: number // since when the agent holding its step sits idle, its report still due (blocked.ts)
   run?: string // the current run
   step?: StepState // where the step engine has it
   base?: string // the project's working branch when it started ('' none): a later change leaves it alone
@@ -35,6 +36,7 @@ export interface Task {
   autopilot?: true // started or added by the coordinator in a wake: its autopilot's own
   auto?: string // the automation that added it
   origin?: TaskOrigin // who made it: only automatic work is held by the pace (pace.ts)
+  held?: string // an automatic start waits for memory on its machine (memory.ts): the engine starts it once memory is back
   cleanup?: { done?: true, skipped?: string } // its worktree removed, or why it stays (cleanup.ts)
   createdAt: number
 }

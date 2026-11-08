@@ -35,7 +35,7 @@ it('groups every reported program by status and lifts mixed workspaces', async (
   expect(state.panes[0]?.agent).toBe('delta-worker')
   const rows = spaceRows(state)
   expect(rows.map(rowGroup)).toEqual(['working', 'working', 'unknown', 'unknown', 'ready', 'blocked'])
-  expect(coreRowCounts(rows)).toEqual({ working: 2, blocked: 1, stuck: 0, ready: 3 })
+  expect(coreRowCounts(rows)).toEqual({ working: 2, blocked: 1, ready: 3 })
   expect(rows[1]?.lead.coreAddress).toBe('t3')
   expect(tabStates(rows[1]!)).toEqual(['idle', 'working'])
 })
@@ -50,7 +50,7 @@ it('lists three agents of one folder as three rows counted 1/1/1', async () => {
   ], [])
   const rows = individualAgentRows(spaceRows(state))
   expect(rows).toHaveLength(3)
-  expect(coreRowCounts(rows)).toEqual({ working: 1, blocked: 1, stuck: 0, ready: 1 })
+  expect(coreRowCounts(rows)).toEqual({ working: 1, blocked: 1, ready: 1 })
 })
 
 it('recognizes a Devin command when core supplies no agent field', () => {

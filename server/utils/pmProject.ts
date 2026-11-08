@@ -24,7 +24,7 @@ export async function guardsAuthor(store: PmStore, authorization: unknown): Prom
 }
 
 async function workflowOf(store: PmStore, key: unknown) {
-  const p = (await store.projects()).find(x => x.key === key)
+  const p = await store.project(key)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
   const t = await store.workflow(p.key)
   if (!t) throw new HerdrError('not_found', 'The project has no workflow: start it from a template')
@@ -33,7 +33,7 @@ async function workflowOf(store: PmStore, key: unknown) {
 
 // GET /api/pm/project?key=: one load for the project sheet.
 export async function projectView(store: PmStore, key: string) {
-  const p = (await store.projects()).find(x => x.key === key)
+  const p = await store.project(key)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
   const proposal = (await store.coordinator(p.key))?.proposal
   return {
@@ -70,4 +70,12 @@ export async function saveProjectGuards(store: PmStore, key: unknown, guards: un
   const { guards: _old, ...rest } = t
   const next = guards && typeof guards === 'object' && Object.keys(guards).length ? { ...rest, guards: guards as Guards } : rest
   return { workflow: await store.saveWorkflow(p.key, next, { by }) }
+}
+
+// Save as template: a copy of the project's workflow joins the library under
+// `id` (a taken id is refused). The project is untouched.
+export async function templateFromProject(store: PmStore, key: unknown, id: unknown) {
+  const { t } = await workflowOf(store, key)
+  const { version: _version, ...copy } = t
+  return { template: await store.saveTemplate({ ...copy, id }) }
 }

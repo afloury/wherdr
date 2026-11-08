@@ -2,9 +2,10 @@
 // The board: Your turn first, then the columns of the project's template
 // (To do / Working / Done for all projects, with the step on the card). A
 // card's indicator is the live state of the agent holding its step.
-import { boardLanes, boardTags, canStop, cardStatus, linkLabel, mainLink, type Board, type Card } from '#shared/pm/board'
+import { boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, waitsFor, type Board, type Card } from '#shared/pm/board'
+import type { Task } from '#shared/pm/run'
 import { RESUMES } from '#shared/pm/stop'
-import { taskMark } from '#shared/pm/blocked'
+import { shownTaskId, storedTaskId } from '#shared/pm/projectKey'
 import type { Pane } from '#shared/types'
 
 const data = ref<Board | null>(null)
@@ -14,6 +15,8 @@ const tag = ref('') // '' = every tag
 // The task to show, also from Decisions' "Open task" (/board?task=CO-1).
 const route = useRoute()
 const open = ref<string | null>(typeof route.query.task === 'string' ? route.query.task : null)
+// Also when the board is already open (the sidebar's Tasks to handle).
+watch(() => route.query.task, (id) => { if (typeof id === 'string') open.value = id })
 const decisions = ref(0) // what waits for the user's choice, on the Decisions screen
 
 async function load() {
@@ -47,14 +50,12 @@ const showStep = (c: Card, lane: string) => c.step && (!columns.value || lane ==
 // The holder's pane, by its herdr-core address; none for holder: none.
 const hasAgent = (c: Card) => c.holder !== 'none' && !c.state?.done
 const paneOf = (c: Card): Pane | undefined => (c.terminal ? herdrState.value?.panes.find(p => p.coreAddress === c.terminal) : undefined)
-// Blocked (no progress): its badge replaces the Your turn one, same words as the sidebar.
-// The agent's own question comes first, as in the sidebar.
-const blockedOf = (c: Card) => { const m = !waitsForYou(c) && taskMark(c, paneOf(c)?.status); return m && m.kind === 'blocked' ? m.reason : '' }
 const live = (c: Card) => {
   const p = paneOf(c)
   return p ? { key: statusKey(p), label: `${t(c.holder === 'reviewer' ? 'Reviewer' : 'Worker')}: ${statusLabel(p)}` } : { key: 'inactive', label: tl('No agent running', 'Aucun agent lancé') }
 }
-// The card's menu: Stop (confirmed in the task's sheet), how a stopped task
+// The card's menu: Start for a task to do (not one waiting for others: its
+// card says which), Stop (confirmed in the task's sheet), how a stopped task
 // goes on, or Delete for a task never started (confirmed). It opens on right
 // click and long press of the card; its ••• button shows only when the menu
 // has more than Open (a tap already opens the task).
@@ -65,11 +66,23 @@ const show = (id: string, stop = false) => { stopping.value = stop; open.value =
 const act = (fn: () => Promise<unknown>) => fn().then(load, (e: Error) => { error.value = e.message })
 const menuOf = (c: Card): MenuItem[] => [
   { label: tl('Open', 'Ouvrir'), icon: 'i-lucide-panel-right-open', run: () => show(c.id) },
+  ...(canStart(c) && !waiting(c).length ? [{ label: tl('Start', 'Lancer'), icon: 'i-lucide-play', run: () => act(() => startTaskApi(c.id)) }] : []),
   ...(canStop(c) ? [{ label: tl('Stop…', 'Arrêter…'), icon: 'i-lucide-square', danger: true, run: () => show(c.id, true) }] : []),
   ...(c.stopped ? RESUMES.map(how => ({ label: tl(...RESUME_LABEL[how]), danger: how === 'archive', run: () => act(() => resumeTaskApi(c.id, how)) })) : []),
   ...(c.removable ? [{ label: tl('Delete…', 'Supprimer…'), icon: 'i-lucide-trash-2', danger: true, run: () => act(() => removeTaskApi(c.id)) }] : []),
 ]
-const selected = computed(() => cards.value.find(c => c.id === open.value) ?? data.value?.cards.find(c => c.id === open.value) ?? null)
+const waiting = (c: Card) => (c.phase === 'todo' ? waitsFor(c, data.value?.cards ?? []) : [])
+
+// Add a task: the board's project preselected; the board is read again at
+// once; a refused Start now is said on the board, the task stays added.
+const adding = ref(false)
+function added(task: Task, refused?: string) {
+  load().then(() => { if (refused) error.value = `${shownTaskId(data.value?.projects ?? [], task.id)}: ${refused}` })
+}
+// By any key its project had, in any case (a link may name a former key: /board?task=WHR-5 after WHR became WD).
+const openId = computed(() => storedTaskId(data.value?.projects ?? [], open.value) ?? open.value)
+const isOpen = (c: Card) => c.id === openId.value
+const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.find(isOpen) ?? null)
 </script>
 
 <template>
@@ -79,6 +92,9 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
       <h1 class="display">{{ tl('Board', 'Tableau') }}</h1>
       <UButton :color="decisions ? 'warning' : 'neutral'" :variant="decisions ? 'solid' : 'outline'" size="lg" to="/decisions" data-testid="board-decisions">
         {{ tl('Decisions', 'Décisions') }}<span v-if="decisions" class="mono-label board-decisions-n">{{ decisions }}</span>
+      </UButton>
+      <UButton icon="i-lucide-plus" color="neutral" variant="outline" size="lg" class="board-add" :aria-label="tl('Add a task', 'Ajouter une tâche')" :disabled="!data?.projects.length" data-testid="board-add" @click="adding = true">
+        <span class="board-add-label">{{ tl('Add task', 'Ajouter') }}</span>
       </UButton>
       <USelect v-model="projectPick" :items="projectItems" size="lg" class="board-select" :aria-label="tl('Project', 'Projet')" data-testid="board-project" />
       <USelect v-if="tags.length || tag" v-model="tagPick" :items="tagItems" size="lg" class="board-select" :aria-label="tl('Tag', 'Étiquette')" data-testid="board-tag" />
@@ -99,10 +115,12 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
             <span v-if="hasAgent(c)" class="card-state" :class="live(c).key" role="img" :aria-label="live(c).label" :title="live(c).label" data-testid="holder-state"><i /></span>
             <b>{{ c.title }}</b>
           </span>
-          <small class="mono-label">{{ c.id }}<template v-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
+          <small class="mono-label">{{ c.shown }}<template v-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
           <small v-if="statusOf(c)" class="board-status" :class="statusOf(c)!.tone" :title="statusOf(c)!.text" data-testid="board-status">{{ statusOf(c)!.text }}</small>
-          <span v-if="blockedOf(c)" class="board-badge stuck" data-testid="board-blocked">{{ tl('Blocked', 'Bloqué') }}: {{ blockedOf(c) }}</span>
-          <span v-else-if="c.yourTurn" class="board-badge" data-testid="board-badge">{{ c.yourTurn }}</span>
+          <span v-if="c.yourTurn" class="board-badge" data-testid="board-badge">{{ c.yourTurn }}</span>
+          <small v-else-if="waiting(c).length" class="muted" data-testid="board-waits">{{ tl('Waits for', 'Attend') }} {{ waiting(c).map(id => shownTaskId(data?.projects ?? [], id)).join(', ') }}</small>
+          <!-- Stalled, the machine may still fix it: a warning only; after 30 min it is Your turn. -->
+          <small v-if="c.stall && !c.yourTurn" class="board-stall" :title="c.stall.reason" data-testid="board-stall"><UIcon name="i-lucide-triangle-alert" aria-hidden="true" />{{ t(c.stall.reason) }}</small>
           <span v-if="c.tags.length || c.links.length" class="board-tags">
             <span v-for="tag in c.tags.slice(0, 2)" :key="tag" class="board-chip">{{ tag }}</span>
             <span v-if="c.tags.length > 2" class="board-chip">+{{ c.tags.length - 2 }}</span>
@@ -120,7 +138,8 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
       </section>
     </div>
     </div>
-    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}`" :card="selected" :pane="paneOf(selected)" :stopping="stopping" @closed="open = null; stopping = false" @changed="load" />
+    <AddTaskSheet v-if="adding && data" v-model:open="adding" :projects="data.projects" :cards="data.cards" :project="project" @added="added" />
+    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" @closed="open = null; stopping = false" @changed="load" />
   </section>
 </template>
 
@@ -129,6 +148,13 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
 .board-top { flex: none; display: flex; align-items: center; gap: 8px; min-height: calc(44px + var(--safe-top, 0px)); padding: var(--safe-top, 0px) 8px 0; border-bottom: 1px solid var(--line); }
 .board-top h1 { flex: 1; margin: 0; font-size: 20px; }
 .board-decisions-n { margin-left: 6px; color: inherit; }
+/* Phone: Add is an icon, and the heading is for screen readers only, so the project picker keeps its room. */
+@media (max-width: 899px) {
+  .board-add { width: 44px; justify-content: center; }
+  .board-add-label { display: none; }
+  .board-top h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .board-top [data-testid="board-decisions"] { margin-right: auto; }
+}
 .board-top :deep(.board-select) { min-width: 0; flex: 0 1 auto; }
 .board-note { padding: 12px 16px; }
 .board-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
@@ -146,6 +172,8 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
 .board-status.wait { color: var(--working); }
 .board-status.bad { color: var(--danger); }
 .board-status.ok { color: var(--done); }
+.board-stall { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 12px; color: var(--blocked); }
+.board-stall span { flex: none; }
 @media (min-width: 900px) {
   .board-body { overflow-y: hidden; }
   .board-lanes { flex: 1; flex-direction: row; align-items: stretch; overflow-x: auto; }

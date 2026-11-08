@@ -97,7 +97,10 @@ watch(() => draft.value && `${draft.value.machine}\n${draft.value.path}`, () => 
 })
 onBeforeUnmount(() => clearTimeout(timer))
 // No project yet: straight to adding one.
-onMounted(() => { if (!project.value && !draft.value && !projectCoordinators.value.length) add() })
+onMounted(() => {
+  if (newProjectOpen.value || (!project.value && !draft.value && !projectCoordinators.value.length)) add()
+  newProjectOpen.value = false
+})
 const kind = computed(() => (draft.value?.probe ? folderKind(draft.value.probe) : null))
 const notes = {
   git: () => tl('Git repository: each task gets its own worktree and pull request.', 'Dépôt git : chaque tâche a son worktree et sa pull request.'),

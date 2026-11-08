@@ -27,7 +27,7 @@ const coordProject = ref('')
 const coordAgent = ref('')
 const draft = ref<ProjectDraft | null>(null)
 const canCoordinate = computed(() => !newTabSpace.value && coordinators.value.length > 0)
-watch(canCoordinate, (can) => { if (!can) coordinator.value = false })
+watch(canCoordinate, (can) => { if (!can && !newProjectOpen.value) coordinator.value = false })
 
 // Settings › Agents: the offered agents of this machine, in the user's order (the first is the default).
 const kinds = computed(() => visibleAgentKinds(machineCfg.value?.kinds || appConfig.value.kinds || [], hiddenAgents.value, agentOrder.value))
@@ -41,7 +41,7 @@ const fixedMachine = computed(() => newTabSpace.value)
 // Folder suggested for the new tab: that of a pane of its space.
 const spaceCwd = (ws: string) => herdrState.value.panes.find(p => p.workspace === ws && p.cwd)?.cwd || null
 watch(newAgentOpen, (o) => {
-  if (!o) { newTabSpace.value = null; newAgentMachine.value = null }
+  if (!o) { newTabSpace.value = null; newAgentMachine.value = null; newProjectOpen.value = false }
 })
 
 // ------------------------------------------------------------ machine
@@ -85,8 +85,9 @@ watch(newAgentOpen, async (open) => {
   browsing.value = false
   launching.value = false
   draft.value = null
-  // Each opening starts on the user's first agent.
+  // Each opening starts on the user's first agent, or on a new project.
   kind.value = ''
+  if (newProjectOpen.value) coordinator.value = true
   if (!newTabSpace.value) loadCoordinators()
   syncKind()
   await loadConfig()

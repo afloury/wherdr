@@ -4,6 +4,8 @@
 // noted on the task before it runs, so it is never made twice.
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { ciOf, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
+import { awaitsHolder } from '../../shared/pm/blocked'
+import type { PlannedStep } from '../../shared/pm/steps'
 import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP, machineOn } from './coreCreate'
 import { actionShell } from './pmActions'
@@ -11,10 +13,11 @@ import { prSeen, stepAction } from './pmBoard'
 import { prNow, requiredChecks } from '../../shared/pm/board'
 import { exec, startTask, type PmLaunchDeps } from './pmLaunch'
 import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
-import { pacedStart } from '../../shared/pm/pace'
+import { originOf, pacedStart, paceRefusal } from '../../shared/pm/pace'
 import { projectPace } from './pmPace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { advanceTick } from './pmAdvance'
+import { forgetMemory, memoryHold } from './pmMemory'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -77,11 +80,56 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
       if (!coordinatorStartRefusal(ap, t, mine, runs, now, false, { pace, engine: true })) { next = t; break }
     }
     if (!next) continue
+    // Short on memory: held, with why on its card, until a later tick finds memory back.
+    const held = await memoryHold(deps, p.key)
+    if (held) { if (next.held !== held) await store.logTask({ ...next, held }, 'engine', held); continue }
+    forgetMemory(p.machine)
     const r = await startTask(deps, next.id).catch((e: Error) => ({ ...next, state: 'waiting' as const, waiting: e.message }))
     await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} done` : `could not start after ${next.after}: ${r.waiting ?? ''}`)
     started.push(next.id)
   }
   return started
+}
+
+// Tasks a wake or an automation would have started, held for memory: each
+// starts once its machine has memory back, one per machine and tick (the next
+// reading counts the new agent). Chained ones are startChained's. A wake's task
+// still holds to its autopilot (on, limits, hours, pace), an automation's to
+// the pace: over a limit it waits, with why; the autopilot off drops the hold.
+export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
+  const { store } = deps
+  const projects = await store.projects(), runs = await store.runs(), started: string[] = [], machines = new Set<string>()
+  for (const t of (await store.tasks()).filter(x => x.held && x.state === 'todo' && !x.after)) {
+    const p = projects.find(x => x.key === t.project)
+    if (!p || machines.has(p.machine)) continue
+    const pace = pacedStart(t, 'wake') ? (await projectPace(store, p.key, t, now))?.verdict : undefined
+    const why = originOf(t) === 'automation' ? paceRefusal(pace)
+      : coordinatorStartRefusal((await store.coordinator(p.key))?.autopilot, t, (await store.tasks()).filter(x => x.project === p.key), runs, now, true, { pace })
+    if (why && /autopilot on/.test(why)) { await store.logTask({ ...t, held: undefined }, 'engine', `no longer held: ${why}`); continue }
+    const held = why ? `Waits: ${why}` : await memoryHold(deps, p.key)
+    if (held) { if (held !== t.held) await store.saveTask({ ...t, held }); continue }
+    machines.add(p.machine)
+    forgetMemory(p.machine)
+    const r = await startTask(deps, t.id).catch((e: Error) => ({ ...t, state: 'waiting' as const, waiting: e.message }))
+    await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? 'started: memory is back' : `could not start: ${r.waiting ?? ''}`)
+    started.push(t.id)
+  }
+  return started
+}
+
+// Kept for the board: since when the agent holding the step sits idle while
+// the step waits for its report (pm/blocked.ts). Unread status: unchanged.
+async function noteIdle(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], runs: Run[], now: number): Promise<Task> {
+  const step = awaitsHolder(task, plan) ? plan[task.step!.at] : undefined
+  const holder = step && runs.filter(r => r.task === task.id && r.role === step.holder && r.state !== 'ended' && r.terminal).sort((a, b) => b.startedAt - a.startedAt)[0]
+  let idle: number | undefined
+  if (holder) {
+    const st = await deps.call<{ status?: string | { state?: string } }>('terminal.get', { terminal: holder.terminal }, 3000).catch(() => null)
+    if (!st) return task
+    const s = typeof st.status === 'string' ? st.status : st.status?.state
+    idle = s === 'idle' || s === 'done' ? task.idle ?? now : undefined
+  }
+  return idle === task.idle ? task : deps.store.saveTask({ ...task, idle })
 }
 
 export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
@@ -90,6 +138,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   await syncWaits(deps).catch(() => {})
   await advanceTick(deps, now).catch(() => {})
   await startChained(deps, now).catch(() => {})
+  await startHeld(deps, now).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
   for (let task of await store.tasks()) {
@@ -103,6 +152,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
     try { on = machineOn(deps, p.machine).on } catch { continue }
     const sh = actionShell(deps, on)
     const plan = taskPlan(t, task, p)
+    task = await noteIdle(deps, task, plan, runs, now)
     const facts: MechFacts = { task, plan, guards: taskGuards(t, task.type), branch: run.branch, agentBusy: false }
     if (task.state === 'waiting' && task.waitKind === 'auth') {
       facts.loggedIn = (await exec(deps, on, `${PATH_SETUP}\n${LOGIN_SCRIPT}`, [run.program]).catch(() => null))?.code === 0
@@ -112,7 +162,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       const lines = r.out.split('\n')
       try { facts.pr = (JSON.parse(lines.at(-1) || '[]') as PrInfo[])[0] } catch { continue }
       facts.head = lines[0]?.trim()
-      // Kept for the board: a task is blocked only while its CI is still red (pm/blocked.ts).
+      // Kept for the board: a task is stalled only while its CI is still red (pm/blocked.ts).
       const ci = ciOf(facts.pr, facts.head)
       if (ci && (ci.head !== task.ci?.head || ci.red !== task.ci?.red)) facts.task = task = await store.saveTask({ ...task, ci })
       const seen = prNow(facts.pr, requiredChecks(plan))

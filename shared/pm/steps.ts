@@ -55,6 +55,7 @@ export type StepEvent =
   | { kind: 'action-result', ok: boolean, error?: string, evidence?: Partial<Record<Evidence, string>>, toAgent?: boolean, review?: Rereview }
   | { kind: 'tick' }
   | { kind: 'skip' } // the user takes a stopped task as it is: on to the next step
+  | { kind: 'back', note: string } // the user sends a step of theirs (a visual merge) back to the worker, with what to change
 
 export type Effect =
   | { kind: 'instruct', step: string, holder: Holder, text: string }
@@ -265,6 +266,17 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       // The step stays open; the badge says what went wrong.
       const badge = `${step.badge || step.userLabel || step.id}: ${ev.error || `${step.action!.kind} failed`}`
       return { state: { ...state, acting: undefined, yourTurn: { reason: 'action', badge, ...(ev.error ? { error: ev.error } : {}) } }, effects }
+    }
+    case 'back': {
+      const back = plan.slice(0, state.at).findLastIndex(p => p.holder === 'worker')
+      if (step.ends !== 'user' || state.acting) return refuse(`Step "${step.id}" does not wait for you`)
+      if (back < 0) return refuse('No earlier step of the agent to send it back to')
+      if (!ev.note.trim()) return refuse('Say what to change')
+      const fix = `The user sent it back from "${step.id}": ${ev.note.trim()}\nFix it, commit, then say you are done.`
+      effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: fix }, { kind: 'log', text: `${step.id}: sent back by the user. ${ev.note.trim()}` })
+      // The screens sent back are dropped: the worker gives new ones, and the merge shows only those.
+      const { [plan[back]!.id]: _sentBack, ...shots } = state.shots ?? {}
+      return { state: { ...enter(plan, { ...state, shots }, back, now, []), fix }, effects }
     }
     case 'skip': return { state: enter(plan, { ...state, backFrom: undefined }, state.at + 1, now, effects), effects }
     case 'tick': {

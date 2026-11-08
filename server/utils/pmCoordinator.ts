@@ -15,6 +15,7 @@ import { ackWakes } from '../../shared/pm/wakes'
 import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
 import type { Project } from '../../shared/pm/project'
+import { projectOf, shownKey, shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
@@ -27,6 +28,7 @@ import { ensureVisibility } from './pmVisibility'
 import { removeTask, resumeTask, stopTask } from './pmStop'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
+import { memoryHold, memoryState } from './pmMemory'
 import { projectPace } from './pmPace'
 import type { CoordinatorRecord, PmStore } from './pmStore'
 import { OWN_FILES, alfredFiles, alfredName, isAlfredProgram, startPrompt } from '../../shared/pm/alfred'
@@ -96,7 +98,7 @@ const workingBranch = (p?: Project) => p?.base || 'not set: tasks start from the
 const planOf = (t: Template, task: Task, p?: Project) => taskPlan(t, task, p)
 const summary = (t: Template | null, task: Task, p?: Project) => {
   const step = t ? currentStep(planOf(t, task, p), task.step ?? initialState()) : undefined
-  return { id: task.id, title: task.title, type: task.type, state: task.step?.abandoned ? 'abandoned' : task.step?.done ? 'done' : task.stopped ? 'stopped' : task.state, ...(task.stopped ? { stopped: task.stopped } : {}), step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}) }
+  return { id: p ? shownTaskId([p], task.id) : task.id, title: task.title, type: task.type, state: task.step?.abandoned ? 'abandoned' : task.step?.done ? 'done' : task.stopped ? 'stopped' : task.state, ...(task.stopped ? { stopped: task.stopped } : {}), step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}) }
 }
 
 const unb64 = (v: unknown) => (typeof v === 'string' ? Buffer.from(v, 'base64').toString('utf8') : v)
@@ -116,7 +118,9 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
   const cmd = parseCommand(body.argv)
   if ('error' in cmd) throw new HerdrError('bad_input', cmd.error)
   const projects = await store.projects()
-  if (!main && cmd.project && cmd.project !== scope) throw new HerdrError('refused', `Your token acts on project ${scope} only`)
+  // A project named by any of its keys (WD, or WHR before its rename).
+  const named = cmd.project ? projectOf(projects, cmd.project)?.key ?? cmd.project : undefined
+  if (!main && named && named !== scope) throw new HerdrError('refused', `Your token acts on project ${scope} only`)
   // Another project's task reads as unknown to a project's token.
   const taskOf = async (id: string) => {
     const task = await store.task(id)
@@ -124,7 +128,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     return task
   }
   // The command's project: its task's, the one named, or the token's.
-  const key = 'task' in cmd ? (await taskOf(cmd.task)).project : cmd.project ?? (main ? '' : scope)
+  const key = 'task' in cmd ? (await taskOf(cmd.task)).project : named ?? (main ? '' : scope)
   const p = projects.find(x => x.key === key)
   if (key && !p) throw new HerdrError('not_found', 'Unknown project')
   const t = p ? await store.workflow(p.key) : null
@@ -132,7 +136,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
   // A turn the server saw start over an hour ago is not trusted any more.
   const turn: Turn = rec?.turn && Date.now() - rec.turn.at < TURN_MS ? rec.turn.kind : 'none'
   const by = main ? 'main coordinator' : `coordinator ${key}`
-  const needProject = () => { if (!p) throw new HerdrError('bad_input', `Name the project: --project <KEY> (${projects.map(x => x.key).join(', ')})`); return p }
+  const needProject = () => { if (!p) throw new HerdrError('bad_input', `Name the project: --project <KEY> (${projects.map(shownKey).join(', ')})`); return p }
   const needPlan = () => { needProject(); if (!t) throw new HerdrError('not_found', 'The project has no template'); return t }
   // The tasks the token's limits count: its project's, or every task for the main coordinator.
   const mineOf = async () => (await store.tasks()).filter(x => main || x.project === key)
@@ -197,12 +201,14 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const mine = await mineOf()
       const now = Date.now()
       const line = async (k: string) => { const pace = await projectPace(store, k, undefined, now, true); return pace ? paceLine(pace, now) : 'unknown: the project has no template or no worker program' }
+      const mem = (machine: string) => memoryState(deps, machine).then(s => `${s.label}: ${s.line}`, () => 'memory unknown')
       return {
         autopilot: ap, lookForWork: !!ap.lookForWork,
         workingBranch: key ? workingBranch(p) : Object.fromEntries(projects.map(x => [x.key, workingBranch(x)])),
         pacing: key ? await line(key) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await line(x.key)]))),
+        memory: key ? await mem(p!.machine) : await Promise.all([...new Set(projects.map(x => x.machine))].map(mem)),
         today: { ...limitsLeft(ap, mine, await store.runs(), now), skippedWakes: today(rec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(rec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
-        note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are',
+        note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. Memory holds automatic starts too, on a machine short on memory or at its cap of agents (all projects together): such a task waits and starts by itself once memory is back',
       }
     }
     case 'automation list': return { automations: (await store.automations(needProject().key)).automations.map(automationLine), note: 'Only the user adds or changes automations, in wherdr' }
@@ -231,11 +237,16 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const why = (task.stopped ? resumeRefusal(task, 'continue', who, undefined) : undefined)
         ?? coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), now, wake, { pace })
       if (why) throw new HerdrError('refused', why)
+      // Short on memory: a wake's start waits for it (the engine starts it then); the user's goes, with a word.
+      const short = await memoryHold(deps, key)
+      // A failed task a wake starts again goes back to do, where the engine starts held tasks.
+      if (short && wake && !task.stopped) return { task: await store.logTask({ ...task, state: 'todo', waiting: undefined, waitKind: undefined, autopilot: true, held: short }, by, short), held: `${short}. It starts by itself once memory is back` }
       // Started in a wake: the autopilot's own task, which it may stop in a wake.
       if (wake && !task.autopilot) await store.saveTask({ ...task, autopilot: true })
-      if (task.stopped) return { task: await resumeTask(deps, task.id, 'continue', who, by) }
+      const memory = short ? { memory: `${short}: started anyway, as the user asked` } : {}
+      if (task.stopped) return { task: await resumeTask(deps, task.id, 'continue', who, by), ...memory }
       const started = await startTask(deps, task.id)
-      return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`) }
+      return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`), ...memory }
     }
     case 'task stop': {
       const task = await taskOf(cmd.task)

@@ -3345,19 +3345,6 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 /* 16 px: iOS zooms into a smaller field. */
 .pm-select { max-width: 100%; min-height: 44px; padding: 8px; border: 1px solid var(--line); border-radius: 0; background: var(--bg); color: var(--text); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 16px; }
 .board-badge { align-self: flex-start; font: 600 12px var(--font-mono); padding: 2px 6px; border: 1px solid var(--blocked); color: var(--blocked); }
-/* Blocked: a task holding a slot without progress (shared/pm/blocked.ts).
-   The orange of Your turn, with a still square: nothing to answer, something to unblock. */
-.board-badge.stuck { background: color-mix(in srgb, var(--blocked) 12%, transparent); }
-.stat.stuck span i, .rail-stat.stuck i { background: var(--blocked); }
-/* Four counters: narrower cells, so the labels stay whole. */
-.stats:has(.stat.stuck) .stat { padding-inline: 6px; }
-.stats:has(.stat.stuck) .stat span { gap: 4px; letter-spacing: 0; }
-.stat.stuck:not(.zero) b, .rail-stat.stuck:not(.zero) b { color: var(--blocked); }
-.agent-group.stuck .group-title { color: var(--blocked); }
-.agent-group.stuck .group-title::before { background: var(--blocked); }
-.card.stuck::before { background: var(--blocked); }
-.card-state.stuck { color: var(--blocked); }
-.card-state.stuck i { width: 8px; height: 8px; }
 .board-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .board-chip { font: 500 12px var(--font-mono); padding: 2px 6px; border: 1px solid var(--line); color: var(--text-2); }
 a.board-chip { color: var(--accent); text-decoration: none; }

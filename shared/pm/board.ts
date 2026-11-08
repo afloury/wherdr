@@ -4,9 +4,10 @@
 // puts it in Your turn, whatever its step, with a badge saying what to do.
 import type { Holder } from './workflow'
 import type { PlannedStep, StepState } from './steps'
-import type { Run, Task } from './run'
+import type { Run, Task, WaitKind } from './run'
 import { notStarted, type Stopped } from './stop'
-import { awaitsHolder, blockedOf } from './blocked'
+import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
+import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
 
 export type Phase = 'todo' | 'working' | 'done'
@@ -14,6 +15,7 @@ export const PHASES: Phase[] = ['todo', 'working', 'done']
 
 export interface Card {
   id: string
+  shown: string // the id as the user sees it, with the project's current key (projectKey.ts)
   project: string
   title: string
   description: string
@@ -23,9 +25,7 @@ export interface Card {
   holder: Holder
   terminal?: string // herdr-core address of the holder's agent, if it runs
   yourTurn?: string // the badge
-  blocked?: string // why it holds a slot without progress (blocked.ts)
-  awaits?: true // its step waits for the holder's report: idle, that agent blocks it
-  terminals?: string[] // every running agent of the task (worker, reviewer)
+  stall?: Stall // stalled, the machine may still fix it (blocked.ts); past HANDLE_AFTER_MS, also its yourTurn
   userLabel?: string // the button of a step that waits for the user
   tags: string[]
   links: { label: string, url: string }[]
@@ -34,10 +34,14 @@ export interface Card {
   state?: StepState
   stopped?: Stopped // who stopped it and why: Continue, Take it as it is or Archive
   removable?: true // never started (no agent, worktree or branch): the user may remove it
+  after?: string[] // tasks of the same project it starts after
   prNow?: string // its PR as the engine last read it (prNow)
+  held?: string // waits for memory on its machine
+  asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
 }
 
-export interface BoardProject { key: string, name: string, columns: string[] }
+// types: the project's task types, each with its steps in one line ("work → review → merge").
+export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string }[] }
 // GET /api/pm/board
 export interface Board { projects: BoardProject[], cards: Card[] }
 
@@ -68,20 +72,18 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
   const run = holder === 'worker' || holder === 'reviewer'
     ? runs.filter(r => r.task === task.id && r.role === holder && r.state !== 'ended').sort((a, b) => b.startedAt - a.startedAt)[0]
     : undefined
-  const terminals = runs.filter(r => r.task === task.id && r.state !== 'ended' && r.terminal).map(r => r.terminal!)
-  const blocked = blockedOf(task, plan, now)
+  const stall = stallOf(task, plan, now)
   const yourTurn = s?.yourTurn?.badge || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
+    || (stall && now - stall.since >= HANDLE_AFTER_MS ? stallTurn(stall) : undefined)
   return {
-    id: task.id, project: task.project, title: task.title, description: task.description,
+    id: task.id, shown: task.id, project: task.project, title: task.title, description: task.description,
     column: plan.length ? columnOf((s?.done ? plan.at(-1) : step) ?? plan[0]!) : 'To do',
     phase: s?.done ? 'done' : started || running ? 'working' : 'todo',
     ...(step ? { step: step.id } : {}),
     holder,
     ...(run?.terminal ? { terminal: run.terminal } : {}),
     ...(yourTurn ? { yourTurn } : {}),
-    ...(blocked ? { blocked } : {}),
-    ...(awaitsHolder(task, plan) ? { awaits: true as const } : {}),
-    ...(terminals.length ? { terminals } : {}),
+    ...(stall ? { stall } : {}),
     ...(step?.ends === 'user' && started && !s?.done ? { userLabel: step.userLabel || 'Done' } : {}),
     tags: task.tags ?? [],
     // Then the links steps gave as their proof (the PR), labelled by step; each address once.
@@ -91,13 +93,41 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     plan,
     ...(s ? { state: s } : {}),
     ...(task.stopped ? { stopped: task.stopped } : {}),
+    ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '' } } : {}),
+    ...(task.held && task.state === 'todo' ? { held: task.held } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
+    ...(task.after ? { after: afterIds(task) } : {}),
   }
 }
+
+// The short action of a card in Your turn, for the sidebar's Tasks to handle.
+export function handleLabel(c: Pick<Card, 'stopped' | 'asks' | 'state' | 'stall' | 'userLabel'>): string {
+  if (c.stopped) return 'Resume'
+  if (c.asks) return 'Answer'
+  const r = c.state?.yourTurn?.reason
+  if (r === 'user') return c.userLabel || 'Done'
+  if (r === 'rounds') return 'Decide'
+  if (r === 'action') return 'Retry'
+  if (r === 'timeout') return 'Check'
+  return c.stall ? 'Unblock' : 'Look'
+}
+
+// A task waiting for the user, as the sidebar's Tasks to handle lists it (GET /api/pm/handle).
+export interface ToHandle { id: string, shown: string, title: string, action: string, label: string }
+export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn)
+  .map(c => ({ id: c.id, shown: c.shown, title: c.title, action: c.yourTurn!.split('\n')[0]!, label: handleLabel(c) }))
 
 // The card's one-tap link: its PR when it has one, else its first link.
 // A task the user may stop: started, not done, not stopped already.
 export const canStop = (c: Pick<Card, 'state' | 'stopped'>) => !!c.state?.started && !c.state.done && !c.stopped
+
+// A task the user may start by hand: to do, not stopped (its sheet resumes it).
+// One that waits for others shows them instead (waitsFor).
+export const canStart = (c: Pick<Card, 'phase' | 'stopped' | 'state'>) => c.phase === 'todo' && !c.state?.started && !c.stopped
+
+// The tasks a card still waits for: its 'after' ones not done yet (a removed one is not waited for).
+export const waitsFor = (c: Pick<Card, 'after'>, cards: Pick<Card, 'id' | 'phase'>[]) =>
+  (c.after ?? []).filter(id => cards.some(x => x.id === id && x.phase !== 'done'))
 
 export const mainLink = (c: Pick<Card, 'links'>) => c.links.find(l => /^pr$/i.test(l.label)) ?? c.links[0]
 // A GitHub PR's link reads 'PR #12'; any other keeps its label.
@@ -146,8 +176,9 @@ const ofPr = (pr: string): CardStatus => (pr === 'merged'
 // Where a task's PR and merge stand, in one short line: from its step state
 // and what the engine last read of its PR. None before a PR, or once stopped.
 // A done task merged by a step: 'merged', at the time it was done.
-export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow'>): CardStatus | undefined {
+export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' | 'held'>): CardStatus | undefined {
   const s = c.state
+  if (c.held) return { text: c.held, tone: 'wait' }
   if (!s?.started || c.stopped) return
   if (s.done) {
     const merged = c.plan.some(p => p.action && MERGES.includes(p.action.kind) && s.proofs[p.id] && Object.keys(s.proofs[p.id]!).length)

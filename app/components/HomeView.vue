@@ -1,15 +1,16 @@
 <script setup lang="ts">
 // Agent list, grouped by state; sidebar on a computer. Top to bottom: header
 // buttons, the machine bar (hidden with a single tab), counters, quotas, the
-// coordinators, then every agent of the machines shown, grouped by state (no
-// section per machine; with several machines each card names its machine).
+// coordinators, the tasks to handle, then every agent of the machines shown,
+// grouped by state (no section per machine; with several machines each card
+// names its machine).
 // A machine's actions live in its bar tab's menu (right click, long press);
 // without a bar, in the machine chips (several machines) or the header "…"
 // (a single machine: only what Settings and New do not already offer).
 // One row per agent terminal (individualAgentRows), as in v2.5; rows without
 // a status (plain shells) list as Ready.
 import type { MachineInfo, Pane } from '#shared/types'
-import { type ReadySort, type Row, createRowReuse, readyLists, rowGroup, sortReady, spaceRows, taskGroup } from '#shared/spaces'
+import { type ReadySort, type Row, createRowReuse, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
 import { coreRowCounts } from '#shared/coreState'
 import { claudeApiShown, claudeSuggestion, machineQuotaRows, quotaRows, tabQuotaRows } from '~/utils/quotas'
 import { longPress } from '~/utils/longPress'
@@ -46,7 +47,6 @@ const HomePollers = defineComponent({
   name: 'HomePollers',
   setup() {
     useQuotaLoader()
-    useAgentTasks()
     return () => null
   },
 })
@@ -54,11 +54,9 @@ const HomePollers = defineComponent({
 useNotificationRekey()
 // Counters follow the selected machine or group; unreachable machines stay out.
 const baseOfPane = (p: Pane) => { const m = machineInfo(p.machine); return m ? m.baseKey ?? m.key : p.machine || '' }
-// A task's agent row takes its task's state (Blocked, Your turn), as on the board.
-const rowState = (r: Row) => taskGroup(rowGroup(r), paneTaskMark(r.lead))
 const counts = computed(() => {
   const sel = machineBarSelection.value
-  return coreRowCounts(standaloneRows(spaceRows(st.value)), r => !paneStale(r.lead) && (sel === null || sel.includes(baseOfPane(r.lead))), rowState)
+  return coreRowCounts(standaloneRows(spaceRows(st.value)), r => !paneStale(r.lead) && (sel === null || sel.includes(baseOfPane(r.lead))))
 })
 
 const conn = computed(() => {
@@ -68,23 +66,20 @@ const conn = computed(() => {
   return { ok: true, text: 'wherdr v3 · herdr-core', idle: false }
 })
 
-// "Dashboard"-style counters: always all three, zeros dimmed, and Blocked
-// while a task has an agent running. Rows without a status (plain shells)
-// count and list as Ready, as in v2.5.
+// "Dashboard"-style counters: always all three, zeros dimmed. Rows without a
+// status (plain shells) count and list as Ready, as in v2.5.
 const stats = computed(() => ([
   ['blocked', counts.value.blocked, t('your turn')],
-  ...(agentTasks.value.length || counts.value.stuck ? [['stuck', counts.value.stuck, tl('blocked', 'bloqués')]] : []),
   ['working', counts.value.working, t('working')],
   ['done', counts.value.ready, t('ready')],
 ] as [string, number, string][]).map(([s, n, label]) => ({ s, n, label })))
 
 // Herdr's order stays that of each repository list. The Ready group may
 // show unread before read, and be sorted differently (readySort).
-function groupsOf(list: Row[], rawGroup = rowState) {
+function groupsOf(list: Row[], rawGroup = rowGroup) {
   const group = (r: Row) => { const g = rawGroup(r); return g === 'unknown' ? 'ready' : g }
   return ([
     { key: 'blocked', title: t('Your turn'), list: list.filter(r => group(r) === 'blocked') },
-    { key: 'stuck', title: tl('Blocked', 'Bloqués'), list: list.filter(r => group(r) === 'stuck') },
     { key: 'working', title: t('Working'), list: list.filter(r => group(r) === 'working') },
     { key: 'ready', title: tl('Ready', 'Prêts'), list: list.filter(r => group(r) === 'ready') },
   ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value).map(l => sortReady(l, readySort.value, rowTitle)) : [g.list] }))
@@ -533,6 +528,7 @@ function resetListWidth() {
 
       <AlfredRow v-if="st.ok" />
       <CoordinatorsSection v-if="st.ok" />
+      <TasksToHandle v-if="st.ok" />
 
       <OpenNetworkBanner />
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
