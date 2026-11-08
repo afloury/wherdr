@@ -2,6 +2,7 @@
 // waiting service worker, periodic check of the served build.
 // Pure logic and anti-loop guard: app/utils/appVersion.ts.
 import { installedSwAction, isNewBuild, mayReloadForChunk } from '../utils/appVersion'
+import { onceEvery } from '../utils/onceEvery'
 
 export const newVersionReady = ref(false)
 export const newVersionDismissed = ref(false)
@@ -43,20 +44,43 @@ export function registerServiceWorker() {
 
 // The shell may have come from the SW cache (slow network) and be older than
 // the served build: reload once, right away, before anything is typed.
-async function startupBuildCheck() {
+function startupBuildCheck() { void reloadIfNewBuild() }
+
+// Is a newer build served? Then reload to it once (guard against loops),
+// otherwise the banner. Also used when a file of the running build is missing:
+// a deployment removed it (terminal opened for the first time after a deploy).
+// Offline or same build: nothing. True if a newer build is served.
+export async function reloadIfNewBuild(): Promise<boolean> {
   try {
     const res = await fetch(`/_nuxt/builds/latest.json?${Date.now()}`, { cache: 'no-store' })
-    if (!res.ok || !isNewBuild(useRuntimeConfig().app.buildId, await res.json())) return
-    let storage: Storage | null = null
-    try { storage = sessionStorage } catch { /* unavailable */ }
-    if (mayReloadForChunk(storage, Date.now())) applyNewVersion()
-    else markNew()
-  } catch { /* offline: the periodic check will catch up */ }
+    if (!res.ok || !isNewBuild(useRuntimeConfig().app.buildId, await res.json())) return false
+  } catch { return false } // offline: the periodic check will catch up
+  let storage: Storage | null = null
+  try { storage = sessionStorage } catch { /* unavailable */ }
+  if (mayReloadForChunk(storage, Date.now())) void applyNewVersion()
+  else markNew()
+  return true
+}
+
+// Returning to the page and reconnecting ask for a check: at most one a
+// minute. One asked meanwhile runs at the end of the minute, so a redeployment
+// right after a check is still seen.
+const WAKE_CHECK_MS = 60000
+const wakeCheck = onceEvery(WAKE_CHECK_MS)
+let wakeLater: ReturnType<typeof setTimeout> | undefined
+export function checkNewVersionOnWake() {
+  if (wakeCheck.take()) { void checkNewVersion(); return }
+  if (wakeLater) return
+  wakeLater = setTimeout(() => {
+    wakeLater = undefined
+    if (!document.hidden) checkNewVersionOnWake()
+  }, wakeCheck.wait())
 }
 
 // Is the server serving a build other than the one running?
 export async function checkNewVersion() {
   if (newVersionReady.value) return
+  wakeCheck.mark()
   try {
     const res = await fetch(`/_nuxt/builds/latest.json?${Date.now()}`, { cache: 'no-store' })
     if (res.ok && isNewBuild(useRuntimeConfig().app.buildId, await res.json())) markNew()

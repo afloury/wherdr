@@ -5,7 +5,6 @@ import { ATTACH_MAX } from '../../shared/attachments'
 
 export default defineApi((event, b) => {
   const q = getQuery(event)
-  const pane = String(q.pane || '')
-  if (!PANE_RE.test(pane)) throw new HerdrError('bad_pane', 'Invalid pane')
-  return saveAttachment(b.data, String(q.name || '').slice(0, 255), pane)
+  // Core ids (`s<hex>:p<n>`): corePutAttachment checks the pane itself.
+  return corePutAttachment(coreInputDeps(), String(q.pane || ''), String(q.name || '').slice(0, 255), b.data)
 }, { raw: /^application\/octet-stream$/, max: ATTACH_MAX, tooLarge: 'File too large (30 MB max)' })

@@ -1,4 +1,4 @@
-import { rmSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import type * as Env from '../server/utils/env'
 
@@ -14,22 +14,15 @@ vi.mock('../server/utils/env', async (orig) => {
   return { ...env, HOST_LABEL: 'wherdr' }
 })
 
-const { adoptTailnetName, localMachineLabel, renameMachine, selfNames } = await import('../server/utils/machines')
-
 afterAll(() => rmSync(dirs.root, { recursive: true, force: true }))
 
-describe('adoptTailnetName', () => {
-  it('keeps its native name and ignores its own tailnet profile', () => {
-    expect(localMachineLabel()).toBe('wherdr')
-    adoptTailnetName(null)
-    expect(localMachineLabel()).toBe('wherdr')
-    adoptTailnetName('box.example.ts.net')
-    expect(localMachineLabel()).toBe('wherdr')
-    expect(selfNames()).toContain('box')
-  })
-  it('never replaces a name the user chose in the app', async () => {
-    await renameMachine('', 'Kitchen')
-    adoptTailnetName('other.example.ts.net')
-    expect(localMachineLabel()).toBe('Kitchen')
+describe('local machine name', () => {
+  it('is the host label, unless the user named the machine in the app', async () => {
+    vi.resetModules()
+    expect((await import('../server/utils/machines')).localMachineLabel()).toBe('wherdr')
+    mkdirSync(dirs.root, { recursive: true })
+    writeFileSync(`${dirs.root}/machine-label.txt`, 'Kitchen\n')
+    vi.resetModules()
+    expect((await import('../server/utils/machines')).localMachineLabel()).toBe('Kitchen')
   })
 })
