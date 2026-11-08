@@ -4,15 +4,16 @@
 import type { ThemeDef, ThemeGroup } from '~/utils/themes'
 import type { TypingSpeed } from '~/utils/typewriter'
 import { pasteJournalEnabled, pasteJournal, setPasteJournal } from '~/utils/pasteJournal'
-import pkg from '../../package.json'
 import { SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
 import type { SettingsSection } from '~/utils/settingsNav'
 import { type QuietDuration, type QuietScope, quietUntil } from '#shared/quiet'
 import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
+import { ENGINES } from '~/utils/dictation/registry'
 import { DEFAULT_MAX_SESSION_DAYS, MAX_SESSION_DAYS, type MaxSessionDays } from '#shared/sessionLimit'
 
-const appVersion = pkg.version
 const router = useRouter()
+// v3's own version (shared/v3Version.ts), also in /api/health.
+const appVersion = useRuntimeConfig().public.version
 // Sections: sidebar on a computer (one section shown), iOS Settings-style
 // list on the phone (a tap opens the section, Back returns to the list).
 // The section lives in the URL (`?section=plugins`):
@@ -27,10 +28,10 @@ watch(() => [route.path, route.query.section], () => {
 const section = computed<SettingsSection | null>(() => (SETTINGS_SECTIONS as readonly string[]).includes(String(route.query.section)) ? route.query.section as SettingsSection : null)
 const sectionIcons: Record<SettingsSection, string> = {
   appearance: 'i-lucide-palette', conversation: 'i-lucide-message-square', terminal: 'i-lucide-square-terminal',
-  agents: 'i-lucide-bot', plugins: 'i-lucide-puzzle', phone: 'i-lucide-smartphone', notifications: 'i-lucide-bell', security: 'i-lucide-lock', shortcuts: 'i-lucide-keyboard', advanced: 'i-lucide-bug', about: 'i-lucide-info',
+  agents: 'i-lucide-bot', projects: 'i-lucide-kanban', pacing: 'i-lucide-gauge', plugins: 'i-lucide-puzzle', phone: 'i-lucide-smartphone', notifications: 'i-lucide-bell', security: 'i-lucide-lock', shortcuts: 'i-lucide-keyboard', advanced: 'i-lucide-bug', about: 'i-lucide-info',
 }
 const sectionLabels: Record<SettingsSection, string> = {
-  appearance: 'Appearance', conversation: 'Conversation', terminal: 'Terminal', agents: 'Agents',
+  appearance: 'Appearance', conversation: 'Conversation', terminal: 'Terminal', agents: 'Agents', projects: 'Projects', pacing: 'Pace',
   plugins: 'Plugins', phone: 'Phone', notifications: 'Notifications', security: 'Security', shortcuts: 'Shortcuts', advanced: 'Advanced', about: 'About',
 }
 const sections = computed(() => SETTINGS_SECTIONS
@@ -69,7 +70,6 @@ const shellsOn = showShells
 const countersOn = showCounters
 const quotasOn = showQuotas
 const homeGroup = homeGrouping
-const individualListOn = individualAgentList
 const homeGroupItems = computed(() => [{ value: 'machine', label: t('Machine') }, { value: 'state', label: t('State') }])
 const compactOn = compactList
 const autoReorderOn = autoReorderReady
@@ -88,6 +88,18 @@ const replyStyleItems = computed(() => [
   { label: tl('Tap the text', 'Toucher le texte'), description: tl('No button: a question is underlined, tap it. A point: click it on a computer; on a phone, tap it, then “↳ Discuss”.', 'Aucun bouton : une question est soulignée, touche-la. Un point : clique-le sur ordinateur ; sur téléphone, touche-le, puis « ↳ Discuter ».'), value: 'text' },
   { label: tl('List under the message', 'Liste sous le message'), description: tl('A number after each question and the questions listed under the message; “+ Quote a point”, then the point.', 'Un numéro après chaque question et les questions listées sous le message ; « + Citer un point », puis le point.'), value: 'list' },
 ])
+// Dictation: Off, then the engines this build has (utils/dictation/registry.ts). Per device.
+const dictationChoice = dictationEngine
+const dictationItems = computed(() => {
+  const engines: Record<string, { label: string, description: string }> = {
+    device: { label: tl('On this device', 'Sur cet appareil'), description: tl('Nothing leaves the device; the model is downloaded once.', 'Rien ne quitte l’appareil ; le modèle est téléchargé une fois.') },
+    cloud: { label: tl('Online (OpenRouter)', 'En ligne (OpenRouter)'), description: tl('The audio goes through the wherdr server to OpenRouter.', 'L’audio passe par le serveur wherdr vers OpenRouter.') },
+  }
+  return [
+    { label: tl('Off', 'Désactivée'), description: tl('No mic in the message field. Default.', 'Pas de micro dans le champ de message. Par défaut.'), value: 'off' },
+    ...Object.keys(ENGINES).map(id => ({ ...engines[id]!, value: id })),
+  ]
+})
 // Forced off if the system reduces motion: shown disabled.
 const typewriter = computed({ get: () => typingSpeed.value, set: (v: TypingSpeed) => { typewriterSpeed.value = v } })
 const typingItems = computed(() => [
@@ -127,25 +139,6 @@ const backdropItems = computed(() => [
   { label: 'wherdr grid', description: t('Dotted grid with light packets, like wherdr.dev.'), value: 'wherdr' },
   { label: 'herdr grid', description: t('Flat line grid, like herdr.dev.'), value: 'herdr' },
 ])
-
-// Inventory of the reachable machines; the preferences follow the user across devices.
-const agentMachines = computed(() => {
-  const configured = appConfig.value.machines
-  return configured?.filter(m => m.local || (Boolean(m.home) && (machineInfo(m.key)?.status === 'online' || (!machineInfo(m.key) && m.online))))
-    || [{ key: '', label: hostLabel.value || t('This machine'), kinds: appConfig.value.kinds }]
-})
-const installedAgents = computed(() => [...new Set(agentMachines.value.flatMap(m => m.kinds || []))])
-function agentChecked(kind: string) { return !hiddenAgents.value.includes(kind) }
-function setAgentChecked(kind: string, checked: boolean) {
-  hiddenAgents.value = checked
-    ? hiddenAgents.value.filter(k => k !== kind)
-    : [...hiddenAgents.value, kind]
-}
-function agentMachineHint(kind: string) {
-  const available = agentMachines.value.filter(m => m.kinds.includes(kind))
-  if (available.length === agentMachines.value.length) return ''
-  return available.map(m => m.label || t('This machine')).join(', ')
-}
 
 // ------------------------------------------------------------ notifications
 const subscribed = pushOn
@@ -198,21 +191,14 @@ const quietEnd = computed(() => {
 })
 
 // ------------------------------------------------------------ theme
-// Picker section titles: brand names stay as is in both languages.
-const themeGroupLabel = (g: ThemeGroup) => (g === 'agents' ? tl('Agents', 'Agents') : g === 'herdr' ? 'Herdr' : 'wherdr')
+// Picker section titles: brand names stay as is in both languages; the
+// 'herdr' group holds the classic terminal palettes.
+const themeGroupLabel = (g: ThemeGroup) => (g === 'agents' ? tl('Agents', 'Agents') : g === 'herdr' ? tl('Classic', 'Classiques') : 'wherdr')
 // Preview: background, surface, line, text, accent, states (working, waiting, done).
 const swatches = (th: ThemeDef) => [th.c.bg, th.c.surface, th.c.line, th.c.text, th.c.accent, th.c.blue, th.c.rose, th.c.teal]
-const herdrName = computed(() => {
-  const h = appConfig.value.herdrTheme
-  if (!h) return null
-  return h.autoSwitch ? `${h.darkName || 'catppuccin'} / ${h.lightName || 'catppuccin-latte'}` : h.name || 'catppuccin'
-})
-const followed = computed(() => themeById(resolveHerdrTheme(appConfig.value.herdrTheme, false).id))
 const themesOpen = ref(false)
-const currentTheme = computed(() => (themeChoice.value === FOLLOW_HERDR ? followed.value : themeById(themeChoice.value)))
-const currentLabel = computed(() => (themeChoice.value === FOLLOW_HERDR
-  ? `${t('Follow Herdr')}${followed.value ? ` · ${followed.value.label}` : ''}`
-  : (currentTheme.value ? currentTheme.value.label : themeChoice.value)))
+const currentTheme = computed(() => themeById(themeChoice.value))
+const currentLabel = computed(() => (currentTheme.value ? currentTheme.value.label : themeChoice.value))
 function pickTheme(id: string) {
   themeChoice.value = id
   haptic()
@@ -260,17 +246,16 @@ const deadlineText = computed(() => {
   return tl(`This device asks for the passkey again at the first opening after ${when}.`, `Cet appareil redemandera la clé d’accès à la première ouverture après le ${when}.`)
 })
 
-onMounted(loadUpdate)
 onMounted(() => {
   refreshTerminalRenderStatus()
-  loadConfig() // Herdr theme up to date for "Follow Herdr"
+  loadConfig()
   refreshPush().then(refreshQuiet)
   refreshSecurity()
 })
 </script>
 
 <template>
-  <section id="settings" class="view settings-view">
+  <section id="settings" data-wherdr="settings" class="view settings-view">
     <header class="top bar settings-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Back')" @click="back" />
       <h2>{{ desk ? t('Settings') : activeLabel }}</h2>
@@ -286,6 +271,7 @@ onMounted(() => {
         </button>
       </nav>
       <div v-show="activeSection" ref="body" class="settings-body">
+        <div class="settings-column">
         <h2 class="settings-section-title">{{ activeLabel }}</h2>
 
         <div v-show="activeSection === 'appearance'" class="settings-section">
@@ -301,17 +287,6 @@ onMounted(() => {
               <section v-for="sec in themeSections()" :key="sec.group" class="theme-section" :aria-label="themeGroupLabel(sec.group)">
                 <h4 class="theme-section-title">{{ themeGroupLabel(sec.group) }}</h4>
                 <div class="theme-grid">
-                  <button
-                    v-if="sec.group === 'herdr'"
-                    type="button" role="radio" class="theme-opt" :class="{ on: themeChoice === FOLLOW_HERDR }" :aria-checked="themeChoice === FOLLOW_HERDR"
-                    @click="pickTheme(FOLLOW_HERDR)"
-                  >
-                    <span class="theme-sw">
-                      <i v-for="(c, i) in followed ? swatches(followed) : []" :key="i" :style="{ background: c }" />
-                    </span>
-                    <span class="theme-name">{{ t('Follow Herdr') }}<small>{{ herdrName ? `config.toml · ${herdrName}` : t('config.toml not found') }}</small></span>
-                    <UIcon v-if="themeChoice === FOLLOW_HERDR" name="i-lucide-check" class="theme-check" />
-                  </button>
                   <button
                     v-for="th in sec.themes" :key="th.id" type="button" role="radio" class="theme-opt" :class="{ on: themeChoice === th.id }"
                     :aria-checked="themeChoice === th.id" @click="pickTheme(th.id)"
@@ -338,12 +313,7 @@ onMounted(() => {
             <URadioGroup v-model="homeGroup" :items="homeGroupItems" aria-labelledby="home-group-label" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
 
             <label class="settings-toggle">
-              <span><b>{{ t('Individual agents') }}</b><small>{{ t('List standalone agents separately. Board tasks stay grouped. Follows you on every device.') }}</small></span>
-              <USwitch v-model="individualListOn" :aria-label="t('Individual agents')" color="success" size="xl" />
-            </label>
-
-            <label class="settings-toggle">
-              <span><b>{{ t('Compact list') }}</b><small>{{ t('Tasks: one line in Compact, two in Normal with current activity and relevant labels. Details stay in the task sheet. Follows you on every device.') }}</small></span>
+              <span><b>{{ t('Compact list') }}</b><small>{{ t('Cards: one line in Compact, two in Normal with current activity. Follows you on every device.') }}</small></span>
               <USwitch v-model="compactOn" color="success" size="xl" />
             </label>
             <label class="settings-toggle">
@@ -420,6 +390,21 @@ onMounted(() => {
             <URadioGroup v-model="quoteChoice" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio quote-mode-radio" />
             <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
           </div>
+          <div class="settings-group" data-testid="dictation-settings">
+            <h3>{{ tl('Dictation', 'Dictée') }}</h3>
+            <p class="muted settings-lead">{{ tl('A mic next to +: hold it and talk, or tap it to start and again to stop. The text goes into the field; nothing is sent on its own.', 'Un micro à côté de + : maintiens-le et parle, ou touche-le pour démarrer puis encore pour arrêter. Le texte va dans le champ ; rien n’est envoyé tout seul.') }}</p>
+            <URadioGroup v-model="dictationChoice" :items="dictationItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <DictationDeviceSettings v-if="dictationChoice === 'device'" />
+            <DictationCloudSettings v-if="dictationChoice === 'cloud'" />
+            <DictationRewriteSettings v-if="dictationChoice !== 'off'" />
+            <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
+          </div>
+          <div class="settings-group" data-testid="read-aloud-group">
+            <h3>{{ tl('Read aloud', 'Lecture à voix haute') }}</h3>
+            <p class="muted settings-lead">{{ tl('Play under each agent reply reads it aloud: the words only, with “code block” in place of code. One reply at a time; tap Stop to end it. On iPhone, iOS may stop reading when the screen locks or you leave the app.', 'Lire sous chaque réponse d’agent la lit à voix haute : les mots seulement, avec « bloc de code » à la place du code. Une réponse à la fois ; Arrêter y met fin. Sur iPhone, iOS peut arrêter la lecture quand l’écran se verrouille ou que tu quittes l’app.') }}</p>
+            <ReadAloudSettings />
+            <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
+          </div>
         </div>
 
         <div v-show="activeSection === 'terminal'" class="settings-section">
@@ -464,23 +449,12 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'agents'" class="settings-section">
-          <div class="settings-group">
-            <h3>{{ t('Offered agents') }}</h3>
-            <p class="muted agent-pref-intro">{{ t('Agents offered wherever an agent is chosen. Terminal is always available.') }}</p>
-            <div v-if="installedAgents.length" class="agent-pref-list">
-              <label v-for="agent in installedAgents" :key="agent" class="settings-toggle">
-                <span><b>{{ kindLabel(agent) }}</b><small v-if="agentMachineHint(agent)">{{ agentMachineHint(agent) }}</small></span>
-                <input class="agent-pref-check" type="checkbox" :checked="agentChecked(agent)" @change="setAgentChecked(agent, ($event.target as HTMLInputElement).checked)">
-              </label>
-            </div>
-            <p v-else class="muted agent-pref-intro">{{ t('No agents installed on online machines.') }}</p>
-            <p class="muted agent-pref-note">{{ t('Choices follow you on every device.') }}</p>
-          </div>
+          <CoreMachines />
+          <OfferedAgentsSettings />
           <div id="claude-quotas" class="settings-group">
             <h3>{{ tl('Claude quotas', 'Quotas Claude') }}</h3>
             <ClaudeQuotaSetup v-if="activeSection === 'agents'" />
           </div>
-          <WorktreesSection />
         </div>
 
         <div v-show="activeSection === 'notifications'" class="settings-section">
@@ -504,8 +478,16 @@ onMounted(() => {
           </div>
         </div>
 
+        <div v-show="activeSection === 'projects'" class="settings-section">
+          <ProjectsSettings :active="activeSection === 'projects'" />
+        </div>
+
+        <div v-show="activeSection === 'pacing'" class="settings-section">
+          <PacingSettings :active="activeSection === 'pacing'" />
+        </div>
+
         <div v-show="activeSection === 'plugins'" class="settings-section">
-          <ProjectsPluginSettings :machines="appConfig.machines || [{ key: '', label: hostLabel || t('This machine'), local: true, home: '', dirs: [], online: true, kinds: [] }]" />
+          <ClientPlugins data-wherdr="settings-plugins" />
         </div>
 
         <div v-show="activeSection === 'phone'" class="settings-section">
@@ -516,7 +498,7 @@ onMounted(() => {
           <div class="settings-group">
             <h3>{{ tl('Network access', 'Accès réseau') }}</h3>
             <OpenNetworkBanner />
-            <p v-if="!appConfig.openNetwork" class="muted settings-hint">{{ tl('wherdr only answers this computer (localhost) and your tailnet. A device on another network (a Wi-Fi, a LAN, the Internet) is refused, even with the address and the port. A proxy or tunnel you run on this computer counts as this computer.', 'wherdr ne répond qu’à cet ordinateur (localhost) et à ton tailnet. Un appareil sur un autre réseau (un Wi-Fi, un réseau local, Internet) est refusé, même avec l’adresse et le port. Un proxy ou un tunnel que tu fais tourner sur cet ordinateur compte comme cet ordinateur.') }}</p>
+            <p v-if="!appConfig.openNetwork" class="muted settings-hint">{{ tl('wherdr only answers this computer (localhost) and your own tailnet devices. A device on another network (a Wi-Fi, a LAN, the Internet) is refused, even with the address and the port, and so are other people\'s devices on your tailnet. A proxy or tunnel you run on this computer counts as this computer.', 'wherdr ne répond qu’à cet ordinateur (localhost) et à tes propres appareils du tailnet. Un appareil sur un autre réseau (un Wi-Fi, un réseau local, Internet) est refusé, même avec l’adresse et le port, comme les appareils des autres personnes de ton tailnet. Un proxy ou un tunnel que tu fais tourner sur cet ordinateur compte comme cet ordinateur.') }}</p>
             <NetworkTips />
           </div>
           <div class="settings-group">
@@ -550,12 +532,10 @@ onMounted(() => {
         <div v-show="activeSection === 'about'" class="settings-section">
           <div class="settings-group">
             <h3>{{ t('Application') }}</h3>
-            <p class="settings-version">wherdr · v{{ appVersion }}</p>
-            <UpdateBanner v-if="updateInfo?.latest" :info="updateInfo" />
-            <p v-else-if="updateInfo?.checked" class="muted settings-hint">{{ t('This is the latest version.') }}</p>
+            <p class="settings-version">wherdr {{ appVersion }} · herdr-core</p>
             <button type="button" class="settings-action solo" @click="reloadApp"><UIcon name="i-lucide-refresh-cw" />{{ t('Reload app') }}</button>
-            <button type="button" class="settings-action solo" @click="openOnboarding"><UIcon name="i-lucide-compass" />{{ tl('Setup guide', 'Guide de démarrage') }}</button>
           </div>
+        </div>
         </div>
       </div>
     </div>
