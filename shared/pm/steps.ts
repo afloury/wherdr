@@ -274,7 +274,9 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       if (!ev.note.trim()) return refuse('Say what to change')
       const fix = `The user sent it back from "${step.id}": ${ev.note.trim()}\nFix it, commit, then say you are done.`
       effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: fix }, { kind: 'log', text: `${step.id}: sent back by the user. ${ev.note.trim()}` })
-      return { state: { ...enter(plan, state, back, now, []), fix }, effects }
+      // The screens sent back are dropped: the worker gives new ones, and the merge shows only those.
+      const { [plan[back]!.id]: _sentBack, ...shots } = state.shots ?? {}
+      return { state: { ...enter(plan, { ...state, shots }, back, now, []), fix }, effects }
     }
     case 'skip': return { state: enter(plan, { ...state, backFrom: undefined }, state.at + 1, now, effects), effects }
     case 'tick': {
