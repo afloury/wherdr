@@ -80,8 +80,10 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
     ? pick(mergeKey, { kind: 'merge', url: pr.url, base: pr.baseRefName })
     : undefined)
   // Merged on GitHub already, whatever its head: nothing to fix on it, the merge
-  // step records it, even after an attempt of its own that was refused.
-  if (pr.merged) return engineMerges ? pick(`merged:${pr.url}`, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
+  // step records it, even after an attempt of its own that was refused, and
+  // even when the guard keeps that branch for the user (they merged it, or approved it).
+  const mergeStep = step.action?.kind === 'github.merge' && (step.ends === 'action' || (waits && !!s.approved))
+  if (pr.merged) return mergeStep ? pick(`merged:${pr.url}`, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
   // One catch-up at a time: run again once the agent committed its conflict resolution (a new head).
   if (waits && s.catchUp) return f.agentBusy ? undefined : pick(`catch-up:${head}`, { kind: 'catch-up', base: s.catchUp.base })
   // The PR head is not the task's commit (a CI fix not pushed, a push from

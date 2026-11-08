@@ -5,7 +5,7 @@ import { HerdrError } from './herdr'
 import { startTask, type PmLaunchDeps } from './pmLaunch'
 import { cleanTask } from './pmCleanup'
 import { onEvent } from '../../shared/pm/steps'
-import { handoverText, removeRefusal, resumeRefusal, stopRefusal, stoppedTask, type Resume, type Stopper } from '../../shared/pm/stop'
+import { archivedStep, doneTurnRepair, handoverText, removeRefusal, resumeRefusal, stopRefusal, stoppedTask, type Resume, type Stopper } from '../../shared/pm/stop'
 import { taskPlan, type Task } from '../../shared/pm/run'
 
 export async function load(deps: PmLaunchDeps, id: unknown) {
@@ -41,6 +41,15 @@ export async function endAgents(deps: Pick<PmLaunchDeps, 'store' | 'call'>, task
   return saved
 }
 
+// Once at start: done tasks archived while their step waited for the user
+// leave Your turn.
+export async function repairDoneTasks(store: Pick<PmLaunchDeps['store'], 'tasks' | 'saveTask'>) {
+  for (const task of await store.tasks()) {
+    const fixed = doneTurnRepair(task)
+    if (fixed) await store.saveTask(fixed)
+  }
+}
+
 // A task never started, removed from the board; the project's log keeps who and why.
 export async function removeTask(deps: Pick<PmLaunchDeps, 'store'>, id: unknown, by: Stopper, why: string, logBy: string) {
   const { store } = deps
@@ -60,7 +69,7 @@ export async function resumeTask(deps: PmLaunchDeps, id: unknown, how: Resume, b
   if (refused) throw new HerdrError('refused', refused)
   const going = { ...task, stopped: undefined, waiting: undefined, waitKind: undefined }
   if (how === 'archive') {
-    const archived = await store.logTask({ ...going, state: 'working', step: { ...s, done: true, abandoned: true } }, logBy, 'archived; its worktree goes, its branch stays')
+    const archived = await store.logTask({ ...going, state: 'working', step: archivedStep(s) }, logBy, 'archived; its worktree goes, its branch stays')
     void cleanTask(deps, task.id).catch(() => {})
     return archived
   }

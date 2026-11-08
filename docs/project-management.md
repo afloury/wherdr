@@ -62,6 +62,13 @@ its folder, branches and task worktrees stay on the machine.
   you set it. A public repository gets the coordinator's public-repository rules.
 - **Template**: the template the workflow was copied from, for information
   only: a later change to the template does not reach the project.
+- **Machines**: the machines its tasks may run on. The first is the project's
+  own (*Home*, its folder), read only. *Add a machine* picks one of the connected
+  machines and takes the path of the repository's clone there (`~/project`); once
+  saved, wherdr runs that machine's readiness check (see *Start on…* under
+  [Board](#board)) and shows *Ready* or what is missing. ✕ removes a machine:
+  new tasks no longer start there, tasks already there stay. Alfred does the
+  same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
 
 ### Workflow
 
@@ -113,7 +120,8 @@ In the **Guards** tab:
   *You* (the step waits for you) or *wherdr* (it merges by itself, a
   protected branch too). A task already waiting for you at a merge that a
   change gives to wherdr goes on at once: the engine runs the step again,
-  and the task's log says why.
+  and the task's log says why. A merge left to you that you do on GitHub
+  ends the step as merged within a minute: the task goes to *Done*.
 - **Effect**: what each task type adds and, for each step that merges, whether
   it is left to you. It follows your changes before you save.
 
@@ -163,7 +171,8 @@ its [pace](quotas.md#pace) or a machine is short on memory
 The header has **Decisions** (with a count when some wait), **Add task**, the
 project picker (*All projects* or one), a tag filter when tasks have tags, and
 the [Autopilot](#autopilot) button. The first column is **Your turn**, then the
-project's columns, or *To do*, *Working* and *Done* for all projects.
+project's columns, or *To do*, *Working* and *Done* for all projects. A done
+or archived task is never under Your turn.
 
 A card shows the task's title, its id and step, how long it has been in that
 step (*12 min in review*) or, once done, how long it took from start to done

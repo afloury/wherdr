@@ -78,7 +78,8 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ? runs.filter(r => r.task === task.id && r.role === holder && r.state !== 'ended').sort((a, b) => b.startedAt - a.startedAt)[0]
     : undefined
   const stall = stallOf(task, plan, now)
-  const yourTurn = s?.yourTurn?.badge || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
+  // A done task (merged, archived) is never the user's turn.
+  const yourTurn = s?.done ? undefined : s?.yourTurn?.badge || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
     || (stall && now - stall.since >= HANDLE_AFTER_MS ? stallTurn(stall) : undefined)
   return {
     id: task.id, shown: task.id, project: task.project, title: task.title, description: task.description,

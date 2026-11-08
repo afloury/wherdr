@@ -53,6 +53,10 @@ describe('mechanical moves', () => {
     // Merged by hand after the step's own attempt was refused at this head: recorded all the same.
     expect(nextMove(facts({ pr: { ...merged, baseRefName: 'v3' }, task: task({ mech: { 'merge:abc1234': 1 } }) }))).toEqual(mergedMove)
     expect(nextMove(facts({ task: task({ step: step(1) }), pr: pr({ baseRefName: 'main' }) }))).toBeUndefined()
+    // A guarded merge into main the guard refused, merged by the user on GitHub: recorded too.
+    const guarded = plan.map(s => (s.id === 'merge' ? { ...s, guarded: true as const } : s))
+    const refused = task({ step: step(3, { yourTurn: { reason: 'action', badge: 'merge: main is protected: only you may merge into it' } }) })
+    expect(nextMove(facts({ plan: guarded, task: refused, pr: merged }))).toEqual({ ...mergedMove, move: { ...mergedMove.move, base: 'main' } })
   })
 
   it('catches up a branch behind its target, never while the agent works nor on a protected branch', () => {
