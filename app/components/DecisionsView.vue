@@ -28,10 +28,6 @@ const GROUP_LABEL: Record<DecisionGroup, [string, string]> = {
   agent: ['Agents waiting', 'Agents en attente'], stopped: ['Stopped tasks', 'Tâches arrêtées'], arbitrate: ['Reviews to settle', 'Relectures à trancher'], proposal: ['Coordinator proposals', 'Propositions du coordinateur'],
   step: ['Your steps', 'Tes étapes'], overdue: ['Overdue steps', 'Étapes en retard'], coordinator: ['Coordinator not answering', 'Coordinateur sans réponse'],
 }
-const CHOICE_LABEL: Record<Choice, [string, string]> = {
-  pass: ['Pass', 'Valider'], round: ['One more round', 'Un tour de plus'], worker: ['The agent is right', 'L’agent a raison'], reviewer: ['The reviewer is right', 'Le relecteur a raison'],
-  split: ['Split the rest', 'Séparer le reste'], swap: ['Change agent', 'Changer d’agent'], abandon: ['Abandon', 'Abandonner'],
-}
 const paneOf = (d: Decision) => (d.terminal ? herdrState.value?.panes.find(p => p.coreAddress === d.terminal) : undefined)
 // The agent's prompt, when herdr-core reads one on its screen.
 const promptOf = (d: Decision) => { const p = paneOf(d); return p?.status === 'blocked' && p.prompt?.options ? p.prompt : null }

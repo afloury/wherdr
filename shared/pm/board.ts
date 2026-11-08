@@ -4,7 +4,7 @@
 // puts it in Your turn, whatever its step, with a badge saying what to do.
 import type { Holder } from './workflow'
 import type { PlannedStep, StepState } from './steps'
-import type { Run, Task } from './run'
+import type { Run, Task, WaitKind } from './run'
 import { notStarted, type Stopped } from './stop'
 import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
@@ -34,6 +34,7 @@ export interface Card {
   after?: string[] // tasks of the same project it starts after
   prNow?: string // its PR as the engine last read it (prNow)
   held?: string // waits for memory on its machine
+  asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
 }
 
 // types: the project's task types, each with its steps in one line ("work → review → merge").
@@ -86,6 +87,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
     plan,
     ...(s ? { state: s } : {}),
     ...(task.stopped ? { stopped: task.stopped } : {}),
+    ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '' } } : {}),
     ...(task.held && task.state === 'todo' ? { held: task.held } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
     ...(task.after ? { after: afterIds(task) } : {}),
