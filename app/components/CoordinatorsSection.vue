@@ -1,7 +1,9 @@
 <script setup lang="ts">
 // The COORDINATORS section under Alfred (AlfredRow, which coordinates all projects) at
 // the top of the agent list: the project coordinators that run. One tap opens
-// its conversation. Hidden while project management is off.
+// its conversation; its menu (right click, or long press on a touch screen)
+// restarts it with another agent, which becomes its default. Hidden while
+// project management is off.
 import type { CoordinatorView } from '#shared/pm/coordinator'
 
 const busy = ref('')
@@ -9,7 +11,7 @@ const error = ref('')
 const rows = computed(() => projectCoordinators.value.filter(c => coordinatorPane(c)))
 
 async function open(c: CoordinatorView) {
-  if (busy.value) return
+  if (busy.value || rowMenu.swallowClick()) return
   busy.value = c.project
   error.value = ''
   try { await openCoordinator(c) }
@@ -24,6 +26,36 @@ const sub = (c: CoordinatorView) => {
   return tl(`Start with ${program}`, `Lancer avec ${program}`)
 }
 
+// Restart with…: the offered agents that can run this project's coordinator.
+const rowMenu = useRowMenu()
+const restarting = ref<CoordinatorView | null>(null)
+const pick = ref('')
+const choices = computed(() => (restarting.value ? offerCoordinators(undefined, restarting.value.project) : []))
+const menu = (c: CoordinatorView) => (): MenuItem[] => [{ label: tl('Restart with…', 'Relancer avec…'), icon: 'i-lucide-refresh-cw', run: () => choose(c) }]
+function choose(c: CoordinatorView) {
+  restarting.value = c
+  const now = (c.ran ?? coordinatorAgent(c))?.program
+  pick.value = now && choices.value.includes(now) ? now : choices.value[0] ?? ''
+}
+async function restart() {
+  const c = restarting.value
+  const program = choices.value.find(p => p === pick.value)
+  if (!c || !program || busy.value) return
+  restarting.value = null
+  busy.value = c.project
+  error.value = ''
+  // The same program keeps its model.
+  const agent = c.agent?.program === program ? c.agent : { program }
+  try {
+    await api('/api/pm/coordinator-agent', { project: c.project, ...agent })
+    const p = await launchCoordinator(c.project, agent)
+    if (p) await navigateTo(panePath(p.id))
+  }
+  catch (e) { error.value = (e as Error).message }
+  finally { busy.value = '' }
+}
+const sheetOpen = computed({ get: () => !!restarting.value, set: (v) => { if (!v) restarting.value = null } })
+
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { loadCoordinators(); timer = setInterval(loadCoordinators, 30_000) })
 onUnmounted(() => clearInterval(timer))
@@ -32,16 +64,33 @@ onUnmounted(() => clearInterval(timer))
 <template>
   <section v-if="rows.length" class="agent-group coord-list" data-testid="coordinators">
     <h2 class="group-title"><span>{{ tl('Coordinators', 'Coordinateurs') }}</span><span class="count">{{ rows.length }}</span></h2>
+    <UContextMenu v-for="c in rows" :key="c.project" :disabled="sheetMenus" :items="rowMenu.dropdown(menu(c))" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="rowMenu.opened">
     <button
-      v-for="c in rows" :key="c.project" type="button" class="coord-row" :class="{ on: !!coordinatorPane(c) }"
-      :disabled="!!busy" data-testid="coordinator-row" @click="open(c)"
+      type="button" class="coord-row" :class="{ on: !!coordinatorPane(c) }"
+      :disabled="!!busy" data-testid="coordinator-row" v-on="rowMenu.on(menu(c), coordinatorName(c))" @click="open(c)"
     >
       <i class="coord-dot" aria-hidden="true" />
       <span class="coord-text"><b>{{ coordinatorName(c) }}</b><small>{{ busy === c.project ? tl('Starting…', 'Lancement…') : sub(c) }}</small></span>
       <UIcon :name="coordinatorPane(c) ? 'i-lucide-chevron-right' : 'i-lucide-play'" class="coord-go" />
     </button>
+    </UContextMenu>
     <p v-if="error" class="error coord-error">{{ error }}</p>
   </section>
+
+  <AppSheet v-model:open="sheetOpen" :title="restarting ? tl(`Restart ${coordinatorName(restarting)} with…`, `Relancer ${coordinatorName(restarting)} avec…`) : ''">
+    <div class="sheet-form" data-testid="coordinator-sheet">
+      <p class="coord-note">{{ tl('Its folder and memory stay; the current session stops. The agent you pick becomes its default.', 'Son dossier et sa mémoire restent ; la session en cours s’arrête. L’agent choisi devient son défaut.') }}</p>
+      <label class="field-label">{{ tl('Agent', 'Agent') }}</label>
+      <AgentPicker v-model="pick" :programs="choices" />
+    </div>
+    <template #footer>
+      <div class="sheet-form">
+        <UButton block size="xl" color="primary" class="hw-cta" icon="i-lucide-play" :disabled="!choices.some(p => p === pick)" data-testid="coordinator-restart" @click="restart">
+          {{ tl('Restart', 'Relancer') }}
+        </UButton>
+      </div>
+    </template>
+  </AppSheet>
 </template>
 
 <style scoped>
@@ -58,4 +107,5 @@ onUnmounted(() => clearInterval(timer))
 .coord-text small { overflow: hidden; color: var(--muted); font: 12px/1.4 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .coord-go { flex: none; color: var(--dim); }
 .coord-error { margin: 6px 0 0; }
+.coord-note { margin: 0 2px 14px; color: var(--text-2); font-size: 14px; }
 </style>

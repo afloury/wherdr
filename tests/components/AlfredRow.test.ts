@@ -5,7 +5,8 @@ import { nextTick } from 'vue'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import AlfredRow from '~/components/AlfredRow.vue'
-import { agentOrder, appConfig, herdrState, hiddenAgents } from '~/composables/useHerdr'
+import { agentOrder, appConfig, coarse, desk, herdrState, hiddenAgents } from '~/composables/useHerdr'
+import { menuState } from '~/composables/useUi'
 import { MAIN } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
 
@@ -59,12 +60,12 @@ it('not started with a remembered agent: one tap starts it with that agent', asy
   await vi.waitFor(() => expect(posts).toEqual([{ project: MAIN, program: 'claude' }]))
 })
 
-it('as the board\'s All projects banner: the same one tap, no ••• menu', async () => {
+it('as the board\'s All projects banner: the same one tap, no menu', async () => {
   herdrState.value = { ok: true, workspaces: [], panes: [] }
   view = { name: 'Alfred', program: 'claude' }
   await mount({ banner: true })
   await vi.waitFor(() => expect(w!.find('[data-testid="alfred-sub"]').text()).toBe('All projects · not started · Claude'))
-  expect(w!.find('[data-testid="alfred-more"]').exists()).toBe(false)
+  expect(w!.findComponent({ name: 'UContextMenu' }).props('disabled')).toBe(true)
   await w!.find('[data-testid="alfred-open"]').trigger('click')
   await vi.waitFor(() => expect(posts).toEqual([{ project: MAIN, program: 'claude' }]))
 })
@@ -78,4 +79,39 @@ it('running and renamed: its name, its current agent, one tap opens the conversa
   await w!.find('[data-testid="alfred-open"]').trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w%3Ap1'))
   expect(posts).toEqual([])
+})
+
+it('no ••• button: right click (computer) and long press (touch) open its menu, Restart with… asks for the agent', async () => {
+  herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p1', 'host/t1')] }
+  appConfig.value = { ...appConfig.value, kinds: ['claude', 'codex'] }
+  view = { name: 'Alfred', program: 'claude', ran: 'claude', terminal: 'host/t1' }
+  try {
+    desk.value = true
+    coarse.value = false
+    await mount()
+    expect(w!.find('button[aria-label*="Options"]').exists()).toBe(false)
+    expect(w!.findComponent({ name: 'UContextMenu' }).props('items').flat().map((i: { label: string }) => i.label)).toEqual(['Restart with…'])
+    w!.unmount()
+    desk.value = false
+    coarse.value = true
+    await mount()
+    const row = w!.find('[data-testid="alfred"]')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      await row.trigger('pointerdown', { pointerType: 'touch', button: 0, clientX: 0, clientY: 0 })
+      vi.advanceTimersByTime(720)
+      await row.trigger('pointerup')
+      await w!.find('[data-testid="alfred-open"]').trigger('click')
+    } finally { vi.useRealTimers() }
+    // The lifted finger does not open the conversation.
+    expect(navigate).not.toHaveBeenCalled()
+    expect(menuState.open).toBe(true)
+    expect(menuState.items.map(i => i.label)).toEqual(['Restart with…'])
+    menuState.items[0]!.run!()
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="alfred-sheet"]')).not.toBeNull())
+    ;(document.querySelector('[data-agent="codex"]') as HTMLElement).click()
+    await nextTick()
+    ;(document.querySelector('[data-testid="alfred-start"]') as HTMLElement).click()
+    await vi.waitFor(() => expect(posts).toEqual([{ project: MAIN, program: 'codex' }]))
+  } finally { desk.value = false; coarse.value = false; menuState.open = false }
 })

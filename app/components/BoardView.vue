@@ -49,8 +49,12 @@ const live = (c: Card) => {
   return p ? { key: statusKey(p), label: `${t(c.holder === 'reviewer' ? 'Reviewer' : 'Worker')}: ${statusLabel(p)}` } : { key: 'inactive', label: tl('No agent running', 'Aucun agent lancé') }
 }
 // The card's menu: Stop (confirmed in the task's sheet), how a stopped task
-// goes on, or Delete for a task never started (confirmed).
+// goes on, or Delete for a task never started (confirmed). It opens on right
+// click and long press of the card; its ••• button shows only when the menu
+// has more than Open (a tap already opens the task).
 const stopping = ref(false)
+const cardMenu = useRowMenu()
+const tap = (id: string) => { if (!cardMenu.swallowClick()) show(id) }
 const show = (id: string, stop = false) => { stopping.value = stop; open.value = id }
 const act = (fn: () => Promise<unknown>) => fn().then(load, (e: Error) => { error.value = e.message })
 const menuOf = (c: Card): MenuItem[] => [
@@ -82,8 +86,9 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
     <div class="board-lanes">
       <section v-for="l in lanes" :key="l.id" class="board-lane" :class="{ mine: l.id === 'your-turn' }" :data-lane="l.id" data-testid="board-lane">
         <h2 class="mono-label">{{ laneLabel(l.id) }} <span>{{ l.cards.length }}</span></h2>
-        <div v-for="c in l.cards" :key="c.id" class="board-card-wrap">
-        <button type="button" class="board-card" data-testid="board-card" :data-task="c.id" @click="show(c.id)">
+        <div v-for="c in l.cards" :key="c.id" class="board-card-wrap" :class="{ 'has-menu': menuOf(c).length > 1 }">
+        <UContextMenu :disabled="sheetMenus" :items="cardMenu.dropdown(() => menuOf(c))" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="cardMenu.opened">
+        <button type="button" class="board-card" data-testid="board-card" :data-task="c.id" v-on="cardMenu.on(() => menuOf(c), c.title)" @click="tap(c.id)">
           <span class="board-card-head">
             <span v-if="hasAgent(c)" class="card-state" :class="live(c).key" role="img" :aria-label="live(c).label" :title="live(c).label" data-testid="holder-state"><i /></span>
             <b>{{ c.title }}</b>
@@ -96,10 +101,13 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
             <a v-if="mainLink(c)" :href="mainLink(c)!.url" target="_blank" rel="noopener" class="board-chip" data-testid="board-link" @click.stop>{{ mainLink(c)!.label }}</a>
           </span>
         </button>
+        </UContextMenu>
+        <template v-if="menuOf(c).length > 1">
         <UDropdownMenu v-if="!sheetMenus" :items="toDropdown(menuOf(c))" :content="{ align: 'end', sideOffset: 4 }" :ui="{ content: 'hw-dropdown' }">
           <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn board-card-menu" :aria-label="tl('Task menu', 'Menu de la tâche')" data-testid="card-menu" />
         </UDropdownMenu>
         <UButton v-else icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn board-card-menu" :aria-label="tl('Task menu', 'Menu de la tâche')" data-testid="card-menu" @click="openMenu(menuOf(c), c.title)" />
+        </template>
         </div>
       </section>
     </div>
@@ -122,7 +130,7 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
 .board-lane.mine h2 { color: var(--blocked); }
 .board-card-wrap { position: relative; display: flex; flex-direction: column; }
 .board-card-menu { position: absolute; top: 0; right: 0; }
-.board-card-wrap .board-card-head { padding-right: 36px; }
+.board-card-wrap.has-menu .board-card-head { padding-right: 36px; }
 .board-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 12px; min-height: 44px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
 .board-card:active { background: var(--surface-2); }
 .board-card-head { display: flex; align-items: center; gap: 8px; }

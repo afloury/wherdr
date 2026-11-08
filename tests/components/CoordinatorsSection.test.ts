@@ -4,8 +4,10 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import CoordinatorsSection from '~/components/CoordinatorsSection.vue'
-import { herdrState } from '~/composables/useHerdr'
+import { nextTick } from 'vue'
+import { appConfig, coarse, desk, herdrState } from '~/composables/useHerdr'
 import { alfred, coordinators, paneCoordinatorName } from '~/composables/useCoordinators'
+import { menuState } from '~/composables/useUi'
 import { MAIN, type CoordinatorView } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
 
@@ -16,11 +18,12 @@ const posts: unknown[] = []
 let views: CoordinatorView[] = []
 registerEndpoint('/api/pm/coordinators', () => views)
 registerEndpoint('/api/pm/coordinator-start', { method: 'POST', handler: async (e) => { posts.push(await readBody(e)); return { terminal: 'host/t9' } } })
+registerEndpoint('/api/pm/coordinator-agent', { method: 'POST', handler: async (e) => { posts.push({ agent: await readBody(e) }); return {} } })
 
 const pane = (id: string, coreAddress: string) => ({ id, coreAddress, status: 'idle', agent: 'claude', workspace: 'w', tab: 't' }) as Pane
 const view = (project: string, more: Partial<CoordinatorView> = {}): CoordinatorView => ({ project, name: project, agent: { program: 'claude' }, ...more })
 let w: Awaited<ReturnType<typeof mountSuspended>> | null = null
-afterEach(() => { w?.unmount(); w = null; posts.length = 0; navigate.mockReset() })
+afterEach(() => { w?.unmount(); w = null; posts.length = 0; navigate.mockReset(); document.body.innerHTML = '' })
 
 it('lists the running project coordinators only (Alfred, the main one, has its own row)', async () => {
   herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p1', 'host/t1')] }
@@ -40,6 +43,42 @@ it('is hidden while project management is off', async () => {
   w = await mountSuspended(CoordinatorsSection)
   await new Promise(r => setTimeout(r, 50))
   expect(w.find('[data-testid="coordinators"]').exists()).toBe(false)
+})
+
+it('no ••• button: right click (computer) and long press (touch) open its menu, Restart with… sets the agent and restarts it', async () => {
+  herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p1', 'host/t1')] }
+  appConfig.value = { ...appConfig.value, kinds: ['claude', 'codex'] }
+  views = [view('CO', { terminal: 'host/t1', agent: { program: 'claude', model: 'm' } })]
+  try {
+    desk.value = true
+    coarse.value = false
+    w = await mountSuspended(CoordinatorsSection, { attachTo: document.body })
+    await vi.waitFor(() => expect(w!.findAll('[data-testid="coordinator-row"]')).toHaveLength(1))
+    expect(w.find('button[aria-label*="Options"]').exists()).toBe(false)
+    expect(w.findComponent({ name: 'UContextMenu' }).props('items').flat().map((i: { label: string }) => i.label)).toEqual(['Restart with…'])
+    w.unmount()
+    desk.value = false
+    coarse.value = true
+    w = await mountSuspended(CoordinatorsSection, { attachTo: document.body })
+    await vi.waitFor(() => expect(w!.findAll('[data-testid="coordinator-row"]')).toHaveLength(1))
+    const row = w.find('[data-testid="coordinator-row"]')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      await row.trigger('pointerdown', { pointerType: 'touch', button: 0, clientX: 0, clientY: 0 })
+      vi.advanceTimersByTime(720)
+      await row.trigger('pointerup')
+      await row.trigger('click')
+    } finally { vi.useRealTimers() }
+    expect(navigate).not.toHaveBeenCalled()
+    expect(menuState.items.map(i => i.label)).toEqual(['Restart with…'])
+    menuState.items[0]!.run!()
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="coordinator-sheet"]')).not.toBeNull())
+    expect(document.querySelector('[data-agent="claude"]')!.getAttribute('aria-checked')).toBe('true')
+    ;(document.querySelector('[data-agent="codex"]') as HTMLElement).click()
+    await nextTick()
+    ;(document.querySelector('[data-testid="coordinator-restart"]') as HTMLElement).click()
+    await vi.waitFor(() => expect(posts).toEqual([{ agent: { project: 'CO', program: 'codex' } }, { project: 'CO', program: 'codex' }]))
+  } finally { desk.value = false; coarse.value = false; menuState.open = false }
 })
 
 it("titles a coordinator's pane by its name, not its session title (WHR-15)", () => {
