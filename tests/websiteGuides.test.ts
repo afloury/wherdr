@@ -7,16 +7,16 @@ import { AGENT_PROMPT, REPO } from '../website/app/utils/site'
 // command, port and variable it cites must be one the documentation or the installer
 // script really uses, so the guide cannot drift from them.
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
-const documentation = ['installation', 'networks', 'command', 'plugins', 'security', 'machines', 'board', 'troubleshooting'].map(page => read(`../docs/${page}.md`)).join('\n')
+const documentation = ['installation', 'networks', 'command', 'plugins', 'security', 'machines', 'troubleshooting'].map(page => read(`../docs/${page}.md`)).join('\n')
 const guide = read('../website/public/agent.md')
 // Shell line continuations joined, as in the guide's snippets below.
 const sources = (documentation + read('../website/public/install')).replace(/\\\n\s*/g, '')
 const llms = read('../website/public/llms.txt')
 
 // Checks an agent runs to verify a step: not in the documentation, harmless, read-only.
-const CHECKS = ['curl -fsS http://127.0.0.1:7683', 'curl -fsS http://127.0.0.1:7683/manifest.webmanifest', 'curl -fsSL https://wherdr.dev/agent.md', 'tailscale status', 'tailscale serve status', 'herdr plugin list', 'brew list wherdr', 'git --version', 'node --version']
+const CHECKS = ['curl -fsS http://127.0.0.1:7683', 'curl -fsS http://127.0.0.1:7683/manifest.webmanifest', 'curl -fsSL https://wherdr.dev/agent.md', 'tailscale status', 'tailscale serve status', 'herdr --version', 'herdr plugin list', 'brew list wherdr', 'git --version', 'node --version']
 // Placeholders and file paths the guide names, not commands.
-const PLAIN = /^(~\/[\w./-]+|\.env|plugin\.env|TASKS\.md|url|herdr-projects (skill|doctor)|https:\/\/<machine>\.<tailnet>\.ts\.net:7683\/)$/
+const PLAIN = /^(~\/[\w./-]+|\.env|plugin\.env|url|https:\/\/<machine>\.<tailnet>\.ts\.net:7683\/)$/
 // Quoted from wherdr's own output, checked against the code below.
 const OUTPUT = ['"reach":"ok"', '"pending"', 'First passkey: bootstrap token']
 
