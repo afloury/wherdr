@@ -1,20 +1,13 @@
 <script setup lang="ts">
-// Rename: the name goes into Herdr (pane.rename, tab.rename, workspace.rename),
-// so it is visible everywhere. A pane can go back to its automatic name; a space
-// or a tab always keeps a name.
+// Rename a pane: the name goes into herdr-core, so it is visible everywhere.
+// A pane can go back to its automatic name.
 const open = computed({
-  get: () => Boolean(renameTarget.value || renameSpace.value),
-  set: (v) => {
-    if (v) return
-    renameTarget.value = null
-    renameSpace.value = null
-  },
+  get: () => Boolean(renameTarget.value),
+  set: (v) => { if (!v) renameTarget.value = null },
 })
 const pane = computed(() => herdrState.value.panes.find(p => p.id === renameTarget.value))
 const value = ref('')
 const input = ref<{ inputRef?: HTMLInputElement } | null>(null)
-const title = computed(() => (renameSpace.value ? (renameSpace.value.kind === 'tab' ? t('Rename tab') : t('Rename space')) : t('Rename pane')))
-const placeholder = computed(() => (renameSpace.value ? (renameSpace.value.kind === 'tab' ? t('Tab name') : t('Space name')) : t('Pane name (empty = automatic name)')))
 function focusInput() {
   setTimeout(() => {
     input.value?.inputRef?.focus()
@@ -27,16 +20,7 @@ watch(renameTarget, (id) => {
   value.value = p ? p.label || paneTitle(p) : ''
   focusInput()
 })
-watch(renameSpace, (x) => {
-  if (!x) return
-  value.value = x.label
-  focusInput()
-})
 async function save(label: string) {
-  if (renameSpace.value) {
-    if (label) await saveSpaceName(label)
-    return
-  }
   const id = renameTarget.value
   if (!id) return
   try {
@@ -48,14 +32,14 @@ async function save(label: string) {
 </script>
 
 <template>
-  <AppSheet v-model:open="open" :title="title" screen>
+  <AppSheet v-model:open="open" :title="t('Rename pane')" screen>
     <form id="rename-form" class="rename" @submit.prevent="save(value.trim())">
-      <UInput ref="input" v-model="value" maxlength="60" size="xl" class="w-full" :placeholder="placeholder" />
+      <UInput ref="input" v-model="value" maxlength="60" size="xl" class="w-full" :placeholder="t('Pane name (empty = automatic name)')" />
     </form>
     <template #footer>
       <div class="rename-actions">
-        <UButton v-if="!renameSpace && pane && pane.label" color="neutral" variant="ghost" class="sheet-btn" @click="save('')">{{ t('Reset') }}</UButton>
-        <UButton type="submit" form="rename-form" color="primary" variant="solid" class="sheet-btn hw-cta" :disabled="Boolean(renameSpace) && (!value.trim() || value.trim() === renameSpace?.label)">{{ t('Save') }}</UButton>
+        <UButton v-if="pane && pane.label" color="neutral" variant="ghost" class="sheet-btn" @click="save('')">{{ t('Reset') }}</UButton>
+        <UButton type="submit" form="rename-form" color="primary" variant="solid" class="sheet-btn hw-cta">{{ t('Save') }}</UButton>
       </div>
     </template>
   </AppSheet>
