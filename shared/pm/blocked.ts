@@ -68,7 +68,7 @@ export function backToWork(task: Task, plan: PlannedStep[], now: number): Task |
     ...task,
     // Idle since before: counted from now, or the stall would be handed over at once.
     ...(task.idle !== undefined ? { idle: now } : {}),
-    ...(timeout ?{ step: { ...s, yourTurn: undefined, deadline: now + durationMs(step.timeout!) } } : {}),
+    ...(timeout ? { step: { ...s, yourTurn: undefined, deadline: now + durationMs(step.timeout!) } } : {}),
     ...(task.stall ? { stall: { ...task.stall, since: now } } : {}),
     ...(stalls ? { stalls } : {}),
   }
