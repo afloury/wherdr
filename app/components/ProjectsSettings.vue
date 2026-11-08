@@ -4,9 +4,11 @@
 // (ProjectSheet), its key and tab in the URL (`?project=WHR&tab=general`).
 // Add project opens the New sheet on a new project. A row whose coordinator
 // proposes a workflow change says so (reviewed on the sheet's Workflow tab).
+// Template library opens TemplateLibrary (`?library=1`).
 // Off, the server refuses every change but the switch.
 import type { PmOverview } from '#shared/pm/project'
 import { shownKey } from '#shared/pm/projectKey'
+import { EXAMPLES } from '#shared/pm/examples'
 import { projectTab, type ProjectTab } from '~/utils/projectTabs'
 
 const props = defineProps<{ active: boolean }>()
@@ -48,6 +50,11 @@ const show = (project?: string, tab?: ProjectTab) => {
   const { project: _p, tab: _t, review: _r, ...query } = route.query
   router.replace({ query: { ...query, ...(project ? { project, tab: tab ?? 'general' } : {}) } })
 }
+const libraryOpen = computed({
+  get: () => props.active && route.query.library === '1',
+  set: (o: boolean) => { const { library: _l, ...query } = route.query; router.replace({ query: { ...query, ...(o ? { library: '1' } : {}) } }) },
+})
+const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.some(t => t.id === e.id)).length)
 </script>
 
 <template>
@@ -74,6 +81,11 @@ const show = (project?: string, tab?: ProjectTab) => {
         <UButton color="primary" variant="solid" size="xl" icon="i-lucide-plus" data-testid="pm-add" @click="addProject">{{ tl('Add project', 'Ajouter le projet') }}</UButton>
         <UButton v-if="data.projects.length" to="/board" color="neutral" variant="outline" size="xl" icon="i-lucide-kanban" data-testid="pm-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
       </div>
+      <button type="button" class="settings-card pm-row pm-library" data-testid="pm-library" @click="libraryOpen = true">
+        <span class="pm-id"><b>{{ tl('Template library') }}</b><small class="mono-label">{{ tl(`${data.templates.length} saved · ${exampleCount} examples`) }}</small></span>
+        <UIcon name="i-lucide-chevron-right" class="pm-chevron" />
+      </button>
+      <TemplateLibrary v-model:open="libraryOpen" :templates="data.templates" @changed="load" />
       <ProjectSheet v-if="opened" :key="opened.key" :project="opened" :tab="tab" :templates="data.templates" :review="review" @tab="k => show(opened!.key, k)" @close="show()" @changed="load" />
     </template>
     <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
@@ -92,5 +104,6 @@ const show = (project?: string, tab?: ProjectTab) => {
 .pm-review { display: flex; align-items: center; gap: 6px; color: var(--blocked); }
 .pm-chevron { flex: none; color: var(--muted); }
 .pm-public { margin-left: 8px; padding: 2px 6px; border: 1px solid var(--blocked); color: var(--blocked); font: 600 11px/1 var(--font-mono, 'JetBrains Mono', monospace); letter-spacing: .08em; text-transform: uppercase; vertical-align: 2px; }
+.pm-settings .pm-library { margin-top: 16px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
 .pm-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 </style>
