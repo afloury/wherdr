@@ -34,6 +34,8 @@ describe('placing a task', () => {
     // The estimates of the agents already started count, though the reading has not caught up.
     expect(place('standard', [machine('machine-a', 8, 7, 8, ['standard', 'standard', 'standard'])])).toMatchObject({ hold: expect.stringContaining('machine-a: 3 agents take ≈5.3 GB of 8.0 GB') })
     expect(place('light', [machine('machine-a', 64, 60, 8, ['light'], { settings: { ...DEFAULT_MEMORY, maxAgents: 1 } })])).toMatchObject({ hold: expect.stringContaining('1 agents (cap 1)') })
+    // No cap set: one agent per 1.5 GB of RAM, though memory is left (8 GB: 5).
+    expect(place('light', [machine('machine-a', 8, 7, 8, Array(5).fill('light'))])).toMatchObject({ hold: expect.stringContaining('5 agents (cap 5)') })
   })
 
   it('never moves a task from its machine', () => {

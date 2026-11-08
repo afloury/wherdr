@@ -2,7 +2,7 @@
 // fits now, or a hold that names each machine's reason. Pure: the server reads
 // each machine (capacity, settings, agents at work, readiness, pace) and asks.
 import type { MachineCapacity } from './capacity'
-import { SWAP_MAX, type MemorySettings } from './memory'
+import { SWAP_MAX, agentCap, type MemorySettings } from './memory'
 import { WEIGHT_DEFAULTS, type Weight } from './weight'
 
 export interface Estimate { mb: number, cores: number }
@@ -41,7 +41,9 @@ export function misfit(c: Candidate, weight: Weight, e: Estimate): string | unde
   if (c.wait) return c.wait
   const m = c.capacity
   const agents = c.running.length
-  if (c.settings.maxAgents !== undefined && agents >= c.settings.maxAgents) return `${agents} agents (cap ${c.settings.maxAgents})`
+  // The user's cap, else one agent per 1.5 GB of RAM (as Settings › Machines shows it).
+  const cap = agentCap(c.settings, m)
+  if (cap !== undefined && agents >= cap) return `${agents} agents (cap ${cap})`
   if (!m) return undefined
   if (m.available - e.mb < c.settings.minFreeMb) return `${gb(m.available)} free`
   if (m.swapTotal && (m.swapTotal - m.swapFree) / m.swapTotal > SWAP_MAX) return `swap ${Math.round((m.swapTotal - m.swapFree) / m.swapTotal * 100)} % used`
