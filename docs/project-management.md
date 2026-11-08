@@ -17,7 +17,8 @@ is done and has a button that takes you there.
 2. **Pick a template.** A template is a list of steps a task goes through, and
    who does each one (an agent, you, or wherdr itself). Start from an example,
    such as `vibe` (commit straight to a dev branch, no review), or from a
-   template you saved from another project ([Workflow](#workflow)).
+   template you saved from another project ([Workflow](#workflow)). The
+   step's button opens the [template library](#template-library).
 3. **Give each project a workflow.** *Add project* (Settings › Projects, or
    **New › Project**) adds a git folder on a machine herdr-core reaches, and
    copies the template you pick into the project: that copy is the project's
@@ -41,9 +42,10 @@ Then ask the coordinator for tasks, and answer what shows under *Your turn* and
 ## Projects
 
 **Settings › Projects** holds the *Project management* switch, *Getting started*,
-and the project list: each row shows the name (with a **Public** badge for a
-public repository), the key, the machine and the folder. *Add project* opens the
-New sheet on a new project; *Open the board* goes to the board. A row opens the
+the project list and the [template library](#template-library): each row shows
+the name (with a **Public** badge for a public repository), the key, the machine
+and the folder. *Add project* opens the New sheet on a new project; *Open the
+board* goes to the board. A row opens the
 project's sheet, with five tabs: General, Workflow, Guards, Automations and
 Autopilot. Its ⋯ menu removes the project from wherdr, after a confirmation:
 its folder, branches and task worktrees stay on the machine.
@@ -60,8 +62,9 @@ its folder, branches and task worktrees stay on the machine.
   optional model (empty: the agent's default).
 - **Repository**: public or private, as wherdr found it (*Check again*) or as
   you set it. A public repository gets the coordinator's public-repository rules.
-- **Template**: the template the workflow was copied from, for information
-  only: a later change to the template does not reach the project.
+- **Based on**: the template the workflow was copied from and its version, for
+  information only: a later change to the template, or its deletion, does not
+  reach the project.
 - **Machines**: the machines its tasks may run on. The first is the project's
   own (*Home*, its folder), read only. *Add a machine* picks one of the connected
   machines and takes the path of the repository's clone there (`~/project`); once
@@ -77,7 +80,8 @@ has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
 action, what it does: land on a branch, push, open a PR, merge a PR, or check
 that a branch was merged, with its branch, merge method and required checks.
-Under the form, the plan of the chosen task type. *Save* checks the workflow
+In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
+*Add task* under [Board](#board)). Under the form, the plan of the chosen task type. *Save* checks the workflow
 and shows each problem with its line.
 
 The ⋯ menu adds *Edit as JSON*, *Change log*, *Save as template* (copies the
@@ -148,6 +152,17 @@ task's description), its task type, a switch, its last firings and *Run now*.
 The project coordinator's [autopilot](#autopilot), as in its window, and a link
 to the [pace](quotas.md#pace) of every account.
 
+### Template library
+
+**Settings › Projects › Template library** lists your saved templates (each
+with its version) and the built-in examples. Tap one to read it: the plan of
+each task type, then its JSON. A saved template's ⋯ menu renames it (its version
+and change log come along) or deletes it, after a confirmation. A project never
+follows the library: it starts from a copy (*Add project*, or *Workflow › ⋯ ›
+Start over from a template*), so renaming or deleting a template changes no
+project. To change a template, change a project's workflow, then *Save as
+template*.
+
 ## Autopilot
 
 On the board and in a coordinator's conversation, the **Autopilot** button in
@@ -207,7 +222,14 @@ click, long press, or ••• when it has more than *Open*) offers:
   other tasks wait for cannot be deleted; its number is never given again.
 
 **Add task** opens a sheet: the project, a title, the task type (with its steps
-in one line), a Markdown description, the tasks it waits for, and *Start now*.
+in one line), its weight, a Markdown description, the tasks it waits for, and
+*Start now*. The weight says what the task needs of a machine: *Light* (docs, a
+study), *Standard* (tests and typecheck) or *Heavy* (a build, e2e,
+screenshots). *Auto* shows what it would be (*Auto: heavy (screenshots)*): the
+task type's `weight` when the workflow sets one, else heavy when a worker step
+asks for screenshots, light when the type lands no code (no commit, link or git
+action), standard otherwise. The coordinator does the same with `task add
+--weight`, and `show <task>` gives it.
 
 ## Task sheet
 

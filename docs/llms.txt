@@ -64,11 +64,12 @@
 - [Getting started](docs/project-management.md#getting-started): the four steps to turn projects on and start a coordinator.
 - [Projects](docs/project-management.md#projects): Settings › Projects, the project list and the project sheet's tabs.
 - [General tab](docs/project-management.md#general): name, key, base (working) branch, agents, repository visibility, allowed machines and their clone paths (with a readiness check).
-- [Workflow tab](docs/project-management.md#workflow): task types and steps, Edit as JSON, Save as template, Start over, review of the coordinator's proposed change (one-line summary, who proposed it, your full request with a link back to it, readable or JSON), and its card in the coordinator's conversation.
+- [Workflow tab](docs/project-management.md#workflow): task types (with an optional weight) and steps, Edit as JSON, Save as template, Start over, review of the coordinator's proposed change (one-line summary, who proposed it, your full request with a link back to it, readable or JSON), and its card in the coordinator's conversation.
 - [Guards](docs/project-management.md#guards): protected branches, who may merge (a waiting merge goes on once wherdr may do it; one you merge on GitHub ends as merged), contributor PRs, the project sheet's in-app addresses.
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
+- [Template library](docs/project-management.md#template-library): saved templates and examples, read, rename and delete; projects keep their own copy.
 - [Autopilot](docs/project-management.md#autopilot): the header button and its window, goal, wakes and limits.
-- [Board](docs/project-management.md#board): columns (a done or archived task is never under Your turn), cards, time in the step and total time, Add task, Start, Start on another machine (its readiness check), Stop, Delete.
+- [Board](docs/project-management.md#board): columns (a done or archived task is never under Your turn), cards, time in the step and total time, Add task (with its weight: Auto, Light, Standard, Heavy), Start, Start on another machine (its readiness check), Stop, Delete.
 - [Task sheet](docs/project-management.md#task-sheet): time per step, waits for you, review rounds and CI fixes, the task's buttons (Check on GitHub, also `wherdr pm task check`, for a stuck merge step or an archived task's PR) and its Description, Plan and Log tabs.
 - [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back and other answers.
 - [A stalled task](docs/project-management.md#a-stalled-task): red CI or an idle agent: the coordinator woken, one nudge, then Tasks to handle and a notification after 30 min.
@@ -80,7 +81,7 @@
 
 - [Several machines](docs/machines.md#several-machines-ssh): machines reached by hc over SSH.
 - [Before adding a machine](docs/machines.md#before-adding-a-machine): what a machine needs first.
-- [Manage machines](docs/machines.md#manage-machines): Settings › Machines, add, reconnect, rename, forget, memory limits.
+- [Manage machines](docs/machines.md#manage-machines): Settings › Machines, add, reconnect, rename, forget, capacity (memory, cores, load on Linux and macOS) and memory limits.
 - [Machines on hc](docs/core.md#creating-terminals-and-agents-machines): how hc reaches core machines.
 - [Claude and Codex quotas](docs/quotas.md#claude-and-codex-quotas): remaining usage on every machine and its setup.
 - [Pace](docs/quotas.md#pace): Settings › Agents › Pace, when automatic work may start.

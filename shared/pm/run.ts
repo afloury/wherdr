@@ -1,7 +1,7 @@
 // Tasks and the agent runs that work on them. A run's terminal carries
 // wherdr.* labels on herdr-core, so the engine finds it again after a restart.
 import type { Project } from './project'
-import type { Prefs, Step, Template } from './workflow'
+import type { Prefs, Step, Template, Weight } from './workflow'
 import { fillBase, planSteps, type StepState } from './steps'
 import { needsShots, shotMode } from './shots'
 import type { Stopped } from './stop'
@@ -27,6 +27,7 @@ export interface Task {
   stall?: { cause: string, reason: string, since: number } // its stall as the engine last saw it (blocked.ts)
   stalls?: Record<string, { since: number, nudged?: number, handled?: number }> // each cause seen: when it began, its one nudge and hand-over
   run?: string // the current run
+  weight?: Weight // light, standard or heavy, set by the user or the coordinator (weight.ts); else from its type
   machine?: string // where its first start put it: it always goes back there (none, once started: its project's machine)
   step?: StepState // where the step engine has it
   base?: string // the project's working branch when it started ('' none): a later change leaves it alone
@@ -115,7 +116,7 @@ export const taskBase = (task: Pick<Task, 'base'>, p?: Pick<Project, 'base'>) =>
 export const taskPlan = (t: Template, task: Pick<Task, 'type' | 'prefs' | 'base'>, p?: Pick<Project, 'base'>) =>
   planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }, taskBase(task, p))
 
-const typeSteps = (t: Template, type: string): Step[] =>
+export const typeSteps = (t: Template, type: string): Step[] =>
   (t.taskTypes[type]?.steps ?? []).map(s => (typeof s === 'string' ? t.steps?.[s] : s)).filter((s): s is Step => !!s)
 
 // Program and model of the worker: the nearest level wins (task, task type,

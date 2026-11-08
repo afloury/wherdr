@@ -174,8 +174,8 @@ const notes = {
         <label class="field-label" for="projectTemplate">{{ tl('Template', 'Modèle') }}</label>
         <USelect id="projectTemplate" v-model="template" :items="templateItems" size="xl" class="w-full" data-testid="project-template" />
         <p class="coord-hint muted">
-          {{ tl('Templates are created and edited in', 'Les modèles se créent et se modifient dans') }}
-          <NuxtLink to="/settings?section=projects" @click="emit('settings')">{{ tl('Settings › Projects › Templates', 'Réglages › Projets › Modèles') }}</NuxtLink>.
+          {{ tl('The project gets its own copy. Read every template in') }}
+          <NuxtLink to="/settings?section=projects&library=1" @click="emit('settings')">{{ tl('Settings › Projects › Template library') }}</NuxtLink>.
         </p>
       </template>
     </template>

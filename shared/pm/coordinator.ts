@@ -2,7 +2,7 @@
 // rights checked on each, and the role files written in its own folder. Pure:
 // the server (server/utils/pmCoordinator.ts) reads and writes.
 import type { Project } from './project'
-import type { Template } from './workflow'
+import { WEIGHTS, isWeight, type Template, type Weight } from './workflow'
 import type { WorkflowChanges } from './workflowChanges'
 import type { ProjectColor } from './projectKey'
 import type { Autopilot, limitsLeft } from './autopilot'
@@ -39,7 +39,7 @@ export const MAIN = '_main'
 export const sameAgent = (a?: CoordinatorAgent, b?: CoordinatorAgent) => !!a && !!b && a.program === b.program
 
 // A template change the coordinator proposed: the user accepts or refuses it
-// in the interface; only an accepted one is saved and goes to the template's log.
+// in the interface; only an accepted one is saved and goes to the project's workflow log.
 // base: the template version its diff was made against.
 // by: who proposed it, the project's key or 'main' (Alfred); said, saidAt:
 // the user's message it follows and when they sent it.
@@ -84,7 +84,7 @@ export type Command =
   | { name: 'task check', task: string }
   | { name: 'task stop', task: string, reason: string }
   | { name: 'task remove', task: string, reason: string }
-  | { name: 'task add', title: string, type: string, after?: string, description?: string }
+  | { name: 'task add', title: string, type: string, after?: string, description?: string, weight?: Weight }
   | { name: 'pr merge', pr: number, userSaid: string, method?: MergeMethod }
 
 // One table for the parser, the skill and the role file.
@@ -107,7 +107,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task check <task>', does: 'read the task\'s PR on GitHub now, for a task at its merge step or archived with a PR: merged, its merge step ends as merged and the task goes on; open, why it waits; closed without a merge, said (the user may archive it). At any time, when the user asks to unblock a task' },
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
-  { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done' },
+  { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"] [--weight light|standard|heavy]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done. --weight says what it needs of a machine (light: docs, a study; standard: tests and typecheck; heavy: a build, e2e, screenshots); left out, it comes from its task type and steps (show gives it)' },
   { usage: 'tell <task> "<text>"', does: 'a message to the task\'s agent; in a wake, only to answer its question (a permission request is the user\'s)' },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
@@ -146,7 +146,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description'], 'task start': ['on'] }[verb] ?? []))
+  const extra = known('project', ...({ 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight'], 'task start': ['on'] }[verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (verb === 'autopilot show' || verb === 'automation list') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
@@ -164,7 +164,9 @@ function parseWords(argv: unknown): Command | { error: string } {
     if (after !== undefined && !after.split(',').every(a => TASK_RE.test(a.trim()))) return { error: '--after is a list of tasks: A-1,A-2' }
     const description = flags.description?.trim()
     if (description && description.length > 20000) return { error: '--description is 20000 characters at most' }
-    return { name: verb, title, type, ...(after ? { after } : {}), ...(description ? { description } : {}) }
+    const weight = flags.weight?.trim()
+    if (weight !== undefined && !isWeight(weight)) return { error: `--weight is one of ${WEIGHTS.join(', ')}` }
+    return { name: verb, title, type, ...(after ? { after } : {}), ...(description ? { description } : {}), ...(weight ? { weight } : {}) }
   }
   if (verb === 'pr merge') {
     const said = flags['user-said']?.trim(), method = flags.method as MergeMethod | undefined
@@ -367,13 +369,13 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
       : `You coordinate project ${p.key} only. Its repository is ${p.path}: read it, never change it; task agents do the work in their own worktrees.`,
     'Messages that start with "Autopilot:" are wakes sent by the engine; the others come from the user. The server knows which, and refuses what a wake may not do.', '',
     '## Commands (your token: this project only)', '', ...commandList(t), '',
-    'Every change you make is written to the task\'s or the template\'s log with your name.',
+    'Every change you make is written to the task\'s or the workflow\'s log with your name.',
     `Quote a file as inline code with its absolute path (\`${p.path.replace(/\/$/, '')}/README.md\`): the user's interface makes it a link.`, '',
     ...docsRule(docs, '`wherdr pm help`'),
     '## What you never do', '',
     `- change a guard (protected branches, who merges): the user does it in ${projectPlace(p.key, 'guards', true)};`,
     '- end a step that waits for the user unless they just told you so (`--user-said` with their words);',
-    '- edit the template on your own: only the user\'s request starts a proposal, and only their yes in wherdr saves it;',
+    '- edit the workflow on your own: only the user\'s request starts a proposal, and only their yes in wherdr saves it;',
     '- pass a critical finding with proof, or a send-back whose next step is a guarded merge: those go to the user;',
     `- approve, merge${t?.guards?.contributorPrs ? ' (but a contributor\'s PR, below)' : ''}, change settings or your autopilot\'s limits; answer a permission request: those are the user\'s.`,
     ...(contributorPrsLine(t?.guards) ? ['', '## What you may do on the user\'s yes', '', contributorPrsLine(t?.guards)!] : []), '',
@@ -381,18 +383,18 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
       'This holds for what you write too: each task description you write (`task add --description`) says the repository is public and repeats this rule. wherdr gives every task\'s worker and reviewer the rule as well.', ''] : []),
     'Each Autopilot wake ends with its id: once you have handled it, run `wherdr pm ack <id>`. The engine already fixes PR bases, re-runs CI, retries pushes, catches up branches, sends red CI back and merges what the branch rule allows: leave those to it.',
     ...(plain ? [''] : ['The engine also moves each started task through its steps: when the worker says it is done, it runs the next step (a PR, a reviewer of another model, a merge the branch rule allows) and sends a review\'s findings back to the worker. It starts a task with "after" once those tasks are done, and makes it wait for the user when one of them failed. It starts no other task: add the tasks your goal needs with `task add` (chain a follow-up with `--after`), and start the next one with `task start`.', '',
-    '## Plans of this project\'s task types', '', `Template: ${t ? `${t.id} v${t.version ?? 1}` : 'none'}`, `Working branch: ${p.base || 'none set'}`, '', ...plans]),
+    '## Plans of this project\'s task types', '', `Workflow: ${t ? `v${t.version ?? 1}${p.from ? `, copied from template ${p.from.template} v${p.from.version} (the template library never changes it)` : ''}` : 'none'}`, `Working branch: ${p.base || 'none set'}`, '', ...plans]),
     '## Turning a workflow request into steps', '',
     'wherdr imposes no workflow: it knows ordered steps, who holds each (worker, reviewer, coordinator, none), how it ends (report, verdict, user, action), the proofs it needs (evidence) and the user\'s guards. What an agent must do is plain text in `instructions`.',
-    `The project's working branch (set by the user in ${projectPlace(p.key, 'general', true)}) is where tasks start; a \`github.pr\`, \`git.land\` or \`git.verify-merged\` step without its own branch uses it, and \`{base}\` in any instructions becomes its name. Prefer these to a branch written in the template.`,
+    `The project's working branch (set by the user in ${projectPlace(p.key, 'general', true)}) is where tasks start; a \`github.pr\`, \`git.land\` or \`git.verify-merged\` step without its own branch uses it, and \`{base}\` in any instructions becomes its name. Prefer these to a branch written in the workflow.`,
     'When the user says "after each task, create the PR with my Bitbucket tool, then wait until I say it is merged", write a worker step with that instruction and `evidence: ["link"]`, then a step `{ holder: "none", ends: "user", userLabel: "Merged", action: { kind: "git.verify-merged", target } }`. "Watch the deploy" is a step you hold: `holder: "coordinator", ends: "report", recheck: "5m"`.',
-    'Read the template, write the new one and run `template edit`: wherdr shows the user its diff, to accept or refuse; `template show` tells you which. Examples to copy from:', '',
+    'Read the project\'s workflow (`template show`), write the new one and run `template edit`: wherdr shows the user its diff, to accept or refuse; `template show` tells you which. Examples to copy from:', '',
     ...examples.map(e => `\`\`\`json\n${JSON.stringify(e)}\n\`\`\``), '',
     '## After N send-backs', '',
     'The engine sorts what is left and gives options. Pick one with `task decide` and one sentence of reason. When it gives no option, the choice is the user\'s: tell them.', '',
     '## The user\'s instructions', '', ...(own.length ? own : ['(none yet)']), '',
   ].join('\n')
-  const skill = ['---', 'name: wherdr-pm', `description: Act on project ${p.key}'s board with the wherdr pm command (tasks, steps, tags, links, template).`, '---', '',
+  const skill = ['---', 'name: wherdr-pm', `description: Act on project ${p.key}'s board with the wherdr pm command (tasks, steps, tags, links, workflow).`, '---', '',
     '# wherdr pm', '', 'Your token is in WHERDR_PM_TOKEN; the server checks every right.', '', ...commandList(t), ''].join('\n')
   // Claude's Edit rule covers every file-writing tool.
   const deny = plain ? [] : [`Edit(/${p.path.replace(/\/$/, '')}/**)`]
@@ -408,19 +410,20 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
 // The main coordinator's part of Alfred's home (shared/pm/alfred.ts): every
 // project, through the board only. Its AGENTS.md is a section of Alfred's.
 export function mainRoleFiles(projects: Pick<Project, 'key' | 'name' | 'path' | 'from'>[]): Record<string, string> {
-  const list = projects.length ? projects.map(p => `- ${p.key}: ${p.name} (repository ${p.path}, template ${p.from?.template || 'none'})`) : ['(no project yet)']
+  const list = projects.length ? projects.map(p => `- ${p.key}: ${p.name} (repository ${p.path}, ${p.from ? `workflow copied from template ${p.from.template}` : 'no workflow yet'})`) : ['(no project yet)']
   const agents = [
     '## Coordinating the projects', '',
     'You are also the main coordinator: you coordinate every project of the user\'s board, and answer the user about all of them. You change no repository: task agents do the work in their own worktrees.',
     'Messages that start with "Autopilot:" are wakes sent by the engine; the others come from the user. The server knows which, and refuses what a wake may not do.', '',
     '### Projects', '', ...list, '',
     '### Commands (your token: every project)', '', ...commandList(), '',
-    'A task names its project (`WHR-12` is project WHR). `list` alone shows every project\'s tasks; `list`, `plan`, `template show`, `automation list`, `automation show` and `task add` take `--project <KEY>` for one project (`task add` needs it). `template edit` is not yours: the project\'s coordinator or the user changes a template.',
+    'A task names its project (`WHR-12` is project WHR). `list` alone shows every project\'s tasks; `list`, `plan`, `template show`, `automation list`, `automation show` and `task add` take `--project <KEY>` for one project (`task add` needs it). `template edit` is not yours: the project\'s coordinator proposes a change to its workflow, the user accepts it. Guards are changed by the user in Settings › Projects, or by you with `wherdr alfred project guards` after their yes.',
     'Every change you make is written to the task\'s log as the main coordinator\'s.', '',
     '### Project coordinators', '',
     'Each project may have its own coordinator. You reach it only through the board: add a task, a tag or a link it will see. There is no other channel, and you never type into its terminal.', '',
     '### What you never do', '',
-    '- approve, merge, change guards or your autopilot\'s limits; answer a permission request: those are the user\'s;',
+    '- approve, merge, change your autopilot\'s limits; answer a permission request: those are the user\'s;',
+    '- change guards other than through `wherdr alfred project guards`, after the user\'s yes;',
     '- change a setting other than through `wherdr alfred`, shown first and made after the user\'s yes;',
     '- end a step that waits for the user unless they just told you so (`--user-said` with their words);',
     '- do the work yourself: work goes to tasks.',

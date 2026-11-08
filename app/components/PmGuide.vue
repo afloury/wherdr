@@ -21,21 +21,22 @@ const steps = computed(() => guideSteps(data.value, coordinators.value))
 const shown = computed(() => !!data.value && (props.always || guideNeeded(data.value)))
 const project = computed(() => guideProject(data.value))
 const SETTINGS = '/settings?section=projects'
+const LINK: Partial<Record<GuideStepId, string>> = { template: `${SETTINGS}&library=1` }
 
-const TEXT: Record<GuideStepId, { title: [string, string], body: [string, string], action: [string, string] }> = {
+const TEXT: Record<GuideStepId, { title: [string, string?], body: [string, string?], action: [string, string?] }> = {
   enable: {
     title: ['Turn on project management', 'Active la gestion de projet'],
     body: ['In Settings › Projects. Off, nothing is changed.', 'Dans Réglages › Projets. Coupée, rien n’est modifié.'],
     action: ['Open Projects', 'Ouvrir Projets'],
   },
   template: {
-    title: ['Create or pick a template', 'Crée ou choisis un modèle'],
-    body: ['A template is the list of steps a task goes through, and who does each one. Start from the example “vibe”.', 'Un modèle est la liste des étapes d’une tâche, et qui fait chacune. Pars de l’exemple « vibe ».'],
-    action: ['Open Templates', 'Ouvrir Modèles'],
+    title: ['Pick a template'],
+    body: ['A template is the list of steps a task goes through, and who does each one. Each project gets its own copy: start from the example “vibe”.'],
+    action: ['Open the library'],
   },
   projects: {
-    title: ['Give each project a template', 'Donne un modèle à chaque projet'],
-    body: ['Add a project, or pick a template for each one: imported projects have none, and their tasks cannot start without it.', 'Ajoute un projet, ou choisis un modèle pour chacun : les projets importés n’en ont pas, et leurs tâches ne peuvent pas démarrer sans.'],
+    title: ['Give each project a workflow'],
+    body: ['Add a project from a template. An imported project has none: start it from one in its Workflow tab, or its tasks cannot start.'],
     action: ['Open Projects', 'Ouvrir Projets'],
   },
   coordinator: {
@@ -78,7 +79,7 @@ const ready = (id: GuideStepId) => id !== 'coordinator' || !!project.value
         >
           {{ s.done ? tl('Open', 'Ouvrir') : tl(...TEXT[s.id].action) }}
         </UButton>
-        <UButton v-else :to="SETTINGS" :color="s.done ? 'neutral' : 'primary'" :variant="s.done ? 'outline' : 'solid'" size="lg" data-testid="pm-guide-action">
+        <UButton v-else :to="LINK[s.id] ?? SETTINGS" :color="s.done ? 'neutral' : 'primary'" :variant="s.done ? 'outline' : 'solid'" size="lg" data-testid="pm-guide-action">
           {{ tl(...TEXT[s.id].action) }}
         </UButton>
       </li>
