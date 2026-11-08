@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Pane, Workspace } from '../shared/types'
-import { cleanLabel, conversationSubtitle, phoneHeaderTitle, spaceTitle } from '../shared/displayTitles'
+import { cleanLabel, conversationSubtitle, coreOwnName, homeTitle, desktopHeaderTitle, spaceTitle } from '../shared/displayTitles'
 
 const p: Pane = { id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: 'agent', agent: 'claude', name: 'claude', label: null, status: 'idle', title: 'Customer portal brief', cwd: '/tmp/demo', agentSession: null }
 const w: Workspace = { id: 'w1', label: 'Customer Portal 2', number: 1, status: null, worktree: false }
@@ -45,20 +45,30 @@ describe('cleanLabel', () => {
   })
 })
 
-describe('phone header identity', () => {
-  it('keeps explicit pane names and coordinator roles ahead of tab names', () => {
-    expect(phoneHeaderTitle({ ...p, label: 'Login review' }, w, 'Build', 2)).toBe('Login review')
-    expect(phoneHeaderTitle({ ...p, name: 'sw-coordinator' }, w, 'Notes', 1)).toBe('Coordinator')
+describe('desktop header title', () => {
+  it('shows the renamed pane', () => {
+    expect(desktopHeaderTitle({ ...p, label: ' Review ' }, w, false)).toBe('Review')
+    expect(desktopHeaderTitle({ ...p, label: 'Review' }, w, true)).toBe('Review')
   })
-  it('uses a custom tab name without dropping its workspace prefix', () => {
-    expect(phoneHeaderTitle(p, w, 'Customer Portal 2-scrolling', 1)).toBe('Customer Portal 2-scrolling')
-    expect(phoneHeaderTitle(p, w, 'Customer Portal 2-scrolling', 2)).toBe('Customer Portal 2-scrolling')
+  it('keeps the space name when the pane was not renamed', () => {
+    expect(desktopHeaderTitle(p, w, false)).toBe('Customer Portal 2')
   })
-  it('falls back to the workspace or pane instead of a generated tab number', () => {
-    expect(phoneHeaderTitle(p, w, '', 1)).toBe(w.label)
-    expect(phoneHeaderTitle(p, w, '', 2)).toBe('Customer portal brief')
-    expect(phoneHeaderTitle(p, undefined, null, 1)).toBe('Customer portal brief')
-    // A deliberately named numeric tab still counts as an explicit name.
-    expect(phoneHeaderTitle(p, w, '1', 1)).toBe('1')
+})
+
+describe('coreOwnName', () => {
+  it('keeps a given name and drops a name that is only the hc address', () => {
+    expect(coreOwnName({ coreAddress: 'box/t2', label: 'Parser-agent-5' })).toBe('Parser-agent-5')
+    expect(coreOwnName({ coreAddress: 't2', label: 't2' })).toBe('')
+    expect(coreOwnName({ coreAddress: 'box/t3', label: 't3' })).toBe('')
+    expect(coreOwnName({ coreAddress: undefined, label: 'legacy' })).toBe('')
+  })
+})
+
+describe('homeTitle', () => {
+  it('is the own name of a core terminal, else its space', () => {
+    const core = { ...p, coreAddress: 'box/t4', label: 'Parser-agent-5' }
+    expect(homeTitle(core, w)).toBe('Parser-agent-5')
+    expect(homeTitle({ ...core, label: 't4' }, w)).toBe('Customer Portal 2')
+    expect(homeTitle({ ...p, label: 'legacy' }, w)).toBe('Customer Portal 2')
   })
 })
