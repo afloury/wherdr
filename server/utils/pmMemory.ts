@@ -1,11 +1,12 @@
 // A machine's memory for automatic starts (shared/pm/memory.ts): its
-// /proc/meminfo through herdr-core (read at most every 20 s), the agents
+// capacity (shared/pm/capacity.ts, Linux or macOS) through herdr-core (read at most every 20 s), the agents
 // running on it across all projects, and the user's settings, kept in
 // DATA_DIR/machine-memory.json by machine key ('' = the wherdr host).
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { DEFAULT_MEMORY, agentCap, mergeMemory, memoryLine, memoryShort, memoryWait, parseMeminfo, type MachineMemory, type MemorySettings } from '../../shared/pm/memory'
+import { DEFAULT_MEMORY, agentCap, mergeMemory, memoryLine, memoryShort, memoryWait, type MemorySettings } from '../../shared/pm/memory'
+import { CAPACITY_SCRIPT, parseCapacity, type MachineCapacity } from '../../shared/pm/capacity'
 import { machineOn, type CoreAdminDeps } from './coreCreate'
 import { exec } from './pmLaunch'
 import type { PmStore } from './pmStore'
@@ -42,20 +43,20 @@ export function setMemorySettings(key: string, patch: unknown, file = MEMORY_FIL
   return run
 }
 
-const read = new Map<string, { at: number, mem: MachineMemory | null }>()
+const read = new Map<string, { at: number, mem: MachineCapacity | null }>()
 // Forgets a reading: an agent just started there, its memory is not in it yet.
 export const forgetMemory = (machine: string) => read.delete(machine)
 
-async function machineMemory(deps: CoreAdminDeps, machine: string, now = Date.now()) {
+async function machineCapacity(deps: CoreAdminDeps, machine: string, now = Date.now()) {
   const hit = read.get(machine)
   if (hit && now - hit.at < 20_000) return hit.mem
-  let mem: MachineMemory | null = null
-  try { mem = parseMeminfo((await exec(deps, machineOn(deps, machine).on, 'cat /proc/meminfo', [], undefined, 10)).out) } catch {}
+  let mem: MachineCapacity | null = null
+  try { mem = parseCapacity((await exec(deps, machineOn(deps, machine).on, CAPACITY_SCRIPT, [], undefined, 10)).out) } catch {}
   read.set(machine, { at: now, mem })
   return mem
 }
 
-export interface MemoryState { key: string, label: string, mem: MachineMemory | null, settings: MemorySettings, agents: number, cap?: number, line: string, short?: string }
+export interface MemoryState { key: string, label: string, mem: MachineCapacity | null, settings: MemorySettings, agents: number, cap?: number, line: string, short?: string }
 
 // The agents at work on a machine, every project: those that hold their task's
 // step under way (agentsAtWork), not those of a task that waits for the user.
@@ -72,7 +73,7 @@ async function atWork(store: PmStore, machine: string) {
 // Where a machine stands: its reading, its settings, its agents at work.
 export async function memoryState(deps: CoreAdminDeps & { store: PmStore }, machine: string): Promise<MemoryState> {
   const label = deps.machines().find(m => m.key === machine)?.label ?? machine
-  const [mem, all, agents] = await Promise.all([machineMemory(deps, machine), readMemorySettings(), atWork(deps.store, machine)])
+  const [mem, all, agents] = await Promise.all([machineCapacity(deps, machine), readMemorySettings(), atWork(deps.store, machine)])
   const settings = all[machine] ?? DEFAULT_MEMORY
   const short = memoryShort(mem, settings, agents)
   const cap = agentCap(settings, mem)
