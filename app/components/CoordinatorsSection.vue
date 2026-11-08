@@ -19,6 +19,8 @@ async function open(c: CoordinatorView) {
   finally { busy.value = '' }
 }
 
+// Its conversation is the one open: the same selected style as agent cards.
+const selected = (c: CoordinatorView) => { const id = coordinatorPane(c)?.id; return !!id && id === curPane.value }
 const sub = (c: CoordinatorView) => {
   const p = coordinatorPane(c)
   const program = kindLabel((c.ran ?? coordinatorAgent(c))?.program)
@@ -66,7 +68,7 @@ onUnmounted(() => clearInterval(timer))
     <h2 class="group-title"><span>{{ tl('Coordinators', 'Coordinateurs') }}</span><span class="count">{{ rows.length }}</span></h2>
     <UContextMenu v-for="c in rows" :key="c.project" :disabled="sheetMenus" :items="rowMenu.dropdown(menu(c))" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="rowMenu.opened">
     <button
-      type="button" class="coord-row" :class="{ on: !!coordinatorPane(c) }"
+      type="button" class="coord-row" :class="{ on: !!coordinatorPane(c), sel: selected(c) }" :aria-current="selected(c) ? 'page' : undefined"
       :disabled="!!busy" data-testid="coordinator-row" v-on="rowMenu.on(menu(c), coordinatorName(c))" @click="open(c)"
     >
       <i class="coord-dot" aria-hidden="true" />
@@ -95,7 +97,10 @@ onUnmounted(() => clearInterval(timer))
 
 <style scoped>
 .coord-list { display: grid; }
-.coord-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 8px 12px; border: 1px solid var(--line); border-top-width: 0; background: var(--surface); color: var(--text); text-align: left; cursor: pointer; }
+.coord-row { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 8px 12px; border: 1px solid var(--line); border-top-width: 0; background: var(--surface); color: var(--text); text-align: left; cursor: pointer; }
+.coord-row::before { content: ''; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 2px; background: transparent; }
+.coord-row.sel { background: var(--surface-2); }
+.coord-row.sel::before { background: var(--mauve); }
 .coord-row:first-of-type { border-top-width: 1px; }
 .coord-row:hover:not(:disabled) { background: var(--surface-2); }
 .coord-row:disabled { cursor: progress; }
