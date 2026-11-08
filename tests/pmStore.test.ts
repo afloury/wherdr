@@ -100,6 +100,26 @@ describe('workflows migration', () => {
   })
 })
 
+describe('template library', () => {
+  it('renames a template with its version and log, and deletes it; the project keeps its own workflow', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await store.saveTemplate(template)
+    await store.addProject(input, okFolder)
+    await store.saveTemplate({ ...template, id: 'other' })
+    await expect(store.renameTemplate('vibe', 'other')).rejects.toMatchObject({ code: 'exists' })
+    await expect(store.renameTemplate('vibe', 'Bad Id')).rejects.toMatchObject({ code: 'bad_input' })
+    await store.renameTemplate('vibe', 'team')
+    expect((await store.overview()).templates).toEqual([{ id: 'other', version: 1 }, { id: 'team', version: 1 }])
+    expect((await store.templateLog('team')).map(e => e.changes)).toEqual([[], ['renamed from vibe']])
+    expect((await store.project('WEB'))?.from).toEqual({ template: 'team', version: 1 }) // "Based on" follows the name
+    await store.removeTemplate('team')
+    await expect(store.removeTemplate('team')).rejects.toMatchObject({ code: 'not_found' })
+    expect(await store.templateLog('team')).toEqual([])
+    expect(await store.workflow('WEB')).toMatchObject({ id: 'web' })
+  })
+})
+
 describe('cleanProjectInput', () => {
   it('normalises the key and refuses bad fields', () => {
     expect(cleanProjectInput({ key: ' whr ', machine: 'mac', path: '/w', base: 'v3' }).project)

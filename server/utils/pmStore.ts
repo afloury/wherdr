@@ -418,6 +418,29 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       if (old && !replace) throw new HerdrError('exists', 'A template already has this id')
       return { id: id!, version: await saveVersioned(file, path.join(files.templateLog, `${id}.json`), t as Template, old, by, said) }
     }),
+
+    // A library template gets a new id (its version and log come along). No
+    // project depends on it: "Based on" is information only, renamed with it.
+    renameTemplate: (id: unknown, to: unknown) => write(async () => {
+      if (typeof to !== 'string' || !isTemplateId(to)) throw badInput([{ path: 'to', message: 'lowercase letters, digits, . _ -' }])
+      const t = await knownTemplate(typeof id === 'string' ? id : '')
+      if (to === t.id) return { id: to }
+      const file = path.join(files.templates, `${to}.json`)
+      if (await readJson(file)) throw new HerdrError('exists', 'A template already has this id')
+      const log = await readLog(path.join(files.templateLog, `${t.id}.json`))
+      await writeJson(path.join(files.templateLog, `${to}.json`), { v: 1, entries: [...log, { at: Date.now(), by: 'user', version: t.version ?? 1, changes: [`renamed from ${t.id}`] }].slice(-200) })
+      await writeJson(file, { ...t, id: to })
+      await Promise.all([files.templates, files.templateLog].map(d => fs.rm(path.join(d, `${t.id}.json`), { force: true })))
+      const list = await projects()
+      if (list.some(p => p.from?.template === t.id)) await saveProjects(list.map(p => (p.from?.template === t.id ? { ...p, from: { ...p.from, template: to } } : p)))
+      return { id: to }
+    }),
+
+    // Deletes a library template and its log; projects keep their own copies.
+    removeTemplate: (id: unknown) => write(async () => {
+      const t = await knownTemplate(typeof id === 'string' ? id : '')
+      await Promise.all([files.templates, files.templateLog].map(d => fs.rm(path.join(d, `${t.id}.json`), { force: true })))
+    }),
   }
 }
 
