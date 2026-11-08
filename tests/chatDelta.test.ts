@@ -1,10 +1,10 @@
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
-import { createChatDelta, splitToken } from '../server/utils/chatDelta'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createChatDelta, itemSigs, splitToken } from '../server/utils/chatDelta'
 import { anchorOf, createTranscripts, headOf } from '../server/utils/transcripts'
-import { createTailLoader, nextTail, restartsTail, tailQuery } from '../app/utils/chatTail'
+import { createTailLoader, nextTail, restartsTail, swapTail, tailQuery } from '../app/utils/chatTail'
 import type { ChatItem } from '../shared/types'
 import { type FsStat, type MachineFs, type ShellExec, createShellFs, localFs } from '../server/utils/fsx'
 import { spawn } from 'node:child_process'
@@ -13,6 +13,18 @@ import { renameSync } from 'node:fs'
 const item = (text: string, role: ChatItem['role'] = 'assistant'): ChatItem => ({ role, text, ts: '2026-01-01T00:00:00Z' })
 
 describe('chatDelta', () => {
+  it('signs each item object once, and equal items alike', () => {
+    const a = [item('one', 'user'), item('two')]
+    const first = itemSigs(a)
+    const json = vi.spyOn(JSON, 'stringify')
+    try {
+      expect(itemSigs(a)).toEqual(first)
+      expect(json).not.toHaveBeenCalled()
+      expect(itemSigs([a[0]!, item('two'), item('three')]).subarray(0, 4)).toEqual(first)
+      expect(json).toHaveBeenCalledTimes(2)
+    } finally { json.mockRestore() }
+  })
+
   it('sends the whole list to a client it does not know, then only what changed', () => {
     const d = createChatDelta()
     const a = [item('one', 'user'), item('two'), item('three')]
@@ -131,6 +143,16 @@ describe('nextTail and tailQuery', () => {
     expect(nextTail(tail, { keep: 2, items: [] })).toBe(tail)
     expect(nextTail(tail, { keep: 3, items: [] })).toBeNull()
     expect(nextTail(tail, { keep: -1, items: [] })).toBeNull()
+  })
+
+  it('swaps a restarted list in one step, keeping the objects of the items already shown', () => {
+    const shown = [item('a'), item('b'), item('b')]
+    const next = swapTail(shown, [item('b'), item('c'), item('b'), item('b')])
+    expect(next).toEqual([item('b'), item('c'), item('b'), item('b')])
+    expect(next[0]).toBe(shown[1])
+    expect(next[2]).toBe(shown[2])
+    expect(next[3]).not.toBe(shown[1])
+    expect(swapTail([], [item('a')])).toEqual([item('a')])
   })
 
   it('sends the item count of the list held (0 without a token)', () => {

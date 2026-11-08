@@ -1,44 +1,53 @@
 # Documentation
 
-**Updating to 2.5.0?** Read the [2.5.0 release notes](release-notes-2.5.0.md) for phone key ordering, push delivery results, the English-only interface and cross-machine recovery fixes.
+This is the documentation of **wherdr v3**, which runs on herdr-core (`hc`). Pages and sections marked **v2 only** apply to wherdr 2.x on Herdr.
 
-**Updating to 2.4.0?** Read the [2.4.0 release notes](release-notes-2.4.0.md) for Shepherdr 2 protection, Board search, terminal controls and wake reconnection fixes.
+Read only the page relevant to your task. Start with [herdr-core](core.md) for what v3 supports,
+[Installation and updates](installation.md) for setup, [Security](security.md) for remote access,
+or [Development and tests](development.md) for repository changes.
 
-**Updating to 2.3.0?** Read the [2.3.0 release notes](release-notes-2.3.0.md) for grouped worktrees, project headers, notification menus and agent naming fixes.
+## v3
 
-**Updating to 2.2.0?** Read the [2.2.0 release notes](release-notes-2.2.0.md) for task types, plan approval, faster conversation opening and paste fixes.
-
-**Updating to 2.1.0?** Read the [2.1.0 release notes](release-notes-2.1.0.md) for new task controls, Board improvements and fixes.
-
-**Upgrading to 2.0.0?** Read the [release notes](release-notes-2.0.0.md) for breaking changes and the 1.x migration checklist.
-
-Read only the page relevant to your task. Start with [Installation and updates](installation.md) for setup,
-[Security](security.md) for remote access, or [Development and tests](development.md) for repository changes.
-
-- [Overview and architecture](overview.md) — What wherdr does, why it exists and how it connects to Herdr. Includes the launch film and license.
-- [First launch](quick-start.md) — Install the native service and follow the setup guide. Includes the desktop, Board and phone screenshots.
-- [Home and agent list](home.md) — Find agents, create a session and filter machines or projects. Covers compact rows and state grouping.
-- [Conversation and replies](conversation.md) — Read transcripts, answer questions, attach files and manage drafts. Includes quoted replies and decision tables.
-- [Terminal](terminal.md) — Use the real terminal, copy text, open links and paste images. Explains take-over and size restoration.
-- [Files and changes](files.md) — Review Git changes and comment on lines or blocks. Compose a review for the agent.
-- [Computer, phone and iPad](devices.md) — Use split panes, keyboard shortcuts and touch controls. Describes device-specific layouts.
-- [Installation and updates](installation.md) — Requirements, native installer, agent PATH, updates and migration from Docker.
-- [Phone access and private networks](networks.md) — Set up Tailscale or another private network with HTTPS. Includes always-on servers and keep-awake.
-- [The wherdr command](command.md) — Install through npm or Homebrew and manage the native service from the command line.
-- [Herdr plugins](plugins.md) — Install and configure the wherdr plugin, its panel key and plugin actions.
+- [herdr-core](core.md) — How v3 uses hc: inventory, terminals, conversations, creating agents, machines. The reference for what v3 supports.
+- [Overview and architecture](overview.md) — What wherdr does and how it connects to herdr-core.
+- [First launch](quick-start.md) — Build, start and open wherdr v3.
+- [Installation and updates](installation.md) — Requirements, running as a service, updating.
+- [Install with an agent](install-with-an-agent.md) — Ready-to-paste agent prompts: new install, v3 beside v2 with import, update.
+- [Migrate from v2](migrate-from-v2.md) — Install v3 next to a running v2, import projects, machines and settings, auto-deploy from a build machine, fall back, uninstall.
+- [Project management](project-management.md) — Getting started: turn it on, templates, projects, the board and its coordinator.
+- [Home and agent list](home.md) — Machine tabs, spaces and tabs, states, new agents and search.
+- [Alfred's command](alfred.md) — `wherdr alfred`: what Alfred reads and changes, shown before it is done.
+- [Conversation and replies](conversation.md) — Read transcripts, answer questions, attach files and quote replies.
+- [Terminal](terminal.md) — The real terminal, shared viewers and taking control.
+- [Files](files.md) — Browse, read and download the files of an agent's folder.
+- [Computer, phone and iPad](devices.md) — Layouts, keyboard shortcuts and touch controls.
+- [Machines](machines.md) — Add, reconnect, rename and forget machines reached by herdr-core over SSH.
+- [Claude and Codex quotas](quotas.md) — Remaining usage on every machine.
+- [Notifications](notifications.md) — Web Push, Do not disturb, default and exceptions.
+- [Settings and configuration](configuration.md) — Environment variables and in-app settings.
+- [Phone access and private networks](networks.md) — Set up Tailscale or another private network with HTTPS.
 - [Install as an app](phone.md) — Add wherdr to your home screen on a phone or install it in a desktop browser.
-- [Settings and configuration](configuration.md) — Configure the service through environment variables and the app through shared and device-specific preferences.
-- [Machines and SSH](machines.md) — Register remote machines and use their agents through SSH. Includes sessions and connection troubleshooting.
-- [Claude and Codex quotas](quotas.md) — Show remaining usage and handle Codex updates, limits and restarts.
-- [Notifications](notifications.md) — Enable Web Push, relay Herdr notifications and configure Do not disturb.
-- [Board and coordinators](board.md) — Work with herdr-projects tasks, reviews, approvals and coordinators across machines.
-- [Security](security.md) — Understand remote-shell access, passkeys and network restrictions. Read this before enabling remote access.
+- [Plugins](plugins.md) — [wherdr plugins](plugins.md#wherdr-plugins): optional page plugins and `data-wherdr` markers.
+- [Security](security.md) — Remote-shell access, passkeys and network restrictions. Read this before enabling remote access.
+- [Dictation design](dictation.md) — For contributors: the engine interface, capture pipeline, OpenRouter relay, on-device models and how to add one.
 - [Design rules](design.md) — The single reference for interface styling, state indicators, controls and responsive checks.
-- [Development and tests](development.md) — Run from source and follow the contribution and agent test rules.
-- [Troubleshooting](troubleshooting.md) — Resolve startup, permissions, network, SSH and conversation problems.
+- [Development and tests](development.md) — Run from source and test the core build.
+- [Troubleshooting](troubleshooting.md) — herdr-core connection, conversations, machines and network problems.
 
-Also see [herdr-projects 1.x migration](herdr-projects-1x.md), [Releasing](RELEASING.md),
-[keyboard shortcut specification](product/keyboard-shortcuts.md) and [Contributing](../CONTRIBUTING.md).
+Also see the [keyboard shortcut specification](product/keyboard-shortcuts.md) and
+[Contributing](../CONTRIBUTING.md).
+
+## v2 only
+
+These pages describe wherdr 2.x on Herdr. They do not apply to v3.
+
+- [Migrate from a 1.x Docker install](migrate-from-1.x-docker.md) — Docker container to the native 2.0 service.
+- [The wherdr command](command.md) — npm and Homebrew packages and the native service.
+- [Releasing](RELEASING.md) — Release process of the 2.x line.
+
+Release notes of the 2.x line: [2.5.0](release-notes-2.5.0.md) · [2.4.0](release-notes-2.4.0.md) ·
+[2.3.0](release-notes-2.3.0.md) · [2.2.0](release-notes-2.2.0.md) · [2.1.0](release-notes-2.1.0.md) ·
+[2.0.0](release-notes-2.0.0.md).
 
 ## Section reference
 
@@ -47,23 +56,17 @@ Also see [herdr-projects 1.x migration](herdr-projects-1x.md), [Releasing](RELEA
 - [Features](home.md#features)
 - [How it works](overview.md#how-it-works)
 - [Requirements](installation.md#requirements)
-- [Installation](installation.md#installation): [ask your AI agent](installation.md#ask-your-ai-agent) ·
-  [or run the installer yourself](installation.md#the-one-command) ·
-  [which setup?](installation.md#which-setup) ·
+- [Installation](installation.md#installation) ·
   [always-on server + Tailscale](networks.md#recommended-always-on-server--tailscale) ·
   [other private networks](networks.md#other-private-networks) ·
-  [as a Herdr plugin](plugins.md#install-as-a-herdr-plugin) ·
-  [the `wherdr` command (npm, Homebrew)](command.md#the-wherdr-command) ·
-  [from source](development.md#from-source) ·
-  [moving from Docker to the native service](migrate-from-1.x-docker.md)
+  [from source](development.md#from-source)
 - [Updating](installation.md#updating)
 - [Install it as an app](phone.md#install-it-as-an-app)
 - [Configuration](configuration.md#configuration)
 - [Several machines (SSH)](machines.md#several-machines-ssh)
 - [Claude and Codex quotas](quotas.md#claude-and-codex-quotas)
 - [Notifications](notifications.md#notifications)
-- [Works great with herdr-projects](board.md#works-great-with-herdr-projects)
-- [Herdr plugins](plugins.md#herdr-plugins)
 - [Security](security.md#security)
 - [Troubleshooting](troubleshooting.md#troubleshooting)
 - [Contributing](development.md#contributing) · [License](overview.md#license)
+- v2 only: [the `wherdr` command](command.md#the-wherdr-command)
