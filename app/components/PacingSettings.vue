@@ -176,6 +176,7 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
         </template>
       </div>
     </div>
+    <MachineMemorySettings v-if="active" />
     <p class="muted settings-hint">
       {{ tl('Automatic work (autopilot, automations) waits when an account is ahead of its pace. Your own starts never wait.', 'Le travail automatique (autopilote, automatisations) attend quand un compte est en avance sur son rythme. Tes propres lancements n’attendent jamais.') }}
     </p>

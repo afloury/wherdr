@@ -31,6 +31,7 @@ export interface Card {
   stopped?: Stopped // who stopped it and why: Continue, Take it as it is or Archive
   removable?: true // never started (no agent, worktree or branch): the user may remove it
   prNow?: string // its PR as the engine last read it (prNow)
+  held?: string // waits for memory on its machine
 }
 
 export interface BoardProject { key: string, name: string, columns: string[] }
@@ -82,6 +83,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
     plan,
     ...(s ? { state: s } : {}),
     ...(task.stopped ? { stopped: task.stopped } : {}),
+    ...(task.held && task.state === 'todo' ? { held: task.held } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
   }
 }
@@ -137,8 +139,9 @@ const ofPr = (pr: string): CardStatus => (pr === 'merged'
 // Where a task's PR and merge stand, in one short line: from its step state
 // and what the engine last read of its PR. None before a PR, or once stopped.
 // A done task merged by a step: 'merged', at the time it was done.
-export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow'>): CardStatus | undefined {
+export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' | 'held'>): CardStatus | undefined {
   const s = c.state
+  if (c.held) return { text: c.held, tone: 'wait' }
   if (!s?.started || c.stopped) return
   if (s.done) {
     const merged = c.plan.some(p => p.action && MERGES.includes(p.action.kind) && s.proofs[p.id] && Object.keys(s.proofs[p.id]!).length)

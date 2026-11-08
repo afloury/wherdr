@@ -15,6 +15,7 @@ import { pacedStart } from '../../shared/pm/pace'
 import { projectPace } from './pmPace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { advanceTick } from './pmAdvance'
+import { forgetMemory, memoryHold } from './pmMemory'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -77,9 +78,33 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
       if (!coordinatorStartRefusal(ap, t, mine, runs, now, false, { pace, engine: true })) { next = t; break }
     }
     if (!next) continue
+    // Short on memory: held, with why on its card, until a later tick finds memory back.
+    const held = await memoryHold(deps, p.key)
+    if (held) { if (next.held !== held) await store.logTask({ ...next, held }, 'engine', held); continue }
+    forgetMemory(p.machine)
     const r = await startTask(deps, next.id).catch((e: Error) => ({ ...next, state: 'waiting' as const, waiting: e.message }))
     await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} done` : `could not start after ${next.after}: ${r.waiting ?? ''}`)
     started.push(next.id)
+  }
+  return started
+}
+
+// Tasks a wake or an automation would have started, held for memory: each
+// starts once its machine has memory back, one per machine and tick (the next
+// reading counts the new agent). Chained ones are startChained's.
+export async function startHeld(deps: PmLaunchDeps) {
+  const { store } = deps
+  const projects = await store.projects(), started: string[] = [], machines = new Set<string>()
+  for (const t of (await store.tasks()).filter(x => x.held && x.state === 'todo' && !x.after)) {
+    const p = projects.find(x => x.key === t.project)
+    if (!p || machines.has(p.machine)) continue
+    const held = await memoryHold(deps, p.key)
+    if (held) { if (held !== t.held) await store.saveTask({ ...t, held }); continue }
+    machines.add(p.machine)
+    forgetMemory(p.machine)
+    const r = await startTask(deps, t.id).catch((e: Error) => ({ ...t, state: 'waiting' as const, waiting: e.message }))
+    await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? 'started: memory is back' : `could not start: ${r.waiting ?? ''}`)
+    started.push(t.id)
   }
   return started
 }
@@ -90,6 +115,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   await syncWaits(deps).catch(() => {})
   await advanceTick(deps, now).catch(() => {})
   await startChained(deps, now).catch(() => {})
+  await startHeld(deps).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
   for (const task of await store.tasks()) {
