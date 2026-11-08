@@ -8,6 +8,7 @@ import type { Project } from '../../shared/pm/project'
 import { HerdrError } from './herdr'
 import { paceWait } from '../../shared/pm/pace'
 import { projectPace } from './pmPace'
+import { memoryHold } from './pmMemory'
 import { startTask, type PmLaunchDeps } from './pmLaunch'
 
 // Adds the firing's task and starts it; a refusal stays on the firing.
@@ -22,6 +23,9 @@ async function fire(deps: PmLaunchDeps, p: Project, a: Automation, f: Omit<Firin
   }
   try {
     const task = await deps.store.addTask(firingTask(a, p.key, Object.keys(t.taskTypes)[0]!, f.at, f.cause))
+    // Short on memory: the task is added and waits for it (the engine starts it then). "Run now" goes.
+    const held = f.by !== 'user' ? await memoryHold(deps, p.key) : undefined
+    if (held) return { ...f, task: (await deps.store.logTask({ ...task, held }, 'engine', held)).id, error: held }
     const started = await startTask(deps, task.id).catch((e: Error) => ({ ...task, state: 'waiting' as const, waiting: e.message }))
     return { ...f, task: task.id, ...(started.state === 'waiting' ? { error: started.waiting ?? 'Not started' } : {}) }
   } catch (e) { return { ...f, error: (e as Error).message } }
