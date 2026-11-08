@@ -5,6 +5,7 @@ import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-uti
 import { readBody } from 'h3'
 import CoordinatorsSection from '~/components/CoordinatorsSection.vue'
 import { herdrState } from '~/composables/useHerdr'
+import { alfred, coordinators, paneCoordinatorName } from '~/composables/useCoordinators'
 import { MAIN, type CoordinatorView } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
 
@@ -39,4 +40,16 @@ it('is hidden while project management is off', async () => {
   w = await mountSuspended(CoordinatorsSection)
   await new Promise(r => setTimeout(r, 50))
   expect(w.find('[data-testid="coordinators"]').exists()).toBe(false)
+})
+
+it("titles a coordinator's pane by its name, not its session title (WHR-15)", () => {
+  coordinators.value = [view(MAIN, { main: true, terminal: 'host/t1' }), view('CO', { terminal: 'host/t2' })]
+  const p = (id: string, at: string) => ({ ...pane(id, at), title: 'Template proposal' }) as Pane
+  expect(paneCoordinatorName(p('w:p2', 'host/t2'))).toBe('CO coordinator')
+  // The main coordinator: Alfred's current name, the default before it loads.
+  alfred.value = null
+  expect(paneCoordinatorName(p('w:p1', 'host/t1'))).toBe('Alfred')
+  alfred.value = { name: 'Jeeves', terminal: 'host/t1' }
+  expect(paneCoordinatorName(p('w:p1', 'host/t1'))).toBe('Jeeves')
+  expect(paneCoordinatorName(p('w:p3', 'host/t3'))).toBe('')
 })

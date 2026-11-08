@@ -17,7 +17,6 @@ async function open(c: CoordinatorView) {
   finally { busy.value = '' }
 }
 
-const name = (c: CoordinatorView) => tl(`${c.project} coordinator`, `Coordinateur ${c.project}`)
 const sub = (c: CoordinatorView) => {
   const p = coordinatorPane(c)
   const program = kindLabel((c.ran ?? coordinatorAgent(c))?.program)
@@ -38,7 +37,7 @@ onUnmounted(() => clearInterval(timer))
       :disabled="!!busy" data-testid="coordinator-row" @click="open(c)"
     >
       <i class="coord-dot" aria-hidden="true" />
-      <span class="coord-text"><b>{{ name(c) }}</b><small>{{ busy === c.project ? tl('Starting…', 'Lancement…') : sub(c) }}</small></span>
+      <span class="coord-text"><b>{{ coordinatorName(c) }}</b><small>{{ busy === c.project ? tl('Starting…', 'Lancement…') : sub(c) }}</small></span>
       <UIcon :name="coordinatorPane(c) ? 'i-lucide-chevron-right' : 'i-lucide-play'" class="coord-go" />
     </button>
     <p v-if="error" class="error coord-error">{{ error }}</p>
