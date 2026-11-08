@@ -168,3 +168,29 @@ it('a task never started offers Delete… in its menu, confirmed first; a starte
   answerConfirm(true)
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/task-remove', body: { id: 'VIB-1' } }]))
 })
+
+it('the card menu opens on long press and right click; its ••• button only when it has more than Open', async () => {
+  board.cards[0] = cardOf(task('VIB-1', { ...initialState(), started: true, done: true }, { type: 'simple', state: 'done' }), planSteps(vibe, { type: 'simple' }), runs)
+  const w = await mount()
+  const dots = (id: string) => card(w, id).element.parentElement!.querySelector('[data-testid="card-menu"]')
+  expect(dots('VIB-1')).toBeNull()
+  expect(dots('CO-1')).not.toBeNull()
+  // A still long press with a finger: the sheet, and the lifted finger does not open the task.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    await card(w, 'VIB-1').trigger('pointerdown', { pointerType: 'touch', button: 0, clientX: 0, clientY: 0 })
+    vi.advanceTimersByTime(720)
+    await card(w, 'VIB-1').trigger('pointerup')
+    await card(w, 'VIB-1').trigger('click')
+  } finally { vi.useRealTimers() }
+  expect(menuState.open).toBe(true)
+  expect(menuState.items.map(i => ('label' in i ? i.label : ''))).toEqual(['Open'])
+  expect(document.querySelector('[data-testid="task-stop"], [data-testid="task-log"]')).toBeNull()
+  menuState.open = false
+  // A mouse right click on a touch or narrow screen: the same sheet.
+  await card(w, 'CO-1').trigger('pointerdown', { pointerType: 'mouse', button: 2 })
+  await card(w, 'CO-1').trigger('contextmenu')
+  expect(menuState.open).toBe(true)
+  expect(menuState.items.map(i => ('label' in i ? i.label : ''))).toContain('Stop…')
+  menuState.open = false
+})
