@@ -13,7 +13,7 @@ import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { type PendingMessage, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
-import { CHAT_READ_MS, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
+import { CHAT_READ_MS, createFlipGuard, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -274,7 +274,9 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     const r = ready || await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
     if (stale()) return false
     if (!r.available) {
-      const m = onUnavailable(misses.value, Boolean(chat.value.file) && items.value.length > 0)
+      // Any list on screen counts, the end kept on this device too: a server
+      // that just restarted answers "not found" for a while (no blank list).
+      const m = onUnavailable(misses.value, items.value.length > 0)
       misses.value = m.next
       if (!m.clear) return false
       chat.value = fresh()
@@ -517,9 +519,16 @@ watch(pollDelay, schedulePoll)
 // on every push (a new pane object), not only when one of them changes.
 watch([() => props.pane.status, () => props.pane.preview], () => { pollNow(); schedulePoll() })
 
+// The list the blocks show (createFlipGuard): never empty while it alternates.
+let steadyItems = createFlipGuard()
+watch(() => props.pane.id, () => { steadyItems = createFlipGuard() })
+const steadyList = computed(() => steadyItems(items.value))
+// The guard keeps a list the reads just emptied: no empty state over it either.
+const holding = computed(() => steadyList.value !== items.value)
+const shownUnavailable = computed(() => (holding.value ? null : unavailable.value))
 const blocks = computed<Block[]>(() => {
   const out: Block[] = []
-  const list = items.value
+  const list = steadyList.value
   let tools: ChatItem[] = []
   // Stable key of an action block (keeps its expanded state when older
   // pages are added above).
@@ -1311,7 +1320,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         :ui="MSGS_UI"
       >
         <div ref="listEl" class="chat-list" :class="[readOnly ? 'no-reply' : `rs-${replyStyle}`, { asking: asked, skeleton }]" @click="onListClick" @keydown="onListKey">
-          <div v-if="unavailable === 'not_found' && firstPrompt" class="msg-user-wrap" data-testid="first-prompt">
+          <div v-if="shownUnavailable === 'not_found' && firstPrompt" class="msg-user-wrap" data-testid="first-prompt">
             <UChatMessage
               id="first-prompt" role="user" side="right" variant="soft" :parts="firstParts(firstPrompt)"
               :ui="FIRST_UI"
@@ -1321,13 +1330,13 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               </template>
             </UChatMessage>
           </div>
-          <div v-else-if="unavailable && waiting" class="chat-empty waiting">
+          <div v-else-if="shownUnavailable && waiting" class="chat-empty waiting">
             <UIcon name="i-lucide-square-terminal" class="chat-empty-icon" />
             <p>{{ waiting.text }}</p>
             <pre v-if="waiting.lines.length" class="choices-screen-text">{{ waiting.lines.join('\n') }}</pre>
             <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
           </div>
-          <div v-else-if="unavailable === 'no_integration' && integration" class="chat-empty no-integration">
+          <div v-else-if="shownUnavailable === 'no_integration' && integration" class="chat-empty no-integration">
             <UIcon name="i-lucide-plug-zap" class="chat-empty-icon" />
             <p class="no-integration-title">{{ tl(`Herdr's ${kindLabel(integration.agent)} integration is missing`, `L’intégration ${kindLabel(integration.agent)} de Herdr manque`) }}</p>
             <p class="no-integration-text">
@@ -1341,7 +1350,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
             </div>
           </div>
-          <div v-else-if="unavailable" class="chat-empty">
+          <div v-else-if="shownUnavailable" class="chat-empty">
             <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />
             <p>{{ unavailable === 'not_found' ? t('No conversation for this agent yet.') : t('Conversation unavailable for this agent.') }}</p>
             <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
@@ -1536,7 +1545,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <MsgThumbs v-for="(srcs, j) in hiddenToolImages(b)" :key="`h${j}`" class="tool-thumbs" :srcs="srcs" :max="TOOL_THUMB_MAX" :offline="readOnly" :dupes="dupeSrcs" />
               </div>
             </template>
-            <div v-if="rendered && !items.length && !loadError" class="chat-empty">
+            <div v-if="rendered && !steadyList.length && !loadError" class="chat-empty">
               <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />
               <p>{{ t('No messages yet.') }}</p>
             </div>

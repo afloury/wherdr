@@ -10,6 +10,7 @@ import { guardsAuthor, saveProjectGuards, saveProjectWorkflow, templateFromProje
 import { common, company, vibe } from '../shared/pm/examples'
 import { templateDiff } from '../shared/pm/coordinator'
 import { startOverFrom } from '../shared/pm/workflow'
+import { machineNamed } from '../shared/pm/project'
 
 let dir = '', store: ReturnType<typeof createPmStore>
 const guards = { protected: ['main', 'release'], merge: { protected: 'user' as const, others: 'user' as const } }
@@ -23,6 +24,14 @@ beforeEach(async () => {
   await store.setTemplate('CO', 'example:company')
 })
 afterEach(() => fs.rm(dir, { recursive: true, force: true }))
+
+describe('machineNamed', () => {
+  it('finds an allowed machine by its name in any case, or its key; another is refused with the allowed ones', () => {
+    const p = { machine: '', machines: ['b'] }, known = [{ key: '', label: 'machine-a' }, { key: 'b', label: 'machine-b' }, { key: 'c', label: 'machine-c' }]
+    expect([machineNamed(p, known, 'Machine-B'), machineNamed(p, known, 'b')]).toEqual([{ machine: 'b' }, { machine: 'b' }])
+    expect(machineNamed(p, known, 'machine-c')).toEqual({ refused: 'No machine named machine-c among the project\'s: machine-a, machine-b' })
+  })
+})
 
 describe('guardsAuthor', () => {
   it('takes the user\'s session and Alfred\'s token; a project coordinator\'s token is refused', async () => {

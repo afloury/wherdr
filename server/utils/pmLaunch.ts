@@ -15,6 +15,7 @@ import { isPublic } from '../../shared/pm/visibility'
 import { cloneOn, taskMachine } from '../../shared/pm/project'
 import { ensureVisibility, readLeakCheck } from './pmVisibility'
 import { DEPS_SCRIPT, depsNote } from './pmDeps'
+import { ensureReady } from './pmReady'
 import { LABEL, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 
 // Reuses the worktree of an earlier attempt; else a new branch from the base,
@@ -103,6 +104,8 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, rev
   if (!home) return wait(store, task, `${label}: home folder not found`)
   const repo = cloneOn(p, machine, home)
   if (!repo) return wait(store, task, `wherdr knows no clone of the project on ${label}: allow that machine again in the project's settings`)
+  // A new task on another machine than home: refused (left as it was) while that machine is not ready.
+  if (task.machine === undefined && !task.run && machine !== p.machine) await ensureReady(deps, p, t, task, machine, repo)
   const paths = taskPaths(home, task.id)
   // Recorded at the first start: changing the project's branch later leaves this task alone.
   const base = taskBase(task, p) ?? ''

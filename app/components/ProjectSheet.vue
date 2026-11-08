@@ -4,7 +4,9 @@
 // its tasks start with (the workflow's prefs), where its workflow came from.
 // Workflow: ProjectWorkflow, its own entries first in the ⋯ menu. The ⋯ menu
 // removes the project. Guards: ProjectGuards. Automations and Autopilot reuse
-// the components shown elsewhere.
+// the components shown elsewhere. A coordinator's proposed workflow change:
+// a badge on Workflow, its first row there opens the review (ProposalReview),
+// at once when the URL asks (`review=1`).
 import type { Project, TemplateInfo } from '#shared/pm/project'
 import { shownKey } from '#shared/pm/projectKey'
 import type { LogEntry } from '#shared/pm/templateText'
@@ -13,7 +15,7 @@ import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
 import type { RepoVisibility } from '#shared/pm/visibility'
 import { PROJECT_TABS, PROJECT_TAB_LABEL as TAB_LABEL, type ProjectTab } from '~/utils/projectTabs'
 
-const props = defineProps<{ project: Project, tab: ProjectTab, templates: TemplateInfo[] }>()
+const props = defineProps<{ project: Project, tab: ProjectTab, templates: TemplateInfo[], review?: boolean }>()
 const emit = defineEmits<{ tab: [tab: ProjectTab], close: [], changed: [] }>()
 const open = ref(true)
 const p = computed(() => props.project)
@@ -87,6 +89,8 @@ const workflowChanged = () => { load().catch((e) => { error.value = (e as Error)
 const workflowTab = ref<InstanceType<typeof ProjectWorkflow>>()
 
 const coordinator = computed(() => projectCoordinators.value.find(c => c.project === p.value.key))
+const reviewOpen = ref(!!props.review)
+const reviewed = (accepted: boolean) => { if (accepted) workflowChanged() }
 const menu = (): MenuItem[] => [
   ...(props.tab === 'workflow' && workflowTab.value ? [...workflowTab.value.menu(), { kind: 'separator' as const }] : []),
   { label: tl(`Remove ${p.value.name}`), icon: 'i-lucide-trash-2', danger: true, run: remove },
@@ -108,6 +112,7 @@ async function remove() {
       <div class="segmented project-tabs" role="tablist" :style="{ '--segment-count': PROJECT_TABS.length }">
         <button v-for="k in PROJECT_TABS" :id="`project-tab-${k}`" :key="k" type="button" role="tab" :class="{ on: tab === k }" :aria-selected="tab === k" :data-tab="k" @click="emit('tab', k)">
           <span>{{ tl(TAB_LABEL[k]) }}</span>
+          <span v-if="k === 'workflow' && coordinator?.proposal" class="card-state blocked project-tab-badge" :aria-label="tl('A change to review')" data-testid="workflow-badge"><i /></span>
         </button>
       </div>
 
@@ -158,7 +163,13 @@ async function remove() {
           <span class="field-label">{{ tl('Template') }}</span>
           <small class="muted" data-testid="pm-from">{{ p.from ? tl(`Based on: ${p.from.template} v${p.from.version}. Information only: changes to the template do not reach the project. To start over from a template: Workflow › ⋯.`) : tl('No template yet: start from one in the Workflow tab.') }}</small>
         </form>
-        <ProjectWorkflow v-else-if="tab === 'workflow' && loaded" ref="workflowTab" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" @templates="emit('changed')" />
+        <button v-if="tab === 'workflow' && coordinator?.proposal" type="button" class="settings-card pm-proposal" data-testid="workflow-proposal" @click="reviewOpen = true">
+          <span class="card-state blocked" aria-hidden="true"><i /></span>
+          <span class="pm-proposal-text">{{ tl('Change proposed by the coordinator') }}</span>
+          <span class="mono-label">{{ tl('Review') }}</span>
+          <UIcon name="i-lucide-chevron-right" />
+        </button>
+        <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" @templates="emit('changed')" />
         <template v-else-if="tab === 'guards' && loaded">
           <ProjectGuards v-if="workflow" :project="p" :workflow="workflow" @changed="workflowChanged" />
           <p v-else class="muted settings-hint">{{ tl('No workflow yet: tasks cannot start until the project starts from a template.') }}</p>
@@ -172,6 +183,7 @@ async function remove() {
         <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
       </div>
     </div>
+    <ProposalReview v-if="coordinator" v-model:open="reviewOpen" :c="coordinator" @answered="reviewed" />
   </AppSheet>
 </template>
 
@@ -185,5 +197,8 @@ async function remove() {
 .pm-path { color: var(--muted); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; overflow-wrap: anywhere; }
 .pm-later { margin-top: 18px; }
 .pm-prefs { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px 10px; }
+.project-tab-badge { margin-left: 6px; }
+.pm-proposal { display: flex; align-items: center; gap: 10px; width: 100%; margin-bottom: 12px; padding: 12px 16px; text-align: left; color: var(--blocked); }
+.pm-proposal-text { flex: 1; min-width: 0; color: var(--text); }
 .pm-vis { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 </style>

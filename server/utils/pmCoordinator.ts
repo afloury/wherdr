@@ -5,6 +5,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { projectPlace } from '../../shared/pm/places'
 import { MAIN, canRunCoordinator, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
@@ -14,7 +15,7 @@ import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, coordinat
 import { ackWakes } from '../../shared/pm/wakes'
 import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
-import type { Project } from '../../shared/pm/project'
+import { machineNamed, taskMachine, type Project } from '../../shared/pm/project'
 import { projectOf, shownKey, shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
@@ -165,7 +166,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       // The user accepts or refuses it in the interface; nothing is saved yet.
       const proposal = { template: next, diff: templateDiff(t, next), at: Date.now(), base: t!.version ?? 1, ...(rec?.turn?.said ? { said: rec.turn.said } : {}) }
       await store.saveCoordinator({ ...rec!, proposal })
-      return { proposed: true, changes: templateChanges(t, next), diff: proposal.diff, next: 'The user accepts or refuses this diff in wherdr; template show tells you what they chose' }
+      return { proposed: true, changes: templateChanges(t, next), diff: proposal.diff, next: `The user accepts or refuses this diff in ${projectPlace(key, 'workflow', true)}; template show tells you what they chose` }
     }
     case 'task tag': {
       const task = await taskOf(cmd.task)
@@ -232,6 +233,10 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     }
     case 'task start': {
       const task = await taskOf(cmd.task)
+      // --on: a machine the project allows, for a task never started (a started one stays on its own).
+      const named = cmd.on === undefined ? undefined : machineNamed(p!, deps.machines(), cmd.on)
+      const placed = named && ('refused' in named ? named : taskMachine(task, p!, named.machine))
+      if (placed && 'refused' in placed) throw new HerdrError('refused', placed.refused)
       const mine = await mineOf()
       const wake = turn !== 'user', who = { who: 'coordinator' as const, wake }, now = Date.now()
       const pace = pacedStart(task, wake ? 'wake' : 'user') ? (await projectPace(store, key, task, now))?.verdict : undefined
@@ -246,7 +251,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if (wake && !task.autopilot) await store.saveTask({ ...task, autopilot: true })
       const memory = short ? { memory: `${short}: started anyway, as the user asked` } : {}
       if (task.stopped) return { task: await resumeTask(deps, task.id, 'continue', who, by), ...memory }
-      const started = await startTask(deps, task.id)
+      const started = await startTask(deps, task.id, placed ? { on: placed.machine } : {})
       return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`), ...memory }
     }
     case 'task stop': {

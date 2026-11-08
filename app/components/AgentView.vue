@@ -52,7 +52,9 @@ const pane = computed(() => herdrState.value.panes.find(p => p.id === props.pane
 // herdr-core: a coordinator's pane shows its header button (autopilot, agent, template change).
 const coord = computed(() => coordinatorOf(pane.value))
 let coordTimer: ReturnType<typeof setInterval> | undefined
-onMounted(() => { if (core) { loadCoordinators(); coordTimer = setInterval(() => { if (coord.value) loadCoordinators() }, 15_000) } })
+// Not read yet (failed while the app woke up): asked again, and as soon as the server is back.
+onMounted(() => { if (core) { loadCoordinators(); coordTimer = setInterval(() => { if (coord.value || !coordinatorsLoaded.value) loadCoordinators() }, 15_000) } })
+watch(eventsOpen, (open) => { if (core && open && !coordinatorsLoaded.value) loadCoordinators() })
 onUnmounted(() => clearInterval(coordTimer))
 // herdr-core: opening a finished agent reads it (herdr.seen), once per turn, while the page is visible.
 const pageVisible = ref(true)
