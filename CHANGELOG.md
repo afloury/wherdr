@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **No blank conversation on return to the app.** A conversation shown from the device's copy stays on screen while a server that just restarted answers "not found" or a read times out, instead of emptying and coming back. If a conversation list still alternates, the last non-empty one stays and a diagnostic is logged. A coordinator's pane gets its name back in the header when the coordinators list failed to load as the app woke up.
 - **Conversations open on their last read.** After a reload, an update or a network cut, the conversation kept on the device shows at once (the home state no longer waits for the server's first answer), then the server's answer merges in without moving what is on screen; replies that arrived meanwhile come in at the bottom like live ones. The startup background is the theme last shown on the device, so a reload no longer flashes another colour.
 - **Devin conversations on herdr-core.** Read saved ATIF transcripts from the running process, locally or on a core machine, with tools, inline images, search and previews. Updates arrive when Devin saves a turn; only history retained after compaction is available.
 
