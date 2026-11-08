@@ -62,6 +62,13 @@ its folder, branches and task worktrees stay on the machine.
   you set it. A public repository gets the coordinator's public-repository rules.
 - **Template**: the template the workflow was copied from, for information
   only: a later change to the template does not reach the project.
+- **Machines**: the machines its tasks may run on. The first is the project's
+  own (*Home*, its folder), read only. *Add a machine* picks one of the connected
+  machines and takes the path of the repository's clone there (`~/project`); once
+  saved, wherdr runs that machine's readiness check (see *Start on…* under
+  [Board](#board)) and shows *Ready* or what is missing. ✕ removes a machine:
+  new tasks no longer start there, tasks already there stay. Alfred does the
+  same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
 
 ### Workflow
 

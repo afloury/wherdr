@@ -34,6 +34,8 @@ export type AlfredCommand =
   // No change given: the project's guards are shown.
   | { name: 'project guards', apply: boolean, key: string, change: { protect?: string[], mergeProtected?: MergeBy, mergeOthers?: MergeBy, contributorPrs?: 'off' | 'others' | 'all' } }
   | { name: 'setting set', apply: boolean, key: SyncedSetting, value: string }
+  // Another machine its tasks may run on (by key or label), with its clone; or no longer.
+  | { name: 'project machine', apply: boolean, key: string, machine: string } & ({ action: 'add', clone: string } | { action: 'remove' })
 
 // One table for the parser's usage errors, `help` and AGENTS.md.
 export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
@@ -47,6 +49,8 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]', does: 'add a project: a git folder on a machine' },
   { usage: 'project template <KEY> <id|none>', does: 'give the project a template, or none' },
   { usage: 'project guards <KEY> [--protect <branch,branch|none>] [--merge-protected user|engine] [--merge-others user|engine] [--contributor-prs off|others|all]', does: 'the project\'s guards: protected branches, who merges into them and into the others (user: the user, engine: wherdr), and whether its coordinator may merge an outside contributor\'s PR after the user\'s yes (others: not into a branch reserved for the user; all: into any); without an option, shown only. A project coordinator never changes them' },
+  { usage: 'project machine add <KEY> <machine> --clone <folder>', does: 'let the project\'s tasks run on another machine (its key or label), in its clone of the repo there; once applied, the machine\'s readiness check runs and its result is in the answer' },
+  { usage: 'project machine remove <KEY> <machine>', does: 'the project\'s tasks no longer start on that machine (tasks already there stay)' },
   { usage: 'coordinator start <KEY> [--program claude|codex]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one)' },
   { usage: 'setting set <key> <value>', does: 'change a setting to one of the values `settings` lists for it' },
 ]
@@ -57,10 +61,11 @@ const FLAGS: Record<string, string[]> = {
   'project add': ['machine', 'path', 'name', 'template'],
   'coordinator start': ['program'],
   'project guards': ['protect', 'merge-protected', 'merge-others', 'contributor-prs'],
+  'project machine': ['clone'],
 }
 
-export const CHANGES = ['project add', 'project template', 'project guards', 'coordinator start', 'setting set']
-const usage = (verb: string) => ({ error: `usage: wherdr alfred ${ALFRED_COMMANDS.find(c => c.usage.startsWith(verb))!.usage}${CHANGES.includes(verb) ? ' [--apply]' : ''}` })
+export const CHANGES = ['project add', 'project template', 'project guards', 'project machine', 'coordinator start', 'setting set']
+const usage = (verb: string) => ({ error: `usage: wherdr alfred ${ALFRED_COMMANDS.filter(c => c.usage.startsWith(verb)).map(c => c.usage).join(' | ')}${CHANGES.some(v => verb.startsWith(v)) ? ' [--apply]' : ''}` })
 
 // argv after `wherdr alfred` → a command, or the reason it is not one.
 // --apply (no value) makes a change; without it, the change is only shown.
@@ -86,7 +91,7 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
 
   if (['help', 'projects', 'templates', 'machines', 'coordinators', 'settings'].includes(w0) && !w1)
     return { name: w0 as 'help' }
-  if (w0 === 'project' && words.length === 2 && !['add', 'template', 'guards'].includes(w1)) return key(w1) ? { name: 'project', key: key(w1) } : usage('project <KEY>')
+  if (w0 === 'project' && words.length === 2 && !['add', 'template', 'guards', 'machine'].includes(w1)) return key(w1) ? { name: 'project', key: key(w1) } : usage('project <KEY>')
   if (verb === 'coordinator open') return key(w2) && !w3 ? { name: verb, key: key(w2) } : usage(verb)
   if (verb === 'project add') {
     const { machine, path, name, template } = flags
@@ -106,6 +111,12 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
     if ([mp, mo].some(v => v !== undefined && !MERGE_BY.includes(v as MergeBy))) return { error: '--merge-protected and --merge-others are user or engine' }
     const branches = protect === undefined ? undefined : protect === 'none' ? [] : protect.split(',').map(b => b.trim()).filter(Boolean)
     return { name: verb, apply, key: key(w2), change: { ...(branches ? { protect: branches } : {}), ...(mp ? { mergeProtected: mp as MergeBy } : {}), ...(mo ? { mergeOthers: mo as MergeBy } : {}), ...(cp ? { contributorPrs: cp as 'off' } : {}) } }
+  }
+  if (verb === 'project machine') {
+    const [machine, more] = rest, { clone } = flags
+    if ((w2 !== 'add' && w2 !== 'remove') || !key(w3) || !machine || more !== undefined) return usage(verb)
+    if (w2 === 'remove') return clone === undefined ? { name: verb, apply, key: key(w3), action: w2, machine } : { error: '--clone is for add only' }
+    return clone ? { name: verb, apply, key: key(w3), action: w2, machine, clone } : usage(`${verb} add`)
   }
   if (verb === 'coordinator start') {
     // A program only: it runs with its harness's default model.
