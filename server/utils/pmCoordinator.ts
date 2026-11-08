@@ -6,11 +6,12 @@ import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
-import { MAIN, canRunCoordinator, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
+import { MAIN, canRunCoordinator, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
 import { validateTemplate } from '../../shared/pm/workflow'
+import { weightOf, weightText } from '../../shared/pm/weight'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, coordinatorStartRefusal, limitsLeft, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
 import { ackWakes } from '../../shared/pm/wakes'
@@ -28,6 +29,7 @@ import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from
 import { userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
 import { removeTask, resumeTask, stopTask } from './pmStop'
+import { reviveWorker } from './pmRelease'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
 import { memoryHold, memoryState } from './pmMemory'
@@ -78,11 +80,13 @@ export async function alfredTokenOk(store: PmStore, token: unknown) {
 // Called by whatever delivers a message to the coordinator: the user's
 // message from the interface (with its text) or an engine wake.
 // look: a look-for-new-work wake, whose turn counts the tasks it adds.
+// The user's message is kept whole (a long one too) for the proposal it may lead to.
+const SAID_MAX = 8000
 export async function noteTurn(store: PmStore, key: string, kind: 'user' | 'wake', said?: string, look = false) {
   const c = await store.coordinator(key)
   if (!c) throw new HerdrError('not_found', 'No coordinator for this project')
   const at = Date.now()
-  await store.saveCoordinator({ ...c, turn: { kind, at, ...(kind === 'user' && said ? { said: said.slice(0, 500) } : {}), ...(kind === 'wake' && look ? { look: true as const } : {}) }, ...(kind === 'user' ? { userAt: at } : {}) })
+  await store.saveCoordinator({ ...c, turn: { kind, at, ...(kind === 'user' && said ? { said: said.slice(0, SAID_MAX) } : {}), ...(kind === 'wake' && look ? { look: true as const } : {}) }, ...(kind === 'user' ? { userAt: at } : {}) })
 }
 
 const TURN_MS = 3_600_000
@@ -149,7 +153,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const ts = new Map(await Promise.all(projects.map(async x => [x.key, x ? await store.workflow(x.key) : null] as const)))
       return { tasks: (await store.tasks()).filter(x => !key || x.project === key).map(x => summary(ts.get(x.project) ?? null, x, projects.find(y => y.key === x.project))) }
     }
-    case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task, p), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task, p) : [] } }
+    case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task, p), weight: weightText(weightOf(t, task)), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task, p) : [] } }
     case 'plan': return { template: t && { id: t.id, version: t.version }, workingBranch: workingBranch(p), plans: Object.fromEntries(Object.keys(needPlan().taskTypes).map(type => [type, planSteps(t!, { type }, p?.base)])) }
     case 'template show': return {
       template: needPlan(),
@@ -165,7 +169,8 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const errors = validateTemplate(next)
       if (errors.length) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
       // The user accepts or refuses it in the interface; nothing is saved yet.
-      const proposal = { template: next, diff: templateDiff(t, next), at: Date.now(), base: t!.version ?? 1, ...(rec?.turn?.said ? { said: rec.turn.said } : {}) }
+      // by: who proposed it; said, saidAt: the user's message it follows.
+      const proposal = { template: next, diff: templateDiff(t, next), at: Date.now(), base: t!.version ?? 1, by: main ? 'main' : scope, ...(rec?.turn?.said ? { said: rec.turn.said, saidAt: rec.turn.at } : {}) }
       await store.saveCoordinator({ ...rec!, proposal })
       return { proposed: true, changes: templateChanges(t, next), diff: proposal.diff, next: `The user accepts or refuses this diff in ${projectPlace(key, 'workflow', true)}; template show tells you what they chose` }
     }
@@ -188,7 +193,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const step = currentStep(plan, state)!.id
       // The user's words: the same path as the step's button (runs its check).
       // The log keeps the user's own message (the turn's), not the coordinator's quote.
-      if (ev.kind === 'user') return { task: await store.logTask(await userStep(deps, task.id), by, `${step}: done on the user's message "${rec?.turn?.said ?? ''}"`) }
+      if (ev.kind === 'user') return { task: await store.logTask(await userStep(deps, task.id), by, `${step}: done on the user's message "${(rec?.turn?.said ?? '').slice(0, 500)}"`) }
       const r = onEvent(plan, state, ev, Date.now())
       if (r.refused) throw new HerdrError('refused', r.refused)
       return { task: await store.logTask({ ...task, step: r.state }, by, `${step}: done`) }
@@ -222,15 +227,24 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     }
     case 'tell': {
       const task = await taskOf(cmd.task)
-      const run = task.run ? (await store.runs()).find(r => r.id === task.run) : undefined
-      if (!run?.terminal || run.state === 'ended') throw new HerdrError('not_found', 'The task\'s agent is not running')
+      const holder = t && !task.step?.done ? currentStep(planOf(t, task, p), task.step ?? initialState())?.holder : undefined
+      const { role, run, released } = tellTarget(await store.runs(), task.id, holder, cmd.to)
+      const said = `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}`
+      if (released) {
+        const why = tellRefusal(task, turn !== 'user')
+        if (why) throw new HerdrError('refused', why)
+        const started = await reviveWorker(deps, task.id, 'a message of the coordinator', said)
+        if (started?.state !== 'working') throw new HerdrError('refused', 'The task\'s worker was let go while the task waited and could not start again now (short on memory?): try again later')
+        return { task: await store.logTask(started, by, `told the worker, started again: ${cmd.text.slice(0, 300)}`), sentTo: 'worker (started again with your message)' }
+      }
+      if (!run?.terminal) throw new HerdrError('not_found', `The task's ${role} is not running${cmd.to ? '' : ` (--to ${role === 'worker' ? 'reviewer' : 'worker'} picks the other agent)`}`)
       // What the agent waits for now, from its terminal: a permission prompt is never typed into.
       const live = waitOf(await deps.call<Parameters<typeof waitOf>[0]>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null))
       const why = tellRefusal({ state: live ? 'waiting' : task.state, waitKind: live ?? task.waitKind }, turn !== 'user')
       if (why) throw new HerdrError('refused', why)
-      await deps.call('terminal.send', { terminal: run.terminal, text: `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}` }, 30000)
-      const saved = await store.logTask(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task, by, `told the agent: ${cmd.text.slice(0, 300)}`)
-      return { task: saved }
+      await deps.call('terminal.send', { terminal: run.terminal, text: said }, 30000)
+      const saved = await store.logTask(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task, by, `told the ${role}: ${cmd.text.slice(0, 300)}`)
+      return { task: saved, sentTo: role }
     }
     case 'task start': {
       const task = await taskOf(cmd.task)
@@ -269,7 +283,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
       // Added in the user's turn: their request, never held by the pace.
-      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', origin: turn === 'user' ? 'user' : 'coordinator' })
+      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', ...(cmd.weight ? { weight: cmd.weight } : {}), origin: turn === 'user' ? 'user' : 'coordinator' })
       const task = turn !== 'user' ? { ...added, autopilot: true as const } : added
       if (look) await store.saveCoordinator({ ...rec!, lookAdded: bump(rec!.lookAdded, Date.now()) })
       return { task: await store.logTask(task, by, `added the task${cmd.after ? `, after ${cmd.after}` : ''}`) }
@@ -313,7 +327,7 @@ function editRefusal(t: Template | null, next: Template, turn: Turn, key?: strin
 }
 
 // The user's answer to the coordinator's template change. Accepted: saved,
-// written to the template's log (by the coordinator, with the user's sentence),
+// written to the workflow's log (by the coordinator, with the user's sentence),
 // and the role files show the new plans at once.
 export async function answerProposal(deps: Deps, key: unknown, accept: unknown) {
   const { store } = deps
@@ -384,7 +398,8 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
       wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
       project: p.key, name: p.name, ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...('from' in p && p.from ? { template: p.from.template } : {}),
       ...(c?.ran ? { ran: agentOf(c.ran) ?? FALLBACK } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
-      ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, changes, ...(c.proposal.said ? { said: c.proposal.said } : {}) } } : {}),
+      ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, changes, by: c.proposal.by ?? (p.key === MAIN ? 'main' : p.key), ...(c.proposal.said ? { said: c.proposal.said } : {}), ...(c.proposal.saidAt ? { saidAt: c.proposal.saidAt } : {}) } } : {}),
+      ...('label' in p && p.label ? { label: p.label } : {}), ...('color' in p && p.color ? { color: p.color } : {}),
       ...(c?.answered ? { answered: c.answered } : {}),
     }
   }))

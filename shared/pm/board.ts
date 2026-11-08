@@ -10,6 +10,7 @@ import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
 import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
 import { timesOf, type Times } from './times'
+import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -44,9 +45,10 @@ export interface Card {
 
 // A machine a project allows, for "Start on…": unready, the last check's failures ('' ready, none never checked).
 export interface BoardMachine { key: string, label: string, online: boolean, unready?: string }
-// types: the project's task types, each with its steps in one line ("work → review → merge").
+// types: the project's task types, each with its steps in one line ("work → review → merge")
+// and the weight its tasks get when none is set ("heavy (screenshots)").
 // machines: only for a project that allows more than its own, home first.
-export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string }[], machines?: BoardMachine[] }
+export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string, weight?: string }[], machines?: BoardMachine[] }
 // GET /api/pm/board
 export interface Board { projects: BoardProject[], cards: Card[] }
 
@@ -148,8 +150,8 @@ export const boardTags = (cards: Pick<Card, 'tags'>[]) => [...new Set(cards.flat
 export function boardLanes(cards: Card[], columns: string[] | null): { id: string, cards: Card[] }[] {
   const lane = (c: Card) => (columns ? c.column : c.phase)
   return [
-    { id: 'your-turn', cards: cards.filter(c => c.yourTurn) },
-    ...(columns ?? PHASES).map(id => ({ id, cards: cards.filter(c => !c.yourTurn && lane(c) === id) })),
+    { id: 'your-turn', cards: cards.filter(c => turnText(c)) },
+    ...(columns ?? PHASES).map(id => ({ id, cards: cards.filter(c => !turnText(c) && lane(c) === id) })),
   ]
 }
 
@@ -175,7 +177,11 @@ export const requiredChecks = (plan: PlannedStep[]) => plan.flatMap(p => (p.acti
 export interface CardStatus { text: string, tone: 'wait' | 'bad' | 'ok', at?: number }
 const MERGES = ['github.merge', 'git.verify-merged']
 const bad = (text: string): CardStatus => ({ text, tone: 'bad' })
-const blocked = (error: string) => bad(/check\(s\) failed/.test(error) ? 'checks failed' : `blocked: ${error.replace(/^[\w-]+: /, '')}`)
+// A refused action in plain words; waiting, not bad, once the agent took it on.
+const refused = (error: string, told?: Told): CardStatus => {
+  const said = refusalSaid(error, told)
+  return { text: said.short, tone: told ? 'wait' : 'bad' }
+}
 const ofPr = (pr: string): CardStatus => (pr === 'merged'
   ? { text: 'merged on GitHub', tone: 'ok' }
   : { text: `PR open · ${pr}`, tone: /^(checks failed|blocked|conflict)/.test(pr) ? 'bad' : 'wait' })
@@ -183,7 +189,7 @@ const ofPr = (pr: string): CardStatus => (pr === 'merged'
 // Where a task's PR and merge stand, in one short line: from its step state
 // and what the engine last read of its PR. None before a PR, or once stopped.
 // A done task merged by a step: 'merged', at the time it was done.
-export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' | 'held'>): CardStatus | undefined {
+export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' | 'held'> & { log?: Card['log'] }): CardStatus | undefined {
   const s = c.state
   if (c.held) return { text: c.held, tone: 'wait' }
   if (!s?.started || c.stopped) return
@@ -193,9 +199,9 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
   }
   const kind = c.plan[s.at]?.action?.kind
   const failed = s.yourTurn?.reason === 'action' ? s.yourTurn.error ?? '' : undefined
-  if (kind === 'github.pr') return s.acting ? { text: 'opening the PR', tone: 'wait' } : failed !== undefined ? blocked(failed) : undefined
+  if (kind === 'github.pr') return s.acting ? { text: 'opening the PR', tone: 'wait' } : failed !== undefined ? refused(failed) : undefined
   const pr = c.plan.slice(0, s.at).some(p => p.action?.kind === 'github.pr') ? c.prNow : undefined
-  if (failed !== undefined) return pr?.startsWith('checks failed') ? ofPr(pr) : blocked(failed)
+  if (failed !== undefined) return pr?.startsWith('checks failed') ? ofPr(pr) : refused(failed, agentCatchingUp(c))
   // A merge waiting for the user, updated with its base; once approved, it merges by itself.
   const approved = s.approved && !s.acting ? 'Approved, merging when ready' : undefined
   if (s.catchUp) return { text: [approved, `updating with ${s.catchUp.base}`].filter(Boolean).join(' · '), tone: 'wait' }

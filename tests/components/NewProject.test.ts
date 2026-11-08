@@ -150,7 +150,7 @@ it('adds a project from a git repository, a new folder or a folder without git, 
   await w.get('[data-testid="project-git-init"]').trigger('click')
   await vi.waitFor(() => expect(w.find('[data-testid="project-template"]').exists()).toBe(true))
   expect(w.get('[data-testid="project-template"]').text()).toContain('vibe (example)')
-  expect(w.text()).toContain('Settings › Projects › Templates')
+  expect(w.text()).toContain('Settings › Projects › Template library')
   await w.get('[data-testid="project-start"]').trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w2%3Ap1'))
   // The example is copied into the project's workflow, not saved into the library.

@@ -196,6 +196,12 @@ const proposalKey = computed(() => {
   if (at === undefined) return null
   return blocks.value.find(b => b.k === 'assistant' && (b.ms ?? 0) >= at)?.key ?? (coord.value?.proposal ? '' : null)
 })
+// The user's request it follows: the last message they sent before the card.
+const proposalSaidKey = computed(() => {
+  if (proposalKey.value === null || !coord.value?.proposal?.said) return null
+  const end = proposalKey.value ? blocks.value.findIndex(b => b.key === proposalKey.value) : blocks.value.length
+  return blocks.value.slice(0, end).findLast(b => b.k === 'user')?.key ?? null
+})
 let lastScroll = 0
 let revealTimer = false
 let unmounted = false
@@ -1423,7 +1429,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   </button>
                   <ReadAloudButton :id="`${paneId}:${b.key}`" :text="b.text" />
                 </div>
-                <ProposalCard v-if="coord && b.key === proposalKey" :c="coord" />
+                <ProposalCard v-if="coord && b.key === proposalKey" :c="coord" :can-goto="!!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" />
               </template>
 
               <UChatReasoning v-else-if="b.k === 'thinking'" class="omp-thinking" :text="b.text"
@@ -1559,7 +1565,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />
               <p>{{ t('No messages yet.') }}</p>
             </div>
-            <ProposalCard v-if="coord && proposalKey === ''" :c="coord" />
+            <ProposalCard v-if="coord && proposalKey === ''" :c="coord" :can-goto="!!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" />
             <div v-if="loadError" class="chat-empty"><p>{{ loadError }}</p></div>
           </template>
         </div>
