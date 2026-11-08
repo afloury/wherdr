@@ -286,6 +286,7 @@ onMounted(() => {
         </button>
       </nav>
       <div v-show="activeSection" ref="body" class="settings-body">
+        <div class="settings-column">
         <h2 class="settings-section-title">{{ activeLabel }}</h2>
 
         <div v-show="activeSection === 'appearance'" class="settings-section">
@@ -556,6 +557,7 @@ onMounted(() => {
             <button type="button" class="settings-action solo" @click="reloadApp"><UIcon name="i-lucide-refresh-cw" />{{ t('Reload app') }}</button>
             <button type="button" class="settings-action solo" @click="openOnboarding"><UIcon name="i-lucide-compass" />{{ tl('Setup guide', 'Guide de démarrage') }}</button>
           </div>
+        </div>
         </div>
       </div>
     </div>
