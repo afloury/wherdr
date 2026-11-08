@@ -11,7 +11,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { cleanProjectInput, isBranch, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
+import { cleanProjectInput, isBranch, machinesOf, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
 import { defaultColor, keyClash, projectOf, renamed, shownKey, storedTaskId } from '../../shared/pm/projectKey'
 import type { RepoVisibility } from '../../shared/pm/visibility'
 import { startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
@@ -368,7 +368,10 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const next = update.key ?? shownKey(list[i]!)
       const clash = keyClash(list, next, rest.key)
       if (clash) throw new HerdrError('exists', `Project ${clash.name} already has the key ${next}`)
-      list[i] = { ...rest, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...(base ? { base } : {}), ...(update.color ? { color: update.color } : {}) }
+      const { machines: _m, clones: _c, ...kept } = rest
+      const allowed = machinesOf(rest, update)
+      if (allowed.errors.length) throw badInput(allowed.errors)
+      list[i] = { ...kept, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...(base ? { base } : {}), ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}) }
       await saveProjects(list)
       return list[i]!
     }),
