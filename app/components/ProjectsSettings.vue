@@ -81,7 +81,7 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
         <div v-for="p in data.projects" :key="p.key" class="pm-row" data-testid="pm-project">
           <span class="pm-id"><b>{{ p.name }}<span v-if="p.visibility?.value === 'public'" class="pm-public" data-testid="pm-public">{{ tl('Public', 'Public') }}</span></b><small class="mono-label">{{ p.key }} · {{ machineName(p.machine) }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
           <USelect
-            :model-value="orNone(p.template)" :items="templateItems" size="lg" class="pm-row-template" :disabled="busy !== ''" :aria-label="tl(`Template of ${p.name}`, `Modèle de ${p.name}`)"
+            :model-value="orNone(p.from?.template)" :items="templateItems" size="lg" class="pm-row-template" :disabled="busy !== ''" :aria-label="tl(`Template of ${p.name}`, `Modèle de ${p.name}`)"
             data-testid="pm-project-template" @update:model-value="v => pickTemplate(p.key, fromNone(v))"
           />
           <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-trash-2" :aria-label="tl(`Remove ${p.name}`, `Retirer ${p.name}`)" :loading="busy === `rm:${p.key}`" @click="remove(p.key)" />

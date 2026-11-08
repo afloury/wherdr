@@ -17,7 +17,7 @@ import { policyIn, readPolicies } from './pacingPolicies'
 // (`autopilot show`). null: no template, or no worker program.
 export async function projectPace(store: PmStore, project: string, task?: Pick<Task, 'type' | 'prefs'>, now = Date.now(), withToday = false): Promise<PaceState | null> {
   const p = (await store.projects()).find(x => x.key === project)
-  const t = p?.template ? await store.template(p.template) : null
+  const t = p ? await store.workflow(p.key) : null
   if (!p || !t) return null
   const type = task?.type ?? Object.keys(t.taskTypes)[0] ?? ''
   const plan = workerPlan(t, { type, ...(task?.prefs ? { prefs: task.prefs } : {}) } as Task)

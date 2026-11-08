@@ -121,7 +121,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
   const key = 'task' in cmd ? (await taskOf(cmd.task)).project : cmd.project ?? (main ? '' : scope)
   const p = projects.find(x => x.key === key)
   if (key && !p) throw new HerdrError('not_found', 'Unknown project')
-  const t = p?.template ? await store.template(p.template) : null
+  const t = p ? await store.workflow(p.key) : null
   const rec = await store.coordinator(scope)
   // A turn the server saw start over an hour ago is not trusted any more.
   const turn: Turn = rec?.turn && Date.now() - rec.turn.at < TURN_MS ? rec.turn.kind : 'none'
@@ -133,7 +133,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
 
   switch (cmd.name) {
     case 'list': {
-      const ts = new Map(await Promise.all(projects.map(async x => [x.key, x.template ? await store.template(x.template) : null] as const)))
+      const ts = new Map(await Promise.all(projects.map(async x => [x.key, x ? await store.workflow(x.key) : null] as const)))
       return { tasks: (await store.tasks()).filter(x => !key || x.project === key).map(x => summary(ts.get(x.project) ?? null, x)) }
     }
     case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task) : [] } }
@@ -146,7 +146,9 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if (main) throw new HerdrError('refused', 'template edit is the project coordinator\'s or the user\'s: add a task or tell the user')
       let next: Template
       try { next = JSON.parse(String(body.input ?? '')) as Template } catch { throw new HerdrError('bad_input', 'The new template is not valid JSON') }
-      await editRefusal(store, key, t, next, turn)
+      // Always the project's own workflow, whatever id the JSON names.
+      if (t && next && typeof next === 'object') next = { ...next, id: t.id }
+      editRefusal(t, next, turn)
       const errors = validateTemplate(next)
       if (errors.length) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
       // The user accepts or refuses it in the interface; nothing is saved yet.
@@ -259,11 +261,9 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
 
 // Why the coordinator may not change the template to `next`; the same checks
 // when the user accepts it later, against the template as it is then.
-async function editRefusal(store: PmStore, key: string, t: Template | null, next: Template, turn: Turn) {
+function editRefusal(t: Template | null, next: Template, turn: Turn) {
   const why = templateEditRefusal(t, next, turn)
   if (why) throw new HerdrError('refused', why)
-  const other = (await store.projects()).find(x => x.key !== key && x.template === t!.id)
-  if (other) throw new HerdrError('refused', `Template ${t!.id} is also used by project ${other.key}: the user changes it in Settings › Projects`)
 }
 
 // The user's answer to the coordinator's template change. Accepted: saved,
@@ -277,15 +277,17 @@ export async function answerProposal(deps: Deps, key: unknown, accept: unknown) 
   const done = (outcome: ProposalOutcome) => store.saveCoordinator({ ...rest, answered: { outcome, at: Date.now() } })
   if (accept !== true) { await done('refused'); return { accepted: false } }
   const p = (await store.projects()).find(x => x.key === rec.project)
-  const t = p?.template ? await store.template(p.template) : null
+  const t = p ? await store.workflow(p.key) : null
   // Its diff was made against that version: saved over a newer one, it would
   // undo a change the user made since.
   if ((t?.version ?? 1) !== proposal.base) {
     await done('outdated: the template changed since, propose again')
     throw new HerdrError('refused', 'The template changed since this proposal: ask the coordinator to propose again')
   }
-  await editRefusal(store, rec.project, t, proposal.template, 'user')
-  await store.saveTemplate(proposal.template, { replace: true, by: `coordinator ${rec.project}`, said: proposal.said })
+  // The project's own workflow (a proposal made before workflows names the template it was copied from).
+  const next = t ? { ...proposal.template, id: t.id } : proposal.template
+  editRefusal(t, next, 'user')
+  await store.saveWorkflow(rec.project, next, { by: `coordinator ${rec.project}`, said: proposal.said })
   await done('accepted')
   await writeRoleFiles(deps, rec.project).catch(() => {})
   return { accepted: true }
@@ -323,7 +325,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
   if (!(await store.enabled())) return []
   const [tasks, runs, wakes, now] = [await store.tasks(), await store.runs(), await store.wakes(), Date.now()]
   // The main coordinator first: every project's tasks are its own.
-  return Promise.all([{ key: MAIN, name: await readAlfredName({}), template: '' }, ...await store.projects()].map(async (p) => {
+  return Promise.all([{ key: MAIN, name: await readAlfredName({}) }, ...await store.projects()].map(async (p) => {
     const c = await store.coordinator(p.key)
     const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => p.key === MAIN || t.project === p.key)
     return {
@@ -332,7 +334,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
       ...asleepOf(autopilot, mine, c, now), skippedToday: today(c?.skipped, now),
       ...(c?.woke?.at ? { wokeAt: c.woke.at } : {}),
       wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
-      project: p.key, name: p.name, ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...(p.template ? { template: p.template } : {}),
+      project: p.key, name: p.name, ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...('from' in p && p.from ? { template: p.from.template } : {}),
       ...(c?.ran ? { ran: agentOf(c.ran) ?? FALLBACK } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
       ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, ...(c.proposal.said ? { said: c.proposal.said } : {}) } } : {}),
     }
@@ -350,7 +352,7 @@ async function writeRoleFiles(deps: Deps, key: string) {
   const found = projects.find(x => x.key === key)
   const p = found && await ensureVisibility(deps, found)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
-  const t = p?.template ? await store.template(p.template) : null
+  const t = p ? await store.workflow(p.key) : null
   const { m, on } = machineOn(deps, p.machine)
   const home = await homeOf(deps, on)
   if (!home) throw new HerdrError('core', 'Home folder not found on the project\'s machine')

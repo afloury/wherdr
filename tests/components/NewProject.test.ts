@@ -153,9 +153,10 @@ it('adds a project from a git repository, a new folder or a folder without git, 
   expect(w.text()).toContain('Settings › Projects › Templates')
   await w.get('[data-testid="project-start"]').trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w2%3Ap1'))
-  expect(posts.map(p => p.url)).toEqual(['/api/pm/template', '/api/pm/project', '/api/pm/coordinator-start'])
-  expect(posts[1]!.body).toEqual({ key: 'NA', name: 'Shop', machine: '', path: '/repos/new-app', template: 'vibe', plain: true, create: true, gitInit: true })
-  expect(posts[2]!.body).toEqual({ project: 'NA', program: 'claude' })
+  // The example is copied into the project's workflow, not saved into the library.
+  expect(posts.map(p => p.url)).toEqual(['/api/pm/project', '/api/pm/coordinator-start'])
+  expect(posts[0]!.body).toEqual({ key: 'NA', name: 'Shop', machine: '', path: '/repos/new-app', template: 'example:vibe', plain: true, create: true, gitInit: true })
+  expect(posts[1]!.body).toEqual({ project: 'NA', program: 'claude' })
   w.unmount()
 })
 

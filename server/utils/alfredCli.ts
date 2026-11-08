@@ -99,8 +99,8 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       await needPm()
       const p = projectOf(cmd.key)
       await knownTemplate(cmd.template)
-      if ((p.template ?? '') === cmd.template) return { unchanged: true, project: p.key, template: p.template ?? 'none' }
-      return change({ change: [`project ${p.key} template: ${p.template ?? 'none'} → ${cmd.template || 'none'}`] }, () => store.setTemplate(p.key, cmd.template))
+      if (!cmd.template && !p.from) return { unchanged: true, project: p.key, template: 'none' }
+      return change({ change: [`project ${p.key} template: ${p.from?.template ?? 'none'} → ${cmd.template || 'none'}`] }, () => store.setTemplate(p.key, cmd.template))
     }
     case 'coordinator start': {
       await needPm()

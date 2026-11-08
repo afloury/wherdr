@@ -16,7 +16,7 @@ const planOf = (t: Template | null, task: Task) => (t ? planSteps(t, { type: tas
 
 async function templatesOf(store: PmStore) {
   const out = new Map<string, Template | null>()
-  for (const p of await store.projects()) out.set(p.key, p.template ? await store.template(p.template) : null)
+  for (const p of await store.projects()) out.set(p.key, p ? await store.workflow(p.key) : null)
   return out
 }
 
@@ -53,7 +53,7 @@ export async function stepAction(deps: CoreAdminDeps & { store: PmStore }, id: u
 async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task, by: MergeBy): Promise<Task> {
   const { store } = deps
   const p = (await store.projects()).find(x => x.key === task.project)
-  const t = p?.template ? await store.template(p.template) : null
+  const t = p ? await store.workflow(p.key) : null
   if (!p || !t) throw new HerdrError('not_found', 'The project has no template')
   const plan = planOf(t, task)
   const cur = task.step ?? initialState()
@@ -87,7 +87,7 @@ export async function userDecide(store: PmStore, id: unknown, choice: unknown) {
   if (!task) throw new HerdrError('not_found', 'Unknown task')
   if (!CHOICES.includes(choice as Choice)) throw new HerdrError('bad_input', `choice: one of ${CHOICES.join(', ')}`)
   const p = (await store.projects()).find(x => x.key === task.project)
-  const t = p?.template ? await store.template(p.template) : null
+  const t = p ? await store.workflow(p.key) : null
   if (!t) throw new HerdrError('not_found', 'The project has no template')
   const r = onEvent(planOf(t, task), task.step ?? initialState(), { kind: 'decide', by: 'user', choice: choice as Choice }, Date.now())
   if (r.refused) throw new HerdrError('refused', r.refused)
@@ -107,7 +107,7 @@ export async function uploadShot(store: PmStore, id: unknown, phase: unknown, da
   if (!ext || !isImage(data, ext)) throw new HerdrError('bad_input', 'A PNG, JPEG or WebP image, matching its Content-Type')
   if (phase !== 'before' && phase !== 'after') throw new HerdrError('bad_input', 'phase: before or after')
   const p = (await store.projects()).find(x => x.key === task.project)
-  const plan = planOf(p?.template ? await store.template(p.template) : null, task)
+  const plan = planOf(p ? await store.workflow(p.key) : null, task)
   const shot: Shot = { file: `${randomUUID().replace(/-/g, '').slice(0, 12)}.${ext}`, phase, at: Date.now() }
   await store.addShot(task.id, shot.file, data, (fresh) => {
     const r = addShot(plan, fresh.step, shot)

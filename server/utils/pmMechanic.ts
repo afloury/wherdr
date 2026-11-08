@@ -95,7 +95,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   for (const task of await store.tasks()) {
     if (task.state === 'todo' || task.step?.done) continue
     const p = projects.find(x => x.key === task.project)
-    const t = p?.template ? await store.template(p.template) : null
+    const t = p ? await store.workflow(p.key) : null
     if (!p || !t) continue
     const run = runs.filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
     if (!run) continue

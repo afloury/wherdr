@@ -41,7 +41,7 @@ async function gather(deps: WakeDeps, now: number) {
   const add = (k: string, r: string[]) => r.length && reasons.set(k, [...(reasons.get(k) ?? []), ...r])
   const projects = await store.projects(), tasks = await store.tasks()
   const templates = new Map<string, Template | null>()
-  for (const p of projects) templates.set(p.key, p.template ? await store.template(p.template) : null)
+  for (const p of projects) templates.set(p.key, p ? await store.workflow(p.key) : null)
   for (const task of tasks) {
     const t = templates.get(task.project)
     if (!task.step?.started || task.step.done || !t) continue

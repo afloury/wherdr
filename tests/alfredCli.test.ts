@@ -96,7 +96,7 @@ describe('runAlfredCommand', () => {
     expect(checked).toEqual(['mac:/src/web'])
     expect(await run('project', 'template', 'WEB', 'common')).toMatchObject({ dryRun: true, change: ['project WEB template: none → common'] })
     await run('project', 'template', 'WEB', 'common', '--apply')
-    expect(await run('projects')).toMatchObject({ enabled: true, projects: [{ key: 'WEB', template: 'common', machineName: 'Mac' }] })
+    expect(await run('projects')).toMatchObject({ enabled: true, projects: [{ key: 'WEB', from: { template: 'common' }, machineName: 'Mac' }] })
     await expect(run('project', 'template', 'WEB', 'nope')).rejects.toThrow('No template nope')
   })
 

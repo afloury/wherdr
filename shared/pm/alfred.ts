@@ -37,7 +37,7 @@ export const startPrompt = (first: boolean, name: string) => (first
 
 export interface AlfredContext {
   home: string, version: string, docs: string, docFiles: string[], pm: boolean
-  projects: Pick<Project, 'key' | 'name' | 'path' | 'template'>[]
+  projects: Pick<Project, 'key' | 'name' | 'path' | 'from'>[]
 }
 
 // wherdr's files in Alfred's home, path → text: rewritten at each start, so an
