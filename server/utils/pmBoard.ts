@@ -80,7 +80,8 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     state = back.state
     const log = back.effects.find(e => e.kind === 'log')
     if (log?.kind === 'log') return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', log.text)
-    if (result.note) return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', `${act.step}: ${result.note}`)
+    const said = [result.note, result.alert].filter(Boolean).join('. ')
+    if (said) return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', `${act.step}: ${said}`)
   }
   return store.saveTask({ ...(await store.task(task.id) ?? task), step: state })
 }

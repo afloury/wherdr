@@ -61,8 +61,9 @@ if [ -z "$cur" ]; then out=$(gh pr create --head "$b" --base "$base" --title "$3
 if [ "\${cur%% *}" != "$base" ]; then e=$(gh pr edit "\${cur#* }" --base "$base" 2>&1) || { echo "$e"; exit 1; }; fi
 echo "\${cur#* }"`,
   // The commit, then the open PR as JSON on the last line. None open: the
-  // merged PR of the branch whose head holds HEAD, else its latest merged one
-  // whatever its head (merged by hand: the step ends merged), marked merged (Shepherdr #706).
+  // merged PR of the branch whose head holds HEAD, marked merged (Shepherdr #706);
+  // else its latest merged one, marked stray too: the step ends merged, saying
+  // the task's commit is not in it.
   prInfo: `${IN} h=$(git rev-parse HEAD) || exit 1; echo "$h"
 j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup 2>&1) || { echo "$j"; exit 1; }
 j=$(echo "$j" | tail -1)
@@ -71,7 +72,8 @@ if [ "$j" = "[]" ]; then
   while read -r p pj; do [ -n "$p" ] && ${HOLDS} && { j="[$pj]"; break; }; done <<EOF
 $m
 EOF
-  pj=$(echo "$m" | head -1); [ "$j" != "[]" ] || [ -z "$pj" ] || j="[\${pj#* }]"
+  pj=$(echo "$m" | head -1)
+  if [ "$j" = "[]" ] && [ -n "$pj" ]; then j="[$(echo "\${pj#* }" | sed 's/}$/,"stray":true}/')]"; fi
 fi
 echo "$j"`,
   // The step's method ($3), else the first the repo allows: merge commit, squash, rebase.
@@ -121,8 +123,9 @@ for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
 }
 
 interface Check { name?: string, context?: string, status?: string, conclusion?: string, state?: string }
-// merged: no PR open, this one of the branch is merged already and holds the task's commit.
-export interface PrInfo { url: string, baseRefName: string, headRefOid: string, statusCheckRollup?: Check[], merged?: boolean }
+// merged: no PR open, this one of the branch is merged already and holds the
+// task's commit; stray: merged, but at a head without the task's commit.
+export interface PrInfo { url: string, baseRefName: string, headRefOid: string, statusCheckRollup?: Check[], merged?: boolean, stray?: boolean }
 
 const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
 // May the open PR be merged now? Its head must be the task's commit, every

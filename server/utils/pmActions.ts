@@ -59,7 +59,7 @@ export async function runAction(deps: ActionDeps, job: ActionJob): Promise<Actio
   async function finish({ reached, ...result }: Done) {
     if (result.ok) {
       const alert = await leakAlert(deps, job, result, reached ?? []).catch(() => undefined)
-      if (alert) result = { ...result, alert }
+      if (alert) result = { ...result, alert: [result.alert, alert].filter(Boolean).join('. ') }
     }
     await store.saveReceipt({ ...base, state: 'done', result, at: Date.now() })
     return result
@@ -109,7 +109,11 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
         // a protected branch merged outside your gesture still raises the alert.
         if (pr?.merged) {
           const reached = mayMerge(job.guards, pr.baseRefName, job.by) ? [pr.baseRefName] : []
-          return { ok: true, link: pr.url, commit: head.trim(), reached, note: 'already merged on GitHub' }
+          if (!pr.stray) return { ok: true, link: pr.url, commit: head.trim(), reached, note: 'already merged on GitHub' }
+          // Merged at a head without the task's commit: what GitHub merged is recorded, and what it left out is said.
+          const h = head.trim().slice(0, 7), m = pr.headRefOid.slice(0, 7)
+          return { ok: true, link: pr.url, commit: pr.headRefOid, reached, note: `already merged on GitHub at ${m}, without the task's commit ${h}`,
+            alert: `${job.task.id}'s commit ${h} was not merged: its PR was merged on GitHub at ${m} without it. Its later commits need a new branch` }
         }
         const refused = pr && guardAction(job.guards, a, { branch, by: job.by, base: pr.baseRefName })
         if (refused) return { ok: false, error: refused }

@@ -324,10 +324,12 @@ esac
   it('counts as done at the merge step', async () => {
     const s = setup('merged-merge'), head = git(s.repo, 'rev-parse', 'HEAD')
     expect(await s.go('merge', { kind: 'github.merge' })).toEqual({ ok: true, link: 'https://pr/1', commit: head, note: 'already merged on GitHub' })
-    // Merged by hand at a head that does not hold the task's commit (a later
-    // local commit, a head pushed elsewhere): the step ends merged all the same.
-    fs.writeFileSync(s.merged, `${'f'.repeat(40)} https://pr/1\n`)
-    expect(await s.go('merge', { kind: 'github.merge' }, 2)).toEqual({ ok: true, link: 'https://pr/1', commit: head, note: 'already merged on GitHub' })
+    // Merged by hand at a head without the task's commit (a later local commit):
+    // the step ends merged, recording what GitHub merged, and says what it left out.
+    const at = 'f'.repeat(40)
+    fs.writeFileSync(s.merged, `${at} https://pr/1\n`)
+    expect(await s.go('merge', { kind: 'github.merge' }, 2)).toEqual({ ok: true, link: 'https://pr/1', commit: at, note: `already merged on GitHub at fffffff, without the task's commit ${head.slice(0, 7)}`,
+      alert: `A-1's commit ${head.slice(0, 7)} was not merged: its PR was merged on GitHub at fffffff without it. Its later commits need a new branch` })
     // Merged into protected main outside your gesture: recorded, with the alert.
     fs.writeFileSync(s.merged, `${head} https://pr/1 main\n`)
     git(s.repo, 'push', '-q', 'origin', 'HEAD:refs/heads/main')
