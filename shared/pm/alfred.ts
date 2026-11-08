@@ -3,6 +3,7 @@
 // machine) holds wherdr's instructions, rewritten at each start, and two files
 // of its own that wherdr creates once and never overwrites. Pure: the server
 // (server/utils/pmCoordinator.ts) reads and writes.
+import { projectPlace } from './places'
 import type { Project } from './project'
 import { ROLE_POINTERS, docsRule, isCoordinatorProgram, type CoordinatorProgram } from './coordinator'
 import { alfredCommandList } from './alfredCli'
@@ -77,7 +78,7 @@ export function alfredFiles(c: AlfredContext, pmSection: string[]): Record<strin
     '## Your role', '',
     'You live on the machine that hosts wherdr and are always available. You help with wherdr, and you can start tasks or act on projects on any machine.',
     'You do no coding task yourself and work on no particular project: when the user asks for such work, start an agent or a task that does it in the right place (the project\'s machine).', '',
-    ...(c.pm ? pmSection : ['## Projects', '', 'Project management is off: the user switches it on in Settings › Projects. You then coordinate their projects too.', '']),
+    ...(c.pm ? pmSection : ['## Projects', '', `Project management is off: the user switches it on in ${projectPlace(undefined, 'general', true)}. You then coordinate their projects too.`, '']),
   ].join('\n')
   return { 'AGENTS.md': agents, ...ROLE_POINTERS }
 }

@@ -81,10 +81,18 @@ Neither *Save* nor *Start over* changes the project's [guards](#guards).
 When the project's coordinator proposes a change to the workflow (only after
 your request), a square marks the project's row (*1 to review*) and the
 **Workflow** tab, whose first row, *Change proposed by the coordinator*, opens
-the review: your sentence it followed, the diff, *Refuse* or *Accept*. A
-proposal made before the workflow changed again is refused, and the review says
-so: ask the coordinator to propose again. The coordinator's window and the
-*Decisions* view link to this review.
+the review: your sentence it followed, the change, *Refuse* or *Accept*. The
+review opens on *Readable*: per task type, its steps with the ones added,
+removed or changed marked, and each changed field before → after (holder, ends,
+action, merge rule, guards; instructions as a text diff). *JSON* shows the raw
+diff. A proposal made before the workflow changed again is refused, and the
+review says so: ask the coordinator to propose again. The coordinator's window
+and the *Decisions* view link to this review.
+
+In the coordinator's conversation, a card follows the message that made the
+proposal: what changes in a line or two, *Accept*, *Refuse* and *See all
+changes* (the review). Once answered, the card shows the outcome, by whom and
+when.
 
 ### Guards
 
@@ -102,12 +110,20 @@ In the **Guards** tab:
 - **Protected branches**: one chip per branch; type a name and press *Add*, or
   press × on a chip to unprotect it. wherdr never pushes to a protected branch.
 - **Who merges into protected branches** and **who merges other branches**:
-  *You* (the step waits for you) or *wherdr* (it merges by itself).
+  *You* (the step waits for you) or *wherdr* (it merges by itself, a
+  protected branch too). A task already waiting for you at a merge that a
+  change gives to wherdr goes on at once: the engine runs the step again,
+  and the task's log says why.
 - **Effect**: what each task type adds and, for each step that merges, whether
   it is left to you. It follows your changes before you save.
 
 Only you, or Alfred (with [`wherdr alfred project guards`](alfred.md) after
 your yes), can change guards: a project coordinator never can.
+
+A message that sends you to a tab of the project sheet names it as
+*Settings › Projects › KEY › Guards*; an agent also gives its in-app address,
+`#/settings?section=projects&project=KEY&tab=guards` (tabs: `general`,
+`workflow`, `guards`, `automations`, `autopilot`).
 
 ### Automations
 
@@ -223,6 +239,25 @@ the worker, or add a follow-up task. You never relay it yourself.
 The report goes to the task's log, the card says *Problem reported 20:15*, and
 the task stays under *Your turn* until the coordinator acts (`wherdr pm report
 back` or `report close`), you send the step back, or you *Withdraw* it.
+
+### A stalled task
+
+A working task is **stalled** when nothing moves: its CI is still red 10 minutes
+after wherdr sent the failure to the agent and nothing was pushed, or the agent
+holding its step has been idle for 5 minutes without saying it is done. Its card
+shows the reason, and wherdr:
+
+- wakes the coordinator (the autopilot's *Task stuck* event, with the reason;
+  a refused merge or an action failing again wakes it the same way);
+- nudges the agent once: the red CI again, with the failing tests read from
+  `gh run view --log-failed`, or a reminder to finish its step. Never twice for
+  the same cause (the same commit, the same step);
+- 30 minutes after the stall began, if it is still there: puts the task under
+  *Your turn* and in the sidebar's **Tasks to handle**, with the reason, and
+  sends a notification (it needs the *Needs you* level).
+
+The task's **Log** lists each of these: the stall, the nudge, the hand-over to
+you and the notification.
 
 ### Agents of a task that waits for you
 

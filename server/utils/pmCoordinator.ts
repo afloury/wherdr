@@ -5,9 +5,11 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { MAIN, canRunCoordinator, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, workflowPlace, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
+import { projectPlace } from '../../shared/pm/places'
+import { MAIN, canRunCoordinator, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
+import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
 import { validateTemplate } from '../../shared/pm/workflow'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, coordinatorStartRefusal, limitsLeft, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
@@ -159,13 +161,13 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       try { next = JSON.parse(String(body.input ?? '')) as Template } catch { throw new HerdrError('bad_input', 'The new template is not valid JSON') }
       // Always the project's own workflow, whatever id the JSON names.
       if (t && next && typeof next === 'object') next = { ...next, id: t.id }
-      editRefusal(t, next, turn)
+      editRefusal(t, next, turn, key)
       const errors = validateTemplate(next)
       if (errors.length) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
       // The user accepts or refuses it in the interface; nothing is saved yet.
       const proposal = { template: next, diff: templateDiff(t, next), at: Date.now(), base: t!.version ?? 1, ...(rec?.turn?.said ? { said: rec.turn.said } : {}) }
       await store.saveCoordinator({ ...rec!, proposal })
-      return { proposed: true, changes: templateChanges(t, next), diff: proposal.diff, next: `The user accepts or refuses this diff in ${workflowPlace(t!.id)}; template show tells you what they chose` }
+      return { proposed: true, changes: templateChanges(t, next), diff: proposal.diff, next: `The user accepts or refuses this diff in ${projectPlace(key, 'workflow', true)}; template show tells you what they chose` }
     }
     case 'task tag': {
       const task = await taskOf(cmd.task)
@@ -311,8 +313,8 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
 
 // Why the coordinator may not change the template to `next`; the same checks
 // when the user accepts it later, against the template as it is then.
-function editRefusal(t: Template | null, next: Template, turn: Turn) {
-  const why = templateEditRefusal(t, next, turn)
+function editRefusal(t: Template | null, next: Template, turn: Turn, key?: string) {
+  const why = templateEditRefusal(t, next, turn, key)
   if (why) throw new HerdrError('refused', why)
 }
 
@@ -324,10 +326,11 @@ export async function answerProposal(deps: Deps, key: unknown, accept: unknown) 
   const rec = typeof key === 'string' ? await store.coordinator(key) : null
   if (!rec?.proposal) throw new HerdrError('not_found', 'No template change waits for you')
   const { proposal, ...rest } = rec
-  const done = (outcome: ProposalOutcome) => store.saveCoordinator({ ...rest, answered: { outcome, at: Date.now() } })
-  if (accept !== true) { await done('refused'); return { accepted: false } }
   const p = (await store.projects()).find(x => x.key === rec.project)
   const t = p ? await store.workflow(p.key) : null
+  const summary = changeSummary(workflowChanges(t, proposal.template))
+  const done = (outcome: ProposalOutcome) => store.saveCoordinator({ ...rest, answered: { outcome, at: Date.now(), by: 'user', proposedAt: proposal.at, summary } })
+  if (accept !== true) { await done('refused'); return { accepted: false } }
   // Its diff was made against that version: saved over a newer one, it would
   // undo a change the user made since.
   if ((t?.version ?? 1) !== proposal.base) {
@@ -336,7 +339,7 @@ export async function answerProposal(deps: Deps, key: unknown, accept: unknown) 
   }
   // The project's own workflow (a proposal made before workflows names the template it was copied from).
   const next = t ? { ...proposal.template, id: t.id } : proposal.template
-  editRefusal(t, next, 'user')
+  editRefusal(t, next, 'user', rec.project)
   await store.saveWorkflow(rec.project, next, { by: `coordinator ${rec.project}`, said: proposal.said })
   await done('accepted')
   await writeRoleFiles(deps, rec.project).catch(() => {})
@@ -377,6 +380,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
   // The main coordinator first: every project's tasks are its own.
   return Promise.all([{ key: MAIN, name: await readAlfredName({}) }, ...await store.projects()].map(async (p) => {
     const c = await store.coordinator(p.key)
+    const changes = c?.proposal ? workflowChanges(await store.workflow(p.key), c.proposal.template) : undefined
     const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => p.key === MAIN || t.project === p.key)
     return {
       ...(p.key === MAIN ? { main: true } : {}),
@@ -386,7 +390,8 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
       wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
       project: p.key, name: p.name, ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...('from' in p && p.from ? { template: p.from.template } : {}),
       ...(c?.ran ? { ran: agentOf(c.ran) ?? FALLBACK } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
-      ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, ...(c.proposal.said ? { said: c.proposal.said } : {}) } } : {}),
+      ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, changes, ...(c.proposal.said ? { said: c.proposal.said } : {}) } } : {}),
+      ...(c?.answered ? { answered: c.answered } : {}),
     }
   }))
 }

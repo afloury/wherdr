@@ -78,14 +78,15 @@ describe('mechanical moves', () => {
     expect(redCiText(['unit'], 'abc1234ffff')).toMatch(/^CI failed on unit \(commit abc1234\)/)
   })
 
-  it('merges what the branch rule gives the engine, never a protected branch', () => {
+  it('merges what the guards give the engine, a protected branch only when they say engine', () => {
     expect(nextMove(facts())).toEqual({ key: 'merge:abc1234', move: { kind: 'merge', url: 'https://gh/pr/7', base: 'v3' } })
     // The user's rule for other branches.
     const userOnly = combineGuards([{ source: 'project', guards: { merge: { others: 'user' } } }])
     expect(nextMove(facts({ guards: userOnly }))).toBeUndefined()
-    // A protected base, even with a rule that says engine.
-    const loose = combineGuards([{ source: 'project', guards: { protected: ['v3'], merge: { protected: 'engine', others: 'engine' } } }])
-    expect(nextMove(facts({ guards: loose }))).toBeUndefined()
+    // A protected base: the user's by default, the engine's when the guards say so.
+    expect(nextMove(facts({ guards: combineGuards([{ source: 'project', guards: { protected: ['v3'] } }]) }))).toBeUndefined()
+    const loose = combineGuards([{ source: 'project', guards: { protected: ['v3'], merge: { protected: 'engine' } } }])
+    expect(nextMove(facts({ guards: loose }))?.move.kind).toBe('merge')
     const guardedPlan = plan.map(s => (s.id === 'merge' ? { ...s, guarded: true as const } : s))
     expect(nextMove(facts({ plan: guardedPlan }))).toBeUndefined()
     // Checks not green, or not at the merge step.

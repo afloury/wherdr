@@ -1,0 +1,112 @@
+// A workflow change as a person reads it: per task type, the steps added,
+// removed or changed, each changed field with its value before and after.
+// The coordinator's proposal card and review show it; the JSON diff
+// (templateDiff) stays for the details.
+import type { Guards, Step, StepAction, Template, TaskType } from './workflow'
+import { lineDiff } from './coordinator'
+
+// before/after: the field's value as text, absent when it was not set.
+export interface FieldChange { field: string, before?: string, after?: string }
+// moved: kept, in another place among the kept steps (its fields may have changed too).
+export type ChangeKind = 'added' | 'removed' | 'changed' | 'moved' | 'same'
+export interface StepChange { id: string, kind: ChangeKind, holder: string, ends?: string, fields: FieldChange[] }
+// steps: the new list in order, removed steps where they were.
+export interface TypeChange { type: string, kind: 'added' | 'removed' | 'changed', fields: FieldChange[], steps: StepChange[] }
+// all: the workflow's own fields (guards, instructions, prefs), for every type.
+export interface WorkflowChanges { all: FieldChange[], types: TypeChange[] }
+
+const MERGE_BY = { engine: 'automatic', user: 'you' } as Record<string, string>
+const text = (v: unknown): string | undefined => {
+  if (v === undefined || v === null || v === '') return undefined
+  if (Array.isArray(v)) return v.length ? v.join(', ') : undefined
+  if (typeof v === 'object') return JSON.stringify(v)
+  return String(v)
+}
+const action = (a?: StepAction) => a && [a.kind, a.target ?? a.base, a.method, a.checks?.length ? `checks ${a.checks.join(', ')}` : ''].filter(Boolean).join(' ')
+
+// A guards object, field by field: "merge protected", "protected branches"…
+function guardFields(g?: Guards): Record<string, string | undefined> {
+  return {
+    'protected branches': text(g?.protected),
+    'merge into protected': g?.merge?.protected && MERGE_BY[g.merge.protected],
+    'merge': g?.merge?.others && MERGE_BY[g.merge.others],
+    'contributor PRs': g?.contributorPrs,
+  }
+}
+
+function compare(a: Record<string, string | undefined>, b: Record<string, string | undefined>): FieldChange[] {
+  const out: FieldChange[] = []
+  for (const field of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const before = a[field], after = b[field]
+    if (before !== after) out.push({ field, ...(before === undefined ? {} : { before }), ...(after === undefined ? {} : { after }) })
+  }
+  return out
+}
+
+const prefFields = (p?: Template['prefs']) => Object.fromEntries(Object.entries(p ?? {}).map(([k, v]) => [k, text(v)]))
+const ownFields = (o?: { guards?: Guards, instructions?: string, prefs?: Template['prefs'] }) =>
+  ({ ...guardFields(o?.guards), 'instructions': text(o?.instructions), ...prefFields(o?.prefs) })
+
+function stepFields(s: Step): Record<string, string | undefined> {
+  const { id: _id, holder, ends, action: a, instructions, ...rest } = s
+  return { holder: holder ?? 'none', ends, action: action(a), instructions, ...Object.fromEntries(Object.entries(rest).map(([k, v]) => [k, text(v)])) }
+}
+
+// A type's steps, shared ones resolved by id.
+const stepsOf = (t: Template, tt: TaskType) => tt.steps.map(s => (typeof s === 'string' ? t.steps?.[s] ?? { id: s } : s))
+
+function stepChanges(oldSteps: Step[], newSteps: Step[]): StepChange[] {
+  const before = new Map(oldSteps.map(s => [s.id, s]))
+  const after = new Set(newSteps.map(s => s.id))
+  const row = (s: Step, kind: ChangeKind, fields: FieldChange[] = []): StepChange =>
+    ({ id: s.id, kind, holder: s.holder ?? 'none', ...(s.ends ? { ends: s.ends } : {}), fields })
+  // The kept steps out of the longest run still in order: moved.
+  const kept = (l: Step[], other: Set<string>) => l.map(s => s.id).filter(id => other.has(id))
+  const moved = new Set(lineDiff(kept(oldSteps, after), kept(newSteps, new Set(before.keys()))).filter(l => l.startsWith('+ ')).map(l => l.slice(2)))
+  const out: StepChange[] = []
+  // Removed steps go where they stood: before the next step that stays.
+  let i = 0
+  const flushRemoved = (until?: string) => {
+    while (i < oldSteps.length && oldSteps[i]!.id !== until) {
+      if (!after.has(oldSteps[i]!.id)) out.push(row(oldSteps[i]!, 'removed'))
+      i++
+    }
+    if (i < oldSteps.length) i++
+  }
+  for (const s of newSteps) {
+    const old = before.get(s.id)
+    if (!old) { out.push(row(s, 'added')); continue }
+    flushRemoved(s.id)
+    const fields = compare(stepFields(old), stepFields(s))
+    out.push(row(s, moved.has(s.id) ? 'moved' : fields.length ? 'changed' : 'same', fields))
+  }
+  flushRemoved()
+  return out
+}
+
+// What `next` changes in `old` (types left as they were are not listed).
+export function workflowChanges(old: Template | null, next: Template): WorkflowChanges {
+  const o = old ?? { id: next.id, taskTypes: {} }
+  const types: TypeChange[] = []
+  for (const type of new Set([...Object.keys(o.taskTypes), ...Object.keys(next.taskTypes)])) {
+    const a = o.taskTypes[type], b = next.taskTypes[type]
+    const fields = compare(ownFields(a), ownFields(b))
+    const steps = stepChanges(a ? stepsOf(o, a) : [], b ? stepsOf(next, b) : [])
+    const kind = !a ? 'added' : !b ? 'removed' : 'changed'
+    if (kind !== 'changed' || fields.length || steps.some(s => s.kind !== 'same')) types.push({ type, kind, fields, steps })
+  }
+  return { all: compare(ownFields(o), ownFields(next)), types }
+}
+
+const fieldLine = (f: FieldChange) => (f.field === 'instructions' ? 'instructions edited' : `${f.field}: ${f.before ?? 'none'} → ${f.after ?? 'none'}`)
+const stepLine = (s: StepChange) => (s.kind === 'added' ? `+ ${s.id}` : s.kind === 'removed' ? `− ${s.id}` : [`${s.id}${s.kind === 'moved' ? ' moved' : ''}`, s.fields.map(fieldLine).join(', ')].filter(Boolean).join(' '))
+
+// The change in a few plain lines, one per type: "task: merge: you → automatic, land action: … checks smoke".
+export function changeSummary(c: WorkflowChanges, max = 2): string[] {
+  const lines = [
+    ...(c.all.length ? [`all types: ${c.all.map(fieldLine).join(', ')}`] : []),
+    ...c.types.map(t => (t.kind === 'added' ? `new type ${t.type}` : t.kind === 'removed' ? `type ${t.type} removed`
+      : `${t.type}: ${[...t.fields.map(fieldLine), ...t.steps.filter(s => s.kind !== 'same').map(stepLine)].join(', ')}`)),
+  ]
+  return lines.length > max ? [...lines.slice(0, max - 1), `and ${lines.length - max + 1} more changes`] : lines
+}

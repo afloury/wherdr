@@ -3,23 +3,24 @@
 // URL (`tab=`). General: name, base branch, repository visibility, the agents
 // its tasks start with (the workflow's prefs), where its workflow came from.
 // Workflow: ProjectWorkflow, its own entries first in the ⋯ menu. The ⋯ menu
-// removes the project. Guards: ProjectGuards. Automations and Autopilot reuse
-// the components shown elsewhere. A coordinator's proposed workflow change:
-// a badge on Workflow, its first row there opens the review (ProposalReview),
-// at once when the URL asks (`review=1`).
+// removes the project. Guards: ProjectGuards. Automations: ProjectAutomations,
+// this project's only. Autopilot: CoordinatorAutopilot, the one in the
+// coordinator window (both read the shared coordinators, so a save in one
+// shows in the other), and a link to the pace of every account. A
+// coordinator's proposed workflow change: a badge on Workflow, its first row
+// there opens the review (ProposalReview), at once when the URL asks (`review=1`).
 import type { Project, TemplateInfo } from '#shared/pm/project'
 import { shownKey } from '#shared/pm/projectKey'
 import type { LogEntry } from '#shared/pm/templateText'
 import type { Prefs, Template } from '#shared/pm/workflow'
 import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
 import type { RepoVisibility } from '#shared/pm/visibility'
-import { PROJECT_TABS, type ProjectTab } from '~/utils/projectTabs'
+import { PROJECT_TABS, PROJECT_TAB_LABEL as TAB_LABEL, type ProjectTab } from '~/utils/projectTabs'
 
 const props = defineProps<{ project: Project, tab: ProjectTab, templates: TemplateInfo[], review?: boolean }>()
 const emit = defineEmits<{ tab: [tab: ProjectTab], close: [], changed: [] }>()
 const open = ref(true)
 const p = computed(() => props.project)
-const TAB_LABEL: Record<ProjectTab, string> = { general: 'General', workflow: 'Workflow', guards: 'Guards', automations: 'Automations', autopilot: 'Autopilot' }
 
 const workflow = ref<Template | null>(null)
 const log = ref<LogEntry[]>([])
@@ -178,7 +179,7 @@ async function remove() {
         <ProjectAutomations v-else-if="tab === 'automations'" :project="p.key" :name="p.name" />
         <template v-else-if="tab === 'autopilot'">
           <CoordinatorAutopilot v-if="coordinator" :c="coordinator" />
-          <p v-else class="muted settings-hint">{{ tl('This project has no coordinator yet.') }}</p>
+          <p v-else-if="coordinatorsLoaded" class="muted settings-hint">{{ tl('This project has no coordinator yet.') }}</p>
           <UButton to="/settings?section=pacing" color="neutral" variant="ghost" size="lg" icon="i-lucide-gauge">{{ tl('Pace of every account') }}</UButton>
         </template>
         <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>

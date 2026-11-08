@@ -23,7 +23,7 @@ import { SHOT_FILE_RE } from '../../shared/pm/shots'
 import { withMark } from '../../shared/pm/times'
 import { HerdrError } from './herdr'
 import type { FolderOptions } from '../../shared/pm/newProject'
-import { MAIN, type CoordinatorAgent, type Proposal, type ProposalOutcome } from '../../shared/pm/coordinator'
+import { MAIN, type CoordinatorAgent, type Proposal, type ProposalAnswer } from '../../shared/pm/coordinator'
 import type { Autopilot, DayCount, LastWake, TaskStatus } from '../../shared/pm/autopilot'
 import { readQueue, type Wake } from '../../shared/pm/wakes'
 import type { Automation, Mark } from '../../shared/pm/automations'
@@ -37,7 +37,7 @@ import { DATA_DIR } from './env'
 export interface CoordinatorRecord {
   // cliHash: Alfred's `wherdr alfred` token (the main coordinator's record only).
   project: string, tokenHash: string, cliHash?: string, terminal?: string, turn?: { kind: 'user' | 'wake', at: number, said?: string, look?: true }
-  agent?: CoordinatorAgent, ran?: CoordinatorAgent, proposal?: Proposal, answered?: { outcome: ProposalOutcome, at: number }
+  agent?: CoordinatorAgent, ran?: CoordinatorAgent, proposal?: Proposal, answered?: ProposalAnswer
   // userAt: the user's last message. seen: each task's status at the last tick; ranAt: the last interval wake.
   userAt?: number, autopilot?: Autopilot, seen?: Record<string, TaskStatus>, ranAt?: number
   atRan?: number // the last scheduled wake at fixed times (autopilot.at), or when it was set
