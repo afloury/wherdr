@@ -66,6 +66,13 @@ export function taskMachine(task: Pick<Task, 'machine' | 'run'>, p: Pick<Project
   return allowedMachines(p).includes(asked) ? { machine: asked } : { refused: 'This machine is not allowed for the project: allow it in the project\'s settings' }
 }
 
+// An allowed machine by its name (as `autopilot show` and the board name it) or key.
+export function machineNamed(p: Pick<Project, 'machine' | 'machines'>, known: { key: string, label: string }[], name: string): { machine: string } | { refused: string } {
+  const allowed = allowedMachines(p).map(key => ({ key, label: known.find(m => m.key === key)?.label ?? key }))
+  const m = allowed.find(x => x.label.toLowerCase() === name.toLowerCase()) ?? allowed.find(x => x.key === name)
+  return m ? { machine: m.key } : { refused: `No machine named ${name} among the project's: ${allowed.map(x => x.label).join(', ')}` }
+}
+
 const badFolder = (path: unknown) => typeof path !== 'string' || !/^(\/|~(\/|$))/.test(path) || path.length > 1024 || path.includes('\0')
 
 // The allowed machines once an update applies: each one but home needs a clone

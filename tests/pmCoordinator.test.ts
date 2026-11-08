@@ -292,7 +292,8 @@ describe('arbitration after N send-backs', () => {
   it('needs one sentence of reason', () => {
     expect(parseCommand(['task', 'decide', 'CO-1', 'round'])).toMatchObject({ error: expect.stringContaining('one sentence') })
     expect(parseCommand(['task', 'start', 'CO-1'])).toEqual({ name: 'task start', task: 'CO-1' })
-    expect(parseCommand(['task', 'start', 'CO-1', 'x'])).toEqual({ error: 'usage: wherdr pm task start <task>' })
+    expect(parseCommand(['task', 'start', 'CO-1', 'x'])).toEqual({ error: 'usage: wherdr pm task start <task> [--on <machine>]' })
+    expect(parseCommand(['task', 'start', 'CO-1', '--on', 'machine-b'])).toEqual({ name: 'task start', task: 'CO-1', on: 'machine-b' })
     expect(parseCommand(['task', 'decide', 'CO-1', 'round', '--reason', 'a\nb'])).toMatchObject({ error: expect.stringContaining('one sentence') })
     expect(parseCommand(['task', 'decide', 'CO-1', 'maybe', '--reason', 'x'])).toMatchObject({ error: expect.stringContaining('choice') })
   })

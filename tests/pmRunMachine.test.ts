@@ -15,6 +15,7 @@ import type { Run } from '../shared/pm/run'
 // A project on the wherdr host whose task runs on machine B: everything done
 // for that run (signal read, actions, reviewer, login check, cleanup) goes to B.
 let dir = '', calls: [string, Record<string, unknown>][] = []
+let ready = 'clone ok https://github.com/o/r\npush ok\nagent:claude ok\ndisk ok 9999999'
 const terms: Record<string, Record<string, string>> = {}
 const machines = () => [{ key: '', local: true, label: 'host' }, { key: 'b', local: false, status: 'online', label: 'machine-b' }]
 const call = async (method: string, p: Record<string, unknown>) => {
@@ -25,7 +26,8 @@ const call = async (method: string, p: Record<string, unknown>) => {
   if (method === 'terminal.get') return { state: 'running' }
   if (method !== 'machine.exec') return {}
   const script = (p.argv as string[])[2]!
-  const out = script.includes('command -v') ? 'claude' : script.includes(READ_SEP) ? ['abc1234', '5', '', ''].join(`\n${READ_SEP}\n`)
+  if (script.includes('wherdr-ready-check')) return { code: 0, stdout: Buffer.from(ready).toString('base64') }
+  const out = script.includes('get-url origin') ? 'git@github.com:o/r.git' : script.includes('command -v') ? 'claude' : script.includes(READ_SEP) ? ['abc1234', '5', '', ''].join(`\n${READ_SEP}\n`)
     : script.includes('gh pr create') ? 'https://github.com/o/r/pull/9'
       : script.includes('$HOME') ? '/h' : script.includes('worktree list') ? '1 1 0 0' : ''
   // The login check fails: the task stays waiting, nothing restarts.
@@ -57,6 +59,12 @@ it('starts a task of a two-machine project on either; a started task goes back t
   const t = await setup()
   await allowB()
   await expect(startTask(deps(), t.id, { on: 'c' })).rejects.toThrow('not allowed for the project')
+  // B not ready: refused with each failed check, the task left to do, no worktree made.
+  ready = 'clone ok https://github.com/o/r\npush fail fatal: Authentication failed\nagent:claude fail Not logged in'
+  await expect(startTask(deps(), t.id, { on: 'b' })).rejects.toThrow('machine-b is not ready for this project: push rights: fatal: Authentication failed; claude login: not logged in')
+  expect(await store().task(t.id)).toMatchObject({ state: 'todo' })
+  expect(worktreeCall()).toBeUndefined()
+  ready = 'clone ok https://github.com/o/r\npush ok\nagent:claude ok\ndisk ok 9999999'
   const started = await startTask(deps(), t.id, { on: 'b' })
   expect(started).toMatchObject({ state: 'working', machine: 'b' })
   expect(worktreeCall()).toMatchObject({ on: 'machine-b', argv: expect.arrayContaining(['/h/src-b']) })

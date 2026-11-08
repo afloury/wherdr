@@ -69,7 +69,7 @@ export type Command =
   | { name: 'task decide', task: string, choice: Choice, reason: string }
   | { name: 'ack', wakes: string[] } | { name: 'automation show', id: string }
   | { name: 'tell', task: string, text: string }
-  | { name: 'task start', task: string }
+  | { name: 'task start', task: string, on?: string }
   | { name: 'task stop', task: string, reason: string }
   | { name: 'task remove', task: string, reason: string }
   | { name: 'task add', title: string, type: string, after?: string, description?: string }
@@ -91,7 +91,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, whether it looks for new work (and how many tasks those wakes may still add today), the scheduled wakes skipped today (nothing to do, or ahead of the pace), what is left of today\'s limits, and the pacing of your worker\'s account (go, or what automatic work waits for)' },
   { usage: 'automation list', does: 'the project\'s automations: on or off, schedule or event, last firing' },
   { usage: 'automation show <automation>', does: 'one automation, its prompt and its last firings; only the user adds or changes them, in wherdr' },
-  { usage: 'task start <task>', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself)' },
+  { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there. A started task always goes back to its own machine' },
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
   { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done' },
@@ -133,7 +133,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description'] }[verb] ?? []))
+  const extra = known('project', ...({ 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description'], 'task start': ['on'] }[verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (verb === 'autopilot show' || verb === 'automation list') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
@@ -160,7 +160,11 @@ function parseWords(argv: unknown): Command | { error: string } {
     if (method !== undefined && !MERGE_METHODS.includes(method)) return { error: `--method is one of ${MERGE_METHODS.join(', ')}` }
     return { name: verb, pr: Number(w2), userSaid: said.slice(0, 500), ...(method ? { method } : {}) }
   }
-  if (verb === 'task start') return TASK_RE.test(task) && !w3 ? { name: verb, task } : usage(verb)
+  if (verb === 'task start') {
+    const on = flags.on?.trim()
+    if (flags.on !== undefined && !on) return { error: '--on needs a machine\'s name' }
+    return TASK_RE.test(task) && !w3 ? { name: verb, task, ...(on ? { on } : {}) } : usage(verb)
+  }
   if (verb === 'task stop' || verb === 'task remove') {
     const reason = (flags.reason ?? '').trim()
     if (!TASK_RE.test(task) || w3 || !reason) return usage(verb)
