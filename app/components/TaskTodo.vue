@@ -7,6 +7,7 @@ import { adviceChoices } from '#shared/pm/decisions'
 import { canStart, linkLabel, mainLink, type Card } from '#shared/pm/board'
 import { RESUMES, stoppedText, type Resume } from '#shared/pm/stop'
 import { shotUrl } from '#shared/pm/shots'
+import { reviewLine } from '#shared/pm/report'
 import type { Choice } from '#shared/pm/verdict'
 import type { Pane } from '#shared/types'
 import type { WaitKind } from '#shared/pm/run'
@@ -27,13 +28,7 @@ const shots = computed(() => {
 // Phone or desktop, from the image's shape once loaded.
 const shape = ref<Record<string, 'phone' | 'desktop'>>({})
 const loaded = (src: string, e: Event) => { const i = e.target as HTMLImageElement; shape.value = { ...shape.value, [src]: i.naturalWidth < i.naturalHeight ? 'phone' : 'desktop' } }
-const verdict = computed(() => {
-  const at = props.card.state?.at ?? 0
-  const review = props.card.plan.slice(0, at).findLast(s => s.ends === 'verdict')
-  if (!review) return ''
-  const n = props.card.state?.rounds[review.id] ?? 0
-  return n ? tl(`Review passed, ${n} send-back${n > 1 ? 's' : ''}`) : tl('Review passed')
-})
+const verdict = computed(() => { const v = reviewLine(props.card.plan, props.card.state?.at ?? 0, props.card.state?.rounds ?? {}); return v ? tl(v) : '' })
 const pr = computed(() => { const l = mainLink(props.card); return l && /\/pull\/\d+/.test(l.url) ? l : undefined })
 const note = ref('')
 
@@ -89,7 +84,8 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
         </div>
       </template>
       <div v-else class="task-sheet-actions">
-        <UButton v-if="card.userLabel || kind === 'refused'" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="emit('press')">{{ card.userLabel || tl('Try again', 'Réessayer') }}</UButton>
+        <!-- A refused action is tried again from the sheet's top (Try again). -->
+        <UButton v-if="card.userLabel && kind !== 'refused'" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="emit('press')">{{ card.userLabel }}</UButton>
         <UButton v-if="kind === 'blocked' && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="emit('start')">{{ tl('Start', 'Lancer') }}</UButton>
         <UButton v-if="pane && kind !== 'merge' && kind !== 'step'" :color="kind === 'ask' ? 'primary' : 'neutral'" :variant="kind === 'ask' ? 'solid' : 'outline'" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)" data-testid="todo-agent">
           {{ card.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent') }}

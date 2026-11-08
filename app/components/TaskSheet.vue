@@ -18,7 +18,8 @@ import { shotMode } from '#shared/pm/shots'
 import type { Choice } from '#shared/pm/verdict'
 
 // stopping: opened from the card menu's Stop, the confirmation shown.
-const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean, waitsFor?: string[] }>()
+// reporting: opened from its Report a problem, the form shown (TaskReport).
+const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean, reporting?: boolean, waitsFor?: string[] }>()
 const emit = defineEmits<{ closed: [], changed: [] }>()
 const open = ref(true)
 const busy = ref(false)
@@ -74,6 +75,13 @@ const start = () => run(() => startTaskApi(props.card.id))
 const resume = (how: Resume) => run(() => resumeTaskApi(props.card.id, how))
 const decide = (choice: Choice) => run(() => api('/api/pm/decide', { id: props.card.id, choice }))
 const sendBack = (note: string) => run(() => api('/api/pm/step-back', { id: props.card.id, note }))
+// A problem reported to the coordinator: open on the card until it acts or the user withdraws it.
+const reportOpen = ref(!!props.reporting)
+// An action step that failed (a merge refused): the user runs it again.
+const failedAction = computed(() => { const s = props.card.state; return !props.card.stopped && !!s && !s.acting && s.yourTurn?.reason === 'action' && !!props.card.plan[s.at]?.action })
+const canReport = computed(() => !!props.card.yourTurn && !props.card.state?.done && !props.card.report)
+const report = (r: { text: string, shots: string[], block: boolean }) => run(async () => { await api('/api/pm/report', { id: props.card.id, ...r }); reportOpen.value = false })
+const withdraw = () => run(() => api('/api/pm/report', { id: props.card.id, withdraw: true }))
 // Removed: the sheet closes, the board reloads without it.
 const remove = () => run(async () => { const yes = await removeTaskApi(props.card.id); if (yes) open.value = false; return yes })
 </script>
@@ -89,6 +97,8 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
           <UButton v-if="!todo && pane" color="neutral" variant="outline" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)">
             {{ card.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent') }}
           </UButton>
+          <UButton v-if="failedAction" color="primary" size="xl" icon="i-lucide-rotate-ccw" :loading="busy" data-testid="task-retry" @click="press">{{ tl('Try again', 'Réessayer') }}</UButton>
+          <UButton v-if="canReport && !reportOpen" color="neutral" variant="outline" size="xl" icon="i-lucide-flag" data-testid="task-report-start" @click="reportOpen = true">{{ tl('Report a problem') }}</UButton>
           <UButton v-if="canStop(card) && !confirmStop" color="error" variant="outline" size="xl" icon="i-lucide-square" data-testid="task-stop" @click="confirmStop = true">{{ tl('Stop', 'Arrêter') }}</UButton>
           <UButton v-if="card.removable" color="error" variant="outline" size="xl" icon="i-lucide-trash-2" :loading="busy" data-testid="task-remove" @click="remove">{{ tl('Delete…', 'Supprimer…') }}</UButton>
         </div>
@@ -101,6 +111,12 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
             <UButton color="neutral" variant="outline" size="xl" :disabled="busy" @click="confirmStop = false">{{ t('Cancel') }}</UButton>
           </div>
         </form>
+        <TaskReport v-if="canReport && reportOpen" :card="card" :busy="busy" @send="report" @cancel="reportOpen = false" />
+        <div v-if="card.report" class="task-report-open" data-testid="task-report-open">
+          <p><b>{{ tl('Problem reported') }} {{ fmtTime(card.report.at) }}</b><template v-if="card.report.block"> · {{ tl('merge blocked') }}</template></p>
+          <p class="task-desc">{{ card.report.text }}</p>
+          <UButton color="neutral" variant="outline" size="xl" :loading="busy" data-testid="task-report-withdraw" @click="withdraw">{{ tl('Withdraw') }}</UButton>
+        </div>
         <p v-if="error" class="error">{{ error }}</p>
       </div>
 
@@ -158,6 +174,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-desc { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-sheet-actions:empty { display: none; }
+.task-report-open { display: grid; gap: 6px; justify-items: start; padding: 10px 12px; border: 1px solid var(--working); }
 .task-stop-confirm { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--danger); }
 .task-plan { list-style: none; margin: 0; padding: 0; }
 .task-plan li { display: flex; flex-direction: column; gap: 4px; padding: 8px 0 8px 12px; border-bottom: 1px solid var(--line-soft); border-left: 2px solid transparent; }

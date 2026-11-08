@@ -60,11 +60,13 @@ const live = (c: Card) => {
 const stopping = ref(false)
 const cardMenu = useRowMenu()
 const tap = (id: string) => { if (!cardMenu.swallowClick()) show(id) }
-const show = (id: string, stop = false) => { stopping.value = stop; open.value = id }
+const reporting = ref(false)
+const show = (id: string, stop = false, report = false) => { stopping.value = stop; reporting.value = report; open.value = id }
 const act = (fn: () => Promise<unknown>) => fn().then(load, (e: Error) => { error.value = e.message })
 const menuOf = (c: Card): MenuItem[] => [
   { label: tl('Open', 'Ouvrir'), icon: 'i-lucide-panel-right-open', run: () => show(c.id) },
   ...(canStart(c) && !waiting(c).length ? [{ label: tl('Start', 'Lancer'), icon: 'i-lucide-play', run: () => act(() => startTaskApi(c.id)) }] : []),
+  ...(c.yourTurn && !c.state?.done && !c.report ? [{ label: tl('Report a problem…'), icon: 'i-lucide-flag', run: () => show(c.id, false, true) }] : []),
   ...(canStop(c) ? [{ label: tl('Stop…', 'Arrêter…'), icon: 'i-lucide-square', danger: true, run: () => show(c.id, true) }] : []),
   ...(c.stopped ? RESUMES.map(how => ({ label: tl(...RESUME_LABEL[how]), danger: how === 'archive', run: () => act(() => resumeTaskApi(c.id, how)) })) : []),
   ...(c.removable ? [{ label: tl('Delete…', 'Supprimer…'), icon: 'i-lucide-trash-2', danger: true, run: () => act(() => removeTaskApi(c.id)) }] : []),
@@ -116,6 +118,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
           <small class="mono-label">{{ c.shown }}<template v-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
           <small v-if="statusOf(c)" class="board-status" :class="statusOf(c)!.tone" :title="statusOf(c)!.text" data-testid="board-status">{{ statusOf(c)!.text }}</small>
           <span v-if="c.yourTurn" class="board-badge" data-testid="board-badge">{{ c.yourTurn }}</span>
+          <small v-if="c.report" class="board-status wait" :title="c.report.text" data-testid="board-report">{{ tl('Problem reported') }} {{ fmtTime(c.report.at) }}</small>
           <small v-else-if="waiting(c).length" class="muted" data-testid="board-waits">{{ tl('Waits for', 'Attend') }} {{ waiting(c).map(id => shownTaskId(data?.projects ?? [], id)).join(', ') }}</small>
           <span v-if="c.tags.length || c.links.length" class="board-tags">
             <span v-for="tag in c.tags.slice(0, 2)" :key="tag" class="board-chip">{{ tag }}</span>
@@ -135,7 +138,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
     </div>
     </div>
     <AddTaskSheet v-if="adding && data" v-model:open="adding" :projects="data.projects" :cards="data.cards" :project="project" @added="added" />
-    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" @closed="open = null; stopping = false" @changed="load" />
+    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}:${reporting}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" :reporting="reporting" @closed="open = null; stopping = false; reporting = false" @changed="load" />
   </section>
 </template>
 

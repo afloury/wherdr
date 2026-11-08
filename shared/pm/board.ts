@@ -8,6 +8,7 @@ import type { Run, Task, WaitKind } from './run'
 import { notStarted, type Stopped } from './stop'
 import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
+import type { Report } from './report'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -36,6 +37,7 @@ export interface Card {
   prNow?: string // its PR as the engine last read it (prNow)
   held?: string // waits for memory on its machine
   asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
+  report?: Report // a problem the user reported, open (report.ts)
 }
 
 // types: the project's task types, each with its steps in one line ("work → review → merge").
@@ -90,6 +92,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
     ...(task.stopped ? { stopped: task.stopped } : {}),
     ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '' } } : {}),
     ...(task.held && task.state === 'todo' ? { held: task.held } : {}),
+    ...(task.report ? { report: task.report } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
     ...(task.after ? { after: afterIds(task) } : {}),
   }

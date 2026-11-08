@@ -244,6 +244,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await writeJson(path.join(files.tasks, `${id}.json`), next)
       return next
     }),
+    // Where it is on this machine, for the coordinator to open.
+    shotPath: (id: string, file: string) => path.join(files.shots, id, file),
     shot: (id: string, file: string) => (TASK_ID_RE.test(id) && SHOT_FILE_RE.test(file) ? fs.readFile(path.join(files.shots, id, file)).catch(() => null) : Promise.resolve(null)),
     // A line of the task's log, saved with the task.
     logTask: (t: Task, by: string, text: string) => write(async () => {

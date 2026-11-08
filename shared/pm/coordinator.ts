@@ -74,6 +74,7 @@ export type Command =
   | { name: 'task remove', task: string, reason: string }
   | { name: 'task add', title: string, type: string, after?: string, description?: string }
   | { name: 'pr merge', pr: number, userSaid: string, method?: MergeMethod }
+  | { name: 'report back' | 'report close', task: string, text: string }
 
 // One table for the parser, the skill and the role file.
 export const COMMANDS: { usage: string, does: string }[] = [
@@ -95,6 +96,8 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
   { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done' },
+  { usage: 'report back <task> "<what to fix>"', does: 'on a problem the user reported: send their step back to the worker with precise fixes, and close the report' },
+  { usage: 'report close <task> "<what you did>"', does: 'close a problem the user reported once handled (you told the agent, added a follow-up task, or it is fine); the merge it blocked is free again' },
   { usage: 'tell <task> "<text>"', does: 'a message to the task\'s agent; in a wake, only to answer its question (a permission request is the user\'s)' },
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
 ]
@@ -140,6 +143,10 @@ function parseWords(argv: unknown): Command | { error: string } {
   if (w0 === 'tell') {
     const text = words.slice(2).join(' ').trim()
     return w1 && TASK_RE.test(w1) && text && text.length <= 4000 ? { name: 'tell', task: w1, text } : usage('tell')
+  }
+  if (verb === 'report back' || verb === 'report close') {
+    const text = words.slice(3).join(' ').trim()
+    return TASK_RE.test(task) && text && text.length <= 2000 ? { name: verb, task, text } : usage(verb)
   }
   if (w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0 }
   if (w0 === 'show') return w1 && TASK_RE.test(w1) && !w2 ? { name: 'show', task: w1 } : usage('show')
@@ -344,6 +351,8 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[]):
     'When the user says "after each task, create the PR with my Bitbucket tool, then wait until I say it is merged", write a worker step with that instruction and `evidence: ["link"]`, then a step `{ holder: "none", ends: "user", userLabel: "Merged", action: { kind: "git.verify-merged", target } }`. "Watch the deploy" is a step you hold: `holder: "coordinator", ends: "report", recheck: "5m"`.',
     'Read the template, write the new one and run `template edit`: wherdr shows the user its diff, to accept or refuse; `template show` tells you which. Examples to copy from:', '',
     ...examples.map(e => `\`\`\`json\n${JSON.stringify(e)}\n\`\`\``), '',
+    '## A problem the user reports', '',
+    'A message that starts with "The user reports a problem on task" comes from the user, from the task\'s sheet: their text, the screenshots concerned (open them), the PR and the review. Decide yourself: `tell` the agent precise fixes, `report back` to send the step back to the worker, or add a follow-up task; then `report close` with what you did. Never ask the user to pass it on to the agent: you act on it. While it is open, the task stays in Your turn, and its merge is blocked when the user said so.', '',
     '## After N send-backs', '',
     'The engine sorts what is left and gives options. Pick one with `task decide` and one sentence of reason. When it gives no option, the choice is the user\'s: tell them.', '',
     '## The user\'s instructions', '', ...(own.length ? own : ['(none yet)']), '',
