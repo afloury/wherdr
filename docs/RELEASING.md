@@ -1,5 +1,8 @@
 # Releasing wherdr
 
+> [!NOTE]
+> **v2 only.** This process publishes the 2.x line (npm, Homebrew, GitHub releases, the Herdr plugin). wherdr v3 on herdr-core has no release yet. See the [v3 documentation](README.md).
+
 Publishing a version requires the user's explicit approval. Never republish a package held
 for npm review. No new secret is needed: GitHub uses `GITHUB_TOKEN`, npm uses OIDC Trusted
 Publishing (`npm.yml`), and the tap uses the existing optional `HOMEBREW_TAP_TOKEN`.
@@ -69,29 +72,6 @@ Readiness logs name each missing npm or Homebrew condition, and an already-curre
 marker is left alone. GitHub disables scheduled workflows in public repositories after 60 days
 without repository activity. Check that `release-ready.yml` remains enabled; re-enable it and
 run it manually if needed. After re-enabling, workflow-completion and manual checks work too.
-
-## herdr-projects tested version
-
-wherdr installs one herdr-projects release, and offers an update to it on machines with an older
-one: `PROJECTS_TESTED` in `shared/projectsPlugin.ts`. `PROJECTS_MIN` (1.2.1) is the oldest
-release wherdr still reads; it moves only when wherdr drops one.
-
-To move to a newer herdr-projects release:
-
-1. Download its binary from GitHub (`gh release download vX.Y.Z -R eliasstravik/herdr-projects`)
-   and check it against its `.sha256`. Run it with `HOME` set to an empty temporary folder and
-   Herdr unreachable. Record `version`, `list --json`, `list --json --archived`,
-   `details --json -- <id>`, `show --json -- <id>` and `coordinator --machine --json status`
-   into `tests/recordings/herdr-projects-X.Y.Z/` (no personal paths or machine names).
-   Also check that `tell`, `approve`, `after`, `archive`, `restore` and `coordinator … tell`
-   still take the same arguments.
-2. Set `PROJECTS_TESTED` to `X.Y.Z`, and point the recordings test in
-   `tests/projectsTasks.test.ts` at the new folder.
-3. If the release adds a feature worth naming, add it to `FEATURES` in
-   `app/components/ProjectsPluginSettings.vue` (the update's one-line summary, FR + EN).
-4. Run `npx vitest related --run shared/projectsPlugin.ts`: `tests/projectsPlugin.test.ts`
-   fails until the install commands in `docs/board.md`, `docs/herdr-projects-1x.md` and
-   `website/public/agent.md` name the new release.
 
 ## Release notes checklist
 
