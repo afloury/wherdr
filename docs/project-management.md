@@ -32,3 +32,18 @@ is done and has a button that takes you there.
 
 Then ask the coordinator for tasks, and answer
 what shows under *Your turn* and *Decisions*.
+
+## Guards
+
+Guards are the rules a project sets on its branches. Open the project in
+**Settings › Projects** and pick the **Guards** tab:
+
+- **Protected branches**: one chip per branch; type a name and press *Add*, or
+  press × on a chip to unprotect it. wherdr never pushes to a protected branch.
+- **Who merges into protected branches** and **who merges other branches**:
+  *You* (the step waits for you) or *wherdr* (it merges by itself).
+- **Effect**: what each task type adds (a task type can only make the guards
+  stricter) and, for each step that merges, whether it is left to you. It
+  follows your changes before you save.
+
+Only you, or Alfred, can save guards: a project coordinator cannot change them.
