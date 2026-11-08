@@ -3,7 +3,6 @@
 // multiplexed SSH connection (see machines.ts). Same operations on both sides,
 // in POSIX sh + BSD (macOS) or GNU (Linux) stat.
 import fs from 'node:fs'
-import path from 'node:path'
 import { createHash } from 'node:crypto'
 
 const fsp = fs.promises
@@ -53,25 +52,6 @@ export interface ExecResult { code: number | null, stdout: Buffer, stderr: strin
 // `maxBytes`: past that much output the command is stopped and nothing of it is kept.
 export type ShellExec = (script: string, args?: string[], opts?: { input?: Buffer, timeoutMs?: number, maxBytes?: number }) => Promise<ExecResult>
 
-// A command's output, kept up to `max` bytes: past it, `push` says so and lets
-// go of what it held, so a long answer never sits in memory whole.
-export function boundedOutput(max = Infinity) {
-  let parts: Buffer[] = []
-  let size = 0
-  let over = false
-  return {
-    push(b: Buffer): boolean {
-      if (over) return false
-      size += b.length
-      if (size > max) { over = true; parts = []; return false }
-      parts.push(b)
-      return true
-    },
-    get over() { return over },
-    take: () => Buffer.concat(parts),
-  }
-}
-
 export class FsError extends Error {
   code: string
   constructor(code: string, message: string) {
@@ -82,10 +62,6 @@ export class FsError extends Error {
 
 // Shell quoting (arguments passed as is, never interpreted).
 export const shq = (s: string) => `'${String(s).replace(/'/g, `'\\''`)}'`
-
-// Command line run by the remote login shell for `script` and its arguments:
-// every part quoted, so a path is never interpreted by either shell.
-export const remoteCommand = (script: string, args: string[] = []) => `sh -c ${shq(script)} sh ${args.map(shq).join(' ')}`.trimEnd()
 
 // BSD (macOS) or GNU `stat`: one "size mtime inode type" line per file, "x" if
 // missing. The mtime has its fraction of a second when `stat` can print it
@@ -208,28 +184,7 @@ done`
 // Exit code of LIST_DIRS_SCRIPT → refusal (null: listed, or not a folder).
 export const dirDeniedFromCode = (code: number | null): DirDenied | null => code === 3 ? 'macos' : code === 2 ? 'permission' : null
 
-// Local `readdir` error → refusal (EPERM is macOS privacy protection there).
-export function dirDeniedFromError(err: unknown, platform: string = process.platform): DirDenied | null {
-  const code = (err as { code?: unknown } | null)?.code
-  if (code === 'EPERM' && platform === 'darwin') return 'macos'
-  return code === 'EACCES' || code === 'EPERM' ? 'permission' : null
-}
-
 export function parseDirList(out: string): DirEntryRaw[] {
   return String(out || '').split('\n').filter(l => /^[gd] ./.test(l)).map(l => ({ name: l.slice(2), git: l[0] === 'g' }))
 }
 
-export async function listDirsLocal(dir: string): Promise<DirEntryRaw[]> {
-  const entries = await fsp.readdir(dir, { withFileTypes: true })
-  const out: DirEntryRaw[] = []
-  for (const e of entries) {
-    if (!e.isDirectory() || e.name.startsWith('.') || e.name === 'node_modules') continue
-    let git = false
-    try {
-      await fsp.access(path.join(dir, e.name, '.git'))
-      git = true
-    } catch { /* not a repository */ }
-    out.push({ name: e.name, git })
-  }
-  return out
-}

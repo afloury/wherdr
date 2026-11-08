@@ -1,0 +1,16 @@
+╭───────────────────────────────────────────────────╮
+│ ✻ Welcome to Claude Code!                         │
+│                                                   │
+│   /help for help, /status for your current setup  │
+│                                                   │
+│   cwd: ~/projects/demo-app                        │
+╰───────────────────────────────────────────────────╯
+
+ Tips for getting started:
+
+  Run /init to create a CLAUDE.md file with instructions for Claude
+
+────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────
+  ? for shortcuts
