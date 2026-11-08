@@ -100,6 +100,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
     <header class="board-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back" :aria-label="t('Back')" to="/" />
       <h1 class="display">{{ tl('Board', 'Tableau') }}</h1>
+      <SetupButton />
       <UButton :color="decisions ? 'warning' : 'neutral'" :variant="decisions ? 'solid' : 'outline'" size="lg" to="/decisions" data-testid="board-decisions">
         {{ tl('Decisions', 'Décisions') }}<span v-if="decisions" class="mono-label board-decisions-n">{{ decisions }}</span>
       </UButton>
@@ -110,9 +111,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
       <USelect v-if="tags.length || tag" v-model="tagPick" :items="tagItems" size="lg" class="board-select" :aria-label="tl('Tag', 'Étiquette')" data-testid="board-tag" />
       <CoordinatorButton v-if="coordinator" :c="coordinator" open />
     </header>
-    <!-- One scroll on the phone, so a tall guide does not hide the lanes. -->
     <div class="board-body">
-    <PmGuide :always="route.query.guide === '1'" />
     <p v-if="error" class="error board-note">{{ error }}</p>
     <p v-else-if="data && !data.cards.length" class="muted board-note">{{ tl('No task yet.', 'Aucune tâche pour l’instant.') }}</p>
     <div class="board-lanes">

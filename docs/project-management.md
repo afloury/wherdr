@@ -8,40 +8,45 @@ you turn it on.
 
 ## Getting started
 
-The same four steps show in the app, on the **Board** while nothing is set up,
-and from **Settings › Projects › Getting started**. Each step shows whether it
-is done and has a button that takes you there.
+A setup window walks you through six steps for one project, one per screen,
+with Back and Next. Each step does the thing in place; Next waits until it is
+done. While no project went through every step, the **Board** header shows
+*Finish setup (2/6)*, which opens it at the first step left; once one project
+is set up, the button is gone. **Settings › Projects › Set up a project** opens
+it too, on the first project with a step left.
 
-1. **Turn on project management.** In Settings › Projects, switch on
-   *Project management*. Off, wherdr changes nothing.
-2. **Pick a template.** A template is a list of steps a task goes through, and
-   who does each one (an agent, you, or wherdr itself). Start from an example,
-   such as `vibe` (commit straight to a dev branch, no review), or from a
-   template you saved from another project ([Workflow](#workflow)). The
-   step's button opens the [template library](#template-library).
-3. **Give each project a workflow.** *Add project* (Settings › Projects, or
-   **New › Project**) adds a git folder on a machine herdr-core reaches, and
-   copies the template you pick into the project: that copy is the project's
-   own workflow. Projects imported from v2 ([Migrate from v2](migrate-from-v2.md))
-   have none, and their tasks cannot start without it: open the project, then
-   *Workflow › ⋯ › Start over from a template*.
-   **New › Project** also opens a project's coordinator, or adds a new or empty
-   folder (created at start, `git init` offered), or any folder without git (a
-   folder of several projects, for instance). A folder without git needs no
-   template: it has no tasks (a task needs git for its own worktree), and its
-   coordinator does the work in it directly.
-4. **Open the board and start the project coordinator.** Pick the project on
-   the Board and press *Start*: the coordinator is the agent you talk to about
-   the project. It adds tasks and follows them on the board. Alfred, wherdr's
-   assistant at the top of the agent list, coordinates all projects at once
-   (see [Home](home.md#alfred)).
+1. **Turn on project management.** Off, wherdr changes nothing. This first
+   screen also offers *Let Alfred guide me*: it opens Alfred's conversation
+   (see [Home](home.md#alfred)) and asks it to walk you through the setup.
+2. **Add a project.** A git folder on a machine herdr-core reaches. For now
+   *Add a project* opens **New › Project**, then the setup window comes back.
+   With several projects, pick the one to set up.
+3. **Choose its workflow.** The examples, each with its steps in one line, such
+   as `vibe` (commit straight to a dev branch, no review). The one you choose is
+   copied into the project: that copy is the project's own workflow, changed
+   later in its [Workflow](#workflow) tab. Projects imported from v2
+   ([Migrate from v2](migrate-from-v2.md)) have none, and their tasks cannot
+   start without it.
+4. **Check its guards.** The protected branches and who merges, as the
+   workflow set them ([Guards](#guards)). Change and save them, or keep the
+   defaults with Next.
+5. **Start its coordinator.** Pick the agent and start it: the coordinator is
+   the agent you talk to about the project. It adds tasks and follows them on
+   the board. Its [autopilot](#autopilot) can be set under it (optional).
+6. **Add a first task.** A title and, with several, its type.
+
+**New › Project** also opens a project's coordinator, or adds a new or empty
+folder (created at start, `git init` offered), or any folder without git (a
+folder of several projects, for instance). A folder without git needs no
+workflow: it has no tasks (a task needs git for its own worktree), and its
+coordinator does the work in it directly.
 
 Then ask the coordinator for tasks, and answer what shows under *Your turn* and
 *Decisions*.
 
 ## Projects
 
-**Settings › Projects** holds the *Project management* switch, *Getting started*,
+**Settings › Projects** holds the *Project management* switch, *Set up a project*,
 the project list and the [template library](#template-library): each row shows
 the name (with a **Public** badge for a public repository), the key, the machine
 and the folder. *Add project* opens the New sheet on a new project; *Open the
