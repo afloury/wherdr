@@ -5,6 +5,7 @@
 import { boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, waitsFor, type Board, type Card } from '#shared/pm/board'
 import type { Task } from '#shared/pm/run'
 import { RESUMES } from '#shared/pm/stop'
+import { cardTime } from '#shared/pm/times'
 import { shownTaskId, storedTaskId } from '#shared/pm/projectKey'
 import type { Pane } from '#shared/types'
 
@@ -46,6 +47,8 @@ const laneLabel = (id: string) => (columns.value && id !== 'your-turn' ? id : t(
 // Where its PR and merge stand, one line: 'PR open · waiting for checks (smoke)', 'merged 14:05'.
 const statusOf = (c: Card) => { const s = cardStatus(c); return s && { ...s, text: s.at ? `${s.text} ${fmtWhen(new Date(s.at).toISOString())}` : s.text } }
 const showStep = (c: Card, lane: string) => c.step && (!columns.value || lane === 'your-turn')
+// '12 min in review' while it works (the step in it), '42 min' from start to done.
+const timeOf = (c: Card) => cardTime(c, Date.now())
 
 // The holder's pane, by its herdr-core address; none for holder: none.
 const hasAgent = (c: Card) => c.holder !== 'none' && !c.state?.done
@@ -117,7 +120,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
             <span v-if="hasAgent(c)" class="card-state" :class="live(c).key" role="img" :aria-label="live(c).label" :title="live(c).label" data-testid="holder-state"><i /></span>
             <b>{{ c.title }}</b>
           </span>
-          <small class="mono-label">{{ c.shown }}<template v-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
+          <small class="mono-label">{{ c.shown }}<template v-if="timeOf(c)"> · <span data-testid="board-time">{{ timeOf(c) }}</span></template><template v-else-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
           <small v-if="statusOf(c)" class="board-status" :class="statusOf(c)!.tone" :title="statusOf(c)!.text" data-testid="board-status">{{ statusOf(c)!.text }}</small>
           <span v-if="c.yourTurn" class="board-badge" data-testid="board-badge">{{ c.yourTurn }}</span>
           <small v-if="c.report" class="board-status wait" :title="c.report.text" data-testid="board-report">{{ tl('Problem reported') }} {{ fmtTime(c.report.at) }}</small>

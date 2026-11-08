@@ -10,6 +10,7 @@ import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
 import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
 import type { Report } from './report'
+import { timesOf, type Times } from './times'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -40,6 +41,7 @@ export interface Card {
   held?: string // waits for memory on its machine
   asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
   report?: Report // a problem the user reported, open (report.ts)
+  times?: Times // time per step, waits for the user, rounds, CI fixes (times.ts), once started
 }
 
 // types: the project's task types, each with its steps in one line ("work → review → merge").
@@ -100,6 +102,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(task.report ? { report: task.report } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
     ...(task.after ? { after: afterIds(task) } : {}),
+    ...(s?.started ? { times: timesOf(task, plan, runs, now) } : {}),
   }
 }
 

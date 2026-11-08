@@ -20,6 +20,7 @@ import { publicTask, type Run, type Task, type TaskLogEntry } from '../../shared
 import { afterIds } from '../../shared/pm/advance'
 import type { Receipt } from '../../shared/pm/actions'
 import { SHOT_FILE_RE } from '../../shared/pm/shots'
+import { withMark } from '../../shared/pm/times'
 import { HerdrError } from './herdr'
 import type { FolderOptions } from '../../shared/pm/newProject'
 import { MAIN, type CoordinatorAgent, type Proposal, type ProposalOutcome } from '../../shared/pm/coordinator'
@@ -174,6 +175,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     if (!await enabled()) throw new HerdrError('pm_off', 'Projects are switched off')
     return fn()
   })
+  // The task with the marks on disk (a caller's copy may be older) and a new one if its step or turn changed.
+  const marked = async (t: Task) => withMark(t, TASK_ID_RE.test(t.id) ? (await readJson<Task>(path.join(files.tasks, `${t.id}.json`)))?.marks ?? t.marks : t.marks, Date.now())
   async function findProject(key: unknown) {
     const list = await projects()
     const i = list.indexOf(projectOf(list, key)!)
@@ -231,13 +234,13 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       return { id: key.toLowerCase(), version }
     }),
     runs: () => readAll<Run>(files.runs),
-    saveTask: (t: Task) => write(async () => { await writeJson(path.join(files.tasks, `${t.id}.json`), t); return t }),
+    saveTask: (t: Task) => write(async () => { const out = await marked(t); await writeJson(path.join(files.tasks, `${t.id}.json`), out); return out }),
     // A screenshot of the task: `change` gives the task with it, from the task
     // read in the same write (refused: it throws, nothing is kept).
     addShot: (id: string, file: string, data: Buffer, change: (t: Task) => Task) => write(async () => {
       const task = TASK_ID_RE.test(id) && SHOT_FILE_RE.test(file) ? await readJson<Task>(path.join(files.tasks, `${id}.json`)) : null
       if (!task) throw new HerdrError('not_found', 'Unknown task')
-      const next = change(task)
+      const next = await marked(change(task))
       const folder = path.join(files.shots, id)
       await fs.mkdir(folder, { recursive: true, mode: 0o700 })
       await fs.writeFile(path.join(folder, file), data, { mode: 0o600 })
@@ -249,7 +252,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     shot: (id: string, file: string) => (TASK_ID_RE.test(id) && SHOT_FILE_RE.test(file) ? fs.readFile(path.join(files.shots, id, file)).catch(() => null) : Promise.resolve(null)),
     // A line of the task's log, saved with the task.
     logTask: (t: Task, by: string, text: string) => write(async () => {
-      const out = { ...t, log: [...(t.log ?? []), { at: Date.now(), by, text }].slice(-200) }
+      const out = await marked({ ...t, log: [...(t.log ?? []), { at: Date.now(), by, text }].slice(-200) })
       await writeJson(path.join(files.tasks, `${t.id}.json`), out)
       return out
     }),
