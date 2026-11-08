@@ -33,7 +33,7 @@ export function readCoreScreen(text: string, agent: string | null | undefined, s
     if (choices) choices.identity = promptIdentity(text, agent)
   }
   const known = status && status !== 'unknown' ? status : null
-  const derived = known ? null : working ? 'working' : choices ? 'blocked' : confirmedInput(text) ? 'idle' : null
+  const derived = known ? null : working ? 'working' : choices ? 'blocked' : confirmedInput(text, agent) ? 'idle' : null
   // `screen`/`menu` cards have no core route yet: such screens stay terminals.
   const interaction = (derived || known) === 'working' ? 'working'
     : classifyScreen({ text, agent, choices, status: known || derived || 'unknown' })

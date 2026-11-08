@@ -1,6 +1,6 @@
 // The board's data, and the user's button on a step that waits for them.
 import { boardColumns, cardOf, type Board } from '../../shared/pm/board'
-import { initialState, onEvent, planSteps } from '../../shared/pm/steps'
+import { initialState, onEvent, planSteps, reviewedCommit } from '../../shared/pm/steps'
 import { taskGuards, type ActionResult } from '../../shared/pm/actions'
 import type { MergeBy, Template } from '../../shared/pm/workflow'
 import { addShot, isImage, SHOT_TYPES, type Shot } from '../../shared/pm/shots'
@@ -71,12 +71,17 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     const result: ActionResult = run
       ? await runAction({ store, sh: actionShell(deps, machineOn(deps, p.machine).on) }, {
           task, step: act.step, attempt: act.attempt, action: act.action, by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
+          reviewed: reviewedCommit(plan, state),
           halted: async () => !!(await store.task(task.id))?.stopped,
         }).catch((e: Error) => ({ ok: false, error: e.message }))
       : { ok: false, error: 'No worktree: the task never started' }
     const evidence = { ...(result.link ? { link: result.link } : {}), ...(result.commit ? { commit: result.commit } : {}) }
-    state = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.error ? { error: result.error } : {}), evidence }, Date.now()).state
-    if (result.note) return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', `${act.step}: ${result.note}`)
+    const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), evidence }, Date.now())
+    state = back.state
+    const log = back.effects.find(e => e.kind === 'log')
+    if (log?.kind === 'log') return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', log.text)
+    const said = [result.note, result.alert].filter(Boolean).join('. ')
+    if (said) return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', `${act.step}: ${said}`)
   }
   return store.saveTask({ ...(await store.task(task.id) ?? task), step: state })
 }

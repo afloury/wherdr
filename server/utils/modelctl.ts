@@ -1,6 +1,7 @@
 // Agent models: the current model of a pane, from its transcript or its
 // config file.
 import path from 'node:path'
+import { hasTranscript } from '../../shared/agentKind'
 import type { ModelInfo, Pane } from '../../shared/types'
 import { transcripts } from './state'
 import { machineOfPane } from './machines'
@@ -15,7 +16,7 @@ async function fallbackModel(p: Pane): Promise<ModelInfo | null> {
 }
 
 export async function currentModel(p: Pane): Promise<ModelInfo | null> {
-  if (!p.agent || !['claude', 'codex', 'omp'].includes(p.agent)) return null
+  if (!hasTranscript(p.agent)) return null
   // A failed read throws: the state keeps the model it showed (refreshModel).
   return (await transcripts.model(p)) || fallbackModel(p)
 }

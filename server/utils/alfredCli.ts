@@ -11,6 +11,7 @@ import { alfredTokenOk, coordinatorsView, startCoordinator, type CoordinatorUrls
 import type { CoreAdminDeps } from './coreCreate'
 import type { FolderCheck, PmStore } from './pmStore'
 import { patchSettings, readSettings } from './settings'
+import { saveProjectGuards } from './pmProject'
 
 type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string }
 
@@ -101,6 +102,18 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       await knownTemplate(cmd.template)
       if (!cmd.template && !p.from) return { unchanged: true, project: p.key, template: 'none' }
       return change({ change: [`project ${p.key} template: ${p.from?.template ?? 'none'} → ${cmd.template || 'none'}`] }, () => store.setTemplate(p.key, cmd.template))
+    }
+    case 'project guards': {
+      await needPm()
+      const p = projectOf(cmd.key)
+      const t = await store.workflow(p.key)
+      if (!t) throw new HerdrError('not_found', `Project ${p.key} has no workflow: give it a template first`)
+      const old = t.guards ?? {}, { protect, mergeProtected, mergeOthers } = cmd.change
+      if (!protect && !mergeProtected && !mergeOthers) return { project: p.key, guards: old }
+      const merge = { ...old.merge, ...(mergeProtected ? { protected: mergeProtected } : {}), ...(mergeOthers ? { others: mergeOthers } : {}) }
+      const branches = protect ?? old.protected
+      const guards = { ...(branches ? { protected: branches } : {}), ...(Object.keys(merge).length ? { merge } : {}) }
+      return change({ change: [`project ${p.key} guards: ${JSON.stringify(old)} → ${JSON.stringify(guards)}`] }, () => saveProjectGuards(store, p.key, guards, 'Alfred'))
     }
     case 'coordinator start': {
       await needPm()

@@ -5,6 +5,7 @@
 import type { Evidence } from './workflow'
 import { LABEL, type Run, type Task } from './run'
 import { parseFindings, reviewText, sendBackText } from './verdict'
+import { rereviewText } from './steps'
 import { publicReviewSection } from './visibility'
 import type { PlannedStep, StepEvent, StepState } from './steps'
 
@@ -63,7 +64,7 @@ export function signalEvent(step: PlannedStep | undefined, role: Run['role'], r:
   if (role !== 'reviewer' || step.ends !== 'verdict') return
   const findings = parseFindings(r.verdict || '(empty)')
   if ('error' in findings) return { fix: `${findings.error}: write {"findings":[…]} to the verdict file, then run ${DONE_CMD}` }
-  return { kind: 'verdict', from: 'reviewer', findings, ...(r.diffLines !== undefined ? { diffLines: r.diffLines } : {}) }
+  return { kind: 'verdict', from: 'reviewer', findings, ...(r.diffLines !== undefined ? { diffLines: r.diffLines } : {}), ...(r.head ? { head: r.head } : {}) }
 }
 
 // What the agent that holds the current step is told, once per step start
@@ -72,7 +73,7 @@ export function signalEvent(step: PlannedStep | undefined, role: Run['role'], r:
 export function dueText(plan: PlannedStep[], s: StepState | undefined): { holder: 'worker' | 'reviewer', text: string } | undefined {
   const step = s?.started && !s.done ? plan[s.at] : undefined
   if (!step || s!.told === s!.since || (step.holder !== 'worker' && step.holder !== 'reviewer') || s!.yourTurn) return
-  if (step.holder === 'reviewer') return { holder: 'reviewer', text: reviewText(step.text, s!.reviews?.[step.id]?.at(-1)) }
+  if (step.holder === 'reviewer') return { holder: 'reviewer', text: s!.rereview ? rereviewText(s!.rereview) : reviewText(step.text, s!.reviews?.[step.id]?.at(-1)) }
   const back = s!.backFrom ? s!.reviews?.[s!.backFrom]?.at(-1) : undefined
   const text = s!.fix ?? (back ? sendBackText(s!.backFrom!, back.findings) : step.text)
   return { holder: 'worker', text: `${text}\n\nWhen done: ${DONE_CMD}` }

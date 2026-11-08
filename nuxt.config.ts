@@ -137,6 +137,14 @@ export default defineNuxtConfig({
         serverAssets: [{ baseName: 'scripts', dir: '../scripts', pattern: 'install-claude-statusline.sh' }],
       },
 
+  // A /_nuxt file the current build lacks goes on to the previous builds'
+  // copies (server/routes/_nuxt/[...path].get.ts) instead of Nitro's 404.
+  hooks: {
+    'nitro:config'(config) {
+      for (const dir of config.publicAssets || []) if (dir?.baseURL === '/_nuxt/') dir.fallthrough = true
+    },
+  },
+
   // App code always revalidated (otherwise an iPhone keeps the old version
   // after an update); only fingerprinted files (/_nuxt/) and
   // icons are kept.
