@@ -89,9 +89,17 @@ type and a task; the strictest wins, so a task type or a task can only make them
 stricter. A project can also let its coordinator merge an outside contributor's
 PR after your yes: never, into the branches not reserved for you, or into any.
 
-The Guards tab is not editable yet: ask Alfred, who changes them with
-[`wherdr alfred project guards`](alfred.md) after your yes. A project
-coordinator can never change them.
+In the **Guards** tab:
+
+- **Protected branches**: one chip per branch; type a name and press *Add*, or
+  press × on a chip to unprotect it. wherdr never pushes to a protected branch.
+- **Who merges into protected branches** and **who merges other branches**:
+  *You* (the step waits for you) or *wherdr* (it merges by itself).
+- **Effect**: what each task type adds and, for each step that merges, whether
+  it is left to you. It follows your changes before you save.
+
+Only you, or Alfred (with [`wherdr alfred project guards`](alfred.md) after
+your yes), can change guards: a project coordinator never can.
 
 ### Automations
 
