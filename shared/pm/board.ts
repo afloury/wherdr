@@ -34,7 +34,7 @@ export interface Card {
   prNow?: string // its PR as the engine last read it (prNow)
 }
 
-export interface BoardProject { key: string, label?: string, color?: string, name: string, columns: string[] }
+export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[] }
 // GET /api/pm/board
 export interface Board { projects: BoardProject[], cards: Card[] }
 

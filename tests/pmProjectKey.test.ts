@@ -19,6 +19,9 @@ describe('project keys', () => {
     expect(shownTaskId(projects, 'PDS-3')).toBe('PDS-3')
     expect(['WD-52', 'wd-52', 'WHR-52', 'old-52'].map(id => storedTaskId(projects, id))).toEqual(['WHR-52', 'WHR-52', 'WHR-52', 'WHR-52'])
     expect(storedTaskId(projects, 'XX-1')).toBeNull()
+    // Renamed twice (WHR → WD → WX): the middle key and any case still resolve.
+    const twice = [{ key: 'WHR', ...renamed({ key: 'WHR', label: 'WD' }, 'WX') }]
+    expect(['wd-5', 'whr-5', 'WX-5'].map(id => storedTaskId(twice, id))).toEqual(['WHR-5', 'WHR-5', 'WHR-5'])
     // Back to its first key: no label, the key it had stays an alias.
     expect(renamed({ key: 'WHR', label: 'WD' }, 'whr')).toEqual({ aliases: ['WD'] })
   })

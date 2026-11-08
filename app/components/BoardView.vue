@@ -4,6 +4,7 @@
 // card's indicator is the live state of the agent holding its step.
 import { boardLanes, boardTags, canStop, cardStatus, linkLabel, mainLink, type Board, type Card } from '#shared/pm/board'
 import { RESUMES } from '#shared/pm/stop'
+import { storedTaskId } from '#shared/pm/projectKey'
 import type { Pane } from '#shared/types'
 
 const data = ref<Board | null>(null)
@@ -65,8 +66,9 @@ const menuOf = (c: Card): MenuItem[] => [
   ...(c.stopped ? RESUMES.map(how => ({ label: tl(...RESUME_LABEL[how]), danger: how === 'archive', run: () => act(() => resumeTaskApi(c.id, how)) })) : []),
   ...(c.removable ? [{ label: tl('Delete…', 'Supprimer…'), icon: 'i-lucide-trash-2', danger: true, run: () => act(() => removeTaskApi(c.id)) }] : []),
 ]
-// By its id or as shown (a link may name a former key: /board?task=WHR-5 after WHR became WD).
-const isOpen = (c: Card) => c.id === open.value || c.shown === open.value?.toUpperCase()
+// By any key its project had, in any case (a link may name a former key: /board?task=WHR-5 after WHR became WD).
+const openId = computed(() => storedTaskId(data.value?.projects ?? [], open.value) ?? open.value)
+const isOpen = (c: Card) => c.id === openId.value
 const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.find(isOpen) ?? null)
 </script>
 
