@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // A task's sheet: its Plan (the steps, the current one, what its holder was
 // told, the proofs and rounds), its links, the agent holding the step, and
-// the step's button when it waits for the user ("Merged"), Stop (with its
+// the step's button when it waits for the user ("Merged"; busy while it runs, a
+// refused action said in plain words under it), Stop (with its
 // reason, confirmed here), how a stopped task goes on, and Delete for a task
 // never started (confirmed). Those stay at the top; below, tabs (the app's
 // segmented style) for the rest, only the open one scrolling: Description (the
@@ -10,6 +11,7 @@
 import { canStop, type Card } from '#shared/pm/board'
 import { RESUMES, type Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
+import type { Task } from '#shared/pm/run'
 import { shotMode } from '#shared/pm/shots'
 
 // stopping: opened from the card menu's Stop, the confirmation shown.
@@ -44,7 +46,20 @@ async function run(fn: () => Promise<unknown>) {
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = false }
 }
-const press = () => run(() => api('/api/pm/step-user', { id: props.card.id }))
+// The step's action refused (a merge on a PR in conflict, with red checks…):
+// its badge, said under the button until the step's badge changes.
+const pressing = ref(false)
+const refused = ref('')
+const press = () => run(async () => {
+  pressing.value = true
+  refused.value = ''
+  try {
+    const { task } = await api<{ task: Task }>('/api/pm/step-user', { id: props.card.id })
+    if (task.step?.yourTurn?.reason === 'action') refused.value = task.step.yourTurn.badge
+  }
+  finally { pressing.value = false }
+})
+watch(() => props.card.yourTurn, (b) => { if (b !== refused.value) refused.value = '' })
 const confirmStop = ref(!!props.stopping)
 const why = ref('')
 const stop = () => run(async () => { await stopTaskApi(props.card.id, why.value); confirmStop.value = false })
@@ -58,7 +73,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
     <div class="task-sheet" data-testid="task-sheet">
       <div class="task-sheet-top">
         <p class="mono-label">{{ card.id }}<template v-if="card.step"> · {{ card.step }}</template></p>
-        <p v-if="card.yourTurn" class="board-badge">{{ card.yourTurn }}</p>
+        <p v-if="card.yourTurn && !refused" class="board-badge" :title="card.yourTurn" data-testid="task-badge">{{ stepRefusalText(card.yourTurn) }}</p>
         <div class="task-sheet-actions">
           <UButton v-if="card.userLabel && !card.stopped" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="press">{{ card.userLabel }}</UButton>
           <UButton v-for="how in card.stopped ? RESUMES : []" :key="how" size="xl" :color="how === 'continue' ? 'primary' : 'neutral'" :variant="how === 'continue' ? 'solid' : 'outline'"
@@ -69,6 +84,8 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
           <UButton v-if="canStop(card) && !confirmStop" color="error" variant="outline" size="xl" icon="i-lucide-square" data-testid="task-stop" @click="confirmStop = true">{{ tl('Stop', 'Arrêter') }}</UButton>
           <UButton v-if="card.removable" color="error" variant="outline" size="xl" icon="i-lucide-trash-2" :loading="busy" data-testid="task-remove" @click="remove">{{ tl('Delete…', 'Supprimer…') }}</UButton>
         </div>
+        <p v-if="pressing" class="muted" role="status" data-testid="step-user-busy">{{ tl('Running this step… A merge waits for the PR\'s checks, which can take a few minutes.', 'Étape en cours… Une fusion attend les vérifications de la PR, ce qui peut prendre quelques minutes.') }}</p>
+        <p v-else-if="refused" class="error" role="alert" :title="refused" data-testid="step-user-refused">{{ stepRefusalText(refused) }}</p>
         <form v-if="canStop(card) && confirmStop" class="task-stop-confirm" data-testid="task-stop-confirm" @submit.prevent="stop">
           <p>{{ tl('Stop this task? Its agent ends; the worktree, branch and work stay, and nothing is merged.', 'Arrêter cette tâche ? Son agent s’arrête ; le worktree, la branche et le travail restent, rien n’est fusionné.') }}</p>
           <UInput v-model="why" size="xl" maxlength="300" :placeholder="tl('Why (optional)', 'Pourquoi (facultatif)')" data-testid="task-stop-why" />
