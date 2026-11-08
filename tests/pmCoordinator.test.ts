@@ -362,13 +362,14 @@ describe('role files', () => {
   })
 
   it('say who it is, its commands, each plan and the user\'s instructions, all inside its own folder', () => {
-    const files = roleFiles({ key: 'CO', name: 'Company', machine: '', path: '/src/co', template: 'company', addedAt: 1 }, company, EXAMPLES)
+    const files = roleFiles({ key: 'CO', name: 'Company', machine: '', path: '/src/co', from: { template: 'company', version: 1 }, addedAt: 1 }, company, EXAMPLES)
     expect(Object.keys(files).sort()).toEqual(['.claude/settings.json', '.claude/skills/wherdr-pm/SKILL.md', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'QWEN.md', 'bin/wherdr'])
     const agents = files['AGENTS.md']!
     expect(agents).toContain('You coordinate project CO only')
     expect(agents).toContain('`wherdr pm task link <task> <url> --label <label>`')
     expect(agents).toContain('- deploy (Deploy): holder coordinator, ends report, recheck 5m, timeout 90m')
     expect(agents).toContain('- Base branch is develop.')
+    expect(agents).toContain('copied from template company v1 (the template library never changes it)')
     expect(agents).toContain('"id":"vibe"')
     expect(agents).toContain('with its absolute path (`/src/co/README.md`)')
     expect(files['CLAUDE.md']).toBe('@AGENTS.md\n')
