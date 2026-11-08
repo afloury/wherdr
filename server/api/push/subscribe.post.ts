@@ -13,7 +13,7 @@ export default defineApi(async (event, b) => {
   // Resubscription (language…) or new endpoint after reactivation
   // (`previous`): the old entry goes away, the device's quiet setting stays.
   const subs = replaceSubscription(all, { endpoint: b.endpoint, keys: { p256dh: b.keys.p256dh, auth: b.keys.auth }, lang: b.lang === 'fr' ? 'fr' : 'en',
-    sessions, addedAt: new Date().toISOString() }, b.previous, quietActive)
+    sessions, addedAt: new Date().toISOString(), gen: auth.generation() }, b.previous, quietActive)
   await writeSubs(subs)
   log(`push: subscription saved (${subs.length} device(s))`)
   return { ok: true, devices: subs.length }

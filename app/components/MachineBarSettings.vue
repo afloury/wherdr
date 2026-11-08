@@ -7,8 +7,6 @@ import type { MachineGroup } from '~/utils/machineBar'
 import type { MachineInfo } from '#shared/types'
 import { BAR_ALL, moveBarItem, setBarItemShown } from '~/utils/machineBar'
 
-onMounted(loadMachineOrder)
-
 const barOn = machineBarOn
 const editing = ref<MachineGroup | null>(null)
 const draftOrder = ref<string[]>([])
