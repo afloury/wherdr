@@ -65,10 +65,10 @@
 - [Projects](docs/project-management.md#projects): Settings › Projects, the project list and the project sheet's tabs.
 - [General tab](docs/project-management.md#general): name, key, base (working) branch, agents, repository visibility.
 - [Workflow tab](docs/project-management.md#workflow): task types and steps, Edit as JSON, Save as template, Start over, review of the coordinator's proposed change.
-- [Guards](docs/project-management.md#guards): protected branches, who may merge (a waiting merge goes on once wherdr may do it), contributor PRs, the project sheet's in-app addresses.
+- [Guards](docs/project-management.md#guards): protected branches, who may merge (a waiting merge goes on once wherdr may do it; one you merge on GitHub ends as merged), contributor PRs, the project sheet's in-app addresses.
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
 - [Autopilot](docs/project-management.md#autopilot): the header button and its window, goal, wakes and limits.
-- [Board](docs/project-management.md#board): columns, cards, time in the step and total time, Add task, Start, Start on another machine (its readiness check), Stop, Delete.
+- [Board](docs/project-management.md#board): columns (a done or archived task is never under Your turn), cards, time in the step and total time, Add task, Start, Start on another machine (its readiness check), Stop, Delete.
 - [Task sheet](docs/project-management.md#task-sheet): time per step, waits for you, review rounds and CI fixes, the task's buttons and its Description, Plan and Log tabs.
 - [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back and other answers.
 - [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again.

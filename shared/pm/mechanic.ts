@@ -76,8 +76,10 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
     ? pick(mergeKey, { kind: 'merge', url: pr.url, base: pr.baseRefName })
     : undefined)
   // Merged on GitHub already, whatever its head: nothing to fix on it, the merge
-  // step records it, even after an attempt of its own that was refused.
-  if (pr.merged) return engineMerges ? pick(`merged:${pr.url}`, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
+  // step records it, even after an attempt of its own that was refused, and
+  // even when the guard keeps that branch for the user (they merged it).
+  const mergeStep = step.action?.kind === 'github.merge' && step.ends === 'action'
+  if (pr.merged) return mergeStep ? pick(`merged:${pr.url}`, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
   // The PR head is not the task's commit (a CI fix not pushed, a push from
   // elsewhere): the merge step pushes it and has it reviewed again, or says why not.
   if (pr.headRefOid !== head) return engineMerges && !f.agentBusy ? pick(mergeKey, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
