@@ -3,6 +3,7 @@
 // the server (server/utils/pmCoordinator.ts) reads and writes.
 import type { Project } from './project'
 import type { Template } from './workflow'
+import type { WorkflowChanges } from './workflowChanges'
 import type { Autopilot, limitsLeft } from './autopilot'
 import type { Wake } from './wakes'
 import { CHOICES, type Choice } from './verdict'
@@ -41,13 +42,18 @@ export const sameAgent = (a?: CoordinatorAgent, b?: CoordinatorAgent) => !!a && 
 export interface Proposal { template: Template, diff: string, at: number, base: number, said?: string }
 // What became of the last one, for the coordinator's `template show`.
 export type ProposalOutcome = 'accepted' | 'refused' | 'outdated: the template changed since, propose again'
+// The last answer, kept for the card in the coordinator's conversation:
+// proposedAt places it, summary says what it changed.
+export interface ProposalAnswer { outcome: ProposalOutcome, at: number, by?: string, proposedAt?: number, summary?: string[] }
 
 // GET /api/pm/coordinators: one per project.
 export interface CoordinatorView {
   // main: the main coordinator (project is MAIN).
   // agent: the default the user set for it, if any (else the first of their agents).
   // git: false: a folder without git, its coordinator works in it (no template needed).
-  project: string, name: string, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'>
+  project: string, name: string, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string
+  // proposal: the change waiting for the user, as a person reads it too; answered: the last answer.
+  proposal?: Omit<Proposal, 'template' | 'base'> & { changes?: WorkflowChanges }, answered?: ProposalAnswer
   // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
   autopilot?: Autopilot, limits?: ReturnType<typeof limitsLeft>, wakes?: Wake[]
   // Nothing to do: its scheduled wakes are skipped (asleep), since its last wake.
@@ -297,6 +303,22 @@ export function updateNotice(c: { version?: string, told?: string } | null | und
   return `wherdr was updated to ${running} since your session started: re-read AGENTS.md and check docs/llms.txt before relying on what you knew`
 }
 
+// The changed lines only, in order (longest common subsequence), each
+// with "- " or "+ "; with `all`, the kept lines too, with "  ".
+export function lineDiff(a: string[], b: string[], all = false): string[] {
+  const n = a.length, m = b.length
+  const keep = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1))
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) keep[i]![j] = a[i] === b[j] ? keep[i + 1]![j + 1]! + 1 : Math.max(keep[i + 1]![j]!, keep[i]![j + 1]!)
+  const out: string[] = []
+  let i = 0, j = 0
+  while (i < n || j < m) {
+    if (i < n && j < m && a[i] === b[j]) { if (all) out.push(`  ${a[i]}`); i++; j++ }
+    else if (i < n && (j === m || keep[i + 1]![j]! >= keep[i]![j + 1]!)) out.push(`- ${a[i++]}`)
+    else out.push(`+ ${b[j++]}`)
+  }
+  return out
+}
+
 // The changed lines of two templates, as JSON: what the coordinator shows the user.
 export function templateDiff(old: Template | null, next: Template): string {
   // One key order (the version is the store's): a key that only moved is no change.
@@ -305,19 +327,7 @@ export function templateDiff(old: Template | null, next: Template): string {
     const e = Object.entries(t ?? {}).filter(([k]) => k !== 'version').sort(([x], [y]) => (ORDER.indexOf(x) + 1 || 99) - (ORDER.indexOf(y) + 1 || 99))
     return JSON.stringify(Object.fromEntries(e), null, 2).split('\n')
   }
-  const a = lines(old), b = lines(next)
-  // The changed lines only, in order (longest common subsequence): what stays never shows.
-  const n = a.length, m = b.length
-  const keep = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1))
-  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) keep[i]![j] = a[i] === b[j] ? keep[i + 1]![j + 1]! + 1 : Math.max(keep[i + 1]![j]!, keep[i]![j + 1]!)
-  const out: string[] = []
-  let i = 0, j = 0
-  while (i < n || j < m) {
-    if (i < n && j < m && a[i] === b[j]) { i++; j++ }
-    else if (i < n && (j === m || keep[i + 1]![j]! >= keep[i]![j + 1]!)) out.push(`- ${a[i++]}`)
-    else out.push(`+ ${b[j++]}`)
-  }
-  return out.join('\n')
+  return lineDiff(lines(old), lines(next)).join('\n')
 }
 
 // What the engine tells the coordinator on a tick: its step's instructions
