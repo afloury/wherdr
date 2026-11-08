@@ -64,16 +64,17 @@
 - [Getting started](docs/project-management.md#getting-started): the four steps to turn projects on and start a coordinator.
 - [Projects](docs/project-management.md#projects): Settings › Projects, the project list and the project sheet's tabs.
 - [General tab](docs/project-management.md#general): name, key, base (working) branch, agents, repository visibility.
-- [Workflow tab](docs/project-management.md#workflow): task types and steps, Edit as JSON, Save as template, Start over.
+- [Workflow tab](docs/project-management.md#workflow): task types and steps, Edit as JSON, Save as template, Start over, review of the coordinator's proposed change.
 - [Guards](docs/project-management.md#guards): protected branches, who may merge, contributor PRs.
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
 - [Autopilot](docs/project-management.md#autopilot): the header button and its window, goal, wakes and limits.
-- [Board](docs/project-management.md#board): columns, cards, time in the step and total time, Add task, Start, Stop, Delete.
+- [Board](docs/project-management.md#board): columns, cards, time in the step and total time, Add task, Start, Start on another machine (its readiness check), Stop, Delete.
 - [Task sheet](docs/project-management.md#task-sheet): time per step, waits for you, review rounds and CI fixes, the task's buttons and its Description, Plan and Log tabs.
 - [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back, Try again and other answers.
 - [Report a problem](docs/project-management.md#report-a-problem): tell the coordinator what is wrong with a task waiting for you, block its merge, withdraw.
 - [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again.
 - [Alfred's command](docs/alfred.md): `wherdr alfred`, what Alfred reads and changes after your yes.
+- [After an update](docs/alfred.md#after-an-update): new instructions for Alfred and coordinators, and the one-line notice on their next command.
 
 ## Machines, quotas and notifications
 

@@ -4,9 +4,10 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
-import { alfredView, answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, userMessageTo } from '../server/utils/pmCoordinator'
+import { alfredView, answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, takeUpdateNotice, userMessageTo } from '../server/utils/pmCoordinator'
 import { REMOTE_SCRIPT } from '../server/utils/pmVisibility'
-import { MAIN, parseCommand, roleFiles, coordinatorArgs } from '../shared/pm/coordinator'
+import { MAIN, parseCommand, roleFiles, coordinatorArgs, updateNotice } from '../shared/pm/coordinator'
+import pkg from '../package.json'
 import { EXAMPLES, common, company } from '../shared/pm/examples'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
 import type { Finding } from '../shared/pm/verdict'
@@ -291,7 +292,8 @@ describe('arbitration after N send-backs', () => {
   it('needs one sentence of reason', () => {
     expect(parseCommand(['task', 'decide', 'CO-1', 'round'])).toMatchObject({ error: expect.stringContaining('one sentence') })
     expect(parseCommand(['task', 'start', 'CO-1'])).toEqual({ name: 'task start', task: 'CO-1' })
-    expect(parseCommand(['task', 'start', 'CO-1', 'x'])).toEqual({ error: 'usage: wherdr pm task start <task>' })
+    expect(parseCommand(['task', 'start', 'CO-1', 'x'])).toEqual({ error: 'usage: wherdr pm task start <task> [--on <machine>]' })
+    expect(parseCommand(['task', 'start', 'CO-1', '--on', 'machine-b'])).toEqual({ name: 'task start', task: 'CO-1', on: 'machine-b' })
     expect(parseCommand(['task', 'decide', 'CO-1', 'round', '--reason', 'a\nb'])).toMatchObject({ error: expect.stringContaining('one sentence') })
     expect(parseCommand(['task', 'decide', 'CO-1', 'maybe', '--reason', 'x'])).toMatchObject({ error: expect.stringContaining('choice') })
   })
@@ -326,7 +328,7 @@ describe('role files', () => {
     const fresh = (runs[0]!.env as { WHERDR_PM_TOKEN: string }).WHERDR_PM_TOKEN
     await refused(cli(['list']), 'Unknown coordinator token')
     await expect(cli(['list'], undefined, fresh)).resolves.toBeTruthy()
-    expect((await store.coordinator('CO'))!.terminal).toBe('host/t5')
+    expect((await store.coordinator('CO'))!).toMatchObject({ terminal: 'host/t5', version: pkg.version })
     // Its repository's visibility, checked once at its first start.
     expect((await store.projects()).find(p => p.key === 'CO')!.visibility).toMatchObject({ value: 'public', by: 'check' })
   })
@@ -425,7 +427,7 @@ it('wherdr pm sends its words with the token, and template edit sends stdin', as
   const calls: { url: string, init: { headers: Record<string, string>, body: string } }[] = []
   const request = async (url: string, init: { headers: Record<string, string>, body: string }) => {
     calls.push({ url, init })
-    return { ok: true, status: 200, json: async () => ({ version: 2 }) }
+    return { ok: true, status: 200, headers: new Headers({ 'x-wherdr-notice': 'wherdr was updated' }), json: async () => ({ version: 2 }) }
   }
   let printed = ''
   const out = { write: (s: string) => { printed += s } }
@@ -434,7 +436,7 @@ it('wherdr pm sends its words with the token, and template edit sends stdin', as
   expect(calls[0]!.url).toBe('http://127.0.0.1:7690/api/pm/cli')
   expect(calls[0]!.init.headers).toMatchObject({ authorization: 'Bearer abc', origin: 'http://127.0.0.1:7690' })
   expect(JSON.parse(calls[0]!.init.body)).toEqual({ argv: ['template', 'edit'], input: '{"id":"company"}' })
-  expect(printed).toContain('"version": 2')
+  expect(printed).toMatch(/^wherdr was updated\n\{/)
   await expect(pm(['list'], { env: {}, request })).rejects.toThrow('WHERDR_PM_TOKEN')
 })
 
@@ -452,7 +454,11 @@ it('the folder\'s wherdr script sends any words and stdin, and fails on a refusa
       const ok = req.headers.origin === `http://${req.headers.host}`
       try {
         if (!ok) throw new Error('Origin refused')
-        res.end(JSON.stringify(await runCommand(deps(), String(req.headers.authorization).slice(7), JSON.parse(raw))))
+        const answer = await runCommand(deps(), String(req.headers.authorization).slice(7), JSON.parse(raw))
+        // As server/api/pm/cli.post.ts does.
+        const notice = await takeUpdateNotice(store, 'CO')
+        if (notice) res.setHeader('x-wherdr-notice', notice)
+        res.end(JSON.stringify(answer))
       }
       catch (e) { res.statusCode = 400; res.end(JSON.stringify({ error: (e as Error).message })) }
     })
@@ -467,9 +473,17 @@ it('the folder\'s wherdr script sends any words and stdin, and fails on a refusa
     child.stdin!.on('error', () => {})
     child.stdin!.end(input)
   })
+  // CO's session started on an older wherdr; ST's on this one.
+  await store.saveCoordinator({ ...(await store.coordinator('CO'))!, version: '0.0.1' })
+  await store.saveCoordinator({ project: 'ST', tokenHash: '', version: '0.0.1' })
   try {
     const tag = await run(['pm', 'task', 'tag', task.id, 'say "hi" \\ ünï'])
     expect(tag.code).toBe(0)
+    // Told once, as the first line of its next command; never again.
+    expect(tag.out).toMatch(new RegExp(`^wherdr was updated to ${pkg.version.replace(/\./g, '\\.')} since your session started: re-read AGENTS.md and check docs/llms.txt[^\n]*\n\\{`))
+    expect((await run(['pm', 'list'])).out).toMatch(/^\{/)
+    // Another coordinator's record is not touched.
+    expect((await store.coordinator('ST'))!.told).toBeUndefined()
     expect((await store.task(task.id))!.tags).toEqual(['say "hi" \\ ünï'])
     const edit = await run(['pm', 'template', 'edit'], JSON.stringify(company))
     expect(edit.code).not.toBe(0)
@@ -477,6 +491,16 @@ it('the folder\'s wherdr script sends any words and stdin, and fails on a refusa
     expect((await run(['list'])).code).toBe(2)
   }
   finally { server.close() }
+})
+
+it('an update notice only when the session started on another version, and only once', () => {
+  expect(updateNotice({ version: '3.0.0' }, '3.1.0')).toContain('updated to 3.1.0')
+  expect(updateNotice({ version: '3.0.0', told: '3.1.0' }, '3.1.0')).toBeUndefined()
+  expect(updateNotice({ version: '3.0.0', told: '3.1.0' }, '3.2.0')).toContain('updated to 3.2.0')
+  expect(updateNotice({ version: '3.1.0' }, '3.1.0')).toBeUndefined()
+  // An agent with no coordinator session (a task's worker, or none recorded).
+  expect(updateNotice(null, '3.1.0')).toBeUndefined()
+  expect(updateNotice({}, '3.1.0')).toBeUndefined()
 })
 
 describe('wakes', () => {

@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
-import { readBody } from 'h3'
+import { readBody, setResponseStatus } from 'h3'
 import { nextTick } from 'vue'
 import ProjectsSettings from '~/components/ProjectsSettings.vue'
 import type { PmOverview, Project } from '#shared/pm/project'
@@ -32,6 +32,16 @@ registerEndpoint('/api/pm/project', () => ({ project: state.projects[0], workflo
 post('/api/pm/enabled', (b) => { state = { ...state, enabled: b.enabled as boolean }; return state })
 post('/api/pm/project-update', b => edit(b, { name: b.name as string, base: b.base as string }))
 post('/api/pm/project-guards', () => ({}))
+let coordinators: { project: string, name: string, proposal?: { diff: string, at: number, said?: string } }[] = []
+registerEndpoint('/api/pm/coordinators', () => coordinators)
+let outdated = false
+registerEndpoint('/api/pm/template-proposal', { method: 'POST', handler: async (event) => {
+  calls.push({ url: '/api/pm/template-proposal', body: await readBody(event) })
+  coordinators = [{ project: 'WEB', name: 'Web' }] // answered either way: the server drops it
+  if (!outdated) return { accepted: true }
+  setResponseStatus(event, 409)
+  return { error: 'The template changed since this proposal: ask the coordinator to propose again' }
+} })
 post('/api/pm/project-visibility', b => edit(b, { visibility: { value: b.value as 'private', at: 2, by: 'user' } }))
 
 const inSheet = (id: string) => document.body.querySelector<HTMLElement>(`[data-testid="${id}"]`)
@@ -77,4 +87,26 @@ it('opens the project sheet on the URL\'s tab; Guards saves a branch added; Gene
   await pick(w, 'pm-visibility', 'private')
   await vi.waitFor(() => expect(w.find('[data-testid="pm-public"]').exists()).toBe(false))
   expect(calls[1]).toEqual({ url: '/api/pm/project-visibility', body: { key: 'WEB', value: 'private' } })
+})
+
+it('a coordinator\'s proposal: badge on the row and on Workflow, the URL opens its review; answered once, it leaves; an outdated one shows the refusal', async () => {
+  for (const old of [false, true]) {
+    outdated = old
+    state = { ...state, enabled: true, projects: [web()] }
+    coordinators = [{ project: 'WEB', name: 'Web', proposal: { diff: '-   "instructions": "a",\n+   "instructions": "b",', at: 1, said: 'Use b' } }]
+    const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=workflow&review=1' })
+    mounted = w
+    await vi.waitFor(() => expect(inSheet('proposal-review')?.textContent).toContain('“Use b”'))
+    expect(w.find('[data-testid="pm-review"]').exists()).toBe(true)
+    expect(inSheet('workflow-badge')).not.toBeNull()
+    expect([...inSheet('proposal-diff')!.querySelectorAll('.add')].map(x => x.textContent?.trim())).toEqual(['+   "instructions": "b",'])
+    inSheet('proposal-accept')!.click()
+    await vi.waitFor(() => expect(calls.at(-1)).toEqual({ url: '/api/pm/template-proposal', body: { project: 'WEB', accept: true } }))
+    await vi.waitFor(() => expect(inSheet('workflow-badge')).toBeNull())
+    expect(w.find('[data-testid="pm-review"]').exists()).toBe(false)
+    if (old) expect(inSheet('proposal-review')?.textContent).toContain('The template changed since this proposal')
+    mounted.unmount()
+    mounted = null
+  }
+  outdated = false
 })

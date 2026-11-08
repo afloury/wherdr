@@ -4,7 +4,7 @@
 // of its own that wherdr creates once and never overwrites. Pure: the server
 // (server/utils/pmCoordinator.ts) reads and writes.
 import type { Project } from './project'
-import { ROLE_POINTERS, isCoordinatorProgram, type CoordinatorProgram } from './coordinator'
+import { ROLE_POINTERS, docsRule, isCoordinatorProgram, type CoordinatorProgram } from './coordinator'
 import { alfredCommandList } from './alfredCli'
 
 export const ALFRED = 'Alfred'
@@ -61,8 +61,9 @@ export function alfredFiles(c: AlfredContext, pmSection: string[]): Record<strin
     'When the user gives you another name, write it on identity.md\'s "Name:" line, then answer to it. Note in memory.md what is worth keeping, as you learn it: when the user states a preference ("never run builds on this machine"), write it there and follow it from then on.', '',
     '## wherdr', '',
     'wherdr is the web and phone interface of herdr: it lists the agents (Claude, Codex…) running in terminals on the user\'s machines, shows their conversations, and notifies when one needs the user.',
-    `Its documentation, for this version (${c.version}), is in \`${c.docs}\`: read the page that answers before answering. Pages: ${c.docFiles.join(', ') || '(none found)'}.`,
+    `Its documentation, for this version (${c.version}), is in \`${c.docs}\`. Pages: ${c.docFiles.join(', ') || '(none found)'}.`,
     `Quote a file as inline code with its absolute path (\`${c.docs}/overview.md\`): the user's interface makes it a link.`, '',
+    ...docsRule(c.docs, '`wherdr alfred help`, and `wherdr pm help` for the board'),
     '## What you may do', '',
     '- Read the docs, files and settings, and run commands that only read, to answer.',
     '- Any settings change (wherdr, herdr, an agent\'s configuration): show the exact change first, then make it only after the user\'s yes.',

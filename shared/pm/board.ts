@@ -44,8 +44,11 @@ export interface Card {
   times?: Times // time per step, waits for the user, rounds, CI fixes (times.ts), once started
 }
 
+// A machine a project allows, for "Start on…": unready, the last check's failures ('' ready, none never checked).
+export interface BoardMachine { key: string, label: string, online: boolean, unready?: string }
 // types: the project's task types, each with its steps in one line ("work → review → merge").
-export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string }[] }
+// machines: only for a project that allows more than its own, home first.
+export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string }[], machines?: BoardMachine[] }
 // GET /api/pm/board
 export interface Board { projects: BoardProject[], cards: Card[] }
 

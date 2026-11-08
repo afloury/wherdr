@@ -85,7 +85,7 @@ const stop = (d: Decision) => act(d, async () => {
             <template v-else-if="g.group === 'proposal'">
               <UButton color="primary" size="lg" :loading="busy === d.id" :disabled="!!busy" data-testid="decision-accept" @click="proposal(d, true)">{{ tl('Accept', 'Accepter') }}</UButton>
               <UButton color="neutral" variant="outline" size="lg" :disabled="!!busy" @click="proposal(d, false)">{{ tl('Refuse', 'Refuser') }}</UButton>
-              <UButton color="neutral" variant="ghost" size="lg" to="/board">{{ tl('Show diff', 'Voir le diff') }}</UButton>
+              <UButton color="neutral" variant="ghost" size="lg" :to="proposalReviewPath(d.project)" data-testid="decision-review">{{ tl('Review') }}</UButton>
             </template>
             <template v-else-if="g.group === 'stopped'">
               <UButton v-for="how in RESUMES" :key="how" size="lg" :color="how === 'continue' ? 'primary' : 'neutral'" :variant="how === 'continue' ? 'solid' : 'outline'"

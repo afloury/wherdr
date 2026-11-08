@@ -5,7 +5,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { MAIN, canRunCoordinator, coordinatorArgs, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
+import { MAIN, canRunCoordinator, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, workflowPlace, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { validateTemplate } from '../../shared/pm/workflow'
@@ -14,7 +14,7 @@ import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, coordinat
 import { ackWakes } from '../../shared/pm/wakes'
 import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
-import type { Project } from '../../shared/pm/project'
+import { machineNamed, taskMachine, type Project } from '../../shared/pm/project'
 import { projectOf, shownKey, shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
@@ -142,6 +142,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
   const mineOf = async () => (await store.tasks()).filter(x => main || x.project === key)
 
   switch (cmd.name) {
+    case 'help': return { commands: commandList(t) }
     case 'list': {
       const ts = new Map(await Promise.all(projects.map(async x => [x.key, x ? await store.workflow(x.key) : null] as const)))
       return { tasks: (await store.tasks()).filter(x => !key || x.project === key).map(x => summary(ts.get(x.project) ?? null, x, projects.find(y => y.key === x.project))) }
@@ -164,7 +165,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       // The user accepts or refuses it in the interface; nothing is saved yet.
       const proposal = { template: next, diff: templateDiff(t, next), at: Date.now(), base: t!.version ?? 1, ...(rec?.turn?.said ? { said: rec.turn.said } : {}) }
       await store.saveCoordinator({ ...rec!, proposal })
-      return { proposed: true, changes: templateChanges(t, next), diff: proposal.diff, next: 'The user accepts or refuses this diff in wherdr; template show tells you what they chose' }
+      return { proposed: true, changes: templateChanges(t, next), diff: proposal.diff, next: `The user accepts or refuses this diff in ${workflowPlace(t!.id)}; template show tells you what they chose` }
     }
     case 'task tag': {
       const task = await taskOf(cmd.task)
@@ -231,6 +232,10 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     }
     case 'task start': {
       const task = await taskOf(cmd.task)
+      // --on: a machine the project allows, for a task never started (a started one stays on its own).
+      const named = cmd.on === undefined ? undefined : machineNamed(p!, deps.machines(), cmd.on)
+      const placed = named && ('refused' in named ? named : taskMachine(task, p!, named.machine))
+      if (placed && 'refused' in placed) throw new HerdrError('refused', placed.refused)
       const mine = await mineOf()
       const wake = turn !== 'user', who = { who: 'coordinator' as const, wake }, now = Date.now()
       const pace = pacedStart(task, wake ? 'wake' : 'user') ? (await projectPace(store, key, task, now))?.verdict : undefined
@@ -245,7 +250,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if (wake && !task.autopilot) await store.saveTask({ ...task, autopilot: true })
       const memory = short ? { memory: `${short}: started anyway, as the user asked` } : {}
       if (task.stopped) return { task: await resumeTask(deps, task.id, 'continue', who, by), ...memory }
-      const started = await startTask(deps, task.id)
+      const started = await startTask(deps, task.id, placed ? { on: placed.machine } : {})
       return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`), ...memory }
     }
     case 'task stop': {
@@ -402,10 +407,30 @@ export async function writeRoleFiles(deps: Deps, key: string) {
   const home = await homeOf(deps, on)
   if (!home) throw new HerdrError('core', 'Home folder not found on the project\'s machine')
   const folder = `${home}/.wherdr/pm/coordinators/${key}`
-  for (const [file, text] of Object.entries(roleFiles(p, t, EXAMPLES)))
+  for (const [file, text] of Object.entries(roleFiles(p, t, EXAMPLES, m.local ? docsDir() : undefined)))
     if ((await exec(deps, on, WRITE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not write ${file}`)
   await exec(deps, on, 'chmod 755 "$1"', [`${folder}/bin/wherdr`])
   return { p, local: !!m.local, on, folder, first: false }
+}
+
+// wherdr's docs on its own machine: the install's, so an update brings new ones.
+const docsDir = () => path.join(process.env.WHERDR_ROOT || process.cwd(), 'docs')
+
+// At wherdr's start (an update included): every running coordinator's role
+// files rewritten, Alfred's home too. Nothing else: no message, no wake; each
+// one learns of an update on its next command (takeUpdateNotice).
+export async function rewriteRoleFiles(deps: Deps) {
+  for (const c of await deps.store.coordinators())
+    if (c.terminal) await writeRoleFiles(deps, c.project).catch(() => {})
+}
+
+// The line the coordinator's next command starts with, once, when wherdr was
+// updated since its session started; then it counts as told.
+export async function takeUpdateNotice(store: PmStore, key: string | null) {
+  const rec = key ? await store.coordinator(key) : null
+  const line = updateNotice(rec, pkg.version)
+  if (line) await store.saveCoordinator({ ...rec!, told: pkg.version })
+  return line
 }
 
 const alfredAgent = (program: unknown): CoordinatorAgent | null => (isAlfredProgram(program) ? { program } : null)
@@ -417,7 +442,7 @@ const readAlfredName = (deps: { alfredHome?: string }) => fs.readFile(path.join(
 export async function writeAlfredHome(deps: Deps) {
   const folder = homeOfAlfred(deps)
   const projects = await deps.store.projects()
-  const docs = path.join(process.env.WHERDR_ROOT || process.cwd(), 'docs')
+  const docs = docsDir()
   const docFiles = (await fs.readdir(docs).catch(() => [] as string[])).filter(n => n.endsWith('.md')).sort()
   const main = mainRoleFiles(projects)
   const files = { ...main, ...alfredFiles({ home: folder, version: pkg.version, docs, docFiles, pm: await deps.store.enabled(), projects }, main['AGENTS.md']!.split('\n')) }
@@ -490,7 +515,9 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   // Typed once the program is ready (in the background: it may wait on a dialog).
   if (!promptAsArg(program)) for (const text of prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
   // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
-  await deps.store.saveCoordinator({ ...(await deps.store.coordinator(key))!, terminal: address, ran: { program }, ...(key === MAIN ? { agent: a } : {}) })
+  // version: what this session knows (takeUpdateNotice tells it of an update).
+  const { told: _told, ...rec } = (await deps.store.coordinator(key))!
+  await deps.store.saveCoordinator({ ...rec, terminal: address, ran: { program }, version: pkg.version, ...(key === MAIN ? { agent: a } : {}) })
   // A new conversation replaces the one before (another agent's, or ended).
   if (before?.terminal && before.terminal !== address) await deps.call('terminal.kill', { terminal: before.terminal }, 15000).catch(() => {})
   return { terminal: address, folder: c.folder }
