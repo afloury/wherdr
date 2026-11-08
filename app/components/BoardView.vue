@@ -137,7 +137,13 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
 .board-top { flex: none; display: flex; align-items: center; gap: 8px; min-height: calc(44px + var(--safe-top, 0px)); padding: var(--safe-top, 0px) 8px 0; border-bottom: 1px solid var(--line); }
 .board-top h1 { flex: 1; margin: 0; font-size: 20px; }
 .board-decisions-n { margin-left: 6px; color: inherit; }
-@media (max-width: 899px) { .board-add { width: 44px; justify-content: center; } .board-add-label { display: none; } }
+/* Phone: Add is an icon, and the heading is for screen readers only, so the project picker keeps its room. */
+@media (max-width: 899px) {
+  .board-add { width: 44px; justify-content: center; }
+  .board-add-label { display: none; }
+  .board-top h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .board-top [data-testid="board-decisions"] { margin-right: auto; }
+}
 .board-top :deep(.board-select) { min-width: 0; flex: 0 1 auto; }
 .board-note { padding: 12px 16px; }
 .board-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
