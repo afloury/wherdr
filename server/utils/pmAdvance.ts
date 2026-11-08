@@ -11,6 +11,7 @@ import { LABEL, agentLine, reviewerPlan, runLabels, type LabelledTerminal, type 
 import { PATH_SETUP, launchFailure, machineOn } from './coreCreate'
 import { WRITE_SCRIPT, exec, type PmLaunchDeps } from './pmLaunch'
 import { stepAction } from './pmBoard'
+import { cleanTask } from './pmCleanup'
 import { readLeakCheck } from './pmVisibility'
 import { isPublic, leakText, scanDiff } from '../../shared/pm/visibility'
 import type { Project } from '../../shared/pm/project'
@@ -89,6 +90,8 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
       if (alive(r)) await deps.call('terminal.kill', { terminal: r.terminal }, 15000).catch(() => {})
       await deps.store.saveRun({ ...r, state: 'ended', endedBy: 'exit' })
     }
+    // Its agents ended: its worktree (and, merged, its local branch) goes, once tried.
+    if (!task.cleanup) void cleanTask(deps, id).catch(() => {})
     return
   }
   // Stopped on a failure: it waits for the user, nothing is tried again alone.

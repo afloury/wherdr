@@ -1,7 +1,8 @@
 // Removes the worktree of a done task (and its local branch once merged), on
 // its project's machine, with git worktree remove: never a forced removal,
 // never rm. Each removal, and each worktree kept with why, goes to the task's
-// log (shared/pm/cleanup.ts decides). Runs after a merge, on Archive, and in
+// log (shared/pm/cleanup.ts decides). Runs once a done task's agents have
+// ended (pmAdvance.ts), on Archive, and in
 // a sweep at start and every few hours for leftovers.
 import { exec, type PmLaunchDeps } from './pmLaunch'
 import { homeOf, machineOn } from './coreCreate'

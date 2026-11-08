@@ -8,7 +8,6 @@ import { randomUUID, timingSafeEqual } from 'node:crypto'
 import type { Task } from '../../shared/pm/run'
 import { CHOICES, type Choice } from '../../shared/pm/verdict'
 import { actionShell, runAction } from './pmActions'
-import { cleanTask } from './pmCleanup'
 import { machineOn, type CoreAdminDeps } from './coreCreate'
 import { HerdrError } from './herdr'
 import type { PmStore } from './pmStore'
@@ -76,12 +75,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
       : { ok: false, error: 'No worktree: the task never started' }
     const evidence = { ...(result.link ? { link: result.link } : {}), ...(result.commit ? { commit: result.commit } : {}) }
     state = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.error ? { error: result.error } : {}), evidence }, Date.now()).state
-    const saved = result.note
-      ? await store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', `${act.step}: ${result.note}`)
-      : await store.saveTask({ ...(await store.task(task.id) ?? task), step: state })
-    // Merged and done: its worktree and local branch go, in the background.
-    if (result.ok && state.done) void cleanTask(deps, task.id).catch(() => {})
-    return saved
+    if (result.note) return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', `${act.step}: ${result.note}`)
   }
   return store.saveTask({ ...(await store.task(task.id) ?? task), step: state })
 }
