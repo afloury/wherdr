@@ -22,9 +22,13 @@ export function resumeCoordinator(terminal: string) {
   try { localStorage.setItem(RESUMED_KEY, JSON.stringify(resumedCoordinators.value)) } catch {}
 }
 
+// Read once at least: until then a coordinator's pane shows its session title.
+export const coordinatorsLoaded = ref(false)
 export function loadCoordinators() {
-  return (loading ??= api<CoordinatorView[]>('/api/pm/coordinators')
-    .then((v) => { coordinators.value = Array.isArray(v) ? v : [] }, () => {})
+  // A deadline: a read lost while the phone slept would otherwise hold
+  // `loading`, and every later call would wait on it forever.
+  return (loading ??= api<CoordinatorView[]>('/api/pm/coordinators', undefined, AbortSignal.timeout(8000))
+    .then((v) => { coordinators.value = Array.isArray(v) ? v : []; coordinatorsLoaded.value = true }, () => {})
     .finally(() => { loading = null }))
 }
 

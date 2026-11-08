@@ -13,7 +13,7 @@ import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { type PendingMessage, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
-import { CHAT_READ_MS, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
+import { CHAT_READ_MS, createFlipGuard, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -274,7 +274,9 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     const r = ready || await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
     if (stale()) return false
     if (!r.available) {
-      const m = onUnavailable(misses.value, Boolean(chat.value.file) && items.value.length > 0)
+      // Any list on screen counts, the end kept on this device too: a server
+      // that just restarted answers "not found" for a while (no blank list).
+      const m = onUnavailable(misses.value, items.value.length > 0)
       misses.value = m.next
       if (!m.clear) return false
       chat.value = fresh()
@@ -517,9 +519,12 @@ watch(pollDelay, schedulePoll)
 // on every push (a new pane object), not only when one of them changes.
 watch([() => props.pane.status, () => props.pane.preview], () => { pollNow(); schedulePoll() })
 
+// The list the blocks show (createFlipGuard): never empty while it alternates.
+let steadyItems = createFlipGuard()
+watch(() => props.pane.id, () => { steadyItems = createFlipGuard() })
 const blocks = computed<Block[]>(() => {
   const out: Block[] = []
-  const list = items.value
+  const list = steadyItems(items.value)
   let tools: ChatItem[] = []
   // Stable key of an action block (keeps its expanded state when older
   // pages are added above).
