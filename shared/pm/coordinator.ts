@@ -39,7 +39,7 @@ export const MAIN = '_main'
 export const sameAgent = (a?: CoordinatorAgent, b?: CoordinatorAgent) => !!a && !!b && a.program === b.program
 
 // A template change the coordinator proposed: the user accepts or refuses it
-// in the interface; only an accepted one is saved and goes to the template's log.
+// in the interface; only an accepted one is saved and goes to the project's workflow log.
 // base: the template version its diff was made against.
 // by: who proposed it, the project's key or 'main' (Alfred); said, saidAt:
 // the user's message it follows and when they sent it.
