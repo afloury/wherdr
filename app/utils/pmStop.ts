@@ -20,7 +20,7 @@ export async function removeTaskApi(id: string) {
 
 // false: the user cancelled the archive.
 export async function resumeTaskApi(id: string, how: Resume) {
-  if (how === 'archive' && !(await askConfirm(tl('Archive this task? Its agent stays stopped; its worktree and branch are kept.', 'Archiver cette tâche ? Son agent reste arrêté ; son worktree et sa branche sont gardés.'), tl('Archive', 'Archiver')))) return false
+  if (how === 'archive' && !(await askConfirm(tl('Archive this task? Its agent stays stopped; its worktree is removed, its branch is kept.', 'Archiver cette tâche ? Son agent reste arrêté ; son worktree est supprimé, sa branche est gardée.'), tl('Archive', 'Archiver')))) return false
   await api('/api/pm/task-resume', { id, how })
   return true
 }
