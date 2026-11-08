@@ -28,7 +28,7 @@ On the machine to add:
 
 ## Manage machines
 
-**Settings › Agents › Machines** shows the core's version and uptime, this machine, and each core
+**Settings › Machines** shows the core's version and uptime, this machine, and each core
 machine with its state (connected, connecting…, offline) and last error:
 
 - **Add machine** (`machine.add`): an **SSH target** (`user@host`, a `~/.ssh/config` host, or
@@ -42,3 +42,8 @@ machine with its state (connected, connecting…, offline) and last error:
   changes; links that use the old name stop working.
 - **Forget** (`machine.rm`): this core drops the machine, but its terminals keep running there,
   and the machine can be added again later.
+- **Memory**: each machine's free memory and its agents at once (all projects), with two
+  settings: **Agents at once, all projects** (empty: one agent per 1.5 GB of RAM) and
+  **Automatic starts wait under (GB free)**. Automatic starts (autopilot, chains, automations)
+  wait while a machine is short on memory, its swap is over 90 % used or it runs its cap of
+  agents, and start by themselves once it is back. Your own starts still go.

@@ -58,6 +58,18 @@ machine's from disk, a core machine's through `machine.exec`, with a 30-second c
   Settings › Agents › Claude quotas), then send a message to any Claude agent there; its quotas
   appear on the home screen.
 
+## Pace
+
+Needs: [Claude and Codex quotas](#claude-and-codex-quotas).
+
+**Settings › Agents › Pace** (also from a project's Autopilot tab) has one row per quota account:
+its weekly use against a target line, today's use, the 5-hour window, its name, and whether
+automatic work may start now. Its **mode** sets the line: **Working days** (the days you pick),
+**Every day**, or **Free with reserve** (no line: it keeps a weekly reserve per day left and a 5-hour reserve). Automatic
+work (the autopilot, automations) waits while an account is ahead of its pace; your own starts
+never wait. An account with no quota reading is held by task-count limits only. Each machine's
+memory state shows below ([Machines](machines.md#manage-machines)).
+
 ## v2 only: Codex updates and restarts
 
 The Codex **Update** and **Restart Codex** cards below belong to wherdr v2 on Herdr.
