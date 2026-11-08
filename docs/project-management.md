@@ -78,6 +78,14 @@ saved workflow into your templates; the project is untouched) and *Start over
 from a template* (pick a template or an example, read the difference, replace).
 Neither *Save* nor *Start over* changes the project's [guards](#guards).
 
+When the project's coordinator proposes a change to the workflow (only after
+your request), a square marks the project's row (*1 to review*) and the
+**Workflow** tab, whose first row, *Change proposed by the coordinator*, opens
+the review: your sentence it followed, the diff, *Refuse* or *Accept*. A
+proposal made before the workflow changed again is refused, and the review says
+so: ask the coordinator to propose again. The coordinator's window and the
+*Decisions* view link to this review.
+
 ### Guards
 
 Needs: [Workflow](#workflow).
@@ -117,12 +125,12 @@ to the [pace](quotas.md#pace) of every account.
 
 On the board and in a coordinator's conversation, the **Autopilot** button in
 the header shows the autopilot's state (green square: on; hollow: asleep) and a
-count of what waits for you: a template change the coordinator proposed, or a
+count of what waits for you: a workflow change the coordinator proposed, or a
 kept conversation that ran with another agent. A tap opens its window:
 
 - the agent that answers the coordinator, and a warning when its conversation
   ran with another one; on the board, *Open* opens or starts it;
-- the proposed template change: *Show diff*, *Accept* or *Refuse*;
+- the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*, *At once*), the events it wakes on (*Task added*, *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
