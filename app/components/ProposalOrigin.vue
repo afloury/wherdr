@@ -11,8 +11,7 @@ const p = computed(() => props.c.proposal)
 const main = computed(() => (p.value?.by ?? (props.c.main ? 'main' : props.c.project)) === 'main')
 const key = computed(() => props.c.label ?? props.c.project)
 // The palette's theme tokens, an existing color while a theme has none.
-const FALLBACK: Record<string, string> = { violet: 'mauve', blue: 'blue', teal: 'teal', green: 'green', amber: 'blocked', orange: 'blocked', red: 'rose', pink: 'rose' }
-const badge = computed(() => (props.c.color && !main.value ? `var(--project-${props.c.color}, var(--${FALLBACK[props.c.color] ?? 'mauve'}))` : ''))
+const badge = computed(() => (props.c.color && !main.value ? projectColorVar(props.c.color) : ''))
 const who = computed(() => (main.value ? alfred.value?.name || 'Alfred' : badge.value ? tl('coordinator') : `${key.value} ${tl('coordinator')}`))
 // Long: more than 4 lines or 280 characters, shown folded until asked.
 const long = computed(() => (p.value?.said?.length ?? 0) > 280 || (p.value?.said?.split('\n').length ?? 0) > 4)
