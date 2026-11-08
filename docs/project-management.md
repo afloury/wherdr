@@ -303,6 +303,13 @@ commits need a review), wherdr starts the worker or the reviewer again in the
 same worktree, with a note on where the work stands. The task's log says when
 its agents were ended and started again.
 
+When wherdr hands the worker work of its own (a catch-up with the base branch,
+a CI fix), the task leaves *Your turn* and its card says *the agent is
+updating the PR*: its agents are never ended while wherdr waits for that work.
+The task is yours again once the worker pushes or says it is done. Before it
+ends a task's agents, wherdr pushes the commits the branch has not pushed yet;
+if the push fails, the agents stay and the log says why.
+
 A message from the coordinator (`wherdr pm tell <task>`) goes to the agent
 that holds the task's current step; at a step held by nobody (the PR, the
 merge, a step you end) it goes to the worker, started again if it was ended.
