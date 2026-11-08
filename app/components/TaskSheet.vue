@@ -5,12 +5,15 @@
 // the step's button when it waits for the user ("Merged"; busy while it runs, a
 // refused action said in plain words under it), Start for a task to do (or
 // the tasks it waits for; a refusal said under it), Stop (with its
-// reason, confirmed here), how a stopped task goes on, and Delete for a task
-// never started (confirmed). Those stay at the top; below, tabs (the app's
+// reason, confirmed here), how a stopped task goes on, Check on GitHub for a
+// task at its merge step or archived with a PR (what it found said under the
+// buttons, with the PR and, for a PR closed unmerged, Archive), and Delete for
+// a task never started (confirmed). Those stay at the top; below, tabs (the app's
 // segmented style) for the rest, only the open one scrolling: Description (the
 // text, tags and links, the PR among them), Plan (each step with its
 // screenshots), Log.
 import { canStart, canStop, cardStatus, linkLabel, type Card } from '#shared/pm/board'
+import { canCheckGithub, type GhCheck } from '#shared/pm/ghCheck'
 import type { Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
 import type { Task } from '#shared/pm/run'
@@ -19,7 +22,8 @@ import { timesText } from '#shared/pm/times'
 import type { Choice } from '#shared/pm/verdict'
 
 // stopping: opened from the card menu's Stop, the confirmation shown.
-const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean, waitsFor?: string[] }>()
+// checking: opened from the card menu's Check on GitHub, the check run at once.
+const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean, checking?: boolean, waitsFor?: string[] }>()
 const emit = defineEmits<{ closed: [], changed: [] }>()
 const open = ref(true)
 const busy = ref(false)
@@ -78,6 +82,10 @@ const start = () => run(() => startTaskApi(props.card.id))
 const resume = (how: Resume) => run(() => resumeTaskApi(props.card.id, how))
 const decide = (choice: Choice) => run(() => api('/api/pm/decide', { id: props.card.id, choice }))
 const sendBack = (note: string) => run(() => api('/api/pm/step-back', { id: props.card.id, note }))
+const check = ref<GhCheck>()
+const checkGithub = () => run(async () => { check.value = (await api<{ check: GhCheck }>('/api/pm/task-check', { id: props.card.id })).check })
+const archiveClosed = () => run(async () => { const yes = await archiveClosedApi(props.card.id, !!props.card.stopped); if (yes) check.value = undefined; return yes })
+onMounted(() => { if (props.checking) checkGithub() })
 // Removed: the sheet closes, the board reloads without it.
 const remove = () => run(async () => { const yes = await removeTaskApi(props.card.id); if (yes) open.value = false; return yes })
 </script>
@@ -95,6 +103,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
             {{ card.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent') }}
           </UButton>
           <UButton v-if="canStop(card) && !confirmStop" color="error" variant="outline" size="xl" icon="i-lucide-square" data-testid="task-stop" @click="confirmStop = true">{{ tl('Stop', 'Arrêter') }}</UButton>
+          <UButton v-if="canCheckGithub(card)" color="neutral" variant="outline" size="xl" icon="i-lucide-refresh-cw" :loading="busy" data-testid="task-check" @click="checkGithub">{{ tl('Check on GitHub') }}</UButton>
           <UButton v-if="card.removable" color="error" variant="outline" size="xl" icon="i-lucide-trash-2" :loading="busy" data-testid="task-remove" @click="remove">{{ tl('Delete…', 'Supprimer…') }}</UButton>
         </div>
         <p v-if="canStart(card) && waitsFor?.length" class="muted" data-testid="task-waits">{{ tl(`Starts once ${waitsFor.join(', ')} ${waitsFor.length > 1 ? 'are' : 'is'} done.`, `Démarre une fois ${waitsFor.join(', ')} terminée${waitsFor.length > 1 ? 's' : ''}.`) }}</p>
@@ -106,6 +115,13 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
             <UButton color="neutral" variant="outline" size="xl" :disabled="busy" @click="confirmStop = false">{{ t('Cancel') }}</UButton>
           </div>
         </form>
+        <div v-if="check" class="task-check" role="status" :data-outcome="check.outcome" data-testid="task-check-result">
+          <p class="task-status" :class="{ merged: 'ok', open: 'wait', closed: 'bad' }[check.outcome]">{{ check.text }}</p>
+          <div class="task-sheet-actions">
+            <UButton color="neutral" variant="ghost" size="xl" icon="i-lucide-square-arrow-out-up-right" :to="check.url" target="_blank">{{ tl('Open the PR') }}</UButton>
+            <UButton v-if="check.archive" color="error" variant="outline" size="xl" icon="i-lucide-archive" :loading="busy" data-testid="task-check-archive" @click="archiveClosed">{{ tl('Archive…') }}</UButton>
+          </div>
+        </div>
         <p v-if="error" class="error">{{ error }}</p>
       </div>
 
@@ -159,6 +175,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-status.wait { color: var(--working); }
 .task-status.bad { color: var(--danger); }
 .task-status.ok { color: var(--done); }
+.task-check { display: grid; gap: 4px; }
 .task-times { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .task-panel { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; }
 .task-desc { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }

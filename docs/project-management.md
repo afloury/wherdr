@@ -198,6 +198,8 @@ click, long press, or ••• when it has more than *Open*) offers:
 - **Stop…**, on a running task: its agent ends, the worktree, branch and work
   stay, and nothing is merged;
 - **Continue**, **Take it as it is** or **Archive**, on a stopped task;
+- **Check on GitHub**, on a task at its merge step or archived with a PR: its
+  sheet opens with what wherdr found (see [Task sheet](#task-sheet));
 - **Delete…**, on a task never started (no agent, worktree or branch). A task
   other tasks wait for cannot be deleted; its number is never given again.
 
@@ -214,6 +216,16 @@ waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
 with this version: an older task shows only its total. Below, tabs: **Description** (text, tags, links and the PR),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
 and screenshots) and **Log**. A refused merge says why under its button.
+
+**Check on GitHub** shows on a task with a PR at its merge step, or archived:
+wherdr reads the PR now, for a merge stuck after a guard refusal, a PR merged
+by hand on GitHub, or GitHub slow to see a push. Merged: the merge step ends as
+merged and the task goes on (next step or Done), out of Your turn; an archived
+task ends as merged. Still open: why it waits (its checks, a review, a branch
+only you may merge into), with a link to the PR; a merge wherdr may do is tried
+again within a minute. Closed without a merge: said, with **Archive…**. The
+coordinator and Alfred run the same check with `wherdr pm task check <task>`
+when you ask them to unblock a task.
 
 ### A task waiting for you
 

@@ -77,6 +77,7 @@ export type Command =
   | { name: 'ack', wakes: string[] } | { name: 'automation show', id: string }
   | { name: 'tell', task: string, text: string }
   | { name: 'task start', task: string, on?: string }
+  | { name: 'task check', task: string }
   | { name: 'task stop', task: string, reason: string }
   | { name: 'task remove', task: string, reason: string }
   | { name: 'task add', title: string, type: string, after?: string, description?: string }
@@ -99,6 +100,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'automation list', does: 'the project\'s automations: on or off, schedule or event, last firing' },
   { usage: 'automation show <automation>', does: 'one automation, its prompt and its last firings; only the user adds or changes them, in wherdr' },
   { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there. A started task always goes back to its own machine' },
+  { usage: 'task check <task>', does: 'read the task\'s PR on GitHub now, for a task at its merge step or archived with a PR: merged, its merge step ends as merged and the task goes on; open, why it waits; closed without a merge, said (the user may archive it). At any time, when the user asks to unblock a task' },
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
   { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done' },
@@ -172,6 +174,7 @@ function parseWords(argv: unknown): Command | { error: string } {
     if (flags.on !== undefined && !on) return { error: '--on needs a machine\'s name' }
     return TASK_RE.test(task) && !w3 ? { name: verb, task, ...(on ? { on } : {}) } : usage(verb)
   }
+  if (verb === 'task check') return TASK_RE.test(task) && !w3 ? { name: verb, task } : usage(verb)
   if (verb === 'task stop' || verb === 'task remove') {
     const reason = (flags.reason ?? '').trim()
     if (!TASK_RE.test(task) || w3 || !reason) return usage(verb)

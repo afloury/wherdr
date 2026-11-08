@@ -2,6 +2,7 @@
 // The board: Your turn first, then the columns of the project's template
 // (To do / Working / Done for all projects, with the step on the card). A
 // card's indicator is the live state of the agent holding its step.
+import { canCheckGithub } from '#shared/pm/ghCheck'
 import { boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, waitsFor, type Board, type BoardMachine, type Card } from '#shared/pm/board'
 import type { Task } from '#shared/pm/run'
 import { RESUMES } from '#shared/pm/stop'
@@ -59,19 +60,22 @@ const live = (c: Card) => {
 }
 // The card's menu: Start for a task to do (not one waiting for others: its
 // card says which), Start on… another machine the project allows, Stop (confirmed in the task's sheet), how a stopped task
-// goes on, or Delete for a task never started (confirmed). It opens on right
+// goes on, Check on GitHub for a task at its merge step or archived with a PR
+// (its sheet opens with the result), or Delete for a task never started (confirmed). It opens on right
 // click and long press of the card; its ••• button shows only when the menu
 // has more than Open (a tap already opens the task).
 const stopping = ref(false)
+const checking = ref(false)
 const cardMenu = useRowMenu()
 const tap = (id: string) => { if (!cardMenu.swallowClick()) show(id) }
-const show = (id: string, stop = false) => { stopping.value = stop; open.value = id }
+const show = (id: string, stop = false, check = false) => { stopping.value = stop; checking.value = check; open.value = id }
 const act = (fn: () => Promise<unknown>) => fn().then(load, (e: Error) => { error.value = e.message })
 const menuOf = (c: Card): MenuItem[] => [
   { label: tl('Open', 'Ouvrir'), icon: 'i-lucide-panel-right-open', run: () => show(c.id) },
   ...(canStart(c) && !waiting(c).length ? [{ label: tl('Start', 'Lancer'), icon: 'i-lucide-play', run: () => act(() => startTaskApi(c.id)) }] : []),
   ...(canStart(c) && !waiting(c).length && machinesOf(c) ? [{ label: tl('Start on…'), icon: 'i-lucide-server', run: () => openMenu(startOn(c), tl('Start on')) }] : []),
   ...(canStop(c) ? [{ label: tl('Stop…', 'Arrêter…'), icon: 'i-lucide-square', danger: true, run: () => show(c.id, true) }] : []),
+  ...(canCheckGithub(c) ? [{ label: tl('Check on GitHub'), icon: 'i-lucide-refresh-cw', run: () => show(c.id, false, true) }] : []),
   ...(c.stopped ? RESUMES.map(how => ({ label: tl(...RESUME_LABEL[how]), danger: how === 'archive', run: () => act(() => resumeTaskApi(c.id, how)) })) : []),
   ...(c.removable ? [{ label: tl('Delete…', 'Supprimer…'), icon: 'i-lucide-trash-2', danger: true, run: () => act(() => removeTaskApi(c.id)) }] : []),
 ]
@@ -149,7 +153,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
     </div>
     </div>
     <AddTaskSheet v-if="adding && data" v-model:open="adding" :projects="data.projects" :cards="data.cards" :project="project" @added="added" />
-    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" @closed="open = null; stopping = false" @changed="load" />
+    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}:${checking}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" :checking="checking" @closed="open = null; stopping = false; checking = false" @changed="load" />
   </section>
 </template>
 
