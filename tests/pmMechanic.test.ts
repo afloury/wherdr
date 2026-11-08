@@ -40,10 +40,17 @@ describe('mechanical moves', () => {
     expect(nextMove(facts({ pr: pr({ baseRefName: 'main' }) }))).toEqual({ key: 'base:abc1234', move: { kind: 'fix-base', base: 'v3' } })
     // Not the task's commit, or before the PR step: nothing.
     expect(nextMove(facts({ pr: pr({ baseRefName: 'main', headRefOid: 'other' }) }))).toBeUndefined()
+    // At the merge step, a PR head that is not the task's commit (a CI fix not pushed): the merge step sorts it out, once per attempt.
+    expect(nextMove(facts({ pr: pr({ headRefOid: 'other' }) }))).toEqual({ key: 'merge:abc1234', move: { kind: 'merge', url: 'https://gh/pr/7', base: 'v3' } })
+    expect(nextMove(facts({ pr: pr({ headRefOid: 'other' }), agentBusy: true }))).toBeUndefined()
+    expect(nextMove(facts({ task: task({ step: step(3, { acting: true, tries: { merge: 2 } }) }) }))?.key).toBe('merge:abc1234:2')
     // Merged on GitHub already: never edited, the merge step records it.
     const merged = pr({ baseRefName: 'main', headRefOid: 'later', merged: true, statusCheckRollup: [] })
     expect(nextMove(facts({ pr: merged, task: task({ step: step(2) }) }))).toBeUndefined()
-    expect(nextMove(facts({ pr: { ...merged, baseRefName: 'v3' } }))).toEqual({ key: 'merge:abc1234', move: { kind: 'merge', url: 'https://gh/pr/7', base: 'v3' } })
+    const mergedMove = { key: 'merged:https://gh/pr/7', move: { kind: 'merge', url: 'https://gh/pr/7', base: 'v3' } }
+    expect(nextMove(facts({ pr: { ...merged, baseRefName: 'v3' } }))).toEqual(mergedMove)
+    // Merged by hand after the step's own attempt was refused at this head: recorded all the same.
+    expect(nextMove(facts({ pr: { ...merged, baseRefName: 'v3' }, task: task({ mech: { 'merge:abc1234': 1 } }) }))).toEqual(mergedMove)
     expect(nextMove(facts({ task: task({ step: step(1) }), pr: pr({ baseRefName: 'main' }) }))).toBeUndefined()
   })
 
