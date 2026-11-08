@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { SCRIPT, guardAction, isTransient, leaks, prReady, taskGuards, type Receipt } from '../shared/pm/actions'
+import { RETRY_MS, SCRIPT, guardAction, isTransient, leaks, prReady, taskGuards, type Receipt } from '../shared/pm/actions'
 import { runAction, type ActionDeps, type ActionJob } from '../server/utils/pmActions'
 import { WORKTREE_SCRIPT } from '../server/utils/pmLaunch'
 import { initialState, onEvent, planSteps, reviewedCommit } from '../shared/pm/steps'
@@ -107,6 +107,16 @@ describe('runAction', () => {
     const h = fakeDeps([info('QUEUED'), { code: 0, out: 'same' }, info('COMPLETED'), { code: 0, out: 'same' }])
     expect(await runAction(h.deps, job({ step: 'merge', action: { kind: 'github.merge' }, halted: async () => true }))).toEqual({ ok: false, error: 'merge: the task was stopped' })
     expect(h.calls.length).toBe(4)
+    // Pushed, but the remote branch did not move: refused at once, no wait.
+    const stale = { code: 0, out: `abc\n${JSON.stringify([{ url: 'https://pr/1', baseRefName: 'dev', headRefOid: 'old' }])}` }, behind = { code: 0, out: 'behind' }
+    const n = fakeDeps([stale, behind, { code: 0, out: 'abc' }, stale, behind, { code: 0, out: 'old' }])
+    expect(await runAction(n.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toEqual({ ok: false, error: 'merge: the push did not move origin/task/A-1 (at old, the task at abc): push the branch by hand, then try the step again' })
+    expect(n.sleeps).toEqual([])
+    // GitHub's lag, then checks running at the new head: the lag waits take none of the CI waits.
+    const fresh = (state: string) => ({ code: 0, out: `abc\n${JSON.stringify([{ url: 'https://pr/1', baseRefName: 'dev', headRefOid: 'abc', statusCheckRollup: [{ status: state, conclusion: 'SUCCESS' }] }])}` }), same = { code: 0, out: 'same' }
+    const l = fakeDeps([stale, behind, { code: 0, out: 'abc' }, ...[1, 2, 3].flatMap(() => [stale, behind, { code: 0, out: 'abc' }]), fresh('IN_PROGRESS'), same, fresh('IN_PROGRESS'), same, fresh('COMPLETED'), same, { code: 0, out: 'https://pr/1' }])
+    expect(await runAction(l.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toMatchObject({ ok: true, commit: 'abc' })
+    expect(l.sleeps).toEqual([2_000, 4_000, 8_000, ...RETRY_MS.slice(0, 2)])
     // GitHub's conflict ends with the commands to fix it: the error keeps none of them.
     const x = fakeDeps([info('COMPLETED'), { code: 0, out: 'same' }, { code: 1, out: 'X Pull request #505 is not mergeable: the merge commit cannot be cleanly created.\nRun the following to resolve the merge conflicts locally:\n  gh pr checkout 505 && git fetch origin dev && git merge origin/dev' }])
     expect(await runAction(x.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toEqual({ ok: false, error: 'merge: the PR conflicts with dev' })
@@ -367,7 +377,10 @@ describe('a PR head that moved after the review', () => {
     fs.mkdirSync(bin, { recursive: true })
     fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
 case "$*" in
-  *"--state open"*) echo "[{\\"url\\":\\"https://pr/1\\",\\"baseRefName\\":\\"dev\\",\\"headRefOid\\":\\"$(git --git-dir "${origin}" rev-parse task/A-1)\\"}]";;
+  *"--state open"*) h=$(git --git-dir "${origin}" rev-parse task/A-1)
+    # lag: how many more reads answer the stale head, as GitHub's API right after a push.
+    n=$(cat "${bin}/lag" 2>/dev/null || echo 0); if [ "$n" -gt 0 ]; then echo $((n-1)) > "${bin}/lag"; h=$(cat "${bin}/stale"); fi
+    echo "[{\\"url\\":\\"https://pr/1\\",\\"baseRefName\\":\\"dev\\",\\"headRefOid\\":\\"$h\\"}]";;
   "pr merge"*) ;;
   *) echo "unexpected gh $*" >&2; exit 1;;
 esac
@@ -383,7 +396,8 @@ esac
       git(tmp, 'clone', '-q', origin, other); git(other, 'checkout', '-q', ref)
       git(other, 'commit', '-q', '--allow-empty', '-m', msg); git(other, 'push', '-q', 'origin', `HEAD:${ref}`)
     }
-    return { repo, origin, sh, merge, elsewhere, head: () => git(repo, 'rev-parse', 'HEAD') }
+    const lagging = (reads: number) => { fs.writeFileSync(path.join(bin, 'stale'), git(repo, 'rev-parse', 'HEAD')); fs.writeFileSync(path.join(bin, 'lag'), `${reads}`) }
+    return { repo, origin, sh, f, merge, elsewhere, lagging, head: () => git(repo, 'rev-parse', 'HEAD') }
   }
 
   it('after a catch-up push, goes back to review for the new head, then merges it', async () => {
@@ -402,6 +416,19 @@ esac
     expect(await s.merge(1, reviewed)).toMatchObject({ ok: false, review: { since: reviewed, head: fix }, commit: fix })
     expect(await s.merge(2, fix)).toEqual({ ok: true, link: 'https://pr/1', commit: fix })
     expect(git(s.repo, '--git-dir', s.origin, 'rev-parse', 'task/A-1')).toBe(fix)
+  })
+
+  it('waits for GitHub to show a fresh push, up to about a minute', async () => {
+    const s = setup('moved-lag')
+    s.lagging(3) // the read before the push, then two stale reads after it
+    git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'fix CI')
+    const fix = s.head()
+    expect(await s.merge(1, fix)).toEqual({ ok: true, link: 'https://pr/1', commit: fix })
+    expect(s.f.sleeps).toEqual([2_000, 4_000])
+    s.lagging(99)
+    git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'again')
+    const again = s.head()
+    expect(await s.merge(2, again)).toEqual({ ok: false, error: `merge: GitHub still shows the PR head at ${fix.slice(0, 7)} a minute after origin/task/A-1 moved to ${again.slice(0, 7)}: try the step again in a few minutes` })
   })
 
   it('refuses a head pushed from outside the task\'s worktree', async () => {
