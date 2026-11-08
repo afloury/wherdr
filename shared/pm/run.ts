@@ -21,6 +21,8 @@ export interface Task {
   waiting?: string // why it waits for the user
   waitKind?: 'question' | 'permission' | 'auth' // what it waits for
   mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
+  ci?: { head: string, red: boolean } // its PR's CI at the task's commit, as the engine last read it
+  idle?: number // since when the agent holding its step sits idle, its report still due (blocked.ts)
   run?: string // the current run
   step?: StepState // where the step engine has it
   base?: string // the project's working branch when it started ('' none): a later change leaves it alone
