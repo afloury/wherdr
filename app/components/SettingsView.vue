@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// Settings, in sections: appearance, conversation, terminal, agents,
+// Settings, in sections: appearance, conversation, terminal, agents (with pace), machines,
 // notifications, security (passkey), shortcuts, about.
 import type { ThemeDef, ThemeGroup } from '~/utils/themes'
 import type { TypingSpeed } from '~/utils/typewriter'
-import { SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
+import { SETTINGS_ALIASES, SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
 import type { SettingsSection } from '~/utils/settingsNav'
 import { type QuietDuration, type QuietScope, quietUntil } from '#shared/quiet'
 import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
@@ -25,13 +25,14 @@ watch(() => [route.path, route.query.section], () => {
     router.replace({ path: '/settings', query: { ...route.query, section: 'conversation' } })
   }
 }, { immediate: true })
-const section = computed<SettingsSection | null>(() => (SETTINGS_SECTIONS as readonly string[]).includes(String(route.query.section)) ? route.query.section as SettingsSection : null)
+const alias = computed(() => SETTINGS_ALIASES[String(route.query.section)] ?? null)
+const section = computed<SettingsSection | null>(() => alias.value?.section ?? ((SETTINGS_SECTIONS as readonly string[]).includes(String(route.query.section)) ? route.query.section as SettingsSection : null))
 const sectionIcons: Record<SettingsSection, string> = {
   appearance: 'i-lucide-palette', conversation: 'i-lucide-message-square', terminal: 'i-lucide-square-terminal',
-  agents: 'i-lucide-bot', projects: 'i-lucide-kanban', pacing: 'i-lucide-gauge', plugins: 'i-lucide-puzzle', phone: 'i-lucide-smartphone', notifications: 'i-lucide-bell', security: 'i-lucide-lock', shortcuts: 'i-lucide-keyboard', about: 'i-lucide-info',
+  agents: 'i-lucide-bot', machines: 'i-lucide-server', projects: 'i-lucide-kanban', plugins: 'i-lucide-puzzle', phone: 'i-lucide-smartphone', notifications: 'i-lucide-bell', security: 'i-lucide-lock', shortcuts: 'i-lucide-keyboard', about: 'i-lucide-info',
 }
 const sectionLabels: Record<SettingsSection, string> = {
-  appearance: 'Appearance', conversation: 'Conversation', terminal: 'Terminal', agents: 'Agents', projects: 'Projects', pacing: 'Pace',
+  appearance: 'Appearance', conversation: 'Conversation', terminal: 'Terminal', agents: 'Agents', machines: 'Machines', projects: 'Projects',
   plugins: 'Plugins', phone: 'Phone', notifications: 'Notifications', security: 'Security', shortcuts: 'Shortcuts', about: 'About',
 }
 const sections = computed(() => SETTINGS_SECTIONS
@@ -46,7 +47,31 @@ const activeSection = computed<SettingsSection | null>(() => {
 })
 const activeLabel = computed(() => sections.value.find(s => s.id === activeSection.value)?.label || t('Settings'))
 const body = ref<HTMLElement | null>(null)
-watch(section, () => nextTick(() => { if (body.value) body.value.scrollTop = 0 }))
+// A new section starts at the top; an alias (?section=pacing) scrolls to its
+// group, and keeps it in place while the groups above finish loading, until
+// the user scrolls or for 3 s.
+let stopFollow = () => {}
+watch(() => route.query.section, () => nextTick(() => {
+  stopFollow()
+  const b = body.value
+  if (!b) return
+  b.scrollTop = 0
+  const el = alias.value && document.getElementById(alias.value.anchor)
+  if (!el || typeof ResizeObserver === 'undefined') return
+  const place = () => { b.scrollTop += el.getBoundingClientRect().top - b.getBoundingClientRect().top }
+  place()
+  const ro = new ResizeObserver(place)
+  ro.observe(b.firstElementChild!)
+  const timer = setTimeout(() => stopFollow(), 3000)
+  stopFollow = () => {
+    ro.disconnect()
+    clearTimeout(timer)
+    for (const ev of ['wheel', 'touchstart', 'keydown']) b.removeEventListener(ev, stopFollow)
+    stopFollow = () => {}
+  }
+  for (const ev of ['wheel', 'touchstart', 'keydown']) b.addEventListener(ev, stopFollow, { passive: true })
+}), { immediate: true })
+onBeforeUnmount(() => stopFollow())
 function openSection(id: SettingsSection) {
   if (id === section.value) return
   const to = { path: '/settings', query: { section: id } }
@@ -72,8 +97,6 @@ onMounted(async () => {
 const shellsOn = showShells
 const countersOn = showCounters
 const quotasOn = showQuotas
-const homeGroup = homeGrouping
-const homeGroupItems = computed(() => [{ value: 'machine', label: t('Machine') }, { value: 'state', label: t('State') }])
 const compactOn = compactList
 const autoReorderOn = autoReorderReady
 const encryptedOn = encryptedText
@@ -328,9 +351,6 @@ onMounted(() => {
 
           <div class="settings-group">
             <h3>{{ t('Home screen') }}</h3>
-            <h4 id="home-group-label">{{ t('Group by') }}</h4>
-            <URadioGroup v-model="homeGroup" :items="homeGroupItems" aria-labelledby="home-group-label" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
-
             <label class="settings-toggle">
               <span><b>{{ t('Compact list') }}</b><small>{{ t('Cards: one line in Compact, two in Normal with current activity. Follows you on every device.') }}</small></span>
               <USwitch v-model="compactOn" color="success" size="xl" />
@@ -468,12 +488,16 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'agents'" class="settings-section">
-          <CoreMachines />
           <OfferedAgentsSettings />
           <div id="claude-quotas" class="settings-group">
             <h3>{{ tl('Claude quotas', 'Quotas Claude') }}</h3>
             <ClaudeQuotaSetup v-if="activeSection === 'agents'" />
           </div>
+          <PacingSettings id="settings-pace" :active="activeSection === 'agents'" />
+        </div>
+
+        <div v-show="activeSection === 'machines'" class="settings-section" data-testid="settings-machines">
+          <CoreMachines />
         </div>
 
         <div v-show="activeSection === 'notifications'" class="settings-section">
@@ -499,10 +523,6 @@ onMounted(() => {
 
         <div v-show="activeSection === 'projects'" class="settings-section">
           <ProjectsSettings :active="activeSection === 'projects'" />
-        </div>
-
-        <div v-show="activeSection === 'pacing'" class="settings-section">
-          <PacingSettings :active="activeSection === 'pacing'" />
         </div>
 
         <div v-show="activeSection === 'plugins'" class="settings-section">

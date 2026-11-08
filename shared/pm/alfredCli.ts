@@ -15,7 +15,7 @@ import { BACKDROPS } from '../../app/utils/backdrop'
 const ON_OFF = ['1', '0']
 export const SETTING_VALUES: Partial<Record<SyncedSetting, readonly string[]>> = {
   'theme': THEMES.map(t => t.id), 'focusBorder': FOCUS_BORDERS, 'backdrop': BACKDROPS, 'backdropPackets': ['on', 'off'],
-  'machineBar': ON_OFF, 'compactListV2': ON_OFF, 'homeGrouping': ['machine', 'state'],
+  'machineBar': ON_OFF, 'compactListV2': ON_OFF,
   'showShells': ON_OFF, 'showCounters': ON_OFF, 'showQuotas': ON_OFF, 'quotaDisplay': ['left', 'used'],
   'autoReorderReady': ON_OFF, 'readySort': READY_SORTS,
   'typewriterSpeed': ['off', 'fast', 'medium', 'slow'], 'encryptedText': ON_OFF, 'replyStyle': ['icon', 'text', 'list'], 'defaultViewMode': ['chat', 'term'],
