@@ -104,3 +104,34 @@ describe('envoi Web Push', () => {
     await push.writeGlobalQuiet(null)
   })
 })
+
+describe('Web Push after Lock all devices', () => {
+  it('sends nothing to a subscription saved under an earlier lock generation, and removes it', async () => {
+    const { auth } = await import('../server/utils/http')
+    auth._db().credentials.push({ id: 'k1', publicKey: 'x', counter: 0, transports: [], name: 'iPhone', createdAt: '2026-01-01T00:00:00.000Z' })
+    const cookie = auth._sessionCookie({ headers: {} }).split(';')[0]!
+    const before = auth.generation()
+    // Subscribed while unlocked; an untagged one comes from an earlier version.
+    await push.writeSubs([{ ...sub('https://push.example/phone'), gen: before }, sub('https://push.example/legacy')])
+    sendNotification.mockReset()
+    sendNotification.mockResolvedValue(undefined)
+    expect(await push.pushSend({ title: 't', body: 'b', tag: 'x', url: '/' })).toBe(2)
+
+    auth.lockAll({ headers: { cookie } })
+    expect(auth.generation()).not.toBe(before)
+    sendNotification.mockClear()
+    // Even when the subscription is still on disk (saved by a request under way).
+    expect(await push.pushSend({ title: 't', body: 'b', tag: 'x', url: '/' }, undefined, true)).toBe(1)
+    expect(sendNotification.mock.calls.map(c => (c[0] as { endpoint: string }).endpoint)).toEqual(['https://push.example/legacy'])
+    expect((await push.readSubs()).map(s => s.endpoint)).toEqual(['https://push.example/legacy'])
+
+    // The Lock all devices route drops every subscription, untagged ones included.
+    expect(await push.dropAllSubs()).toBe(1)
+    sendNotification.mockClear()
+    expect(await push.pushSend({ title: 't', body: 'b', tag: 'x', url: '/' }, undefined, true)).toBe(0)
+    expect(sendNotification).not.toHaveBeenCalled()
+    // Once unlocked again, the device subscribes under the new generation.
+    await push.writeSubs([{ ...sub('https://push.example/phone'), gen: auth.generation() }])
+    expect(await push.pushSend({ title: 't', body: 'b', tag: 'x', url: '/' }, undefined, true)).toBe(1)
+  })
+})
