@@ -73,6 +73,7 @@
 - [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back and other answers.
 - [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again.
 - [Alfred's command](docs/alfred.md): `wherdr alfred`, what Alfred reads and changes after your yes.
+- [After an update](docs/alfred.md#after-an-update): new instructions for Alfred and coordinators, and the one-line notice on their next command.
 
 ## Machines, quotas and notifications
 

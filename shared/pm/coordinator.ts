@@ -59,7 +59,7 @@ export interface CoordinatorView {
 export type Turn = 'user' | 'wake' | 'none'
 
 export type Command =
-  | { name: 'list' } | { name: 'plan' } | { name: 'template show' } | { name: 'autopilot show' }
+  | { name: 'help' } | { name: 'list' } | { name: 'plan' } | { name: 'template show' } | { name: 'autopilot show' }
   | { name: 'automation list' }
   | { name: 'show', task: string }
   | { name: 'template edit' } // the new template comes as the call's input (JSON)
@@ -96,6 +96,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
   { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done' },
   { usage: 'tell <task> "<text>"', does: 'a message to the task\'s agent; in a wake, only to answer its question (a permission request is the user\'s)' },
+  { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
 ]
 // Listed only where the project's guard allows it.
@@ -141,7 +142,7 @@ function parseWords(argv: unknown): Command | { error: string } {
     const text = words.slice(2).join(' ').trim()
     return w1 && TASK_RE.test(w1) && text && text.length <= 4000 ? { name: 'tell', task: w1, text } : usage('tell')
   }
-  if (w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0 }
+  if (w0 === 'help' || w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0 }
   if (w0 === 'show') return w1 && TASK_RE.test(w1) && !w2 ? { name: 'show', task: w1 } : usage('show')
   if (verb === 'template show' || verb === 'template edit') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
   if (verb === 'task add') {
@@ -263,12 +264,34 @@ body='{"argv64":[' sep=
 for a in "$@"; do body="$body$sep\\"$(printf %s "$a" | b64)\\"" sep=,; done
 body="$body]"
 [ "$route $1 $2" = "pm/cli template edit" ] && body="$body,\\"input64\\":\\"$(b64)\\""
-out=$(mktemp) || exit 1
-code=$(printf '%s}' "$body" | curl -sS -o "$out" -w '%{http_code}' -X POST --data-binary @- \\
+out=$(mktemp) hdr=$(mktemp) || exit 1
+code=$(printf '%s}' "$body" | curl -sS -D "$hdr" -o "$out" -w '%{http_code}' -X POST --data-binary @- \\
   -H 'content-type: application/json' -H "origin: $WHERDR_URL" -H "authorization: Bearer $tok" "$WHERDR_URL/api/$route")
-cat "$out"; echo; rm -f "$out"
+grep -i '^x-wherdr-notice:' "$hdr" | cut -d' ' -f2- | tr -d '\\r'
+cat "$out"; echo; rm -f "$out" "$hdr"
 [ "$code" -ge 200 ] 2>/dev/null && [ "$code" -lt 300 ]
 `
+
+// How an agent answers about wherdr: from the docs of the version that runs,
+// never from memory. docs: the docs folder, when it is on the agent's machine;
+// help: the command(s) that list its commands.
+export function docsRule(docs: string | undefined, help: string): string[] {
+  return ['## Answering about wherdr', '',
+    'Never explain wherdr\'s interface or commands from memory: wherdr changes with each update.',
+    docs
+      ? `First read \`${docs}/llms.txt\` (the index), then only the section(s) that answer, and the sections their "Needs:" line names.`
+      : 'wherdr\'s docs are on wherdr\'s machine: say so, and answer only what the docs index (docs/llms.txt in wherdr\'s repository) and your commands confirm.',
+    'When the section gives an in-app link to the place (a wherdr address such as `#/settings?section=phone`), give the user that link.',
+    `The current commands: ${help}.`, '']
+}
+
+// The line a coordinator's next command starts with once wherdr was updated
+// since its session started (its record keeps the version it started with,
+// and the version it was told about). Undefined: nothing to tell.
+export function updateNotice(c: { version?: string, told?: string } | null | undefined, running: string): string | undefined {
+  if (!c?.version || c.version === running || c.told === running) return undefined
+  return `wherdr was updated to ${running} since your session started: re-read AGENTS.md and check docs/llms.txt before relying on what you knew`
+}
 
 // The changed lines of two templates, as JSON: what the coordinator shows the user.
 export function templateDiff(old: Template | null, next: Template): string {
@@ -311,10 +334,11 @@ const stepLine = (s: PlannedStep) => `- ${s.id} (${s.column ?? s.id}): ${[
   s.sendBack && `sends back to ${s.sendBack} (${s.rounds ?? 2} rounds)`, s.recheck && `recheck ${s.recheck}`, s.timeout && `timeout ${s.timeout}`,
 ].filter(Boolean).join(', ')}`
 
-const commandList = (t?: Template | null) => COMMANDS.filter(c => !c.usage.startsWith(GUARDED_COMMAND) || t?.guards?.contributorPrs).map(c => `- \`wherdr pm ${c.usage}\`: ${c.does}`)
+export const commandList = (t?: Template | null) => COMMANDS.filter(c => !c.usage.startsWith(GUARDED_COMMAND) || t?.guards?.contributorPrs).map(c => `- \`wherdr pm ${c.usage}\`: ${c.does}`)
 
 // The files of the coordinator's folder, path → text. Nothing outside it.
-export function roleFiles(p: Project, t: Template | null, examples: Template[]): Record<string, string> {
+// docs: wherdr's docs folder, when the coordinator runs on wherdr's machine.
+export function roleFiles(p: Project, t: Template | null, examples: Template[], docs?: string): Record<string, string> {
   // A folder without git: no task worktree, the coordinator does the work there itself.
   const plain = p.git === false
   const plans = t ? Object.entries(t.taskTypes).flatMap(([type]) => [`### ${type}`, ...planSteps(t, { type }, p.base).map(stepLine), '']) : ['(no template yet)']
@@ -328,6 +352,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[]):
     '## Commands (your token: this project only)', '', ...commandList(t), '',
     'Every change you make is written to the task\'s or the template\'s log with your name.',
     `Quote a file as inline code with its absolute path (\`${p.path.replace(/\/$/, '')}/README.md\`): the user's interface makes it a link.`, '',
+    ...docsRule(docs, '`wherdr pm help`'),
     '## What you never do', '',
     `- change a guard (protected branches, who merges): the user does it in ${guardsPlace(p.key)};`,
     '- end a step that waits for the user unless they just told you so (`--user-said` with their words);',
