@@ -2,7 +2,7 @@
 // rights checked on each, and the role files written in its own folder. Pure:
 // the server (server/utils/pmCoordinator.ts) reads and writes.
 import type { Project } from './project'
-import type { Template } from './workflow'
+import { WEIGHTS, isWeight, type Template, type Weight } from './workflow'
 import type { WorkflowChanges } from './workflowChanges'
 import type { ProjectColor } from './projectKey'
 import type { Autopilot, limitsLeft } from './autopilot'
@@ -83,7 +83,7 @@ export type Command =
   | { name: 'task start', task: string, on?: string }
   | { name: 'task stop', task: string, reason: string }
   | { name: 'task remove', task: string, reason: string }
-  | { name: 'task add', title: string, type: string, after?: string, description?: string }
+  | { name: 'task add', title: string, type: string, after?: string, description?: string, weight?: Weight }
   | { name: 'pr merge', pr: number, userSaid: string, method?: MergeMethod }
 
 // One table for the parser, the skill and the role file.
@@ -105,7 +105,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there. A started task always goes back to its own machine' },
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
-  { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done' },
+  { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"] [--weight light|standard|heavy]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done. --weight says what it needs of a machine (light: docs, a study; standard: tests and typecheck; heavy: a build, e2e, screenshots); left out, it comes from its task type and steps (show gives it)' },
   { usage: 'tell <task> "<text>"', does: 'a message to the task\'s agent; in a wake, only to answer its question (a permission request is the user\'s)' },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
@@ -144,7 +144,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description'], 'task start': ['on'] }[verb] ?? []))
+  const extra = known('project', ...({ 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight'], 'task start': ['on'] }[verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (verb === 'autopilot show' || verb === 'automation list') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
@@ -162,7 +162,9 @@ function parseWords(argv: unknown): Command | { error: string } {
     if (after !== undefined && !after.split(',').every(a => TASK_RE.test(a.trim()))) return { error: '--after is a list of tasks: A-1,A-2' }
     const description = flags.description?.trim()
     if (description && description.length > 20000) return { error: '--description is 20000 characters at most' }
-    return { name: verb, title, type, ...(after ? { after } : {}), ...(description ? { description } : {}) }
+    const weight = flags.weight?.trim()
+    if (weight !== undefined && !isWeight(weight)) return { error: `--weight is one of ${WEIGHTS.join(', ')}` }
+    return { name: verb, title, type, ...(after ? { after } : {}), ...(description ? { description } : {}), ...(weight ? { weight } : {}) }
   }
   if (verb === 'pr merge') {
     const said = flags['user-said']?.trim(), method = flags.method as MergeMethod | undefined
