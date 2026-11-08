@@ -195,6 +195,10 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
   if (kind === 'github.pr') return s.acting ? { text: 'opening the PR', tone: 'wait' } : failed !== undefined ? blocked(failed) : undefined
   const pr = c.plan.slice(0, s.at).some(p => p.action?.kind === 'github.pr') ? c.prNow : undefined
   if (failed !== undefined) return pr?.startsWith('checks failed') ? ofPr(pr) : blocked(failed)
+  // A merge waiting for the user, updated with its base; once approved, it merges by itself.
+  const approved = s.approved && !s.acting ? 'Approved, merging when ready' : undefined
+  if (s.catchUp) return { text: [approved, `updating with ${s.catchUp.base}`].filter(Boolean).join(' · '), tone: 'wait' }
+  if (approved) return { text: pr?.startsWith('checks failed') ? `${approved} · ${pr}` : approved, tone: 'wait' }
   // The merge runs: it waits for the checks, then merges.
   if (s.acting && kind && MERGES.includes(kind)) return pr && pr !== 'ready to merge' && kind === 'github.merge' ? ofPr(pr) : { text: 'merging', tone: 'wait' }
   return pr ? ofPr(pr) : undefined

@@ -127,7 +127,7 @@ for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
 export interface Check { name?: string, context?: string, status?: string, conclusion?: string, state?: string }
 // merged: no PR open, this one of the branch is merged already and holds the
 // task's commit; stray: merged, but at a head without the task's commit.
-export interface PrInfo { url: string, baseRefName: string, headRefOid: string, statusCheckRollup?: Check[], merged?: boolean, stray?: boolean }
+export interface PrInfo { url: string, baseRefName: string, headRefOid: string, mergeStateStatus?: string, statusCheckRollup?: Check[], merged?: boolean, stray?: boolean }
 
 export const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
 // May the open PR be merged now? Its head must be the task's commit, every
@@ -170,6 +170,7 @@ export function leaks(g: ResolvedGuards, remoteBranches: string[], allowed: stri
 // becomes 'uncertain' instead of being run again blindly.
 // note: a line for the task's log.
 // review: new commits since the reviewed one, to review before the merge.
-export interface ActionResult { ok: boolean, error?: string, toAgent?: boolean, review?: { since: string, head: string }, link?: string, commit?: string, alert?: string, note?: string }
+// catchUp: the PR's base, when the merge is refused because the PR conflicts with or is behind it.
+export interface ActionResult { ok: boolean, error?: string, toAgent?: boolean, review?: { since: string, head: string }, catchUp?: string, link?: string, commit?: string, alert?: string, note?: string }
 export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain', result?: ActionResult, at: number }
 export const receiptId = (task: string, step: string, attempt: number) => `${task}.${attempt}.${encodeURIComponent(step)}`

@@ -134,12 +134,16 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
             continue
           }
         }
+        // Conflicting or behind its base: no check runs on it, it needs a catch-up first.
+        const stale = { DIRTY: 'conflicts with', BEHIND: 'is behind' }[pr?.mergeStateStatus ?? '']
+        if (pr && stale) return { ok: false, error: `merge: the PR ${stale} ${pr.baseRefName}`, catchUp: pr.baseRefName, commit: head.trim() }
         const ready = prReady(pr, head.trim(), a.checks)
         if (!ready.ok && ready.later && i < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[i]!); continue }
         if (!ready.ok) return { ok: false, error: `merge: ${ready.why}` }
         if (await job.halted?.()) return { ok: false, error: 'merge: the task was stopped' }
         const m = await run(deps, SCRIPT.merge, [wt, pr!.url, head.trim(), a.method ?? ''])
-        return m.code === 0 ? { ok: true, link: pr!.url, commit: head.trim(), reached: [pr!.baseRefName] } : fail(m)
+        if (m.code === 0) return { ok: true, link: pr!.url, commit: head.trim(), reached: [pr!.baseRefName] }
+        return /not mergeable|cannot be cleanly created|not up to date/i.test(m.out) ? { ...fail(m), catchUp: pr!.baseRefName, commit: head.trim() } : fail(m)
       }
     }
   }
