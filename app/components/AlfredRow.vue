@@ -19,6 +19,8 @@ const name = computed(() => alfred.value?.name || 'Alfred')
 const current = computed(() => (alfredPane.value ? alfred.value?.ran : undefined) ?? alfred.value?.program)
 // The offered agents installed on wherdr's own machine that can carry Alfred.
 const choices = computed(() => offerCoordinators(appConfig.value.machines?.find(m => m.local)?.kinds ?? appConfig.value.kinds))
+// Its conversation is the one open: the same selected style as agent cards.
+const selected = computed(() => !props.banner && !!alfredPane.value && alfredPane.value.id === curPane.value)
 const sub = computed(() => {
   if (busy.value) return tl('Starting…', 'Lancement…')
   if (alfredPane.value) return `${current.value ? `${kindLabel(current.value)} · ` : ''}${statusLabel(alfredPane.value)}`
@@ -64,8 +66,8 @@ onUnmounted(() => clearInterval(timer))
 
 <template>
   <UContextMenu :disabled="sheetMenus || banner" :items="rowMenu.dropdown(menu)" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="rowMenu.opened">
-  <div class="alfred" :class="{ on: !!alfredPane, banner }" data-testid="alfred" v-on="rowMenu.on(menu, name)">
-    <button type="button" class="alfred-open" :disabled="busy" data-testid="alfred-open" @click="open">
+  <div class="alfred" :class="{ on: !!alfredPane, banner, sel: selected }" data-testid="alfred" v-on="rowMenu.on(menu, name)">
+    <button type="button" class="alfred-open" :disabled="busy" data-testid="alfred-open" :aria-current="selected ? 'page' : undefined" @click="open">
       <i class="alfred-dot" aria-hidden="true" />
       <span class="alfred-text"><b data-testid="alfred-name">{{ name }}</b><small data-testid="alfred-sub">{{ banner ? `${tl('All projects', 'Tous les projets')} · ${sub}` : sub }}</small></span>
       <UIcon v-if="alfredPane" name="i-lucide-chevron-right" class="alfred-go" />
@@ -98,7 +100,10 @@ onUnmounted(() => clearInterval(timer))
 </template>
 
 <style scoped>
-.alfred { display: flex; align-items: stretch; margin-bottom: 20px; border: 1px solid var(--line); background: var(--surface); }
+.alfred { position: relative; display: flex; align-items: stretch; margin-bottom: 20px; border: 1px solid var(--line); background: var(--surface); }
+.alfred::before { content: ''; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 2px; background: transparent; }
+.alfred.sel { background: var(--surface-2); }
+.alfred.sel::before { background: var(--mauve); }
 .alfred.banner { flex: none; margin: 0; border-width: 0 0 1px; }
 .alfred.banner .alfred-open { padding: 8px 16px; }
 .alfred-open { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; min-height: 52px; padding: 8px 12px; color: var(--text); text-align: left; cursor: pointer; }
