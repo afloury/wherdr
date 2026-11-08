@@ -16,7 +16,7 @@ import type { TodoKind } from '~/utils/taskTodo'
 const props = defineProps<{ card: Card, kind: TodoKind, pane?: Pane, busy: boolean, pressing: boolean, refused: string, waitsFor?: string[] }>()
 const emit = defineEmits<{ press: [], start: [], resume: [how: Resume], decide: [choice: Choice], back: [note: string] }>()
 
-// The engine's catch-up already asked the agent to fix a conflict: nothing to do yet.
+// Where the engine's catch-up of a conflict stands: the agent on it, or done.
 const told = computed(() => agentCatchingUp(props.card))
 const badge = computed(() => stepRefusalText(props.card.yourTurn ?? '', told.value))
 const advice = computed(() => props.card.state?.yourTurn?.advice)

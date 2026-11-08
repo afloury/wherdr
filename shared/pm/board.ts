@@ -10,7 +10,7 @@ import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
 import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
 import { timesOf, type Times } from './times'
-import { agentCatchingUp, refusalSaid, turnText } from './refusal'
+import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -177,10 +177,10 @@ export const requiredChecks = (plan: PlannedStep[]) => plan.flatMap(p => (p.acti
 export interface CardStatus { text: string, tone: 'wait' | 'bad' | 'ok', at?: number }
 const MERGES = ['github.merge', 'git.verify-merged']
 const bad = (text: string): CardStatus => ({ text, tone: 'bad' })
-// A refused action in plain words; waiting, not bad, once the agent fixes it.
-const refused = (error: string, told: boolean): CardStatus => {
+// A refused action in plain words; waiting, not bad, once the agent took it on.
+const refused = (error: string, told?: Told): CardStatus => {
   const said = refusalSaid(error, told)
-  return { text: said.short, tone: said.waits ? 'wait' : 'bad' }
+  return { text: said.short, tone: told ? 'wait' : 'bad' }
 }
 const ofPr = (pr: string): CardStatus => (pr === 'merged'
   ? { text: 'merged on GitHub', tone: 'ok' }
@@ -199,7 +199,7 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
   }
   const kind = c.plan[s.at]?.action?.kind
   const failed = s.yourTurn?.reason === 'action' ? s.yourTurn.error ?? '' : undefined
-  if (kind === 'github.pr') return s.acting ? { text: 'opening the PR', tone: 'wait' } : failed !== undefined ? refused(failed, false) : undefined
+  if (kind === 'github.pr') return s.acting ? { text: 'opening the PR', tone: 'wait' } : failed !== undefined ? refused(failed) : undefined
   const pr = c.plan.slice(0, s.at).some(p => p.action?.kind === 'github.pr') ? c.prNow : undefined
   if (failed !== undefined) return pr?.startsWith('checks failed') ? ofPr(pr) : refused(failed, agentCatchingUp(c))
   // The merge runs: it waits for the checks, then merges.

@@ -200,7 +200,8 @@ Your turn, the tasks it waits for, its first tags and its PR link. A refused
 step is said in plain words, never as a command: the commands go to the agent.
 When the engine has already asked the agent to bring a conflicting PR up to
 date, the card says *The PR conflicts with v3: the agent is updating it* and
-leaves Your turn until then. Its menu (right
+leaves Your turn while the PR is still in conflict; once it is not, it is back
+under Your turn: *The agent brought the PR up to date with v3*, press again. Its menu (right
 click, long press, or ••• when it has more than *Open*) offers:
 
 - **Start**, on a task to do that waits for no other task;

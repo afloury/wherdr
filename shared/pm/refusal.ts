@@ -5,15 +5,21 @@
 import type { TaskLogEntry } from './run'
 import type { StepState } from './steps'
 
-// The engine's catch-up already asked the agent to bring its PR up to date
-// (server/utils/pmMechanic.ts), since the step began.
-export const agentCatchingUp = (c: { log?: TaskLogEntry[], state?: { since?: number } }) =>
-  !!c.log?.some(e => e.by === 'engine' && e.at >= (c.state?.since ?? 0) && /^catch-up: (sent to the agent|started the worker again)/.test(e.text))
+// The engine's catch-up asked the agent to bring its PR up to date
+// (server/utils/pmMechanic.ts) since the step began: 'updating' while the
+// engine still reads the PR in conflict or behind (prNow, every minute),
+// 'updated' once it does not, and the user is asked to press again.
+export type Told = 'updating' | 'updated'
+export interface ToldOf { log?: TaskLogEntry[], state?: { since?: number }, prNow?: string }
+export function agentCatchingUp(c: ToldOf): Told | undefined {
+  const sent = c.log?.some(e => e.by === 'engine' && e.at >= (c.state?.since ?? 0) && /^catch-up: (sent to the agent|started the worker again)/.test(e.text))
+  if (sent) return /^(conflict|behind)/.test(c.prNow ?? '') ? 'updating' : 'updated'
+}
 
 // short: the card's status line. long: the sheet, with what to do next.
-// told: the engine already sent the agent its catch-up; waits: nothing for the user to do.
+// told: where the agent's catch-up stands; waits: nothing for the user to do yet.
 export interface Said { short: string, long: string, waits?: true }
-const KNOWN: [RegExp, (m: RegExpMatchArray, told: boolean) => Said][] = [
+const KNOWN: [RegExp, (m: RegExpMatchArray, told?: Told) => Said][] = [
   [/the PR head is not the task's commit/, () => ({
     short: 'The PR is not at the task\'s latest commit',
     long: 'The PR on GitHub is not at the task\'s latest commit: its branch moved (often the agent fixing a conflict or a check). Press again once the PR has the new commits.',
@@ -22,10 +28,10 @@ const KNOWN: [RegExp, (m: RegExpMatchArray, told: boolean) => Said][] = [
   [/checks still running|waiting for check/, () => ({ short: 'checks still running', long: 'The PR\'s checks have not finished. Press again once they are green.' })],
   // "the PR conflicts with v3" (pmActions.ts), "conflict with v3 in a.ts" (the catch-up), GitHub's own words.
   [/conflicts? with (?!its )([\w./-]+)|conflict|not mergeable|cannot be cleanly created/i, (m, told) => {
-    const short = `The PR conflicts with ${m[1] ?? 'its target branch'}`
-    return told
-      ? { short: `${short}: the agent is updating it`, long: `${short}: the agent is updating it. Press again once it is done.`, waits: true }
-      : { short, long: `${short}: the engine brings it up to date, or asks the agent to. Press again once it is.` }
+    const base = m[1] ?? 'its target branch', short = `The PR conflicts with ${base}`
+    if (told === 'updating') return { short: `${short}: the agent is updating it`, long: `${short}: the agent is updating it. Press again once it is done.`, waits: true }
+    if (told === 'updated') return { short: `The agent brought the PR up to date with ${base}`, long: `The agent brought the PR up to date with ${base}: press again to merge.` }
+    return { short, long: `${short}: the engine brings it up to date, or asks the agent to. Press again once it is.` }
   }],
   [/base branch policy prohibits the merge|review is required|required status check/i, () => ({
     short: 'GitHub\'s branch rules refuse the merge',
@@ -36,7 +42,7 @@ const KNOWN: [RegExp, (m: RegExpMatchArray, told: boolean) => Said][] = [
 // A shell command in an unknown error (GitHub's "Run the following…" hint): never shown.
 const COMMAND = /&&|\b(gh|git) [a-z-]+ /
 
-export function refusalSaid(text: string, told = false): Said {
+export function refusalSaid(text: string, told?: Told): Said {
   for (const [re, say] of KNOWN) {
     const m = text.match(re)
     if (m) return say(m, told)
@@ -51,8 +57,8 @@ export function refusalSaid(text: string, told = false): Said {
 
 // The card's call to the user, in words (the board, its Your turn lane, the
 // decisions): a refused action says what went wrong, and there is none while
-// the agent fixes it.
-export function turnText(c: { yourTurn?: string, state?: StepState, log?: TaskLogEntry[] }): string | undefined {
+// the agent fixes it (back once the PR is clean).
+export function turnText(c: ToldOf & { yourTurn?: string, state?: StepState }): string | undefined {
   const y = c.state?.yourTurn
   if (!c.yourTurn || y?.reason !== 'action' || !y.error || !y.badge.endsWith(`: ${y.error}`)) return c.yourTurn
   const said = refusalSaid(y.error, agentCatchingUp(c))
