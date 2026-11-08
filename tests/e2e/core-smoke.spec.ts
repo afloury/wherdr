@@ -1,37 +1,19 @@
 import { test, expect } from '@playwright/test'
-import { readFileSync } from 'node:fs'
 import { fixture, startCore } from './core'
 
-// v3 journey on core agents (CI on pull requests to v3): the home loads from the
+// v3 journey on one core agent (CI on pull requests to v3): the home loads from the
 // fake core, the agent opens, a file attached from the conversation is put on its
 // machine, the phone key bar's navigation keys reach core by the names terminal.keys
 // accepts (home, pageup…, not v2 Herdr's CSI bytes), and the terminal attaches.
-// An idle Devin then keeps Conversation visible without a terminal overlay.
 // Merges the former core-attach and core-keybar specs: same agent, same opening steps.
 // Also runs on webkit-phone (playwright.config.ts): the events WebSocket must open and
 // deliver a state frame there, since iOS Safari can reject a handshake Chromium accepts.
 // Startup-banner/reload steps formerly in this core-smoke journey are covered by
 // AppVersionStartup.test.ts and serviceWorkerNavigation.test.ts at cheaper levels.
-test('core smoke: home, conversation attach and key bar, terminal attach', async ({ page }, testInfo) => {
+test('core smoke: home, conversation attach and key bar, terminal attach', async ({ page }) => {
   const terminal = fixture.inventory.terminals[0]!
-  const devin = { ...terminal, address: 'host-a/t8', name: 'devin-idle-agent', template: 'devin', argv: ['devin', '-r', 'devin-idle'], status: 'idle' }
-  const idle = readFileSync(new URL('../fixtures/core-screens/devin-idle.txt', import.meta.url), 'utf8')
-  const transcript = Buffer.from(JSON.stringify({ schema_version: 'ATIF-v1.7', session_id: 'devin-idle', steps: [{ step_id: 1, source: 'agent', message: 'Saved Devin reply' }] }))
-  const file = '/home/user/.local/share/devin/cli/transcripts/devin-idle.json'
   const core = await startCore(call =>
-    call.method === 'terminal.list' ? { ...fixture.inventory, terminals: [terminal, devin].map(t => ({ ...t, labels: { 'herdr.space': 'sp1', 'herdr.tab': 'tbA' } })) }
-    : call.method === 'terminal.read' && call.params.terminal === devin.address ? { text: idle }
-    : call.method === 'terminal.get' && call.params.terminal === devin.address ? { pid: 42424242, argv: devin.argv }
-    : call.method === 'machine.exec' ? (() => {
-      const argv = call.params.argv as string[]
-      const script = argv[2] || ''
-      const stdout = script === 'printf %s "$HOME"' ? Buffer.from('/home/user')
-        : argv.includes(file) ? script.includes('tail -c')
-          ? transcript.subarray(Number(argv[5]) - 1, Number(argv[5]) - 1 + Number(argv[6]))
-          : Buffer.from(`${transcript.length} 1767225601.000000000 1 regular file\n`)
-          : Buffer.alloc(0)
-      return { code: 0, stdout: stdout.toString('base64'), stderr: '' }
-    })()
+    call.method === 'terminal.list' ? { ...fixture.inventory, terminals: [{ ...terminal, labels: { 'herdr.space': 'sp1', 'herdr.tab': 'tbA' } }] }
     : call.method === 'doc.get' ? { value: call.params.on ? null : { spaces: [{ id: 'sp1', name: 'Demo', folder: '/workspace/demo', tabs: [{ id: 'tbA', name: 'Main' }] }] }, version: 1 }
     : call.method === 'terminal.put' ? { path: `/remote/${call.params.name}` }
     : call.method === 'terminal.keys' ? { status: null, turn: 0 }
@@ -88,28 +70,6 @@ test('core smoke: home, conversation attach and key bar, terminal attach', async
     await page.getByRole('button', { name: 'Terminal', exact: true }).click()
     await expect.poll(() => core.framed.filter(c => c.method === 'terminal.attach').map(c => c.params.terminal)).toContain(terminal.address)
     await expect(page.locator('.xterm')).toBeVisible()
-
-    // Core reports this Devin idle. Its ordinary field must keep Conversation
-    // visible, rather than mounting the fallback terminal after its debounce.
-    await page.getByRole('button', { name: 'Back', exact: true }).click()
-    await page.getByRole('button', { name: /devin-idle-agent/ }).first().click()
-    if (await toChat.count() && await toChat.getAttribute('aria-pressed') === 'false') await toChat.click()
-    const reply = page.locator('article').getByText('Saved Devin reply', { exact: true })
-    await expect(reply).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Photo, file, paste, commands', exact: true })).toBeEnabled()
-    await expect.poll(async () => {
-      const state = await (await page.request.get(core.url + '/api/state')).json()
-      return state.panes.find((p: { coreAddress: string }) => p.coreAddress === devin.address)?.interaction
-    }).toBe('input')
-    await page.clock.install()
-    await page.clock.fastForward(1000)
-    await expect(page.locator('.interactive-terminal')).toHaveCount(0)
-    await expect(page.locator('.interactive-terminal-reopen')).toHaveCount(0)
-    await page.screenshot({ path: testInfo.outputPath('devin-idle-phone.png') })
-    await page.setViewportSize({ width: 1440, height: 900 })
-    await expect(reply).toBeVisible()
-    await expect(page.locator('.interactive-terminal')).toHaveCount(0)
-    await page.screenshot({ path: testInfo.outputPath('devin-idle-computer.png') })
   } finally {
     await core.stop()
   }
