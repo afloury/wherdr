@@ -15,7 +15,7 @@ import { BACKDROPS } from '../../app/utils/backdrop'
 const ON_OFF = ['1', '0']
 export const SETTING_VALUES: Partial<Record<SyncedSetting, readonly string[]>> = {
   'theme': THEMES.map(t => t.id), 'focusBorder': FOCUS_BORDERS, 'backdrop': BACKDROPS, 'backdropPackets': ['on', 'off'],
-  'machineBar': ON_OFF, 'compactListV2': ON_OFF, 'homeGrouping': ['machine', 'state'],
+  'machineBar': ON_OFF, 'compactListV2': ON_OFF,
   'showShells': ON_OFF, 'showCounters': ON_OFF, 'showQuotas': ON_OFF, 'quotaDisplay': ['left', 'used'],
   'autoReorderReady': ON_OFF, 'readySort': READY_SORTS,
   'typewriterSpeed': ['off', 'fast', 'medium', 'slow'], 'encryptedText': ON_OFF, 'replyStyle': ['icon', 'text', 'list'], 'defaultViewMode': ['chat', 'term'],
@@ -32,7 +32,7 @@ export type AlfredCommand =
   | { name: 'project template', apply: boolean, key: string, template: string } // '' clears it
   | { name: 'coordinator start', apply: boolean, key: string, program?: 'claude' | 'codex' }
   // No change given: the project's guards are shown.
-  | { name: 'project guards', apply: boolean, key: string, change: { protect?: string[], mergeProtected?: MergeBy, mergeOthers?: MergeBy } }
+  | { name: 'project guards', apply: boolean, key: string, change: { protect?: string[], mergeProtected?: MergeBy, mergeOthers?: MergeBy, contributorPrs?: 'off' | 'others' | 'all' } }
   | { name: 'setting set', apply: boolean, key: SyncedSetting, value: string }
 
 // One table for the parser's usage errors, `help` and AGENTS.md.
@@ -46,7 +46,7 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'settings', does: 'the synced settings, their values, and the values each one Alfred may change accepts (1 = on, 0 = off)' },
   { usage: 'project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]', does: 'add a project: a git folder on a machine' },
   { usage: 'project template <KEY> <id|none>', does: 'give the project a template, or none' },
-  { usage: 'project guards <KEY> [--protect <branch,branch|none>] [--merge-protected user|engine] [--merge-others user|engine]', does: 'the project\'s guards: protected branches, who merges into them and into the others (user: the user, engine: wherdr); without an option, shown only. A project coordinator never changes them' },
+  { usage: 'project guards <KEY> [--protect <branch,branch|none>] [--merge-protected user|engine] [--merge-others user|engine] [--contributor-prs off|others|all]', does: 'the project\'s guards: protected branches, who merges into them and into the others (user: the user, engine: wherdr), and whether its coordinator may merge an outside contributor\'s PR after the user\'s yes (others: not into a branch reserved for the user; all: into any); without an option, shown only. A project coordinator never changes them' },
   { usage: 'coordinator start <KEY> [--program claude|codex]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one)' },
   { usage: 'setting set <key> <value>', does: 'change a setting to one of the values `settings` lists for it' },
 ]
@@ -56,7 +56,7 @@ const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/
 const FLAGS: Record<string, string[]> = {
   'project add': ['machine', 'path', 'name', 'template'],
   'coordinator start': ['program'],
-  'project guards': ['protect', 'merge-protected', 'merge-others'],
+  'project guards': ['protect', 'merge-protected', 'merge-others', 'contributor-prs'],
 }
 
 export const CHANGES = ['project add', 'project template', 'project guards', 'coordinator start', 'setting set']
@@ -100,11 +100,12 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
     return { name: verb, apply, key: key(w2), template: w3 === 'none' ? '' : w3 }
   }
   if (verb === 'project guards') {
-    const { protect, 'merge-protected': mp, 'merge-others': mo } = flags
+    const { protect, 'merge-protected': mp, 'merge-others': mo, 'contributor-prs': cp } = flags
     if (!key(w2) || w3) return usage(verb)
+    if (cp !== undefined && !['off', 'others', 'all'].includes(cp)) return { error: '--contributor-prs is off, others or all' }
     if ([mp, mo].some(v => v !== undefined && !MERGE_BY.includes(v as MergeBy))) return { error: '--merge-protected and --merge-others are user or engine' }
     const branches = protect === undefined ? undefined : protect === 'none' ? [] : protect.split(',').map(b => b.trim()).filter(Boolean)
-    return { name: verb, apply, key: key(w2), change: { ...(branches ? { protect: branches } : {}), ...(mp ? { mergeProtected: mp as MergeBy } : {}), ...(mo ? { mergeOthers: mo as MergeBy } : {}) } }
+    return { name: verb, apply, key: key(w2), change: { ...(branches ? { protect: branches } : {}), ...(mp ? { mergeProtected: mp as MergeBy } : {}), ...(mo ? { mergeOthers: mo as MergeBy } : {}), ...(cp ? { contributorPrs: cp as 'off' } : {}) } }
   }
   if (verb === 'coordinator start') {
     // A program only: it runs with its harness's default model.

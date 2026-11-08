@@ -108,11 +108,12 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       const p = projectOf(cmd.key)
       const t = await store.workflow(p.key)
       if (!t) throw new HerdrError('not_found', `Project ${p.key} has no workflow: give it a template first`)
-      const old = t.guards ?? {}, { protect, mergeProtected, mergeOthers } = cmd.change
-      if (!protect && !mergeProtected && !mergeOthers) return { project: p.key, guards: old }
+      const old = t.guards ?? {}, { protect, mergeProtected, mergeOthers, contributorPrs } = cmd.change
+      if (!protect && !mergeProtected && !mergeOthers && !contributorPrs) return { project: p.key, guards: old }
       const merge = { ...old.merge, ...(mergeProtected ? { protected: mergeProtected } : {}), ...(mergeOthers ? { others: mergeOthers } : {}) }
       const branches = protect ?? old.protected
-      const guards = { ...(branches ? { protected: branches } : {}), ...(Object.keys(merge).length ? { merge } : {}) }
+      const cp = contributorPrs ? (contributorPrs === 'off' ? undefined : contributorPrs) : old.contributorPrs
+      const guards = { ...(branches ? { protected: branches } : {}), ...(Object.keys(merge).length ? { merge } : {}), ...(cp ? { contributorPrs: cp } : {}) }
       return change({ change: [`project ${p.key} guards: ${JSON.stringify(old)} → ${JSON.stringify(guards)}`] }, () => saveProjectGuards(store, p.key, guards, 'Alfred'))
     }
     case 'coordinator start': {

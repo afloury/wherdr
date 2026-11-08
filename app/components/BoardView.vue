@@ -2,7 +2,7 @@
 // The board: Your turn first, then the columns of the project's template
 // (To do / Working / Done for all projects, with the step on the card). A
 // card's indicator is the live state of the agent holding its step.
-import { boardLanes, boardTags, canStop, mainLink, type Board, type Card } from '#shared/pm/board'
+import { boardLanes, boardTags, canStop, cardStatus, linkLabel, mainLink, type Board, type Card } from '#shared/pm/board'
 import { RESUMES } from '#shared/pm/stop'
 import { taskMark } from '#shared/pm/blocked'
 import type { Pane } from '#shared/types'
@@ -40,6 +40,8 @@ const columns = computed(() => (project.value ? data.value?.projects.find(p => p
 const lanes = computed(() => boardLanes(cards.value, columns.value))
 const PHASE_LABEL: Record<string, string> = { 'your-turn': 'Your turn', 'todo': 'To do', 'working': 'Working', 'done': 'Done' }
 const laneLabel = (id: string) => (columns.value && id !== 'your-turn' ? id : t(PHASE_LABEL[id]!))
+// Where its PR and merge stand, one line: 'PR open · waiting for checks (smoke)', 'merged 14:05'.
+const statusOf = (c: Card) => { const s = cardStatus(c); return s && { ...s, text: s.at ? `${s.text} ${fmtWhen(new Date(s.at).toISOString())}` : s.text } }
 const showStep = (c: Card, lane: string) => c.step && (!columns.value || lane === 'your-turn')
 
 // The holder's pane, by its herdr-core address; none for holder: none.
@@ -98,12 +100,13 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
             <b>{{ c.title }}</b>
           </span>
           <small class="mono-label">{{ c.id }}<template v-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
+          <small v-if="statusOf(c)" class="board-status" :class="statusOf(c)!.tone" :title="statusOf(c)!.text" data-testid="board-status">{{ statusOf(c)!.text }}</small>
           <span v-if="blockedOf(c)" class="board-badge stuck" data-testid="board-blocked">{{ tl('Blocked', 'Bloqué') }}: {{ blockedOf(c) }}</span>
           <span v-else-if="c.yourTurn" class="board-badge" data-testid="board-badge">{{ c.yourTurn }}</span>
           <span v-if="c.tags.length || c.links.length" class="board-tags">
             <span v-for="tag in c.tags.slice(0, 2)" :key="tag" class="board-chip">{{ tag }}</span>
             <span v-if="c.tags.length > 2" class="board-chip">+{{ c.tags.length - 2 }}</span>
-            <a v-if="mainLink(c)" :href="mainLink(c)!.url" target="_blank" rel="noopener" class="board-chip" data-testid="board-link" @click.stop>{{ mainLink(c)!.label }}</a>
+            <a v-if="mainLink(c)" :href="mainLink(c)!.url" target="_blank" rel="noopener" class="board-chip" data-testid="board-link" @click.stop>{{ linkLabel(mainLink(c)!) }}</a>
           </span>
         </button>
         </UContextMenu>
@@ -139,6 +142,10 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
 .board-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 12px; min-height: 44px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
 .board-card:active { background: var(--surface-2); }
 .board-card-head { display: flex; align-items: center; gap: 8px; }
+.board-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+.board-status.wait { color: var(--working); }
+.board-status.bad { color: var(--danger); }
+.board-status.ok { color: var(--done); }
 @media (min-width: 900px) {
   .board-body { overflow-y: hidden; }
   .board-lanes { flex: 1; flex-direction: row; align-items: stretch; overflow-x: auto; }

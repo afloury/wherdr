@@ -71,7 +71,7 @@ describe('step engine, vibe', () => {
       [0, { kind: 'start' }], [5, { kind: 'report', from: 'worker' }],
       [6, { kind: 'action-result', ok: false, error: 'conflict in app.vue' }],
     ])
-    expect(r.state.yourTurn).toEqual({ reason: 'action', badge: 'land: conflict in app.vue' })
+    expect(r.state.yourTurn).toEqual({ reason: 'action', badge: 'land: conflict in app.vue', error: 'conflict in app.vue' })
     const again = onEvent(r.plan, r.state, { kind: 'user' }, 7 * MIN)
     expect(again.effects).toEqual([{ kind: 'action', step: 'land', action: { kind: 'git.land', target: 'dev' }, attempt: 2 }])
     expect(again.state.yourTurn).toBeUndefined()
@@ -107,7 +107,7 @@ describe('step engine, company flow', () => {
     ])
     expect(r.effects.at(-1)).toEqual({ kind: 'action', step: 'merge', action: { kind: 'git.verify-merged', target: 'develop' }, attempt: 1 })
     expect(currentStep(r.plan, r.state)!.id).toBe('merge')
-    expect(r.state.yourTurn).toEqual({ reason: 'action', badge: 'Merge the PR: commit not in develop' })
+    expect(r.state.yourTurn).toEqual({ reason: 'action', badge: 'Merge the PR: commit not in develop', error: 'commit not in develop' })
   })
 
   it('the coordinator watches the deploy, is told again on recheck, and the timeout goes to Your turn', () => {

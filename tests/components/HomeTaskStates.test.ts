@@ -3,7 +3,7 @@
 import { afterEach, expect, it } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import HomeView from '~/components/HomeView.vue'
-import { desk, eventsOpen, herdrState, homeGrouping } from '~/composables/useHerdr'
+import { desk, eventsOpen, herdrState } from '~/composables/useHerdr'
 import type { AgentTask } from '#shared/pm/blocked'
 import type { Pane } from '#shared/types'
 
@@ -21,7 +21,6 @@ const pane = (n: number, status: Pane['status']): Pane => ({
 afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] }; eventsOpen.value = false; desk.value = false })
 
 it('the worker of a blocked task lists in Blocked, a task waiting for the user in Your turn, and the counters follow', async () => {
-  homeGrouping.value = 'machine'
   desk.value = true // the list is shown: it reads the tasks
   // Both agents ended their turn; a third one with no task stays Ready.
   const panes = [pane(1, 'done'), pane(2, 'working'), pane(3, 'idle')]

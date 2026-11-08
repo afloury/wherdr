@@ -5,7 +5,7 @@ import { nextTick } from 'vue'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import AlfredRow from '~/components/AlfredRow.vue'
-import { agentOrder, appConfig, coarse, desk, herdrState, hiddenAgents } from '~/composables/useHerdr'
+import { agentOrder, appConfig, coarse, curPane, desk, herdrState, hiddenAgents } from '~/composables/useHerdr'
 import { menuState } from '~/composables/useUi'
 import { MAIN } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
@@ -79,6 +79,18 @@ it('running and renamed: its name, its current agent, one tap opens the conversa
   await w!.find('[data-testid="alfred-open"]').trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w%3Ap1'))
   expect(posts).toEqual([])
+  // Its conversation open: selected like an agent card; another one opened: not any more.
+  const open = w!.find('[data-testid="alfred-open"]')
+  expect(open.attributes('aria-current')).toBeUndefined()
+  curPane.value = 'w:p1'
+  await nextTick()
+  expect(w!.find('[data-testid="alfred"]').classes()).toContain('sel')
+  expect(open.attributes('aria-current')).toBe('page')
+  curPane.value = 'w:p2'
+  await nextTick()
+  expect(w!.find('[data-testid="alfred"]').classes()).not.toContain('sel')
+  expect(open.attributes('aria-current')).toBeUndefined()
+  curPane.value = null
 })
 
 it('no ••• button: right click (computer) and long press (touch) open its menu, Restart with… asks for the agent', async () => {
