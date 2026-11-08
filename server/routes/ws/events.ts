@@ -1,12 +1,16 @@
 import { notificationPresence } from '../../utils/notificationRules'
+import { eventSendOptions } from '../../utils/wsCompression'
 // WS /ws/events: the agents' state, pushed on every change. The app says
 // which agent is on screen: no notification for that one.
 export default defineWebSocketHandler({
   upgrade: request => checkUpgrade(request),
   open(peer) {
     watchPeer(peer)
-    eventClients.set(peer.id, { send: d => isOpen(peer) && peer.send(d), pane: null, visible: false })
-    peer.send(getStateJson())
+    // crossws passes `compress: undefined` to ws, which turns compression off:
+    // chosen per frame instead (permessage-deflate, see utils/wsCompression.ts).
+    eventClients.set(peer.id, { send: d => isOpen(peer) && peer.send(d, eventSendOptions(d)), pane: null, visible: false })
+    const first = getStateJson()
+    peer.send(first, eventSendOptions(first))
   },
   message(peer, message) {
     const raw = messageText(message)
