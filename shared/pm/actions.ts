@@ -120,6 +120,8 @@ if [ "$(git rev-parse HEAD)" = "$p" ]; then echo same; elif git merge-base --is-
   // Runs again the failed or cancelled workflow runs of a commit.
   rerun: `${IN} ids=$(gh run list --commit "$1" --json databaseId,conclusion -q '.[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .conclusion != "") | .databaseId' 2>&1) || { echo "$ids"; exit 1; }
 for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
+  // The failed jobs' log at the commit, for a red-CI nudge (blocked.ts): its last lines.
+  failedLog: `${IN} for i in $(gh run list --commit "$1" --json databaseId,conclusion -q '.[] | select(.conclusion == "failure") | .databaseId' 2>/dev/null); do gh run view "$i" --log-failed 2>/dev/null | tail -n 400; done`,
   // Remote branches holding the task's commit, for the protected-branch alert.
   contains: `${IN} git fetch -q origin 2>&1 || exit 1; git branch -r --contains HEAD --format='%(refname:short)'`,
 }

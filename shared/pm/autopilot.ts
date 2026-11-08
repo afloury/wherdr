@@ -64,9 +64,10 @@ export function inHours(hours: Autopilot['hours'], d: Date) {
 }
 
 // Where a task stands for the autopilot.
-export type TaskStatus = 'todo' | 'working' | 'waiting' | 'ready' | 'done'
+// stalled: working, nothing moves (blocked.ts); it still holds its slot.
+export type TaskStatus = 'todo' | 'working' | 'stalled' | 'waiting' | 'ready' | 'done'
 export const taskStatus = (t: Task): TaskStatus =>
-  t.step?.done ? 'done' : t.state === 'waiting' ? 'waiting' : t.step?.yourTurn ? 'ready' : t.state
+  t.step?.done ? 'done' : t.state === 'waiting' ? 'waiting' : t.step?.yourTurn ? 'ready' : t.state === 'working' && t.stall ? 'stalled' : t.state
 
 // What is left of today's limits. Started today: tasks whose first worker run
 // started since local midnight. Working: only tasks that hold a slot.
@@ -76,7 +77,7 @@ export function limitsLeft(ap: Autopilot, tasks: Task[], runs: Run[], now: numbe
   const first = new Map<string, number>()
   for (const r of runs) if (ids.has(r.task) && r.role === 'worker') first.set(r.task, Math.min(first.get(r.task) ?? Infinity, r.startedAt))
   const started = [...first.values()].filter(at => at >= midnight).length
-  const working = tasks.filter(t => taskStatus(t) === 'working').length
+  const working = tasks.filter(t => ['working', 'stalled'].includes(taskStatus(t))).length
   return { started, perDay: ap.perDay, startLeft: Math.max(0, Math.min(ap.perDay - started, ap.atOnce - working)), working, atOnce: ap.atOnce }
 }
 
@@ -154,15 +155,18 @@ export const lookAddRefusal = (ap: Autopilot | undefined, added: number) => {
   return added >= max ? `Today's limit of new work is reached (${max} tasks added by look-for-new-work wakes): back to sleep until tomorrow` : undefined
 }
 
-// The events since the last tick: tasks added, done, stuck (waiting) or
-// ready, among those the autopilot wakes for. `seen`: each task's last status.
-// A stopped task is not stuck: someone chose to stop it.
+// The events since the last tick: tasks added, done, stuck (waiting, stalled,
+// an action refused or failing) or ready, among those the autopilot wakes for.
+// `seen`: each task's last status. A stopped task is not stuck: someone chose to stop it.
 export function autopilotEvents(ap: Autopilot, tasks: Task[], seen: Record<string, TaskStatus>) {
   const now: Record<string, TaskStatus> = {}, reasons: string[] = []
   for (const t of tasks) {
     const s = now[t.id] = taskStatus(t)
-    const ev: AutopilotEvent | undefined = !(t.id in seen) ? 'added' : seen[t.id] === s ? undefined : s === 'waiting' ? (t.stopped ? undefined : 'stuck') : s === 'done' || s === 'ready' ? s : undefined
-    if (ev && ap.events.includes(ev)) reasons.push(`${t.id} (${t.title}): ${ev}${ev === 'stuck' && t.waiting ? `: ${t.waiting.split('\n')[0]}` : ''}`)
+    const failed = s === 'ready' && t.step?.yourTurn?.reason === 'action'
+    const ev: AutopilotEvent | undefined = !(t.id in seen) ? 'added' : seen[t.id] === s ? undefined
+      : s === 'waiting' || s === 'stalled' || failed ? (t.stopped ? undefined : 'stuck') : s === 'done' || s === 'ready' ? s : undefined
+    const why = s === 'stalled' ? t.stall?.reason : failed ? t.step?.yourTurn?.badge : t.waiting
+    if (ev && ap.events.includes(ev)) reasons.push(`${t.id} (${t.title}): ${ev}${ev === 'stuck' && why ? `: ${why.split('\n')[0]}` : ''}`)
   }
   return { seen: now, reasons }
 }
