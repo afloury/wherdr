@@ -650,6 +650,25 @@ describe('commands of lot 10', () => {
     expect((await cli(['task', 'add', 'Next', '--type', 'feature', '--after', 'CO-1'])).task).toMatchObject({ id: 'CO-2', after: 'CO-1' })
   })
 
+  it('task remove: a task never started, with a reason in the project\'s log; in a wake only the autopilot\'s own', async () => {
+    expect(parseCommand(['task', 'remove', 'CO-1'])).toMatchObject({ error: expect.stringMatching(/^usage: wherdr pm task remove/) })
+    await noteTurn(store, 'CO', 'user', 'remove the duplicate')
+    const [a, b, c] = [await store.addTask({ project: 'CO', title: 'Dup', type: 'feature' }), await store.addTask({ project: 'CO', title: 'Next', type: 'feature' }), await store.addTask({ project: 'CO', title: 'Then', type: 'feature', after: 'CO-2' })]
+    await refused(cli(['task', 'remove', b.id, '--reason', 'Not needed.']), 'CO-3 waits for CO-2 (after): remove it first')
+    await noteTurn(store, 'CO', 'wake')
+    await refused(cli(['task', 'remove', a.id, '--reason', 'Duplicate of CO-2.']), 'only the tasks your autopilot added')
+    await store.saveTask({ ...c, autopilot: true })
+    expect(await cli(['task', 'remove', c.id, '--reason', 'Merged into CO-2.'])).toEqual({ removed: 'CO-3' })
+    await noteTurn(store, 'CO', 'user', 'remove the duplicate')
+    await store.saveTask({ ...a, state: 'working', step: state(1) })
+    await refused(cli(['task', 'remove', a.id, '--reason', 'Duplicate.']), 'CO-1 has started')
+    expect(await store.task(c.id)).toBeNull()
+    expect(await store.projectLog('CO')).toEqual([{ at: expect.any(Number), by: 'coordinator CO', text: 'removed CO-3 "Then": Merged into CO-2.', task: 'CO-3' }])
+    // Its number is never given again.
+    expect((await store.addTask({ project: 'CO', title: 'New', type: 'feature' })).id).toBe('CO-4')
+    await refused(cli(['task', 'remove', 'ST-1', '--reason', 'x']), 'Unknown task')
+  })
+
   it('tell: an agent\'s question in a wake; never a permission', async () => {
     const sent: string[] = []
     const call = async (method: string, p: { text: string }) => { if (method === 'terminal.send') sent.push(p.text); return {} }

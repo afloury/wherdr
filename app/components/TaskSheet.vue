@@ -2,7 +2,8 @@
 // A task's sheet: its Plan (the steps, the current one, what its holder was
 // told, the proofs and rounds), its links, the agent holding the step, and
 // the step's button when it waits for the user ("Merged"), Stop (with its
-// reason, confirmed here), and how a stopped task goes on.
+// reason, confirmed here), how a stopped task goes on, and Delete for a task
+// never started (confirmed).
 import { canStop, type Card } from '#shared/pm/board'
 import { RESUMES, type Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
@@ -34,6 +35,8 @@ const confirmStop = ref(!!props.stopping)
 const why = ref('')
 const stop = () => run(async () => { await stopTaskApi(props.card.id, why.value); confirmStop.value = false })
 const resume = (how: Resume) => run(() => resumeTaskApi(props.card.id, how))
+// Removed: the sheet closes, the board reloads without it.
+const remove = () => run(async () => { const yes = await removeTaskApi(props.card.id); if (yes) open.value = false; return yes })
 </script>
 
 <template>
@@ -55,6 +58,7 @@ const resume = (how: Resume) => run(() => resumeTaskApi(props.card.id, how))
         </UButton>
       </div>
       <UButton v-if="canStop(card) && !confirmStop" color="error" variant="outline" size="xl" icon="i-lucide-square" class="task-stop" data-testid="task-stop" @click="confirmStop = true">{{ tl('Stop', 'Arrêter') }}</UButton>
+      <UButton v-if="card.removable" color="error" variant="outline" size="xl" icon="i-lucide-trash-2" class="task-stop" :loading="busy" data-testid="task-remove" @click="remove">{{ tl('Delete…', 'Supprimer…') }}</UButton>
       <form v-if="canStop(card) && confirmStop" class="task-stop-confirm" data-testid="task-stop-confirm" @submit.prevent="stop">
         <p>{{ tl('Stop this task? Its agent ends; the worktree, branch and work stay, and nothing is merged.', 'Arrêter cette tâche ? Son agent s’arrête ; le worktree, la branche et le travail restent, rien n’est fusionné.') }}</p>
         <UInput v-model="why" size="xl" maxlength="300" :placeholder="tl('Why (optional)', 'Pourquoi (facultatif)')" data-testid="task-stop-why" />

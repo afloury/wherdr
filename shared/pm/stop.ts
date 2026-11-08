@@ -3,7 +3,7 @@
 // the user, with who stopped it and why. Pure: server/utils/pmStop.ts ends the
 // agents and saves the task.
 import type { Task } from './run'
-import { dueText } from './advance'
+import { afterIds, dueText } from './advance'
 import type { PlannedStep } from './steps'
 
 export interface Stopped { by: string, why: string, at: number }
@@ -59,4 +59,19 @@ export function handoverText(task: Task, plan: PlannedStep[], branch: string): s
     ...(log.length ? ['The task\'s last log lines:', ...log, ''] : []),
     ...(due?.holder === 'worker' ? [`Your step now (${plan[s.at]!.id}):`, '', due.text.replace(/\n\nWhen done: .*$/s, ''), ''] : []),
   ].join('\n')
+}
+
+// Not started: no step, no agent ever ran, so no worktree and no branch. Only
+// such a task can be removed; a started one is stopped, then archived.
+export const notStarted = (task: Task, runs: { task: string }[]) =>
+  task.state === 'todo' && !task.run && !task.step?.started && !task.stopped && !runs.some(r => r.task === task.id)
+
+// Why the task may not be removed, or undefined. In a wake, the coordinator
+// removes only a task its autopilot added. A task others wait for (after) is
+// refused, naming them: their chain is the user's or the coordinator's to fix first.
+export function removeRefusal(task: Task, runs: { task: string }[], tasks: Task[], by: Stopper): string | undefined {
+  if (!notStarted(task, runs)) return `${task.id} has started: stop it, then archive it`
+  if (by.who === 'coordinator' && by.wake && !autopilots(task)) return `In a wake, you remove only the tasks your autopilot added: ${task.id} is the user's`
+  const waiting = tasks.filter(t => t.id !== task.id && t.project === task.project && !t.step?.done && afterIds(t).includes(task.id))
+  if (waiting.length) return `${waiting.map(t => t.id).join(', ')} wait${waiting.length > 1 ? '' : 's'} for ${task.id} (after): remove ${waiting.length > 1 ? 'them' : 'it'} first`
 }

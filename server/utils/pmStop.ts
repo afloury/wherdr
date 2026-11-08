@@ -1,9 +1,10 @@
 // Stops a task (its agents end through herdr-core; worktree, branch and work
-// stay) and takes a stopped one up again. Never merges, never deletes a branch.
+// stay), takes a stopped one up again, and removes one never started. Never
+// merges, never deletes a branch.
 import { HerdrError } from './herdr'
 import { startTask, type PmLaunchDeps } from './pmLaunch'
 import { onEvent, planSteps } from '../../shared/pm/steps'
-import { handoverText, resumeRefusal, stopRefusal, stoppedTask, type Resume, type Stopper } from '../../shared/pm/stop'
+import { handoverText, removeRefusal, resumeRefusal, stopRefusal, stoppedTask, type Resume, type Stopper } from '../../shared/pm/stop'
 import type { Task } from '../../shared/pm/run'
 
 async function load(deps: PmLaunchDeps, id: unknown) {
@@ -29,6 +30,17 @@ export async function stopTask(deps: PmLaunchDeps, id: unknown, by: Stopper, why
     saved = await store.logTask(saved, 'engine', err ? `could not end the ${r.role} (${err}): close its terminal by hand` : `ended the ${r.role} (${r.program} ${r.model}); its worktree stays`)
   }
   return saved
+}
+
+// A task never started, removed from the board; the project's log keeps who and why.
+export async function removeTask(deps: Pick<PmLaunchDeps, 'store'>, id: unknown, by: Stopper, why: string, logBy: string) {
+  const { store } = deps
+  const task = await store.task(id)
+  if (!task) throw new HerdrError('not_found', 'Unknown task')
+  const refused = removeRefusal(task, await store.runs(), await store.tasks(), by)
+  if (refused) throw new HerdrError('refused', refused)
+  await store.removeTask(task, logBy, `removed ${task.id} "${task.title}": ${why.trim().slice(0, 300) || 'no reason given'}`)
+  return { removed: task.id }
 }
 
 export async function resumeTask(deps: PmLaunchDeps, id: unknown, how: Resume, by: Stopper, logBy: string): Promise<Task> {

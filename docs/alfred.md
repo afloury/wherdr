@@ -31,8 +31,9 @@ Changing (show, then do):
 A change without `--apply` changes nothing: it prints what it would do (`dryRun`, `change`) and
 the command that makes it. Alfred shows you those lines and runs that command, with `--apply`,
 only after your yes in the chat. When the answer names a `remote` machine (a project on another
-machine, its coordinator), Alfred makes the change only when you asked for it. No command
-deletes anything: removing a project, a template or a setting stays yours, in Settings.
+machine, its coordinator), Alfred makes the change only when you asked for it. No `wherdr alfred`
+command deletes anything: removing a project, a template or a setting stays yours, in Settings.
+The one removal a coordinator has is `wherdr pm task remove`, for a task never started.
 
 ```text
 $ wherdr alfred project template WEB company
