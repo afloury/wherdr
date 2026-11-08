@@ -133,7 +133,7 @@ async function remove() {
             <span class="pm-colors" role="radiogroup" :aria-label="tl('Color')" data-testid="pm-colors">
               <button
                 v-for="c in PROJECT_COLORS" :key="c" type="button" role="radio" class="pm-color" :class="{ on: form.color === c }" :aria-checked="form.color === c" :aria-label="tl(c)" :title="tl(c)"
-                :style="{ '--key-c': `var(--project-${c})` }" :data-color="c" @click="form.color = c"
+                :style="{ '--key-c': projectColorVar(c) }" :data-color="c" @click="form.color = c"
               ><i /></button>
             </span>
             <small class="muted">{{ tl('Task ids start with it. Every task, old ones too, shows the new key; links and commands with a former key still work.') }}</small>

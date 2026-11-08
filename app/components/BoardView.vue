@@ -2,6 +2,7 @@
 // The board: Your turn first, then the columns of the project's template
 // (To do / Working / Done for all projects, with the step on the card). A
 // card's indicator is the live state of the agent holding its step.
+import { turnText } from '#shared/pm/refusal'
 import { boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, waitsFor, type Board, type BoardMachine, type Card } from '#shared/pm/board'
 import type { Task } from '#shared/pm/run'
 import { RESUMES } from '#shared/pm/stop'
@@ -100,6 +101,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
     <header class="board-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back" :aria-label="t('Back')" to="/" />
       <h1 class="display">{{ tl('Board', 'Tableau') }}</h1>
+      <SetupButton />
       <UButton :color="decisions ? 'warning' : 'neutral'" :variant="decisions ? 'solid' : 'outline'" size="lg" to="/decisions" data-testid="board-decisions">
         {{ tl('Decisions', 'Décisions') }}<span v-if="decisions" class="mono-label board-decisions-n">{{ decisions }}</span>
       </UButton>
@@ -110,9 +112,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
       <USelect v-if="tags.length || tag" v-model="tagPick" :items="tagItems" size="lg" class="board-select" :aria-label="tl('Tag', 'Étiquette')" data-testid="board-tag" />
       <CoordinatorButton v-if="coordinator" :c="coordinator" open />
     </header>
-    <!-- One scroll on the phone, so a tall guide does not hide the lanes. -->
     <div class="board-body">
-    <PmGuide :always="route.query.guide === '1'" />
     <p v-if="error" class="error board-note">{{ error }}</p>
     <p v-else-if="data && !data.cards.length" class="muted board-note">{{ tl('No task yet.', 'Aucune tâche pour l’instant.') }}</p>
     <div class="board-lanes">
@@ -127,7 +127,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
           </span>
           <small class="mono-label board-card-id"><ProjectBadge :text="c.shown" :color="c.color" copy /><template v-if="timeOf(c)"> · <span data-testid="board-time">{{ timeOf(c) }}</span></template><template v-else-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
           <small v-if="statusOf(c)" class="board-status" :class="statusOf(c)!.tone" :title="statusOf(c)!.text" data-testid="board-status">{{ statusOf(c)!.text }}</small>
-          <span v-if="c.yourTurn" class="board-badge" data-testid="board-badge">{{ c.yourTurn }}</span>
+          <span v-if="turnText(c)" class="board-badge" data-testid="board-badge">{{ turnText(c) }}</span>
           <small v-else-if="waiting(c).length" class="muted" data-testid="board-waits">{{ tl('Waits for', 'Attend') }} {{ waiting(c).map(id => shownTaskId(data?.projects ?? [], id)).join(', ') }}</small>
           <!-- Stalled, the machine may still fix it: a warning only; after 30 min it is Your turn. -->
           <small v-if="c.stall && !c.yourTurn" class="board-stall" :title="c.stall.reason" data-testid="board-stall"><UIcon name="i-lucide-triangle-alert" aria-hidden="true" />{{ t(c.stall.reason) }}</small>

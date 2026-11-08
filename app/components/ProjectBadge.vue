@@ -17,11 +17,11 @@ async function copyIt(e: Event) {
 
 <template>
   <span
-    v-if="copy" class="project-badge copy" :style="color ? { '--key-c': `var(--project-${color})` } : undefined" role="button" tabindex="0"
+    v-if="copy" class="project-badge copy" :style="color ? { '--key-c': projectColorVar(color) } : undefined" role="button" tabindex="0"
     :aria-label="`${tl('Copy')} ${text}`" :title="tl('Copy')" data-testid="project-badge"
     @click="copyIt" @keydown.enter="copyIt" @keydown.space="copyIt"
   >{{ text }}</span>
-  <span v-else class="project-badge" :style="color ? { '--key-c': `var(--project-${color})` } : undefined" data-testid="project-badge">{{ text }}</span>
+  <span v-else class="project-badge" :style="color ? { '--key-c': projectColorVar(color) } : undefined" data-testid="project-badge">{{ text }}</span>
 </template>
 
 <style scoped>

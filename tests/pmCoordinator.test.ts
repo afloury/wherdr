@@ -6,7 +6,7 @@ import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
 import { alfredView, answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, takeUpdateNotice, userMessageTo } from '../server/utils/pmCoordinator'
 import { REMOTE_SCRIPT } from '../server/utils/pmVisibility'
-import { MAIN, parseCommand, roleFiles, coordinatorArgs, updateNotice } from '../shared/pm/coordinator'
+import { MAIN, parseCommand, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
 import pkg from '../package.json'
 import { EXAMPLES, common, company } from '../shared/pm/examples'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
@@ -298,6 +298,20 @@ describe('arbitration after N send-backs', () => {
     expect(parseCommand(['task', 'decide', 'CO-1', 'maybe', '--reason', 'x'])).toMatchObject({ error: expect.stringContaining('choice') })
   })
 })
+
+it('tell goes to the step\'s agent, else the worker; --to picks one', () => {
+  expect(parseCommand(['tell', 'CO-1', 'rework', 'it', '--to', 'worker'])).toEqual({ name: 'tell', task: 'CO-1', text: 'rework it', to: 'worker' })
+  expect(parseCommand(['tell', 'CO-1', 'hi', '--to', 'coordinator'])).toEqual({ error: '--to is one of worker, reviewer' })
+  const run = (id: string, role: 'worker' | 'reviewer', startedAt: number, more = {}) => ({ id, task: 'CO-1', role, program: 'claude', model: 'opus', machine: '', worktree: '/w', branch: 'b', instructions: '', terminal: `host/${id}`, attempt: 1, state: 'running' as const, startedAt, ...more })
+  const runs = [run('w', 'worker', 1), run('r', 'reviewer', 2)] // the reviewer is the latest
+  for (const holder of ['none', 'coordinator', 'worker', undefined] as const) expect(tellTarget(runs, 'CO-1', holder)).toMatchObject({ role: 'worker', run: { id: 'w' } })
+  expect(tellTarget(runs, 'CO-1', 'reviewer')).toMatchObject({ role: 'reviewer', run: { id: 'r' } })
+  expect(tellTarget(runs, 'CO-1', 'none', 'reviewer')).toMatchObject({ role: 'reviewer', run: { id: 'r' } })
+  // A worker let go while the task waited is started again; one that exited is not running.
+  expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'released' })], 'CO-1', 'none')).toEqual({ role: 'worker', run: undefined, released: true })
+  expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'exit' })], 'CO-1', 'none')).toEqual({ role: 'worker', run: undefined, released: false })
+})
+
 
 describe('role files', () => {
   // A fake herdr-core: the machine's home is /h; files written; terminals started.
@@ -767,7 +781,7 @@ describe('commands of lot 10', () => {
     await tell(['tell', task.id, 'Postgres,', 'as in the README'])
     expect(sent).toEqual(['From the project coordinator: Postgres, as in the README'])
     const told = (await store.task(task.id))!
-    expect([told.state, told.waitKind, told.log?.at(-1)?.text]).toEqual(['working', undefined, 'told the agent: Postgres, as in the README'])
+    expect([told.state, told.waitKind, told.log?.at(-1)?.text]).toEqual(['working', undefined, 'told the worker: Postgres, as in the README'])
     await refused(tell(['tell', task.id, 'and also…']), 'only answers an agent\'s question')
     // A permission prompt on its screen, even in the user's turn: never typed into.
     await noteTurn(store, 'CO', 'user', 'tell it')
