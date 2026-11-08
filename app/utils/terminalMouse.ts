@@ -1,5 +1,13 @@
 import type { Terminal } from '@xterm/xterm'
-import type { TerminalMouse } from '../../shared/herdrFeatures'
+
+export interface TerminalMouse {
+  type: 'terminal.mouse'
+  action: 'down' | 'up' | 'drag' | 'move'
+  button: 'left' | 'middle' | 'right'
+  column: number
+  row: number
+  modifiers: number
+}
 
 export function terminalCell(x: number, y: number, rect: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>, cols: number, rows: number) {
   if (rect.width <= 0 || rect.height <= 0 || cols <= 0 || rows <= 0) return null
