@@ -2,19 +2,20 @@
 // for each holder and end, and one sentence saying what happens at a step.
 // The one place for these texts, shared by the template editor and the board.
 // Pure: the caller passes its own tl(en, fr) for the language.
-import type { ActionKind, End, Holder, Step, StepAction } from './workflow'
+import { actionField, type End, type Holder, type Step, type StepAction } from './workflow'
 import { shotMode } from './shots'
 import { DEFAULT_ROUNDS } from './steps'
 
 export type Tl = (en: string, fr: string) => string
 const english: Tl = en => en
 
-// What the action field holds: a branch to merge into, or the PR's base.
-export const actionField = (k: ActionKind): 'target' | 'base' | undefined =>
-  k === 'github.pr' ? 'base' : k === 'git.land' || k === 'git.verify-merged' ? 'target' : undefined
+export { actionField }
+
+// No branch named: the project's working branch, resolved when a task plans its steps.
+const working = (tl: Tl) => tl('the working branch', 'la branche de travail')
 
 export function actionLabel(a: Pick<StepAction, 'kind' | 'target' | 'base'>, tl: Tl = english): string {
-  const b = a.target || a.base || '…'
+  const b = a.target || a.base || working(tl)
   switch (a.kind) {
     case 'git.land': return tl(`Merge into ${b} (no PR)`, `Fusionner dans ${b} (sans PR)`)
     case 'git.push': return tl('Push the branch', 'Pousser la branche')
@@ -61,8 +62,8 @@ function proofs(s: Step, tl: Tl): string {
 
 // What the engine does for an action, without the leading subject.
 function engineDoes(a: StepAction, guarded: boolean, tl: Tl): string {
-  const b = a.target || a.base || '…'
-  const yours = guarded ? tl(` ${b === '…' ? 'The branch' : b} is protected: it waits for you to merge.`, ` ${b === '…' ? 'La branche' : b} est protégée : la fusion t’attend.`) : ''
+  const named = a.target || a.base, b = named || working(tl)
+  const yours = guarded ? tl(` ${named || 'The working branch'} is protected: it waits for you to merge.`, ` ${named || 'La branche de travail'} est protégée : la fusion t’attend.`) : ''
   switch (a.kind) {
     case 'git.land': return tl(`The engine merges the task’s branch into ${b} and pushes it, without a PR. A conflict sends it back to the agent.`,
       `Le moteur fusionne la branche de la tâche dans ${b} et la pousse, sans PR. Un conflit la renvoie à l’agent.`) + yours

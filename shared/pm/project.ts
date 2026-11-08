@@ -10,7 +10,9 @@ export interface Project {
   machine: string // herdr-core machine key, '' = the wherdr host
   path: string
   git?: false // a folder without git: its coordinator works in it, no task worktree
-  base?: string // branch tasks start from (default: the repo's current one)
+  // Working branch: tasks start from it, and a step's PR, land or check uses it
+  // when the step names no branch. Default: the repo's current branch, no default.
+  base?: string
   // The library template (or example) its workflow was copied from: information
   // only, never followed. None: no workflow yet, no task can start.
   from?: { template: string, version: number }
@@ -29,6 +31,7 @@ const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/
 // A branch name git takes, without the odd cases (.., @{, spaces, ~^:?*[\).
 const BRANCH_RE = /^(?!.*\.\.)(?!.*@\{)(?!\/)(?!.*\/$)[A-Za-z0-9._/-]{1,100}$/
 
+export const isBranch = (b: string) => BRANCH_RE.test(b)
 export const isTemplateId = (id: unknown): id is string => typeof id === 'string' && ID_RE.test(id)
 
 // Checks a project to add; returns its clean form or the errors.
@@ -45,7 +48,7 @@ export function cleanProjectInput(raw: unknown): { project?: ProjectInput, error
   if (!path.startsWith('/') && !path.startsWith('~')) errors.push({ path: 'path', message: 'an absolute folder path' })
   else if (path.length > 1024 || path.includes('\0')) errors.push({ path: 'path', message: 'invalid folder' })
   const base = str('base')
-  if (base && !BRANCH_RE.test(base)) errors.push({ path: 'base', message: 'invalid branch name' })
+  if (base && !isBranch(base)) errors.push({ path: 'base', message: 'invalid branch name' })
   const template = str('template')
   if (template && !isTemplateId(template.replace(/^example:/, ''))) errors.push({ path: 'template', message: 'invalid template id' })
   if (errors.length) return { errors }

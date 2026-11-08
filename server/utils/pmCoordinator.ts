@@ -14,7 +14,8 @@ import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, coordinat
 import { ackWakes } from '../../shared/pm/wakes'
 import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
-import { waitOf, type Task } from '../../shared/pm/run'
+import type { Project } from '../../shared/pm/project'
+import { taskPlan, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
 import { WRITE_SCRIPT, exec, startTask } from './pmLaunch'
@@ -87,9 +88,11 @@ export async function userMessageTo(store: PmStore, terminal: string | undefined
   if (c) await noteTurn(store, c.project, 'user', text)
 }
 
-const planOf = (t: Template, task: Task) => planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) })
-const summary = (t: Template | null, task: Task) => {
-  const step = t ? currentStep(planOf(t, task), task.step ?? initialState()) : undefined
+// The branch tasks start from, open their PR to and merge into when a step names none.
+const workingBranch = (p?: Project) => p?.base || 'not set: tasks start from the repository\'s current branch, and a step without a branch has none'
+const planOf = (t: Template, task: Task, p?: Project) => taskPlan(t, task, p)
+const summary = (t: Template | null, task: Task, p?: Project) => {
+  const step = t ? currentStep(planOf(t, task, p), task.step ?? initialState()) : undefined
   return { id: task.id, title: task.title, type: task.type, state: task.step?.abandoned ? 'abandoned' : task.step?.done ? 'done' : task.stopped ? 'stopped' : task.state, ...(task.stopped ? { stopped: task.stopped } : {}), step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}) }
 }
 
@@ -134,10 +137,10 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
   switch (cmd.name) {
     case 'list': {
       const ts = new Map(await Promise.all(projects.map(async x => [x.key, x ? await store.workflow(x.key) : null] as const)))
-      return { tasks: (await store.tasks()).filter(x => !key || x.project === key).map(x => summary(ts.get(x.project) ?? null, x)) }
+      return { tasks: (await store.tasks()).filter(x => !key || x.project === key).map(x => summary(ts.get(x.project) ?? null, x, projects.find(y => y.key === x.project))) }
     }
-    case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task) : [] } }
-    case 'plan': return { template: t && { id: t.id, version: t.version }, plans: Object.fromEntries(Object.keys(needPlan().taskTypes).map(type => [type, planSteps(t!, { type })])) }
+    case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task, p), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task, p) : [] } }
+    case 'plan': return { template: t && { id: t.id, version: t.version }, workingBranch: workingBranch(p), plans: Object.fromEntries(Object.keys(needPlan().taskTypes).map(type => [type, planSteps(t!, { type }, p?.base)])) }
     case 'template show': return {
       template: needPlan(),
       ...(main ? {} : rec?.proposal ? { proposal: 'waiting for the user in wherdr', diff: rec.proposal.diff } : rec?.answered ? { lastProposal: rec.answered.outcome } : {}),
@@ -168,7 +171,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     }
     case 'step done': {
       const task = await taskOf(cmd.task)
-      const plan = planOf(needPlan(), task)
+      const plan = planOf(needPlan(), task, p)
       const state = task.step ?? initialState()
       const ev = stepDoneEvent(currentStep(plan, state), cmd, turn)
       if ('refused' in ev) throw new HerdrError('refused', ev.refused)
@@ -193,6 +196,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const line = async (k: string) => { const pace = await projectPace(store, k, undefined, now, true); return pace ? paceLine(pace, now) : 'unknown: the project has no template or no worker program' }
       return {
         autopilot: ap, lookForWork: !!ap.lookForWork,
+        workingBranch: key ? workingBranch(p) : Object.fromEntries(projects.map(x => [x.key, workingBranch(x)])),
         pacing: key ? await line(key) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await line(x.key)]))),
         today: { ...limitsLeft(ap, mine, await store.runs(), now), skippedWakes: today(rec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(rec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
         note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are',
@@ -251,7 +255,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     }
     case 'task decide': {
       const task = await taskOf(cmd.task)
-      const r = onEvent(planOf(needPlan(), task), task.step ?? initialState(), { kind: 'decide', by: 'coordinator', choice: cmd.choice, note: cmd.reason }, Date.now())
+      const r = onEvent(planOf(needPlan(), task, p), task.step ?? initialState(), { kind: 'decide', by: 'coordinator', choice: cmd.choice, note: cmd.reason }, Date.now())
       if (r.refused) throw new HerdrError('refused', r.refused)
       const line = r.effects.flatMap(e => (e.kind === 'log' ? [e.text] : [])).join('; ')
       return { task: await store.logTask({ ...task, step: r.state }, by, line), effects: r.effects.filter(e => e.kind !== 'log') }
