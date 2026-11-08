@@ -1,7 +1,7 @@
 // wherdr service worker: installable + notifications.
-// Network first (the app only makes sense connected to the server): the cache
-// only serves to show the shell if the network is down or silent. Fingerprinted
-// build files, which never change under their name, come from the cache once there.
+// Navigations serve the cached shell immediately and refresh it in the background.
+// Other requests prefer the network; fingerprinted build files, which never
+// change under their name, come from the cache once there.
 // Never any cache for /api/, /ws/ or /uploads/.
 
 import { networkFirst } from './networkFirst'
@@ -86,7 +86,17 @@ sw.addEventListener('fetch', (e) => {
   const network = fetch(req, { cache: 'no-cache' })
   // Also kept when the answer comes after the cached copy was served.
   e.waitUntil(network.then(res => keep(req, res)).catch(() => {}))
-  const fromCache = async () => (await caches.match(req)) || (req.mode === 'navigate' ? caches.match('/') : undefined)
+  if (req.mode === 'navigate') {
+    // The app shell is precached: serve it at once instead of holding the
+    // page on a possibly-silent network. The fingerprinted /_nuxt files it
+    // names are immutable, so the cached pair stays consistent; the network
+    // answer still refreshes the cache (kept above) and the update banner
+    // announces a new build. First install finds nothing cached: the
+    // network answer, however late.
+    e.respondWith(caches.match('/').then(hit => hit || network))
+    return
+  }
+  const fromCache = async () => (await caches.match(req)) || undefined
   e.respondWith(networkFirst(network, fromCache, NETWORK_WAIT_MS))
 })
 

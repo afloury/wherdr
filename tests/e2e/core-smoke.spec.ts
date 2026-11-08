@@ -8,6 +8,8 @@ import { fixture, startCore } from './core'
 // Merges the former core-attach and core-keybar specs: same agent, same opening steps.
 // Also runs on webkit-phone (playwright.config.ts): the events WebSocket must open and
 // deliver a state frame there, since iOS Safari can reject a handshake Chromium accepts.
+// Startup-banner/reload steps formerly in this core-smoke journey are covered by
+// AppVersionStartup.test.ts and serviceWorkerNavigation.test.ts at cheaper levels.
 test('core smoke: home, conversation attach and key bar, terminal attach', async ({ page }) => {
   const terminal = fixture.inventory.terminals[0]!
   const core = await startCore(call =>
