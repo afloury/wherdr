@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
+import { nextTick } from 'vue'
 import ProjectsSettings from '~/components/ProjectsSettings.vue'
 import type { PmOverview, Project } from '#shared/pm/project'
 import { pick } from '../helpers/select'
@@ -27,9 +28,10 @@ const edit = (b: Record<string, unknown>, change: Partial<Project>) => {
   return { project: {} }
 }
 registerEndpoint('/api/pm/overview', () => state)
-registerEndpoint('/api/pm/project', () => ({ project: state.projects[0], workflow: { id: 'web', steps: [], prefs: { agent: 'claude', model: 'sonnet' } }, log: [] }))
+registerEndpoint('/api/pm/project', () => ({ project: state.projects[0], workflow: { id: 'web', steps: [], taskTypes: {}, guards: { protected: ['main'] }, prefs: { agent: 'claude', model: 'sonnet' } }, log: [] }))
 post('/api/pm/enabled', (b) => { state = { ...state, enabled: b.enabled as boolean }; return state })
 post('/api/pm/project-update', b => edit(b, { name: b.name as string, base: b.base as string }))
+post('/api/pm/project-guards', () => ({}))
 post('/api/pm/project-visibility', b => edit(b, { visibility: { value: b.value as 'private', at: 2, by: 'user' } }))
 
 const inSheet = (id: string) => document.body.querySelector<HTMLElement>(`[data-testid="${id}"]`)
@@ -48,12 +50,20 @@ it('switches project management on; Add project opens the New sheet on a new pro
   expect([newAgentOpen.value, newProjectOpen.value]).toEqual([true, true])
 })
 
-it('opens the project sheet on the URL\'s tab; General saves the name and base, and the visibility', async () => {
+it('opens the project sheet on the URL\'s tab; Guards saves a branch added; General saves the name and base, and the visibility', async () => {
   state = { ...state, enabled: true, projects: [web()] }
   const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=guards' })
   mounted = w
-  await vi.waitFor(() => expect(inSheet('pm-coming')).not.toBeNull())
+  await vi.waitFor(() => expect(inSheet('guard-chip')?.textContent).toContain('main'))
   expect(document.body.querySelector('[role="tab"][aria-selected="true"]')?.getAttribute('data-tab')).toBe('guards')
+  const branch = inSheet('guard-add')!.querySelector('input') ?? inSheet('guard-add') as HTMLInputElement
+  ;(branch as HTMLInputElement).value = 'develop'
+  branch.dispatchEvent(new Event('input'))
+  branch.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+  inSheet('guard-others-user')!.click()
+  await nextTick()
+  inSheet('guard-save')!.closest('form')!.dispatchEvent(new Event('submit'))
+  await vi.waitFor(() => expect(calls.shift()).toEqual({ url: '/api/pm/project-guards', body: { key: 'WEB', guards: { protected: ['main', 'develop'], merge: { protected: 'user', others: 'user' } } } }))
 
   document.body.querySelector<HTMLElement>('[data-tab="general"]')!.click()
   await vi.waitFor(() => expect(inSheet('pm-from')?.textContent).toContain('Based on: vibe v2'))
