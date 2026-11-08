@@ -96,7 +96,7 @@ it('a coordinator\'s proposal: badge on the row and on Workflow, the URL opens i
     coordinators = [{ project: 'WEB', name: 'Web', proposal: { diff: '-   "instructions": "a",\n+   "instructions": "b",', at: 1, said: 'Use b' } }]
     const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=workflow&review=1' })
     mounted = w
-    await vi.waitFor(() => expect(inSheet('proposal-review')?.textContent).toContain('“Use b”'))
+    await vi.waitFor(() => expect(inSheet('proposal-said')?.textContent).toBe('Use b'))
     expect(w.find('[data-testid="pm-review"]').exists()).toBe(true)
     expect(inSheet('workflow-badge')).not.toBeNull()
     expect([...inSheet('proposal-diff')!.querySelectorAll('.add')].map(x => x.textContent?.trim())).toEqual(['+   "instructions": "b",'])

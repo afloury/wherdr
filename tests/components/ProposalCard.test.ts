@@ -28,3 +28,28 @@ it('answered: the outcome, by whom and when, and no buttons', async () => {
   expect(w.find('[data-testid="proposal-outcome"]').text()).toMatch(/^Refused by you · /)
   expect(w.find('button').exists()).toBe(false)
 })
+
+it('says who proposed it and the request behind it: in full when unfolded, with a link back to it', async () => {
+  const said = `Never run the full suite locally. ${'Only the tests of what changed. '.repeat(12)}`
+  const c: CoordinatorView = { ...pending, label: 'WD', color: 'teal', proposal: { ...pending.proposal!, by: 'CO', said, saidAt: Date.UTC(2026, 0, 2, 9, 30) } }
+  w = await mountSuspended(ProposalCard, { props: { c, canGoto: true } })
+  expect(w.find('[data-testid="proposal-headline"]').text()).toBe('task: merge: you → automatic')
+  expect(w.find('[data-testid="proposal-by"]').text()).toBe('Proposed by WD coordinator')
+  expect(w.find('[data-testid="proposal-key"]').attributes('style')).toContain('--project-teal')
+  const text = w.find('[data-testid="proposal-said"]')
+  expect(text.text()).toBe(said.trim())
+  expect(text.classes()).toContain('folded')
+  await w.find('[data-testid="proposal-said-more"]').trigger('click')
+  expect(text.classes()).not.toContain('folded')
+  await w.find('[data-testid="proposal-goto"]').trigger('click')
+  expect(w.emitted('goto')).toHaveLength(1)
+})
+
+it('proposed by Alfred: his name, no key badge; a short request is not folded', async () => {
+  const c: CoordinatorView = { ...pending, color: 'teal', proposal: { ...pending.proposal!, by: 'main', said: 'Add a deploy step' } }
+  w = await mountSuspended(ProposalCard, { props: { c } })
+  expect(w.find('[data-testid="proposal-by"]').text()).toBe('Proposed by Alfred')
+  expect(w.find('[data-testid="proposal-key"]').exists()).toBe(false)
+  expect(w.find('[data-testid="proposal-said-more"]').exists()).toBe(false)
+  expect(w.find('[data-testid="proposal-goto"]').exists()).toBe(false)
+})
