@@ -1,6 +1,7 @@
 // Project management storage, in DATA_DIR/projects/ (one engine, on the wherdr
 // host): pm.json (the on/off switch and this install's id), projects.json,
-// templates/<id>.json, template-log/<id>.json, project-log/<KEY>.json, tasks/<KEY>-<n>.json, runs/<id>.json, receipts/<id>.json,
+// templates/<id>.json, template-log/<id>.json (the template library),
+// workflows/<KEY>.json, workflow-log/<KEY>.json (each project's own copy, what its tasks follow), project-log/<KEY>.json, tasks/<KEY>-<n>.json, runs/<id>.json, receipts/<id>.json,
 // shots/<KEY>-<n>/<file> (a task's screenshots),
 // coordinators/<KEY>.json (the hash of the coordinator's token, its current turn, its autopilot),
 // wakes.jsonl (the coordinators' wake queue, append-only: the last line of an id wins),
@@ -10,7 +11,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { cleanProjectInput, isTemplateId, type PmOverview, type Project, type TemplateInfo } from '../../shared/pm/project'
+import { cleanProjectInput, isTemplateId, KEY_RE, type PmOverview, type Project, type TemplateInfo } from '../../shared/pm/project'
 import type { RepoVisibility } from '../../shared/pm/visibility'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
@@ -24,6 +25,7 @@ import { MAIN, type CoordinatorAgent, type Proposal, type ProposalOutcome } from
 import type { Autopilot, DayCount, LastWake, TaskStatus } from '../../shared/pm/autopilot'
 import { readQueue, type Wake } from '../../shared/pm/wakes'
 import type { Automation, Mark } from '../../shared/pm/automations'
+import { EXAMPLES } from '../../shared/pm/examples'
 import { DATA_DIR } from './env'
 
 // A project coordinator: the sha256 of its token, its terminal (herdr-core
@@ -80,6 +82,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   const files = {
     pm: path.join(dir, 'pm.json'), projects: path.join(dir, 'projects.json'), templates: path.join(dir, 'templates'), templateLog: path.join(dir, 'template-log'), projectLog: path.join(dir, 'project-log'),
     tasks: path.join(dir, 'tasks'), runs: path.join(dir, 'runs'), receipts: path.join(dir, 'receipts'), shots: path.join(dir, 'shots'),
+    workflows: path.join(dir, 'workflows'), workflowLog: path.join(dir, 'workflow-log'),
     coordinators: path.join(dir, 'coordinators'), wakes: path.join(dir, 'wakes.jsonl'), automations: path.join(dir, 'automations'),
   }
   let queue: Promise<unknown> = Promise.resolve()
@@ -89,7 +92,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     return run
   }
 
-  const pm = async () => (await readJson<{ enabled?: boolean, install?: string }>(files.pm)) ?? {}
+  const pm = async () => (await readJson<{ enabled?: boolean, install?: string, workflows?: number }>(files.pm)) ?? {}
   const enabled = async () => (await pm()).enabled === true
   const readAll = async <T>(folder: string) => {
     const names = (await fs.readdir(folder).catch(() => [] as string[])).filter(n => n.endsWith('.json')).sort()
@@ -99,7 +102,53 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   // The project's log: the tasks removed, by whom and why.
   const projectLog = async (key: string) =>
     (TASK_ID_RE.test(`${key}-1`) ? (await readJson<{ entries?: ProjectLogEntry[] }>(path.join(files.projectLog, `${key}.json`)))?.entries : null) ?? []
-  const projects = async () => (await readJson<{ projects?: Project[] }>(files.projects))?.projects ?? []
+  const readProjects = async () => (await readJson<{ projects?: Project[] }>(files.projects))?.projects ?? []
+  const saveProjects = (list: Project[]) => writeJson(files.projects, { v: 1, projects: list })
+  const workflowFile = (key: string) => path.join(files.workflows, `${key}.json`)
+  const workflowLogFile = (key: string) => path.join(files.workflowLog, `${key}.json`)
+  const readLog = async (file: string) => (await readJson<{ entries?: LogEntry[] }>(file))?.entries ?? []
+  const appendLog = async (file: string, line: LogEntry) => writeJson(file, { v: 1, entries: [...await readLog(file), line].slice(-200) })
+  // Saves a versioned template (library or workflow): each save that changes
+  // something is a new version and a line of its log. keep: the version stays
+  // (a copy into a project that had no workflow yet).
+  async function saveVersioned(file: string, logFile: string, t: Template, old: Template | null, by: string, said = '', note = '') {
+    const changes = templateChanges(old, t)
+    if (old && !changes.length && !note) return old.version ?? 1
+    const version = old ? (old.version ?? 1) + 1 : (note ? t.version ?? 1 : 1)
+    await writeJson(file, { ...t, version })
+    await appendLog(logFile, { at: Date.now(), by, version, changes: note ? [note, ...(old ? changes : [])] : changes, ...(said ? { said } : {}) })
+    return version
+  }
+  // A copy of library template `t` becomes project `key`'s workflow.
+  async function copyTemplate(key: string, t: Template, by: string) {
+    const old = await readJson<Template>(workflowFile(key))
+    const version = await saveVersioned(workflowFile(key), workflowLogFile(key), { ...t, id: key.toLowerCase() }, old, by, '', `copied from template ${t.id} v${t.version ?? 1}`)
+    return { from: { template: t.id, version: t.version ?? 1 }, version }
+  }
+  // Once: each project that pointed at a template gets its own copy of it, with
+  // the template's version and log (so a waiting proposal still applies).
+  // Idempotent; nothing is deleted, the templates stay as the library.
+  async function migrate() {
+    const cur = await pm()
+    if (cur.workflows) return
+    const list = await readProjects()
+    for (const [i, p] of list.entries()) {
+      const { template: id, ...rest } = p as Project & { template?: string }
+      if (id === undefined) continue
+      const t = isTemplateId(id) ? await readJson<Template>(path.join(files.templates, `${id}.json`)) : null
+      if (t && !await readJson(workflowFile(p.key))) {
+        const log = await readLog(path.join(files.templateLog, `${id}.json`))
+        await writeJson(workflowLogFile(p.key), { v: 1, entries: log })
+        await saveVersioned(workflowFile(p.key), workflowLogFile(p.key), { ...t, id: p.key.toLowerCase() }, null, 'wherdr', '', `copied from template ${id} v${t.version ?? 1}`)
+      }
+      list[i] = t ? { ...rest, from: { template: id, version: t.version ?? 1 } } : rest
+    }
+    if (!list.length) return // nothing to copy: projects added from now on get a workflow
+    await saveProjects(list)
+    await writeJson(files.pm, { ...await pm(), v: 1, workflows: 1 })
+  }
+  let migrated: Promise<void> | null = null
+  const projects = async () => { await (migrated ??= migrate().catch((e) => { migrated = null; throw e })); return readProjects() }
   async function templates(): Promise<TemplateInfo[]> {
     const names = await fs.readdir(files.templates).catch(() => [] as string[])
     const out: TemplateInfo[] = []
@@ -114,15 +163,21 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     if (!await enabled()) throw new HerdrError('pm_off', 'Projects are switched off')
     return fn()
   })
-  const saveProjects = (list: Project[]) => writeJson(files.projects, { v: 1, projects: list })
   async function findProject(key: unknown) {
     const list = await projects()
     const i = list.findIndex(p => p.key === key)
     if (i < 0) throw new HerdrError('not_found', 'Unknown project')
     return { list, i }
   }
-  async function knownTemplate(id: string | undefined) {
-    if (id && !(await templates()).some(t => t.id === id)) throw new HerdrError('not_found', 'Unknown template')
+  async function knownTemplate(id: string) {
+    const t = isTemplateId(id) ? await readJson<Template>(path.join(files.templates, `${id}.json`)) : null
+    if (!t) throw new HerdrError('not_found', 'Unknown template')
+    return t
+  }
+  // A library template by id, or a built-in example (example:<id>), not saved into the library.
+  const sourceOf = async (id: string) => {
+    const ex = id.startsWith('example:') ? EXAMPLES.find(e => `example:${e.id}` === id) : undefined
+    return ex ? structuredClone(ex) as Template : knownTemplate(id)
   }
 
   return {
@@ -145,7 +200,18 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     projects,
     task: (id: unknown) => (typeof id === 'string' && TASK_ID_RE.test(id) ? readJson<Task>(path.join(files.tasks, `${id}.json`)) : Promise.resolve(null)),
     template: (id: string) => (isTemplateId(id) ? readJson<Template>(path.join(files.templates, `${id}.json`)) : Promise.resolve(null)),
-    templateLog: async (id: string) => (isTemplateId(id) ? (await readJson<{ entries?: LogEntry[] }>(path.join(files.templateLog, `${id}.json`)))?.entries : null) ?? [],
+    templateLog: async (id: string) => (isTemplateId(id) ? readLog(path.join(files.templateLog, `${id}.json`)) : []),
+    // The project's own workflow (a Template), what its tasks follow; null: none yet.
+    workflow: (key: string) => (KEY_RE.test(key) ? readJson<Template>(workflowFile(key)) : Promise.resolve(null)),
+    workflowLog: (key: string) => (KEY_RE.test(key) ? readLog(workflowLogFile(key)) : Promise.resolve([])),
+    // by, said: as saveTemplate. Its id is always the project's (lowercased key).
+    saveWorkflow: (key: string, t: unknown, { by = 'user', said = '' } = {}) => write(async () => {
+      await findProject(key)
+      const errors = validateTemplate(t)
+      if (errors.length) throw badInput(errors)
+      const version = await saveVersioned(workflowFile(key), workflowLogFile(key), { ...(t as Template), id: key.toLowerCase() }, await readJson<Template>(workflowFile(key)), by, said)
+      return { id: key.toLowerCase(), version }
+    }),
     runs: () => readAll<Run>(files.runs),
     saveTask: (t: Task) => write(async () => { await writeJson(path.join(files.tasks, `${t.id}.json`), t); return t }),
     // A screenshot of the task: `change` gives the task with it, from the task
@@ -236,23 +302,27 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       if (!project) throw badInput(errors)
       const list = await projects()
       if (list.some(p => p.key === project.key)) throw new HerdrError('exists', 'A project already has this key')
-      await knownTemplate(project.template)
+      const { template, ...fields } = project
+      const source = template ? await sourceOf(template) : null
       const checked = await check(project.machine, project.path, opts)
       const { path: folder, git } = typeof checked === 'string' ? { path: checked, git: true } : checked
       if (list.some(p => p.machine === project.machine && p.path === folder)) throw new HerdrError('exists', 'This folder is already a project')
-      const added: Project = { ...project, path: folder, ...(git ? {} : { git: false as const }), addedAt: Date.now() }
+      let added: Project = { ...fields, path: folder, ...(git ? {} : { git: false as const }), addedAt: Date.now() }
+      if (source) added = { ...added, from: (await copyTemplate(added.key, source, 'user')).from }
       await saveProjects([...list, added])
       return added
     }),
 
-    // Picks (or clears, with '') the project's template.
+    // Replaces the project's workflow with a copy of a library template or an
+    // example (example:<id>); '' removes it (its log stays).
     setTemplate: (key: unknown, template: unknown) => write(async () => {
       const id = typeof template === 'string' ? template : ''
-      if (id && !isTemplateId(id)) throw badInput([{ path: 'template', message: 'invalid template id' }])
-      await knownTemplate(id || undefined)
+      if (id && !isTemplateId(id.replace(/^example:/, ''))) throw badInput([{ path: 'template', message: 'invalid template id' }])
+      const source = id ? await sourceOf(id) : null
       const { list, i } = await findProject(key)
-      const { template: _old, ...rest } = list[i]!
-      list[i] = id ? { ...rest, template: id } : rest
+      const { from: _old, ...rest } = list[i]!
+      if (source) list[i] = { ...rest, from: (await copyTemplate(rest.key, source, 'user')).from }
+      else { await fs.rm(workflowFile(rest.key), { force: true }); list[i] = rest }
       await saveProjects(list)
       return list[i]!
     }),
@@ -280,18 +350,10 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const id = (t as Template | null)?.id
       if (!errors.length && !isTemplateId(id)) errors.push({ path: 'id', message: 'lowercase letters, digits, . _ -' })
       if (errors.length) throw badInput(errors)
-      // Each save that changes something is a new version and a line of its log.
       const file = path.join(files.templates, `${id}.json`)
       const old = await readJson<Template>(file)
       if (old && !replace) throw new HerdrError('exists', 'A template already has this id')
-      const changes = templateChanges(old, t as Template)
-      if (old && !changes.length) return { id: id!, version: old.version ?? 1 }
-      const version = (old?.version ?? 0) + 1
-      await writeJson(file, { ...(t as Template), version })
-      const logFile = path.join(files.templateLog, `${id}.json`)
-      const entries = (await readJson<{ entries?: LogEntry[] }>(logFile))?.entries ?? []
-      await writeJson(logFile, { v: 1, entries: [...entries, { at: Date.now(), by, version, changes, ...(said ? { said } : {}) }].slice(-200) })
-      return { id: id!, version }
+      return { id: id!, version: await saveVersioned(file, path.join(files.templateLog, `${id}.json`), t as Template, old, by, said) }
     }),
   }
 }

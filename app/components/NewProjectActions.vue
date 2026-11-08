@@ -3,9 +3,8 @@
 // runs with the chosen agent, else start it (same API and rules as the
 // CoordinatorPanel: a running conversation of another agent offers a new
 // conversation first, or resuming it). A project being added (draft) is
-// saved first (and an example template it picked), then its coordinator starts.
+// saved first (with a copy of the template or example it picked as its workflow), then its coordinator starts.
 import { isCoordinatorProgram, sameAgent } from '#shared/pm/coordinator'
-import { EXAMPLES } from '#shared/pm/examples'
 import { draftBody, draftGit, type ProjectDraft } from '#shared/pm/newProject'
 
 const props = defineProps<{ project: string, agent: string, draft?: ProjectDraft | null }>()
@@ -31,11 +30,8 @@ function go(id: string) {
 }
 async function add(d: ProjectDraft) {
   const git = draftGit(d)
-  const example = git ? EXAMPLES.find(e => `example:${e.id}` === d.template) : undefined
-  if (example) await api('/api/pm/template', { template: example })
-  const template = example?.id ?? d.template
-  const { project } = await api<{ project: { key: string } }>('/api/pm/project', draftBody(d, template))
-  if (git) try { localStorage.setItem('wherdr.lastTemplate', d.template.startsWith('example:') ? template : d.template) } catch {}
+  const { project } = await api<{ project: { key: string } }>('/api/pm/project', draftBody(d, d.template))
+  if (git) try { localStorage.setItem('wherdr.lastTemplate', d.template) } catch {}
   await loadCoordinators()
   emit('added', project.key) // a failed start is tried again on the project, not added twice
   return project.key

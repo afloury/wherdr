@@ -12,7 +12,7 @@ async function load(deps: PmLaunchDeps, id: unknown) {
   const task = await deps.store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
   const p = (await deps.store.projects()).find(x => x.key === task.project)
-  const t = p?.template ? await deps.store.template(p.template) : null
+  const t = p ? await deps.store.workflow(p.key) : null
   return { task, plan: t ? planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }) : [] }
 }
 
