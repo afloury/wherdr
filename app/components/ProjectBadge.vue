@@ -29,7 +29,7 @@ async function copyIt(e: Event) {
 .project-badge {
   position: relative; display: inline-block; flex: none; padding: 0 5px; vertical-align: middle;
   border: 1px solid var(--key-c, var(--line-strong));
-  color: color-mix(in srgb, var(--key-c, var(--text-2)) 82%, var(--text));
+  color: color-mix(in srgb, var(--key-c, var(--text-2)) 55%, var(--text-strong));
   background: color-mix(in srgb, var(--key-c, transparent) 12%, transparent);
   font: 600 11px/1.6 var(--mono); letter-spacing: .04em; white-space: nowrap;
 }

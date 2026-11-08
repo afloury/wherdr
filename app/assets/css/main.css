@@ -155,15 +155,17 @@
   --rose: #ff4757;
   --blue: #1fb2ff;
   --teal: #00dbe4;
-  /* Project colors (shared/pm/projectKey.ts), from each theme's own colors. */
-  --project-violet: var(--lav);
-  --project-blue: var(--blue);
-  --project-teal: var(--teal);
-  --project-green: var(--green);
-  --project-amber: var(--ochre);
-  --project-orange: color-mix(in srgb, var(--ochre) 55%, var(--rose));
-  --project-red: var(--rose);
-  --project-pink: color-mix(in srgb, var(--rose) 55%, var(--lav));
+  /* Project colors (shared/pm/projectKey.ts): fixed and distinct in every theme
+     (theme colors coincide in some, lav = blue…), mid-tones that read on dark and
+     light backgrounds; the badge mixes its text with --text-strong (ProjectBadge.vue). */
+  --project-violet: #8b5cf6;
+  --project-blue: #3b82f6;
+  --project-teal: #14b8a6;
+  --project-green: #22c55e;
+  --project-amber: #f59e0b;
+  --project-orange: #f97316;
+  --project-red: #ef4444;
+  --project-pink: #ec4899;
 
   --working: #a98bff;
   --blocked: #ffb347;
