@@ -64,8 +64,13 @@ describe('pm store', () => {
     expect(await store.setTemplate('WEB', '')).not.toHaveProperty('from')
     expect(await store.workflow('WEB')).toBeNull()
     await expect(store.setTemplate('WEB', 'company')).rejects.toMatchObject({ code: 'not_found' })
+    await store.setTemplate('WEB', 'vibe')
     await store.removeProject('WEB')
     expect((await store.overview()).projects).toEqual([])
+    // Added again under the same key: none of the removed project's workflow or log.
+    await store.addProject({ ...input, template: '' }, okFolder)
+    expect(await store.workflow('WEB')).toBeNull()
+    expect(await store.workflowLog('WEB')).toEqual([])
   })
 })
 
