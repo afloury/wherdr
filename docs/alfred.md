@@ -41,3 +41,15 @@ $ wherdr alfred project template WEB company
 { "dryRun": true, "change": ["project WEB template: none → company"],
   "next": "Show this to the user; only after their yes, run: wherdr alfred project template WEB company --apply" }
 ```
+
+## After an update
+
+When wherdr starts (after an update too), it rewrites the instructions (`AGENTS.md` and the files
+beside it) of Alfred and of every running project coordinator. It sends them no message and wakes
+none of them. Each one learns of the update on its next `wherdr alfred` or `wherdr pm` command,
+once: the answer starts with the line
+`wherdr was updated to <version> since your session started: re-read AGENTS.md and check docs/llms.txt before relying on what you knew`.
+
+Alfred and the coordinators never explain wherdr from memory: they read `docs/llms.txt` (the
+docs index) first, then only the sections that answer. `wherdr alfred help` and `wherdr pm help`
+list the commands of the wherdr that runs now.
