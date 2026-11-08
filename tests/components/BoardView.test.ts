@@ -3,6 +3,7 @@ import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import BoardView from '~/components/BoardView.vue'
 import { herdrState } from '~/composables/useHerdr'
+import { answerConfirm, confirmState, menuState } from '~/composables/useUi'
 import { boardColumns, cardOf, type Board } from '#shared/pm/board'
 import { initialState, planSteps, type StepState } from '#shared/pm/steps'
 import { company, vibe } from '#shared/pm/examples'
@@ -39,7 +40,7 @@ reset()
 registerEndpoint('/api/pm/board', () => board)
 registerEndpoint('/api/pm/coordinators', () => [])
 const posts: { url: string, body: Record<string, unknown> }[] = []
-for (const url of ['/api/pm/task-stop', '/api/pm/task-resume'])
+for (const url of ['/api/pm/task-stop', '/api/pm/task-resume', '/api/pm/task-remove'])
   registerEndpoint(url, { method: 'POST', handler: async (e) => { posts.push({ url, body: await readBody(e) }); return {} } })
 const pane = (coreAddress: string, status: Pane['status']) => ({ id: coreAddress, coreAddress, status, agent: 'claude', workspace: 'w', tab: 't' }) as Pane
 herdrState.value = { ok: true, workspaces: [], panes: [pane('host-a/t1', 'working'), pane('host-a/t2', 'idle'), pane('host-a/t3', 'working')] }
@@ -151,4 +152,20 @@ it('a stopped card waits in Your turn with who stopped it; its sheet offers Cont
   expect([...document.querySelectorAll('[data-resume]')].map(b => b.textContent!.trim())).toEqual(['Continue', 'Take it as it is', 'Archive'])
   document.querySelector<HTMLElement>('[data-resume="continue"]')!.click()
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/task-resume', body: { id: 'VIB-1', how: 'continue' } }]))
+})
+
+it('a task never started offers Delete… in its menu, confirmed first; a started one does not', async () => {
+  posts.length = 0
+  board.cards[0] = cardOf(task('VIB-1', initialState(), { type: 'simple', state: 'todo' }), planSteps(vibe, { type: 'simple' }), [])
+  const w = await mount()
+  const menu = async (id: string) => { await card(w, id).element.parentElement!.querySelector<HTMLElement>('[data-testid="card-menu"]')!.click(); return menuState.items.map(i => ('label' in i ? i.label : '')) }
+  expect(await menu('CO-1')).not.toContain('Delete…')
+  expect(await menu('VIB-1')).toEqual(['Open', 'Delete…'])
+  const del = menuState.items.find(i => 'label' in i && i.label === 'Delete…')!
+  expect(del).toMatchObject({ danger: true })
+  ;(del as { run: () => void }).run()
+  await vi.waitFor(() => expect(confirmState.open).toBe(true))
+  expect(confirmState.message).toContain('It never started')
+  answerConfirm(true)
+  await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/task-remove', body: { id: 'VIB-1' } }]))
 })

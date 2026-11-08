@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { startTask, type PmLaunchDeps } from '../server/utils/pmLaunch'
 import { resumeTask, stopTask } from '../server/utils/pmStop'
-import { handoverText, resumeRefusal, stopRefusal, stoppedTask } from '../shared/pm/stop'
+import { handoverText, removeRefusal, resumeRefusal, stopRefusal, stoppedTask } from '../shared/pm/stop'
 import { chainState, dueText } from '../shared/pm/advance'
 import { decisionsOf } from '../shared/pm/decisions'
 import { canStop, cardOf } from '../shared/pm/board'
@@ -51,6 +51,23 @@ describe('who may stop', () => {
     expect(resumeRefusal(stop(working()), 'continue', inTurn, plan[1])).toBeUndefined()
     expect(resumeRefusal(stop(working()), 'as-is', inTurn, plan[1])).toMatch(/the user's/)
     expect(resumeRefusal(working(), 'continue', user, plan[1])).toMatch(/not stopped/)
+  })
+})
+
+describe('who may remove', () => {
+  const todo = (over: Partial<Task> = {}) => working({ state: 'todo', step: undefined, ...over })
+  it('only a task never started; in a wake only the autopilot\'s own; never one others wait for', () => {
+    expect(removeRefusal(todo(), [], [], user)).toBeUndefined()
+    expect(removeRefusal(todo(), [], [], inTurn)).toBeUndefined()
+    expect(removeRefusal(todo(), [], [], inWake)).toMatch(/only the tasks your autopilot added/)
+    expect(removeRefusal(todo({ autopilot: true }), [], [], inWake)).toBeUndefined()
+    // Started, stopped, or an agent once ran on it (a worktree may exist): stop and archive instead.
+    for (const t of [working(), stop(working()), todo({ run: 'r1' })]) expect(removeRefusal(t, [], [], user)).toMatch(/has started/)
+    expect(removeRefusal(todo(), [{ task: 'WH-1' }], [], user)).toMatch(/has started/)
+    const waiters = [todo({ id: 'WH-2', after: 'WH-1' }), todo({ id: 'WH-3', after: 'WH-9, WH-1' }), todo({ id: 'XX-1', project: 'XX', after: 'WH-1' })]
+    expect(removeRefusal(todo(), [], waiters, user)).toBe('WH-2, WH-3 wait for WH-1 (after): remove them first')
+    expect(cardOf(todo(), plan, []).removable).toBe(true)
+    expect(cardOf(working(), plan, []).removable).toBeUndefined()
   })
 })
 

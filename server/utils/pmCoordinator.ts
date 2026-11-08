@@ -20,7 +20,7 @@ import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type 
 import { WRITE_SCRIPT, exec, startTask } from './pmLaunch'
 import { userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
-import { resumeTask, stopTask } from './pmStop'
+import { removeTask, resumeTask, stopTask } from './pmStop'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
 import { projectPace } from './pmPace'
@@ -231,6 +231,10 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     case 'task stop': {
       const task = await taskOf(cmd.task)
       return { task: await stopTask(deps, task.id, { who: 'coordinator', wake: turn !== 'user' }, cmd.reason, by) }
+    }
+    case 'task remove': {
+      const task = await taskOf(cmd.task)
+      return removeTask(deps, task.id, { who: 'coordinator', wake: turn !== 'user' }, cmd.reason, by)
     }
     case 'task add': {
       const look = turn === 'wake' && !!rec?.turn?.look

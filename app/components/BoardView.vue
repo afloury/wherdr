@@ -48,7 +48,8 @@ const live = (c: Card) => {
   const p = paneOf(c)
   return p ? { key: statusKey(p), label: `${t(c.holder === 'reviewer' ? 'Reviewer' : 'Worker')}: ${statusLabel(p)}` } : { key: 'inactive', label: tl('No agent running', 'Aucun agent lancé') }
 }
-// The card's menu: Stop (confirmed in the task's sheet), or how a stopped task goes on.
+// The card's menu: Stop (confirmed in the task's sheet), how a stopped task
+// goes on, or Delete for a task never started (confirmed).
 const stopping = ref(false)
 const show = (id: string, stop = false) => { stopping.value = stop; open.value = id }
 const act = (fn: () => Promise<unknown>) => fn().then(load, (e: Error) => { error.value = e.message })
@@ -56,6 +57,7 @@ const menuOf = (c: Card): MenuItem[] => [
   { label: tl('Open', 'Ouvrir'), icon: 'i-lucide-panel-right-open', run: () => show(c.id) },
   ...(canStop(c) ? [{ label: tl('Stop…', 'Arrêter…'), icon: 'i-lucide-square', danger: true, run: () => show(c.id, true) }] : []),
   ...(c.stopped ? RESUMES.map(how => ({ label: tl(...RESUME_LABEL[how]), danger: how === 'archive', run: () => act(() => resumeTaskApi(c.id, how)) })) : []),
+  ...(c.removable ? [{ label: tl('Delete…', 'Supprimer…'), icon: 'i-lucide-trash-2', danger: true, run: () => act(() => removeTaskApi(c.id)) }] : []),
 ]
 const selected = computed(() => cards.value.find(c => c.id === open.value) ?? data.value?.cards.find(c => c.id === open.value) ?? null)
 </script>

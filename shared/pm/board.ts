@@ -5,7 +5,7 @@
 import type { Holder } from './workflow'
 import type { PlannedStep, StepState } from './steps'
 import type { Run, Task } from './run'
-import type { Stopped } from './stop'
+import { notStarted, type Stopped } from './stop'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -28,6 +28,7 @@ export interface Card {
   plan: PlannedStep[]
   state?: StepState
   stopped?: Stopped // who stopped it and why: Continue, Take it as it is or Archive
+  removable?: true // never started (no agent, worktree or branch): the user may remove it
 }
 
 export interface BoardProject { key: string, name: string, columns: string[] }
@@ -79,6 +80,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
     plan,
     ...(s ? { state: s } : {}),
     ...(task.stopped ? { stopped: task.stopped } : {}),
+    ...(notStarted(task, runs) ? { removable: true as const } : {}),
   }
 }
 

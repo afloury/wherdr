@@ -1,6 +1,6 @@
 // Project management storage, in DATA_DIR/projects/ (one engine, on the wherdr
 // host): pm.json (the on/off switch and this install's id), projects.json,
-// templates/<id>.json, template-log/<id>.json, tasks/<KEY>-<n>.json, runs/<id>.json, receipts/<id>.json,
+// templates/<id>.json, template-log/<id>.json, project-log/<KEY>.json, tasks/<KEY>-<n>.json, runs/<id>.json, receipts/<id>.json,
 // shots/<KEY>-<n>/<file> (a task's screenshots),
 // coordinators/<KEY>.json (the hash of the coordinator's token, its current turn, its autopilot),
 // wakes.jsonl (the coordinators' wake queue, append-only: the last line of an id wins),
@@ -14,7 +14,7 @@ import { cleanProjectInput, isTemplateId, type PmOverview, type Project, type Te
 import type { RepoVisibility } from '../../shared/pm/visibility'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
-import { publicTask, type Run, type Task } from '../../shared/pm/run'
+import { publicTask, type Run, type Task, type TaskLogEntry } from '../../shared/pm/run'
 import { afterIds } from '../../shared/pm/advance'
 import type { Receipt } from '../../shared/pm/actions'
 import { SHOT_FILE_RE } from '../../shared/pm/shots'
@@ -69,13 +69,16 @@ async function writeJson(file: string, data: unknown) {
   }
 }
 
+// A line of a project's log: a task removed, by whom and why.
+export interface ProjectLogEntry extends TaskLogEntry { task: string }
+
 const TASK_ID_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/
 const badInput = (errors: { path: string, message: string }[]) =>
   new HerdrError('bad_input', errors.map(e => (e.path ? `${e.path}: ${e.message}` : e.message)).join('; '))
 
 export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   const files = {
-    pm: path.join(dir, 'pm.json'), projects: path.join(dir, 'projects.json'), templates: path.join(dir, 'templates'), templateLog: path.join(dir, 'template-log'),
+    pm: path.join(dir, 'pm.json'), projects: path.join(dir, 'projects.json'), templates: path.join(dir, 'templates'), templateLog: path.join(dir, 'template-log'), projectLog: path.join(dir, 'project-log'),
     tasks: path.join(dir, 'tasks'), runs: path.join(dir, 'runs'), receipts: path.join(dir, 'receipts'), shots: path.join(dir, 'shots'),
     coordinators: path.join(dir, 'coordinators'), wakes: path.join(dir, 'wakes.jsonl'), automations: path.join(dir, 'automations'),
   }
@@ -93,6 +96,9 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     return (await Promise.all(names.map(n => readJson<T>(path.join(folder, n)).catch(() => null)))).filter((x): x is Awaited<T> & {} => !!x)
   }
   const tasks = () => readAll<Task>(files.tasks)
+  // The project's log: the tasks removed, by whom and why.
+  const projectLog = async (key: string) =>
+    (TASK_ID_RE.test(`${key}-1`) ? (await readJson<{ entries?: ProjectLogEntry[] }>(path.join(files.projectLog, `${key}.json`)))?.entries : null) ?? []
   const projects = async () => (await readJson<{ projects?: Project[] }>(files.projects))?.projects ?? []
   async function templates(): Promise<TemplateInfo[]> {
     const names = await fs.readdir(files.templates).catch(() => [] as string[])
@@ -161,6 +167,15 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await writeJson(path.join(files.tasks, `${t.id}.json`), out)
       return out
     }),
+    // A task removed for good (never started: nothing else to clean up), and a
+    // line of its project's log, since its own log goes with it.
+    removeTask: (t: Task, by: string, text: string) => write(async () => {
+      const logFile = path.join(files.projectLog, `${t.project}.json`)
+      const entries = await projectLog(t.project)
+      await writeJson(logFile, { v: 1, entries: [...entries, { at: Date.now(), by, text, task: t.id }].slice(-500) })
+      await fs.rm(path.join(files.tasks, `${t.id}.json`), { force: true })
+    }),
+    projectLog,
     coordinator: (key: string) => readJson<CoordinatorRecord>(path.join(files.coordinators, `${key}.json`)),
     coordinators: () => readAll<CoordinatorRecord>(files.coordinators),
     // Alfred (the main coordinator) also runs with projects off: its record is saved then too.
@@ -203,7 +218,9 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const title = str('title'), type = str('type')
       if (!title || title.length > 200) throw badInput([{ path: 'title', message: '1 to 200 characters' }])
       if (!type) throw badInput([{ path: 'type', message: 'is required' }])
-      const n = 1 + Math.max(0, ...(await tasks()).filter(t => t.project === p.key).map(t => Number(t.id.slice(p.key.length + 1)) || 0))
+      // A removed task's number is never given again.
+      const ids = [...(await tasks()).filter(t => t.project === p.key).map(t => t.id), ...(await projectLog(p.key)).map(e => e.task)]
+      const n = 1 + Math.max(0, ...ids.map(id => Number(id.slice(p.key.length + 1)) || 0))
       const after = afterIds({ after: str('after') }).join(',')
       const known = await tasks()
       if (afterIds({ after }).some(a => !known.some(t => t.id === a && t.project === p.key))) throw badInput([{ path: 'after', message: 'tasks of the same project, comma-separated' }])

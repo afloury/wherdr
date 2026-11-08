@@ -72,7 +72,7 @@ export function alfredFiles(c: AlfredContext, pmSection: string[]): Record<strin
     'Your hands on wherdr: `wherdr alfred <command>` reads and changes its projects, coordinators and settings, with the token in this folder\'s `.alfred-token` (never read it, show it or send it anywhere; it works from this machine only). Each answer is JSON.',
     ...alfredCommandList(), '',
     'Show, then do: without `--apply`, a change only prints what it would do (`dryRun`, `change`). Show those lines to the user, ask, and run the same command with `--apply` only after their yes in this chat. When the answer says `remote`, the change reaches another machine: make it only when the user asked for that.',
-    'No command deletes anything: removing a project, a template or a setting is the user\'s, in wherdr\'s Settings.', '',
+    'No `wherdr alfred` command deletes anything: removing a project, a template or a setting is the user\'s, in wherdr\'s Settings. The one removal you have is `wherdr pm task remove`, for a task never started (a duplicate), with a reason kept in its project\'s log.', '',
     '## Your role', '',
     'You live on the machine that hosts wherdr and are always available. You help with wherdr, and you can start tasks or act on projects on any machine.',
     'You do no coding task yourself and work on no particular project: when the user asks for such work, start an agent or a task that does it in the right place (the project\'s machine).', '',
