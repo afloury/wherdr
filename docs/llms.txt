@@ -40,7 +40,7 @@
 
 - [Agents on herdr-core](docs/home.md#agents-on-herdr-core): the live list, states, quick answers and the sidebar's order.
 - [Alfred](docs/home.md#alfred): wherdr's assistant, its agent, home folder and memory.
-- [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred and their menu.
+- [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred, with the project's colored key badge, and their menu.
 - [Offered agents](docs/home.md#offered-agents): Settings › Agents, which programs every picker offers and in which order.
 - [Machines as tabs](docs/home.md#machines-as-tabs): the machine bar, its groups and a machine's actions.
 - [New agents and tabs](docs/home.md#new-agents-and-tabs): the New sheet and the + of a space's tabs.
@@ -63,14 +63,14 @@
 
 - [Getting started](docs/project-management.md#getting-started): the four steps to turn projects on and start a coordinator.
 - [Projects](docs/project-management.md#projects): Settings › Projects, the project list and the project sheet's tabs.
-- [General tab](docs/project-management.md#general): name, key, base (working) branch, agents, repository visibility, allowed machines and their clone paths (with a readiness check).
+- [General tab](docs/project-management.md#general): name, key and its badge color, base (working) branch, agents, repository visibility, allowed machines and their clone paths (with a readiness check).
 - [Workflow tab](docs/project-management.md#workflow): task types and steps, Edit as JSON, Save as template, Start over, review of the coordinator's proposed change (one-line summary, who proposed it, your full request with a link back to it, readable or JSON), and its card in the coordinator's conversation.
 - [Guards](docs/project-management.md#guards): protected branches, who may merge (a waiting merge goes on once wherdr may do it; one you merge on GitHub ends as merged), contributor PRs, the project sheet's in-app addresses.
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
 - [Template library](docs/project-management.md#template-library): saved templates and examples, read, rename and delete; projects keep their own copy.
 - [Autopilot](docs/project-management.md#autopilot): the header button and its window, goal, wakes and limits.
-- [Board](docs/project-management.md#board): columns (a done or archived task is never under Your turn), cards, time in the step and total time, Add task, Start, Start on another machine (its readiness check), Stop, Delete.
-- [Task sheet](docs/project-management.md#task-sheet): time per step, waits for you, review rounds and CI fixes, the task's buttons and its Description, Plan and Log tabs.
+- [Board](docs/project-management.md#board): columns (a done or archived task is never under Your turn), cards (the id badge copies the id), time in the step and total time, Add task, Start, Start on another machine (its readiness check), Stop, Delete.
+- [Task sheet](docs/project-management.md#task-sheet): the id badge by the title (copies the id), time per step, waits for you, review rounds and CI fixes, the task's buttons and its Description, Plan and Log tabs.
 - [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back and other answers.
 - [A stalled task](docs/project-management.md#a-stalled-task): red CI or an idle agent: the coordinator woken, one nudge, then Tasks to handle and a notification after 30 min.
 - [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again.
