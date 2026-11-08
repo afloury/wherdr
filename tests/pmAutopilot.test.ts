@@ -35,6 +35,10 @@ describe('autopilot limits', () => {
     expect(limitsLeft(ap, tasks, [], at(12))).toMatchObject({ working: 1, startLeft: 1 })
     expect(startRefusal(ap, tasks, [], at(12))).toBeUndefined()
     expect(startRefusal(ap, [...tasks, task(4)], [], at(12))).toMatch(/2 tasks already work at once/)
+    // Auto (null): no project ceiling, the machines decide; only the day's limit holds.
+    expect(cleanAutopilot({ ...ap, atOnce: null })).toMatchObject({ autopilot: { atOnce: null } })
+    expect(startRefusal({ ...ap, atOnce: null }, [...tasks, task(4), task(5)], [], at(12))).toBeUndefined()
+    expect(limitsLeft({ ...ap, atOnce: null }, tasks, [], at(12))).toMatchObject({ startLeft: 3, atOnce: null })
   })
 
   it('counts the tasks started since midnight, a task once', () => {

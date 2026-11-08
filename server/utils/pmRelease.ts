@@ -7,7 +7,8 @@ import { RELEASED_WHY, idleSince, releaseDue } from '../../shared/pm/release'
 import { handoverText } from '../../shared/pm/stop'
 import { startTask, type PmLaunchDeps } from './pmLaunch'
 import { endAgents, load } from './pmStop'
-import { forgetMemory, memoryHold } from './pmMemory'
+import { forgetMemory } from './pmMemory'
+import { placeFor } from './pmPlace'
 
 type StatusTerminal = LabelledTerminal & { status?: string | { state?: string } | null }
 const busyNow = (t?: StatusTerminal) => {
@@ -43,15 +44,15 @@ export async function releaseIdle(deps: PmLaunchDeps, now = Date.now()) {
 const heldLogged = new Set<string>()
 // The released worker again, in its worktree, with a handover note; `now`:
 // what it is to do first (red CI, a conflict), when the step itself does not
-// say it. Short on memory: not now, tried again on a later pass (undefined).
+// say it. No room on its machine: not now, tried again on a later pass (undefined).
 export async function reviveWorker(deps: PmLaunchDeps, id: string, why: string, now?: string): Promise<Task | undefined> {
   const { store } = deps
   const { task, plan } = await load(deps, id)
   const worker = (await store.runs()).filter(r => r.task === id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
   if (!worker) return
-  const held = await memoryHold(deps, task.project)
-  if (held) {
-    if (!heldLogged.has(id)) await store.logTask(task, 'engine', `the worker starts again once memory is back (${why}): ${held}`)
+  const placed = await placeFor(deps, task)
+  if ('hold' in placed) {
+    if (!heldLogged.has(id)) await store.logTask(task, 'engine', `the worker starts again once there is room (${why}): ${placed.hold}`)
     return void heldLogged.add(id)
   }
   heldLogged.delete(id)

@@ -38,7 +38,7 @@ describe('the release rules', () => {
     const holder = (t: Task) => (t.step!.at === 3 ? 'reviewer' : 'worker')
     // WH-1's worker works; WH-2 waits for the user; WH-3 is in review: its idle worker does not count.
     const runs = [run('a', 'WH-1'), run('b', 'WH-2'), run('c', 'WH-2', 'reviewer'), run('d', 'WH-3'), run('e', 'WH-3', 'reviewer'), { ...run('f', 'WH-1'), machine: 'm2' }]
-    expect(agentsAtWork(runs, tasks, 'm1', holder)).toBe(2)
+    expect(agentsAtWork(runs, tasks, 'm1', holder)).toHaveLength(2)
   })
 })
 

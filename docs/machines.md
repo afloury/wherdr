@@ -45,6 +45,11 @@ machine with its state (connected, connecting…, offline) and last error:
 - **Memory**: each machine's free memory, cores and load (read on Linux and macOS; on macOS the
   free figure is close to Activity Monitor's, not exact) and its agents at once (all projects), with two
   settings: **Agents at once, all projects** (empty: one agent per 1.5 GB of RAM) and
-  **Automatic starts wait under (GB free)**. Automatic starts (autopilot, chains, automations)
-  wait while a machine is short on memory, its swap is over 90 % used or it runs its cap of
-  agents, and start by themselves once it is back. Your own starts still go.
+  **Automatic starts wait under (GB free)**. Each start goes to a machine its project allows
+  where the task fits: heavy work to the strongest one, light and standard work to the project's
+  own machine when it fits. A task fits when the machine keeps its minimum free after the task's
+  estimate (light ≈ 0.7 GB, standard ≈ 1.8 GB, heavy ≈ 3.9 GB), counting the agents just started,
+  its swap is under 90 % used, its cores are not all taken, it runs fewer agents than its cap (when
+  you set one), and for heavy work its load is under 0.8 per core. When no machine fits, automatic
+  starts (autopilot, chains, automations) wait, with each machine's reason on the card, and start
+  by themselves once one has room. Your own starts still go. A task that started stays on its machine.

@@ -174,14 +174,16 @@ kept conversation that ran with another agent. A tap opens its window:
   ran with another one; on the board, *Open* opens or starts it;
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
-  limits (*Tasks / day*, *At once*), the events it wakes on (*Task added*, *Task
+  limits (*Tasks / day*, *At once*: empty is *Auto*, as many as the project's
+  machines have room for, the default for a new project), the events it wakes on (*Task added*, *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
   even with nothing to do, with its own *New tasks / day*). The form says
   *Unsaved changes* until you save;
 - its wakes, each created, delivered and acknowledged, and *Run now*.
 
 Automatic work (the autopilot, automations) waits while an account is ahead of
-its [pace](quotas.md#pace) or a machine is short on memory
+its [pace](quotas.md#pace) (a machine whose account waits is skipped) or no
+machine the project allows has room for the task
 ([Machines](machines.md#manage-machines)); your own starts never wait.
 
 ## Board
