@@ -3,6 +3,7 @@ import { github } from '../shared/pm/examples'
 import { planSteps, type StepState } from '../shared/pm/steps'
 import { awaitsHolder, blockedOf, markOfTerminal, RED_CI_WAIT_MS, taskMark } from '../shared/pm/blocked'
 import { taskGroup } from '../shared/spaces'
+import { ciOf } from '../shared/pm/mechanic'
 import type { Task } from '../shared/pm/run'
 
 // github / simple: todo, work, pr (github.pr), review, merge (github.merge), done.
@@ -21,10 +22,20 @@ it('a refused merge blocks at once; another action only once it failed again and
   expect(blockedOf(task(failed(4, 'head moved'), { state: 'waiting' }), plan, 0)).toBeUndefined()
 })
 
-it('red CI sent to the agent blocks after 15 min without a new move', () => {
-  const sent = 5000, red = task(at(4), { mech: { 'base:abc': 2000, 'red:abc': sent } })
+it('red CI sent to the agent blocks after 15 min while it stays red on that commit', () => {
+  const sent = 5000, red = task(at(4), { mech: { 'base:abc': 2000, 'red:abc': sent }, ci: { head: 'abc', red: true } })
   expect(blockedOf(red, plan, sent + RED_CI_WAIT_MS - 1)).toBeUndefined()
   expect(blockedOf(red, plan, sent + RED_CI_WAIT_MS)).toBe('CI red, no new push for 15 min')
+  // The fix committed or pushed (another head), or CI green again: no longer blocked, even
+  // when the engine records no move (a merge step that is the user's).
+  expect(blockedOf({ ...red, ci: { head: 'def', red: false } }, plan, sent + RED_CI_WAIT_MS * 2)).toBeUndefined()
+  expect(blockedOf({ ...red, ci: { head: 'abc', red: false } }, plan, sent + RED_CI_WAIT_MS * 2)).toBeUndefined()
+  // What the engine reads: red only at the task's commit, once the checks finished.
+  const pr = (headRefOid: string, conclusion: string, status = 'COMPLETED') => ({ url: 'u', baseRefName: 'v3', headRefOid, statusCheckRollup: [{ name: 'test', status, conclusion }] })
+  expect(ciOf(pr('abc', 'FAILURE'), 'abc')).toEqual({ head: 'abc', red: true })
+  expect(ciOf(pr('abc', 'FAILURE'), 'def')).toEqual({ head: 'def', red: false })
+  expect(ciOf(pr('abc', '', 'IN_PROGRESS'), 'abc')).toEqual({ head: 'abc', red: false })
+  expect(ciOf(pr('abc', 'SUCCESS'), 'abc')).toEqual({ head: 'abc', red: false })
   // A later engine move (caught up after a push) or a new step: not blocked.
   expect(blockedOf({ ...red, mech: { ...red.mech, 'catch-up:def': sent + 1 } }, plan, sent + RED_CI_WAIT_MS * 2)).toBeUndefined()
   expect(blockedOf({ ...red, step: at(4, { since: sent + 1 }) }, plan, sent + RED_CI_WAIT_MS * 2)).toBeUndefined()

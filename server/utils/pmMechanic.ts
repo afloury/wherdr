@@ -3,7 +3,7 @@
 // a login back), then at most one move (shared/pm/mechanic.ts). A move is
 // noted on the task before it runs, so it is never made twice.
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
-import { nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
+import { ciOf, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
 import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP, machineOn } from './coreCreate'
 import { actionShell } from './pmActions'
@@ -91,7 +91,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   await startChained(deps, now).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
-  for (const task of await store.tasks()) {
+  for (let task of await store.tasks()) {
     if (task.state === 'todo' || task.step?.done) continue
     const p = projects.find(x => x.key === task.project)
     const t = p ? await store.workflow(p.key) : null
@@ -111,6 +111,9 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       const lines = r.out.split('\n')
       try { facts.pr = (JSON.parse(lines.at(-1) || '[]') as PrInfo[])[0] } catch { continue }
       facts.head = lines[0]?.trim()
+      // Kept for the board: a task is blocked only while its CI is still red (pm/blocked.ts).
+      const ci = ciOf(facts.pr, facts.head)
+      if (ci && (ci.head !== task.ci?.head || ci.red !== task.ci?.red)) facts.task = task = await store.saveTask({ ...task, ci })
       const st = run.terminal ? await deps.call<{ status?: string | { state?: string } }>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null) : null
       const s = typeof st?.status === 'string' ? st.status : st?.status?.state
       facts.agentBusy = s === 'working' || s === 'blocked'

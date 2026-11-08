@@ -5,8 +5,8 @@ import type { Card } from './board'
 import type { PlannedStep } from './steps'
 import type { Task } from './run'
 
-// Red CI sent to the agent, and no new push (no other engine move, no step
-// change) for this long.
+// Red CI sent to the agent, and still red on that same commit (no fix pushed
+// or committed), with no other engine move or step change, for this long.
 export const RED_CI_WAIT_MS = 15 * 60_000
 // An engine action (push, PR, landing) refused this many times in a row.
 export const ACTION_TRIES = 3
@@ -29,10 +29,9 @@ export function blockedOf(task: Task, plan: PlannedStep[], now: number): string 
     const n = s!.tries?.[step.id] ?? 0
     if (n >= ACTION_TRIES) return `${step.id} failed ${n} times: ${error}`
   }
-  const moves = Object.entries(task.mech ?? {})
-  const last = Math.max(0, ...moves.map(([, at]) => at))
-  const red = moves.some(([k, at]) => k.startsWith('red:') && at === last)
-  if (red && last >= (s!.since ?? 0) && now - last >= RED_CI_WAIT_MS) return 'CI red, no new push for 15 min'
+  const sent = task.ci?.red ? task.mech?.[`red:${task.ci.head}`] : undefined
+  const last = Math.max(0, ...Object.values(task.mech ?? {}))
+  if (sent !== undefined && sent === last && sent >= (s!.since ?? 0) && now - sent >= RED_CI_WAIT_MS) return 'CI red, no new push for 15 min'
 }
 
 // The step waits for its holder's report or verdict, and its instructions were delivered.
