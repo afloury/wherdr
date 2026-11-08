@@ -39,16 +39,8 @@ unit: see [Installation](installation.md#keep-it-running)), read at each start.
 | `HERDR_WEB_HERDR_NOTIFICATIONS` | `off` to stop relaying `herdr notification show` as push. |
 
 In the app, **Settings** has these sections: Appearance, Conversation, Terminal, Agents
-(Machines, Claude quotas), Notifications, Plugins, Phone, Security, Shortcuts (computer),
-Advanced and About. **Settings** holds display preferences such as theme, typing effect and what the
+(Machines, Claude quotas), Notifications, Plugins, Phone, Security, Shortcuts (computer)
+and About. **Settings** holds display preferences such as theme, typing effect and what the
 home screen shows; these follow you across devices through `settings.json`. Notifications, terminal text size and renderer remain device-specific. The passkey lock is
 managed under Settings › Security.
 
-## Paste diagnostics
-
-Enable **Settings → Advanced → Paste journal** on the device used for dictation.
-Paste into an agent's message field, then return to Advanced to inspect the last
-50 events: event kind, clipboard types, text length, default prevention, focus
-and whether the field or its attachments changed. Text content is never recorded.
-The journal stays in memory until reload; disabling the switch clears it.
-The switch is off by default and stays local to this browser.

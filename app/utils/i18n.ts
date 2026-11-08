@@ -4,9 +4,6 @@
 const FR: Record<string, string> = {
   'Smooth touch scrolling (beta)': 'Défilement tactile fluide (bêta)',
   'Experimental finger tracking and inertia. Saved on this device.': 'Suivi du doigt et inertie expérimentaux. Enregistré sur cet appareil.',
-  'Advanced': 'Avancé',
-  'Paste journal': 'Journal du collage',
-  'Records the last 50 paste events on this device, without text content. Turning it off clears the journal.': 'Enregistre les 50 derniers événements de collage sur cet appareil, sans le contenu du texte. Le désactiver efface le journal.',
   // Notifications: a default and exceptions (NotificationRules.vue)
   'Too many exceptions. Remove an old one first.': 'Trop d’exceptions. Retire d’abord une ancienne.',
   'All activity': 'Toute l’activité',
