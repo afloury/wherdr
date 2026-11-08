@@ -8,8 +8,8 @@ import { randomUUID } from 'node:crypto'
 import { DONE_CMD, READ_SEP, dueText, parseRead, reviewFile, runFiles, runsNow, signalEvent } from '../../shared/pm/advance'
 import { onEvent, type PlannedStep } from '../../shared/pm/steps'
 import { LABEL, agentLine, reviewerPlan, runLabels, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
-import { PATH_SETUP, launchFailure, machineOn } from './coreCreate'
-import { WRITE_SCRIPT, exec, type PmLaunchDeps } from './pmLaunch'
+import { PATH_SETUP, launchFailure } from './coreCreate'
+import { WRITE_SCRIPT, exec, runOn, type PmLaunchDeps } from './pmLaunch'
 import { stepAction } from './pmBoard'
 import { cleanTask } from './pmCleanup'
 import { readLeakCheck } from './pmVisibility'
@@ -33,8 +33,10 @@ async function context(deps: PmLaunchDeps, id: string): Promise<Ctx | null> {
   const p = task && (await deps.store.projects()).find(x => x.key === task.project)
   const t = p ? await deps.store.workflow(p.key) : null
   if (!task?.step?.started || !p || !t) return null
+  // The worker's machine (its reviewer runs there too); no worker yet: the project's.
+  const worker = latest(await deps.store.runs(), id, 'worker')
   let on: string | undefined
-  try { on = machineOn(deps, p.machine).on } catch { return null }
+  try { on = runOn(deps, worker ?? p) } catch { return null }
   return { task, p, on, t, plan: taskPlan(t, task, p) }
 }
 

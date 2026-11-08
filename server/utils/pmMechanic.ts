@@ -5,11 +5,11 @@
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
 import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
-import { PATH_SETUP, machineOn } from './coreCreate'
+import { PATH_SETUP } from './coreCreate'
 import { actionShell } from './pmActions'
 import { prSeen, stepAction } from './pmBoard'
 import { prNow, requiredChecks } from '../../shared/pm/board'
-import { exec, startTask, type PmLaunchDeps } from './pmLaunch'
+import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
 import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
 import { originOf, pacedStart, paceRefusal } from '../../shared/pm/pace'
 import { projectPace } from './pmPace'
@@ -135,7 +135,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
     const run = runs.filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
     if (!run) continue
     let on: string | undefined
-    try { on = machineOn(deps, p.machine).on } catch { continue }
+    try { on = runOn(deps, run) } catch { continue }
     const sh = actionShell(deps, on)
     const plan = taskPlan(t, task, p)
     const facts: MechFacts = { task, plan, guards: taskGuards(t, task.type), branch: run.branch, agentBusy: false }
