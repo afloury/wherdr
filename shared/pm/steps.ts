@@ -3,7 +3,7 @@
 // the effects for the server to carry out (send a step's instructions to its
 // holder, run an engine action). It knows no tool and no workflow: only who
 // holds a step, how it ends, the proofs it needs and its deadline.
-import type { Evidence, Holder, Step, StepAction, Template, TaskInput } from './workflow'
+import { actionField, type Evidence, type Holder, type Step, type StepAction, type Template, type TaskInput } from './workflow'
 import { mayMerge } from './guards'
 import { taskGuards } from './actions'
 import { shotsMissing, shotsText, shotMode, type Shot } from './shots'
@@ -72,22 +72,35 @@ const proofOf = (s: Step) => (e: Evidence) =>
   e === 'screenshots' ? shotsText(shotMode(s) === 'before-after' ? ['before', 'after'] : ['after']) : PROOF[e]
 export const DEFAULT_ROUNDS = 2
 
+// The project's working branch (Project.base) fills the branch an action
+// leaves out: the PR's base, the branch to land on or to check. A step that
+// names its own keeps it. Neither: the action stays without one.
+export function withBase(a: StepAction, base?: string): StepAction {
+  const f = actionField(a.kind)
+  return f && !a[f] && base ? { ...a, [f]: base } : a
+}
+
+// {base} in instructions: the working branch, or plain words when none is set.
+export const fillBase = (text: string, base?: string) => text.replaceAll('{base}', base || 'the base branch')
+
 // The steps of a task type, shared steps resolved, each with the text its
 // holder gets: every level's instructions, broadest first, then the proofs.
-export function planSteps(t: Template, input: TaskInput): PlannedStep[] {
+// base: the project's working branch (withBase, fillBase).
+export function planSteps(t: Template, input: TaskInput, base?: string): PlannedStep[] {
   const tt = t.taskTypes[input.type]
   if (!tt) return []
   const g = taskGuards(t, input.type)
-  let base: string | undefined // of the PR opened by an earlier step
-  return tt.steps.map(s => (typeof s === 'string' ? t.steps![s]! : s)).map((s) => {
-    if (s.action?.kind === 'github.pr') base = s.action.base
-    const into = s.action?.kind === 'git.land' ? s.action.target : s.action?.kind === 'github.merge' ? base : undefined
+  let prBase: string | undefined // of the PR opened by an earlier step
+  return tt.steps.map(s => (typeof s === 'string' ? t.steps![s]! : s)).map((step) => {
+    const s = step.action ? { ...step, action: withBase(step.action, base) } : step
+    if (s.action?.kind === 'github.pr') prBase = s.action.base
+    const into = s.action?.kind === 'git.land' ? s.action.target : s.action?.kind === 'github.merge' ? prBase : undefined
     const guarded = into !== undefined && !mayMerge(g, into, 'engine') ? { guarded: true as const } : {}
     const own = input.steps?.[s.id]
     const parts = [t.instructions, tt.instructions, input.instructions, s.instructions, own?.instructions].map(x => x?.trim()).filter(Boolean)
     if (s.evidence?.length) parts.push(`Before you say you are done, give ${s.evidence.map(proofOf(s)).join(', ')}.`)
     if (s.evidence?.includes('screenshots')) parts.push(SHOT_HOW)
-    return { ...s, ...(own?.timeout ? { timeout: own.timeout } : {}), ...guarded, text: parts.join('\n\n') }
+    return { ...s, ...(own?.timeout ? { timeout: own.timeout } : {}), ...guarded, text: fillBase(parts.join('\n\n'), base) }
   })
 }
 

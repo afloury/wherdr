@@ -2,7 +2,7 @@
 // wherdr.* labels on herdr-core, so the engine finds it again after a restart.
 import type { Project } from './project'
 import type { Prefs, Step, Template } from './workflow'
-import type { StepState } from './steps'
+import { fillBase, planSteps, type StepState } from './steps'
 import { needsShots, shotMode } from './shots'
 import type { Stopped } from './stop'
 import { isPublic, publicWorkerSection } from './visibility'
@@ -23,6 +23,7 @@ export interface Task {
   mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
   run?: string // the current run
   step?: StepState // where the step engine has it
+  base?: string // the project's working branch when it started ('' none): a later change leaves it alone
   prefs?: Prefs
   tags?: string[] // short texts, shown on the card
   links?: { label: string, url: string }[] // the PR, the ticket…
@@ -98,6 +99,14 @@ export function agentLine(program: string, model: string, instructions: string) 
   return ['exec', program, '--model', model, `Read ${instructions} and follow it.`].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
 }
 
+// A task's working branch: the one it started with, else its project's now.
+export const taskBase = (task: Pick<Task, 'base'>, p?: Pick<Project, 'base'>) =>
+  (task.base !== undefined ? task.base : p?.base) || undefined
+
+// A task's planned steps, with its working branch.
+export const taskPlan = (t: Template, task: Pick<Task, 'type' | 'prefs' | 'base'>, p?: Pick<Project, 'base'>) =>
+  planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }, taskBase(task, p))
+
 const typeSteps = (t: Template, type: string): Step[] =>
   (t.taskTypes[type]?.steps ?? []).map(s => (typeof s === 'string' ? t.steps?.[s] : s)).filter((s): s is Step => !!s)
 
@@ -156,7 +165,7 @@ export function shotsSection(step: Step, task: Pick<Task, 'id'>, shots: { base: 
 // a public repository's rule (leakCheck: its own check, see ownLeakCheck).
 export function instructionsText(p: Project, t: Template, task: Task, run: Pick<Run, 'worktree' | 'branch'>, shots?: { base: string, token: string }, leakCheck?: string) {
   const step = typeSteps(t, task.type).find(s => s.holder === 'worker')
-  const parts = [t.instructions, t.taskTypes[task.type]?.instructions, step?.instructions].map(s => s?.trim()).filter(Boolean)
+  const parts = [t.instructions, t.taskTypes[task.type]?.instructions, step?.instructions].map(s => s?.trim()).filter(Boolean).map(s => fillBase(s!, taskBase(task, p)))
   const visual = shotStep(t, task.type)
   return [
     `# ${task.id}: ${task.title}`, '', task.description.trim() || '(no description)', '',

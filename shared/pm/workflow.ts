@@ -25,6 +25,11 @@ export type MergeMethod = typeof MERGE_METHODS[number]
 // names that must be there and green (a PR whose CI has not started yet has none).
 export interface StepAction { kind: ActionKind, target?: string, base?: string, method?: MergeMethod, checks?: string[] }
 
+// What the action's branch field holds: a branch to merge into, or the PR's
+// base. Left out, the project's working branch fills it (withBase in steps.ts).
+export const actionField = (k: ActionKind): 'target' | 'base' | undefined =>
+  k === 'github.pr' ? 'base' : k === 'git.land' || k === 'git.verify-merged' ? 'target' : undefined
+
 export interface Step {
   id: string
   column?: string // board column, defaults to the id; steps may share one
@@ -143,8 +148,8 @@ function checkStep(s: unknown, path: string, earlier: string[], errs: WorkflowEr
   if (s.action.kind !== 'github.merge') for (const k of ['method', 'checks']) if (s.action[k] !== undefined) err(`action.${k}`, 'only for github.merge')
   if (s.action.method !== undefined && !MERGE_METHODS.includes(s.action.method as MergeMethod)) err('action.method', `must be one of ${MERGE_METHODS.join(', ')}`)
   if (s.action.checks !== undefined && !(Array.isArray(s.action.checks) && s.action.checks.every(isStr))) err('action.checks', 'must be a list of check names')
-  const need = s.action.kind === 'github.pr' ? 'base' : ['git.land', 'git.verify-merged'].includes(s.action.kind as string) ? 'target' : null
-  if (need && !isStr(s.action[need])) err(`action.${need}`, 'is required')
+  const field = actionField(s.action.kind as ActionKind)
+  if (field && s.action[field] !== undefined && !isStr(s.action[field])) err(`action.${field}`, 'must be a branch name')
   if (s.ends !== 'action' && s.ends !== 'user') err('action', 'only for a step that ends with action or user')
 }
 

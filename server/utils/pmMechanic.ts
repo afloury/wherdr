@@ -4,8 +4,7 @@
 // noted on the task before it runs, so it is never made twice.
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
-import { planSteps } from '../../shared/pm/steps'
-import { LABEL, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP, machineOn } from './coreCreate'
 import { actionShell } from './pmActions'
 import { stepAction } from './pmBoard'
@@ -102,7 +101,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
     let on: string | undefined
     try { on = machineOn(deps, p.machine).on } catch { continue }
     const sh = actionShell(deps, on)
-    const plan = planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) })
+    const plan = taskPlan(t, task, p)
     const facts: MechFacts = { task, plan, guards: taskGuards(t, task.type), branch: run.branch, agentBusy: false }
     if (task.state === 'waiting' && task.waitKind === 'auth') {
       facts.loggedIn = (await exec(deps, on, `${PATH_SETUP}\n${LOGIN_SCRIPT}`, [run.program]).catch(() => null))?.code === 0
