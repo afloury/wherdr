@@ -13,7 +13,8 @@ const lines = computed(() => diffLines(props.c.proposal?.diff ?? ''))
 // The readable view first; JSON when there is nothing else to show.
 const VIEWS = ['readable', 'json'] as const
 const view = ref<typeof VIEWS[number]>('readable')
-const changes = computed(() => props.c.proposal?.changes)
+// Nothing readable (a change the builder does not describe): the JSON diff only.
+const changes = computed(() => { const c = props.c.proposal?.changes; return c && (c.all.length || c.types.length) ? c : undefined })
 watch(open, (o) => { if (o) { error.value = ''; view.value = changes.value ? 'readable' : 'json' } })
 </script>
 

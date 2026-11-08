@@ -44,3 +44,11 @@ it('a type-level guard and an action read in plain words; an unchanged workflow 
   expect(workflowChanges(old, next).types[0]!.steps[1]).toMatchObject({ id: 'land', kind: 'added', ends: 'action' })
   expect(workflowChanges(old, old)).toEqual({ all: [], types: [] })
 })
+
+it('a step moved among the others reads as moved', () => {
+  const steps = old.taskTypes.task!.steps
+  const next: Template = { ...old, taskTypes: { ...old.taskTypes, task: { steps: [steps[0]!, steps[2]!, steps[1]!, steps[3]!, steps[4]!] } } }
+  const c = workflowChanges(old, next)
+  expect(c.types[0]!.steps.map(s => [s.id, s.kind])).toEqual([['todo', 'same'], ['review', 'same'], ['work', 'moved'], ['old', 'same'], ['done', 'same']])
+  expect(changeSummary(c)).toEqual(['task: work moved'])
+})

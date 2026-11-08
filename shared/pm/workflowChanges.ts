@@ -3,13 +3,15 @@
 // The coordinator's proposal card and review show it; the JSON diff
 // (templateDiff) stays for the details.
 import type { Guards, Step, StepAction, Template, TaskType } from './workflow'
+import { lineDiff } from './coordinator'
 
 // before/after: the field's value as text, absent when it was not set.
 export interface FieldChange { field: string, before?: string, after?: string }
-export type ChangeKind = 'added' | 'removed' | 'changed' | 'same'
+// moved: kept, in another place among the kept steps (its fields may have changed too).
+export type ChangeKind = 'added' | 'removed' | 'changed' | 'moved' | 'same'
 export interface StepChange { id: string, kind: ChangeKind, holder: string, ends?: string, fields: FieldChange[] }
 // steps: the new list in order, removed steps where they were.
-export interface TypeChange { type: string, kind: Exclude<ChangeKind, 'same'>, fields: FieldChange[], steps: StepChange[] }
+export interface TypeChange { type: string, kind: 'added' | 'removed' | 'changed', fields: FieldChange[], steps: StepChange[] }
 // all: the workflow's own fields (guards, instructions, prefs), for every type.
 export interface WorkflowChanges { all: FieldChange[], types: TypeChange[] }
 
@@ -58,6 +60,9 @@ function stepChanges(oldSteps: Step[], newSteps: Step[]): StepChange[] {
   const after = new Set(newSteps.map(s => s.id))
   const row = (s: Step, kind: ChangeKind, fields: FieldChange[] = []): StepChange =>
     ({ id: s.id, kind, holder: s.holder ?? 'none', ...(s.ends ? { ends: s.ends } : {}), fields })
+  // The kept steps out of the longest run still in order: moved.
+  const kept = (l: Step[], other: Set<string>) => l.map(s => s.id).filter(id => other.has(id))
+  const moved = new Set(lineDiff(kept(oldSteps, after), kept(newSteps, new Set(before.keys()))).filter(l => l.startsWith('+ ')).map(l => l.slice(2)))
   const out: StepChange[] = []
   // Removed steps go where they stood: before the next step that stays.
   let i = 0
@@ -73,7 +78,7 @@ function stepChanges(oldSteps: Step[], newSteps: Step[]): StepChange[] {
     if (!old) { out.push(row(s, 'added')); continue }
     flushRemoved(s.id)
     const fields = compare(stepFields(old), stepFields(s))
-    out.push(row(s, fields.length ? 'changed' : 'same', fields))
+    out.push(row(s, moved.has(s.id) ? 'moved' : fields.length ? 'changed' : 'same', fields))
   }
   flushRemoved()
   return out
@@ -94,7 +99,7 @@ export function workflowChanges(old: Template | null, next: Template): WorkflowC
 }
 
 const fieldLine = (f: FieldChange) => (f.field === 'instructions' ? 'instructions edited' : `${f.field}: ${f.before ?? 'none'} → ${f.after ?? 'none'}`)
-const stepLine = (s: StepChange) => (s.kind === 'added' ? `+ ${s.id}` : s.kind === 'removed' ? `− ${s.id}` : `${s.id} ${s.fields.map(fieldLine).join(', ')}`)
+const stepLine = (s: StepChange) => (s.kind === 'added' ? `+ ${s.id}` : s.kind === 'removed' ? `− ${s.id}` : [`${s.id}${s.kind === 'moved' ? ' moved' : ''}`, s.fields.map(fieldLine).join(', ')].filter(Boolean).join(' '))
 
 // The change in a few plain lines, one per type: "task: merge: you → automatic, land action: … checks smoke".
 export function changeSummary(c: WorkflowChanges, max = 2): string[] {

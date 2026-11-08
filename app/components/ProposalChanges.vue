@@ -6,7 +6,7 @@ import type { FieldChange, WorkflowChanges } from '#shared/pm/workflowChanges'
 import { lineDiff } from '#shared/pm/coordinator'
 
 defineProps<{ changes: WorkflowChanges }>()
-const KIND = { added: 'new', removed: 'removed', changed: 'changed', same: '' } as const
+const KIND = { added: 'new', removed: 'removed', changed: 'changed', moved: 'moved', same: '' } as const
 const textDiff = (f: FieldChange) => diffLines(lineDiff((f.before ?? '').split('\n'), (f.after ?? '').split('\n'), true).join('\n'))
 </script>
 
@@ -56,13 +56,13 @@ const textDiff = (f: FieldChange) => diffLines(lineDiff((f.before ?? '').split('
 .wf-steps > li.added { border-left-color: var(--green); }
 .wf-steps > li.removed { border-left-color: var(--rose); }
 .wf-steps > li.removed .wf-step-id { text-decoration: line-through; color: var(--muted); }
-.wf-steps > li.changed { border-left-color: var(--accent); }
+.wf-steps > li.changed, .wf-steps > li.moved { border-left-color: var(--accent); }
 .wf-steps > li.same { color: var(--muted); }
 .wf-step-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
 .wf-step-id { font: 13px/1.4 var(--font-mono); }
 .wf-kind.added { color: var(--green); }
 .wf-kind.removed { color: var(--rose); }
-.wf-kind.changed { color: var(--accent); }
+.wf-kind.changed, .wf-kind.moved { color: var(--accent); }
 .wf-fields { gap: 4px; padding-top: 4px; font-size: 13px; overflow-wrap: anywhere; }
 .wf-field { font: 12px/1.4 var(--font-mono); color: var(--muted); margin-right: 6px; }
 del { color: var(--rose); }
