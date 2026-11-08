@@ -29,7 +29,7 @@ type Ctx = { task: Task, p: Project, on: string | undefined, plan: ReturnType<ty
 async function context(deps: PmLaunchDeps, id: string): Promise<Ctx | null> {
   const task = await deps.store.task(id)
   const p = task && (await deps.store.projects()).find(x => x.key === task.project)
-  const t = p?.template ? await deps.store.template(p.template) : null
+  const t = p ? await deps.store.workflow(p.key) : null
   if (!task?.step?.started || !p || !t) return null
   let on: string | undefined
   try { on = machineOn(deps, p.machine).on } catch { return null }

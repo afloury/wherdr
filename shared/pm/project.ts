@@ -1,5 +1,5 @@
 // A managed project: a folder (git, unless git: false) on a machine reached through herdr-core,
-// and the template its tasks follow. Stored in DATA_DIR/projects/projects.json.
+// and its own workflow (DATA_DIR/projects/workflows/<KEY>.json), which its tasks follow. Stored in DATA_DIR/projects/projects.json.
 import type { WorkflowError } from './workflow'
 import type { Task } from './run'
 import type { RepoVisibility } from './visibility'
@@ -11,17 +11,20 @@ export interface Project {
   path: string
   git?: false // a folder without git: its coordinator works in it, no task worktree
   base?: string // branch tasks start from (default: the repo's current one)
-  template?: string // template id; none yet = no task can start
+  // The library template (or example) its workflow was copied from: information
+  // only, never followed. None: no workflow yet, no task can start.
+  from?: { template: string, version: number }
   visibility?: RepoVisibility // public repository: guardrails for its coordinator and tasks
   addedAt: number
 }
 
-export type ProjectInput = Omit<Project, 'addedAt'>
+// template: a library template id or example:<id>, copied into the project's workflow.
+export type ProjectInput = Omit<Project, 'addedAt' | 'from'> & { template?: string }
 export interface TemplateInfo { id: string, version?: number }
 // GET /api/pm/overview
 export interface PmOverview { enabled: boolean, projects: Project[], templates: TemplateInfo[], tasks?: Task[] }
 
-const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
+export const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/
 // A branch name git takes, without the odd cases (.., @{, spaces, ~^:?*[\).
 const BRANCH_RE = /^(?!.*\.\.)(?!.*@\{)(?!\/)(?!.*\/$)[A-Za-z0-9._/-]{1,100}$/
@@ -44,7 +47,7 @@ export function cleanProjectInput(raw: unknown): { project?: ProjectInput, error
   const base = str('base')
   if (base && !BRANCH_RE.test(base)) errors.push({ path: 'base', message: 'invalid branch name' })
   const template = str('template')
-  if (template && !isTemplateId(template)) errors.push({ path: 'template', message: 'invalid template id' })
+  if (template && !isTemplateId(template.replace(/^example:/, ''))) errors.push({ path: 'template', message: 'invalid template id' })
   if (errors.length) return { errors }
   return {
     errors,

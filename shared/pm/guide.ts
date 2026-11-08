@@ -13,10 +13,11 @@ type Coord = { project: string, terminal?: string }
 export function guideSteps(o: Pick<PmOverview, 'enabled' | 'projects' | 'templates'> | null, coords: Coord[] = []): GuideStep[] {
   const enabled = !!o?.enabled
   const projects = o?.projects ?? []
-  const withTemplate = new Set(projects.filter(p => p.template).map(p => p.key))
+  const withTemplate = new Set(projects.filter(p => p.from).map(p => p.key))
   return [
     { id: 'enable', done: enabled },
-    { id: 'template', done: enabled && (o?.templates.length ?? 0) > 0 },
+    // A saved template, or a project whose workflow was copied from one (an example is not saved).
+    { id: 'template', done: enabled && ((o?.templates.length ?? 0) > 0 || withTemplate.size > 0) },
     // Every project has one: imported projects come without.
     { id: 'projects', done: enabled && projects.length > 0 && withTemplate.size === projects.length },
     { id: 'coordinator', done: enabled && coords.some(c => !!c.terminal && withTemplate.has(c.project)) },
@@ -25,7 +26,7 @@ export function guideSteps(o: Pick<PmOverview, 'enabled' | 'projects' | 'templat
 
 // Nothing set up yet: off, or no project follows a template.
 export const guideNeeded = (o: Pick<PmOverview, 'enabled' | 'projects'> | null) =>
-  !!o && (!o.enabled || !o.projects.some(p => p.template))
+  !!o && (!o.enabled || !o.projects.some(p => p.from))
 
 // The project whose coordinator the last step starts: the first with a template.
-export const guideProject = (o: Pick<PmOverview, 'projects'> | null) => o?.projects.find(p => p.template)?.key
+export const guideProject = (o: Pick<PmOverview, 'projects'> | null) => o?.projects.find(p => p.from)?.key

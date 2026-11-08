@@ -13,7 +13,7 @@ export default defineApi(async (event, body) => {
   const key = typeof body.project === 'string' ? body.project : ''
   const p = (await store.projects()).find(x => x.key === key)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
-  const types = Object.keys((p.template && (await store.template(p.template))?.taskTypes) || {})
+  const types = Object.keys(((await store.workflow(p.key))?.taskTypes) || {})
   const id = typeof body.id === 'string' ? body.id : typeof body.automation?.id === 'string' ? body.automation.id : ''
   if (body.runNow === true) return { firing: await fireAutomation({ ...coreAdminDeps(), store, origin: getRequestURL(event).origin }, key, id) }
   const automations = await store.changeAutomations(key, (f) => {

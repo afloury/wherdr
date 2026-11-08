@@ -330,8 +330,8 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[]):
 
 // The main coordinator's part of Alfred's home (shared/pm/alfred.ts): every
 // project, through the board only. Its AGENTS.md is a section of Alfred's.
-export function mainRoleFiles(projects: Pick<Project, 'key' | 'name' | 'path' | 'template'>[]): Record<string, string> {
-  const list = projects.length ? projects.map(p => `- ${p.key}: ${p.name} (repository ${p.path}, template ${p.template || 'none'})`) : ['(no project yet)']
+export function mainRoleFiles(projects: Pick<Project, 'key' | 'name' | 'path' | 'from'>[]): Record<string, string> {
+  const list = projects.length ? projects.map(p => `- ${p.key}: ${p.name} (repository ${p.path}, template ${p.from?.template || 'none'})`) : ['(no project yet)']
   const agents = [
     '## Coordinating the projects', '',
     'You are also the main coordinator: you coordinate every project of the user\'s board, and answer the user about all of them. You change no repository: task agents do the work in their own worktrees.',
