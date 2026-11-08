@@ -80,6 +80,8 @@ has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
 action, what it does: land on a branch, push, open a PR, merge a PR, or check
 that a branch was merged, with its branch, merge method and required checks.
+A merge that first pushes the task's last commits waits up to a minute for
+GitHub to show them on the PR.
 In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
 *Add task* under [Board](#board)). Under the form, the plan of the chosen task type. *Save* checks the workflow
 and shows each problem with its line.
