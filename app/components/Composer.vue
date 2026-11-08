@@ -5,13 +5,12 @@
 // Photos shrunk in the browser (2048 px, JPEG) then stored on the server;
 // their path goes with the message. Other files the agent can read (PDF,
 // text, code, notebooks) are stored on its machine as they are (/api/attach).
-import type { Pane, QueuedMessage, SlashCommand } from '#shared/types'
+import type { Pane, QueuedMessage } from '#shared/types'
 import type { DraftAtt } from '~/composables/useDraft'
 import { unreference } from '#shared/reference'
 import { quotesIn, removeQuote } from '~/utils/questionReply'
 import { attachQuoteMirror } from '~/utils/quoteMirror'
-import { isAgentCommand } from '#shared/commandScreen'
-import { isSlashCommand } from '#shared/queuedMatch'
+import { isBareBang, isSlashCommand } from '#shared/queuedMatch'
 import { viaPrompt } from '#shared/sendRoute'
 import type { AttachKind } from '#shared/attachments'
 import { refusalText, sortForAgent } from '~/utils/fileDrop'
@@ -24,6 +23,7 @@ import { kbOpen } from '~/composables/useViewport'
 import { PromptHistory, historyDirection } from '~/utils/promptHistory'
 import { createTouchTap } from '~/utils/touchTap'
 import { tracePaste } from '~/utils/pasteJournal'
+import { ESC_CONFIRM_MS, type EscapeArm, pressEscape } from '~/utils/escapeStop'
 import { pasteHtmlText } from '~/utils/pasteHtml'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
@@ -33,8 +33,6 @@ import { pasteHtmlText } from '~/utils/pasteHtml'
 const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void>, conversation?: boolean, escStops?: boolean, takeBack?: boolean, unanswered?: number, termShown?: boolean }>()
 const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [], showUnanswered: [] }>()
 
-// Claude Code update installed: the status line restarts the agent.
-// Claude Code error status ("Auto-update failed…"): in red, like in the terminal.
 // Text left in Codex's field (pane.codexField): it would be sent glued before
 // the next message. Clear: Ctrl+U and Backspace, line by line (a field of a
 // few lines; harmless on an empty field), only offered while Codex rests.
@@ -45,31 +43,13 @@ async function clearCodexField() {
   try { await props.sendKeys(Array.from({ length: 10 }, () => ['ctrl+u', 'backspace']).flat()) }
   finally { clearingField.value = false }
 }
-const noticeIsError = computed(() => /\b(failed|error)\b/i.test(props.pane?.claudeNotice || ''))
-const updateReady = computed(() => Boolean(props.pane?.claudeNotice && /Restart to update/i.test(props.pane.claudeNotice) && canRestart(props.pane)))
-const restartLabel = computed(() => {
-  const r = props.pane?.restart
-  if (!r) return ''
-  const who = kindLabel(r.agent)
-  // Codex update in its terminal: one more step between the stop and the relaunch.
-  if (r.update && r.phase === 'stopping') return tl(`Exiting ${who}…`, `Fermeture de ${who}…`)
-  if (r.phase === 'updating') return tl(`Updating ${who} in its terminal…`, `Mise à jour de ${who} dans son terminal…`)
-  return r.phase === 'stopping' ? tl(`Stopping ${who}…`, `Arrêt de ${who}…`) : tl(`Restarting ${who} on the same conversation…`, `Relance de ${who} sur la même conversation…`)
-})
-async function copyUpdate() {
-  const c = props.pane?.restart?.update
-  if (!c) return
-  try {
-    await navigator.clipboard.writeText(c)
-    toast(tl('Command copied: paste it into the terminal of this pane.', 'Commande copiée : colle-la dans le terminal de ce panneau.'))
-  } catch { toast(t('Copy failed'), true) }
-}
-
 // Conversation draft (text + photos), kept when switching conversations.
 const draft = useDraft(props.paneId)
 const text = toRef(draft, 'text')
 const promptRef = ref<{ textareaRef?: HTMLTextAreaElement } | null>(null)
 const ta = computed(() => promptRef.value?.textareaRef || null)
+// Dictation (Settings › Conversation): the mic before the plugins' buttons, the take above the field.
+const mic = useComposerDictation({ text, ta, pane: () => props.pane })
 const fieldFocused = ref(false)
 let pointerHeld = false
 let collapseAfterPress = false
@@ -134,16 +114,20 @@ watch([() => quoteMode.value === 'native' && quotes.value.length > 0, ta], ([on,
 watch(text, () => nextTick(() => mirror?.render()), { flush: 'post' })
 onBeforeUnmount(() => { mirror?.destroy(); mirror = null })
 
-const canSend = computed(() => Boolean(text.value.trim() || attachments.value.length))
+// A lone "!" is nothing to send (shared/queuedMatch.ts isBareBang): no Send,
+// and Enter adds no line. It is not an empty field either: no Stop, no suggestion.
+const typedText = computed(() => (isBareBang(text.value) ? '' : text.value))
+const fieldEmpty = computed(() => !text.value.trim() && !attachments.value.length)
+const canSend = computed(() => Boolean(typedText.value.trim() || attachments.value.length))
 const readOnly = computed(() => Boolean(props.pane?.stopped || props.pane?.prompt?.unavailable) || !eventsOpen.value || offlineView.value || paneStale(props.pane))
 // Offline, no Stop: UChatPromptSubmit ignores `disabled` in "streaming" mode.
 // omp running the user's "!" / "$" command stays idle: Stop cancels the command.
 const shellRun = computed(() => Boolean(props.pane && props.pane.agent === 'omp' && props.pane.ompShell && props.pane.status !== 'working'))
-const stopMode = computed(() => Boolean(!readOnly.value && props.pane && props.pane.agent && (props.pane.status === 'working' || shellRun.value) && !canSend.value))
+const stopMode = computed(() => Boolean(!readOnly.value && props.pane && props.pane.agent && (props.pane.status === 'working' || shellRun.value) && fieldEmpty.value))
 // Claude Code's grayed-out suggestion (see parseClaudeSuggestion): placeholder of the
 // empty field; Tab puts it in the field, without sending it. A touch screen has no Tab:
 // a "Use" button inside the field, on the right, does the same (`suggestTap`).
-const suggestion = computed(() => (!readOnly.value && !canSend.value && props.pane?.claudeSuggestion) || null)
+const suggestion = computed(() => (!readOnly.value && fieldEmpty.value && props.pane?.claudeSuggestion) || null)
 const suggestTap = computed(() => Boolean(suggestion.value && !enterSends.value))
 function useSuggestion() {
   const s = suggestion.value
@@ -176,34 +160,32 @@ const placeholder = computed(() => {
 // Enter: UChatPrompt only sends text; a photo alone, or an empty field
 // while the agent is working (Stop), go through here.
 function onKeydown(e: KeyboardEvent) {
-  if (slashOpen.value && !e.isComposing) {
-    const n = slashMatches.value.length
-    if (e.key === 'ArrowDown') { e.preventDefault(); lastPointer = 'kb'; slashSel.value = (slashSel.value + 1) % n; return }
-    if (e.key === 'ArrowUp') { e.preventDefault(); lastPointer = 'kb'; slashSel.value = (slashSel.value - 1 + n) % n; return }
-    if (e.key === 'Escape') { e.preventDefault(); slashDismissed.value = true; return }
-    if (e.key === 'Tab' || (enterSends.value && e.key === 'Enter' && !e.shiftKey)) {
-      e.preventDefault()
-      e.stopPropagation()
-      pickSlash(slashMatches.value[slashSel.value] || slashMatches.value[0]!)
-      return
-    }
-  }
   if (e.key === 'Tab' && !e.shiftKey && !e.isComposing && suggestion.value && !text.value) {
     e.preventDefault()
     useSuggestion()
     return
   }
   if (enterSends.value && e.key === 'Enter' && !e.shiftKey && !e.isComposing && !text.value.trim()) {
+    // Nothing to send (no Stop, no attachment; UChatPrompt's own submit-on-enter
+    // is off then): Enter goes on to a "Your turn" card (useCardKeys on
+    // document); onEmptyEnter drops the newline otherwise.
+    if (!readOnly.value && !stopMode.value && !attachments.value.length) return
     e.preventDefault()
     submit()
   }
 }
+function onEmptyEnter(e: KeyboardEvent) {
+  if (e.defaultPrevented || e.target !== ta.value || e.key !== 'Enter' || e.shiftKey || e.isComposing || !enterSends.value || typedText.value.trim()) return
+  e.preventDefault()
+}
+onMounted(() => window.addEventListener('keydown', onEmptyEnter))
+onBeforeUnmount(() => window.removeEventListener('keydown', onEmptyEnter))
 // Bubble on window, after useCardKeys on document: the active card owns
-// arrows in an empty field. Slash suggestions are handled above at the field.
+// arrows in an empty field.
 const history = new PromptHistory()
 function onHistoryKey(e: KeyboardEvent) {
   const el = ta.value
-  if (!el || e.target !== el || slashOpen.value || sending.value) return
+  if (!el || e.target !== el || sending.value) return
   const current = { text: el.value, start: el.selectionStart, end: el.selectionEnd }
   const direction = historyDirection(e, current)
   if (direction === null) return
@@ -211,12 +193,7 @@ function onHistoryKey(e: KeyboardEvent) {
   if (!recalled) return
   e.preventDefault()
   text.value = recalled.text
-  // A recalled command should be browsable with the next arrow too.
-  slashDismissed.value = true
-  nextTick(() => {
-    slashDismissed.value = true
-    el.setSelectionRange(recalled.start, recalled.end)
-  })
+  nextTick(() => el.setSelectionRange(recalled.start, recalled.end))
 }
 onMounted(() => window.addEventListener('keydown', onHistoryKey))
 onBeforeUnmount(() => {
@@ -258,11 +235,20 @@ async function submit() {
   // they are, after the typed text (the agent gets one message, as from a paste).
   const pastes = attachments.value.flatMap(a => (a.paste ? [a.paste] : []))
   const paths = attachments.value.flatMap(a => (a.paste ? [] : [a.ref || a.path!]))
-  const typed = text.value
+  const typed = typedText.value
   const body = messageBody(typed, pastes, paths)
   const msg = body
   if (!msg || sending.value) return
+  // The same text sent here a moment ago: an echo (a dictation app pressing
+  // Enter again while the page lags), not a new message. Its copy goes.
+  if (!claimSend(props.paneId, msg)) {
+    text.value = ''
+    clearAttachments()
+    toast(t('Already sent'))
+    return
+  }
   const p = props.pane
+  if (p?.status === 'working') sentWhileWorking.value = true
   // omp question with "Other": the message is its free answer.
   const prompt = p && p.status === 'blocked' ? p.prompt : null
   const free = prompt ? prompt.options.findIndex(o => o.free) : -1
@@ -282,24 +268,29 @@ async function submit() {
   sending.value = true
   // Before the send: it tells the server where they sit (see sendMessage).
   rememberPastes(pastes)
+  // The field empties before the request: another Enter while it runs finds
+  // nothing to send. Not sent: the message comes back.
+  const atts = attachments.value
+  text.value = ''
+  attachments.value = []
+  const giveBack = () => {
+    releaseSend(props.paneId, msg)
+    if (!text.value && !attachments.value.length) {
+      text.value = typed
+      attachments.value = atts
+    } else restoreDraft(draft, msg, pastes)
+  }
   try {
     let queued: QueuedMessage | null = null
     if (prompt && free >= 0) {
-      if (!(await choose(props.paneId, free, prompt.options[free]!.label, prompt.identity, { text: msg, question: prompt.question }))) return
+      if (!(await choose(props.paneId, free, prompt.options[free]!.label, prompt.identity, { text: msg, question: prompt.question }))) return giveBack()
     } else queued = await sendMessage(p, props.paneId, msg)
     rememberSent(typed)
-    text.value = ''
-    clearAttachments()
+    for (const a of atts) if (a.url) URL.revokeObjectURL(a.url)
     haptic()
     emit('sent', queued)
-    // "/" command: its result (terminal screen), as from the + menu.
-    // A skill or custom command makes the agent reply: no panel.
-    const cmd = msg.split(/\s/)[0]!
-    const listed = slashCache.get(props.paneId)?.list || slashList.value
-    if (free < 0 && p && p.agent && !paths.length && /^\/\S+$/.test(cmd) && !msg.includes('\n') && !isAgentCommand(cmd, listed)) {
-      showCommandResult(props.paneId, cmd, listed.some(c => c.source === 'builtin' && `/${c.name}` === cmd))
-    }
   } catch (err) {
+    giveBack()
     toast((err as Error).message, true)
   } finally {
     sending.value = false
@@ -308,8 +299,11 @@ async function submit() {
 
 // ------------------------------------------------------------ Stop
 // The server sends Escape, sends it again if the agent is still working, stops
-// Claude's background tasks (see server/utils/interruptSeq.ts) then says whether the agent
+// Claude's background tasks then says whether the agent
 // stopped. Otherwise: lasting message with access to the terminal.
+// A message sent while the agent was busy waits in its queue (the screen does not always say so).
+const sentWhileWorking = ref(false)
+watch(() => props.pane?.status, st => { if (st !== 'working') sentWhileWorking.value = false })
 const interrupting = ref<'running' | 'failed' | null>(null)
 // What the last Stop targeted: the user's omp command, or the agent's turn.
 const stoppingShell = ref(false)
@@ -318,10 +312,16 @@ async function interrupt() {
   haptic()
   interrupting.value = 'running'
   stoppingShell.value = shellRun.value
+  // A queued message starts as soon as Escape interrupts the turn: the agent is
+  // then "still working" on that message, which is not a failure.
+  const hadQueued = Boolean(props.pane?.queued?.length) || sentWhileWorking.value
+  sentWhileWorking.value = false
   try {
-    const r = await api<{ stopped: boolean, background: number, shell?: boolean, restored?: string, lost?: number }>('/api/interrupt', { pane_id: props.paneId, restore: Boolean(props.takeBack) })
-    interrupting.value = r.stopped ? null : 'failed'
+    const r = await api<{ stopped: boolean, outcome?: string, background: number, shell?: boolean, restored?: string, lost?: number }>('/api/interrupt', { pane_id: props.paneId, restore: Boolean(props.takeBack) })
+    const nextStarted = r.outcome === 'still_working' && !r.stopped && !r.shell && hadQueued
+    interrupting.value = r.stopped || nextStarted ? null : 'failed'
     stoppingShell.value = Boolean(r.shell)
+    if (nextStarted) { toast(tl('Interrupted, next message started', 'Interrompu, message suivant lancé')); return }
     if (r.shell) {
       if (r.stopped) toast(tl('Command cancelled', 'Commande annulée'))
       return
@@ -343,13 +343,22 @@ async function interrupt() {
 watch(() => props.pane?.status, s => { if (interrupting.value === 'failed' && !stoppingShell.value && s !== 'working') interrupting.value = null })
 watch(shellRun, on => { if (interrupting.value === 'failed' && stoppingShell.value && !on) interrupting.value = null })
 // Escape (composables/useShortcuts.ts): the Stop button, only while it is shown and
-// clickable. The field blurs itself on Escape: it gets the focus back for what comes next.
+// clickable, on the second press within a moment (utils/escapeStop.ts): one stray
+// Escape from another app must not stop the agent. The field blurs itself on
+// Escape: it gets the focus back for what comes next.
+const escArm: EscapeArm = { at: null }
+const escArmed = ref(false)
+let escTimer: ReturnType<typeof setTimeout> | undefined
 function stop() {
   if (!props.escStops || !stopMode.value || sending.value || interrupting.value === 'running') return false
-  interrupt()
+  clearTimeout(escTimer)
+  escArmed.value = !pressEscape(escArm, Date.now())
+  if (escArmed.value) escTimer = setTimeout(() => { escArmed.value = false }, ESC_CONFIRM_MS)
+  else interrupt()
   ta.value?.focus()
   return true
 }
+onBeforeUnmount(() => clearTimeout(escTimer))
 
 // ------------------------------------------------------------ photos
 function clearAttachments() {
@@ -402,6 +411,8 @@ async function addFiles(files: File[]) {
   return images.length + readable.length
 }
 async function uploadFile(f: File, kind: AttachKind) {
+  // herdr-core's terminal.put takes 8 MB at most: say so before sending anything.
+  if (useRuntimeConfig().public.core && f.size > 8 * 1024 * 1024) return toast(`${f.name} : ${t('File too large for herdr-core (8 MB max)')}`, true)
   const a = reactive<Att>({ url: '', path: null, file: { label: f.name, size: f.size, kind } })
   attachments.value.push(a)
   try {
@@ -494,95 +505,6 @@ async function pasteFromClipboard() {
   }
 }
 
-// ------------------------------------------------------------ "/" commands
-// "/" as the first character: the agent's commands, like the terminal's
-// menu (built-in + the machine's skills and commands), filtered as you
-// type. Tapping a command puts it in the field; Enter sends it.
-// `denied`: macOS refused to list project folders, some commands are missing
-// (`remote`: the pane's machine is reached over SSH).
-interface SlashDenied { remote: boolean }
-const slashCache = new Map<string, { at: number, list: SlashCommand[], denied: SlashDenied | null }>()
-const slashList = ref<SlashCommand[]>([])
-const slashDenied = ref<SlashDenied | null>(null)
-const slashSel = ref(0)
-const slashDismissed = ref(false)
-const slashListEl = ref<HTMLElement | null>(null)
-const slashQuery = computed(() => {
-  const m = /^\/(\S*)$/.exec(text.value)
-  return props.pane && props.pane.agent && m ? m[1]!.toLowerCase() : null
-})
-async function loadSlash() {
-  const key = props.paneId
-  const hit = slashCache.get(key)
-  // The known list at once, asked again after a few seconds: a skill or
-  // command added on the machine shows up without reloading the app.
-  if (hit) {
-    slashList.value = hit.list
-    slashDenied.value = hit.denied
-    if (Date.now() - hit.at < 15000) return
-  }
-  try {
-    const r = await api<{ commands: SlashCommand[], partial?: boolean, denied?: 'macos', remote?: boolean }>(`/api/commands?pane=${encodeURIComponent(key)}`)
-    // Built-in commands only (machine's skills unreadable): asked again on
-    // the next "/", the last full list stays.
-    if (r.partial && hit) return
-    const denied = r.denied ? { remote: !!r.remote } : null
-    if (!r.partial) slashCache.set(key, { at: Date.now(), list: r.commands, denied })
-    if (key === props.paneId) {
-      slashList.value = r.commands
-      slashDenied.value = denied
-    }
-  } catch { /* no suggestions */ }
-}
-watch(slashQuery, (q, old) => {
-  if (q === null) { slashDismissed.value = false; return }
-  if (old === null || old === undefined) loadSlash()
-  slashSel.value = 0
-})
-watch(() => props.paneId, () => {
-  slashList.value = []
-  slashDenied.value = null
-})
-const slashMatches = computed(() => {
-  const q = slashQuery.value
-  if (q === null) return []
-  const starts: SlashCommand[] = []
-  const inName: SlashCommand[] = []
-  const inDesc: SlashCommand[] = []
-  for (const c of slashList.value) {
-    const n = c.name.toLowerCase()
-    if (n.startsWith(q)) starts.push(c)
-    else if (n.includes(q)) inName.push(c)
-    else if (q.length > 1 && c.desc.toLowerCase().includes(q)) inDesc.push(c)
-  }
-  return [...starts, ...inName, ...inDesc]
-})
-// Nothing matches but macOS hid project commands: the menu says so.
-const slashOpen = computed(() => slashQuery.value !== null && !slashDismissed.value && (slashMatches.value.length > 0 || !!slashDenied.value)
-  && !(slashMatches.value.length === 1 && slashMatches.value[0]!.name.toLowerCase() === slashQuery.value))
-// Hover: only if the mouse really moved. When the list scrolls with the
-// keyboard under a still pointer, the browser also emits hovers, which
-// would steal the selection.
-let lastPointer = ''
-function hoverSlash(e: MouseEvent, i: number) {
-  const at = `${e.screenX},${e.screenY}`
-  const kb = lastPointer === 'kb'
-  if (at === lastPointer) return
-  lastPointer = at
-  // Right after an arrow: the first position seen is that of the still pointer.
-  if (kb) return
-  slashSel.value = i
-}
-function pickSlash(c: SlashCommand) {
-  text.value = `/${c.name} `
-  haptic()
-  nextTick(() => ta.value?.focus())
-}
-watch(slashSel, i => nextTick(() => {
-  const el = slashListEl.value?.children[i] as HTMLElement | undefined
-  el?.scrollIntoView({ block: 'nearest' })
-}))
-
 // ------------------------------------------------------------ menu +
 const SLASH: Record<string, [string, string][]> = {
   claude: [['/compact', 'Summarize context'], ['/clear', 'New conversation'], ['/context', 'Context usage'],
@@ -611,13 +533,12 @@ function openPlus() {
   }
   openMenu(items)
 }
-async function runSlash(cmd: string, result = true) {
+async function runSlash(cmd: string) {
   try {
     await api('/api/prompt', { pane_id: props.paneId, text: cmd })
     rememberPrompt(props.paneId, cmd)
     haptic()
-  } catch (err) { return toast((err as Error).message, true) }
-  if (result) showCommandResult(props.paneId, cmd)
+  } catch (err) { toast((err as Error).message, true) }
 }
 
 // Focus, cursor at the end (text set from outside: "Problem" of the Project
@@ -655,7 +576,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="composer" :data-agent="pane?.agent || undefined">
+  <div class="composer" data-wherdr="composer" :data-agent="pane?.agent || undefined">
     <div v-if="interrupting" class="composer-notice restart" :class="{ failed: interrupting === 'failed' }" role="status">
       <template v-if="interrupting === 'failed'">
         <span class="restart-text">{{ stoppingShell ? tl('The command is still running.', 'La commande tourne encore.') : t('The agent is still working.') }}</span>
@@ -667,57 +588,11 @@ defineExpose({
         <span class="restart-text">{{ stoppingShell ? tl('Cancelling the command…', 'Annulation de la commande…') : t('Stopping…') }}</span>
       </template>
     </div>
-    <div v-else-if="pane?.restart" class="composer-notice restart" :class="pane.restart.phase" role="status">
-      <template v-if="pane.restart.phase === 'failed'">
-        <span class="restart-text">{{ pane.restart.update ? t('Codex update failed') : t('Restart failed') }}{{ tl(': ', ' : ') }}{{ t(pane.restart.error || '') }}</span>
-        <button v-if="!termShown" type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('View terminal') }}</button>
-        <button v-if="pane.restart.update" type="button" class="notice-btn" @click="copyUpdate"><UIcon name="i-lucide-copy" />{{ t('Copy command') }}</button>
-        <button type="button" class="notice-btn" @click="dismissRestart(paneId)">{{ t('Hide') }}</button>
-      </template>
-      <template v-else>
-        <span class="notice-spin" aria-hidden="true" />
-        <span class="restart-text">{{ restartLabel }}</span>
-      </template>
-    </div>
-    <UsageLimitCard v-else-if="conversation && pane?.usageLimit" :limit="pane.usageLimit" :read-only="readOnly" :send-keys="sendKeys" @credits="runSlash('/usage-credits', false)" />
-    <div v-else-if="pane?.claudeNotice" class="composer-notice" :class="{ error: noticeIsError }" role="status">
-      <template v-if="updateReady">
-        <span class="restart-text">{{ pane.claudeNotice.replace(/\s*·\s*Restart to update\b.*$/, '') }} ·</span>
-        <button type="button" class="notice-btn" :disabled="readOnly" @click="restartAgent(pane)">
-          <UIcon name="i-lucide-rotate-cw" />{{ t('Restart to update') }}
-        </button>
-      </template>
-      <template v-else>{{ noticeIsError && !/^[✗✘]/.test(pane.claudeNotice) ? `✘ ${pane.claudeNotice}` : pane.claudeNotice }}</template>
-    </div>
-    <CodexNotices v-else-if="pane?.codexStatus" :pane="pane" :pane-id="paneId" :read-only="readOnly" />
     <div v-if="pane?.agent === 'codex' && pane.codexField && !interrupting" class="composer-notice codex-field" role="status">
       <UIcon name="i-lucide-text-cursor-input" class="notice-icon" />
       <span class="restart-text" :title="codexFieldHint">{{ tl('In Codex’s field:', 'Dans le champ de Codex :') }} <code>{{ pane.codexField }}</code></span>
       <button type="button" class="notice-btn" :disabled="readOnly || clearingField" :title="codexFieldHint" @click="clearCodexField">{{ tl('Clear', 'Vider') }}</button>
       <button v-if="!termShown" type="button" class="notice-btn" @click="emit('showTerminal')"><UIcon name="i-lucide-terminal" /><span class="notice-label">{{ t('View terminal') }}</span></button>
-    </div>
-    <div v-if="slashOpen" class="slash-menu" role="listbox" :aria-label="t('Commands')">
-      <div v-if="slashMatches.length" ref="slashListEl" class="slash-list">
-        <button
-          v-for="(c, i) in slashMatches" :key="c.name" type="button" role="option" class="slash-item"
-          :class="{ on: i === slashSel }" :aria-selected="i === slashSel"
-          @mousedown.prevent @mousemove="hoverSlash($event, i)" @click="pickSlash(c)"
-        >
-          <span class="slash-name">/{{ c.name }}<small v-if="c.hint"> {{ c.hint }}</small></span>
-          <span class="slash-desc">{{ c.desc }}</span>
-        </button>
-      </div>
-      <div v-if="slashDenied" class="slash-denied" role="status">
-        <p class="slash-denied-label">
-          <UIcon name="i-lucide-shield-alert" />{{ tl('macOS hides this project’s commands', 'macOS masque les commandes de ce projet') }}
-        </p>
-        <p>
-          {{ tl('Typed in full, they still work. To list them, on the Mac:', 'Tapées en entier, elles marchent quand même. Pour les lister, sur le Mac :') }}
-          <span class="dir-denied-path">{{ slashDenied.remote
-            ? tl('System Settings › General › Sharing › Remote Login ⓘ › “Allow full disk access for remote users”', 'Réglages Système › Général › Partage › Session à distance ⓘ › « Autoriser l’accès complet au disque pour les utilisateurs distants »')
-            : tl('System Settings › Privacy & Security › Full Disk Access', 'Réglages Système › Confidentialité et sécurité › Accès complet au disque') }}</span>
-        </p>
-      </div>
     </div>
     <!-- Questions of the agent's last message the draft does not answer yet
          (ChatView.vue): a tab on the top edge, out of the flow, so that it
@@ -726,6 +601,24 @@ defineExpose({
       <button type="button" class="composer-ask" @mousedown.prevent @click="emit('showUnanswered')">
         <UIcon name="i-lucide-arrow-up" /><span>{{ unanswered > 1 ? tl(`${unanswered} questions unanswered`, `${unanswered} questions sans réponse`) : tl('1 question unanswered', '1 question sans réponse') }}</span>
       </button>
+    </div>
+    <div v-if="mic.shown.value" class="composer-notice dictation" role="status" data-testid="dictation-take">
+      <template v-if="mic.status.value === 'rewriting'">
+        <span class="notice-spin" aria-hidden="true" />
+        <span class="restart-text">{{ tl('Rewriting…', 'Reformulation…') }}</span>
+      </template>
+      <template v-else-if="mic.status.value === 'transcribing'">
+        <span class="notice-spin" aria-hidden="true" />
+        <span class="restart-text">{{ tl('Recognizing…', 'Reconnaissance…') }}</span>
+        <!-- Stopped while the model still downloads (first use): its progress. -->
+        <span v-if="mic.loading.value" class="dictation-clock">{{ mic.loading.value }}</span>
+      </template>
+      <template v-else>
+        <span class="dictation-dot" aria-hidden="true" />
+        <span class="dictation-wave" aria-hidden="true">{{ mic.wave.value }}</span>
+        <span class="dictation-clock">{{ mic.loading.value || mic.clock.value }}</span>
+      </template>
+      <button type="button" class="notice-btn" :aria-label="tl('Cancel dictation', 'Annuler la dictée')" @mousedown.prevent @click="mic.cancel()"><UIcon name="i-lucide-x" /></button>
     </div>
     <div v-if="quotes.length" class="composer-quotes" role="list" :aria-label="t('Quoted questions')">
       <span class="composer-quotes-label">↳ {{ quotes.length }}</span>
@@ -738,9 +631,9 @@ defineExpose({
     </div>
     <UChatPrompt
       ref="promptRef" v-model="text" :disabled="Boolean(pane?.stopped)" :placeholder="pane?.stopped ? t('Restart Codex before sending a message') : readOnly ? t('Draft saved — sending unavailable offline') : placeholder" variant="outline" color="neutral"
-      :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends && !slashOpen"
+      :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends && (canSend || stopMode || readOnly)"
       :enterkeyhint="enterSends ? 'send' : 'enter'" autocapitalize="sentences"
-      class="prompt" :class="{ suggesting: suggestTap, expanded }" :style="suggestRoom ? { '--suggest-room': `${suggestRoom}px` } : undefined" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
+      data-wherdr="composer-field" class="prompt" :class="{ suggesting: suggestTap, expanded, 'has-mic': Boolean(mic.engine.value) }" :style="suggestRoom ? { '--suggest-room': `${suggestRoom}px` } : undefined" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
       @focus="fieldFocus" @blur="fieldBlur"
       @submit="submit" @keydown="onKeydown" @paste="onPaste" @beforeinput="onBeforeInput"
     >
@@ -781,12 +674,23 @@ defineExpose({
         />
         <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="onFiles">
         <input ref="anyFileInput" type="file" multiple hidden data-testid="attach-any" @change="onFiles">
-        <div v-if="pane && (pane.agent === 'claude' || pane.agent === 'codex' || pane.agent === 'omp')" class="prompt-models">
-          <ModelPicker :pane="pane" />
-        </div>
+        <button
+          v-if="mic.engine.value" type="button" class="prompt-mic" :class="{ on: mic.shown.value }" data-testid="dictation-mic"
+          :disabled="readOnly || mic.status.value === 'busy'" :aria-pressed="mic.live.value"
+          :aria-label="mic.live.value ? tl('Stop dictation', 'Arrêter la dictée') : tl('Dictate: hold, or tap to start and stop', 'Dicter : maintenir, ou toucher pour démarrer et arrêter')"
+          @mousedown.prevent @touchstart.prevent @contextmenu.prevent
+          @pointerdown="mic.down" @pointerup="mic.up" @pointercancel="mic.up" @click="mic.click"
+        >
+          <UIcon :name="mic.live.value ? 'i-lucide-square' : 'i-lucide-mic'" />
+        </button>
+        <!-- Public marker (docs/plugins.md): plugins append their buttons here, before Send. -->
+        <span data-wherdr="composer-actions" class="composer-actions" />
         <span v-if="hint && suggestion" class="prompt-hint"><UKbd value="tab" size="sm" /> {{ t('suggestion') }} <span class="sep">·</span> <UKbd value="enter" size="sm" /> {{ t('send') }}</span>
         <span v-else-if="hint" class="prompt-hint"><UKbd value="enter" size="sm" /> {{ t('send') }} <span class="sep">·</span> <UKbd value="shift" size="sm" /><UKbd value="enter" size="sm" /> {{ t('new line') }}</span>
-        <span v-else-if="desk && escStops && stopMode && interrupting !== 'running'" class="prompt-hint"><UKbd value="escape" size="sm" /> {{ tl('stop', 'arrêter') }}</span>
+        <span v-else-if="desk && escStops && stopMode && interrupting !== 'running'" class="prompt-hint" :class="{ armed: escArmed }" data-testid="esc-hint">
+          <template v-if="escArmed"><UKbd value="escape" size="sm" /> {{ t('again to stop') }}</template>
+          <template v-else><UKbd value="escape" size="sm" /><UKbd value="escape" size="sm" /> {{ tl('stop', 'arrêter') }}</template>
+        </span>
         <UChatPromptSubmit
           :status="stopMode ? 'streaming' : 'ready'" :disabled="sendDisabled"
           color="primary" variant="solid" streaming-color="neutral" streaming-variant="solid" streaming-icon="i-herdr-stop" size="sm"
@@ -796,10 +700,5 @@ defineExpose({
         />
       </template>
     </UChatPrompt>
-    <!-- omp: its status line, as at the bottom of the terminal. -->
-    <div v-if="pane?.ompStatus" class="composer-status" :title="[pane.ompStatus.line, pane.ompStatus.meters].filter(Boolean).join('\n')">
-      <span class="composer-status-line">{{ pane.ompStatus.line }}</span>
-      <span v-if="pane.ompStatus.meters" class="composer-status-meters">{{ pane.ompStatus.meters }}</span>
-    </div>
   </div>
 </template>
