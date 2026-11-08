@@ -10,7 +10,8 @@ import { company, vibe } from '#shared/pm/examples'
 import type { Run, Task } from '#shared/pm/run'
 import type { Template } from '#shared/pm/workflow'
 import type { Pane } from '#shared/types'
-import { pick, selectLabels } from '../helpers/select'
+import { nextTick } from 'vue'
+import { pick, select, selectLabels, selectValue } from '../helpers/select'
 
 // Cards built by the same code as the server (server/utils/pmBoard.ts).
 const run = (task: string, role: Run['role'], terminal: string): Run =>
@@ -19,13 +20,14 @@ const runs = [run('VIB-1', 'worker', 'host-a/t1'), run('CO-1', 'worker', 'host-a
 const at = (i: number, more: Partial<StepState> = {}): StepState => ({ ...initialState(), started: true, at: i, ...more })
 const task = (id: string, step: StepState, more: Partial<Task> = {}): Task => ({ id, project: id.split('-')[0]!, title: `Task ${id}`, description: '', type: 'feature', state: 'working', step, createdAt: 1, ...more })
 const columns = (t: Template) => boardColumns(Object.keys(t.taskTypes).map(type => planSteps(t, { type })))
+const types = (t: Template) => Object.keys(t.taskTypes).map(id => ({ id, plan: planSteps(t, { type: id }).map(s => s.id).join(' → ') }))
 const vibeTask = (id: string, step: StepState) => cardOf({ ...task(id, step), type: 'simple' }, planSteps(vibe, { type: 'simple' }), runs)
 const coTask = (t: Task) => cardOf(t, planSteps(company, { type: 'feature' }), runs)
 
 let board: Board
 const reset = (co1: Partial<StepState> = {}) => {
   board = {
-    projects: [{ key: 'VIB', name: 'Vibe', columns: columns(vibe) }, { key: 'CO', name: 'Company', columns: columns(company) }],
+    projects: [{ key: 'VIB', name: 'Vibe', columns: columns(vibe), types: types(vibe) }, { key: 'CO', name: 'Company', columns: columns(company), types: types(company) }],
     cards: [
       cardOf(task('VIB-1', at(1), { type: 'simple', tags: ['client'], links: [{ label: 'Ticket', url: 'https://example.com/t/1' }, { label: 'PR', url: 'https://example.com/pr/2' }] }), planSteps(vibe, { type: 'simple' }), runs),
       coTask(task('CO-1', at(2, co1), {
@@ -40,13 +42,23 @@ reset()
 registerEndpoint('/api/pm/board', () => board)
 registerEndpoint('/api/pm/coordinators', () => [])
 const posts: { url: string, body: Record<string, unknown> }[] = []
-for (const url of ['/api/pm/task-stop', '/api/pm/task-resume', '/api/pm/task-remove'])
-  registerEndpoint(url, { method: 'POST', handler: async (e) => { posts.push({ url, body: await readBody(e) }); return {} } })
+// task: the new task, added to the board; task-start: refused (a limit) when `refuse` is set.
+let refuse = ''
+const answers: Record<string, (body: Record<string, unknown>) => unknown> = {
+  '/api/pm/task': (b) => {
+    const t = task(`${b.project}-9`, initialState(), { project: b.project as string, title: b.title as string, type: b.type as string, state: 'todo' })
+    board.cards.push(cardOf(t, [], []))
+    return { task: t }
+  },
+  '/api/pm/task-start': b => ({ task: { id: b.id, state: refuse ? 'waiting' : 'working', ...(refuse ? { waiting: refuse } : {}) } }),
+}
+for (const url of ['/api/pm/task-stop', '/api/pm/task-resume', '/api/pm/task-remove', '/api/pm/task', '/api/pm/task-start'])
+  registerEndpoint(url, { method: 'POST', handler: async (e) => { const body = await readBody(e); posts.push({ url, body }); return answers[url]?.(body) ?? {} } })
 const pane = (coreAddress: string, status: Pane['status']) => ({ id: coreAddress, coreAddress, status, agent: 'claude', workspace: 'w', tab: 't' }) as Pane
 herdrState.value = { ok: true, workspaces: [], panes: [pane('host-a/t1', 'working'), pane('host-a/t2', 'idle'), pane('host-a/t3', 'working')] }
 
 let mounted: { unmount: () => void } | null = null
-afterEach(() => { mounted?.unmount(); mounted = null; reset() })
+afterEach(() => { mounted?.unmount(); mounted = null; reset(); refuse = ''; posts.length = 0 })
 const mount = async () => {
   const w = await mountSuspended(BoardView)
   mounted = w
@@ -170,7 +182,7 @@ it('a task never started offers Delete… in its menu, confirmed first; a starte
   const w = await mount()
   const menu = async (id: string) => { await card(w, id).element.parentElement!.querySelector<HTMLElement>('[data-testid="card-menu"]')!.click(); return menuState.items.map(i => ('label' in i ? i.label : '')) }
   expect(await menu('CO-1')).not.toContain('Delete…')
-  expect(await menu('VIB-1')).toEqual(['Open', 'Delete…'])
+  expect(await menu('VIB-1')).toEqual(['Open', 'Start', 'Delete…'])
   const del = menuState.items.find(i => 'label' in i && i.label === 'Delete…')!
   expect(del).toMatchObject({ danger: true })
   ;(del as { run: () => void }).run()
@@ -204,4 +216,69 @@ it('the card menu opens on long press and right click; its ••• button only
   expect(menuState.open).toBe(true)
   expect(menuState.items.map(i => ('label' in i ? i.label : ''))).toContain('Stop…')
   menuState.open = false
+})
+
+it('adds a task: project required on All projects, then title; the type shows its plan; Start now starts it; the card shows at once', async () => {
+  const w = await mount()
+  await w.find('[data-testid="board-add"]').trigger('click')
+  const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)
+  await vi.waitFor(() => expect(q('add-task')).not.toBeNull())
+  const sheet = w.findComponent({ name: 'AddTaskSheet' })
+  const errors = () => [...document.querySelectorAll('[data-testid="add-task-error"]')].map(e => e.textContent!.trim())
+  expect(errors()).toEqual([]) // nothing said before the user tries
+  q('add-task-submit')!.click()
+  await vi.waitFor(() => expect(errors()).toEqual(['Pick a project', 'Give it a title']))
+  await pick(sheet, 'add-task-project', 'CO')
+  await vi.waitFor(() => expect(errors()).toEqual(['Give it a title']))
+  expect(selectLabels(sheet, 'add-task-type')).toEqual(Object.keys(company.taskTypes))
+  expect(q('add-task-plan')!.textContent).toBe(types(company)[0]!.plan)
+  const title = q('add-task-title')!.querySelector('input') ?? q('add-task-title') as HTMLInputElement
+  ;(title as HTMLInputElement).value = '  Fix the login  '
+  title.dispatchEvent(new Event('input'))
+  sheet.findComponent({ name: 'USwitch' }).vm.$emit('update:modelValue', true)
+  await vi.waitFor(() => expect(errors()).toEqual([]))
+  expect(posts).toEqual([])
+  q('add-task-submit')!.click()
+  await vi.waitFor(() => expect(posts.map(p => p.url)).toEqual(['/api/pm/task', '/api/pm/task-start']))
+  expect(posts[0]!.body).toEqual({ project: 'CO', title: 'Fix the login', type: Object.keys(company.taskTypes)[0], description: '' })
+  expect(posts[1]!.body).toEqual({ id: 'CO-9' })
+  await vi.waitFor(() => expect(card(w, 'CO-9').exists()).toBe(true))
+})
+
+it('the board\'s project is preselected; a task after others posts them and does not start now', async () => {
+  board.cards[2] = coTask(task('CO-2', initialState(), { state: 'todo' }))
+  const w = await mount()
+  await pick(w, 'board-project', 'CO')
+  await w.find('[data-testid="board-add"]').trigger('click')
+  await vi.waitFor(() => expect(document.querySelector('[data-testid="add-task"]')).not.toBeNull())
+  const sheet = w.findComponent({ name: 'AddTaskSheet' })
+  expect(selectValue(sheet, 'add-task-project')).toBe('CO')
+  expect(selectLabels(sheet, 'add-task-after')).toEqual(['CO-1 · Task CO-1', 'CO-2 · Task CO-2']) // the same project's, not done
+  select(sheet, 'add-task-after').vm.$emit('update:modelValue', ['CO-1', 'CO-2'])
+  sheet.findComponent({ name: 'UInput' }).vm.$emit('update:modelValue', 'Then deploy')
+  sheet.findComponent({ name: 'USwitch' }).vm.$emit('update:modelValue', true)
+  await nextTick()
+  document.querySelector<HTMLElement>('[data-testid="add-task-submit"]')!.click()
+  await vi.waitFor(() => expect(posts.map(p => p.url)).toEqual(['/api/pm/task']))
+  expect(posts[0]!.body).toMatchObject({ project: 'CO', title: 'Then deploy', after: 'CO-1,CO-2' })
+})
+
+it('Start on a To do card (menu and sheet) says the server\'s refusal; a task after an open one shows what it waits for instead', async () => {
+  board.cards[0] = cardOf(task('VIB-1', initialState(), { type: 'simple', state: 'todo' }), planSteps(vibe, { type: 'simple' }), [])
+  board.cards.push(coTask(task('CO-3', initialState(), { state: 'todo', after: 'CO-1' })))
+  refuse = 'Autopilot limit: 2 tasks working at most'
+  const w = await mountSuspended(BoardView)
+  mounted = w
+  await vi.waitFor(() => expect(w.findAll('[data-testid="board-card"]')).toHaveLength(4))
+  const menu = async (id: string) => { await card(w, id).element.parentElement!.querySelector<HTMLElement>('[data-testid="card-menu"]')!.click(); return menuState.items.map(i => ('label' in i ? i.label : '')) }
+  expect(await menu('VIB-1')).toEqual(['Open', 'Start', 'Delete…'])
+  ;(menuState.items.find(i => 'label' in i && i.label === 'Start') as { run: () => void }).run()
+  await vi.waitFor(() => expect(w.find('.error').text()).toBe(refuse))
+  expect(posts).toEqual([{ url: '/api/pm/task-start', body: { id: 'VIB-1' } }])
+  expect(card(w, 'CO-3').find('[data-testid="board-waits"]').text()).toBe('Waits for CO-1')
+  expect(await menu('CO-3')).not.toContain('Start')
+  menuState.open = false
+  await card(w, 'CO-3').trigger('click')
+  await vi.waitFor(() => expect(document.querySelector('[data-testid="task-waits"]')?.textContent).toBe('Starts once CO-1 is done.'))
+  expect(document.querySelector('[data-testid="task-start"]')).toBeNull()
 })
