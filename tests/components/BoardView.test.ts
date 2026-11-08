@@ -59,9 +59,8 @@ const laneOf = (w: Awaited<ReturnType<typeof mount>>, id: string) => card(w, id)
 it('shows the columns of a template without review, and of all projects', async () => {
   const w = await mount()
   expect(lanes(w)).toEqual(['your-turn', 'todo', 'working', 'done'])
-  expect(w.find('[data-testid="alfred"]').exists()).toBe(true) // All projects: Alfred's row
+  expect(w.find('[data-testid="alfred"]').exists()).toBe(false) // no bar above the columns: Alfred is behind the header button
   await pick(w, 'board-project', 'VIB')
-  expect(w.find('[data-testid="alfred"]').exists()).toBe(false)
   expect(lanes(w)).toEqual(['your-turn', 'To do', 'Working', 'Done'])
   expect(laneOf(w, 'VIB-1')).toBe('Working')
   await pick(w, 'board-project', 'CO')

@@ -3,7 +3,8 @@ import { nextTick } from 'vue'
 import { useRouter } from '#app'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
-import CoordinatorBar from '~/components/CoordinatorBar.vue'
+import CoordinatorPanel from '~/components/CoordinatorPanel.vue'
+import CoordinatorButton from '~/components/CoordinatorButton.vue'
 import { agentOrder, herdrState, hiddenAgents } from '~/composables/useHerdr'
 import { coordinators, resumedCoordinators } from '~/composables/useCoordinators'
 import type { CoordinatorView } from '#shared/pm/coordinator'
@@ -21,22 +22,30 @@ herdrState.value = { ok: true, workspaces: [], panes: [{ id: 'w1:p1', coreAddres
 
 const view = (more: Partial<CoordinatorView> = {}): CoordinatorView => ({ project: 'CO', name: 'Company', agent: { program: 'claude' }, ...more })
 let w: Awaited<ReturnType<typeof mountSuspended>> | null = null
-const mount = async (c: CoordinatorView, open = false) => (w = await mountSuspended(CoordinatorBar, { props: { c, open } }))
+const mount = async (c: CoordinatorView, open = false) => (w = await mountSuspended(CoordinatorPanel, { props: { c, open } }))
 afterEach(() => { w?.unmount(); w = null; posts.length = 0; coordinators.value = []; hiddenAgents.value = []; agentOrder.value = [] })
 
-it('says who you talk to and which agent answers, and changes the default in one gesture', async () => {
+it('says which agent answers, and changes the default in one gesture', async () => {
   const b = await mount(view(), true)
-  expect(b.text()).toContain('Project coordinator · CO')
   // No conversation yet: the button says which agent will answer.
   expect(b.find('[data-testid="coordinator-open"]').text()).toBe('Start with Claude')
   await pick(b, 'coordinator-agent', 'codex')
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: 'CO', program: 'codex' } }]))
 })
 
-it('in Alfred\'s conversation: its name, no agent select (its row\'s "Restart with…" changes it)', async () => {
+it('in Alfred\'s conversation: no agent select (its row\'s "Restart with…" changes it)', async () => {
   const b = await mount(view({ project: '_main', name: 'Jarvis', main: true }))
-  expect(b.get('.mono-label').text()).toBe('Jarvis · all projects')
   expect(b.find('[data-testid="coordinator-agent"]').exists()).toBe(false)
+})
+
+it('header button: the autopilot\'s state, a count of what waits for the user, and a tap opens the window', async () => {
+  w = await mountSuspended(CoordinatorButton, { attachTo: document.body, props: { c: view({ autopilot: { on: true, goal: '', events: [], perDay: 1, atOnce: 1 }, asleep: 'idle', proposal: { diff: '+ x', at: 1 } }) } })
+  const btn = w.get('[data-testid="coordinator-button"]')
+  expect(btn.attributes('data-state')).toBe('idle')
+  expect(btn.attributes('aria-label')).toBe('Autopilot: Asleep · 1 to review')
+  await btn.trigger('click')
+  await vi.waitFor(() => expect(document.querySelector('[data-testid="template-proposal"]')).not.toBeNull())
+  expect(document.querySelector('[data-testid="coordinator-autopilot"]')).not.toBeNull()
 })
 
 it('with no default set, or its default unchecked in Settings › Agents, offers the user\'s first agent', async () => {

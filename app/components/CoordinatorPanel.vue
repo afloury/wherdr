@@ -1,10 +1,10 @@
 <script setup lang="ts">
-// A project coordinator, or Alfred in its conversation (its program changes
-// from its row's "Restart with…", not here): who you talk to and which agent answers (its default
-// changed in one gesture), its autopilot, a warning when its kept conversation ran with
-// another agent, and the template change it proposed, to accept or refuse.
+// The coordinator window's content (CoordinatorButton): which agent answers a project
+// coordinator (its default changed in one gesture; Alfred's program changes from its
+// row's "Restart with…"), a warning when its kept conversation ran with another agent,
+// the template change it proposed, to accept or refuse, and its autopilot.
 // On the board (`open`), also the button that opens or starts it.
-import { sameAgent, type CoordinatorView } from '#shared/pm/coordinator'
+import type { CoordinatorView } from '#shared/pm/coordinator'
 
 const props = defineProps<{ c: CoordinatorView, open?: boolean }>()
 const busy = ref(false)
@@ -17,7 +17,7 @@ const agent = computed(() => coordinatorAgent(props.c))
 const agentName = (a?: { program: string }) => (a ? kindLabel(a.program) : '')
 const pane = computed(() => coordinatorPane(props.c))
 // The kept conversation is another agent's: warn, a new one first.
-const other = computed(() => !!pane.value && !!props.c.ran && !sameAgent(props.c.ran, agent.value) && !resumedCoordinators.value.includes(props.c.terminal!))
+const other = computed(() => coordinatorMismatch(props.c))
 const diff = computed(() => (props.c.proposal?.diff ?? '').split('\n').map(l => ({ l, k: l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : '' })))
 
 async function act(fn: () => Promise<unknown>) {
@@ -32,20 +32,22 @@ const setDefault = (program: string) => act(() => api('/api/pm/coordinator-agent
 const fresh = () => act(async () => { const p = await launchCoordinator(props.c.project, agent.value); if (props.c.main) await loadAlfred(); if (p) await navigateTo(panePath(p.id)) })
 const resume = () => { resumeCoordinator(props.c.terminal!); if (props.open && pane.value) navigateTo(panePath(pane.value.id)) }
 const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh())
-const title = computed(() => (props.c.main ? `${props.c.name || 'Alfred'} · ${tl('all projects', 'tous les projets')}` : `${tl('Project coordinator', 'Coordinateur de projet')} · ${props.c.project}`))
 const answer = (accept: boolean) => act(() => api('/api/pm/template-proposal', { project: props.c.project, accept }))
 </script>
 
 <template>
-  <div class="coord" data-testid="coordinator-bar">
-    <div class="coord-head">
-      <span class="mono-label">{{ title }}</span>
-      <USelect v-if="!c.main" :model-value="agent?.program" :items="agentItems" size="lg" class="coord-agent" :disabled="busy" :aria-label="tl('Default agent', 'Agent par défaut')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
+  <div class="coord" data-testid="coordinator-panel">
+    <!-- Alfred on the board: its row (one tap opens or starts it, its program asked the first time). -->
+    <AlfredRow v-if="open && c.main" banner />
+    <div v-else-if="!c.main || (open && !other)" class="coord-head">
+      <div v-if="!c.main" class="coord-field">
+        <span class="field-label">{{ tl('Answering agent', 'Agent qui répond') }}</span>
+        <USelect :model-value="agent?.program" :items="agentItems" size="lg" class="coord-agent w-full" :disabled="busy" :aria-label="tl('Default agent', 'Agent par défaut')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
+      </div>
       <UButton v-if="open && !other" color="primary" size="lg" :loading="busy" data-testid="coordinator-open" @click="openIt">
         {{ pane ? tl('Open', 'Ouvrir') : tl(`Start with ${agentName(agent)}`, `Lancer avec ${agentName(agent)}`) }}
       </UButton>
     </div>
-    <CoordinatorAutopilot :c="c" />
     <div v-if="other && c.ran" class="term-banner coord-warn" data-testid="coordinator-other-agent">
       <UIcon name="i-lucide-triangle-alert" class="term-banner-icon" />
       <span class="coord-warn-text">{{ tl(`The previous conversation used ${agentName(c.ran)}. The default is ${agentName(agent)}.`, `La conversation précédente utilisait ${agentName(c.ran)}. Le défaut est ${agentName(agent)}.`) }}</span>
@@ -66,17 +68,19 @@ const answer = (accept: boolean) => act(() => api('/api/pm/template-proposal', {
       </template>
     </section>
     <p v-if="error" class="error coord-error">{{ error }}</p>
+    <CoordinatorAutopilot :c="c" />
   </div>
 </template>
 
 <style scoped>
-.coord { flex: none; border-bottom: 1px solid var(--line); background: var(--surface); }
-.coord-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 16px; }
-.coord-head .mono-label { flex: 1; white-space: nowrap; color: var(--muted); }
+.coord { display: grid; gap: 12px; }
+.coord-head { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.coord-head > * { flex: 1 1 160px; }
+.coord-field { display: grid; gap: 4px; min-width: 0; }
 .coord-warn { flex-wrap: wrap; }
 .coord-warn-text { flex: 1 1 calc(100% - 40px); }
 .coord-head :deep(.coord-agent) { min-width: 0; max-width: 100%; }
-.coord-proposal { display: grid; gap: 6px; padding: 8px 16px 12px; border-top: 1px solid var(--line); }
+.coord-proposal { display: grid; gap: 6px; }
 .coord-proposal p { margin: 0; overflow-wrap: anywhere; }
 .coord-said { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .coord-diff { margin: 0; max-height: 30vh; overflow: auto; padding: 8px; border: 1px solid var(--line); background: var(--bg); font: 12px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -85,5 +89,5 @@ const answer = (accept: boolean) => act(() => api('/api/pm/template-proposal', {
 .coord-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .coord-actions .mono-label { flex: 1 1 100%; color: var(--muted); }
 @media (min-width: 600px) { .coord-actions .mono-label { flex-basis: auto; } }
-.coord-error { margin: 0; padding: 0 16px 8px; }
+.coord-error { margin: 0; }
 </style>
