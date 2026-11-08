@@ -3,11 +3,12 @@
 // cause, then handed to the user once (Tasks to handle, a 'needs-you'
 // notification). Each step goes to the task's log.
 import { SCRIPT } from '../../shared/pm/actions'
-import { failingTests, nudgeText, stallMoves, stallOf, type Stall } from '../../shared/pm/blocked'
+import { backToWork, failingTests, nudgeText, stallMoves, stallOf, type Stall } from '../../shared/pm/blocked'
 import type { PlannedStep } from '../../shared/pm/steps'
 import type { Run, Task } from '../../shared/pm/run'
 import type { actionShell } from './pmActions'
 import type { PmLaunchDeps } from './pmLaunch'
+import type { PmStore } from './pmStore'
 import { notificationAllowed } from './notificationRules'
 import { pushSend } from './push'
 
@@ -53,4 +54,11 @@ export async function noteStall(deps: PmLaunchDeps, task: Task, plan: PlannedSte
     out = await store.logTask(out, 'engine', n ? `notified the user (${n} device${n > 1 ? 's' : ''})` : 'no notification sent (none allowed or no device)')
   }
   return out
+}
+
+// The task's agent is back to work (pm/blocked.ts backToWork): saved, with a
+// line in its log saying who. by: the log's author; who: who sent it back.
+export async function noteBack(store: Pick<PmStore, 'logTask'>, task: Task, plan: PlannedStep[], by: string, who: string, now = Date.now()): Promise<Task> {
+  const back = backToWork(task, plan, now)
+  return back ? store.logTask(back, by, `back to work: ${who}`) : task
 }
