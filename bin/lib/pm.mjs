@@ -22,5 +22,8 @@ export async function pm(argv, { env = process.env, stdin = process.stdin, out =
   })
   const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }))
   if (!r.ok || data.error) throw new CliError(data.error || `HTTP ${r.status}`, 1)
+  // Once after a wherdr update: a line to read before the answer.
+  const notice = r.headers?.get?.('x-wherdr-notice')
+  if (notice) out.write(`${notice}\n`)
   out.write(`${JSON.stringify(data, null, 2)}\n`)
 }

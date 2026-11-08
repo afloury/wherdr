@@ -1,12 +1,14 @@
 // Project management after a restart: once herdr-core answers, each unfinished
 // run finds its terminal again by its labels (server/utils/pmLaunch.ts), and
-// leftover worktrees of done tasks go (pmCleanup.ts; again in poller.ts). Then,
+// leftover worktrees of done tasks go (pmCleanup.ts; again in poller.ts), and
+// the running coordinators get this version's role files. Then,
 // every 30 s, the coordinators' wake queue ticks (pmWakes.ts), and every
 // minute the engine makes its mechanical moves (pmMechanic.ts). Every 30 s,
 // one grouped push for new Decisions (pmDecisions.ts), and the projects'
 // automations fire (pmAutomations.ts).
 import { coreAdminDeps } from '../utils/coreAdminDeps'
 import { reconcileRuns } from '../utils/pmLaunch'
+import { rewriteRoleFiles } from '../utils/pmCoordinator'
 import { sweepWorktrees } from '../utils/pmCleanup'
 import { wakeTick } from '../utils/pmWakes'
 import { mechanicTick } from '../utils/pmMechanic'
@@ -31,6 +33,7 @@ export default defineNitroPlugin((nitroApp) => {
     reconcileRuns({ ...coreAdminDeps(), store: pmStore() }).then(() => {
       clearInterval(timer)
       void sweepWorktrees({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})
+      void rewriteRoleFiles({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})
     }, () => {})
   }, 10_000)
   const wakes = every(30_000, () => wakeTick({ ...coreAdminDeps(), store: pmStore() }))
