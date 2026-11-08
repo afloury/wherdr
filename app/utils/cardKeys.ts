@@ -9,13 +9,7 @@
 // and digits through (as in the terminal, where a digit picks the option);
 // as soon as a letter has been typed there, nothing is taken any more.
 // Focus on a button: Enter / Space keep their native effect (the click).
-// Ctrl+letter of a menu legend (/resume: Ctrl+A shows every project or the
-// current one) goes to the terminal too, under the same rule: the browser's
-// own Ctrl+A (select all) is only useful in a field with text. Only the
-// Ctrl key, on every platform: ⌘A keeps "select all" on macOS, and
-// Claude Code itself is driven with Ctrl there. Ctrl+W/N/T never reach the
-// page (the browser keeps them).
-export type CardKey = { kind: 'nav', key: 'up' | 'down' | 'enter' | 'esc' } | { kind: 'digit', n: number } | { kind: 'tab', dir: 1 | -1 } | { kind: 'ctrl', key: string }
+export type CardKey = { kind: 'nav', key: 'up' | 'down' | 'enter' | 'esc' } | { kind: 'digit', n: number } | { kind: 'tab', dir: 1 | -1 }
 
 export interface FocusInfo {
   // Champ de saisie (input texte, textarea, contenteditable).
@@ -29,32 +23,17 @@ export interface FocusInfo {
   // The card's own search field: ↑/↓ stay captured there (a single
   // line, nothing to move), Enter starts the search there.
   own?: boolean
-  // The terminal (xterm's hidden textarea): it sends Ctrl+letters itself.
-  terminal?: boolean
 }
 
 export interface KeyInfo { key: string, code?: string, ctrlKey?: boolean, metaKey?: boolean, altKey?: boolean, shiftKey?: boolean, isComposing?: boolean, defaultPrevented?: boolean }
 
 const NAV: Record<string, 'up' | 'down' | 'enter' | 'esc'> = { ArrowUp: 'up', ArrowDown: 'down', Enter: 'enter', Escape: 'esc' }
 
-// `nav: false`: only the Ctrl+letters (a menu card with no entry).
-export interface CardKeyOpts { digits: number, enter: boolean, tabs?: boolean, ctrl?: readonly string[], nav?: boolean }
-
-const BROWSER_CTRL = new Set(['w', 'n', 't'])
-
-// Ctrl+letter offered by the card ("ctrl+a" in `opts.ctrl`), with Ctrl alone held.
-function ctrlKey(e: KeyInfo, f: FocusInfo, opts: CardKeyOpts): CardKey | null {
-  if (e.metaKey || e.altKey || e.shiftKey || f.overlay || f.terminal) return null
-  const key = e.key.toLowerCase()
-  if (!/^[a-z]$/.test(key) || BROWSER_CTRL.has(key) || !opts.ctrl?.includes(`ctrl+${key}`)) return null
-  if (f.editable && !f.empty) return null
-  return { kind: 'ctrl', key: `ctrl+${key}` }
-}
+export interface CardKeyOpts { digits: number, enter: boolean, tabs?: boolean }
 
 export function cardKey(e: KeyInfo, f: FocusInfo, opts: CardKeyOpts): CardKey | null {
   if (e.defaultPrevented || e.isComposing) return null
-  if (e.ctrlKey) return ctrlKey(e, f, opts)
-  if (e.metaKey || e.altKey || f.overlay || opts.nav === false) return null
+  if (e.ctrlKey || e.metaKey || e.altKey || f.overlay) return null
   const nav = NAV[e.key]
   if (f.own && (nav === 'up' || nav === 'down') && !e.shiftKey) return { kind: 'nav', key: nav }
   if (f.own && nav === 'enter') return null
@@ -87,7 +66,6 @@ export function describeFocus(el: Element | null): FocusInfo {
   } else if ((el as HTMLElement).isContentEditable) {
     out.editable = true
     out.empty = !(el.textContent || '').trim()
-    out.terminal = Boolean(el.closest('.xterm'))
   } else if (el.closest('button, a[href], select, input, [role="button"], [role="tab"], [role="switch"], summary')) {
     out.control = true
   }
@@ -95,7 +73,8 @@ export function describeFocus(el: Element | null): FocusInfo {
 }
 
 // Listens to the keyboard while `active()`: a single card at a time (the active
-// view; side by side, the active cell).
+// view; side by side, the active cell). Bubble phase: a focused field's own
+// keys (search Esc / Enter) go first and are skipped here (defaultPrevented).
 export function useCardKeys(active: () => boolean, opts: () => CardKeyOpts & { own?: Element | null }, run: (k: CardKey) => void) {
   function onKey(e: KeyboardEvent) {
     if (!active()) return
