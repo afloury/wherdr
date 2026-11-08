@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { github } from '../shared/pm/examples'
+import { DEFAULT_AUTOPILOT } from '../shared/pm/autopilot'
 import { DEFAULT_MEMORY, agentCap, memoryShort, mergeMemory, parseMeminfo } from '../shared/pm/memory'
 
 const GB = 1024
@@ -51,6 +52,18 @@ describe('the memory hold', () => {
       expect(await memoryHold(deps, 'BB')).toBe('Waits for memory on box: 2 agents already run on it (cap 2)')
       await store.saveRun({ ...(await store.runs()).find(r => r.id === 'r1')!, state: 'ended' })
       expect(await memoryHold(deps, 'BB')).toBeUndefined()
+
+      // Memory back, a wake's held task still holds to its autopilot: over atOnce it waits, with why; off, the hold goes.
+      const { startHeld } = await import('../server/utils/pmMechanic')
+      const busy = await store.addTask({ project: 'BB', title: 'Busy', type: 'simple' })
+      await store.saveTask({ ...busy, state: 'working' })
+      const held = await store.saveTask({ ...(await store.addTask({ project: 'BB', title: 'Held', type: 'simple' })), autopilot: true, held: 'Waits for memory on box' })
+      await store.saveCoordinator({ project: 'BB', tokenHash: '', autopilot: { ...DEFAULT_AUTOPILOT, on: true, atOnce: 1 } })
+      expect(await startHeld(deps as never)).toEqual([])
+      expect((await store.task(held.id))!.held).toBe(`Waits: 1 tasks already work at once (limit 1)`)
+      await store.saveCoordinator({ project: 'BB', tokenHash: '', autopilot: { ...DEFAULT_AUTOPILOT, on: false } })
+      expect(await startHeld(deps as never)).toEqual([])
+      expect((await store.task(held.id))!.held).toBeUndefined()
     } finally { await fs.rm(dir, { recursive: true, force: true }) }
   })
 })

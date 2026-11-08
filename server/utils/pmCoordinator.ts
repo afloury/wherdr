@@ -236,7 +236,8 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if (why) throw new HerdrError('refused', why)
       // Short on memory: a wake's start waits for it (the engine starts it then); the user's goes, with a word.
       const short = await memoryHold(deps, key)
-      if (short && wake && !task.stopped) return { task: await store.logTask({ ...task, autopilot: true, held: short }, by, short), held: `${short}. It starts by itself once memory is back` }
+      // A failed task a wake starts again goes back to do, where the engine starts held tasks.
+      if (short && wake && !task.stopped) return { task: await store.logTask({ ...task, state: 'todo', waiting: undefined, waitKind: undefined, autopilot: true, held: short }, by, short), held: `${short}. It starts by itself once memory is back` }
       // Started in a wake: the autopilot's own task, which it may stop in a wake.
       if (wake && !task.autopilot) await store.saveTask({ ...task, autopilot: true })
       const memory = short ? { memory: `${short}: started anyway, as the user asked` } : {}

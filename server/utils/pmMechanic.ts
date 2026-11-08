@@ -11,7 +11,7 @@ import { prSeen, stepAction } from './pmBoard'
 import { prNow, requiredChecks } from '../../shared/pm/board'
 import { exec, startTask, type PmLaunchDeps } from './pmLaunch'
 import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
-import { pacedStart } from '../../shared/pm/pace'
+import { originOf, pacedStart, paceRefusal } from '../../shared/pm/pace'
 import { projectPace } from './pmPace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { advanceTick } from './pmAdvance'
@@ -91,14 +91,20 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
 
 // Tasks a wake or an automation would have started, held for memory: each
 // starts once its machine has memory back, one per machine and tick (the next
-// reading counts the new agent). Chained ones are startChained's.
-export async function startHeld(deps: PmLaunchDeps) {
+// reading counts the new agent). Chained ones are startChained's. A wake's task
+// still holds to its autopilot (on, limits, hours, pace), an automation's to
+// the pace: over a limit it waits, with why; the autopilot off drops the hold.
+export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
-  const projects = await store.projects(), started: string[] = [], machines = new Set<string>()
+  const projects = await store.projects(), runs = await store.runs(), started: string[] = [], machines = new Set<string>()
   for (const t of (await store.tasks()).filter(x => x.held && x.state === 'todo' && !x.after)) {
     const p = projects.find(x => x.key === t.project)
     if (!p || machines.has(p.machine)) continue
-    const held = await memoryHold(deps, p.key)
+    const pace = pacedStart(t, 'wake') ? (await projectPace(store, p.key, t, now))?.verdict : undefined
+    const why = originOf(t) === 'automation' ? paceRefusal(pace)
+      : coordinatorStartRefusal((await store.coordinator(p.key))?.autopilot, t, (await store.tasks()).filter(x => x.project === p.key), runs, now, true, { pace })
+    if (why && /autopilot on/.test(why)) { await store.logTask({ ...t, held: undefined }, 'engine', `no longer held: ${why}`); continue }
+    const held = why ? `Waits: ${why}` : await memoryHold(deps, p.key)
     if (held) { if (held !== t.held) await store.saveTask({ ...t, held }); continue }
     machines.add(p.machine)
     forgetMemory(p.machine)
@@ -115,7 +121,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   await syncWaits(deps).catch(() => {})
   await advanceTick(deps, now).catch(() => {})
   await startChained(deps, now).catch(() => {})
-  await startHeld(deps).catch(() => {})
+  await startHeld(deps, now).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
   for (const task of await store.tasks()) {
