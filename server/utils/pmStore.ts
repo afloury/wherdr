@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto'
 import { cleanProjectInput, isBranch, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
 import { defaultColor, keyClash, projectOf, renamed, shownKey, storedTaskId } from '../../shared/pm/projectKey'
 import type { RepoVisibility } from '../../shared/pm/visibility'
-import { validateTemplate, type Template } from '../../shared/pm/workflow'
+import { startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
 import { publicTask, type Run, type Task, type TaskLogEntry } from '../../shared/pm/run'
 import { afterIds } from '../../shared/pm/advance'
@@ -349,11 +349,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const { list, i } = await findProject(key)
       const { from: _old, ...rest } = list[i]!
       // No workflow yet: nothing to keep, the template's guards come with it.
-      const own = source && keepGuards ? await readJson<Template>(workflowFile(rest.key)) : null
-      if (source && own) {
-        const { guards: _guards, ...copy } = source
-        source = own.guards ? { ...copy, guards: own.guards } : copy
-      }
+      if (source && keepGuards) source = startOverFrom(source, await readJson<Template>(workflowFile(rest.key)))
       if (source) list[i] = { ...rest, from: (await copyTemplate(rest.key, source, by)).from }
       else { await fs.rm(workflowFile(rest.key), { force: true }); list[i] = rest }
       await saveProjects(list)

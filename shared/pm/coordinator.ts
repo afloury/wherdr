@@ -270,12 +270,25 @@ cat "$out"; echo; rm -f "$out"
 
 // The changed lines of two templates, as JSON: what the coordinator shows the user.
 export function templateDiff(old: Template | null, next: Template): string {
-  const lines = (t: Template | null) => JSON.stringify({ ...t, version: undefined }, null, 2).split('\n') // the version is the store's
+  // One key order (the version is the store's): a key that only moved is no change.
+  const ORDER = ['id', 'guards', 'instructions', 'prefs', 'steps', 'taskTypes']
+  const lines = (t: Template | null) => {
+    const e = Object.entries(t ?? {}).filter(([k]) => k !== 'version').sort(([x], [y]) => (ORDER.indexOf(x) + 1 || 99) - (ORDER.indexOf(y) + 1 || 99))
+    return JSON.stringify(Object.fromEntries(e), null, 2).split('\n')
+  }
   const a = lines(old), b = lines(next)
+  // The changed lines only, in order (longest common subsequence): what stays never shows.
+  const n = a.length, m = b.length
+  const keep = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1))
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) keep[i]![j] = a[i] === b[j] ? keep[i + 1]![j + 1]! + 1 : Math.max(keep[i + 1]![j]!, keep[i]![j + 1]!)
+  const out: string[] = []
   let i = 0, j = 0
-  while (i < a.length && i < b.length && a[i] === b[i]) i++
-  while (j < a.length - i && j < b.length - i && a[a.length - 1 - j] === b[b.length - 1 - j]) j++
-  return [...a.slice(i, a.length - j).map(l => `- ${l}`), ...b.slice(i, b.length - j).map(l => `+ ${l}`)].join('\n')
+  while (i < n || j < m) {
+    if (i < n && j < m && a[i] === b[j]) { i++; j++ }
+    else if (i < n && (j === m || keep[i + 1]![j]! >= keep[i]![j + 1]!)) out.push(`- ${a[i++]}`)
+    else out.push(`+ ${b[j++]}`)
+  }
+  return out.join('\n')
 }
 
 // What the engine tells the coordinator on a tick: its step's instructions
