@@ -71,3 +71,11 @@ export async function saveProjectGuards(store: PmStore, key: unknown, guards: un
   const next = guards && typeof guards === 'object' && Object.keys(guards).length ? { ...rest, guards: guards as Guards } : rest
   return { workflow: await store.saveWorkflow(p.key, next, { by }) }
 }
+
+// Save as template: a copy of the project's workflow joins the library under
+// `id` (a taken id is refused). The project is untouched.
+export async function templateFromProject(store: PmStore, key: unknown, id: unknown) {
+  const { t } = await workflowOf(store, key)
+  const { version: _version, ...copy } = t
+  return { template: await store.saveTemplate({ ...copy, id }) }
+}
