@@ -10,7 +10,8 @@ import type { Project } from '../../shared/pm/project'
 import { shownTaskId } from '../../shared/pm/projectKey'
 import { CHOICES, type Choice } from '../../shared/pm/verdict'
 import { actionShell, runAction } from './pmActions'
-import { machineOn, type CoreAdminDeps } from './coreCreate'
+import type { CoreAdminDeps } from './coreCreate'
+import { runOn } from './pmLaunch'
 import { HerdrError } from './herdr'
 import type { PmStore } from './pmStore'
 
@@ -76,7 +77,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     await store.saveTask({ ...task, step: state }) // checking, before the action runs
     const run = (await store.runs()).filter(x => x.task === task.id && x.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
     const result: ActionResult = run
-      ? await runAction({ store, sh: actionShell(deps, machineOn(deps, p.machine).on) }, {
+      ? await runAction({ store, sh: actionShell(deps, runOn(deps, run)) }, {
           task, step: act.step, attempt: act.attempt, action: act.action, by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
           reviewed: reviewedCommit(plan, state),
           halted: async () => !!(await store.task(task.id))?.stopped,
