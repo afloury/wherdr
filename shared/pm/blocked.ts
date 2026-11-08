@@ -66,7 +66,9 @@ export function backToWork(task: Task, plan: PlannedStep[], now: number): Task |
   const stalls = task.stalls && Object.fromEntries(Object.entries(task.stalls).map(([k, v]) => [k, { ...v, back: now, handled: undefined }]))
   return {
     ...task,
-    ...(timeout ? { step: { ...s, yourTurn: undefined, deadline: now + durationMs(step.timeout!) } } : {}),
+    // Idle since before: counted from now, or the stall would be handed over at once.
+    ...(task.idle !== undefined ? { idle: now } : {}),
+    ...(timeout ?{ step: { ...s, yourTurn: undefined, deadline: now + durationMs(step.timeout!) } } : {}),
     ...(task.stall ? { stall: { ...task.stall, since: now } } : {}),
     ...(stalls ? { stalls } : {}),
   }

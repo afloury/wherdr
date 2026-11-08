@@ -61,7 +61,7 @@ it('a stall shows on the card; after 30 min it is Your turn and in Tasks to hand
 it('back to work: a timeout leaves Your turn and its deadline starts again; what the user must do stays', () => {
   // The coordinator tells the agent something, starts it again, or the agent is seen working.
   const timed = planSteps(wherdr, { type: 'simple' }) // work: 3h
-  const late = onEvent(timed, at(1, { deadline: 2000 }), { kind: 'tick' }, 5000).state
+  const late = onEvent(timed, at(1, { deadline: 2000, told: 1000 }), { kind: 'tick' }, 5000).state
   expect(late.yourTurn?.badge).toBe('Check work: over 3h')
   const back = backToWork(task(late), timed, 6000)!
   expect(back.step!.yourTurn).toBeUndefined()
@@ -69,6 +69,11 @@ it('back to work: a timeout leaves Your turn and its deadline starts again; what
   expect(cardOf(back, timed, [], 6000).yourTurn).toBeUndefined()
   // The new deadline passes too: Your turn again.
   expect(onEvent(timed, back.step!, { kind: 'tick' }, 6000 + durationMs('3h')).state.yourTurn?.reason).toBe('timeout')
+  // Told while still idle since long before: a new stall counts from now, nothing to hand over yet.
+  const told = backToWork(task(late, { idle: 2000 }), timed, 6000)!
+  expect(told.idle).toBe(6000)
+  expect(stallOf(told, timed, 6000 + IDLE_WAIT_MS)?.since).toBe(6000 + IDLE_WAIT_MS)
+  expect(toHandle([cardOf(told, timed, [], 6000 + IDLE_WAIT_MS)])).toEqual([])
   // A merge, an answer or a decision is the user's: kept.
   expect(backToWork(task(at(4, { yourTurn: { reason: 'action', badge: 'merge: head moved' } })), plan, 6000)).toBeUndefined()
   expect(backToWork(task(at(1), { state: 'waiting', waiting: 'The agent asks a question', waitKind: 'question' }), plan, 6000)).toBeUndefined()
