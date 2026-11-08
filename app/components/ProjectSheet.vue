@@ -1,12 +1,14 @@
 <script setup lang="ts">
 // A project's sheet (Settings › Projects › a row): tabs, the one shown in the
 // URL (`tab=`). General: name, base branch, repository visibility, the agents
-// its tasks start with (the workflow's prefs), where its workflow came from;
-// the ⋯ menu removes the project. Automations and Autopilot reuse the
-// components shown elsewhere; Workflow and Guards are coming.
+// its tasks start with (the workflow's prefs), where its workflow came from.
+// Workflow: ProjectWorkflow, its own entries first in the ⋯ menu. The ⋯ menu
+// removes the project. Automations and Autopilot reuse the components shown
+// elsewhere; Guards is coming.
 import type { Project, TemplateInfo } from '#shared/pm/project'
-import { EXAMPLES } from '#shared/pm/examples'
+import type { LogEntry } from '#shared/pm/templateText'
 import type { Prefs, Template } from '#shared/pm/workflow'
+import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
 import type { RepoVisibility } from '#shared/pm/visibility'
 import { PROJECT_TABS, type ProjectTab } from '~/utils/projectTabs'
 
@@ -17,13 +19,15 @@ const p = computed(() => props.project)
 const TAB_LABEL: Record<ProjectTab, string> = { general: 'General', workflow: 'Workflow', guards: 'Guards', automations: 'Automations', autopilot: 'Autopilot' }
 
 const workflow = ref<Template | null>(null)
+const log = ref<LogEntry[]>([])
 const loaded = ref(false)
 const error = ref('')
 const busy = ref('')
 const form = reactive({ name: '', base: '', agent: '', model: '', reviewAgent: '', reviewModel: '' })
 async function load() {
-  const r = await api<{ workflow: Template | null }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
+  const r = await api<{ workflow: Template | null, log: LogEntry[] }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
   workflow.value = r.workflow
+  log.value = r.log
   const prefs: Prefs = r.workflow?.prefs ?? {}
   Object.assign(form, { name: p.value.name, base: p.value.base ?? '', agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '' })
   loaded.value = true
@@ -78,19 +82,15 @@ const agent = agentModel('agent')
 const reviewAgent = agentModel('reviewAgent')
 const base = computed({ get: () => orNone(form.base), set: (v: string) => { form.base = fromNone(String(v)) } })
 
-// Start over from a library template or an example: a copy replaces the workflow, the guards stay.
-const templateItems = computed(() => [
-  ...(p.value.from ? [] : [{ label: tl('No template', 'Aucun modèle'), value: NONE, disabled: true }]),
-  ...props.templates.map(tp => ({ label: tp.id, value: tp.id })),
-  ...EXAMPLES.filter(e => !props.templates.some(tp => tp.id === e.id)).map(e => ({ label: tl(`${e.id} (example)`), value: `example:${e.id}` })),
-])
-async function apply(template: string) {
-  if (workflow.value && !(await askConfirm(tl(`Replace the workflow of ${p.value.name} with a copy of ${template.replace(/^example:/, '')}? Its steps and agents are replaced; its guards stay.`), tl('Replace')))) return
-  await run('apply', async () => { await api('/api/pm/project-apply', { key: p.value.key, template }); await load() })
-}
+// The workflow changed (saved, started over): reload it here and the list.
+const workflowChanged = () => { load().catch((e) => { error.value = (e as Error).message }); emit('changed') }
+const workflowTab = ref<InstanceType<typeof ProjectWorkflow>>()
 
 const coordinator = computed(() => projectCoordinators.value.find(c => c.project === p.value.key))
-const menu = (): MenuItem[] => [{ label: tl(`Remove ${p.value.name}`), icon: 'i-lucide-trash-2', danger: true, run: remove }]
+const menu = (): MenuItem[] => [
+  ...(props.tab === 'workflow' && workflowTab.value ? [...workflowTab.value.menu(), { kind: 'separator' as const }] : []),
+  { label: tl(`Remove ${p.value.name}`), icon: 'i-lucide-trash-2', danger: true, run: remove },
+]
 async function remove() {
   if (!(await askConfirm(tl(`Remove ${p.value.name} from wherdr? Its folder, branches and tasks' worktrees stay on the machine.`), tl('Remove')))) return
   await run('rm', () => api('/api/pm/project-remove', { key: p.value.key }))
@@ -150,14 +150,9 @@ async function remove() {
             <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-refresh-cw" :loading="busy === 'vis'" :disabled="busy !== ''" data-testid="pm-visibility-check" @click="setVisibility({ check: true })">{{ tl('Check again', 'Revérifier') }}</UButton>
           </span>
           <span class="field-label">{{ tl('Template') }}</span>
-          <span class="pm-field">
-            <USelect
-            :model-value="p.from?.template ?? NONE" :items="templateItems" size="lg" class="pm-base-pick" :disabled="busy !== ''" :aria-label="tl('Start over from a template')"
-            data-testid="pm-project-template" @update:model-value="v => apply(String(v))"
-          />
-          <small class="muted" data-testid="pm-from">{{ p.from ? tl(`Based on: ${p.from.template} v${p.from.version}. Information only: changes to the template do not reach the project.`) : tl('Pick a template: its copy becomes the project\'s workflow.') }}</small>
-          </span>
+          <small class="muted" data-testid="pm-from">{{ p.from ? tl(`Based on: ${p.from.template} v${p.from.version}. Information only: changes to the template do not reach the project. To start over from a template: Workflow › ⋯.`) : tl('No template yet: start from one in the Workflow tab.') }}</small>
         </form>
+        <ProjectWorkflow v-else-if="tab === 'workflow' && loaded" ref="workflowTab" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" />
         <ProjectAutomations v-else-if="tab === 'automations'" :project="p.key" :name="p.name" />
         <template v-else-if="tab === 'autopilot'">
           <CoordinatorAutopilot v-if="coordinator" :c="coordinator" />

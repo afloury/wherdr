@@ -160,6 +160,14 @@ function checkStep(s: unknown, path: string, earlier: string[], errs: WorkflowEr
   if (s.ends !== 'action' && s.ends !== 'user') err('action', 'only for a step that ends with action or user')
 }
 
+// Start over: template `source` copied as a project's workflow. The project's
+// own guards stay when it already has a workflow (`own`).
+export function startOverFrom(source: Template, own: Template | null): Template {
+  if (!own) return source
+  const { guards: _guards, ...copy } = source
+  return own.guards ? { ...copy, guards: own.guards } : copy
+}
+
 // Every problem in a template, each with the path of the field at fault.
 export function validateTemplate(t: unknown): WorkflowError[] {
   const errs: WorkflowError[] = []
