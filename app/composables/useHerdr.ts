@@ -83,6 +83,8 @@ export const homeGrouping = syncedRef('homeGrouping', readHomeGrouping, v => v)
 export const compactList = syncedRef(COMPACT_LIST_KEY, readCompactList, flag.write)
 if (import.meta.client) {
   try { localStorage.removeItem(LEGACY_COMPACT_LIST_KEY) } catch { /* storage unavailable */ }
+  // Leftover of the removed paste journal.
+  try { localStorage.removeItem('pasteJournalEnabled') } catch { /* storage unavailable */ }
 }
 export const autoReorderReady = syncedRef('autoReorderReady', flag.read(true), flag.write)
 // Sorting of Ready (see shared/spaces.ts sortReady).
