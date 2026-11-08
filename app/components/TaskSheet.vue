@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// A task's sheet: its Plan (the steps, the current one, what its holder was
+// A task's sheet. A task waiting for the user opens on To do (TaskTodo): what
+// it needs from them and its buttons. Otherwise: its Plan (the steps, the current one, what its holder was
 // told, the proofs and rounds), its links, the agent holding the step, and
 // the step's button when it waits for the user ("Merged"; busy while it runs, a
 // refused action said in plain words under it), Start for a task to do (or
@@ -10,10 +11,11 @@
 // text, tags and links, the PR among them), Plan (each step with its
 // screenshots), Log.
 import { canStart, canStop, cardStatus, linkLabel, type Card } from '#shared/pm/board'
-import { RESUMES, type Resume } from '#shared/pm/stop'
+import type { Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
 import type { Task } from '#shared/pm/run'
 import { shotMode } from '#shared/pm/shots'
+import type { Choice } from '#shared/pm/verdict'
 
 // stopping: opened from the card menu's Stop, the confirmation shown.
 const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean, waitsFor?: string[] }>()
@@ -31,9 +33,11 @@ const shots = (id: string) => props.card.state?.shots?.[id] ?? []
 // Where its PR and merge stand (the card's line), with the full time.
 const status = computed(() => { const s = cardStatus(props.card); return s && { ...s, text: s.at ? `${s.text} ${fmtDateTime(s.at)}` : s.text } })
 
-type Tab = 'description' | 'plan' | 'log'
-const TAB_LABEL: Record<Tab, [string, string]> = { description: ['Description', 'Description'], plan: ['Plan', 'Plan'], log: ['Log', 'Journal'] }
+const todo = computed(() => taskTodo(props.card))
+type Tab = 'todo' | 'description' | 'plan' | 'log'
+const TAB_LABEL: Record<Tab, [string, string]> = { todo: ['To do', 'À faire'], description: ['Description', 'Description'], plan: ['Plan', 'Plan'], log: ['Log', 'Journal'] }
 const tabs = computed<Tab[]>(() => [
+  ...(todo.value ? ['todo' as const] : []),
   ...(props.card.description || props.card.tags.length || props.card.links.length ? ['description' as const] : []),
   'plan',
   ...(props.card.log.length ? ['log' as const] : []),
@@ -68,6 +72,8 @@ const why = ref('')
 const stop = () => run(async () => { await stopTaskApi(props.card.id, why.value); confirmStop.value = false })
 const start = () => run(() => startTaskApi(props.card.id))
 const resume = (how: Resume) => run(() => resumeTaskApi(props.card.id, how))
+const decide = (choice: Choice) => run(() => api('/api/pm/decide', { id: props.card.id, choice }))
+const sendBack = (note: string) => run(() => api('/api/pm/step-back', { id: props.card.id, note }))
 // Removed: the sheet closes, the board reloads without it.
 const remove = () => run(async () => { const yes = await removeTaskApi(props.card.id); if (yes) open.value = false; return yes })
 </script>
@@ -78,21 +84,15 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
       <div class="task-sheet-top">
         <p class="mono-label">{{ card.id }}<template v-if="card.step"> · {{ card.step }}</template></p>
         <p v-if="status" class="task-status" :class="status.tone" data-testid="task-status">{{ status.text }}</p>
-        <p v-if="card.yourTurn && !refused" class="board-badge" :title="card.yourTurn" data-testid="task-badge">{{ stepRefusalText(card.yourTurn) }}</p>
         <div class="task-sheet-actions">
-          <UButton v-if="card.userLabel && !card.stopped" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="press">{{ card.userLabel }}</UButton>
-          <UButton v-if="canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ tl('Start', 'Lancer') }}</UButton>
-          <UButton v-for="how in card.stopped ? RESUMES : []" :key="how" size="xl" :color="how === 'continue' ? 'primary' : 'neutral'" :variant="how === 'continue' ? 'solid' : 'outline'"
-            :disabled="busy" :data-resume="how" @click="resume(how)">{{ tl(...RESUME_LABEL[how]) }}</UButton>
-          <UButton v-if="pane" color="neutral" variant="outline" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)">
+          <UButton v-if="!todo && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ tl('Start', 'Lancer') }}</UButton>
+          <UButton v-if="!todo && pane" color="neutral" variant="outline" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)">
             {{ card.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent') }}
           </UButton>
           <UButton v-if="canStop(card) && !confirmStop" color="error" variant="outline" size="xl" icon="i-lucide-square" data-testid="task-stop" @click="confirmStop = true">{{ tl('Stop', 'Arrêter') }}</UButton>
           <UButton v-if="card.removable" color="error" variant="outline" size="xl" icon="i-lucide-trash-2" :loading="busy" data-testid="task-remove" @click="remove">{{ tl('Delete…', 'Supprimer…') }}</UButton>
         </div>
         <p v-if="canStart(card) && waitsFor?.length" class="muted" data-testid="task-waits">{{ tl(`Starts once ${waitsFor.join(', ')} ${waitsFor.length > 1 ? 'are' : 'is'} done.`, `Démarre une fois ${waitsFor.join(', ')} terminée${waitsFor.length > 1 ? 's' : ''}.`) }}</p>
-        <p v-if="pressing" class="muted" role="status" data-testid="step-user-busy">{{ tl('Running this step… A merge waits for the PR\'s checks, which can take a few minutes.', 'Étape en cours… Une fusion attend les vérifications de la PR, ce qui peut prendre quelques minutes.') }}</p>
-        <p v-else-if="refused" class="error" role="alert" :title="refused" data-testid="step-user-refused">{{ stepRefusalText(refused) }}</p>
         <form v-if="canStop(card) && confirmStop" class="task-stop-confirm" data-testid="task-stop-confirm" @submit.prevent="stop">
           <p>{{ tl('Stop this task? Its agent ends; the worktree, branch and work stay, and nothing is merged.', 'Arrêter cette tâche ? Son agent s’arrête ; le worktree, la branche et le travail restent, rien n’est fusionné.') }}</p>
           <UInput v-model="why" size="xl" maxlength="300" :placeholder="tl('Why (optional)', 'Pourquoi (facultatif)')" data-testid="task-stop-why" />
@@ -111,7 +111,9 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
       </div>
 
       <div id="task-panel" class="task-panel" role="tabpanel" :aria-labelledby="`task-tab-${tab}`" data-testid="task-panel">
-        <template v-if="tab === 'description'">
+        <TaskTodo v-if="tab === 'todo' && todo" :card="card" :kind="todo" :pane="pane" :busy="busy" :pressing="pressing" :refused="refused" :waits-for="waitsFor"
+          @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" />
+        <template v-else-if="tab === 'description'">
           <p v-if="card.description" class="task-desc">{{ card.description }}</p>
           <div v-if="card.tags.length || card.links.length" class="board-tags">
             <span v-for="tag in card.tags" :key="tag" class="board-chip">{{ tag }}</span>

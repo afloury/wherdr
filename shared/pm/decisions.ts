@@ -4,7 +4,7 @@
 import type { Card } from './board'
 import type { Task, WaitKind } from './run'
 import type { Wake } from './wakes'
-import { CHOICES, type Choice } from './verdict'
+import { CHOICES, type Advice, type Choice } from './verdict'
 import { stoppedText } from './stop'
 
 // agent: a permission, question or login an agent waits on. arbitrate: the
@@ -37,6 +37,14 @@ export interface DecisionsInput {
   wakes: Wake[]
 }
 
+// The choices offered on an advice, recommended first: the coordinator's
+// options when it has some, else any choice (the user may choose any).
+export function adviceChoices(a: Advice): { options: Choice[], recommend?: Choice } {
+  const options = a.options.length ? [...a.options] : [...CHOICES]
+  const recommend = (options as string[]).includes(a.outcome) ? a.outcome as Choice : a.options.length === 1 ? a.options[0] : undefined
+  return recommend ? { options: [recommend, ...options.filter(o => o !== recommend)], recommend } : { options }
+}
+
 const KIND_TEXT: Record<WaitKind, string> = { permission: 'Asks for a permission', question: 'Asks a question', auth: 'Needs its login again' }
 
 export function decisionsOf({ cards, tasks, coordinators, wakes }: DecisionsInput): Decision[] {
@@ -52,11 +60,8 @@ export function decisionsOf({ cards, tasks, coordinators, wakes }: DecisionsInpu
     if (!y || c.state?.done) continue
     const id = `${y.reason}:${c.id}:${c.step}:${y.badge}`
     if (y.reason === 'rounds' && y.advice) {
-      const a = y.advice
-      // The coordinator's options when it has some, else any choice (the user may choose any).
-      const options = a.options.length ? [...a.options] : [...CHOICES]
-      const recommend = (options as string[]).includes(a.outcome) ? a.outcome as Choice : a.options.length === 1 ? a.options[0] : undefined
-      out.push({ ...base, id, group: 'arbitrate', text: `${y.badge}: ${a.why}`, options: recommend ? [recommend, ...options.filter(o => o !== recommend)] : options, ...(recommend ? { recommend } : {}) })
+      const { options, recommend } = adviceChoices(y.advice)
+      out.push({ ...base, id, group: 'arbitrate', text: `${y.badge}: ${y.advice.why}`, options, ...(recommend ? { recommend } : {}) })
     } else if (y.reason === 'timeout') out.push({ ...base, id, group: 'overdue', text: y.badge, ...(c.userLabel ? { label: c.userLabel } : {}) })
     else out.push({ ...base, id, group: 'step', text: y.badge, label: c.userLabel || 'Try again' })
   }

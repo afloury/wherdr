@@ -6,6 +6,7 @@ import { ICON_SCAN_GLOBS } from './shared/iconScan'
 import { lazyChunks, PRECACHE_GLOBS, RUNTIME_ONLY_GLOBS } from './shared/precache'
 import { execFileSync } from 'node:child_process'
 import { v3Version } from './shared/v3Version'
+import { BOOT_THEME_KEY } from './shared/bootTheme'
 
 // Demo build (`VITE_WHERDR_DEMO=1 nuxt generate`, served at wherdr.dev/demo/):
 // the same app, static, with no server at all — app/demo/ answers the API in
@@ -85,6 +86,11 @@ export default defineNuxtConfig({
         { name: 'apple-mobile-web-app-title', content: 'wherdr' },
         { name: 'robots', content: 'noindex, nofollow' },
       ],
+      // Startup background, painted before the styles and the app load (no
+      // white frame on a reload): Titanium, or the theme last shown on this
+      // device (useTheme.ts keeps its colour; the theme's own styles replace it).
+      style: [{ innerHTML: 'html{background:var(--bg,#12151b)}' }],
+      script: [{ innerHTML: `try{var t=JSON.parse(localStorage.getItem('${BOOT_THEME_KEY}')||'null'),d=document.documentElement;if(t&&/^#[0-9a-f]{3,8}$/i.test(t.bg)){d.style.setProperty('--bg',t.bg);d.className=t.light?'light':'dark'}}catch(e){}` }],
       // The manifest (FR or EN depending on the chosen language) is added by app.vue.
       link: demo
         // Demo: the icons of the site that serves it (wherdr.dev).

@@ -42,9 +42,11 @@ test('board: Your turn, the reviewer\'s state and the step button', async ({ pag
     await page.screenshot({ path: `.shots/board-${test.info().project.name}.png` })
 
     await card('CM-1').click()
-    await page.locator('[data-tab="plan"]').click() // the sheet opens on Description
+    await expect(page.locator('[data-tab="todo"]')).toHaveAttribute('aria-selected', 'true') // waiting for the user: it opens on To do
+    await page.locator('[data-tab="plan"]').click()
     await expect(page.getByTestId('task-plan').locator('[aria-current="step"]')).toContainText('pick')
     await page.screenshot({ path: `.shots/board-sheet-${test.info().project.name}.png` })
+    await page.locator('[data-tab="todo"]').click()
     await page.getByTestId('step-user').click()
     await expect(page.locator('[data-lane="done"]').locator('[data-task="CM-1"]')).toBeVisible()
   } finally {
