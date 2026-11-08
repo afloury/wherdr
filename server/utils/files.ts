@@ -5,10 +5,17 @@
 // stay under the root. Nothing here writes.
 //
 // A file path written in a conversation (shared/filePaths.ts) is previewed and
-// downloaded the same way, with the machine's home folder as the root, like
-// Reveal in Finder (server/utils/reveal.ts).
+// downloaded the same way, with the machine's home folder as the root.
+//
+// Never shown, whatever the root: wherdr's own data folder (DATA_DIR: the
+// lock's signing secret, push keys), its settings (wherdr.env, which can hold
+// the OpenRouter key, and wherdr.json), ~/.ssh and ~/.config/herdr. Checked on
+// the machine once symlinks are resolved (exit 9), and before that on the
+// written path for a clear error.
 import { execFile } from 'node:child_process'
 import path from 'node:path'
+import { DATA_DIR, WHERDR_DIR } from './env'
+import { shq } from './fsx'
 import type { FileEntry, FilePreview, FilesListing } from '../../shared/types'
 import { posixResolve, resolveAgentPath } from '../../shared/filePaths'
 import { gitToplevel } from './changes'
@@ -81,10 +88,33 @@ printf '=\\0'
 if stat -f %z / >/dev/null 2>&1; then stat -f %z -- "$@"; else stat -c %s -- "$@"; fi 2>/dev/null
 exit 0`
 
+// Folders and files never read (see the top): resolved on the machine itself.
+const PROTECTED_HOME = ['.ssh', '.config/herdr']
+// wherdr's settings, in its folder on this machine ($WHERDR_DIR) and in
+// ~/wherdr on every machine.
+const PROTECTED_FILES = ['wherdr.env', 'wherdr.json']
+const wherdrFiles = () => PROTECTED_FILES.map(f => path.join(path.resolve(WHERDR_DIR), f))
+export const protectedPaths = (home: string | undefined) => [
+  ...(home ? [...PROTECTED_HOME, ...PROTECTED_FILES.map(f => `wherdr/${f}`)].map(d => path.posix.join(posixResolve('/', home), d)) : []),
+  path.resolve(DATA_DIR), ...wherdrFiles(),
+]
+// A file: the same one (-ef: through symlinks and hard links too).
+const PROTECTED = `protected_path() {
+  for pp in ${PROTECTED_HOME.map(d => `"$HOME/${d}"`).join(' ')} ${shq(path.resolve(DATA_DIR))}; do
+    pd=$(cd "$pp" 2>/dev/null && pwd -P) || continue
+    case "$1/" in "\${pd%/}/"*) return 0 ;; esac
+  done
+  for pf in ${PROTECTED_FILES.map(f => `"$HOME/wherdr/${f}"`).join(' ')} ${wherdrFiles().map(shq).join(' ')}; do
+    [ "$1" -ef "$pf" ] && return 0
+  done
+  return 1
+}`
+
 // The file $2 resolved under the root into $f, then opened on fd 3.
 // Symlinks resolved one link at a time (readlink, cd -P: realpath is missing
 // before macOS 13).
 export const OPEN_FILE = `${RESOLVE}
+${PROTECTED}
 case "$2" in */*) d=\${2%/*} ;; *) d=. ;; esac
 b=\${2##*/}
 dir=$(cd "$root" && cd -- "./$d" 2>/dev/null && pwd -P) || { echo "not found" >&2; exit 4; }
@@ -99,6 +129,7 @@ while [ -L "$f" ]; do
 done
 [ -e "$f" ] || { echo "not found" >&2; exit 4; }
 under "$f" || { echo "outside" >&2; exit 5; }
+protected_path "$f" && { echo "protected" >&2; exit 9; }
 [ -f "$f" ] || { echo "not a file" >&2; exit 6; }
 [ -r "$f" ] || { echo "permission denied" >&2; exit 7; }
 command exec 3< "$f" || { echo "permission denied" >&2; exit 7; }
@@ -120,6 +151,7 @@ echo $s
 [ -n "$4" ] && [ "$s" -ge "$3" ] && exit 0
 head -c "$3" <&3`
 
+export const PROTECTED_MESSAGE = 'This file is protected: wherdr never shows its own data and settings, ~/.ssh or ~/.config/herdr'
 export const MACOS_SSH_DENIED = 'macOS blocks access to this folder. On the Mac: System Settings › General › Sharing › Remote Login ⓘ › “Allow full disk access for remote users”.'
 export const MACOS_LOCAL_DENIED = 'macOS blocks access to this folder. Allow the app that runs wherdr in System Settings › Privacy & Security › Full Disk Access.'
 
@@ -154,6 +186,7 @@ export function shellError(m: Machine, code: number | null, stderr: string): Her
   if (r.code === 7) return new HerdrError('denied', 'Permission denied')
   // macOS privacy protection (Documents, Desktop…): `[ -r . ]` passes, the listing is refused.
   if (r.code === 8) return new HerdrError('denied', m.exec ? MACOS_SSH_DENIED : MACOS_LOCAL_DENIED)
+  if (r.code === 9) return new HerdrError('protected', PROTECTED_MESSAGE)
   if (r.code === 124) return new HerdrError('timeout', 'The folder took too long to read')
   if (r.code === 255 || r.code === null) return new HerdrError('unreachable', 'Machine unreachable')
   return new HerdrError('remote', r.stderr.trim().split('\n').pop() || `code ${r.code}`)
@@ -229,7 +262,15 @@ export function writtenTarget(m: Machine, cwd: string | null | undefined, writte
   const root = posixResolve('/', m.home)
   const rel = path.posix.relative(root, abs)
   if (!rel) throw new HerdrError('not_file', 'Not a file')
+  refuseProtected(m, abs)
   return { root, rel, abs }
+}
+
+// Early, on the path as written (the machine checks again once symlinks are resolved).
+export function refuseProtected(m: Machine, abs: string) {
+  for (const d of protectedPaths(m.home)) {
+    if (abs === d || abs.startsWith(d.replace(/\/+$/, '') + '/')) throw new HerdrError('protected', PROTECTED_MESSAGE)
+  }
 }
 
 // Size and first `max` bytes of a file (`whole`: no bytes at all when it has `max` or more).
@@ -264,7 +305,9 @@ async function previewAt(m: Machine, root: string, rel: string, shown: string): 
 export async function readFilePreview(m: Machine, cwd: string, rel: unknown): Promise<FilePreview> {
   const p = cleanRelative(rel)
   if (!p) throw new HerdrError('not_file', 'Not a file')
-  return previewAt(m, await rootOf(m, cwd), p, p)
+  const root = await rootOf(m, cwd)
+  refuseProtected(m, path.posix.join(root, p))
+  return previewAt(m, root, p, p)
 }
 
 export async function readWrittenPreview(m: Machine, cwd: string | null | undefined, written: unknown): Promise<FilePreview> {
@@ -282,7 +325,9 @@ async function bytesAt(m: Machine, root: string, rel: string) {
 export async function readFileBytes(m: Machine, cwd: string, rel: unknown) {
   const p = cleanRelative(rel)
   if (!p) throw new HerdrError('not_file', 'Not a file')
-  return bytesAt(m, await rootOf(m, cwd), p)
+  const root = await rootOf(m, cwd)
+  refuseProtected(m, path.posix.join(root, p))
+  return bytesAt(m, root, p)
 }
 
 export async function readWrittenBytes(m: Machine, cwd: string | null | undefined, written: unknown) {
