@@ -131,3 +131,25 @@ it('keeps the kept end when the first read times out, then applies the next answ
     await expect.poll(() => w.text()).toContain('Added under Unreleased.')
   } finally { w.unmount(); vi.restoreAllMocks() }
 })
+
+it('keeps the last list on screen once the reads alternate between empty and full', async () => {
+  const gone = { available: false, reason: 'not_found' }
+  const round = [{ ...full, items: newer() }, gone, gone, gone]
+  server(...round, ...round, ...round)
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const w = await mount()
+  try {
+    const reads = () => vi.mocked(fetch).mock.calls.filter(([p]) => String(p).startsWith('/api/chat?')).length
+    await expect.poll(() => w.text()).toContain('Added under Unreleased.')
+    const shown: boolean[] = []
+    for (let n = 2; n <= 12; n++) {
+      await w.setProps({ pane: { ...pane, status: n % 2 ? 'idle' : 'working' } })
+      await expect.poll(reads).toBe(n)
+      await new Promise(r => setTimeout(r))
+      if (n % 4 === 0) shown.push(w.text().includes('Added under Unreleased.') && !w.text().includes('No conversation'))
+    }
+    // Emptied twice (it may really be gone), kept once it has alternated more than twice.
+    expect(shown).toEqual([false, false, true])
+    expect(vi.mocked(console.warn).mock.calls.filter(([m]) => String(m).includes('conversation list alternates'))).toHaveLength(1)
+  } finally { w.unmount(); vi.restoreAllMocks() }
+})

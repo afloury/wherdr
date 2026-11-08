@@ -522,9 +522,13 @@ watch([() => props.pane.status, () => props.pane.preview], () => { pollNow(); sc
 // The list the blocks show (createFlipGuard): never empty while it alternates.
 let steadyItems = createFlipGuard()
 watch(() => props.pane.id, () => { steadyItems = createFlipGuard() })
+const steadyList = computed(() => steadyItems(items.value))
+// The guard keeps a list the reads just emptied: no empty state over it either.
+const holding = computed(() => steadyList.value !== items.value)
+const shownUnavailable = computed(() => (holding.value ? null : unavailable.value))
 const blocks = computed<Block[]>(() => {
   const out: Block[] = []
-  const list = steadyItems(items.value)
+  const list = steadyList.value
   let tools: ChatItem[] = []
   // Stable key of an action block (keeps its expanded state when older
   // pages are added above).
@@ -1316,7 +1320,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         :ui="MSGS_UI"
       >
         <div ref="listEl" class="chat-list" :class="[readOnly ? 'no-reply' : `rs-${replyStyle}`, { asking: asked, skeleton }]" @click="onListClick" @keydown="onListKey">
-          <div v-if="unavailable === 'not_found' && firstPrompt" class="msg-user-wrap" data-testid="first-prompt">
+          <div v-if="shownUnavailable === 'not_found' && firstPrompt" class="msg-user-wrap" data-testid="first-prompt">
             <UChatMessage
               id="first-prompt" role="user" side="right" variant="soft" :parts="firstParts(firstPrompt)"
               :ui="FIRST_UI"
@@ -1326,13 +1330,13 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               </template>
             </UChatMessage>
           </div>
-          <div v-else-if="unavailable && waiting" class="chat-empty waiting">
+          <div v-else-if="shownUnavailable && waiting" class="chat-empty waiting">
             <UIcon name="i-lucide-square-terminal" class="chat-empty-icon" />
             <p>{{ waiting.text }}</p>
             <pre v-if="waiting.lines.length" class="choices-screen-text">{{ waiting.lines.join('\n') }}</pre>
             <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
           </div>
-          <div v-else-if="unavailable === 'no_integration' && integration" class="chat-empty no-integration">
+          <div v-else-if="shownUnavailable === 'no_integration' && integration" class="chat-empty no-integration">
             <UIcon name="i-lucide-plug-zap" class="chat-empty-icon" />
             <p class="no-integration-title">{{ tl(`Herdr's ${kindLabel(integration.agent)} integration is missing`, `L’intégration ${kindLabel(integration.agent)} de Herdr manque`) }}</p>
             <p class="no-integration-text">
@@ -1346,7 +1350,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
             </div>
           </div>
-          <div v-else-if="unavailable" class="chat-empty">
+          <div v-else-if="shownUnavailable" class="chat-empty">
             <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />
             <p>{{ unavailable === 'not_found' ? t('No conversation for this agent yet.') : t('Conversation unavailable for this agent.') }}</p>
             <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
@@ -1541,7 +1545,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <MsgThumbs v-for="(srcs, j) in hiddenToolImages(b)" :key="`h${j}`" class="tool-thumbs" :srcs="srcs" :max="TOOL_THUMB_MAX" :offline="readOnly" :dupes="dupeSrcs" />
               </div>
             </template>
-            <div v-if="rendered && !items.length && !loadError" class="chat-empty">
+            <div v-if="rendered && !steadyList.length && !loadError" class="chat-empty">
               <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />
               <p>{{ t('No messages yet.') }}</p>
             </div>
