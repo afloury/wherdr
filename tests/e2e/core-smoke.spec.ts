@@ -31,6 +31,16 @@ test('core smoke: home, conversation attach and key bar, terminal attach', async
   })
   try {
     await core.open(page)
+    // Worker policies come from their own script responses. Keep the ORT
+    // permission off the page, and prove Nitro applies this exact route rule.
+    const gpuWorker = await page.request.get(core.url + '/workers/dictation-webgpu-worker.js')
+    expect(gpuWorker.status()).toBe(200)
+    expect(gpuWorker.headers()['content-type']).toContain('javascript')
+    expect(gpuWorker.headers()['content-security-policy']?.match(/script-src ([^;]+)/)?.[1])
+      .toBe("'self' 'wasm-unsafe-eval'")
+    const html = await page.request.get(core.url)
+    expect(html.headers()['content-security-policy']).not.toContain('wasm-unsafe-eval')
+    expect(html.headers()['content-security-policy']).not.toContain("'unsafe-eval'")
     await expect.poll(() => eventsPanes, { message: '/ws/events opens and sends a state frame with the agent' }).toBeGreaterThan(0)
     await expect(page.locator('.home-version')).toHaveText(/^wherdr v3 · herdr-core$/i)
     await page.getByRole('button', { name: /review-agent/ }).first().click()
