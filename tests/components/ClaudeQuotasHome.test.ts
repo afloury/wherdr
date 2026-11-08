@@ -21,8 +21,6 @@ const quotas: Quotas = {
 }
 let served: Quotas = quotas
 registerEndpoint('/api/quotas', () => served)
-registerEndpoint('/api/machine/order', () => ({ order: [] }))
-registerEndpoint('/api/machine/awake', () => ({ supported: false }))
 
 const machine = (key: string, label: string): MachineInfo => ({ key, label, local: key === '', status: 'online', error: null, session: 'default' })
 const pane = (id: string, m: string): Pane => ({
