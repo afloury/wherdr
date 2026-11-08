@@ -61,7 +61,8 @@ if [ -z "$cur" ]; then out=$(gh pr create --head "$b" --base "$base" --title "$3
 if [ "\${cur%% *}" != "$base" ]; then e=$(gh pr edit "\${cur#* }" --base "$base" 2>&1) || { echo "$e"; exit 1; }; fi
 echo "\${cur#* }"`,
   // The commit, then the open PR as JSON on the last line. None open: the
-  // merged PR of the branch whose head holds HEAD, marked merged (Shepherdr #706).
+  // merged PR of the branch whose head holds HEAD, else its latest merged one
+  // whatever its head (merged by hand: the step ends merged), marked merged (Shepherdr #706).
   prInfo: `${IN} h=$(git rev-parse HEAD) || exit 1; echo "$h"
 j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup 2>&1) || { echo "$j"; exit 1; }
 j=$(echo "$j" | tail -1)
@@ -70,6 +71,7 @@ if [ "$j" = "[]" ]; then
   while read -r p pj; do [ -n "$p" ] && ${HOLDS} && { j="[$pj]"; break; }; done <<EOF
 $m
 EOF
+  pj=$(echo "$m" | head -1); [ "$j" != "[]" ] || [ -z "$pj" ] || j="[\${pj#* }]"
 fi
 echo "$j"`,
   // The step's method ($3), else the first the repo allows: merge commit, squash, rebase.
@@ -106,6 +108,11 @@ echo "$why"; exit ${CODE.NOT_MERGED}`,
 if ! git merge -q --no-edit "origin/$1" >/dev/null 2>&1; then
   f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict with $1 in $f"; exit ${CODE.SEND_BACK}; fi
 git push -q origin "HEAD:refs/heads/$2" 2>&1 || exit 1; git rev-parse HEAD`,
+  // Where the PR head ($1) stands against the task's commit: same; behind (in
+  // its history: the task's later commits are not pushed yet); or foreign (a
+  // commit the task's worktree never had: pushed from elsewhere).
+  headOf: `${IN} p=$1; git cat-file -e "$p^{commit}" 2>/dev/null || git fetch -q origin "$p" 2>/dev/null
+if [ "$(git rev-parse HEAD)" = "$p" ]; then echo same; elif git merge-base --is-ancestor "$p" HEAD 2>/dev/null; then echo behind; else echo foreign; fi`,
   // Runs again the failed or cancelled workflow runs of a commit.
   rerun: `${IN} ids=$(gh run list --commit "$1" --json databaseId,conclusion -q '.[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .conclusion != "") | .databaseId' 2>&1) || { echo "$ids"; exit 1; }
 for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
@@ -157,6 +164,7 @@ export function leaks(g: ResolvedGuards, remoteBranches: string[], allowed: stri
 // is never run twice for one receipt, and one found 'pending' after a restart
 // becomes 'uncertain' instead of being run again blindly.
 // note: a line for the task's log.
-export interface ActionResult { ok: boolean, error?: string, toAgent?: boolean, link?: string, commit?: string, alert?: string, note?: string }
+// review: new commits since the reviewed one, to review before the merge.
+export interface ActionResult { ok: boolean, error?: string, toAgent?: boolean, review?: { since: string, head: string }, link?: string, commit?: string, alert?: string, note?: string }
 export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain', result?: ActionResult, at: number }
 export const receiptId = (task: string, step: string, attempt: number) => `${task}.${attempt}.${encodeURIComponent(step)}`
