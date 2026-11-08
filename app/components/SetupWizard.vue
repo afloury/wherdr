@@ -2,21 +2,23 @@
 // Set up project management, one step per screen: turn it on, a project, its
 // workflow copied from an example, its guards, its coordinator (and autopilot),
 // a first task. Each step does the thing here; it opens at the first step left
-// (setupResume) for `project`, or the project setupProject picks. Adding a
-// project still goes through the New sheet; the wizard opens again after it.
-// The first screen can hand the setup to Alfred instead.
+// (setupResume) for `project`, or the project setupProject picks; with
+// `adding` (Settings › Projects › Add project), at step 2 on a new project
+// (SetupProject). The first screen can hand the setup to Alfred instead.
 import type { PmOverview } from '#shared/pm/project'
+import type { RepoVisibility } from '#shared/pm/visibility'
 import type { Template } from '#shared/pm/workflow'
 import { EXAMPLES } from '#shared/pm/examples'
 import { MAIN, isCoordinatorProgram } from '#shared/pm/coordinator'
 import { SETUP_STEPS, setupDone, setupProject, setupResume, workflowLine, type SetupStepId } from '#shared/pm/setup'
 
 const open = defineModel<boolean>('open', { default: false })
-const props = defineProps<{ project?: string }>()
+const props = defineProps<{ project?: string, adding?: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
 
 const data = ref<PmOverview | null>(null)
 const key = ref<string>()
+const fresh = ref(false) // a new project is being added: none picked by default
 const workflow = ref<Template | null>(null)
 const index = ref(0)
 const busy = ref(false)
@@ -32,7 +34,7 @@ async function load() {
   const [o] = await Promise.all([api<PmOverview>('/api/pm/overview'), loadCoordinators()])
   data.value = o
   // The one picked here, else the one asked, else the first with a step left.
-  key.value = [key.value, props.project].find(k => k && o.projects.some(x => x.key === k)) ?? setupProject(o, coordinators.value)
+  key.value = [key.value, props.project].find(k => k && o.projects.some(x => x.key === k)) ?? (fresh.value ? undefined : setupProject(o, coordinators.value))
   workflow.value = p.value?.from ? (await api<{ workflow: Template | null }>(`/api/pm/project?key=${encodeURIComponent(key.value!)}`)).workflow : null
 }
 async function run(fn: () => Promise<unknown>) {
@@ -47,19 +49,18 @@ watch(open, (o) => {
   if (!o) return
   data.value = null
   key.value = undefined
+  fresh.value = !!props.adding
   error.value = ''
-  load().then(() => { index.value = setupResume(done.value) }, (e) => { error.value = (e as Error).message })
+  load().then(() => { index.value = fresh.value ? Number(done.value.enable) : setupResume(done.value) }, (e) => { error.value = (e as Error).message })
 }, { immediate: true })
 
-// 2. A project: the New sheet adds it, then the wizard comes back.
-let adding = false
-function addProject() {
-  adding = true
-  open.value = false
-  newProjectOpen.value = true
-  newAgentOpen.value = true
-}
-watch(newAgentOpen, (o) => { if (!o && adding) { adding = false; open.value = true } })
+// 2. A project: added here (SetupProject), then its repository's visibility, which the user may correct.
+function addProject() { fresh.value = true; key.value = undefined }
+function added(k: string) { fresh.value = false; key.value = k; run(async () => {}) }
+const VISIBILITY = [{ label: 'Repository: not checked', value: 'unknown', disabled: true }, { label: 'Public repository', value: 'public' }, { label: 'Private repository', value: 'private' }]
+const visibilityItems = computed(() => VISIBILITY.map(v => ({ ...v, label: tl(v.label) })))
+const setVisibility = (value: string) => run(() => api('/api/pm/project-visibility', { key: key.value, value }))
+const visibility = (v?: RepoVisibility) => v?.value ?? 'unknown'
 const projectItems = computed(() => (data.value?.projects ?? []).filter(x => x.git !== false).map(x => ({ label: x.name, value: x.key })))
 watch(key, (k, old) => { if (old && k) run(async () => {}) })
 
@@ -104,7 +105,7 @@ const TITLE: Record<SetupStepId, string> = {
 }
 const BODY: Record<SetupStepId, string> = {
   enable: 'Tasks then follow the workflow of their project. Off, nothing is changed.',
-  project: 'A git repository on one of your machines: each task gets its own worktree and pull request.',
+  project: 'A git repository on one of your machines: each task gets its own worktree and pull request. wherdr checks whether it is public.',
   workflow: 'The steps a task goes through, and who does each one. The project gets its own copy, to change later in its Workflow tab.',
   guards: 'The branches no agent merges into on its own, and who merges. The workflow’s defaults are shown; Next keeps them.',
   coordinator: 'The agent you talk to about the project: it adds tasks and follows them on the board.',
@@ -132,9 +133,14 @@ const BODY: Record<SetupStepId, string> = {
       </template>
 
       <template v-else-if="step === 'project'">
-        <USelect v-if="projectItems.length > 1" v-model="key" :items="projectItems" size="xl" class="w-full" :aria-label="tl('Project')" data-testid="setup-project" />
-        <p v-if="p" class="setup-ok" data-testid="setup-ok">{{ p.name }} <span class="mono-label">{{ p.key }}</span></p>
-        <UButton size="xl" :color="p ? 'neutral' : 'primary'" :variant="p ? 'outline' : 'solid'" icon="i-lucide-plus" data-testid="setup-add-project" @click="addProject">{{ tl(p ? 'Add another project' : 'Add a project') }}</UButton>
+        <SetupProject v-if="!p" :projects="data?.projects ?? []" @added="added" />
+        <template v-else>
+          <USelect v-if="projectItems.length > 1" v-model="key" :items="projectItems" size="xl" class="w-full" :aria-label="tl('Project')" data-testid="setup-project" />
+          <p class="setup-ok" data-testid="setup-ok">{{ p.name }} <span class="mono-label">{{ p.key }}</span></p>
+          <USelect :model-value="visibility(p.visibility)" :items="visibilityItems" size="xl" class="w-full" :disabled="busy" :aria-label="tl('Repository')" data-testid="setup-visibility" @update:model-value="v => setVisibility(String(v))" />
+          <small class="muted">{{ tl('Public: its coordinator and tasks keep private paths, names and secrets out of it.') }}</small>
+          <UButton size="xl" color="neutral" variant="outline" icon="i-lucide-plus" data-testid="setup-another" @click="addProject">{{ tl('Add another project') }}</UButton>
+        </template>
       </template>
 
       <template v-else-if="step === 'workflow'">

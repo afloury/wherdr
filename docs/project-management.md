@@ -13,14 +13,17 @@ with Back and Next. Each step does the thing in place; Next waits until it is
 done. While no project went through every step, the **Board** header shows
 *Finish setup (2/6)*, which opens it at the first step left; once one project
 is set up, the button is gone. **Settings › Projects › Set up a project** opens
-it too, on the first project with a step left.
+it too, on the first project with a step left, and *Add project* opens it on a
+new project.
 
 1. **Turn on project management.** Off, wherdr changes nothing. This first
    screen also offers *Let Alfred guide me*: it opens Alfred's conversation
    (see [Home](home.md#alfred)) and asks it to walk you through the setup.
-2. **Add a project.** A git folder on a machine herdr-core reaches. For now
-   *Add a project* opens **New › Project**, then the setup window comes back.
-   With several projects, pick the one to set up.
+2. **Add a project.** Pick the machine, then a git repository found there or
+   any folder (a new or empty one offers `git init`); name, key and color
+   follow the folder and can be changed. Once added, wherdr checks whether the
+   repository is public; correct it if the check is wrong. With several
+   projects, pick the one to set up, or add another.
 3. **Choose its workflow.** The examples, each with its steps in one line, such
    as `vibe` (commit straight to a dev branch, no review). The one you choose is
    copied into the project: that copy is the project's own workflow, changed
@@ -49,7 +52,7 @@ Then ask the coordinator for tasks, and answer what shows under *Your turn* and
 **Settings › Projects** holds the *Project management* switch, *Set up a project*,
 the project list and the [template library](#template-library): each row shows
 the name (with a **Public** badge for a public repository), the key, the machine
-and the folder. *Add project* opens the New sheet on a new project; *Open the
+and the folder. *Add project* opens the setup window on a new project; *Open the
 board* goes to the board. A row opens the
 project's sheet, with five tabs: General, Workflow, Guards, Automations and
 Autopilot. Its ⋯ menu removes the project from wherdr, after a confirmation:

@@ -2,7 +2,7 @@
 // Settings › Projects: the project management switch, then the projects (a git
 // folder on a machine herdr-core reaches). A row opens the project's sheet
 // (ProjectSheet), its key and tab in the URL (`?project=WHR&tab=general`).
-// Add project opens the New sheet on a new project. A row whose coordinator
+// Add project opens SetupWizard on a new project. A row whose coordinator
 // proposes a workflow change says so (reviewed on the sheet's Workflow tab).
 // Template library opens TemplateLibrary (`?library=1`). Set up a project opens
 // SetupWizard, at the first step left.
@@ -39,9 +39,10 @@ async function toggle(on: boolean) {
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = false }
 }
+const setupAdding = ref(false)
 function addProject() {
-  newProjectOpen.value = true
-  newAgentOpen.value = true
+  setupAdding.value = true
+  setupOpen.value = true
 }
 
 // The open project and its tab, from the URL.
@@ -68,8 +69,8 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
       </span>
       <USwitch :model-value="data?.enabled ?? false" :disabled="!data || busy" color="success" size="xl" data-testid="pm-switch" @update:model-value="v => toggle(v)" />
     </label>
-    <UButton color="neutral" variant="ghost" size="lg" icon="i-lucide-list-checks" class="pm-setup" data-testid="pm-setup" @click="setupOpen = true">{{ tl('Set up a project') }}</UButton>
-    <SetupWizard v-model:open="setupOpen" @changed="load" />
+    <UButton color="neutral" variant="ghost" size="lg" icon="i-lucide-list-checks" class="pm-setup" data-testid="pm-setup" @click="setupAdding = false; setupOpen = true">{{ tl('Set up a project') }}</UButton>
+    <SetupWizard v-model:open="setupOpen" :adding="setupAdding" @changed="load" />
 
     <template v-if="data?.enabled">
       <h3>{{ tl('Projects', 'Projets') }}</h3>
