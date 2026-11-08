@@ -13,6 +13,8 @@ import { cliTokenCall } from '../server/utils/network'
 import { common } from '../shared/pm/examples'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 
+vi.mock('../server/utils/pmReady', () => ({ checkMachine: vi.fn(async () => ({ items: [], at: 1, refused: 'gh login: not logged in' })) }))
+
 describe('parseAlfredCommand', () => {
   it('reads the read-only commands', () => {
     expect(parseAlfredCommand(['projects'])).toEqual({ name: 'projects' })
@@ -29,6 +31,10 @@ describe('parseAlfredCommand', () => {
     expect(parseAlfredCommand(['project', 'template', 'WEB', 'none', '--apply'])).toEqual({ name: 'project template', apply: true, key: 'WEB', template: '' })
     expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'codex'])).toEqual({ name: 'coordinator start', apply: false, key: 'WEB', program: 'codex' })
     expect(parseAlfredCommand(['setting', 'set', 'theme', 'catppuccin-latte', '--apply'])).toEqual({ name: 'setting set', apply: true, key: 'theme', value: 'catppuccin-latte' })
+    expect(parseAlfredCommand(['project', 'machine', 'add', 'web', 'Mac', '--clone', '~/project'])).toEqual({ name: 'project machine', apply: false, key: 'WEB', action: 'add', machine: 'Mac', clone: '~/project' })
+    expect(parseAlfredCommand(['project', 'machine', 'remove', 'WEB', 'mac', '--apply'])).toEqual({ name: 'project machine', apply: true, key: 'WEB', action: 'remove', machine: 'mac' })
+    expect(parseAlfredCommand(['project', 'machine', 'add', 'WEB', 'mac'])).toEqual({ error: 'usage: wherdr alfred project machine add <KEY> <machine> --clone <folder> [--apply]' })
+    expect(parseAlfredCommand(['project', 'machine', 'remove', 'WEB', 'mac', '--clone', '/x'])).toEqual({ error: '--clone is for add only' })
   })
 
   it('says what is wrong', () => {
@@ -107,6 +113,23 @@ describe('runAlfredCommand', () => {
     expect(await run('project', 'guards', 'WEB', '--protect', 'main,v3', '--merge-others', 'user')).toMatchObject({ dryRun: true })
     await run('project', 'guards', 'WEB', '--protect', 'main,v3', '--merge-others', 'user', '--apply')
     expect((await store.workflow('WEB'))!.guards).toMatchObject({ protected: ['main', 'v3'], merge: { others: 'user' } })
+  })
+
+  it('allows another machine with its clone after a dry run, runs its check, and removes it', async () => {
+    await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--apply')
+    await expect(run('project', 'machine', 'add', 'WEB', 'this', '--clone', '/src/web')).rejects.toThrow('this machine is the project\'s own machine')
+    await expect(run('project', 'machine', 'add', 'WEB', 'Mac', '--clone', 'relative')).rejects.toThrow('clones.mac')
+    expect(await run('project', 'machine', 'add', 'WEB', 'Mac', '--clone', '~/project')).toMatchObject({
+      dryRun: true, change: ['project WEB: its tasks may run on Mac, in its clone ~/project', 'then the readiness check of Mac runs (read-only)'], remote: expect.stringContaining('Mac'),
+    })
+    expect((await store.project('WEB'))!.machines).toBeUndefined()
+    expect(await run('project', 'machine', 'add', 'WEB', 'Mac', '--clone', '~/project', '--apply')).toMatchObject({
+      applied: true, result: { project: { machines: ['', 'mac'], clones: { mac: '~/project' } }, ready: { refused: 'gh login: not logged in' } },
+    })
+    expect(await run('project', 'machine', 'remove', 'WEB', 'Mac')).toMatchObject({ dryRun: true, change: ['project WEB: its tasks no longer start on Mac (tasks already there stay)'] })
+    await run('project', 'machine', 'remove', 'WEB', 'Mac', '--apply')
+    expect(await store.project('WEB')).not.toHaveProperty('machines')
+    expect(await run('project', 'machine', 'remove', 'WEB', 'Mac')).toMatchObject({ unchanged: true })
   })
 
   it('makes the folder checks of --apply in the dry run on this machine', async () => {
