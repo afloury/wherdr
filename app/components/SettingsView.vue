@@ -9,6 +9,7 @@ import { type QuietDuration, type QuietScope, quietUntil } from '#shared/quiet'
 import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
 import { ENGINES } from '~/utils/dictation/registry'
 import { DEFAULT_MAX_SESSION_DAYS, MAX_SESSION_DAYS, type MaxSessionDays } from '#shared/sessionLimit'
+import { APP_START_DEFAULT, readAppStart, writeAppStart, type AppStart } from '#shared/appStart'
 
 const router = useRouter()
 // v3's own version (shared/v3Version.ts), also in /api/health.
@@ -273,7 +274,23 @@ const deadlineText = computed(() => {
   return tl(`This device asks for the passkey again at the first opening after ${when}.`, `Cet appareil redemandera la clé d’accès à la première ouverture après le ${when}.`)
 })
 
+// How this device opens the app (shared/appStart.ts): kept where the service
+// worker reads it, nothing on the server.
+const appStartItems = [
+  { label: t('Up to date'), description: t('Network first: always the current version, the saved copy only past 3 s without an answer. Default.'), value: 'network' },
+  { label: t('Instant'), description: t('Saved copy first: opens at once, even on a weak network; a Reload banner announces a newer version.'), value: 'cache' },
+]
+const appStartChoice = ref<AppStart>(APP_START_DEFAULT)
+const appStart = computed({
+  get: () => appStartChoice.value,
+  set: (value: AppStart) => {
+    appStartChoice.value = value
+    writeAppStart(caches, value).catch(() => toast(t('Could not save this choice on this device.'), true))
+  },
+})
+
 onMounted(() => {
+  if (typeof caches !== 'undefined') readAppStart(caches).then((v) => { appStartChoice.value = v })
   refreshTerminalRenderStatus()
   loadConfig()
   refreshPush().then(refreshQuiet)
@@ -519,6 +536,11 @@ onMounted(() => {
 
         <div v-show="activeSection === 'phone'" class="settings-section">
           <PhoneSetup :active="activeSection === 'phone'" />
+          <div class="settings-group">
+            <h3>{{ t('App start') }}</h3>
+            <URadioGroup v-model="appStart" :items="appStartItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <p class="muted settings-hint">{{ t('On this device only.') }}</p>
+          </div>
         </div>
 
         <div v-show="activeSection === 'security'" class="settings-section">
