@@ -88,7 +88,7 @@ const workspace = computed(() => herdrState.value.workspaces.find(w => w.id === 
 // own name; the space name stays in the tab header.
 const ownTitle = computed(() => Boolean(props.cell || (tabEnt.value && tabEnt.value.panes.length > 1)))
 // A coordinator's conversation is titled by its name; its session title stays the subtitle.
-const headTitle = computed(() => (pane.value ? paneCoordinatorName(pane.value) || desktopHeaderTitle(pane.value, workspace.value, ownTitle.value) : '—'))
+const headTitle = computed(() => (pane.value ? paneCoordinatorName(pane.value) || desktopHeaderTitle(pane.value, workspace.value, ownTitle.value) : herdrState.value.ok ? '—' : ''))
 const subtitle = computed(() => {
   const s = pane.value ? conversationSubtitle(pane.value, workspace.value) : ''
   return s && s !== headTitle.value ? s : ''
@@ -542,7 +542,8 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         <div v-else class="agent-head">
           <div class="agent-title">{{ headTitle }} <UIcon v-if="pane && paneNotificationsMuted(pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
           <div class="agent-meta">
-            <StatusPill :pane="pane" kind />
+            <!-- No state known yet (startup): nothing rather than "closed". -->
+            <StatusPill v-if="pane || herdrState.ok" :pane="pane" kind />
             <OmpContext v-if="pane?.agent === 'omp'" :pane="pane" variant="head" />
             <span v-if="subtitle" class="agent-subtitle">{{ subtitle }}</span>
             <span v-if="command" class="agent-subtitle agent-command">{{ command }}</span>

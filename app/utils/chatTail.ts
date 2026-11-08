@@ -26,6 +26,20 @@ export function swapTail(shown: ChatItem[], next: ChatItem[]): ChatItem[] {
   return next.map(it => pool.get(JSON.stringify(it))?.shift() ?? it)
 }
 
+// Key of each item's block, the same whatever sits above it: role and time,
+// numbered among the items that share both. A re-read whose list starts at
+// another message (the kept end shown first, older pages added above) leaves
+// the other blocks' keys as they were, so Vue keeps their elements.
+export function itemKeys(list: readonly Pick<ChatItem, 'role' | 'ts'>[]): string[] {
+  const seen = new Map<string, number>()
+  return list.map((it) => {
+    const base = `${it.role}:${it.ts}`
+    const n = seen.get(base) || 0
+    seen.set(base, n + 1)
+    return `${base}#${n}`
+  })
+}
+
 // Whether a reply means starting again from the bottom, dropping the older
 // pages loaded above: another file (/clear, new session), or a bottom the
 // server read from another byte. The latter happens when the file grew more
