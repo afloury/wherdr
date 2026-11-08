@@ -20,6 +20,7 @@ import { advanceTick } from './pmAdvance'
 import { forgetMemory, memoryHold } from './pmMemory'
 import { releaseIdle, reviveWorker } from './pmRelease'
 import { wasReleased } from '../../shared/pm/release'
+import { noteStall } from './pmStall'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -175,6 +176,8 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       const s = typeof st?.status === 'string' ? st.status : st?.status?.state
       facts.agentBusy = s === 'working' || s === 'blocked'
     }
+    // A stall: the coordinator's wake, one nudge, then the user's (pmStall.ts).
+    facts.task = task = await noteStall(deps, task, plan, runs, run.worktree, sh, now).catch(() => task)
     const next = nextMove(facts)
     if (!next) continue
     const noted = await store.saveTask({ ...task, mech: { ...task.mech, [next.key]: now } })
