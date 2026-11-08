@@ -65,7 +65,9 @@ const menuOf = (c: Card): MenuItem[] => [
   ...(c.stopped ? RESUMES.map(how => ({ label: tl(...RESUME_LABEL[how]), danger: how === 'archive', run: () => act(() => resumeTaskApi(c.id, how)) })) : []),
   ...(c.removable ? [{ label: tl('Delete…', 'Supprimer…'), icon: 'i-lucide-trash-2', danger: true, run: () => act(() => removeTaskApi(c.id)) }] : []),
 ]
-const selected = computed(() => cards.value.find(c => c.id === open.value) ?? data.value?.cards.find(c => c.id === open.value) ?? null)
+// By its id or as shown (a link may name a former key: /board?task=WHR-5 after WHR became WD).
+const isOpen = (c: Card) => c.id === open.value || c.shown === open.value?.toUpperCase()
+const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.find(isOpen) ?? null)
 </script>
 
 <template>
@@ -95,7 +97,7 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
             <span v-if="hasAgent(c)" class="card-state" :class="live(c).key" role="img" :aria-label="live(c).label" :title="live(c).label" data-testid="holder-state"><i /></span>
             <b>{{ c.title }}</b>
           </span>
-          <small class="mono-label">{{ c.id }}<template v-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
+          <small class="mono-label">{{ c.shown }}<template v-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
           <small v-if="statusOf(c)" class="board-status" :class="statusOf(c)!.tone" :title="statusOf(c)!.text" data-testid="board-status">{{ statusOf(c)!.text }}</small>
           <span v-if="c.yourTurn" class="board-badge" data-testid="board-badge">{{ c.yourTurn }}</span>
           <span v-if="c.tags.length || c.links.length" class="board-tags">

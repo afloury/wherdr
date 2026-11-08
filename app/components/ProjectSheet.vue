@@ -5,6 +5,7 @@
 // the ⋯ menu removes the project. Automations and Autopilot reuse the
 // components shown elsewhere; Workflow and Guards are coming.
 import type { Project, TemplateInfo } from '#shared/pm/project'
+import { shownKey } from '#shared/pm/projectKey'
 import { EXAMPLES } from '#shared/pm/examples'
 import type { Prefs, Template } from '#shared/pm/workflow'
 import type { RepoVisibility } from '#shared/pm/visibility'
@@ -20,12 +21,12 @@ const workflow = ref<Template | null>(null)
 const loaded = ref(false)
 const error = ref('')
 const busy = ref('')
-const form = reactive({ name: '', base: '', agent: '', model: '', reviewAgent: '', reviewModel: '' })
+const form = reactive({ name: '', key: '', base: '', agent: '', model: '', reviewAgent: '', reviewModel: '' })
 async function load() {
   const r = await api<{ workflow: Template | null }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
   workflow.value = r.workflow
   const prefs: Prefs = r.workflow?.prefs ?? {}
-  Object.assign(form, { name: p.value.name, base: p.value.base ?? '', agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '' })
+  Object.assign(form, { name: p.value.name, key: shownKey(p.value), base: p.value.base ?? '', agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '' })
   loaded.value = true
 }
 onMounted(() => { load().catch((e) => { error.value = (e as Error).message }); loadCoordinators() })
@@ -39,8 +40,8 @@ async function run(what: string, fn: () => Promise<unknown>) {
   finally { busy.value = '' }
 }
 const save = () => run('save', async () => {
-  const { name, base, ...prefs } = form
-  await api('/api/pm/project-update', { key: p.value.key, name, base, ...(workflow.value ? { prefs } : {}) })
+  const { name, key, base, ...prefs } = form
+  await api('/api/pm/project-update', { key: p.value.key, name, base, ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs } : {}) })
   await load()
   toast(tl('Saved'))
 })
@@ -102,7 +103,7 @@ async function remove() {
   <AppSheet v-model:open="open" :title="p.name" tall wide hide-close @closed="emit('close')">
     <div class="project-sheet" data-testid="project-sheet">
       <div class="project-head">
-        <span class="pm-id"><small class="mono-label">{{ p.key }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
+        <span class="pm-id"><small class="mono-label">{{ shownKey(p) }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
         <SpaceMenu :items="menu" :title="p.name" :label="tl(`Options of ${p.name}`)" />
       </div>
       <div class="segmented project-tabs" role="tablist" :style="{ '--segment-count': PROJECT_TABS.length }">
@@ -115,6 +116,12 @@ async function remove() {
         <form v-if="tab === 'general'" class="sheet-form" @submit.prevent="save">
           <label class="field-label" for="pmName">{{ t('Name') }}</label>
           <UInput id="pmName" v-model="form.name" size="xl" class="w-full" maxlength="80" data-testid="pm-name" />
+
+          <label class="field-label" for="pmKey">{{ tl('Key') }}</label>
+          <span class="pm-field">
+            <UInput id="pmKey" v-model="form.key" size="lg" class="pm-key mono" maxlength="10" autocomplete="off" data-testid="pm-key" @update:model-value="v => (form.key = String(v).toUpperCase())" />
+            <small class="muted">{{ tl('Task ids start with it. Every task, old ones too, shows the new key; links and commands with a former key still work.') }}</small>
+          </span>
 
           <span class="field-label">{{ tl('Base branch') }}</span>
           <span class="pm-field">
@@ -177,6 +184,7 @@ async function remove() {
 .pm-id { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .pm-field { display: grid; gap: 4px; }
 .pm-base-pick { width: min(100%, 320px); }
+.pm-key { width: min(100%, 160px); }
 .pm-path { color: var(--muted); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; overflow-wrap: anywhere; }
 .pm-later { margin-top: 18px; }
 .pm-prefs { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px 10px; }

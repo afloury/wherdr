@@ -13,6 +13,7 @@ export const PHASES: Phase[] = ['todo', 'working', 'done']
 
 export interface Card {
   id: string
+  shown: string // the id as the user sees it, with the project's current key (projectKey.ts)
   project: string
   title: string
   description: string
@@ -33,7 +34,7 @@ export interface Card {
   prNow?: string // its PR as the engine last read it (prNow)
 }
 
-export interface BoardProject { key: string, name: string, columns: string[] }
+export interface BoardProject { key: string, label?: string, color?: string, name: string, columns: string[] }
 // GET /api/pm/board
 export interface Board { projects: BoardProject[], cards: Card[] }
 
@@ -66,7 +67,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
     : undefined
   const yourTurn = s?.yourTurn?.badge || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
   return {
-    id: task.id, project: task.project, title: task.title, description: task.description,
+    id: task.id, shown: task.id, project: task.project, title: task.title, description: task.description,
     column: plan.length ? columnOf((s?.done ? plan.at(-1) : step) ?? plan[0]!) : 'To do',
     phase: s?.done ? 'done' : started || running ? 'working' : 'todo',
     ...(step ? { step: step.id } : {}),

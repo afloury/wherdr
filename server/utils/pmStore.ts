@@ -11,7 +11,8 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { cleanProjectInput, isBranch, isTemplateId, KEY_RE, type PmOverview, type Project, type TemplateInfo } from '../../shared/pm/project'
+import { cleanProjectInput, isBranch, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
+import { defaultColor, keyClash, projectOf, renamed, shownKey, storedTaskId } from '../../shared/pm/projectKey'
 import type { RepoVisibility } from '../../shared/pm/visibility'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
@@ -148,8 +149,17 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     await saveProjects(list)
     await writeJson(files.pm, { ...await pm(), v: 1, workflows: 1 })
   }
+  // Each project's key is its fixed id already (every reference uses it):
+  // the projects without a color get one. Idempotent.
+  async function migrateColors() {
+    const list = await readProjects()
+    if (list.every(p => p.color)) return
+    const out: Project[] = []
+    for (const p of list) out.push(p.color ? p : { ...p, color: defaultColor([...out, ...list.filter(x => x.color)]) })
+    await saveProjects(out)
+  }
   let migrated: Promise<void> | null = null
-  const projects = async () => { await (migrated ??= migrate().catch((e) => { migrated = null; throw e })); return readProjects() }
+  const projects = async () => { await (migrated ??= migrate().then(migrateColors).catch((e) => { migrated = null; throw e })); return readProjects() }
   async function templates(): Promise<TemplateInfo[]> {
     const names = await fs.readdir(files.templates).catch(() => [] as string[])
     const out: TemplateInfo[] = []
@@ -166,7 +176,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   })
   async function findProject(key: unknown) {
     const list = await projects()
-    const i = list.findIndex(p => p.key === key)
+    const i = list.indexOf(projectOf(list, key)!)
     if (i < 0) throw new HerdrError('not_found', 'Unknown project')
     return { list, i }
   }
@@ -199,7 +209,14 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     enabled,
     tasks,
     projects,
-    task: (id: unknown) => (typeof id === 'string' && TASK_ID_RE.test(id) ? readJson<Task>(path.join(files.tasks, `${id}.json`)) : Promise.resolve(null)),
+    // A task by its id, or by a key the project had or has now (WD-5 finds WHR-5).
+    task: async (id: unknown) => {
+      const direct = typeof id === 'string' && TASK_ID_RE.test(id) ? await readJson<Task>(path.join(files.tasks, `${id}.json`)) : null
+      const stored = direct ? null : storedTaskId(await projects(), id)
+      return direct ?? (stored ? readJson<Task>(path.join(files.tasks, `${stored}.json`)) : null)
+    },
+    // A project by any of its keys (any case), or undefined.
+    project: async (key: unknown) => projectOf(await projects(), key),
     template: (id: string) => (isTemplateId(id) ? readJson<Template>(path.join(files.templates, `${id}.json`)) : Promise.resolve(null)),
     templateLog: async (id: string) => (isTemplateId(id) ? readLog(path.join(files.templateLog, `${id}.json`)) : []),
     // The project's own workflow (a Template), what its tasks follow; null: none yet.
@@ -285,7 +302,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     addTask: (raw: unknown) => write(async () => {
       const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
       const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string).trim() : '')
-      const p = (await projects()).find(x => x.key === o.project)
+      const p = projectOf(await projects(), o.project)
       if (!p) throw new HerdrError('not_found', 'Unknown project')
       const title = str('title'), type = str('type')
       if (!title || title.length > 200) throw badInput([{ path: 'title', message: '1 to 200 characters' }])
@@ -293,7 +310,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       // A removed task's number is never given again.
       const ids = [...(await tasks()).filter(t => t.project === p.key).map(t => t.id), ...(await projectLog(p.key)).flatMap(e => (e.task ? [e.task] : []))]
       const n = 1 + Math.max(0, ...ids.map(id => Number(id.slice(p.key.length + 1)) || 0))
-      const after = afterIds({ after: str('after') }).join(',')
+      const after = afterIds({ after: str('after') }).map(a => storedTaskId([p], a) ?? a).join(',')
       const known = await tasks()
       if (afterIds({ after }).some(a => !known.some(t => t.id === a && t.project === p.key))) throw badInput([{ path: 'after', message: 'tasks of the same project, comma-separated' }])
       const auto = str('auto')
@@ -307,7 +324,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const { project, errors } = cleanProjectInput(raw)
       if (!project) throw badInput(errors)
       const list = await projects()
-      if (list.some(p => p.key === project.key)) throw new HerdrError('exists', 'A project already has this key')
+      const clash = keyClash(list, project.key)
+      if (clash) throw new HerdrError('exists', `Project ${clash.name} already has the key ${project.key}`)
       const { template, ...fields } = project
       const source = template ? await sourceOf(template) : null
       const checked = await check(project.machine, project.path, opts)
@@ -315,7 +333,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       if (list.some(p => p.machine === project.machine && p.path === folder)) throw new HerdrError('exists', 'This folder is already a project')
       // A removed project's workflow and log under the same key are not the new one's.
       await Promise.all([workflowFile(fields.key), workflowLogFile(fields.key)].map(f => fs.rm(f, { force: true })))
-      let added: Project = { ...fields, path: folder, ...(git ? {} : { git: false as const }), addedAt: Date.now() }
+      let added: Project = { ...fields, color: fields.color ?? defaultColor(list), path: folder, ...(git ? {} : { git: false as const }), addedAt: Date.now() }
       if (source) added = { ...added, from: (await copyTemplate(added.key, source, 'user')).from }
       await saveProjects([...list, added])
       return added
@@ -343,11 +361,15 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     }),
 
     // update: from cleanProjectUpdate (a base of '' goes back to the repository's current branch).
-    updateProject: (key: unknown, update: { name?: string, base?: string }) => write(async () => {
+    // A new key: a key no other project has (any case, former keys too); the old one stays an alias.
+    updateProject: (key: unknown, update: ProjectUpdate) => write(async () => {
       const { list, i } = await findProject(key)
-      const { base: _base, ...rest } = list[i]!
+      const { base: _base, label: _label, aliases: _aliases, ...rest } = list[i]!
       const base = update.base ?? list[i]!.base
-      list[i] = { ...rest, ...(update.name ? { name: update.name } : {}), ...(base ? { base } : {}) }
+      const next = update.key ?? shownKey(list[i]!)
+      const clash = keyClash(list, next, rest.key)
+      if (clash) throw new HerdrError('exists', `Project ${clash.name} already has the key ${next}`)
+      list[i] = { ...rest, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...(base ? { base } : {}), ...(update.color ? { color: update.color } : {}) }
       await saveProjects(list)
       return list[i]!
     }),

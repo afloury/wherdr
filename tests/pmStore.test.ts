@@ -86,8 +86,8 @@ describe('workflows migration', () => {
       { key: 'API', name: 'Api', machine: '', path: '/a', addedAt: 1 },
     ] }))
     expect(await store.projects()).toEqual([
-      { key: 'WEB', name: 'Web', machine: '', path: '/w', from: { template: 'vibe', version: 2 }, addedAt: 1 },
-      { key: 'API', name: 'Api', machine: '', path: '/a', addedAt: 1 },
+      { key: 'WEB', name: 'Web', machine: '', path: '/w', from: { template: 'vibe', version: 2 }, addedAt: 1, color: 'violet' },
+      { key: 'API', name: 'Api', machine: '', path: '/a', addedAt: 1, color: 'blue' },
     ])
     expect(await store.workflow('WEB')).toMatchObject({ id: 'web', version: 2, instructions: 'Small commits.' })
     expect((await store.workflowLog('WEB')).map(e => [e.version, e.changes])).toEqual([[1, []], [2, ['instructions']], [2, ['copied from template vibe v2']]])

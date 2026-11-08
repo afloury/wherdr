@@ -7,6 +7,7 @@ import { addShot, isImage, SHOT_TYPES, type Shot } from '../../shared/pm/shots'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { taskPlan, type Task } from '../../shared/pm/run'
 import type { Project } from '../../shared/pm/project'
+import { shownTaskId } from '../../shared/pm/projectKey'
 import { CHOICES, type Choice } from '../../shared/pm/verdict'
 import { actionShell, runAction } from './pmActions'
 import { machineOn, type CoreAdminDeps } from './coreCreate'
@@ -31,9 +32,9 @@ export async function board(store: PmStore): Promise<Board> {
   return {
     projects: projects.map((p) => {
       const t = templates.get(p.key)
-      return { key: p.key, name: p.name, columns: t ? boardColumns(Object.keys(t.taskTypes).map(type => planSteps(t, { type }, p.base))) : [] }
+      return { key: p.key, ...(p.label ? { label: p.label } : {}), ...(p.color ? { color: p.color } : {}), name: p.name, columns: t ? boardColumns(Object.keys(t.taskTypes).map(type => planSteps(t, { type }, p.base))) : [] }
     }),
-    cards: tasks.map(task => withPr(cardOf(task, planOf(templates.get(task.project) ?? null, task, projects.find(p => p.key === task.project)), runs))),
+    cards: tasks.map(task => withPr({ ...cardOf(task, planOf(templates.get(task.project) ?? null, task, projects.find(p => p.key === task.project)), runs), shown: shownTaskId(projects, task.id) })),
   }
 }
 

@@ -15,6 +15,7 @@ import { ackWakes } from '../../shared/pm/wakes'
 import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
 import type { Project } from '../../shared/pm/project'
+import { projectOf, shownKey, shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
@@ -96,7 +97,7 @@ const workingBranch = (p?: Project) => p?.base || 'not set: tasks start from the
 const planOf = (t: Template, task: Task, p?: Project) => taskPlan(t, task, p)
 const summary = (t: Template | null, task: Task, p?: Project) => {
   const step = t ? currentStep(planOf(t, task, p), task.step ?? initialState()) : undefined
-  return { id: task.id, title: task.title, type: task.type, state: task.step?.abandoned ? 'abandoned' : task.step?.done ? 'done' : task.stopped ? 'stopped' : task.state, ...(task.stopped ? { stopped: task.stopped } : {}), step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}) }
+  return { id: p ? shownTaskId([p], task.id) : task.id, title: task.title, type: task.type, state: task.step?.abandoned ? 'abandoned' : task.step?.done ? 'done' : task.stopped ? 'stopped' : task.state, ...(task.stopped ? { stopped: task.stopped } : {}), step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}) }
 }
 
 const unb64 = (v: unknown) => (typeof v === 'string' ? Buffer.from(v, 'base64').toString('utf8') : v)
@@ -116,7 +117,9 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
   const cmd = parseCommand(body.argv)
   if ('error' in cmd) throw new HerdrError('bad_input', cmd.error)
   const projects = await store.projects()
-  if (!main && cmd.project && cmd.project !== scope) throw new HerdrError('refused', `Your token acts on project ${scope} only`)
+  // A project named by any of its keys (WD, or WHR before its rename).
+  const named = cmd.project ? projectOf(projects, cmd.project)?.key ?? cmd.project : undefined
+  if (!main && named && named !== scope) throw new HerdrError('refused', `Your token acts on project ${scope} only`)
   // Another project's task reads as unknown to a project's token.
   const taskOf = async (id: string) => {
     const task = await store.task(id)
@@ -124,7 +127,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     return task
   }
   // The command's project: its task's, the one named, or the token's.
-  const key = 'task' in cmd ? (await taskOf(cmd.task)).project : cmd.project ?? (main ? '' : scope)
+  const key = 'task' in cmd ? (await taskOf(cmd.task)).project : named ?? (main ? '' : scope)
   const p = projects.find(x => x.key === key)
   if (key && !p) throw new HerdrError('not_found', 'Unknown project')
   const t = p ? await store.workflow(p.key) : null
@@ -132,7 +135,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
   // A turn the server saw start over an hour ago is not trusted any more.
   const turn: Turn = rec?.turn && Date.now() - rec.turn.at < TURN_MS ? rec.turn.kind : 'none'
   const by = main ? 'main coordinator' : `coordinator ${key}`
-  const needProject = () => { if (!p) throw new HerdrError('bad_input', `Name the project: --project <KEY> (${projects.map(x => x.key).join(', ')})`); return p }
+  const needProject = () => { if (!p) throw new HerdrError('bad_input', `Name the project: --project <KEY> (${projects.map(shownKey).join(', ')})`); return p }
   const needPlan = () => { needProject(); if (!t) throw new HerdrError('not_found', 'The project has no template'); return t }
   // The tasks the token's limits count: its project's, or every task for the main coordinator.
   const mineOf = async () => (await store.tasks()).filter(x => main || x.project === key)
