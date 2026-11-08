@@ -112,6 +112,9 @@ describe('runAction', () => {
     const n = fakeDeps([stale, behind, { code: 0, out: 'abc' }, stale, behind, { code: 0, out: 'old' }])
     expect(await runAction(n.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toEqual({ ok: false, error: 'merge: the push did not move origin/task/A-1 (at old, the task at abc): push the branch by hand, then try the step again' })
     expect(n.sleeps).toEqual([])
+    // GitHub's conflict ends with the commands to fix it: the error keeps none of them.
+    const x = fakeDeps([info('COMPLETED'), { code: 0, out: 'same' }, { code: 1, out: 'X Pull request #505 is not mergeable: the merge commit cannot be cleanly created.\nRun the following to resolve the merge conflicts locally:\n  gh pr checkout 505 && git fetch origin dev && git merge origin/dev' }])
+    expect(await runAction(x.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toEqual({ ok: false, error: 'merge: the PR conflicts with dev' })
   })
 })
 

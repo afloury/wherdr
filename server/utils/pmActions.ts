@@ -38,6 +38,8 @@ export const actionShell = (deps: Pick<CoreAdminDeps, 'call'>, on: string | unde
     return { code: r.code, out: [r.out, r.err].filter(Boolean).join('\n') }
   }
 
+// GitHub's words for a PR in conflict with its base.
+const CONFLICT = /not mergeable|merge conflict|cannot be cleanly created/i
 const lastLine = (out: string) => out.trim().split('\n').pop()?.trim().slice(0, 300) || ''
 const pause = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 // After a push, how long to wait for GitHub to show the new PR head: about a minute.
@@ -149,7 +151,9 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
         if (!ready.ok) return { ok: false, error: `merge: ${ready.why}` }
         if (await job.halted?.()) return { ok: false, error: 'merge: the task was stopped' }
         const m = await run(deps, SCRIPT.merge, [wt, pr!.url, head.trim(), a.method ?? ''])
-        return m.code === 0 ? { ok: true, link: pr!.url, commit: head.trim(), reached: [pr!.baseRefName] } : fail(m)
+        if (m.code === 0) return { ok: true, link: pr!.url, commit: head.trim(), reached: [pr!.baseRefName] }
+        // GitHub's refusal ends with the commands to fix it: those are the agent's (the catch-up), not the error's.
+        return CONFLICT.test(m.out) ? { ok: false, error: `merge: the PR conflicts with ${pr!.baseRefName}` } : fail(m)
       }
     }
   }
