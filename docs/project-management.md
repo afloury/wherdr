@@ -83,7 +83,8 @@ has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
 action, what it does: land on a branch, push, open a PR, merge a PR, or check
 that a branch was merged, with its branch, merge method and required checks.
-Under the form, the plan of the chosen task type. *Save* checks the workflow
+In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
+*Add task* under [Board](#board)). Under the form, the plan of the chosen task type. *Save* checks the workflow
 and shows each problem with its line.
 
 The ⋯ menu adds *Edit as JSON*, *Change log*, *Save as template* (copies the
@@ -223,7 +224,14 @@ click, long press, or ••• when it has more than *Open*) offers:
   other tasks wait for cannot be deleted; its number is never given again.
 
 **Add task** opens a sheet: the project, a title, the task type (with its steps
-in one line), a Markdown description, the tasks it waits for, and *Start now*.
+in one line), its weight, a Markdown description, the tasks it waits for, and
+*Start now*. The weight says what the task needs of a machine: *Light* (docs, a
+study), *Standard* (tests and typecheck) or *Heavy* (a build, e2e,
+screenshots). *Auto* shows what it would be (*Auto: heavy (screenshots)*): the
+task type's `weight` when the workflow sets one, else heavy when a worker step
+asks for screenshots, light when the type lands no code (no commit, link or git
+action), standard otherwise. The coordinator does the same with `task add
+--weight`, and `show <task>` gives it.
 
 ## Task sheet
 

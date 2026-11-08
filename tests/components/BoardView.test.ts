@@ -245,7 +245,8 @@ it('adds a task: project required on All projects, then title; the type shows it
   await vi.waitFor(() => expect(card(w, 'CO-9').exists()).toBe(true))
 })
 
-it('the board\'s project is preselected; a task after others posts them and does not start now', async () => {
+it('the board\'s project is preselected; a task after others posts them and its weight, and does not start now', async () => {
+  board.projects[1]!.types[0]!.weight = 'heavy (screenshots)'
   board.cards[2] = coTask(task('CO-2', initialState(), { state: 'todo' }))
   const w = await mount()
   await pick(w, 'board-project', 'CO')
@@ -255,12 +256,14 @@ it('the board\'s project is preselected; a task after others posts them and does
   expect(selectValue(sheet, 'add-task-project')).toBe('CO')
   expect(selectLabels(sheet, 'add-task-after')).toEqual(['CO-1 · Task CO-1', 'CO-2 · Task CO-2']) // the same project's, not done
   select(sheet, 'add-task-after').vm.$emit('update:modelValue', ['CO-1', 'CO-2'])
+  expect(selectLabels(sheet, 'add-task-weight')).toEqual(['Auto: heavy (screenshots)', 'Light', 'Standard', 'Heavy'])
+  select(sheet, 'add-task-weight').vm.$emit('update:modelValue', 'light')
   sheet.findComponent({ name: 'UInput' }).vm.$emit('update:modelValue', 'Then deploy')
   sheet.findComponent({ name: 'USwitch' }).vm.$emit('update:modelValue', true)
   await nextTick()
   document.querySelector<HTMLElement>('[data-testid="add-task-submit"]')!.click()
   await vi.waitFor(() => expect(posts.map(p => p.url)).toEqual(['/api/pm/task']))
-  expect(posts[0]!.body).toMatchObject({ project: 'CO', title: 'Then deploy', after: 'CO-1,CO-2' })
+  expect(posts[0]!.body).toMatchObject({ project: 'CO', title: 'Then deploy', after: 'CO-1,CO-2', weight: 'light' })
 })
 
 it('Start on a To do card (menu and sheet) says the server\'s refusal; a task after an open one shows what it waits for instead', async () => {

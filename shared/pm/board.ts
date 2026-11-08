@@ -45,9 +45,10 @@ export interface Card {
 
 // A machine a project allows, for "Start on…": unready, the last check's failures ('' ready, none never checked).
 export interface BoardMachine { key: string, label: string, online: boolean, unready?: string }
-// types: the project's task types, each with its steps in one line ("work → review → merge").
+// types: the project's task types, each with its steps in one line ("work → review → merge")
+// and the weight its tasks get when none is set ("heavy (screenshots)").
 // machines: only for a project that allows more than its own, home first.
-export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string }[], machines?: BoardMachine[] }
+export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string, weight?: string }[], machines?: BoardMachine[] }
 // GET /api/pm/board
 export interface Board { projects: BoardProject[], cards: Card[] }
 
