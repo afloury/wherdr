@@ -19,7 +19,6 @@ async function open(c: CoordinatorView) {
   finally { busy.value = '' }
 }
 
-const name = (c: CoordinatorView) => tl(`${c.project} coordinator`, `Coordinateur ${c.project}`)
 const sub = (c: CoordinatorView) => {
   const p = coordinatorPane(c)
   const program = kindLabel((c.ran ?? coordinatorAgent(c))?.program)
@@ -68,17 +67,17 @@ onUnmounted(() => clearInterval(timer))
     <UContextMenu v-for="c in rows" :key="c.project" :disabled="sheetMenus" :items="rowMenu.dropdown(menu(c))" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="rowMenu.opened">
     <button
       type="button" class="coord-row" :class="{ on: !!coordinatorPane(c) }"
-      :disabled="!!busy" data-testid="coordinator-row" v-on="rowMenu.on(menu(c), name(c))" @click="open(c)"
+      :disabled="!!busy" data-testid="coordinator-row" v-on="rowMenu.on(menu(c), coordinatorName(c))" @click="open(c)"
     >
       <i class="coord-dot" aria-hidden="true" />
-      <span class="coord-text"><b>{{ name(c) }}</b><small>{{ busy === c.project ? tl('Starting…', 'Lancement…') : sub(c) }}</small></span>
+      <span class="coord-text"><b>{{ coordinatorName(c) }}</b><small>{{ busy === c.project ? tl('Starting…', 'Lancement…') : sub(c) }}</small></span>
       <UIcon :name="coordinatorPane(c) ? 'i-lucide-chevron-right' : 'i-lucide-play'" class="coord-go" />
     </button>
     </UContextMenu>
     <p v-if="error" class="error coord-error">{{ error }}</p>
   </section>
 
-  <AppSheet v-model:open="sheetOpen" :title="restarting ? tl(`Restart ${name(restarting)} with…`, `Relancer ${name(restarting)} avec…`) : ''">
+  <AppSheet v-model:open="sheetOpen" :title="restarting ? tl(`Restart ${coordinatorName(restarting)} with…`, `Relancer ${coordinatorName(restarting)} avec…`) : ''">
     <div class="sheet-form" data-testid="coordinator-sheet">
       <p class="coord-note">{{ tl('Its folder and memory stay; the current session stops. The agent you pick becomes its default.', 'Son dossier et sa mémoire restent ; la session en cours s’arrête. L’agent choisi devient son défaut.') }}</p>
       <label class="field-label">{{ tl('Agent', 'Agent') }}</label>

@@ -181,6 +181,6 @@ describe('stop and resume on the server', () => {
     await expect(resumeTask(deps, 'WH-1', 'as-is', inTurn, 'coordinator WH')).rejects.toMatchObject({ code: 'refused' })
     const z = await resumeTask(deps, 'WH-1', 'archive', user, 'user')
     expect(z.step).toMatchObject({ done: true, abandoned: true })
-    expect(z.log!.at(-1)!.text).toBe('archived; its worktree and branch stay')
+    expect(z.log!.at(-1)!.text).toBe('archived; its worktree goes, its branch stays')
   })
 })

@@ -12,9 +12,27 @@ const ap = computed<Autopilot>(() => props.c.autopilot ?? DEFAULT_AUTOPILOT)
 const busy = ref(false)
 const error = ref('')
 const sent = ref(false)
-const form = reactive({ goal: '', every: '', at: '', events: [] as AutopilotEvent[], perDay: 0, atOnce: 0, lookForWork: false, lookPerDay: LOOK_PER_DAY })
-const fill = () => Object.assign(form, { goal: ap.value.goal, every: ap.value.every ?? '', at: ap.value.at ?? '', events: [...ap.value.events], perDay: ap.value.perDay, atOnce: ap.value.atOnce, lookForWork: !!ap.value.lookForWork, lookPerDay: ap.value.lookPerDay ?? LOOK_PER_DAY })
-watch(ap, fill, { immediate: true })
+// The form's fields, from a saved autopilot.
+type Form = { goal: string, every: string, at: string, events: AutopilotEvent[], perDay: number, atOnce: number, lookForWork: boolean, lookPerDay: number }
+const formOf = (a: Autopilot): Form => ({ goal: a.goal, every: a.every ?? '', at: a.at ?? '', events: [...a.events], perDay: a.perDay, atOnce: a.atOnce, lookForWork: !!a.lookForWork, lookPerDay: a.lookPerDay ?? LOOK_PER_DAY })
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+// A field as it would be saved: numbers as numbers, times trimmed.
+const norm = (k: keyof Form, v: unknown) => (typeof v === 'number' || k === 'perDay' || k === 'atOnce' || k === 'lookPerDay' ? Number(v) : k === 'every' || k === 'at' ? String(v).trim() : v)
+const KEYS = Object.keys(formOf(DEFAULT_AUTOPILOT)) as (keyof Form)[]
+const form = reactive<Form>(formOf(ap.value))
+// What the form was last filled with: the saved values it shows.
+const base = ref<Form>(formOf(ap.value))
+const edited = (k: keyof Form) => !same(norm(k, form[k]), norm(k, base.value[k]))
+// The coordinators are read again every few seconds, each time a new object:
+// refill only when the saved values change, and never over a field the user edited.
+watch(() => JSON.stringify(formOf(ap.value)), () => {
+  const next = formOf(ap.value)
+  for (const k of KEYS) if (!edited(k)) (form as Record<string, unknown>)[k] = next[k]
+  base.value = next
+})
+const dirty = computed(() => KEYS.some(edited))
+const saved = ref(false)
+watch(dirty, d => { if (d) saved.value = false })
 
 const EVENT_LABEL: Record<AutopilotEvent, [string, string]> = {
   added: ['Task added', 'Tâche ajoutée'], done: ['Task done', 'Tâche finie'], stuck: ['Task stuck', 'Tâche bloquée'], ready: ['Ready for you', 'Prête pour toi'],
@@ -28,13 +46,31 @@ async function act(fn: () => Promise<unknown>) {
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = false }
 }
-const save = (more: Partial<Autopilot> = {}) => act(() => {
-  const { lookForWork: _, lookPerDay: __, ...kept } = ap.value
-  return api('/api/pm/autopilot', {
-    project: props.c.project,
-    autopilot: { ...kept, goal: form.goal, every: form.every.trim(), at: form.at.trim(), events: form.events, perDay: Number(form.perDay), atOnce: Number(form.atOnce), ...(form.lookForWork ? { lookForWork: true, lookPerDay: Number(form.lookPerDay) } : {}), ...more },
+// The server's refusal names its field ("every: a duration like 30m or 2h"): shown under it.
+const FIELD: Record<string, keyof Form> = { goal: 'goal', every: 'every', at: 'at', events: 'events', perDay: 'perDay', atOnce: 'atOnce', lookPerDay: 'lookPerDay' }
+const saveError = ref('')
+const errorField = computed(() => FIELD[/^(\w+)/.exec(saveError.value)?.[1] ?? ''])
+const fieldError = (k: keyof Form) => (errorField.value === k ? saveError.value : '')
+// Applies at once, on or off: the switch is kept as it is.
+async function save() {
+  saveError.value = ''
+  await act(async () => {
+    const { lookForWork: _, lookPerDay: __, ...kept } = ap.value
+    try {
+      const r = await api<{ autopilot: Autopilot }>('/api/pm/autopilot', {
+        project: props.c.project,
+        autopilot: { ...kept, goal: form.goal, every: form.every.trim(), at: form.at.trim(), events: form.events, perDay: Number(form.perDay), atOnce: Number(form.atOnce), ...(form.lookForWork ? { lookForWork: true, lookPerDay: Number(form.lookPerDay) } : {}) },
+      })
+      // The form takes the saved values (the goal trimmed…).
+      if (r?.autopilot) { base.value = formOf(r.autopilot); Object.assign(form, formOf(r.autopilot)) }
+      saved.value = true
+    } catch (e) {
+      saveError.value = (e as Error).message
+      if (errorField.value) return
+      throw e
+    }
   })
-})
+}
 // The switch keeps the saved settings: only what Save sent counts.
 const setOn = (on: boolean) => act(() => api('/api/pm/autopilot', { project: props.c.project, autopilot: { ...ap.value, on } }))
 const runNow = () => act(async () => { await api('/api/pm/autopilot', { project: props.c.project, runNow: true }); sent.value = true })
@@ -76,22 +112,27 @@ const counters = computed(() => props.c.limits
       <label class="field-label" :for="`ap-goal-${c.project}`">{{ tl('Goal', 'Objectif') }}</label>
       <UTextarea :id="`ap-goal-${c.project}`" v-model="form.goal" :rows="2" autoresize :maxrows="6" size="xl" class="w-full" :maxlength="2000" data-testid="autopilot-goal"
         :placeholder="tl('What it works toward, e.g. Ship the small fixes first', 'Ce vers quoi il travaille, ex. Les petites corrections d’abord')" />
+      <p v-if="fieldError('goal')" class="error" role="alert" data-testid="autopilot-error-goal">{{ fieldError('goal') }}</p>
       <div class="ap-grid">
         <div>
           <label class="field-label" :for="`ap-every-${c.project}`">{{ tl('Every', 'Fréquence') }}</label>
           <UInput :id="`ap-every-${c.project}`" v-model="form.every" size="xl" class="w-full mono" placeholder="2h" maxlength="5" autocapitalize="none" autocorrect="off" :spellcheck="false" data-testid="autopilot-every" />
+          <p v-if="fieldError('every')" class="error" role="alert" data-testid="autopilot-error-every">{{ fieldError('every') }}</p>
         </div>
         <div>
           <label class="field-label" :for="`ap-at-${c.project}`">{{ tl('At', 'À') }}</label>
           <UInput :id="`ap-at-${c.project}`" v-model="form.at" size="xl" class="w-full mono" placeholder="daily 08:00" maxlength="60" autocapitalize="none" autocorrect="off" :spellcheck="false" data-testid="autopilot-at" />
+          <p v-if="fieldError('at')" class="error" role="alert" data-testid="autopilot-error-at">{{ fieldError('at') }}</p>
         </div>
         <div>
           <label class="field-label" :for="`ap-day-${c.project}`">{{ tl('Tasks / day', 'Tâches / jour') }}</label>
           <UInput :id="`ap-day-${c.project}`" v-model="form.perDay" type="number" min="0" max="100" inputmode="numeric" size="xl" class="w-full mono" data-testid="autopilot-per-day" />
+          <p v-if="fieldError('perDay')" class="error" role="alert" data-testid="autopilot-error-perDay">{{ fieldError('perDay') }}</p>
         </div>
         <div>
           <label class="field-label" :for="`ap-once-${c.project}`">{{ tl('At once', 'En parallèle') }}</label>
           <UInput :id="`ap-once-${c.project}`" v-model="form.atOnce" type="number" min="0" max="20" inputmode="numeric" size="xl" class="w-full mono" data-testid="autopilot-at-once" />
+          <p v-if="fieldError('atOnce')" class="error" role="alert" data-testid="autopilot-error-atOnce">{{ fieldError('atOnce') }}</p>
         </div>
       </div>
       <span class="field-label">{{ tl('Wakes on', 'Réveillé quand') }}</span>
@@ -101,17 +142,21 @@ const counters = computed(() => props.c.limits
           {{ tl(...EVENT_LABEL[e]) }}
         </UButton>
       </div>
+      <p v-if="fieldError('events')" class="error" role="alert" data-testid="autopilot-error-events">{{ fieldError('events') }}</p>
       <USwitch v-model="form.lookForWork" size="lg" :label="tl('Look for new work', 'Chercher du travail')" data-testid="autopilot-look-for-work"
         :description="tl('Keep the scheduled wakes when there is nothing to do, for a goal that adds its own tasks.', 'Garder les réveils programmés quand il n’y a rien à faire, pour un objectif qui crée ses propres tâches.')" />
       <div v-if="form.lookForWork" class="ap-grid">
         <div>
           <label class="field-label" :for="`ap-look-${c.project}`">{{ tl('New tasks / day', 'Tâches nouvelles / jour') }}</label>
           <UInput :id="`ap-look-${c.project}`" v-model="form.lookPerDay" type="number" min="0" max="20" inputmode="numeric" size="xl" class="w-full mono" data-testid="autopilot-look-per-day" />
+          <p v-if="fieldError('lookPerDay')" class="error" role="alert" data-testid="autopilot-error-lookPerDay">{{ fieldError('lookPerDay') }}</p>
         </div>
         <p class="muted ap-look-note">{{ tl('Added by those wakes; once reached, it sleeps until tomorrow.', 'Ajoutées par ces réveils ; une fois atteint, il dort jusqu’à demain.') }}</p>
       </div>
       <div class="ap-actions">
         <UButton type="submit" color="primary" size="lg" :loading="busy" data-testid="autopilot-save">{{ t('Save') }}</UButton>
+        <span v-if="dirty" class="mono-label ap-unsaved" data-testid="autopilot-unsaved">{{ tl('Unsaved changes', 'Modifications non enregistrées') }}</span>
+        <span v-else-if="saved" class="mono-label ap-saved" role="status" data-testid="autopilot-saved">{{ tl('Saved', 'Enregistré') }}</span>
       </div>
 
       <div class="ap-actions">
@@ -140,6 +185,8 @@ const counters = computed(() => props.c.limits
 .ap-head > .mono-label:not(.ap-count) { color: var(--text); }
 .ap-count { flex: 1; color: var(--muted); white-space: nowrap; }
 .ap-look-note { align-self: end; }
+.ap-actions .ap-unsaved { color: var(--ochre); }
+.ap-actions .ap-saved { color: var(--green); }
 .ap-form { display: grid; gap: 6px; }
 .ap-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .ap-events, .ap-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

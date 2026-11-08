@@ -10,7 +10,7 @@ export interface Stopped { by: string, why: string, at: number }
 
 // continue: the current step's agent again, same worktree, with a handover
 // note. as-is: on to the next step (the review). archive: the task ends, its
-// branch kept.
+// worktree removed, its branch kept.
 export const RESUMES = ['continue', 'as-is', 'archive'] as const
 export type Resume = typeof RESUMES[number]
 

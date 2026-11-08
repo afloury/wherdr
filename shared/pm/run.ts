@@ -33,6 +33,7 @@ export interface Task {
   autopilot?: true // started or added by the coordinator in a wake: its autopilot's own
   auto?: string // the automation that added it
   origin?: TaskOrigin // who made it: only automatic work is held by the pace (pace.ts)
+  cleanup?: { done?: true, skipped?: string } // its worktree removed, or why it stays (cleanup.ts)
   createdAt: number
 }
 

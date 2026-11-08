@@ -6,6 +6,7 @@ import { readBody } from 'h3'
 import CoordinatorsSection from '~/components/CoordinatorsSection.vue'
 import { nextTick } from 'vue'
 import { appConfig, coarse, desk, herdrState } from '~/composables/useHerdr'
+import { alfred, coordinators, paneCoordinatorName } from '~/composables/useCoordinators'
 import { menuState } from '~/composables/useUi'
 import { MAIN, type CoordinatorView } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
@@ -78,4 +79,16 @@ it('no ••• button: right click (computer) and long press (touch) open its 
     ;(document.querySelector('[data-testid="coordinator-restart"]') as HTMLElement).click()
     await vi.waitFor(() => expect(posts).toEqual([{ agent: { project: 'CO', program: 'codex' } }, { project: 'CO', program: 'codex' }]))
   } finally { desk.value = false; coarse.value = false; menuState.open = false }
+})
+
+it("titles a coordinator's pane by its name, not its session title (WHR-15)", () => {
+  coordinators.value = [view(MAIN, { main: true, terminal: 'host/t1' }), view('CO', { terminal: 'host/t2' })]
+  const p = (id: string, at: string) => ({ ...pane(id, at), title: 'Template proposal' }) as Pane
+  expect(paneCoordinatorName(p('w:p2', 'host/t2'))).toBe('CO coordinator')
+  // The main coordinator: Alfred's current name, the default before it loads.
+  alfred.value = null
+  expect(paneCoordinatorName(p('w:p1', 'host/t1'))).toBe('Alfred')
+  alfred.value = { name: 'Jeeves', terminal: 'host/t1' }
+  expect(paneCoordinatorName(p('w:p1', 'host/t1'))).toBe('Jeeves')
+  expect(paneCoordinatorName(p('w:p3', 'host/t3'))).toBe('')
 })
