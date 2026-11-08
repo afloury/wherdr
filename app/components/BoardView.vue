@@ -2,7 +2,8 @@
 // The board: Your turn first, then the columns of the project's template
 // (To do / Working / Done for all projects, with the step on the card). A
 // card's indicator is the live state of the agent holding its step.
-import { boardLanes, boardTags, canStop, mainLink, type Board, type Card } from '#shared/pm/board'
+import { boardLanes, boardTags, canStart, canStop, mainLink, waitsFor, type Board, type Card } from '#shared/pm/board'
+import type { Task } from '#shared/pm/run'
 import { RESUMES } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
 
@@ -48,7 +49,8 @@ const live = (c: Card) => {
   const p = paneOf(c)
   return p ? { key: statusKey(p), label: `${t(c.holder === 'reviewer' ? 'Reviewer' : 'Worker')}: ${statusLabel(p)}` } : { key: 'inactive', label: tl('No agent running', 'Aucun agent lancé') }
 }
-// The card's menu: Stop (confirmed in the task's sheet), how a stopped task
+// The card's menu: Start for a task to do (not one waiting for others: its
+// card says which), Stop (confirmed in the task's sheet), how a stopped task
 // goes on, or Delete for a task never started (confirmed). It opens on right
 // click and long press of the card; its ••• button shows only when the menu
 // has more than Open (a tap already opens the task).
@@ -59,10 +61,19 @@ const show = (id: string, stop = false) => { stopping.value = stop; open.value =
 const act = (fn: () => Promise<unknown>) => fn().then(load, (e: Error) => { error.value = e.message })
 const menuOf = (c: Card): MenuItem[] => [
   { label: tl('Open', 'Ouvrir'), icon: 'i-lucide-panel-right-open', run: () => show(c.id) },
+  ...(canStart(c) && !waiting(c).length ? [{ label: tl('Start', 'Lancer'), icon: 'i-lucide-play', run: () => act(() => startTaskApi(c.id)) }] : []),
   ...(canStop(c) ? [{ label: tl('Stop…', 'Arrêter…'), icon: 'i-lucide-square', danger: true, run: () => show(c.id, true) }] : []),
   ...(c.stopped ? RESUMES.map(how => ({ label: tl(...RESUME_LABEL[how]), danger: how === 'archive', run: () => act(() => resumeTaskApi(c.id, how)) })) : []),
   ...(c.removable ? [{ label: tl('Delete…', 'Supprimer…'), icon: 'i-lucide-trash-2', danger: true, run: () => act(() => removeTaskApi(c.id)) }] : []),
 ]
+const waiting = (c: Card) => (c.phase === 'todo' ? waitsFor(c, data.value?.cards ?? []) : [])
+
+// Add a task: the board's project preselected; the board is read again at
+// once; a refused Start now is said on the board, the task stays added.
+const adding = ref(false)
+function added(task: Task, refused?: string) {
+  load().then(() => { if (refused) error.value = `${task.id}: ${refused}` })
+}
 const selected = computed(() => cards.value.find(c => c.id === open.value) ?? data.value?.cards.find(c => c.id === open.value) ?? null)
 </script>
 
@@ -73,6 +84,9 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
       <h1 class="display">{{ tl('Board', 'Tableau') }}</h1>
       <UButton :color="decisions ? 'warning' : 'neutral'" :variant="decisions ? 'solid' : 'outline'" size="lg" to="/decisions" data-testid="board-decisions">
         {{ tl('Decisions', 'Décisions') }}<span v-if="decisions" class="mono-label board-decisions-n">{{ decisions }}</span>
+      </UButton>
+      <UButton icon="i-lucide-plus" color="neutral" variant="outline" size="lg" class="board-add" :aria-label="tl('Add a task', 'Ajouter une tâche')" :disabled="!data?.projects.length" data-testid="board-add" @click="adding = true">
+        <span class="board-add-label">{{ tl('Add task', 'Ajouter') }}</span>
       </UButton>
       <USelect v-model="projectPick" :items="projectItems" size="lg" class="board-select" :aria-label="tl('Project', 'Projet')" data-testid="board-project" />
       <USelect v-if="tags.length || tag" v-model="tagPick" :items="tagItems" size="lg" class="board-select" :aria-label="tl('Tag', 'Étiquette')" data-testid="board-tag" />
@@ -95,6 +109,7 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
           </span>
           <small class="mono-label">{{ c.id }}<template v-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
           <span v-if="c.yourTurn" class="board-badge" data-testid="board-badge">{{ c.yourTurn }}</span>
+          <small v-else-if="waiting(c).length" class="muted" data-testid="board-waits">{{ tl('Waits for', 'Attend') }} {{ waiting(c).join(', ') }}</small>
           <span v-if="c.tags.length || c.links.length" class="board-tags">
             <span v-for="tag in c.tags.slice(0, 2)" :key="tag" class="board-chip">{{ tag }}</span>
             <span v-if="c.tags.length > 2" class="board-chip">+{{ c.tags.length - 2 }}</span>
@@ -112,7 +127,8 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
       </section>
     </div>
     </div>
-    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}`" :card="selected" :pane="paneOf(selected)" :stopping="stopping" @closed="open = null; stopping = false" @changed="load" />
+    <AddTaskSheet v-if="adding && data" v-model:open="adding" :projects="data.projects" :cards="data.cards" :project="project" @added="added" />
+    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" @closed="open = null; stopping = false" @changed="load" />
   </section>
 </template>
 
@@ -121,6 +137,7 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
 .board-top { flex: none; display: flex; align-items: center; gap: 8px; min-height: calc(44px + var(--safe-top, 0px)); padding: var(--safe-top, 0px) 8px 0; border-bottom: 1px solid var(--line); }
 .board-top h1 { flex: 1; margin: 0; font-size: 20px; }
 .board-decisions-n { margin-left: 6px; color: inherit; }
+@media (max-width: 899px) { .board-add { width: 44px; justify-content: center; } .board-add-label { display: none; } }
 .board-top :deep(.board-select) { min-width: 0; flex: 0 1 auto; }
 .board-note { padding: 12px 16px; }
 .board-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }

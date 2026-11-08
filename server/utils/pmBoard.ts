@@ -26,7 +26,8 @@ export async function board(store: PmStore): Promise<Board> {
   return {
     projects: projects.map((p) => {
       const t = templates.get(p.key)
-      return { key: p.key, name: p.name, columns: t ? boardColumns(Object.keys(t.taskTypes).map(type => planSteps(t, { type }, p.base))) : [] }
+      const plans = t ? Object.keys(t.taskTypes).map(type => ({ id: type, steps: planSteps(t, { type }, p.base) })) : []
+      return { key: p.key, name: p.name, columns: boardColumns(plans.map(x => x.steps)), types: plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → ') })) }
     }),
     cards: tasks.map(task => cardOf(task, planOf(templates.get(task.project) ?? null, task, projects.find(p => p.key === task.project)), runs)),
   }
