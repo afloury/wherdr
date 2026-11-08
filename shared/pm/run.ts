@@ -5,6 +5,7 @@ import type { Prefs, Step, Template } from './workflow'
 import { fillBase, planSteps, type StepState } from './steps'
 import { needsShots, shotMode } from './shots'
 import type { Stopped } from './stop'
+import type { Mark } from './times'
 import { isPublic, publicWorkerSection } from './visibility'
 
 // Who made a task: the user (the board, their turn), the coordinator in a
@@ -31,6 +32,7 @@ export interface Task {
   links?: { label: string, url: string }[] // the PR, the ticket…
   shotToken?: string // the agent's key for POST /api/pm/shot (never sent to the browser)
   log?: TaskLogEntry[] // who changed what, newest last
+  marks?: Mark[] // when its step or turn changed, added by the store (times.ts)
   after?: string // tasks of the same project, comma-separated: this one starts once they are done
   stopped?: Stopped // who stopped it and why (stop.ts): it waits for the user
   autopilot?: true // started or added by the coordinator in a wake: its autopilot's own

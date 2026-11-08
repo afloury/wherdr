@@ -133,8 +133,9 @@ project picker (*All projects* or one), a tag filter when tasks have tags, and
 the [Autopilot](#autopilot) button. The first column is **Your turn**, then the
 project's columns, or *To do*, *Working* and *Done* for all projects.
 
-A card shows the task's title, its id and step, a dot with its agent's state
-(worker or reviewer), where its PR stands (*PR open · waiting for checks*,
+A card shows the task's title, its id and step, how long it has been in that
+step (*12 min in review*) or, once done, how long it took from start to done
+(*42 min*), a dot with its agent's state (worker or reviewer), where its PR stands (*PR open · waiting for checks*,
 *checks failed*, *merging*, *blocked: …*, *merged …*), what you have to do under
 Your turn, the tasks it waits for, its first tags and its PR link. Its menu (right
 click, long press, or ••• when it has more than *Open*) offers:
@@ -152,8 +153,11 @@ in one line), a Markdown description, the tasks it waits for, and *Start now*.
 ## Task sheet
 
 A card opens the task's sheet: its id and step, a note when it waits or was
-stopped, and its buttons (*Start*, *Open the agent* or *Open the reviewer*,
-*Stop*, *Delete…*). Below, tabs: **Description** (text, tags, links and the PR),
+stopped, the time it spent in each step with the time it waited for you apart,
+its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
+waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
+*Open the agent* or *Open the reviewer*, *Stop*, *Delete…*). Step times start
+with this version: an older task shows only its total. Below, tabs: **Description** (text, tags, links and the PR),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
 and screenshots) and **Log**. A refused merge says why under its button.
 
