@@ -60,11 +60,13 @@ const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitK
 // cannot start puts the task in 'waiting' with that reason, after one attempt.
 // handover: a note for a worker that takes up a stopped task (stop.ts). A
 // stopped task stays stopped until its agent starts: never seen as a failure meanwhile.
-export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: { handover?: string } = {}): Promise<Task> {
+// revive: the worker the engine released (release.ts) starts again in its
+// worktree, whatever the task's state and the holder of its current step.
+export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, revive }: { handover?: string, revive?: true } = {}): Promise<Task> {
   const { store } = deps
   const task = await store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
-  if (task.state === 'working') throw new HerdrError('busy', 'This task is already working')
+  if (task.state === 'working' && !revive) throw new HerdrError('busy', 'This task is already working')
   const found = (await store.projects()).find(x => x.key === task.project)
   if (!found) throw new HerdrError('not_found', 'Unknown project')
   if (found.git === false) return wait(store, task, 'The project folder is not a git repository: a task needs git for its own worktree')
@@ -77,7 +79,7 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: {
   // step's holder is told again (the reviewer started again) by the next advance pass.
   const s = task.step
   const held = s?.started && !s.done ? taskPlan(t, task, p)[s.at] : undefined
-  if (held && held.holder !== 'worker') {
+  if (held && held.holder !== 'worker' && !revive) {
     const { told: _told, ...step } = s!
     return store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, step })
   }

@@ -50,3 +50,18 @@ needs from you and the buttons for it, before its Description, Plan and Log.
 - **An agent's question or permission**: its text, and a button to open that agent.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (try again, start it, open its agent).
+
+## Agents of a task that waits for you
+
+A task under *Your turn* (a step you end, a merge only you may do, a failure)
+keeps its agents only for a while: once they have been idle for 10 minutes,
+wherdr ends them to free the machine's memory. The worktree, the branch and
+the files stay, and the card shows the task as before. When the task needs an
+agent again (you send it back, a merge finds a conflict, CI goes red, new
+commits need a review), wherdr starts the worker or the reviewer again in the
+same worktree, with a note on where the work stands. The task's log says when
+its agents were ended and started again.
+
+A machine's cap of agents (Settings › Machines) counts only the agents working
+on a step: not those of a task that waits for you, and not the coordinators.
+Its free-memory threshold still holds automatic starts.
