@@ -3,7 +3,6 @@
 // notifications, security (passkey), shortcuts, about.
 import type { ThemeDef, ThemeGroup } from '~/utils/themes'
 import type { TypingSpeed } from '~/utils/typewriter'
-import { pasteJournalEnabled, pasteJournal, setPasteJournal } from '~/utils/pasteJournal'
 import { SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
 import type { SettingsSection } from '~/utils/settingsNav'
 import { type QuietDuration, type QuietScope, quietUntil } from '#shared/quiet'
@@ -28,11 +27,11 @@ watch(() => [route.path, route.query.section], () => {
 const section = computed<SettingsSection | null>(() => (SETTINGS_SECTIONS as readonly string[]).includes(String(route.query.section)) ? route.query.section as SettingsSection : null)
 const sectionIcons: Record<SettingsSection, string> = {
   appearance: 'i-lucide-palette', conversation: 'i-lucide-message-square', terminal: 'i-lucide-square-terminal',
-  agents: 'i-lucide-bot', projects: 'i-lucide-kanban', pacing: 'i-lucide-gauge', plugins: 'i-lucide-puzzle', phone: 'i-lucide-smartphone', notifications: 'i-lucide-bell', security: 'i-lucide-lock', shortcuts: 'i-lucide-keyboard', advanced: 'i-lucide-bug', about: 'i-lucide-info',
+  agents: 'i-lucide-bot', projects: 'i-lucide-kanban', pacing: 'i-lucide-gauge', plugins: 'i-lucide-puzzle', phone: 'i-lucide-smartphone', notifications: 'i-lucide-bell', security: 'i-lucide-lock', shortcuts: 'i-lucide-keyboard', about: 'i-lucide-info',
 }
 const sectionLabels: Record<SettingsSection, string> = {
   appearance: 'Appearance', conversation: 'Conversation', terminal: 'Terminal', agents: 'Agents', projects: 'Projects', pacing: 'Pace',
-  plugins: 'Plugins', phone: 'Phone', notifications: 'Notifications', security: 'Security', shortcuts: 'Shortcuts', advanced: 'Advanced', about: 'About',
+  plugins: 'Plugins', phone: 'Phone', notifications: 'Notifications', security: 'Security', shortcuts: 'Shortcuts', about: 'About',
 }
 const sections = computed(() => SETTINGS_SECTIONS
   .filter(id => id !== 'shortcuts' || (desk.value && !coarse.value))
@@ -271,6 +270,7 @@ onMounted(() => {
         </button>
       </nav>
       <div v-show="activeSection" ref="body" class="settings-body">
+        <div class="settings-column">
         <h2 class="settings-section-title">{{ activeLabel }}</h2>
 
         <div v-show="activeSection === 'appearance'" class="settings-section">
@@ -516,24 +516,13 @@ onMounted(() => {
           <ShortcutsReference />
         </div>
 
-        <div v-show="activeSection === 'advanced'" class="settings-section">
-          <div class="settings-group">
-            <h3>{{ t('Paste journal') }}</h3>
-            <label class="settings-toggle">
-              <span>{{ t('Paste journal') }}</span>
-              <USwitch :model-value="pasteJournalEnabled" @update:model-value="setPasteJournal" />
-            </label>
-            <p class="muted settings-hint">{{ t('Records the last 50 paste events on this device, without text content. Turning it off clears the journal.') }}</p>
-            <pre class="mono paste-journal" style="white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px">{{ JSON.stringify(pasteJournal, null, 2) }}</pre>
-          </div>
-        </div>
-
         <div v-show="activeSection === 'about'" class="settings-section">
           <div class="settings-group">
             <h3>{{ t('Application') }}</h3>
             <p class="settings-version">wherdr {{ appVersion }} · herdr-core</p>
             <button type="button" class="settings-action solo" @click="reloadApp"><UIcon name="i-lucide-refresh-cw" />{{ t('Reload app') }}</button>
           </div>
+        </div>
         </div>
       </div>
     </div>

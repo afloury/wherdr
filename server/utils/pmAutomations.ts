@@ -12,7 +12,7 @@ import { startTask, type PmLaunchDeps } from './pmLaunch'
 
 // Adds the firing's task and starts it; a refusal stays on the firing.
 async function fire(deps: PmLaunchDeps, p: Project, a: Automation, f: Omit<Firing, 'task' | 'error'>): Promise<Firing> {
-  const t = p.template ? await deps.store.template(p.template) : null
+  const t = p ? await deps.store.workflow(p.key) : null
   if (!t) return { ...f, error: 'The project has no template' }
   // A schedule or an event is automatic work: held by the worker account's pace,
   // the slot counted as fired (no catch-up, no retry loop). The user's "run now" never is.

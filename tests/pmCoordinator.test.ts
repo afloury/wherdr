@@ -167,7 +167,7 @@ describe('template edit', () => {
     await refused(cli(['template', 'edit'], moreInstructions), 'only for a turn that comes from the user')
     await noteTurn(store, 'CO', 'wake')
     await refused(cli(['template', 'edit'], moreInstructions), 'only for a turn that comes from the user')
-    expect((await store.template('company'))!.version).toBe(1)
+    expect((await store.workflow('CO'))!.version).toBe(1)
   })
 
   it('in a user turn: proposed with its diff; saved only once the user accepts, logged with their sentence', async () => {
@@ -177,23 +177,39 @@ describe('template edit', () => {
     const diff = '-   "instructions": "Base branch is develop.",\n+   "instructions": "Base branch is develop. Never run the full suite locally.",'
     expect(r).toMatchObject({ proposed: true, diff })
     expect(r.changes.length).toBeGreaterThan(0)
-    expect((await store.template('company'))!.version).toBe(1)
+    expect((await store.workflow('CO'))!.version).toBe(1)
     expect((await coordinatorsView(store)).find(c => c.project === 'CO')!.proposal).toMatchObject({ diff, said: 'Tell agents to never run the full suite' })
     expect(await cli(['template', 'show'])).toMatchObject({ diff })
     // No core: the role files are not rewritten, the template is saved all the same.
     await expect(answerProposal(deps(), 'CO', true)).resolves.toEqual({ accepted: true })
-    expect((await store.template('company'))!.version).toBe(2)
-    expect((await store.templateLog('company')).at(-1)).toMatchObject({ by: 'coordinator CO', version: 2, said: 'Tell agents to never run the full suite' })
+    expect((await store.workflow('CO'))!.version).toBe(2)
+    expect((await store.workflowLog('CO')).at(-1)).toMatchObject({ by: 'coordinator CO', version: 2, said: 'Tell agents to never run the full suite' })
     expect((await store.coordinator('CO'))!.proposal).toBeUndefined()
     expect(await cli(['template', 'show'])).toMatchObject({ lastProposal: 'accepted' })
+  })
+
+  it('accepts a proposal made before the project had its own workflow', async () => {
+    const fresh = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-legacy-'))
+    const old = createPmStore(fresh)
+    await old.setEnabled(true)
+    await old.saveTemplate(company)
+    await fs.writeFile(old.files.projects, JSON.stringify({ v: 1, projects: [{ key: 'CO', name: 'Company', machine: '', path: '/src/co', template: 'company', addedAt: 1 }] }))
+    await fs.mkdir(old.files.coordinators)
+    const proposal = { template: { ...structuredClone(company), instructions: 'Proposed.' }, diff: '', at: 1, base: 1 }
+    await fs.writeFile(path.join(old.files.coordinators, 'CO.json'), JSON.stringify({ project: 'CO', tokenHash: 'x', proposal }))
+    const migrated = createPmStore(fresh)
+    await expect(answerProposal({ store: migrated } as unknown as Parameters<typeof answerProposal>[0], 'CO', true)).resolves.toEqual({ accepted: true })
+    expect(await migrated.workflow('CO')).toMatchObject({ id: 'co', version: 2, instructions: 'Proposed.' })
+    expect((await migrated.template('company'))!.version).toBe(1)
+    await fs.rm(fresh, { recursive: true, force: true })
   })
 
   it('is not saved over a change the user made after it', async () => {
     await noteTurn(store, 'CO', 'user', 'add a line')
     await cli(['template', 'edit'], moreInstructions)
-    await store.saveTemplate({ ...structuredClone(company), instructions: 'USER EDIT' }, { replace: true })
+    await store.saveWorkflow('CO', { ...structuredClone(company), instructions: 'USER EDIT' })
     await refused(answerProposal(deps(), 'CO', true), 'The template changed since this proposal')
-    expect((await store.template('company'))!.instructions).toBe('USER EDIT')
+    expect((await store.workflow('CO'))!.instructions).toBe('USER EDIT')
     expect((await store.coordinator('CO'))!.proposal).toBeUndefined()
     expect(await cli(['template', 'show'])).toMatchObject({ lastProposal: expect.stringContaining('outdated') })
   })
@@ -201,10 +217,10 @@ describe('template edit', () => {
   it('refused by the user: nothing saved, nothing logged', async () => {
     await noteTurn(store, 'CO', 'user', 'shorter instructions')
     await cli(['template', 'edit'], moreInstructions)
-    const log = await store.templateLog('company')
+    const log = await store.workflowLog('CO')
     await answerProposal(deps(), 'CO', false)
-    expect((await store.template('company'))!.version).toBe(1)
-    expect(await store.templateLog('company')).toEqual(log)
+    expect((await store.workflow('CO'))!.version).toBe(1)
+    expect(await store.workflowLog('CO')).toEqual(log)
     expect(await cli(['template', 'show'])).toMatchObject({ lastProposal: 'refused' })
     await refused(answerProposal(deps(), 'CO', true), 'No template change waits for you')
   })
@@ -215,8 +231,7 @@ describe('template edit', () => {
     await refused(cli(['template', 'edit'], loosen), 'Guards')
     const typeGuard = edited((t) => { t.taskTypes.feature!.guards = { merge: { others: 'engine' } } })
     await refused(cli(['template', 'edit'], typeGuard), 'Guards')
-    await refused(cli(['template', 'edit'], edited((t) => { t.id = 'mine' })), 'its project\'s template only')
-    expect((await store.template('company'))!.version).toBe(1)
+    expect((await store.workflow('CO'))!.version).toBe(1)
   })
 })
 

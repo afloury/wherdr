@@ -10,7 +10,7 @@ let coords: Partial<CoordinatorView>[] = []
 registerEndpoint('/api/pm/overview', () => overview)
 registerEndpoint('/api/pm/coordinators', () => coords)
 
-const project = (key: string, template?: string) => ({ key, name: key, machine: '', path: `/src/${key}`, addedAt: 1, ...(template ? { template } : {}) })
+const project = (key: string, template?: string) => ({ key, name: key, machine: '', path: `/src/${key}`, addedAt: 1, ...(template ? { from: { template, version: 1 } } : {}) })
 
 let mounted: { unmount: () => void } | null = null
 afterEach(() => { mounted?.unmount(); mounted = null; coords = [] })

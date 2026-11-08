@@ -1,4 +1,5 @@
-// Adds a project: { key, name?, machine, path, base?, template? }. The folder
+// Adds a project: { key, name?, machine, path, base?, template? } (a library
+// template id or example:<id>, copied into the project's own workflow). The folder
 // must be a git repository on a machine herdr-core reaches, unless plain: true
 // (the New sheet), which also takes create (a missing folder) and gitInit.
 // Whether its repository is public is checked at once (pmVisibility.ts).
