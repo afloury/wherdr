@@ -6,6 +6,7 @@ import type { Holder } from './workflow'
 import type { PlannedStep, StepState } from './steps'
 import type { Run, Task, WaitKind } from './run'
 import { notStarted, type Stopped } from './stop'
+import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
 import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
 import type { Report } from './report'
@@ -25,6 +26,7 @@ export interface Card {
   holder: Holder
   terminal?: string // herdr-core address of the holder's agent, if it runs
   yourTurn?: string // the badge
+  stall?: Stall // stalled, the machine may still fix it (blocked.ts); past HANDLE_AFTER_MS, also its yourTurn
   userLabel?: string // the button of a step that waits for the user
   tags: string[]
   links: { label: string, url: string }[]
@@ -61,7 +63,7 @@ export function boardColumns(plans: PlannedStep[][]): string[] {
   return out
 }
 
-export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
+export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.now()): Card {
   const s = task.step
   const started = !!s?.started && !!plan.length
   // Working with no step recorded (started before the engine kept it): its worker's step.
@@ -72,7 +74,9 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
   const run = holder === 'worker' || holder === 'reviewer'
     ? runs.filter(r => r.task === task.id && r.role === holder && r.state !== 'ended').sort((a, b) => b.startedAt - a.startedAt)[0]
     : undefined
+  const stall = stallOf(task, plan, now)
   const yourTurn = s?.yourTurn?.badge || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
+    || (stall && now - stall.since >= HANDLE_AFTER_MS ? stallTurn(stall) : undefined)
   return {
     id: task.id, shown: task.id, project: task.project, title: task.title, description: task.description,
     column: plan.length ? columnOf((s?.done ? plan.at(-1) : step) ?? plan[0]!) : 'To do',
@@ -81,6 +85,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
     holder,
     ...(run?.terminal ? { terminal: run.terminal } : {}),
     ...(yourTurn ? { yourTurn } : {}),
+    ...(stall ? { stall } : {}),
     ...(step?.ends === 'user' && started && !s?.done ? { userLabel: step.userLabel || 'Done' } : {}),
     tags: task.tags ?? [],
     // Then the links steps gave as their proof (the PR), labelled by step; each address once.
@@ -97,6 +102,23 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
     ...(task.after ? { after: afterIds(task) } : {}),
   }
 }
+
+// The short action of a card in Your turn, for the sidebar's Tasks to handle.
+export function handleLabel(c: Pick<Card, 'stopped' | 'asks' | 'state' | 'stall' | 'userLabel'>): string {
+  if (c.stopped) return 'Resume'
+  if (c.asks) return 'Answer'
+  const r = c.state?.yourTurn?.reason
+  if (r === 'user') return c.userLabel || 'Done'
+  if (r === 'rounds') return 'Decide'
+  if (r === 'action') return 'Retry'
+  if (r === 'timeout') return 'Check'
+  return c.stall ? 'Unblock' : 'Look'
+}
+
+// A task waiting for the user, as the sidebar's Tasks to handle lists it (GET /api/pm/handle).
+export interface ToHandle { id: string, shown: string, title: string, action: string, label: string }
+export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn)
+  .map(c => ({ id: c.id, shown: c.shown, title: c.title, action: c.yourTurn!.split('\n')[0]!, label: handleLabel(c) }))
 
 // The card's one-tap link: its PR when it has one, else its first link.
 // A task the user may stop: started, not done, not stopped already.

@@ -3,13 +3,15 @@
 // a login back), then at most one move (shared/pm/mechanic.ts). A move is
 // noted on the task before it runs, so it is never made twice.
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
-import { nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
+import { ciOf, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
+import { awaitsHolder } from '../../shared/pm/blocked'
+import type { PlannedStep } from '../../shared/pm/steps'
 import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
-import { PATH_SETUP, machineOn } from './coreCreate'
+import { PATH_SETUP } from './coreCreate'
 import { actionShell } from './pmActions'
 import { prSeen, stepAction } from './pmBoard'
 import { prNow, requiredChecks } from '../../shared/pm/board'
-import { exec, startTask, type PmLaunchDeps } from './pmLaunch'
+import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
 import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
 import { originOf, pacedStart, paceRefusal } from '../../shared/pm/pace'
 import { projectPace } from './pmPace'
@@ -117,6 +119,21 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
   return started
 }
 
+// Kept for the board: since when the agent holding the step sits idle while
+// the step waits for its report (pm/blocked.ts). Unread status: unchanged.
+async function noteIdle(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], runs: Run[], now: number): Promise<Task> {
+  const step = awaitsHolder(task, plan) ? plan[task.step!.at] : undefined
+  const holder = step && runs.filter(r => r.task === task.id && r.role === step.holder && r.state !== 'ended' && r.terminal).sort((a, b) => b.startedAt - a.startedAt)[0]
+  let idle: number | undefined
+  if (holder) {
+    const st = await deps.call<{ status?: string | { state?: string } }>('terminal.get', { terminal: holder.terminal }, 3000).catch(() => null)
+    if (!st) return task
+    const s = typeof st.status === 'string' ? st.status : st.status?.state
+    idle = s === 'idle' || s === 'done' ? task.idle ?? now : undefined
+  }
+  return idle === task.idle ? task : deps.store.saveTask({ ...task, idle })
+}
+
 export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
   if (!(await store.enabled())) return []
@@ -127,7 +144,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   await startHeld(deps, now).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
-  for (const task of await store.tasks()) {
+  for (let task of await store.tasks()) {
     if (task.state === 'todo' || task.step?.done) { prSeen.delete(task.id); continue }
     const p = projects.find(x => x.key === task.project)
     const t = p ? await store.workflow(p.key) : null
@@ -135,9 +152,10 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
     const run = runs.filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
     if (!run) continue
     let on: string | undefined
-    try { on = machineOn(deps, p.machine).on } catch { continue }
+    try { on = runOn(deps, run) } catch { continue }
     const sh = actionShell(deps, on)
     const plan = taskPlan(t, task, p)
+    task = await noteIdle(deps, task, plan, runs, now)
     const facts: MechFacts = { task, plan, guards: taskGuards(t, task.type), branch: run.branch, agentBusy: false }
     if (task.state === 'waiting' && task.waitKind === 'auth') {
       facts.loggedIn = (await exec(deps, on, `${PATH_SETUP}\n${LOGIN_SCRIPT}`, [run.program]).catch(() => null))?.code === 0
@@ -147,6 +165,9 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       const lines = r.out.split('\n')
       try { facts.pr = (JSON.parse(lines.at(-1) || '[]') as PrInfo[])[0] } catch { continue }
       facts.head = lines[0]?.trim()
+      // Kept for the board: a task is stalled only while its CI is still red (pm/blocked.ts).
+      const ci = ciOf(facts.pr, facts.head)
+      if (ci && (ci.head !== task.ci?.head || ci.red !== task.ci?.red)) facts.task = task = await store.saveTask({ ...task, ci })
       const seen = prNow(facts.pr, requiredChecks(plan))
       if (seen) prSeen.set(task.id, seen)
       else prSeen.delete(task.id)

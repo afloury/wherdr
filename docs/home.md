@@ -26,8 +26,10 @@
 - **Compact list**: Settings › Appearance › Home screen › **Compact list** shows one line per
   card; Normal adds the current activity on a second line. It follows you across devices.
   Every agent terminal is its own row, with its pane or tab label.
-- **Group by**: Settings › Appearance › Home screen › **Group by** chooses **Machine** or
-  **State** (Your turn, Working, Ready across online machines).
+- **Order**: the header (logo, version, Search, Board, Settings), the counters, the quotas (a
+  machine's own quotas under them), Alfred, the [coordinators](#coordinators), then the agents of
+  the machines shown, by state (Your turn, Working, Ready). When the list mixes several machines,
+  each card carries its machine's name. There is no section per machine.
 
 ### Alfred
 
@@ -35,7 +37,8 @@ Alfred, wherdr's assistant, is always the first row of the agent list, even
 with no agent and projects off. It helps you get started and, with projects
 on, coordinates all of them. The first *Start* asks which agent (Claude,
 Codex, OMP…, those offered in Settings › Agents) runs it; the choice is kept. It runs with that agent's default
-model: change the model inside Alfred. Its ••• menu, *Restart with…*, moves it
+model: change the model inside Alfred. Its menu (right click, or long press on a touch
+screen), *Restart with…*, moves it
 to another agent (when an account runs out of tokens, for instance): the old session
 stops and the new one carries on from the same home folder, `alfred/` in
 wherdr's data folder. There, `AGENTS.md` (and `CLAUDE.md`, `GEMINI.md`,
@@ -44,6 +47,14 @@ you, cleaned up at each start) are its own. Give it another name and the row
 shows it. Alfred reads and changes projects, coordinators and settings with
 [`wherdr alfred`](alfred.md): it shows you each
 change first and makes it only after your yes.
+
+### Coordinators
+
+Under Alfred, while project management is on, one row per running project coordinator
+([Project management](project-management.md)). A tap opens its conversation, shown as selected
+while it is open; its menu (right click or long press), *Restart with…*, picks another agent,
+which becomes its default: its folder and memory stay, the current session stops. A coordinator
+shows only in its own row, never again among the agents.
 
 ### Offered agents
 
@@ -61,9 +72,13 @@ can keep out of the project's repository (a deny rule for Claude, the sandbox fo
 The **machine bar** at the top of the list has **All**, then one tab per machine (this core and
 each core machine, online or offline) with its count of rows. A tap shows that machine alone,
 with its Claude and Codex quotas at the top; an offline or reconnecting machine says so there.
+The bar hides when it would show a single machine. A machine's actions (New agent here,
+Reconnect, Machine settings, Claude quota setup) open on a right click or long press of its
+tab; with the bar hidden and several machines, on its chip above the list; offline machines are
+listed at the bottom, with **Reconnect**.
 Settings › Appearance › Home screen › **Machine bar** orders its items, hides some of them, or
 hides the bar. In **Groups**, create a named selection of machines; groups follow you across
-devices. Machines themselves are managed in [Settings › Agents › Machines](machines.md).
+devices. Machines themselves are managed in [Settings › Machines](machines.md#manage-machines).
 
 ### New agents and tabs
 

@@ -37,6 +37,18 @@ const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
 
 const checkName = (c: { name?: string, context?: string }) => c.name || c.context || 'a check'
 
+// The PR's failed checks, once none still runs.
+function redChecks(pr: PrState) {
+  const checks = pr.statusCheckRollup ?? []
+  const running = checks.some(c => (c.status && c.status !== 'COMPLETED') || ['PENDING', 'EXPECTED'].includes(c.state ?? ''))
+  return running ? [] : checks.filter(c => !GREEN.includes(c.conclusion || c.state || ''))
+}
+
+// The task's CI as the engine reads it: red only while the PR head is still
+// the task's commit and its checks have finished red (pm/blocked.ts).
+export const ciOf = (pr: PrState | undefined, head: string | undefined): NonNullable<Task['ci']> | undefined =>
+  pr && head && !pr.merged ? { head, red: pr.headRefOid === head && redChecks(pr).length > 0 } : undefined
+
 // The next mechanical move for a task and its key, or undefined.
 export function nextMove(f: MechFacts): { move: Move, key: string } | undefined {
   const { task, plan, guards, pr, head } = f
@@ -72,9 +84,7 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   if (pr.baseRefName !== base) return pick(`base:${head}`, { kind: 'fix-base', base })
   if (f.agentBusy) return
   if (['BEHIND', 'DIRTY'].includes(pr.mergeStateStatus ?? '') && !isProtected(guards, f.branch)) return pick(`catch-up:${head}`, { kind: 'catch-up', base })
-  const checks = pr.statusCheckRollup ?? []
-  const running = checks.some(c => (c.status && c.status !== 'COMPLETED') || ['PENDING', 'EXPECTED'].includes(c.state ?? ''))
-  const red = running ? [] : checks.filter(c => !GREEN.includes(c.conclusion || c.state || ''))
+  const red = redChecks(pr)
   if (red.length && red.every(c => INFRA.includes(c.conclusion || ''))) return pick(`rerun:${head}`, { kind: 'rerun-ci', checks: red.map(checkName) })
   if (red.length) {
     // One send per commit, within the send-back rounds; past them, the user's.

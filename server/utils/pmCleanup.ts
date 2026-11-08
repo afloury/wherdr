@@ -1,11 +1,11 @@
 // Removes the worktree of a done task (and its local branch once merged), on
-// its project's machine, with git worktree remove: never a forced removal,
+// the machine its worker ran on, with git worktree remove: never a forced removal,
 // never rm. Each removal, and each worktree kept with why, goes to the task's
 // log (shared/pm/cleanup.ts decides). Runs once a done task's agents have
 // ended (pmAdvance.ts), on Archive, and in
 // a sweep at start and every few hours for leftovers.
-import { exec, type PmLaunchDeps } from './pmLaunch'
-import { homeOf, machineOn } from './coreCreate'
+import { exec, runOn, type PmLaunchDeps } from './pmLaunch'
+import { homeOf } from './coreCreate'
 import { taskPaths } from '../../shared/pm/run'
 import { cleanupOf, cleanupRefusal, factsRefusal, parseFacts } from '../../shared/pm/cleanup'
 
@@ -63,7 +63,9 @@ async function clean(deps: Deps, id: string) {
     if (fresh.cleanup?.skipped !== why) await store.logTask({ ...fresh, cleanup: { skipped: why } }, 'engine', `worktree kept: ${why}`)
   }
   if (!run) return finish() // never started: no worktree
-  const { on } = machineOn(deps, p.machine)
+  // Only the project's machine has a known clone (p.path) so far.
+  if (run.machine !== p.machine) return keep('it is on another machine than the project\'s, whose clone wherdr does not know yet')
+  const on = runOn(deps, run)
   const home = await homeOf(deps, on)
   if (!home) return
   const root = taskPaths(home, task.id).worktree.replace(/\/[^/]+$/, '')
