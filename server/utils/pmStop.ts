@@ -1,8 +1,9 @@
 // Stops a task (its agents end through herdr-core; worktree, branch and work
 // stay), takes a stopped one up again, and removes one never started. Never
-// merges, never deletes a branch.
+// merges, never deletes a branch; Archive removes the worktree (pmCleanup.ts).
 import { HerdrError } from './herdr'
 import { startTask, type PmLaunchDeps } from './pmLaunch'
+import { cleanTask } from './pmCleanup'
 import { onEvent, planSteps } from '../../shared/pm/steps'
 import { handoverText, removeRefusal, resumeRefusal, stopRefusal, stoppedTask, type Resume, type Stopper } from '../../shared/pm/stop'
 import type { Task } from '../../shared/pm/run'
@@ -50,8 +51,11 @@ export async function resumeTask(deps: PmLaunchDeps, id: unknown, how: Resume, b
   const refused = resumeRefusal(task, how, by, plan[s?.at ?? -1])
   if (refused) throw new HerdrError('refused', refused)
   const going = { ...task, stopped: undefined, waiting: undefined, waitKind: undefined }
-  if (how === 'archive')
-    return store.logTask({ ...going, state: 'working', step: { ...s, done: true, abandoned: true } }, logBy, 'archived; its worktree and branch stay')
+  if (how === 'archive') {
+    const archived = await store.logTask({ ...going, state: 'working', step: { ...s, done: true, abandoned: true } }, logBy, 'archived; its worktree goes, its branch stays')
+    void cleanTask(deps, task.id).catch(() => {})
+    return archived
+  }
   if (how === 'as-is') {
     const r = onEvent(plan, s, { kind: 'skip' }, Date.now())
     if (r.refused) throw new HerdrError('refused', r.refused)
