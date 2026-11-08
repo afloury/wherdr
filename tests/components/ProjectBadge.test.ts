@@ -13,7 +13,7 @@ afterEach(() => { toastFn.mockReset(); vi.unstubAllGlobals() })
 it('takes its color token, and is a plain chip without a color', async () => {
   const w = await mountSuspended(ProjectBadge, { props: { text: 'WHR', color: 'teal' } })
   expect(w.text()).toBe('WHR')
-  expect(w.attributes('style')).toContain('--key-c: var(--project-teal)')
+  expect(w.attributes('style')).toContain('--key-c: var(--project-teal, var(--teal))')
   expect(w.attributes('role')).toBeUndefined() // not a control
   const plain = await mountSuspended(ProjectBadge, { props: { text: 'WHR' } })
   expect(plain.attributes('style')).toBeUndefined()
