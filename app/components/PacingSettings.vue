@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Settings › Pace: one row per quota account. The weekly bar with the target
+// Settings › Agents › Pace: one row per quota account. The weekly bar with the target
 // line (or the reserve's limit), today's use, the 5-hour window, the mode and
 // its settings, the account's name, and whether automatic work may start now.
 // A program with no reading at all shows 'Quota unknown'.
@@ -106,7 +106,7 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
 
 <template>
   <div class="settings-group pace-settings" data-testid="pace-settings">
-    <h3>{{ tl('Accounts', 'Comptes') }}</h3>
+    <h3>{{ t('Pace') }}</h3>
     <p v-if="error" class="pace-error">{{ error }}</p>
     <p v-if="!rows" class="muted settings-hint">{{ tl('Reading the quotas…', 'Lecture des quotas…') }}</p>
     <div v-else class="settings-card pace-card">
