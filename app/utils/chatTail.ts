@@ -11,6 +11,21 @@ export function nextTail(tail: ChatItem[], r: Pick<ChatResponse, 'items' | 'keep
   return r.keep === tail.length && !items.length ? tail : tail.slice(0, r.keep).concat(items)
 }
 
+// The list that replaces the one shown after a restart (see restartsTail),
+// swapped in one step: an item equal to one already shown is that same object,
+// so Vue has nothing to redo for it; the others are the new ones.
+export function swapTail(shown: ChatItem[], next: ChatItem[]): ChatItem[] {
+  if (!shown.length) return next
+  const pool = new Map<string, ChatItem[]>()
+  for (const it of shown) {
+    const k = JSON.stringify(it)
+    const same = pool.get(k)
+    if (same) same.push(it)
+    else pool.set(k, [it])
+  }
+  return next.map(it => pool.get(JSON.stringify(it))?.shift() ?? it)
+}
+
 // Whether a reply means starting again from the bottom, dropping the older
 // pages loaded above: another file (/clear, new session), or a bottom the
 // server read from another byte. The latter happens when the file grew more

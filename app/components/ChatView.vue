@@ -13,7 +13,7 @@ import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { type PendingMessage, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
-import { CHAT_READ_MS, createTailLoader, nextTail, restartsTail, tailQuery } from '~/utils/chatTail'
+import { CHAT_READ_MS, createTailLoader, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -45,6 +45,9 @@ interface ChatData {
   olderCursor: number
   tail: ChatItem[]
   queue: ClaudeQueueEntry[]
+  // Items of a previous read kept on screen until the full re-read replaces
+  // them in one step (no empty list in between, see swapTail).
+  held?: boolean
 }
 const fresh = (): ChatData => ({ file: null, token: '', tailStart: null, older: [], olderCursor: 0, tail: [], queue: [] })
 const chat = shallowRef<ChatData>(fresh())
@@ -76,7 +79,7 @@ async function restoreChat() {
   const saved = await readChat(id)
   if (!saved || synced || rendered.value || unavailable.value || id !== props.pane.id) return
   await apply(() => {
-    chat.value = { ...fresh(), tail: saved.items }
+    chat.value = { ...fresh(), tail: saved.items, held: true }
     savedAt.value = saved.at
   })
   touchChat(props.pane.id)
@@ -278,9 +281,10 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     if (r.unchanged) return false
     savedAt.value = null
     // New session (/clear, new agent), or a bottom read from another byte:
-    // we start again from the bottom (utils/chatTail.ts).
+    // we start again from the bottom (utils/chatTail.ts), keeping what is
+    // shown until that read replaces it.
     if (restartsTail(chat.value, r)) {
-      chat.value = fresh()
+      chat.value = { ...fresh(), tail: items.value, queue: chat.value.queue, held: true }
       synced = false
       return true
     }
@@ -298,7 +302,8 @@ async function loadStep(current: () => boolean): Promise<boolean> {
       }
       c.file = r.file || null
       c.token = r.token || ''
-      c.tail = tail
+      c.tail = c.held ? swapTail(c.tail, tail) : tail
+      c.held = false
       c.queue = r.queue || []
       chat.value = c
       noteReplies(c.tail)

@@ -123,3 +123,42 @@ it('expires a silent speculative read without AbortSignal.any', async () => {
   expect(request.aborted).toBe(true)
   expect(await pending).toBeUndefined()
 })
+
+// A restart of the bottom read: another session (/clear), or the server
+// restarted and forgot this list (server/utils/chatDelta.ts), so its full
+// reply starts at another byte. The list never goes empty in between, and an
+// item already shown keeps its node.
+it.each([
+  ['another session', 'new.jsonl', 0],
+  ['the server forgot the list', 'old.jsonl', 2048],
+])('keeps the conversation on screen while a restarted read is in flight (%s)', async (_case, file, start) => {
+  locked.value = false; netDown.value = false; cachedAt.value = null
+  herdrState.value = { ok: true, panes: [pane], workspaces: [] }
+  const item = (text: string) => ({ role: 'assistant', text, ts: `2026-01-01T00:00:0${text.length % 10}Z` })
+  const reply = (f: string, at: number, token: string, texts: string[]) => Response.json({ available: true, file: f, token, start: at, items: texts.map(item) })
+  let next: (() => Promise<Response>) = async () => reply('old.jsonl', 0, 'a', ['Same reply', 'Old reply'])
+  vi.stubGlobal('fetch', vi.fn((path: string) => path.startsWith('/api/chat?') ? next() : Promise.resolve(Response.json({}))))
+  const wrapper = await mountSuspended(ChatView, { props: { pane, localQueued: [] } })
+  try {
+    await expect.poll(() => wrapper.text()).toContain('Old reply')
+    const node = () => wrapper.findAll('.chat *').find(n => n.element.childElementCount === 0 && n.text() === 'Same reply')?.element
+    const before = node()
+    expect(before).toBeTruthy()
+    // The reply that tells of the restart, then the full read, held back.
+    let release!: () => void
+    const held = new Promise<void>(r => { release = r })
+    let calls = 0
+    next = async () => (calls++
+      ? (await held, reply(file, start, 'b', ['Same reply', 'New reply']))
+      : reply(file, start, 'b', ['Same reply', 'New reply']))
+    await wrapper.setProps({ pane: { ...pane, status: 'working' } })
+    await expect.poll(() => calls).toBe(2)
+    await flushPromises()
+    expect(wrapper.text()).toContain('Old reply')
+    expect(wrapper.find('.chat-empty').exists()).toBe(false)
+    release()
+    await expect.poll(() => wrapper.text()).toContain('New reply')
+    expect(wrapper.text()).not.toContain('Old reply')
+    expect(node()).toBe(before)
+  } finally { wrapper.unmount() }
+})
