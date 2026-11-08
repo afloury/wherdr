@@ -45,6 +45,10 @@ describe('project settings', () => {
   })
 
   it('applies a template and keeps the project\'s guards unless asked', async () => {
+    // A project without a workflow yet gets the template's guards.
+    await store.setTemplate('CO', '')
+    await store.setTemplate('CO', 'example:company', { keepGuards: true })
+    expect((await store.workflow('CO'))!.guards).toEqual(company.guards)
     await saveProjectGuards(store, 'CO', guards, 'user')
     expect(await store.setTemplate('CO', 'common', { keepGuards: true })).toMatchObject({ from: { template: 'common' } })
     expect((await store.workflow('CO'))).toMatchObject({ taskTypes: common.taskTypes, guards })

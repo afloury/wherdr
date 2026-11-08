@@ -324,9 +324,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       let source = id ? await sourceOf(id) : null
       const { list, i } = await findProject(key)
       const { from: _old, ...rest } = list[i]!
-      if (source && keepGuards) {
-        const { guards: _guards, ...copy } = source, guards = (await readJson<Template>(workflowFile(rest.key)))?.guards
-        source = guards ? { ...copy, guards } : copy
+      // No workflow yet: nothing to keep, the template's guards come with it.
+      const own = source && keepGuards ? await readJson<Template>(workflowFile(rest.key)) : null
+      if (source && own) {
+        const { guards: _guards, ...copy } = source
+        source = own.guards ? { ...copy, guards: own.guards } : copy
       }
       if (source) list[i] = { ...rest, from: (await copyTemplate(rest.key, source, by)).from }
       else { await fs.rm(workflowFile(rest.key), { force: true }); list[i] = rest }
