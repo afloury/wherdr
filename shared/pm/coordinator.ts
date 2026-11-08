@@ -4,6 +4,7 @@
 import type { Project } from './project'
 import type { Template } from './workflow'
 import type { WorkflowChanges } from './workflowChanges'
+import type { ProjectColor } from './projectKey'
 import type { Autopilot, limitsLeft } from './autopilot'
 import type { Wake } from './wakes'
 import { CHOICES, type Choice } from './verdict'
@@ -40,7 +41,9 @@ export const sameAgent = (a?: CoordinatorAgent, b?: CoordinatorAgent) => !!a && 
 // A template change the coordinator proposed: the user accepts or refuses it
 // in the interface; only an accepted one is saved and goes to the template's log.
 // base: the template version its diff was made against.
-export interface Proposal { template: Template, diff: string, at: number, base: number, said?: string }
+// by: who proposed it, the project's key or 'main' (Alfred); said, saidAt:
+// the user's message it follows and when they sent it.
+export interface Proposal { template: Template, diff: string, at: number, base: number, by?: string, said?: string, saidAt?: number }
 // What became of the last one, for the coordinator's `template show`.
 export type ProposalOutcome = 'accepted' | 'refused' | 'outdated: the template changed since, propose again'
 // The last answer, kept for the card in the coordinator's conversation:
@@ -52,7 +55,8 @@ export interface CoordinatorView {
   // main: the main coordinator (project is MAIN).
   // agent: the default the user set for it, if any (else the first of their agents).
   // git: false: a folder without git, its coordinator works in it (no template needed).
-  project: string, name: string, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string
+  // label, color: the project's shown key and its badge's color.
+  project: string, name: string, label?: string, color?: ProjectColor, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string
   // proposal: the change waiting for the user, as a person reads it too; answered: the last answer.
   proposal?: Omit<Proposal, 'template' | 'base'> & { changes?: WorkflowChanges }, answered?: ProposalAnswer
   // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
