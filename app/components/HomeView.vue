@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // Agent list, grouped by state; sidebar on a computer. Top to bottom: header
 // buttons, the machine bar (hidden with a single tab), counters, quotas, the
-// coordinators, then every agent of the machines shown, grouped by state (no
-// section per machine; with several machines each card names its machine).
+// coordinators, the tasks to handle, then every agent of the machines shown,
+// grouped by state (no section per machine; with several machines each card
+// names its machine).
 // A machine's actions live in its bar tab's menu (right click, long press);
 // without a bar, in the machine chips (several machines) or the header "…"
 // (a single machine: only what Settings and New do not already offer).
@@ -527,6 +528,7 @@ function resetListWidth() {
 
       <AlfredRow v-if="st.ok" />
       <CoordinatorsSection v-if="st.ok" />
+      <TasksToHandle v-if="st.ok" />
 
       <OpenNetworkBanner />
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />

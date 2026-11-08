@@ -15,6 +15,8 @@ const tag = ref('') // '' = every tag
 // The task to show, also from Decisions' "Open task" (/board?task=CO-1).
 const route = useRoute()
 const open = ref<string | null>(typeof route.query.task === 'string' ? route.query.task : null)
+// Also when the board is already open (the sidebar's Tasks to handle).
+watch(() => route.query.task, (id) => { if (typeof id === 'string') open.value = id })
 const decisions = ref(0) // what waits for the user's choice, on the Decisions screen
 
 async function load() {
@@ -117,6 +119,8 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
           <small v-if="statusOf(c)" class="board-status" :class="statusOf(c)!.tone" :title="statusOf(c)!.text" data-testid="board-status">{{ statusOf(c)!.text }}</small>
           <span v-if="c.yourTurn" class="board-badge" data-testid="board-badge">{{ c.yourTurn }}</span>
           <small v-else-if="waiting(c).length" class="muted" data-testid="board-waits">{{ tl('Waits for', 'Attend') }} {{ waiting(c).map(id => shownTaskId(data?.projects ?? [], id)).join(', ') }}</small>
+          <!-- Stalled, the machine may still fix it: a warning only; after 30 min it is Your turn. -->
+          <small v-if="c.stall && !c.yourTurn" class="board-stall" :title="c.stall.reason" data-testid="board-stall"><UIcon name="i-lucide-triangle-alert" aria-hidden="true" />{{ t(c.stall.reason) }}</small>
           <span v-if="c.tags.length || c.links.length" class="board-tags">
             <span v-for="tag in c.tags.slice(0, 2)" :key="tag" class="board-chip">{{ tag }}</span>
             <span v-if="c.tags.length > 2" class="board-chip">+{{ c.tags.length - 2 }}</span>
@@ -168,6 +172,8 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
 .board-status.wait { color: var(--working); }
 .board-status.bad { color: var(--danger); }
 .board-status.ok { color: var(--done); }
+.board-stall { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 12px; color: var(--blocked); }
+.board-stall span { flex: none; }
 @media (min-width: 900px) {
   .board-body { overflow-y: hidden; }
   .board-lanes { flex: 1; flex-direction: row; align-items: stretch; overflow-x: auto; }
