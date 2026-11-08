@@ -25,6 +25,7 @@ export interface Task {
   ci?: { head: string, red: boolean } // its PR's CI at the task's commit, as the engine last read it
   idle?: number // since when the agent holding its step sits idle, its report still due (blocked.ts)
   run?: string // the current run
+  machine?: string // where its first start put it: it always goes back there (none, once started: its project's machine)
   step?: StepState // where the step engine has it
   base?: string // the project's working branch when it started ('' none): a later change leaves it alone
   prefs?: Prefs

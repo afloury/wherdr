@@ -7,6 +7,7 @@
 import { exec, runOn, type PmLaunchDeps } from './pmLaunch'
 import { homeOf } from './coreCreate'
 import { taskPaths } from '../../shared/pm/run'
+import { cloneOn } from '../../shared/pm/project'
 import { cleanupOf, cleanupRefusal, factsRefusal, parseFacts } from '../../shared/pm/cleanup'
 
 // Prints `exists listed dirty unique` (see Facts).
@@ -63,21 +64,21 @@ async function clean(deps: Deps, id: string) {
     if (fresh.cleanup?.skipped !== why) await store.logTask({ ...fresh, cleanup: { skipped: why } }, 'engine', `worktree kept: ${why}`)
   }
   if (!run) return finish() // never started: no worktree
-  // Only the project's machine has a known clone (p.path) so far.
-  if (run.machine !== p.machine) return keep('it is on another machine than the project\'s, whose clone wherdr does not know yet')
+  if (!cloneOn(p, run.machine, '~')) return keep('wherdr knows no clone of the project on its machine (no longer allowed for the project)')
   const on = runOn(deps, run)
   const home = await homeOf(deps, on)
   if (!home) return
+  const repo = cloneOn(p, run.machine, home)!
   const root = taskPaths(home, task.id).worktree.replace(/\/[^/]+$/, '')
   const refused = cleanupRefusal(task, runs, run.worktree, root)
   if (refused) return keep(refused)
-  const probe = await exec(deps, on, WORKTREE_PROBE_SCRIPT, [p.path, run.worktree, run.branch])
+  const probe = await exec(deps, on, WORKTREE_PROBE_SCRIPT, [repo, run.worktree, run.branch])
   const facts = probe.code === 0 ? parseFacts(probe.out) : undefined
   if (!facts) return
   const why = factsRefusal(facts)
   if (why) return keep(why)
   const branch = kind === 'worktree+branch'
-  const r = await exec(deps, on, WORKTREE_REMOVE_SCRIPT, [p.path, run.worktree, run.branch, branch ? '1' : '0'])
+  const r = await exec(deps, on, WORKTREE_REMOVE_SCRIPT, [repo, run.worktree, run.branch, branch ? '1' : '0'])
   if (r.code !== 0) return keep(`git could not remove it: ${r.out.split('\n').pop()?.slice(0, 200) || 'timeout'}`)
   const what = facts.exists ? 'removed its worktree' : 'its worktree was already gone'
   return finish(branch ? `${what} and its local branch ${run.branch}` : `${what}; its branch ${run.branch} stays`)

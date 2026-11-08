@@ -3,8 +3,8 @@
 // URL (`tab=`). General: name, base branch, repository visibility, the agents
 // its tasks start with (the workflow's prefs), where its workflow came from.
 // Workflow: ProjectWorkflow, its own entries first in the ⋯ menu. The ⋯ menu
-// removes the project. Automations and Autopilot reuse the components shown
-// elsewhere; Guards is coming.
+// removes the project. Guards: ProjectGuards. Automations and Autopilot reuse
+// the components shown elsewhere.
 import type { Project, TemplateInfo } from '#shared/pm/project'
 import { shownKey } from '#shared/pm/projectKey'
 import type { LogEntry } from '#shared/pm/templateText'
@@ -160,13 +160,16 @@ async function remove() {
           <small class="muted" data-testid="pm-from">{{ p.from ? tl(`Based on: ${p.from.template} v${p.from.version}. Information only: changes to the template do not reach the project. To start over from a template: Workflow › ⋯.`) : tl('No template yet: start from one in the Workflow tab.') }}</small>
         </form>
         <ProjectWorkflow v-else-if="tab === 'workflow' && loaded" ref="workflowTab" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" @templates="emit('changed')" />
+        <template v-else-if="tab === 'guards' && loaded">
+          <ProjectGuards v-if="workflow" :project="p" :workflow="workflow" @changed="workflowChanged" />
+          <p v-else class="muted settings-hint">{{ tl('No workflow yet: tasks cannot start until the project starts from a template.') }}</p>
+        </template>
         <ProjectAutomations v-else-if="tab === 'automations'" :project="p.key" :name="p.name" />
         <template v-else-if="tab === 'autopilot'">
           <CoordinatorAutopilot v-if="coordinator" :c="coordinator" />
           <p v-else class="muted settings-hint">{{ tl('This project has no coordinator yet.') }}</p>
           <UButton to="/settings?section=pacing" color="neutral" variant="ghost" size="lg" icon="i-lucide-gauge">{{ tl('Pace of every account') }}</UButton>
         </template>
-        <p v-else class="muted settings-hint" data-testid="pm-coming">{{ tl('Coming soon.') }}</p>
         <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
       </div>
     </div>
