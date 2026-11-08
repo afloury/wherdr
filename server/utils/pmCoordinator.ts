@@ -27,6 +27,7 @@ import { ensureVisibility } from './pmVisibility'
 import { removeTask, resumeTask, stopTask } from './pmStop'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
+import { memoryHold, memoryState } from './pmMemory'
 import { projectPace } from './pmPace'
 import type { CoordinatorRecord, PmStore } from './pmStore'
 import { OWN_FILES, alfredFiles, alfredName, isAlfredProgram, startPrompt } from '../../shared/pm/alfred'
@@ -197,12 +198,14 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const mine = await mineOf()
       const now = Date.now()
       const line = async (k: string) => { const pace = await projectPace(store, k, undefined, now, true); return pace ? paceLine(pace, now) : 'unknown: the project has no template or no worker program' }
+      const mem = (machine: string) => memoryState(deps, machine).then(s => `${s.label}: ${s.line}`, () => 'memory unknown')
       return {
         autopilot: ap, lookForWork: !!ap.lookForWork,
         workingBranch: key ? workingBranch(p) : Object.fromEntries(projects.map(x => [x.key, workingBranch(x)])),
         pacing: key ? await line(key) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await line(x.key)]))),
+        memory: key ? await mem(p!.machine) : await Promise.all([...new Set(projects.map(x => x.machine))].map(mem)),
         today: { ...limitsLeft(ap, mine, await store.runs(), now), skippedWakes: today(rec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(rec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
-        note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are',
+        note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. Memory holds automatic starts too, on a machine short on memory or at its cap of agents (all projects together): such a task waits and starts by itself once memory is back',
       }
     }
     case 'automation list': return { automations: (await store.automations(needProject().key)).automations.map(automationLine), note: 'Only the user adds or changes automations, in wherdr' }
@@ -231,11 +234,16 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const why = (task.stopped ? resumeRefusal(task, 'continue', who, undefined) : undefined)
         ?? coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), now, wake, { pace })
       if (why) throw new HerdrError('refused', why)
+      // Short on memory: a wake's start waits for it (the engine starts it then); the user's goes, with a word.
+      const short = await memoryHold(deps, key)
+      // A failed task a wake starts again goes back to do, where the engine starts held tasks.
+      if (short && wake && !task.stopped) return { task: await store.logTask({ ...task, state: 'todo', waiting: undefined, waitKind: undefined, autopilot: true, held: short }, by, short), held: `${short}. It starts by itself once memory is back` }
       // Started in a wake: the autopilot's own task, which it may stop in a wake.
       if (wake && !task.autopilot) await store.saveTask({ ...task, autopilot: true })
-      if (task.stopped) return { task: await resumeTask(deps, task.id, 'continue', who, by) }
+      const memory = short ? { memory: `${short}: started anyway, as the user asked` } : {}
+      if (task.stopped) return { task: await resumeTask(deps, task.id, 'continue', who, by), ...memory }
       const started = await startTask(deps, task.id)
-      return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`) }
+      return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`), ...memory }
     }
     case 'task stop': {
       const task = await taskOf(cmd.task)
