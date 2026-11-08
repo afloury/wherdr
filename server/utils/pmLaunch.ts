@@ -12,6 +12,7 @@ import { initialState, onEvent } from '../../shared/pm/steps'
 import { doneSection, runFiles } from '../../shared/pm/advance'
 import { isPublic } from '../../shared/pm/visibility'
 import { ensureVisibility, readLeakCheck } from './pmVisibility'
+import { DEPS_SCRIPT, depsNote } from './pmDeps'
 import { LABEL, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 
 // Reuses the worktree of an earlier attempt; else a new branch from the base,
@@ -34,11 +35,11 @@ k="branch.$branch.wherdrstart"
 export const WRITE_SCRIPT = 'mkdir -p "$(dirname "$1")" && cat > "$1"'
 const NOT_FOUND = '127' // the shell found no such program: starting again cannot help
 
-export async function exec(deps: Pick<CoreAdminDeps, 'call'>, on: string | undefined, script: string, args: string[], input?: string) {
+export async function exec(deps: Pick<CoreAdminDeps, 'call'>, on: string | undefined, script: string, args: string[], input?: string, timeout = 60) {
   const r = await deps.call<{ code: number | null, stdout: string, stderr?: string, timed_out?: boolean }>('machine.exec', {
-    argv: ['sh', '-c', script, 'sh', ...args], ...(on ? { on } : {}), timeout: 60,
+    argv: ['sh', '-c', script, 'sh', ...args], ...(on ? { on } : {}), timeout,
     ...(input !== undefined ? { input: Buffer.from(input).toString('base64') } : {}),
-  }, 70000)
+  }, (timeout + 10) * 1000)
   const text = (b?: string) => Buffer.from(b || '', 'base64').toString('utf8').trim()
   return { code: r.timed_out ? null : r.code, out: text(r.stdout), err: text(r.stderr) }
 }
@@ -90,11 +91,13 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: {
   const base = taskBase(task, p) ?? ''
   const wt = await exec(deps, on, WORKTREE_SCRIPT, [p.path, paths.worktree, paths.branch, base])
   if (wt.code !== 0) return wait(store, task, `git worktree failed: ${wt.out.split('\n').slice(-3).join(' ') || 'timeout'}`)
+  // A copy of a large node_modules on a cold disk can take minutes.
+  const depsLine = depsNote((await exec(deps, on, DEPS_SCRIPT, [p.path, paths.worktree], undefined, 300).catch(() => ({ out: '' }))).out)
   // A visual task: the worker's key to upload its screenshots, kept with the task.
   const shotToken = shotStep(t, task.type) ? task.shotToken || randomBytes(16).toString('hex') : undefined
   const leakCheck = isPublic(p) ? (await readLeakCheck(deps, on, paths).catch(() => ({ check: undefined }))).check : undefined
   const text = instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(p.machine, deps.origin), token: shotToken } : undefined, leakCheck)
-    + ['', ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n')
+    + ['', ...(depsLine ? [depsLine, ''] : []), ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n')
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')
 
   // The engine's start: the task enters its first step (the worker's); the
