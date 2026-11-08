@@ -2,7 +2,8 @@
 // A coordinator's autopilot: its switch, whether it is active or asleep
 // (nothing to do: its scheduled wakes are skipped), today's counters against
 // the limits, its goal, interval, fixed times, events and limits (saved by the user
-// only), its latest wakes (created, delivered, acked) and "run now". In the coordinator window.
+// only), its latest wakes (created, delivered, acked) and "run now". In the coordinator
+// window and the project sheet's Autopilot tab.
 import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, LOOK_PER_DAY, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Wake } from '#shared/pm/wakes'
