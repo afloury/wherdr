@@ -282,3 +282,17 @@ it('Start on a To do card (menu and sheet) says the server\'s refusal; a task af
   await vi.waitFor(() => expect(document.querySelector('[data-testid="task-waits"]')?.textContent).toBe('Starts once CO-1 is done.'))
   expect(document.querySelector('[data-testid="task-start"]')).toBeNull()
 })
+
+it('Start on… lists the machines a project allows, starts on the one picked and says why it is not ready', async () => {
+  board.projects[0]!.machines = [{ key: '', label: 'machine-a', online: true }, { key: 'b', label: 'machine-b', online: true, unready: 'gh login: not logged in' }, { key: 'c', label: 'machine-c', online: false }]
+  board.cards[0] = cardOf(task('VIB-1', initialState(), { type: 'simple', state: 'todo' }), planSteps(vibe, { type: 'simple' }), [])
+  refuse = 'machine-b is not ready for this project: gh login: not logged in'
+  const w = await mount()
+  await card(w, 'VIB-1').element.parentElement!.querySelector<HTMLElement>('[data-testid="card-menu"]')!.click()
+  ;(menuState.items.find(i => i.label === 'Start on…')!).run!()
+  expect(menuState.items.map(i => [i.label, i.desc, !!i.disabled])).toEqual([
+    ['machine-a', 'The project\'s own machine', false], ['machine-b', 'Not ready: gh login: not logged in', false], ['machine-c', 'Offline', true]])
+  menuState.items[1]!.run!()
+  await vi.waitFor(() => expect(w.find('.error').text()).toBe(refuse))
+  expect(posts).toEqual([{ url: '/api/pm/task-start', body: { id: 'VIB-1', machine: 'b' } }])
+})

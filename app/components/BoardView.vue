@@ -2,7 +2,7 @@
 // The board: Your turn first, then the columns of the project's template
 // (To do / Working / Done for all projects, with the step on the card). A
 // card's indicator is the live state of the agent holding its step.
-import { boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, waitsFor, type Board, type Card } from '#shared/pm/board'
+import { boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, waitsFor, type Board, type BoardMachine, type Card } from '#shared/pm/board'
 import type { Task } from '#shared/pm/run'
 import { RESUMES } from '#shared/pm/stop'
 import { cardTime } from '#shared/pm/times'
@@ -58,7 +58,7 @@ const live = (c: Card) => {
   return p ? { key: statusKey(p), label: `${t(c.holder === 'reviewer' ? 'Reviewer' : 'Worker')}: ${statusLabel(p)}` } : { key: 'inactive', label: tl('No agent running', 'Aucun agent lancé') }
 }
 // The card's menu: Start for a task to do (not one waiting for others: its
-// card says which), Stop (confirmed in the task's sheet), how a stopped task
+// card says which), Start on… another machine the project allows, Stop (confirmed in the task's sheet), how a stopped task
 // goes on, or Delete for a task never started (confirmed). It opens on right
 // click and long press of the card; its ••• button shows only when the menu
 // has more than Open (a tap already opens the task).
@@ -70,10 +70,17 @@ const act = (fn: () => Promise<unknown>) => fn().then(load, (e: Error) => { erro
 const menuOf = (c: Card): MenuItem[] => [
   { label: tl('Open', 'Ouvrir'), icon: 'i-lucide-panel-right-open', run: () => show(c.id) },
   ...(canStart(c) && !waiting(c).length ? [{ label: tl('Start', 'Lancer'), icon: 'i-lucide-play', run: () => act(() => startTaskApi(c.id)) }] : []),
+  ...(canStart(c) && !waiting(c).length && machinesOf(c) ? [{ label: tl('Start on…'), icon: 'i-lucide-server', run: () => openMenu(startOn(c), tl('Start on')) }] : []),
   ...(canStop(c) ? [{ label: tl('Stop…', 'Arrêter…'), icon: 'i-lucide-square', danger: true, run: () => show(c.id, true) }] : []),
   ...(c.stopped ? RESUMES.map(how => ({ label: tl(...RESUME_LABEL[how]), danger: how === 'archive', run: () => act(() => resumeTaskApi(c.id, how)) })) : []),
   ...(c.removable ? [{ label: tl('Delete…', 'Supprimer…'), icon: 'i-lucide-trash-2', danger: true, run: () => act(() => removeTaskApi(c.id)) }] : []),
 ]
+// A project that allows other machines: Start on one of them (Start alone: its own).
+const machinesOf = (c: Card) => data.value?.projects.find(p => p.key === c.project)?.machines
+const machineNote = (m: BoardMachine, home: boolean) => (!m.online ? tl('Offline') : home ? tl('The project\'s own machine') : m.unready ? `${tl('Not ready')}: ${m.unready}` : m.unready === '' ? tl('Ready') : tl('Checked when the task starts'))
+const startOn = (c: Card): MenuItem[] => (machinesOf(c) ?? []).map((m, i) => ({
+  label: m.label, desc: machineNote(m, i === 0), disabled: !m.online, run: () => act(() => startTaskApi(c.id, m.key)),
+}))
 const waiting = (c: Card) => (c.phase === 'todo' ? waitsFor(c, data.value?.cards ?? []) : [])
 
 // Add a task: the board's project preselected; the board is read again at
