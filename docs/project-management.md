@@ -91,8 +91,10 @@ Neither *Save* nor *Start over* changes the project's [guards](#guards).
 When the project's coordinator proposes a change to the workflow (only after
 your request), a square marks the project's row (*1 to review*) and the
 **Workflow** tab, whose first row, *Change proposed by the coordinator*, opens
-the review: your sentence it followed, the change, *Refuse* or *Accept*. The
-review opens on *Readable*: per task type, its steps with the ones added,
+the review: the change in one line, who proposed it (the project's coordinator,
+with the project's colored key, or Alfred), your request that led to it, in
+full (*Show all* unfolds a long one) with its time, then the change, *Refuse*
+or *Accept*. The review opens on *Readable*: per task type, its steps with the ones added,
 removed or changed marked, and each changed field before → after (holder, ends,
 action, merge rule, guards; instructions as a text diff). *JSON* shows the raw
 diff. A proposal made before the workflow changed again is refused, and the
@@ -100,8 +102,9 @@ review says so: ask the coordinator to propose again. The coordinator's window
 and the *Decisions* view link to this review.
 
 In the coordinator's conversation, a card follows the message that made the
-proposal: what changes in a line or two, *Accept*, *Refuse* and *See all
-changes* (the review). Once answered, the card shows the outcome, by whom and
+proposal: what changes in one line, who proposed it, your request with its
+time and *Go to message* (back to it in the conversation), *Accept*, *Refuse*
+and *See all changes* (the review). Once answered, the card shows the outcome, by whom and
 when.
 
 ### Guards

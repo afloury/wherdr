@@ -179,7 +179,7 @@ describe('template edit', () => {
     expect(r).toMatchObject({ proposed: true, diff })
     expect(r.changes.length).toBeGreaterThan(0)
     expect((await store.workflow('CO'))!.version).toBe(1)
-    expect((await coordinatorsView(store)).find(c => c.project === 'CO')!.proposal).toMatchObject({ diff, said: 'Tell agents to never run the full suite' })
+    expect((await coordinatorsView(store)).find(c => c.project === 'CO')!.proposal).toMatchObject({ diff, by: 'CO', said: 'Tell agents to never run the full suite', saidAt: expect.any(Number) })
     expect(await cli(['template', 'show'])).toMatchObject({ diff })
     // No core: the role files are not rewritten, the template is saved all the same.
     await expect(answerProposal(deps(), 'CO', true)).resolves.toEqual({ accepted: true })

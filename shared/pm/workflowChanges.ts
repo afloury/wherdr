@@ -110,3 +110,10 @@ export function changeSummary(c: WorkflowChanges, max = 2): string[] {
   ]
   return lines.length > max ? [...lines.slice(0, max - 1), `and ${lines.length - max + 1} more changes`] : lines
 }
+
+// The whole change in one line, for the top of the card and the review:
+// its first change, then how many more.
+export function changeHeadline(c: WorkflowChanges): string {
+  const [first, ...rest] = changeSummary(c, Infinity)
+  return first ? (rest.length ? `${first} · and ${rest.length} more ${rest.length === 1 ? 'change' : 'changes'}` : first) : ''
+}
