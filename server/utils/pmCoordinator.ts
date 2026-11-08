@@ -316,7 +316,7 @@ function editRefusal(t: Template | null, next: Template, turn: Turn, key?: strin
 }
 
 // The user's answer to the coordinator's template change. Accepted: saved,
-// written to the template's log (by the coordinator, with the user's sentence),
+// written to the workflow's log (by the coordinator, with the user's sentence),
 // and the role files show the new plans at once.
 export async function answerProposal(deps: Deps, key: unknown, accept: unknown) {
   const { store } = deps

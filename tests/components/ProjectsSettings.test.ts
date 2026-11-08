@@ -58,6 +58,9 @@ it('switches project management on; Add project opens the New sheet on a new pro
   await vi.waitFor(() => expect(w.find('[data-testid="pm-empty"]').exists()).toBe(true))
   await w.find('[data-testid="pm-add"]').trigger('click')
   expect([newAgentOpen.value, newProjectOpen.value]).toEqual([true, true])
+  expect(w.get('[data-testid="pm-library"]').text()).toContain('1 saved · 4 examples')
+  await w.get('[data-testid="pm-library"]').trigger('click')
+  await vi.waitFor(() => expect(inSheet('library-saved')?.dataset.id).toBe('vibe'))
 })
 
 it('opens the project sheet on the URL\'s tab; Guards saves a branch added; General saves the name and base, and the visibility', async () => {
