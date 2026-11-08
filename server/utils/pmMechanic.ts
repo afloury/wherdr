@@ -19,7 +19,7 @@ import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { advanceTick } from './pmAdvance'
 import { forgetMemory, memoryHold } from './pmMemory'
 import { releaseIdle, reviveWorker } from './pmRelease'
-import { wasReleased } from '../../shared/pm/release'
+import { agentBack, handToAgent, wasReleased } from '../../shared/pm/release'
 import { noteBack, noteStall } from './pmStall'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
@@ -172,6 +172,10 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       const lines = r.out.split('\n')
       try { facts.pr = (JSON.parse(lines.at(-1) || '[]') as PrInfo[])[0] } catch { continue }
       facts.head = lines[0]?.trim()
+      // The worker pushed the work the engine handed it: the step's Your turn, if any, comes back.
+      const work = task.step?.agent
+      if (work && facts.pr && facts.pr.headRefOid !== work.head)
+        facts.task = task = await store.logTask({ ...task, step: agentBack(task.step!) }, 'engine', `${work.kind}: the worker pushed it`)
       // Kept for the board: a task is stalled only while its CI is still red (pm/blocked.ts).
       const ci = ciOf(facts.pr, facts.head)
       if (ci && (ci.head !== task.ci?.head || ci.red !== task.ci?.red)) facts.task = task = await store.saveTask({ ...task, ci })
@@ -207,6 +211,13 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
     : wasReleased(run)
       ? reviveWorker(deps, task.id, move.kind, text).then(t => (t ? (t.state === 'working' ? 'started the worker again with it' : 'could not start the worker again') : null))
       : Promise.resolve(null)
+  // Work handed to the worker: the task leaves Your turn, its agents stay, until a push or its report.
+  const hand = async (text: string) => {
+    const r = await tell(text)
+    const t = r && !r.startsWith('could not') ? await deps.store.task(task.id) : undefined
+    if (t?.step) await deps.store.saveTask({ ...t, step: handToAgent(t.step, move.kind, f.pr?.headRefOid ?? f.head!, Date.now()) })
+    return r
+  }
   switch (move.kind) {
     case 'restart':
       // The agent stopped on its login may still sit in its terminal: one agent per task.
@@ -224,13 +235,13 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
     }
     case 'catch-up': {
       const r = await sh(SCRIPT.catchUp, [run.worktree, move.base, run.branch])
-      if (r.code === CODE.SEND_BACK) return tell(`${lastLine(r.out)}. Merge origin/${move.base} into your branch, fix it, commit, then say you are done.`)
+      if (r.code === CODE.SEND_BACK) return hand(`${lastLine(r.out)}. Merge origin/${move.base} into your branch, fix it, commit, then say you are done.`)
       return r.code === 0 ? `caught up with ${move.base}` : lastLine(r.out)
     }
     case 'rerun-ci': {
       const r = await sh(SCRIPT.rerun, [run.worktree, f.head!])
       return r.code === 0 ? `ran ${move.checks.join(', ')} again` : lastLine(r.out)
     }
-    case 'ci-to-agent': return tell(redCiText(move.checks, f.head!))
+    case 'ci-to-agent': return hand(redCiText(move.checks, f.head!))
   }
 }
