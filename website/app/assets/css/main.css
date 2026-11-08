@@ -255,8 +255,7 @@ code, kbd, pre { font-family: var(--mono); }
 
 /* Agent list: title row, then the 2.0 compact list (the app's default,
    `.list-compact` in its main.css): counters and quotas on thin strips,
-   projects (coordinator row, summary bar, tasks), state groups, one line per
-   agent that opens on its question while it waits. */
+   state groups, one line per agent that opens on its question while it waits. */
 .app-ui .home-brand { display: flex; align-items: center; gap: calc(var(--u) * 8); }
 .app-ui .home-logo { width: calc(var(--u) * 32); height: auto; color: var(--text); flex: none; margin-right: calc(var(--u) * 2); }
 .app-ui .home-title-row { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 12); min-width: 0; }
@@ -298,7 +297,7 @@ code, kbd, pre { font-family: var(--mono); }
 .app-ui .group-title .count { color: var(--dim); }
 .app-ui .agent-group.blocked .group-title { color: var(--rose); }
 .app-ui .card-list { display: flex; flex-direction: column; border: 1px solid var(--line); }
-/* One line: logo, task key, title, progress, state square (38 pt on a phone, 30 px on a computer). */
+/* One line: logo, title, state square (38 pt on a phone, 30 px on a computer). */
 .app-ui .card { position: relative; display: flex; flex-wrap: nowrap; align-items: center; gap: calc(var(--u) * 8); min-height: calc(var(--u) * 38); padding: calc(var(--u) * 4) calc(var(--u) * 10) calc(var(--u) * 4) calc(var(--u) * 12); background: var(--bg-2); transition: background .2s ease; }
 .app-ui.desk .card { min-height: calc(var(--u) * 30); }
 .app-ui .card + .card { border-top: 1px solid var(--line-soft); }
@@ -311,8 +310,6 @@ code, kbd, pre { font-family: var(--mono); }
 .app-ui .card-title { flex: 1; min-width: 0; font: 500 calc(var(--u) * 13.5) / 1.25 var(--sans); letter-spacing: -.01em; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .app-ui .card.done .card-title { font-weight: 700; }
 .app-ui .card.blocked .card-title { color: var(--rose); }
-.app-ui .card-tag { flex: none; padding: calc(var(--u) * 1) calc(var(--u) * 4); border: 1px solid var(--line-soft); font: 500 calc(var(--u) * 8.5) / 1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
-.app-ui .home-task-stats { flex: none; font: 500 calc(var(--u) * 10.5) / 1 var(--mono); letter-spacing: .04em; color: var(--dim); white-space: nowrap; }
 .app-ui .card-state { flex: none; display: grid; place-items: center; width: calc(var(--u) * 10); height: calc(var(--u) * 10); color: var(--muted); }
 .app-ui .card-state i { width: calc(var(--u) * 7); height: calc(var(--u) * 7); background: currentColor; }
 .app-ui .card-state.working { color: var(--working); }
@@ -334,26 +331,6 @@ code, kbd, pre { font-family: var(--mono); }
 .app-ui.desk .card.sel { background: var(--surface-2); }
 .app-ui.desk .card.sel::before { background: var(--mauve); }
 .app-ui.desk .card.sel.blocked::before { background: var(--rose); }
-/* A project: its coordinator's row, the summary bar, its tasks on a rule. */
-.app-ui .card.home-lead { min-height: calc(var(--u) * 44); padding: calc(var(--u) * 5) calc(var(--u) * 10); }
-.app-ui.desk .card.home-lead { min-height: calc(var(--u) * 40); }
-.app-ui .lead-mark { display: grid; place-items: center; color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
-.app-ui .lead-mark .px-mark { width: calc(var(--u) * 14); height: auto; }
-.app-ui .card-title.lead-name { font: 750 calc(var(--u) * 14) / 1.2 var(--display); letter-spacing: -.02em; }
-.app-ui .card-tag.lead-coord-tag { padding: calc(var(--u) * 2) calc(var(--u) * 4); font-size: calc(var(--u) * 8); letter-spacing: .06em; color: var(--muted); border-color: var(--line); }
-.app-ui .home-lead .card-state { width: calc(var(--u) * 12); height: calc(var(--u) * 12); }
-.app-ui .home-lead .card-state i { width: calc(var(--u) * 9); height: calc(var(--u) * 9); }
-.app-ui .project-bar { display: flex; align-items: center; gap: calc(var(--u) * 6); min-height: calc(var(--u) * 34); padding-left: calc(var(--u) * 5); }
-.app-ui .project-head { flex: 1; min-width: 0; display: flex; align-items: center; gap: calc(var(--u) * 8); color: var(--muted); }
-.app-ui .project-chev { width: calc(var(--u) * 14); height: calc(var(--u) * 14); flex: none; color: var(--dim); }
-.app-ui .project-sum { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 calc(var(--u) * 10) / 1.2 var(--mono); letter-spacing: .02em; text-transform: uppercase; color: var(--muted); }
-.app-ui .project-sum-sep { margin: 0 .3em; color: var(--dim); }
-.app-ui .project-sum-blocked { color: var(--blocked); }
-.app-ui .project-sum-working { color: var(--working); }
-.app-ui .project-branch { flex: none; display: inline-flex; align-items: center; gap: calc(var(--u) * 4); font: 400 calc(var(--u) * 11) / 1.2 var(--mono); color: var(--dim); white-space: nowrap; }
-.app-ui .project-branch .iconify { width: calc(var(--u) * 11); height: calc(var(--u) * 11); }
-.app-ui .project-tree { position: relative; margin-left: calc(var(--u) * 24); }
-.app-ui .project-tree::before { content: ''; position: absolute; top: calc(var(--u) * -4); bottom: 0; left: calc(var(--u) * -12); width: 1px; background: var(--line); }
 
 /* Agent header: back, name, state line, actions; Conversation / Terminal tabs. */
 .app-ui .agent-top { flex: none; display: flex; align-items: center; gap: calc(var(--u) * 4); padding: calc(var(--u) * 6) calc(var(--u) * 8); border-bottom: 1px solid var(--line-soft); background: color-mix(in srgb, var(--bg) 94%, transparent); }

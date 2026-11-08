@@ -9,9 +9,8 @@
 // same dialog without its frame, reconstructed from a user report.
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { inputVisible, keysFor, parseOmpPrompt, promptIdentity, screenChoices } from '../server/utils/choices'
+import { keysFor, parseOmpPrompt, promptIdentity, screenChoices } from '../server/utils/choices'
 import { pendingOmpTool } from '../server/utils/promptDetail'
-import { shouldHold } from '../server/utils/queued'
 import { viaPrompt } from '../shared/sendRoute'
 import type { Choices } from '../shared/types'
 
@@ -121,12 +120,9 @@ describe('omp 18.14 approval prompt (in the composer\'s place)', () => {
     expect(keysFor(moved, 0)).toEqual(['up', 'enter'])
     const unicode = text.replace('↵ select · ^↵/^Q approve · ⌫ deny · ^O', '⏎ select · Ctrl+⏎/Ctrl+Q approve · ⎋ deny · Ctrl+O')
     expect(parseOmpPrompt(unicode)!.question).toBe('Allow tool: eval')
-    expect(inputVisible(text)).toBe(false)
   })
-  it('gone once omp moves on, and the composer is seen again', () => {
+  it('gone once omp moves on', () => {
     expect(parseOmpPrompt(fx('omp-approve-1814-answered.txt'))).toBeNull()
-    expect(inputVisible(fx('omp-approve-1814-answered.txt'))).toBe(true)
-    for (const f of ['eval', 'bash', 'draft', 'write-grants', 'narrow']) expect(inputVisible(fx(`omp-approve-1814-${f}.txt`))).toBe(false)
   })
   it('never reads the dialog from transcript text', () => {
     const idle = fx('omp-approve-1814-answered.txt').split('\n')
@@ -153,18 +149,6 @@ describe('omp 18.14 approval prompt (in the composer\'s place)', () => {
   })
 })
 
-describe('omp input field', () => {
-  it('is seen when idle (both status line layouts), even with a draft', () => {
-    expect(inputVisible(fx('omp-idle-powerline.txt'))).toBe(true)
-    expect(inputVisible(fx('omp-idle-powerline.txt').replace(/╰─$/, '╰─ draft text'))).toBe(true)
-    expect(inputVisible(fx('omp-idle-footer.txt'))).toBe(true)
-  })
-  it('is hidden by the approval dialog', () => {
-    expect(inputVisible(fx('omp-approve-bash.txt'))).toBe(false)
-    expect(inputVisible(fx('omp-approve-long.txt'))).toBe(false)
-  })
-})
-
 describe('messages sent to omp during the dialog', () => {
   const approval = parseOmpPrompt(fx('omp-approve-bash.txt'))!
   it('go through the held prompt route, never typed + Enter into the dialog', () => {
@@ -179,11 +163,6 @@ describe('messages sent to omp during the dialog', () => {
     expect(viaPrompt({ agent: 'claude', status: 'blocked', prompt: approval })).toBe(false)
     expect(viaPrompt({ agent: 'codex', status: 'blocked', prompt: null })).toBe(true)
     expect(viaPrompt({ agent: 'omp', status: 'idle', prompt: null })).toBe(true)
-  })
-  it('are held by the server while the input field is hidden', () => {
-    expect(shouldHold('omp', 'idle', false, false)).toBe(true)
-    expect(shouldHold('omp', 'idle', true, false)).toBe(false)
-    expect(shouldHold('omp', 'blocked', true, true)).toBe(true)
   })
 })
 

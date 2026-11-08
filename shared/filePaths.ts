@@ -1,7 +1,7 @@
 // File and folder paths written by agents in their replies, as inline code
 // (`~/project/src/app.ts`, `/Users/me/notes.md`, `src/app.ts:42`): detected on
 // the client (clickable path, utils/markdown.ts) and resolved on the server
-// before "Reveal in Finder" / "Open" (server/utils/reveal.ts).
+// before it is opened (server/utils/files.ts).
 
 // path.posix.resolve without node:path (this file also runs in the browser).
 export function posixResolve(base: string, p: string): string {
@@ -77,8 +77,3 @@ export function resolveAgentPath(written: string, cwd: string | null | undefined
   const r = posixResolve(base, p.replace(/^~(?=$|\/)/, root))
   return inside(r) ? r : null
 }
-
-// What "Open" refuses to launch: it would run code (application, script,
-// installer) instead of showing a document.
-const RUNNABLE = /\.(app|command|tool|terminal|pkg|mpkg|workflow|action|scpt|scptd|applescript|jar|sh|bash|zsh|csh|fish|py|rb|pl|webloc|inetloc|fileloc|prefpane|qlgenerator|saver|kext|osax|dmg)\/?$/i
-export const runnablePath = (p: string) => RUNNABLE.test(p)
