@@ -28,12 +28,18 @@ const props = defineProps<{ pane: Pane, row?: Row | null, machineBadge?: string 
 const space = computed(() => (props.row && props.row.kind === 'space' ? props.row : null))
 // Pane whose state the card shows.
 const statePane = computed(() => props.pane)
-const cardStatus = computed(() => statusKey(statePane.value))
+// A task's agent takes its task's state (Blocked, Your turn), unless it asks
+// something itself: its own question stays first.
+const taskMark = computed(() => (statusKey(statePane.value) === 'blocked' ? undefined : paneTaskMark(statePane.value)))
+const cardStatus = computed(() => (taskMark.value ? (taskMark.value.kind === 'blocked' ? 'stuck' : 'blocked') : statusKey(statePane.value)))
+const stateLabel = computed(() => (taskMark.value
+  ? `${taskMark.value.kind === 'blocked' ? tl('Blocked', 'Bloqué') : t('Your turn')}: ${taskMark.value.reason}`
+  : statusLabel(statePane.value)))
 // Compact list: one line (avatar, title, tab dots or pane count, state dot);
 // while the agent waits for an answer, its question and one-tap answers open below.
 const compact = computed(() => compactMeta({ tabs: space.value?.tabs.length, panes: space.value?.panes.length }))
 const compactDots = computed(() => (compact.value.dots && space.value ? tabStates(space.value) : []))
-const stateTitle = computed(() => [statusLabel(statePane.value), counts.value].filter(Boolean).join(' · '))
+const stateTitle = computed(() => [stateLabel.value, counts.value].filter(Boolean).join(' · '))
 const busy = ref(false)
 const card = ref<HTMLElement | null>(null)
 let pointerType = ''
@@ -201,7 +207,7 @@ onUnmounted(list.unmount)
       <span v-if="statePane.usageLimit" class="card-tag quota-limit" :title="stateTitle">{{ tl('Quota', 'Quota') }}</span>
       <span v-if="compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
       <span v-else-if="compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>
-      <span class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
+      <span class="card-state" :class="cardStatus" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
       <span v-if="activityLine" class="home-task-line" :title="activityLine">{{ activityLine }}</span>
       <OmpContext v-if="statePane.agent === 'omp'" :pane="statePane" variant="bar" />
       <Transition name="card-more" :appear="appear">

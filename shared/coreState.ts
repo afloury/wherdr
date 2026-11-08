@@ -1,4 +1,4 @@
-import { rowGroup, type Row } from './spaces'
+import { rowGroup, type Row, type RowGroup } from './spaces'
 import type { CoreTerminal } from './coreInventory'
 import { type CoreDocs, SPACE_LABEL, TAB_LABEL, rootTerminals, SEEN_LABEL } from './coreLayout'
 import { addressOnly, coreActivity, coreTitle, coreUnread, ownTitle } from './coreInventory'
@@ -70,9 +70,9 @@ export function coreState(terminals: CoreTerminal[], machines: CoreMachine[], do
 }
 
 // Core counters count the same workspace (or individual) rows as the headings.
-export function coreRowCounts(rows: Row[], keep: (row: Row) => boolean = () => true) {
-  const counts = { blocked: 0, working: 0, ready: 0 }
+export function coreRowCounts(rows: Row[], keep: (row: Row) => boolean = () => true, group: (row: Row) => RowGroup = rowGroup) {
+  const counts = { blocked: 0, stuck: 0, working: 0, ready: 0 }
   // Rows without a status (plain shells) count as Ready, as in v2.5.
-  for (const row of rows) if (keep(row)) { const g = rowGroup(row); counts[g === 'unknown' ? 'ready' : g]++ }
+  for (const row of rows) if (keep(row)) { const g = group(row); counts[g === 'unknown' ? 'ready' : g]++ }
   return counts
 }

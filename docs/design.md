@@ -36,6 +36,7 @@ Keep the label alongside the indicator so color is not the only signal.
 | Ready (`idle` in CSS) | `--idle` (green by default) | Hollow square, inset outline | `.card-state.idle i`, `.pill.idle i` |
 | Working | `--working` (purple by default) | Filled square, 1.3 s pulse | `.card-state.working i`, `.pill.working i` |
 | Blocked | `--blocked` (orange by default) | Filled square, 0.9 s pulse | `.card-state.blocked i`, `.pill.blocked i` |
+| Task blocked (`stuck` in CSS: holds a slot without progress) | `--blocked` | Filled square, still | `.card-state.stuck i`, `.board-badge.stuck` |
 | Done | `--done` (green by default) | Filled square | `.card-state.done`, `.pill.done` |
 | Inactive | `--muted` | Hollow square | `.pill.inactive i` |
 | Unknown / shell (card dot only: on the home, no status counts as Ready) | `--dim` | Filled square | `.card-state.unknown`, `.card-state.shell`, `.pill.unknown`, `.pill.shell` |

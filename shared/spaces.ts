@@ -84,7 +84,8 @@ export function createRowReuse() {
 // Group in the list: that of its representative pane. A shell space
 // (no agent) is sorted as an idle space, in Ready, as in Herdr's
 // first list.
-export type RowGroup = 'blocked' | 'working' | 'ready' | 'unknown'
+// 'blocked' is Your turn; 'stuck' a task's agent whose task is blocked (pm/blocked.ts).
+export type RowGroup = 'blocked' | 'stuck' | 'working' | 'ready' | 'unknown'
 export function paneGroup(p: Pick<Pane, 'agent' | 'status' | 'coreAddress'>): RowGroup {
   if (p.coreAddress && (!p.status || p.status === 'unknown')) return 'unknown'
   if ((p.coreAddress || p.agent) && p.status === 'blocked') return 'blocked'
@@ -92,6 +93,9 @@ export function paneGroup(p: Pick<Pane, 'agent' | 'status' | 'coreAddress'>): Ro
   return 'ready'
 }
 export const rowGroup = (r: Row): RowGroup => paneGroup(r.lead)
+// A task's agent row takes its task's state; the agent's own question stays Your turn.
+export const taskGroup = (g: RowGroup, mark?: { kind: 'blocked' | 'your-turn' }): RowGroup =>
+  g === 'blocked' || !mark ? g : mark.kind === 'blocked' ? 'stuck' : 'blocked'
 
 // The Ready group can be split into independent repository lists. Herdr's
 // order is kept in each list; a space is unread if a pane has finished.

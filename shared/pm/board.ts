@@ -6,6 +6,7 @@ import type { Holder } from './workflow'
 import type { PlannedStep, StepState } from './steps'
 import type { Run, Task } from './run'
 import { notStarted, type Stopped } from './stop'
+import { awaitsHolder, blockedOf } from './blocked'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -21,6 +22,9 @@ export interface Card {
   holder: Holder
   terminal?: string // herdr-core address of the holder's agent, if it runs
   yourTurn?: string // the badge
+  blocked?: string // why it holds a slot without progress (blocked.ts)
+  awaits?: true // its step waits for the holder's report: idle, that agent blocks it
+  terminals?: string[] // every running agent of the task (worker, reviewer)
   userLabel?: string // the button of a step that waits for the user
   tags: string[]
   links: { label: string, url: string }[]
@@ -51,7 +55,7 @@ export function boardColumns(plans: PlannedStep[][]): string[] {
   return out
 }
 
-export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
+export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.now()): Card {
   const s = task.step
   const started = !!s?.started && !!plan.length
   // Working with no step recorded (started before the engine kept it): its worker's step.
@@ -62,6 +66,8 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
   const run = holder === 'worker' || holder === 'reviewer'
     ? runs.filter(r => r.task === task.id && r.role === holder && r.state !== 'ended').sort((a, b) => b.startedAt - a.startedAt)[0]
     : undefined
+  const terminals = runs.filter(r => r.task === task.id && r.state !== 'ended' && r.terminal).map(r => r.terminal!)
+  const blocked = blockedOf(task, plan, now)
   const yourTurn = s?.yourTurn?.badge || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
   return {
     id: task.id, project: task.project, title: task.title, description: task.description,
@@ -71,6 +77,9 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
     holder,
     ...(run?.terminal ? { terminal: run.terminal } : {}),
     ...(yourTurn ? { yourTurn } : {}),
+    ...(blocked ? { blocked } : {}),
+    ...(awaitsHolder(task, plan) ? { awaits: true as const } : {}),
+    ...(terminals.length ? { terminals } : {}),
     ...(step?.ends === 'user' && started && !s?.done ? { userLabel: step.userLabel || 'Done' } : {}),
     tags: task.tags ?? [],
     // Then the links steps gave as their proof (the PR), labelled by step; each address once.

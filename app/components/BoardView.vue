@@ -4,6 +4,7 @@
 // card's indicator is the live state of the agent holding its step.
 import { boardLanes, boardTags, canStop, mainLink, type Board, type Card } from '#shared/pm/board'
 import { RESUMES } from '#shared/pm/stop'
+import { taskMark } from '#shared/pm/blocked'
 import type { Pane } from '#shared/types'
 
 const data = ref<Board | null>(null)
@@ -44,6 +45,9 @@ const showStep = (c: Card, lane: string) => c.step && (!columns.value || lane ==
 // The holder's pane, by its herdr-core address; none for holder: none.
 const hasAgent = (c: Card) => c.holder !== 'none' && !c.state?.done
 const paneOf = (c: Card): Pane | undefined => (c.terminal ? herdrState.value?.panes.find(p => p.coreAddress === c.terminal) : undefined)
+// Blocked (no progress): its badge replaces the Your turn one, same words as the sidebar.
+// The agent's own question comes first, as in the sidebar.
+const blockedOf = (c: Card) => { const m = !waitsForYou(c) && taskMark(c, paneOf(c)?.status); return m && m.kind === 'blocked' ? m.reason : '' }
 const live = (c: Card) => {
   const p = paneOf(c)
   return p ? { key: statusKey(p), label: `${t(c.holder === 'reviewer' ? 'Reviewer' : 'Worker')}: ${statusLabel(p)}` } : { key: 'inactive', label: tl('No agent running', 'Aucun agent lancé') }
@@ -94,7 +98,8 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
             <b>{{ c.title }}</b>
           </span>
           <small class="mono-label">{{ c.id }}<template v-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
-          <span v-if="c.yourTurn" class="board-badge" data-testid="board-badge">{{ c.yourTurn }}</span>
+          <span v-if="blockedOf(c)" class="board-badge stuck" data-testid="board-blocked">{{ tl('Blocked', 'Bloqué') }}: {{ blockedOf(c) }}</span>
+          <span v-else-if="c.yourTurn" class="board-badge" data-testid="board-badge">{{ c.yourTurn }}</span>
           <span v-if="c.tags.length || c.links.length" class="board-tags">
             <span v-for="tag in c.tags.slice(0, 2)" :key="tag" class="board-chip">{{ tag }}</span>
             <span v-if="c.tags.length > 2" class="board-chip">+{{ c.tags.length - 2 }}</span>
