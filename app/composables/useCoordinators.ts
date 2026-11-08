@@ -38,6 +38,14 @@ export const alfredPane = computed(() => (alfred.value?.terminal ? herdrState.va
 
 // The coordinator a pane is, by its herdr-core address.
 export const coordinatorOf = (p?: Pane | null) => (p?.coreAddress ? coordinators.value.find(c => c.terminal === p.coreAddress) : undefined)
+// A coordinator's name, as the sidebar shows it: Alfred's current name for the main one.
+export const coordinatorName = (c: CoordinatorView) => (c.main ? alfred.value?.name || 'Alfred' : tl(`${c.project} coordinator`, `Coordinateur ${c.project}`))
+// A coordinator's pane (Alfred's included, projects on or off) is titled by its name; '' for any other pane.
+export function paneCoordinatorName(p?: Pane | null) {
+  if (p?.coreAddress && p.coreAddress === alfred.value?.terminal) return alfred.value.name || 'Alfred'
+  const c = coordinatorOf(p)
+  return c ? coordinatorName(c) : ''
+}
 // The pane of a coordinator's kept conversation, while it runs.
 export const coordinatorPane = (c: CoordinatorView) => (c.terminal ? herdrState.value?.panes.find(p => p.coreAddress === c.terminal) : undefined)
 
