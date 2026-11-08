@@ -1,29 +1,32 @@
 <script setup lang="ts">
-// Settings › Projects › Templates: open a saved template or copy an example,
-// change its steps in a form or its JSON, preview the plan of a task type,
-// save it, and read its change log. The text is the one source: the form
-// writes into it, and it is checked as it changes, each problem with its line.
+// The project sheet's Workflow tab: the project's own workflow (its steps per
+// task type) in a form, the plan of a task type, and Save. The ⋯ menu
+// (menu(), shown by the sheet) holds Edit as JSON, Change log, Save as
+// template and Start over from a template. The text is the one source: the
+// form writes into it, and it is checked as it changes, each problem with its line.
 import { EXAMPLES } from '#shared/pm/examples'
 import { planSteps } from '#shared/pm/steps'
+import { templateDiff } from '#shared/pm/coordinator'
 import { parseTemplateText, type LogEntry } from '#shared/pm/templateText'
 import { actionField, actionLabel, describeStep, endHint, holderHint } from '#shared/pm/describe'
-import { ACTIONS, ENDS, HOLDERS, MERGE_METHODS, SHOT_MODES, type ActionKind, type ShotMode, type Step, type StepAction, type Template } from '#shared/pm/workflow'
-import type { TemplateInfo } from '#shared/pm/project'
+import { ACTIONS, ENDS, HOLDERS, MERGE_METHODS, SHOT_MODES, startOverFrom, type ActionKind, type ShotMode, type Step, type StepAction, type Template } from '#shared/pm/workflow'
+import type { Project, TemplateInfo } from '#shared/pm/project'
 
-const props = defineProps<{ templates: TemplateInfo[] }>()
-const emit = defineEmits<{ saved: [] }>()
+const props = defineProps<{ project: Project, workflow: Template | null, log: LogEntry[], templates: TemplateInfo[] }>()
+// changed: the workflow was saved or replaced; templates: only the library changed.
+const emit = defineEmits<{ changed: [], templates: [] }>()
 
 const text = ref('')
-const mode = ref<'steps' | 'json'>('steps')
 const type = ref('')
-const log = ref<LogEntry[]>([])
-// The saved template open here: only it may be replaced by a save.
-const opened = ref('')
-const busy = ref(false)
+const busy = ref('')
 const error = ref('')
+// The window open over the sheet, from the ⋯ menu.
+const dialog = ref<'' | 'json' | 'log' | 'save-as' | 'start'>('')
+const dialogOpen = (d: typeof dialog.value) => computed({ get: () => dialog.value === d, set: (o: boolean) => { if (!o && dialog.value === d) dialog.value = '' } })
+const jsonOpen = dialogOpen('json'), logOpen = dialogOpen('log'), saveAsOpen = dialogOpen('save-as'), startOpen = dialogOpen('start')
 
 const parsed = computed(() => (text.value ? parseTemplateText(text.value) : null))
-// What the form shows, even while the template has problems.
+// What the form shows, even while the workflow has problems.
 const shape = computed(() => {
   const v = parsed.value?.value as Template | undefined
   return v && typeof v === 'object' && v.taskTypes && typeof v.taskTypes === 'object' ? v : null
@@ -36,31 +39,11 @@ const steps = computed(() => {
 })
 const plan = computed(() => (parsed.value?.template && type.value ? planSteps(parsed.value.template, { type: type.value }) : []))
 
-const show = (t: unknown) => { text.value = JSON.stringify(t, null, 2) + '\n' }
-async function load(id: string) {
-  const r = await api<{ template: Template, log: LogEntry[] }>(`/api/pm/template?id=${encodeURIComponent(id)}`)
-  show(r.template)
-  log.value = r.log
-  opened.value = id
-}
-// A copy takes a free id, so it never replaces a saved template.
-const freeId = (id: string) => {
-  const taken = new Set(props.templates.map(t => t.id))
-  let out = id
-  for (let n = 1; taken.has(out); n++) out = n === 1 ? `${id}-copy` : `${id}-copy-${n}`
-  return out
-}
-async function pick(value: string) {
-  if (!value) return
-  error.value = ''
-  log.value = []
-  opened.value = ''
-  const [from, id] = [value.slice(0, value.indexOf(':')), value.slice(value.indexOf(':') + 1)]
-  const example = EXAMPLES.find(e => e.id === id)
-  if (from === 'example' && example) return show({ ...example, id: freeId(id) })
-  try { await load(id) }
-  catch (e) { error.value = (e as Error).message }
-}
+const asText = (t: unknown) => (t ? JSON.stringify(t, null, 2) + '\n' : '')
+const show = (t: unknown) => { text.value = asText(t) }
+// Edits not saved yet: Save as template copies the stored workflow, so it waits for a save.
+const dirty = computed(() => text.value !== asText(props.workflow))
+watch(() => props.workflow, show, { immediate: true })
 
 // A form change: edit a copy of the steps and write it back as text.
 function edit(fn: (list: (Step | string)[]) => void) {
@@ -92,7 +75,7 @@ const setActionField = (i: number, key: 'target' | 'base' | 'method' | 'checks',
   if (value.length) a[key] = value
   else delete a[key]
 })
-// What happens at step i, in one sentence: the plan's step when the template
+// What happens at step i, in one sentence: the plan's step when the workflow
 // is valid (it knows the guards), else the step as written.
 const sayStep = (s: Step | string, i: number) => {
   const step = plan.value[i] ?? (typeof s === 'string' ? shape.value?.steps?.[s] : s)
@@ -114,12 +97,6 @@ const SHOT_LABEL: Record<ShotMode, string> = { 'after': 'Screenshots: after', 'b
 const move = (i: number, by: number) => edit(list => list.splice(i + by, 0, ...list.splice(i, 1)))
 const field = (e: Event) => (e.target as HTMLInputElement).value
 // The selects' choices ('' = none, see utils/selectNone.ts).
-const openPick = ref<string>()
-const openItems = computed(() => [
-  ...(props.templates.length ? [[{ type: 'label' as const, label: tl('Saved', 'Enregistrés') }, ...props.templates.map(tp => ({ label: tp.id, value: `saved:${tp.id}` }))]] : []),
-  [{ type: 'label' as const, label: tl('Examples to copy', 'Exemples à copier') }, ...EXAMPLES.map(ex => ({ label: ex.id, value: `example:${ex.id}` }))],
-])
-const openIt = (v: string) => { openPick.value = v; pick(v) }
 const typeItems = computed(() => types.value.map(n => ({ label: n, value: n })))
 const holderItems = computed(() => HOLDERS.map(h => ({ label: `${h} · ${holderHint(h, tl)}`, value: h })))
 const endItems = computed(() => [{ label: `${tl('no end', 'sans fin')} · ${endHint('', tl)}`, value: NONE }, ...ENDS.map(e => ({ label: `${e} · ${endHint(e, tl)}`, value: e }))])
@@ -131,38 +108,86 @@ const methodItems = computed(() => [{ label: tl('Method: the repo’s default', 
 const shotItems = computed(() => [{ label: tl('No screenshots', 'Sans captures'), value: NONE }, ...SHOT_MODES.map(m => ({ label: t(SHOT_LABEL[m]), value: m }))])
 const agent = (s: Step) => !!s.holder && s.holder !== 'none'
 
-async function save() {
-  if (!parsed.value?.template || busy.value) return
-  busy.value = true
+async function run(what: string, fn: () => Promise<unknown>, done: 'changed' | 'templates' = 'changed') {
+  if (busy.value) return false
+  busy.value = what
   error.value = ''
   try {
-    const t = parsed.value.template
-    const { template } = await api<{ template: TemplateInfo }>('/api/pm/template', { template: t, replace: t.id === opened.value })
-    await load(template.id)
-    toast(tl('Template saved', 'Modèle enregistré'))
-    emit('saved')
+    await fn()
+    if (done === 'changed') emit('changed')
+    else emit('templates')
+    return true
+  }
+  catch (e) { error.value = (e as Error).message; return false }
+  finally { busy.value = '' }
+}
+// Guards are refused here: they have their own tab.
+async function save() {
+  if (!parsed.value?.template) return
+  const workflow = parsed.value.template
+  if (await run('save', () => api('/api/pm/project-workflow', { key: props.project.key, workflow }))) {
+    toast(tl('Workflow saved'))
+    dialog.value = ''
+  }
+}
+
+// Save as template: a free id in the library, the project is untouched.
+const freeId = (id: string) => {
+  const taken = new Set(props.templates.map(tp => tp.id))
+  let out = id
+  for (let n = 1; taken.has(out); n++) out = n === 1 ? `${id}-copy` : `${id}-copy-${n}`
+  return out
+}
+const asId = ref('')
+async function saveAs() {
+  const id = asId.value.trim()
+  if (await run('save-as', () => api('/api/pm/template-from-project', { key: props.project.key, id }), 'templates')) {
+    toast(tl(`Saved as template ${id}`))
+    dialog.value = ''
+  }
+}
+
+// Start over: pick a library template or an example, read what changes, confirm.
+const startPick = ref('')
+const startNext = ref<Template | null>(null)
+const startItems = computed(() => [
+  ...props.templates.map(tp => ({ label: tp.id, value: tp.id })),
+  ...EXAMPLES.filter(e => !props.templates.some(tp => tp.id === e.id)).map(e => ({ label: tl(`${e.id} (example)`), value: `example:${e.id}` })),
+])
+async function pickStart(v: string) {
+  startPick.value = v
+  startNext.value = null
+  error.value = ''
+  try {
+    const ex = EXAMPLES.find(e => `example:${e.id}` === v)
+    const source = ex ? structuredClone(ex) as Template : (await api<{ template: Template }>(`/api/pm/template?id=${encodeURIComponent(v)}`)).template
+    startNext.value = { ...startOverFrom(source, props.workflow), id: props.project.key.toLowerCase() }
   }
   catch (e) { error.value = (e as Error).message }
-  finally { busy.value = false }
 }
+const startDiff = computed(() => (startNext.value ? templateDiff(props.workflow, startNext.value) : '').split('\n').filter(Boolean)
+  .map(l => ({ l, k: l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : '' })))
+async function startOver() {
+  const template = startPick.value
+  if (await run('start', () => api('/api/pm/project-apply', { key: props.project.key, template }))) dialog.value = ''
+}
+const openStart = () => { startPick.value = ''; startNext.value = null; dialog.value = 'start' }
+
+const menu = (): MenuItem[] => [
+  { label: tl('Edit as JSON'), icon: 'i-lucide-braces', disabled: !text.value, run: () => (dialog.value = 'json') },
+  { label: tl('Change log'), icon: 'i-lucide-history', disabled: !props.log.length, run: () => (dialog.value = 'log') },
+  { label: tl('Save as template…'), icon: 'i-lucide-copy-plus', disabled: !props.workflow || dirty.value, ...(dirty.value ? { desc: tl('Save your changes first') } : {}), run: () => { asId.value = freeId(props.project.key.toLowerCase()); dialog.value = 'save-as' } },
+  { label: tl('Start over from a template…'), icon: 'i-lucide-rotate-ccw', run: openStart },
+]
+defineExpose({ menu })
 </script>
 
 <template>
-  <div class="tpl-editor" data-testid="tpl-editor">
-    <USelect
-      :model-value="openPick" :items="openItems" size="lg" class="w-full" :placeholder="tl('Open a template or copy an example…', 'Ouvrir un modèle ou copier un exemple…')"
-      :aria-label="tl('Open a template', 'Ouvrir un modèle')" data-testid="tpl-open" @update:model-value="v => openIt(String(v))"
-    />
-
+  <div class="tpl-editor" data-testid="project-workflow">
     <template v-if="text">
-      <div class="tpl-bar">
-        <UButton v-for="m in (['steps', 'json'] as const)" :key="m" size="sm" color="neutral" :variant="mode === m ? 'solid' : 'outline'" :data-testid="`tpl-mode-${m}`" @click="mode = m">
-          {{ m === 'steps' ? tl('Steps', 'Étapes') : 'JSON' }}
-        </UButton>
-        <USelect v-if="types.length" v-model="type" :items="typeItems" size="lg" class="tpl-type" :aria-label="tl('Task type', 'Type de tâche')" data-testid="tpl-type" />
-      </div>
+      <USelect v-if="types.length" v-model="type" :items="typeItems" size="lg" class="tpl-type" :aria-label="tl('Task type', 'Type de tâche')" data-testid="tpl-type" />
 
-      <div v-if="mode === 'steps'" class="settings-card tpl-steps">
+      <div class="settings-card tpl-steps">
         <p v-if="!steps" class="muted settings-hint">{{ tl('Fix the JSON to edit the steps here.', 'Corrige le JSON pour modifier les étapes ici.') }}</p>
         <div v-for="(s, i) in steps || []" :key="i" class="tpl-step" data-testid="tpl-step">
           <span v-if="typeof s === 'string'" class="mono-label">{{ tl(`Shared step ${s}`, `Étape partagée ${s}`) }}</span>
@@ -192,9 +217,8 @@ async function save() {
         </div>
         <UButton v-if="steps" size="sm" color="neutral" variant="outline" icon="i-lucide-plus" class="tpl-add" data-testid="tpl-add" @click="edit(list => list.push({ id: `step-${list.length + 1}` }))">{{ tl('Add a step', 'Ajouter une étape') }}</UButton>
       </div>
-      <UTextarea size="xl" v-else v-model="text" :rows="16" :maxrows="30" autoresize class="w-full mono" :spellcheck="false" wrap="off" :aria-label="tl('Template JSON', 'JSON du modèle')" data-testid="tpl-json" />
 
-      <ul v-if="parsed?.errors.length" class="tpl-errors" role="alert" data-testid="tpl-errors">
+      <ul v-if="parsed?.errors.length && !jsonOpen" class="tpl-errors" role="alert" data-testid="tpl-errors">
         <li v-for="(e, n) in parsed.errors" :key="n" class="form-error"><b>{{ tl(`Line ${e.line}`, `Ligne ${e.line}`) }}</b> · {{ e.path ? `${e.path}: ` : '' }}{{ e.message }}</li>
       </ul>
 
@@ -209,28 +233,67 @@ async function save() {
         </ol>
       </template>
 
-      <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-save" :loading="busy" :disabled="!parsed?.template" data-testid="tpl-save" @click="save">{{ tl('Save the template', 'Enregistrer le modèle') }}</UButton>
-      <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
-
-      <template v-if="log.length">
-        <h4 class="mono-label">{{ tl('Change log', 'Journal des changements') }}</h4>
-        <ul class="tpl-log" data-testid="tpl-log">
-          <li v-for="e in [...log].reverse()" :key="e.version">
-            <b class="mono">v{{ e.version }}</b> <span class="muted">{{ new Date(e.at).toLocaleString() }}</span> {{ e.changes.join(', ') || tl('created', 'créé') }}
-          </li>
-        </ul>
-      </template>
+      <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-save" :loading="busy === 'save'" :disabled="!parsed?.template || busy !== ''" data-testid="tpl-save" @click="save">{{ tl('Save') }}</UButton>
     </template>
+    <template v-else>
+      <p class="muted settings-hint">{{ tl('No workflow yet: tasks cannot start until the project starts from a template.') }}</p>
+      <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-layout-template" data-testid="wf-start-open" @click="openStart">{{ tl('Start from a template') }}</UButton>
+    </template>
+    <p v-if="error && !dialog" class="form-error" role="alert">{{ t(error) }}</p>
+
+    <AppSheet v-model:open="jsonOpen" :title="tl('Workflow JSON')" tall wide top hide-close>
+      <div class="tpl-editor">
+        <UTextarea size="xl" v-model="text" :rows="16" :maxrows="30" autoresize class="w-full mono" :spellcheck="false" wrap="off" :aria-label="tl('Workflow JSON')" data-testid="tpl-json" />
+        <ul v-if="parsed?.errors.length" class="tpl-errors" role="alert" data-testid="tpl-json-errors">
+          <li v-for="(e, n) in parsed.errors" :key="n" class="form-error"><b>{{ tl(`Line ${e.line}`, `Ligne ${e.line}`) }}</b> · {{ e.path ? `${e.path}: ` : '' }}{{ e.message }}</li>
+        </ul>
+        <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-save" :loading="busy === 'save'" :disabled="!parsed?.template || busy !== ''" data-testid="tpl-json-save" @click="save">{{ tl('Save') }}</UButton>
+        <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
+      </div>
+    </AppSheet>
+
+    <AppSheet v-model:open="logOpen" :title="tl('Change log', 'Journal des changements')" tall top hide-close>
+      <ul class="tpl-log" data-testid="tpl-log">
+        <li v-for="e in [...log].reverse()" :key="e.version">
+          <b class="mono">v{{ e.version }}</b> <span class="muted">{{ new Date(e.at).toLocaleString() }} · {{ e.by }}</span> {{ e.changes.join(', ') || tl('created', 'créé') }}
+        </li>
+      </ul>
+    </AppSheet>
+
+    <AppSheet v-model:open="saveAsOpen" :title="tl('Save as template')" top hide-close>
+      <form class="sheet-form" @submit.prevent="saveAs">
+        <label class="field-label" for="wfAsId">{{ tl('Template id') }}</label>
+        <UInput id="wfAsId" v-model="asId" size="xl" class="w-full mono" maxlength="60" data-testid="wf-save-as-id" />
+        <small class="muted">{{ tl('A copy of this workflow joins the library. The project keeps its own workflow.') }}</small>
+        <UButton type="submit" size="xl" color="primary" class="hw-cta" :loading="busy === 'save-as'" :disabled="!asId.trim() || busy !== ''" data-testid="wf-save-as">{{ tl('Save as template') }}</UButton>
+        <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
+      </form>
+    </AppSheet>
+
+    <AppSheet v-model:open="startOpen" :title="tl('Start over from a template')" tall wide top hide-close>
+      <div class="tpl-editor">
+        <div class="tpl-picks" role="radiogroup" :aria-label="tl('Template')" data-testid="wf-start-pick">
+          <UButton v-for="it in startItems" :key="it.value" role="radio" :aria-checked="startPick === it.value" size="lg" color="neutral" :variant="startPick === it.value ? 'solid' : 'outline'" :data-pick="it.value" @click="pickStart(it.value)">{{ it.label }}</UButton>
+        </div>
+        <small class="muted">{{ workflow ? tl('A copy replaces the steps, instructions and agents. The guards stay.') : tl('A copy becomes the project\'s workflow.') }}</small>
+        <template v-if="startNext">
+          <pre v-if="startDiff.length" class="tpl-diff" data-testid="wf-start-diff"><span v-for="(d, i) in startDiff" :key="i" :class="d.k">{{ d.l }}
+</span></pre>
+          <p v-else class="muted settings-hint">{{ tl('Nothing changes.') }}</p>
+          <UButton size="xl" color="primary" class="hw-cta" :loading="busy === 'start'" :disabled="busy !== ''" data-testid="wf-start-apply" @click="startOver">{{ workflow ? tl('Replace the workflow') : tl('Start from it') }}</UButton>
+        </template>
+        <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
+      </div>
+    </AppSheet>
   </div>
 </template>
 
 <style scoped>
 .tpl-editor { display: grid; gap: 12px; }
-.tpl-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .tpl-steps { padding: 0; }
 .tpl-step { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .tpl-step > * { min-width: 0; }
-.tpl-bar :deep(.tpl-type) { min-width: 0; }
+.tpl-editor :deep(.tpl-type) { width: min(100%, 320px); }
 .tpl-wide { grid-column: 1 / -1; }
 /* Wide enough to read the option with its hint. */
 .tpl-step :deep(.tpl-pair) { grid-column: span 2; }
@@ -241,4 +304,8 @@ async function save() {
 .tpl-plan { list-style: decimal inside; }
 .tpl-say { margin: 0; font-size: 14px; }
 .tpl-log { font-size: 14px; }
+.tpl-picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.tpl-diff { margin: 0; max-height: 50vh; overflow: auto; padding: 8px; border: 1px solid var(--line); background: var(--bg); font: 12px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.tpl-diff .add { color: var(--green); }
+.tpl-diff .del { color: var(--rose); }
 </style>

@@ -6,8 +6,10 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { ALFRED_TOKEN_FILE, issueAlfredToken, issueToken } from '../server/utils/pmCoordinator'
-import { guardsAuthor, saveProjectGuards, saveProjectWorkflow, updateProject } from '../server/utils/pmProject'
-import { common, company } from '../shared/pm/examples'
+import { guardsAuthor, saveProjectGuards, saveProjectWorkflow, templateFromProject, updateProject } from '../server/utils/pmProject'
+import { common, company, vibe } from '../shared/pm/examples'
+import { templateDiff } from '../shared/pm/coordinator'
+import { startOverFrom } from '../shared/pm/workflow'
 
 let dir = '', store: ReturnType<typeof createPmStore>
 const guards = { protected: ['main', 'release'], merge: { protected: 'user' as const, others: 'user' as const } }
@@ -61,5 +63,24 @@ describe('project settings', () => {
     expect((await store.workflow('CO'))!.prefs).toEqual({ agent: 'codex' })
     expect((await updateProject(store, 'CO', { base: '' })).project).not.toHaveProperty('base')
     await expect(updateProject(store, 'CO', { base: 'a..b' })).rejects.toThrow('base: invalid branch name')
+  })
+
+  it('saves the workflow as a library template; the project is untouched, a taken id refused', async () => {
+    const before = (await store.workflow('CO'))!
+    expect(await templateFromProject(store, 'CO', 'co-flow')).toEqual({ template: { id: 'co-flow', version: 1 } })
+    expect(await store.template('co-flow')).toMatchObject({ id: 'co-flow', taskTypes: before.taskTypes, guards: before.guards })
+    expect(await store.workflow('CO')).toEqual(before)
+    await expect(templateFromProject(store, 'CO', 'common')).rejects.toThrow('A template already has this id')
+  })
+
+  it('previews a start over: the kept guards are not in the diff, only what changes', () => {
+    const own = { ...company, id: 'co', guards }
+    const next = { ...startOverFrom(vibe, own), id: 'co' }
+    expect(next.guards).toEqual(guards)
+    const diff = templateDiff(own, next).split('\n')
+    expect(diff.some(l => l.includes('"release"') || l.includes('"guards"'))).toBe(false)
+    expect(diff).toContain('-   "instructions": "Base branch is develop.",')
+    expect(diff.every(l => /^[-+] /.test(l))).toBe(true)
+    expect(diff.some(l => l.includes('"prefs"'))).toBe(false) // same prefs, another key order
   })
 })

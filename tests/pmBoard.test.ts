@@ -29,6 +29,7 @@ it('the Merged button runs the step\'s check, and a failed check stays in Your t
   expect(after.step?.acting).toBeUndefined()
   const { cards, projects } = await board(store)
   expect(projects[0]!.columns).toEqual(['To do', 'Working', 'Review', 'Deploy', 'Done'])
+  expect(projects[0]!.types.find(x => x.id === 'feature')?.plan).toMatch(/ → review → /)
   expect(cards[0]).toMatchObject({ column: 'Review', step: 'merge', holder: 'none', userLabel: 'Merged', yourTurn: 'Merge the PR: No worktree: the task never started' })
 })
 
