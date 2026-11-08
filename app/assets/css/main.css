@@ -3431,6 +3431,9 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
    The orange of Your turn, with a still square: nothing to answer, something to unblock. */
 .board-badge.stuck { background: color-mix(in srgb, var(--blocked) 12%, transparent); }
 .stat.stuck span i, .rail-stat.stuck i { background: var(--blocked); }
+/* Four counters: narrower cells, so the labels stay whole. */
+.stats:has(.stat.stuck) .stat { padding-inline: 6px; }
+.stats:has(.stat.stuck) .stat span { gap: 4px; letter-spacing: 0; }
 .stat.stuck:not(.zero) b, .rail-stat.stuck:not(.zero) b { color: var(--blocked); }
 .agent-group.stuck .group-title { color: var(--blocked); }
 .agent-group.stuck .group-title::before { background: var(--blocked); }
