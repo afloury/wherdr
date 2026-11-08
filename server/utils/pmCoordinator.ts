@@ -9,6 +9,7 @@ import { projectPlace } from '../../shared/pm/places'
 import { MAIN, canRunCoordinator, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
+import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
 import { validateTemplate } from '../../shared/pm/workflow'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, coordinatorStartRefusal, limitsLeft, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
@@ -319,10 +320,11 @@ export async function answerProposal(deps: Deps, key: unknown, accept: unknown) 
   const rec = typeof key === 'string' ? await store.coordinator(key) : null
   if (!rec?.proposal) throw new HerdrError('not_found', 'No template change waits for you')
   const { proposal, ...rest } = rec
-  const done = (outcome: ProposalOutcome) => store.saveCoordinator({ ...rest, answered: { outcome, at: Date.now() } })
-  if (accept !== true) { await done('refused'); return { accepted: false } }
   const p = (await store.projects()).find(x => x.key === rec.project)
   const t = p ? await store.workflow(p.key) : null
+  const summary = changeSummary(workflowChanges(t, proposal.template))
+  const done = (outcome: ProposalOutcome) => store.saveCoordinator({ ...rest, answered: { outcome, at: Date.now(), by: 'user', proposedAt: proposal.at, summary } })
+  if (accept !== true) { await done('refused'); return { accepted: false } }
   // Its diff was made against that version: saved over a newer one, it would
   // undo a change the user made since.
   if ((t?.version ?? 1) !== proposal.base) {
@@ -372,6 +374,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
   // The main coordinator first: every project's tasks are its own.
   return Promise.all([{ key: MAIN, name: await readAlfredName({}) }, ...await store.projects()].map(async (p) => {
     const c = await store.coordinator(p.key)
+    const changes = c?.proposal ? workflowChanges(await store.workflow(p.key), c.proposal.template) : undefined
     const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => p.key === MAIN || t.project === p.key)
     return {
       ...(p.key === MAIN ? { main: true } : {}),
@@ -381,7 +384,8 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
       wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
       project: p.key, name: p.name, ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...('from' in p && p.from ? { template: p.from.template } : {}),
       ...(c?.ran ? { ran: agentOf(c.ran) ?? FALLBACK } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
-      ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, ...(c.proposal.said ? { said: c.proposal.said } : {}) } } : {}),
+      ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, changes, ...(c.proposal.said ? { said: c.proposal.said } : {}) } } : {}),
+      ...(c?.answered ? { answered: c.answered } : {}),
     }
   }))
 }
