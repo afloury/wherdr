@@ -1,0 +1,11 @@
+❯ Continue the refactor
+  ⎿ You've hit your weekly limit · resets Nov 6, 9am (UTC)
+
+● Usage limit reached · continuing automatically at Nov 6, 9am · esc to cancel
+
+────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────
+  ⚠ Usage limit reached · limit resets Nov 6, 9am
+    Continuing automatically at Nov 6, 9am · esc to cancel · /usage-credits to continue now
+  ⏵⏵ accept edits on (shift+tab to cycle)

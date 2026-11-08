@@ -5,70 +5,67 @@
 // inside. A single machine: the previous list, without a header.
 // Quotas: those shared by all machines at the top; the Claude account specific
 // to a machine (different accounts) and its install banner under its header.
-// One row per Herdr space (shared/spaces.ts): a space with a single tab and
-// a single pane keeps its agent's card; otherwise a space card, sorted
-// by its most urgent pane.
-// Terminals: a shell space is a row like any other, sorted in
-// Ready ("Show terminals" setting).
-// herdr-projects (shared/boardLinks.ts): each machine's Coordinator and machine
-// coordinator at its top, then one group per repo as Herdr's sidebar draws it
-// (the repo's space, its project coordinator, its tasks' spaces), then the
-// state groups of everything else.
-import type { MachineInfo, NamedSession, Pane } from '#shared/types'
-import { type ReadySort, type Row, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
-import { spaceTitle } from '#shared/displayTitles'
-import { type BoardCard, type CoordinatorLevel, boardSections, countedPanes } from '#shared/boardLinks'
-import { homeCounts, withBoardGroups } from '#shared/homeCounts'
+// One row per agent terminal (individualAgentRows), as in v2.5; rows without
+// a status (plain shells) list as Ready.
+import type { MachineInfo, Pane } from '#shared/types'
+import { type ReadySort, type Row, createRowReuse, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
+import { coreRowCounts } from '#shared/coreState'
 import { claudeApiShown, claudeSuggestion, machineQuotaRows, quotaRows, tabQuotaRows } from '~/utils/quotas'
 import { longPress } from '~/utils/longPress'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
 import { headerFold } from '~/utils/headerFold'
 import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
+import { onceEvery } from '~/utils/onceEvery'
 import { listMode } from '~/utils/layoutMode'
-import pkg from '../../package.json'
-import { dropMachineKey, shiftMachineKey } from '#shared/machineOrder'
-import { stateEntries, stateMachines } from '~/utils/homeGrouping'
+import { stateMachines } from '~/utils/homeGrouping'
 import { BAR_ALL } from '~/utils/machineBar'
 import { individualAgentRows, individualAgentTitle, isIndividualAgentRow } from '~/utils/homeAgentRows'
-import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
+import { boardEntry } from '~/utils/boardEntry'
+import type { PmOverview } from '#shared/pm/project'
 const emit = defineEmits<{ search: [] }>()
-useQuotaLoader()
 onMounted(loadUpdate)
+const homeRoute = useRoute()
+// On the home page there is no agent to show: the list opens there.
+const atHome = () => homeRoute.path === '/' || homeRoute.path === ''
+// On the phone the list stays mounted (v-show in app.vue) under an agent's
+// page: its quota poller waits while it is hidden and reads once when it
+// shows again.
+const homeShown = computed(() => desk.value || atHome())
 
 const everOpen = ref(false)
 watch(eventsOpen, (v) => { if (v) everOpen.value = true })
 
-const st = herdrState
-const agents = computed(() => st.value.panes.filter(p => p.agent))
-const fileLinks = useBoardLinks()
-// The Board's own list (herdr-projects' CLI): where each task stands, for its
-// card and the counters, as the Board shows it (shared/homeCounts.ts).
-const { board: tasksBoard } = useTasksBoard()
-const boardLinks = computed(() => withBoardGroups(fileLinks.value, tasksBoard.value))
-// Old notification exceptions keyed by a coordinator's pane move to its identity.
+// Hidden under a conversation on the phone, the list keeps the state it last
+// showed instead of re-rendering on every push, and catches up when it shows.
+let shownState = herdrState.value
+const st = computed(() => (homeShown.value ? (shownState = herdrState.value) : shownState))
+const agents = computed(() => st.value.panes)
+// Mounted only while the list is shown: mounting again reads at once.
+const HomePollers = defineComponent({
+  name: 'HomePollers',
+  setup() {
+    useQuotaLoader()
+    return () => null
+  },
+})
+// Ended timed mutes are dropped from the notification exceptions.
 useNotificationRekey()
-// What the counters count: a board task's helpers (reviewer, planner,
-// attempts) count once, as its row on the list.
-const counted = computed(() => countedPanes(agents.value, boardLinks.value))
 // Counters follow the selected machine or group; unreachable machines stay out.
 const baseOfPane = (p: Pane) => { const m = machineInfo(p.machine); return m ? m.baseKey ?? m.key : p.machine || '' }
-// A board task counts by its state on the Board, once; other agents by their own.
 const counts = computed(() => {
   const sel = machineBarSelection.value
-  return homeCounts(agents.value, boardLinks.value, tasksBoard.value,
-    p => !paneStale(p) && (sel === null || sel.includes(baseOfPane(p))),
-    m => sel === null || sel.includes(m))
+  return coreRowCounts(standaloneRows(spaceRows(st.value)), r => !paneStale(r.lead) && (sel === null || sel.includes(baseOfPane(r.lead))))
 })
 
 const conn = computed(() => {
   if (offlineView.value) return { ok: false, text: t('offline'), idle: false }
   if (!eventsOpen.value) return { ok: false, text: everOpen.value ? t('offline — reconnecting…') : t('connecting…'), idle: !everOpen.value }
-  if (!st.value.ok) return { ok: false, text: t('Herdr unavailable'), idle: false }
-  // Server version (update check), the app's own until it answers.
-  return { ok: true, text: `wherdr ${updateInfo.value?.current || pkg.version} · herdr ${st.value.version || ''}`.trim(), idle: false }
+  if (!st.value.ok) return { ok: false, text: t('herdr-core unavailable'), idle: false }
+  return { ok: true, text: 'wherdr v3 · herdr-core', idle: false }
 })
 
-// "Dashboard"-style counters: always all three, zeros dimmed.
+// "Dashboard"-style counters: always all three, zeros dimmed. Rows without a
+// status (plain shells) count and list as Ready, as in v2.5.
 const stats = computed(() => ([
   ['blocked', counts.value.blocked, t('your turn')],
   ['working', counts.value.working, t('working')],
@@ -77,19 +74,25 @@ const stats = computed(() => ([
 
 // Herdr's order stays that of each repository list. The Ready group may
 // show unread before read, and be sorted differently (readySort).
-function groupsOf(list: Row[], group = rowGroup) {
+function groupsOf(list: Row[], rawGroup = rowGroup) {
+  const group = (r: Row) => { const g = rawGroup(r); return g === 'unknown' ? 'ready' : g }
   return ([
     { key: 'blocked', title: t('Your turn'), list: list.filter(r => group(r) === 'blocked') },
     { key: 'working', title: t('Working'), list: list.filter(r => group(r) === 'working') },
     { key: 'ready', title: tl('Ready', 'Prêts'), list: list.filter(r => group(r) === 'ready') },
   ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value).map(l => sortReady(l, readySort.value, rowTitle)) : [g.list] }))
 }
-const rowTitle = (r: Row) => isIndividualAgentRow(r) ? individualAgentTitle(r.lead) : spaceTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
-const standaloneRows = (rows: Row[]) => individualAgentList.value ? individualAgentRows(rows) : rows
-// Sort menu of the Ready group; sorted other than in Herdr's order, the
+const rowTitle = (r: Row) => isIndividualAgentRow(r) ? individualAgentTitle(r.lead) : homeTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
+// Same row object for a card whose row did not change: it does not re-render.
+const reuseRows = createRowReuse()
+// Coordinators (Alfred and each project's) have their own rows above the list.
+const coordinatorAddresses = computed(() => new Set([alfred.value?.terminal, ...coordinators.value.map(c => c.terminal)].filter((a): a is string => !!a)))
+const isCoordinatorPane = (p: Pane) => !!p.coreAddress && coordinatorAddresses.value.has(p.coreAddress)
+const standaloneRows = (rows: Row[]) => reuseRows(individualAgentRows(rows, coordinatorAddresses.value))
+// Sort menu of the Ready group; sorted other than in the default order, the
 // list can no longer be reordered manually.
 const READY_SORT_LABELS: Record<ReadySort, [string, string]> = {
-  herdr: ['Herdr order', 'i-lucide-grip-vertical'], recent: ['Recent activity', 'i-lucide-clock'], name: ['Name', 'i-lucide-arrow-down-a-z'],
+  herdr: ['Default order', 'i-lucide-grip-vertical'], recent: ['Recent activity', 'i-lucide-clock'], name: ['Name', 'i-lucide-arrow-down-a-z'],
 }
 const readySortItems = computed(() => [[
   { type: 'label' as const, label: t('Sort ready') },
@@ -98,25 +101,10 @@ const readySortItems = computed(() => [[
     checked: readySort.value === s, onUpdateChecked: () => { readySort.value = s },
   })),
 ]])
-// Rows of a machine: its coordinators, its repo groups, then the state groups
-// of its other spaces, shells included, in Herdr's order. A repo's own space
-// (a shell) heads its group whatever "Show terminals" says.
-const livePanes = computed(() => new Set(st.value.panes.map(p => p.id)))
+// Rows of a machine: the state groups of its agents and shells, in Herdr's order.
 function listOf(rows: Row[]) {
-  const b = boardSections(rows, st.value.workspaces, boardLinks.value, livePanes.value, k => machineInfo(k)?.baseKey ?? k)
-  return {
-    coordinators: b.coordinators,
-    projects: b.projects,
-    groups: groupsOf(standaloneRows(b.others).filter(r => r.lead.agent || showShells.value)),
-  }
+  return { groups: groupsOf(standaloneRows(rows)) }
 }
-// Each kind of coordinator with its own icon and label (coordinatorKind).
-function coordinatorCard(level: CoordinatorLevel, local = true, machine = '', repo = ''): BoardCard {
-  const k = coordinatorKind(level, local, machine, repo)
-  return { tag: '', name: k.name, icon: k.icon, hint: k.hint, coordinator: true }
-}
-const soloLocal = computed(() => machineInfo(machineBaseKeys.value[0] ?? '')?.local ?? true)
-const soloName = computed(() => machineName(machineBaseKeys.value[0] ?? '') || hostLabel.value)
 const soloSelected = computed(() => machineBarSelection.value === null || machineBarSelection.value.includes(machineBaseKeys.value[0] ?? ''))
 const solo = computed(() => listOf(soloSelected.value ? spaceRows(st.value) : []))
 
@@ -136,49 +124,16 @@ function claudeHint(m: MachineInfo) {
 
 // ------------------------------------------------------------ machines
 const STATE_LABEL: Record<MachineInfo['status'], string> = { online: 'online', connecting: 'reconnecting…', offline: 'offline' }
-const visibleKeys = machineBaseKeys
-const draggingMachine = ref<string | null>(null)
-const dropMachine = ref<string | null>(null)
-const dropAfter = ref(false)
-onMounted(loadMachineOrder)
-watch(() => machines.value.map(m => m.baseKey ?? m.key).join('|'), loadMachineOrder)
-function shiftMachine(key: string, direction: -1 | 1) {
-  const next = shiftMachineKey(visibleKeys.value, key, direction)
-  if (!next) return
-  haptic()
-  saveMachineOrder(next)
-}
-// The local machine's key is '': we compare draggingMachine with null.
-function onMachineDrop(key: string, event: DragEvent) {
-  event.preventDefault()
-  const next = dropMachineKey(visibleKeys.value, draggingMachine.value, key, dropAfter.value)
-  draggingMachine.value = null
-  dropMachine.value = null
-  if (next) saveMachineOrder(next)
-}
-function onMachineDragOver(key: string, event: DragEvent) {
-  if (draggingMachine.value === null || draggingMachine.value === key) return
-  event.preventDefault()
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  dropMachine.value = key
-  dropAfter.value = event.clientY > rect.top + rect.height / 2
-}
-function onMachineDragStart(key: string, event: DragEvent) {
-  draggingMachine.value = key
-  // Empty data may cancel the drag depending on the browser.
-  event.dataTransfer?.setData('text/plain', key || 'local')
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
-}
-function onMachineDragEnd() { draggingMachine.value = null; dropMachine.value = null }
 const sections = computed(() => {
   if (!multiMachine.value) return null
   const only = machineBarSelection.value
-  const selected = orderedMachines.value.filter(m => only === null || only.includes(baseKeyOf(m)))
+  const selected = machines.value.filter(m => only === null || only.includes(baseKeyOf(m)))
   if (only) selected.sort((a, b) => only.indexOf(baseKeyOf(a)) - only.indexOf(baseKeyOf(b)))
   return selected.map((m) => {
     const mine = (p: Pane) => (p.machine || '') === m.key
-    const a = agents.value.filter(mine)
-    const c = counted.value.filter(mine)
+    const a = agents.value.filter(p => mine(p) && !isCoordinatorPane(p))
+    // A group counts the rows of the list, like the tabs.
+    const c = coreRows.value.map(r => r.lead).filter(mine)
     return {
       m,
       name: machineName(m.key),
@@ -195,50 +150,41 @@ const sections = computed(() => {
 })
 // State mode includes online machines only. The bar's selected base keys
 // also cover named sessions; iterating them preserves the selected group order.
-const stateShown = computed(() => stateMachines(machines.value.length ? orderedMachines.value : [soloMachine.value], machineBarSelection.value))
+const stateShown = computed(() => stateMachines(machines.value.length ? machines.value : [soloMachine.value], machineBarSelection.value))
 // What belongs to one machine stays reachable in State mode: its "…" menu
-// (sessions, keep awake, board, plugins, Claude quotas) on its chip, and its
+// (Claude quotas) on its chip, and its
 // own quotas under the row; offline or reconnecting machines keep their state
 // and last known agent count on one line at the bottom.
 const stateMachineChips = computed(() => stateShown.value.online.map(m => ({
   m, name: machineName(m.key) || m.label || t('This machine'),
-  awake: awakeByMachine.value[m.key]?.active ? awakeByMachine.value[m.key] : undefined,
   claude: claudeHint(m),
   quotas: showQuotas.value ? machineQuotaRows(homeQuotas.value, baseKeyOf(m), hiddenAgents.value) : [],
   api: machineApi(baseKeyOf(m)),
 })))
 const stateAway = computed(() => stateShown.value.away.map(m => ({
   m, name: machineName(m.key) || m.label || t('This machine'), state: t(STATE_LABEL[m.status]),
-  known: counted.value.filter(p => (p.machine || '') === m.key).length,
+  known: agents.value.filter(p => (p.machine || '') === m.key && !isCoordinatorPane(p)).length,
 })))
-const stateCards = computed(() => {
-  return stateShown.value.online.flatMap(m => {
-    const b = boardSections(spaceRows(st.value, m.key), st.value.workspaces, boardLinks.value, livePanes.value, k => machineInfo(k)?.baseKey ?? k)
-    return stateEntries({ ...b, others: standaloneRows(b.others) }, showShells.value).map(e => ({
-      ...e,
-      machine: machineName(m.key) || m.label,
-      board: e.member ? memberCard(e.member) : e.level ? coordinatorCard(e.level, m.local, machineName(m.key) || m.label, e.repo) : null,
-    }))
-  })
-})
+const stateCards = computed(() => stateShown.value.online.flatMap(m =>
+  standaloneRows(spaceRows(st.value, m.key)).map(row => ({ row, machine: machineName(m.key) || m.label }))))
 const stateCardByKey = computed(() => new Map(stateCards.value.map(c => [c.row.key, c])))
-const stateGroups = computed(() => groupsOf(stateCards.value.map(c => c.row), r => {
-  const group = stateCardByKey.value.get(r.key)?.board?.group
-  return group ? group === 'needs' ? 'blocked' : group === 'working' ? 'working' : 'ready' : rowGroup(r)
-}))
+const stateGroups = computed(() => groupsOf(stateCards.value.map(c => c.row)))
 // Machine bar: "All", then each machine (a named session counts as its machine),
 // with its state and the number of agents the list counts.
+// A tab counts the rows of the list, not the terminals.
+const coreRows = computed(() => standaloneRows(spaceRows(st.value)).filter(r => !paneStale(r.lead)))
 const barEntries = computed(() => machineBarShown.value.map((id) => {
-  if (id === BAR_ALL) return { id, label: t('All'), status: null, title: undefined, n: counted.value.length }
+  const total = (keep: (p: Pane) => boolean) => coreRows.value.filter(r => keep(r.lead)).length
+  if (id === BAR_ALL) return { id, label: t('All'), status: null, title: undefined, n: total(() => true) }
   const group = machineGroups.value.find(g => g.id === id)
-  if (group) return { id, label: group.name, status: null, title: group.name, n: counted.value.filter(p => group.machines.includes(baseOfPane(p))).length }
+  if (group) return { id, label: group.name, status: null, title: group.name, n: total(p => group.machines.includes(baseOfPane(p))) }
   // A single machine Herdr's state does not list: the one shown in the session row.
   const listed = machines.value.filter(m => baseKeyOf(m) === id)
   const mine = listed.length ? listed : id === soloMachine.value.key ? [soloMachine.value] : []
   const keys = new Set(mine.map(m => m.key))
   const status: MachineInfo['status'] = mine.some(m => m.status === 'online') ? 'online' : mine.some(m => m.status === 'connecting') ? 'connecting' : 'offline'
   const label = (listed.length ? machineName(listed[0]!.key) : mine[0]?.label) || id || t('This machine')
-  return { id, label, status, title: `${label} · ${t(STATE_LABEL[status])}`, n: counted.value.filter(p => keys.has(p.machine || '')).length }
+  return { id, label, status, title: `${label} · ${t(STATE_LABEL[status])}`, n: total(p => keys.has(p.machine || '')) }
 }))
 // The machine a bar item stands for (a named session counts as its machine):
 // the base machine itself when Herdr lists it, else its first session.
@@ -254,16 +200,10 @@ function barMenuItems(id: string): MenuItem[] {
   if (group) {
     return [
       { label: tl('Group settings', 'Réglages du groupe'), icon: 'i-lucide-settings-2', run: () => navigateTo({ path: '/settings', query: { section: 'appearance', group: group.id } }) },
-      // The Board settings of one of its machines: the screen asks which.
-      { label: tl('Board settings', 'Réglages du board'), icon: 'i-lucide-settings', run: () => navigateTo({ path: '/board', query: { settings: group.id } }) },
     ]
   }
   const m = barMachine(id)
   return m ? machineMenuItems(m) : []
-}
-function onBarMenu(id: string, open: boolean) {
-  const m = barMachine(id)
-  if (open && m?.status === 'online') loadPluginActions(multiMachine.value ? m.key : '')
 }
 let barPressed: { id: string, label: string } | null = null
 const barLp = longPress({
@@ -271,7 +211,6 @@ const barLp = longPress({
     const items = barPressed ? barMenuItems(barPressed.id) : []
     if (!barPressed || !items.length) return
     haptic()
-    onBarMenu(barPressed.id, true)
     openMenu(items, barPressed.label)
   },
 })
@@ -327,133 +266,33 @@ function toggleMachine(key: string) {
   const c = collapsedMachines.value
   collapsedMachines.value = c.includes(key) ? c.filter(k => k !== key) : [...c, key]
 }
-const renamingMachine = ref<MachineInfo | null>(null)
-const machineLabel = ref('')
-const awakeByMachine = ref<Record<string, AwakeState>>({})
-const awakeTarget = ref<MachineInfo | null>(null)
-const awakeBusy = ref(false)
-const awakeLid = ref(false)
-const diagnosticTarget = ref<MachineInfo | null>(null)
-const assertions = ref<SleepAssertion[]>([])
-const diagnosticBusy = ref(false)
-const eveningPast = computed(() => Boolean(awakeTarget.value && awakeByMachine.value[awakeTarget.value.key]?.eveningPast))
-const awakeOpen = computed({ get: () => Boolean(awakeTarget.value), set: v => { if (!v) awakeTarget.value = null } })
-const diagnosticOpen = computed({ get: () => Boolean(diagnosticTarget.value), set: v => { if (!v) diagnosticTarget.value = null } })
-const awakeUrl = (key: string, diagnostic = false) => `/api/machine/awake?key=${encodeURIComponent(key)}${diagnostic ? '&diagnostic=1' : ''}`
-async function refreshAwake(m: MachineInfo) {
-  if (m.status !== 'online') return
-  try { awakeByMachine.value[m.key] = await api<AwakeState>(awakeUrl(m.key)) }
-  catch { /* the machine may disappear between two polls */ }
-}
-let awakeTimer: ReturnType<typeof setInterval> | undefined
-onMounted(() => { awakeTimer = setInterval(() => { if (document.visibilityState === 'visible') for (const m of awakeMachines()) refreshAwake(m) }, 30000) })
-onBeforeUnmount(() => clearInterval(awakeTimer))
-function openAwake(m: MachineInfo) {
-  awakeTarget.value = m
-  awakeLid.value = awakeByMachine.value[m.key]?.lid || false
-  refreshAwake(m)
-}
-async function chooseAwake(mode: AwakeMode | 'off') {
-  const m = awakeTarget.value
-  if (!m || awakeBusy.value) return
-  awakeBusy.value = true
-  try {
-    awakeByMachine.value[m.key] = await api<AwakeState>('/api/machine/awake', { key: m.key, mode, lid: mode === 'off' ? false : awakeLid.value })
-    awakeTarget.value = null
-  } catch (e) { toast((e as Error).message, true) }
-  finally { awakeBusy.value = false }
-}
-async function openDiagnostic(m: MachineInfo) {
-  diagnosticTarget.value = m
-  diagnosticBusy.value = true
-  assertions.value = []
-  try {
-    const result = await api<AwakeState & { assertions: SleepAssertion[] }>(awakeUrl(m.key, true))
-    awakeByMachine.value[m.key] = result
-    assertions.value = result.assertions
-  } catch (e) { toast((e as Error).message, true) }
-  finally { diagnosticBusy.value = false }
-}
-function durationLabel(seconds: number) {
-  if (seconds < 60) return tl('less than a minute', 'moins d’une minute')
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} min`
-  return `${Math.floor(seconds / 3600)} h ${Math.floor(seconds % 3600 / 60)} min`
-}
-function extendLabel(state?: AwakeState) {
-  if (!state?.until) return ''
-  const at = new Date(Math.max(state.until, Date.now()) + 3600000).toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' })
-  return tl(`Until ${at}`, `Jusqu’à ${at}`)
-}
-function awakeLabel(state?: AwakeState) {
-  if (!state?.active) return ''
-  return state.until ? tl(`Awake until ${fmtTime(state.until)}`, `Éveillé jusqu’à ${fmtTime(state.until)}`) : tl('Awake until turned off', 'Éveillé jusqu’à désactivation')
-}
-const savingMachine = ref(false)
-const sessionTarget = ref<MachineInfo | null>(null)
-const sessionRows = ref<NamedSession[]>([])
-const sessionsLoading = ref(false)
-const sessionOpen = computed({ get: () => Boolean(sessionTarget.value), set: (v: boolean) => { if (!v) sessionTarget.value = null } })
 const soloMachine = computed<MachineInfo>(() => machines.value[0] || {
   key: '', label: hostLabel.value || 'herdr', local: true, status: st.value.ok ? 'online' : 'offline',
   error: null, session: st.value.session || 'default',
 })
-// A single machine: the state lists no machines, we probe the machine alone.
-const awakeMachines = () => machines.value.length ? machines.value : [soloMachine.value]
-watch(() => awakeMachines().map(m => `${m.key}:${m.status}`).join('|'), () => {
-  for (const m of awakeMachines()) refreshAwake(m)
-}, { immediate: true })
 const baseKeyOf = (m: MachineInfo) => m.baseKey ?? m.key
-async function openSessions(m: MachineInfo) {
-  sessionTarget.value = m
-  sessionsLoading.value = true
-  sessionRows.value = []
-  try { sessionRows.value = await listMachineSessions(baseKeyOf(m)) }
-  catch (err) { toast((err as Error).message, true) }
-  finally { sessionsLoading.value = false }
-}
-async function selectSession(s: NamedSession) {
-  const m = sessionTarget.value
-  if (!m || !s.running) return
-  sessionsLoading.value = true
-  try {
-    await chooseMachineSession(baseKeyOf(m), s.name)
-    sessionTarget.value = null
-    await navigateTo('/')
-  } catch (err) { toast((err as Error).message, true) }
-  finally { sessionsLoading.value = false }
-}
-const renameMachineOpen = computed({
-  get: () => Boolean(renamingMachine.value),
-  set: (open: boolean) => { if (!open) renamingMachine.value = null },
-})
-const connectionMachine = ref<MachineInfo | null>(null)
-const connectionInfo = computed(() => machines.value.find(m => m.key === connectionMachine.value?.key) ?? connectionMachine.value)
-const connectionOpen = computed({ get: () => !!connectionMachine.value, set: (v: boolean) => { if (!v) connectionMachine.value = null } })
 function machineMenuItems(m: MachineInfo): MenuItem[] {
-  const items: MenuItem[] = [{ label: t('Herdr sessions'), icon: 'i-lucide-layers', run: () => openSessions(m) }, { label: t('Rename'), icon: 'i-lucide-pencil', run: () => {
-    renamingMachine.value = m
-    machineLabel.value = m.label
-  } }]
-  if (!m.local) items.push({ label: t('Connection status'), icon: 'i-lucide-plug', run: () => { connectionMachine.value = m } })
-  if (multiMachine.value) {
-    const key = baseKeyOf(m)
-    const at = visibleKeys.value.indexOf(key)
-    if (at > 0) items.push({ label: t('Move up'), icon: 'i-lucide-arrow-up', run: () => shiftMachine(key, -1) })
-    if (at >= 0 && at < visibleKeys.value.length - 1) items.push({ label: t('Move down'), icon: 'i-lucide-arrow-down', run: () => shiftMachine(key, 1) })
-    if (machineOrder.value.length) items.push({ label: t('Reset order'), icon: 'i-lucide-rotate-ccw', run: () => saveMachineOrder([]) })
+  // Only what herdr-core can do from here; rename and forget live in Settings › Agents.
+  const items: MenuItem[] = []
+  if (m.status === 'online') {
+    items.push({ label: tl('New agent here', 'Nouvel agent ici'), icon: 'i-lucide-plus', run: () => {
+      haptic()
+      newAgentMachine.value = m.key
+      newAgentOpen.value = true
+    } })
   }
-  // The Board, already filtered on this machine (its board is the base machine's).
-  items.push({ label: t('Open the board'), icon: 'i-lucide-square-kanban', run: () => navigateTo({ path: '/board', query: { machine: baseKeyOf(m) } }) })
-  items.push({ label: tl('Board settings', 'Réglages du board'), icon: 'i-lucide-settings', run: () => navigateTo({ path: '/board', query: { settings: baseKeyOf(m) } }) })
-  if (m.status === 'online' && awakeByMachine.value[m.key]?.supported) {
-    items.push({ label: t('Keep awake'), icon: 'i-lucide-sun', run: () => openAwake(m) })
-    if (awakeByMachine.value[m.key]?.platform === 'mac') items.push({ label: t('What prevents sleep'), icon: 'i-lucide-list-filter', run: () => openDiagnostic(m) })
+  else if (!m.local) {
+    items.push({ label: t('Reconnect'), icon: 'i-lucide-plug', run: async () => {
+      try { await api('/api/machine/connect', { key: baseKeyOf(m) }) }
+      catch (err) { toast(t((err as Error).message)) }
+    } })
   }
-  // Global actions of this machine's Herdr plugins (a single machine: loaded under '').
-  const pluginKey = multiMachine.value ? m.key : ''
-  if (m.status === 'online' && machinePluginActions(pluginKey).length) {
-    items.push({ label: t('Plugin actions'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ machine: pluginKey }) })
-  }
+  items.push({
+    label: tl('Machine settings', 'Réglages des machines'),
+    desc: m.local ? undefined : tl('Rename, forget', 'Renommer, oublier'),
+    icon: 'i-lucide-settings',
+    run: () => navigateTo({ path: '/settings', query: { section: 'agents' } }),
+  })
   const hint = claudeHint(m)
   if (hint) {
     items.push(
@@ -472,9 +311,6 @@ function machineMenuItems(m: MachineInfo): MenuItem[] {
   return items
 }
 const machineMenu = (m: MachineInfo) => toDropdown(machineMenuItems(m))
-// Plugin actions of each online machine (a single one: the local one).
-const onlineKeys = computed(() => JSON.stringify(multiMachine.value ? machines.value.filter(m => m.status === 'online').map(m => m.key) : (st.value.ok ? [''] : [])))
-watch(onlineKeys, (keys) => { for (const k of JSON.parse(keys) as string[]) loadPluginActions(k) }, { immediate: true })
 // Quiet mode active: no header button (the header keeps its shape), a discreet line in
 // the list instead, and an entry in the header "…" menu when it shows. Both open the
 // notification settings.
@@ -491,12 +327,16 @@ const quietHint = computed(() => {
   const day = new Date(end.at).toLocaleDateString(language, { weekday: 'short', day: 'numeric', month: 'short' })
   return tl(`Notifications silenced until ${day} ${time}`, `Notifications en silence jusqu’au ${day} ${time}`)
 })
-const onQuietVisible = () => { if (document.visibilityState === 'visible') refreshQuiet() }
-onMounted(() => { refreshQuiet(); document.addEventListener('visibilitychange', onQuietVisible) })
+// Read only while the list shows (not under a conversation on the phone), at
+// most once a minute when the page comes back or the list shows again.
+const quietRead = onceEvery(60000)
+const readQuiet = () => { if (homeShown.value && document.visibilityState === 'visible' && quietRead.take()) refreshQuiet() }
+const onQuietVisible = () => readQuiet()
+watch(homeShown, readQuiet)
+onMounted(() => { if (homeShown.value) { quietRead.mark(); refreshQuiet() } document.addEventListener('visibilitychange', onQuietVisible) })
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', onQuietVisible))
-// A single machine: its "…" menu (Open the board, keep awake, plugin actions) is on its session row.
-// Header buttons: when the list is too narrow, the secondary ones move into a "…" menu
-// (settings first, then the board).
+// Header buttons: when the list is too narrow, Settings then the Board move
+// into a "…" menu.
 const titleRow = ref<HTMLElement | null>(null)
 const titleRowWidth = ref(0)
 let titleRowObserver: ResizeObserver | null = null
@@ -516,32 +356,16 @@ function headerMenuItems(): MenuItem[] {
   const f = headerFolded.value
   return [
     ...(quietCurrent.value ? [{ label: quietLabel.value, icon: 'i-lucide-bell-off', run: () => navigateTo(quietSettings) }] : []),
-    ...(f.has('board') ? [{ label: t('Board'), icon: 'i-lucide-square-kanban', run: () => navigateTo('/board') }] : []),
+    ...(f.has('board') ? [{ label: tl('Board', 'Tableau'), icon: 'i-lucide-square-kanban', run: openBoard }] : []),
     ...(f.has('settings') ? [{ label: t('Settings'), icon: 'i-lucide-settings-2', run: () => navigateTo('/settings') }] : []),
   ]
 }
-async function saveMachine() {
-  if (!renamingMachine.value || savingMachine.value) return
-  const label = machineLabel.value.replace(/\s+/g, ' ').trim()
-  if (!label) return
-  savingMachine.value = true
-  try {
-    await api('/api/machine/rename', { key: baseKeyOf(renamingMachine.value), label })
-    renamingMachine.value = null
-    await loadConfig()
-    toast(t('Machine renamed'))
-  } catch (err) { toast((err as Error).message, true) }
-  finally { savingMachine.value = false }
+// Board: read whether project management is on and has a project at click time
+// (it changes in Settings), and open the board or Settings › Projects.
+async function openBoard() {
+  const o = await api<PmOverview>('/api/pm/overview').catch(() => null)
+  await navigateTo(boardEntry(o))
 }
-
-// Reorder: connected, and the machine online.
-function canReorder(machine: string) {
-  // Dragging a pane must not silently reorder its whole workspace.
-  if (individualAgentList.value) return false
-  if (offlineView.value || !eventsOpen.value || !st.value.ok) return false
-  return !multiMachine.value || machines.value.some(m => m.key === machine && m.status === 'online')
-}
-
 function newAgent() {
   haptic()
   newAgentOpen.value = true
@@ -562,9 +386,6 @@ const drawerOpen = listDrawer
 const mode = computed(() => listMode({ desk: desk.value, slim: slim.value, collapsed: listCollapsed.value, drawerOpen: drawerOpen.value }))
 const rail = computed(() => mode.value === 'rail')
 const drawer = computed(() => mode.value === 'drawer')
-const homeRoute = useRoute()
-// On the home page there is no agent to show: the list opens there.
-const atHome = () => homeRoute.path === '/' || homeRoute.path === ''
 watch(() => homeRoute.fullPath, () => { drawerOpen.value = slim.value && atHome() }, { immediate: true })
 watch(slim, (v) => { drawerOpen.value = v && atHome() })
 function onDrawerKey(e: KeyboardEvent) {
@@ -632,7 +453,8 @@ function resetListWidth() {
 </script>
 
 <template>
-  <section ref="homeRoot" id="home" class="view" :class="{ resizing: listDrag, rail, drawer, 'list-compact': compactList }" @click.capture="onDrawerPick">
+  <section ref="homeRoot" id="home" data-wherdr="home-list" class="view" :class="{ resizing: listDrag, rail, drawer, 'list-compact': compactList }" @click.capture="onDrawerPick">
+    <HomePollers v-if="homeShown" />
     <!-- Collapsed list (computer): narrow column, the rest of the list is hidden. -->
     <nav v-if="rail" class="home-rail" :aria-label="t('Agents')">
       <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" :title="conn.text" />
@@ -645,8 +467,8 @@ function resetListWidth() {
       <UTooltip :text="t('New')" :kbds="shortcutKbds('new-space')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="!eventsOpen || offlineView" @click="newAgent" />
       </UTooltip>
-      <UTooltip :text="t('Board')" :kbds="shortcutKbds('board')" :content="{ side: 'right' }">
-        <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Board')" to="/board" />
+      <UTooltip :text="tl('Board', 'Tableau')" :content="{ side: 'right' }">
+        <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Board', 'Tableau')" @click="openBoard" />
       </UTooltip>
       <UTooltip :text="t('Settings')" :kbds="shortcutKbds('settings')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Settings')" to="/settings" />
@@ -674,8 +496,8 @@ function resetListWidth() {
           <UTooltip :text="tl('Search agents and conversations', 'Rechercher agents et conversations')" :kbds="shortcutKbds('search-all')" :disabled="!desk">
             <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
           </UTooltip>
-          <UTooltip v-if="!headerFolded.has('board')" :text="t('Board')" :kbds="shortcutKbds('board')" :disabled="!desk">
-            <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Board')" to="/board" />
+          <UTooltip v-if="!headerFolded.has('board')" :text="tl('Board', 'Tableau')" :disabled="!desk">
+            <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Board', 'Tableau')" data-testid="home-board" @click="openBoard" />
           </UTooltip>
           <UTooltip v-if="!headerFolded.has('settings')" :text="t('Settings')" :kbds="shortcutKbds('settings')" :disabled="!desk">
             <UButton
@@ -695,7 +517,6 @@ function resetListWidth() {
       <UContextMenu
         v-for="b in barEntries" :key="b.id" :disabled="sheetMenus || b.id === BAR_ALL"
         :items="sheetMenus || b.id === BAR_ALL ? [] : toDropdown(barMenuItems(b.id))" :ui="{ content: 'hw-dropdown' }"
-        @update:open="(o: boolean) => onBarMenu(b.id, o)"
       >
         <button
           type="button" class="machine-bar-item" :class="[b.status, { on: b.id === machineBarPick }]" :data-bar-id="b.id"
@@ -716,28 +537,24 @@ function resetListWidth() {
     <div :key="machineBarPick ?? BAR_ALL" ref="homeScroll" class="scroll">
       <OfflineNote v-if="(offlineView && cachedAt) || netDown" class="home-offline" :label="offlineView && cachedAt ? t('Last known state') : undefined" :at="cachedAt" date-style="medium" />
       <div v-if="eventsOpen && !st.ok" class="notice">
-        {{ t('The Herdr server is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
-        {{ hostLabel ? tl(`Run herdr on ${hostLabel} to start it.`, `Lance herdr sur ${hostLabel} pour le démarrer.`) : tl('Run herdr on the server to start it.', 'Lance herdr sur le serveur pour le démarrer.') }}
+        {{ t('herdr-core is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
+        {{ t('Run hc server start for the configured core session.') }}
       </div>
       <!-- A tab showing one machine: no header, so its state and session stay here. -->
-      <div v-if="soloTab && (soloTab.m.status !== 'online' || (soloTab.m.session && soloTab.m.session !== 'default') || awakeByMachine[soloTab.m.key]?.active)" class="machine-tab-info">
+      <div v-if="soloTab && (soloTab.m.status !== 'online' || (soloTab.m.session && soloTab.m.session !== 'default'))" class="machine-tab-info">
         <p v-if="soloTab.m.status !== 'online'" class="machine-tab-offline" :class="soloTab.m.status" role="status">
           <i aria-hidden="true" />
           <span><b>{{ soloTab.m.status === 'offline' ? tl(`${soloTab.name} is offline`, `${soloTab.name} est hors ligne`) : tl(`${soloTab.name}: reconnecting…`, `${soloTab.name} : reconnexion…`) }}</b>
             <small v-if="soloTab.m.error">{{ t(soloTab.m.error) }}</small></span>
         </p>
-        <p v-if="(soloTab.m.session && soloTab.m.session !== 'default') || awakeByMachine[soloTab.m.key]?.active" class="machine-tab-meta">
+        <p v-if="soloTab.m.session && soloTab.m.session !== 'default'" class="machine-tab-meta">
           <span v-if="soloTab.m.session && soloTab.m.session !== 'default'" class="machine-tab-session"><UIcon name="i-lucide-layers" />{{ soloTab.m.session }}</span>
-          <span v-if="awakeByMachine[soloTab.m.key]?.active" class="machine-awake"><UIcon name="i-lucide-sun" />{{ awakeLabel(awakeByMachine[soloTab.m.key]) }}</span>
         </p>
       </div>
-      <div v-if="homeGrouping === 'machine' && !multiMachine && soloSelected" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Herdr sessions')" @click="openSessions(soloMachine)">
-        <span><UIcon name="i-lucide-layers" />{{ soloMachine.label }}</span>
-        <b>{{ soloMachine.session || 'default' }}<UIcon name="i-lucide-chevron-right" /></b>
-      </button><UDropdownMenu :items="machineMenu(soloMachine)" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="t('Options')" class="solo-machine-options" /></UDropdownMenu></div>
-      <p v-if="homeGrouping === 'machine' && !multiMachine && soloSelected && awakeByMachine[soloMachine.key]?.active" class="machine-awake"><UIcon name="i-lucide-sun" />{{ awakeLabel(awakeByMachine[soloMachine.key]) }}</p>
       <NuxtLink v-if="quietHint" :to="quietSettings" class="home-quiet" :aria-label="quietLabel"><UIcon name="i-lucide-bell-off" /><span>{{ quietHint }}</span></NuxtLink>
 
+      <AlfredRow v-if="st.ok" />
+      <CoordinatorsSection v-if="st.ok" />
       <div v-if="showCounters && agents.length" class="stats">
         <div v-for="c in stats" :key="c.s" class="stat" :class="[c.s, { zero: !c.n }]">
           <b>{{ c.n }}</b>
@@ -753,12 +570,11 @@ function resetListWidth() {
       <template v-if="homeGrouping === 'state'">
         <ul v-if="stateMachineChips.length" class="state-machines" :aria-label="tl('Online machines', 'Machines en ligne')">
           <li v-for="c in stateMachineChips" :key="c.m.key" class="state-machine" :data-machine="c.m.key || 'local'">
-            <UDropdownMenu :items="machineMenu(c.m)" :content="{ align: 'start', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }" @update:open="(o: boolean) => { if (o) loadPluginActions(multiMachine ? c.m.key : '') }">
+            <UDropdownMenu :items="machineMenu(c.m)" :content="{ align: 'start', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
               <button type="button" class="state-machine-chip" :aria-label="`${t('Options')} : ${c.name}`" :title="c.m.target ? `ssh ${c.m.target}` : c.name">
                 <i class="state-machine-dot" aria-hidden="true" />
                 <span class="state-machine-name">{{ c.name }}</span>
                 <small v-if="c.m.session && c.m.session !== 'default'" class="state-machine-session">{{ c.m.session }}</small>
-                <span v-if="c.awake" class="machine-awake" :title="awakeLabel(c.awake)"><UIcon name="i-lucide-sun" /><span>{{ c.awake.until ? fmtTime(c.awake.until) : '∞' }}</span></span>
                 <UIcon v-if="c.claude" name="i-lucide-gauge" class="state-machine-claude" role="img" :aria-label="c.claude.state === 'outdated' ? tl('Update Claude quotas', 'Mettre à jour les quotas Claude') : tl('Set up Claude quotas', 'Configurer les quotas Claude')" />
                 <UIcon name="i-lucide-ellipsis" class="state-machine-more" aria-hidden="true" />
               </button>
@@ -780,7 +596,7 @@ function resetListWidth() {
           <template v-for="(cards, i) in g.lists" :key="i">
             <p v-if="g.key === 'ready' && g.lists.length > 1" class="ready-subgroup-label">{{ t(i === 0 ? 'Unread' : 'Read') }}</p>
             <div class="card-list">
-              <AgentCard v-for="r in cards" :key="r.key" :pane="r.lead" :row="r" :board="stateCardByKey.get(r.key)?.board" :machine-badge="stateCardByKey.get(r.key)?.machine" :project-badge="stateCardByKey.get(r.key)?.repo" />
+              <AgentCard v-for="r in cards" :key="r.key" :pane="r.lead" :row="r" :machine-badge="stateCardByKey.get(r.key)?.machine" />
             </div>
           </template>
         </section>
@@ -801,13 +617,6 @@ function resetListWidth() {
       </template>
       <!-- A single machine: the previous list. -->
       <template v-else-if="!sections">
-        <section v-if="solo.coordinators.length" class="agent-group coordinators">
-          <h2 class="group-title"><span>{{ tl('Coordinators', 'Coordinateurs') }}</span><span class="count">{{ solo.coordinators.length }}</span></h2>
-          <div class="card-list">
-            <AgentCard v-for="c in solo.coordinators" :key="c.row.key" :pane="c.row.lead" :row="c.row" :board="coordinatorCard(c.level, soloLocal, soloName)" />
-          </div>
-        </section>
-        <ProjectGroup v-for="x in solo.projects" :key="x.id" :group="x" />
         <section v-for="g in solo.groups" :key="g.key" class="agent-group" :class="g.key">
           <h2 class="group-title"><span>{{ g.title }}</span><span class="count">{{ g.list.length }}</span>
             <UDropdownMenu v-if="g.key === 'ready'" :items="readySortItems" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }">
@@ -815,9 +624,9 @@ function resetListWidth() {
             </UDropdownMenu></h2>
           <template v-for="(cards, i) in g.lists" :key="i">
             <p v-if="g.key === 'ready' && g.lists.length > 1" class="ready-subgroup-label">{{ t(i === 0 ? 'Unread' : 'Read') }}</p>
-            <ReorderList :disabled="!canReorder('') || (g.key === 'ready' && readySort !== 'herdr')">
+            <div class="card-list">
               <AgentCard v-for="r in cards" :key="r.key" :pane="r.lead" :row="r" />
-            </ReorderList>
+            </div>
           </template>
         </section>
 
@@ -825,27 +634,15 @@ function resetListWidth() {
           <div class="empty-box">
             <div class="empty-art">&gt;_</div>
             <p>{{ t('No agents yet.') }}</p>
-            <p class="muted">{{ t('Start one here, or from') }} <code>herdr</code> {{ t('in a terminal.') }}</p>
+            <p class="muted">{{ tl('Start one here, or with', 'Lance-en un ici, ou avec') }} <code>hc</code> {{ t('in a terminal.') }}</p>
           </div>
         </div>
       </template>
 
       <!-- Several machines: one section per machine. -->
       <template v-else>
-        <section
-          v-for="s in sections" :key="s.m.key" class="machine" :class="[s.m.status, { collapsed: s.collapsed, 'machine-drop-before': dropMachine === baseKeyOf(s.m) && !dropAfter, 'machine-drop-after': dropMachine === baseKeyOf(s.m) && dropAfter }]"
-          :data-machine="s.m.key || 'local'"
-          @dragover="onMachineDragOver(baseKeyOf(s.m), $event)"
-          @dragleave="(e: DragEvent) => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) dropMachine = null }"
-          @drop="onMachineDrop(baseKeyOf(s.m), $event)"
-        >
+        <section v-for="s in sections" :key="s.m.key" class="machine" :class="[s.m.status, { collapsed: s.collapsed }]" :data-machine="s.m.key || 'local'">
           <div v-if="!soloTab" class="machine-row">
-            <button v-if="desk" type="button" class="machine-grip" draggable="true"
-              :aria-label="tl(`Move ${s.name} — up and down arrows`, `Déplacer ${s.name} — flèches haut et bas`)"
-              :title="t('Drag to reorder')"
-              @dragstart="onMachineDragStart(baseKeyOf(s.m), $event)" @dragend="onMachineDragEnd"
-              @keydown.up.prevent="shiftMachine(baseKeyOf(s.m), -1)" @keydown.down.prevent="shiftMachine(baseKeyOf(s.m), 1)"
-            ><UIcon name="i-lucide-grip-vertical" /></button>
             <button
               type="button" class="machine-head" :aria-expanded="!s.collapsed"
               :title="s.m.target ? `ssh ${s.m.target}` : undefined" @click="toggleMachine(s.m.key)"
@@ -856,14 +653,13 @@ function resetListWidth() {
                 <span class="machine-name">{{ s.name }}<small v-if="s.m.session && s.m.session !== 'default'" class="machine-session">{{ s.m.session }}</small></span>
                 <MachineLocalBadge v-if="s.m.local" />
               </span>
-              <span v-if="awakeByMachine[s.m.key]?.active" class="machine-awake" :title="awakeLabel(awakeByMachine[s.m.key])"><UIcon name="i-lucide-sun" /><span>{{ awakeByMachine[s.m.key]?.until ? fmtTime(awakeByMachine[s.m.key]!.until!) : '∞' }}</span></span>
               <span class="machine-state"><i />{{ s.state }}</span>
               <span class="machine-count">
                 <b v-if="s.waiting && s.collapsed" class="machine-waiting">{{ s.waiting }}</b>
                 {{ s.counted.length }}
               </span>
             </button>
-            <UDropdownMenu :items="machineMenu(s.m)" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }" @update:open="(o: boolean) => { if (o && s.m.status === 'online') loadPluginActions(s.m.key) }">
+            <UDropdownMenu v-if="machineMenuItems(s.m).length" :items="machineMenu(s.m)" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
               <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="machine-options icon-btn" :aria-label="`${t('Options')} : ${s.name}`" />
             </UDropdownMenu>
           </div>
@@ -871,13 +667,6 @@ function resetListWidth() {
 
           <div v-if="soloTab || !s.collapsed" class="machine-body">
             <QuotaStrip v-if="!soloTab" :rows="s.quotas" :api="s.api" class="machine-quotas" />
-            <section v-if="s.coordinators.length" class="agent-group coordinators">
-              <h2 class="group-title"><span>{{ tl('Coordinators', 'Coordinateurs') }}</span><span class="count">{{ s.coordinators.length }}</span></h2>
-              <div class="card-list">
-                <AgentCard v-for="c in s.coordinators" :key="c.row.key" :pane="c.row.lead" :row="c.row" :board="coordinatorCard(c.level, s.m.local, s.name)" />
-              </div>
-            </section>
-            <ProjectGroup v-for="x in s.projects" :key="x.id" :group="x" :machine="s.m.key" />
             <section v-for="g in s.groups" :key="g.key" class="agent-group" :class="g.key">
               <h2 class="group-title"><span>{{ g.title }}</span><span class="count">{{ g.list.length }}</span>
             <UDropdownMenu v-if="g.key === 'ready'" :items="readySortItems" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }">
@@ -885,13 +674,13 @@ function resetListWidth() {
             </UDropdownMenu></h2>
               <template v-for="(cards, i) in g.lists" :key="i">
                 <p v-if="g.key === 'ready' && g.lists.length > 1" class="ready-subgroup-label">{{ t(i === 0 ? 'Unread' : 'Read') }}</p>
-                <ReorderList :disabled="!canReorder(s.m.key) || (g.key === 'ready' && readySort !== 'herdr')">
+                <div class="card-list">
                   <AgentCard v-for="r in cards" :key="r.key" :pane="r.lead" :row="r" />
-                </ReorderList>
+                </div>
               </template>
             </section>
 
-            <p v-if="!s.agents.length && !s.groups.length && !s.projects.length && !s.coordinators.length" class="machine-empty">
+            <p v-if="!s.agents.length && !s.groups.length" class="machine-empty">
               {{ s.m.status === 'online' ? t('No agents on this machine.') : t('No known agents.') }}
             </p>
           </div>
@@ -906,50 +695,6 @@ function resetListWidth() {
         {{ t('New') }}
       </UButton>
     </div>
-    <AppSheet v-model:open="connectionOpen" :title="t('Connection status')" screen>
-      <MachineConnection v-if="connectionInfo" :machine="connectionInfo" />
-    </AppSheet>
-    <AppSheet v-model:open="renameMachineOpen" :title="t('Rename machine')" screen>
-      <form id="rename-machine-form" class="rename" @submit.prevent="saveMachine">
-        <UInput v-model="machineLabel" maxlength="40" size="xl" class="w-full" :placeholder="t('Machine name')" autofocus />
-      </form>
-      <template #footer>
-        <div class="rename-actions">
-          <UButton color="neutral" variant="ghost" class="sheet-btn" @click="renameMachineOpen = false">{{ t('Cancel') }}</UButton>
-          <UButton type="submit" form="rename-machine-form" color="primary" variant="solid" class="sheet-btn hw-cta" :loading="savingMachine" :disabled="!machineLabel.trim()">{{ t('Save') }}</UButton>
-        </div>
-      </template>
-    </AppSheet>
-    <AppSheet v-model:open="sessionOpen" :title="t('Herdr sessions')" screen>
-      <p class="session-intro">{{ t('Session shown on this device') }} · {{ sessionTarget?.label }}</p>
-      <p v-if="sessionsLoading" class="session-intro">{{ t('Loading…') }}</p>
-      <div v-else class="session-list">
-        <button v-for="s in sessionRows" :key="s.name" type="button" class="session-choice" :disabled="!s.running"
-          :aria-current="sessionTarget?.session === s.name ? 'true' : undefined" @click="selectSession(s)">
-          <span><b>{{ s.name }}</b><small>{{ t(s.running ? 'running' : 'stopped') }}</small></span>
-          <UIcon v-if="sessionTarget?.session === s.name" name="i-lucide-check" />
-        </button>
-        <p v-if="!sessionRows.length" class="session-intro">{{ t('No sessions found.') }}</p>
-      </div>
-    </AppSheet>
-    <AppSheet v-model:open="awakeOpen" :title="t('Keep awake')" screen>
-      <p class="session-intro">{{ awakeTarget?.label }} · {{ awakeLabel(awakeTarget ? awakeByMachine[awakeTarget.key] : undefined) || t('Normal sleep') }}</p>
-      <p v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.battery" class="session-intro"><UIcon name="i-lucide-battery" /> {{ awakeByMachine[awakeTarget.key]?.battery?.percent }} % · {{ awakeByMachine[awakeTarget.key]?.battery?.source === 'ac' ? t('Power adapter') : t('Battery') }}</p>
-      <label v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.platform === 'mac'" class="awake-lid"><input v-model="awakeLid" type="checkbox" :disabled="awakeByMachine[awakeTarget.key]?.battery?.source !== 'ac'"> {{ t('Closed lid (power adapter only)') }}</label>
-      <div class="session-list">
-        <button v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.active && awakeByMachine[awakeTarget.key]?.until" class="session-choice" type="button" :disabled="awakeBusy" @click="chooseAwake('extend')"><span><b>{{ t('Extend by one hour') }}</b><small>{{ extendLabel(awakeByMachine[awakeTarget.key]) }}</small></span><UIcon name="i-lucide-plus" /></button>
-        <button v-for="choice in [{ mode: 'hour', label: t('1 hour') }, { mode: 'fourHours', label: t('4 hours') }, { mode: 'evening', label: t('Until tonight (8 pm)') }, { mode: 'untilOff', label: t('Until turned off') }]" :key="choice.mode" class="session-choice" type="button" :disabled="awakeBusy || (choice.mode === 'evening' && eveningPast)" @click="chooseAwake(choice.mode as AwakeMode)"><span><b>{{ choice.label }}</b><small v-if="choice.mode === 'evening' && eveningPast">{{ t('It is already past 8 pm on this machine') }}</small></span><UIcon name="i-lucide-chevron-right" /></button>
-        <button v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.active" class="session-choice" type="button" :disabled="awakeBusy" @click="chooseAwake('off')"><b>{{ t('Turn off') }}</b><UIcon name="i-lucide-x" /></button>
-      </div>
-      <p class="awake-note">{{ tl('Closing a Mac lid on battery puts it to sleep. A sleeping machine cannot be woken remotely.', 'Sur batterie, fermer le capot met le Mac en veille. Une machine endormie ne peut pas être réveillée à distance.') }}</p>
-    </AppSheet>
-    <AppSheet v-model:open="diagnosticOpen" :title="t('What prevents sleep')" screen>
-      <p v-if="diagnosticBusy" class="session-intro">{{ t('Loading…') }}</p>
-      <div v-else class="session-list">
-        <div v-for="(a, i) in assertions" :key="i" class="session-choice awake-assertion"><span><b>{{ a.ours ? t('wherdr · Keep awake') : a.name }}</b><small>{{ a.kind }} · {{ durationLabel(a.seconds) }}</small></span></div>
-        <p v-if="!assertions.length" class="session-intro awake-empty">{{ t('No app is preventing sleep.') }}</p>
-      </div>
-    </AppSheet>
     <Teleport to="body">
       <div
         v-if="desk && !rail && !slim" class="list-handle" :class="{ dragging: listDrag }" role="separator" aria-orientation="vertical" tabindex="0"
