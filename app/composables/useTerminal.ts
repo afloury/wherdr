@@ -1,12 +1,19 @@
 // Terminal of a pane: xterm.js connected to /ws/term (Herdr's ANSI frames).
 // Herdr keeps the history: no local scrollback, scrolling is
 // requested from the server (terminal.scroll).
+// herdr-core (`web.capabilities.core`): the raw stream, with its history, is
+// kept and scrolled by xterm; the server owns the size and gets credit back
+// once xterm has written each frame (see server/utils/coreTerm.ts).
 import { createSocketProbe } from '~/utils/socketProbe'
 import { DESK_QUERY } from '~/utils/layoutMode'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import { WebglAddon } from '@xterm/addon-webgl'
-import { terminalPixelWidth } from '~/utils/terminalSize'
+// Types only: the code is loaded when a terminal is shown (utils/xtermLoader.ts).
+import type { Terminal } from '@xterm/xterm'
+import type { FitAddon } from '@xterm/addon-fit'
+import type { WebglAddon } from '@xterm/addon-webgl'
+import { loadWebgl, loadXterm } from '~/utils/xtermLoader'
+import { reloadIfNewBuild } from '~/composables/useAppVersion'
+import { proposeTerminalSize, terminalPixelWidth } from '~/utils/terminalSize'
+import { writeTerminalFrame } from '~/utils/terminalFrame'
 import { guardWebglCanvasSize } from '~/utils/terminalRenderer'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
 import { bindTerminalLinks, type TerminalLinks } from '~/utils/terminalLinks'
@@ -20,6 +27,8 @@ import { bindTerminalMouse, terminalCell } from '~/utils/terminalMouse'
 import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
 import { virtualNavigationBytes, virtualNavigationKeys } from '~/utils/keybarKeys'
 import { createCompositionTracker, toggleVirtualModifier, virtualChord, virtualInputKey, type VirtualModifier } from '~/utils/terminalModifiers'
+
+const CORE_SCROLLBACK = 5000
 
 export interface Banner { text: string, btn: string, fn: () => void }
 
@@ -36,6 +45,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   let twsIntent = false
   let lastSize = { cols: 0, rows: 0 }
   let disposed = false
+  // xterm is being downloaded: what is asked meanwhile is done once it is there.
+  let mountSeq = 0
+  let mounting = false
+  let takeoverQueued = false
+  let focusQueued = false
   const loading = ref(false)
   const kbdOn = ref(false)
   const scrollInputVersion = ref(0)
@@ -57,16 +71,84 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   let links: TerminalLinks | null = null
   let mouse: ReturnType<typeof bindTerminalMouse> | null = null
   let mouseSupported = false
+  let coreStream = false
+  // herdr-core: whether this viewer's size is the terminal's (see coreTerm.ts).
+  let coreControl = true
+  let sizeBanner: Banner | null = null
+  // Asked before the stream was attached (composer focused on arrival): sent once it is.
+  let controlPending = false
+  function takeControl() {
+    if (coreStream && sendTerm({ type: 'take.control' })) controlPending = false
+    else controlPending = true
+  }
+  // Watching a terminal taller than this screen: shift it so the cursor row,
+  // where the newest output is, stays in view.
+  function followCursor() {
+    const screen = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
+    if (!term || !screen || !el) return
+    const shown = el.clientHeight - (screen.offsetTop || 0)
+    const over = coreStream && !coreControl ? (term.buffer.active.cursorY + 1) * (screen.offsetHeight / term.rows) - shown : 0
+    screen.style.transform = over > 0 ? `translateY(${-Math.ceil(over)}px)` : ''
+  }
+  function offerFit() {
+    followCursor()
+    const fits = !term || !fit || (() => {
+      const p = proposeTerminalSize(term!)
+      return !p || (p.cols === term!.cols && p.rows === term!.rows)
+    })()
+    if (!coreStream || coreControl || fits) {
+      if (sizeBanner) { sizeBanner = null; opts.setBanner(null) }
+      return
+    }
+    if (sizeBanner || opts.hasBanner()) return
+    sizeBanner = {
+      text: tl('Shown at the size of another screen.', 'Affiché à la taille d’un autre écran.'),
+      btn: tl('Fit to this screen', 'Adapter à cet écran'),
+      fn: () => { sizeBanner = null; opts.setBanner(null); takeControl() },
+    }
+    opts.setBanner(sizeBanner)
+  }
 
   const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
 
-  function mount(host: HTMLElement) {
+  // Resolves true once the terminal is in `host`, false if it was disposed (or
+  // xterm could not be downloaded: a banner then offers to retry) meanwhile.
+  async function mount(host: HTMLElement): Promise<boolean> {
     el = host
     // Clear before xterm handles paste, including a one-character paste.
     host.addEventListener('paste', clearVirtualModifiers, true)
     disposed = false
     twsRetry = 0
-    term = new Terminal({
+    const seq = ++mountSeq
+    mounting = true
+    loading.value = true
+    const renderer = terminalRenderer.value
+    let xterm: Awaited<ReturnType<typeof loadXterm>>
+    let gl: Awaited<ReturnType<typeof loadWebgl>> | null
+    try {
+      // Both at once: the WebGL renderer is in place before the first fit, as before.
+      [xterm, gl] = await Promise.all([loadXterm(), renderer === 'webgl' ? loadWebgl().catch(() => null) : null])
+    } catch {
+      // A deployment may have removed this version's xterm files (not
+      // precached, shared/precache.ts): move to the new version.
+      void reloadIfNewBuild()
+      if (seq !== mountSeq || disposed) return false
+      mounting = false
+      loading.value = false
+      opts.setBanner({
+        text: tl('The terminal could not be loaded.', 'Le terminal n’a pas pu être chargé.'),
+        btn: t('Retry'),
+        fn: () => {
+          opts.setBanner(null)
+          if (host.isConnected) void mount(host).then((ok) => { if (ok && !opts.hasBanner()) connect(false) })
+        },
+      })
+      return false
+    }
+    if (seq !== mountSeq || disposed) return false
+    mounting = false
+    loading.value = false
+    term = new xterm.Terminal({
       fontFamily: TERM_FONT,
       fontSize: fontSize.value,
       // Line height 1: block characters (Claude Code logo) and
@@ -80,7 +162,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       // Palette of the app theme (Settings → Theme), updated live.
       theme: terminalTheme.value,
     })
-    fit = new FitAddon()
+    fit = new xterm.FitAddon()
     term.loadAddon(fit)
     term.open(host)
     mouse = bindTerminalMouse(term, () => mouseSupported && opts.input?.() !== false, event => sendTerm(event))
@@ -110,8 +192,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         `Copie de l’agent ignorée : ${fmtBytes(bytes)} (limite ${fmtBytes(OSC52_MAX_BYTES)})`,
       )),
     })
-    // The device's choice may change while the terminal stays mounted.
-    setRenderer(terminalRenderer.value)
+    // The device's choice may change while the terminal stays mounted (and
+    // while xterm was loading: then the add-on is fetched now).
+    if (terminalRenderer.value === renderer && (renderer !== 'webgl' || gl)) applyRenderer(renderer, gl?.WebglAddon ?? null)
+    else void setRenderer(terminalRenderer.value)
     // JetBrains Mono (bundled): once loaded, xterm re-measures its cells.
     const t0 = term
     Promise.all([
@@ -170,6 +254,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       const bytes = Uint8Array.from(d, c => c.charCodeAt(0) & 0xff)
       sendTerm({ type: 'terminal.input', bytes: bytesToB64(bytes) })
     })
+    if (focusQueued) focus()
+    return true
   }
 
   const probe = createSocketProbe(() => tws)
@@ -213,7 +299,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     lastVirtualChord.value = chord
     const bytes = virtualNavigationBytes(chord)
     if (bytes) {
-      if (!sendTerm({ type: 'terminal.input', text: bytes })) await sendKeys(virtualNavigationKeys(chord))
+      if (!sendTerm({ type: 'terminal.input', text: bytes })) await sendKeys(virtualNavigationKeys(chord, useRuntimeConfig().public.core === true))
       return
     }
     await sendKeys([chord])
@@ -221,17 +307,18 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   function fitNow(send: boolean) {
     if (!term || !fit || !el || !el.parentElement) return
-    // FitAddon measures the parent of .xterm (#term), not .xterm itself.
+    // Measured on the parent of .xterm (#term), not .xterm itself (as FitAddon does).
     // On the phone, the inset of #term already defines its width.
     const desktop = matchMedia(DESK_QUERY).matches && !opts.fill?.()
     el.style.width = desktop ? `${terminalPixelWidth(el.parentElement.clientWidth, contentWidth.value)}px` : ''
-    const p = fit.proposeDimensions()
+    const p = proposeTerminalSize(term)
     if (!p || !p.cols || !p.rows) return
     const d = { cols: p.cols, rows: p.rows }
-    if (d.cols !== term.cols || d.rows !== term.rows) term.resize(d.cols, d.rows)
+    if (!coreStream && (d.cols !== term.cols || d.rows !== term.rows)) term.resize(d.cols, d.rows)
     if (send && (d.cols !== lastSize.cols || d.rows !== lastSize.rows)) {
       if (sendTerm({ type: 'terminal.resize', cols: d.cols, rows: d.rows })) lastSize = { cols: d.cols, rows: d.rows }
     }
+    if (coreStream) offerFit()
   }
 
   // Theme change while the terminal is shown.
@@ -239,8 +326,24 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   // The preference changes the width in pixels, then FitAddon re-measures.
   watch(contentWidth, () => nextTick(() => fitNow(true)))
 
-  function setRenderer(renderer: 'webgl' | 'html') {
+  // The WebGL add-on is downloaded the first time it is chosen; until then (or
+  // if that fails) xterm keeps the HTML renderer it starts with.
+  let rendererSeq = 0
+  async function setRenderer(renderer: 'webgl' | 'html') {
     if (!term) return
+    const seq = ++rendererSeq
+    const current = term
+    let Webgl: typeof WebglAddon | null = null
+    if (renderer === 'webgl') {
+      try { Webgl = (await loadWebgl()).WebglAddon }
+      catch { /* offline: HTML renderer */ }
+      if (seq !== rendererSeq || term !== current) return
+    }
+    applyRenderer(renderer, Webgl)
+  }
+  function applyRenderer(renderer: 'webgl' | 'html', Webgl: typeof WebglAddon | null) {
+    if (!term) return
+    rendererSeq++
     if (webgl) {
       const old = webgl
       webgl = null
@@ -249,7 +352,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     if (renderer === 'webgl') {
       let addon: WebglAddon | null = null
       try {
-        addon = new WebglAddon()
+        if (!Webgl) throw new Error('WebGL add-on not loaded')
+        addon = new Webgl()
         const next = addon
         addon.onContextLoss(() => {
           if (webgl !== next) return
@@ -275,7 +379,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     // the pane size stay handled by fitNow / TerminalView.
     fitNow(true)
   }
-  watch(terminalRenderer, setRenderer)
+  watch(terminalRenderer, r => void setRenderer(r))
 
   function setFontSize(n: number) {
     if (!term) return
@@ -284,7 +388,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   }
 
   function connect(takeover: boolean) {
-    if (disposed || !term) return
+    if (disposed) return
+    // Before xterm is there: the view connects once mounted; a take-over asked
+    // meanwhile is kept for that connection.
+    if (!term) { if (mounting && takeover) takeoverQueued = true; return }
+    if (takeoverQueued) { takeover = true; takeoverQueued = false }
     clearTimeout(twsTimer)
     clearTimeout(handshake)
     probe.cancel()
@@ -326,6 +434,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       catch { return }
       if (m.type === 'web.capabilities') {
         mouseSupported = m.mouse === true
+        coreStream = m.core === true
+        if (term) term.options.scrollback = coreStream ? CORE_SCROLLBACK : 0
       } else if (m.type === 'terminal.frame') {
         if (!gotFrame) {
           gotFrame = true
@@ -333,12 +443,28 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         }
         loading.value = false
         if (!term) return
-        if (m.width && m.height && (m.width !== term.cols || m.height !== term.rows)) {
-          if (smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
-          term.resize(m.width, m.height)
-        }
         const current = term
-        current.write(b64ToBytes(m.bytes || ''), () => { selectionHint.refresh(current, mouseSupported); if (smoothTouchScrolling.value) frameTick.value++ })
+        const credit = coreStream && Number.isInteger(m.credit) && m.credit > 0 ? m.credit : 0
+        // Size and reset apply in stream order (see utils/terminalFrame.ts).
+        // Core repaints the screen and its history on each attach.
+        writeTerminalFrame(current, { width: m.width, height: m.height, reset: coreStream && m.full === true, bytes: b64ToBytes(m.bytes || '') }, {
+          resized: () => {
+            if (term !== current) return
+            if (smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
+            if (coreStream) offerFit()
+          },
+          written: () => {
+            if (credit && tws === ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'credit', bytes: credit }))
+            if (coreStream && !coreControl) followCursor()
+            selectionHint.refresh(current, mouseSupported)
+            if (smoothTouchScrolling.value) frameTick.value++
+          },
+        })
+      } else if (m.type === 'terminal.control') {
+        coreControl = m.on === true
+        if (controlPending && !coreControl) takeControl()
+        else controlPending = false
+        offerFit()
       } else if (m.type === 'scroll.ack') {
         if (smoothTouchScrolling.value && m.epoch === touchEpoch && Number.isFinite(m.lines) && term) {
           // Queue behind the covering frame, including when write's callback
@@ -362,6 +488,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       clearTimeout(handshake)
       tws = null
       mouseSupported = false
+      coreStream = false
+      coreControl = true
+      followCursor()
+      if (sizeBanner) { sizeBanner = null; opts.setBanner(null) }
       loading.value = false
       probe.cancel()
       if (!twsIntent || disposed) return
@@ -406,10 +536,14 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   function reset() { term?.reset() }
   function focus() {
+    focusQueued = !term && mounting
     term?.focus()
     kbdOn.value = true
   }
-  function blur() { term?.textarea?.blur() }
+  function blur() {
+    focusQueued = false
+    term?.textarea?.blur()
+  }
   // Tap on the touch layer: opens the link under the finger, if any.
   const tapLink = (x: number, y: number) => links?.tap(x, y) ?? false
   const hasFocus = () => Boolean(term && document.activeElement === term.textarea)
@@ -421,6 +555,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   const pageRows = () => term?.rows || 24
   // Scrolling requested from Herdr (the history lives there).
   function scroll(lines: number, x?: number, y?: number, modifiers = 0, touch = false, preview = true): boolean {
+    if (coreStream && term) {
+      term.scrollLines(-lines)
+      if (touch && preview && smoothTouchScrolling.value) scrollAck.value += lines
+      return true
+    }
     if (!smoothTouchScrolling.value || !touch) return sendTerm({ type: 'terminal.scroll', direction: lines > 0 ? 'up' : 'down', lines: Math.abs(lines) })
     const screen = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
     const rect = screen?.getBoundingClientRect()
@@ -449,6 +588,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   function dispose() {
     el?.removeEventListener('paste', clearVirtualModifiers, true)
     disposed = true
+    if (mounting) loading.value = false
+    mounting = false
+    takeoverQueued = false
+    focusQueued = false
     stopSmoothWatch()
     disconnect()
     unbindSelection?.()
@@ -469,7 +612,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   }
 
   return {
-    mount, connect, disconnect, isConnected, sendTerm, sendKeys, fitNow, setFontSize,
+    mount, connect, disconnect, takeControl, isConnected, sendTerm, sendKeys, fitNow, setFontSize,
     reset, scroll, focus, blur, tapLink, tapMouse: (x: number, y: number) => mouse?.tap(x, y), hasFocus, rowHeight, pageRows, setVisible, dispose, loading, kbdOn,
     hasBanner: opts.hasBanner, selectionHint,
     cancelTouchScroll, scrollInputVersion, frameTick, scrollAck,
