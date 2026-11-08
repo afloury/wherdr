@@ -6,7 +6,7 @@ import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
-import { MAIN, canRunCoordinator, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
+import { MAIN, canRunCoordinator, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
@@ -29,6 +29,7 @@ import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from
 import { userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
 import { removeTask, resumeTask, stopTask } from './pmStop'
+import { reviveWorker } from './pmRelease'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
 import { memoryHold, memoryState } from './pmMemory'
@@ -226,15 +227,24 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     }
     case 'tell': {
       const task = await taskOf(cmd.task)
-      const run = task.run ? (await store.runs()).find(r => r.id === task.run) : undefined
-      if (!run?.terminal || run.state === 'ended') throw new HerdrError('not_found', 'The task\'s agent is not running')
+      const holder = t && !task.step?.done ? currentStep(planOf(t, task, p), task.step ?? initialState())?.holder : undefined
+      const { role, run, released } = tellTarget(await store.runs(), task.id, holder, cmd.to)
+      const said = `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}`
+      if (released) {
+        const why = tellRefusal(task, turn !== 'user')
+        if (why) throw new HerdrError('refused', why)
+        const started = await reviveWorker(deps, task.id, 'a message of the coordinator', said)
+        if (started?.state !== 'working') throw new HerdrError('refused', 'The task\'s worker was let go while the task waited and could not start again now (short on memory?): try again later')
+        return { task: await store.logTask(started, by, `told the worker, started again: ${cmd.text.slice(0, 300)}`), sentTo: 'worker (started again with your message)' }
+      }
+      if (!run?.terminal) throw new HerdrError('not_found', `The task's ${role} is not running${cmd.to ? '' : ` (--to ${role === 'worker' ? 'reviewer' : 'worker'} picks the other agent)`}`)
       // What the agent waits for now, from its terminal: a permission prompt is never typed into.
       const live = waitOf(await deps.call<Parameters<typeof waitOf>[0]>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null))
       const why = tellRefusal({ state: live ? 'waiting' : task.state, waitKind: live ?? task.waitKind }, turn !== 'user')
       if (why) throw new HerdrError('refused', why)
-      await deps.call('terminal.send', { terminal: run.terminal, text: `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}` }, 30000)
-      const saved = await store.logTask(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task, by, `told the agent: ${cmd.text.slice(0, 300)}`)
-      return { task: saved }
+      await deps.call('terminal.send', { terminal: run.terminal, text: said }, 30000)
+      const saved = await store.logTask(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task, by, `told the ${role}: ${cmd.text.slice(0, 300)}`)
+      return { task: saved, sentTo: role }
     }
     case 'task start': {
       const task = await taskOf(cmd.task)

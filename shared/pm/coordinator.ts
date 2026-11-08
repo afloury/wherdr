@@ -2,7 +2,11 @@
 // rights checked on each, and the role files written in its own folder. Pure:
 // the server (server/utils/pmCoordinator.ts) reads and writes.
 import type { Project } from './project'
-import { WEIGHTS, isWeight, type Template, type Weight } from './workflow'
+import { WEIGHTS, isWeight, type Holder, type Template, type Weight } from './workflow'
+import type { Run } from './run'
+import { wasReleased } from './release'
+
+type AgentRole = Run['role']
 import type { WorkflowChanges } from './workflowChanges'
 import type { ProjectColor } from './projectKey'
 import type { Autopilot, limitsLeft } from './autopilot'
@@ -79,7 +83,7 @@ export type Command =
   | { name: 'step done', task: string, userSaid?: string, link?: string }
   | { name: 'task decide', task: string, choice: Choice, reason: string }
   | { name: 'ack', wakes: string[] } | { name: 'automation show', id: string }
-  | { name: 'tell', task: string, text: string }
+  | { name: 'tell', task: string, text: string, to?: AgentRole }
   | { name: 'task start', task: string, on?: string }
   | { name: 'task stop', task: string, reason: string }
   | { name: 'task remove', task: string, reason: string }
@@ -106,12 +110,26 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
   { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"] [--weight light|standard|heavy]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done. --weight says what it needs of a machine (light: docs, a study; standard: tests and typecheck; heavy: a build, e2e, screenshots); left out, it comes from its task type and steps (show gives it)' },
-  { usage: 'tell <task> "<text>"', does: 'a message to the task\'s agent; in a wake, only to answer its question (a permission request is the user\'s)' },
+  { usage: 'tell <task> "<text>" [--to worker|reviewer]', does: 'a message to one of the task\'s agents: the one that holds its current step, else (a step held by nobody or by you: pr, merge, a user step) its worker; --to picks it. The answer says which agent got it. In a wake, only to answer its question (a permission request is the user\'s)' },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
 ]
 // Listed only where the project's guard allows it.
 const GUARDED_COMMAND = 'pr merge'
+
+const AGENT_ROLES: AgentRole[] = ['worker', 'reviewer']
+// Which of a task's agents `tell` reaches: --to, else the holder of its current
+// step when that is an agent, else its worker (a step held by nobody or by the
+// coordinator: pr, merge, a user step; the latest agent there is often the
+// reviewer, who has nothing to change). run: its latest run of that role, if
+// still running; released: a worker the engine let go while the task waited
+// for the user (release.ts), started again with the message.
+export function tellTarget(runs: Run[], task: string, holder: Holder | undefined, to?: AgentRole) {
+  const role = to ?? (holder === 'reviewer' ? 'reviewer' : 'worker')
+  const last = runs.filter(r => r.task === task && r.role === role).sort((a, b) => b.startedAt - a.startedAt)[0]
+  const run = last?.state !== 'ended' && last?.terminal ? last : undefined
+  return { role, run, released: !run && role === 'worker' && wasReleased(last) }
+}
 
 const TASK_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
@@ -144,14 +162,16 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight'], 'task start': ['on'] }[verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight'], 'task start': ['on'] }[w0 === 'tell' ? 'tell' : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (verb === 'autopilot show' || verb === 'automation list') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
   if (verb === 'automation show') return w2 && /^[a-z0-9][a-z0-9-]{0,39}$/.test(w2) && !w3 ? { name: verb, id: w2 } : usage(verb)
   if (w0 === 'tell') {
     const text = words.slice(2).join(' ').trim()
-    return w1 && TASK_RE.test(w1) && text && text.length <= 4000 ? { name: 'tell', task: w1, text } : usage('tell')
+    const to = flags.to
+    if (to !== undefined && !AGENT_ROLES.includes(to as AgentRole)) return { error: `--to is one of ${AGENT_ROLES.join(', ')}` }
+    return w1 && TASK_RE.test(w1) && text && text.length <= 4000 ? { name: 'tell', task: w1, text, ...(to ? { to: to as AgentRole } : {}) } : usage('tell')
   }
   if (w0 === 'help' || w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0 }
   if (w0 === 'show') return w1 && TASK_RE.test(w1) && !w2 ? { name: 'show', task: w1 } : usage('show')

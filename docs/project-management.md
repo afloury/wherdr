@@ -195,8 +195,13 @@ or archived task is never under Your turn.
 A card shows the task's title, its id and step, how long it has been in that
 step (*12 min in review*) or, once done, how long it took from start to done
 (*42 min*), a dot with its agent's state (worker or reviewer), where its PR stands (*PR open · waiting for checks*,
-*checks failed*, *merging*, *blocked: …*, *merged …*), what you have to do under
-Your turn, the tasks it waits for, its first tags and its PR link. Its menu (right
+*checks failed*, *merging*, *The PR conflicts with v3*, *merged …*), what you have to do under
+Your turn, the tasks it waits for, its first tags and its PR link. A refused
+step is said in plain words, never as a command: the commands go to the agent.
+When the engine has already asked the agent to bring a conflicting PR up to
+date, the card says *The PR conflicts with v3: the agent is updating it* and
+leaves Your turn while the PR is still in conflict; once it is not, it is back
+under Your turn: *The agent brought the PR up to date with v3*, press again. Its menu (right
 click, long press, or ••• when it has more than *Open*) offers:
 
 - **Start**, on a task to do that waits for no other task;
@@ -289,6 +294,12 @@ agent again (you send it back, a merge finds a conflict, CI goes red, new
 commits need a review), wherdr starts the worker or the reviewer again in the
 same worktree, with a note on where the work stands. The task's log says when
 its agents were ended and started again.
+
+A message from the coordinator (`wherdr pm tell <task>`) goes to the agent
+that holds the task's current step; at a step held by nobody (the PR, the
+merge, a step you end) it goes to the worker, started again if it was ended.
+The coordinator can pick one with `--to worker` or `--to reviewer`, and its
+answer says which agent got the message.
 
 A machine's cap of agents (Settings › Machines) counts only the agents working
 on a step: not those of a task that waits for you, and not the coordinators.

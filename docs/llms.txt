@@ -69,11 +69,11 @@
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
 - [Template library](docs/project-management.md#template-library): saved templates and examples, read, rename and delete; projects keep their own copy.
 - [Autopilot](docs/project-management.md#autopilot): the header button and its window, goal, wakes and limits.
-- [Board](docs/project-management.md#board): columns (a done or archived task is never under Your turn), cards, time in the step and total time, Add task (with its weight: Auto, Light, Standard, Heavy), Start, Start on another machine (its readiness check), Stop, Delete.
+- [Board](docs/project-management.md#board): columns (a done or archived task is never under Your turn), cards, time in the step and total time, Add task (with its weight: Auto, Light, Standard, Heavy), Start, Start on another machine (its readiness check), Stop, Delete; a refused merge said in plain words (a conflict the agent is already fixing leaves Your turn).
 - [Task sheet](docs/project-management.md#task-sheet): time per step, waits for you, review rounds and CI fixes, the task's buttons and its Description, Plan and Log tabs.
 - [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back and other answers.
 - [A stalled task](docs/project-management.md#a-stalled-task): red CI or an idle agent: the coordinator woken, one nudge, then Tasks to handle and a notification after 30 min.
-- [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again.
+- [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again; which agent a coordinator's `tell` reaches (--to worker|reviewer).
 - [Alfred's command](docs/alfred.md): `wherdr alfred`, what Alfred reads and changes after your yes (projects, their machines, guards, coordinators, settings).
 - [After an update](docs/alfred.md#after-an-update): new instructions for Alfred and coordinators, and the one-line notice on their next command.
 
