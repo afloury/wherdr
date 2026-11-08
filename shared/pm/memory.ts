@@ -3,8 +3,7 @@
 // while it already runs as many agents as its cap, across all projects. The
 // user's own starts still go, with a word that the machine is short.
 
-// What /proc/meminfo says, in MB.
-export interface MachineMemory { total: number, available: number, swapTotal: number, swapFree: number }
+import type { MachineCapacity } from './capacity'
 
 // The user's settings for one machine (Settings › Machines).
 export interface MemorySettings {
@@ -16,25 +15,17 @@ export const DEFAULT_MEMORY: MemorySettings = { minFreeMb: 2048 }
 export const SWAP_MAX = 0.9 // automatic starts wait while more of the swap than this is used
 export const MB_PER_AGENT = 1536
 
-// /proc/meminfo's text: null when MemTotal or MemAvailable is missing (not Linux).
-export function parseMeminfo(text: string): MachineMemory | null {
-  const kb = (k: string) => { const m = new RegExp(`^${k}:\\s+(\\d+)`, 'm').exec(text); return m ? Math.round(Number(m[1]) / 1024) : null }
-  const total = kb('MemTotal'), available = kb('MemAvailable')
-  if (total === null || available === null) return null
-  return { total, available, swapTotal: kb('SwapTotal') ?? 0, swapFree: kb('SwapFree') ?? 0 }
-}
-
 // The machine's cap: the user's, else one agent per MB_PER_AGENT of RAM (at least one).
-export const agentCap = (s: MemorySettings, mem: MachineMemory | null) =>
+export const agentCap = (s: MemorySettings, mem: MachineCapacity | null) =>
   s.maxAgents ?? (mem ? Math.max(1, Math.floor(mem.total / MB_PER_AGENT)) : undefined)
 
 const gb = (mb: number) => `${(mb / 1024).toFixed(1)} GB`
-const swapUsed = (m: MachineMemory) => (m.swapTotal ? (m.swapTotal - m.swapFree) / m.swapTotal : 0)
+const swapUsed = (m: MachineCapacity) => (m.swapTotal ? (m.swapTotal - m.swapFree) / m.swapTotal : 0)
 
 // Why the machine is short for one more agent, or undefined. `agents`: the
 // agents running on it now, all projects together. An unknown reading holds
 // only by the user's cap.
-export function memoryShort(mem: MachineMemory | null, s: MemorySettings, agents: number): string | undefined {
+export function memoryShort(mem: MachineCapacity | null, s: MemorySettings, agents: number): string | undefined {
   if (mem && mem.available < s.minFreeMb) return `${gb(mem.available)} free, under ${gb(s.minFreeMb)}`
   if (mem && swapUsed(mem) > SWAP_MAX) return `swap ${Math.round(swapUsed(mem) * 100)} % used`
   const cap = agentCap(s, mem)
@@ -44,12 +35,13 @@ export function memoryShort(mem: MachineMemory | null, s: MemorySettings, agents
 // The words on a held task's card.
 export const memoryWait = (machine: string, why: string) => `Waits for memory on ${machine}: ${why}`
 
-// One line for `autopilot show` and Settings: "5.2 GB free of 16.0 GB · swap 3 % · 2 of 10 agents · go".
-export function memoryLine(mem: MachineMemory | null, s: MemorySettings, agents: number): string {
+// One line for `autopilot show` and Settings: "5.2 GB free of 16.0 GB · 8 cores, load 2.1 · swap 3 % · 2 of 10 agents · go".
+export function memoryLine(mem: MachineCapacity | null, s: MemorySettings, agents: number): string {
   const cap = agentCap(s, mem)
   const short = memoryShort(mem, s, agents)
   return [
     mem ? `${gb(mem.available)} free of ${gb(mem.total)}` : 'memory unknown',
+    ...(mem?.cores ? [`${mem.cores} cores, load ${mem.load1.toFixed(1)}`] : []),
     ...(mem?.swapTotal ? [`swap ${Math.round(swapUsed(mem) * 100)} %`] : []),
     cap !== undefined ? `${agents} of ${cap} agents` : `${agents} agents`,
     short ? `wait: ${short}` : 'go',
