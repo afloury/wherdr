@@ -132,7 +132,7 @@ Claude and Codex quotas work as in v2 (home rows, Settings › Agents › Claude
 machine's quota files, this machine's from disk and core machines' through `machine.exec` (the status line
 installer goes on its stdin), with a 30 s cache.
 
-Settings › Agents › Machines lists core's machines with their state, reconnects one
+Settings › Machines lists core's machines with their state, reconnects one
 (`machine.connect`), renames (`machine.rename`) or forgets (`machine.rm`) one, and adds one over
 SSH (`machine.add` with a target and an optional name, like `hc machine add`). The target must already accept this host's SSH login: wherdr never
 asks for a password, installs core on the machine, or accepts a `via` command.

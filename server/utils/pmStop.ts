@@ -8,7 +8,7 @@ import { onEvent } from '../../shared/pm/steps'
 import { handoverText, removeRefusal, resumeRefusal, stopRefusal, stoppedTask, type Resume, type Stopper } from '../../shared/pm/stop'
 import { taskPlan, type Task } from '../../shared/pm/run'
 
-async function load(deps: PmLaunchDeps, id: unknown) {
+export async function load(deps: PmLaunchDeps, id: unknown) {
   const task = await deps.store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
   const p = (await deps.store.projects()).find(x => x.key === task.project)
@@ -24,11 +24,19 @@ export async function stopTask(deps: PmLaunchDeps, id: unknown, by: Stopper, why
   if (refused) throw new HerdrError('refused', refused)
   const reason = why.trim().slice(0, 300) || 'no reason given'
   // Saved first: from now on the engine's passes leave the task alone.
-  let saved = await store.logTask(stoppedTask(task, { by: by.who === 'user' ? 'the user' : 'the coordinator', why: reason, at: Date.now() }), logBy, `stopped: ${reason}`)
+  const saved = await store.logTask(stoppedTask(task, { by: by.who === 'user' ? 'the user' : 'the coordinator', why: reason, at: Date.now() }), logBy, `stopped: ${reason}`)
+  return endAgents(deps, saved, 'stopped')
+}
+
+// Ends the task's agents through herdr-core, one log line each; the worktree,
+// the branch and the files stay. `why`: added to the line ("after 10 minutes idle").
+export async function endAgents(deps: Pick<PmLaunchDeps, 'store' | 'call'>, task: Task, endedBy: 'stopped' | 'released', why = ''): Promise<Task> {
+  const { store } = deps
+  let saved = task
   for (const r of (await store.runs()).filter(x => x.task === task.id && x.state !== 'ended')) {
     const err = r.terminal ? await deps.call('terminal.kill', { terminal: r.terminal }, 15000).then(() => '', (e: Error) => e.message) : ''
-    await store.saveRun({ ...r, state: 'ended', endedBy: 'stopped' })
-    saved = await store.logTask(saved, 'engine', err ? `could not end the ${r.role} (${err}): close its terminal by hand` : `ended the ${r.role} (${r.program} ${r.model}); its worktree stays`)
+    await store.saveRun({ ...r, state: 'ended', endedBy })
+    saved = await store.logTask(saved, 'engine', err ? `could not end the ${r.role} (${err}): close its terminal by hand` : `ended the ${r.role} (${r.program} ${r.model})${why}; its worktree stays`)
   }
   return saved
 }

@@ -5,6 +5,7 @@
 import { boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, waitsFor, type Board, type Card } from '#shared/pm/board'
 import type { Task } from '#shared/pm/run'
 import { RESUMES } from '#shared/pm/stop'
+import { shownTaskId, storedTaskId } from '#shared/pm/projectKey'
 import type { Pane } from '#shared/types'
 
 const data = ref<Board | null>(null)
@@ -74,9 +75,12 @@ const waiting = (c: Card) => (c.phase === 'todo' ? waitsFor(c, data.value?.cards
 // once; a refused Start now is said on the board, the task stays added.
 const adding = ref(false)
 function added(task: Task, refused?: string) {
-  load().then(() => { if (refused) error.value = `${task.id}: ${refused}` })
+  load().then(() => { if (refused) error.value = `${shownTaskId(data.value?.projects ?? [], task.id)}: ${refused}` })
 }
-const selected = computed(() => cards.value.find(c => c.id === open.value) ?? data.value?.cards.find(c => c.id === open.value) ?? null)
+// By any key its project had, in any case (a link may name a former key: /board?task=WHR-5 after WHR became WD).
+const openId = computed(() => storedTaskId(data.value?.projects ?? [], open.value) ?? open.value)
+const isOpen = (c: Card) => c.id === openId.value
+const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.find(isOpen) ?? null)
 </script>
 
 <template>
@@ -109,10 +113,10 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
             <span v-if="hasAgent(c)" class="card-state" :class="live(c).key" role="img" :aria-label="live(c).label" :title="live(c).label" data-testid="holder-state"><i /></span>
             <b>{{ c.title }}</b>
           </span>
-          <small class="mono-label">{{ c.id }}<template v-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
+          <small class="mono-label">{{ c.shown }}<template v-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
           <small v-if="statusOf(c)" class="board-status" :class="statusOf(c)!.tone" :title="statusOf(c)!.text" data-testid="board-status">{{ statusOf(c)!.text }}</small>
           <span v-if="c.yourTurn" class="board-badge" data-testid="board-badge">{{ c.yourTurn }}</span>
-          <small v-else-if="waiting(c).length" class="muted" data-testid="board-waits">{{ tl('Waits for', 'Attend') }} {{ waiting(c).join(', ') }}</small>
+          <small v-else-if="waiting(c).length" class="muted" data-testid="board-waits">{{ tl('Waits for', 'Attend') }} {{ waiting(c).map(id => shownTaskId(data?.projects ?? [], id)).join(', ') }}</small>
           <span v-if="c.tags.length || c.links.length" class="board-tags">
             <span v-for="tag in c.tags.slice(0, 2)" :key="tag" class="board-chip">{{ tag }}</span>
             <span v-if="c.tags.length > 2" class="board-chip">+{{ c.tags.length - 2 }}</span>

@@ -8,13 +8,15 @@ import { randomUUID } from 'node:crypto'
 import { DONE_CMD, READ_SEP, dueText, parseRead, reviewFile, runFiles, runsNow, signalEvent } from '../../shared/pm/advance'
 import { onEvent, type PlannedStep } from '../../shared/pm/steps'
 import { LABEL, agentLine, reviewerPlan, runLabels, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
-import { PATH_SETUP, launchFailure, machineOn } from './coreCreate'
-import { WRITE_SCRIPT, exec, type PmLaunchDeps } from './pmLaunch'
+import { PATH_SETUP, launchFailure } from './coreCreate'
+import { WRITE_SCRIPT, exec, runOn, type PmLaunchDeps } from './pmLaunch'
 import { stepAction } from './pmBoard'
 import { cleanTask } from './pmCleanup'
 import { readLeakCheck } from './pmVisibility'
 import { isPublic, leakText, scanDiff } from '../../shared/pm/visibility'
 import type { Project } from '../../shared/pm/project'
+import { wasReleased } from '../../shared/pm/release'
+import { reviveWorker } from './pmRelease'
 
 // The task's commit, its diff size since the branch started, the worker's note, the verdict file.
 export const SIGNAL_READ_SCRIPT = `wt=$1 b=$2
@@ -31,8 +33,10 @@ async function context(deps: PmLaunchDeps, id: string): Promise<Ctx | null> {
   const p = task && (await deps.store.projects()).find(x => x.key === task.project)
   const t = p ? await deps.store.workflow(p.key) : null
   if (!task?.step?.started || !p || !t) return null
+  // The worker's machine (its reviewer runs there too); no worker yet: the project's.
+  const worker = latest(await deps.store.runs(), id, 'worker')
   let on: string | undefined
-  try { on = machineOn(deps, p.machine).on } catch { return null }
+  try { on = runOn(deps, worker ?? p) } catch { return null }
   return { task, p, on, t, plan: taskPlan(t, task, p) }
 }
 
@@ -102,6 +106,8 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
   const told = { ...s, told: s.since }
   if (due.holder === 'reviewer') return reviewer(deps, c, due.text, alive(latest(runs, id, 'reviewer')) && latest(runs, id, 'reviewer'))
   const worker = latest(runs, id, 'worker')
+  // Released while the task waited for the user: started again, the handover gives the step.
+  if (!alive(worker) && wasReleased(worker)) return void await reviveWorker(deps, id, `${plan[s.at]!.id} needs it`)
   if (!alive(worker)) return void (task.state !== 'waiting' && await waitFor(deps, id, 'The worker\'s agent is not running: start the task again to go on'))
   await clearSignal(deps, worker!.terminal!)
   // A new note for this step: the last one's link must not pass as this step's proof.
@@ -129,7 +135,8 @@ async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: strin
   let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'reviewer', ...plan, machine: worker.machine, worktree: worker.worktree, branch: worker.branch, instructions: files.review, attempt: 1, state: 'starting', startedAt: Date.now() }
   // The receipt first: an unconfirmed start is found again by its labels, never started twice.
   await store.saveRun(run)
-  await store.logTask({ ...task, step: told, run: run.id }, 'engine', `review: started the reviewer (${plan.program} ${plan.model})`)
+  const again = wasReleased(latest(await store.runs(), task.id, 'reviewer')) ? ' again in its worktree' : ''
+  await store.logTask({ ...task, step: told, run: run.id }, 'engine', `review: started the reviewer${again} (${plan.program} ${plan.model})`)
   const { address } = await deps.call<{ address: string }>('terminal.run', {
     cwd: worker.worktree, ...(on ? { on } : {}), no_parent: true, wait: false, env: { DISABLE_AUTOUPDATER: '1' },
     labels: runLabels(await store.install(), run), line: `${PATH_SETUP}; ${agentLine(plan.program, plan.model, files.review)}`,

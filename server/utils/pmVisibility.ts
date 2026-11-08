@@ -41,7 +41,7 @@ export async function detectVisibility(deps: CoreAdminDeps, p: Pick<Project, 'ma
 
 // "Check again", or the first check: the result is kept with its date.
 export async function checkVisibility(deps: Deps, key: unknown, fetcher?: typeof fetch) {
-  const p = (await deps.store.projects()).find(x => x.key === key)
+  const p = await deps.store.project(key)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
   return deps.store.setVisibility(p.key, { value: await detectVisibility(deps, p, fetcher), at: Date.now(), by: 'check' })
 }

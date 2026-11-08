@@ -10,6 +10,8 @@ import { machineOn, type CoreAdminDeps } from './coreCreate'
 import { exec } from './pmLaunch'
 import type { PmStore } from './pmStore'
 import { DATA_DIR } from './env'
+import { agentsAtWork } from '../../shared/pm/release'
+import { taskPlan } from '../../shared/pm/run'
 
 export const MEMORY_FILE = path.join(DATA_DIR, 'machine-memory.json')
 
@@ -55,12 +57,23 @@ async function machineMemory(deps: CoreAdminDeps, machine: string, now = Date.no
 
 export interface MemoryState { key: string, label: string, mem: MachineMemory | null, settings: MemorySettings, agents: number, cap?: number, line: string, short?: string }
 
-// Where a machine stands: its reading, its settings, its agents (runs not ended, every project).
+// The agents at work on a machine, every project: those that hold their task's
+// step under way (agentsAtWork), not those of a task that waits for the user.
+async function atWork(store: PmStore, machine: string) {
+  const [runs, tasks, projects] = await Promise.all([store.runs(), store.tasks(), store.projects()])
+  const holders = new Map<string, string | undefined>()
+  for (const t of tasks.filter(x => x.step && runs.some(r => r.task === x.id && r.machine === machine && r.state !== 'ended'))) {
+    const p = projects.find(x => x.key === t.project), tpl = p && await store.workflow(p.key)
+    holders.set(t.id, tpl ? taskPlan(tpl, t, p)[t.step!.at]?.holder : undefined)
+  }
+  return agentsAtWork(runs, tasks, machine, t => holders.get(t.id))
+}
+
+// Where a machine stands: its reading, its settings, its agents at work.
 export async function memoryState(deps: CoreAdminDeps & { store: PmStore }, machine: string): Promise<MemoryState> {
   const label = deps.machines().find(m => m.key === machine)?.label ?? machine
-  const [mem, all, runs] = await Promise.all([machineMemory(deps, machine), readMemorySettings(), deps.store.runs()])
+  const [mem, all, agents] = await Promise.all([machineMemory(deps, machine), readMemorySettings(), atWork(deps.store, machine)])
   const settings = all[machine] ?? DEFAULT_MEMORY
-  const agents = runs.filter(r => r.machine === machine && r.state !== 'ended').length
   const short = memoryShort(mem, settings, agents)
   const cap = agentCap(settings, mem)
   return { key: machine, label, mem, settings, agents, ...(cap !== undefined ? { cap } : {}), line: memoryLine(mem, settings, agents), ...(short ? { short } : {}) }

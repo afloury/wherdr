@@ -5,17 +5,19 @@
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
 import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
-import { PATH_SETUP, machineOn } from './coreCreate'
+import { PATH_SETUP } from './coreCreate'
 import { actionShell } from './pmActions'
 import { prSeen, stepAction } from './pmBoard'
 import { prNow, requiredChecks } from '../../shared/pm/board'
-import { exec, startTask, type PmLaunchDeps } from './pmLaunch'
+import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
 import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
 import { originOf, pacedStart, paceRefusal } from '../../shared/pm/pace'
 import { projectPace } from './pmPace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { advanceTick } from './pmAdvance'
 import { forgetMemory, memoryHold } from './pmMemory'
+import { releaseIdle, reviveWorker } from './pmRelease'
+import { wasReleased } from '../../shared/pm/release'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -120,6 +122,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   if (!(await store.enabled())) return []
   await syncWaits(deps).catch(() => {})
   await advanceTick(deps, now).catch(() => {})
+  await releaseIdle(deps, now).catch(() => {})
   await startChained(deps, now).catch(() => {})
   await startHeld(deps, now).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
@@ -132,7 +135,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
     const run = runs.filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
     if (!run) continue
     let on: string | undefined
-    try { on = machineOn(deps, p.machine).on } catch { continue }
+    try { on = runOn(deps, run) } catch { continue }
     const sh = actionShell(deps, on)
     const plan = taskPlan(t, task, p)
     const facts: MechFacts = { task, plan, guards: taskGuards(t, task.type), branch: run.branch, agentBusy: false }
@@ -168,9 +171,12 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
 }
 
 async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: MechFacts, sh: ReturnType<typeof actionShell>): Promise<string | null> {
+  // A worker released while the task waited for the user starts again with it (null: not now, short on memory).
   const tell = (text: string) => run.terminal && run.state !== 'ended'
     ? deps.call('terminal.send', { terminal: run.terminal, text }, 30000).then(() => 'sent to the agent', () => null)
-    : Promise.resolve(null)
+    : wasReleased(run)
+      ? reviveWorker(deps, task.id, move.kind, text).then(t => (t ? (t.state === 'working' ? 'started the worker again with it' : 'could not start the worker again') : null))
+      : Promise.resolve(null)
   switch (move.kind) {
     case 'restart':
       // The agent stopped on its login may still sit in its terminal: one agent per task.

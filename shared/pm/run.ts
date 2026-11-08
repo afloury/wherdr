@@ -57,7 +57,7 @@ export interface Run {
   terminal?: string // herdr-core address, once started
   attempt: number // 1, or 2 after an agent that exited at once
   state: 'starting' | 'running' | 'ended'
-  endedBy?: 'exit' | 'lost' | 'stopped'
+  endedBy?: 'exit' | 'lost' | 'stopped' | 'released' // released: idle while its task waited for the user (release.ts)
   startedAt: number
 }
 

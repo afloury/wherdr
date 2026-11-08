@@ -25,6 +25,7 @@ Changing (show, then do):
 | --- | --- |
 | `wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]` | adds a project: a git folder inside the home folder of a machine, not already a project (on this machine, checked before the yes too) |
 | `wherdr alfred project template <KEY> <id\|none>` | gives the project a template, or none |
+| `wherdr alfred project guards <KEY> [--protect <branch,branch\|none>] [--merge-protected user\|engine] [--merge-others user\|engine] [--contributor-prs off\|others\|all]` | the project's [guards](project-management.md#guards): protected branches, who merges into them and into the others (`user`: you, `engine`: wherdr), and whether its coordinator may merge an outside contributor's PR after your yes; without an option, only shown |
 | `wherdr alfred coordinator start <KEY> [--program claude\|codex]` | starts the project's coordinator with its harness's default model; without `--program`, the user's first offered agent that can run it (Settings › Agents) (a new conversation replaces a running one) |
 | `wherdr alfred setting set <key> <value>` | changes a setting to one of the values `settings` lists for it (a theme id from the theme list, for instance); lists such as machine groups or hidden agents stay in Settings |
 

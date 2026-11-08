@@ -4,6 +4,9 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { github } from '../shared/pm/examples'
 import { DEFAULT_AUTOPILOT } from '../shared/pm/autopilot'
+import { createPmStore } from '../server/utils/pmStore'
+import { memoryHold } from '../server/utils/pmMemory'
+import { startHeld } from '../server/utils/pmMechanic'
 import { DEFAULT_MEMORY, agentCap, memoryShort, mergeMemory, parseMeminfo } from '../shared/pm/memory'
 
 const GB = 1024
@@ -35,8 +38,6 @@ describe('the memory hold', () => {
   })
 
   it('counts the agents of every project on the machine against its cap', async () => {
-    const { createPmStore } = await import('../server/utils/pmStore')
-    const { memoryHold } = await import('../server/utils/pmMemory')
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-memory-'))
     try {
       const store = createPmStore(dir)
@@ -44,19 +45,25 @@ describe('the memory hold', () => {
       await store.saveTemplate(github)
       for (const key of ['AA', 'BB']) await store.addProject({ key, machine: 'm1', path: `/src/${key}`, template: 'github' }, async (_m, p) => p)
       const run = (id: string, task: string) => store.saveRun({ id, task, role: 'worker', program: 'claude', model: 'sonnet', machine: 'm1', worktree: '/w', branch: 'b', instructions: '/i', attempt: 1, state: 'running', startedAt: 1 })
+      // At their worker's step (work).
+      const work = async (key: string) => store.saveTask({ ...(await store.addTask({ project: key, title: 'Work', type: 'simple' })), state: 'working', step: { at: 1, started: true, proofs: {}, rounds: {} } })
       // 3 GB of RAM: a cap of two agents. One runs for each project.
+      for (const key of ['AA', 'BB']) await work(key)
       await run('r1', 'AA-1')
       await run('r2', 'BB-1')
       const call = async (method: string) => (method === 'machine.exec' ? { code: 0, stdout: Buffer.from(meminfo(3, 2.5)).toString('base64') } : {})
       const deps = { store, call, machines: () => [{ key: 'm1', local: false, label: 'box', status: 'online' }] } as unknown as Parameters<typeof memoryHold>[0]
       expect(await memoryHold(deps, 'BB')).toBe('Waits for memory on box: 2 agents already run on it (cap 2)')
+      // A task waiting for the user (Your turn) does not count its agent.
+      const aa = (await store.task('AA-1'))!
+      await store.saveTask({ ...aa, step: { ...aa.step!, yourTurn: { reason: 'user', badge: 'Check it' } } })
+      expect(await memoryHold(deps, 'BB')).toBeUndefined()
+      await store.saveTask(aa)
+      expect(await memoryHold(deps, 'BB')).toBeDefined()
       await store.saveRun({ ...(await store.runs()).find(r => r.id === 'r1')!, state: 'ended' })
       expect(await memoryHold(deps, 'BB')).toBeUndefined()
 
       // Memory back, a wake's held task still holds to its autopilot: over atOnce it waits, with why; off, the hold goes.
-      const { startHeld } = await import('../server/utils/pmMechanic')
-      const busy = await store.addTask({ project: 'BB', title: 'Busy', type: 'simple' })
-      await store.saveTask({ ...busy, state: 'working' })
       const held = await store.saveTask({ ...(await store.addTask({ project: 'BB', title: 'Held', type: 'simple' })), autopilot: true, held: 'Waits for memory on box' })
       await store.saveCoordinator({ project: 'BB', tokenHash: '', autopilot: { ...DEFAULT_AUTOPILOT, on: true, atOnce: 1 } })
       expect(await startHeld(deps as never)).toEqual([])

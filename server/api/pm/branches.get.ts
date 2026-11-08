@@ -6,7 +6,7 @@ import { HerdrError } from '../../utils/herdr'
 
 export default defineApi(async (event) => {
   const key = String(getQuery(event).key || '')
-  const p = (await pmStore().projects()).find(x => x.key === key)
+  const p = await pmStore().project(key)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
   return { branches: p.git === false ? [] : await remoteBranches(coreAdminDeps(), p) }
 })

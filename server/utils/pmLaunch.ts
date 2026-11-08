@@ -54,17 +54,24 @@ export function wherdrBase(machine: string, origin = '', appUrl = process.env.AP
   return (appUrl || origin).replace(/\/+$/, '')
 }
 
+// The herdr-core target of the machine a run is on (undefined: the wherdr
+// host). Everything done for a started task goes there, never to the project's
+// machine. Throws when that machine is unknown or unreachable.
+export const runOn = (deps: CoreAdminDeps, run: Pick<Run, 'machine'>) => machineOn(deps, run.machine).on
+
 const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitKind']) => store.saveTask({ ...task, state: 'waiting', waiting: reason, waitKind, held: undefined })
 
 // Starts the worker of a task to do (or waiting, to try again). Any reason it
 // cannot start puts the task in 'waiting' with that reason, after one attempt.
 // handover: a note for a worker that takes up a stopped task (stop.ts). A
 // stopped task stays stopped until its agent starts: never seen as a failure meanwhile.
-export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: { handover?: string } = {}): Promise<Task> {
+// revive: the worker the engine released (release.ts) starts again in its
+// worktree, whatever the task's state and the holder of its current step.
+export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, revive }: { handover?: string, revive?: true } = {}): Promise<Task> {
   const { store } = deps
   const task = await store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
-  if (task.state === 'working') throw new HerdrError('busy', 'This task is already working')
+  if (task.state === 'working' && !revive) throw new HerdrError('busy', 'This task is already working')
   const found = (await store.projects()).find(x => x.key === task.project)
   if (!found) throw new HerdrError('not_found', 'Unknown project')
   if (found.git === false) return wait(store, task, 'The project folder is not a git repository: a task needs git for its own worktree')
@@ -77,12 +84,14 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: {
   // step's holder is told again (the reviewer started again) by the next advance pass.
   const s = task.step
   const held = s?.started && !s.done ? taskPlan(t, task, p)[s.at] : undefined
-  if (held && held.holder !== 'worker') {
+  if (held && held.holder !== 'worker' && !revive) {
     const { told: _told, ...step } = s!
     return store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, step })
   }
+  // The machine this run goes to: the project's for now.
+  const machine = p.machine
   let on: string | undefined, label = ''
-  try { ({ on, m: { label } } = machineOn(deps, p.machine)) } catch (e) { return wait(store, task, (e as Error).message) }
+  try { ({ on, m: { label } } = machineOn(deps, machine)) } catch (e) { return wait(store, task, (e as Error).message) }
   if (!(await kindsOf(deps, on)).includes(plan.program)) return wait(store, task, `${plan.program} is not installed on ${label}`)
   const home = await homeOf(deps, on)
   if (!home) return wait(store, task, `${label}: home folder not found`)
@@ -96,7 +105,7 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: {
   // A visual task: the worker's key to upload its screenshots, kept with the task.
   const shotToken = shotStep(t, task.type) ? task.shotToken || randomBytes(16).toString('hex') : undefined
   const leakCheck = isPublic(p) ? (await readLeakCheck(deps, on, paths).catch(() => ({ check: undefined }))).check : undefined
-  const text = instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(p.machine, deps.origin), token: shotToken } : undefined, leakCheck)
+  const text = instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(machine, deps.origin), token: shotToken } : undefined, leakCheck)
     + ['', ...(depsLine ? [depsLine, ''] : []), ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n')
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')
 
@@ -106,7 +115,7 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover }: {
   const first = onEvent(taskPlan(t, task, p), initialState(), { kind: 'start' }, Date.now()).state
   const step = task.step?.started ? task.step : { ...first, told: first.since }
   const install = await store.install()
-  let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine: p.machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now() }
+  let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now() }
   for (;;) {
     await store.saveRun(run) // the receipt, before the terminal exists
     await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, run: run.id, step, base, ...(shotToken ? { shotToken } : {}) })
