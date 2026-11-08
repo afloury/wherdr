@@ -13,13 +13,12 @@ import type { LogEntry } from '#shared/pm/templateText'
 import type { Prefs, Template } from '#shared/pm/workflow'
 import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
 import type { RepoVisibility } from '#shared/pm/visibility'
-import { PROJECT_TABS, type ProjectTab } from '~/utils/projectTabs'
+import { PROJECT_TABS, PROJECT_TAB_LABEL as TAB_LABEL, type ProjectTab } from '~/utils/projectTabs'
 
 const props = defineProps<{ project: Project, tab: ProjectTab, templates: TemplateInfo[], review?: boolean }>()
 const emit = defineEmits<{ tab: [tab: ProjectTab], close: [], changed: [] }>()
 const open = ref(true)
 const p = computed(() => props.project)
-const TAB_LABEL: Record<ProjectTab, string> = { general: 'General', workflow: 'Workflow', guards: 'Guards', automations: 'Automations', autopilot: 'Autopilot' }
 
 const workflow = ref<Template | null>(null)
 const log = ref<LogEntry[]>([])

@@ -2,7 +2,8 @@
 // them, and who merges at each step that merges (combineGuards + planSteps).
 // Pure: the tab passes the guards being edited, so the lines follow at once.
 import { combineGuards } from './guards'
-import { planSteps } from './steps'
+import { planSteps, type PlannedStep } from './steps'
+import type { Task } from './run'
 import type { Guards, MergeBy, Template } from './workflow'
 
 // A task type that hardens the project's guards.
@@ -32,4 +33,20 @@ export function guardEffects(t: Template, guards: Guards, base?: string): { type
     }
   }
   return { types, steps }
+}
+
+// The branch a planned step merges into (a landing's target, a PR merge's base), or undefined.
+const mergeInto = (plan: PlannedStep[], i: number) => {
+  const a = plan[i]?.action
+  return a?.kind === 'git.land' ? a.target : a?.kind === 'github.merge' ? plan.slice(0, i).findLast(s => s.action?.kind === 'github.pr')?.action?.base : undefined
+}
+
+// A task waiting at a merge its guard refused, that the new guards give the
+// engine: the branch it may now merge into, or undefined. before/after: the
+// task's plan under the old and the new guards.
+export function freedMerge(task: Pick<Task, 'state' | 'stopped' | 'step'>, before: PlannedStep[], after: PlannedStep[]): string | undefined {
+  const s = task.step
+  if (task.state !== 'working' || task.stopped || !s?.started || s.done || s.acting || s.yourTurn?.reason !== 'action') return
+  const was = before[s.at], now = after[s.at]
+  return was?.guarded && now && !now.guarded && now.ends === 'action' && now.id === was.id ? mergeInto(after, s.at) : undefined
 }

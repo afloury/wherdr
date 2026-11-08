@@ -110,12 +110,20 @@ In the **Guards** tab:
 - **Protected branches**: one chip per branch; type a name and press *Add*, or
   press × on a chip to unprotect it. wherdr never pushes to a protected branch.
 - **Who merges into protected branches** and **who merges other branches**:
-  *You* (the step waits for you) or *wherdr* (it merges by itself).
+  *You* (the step waits for you) or *wherdr* (it merges by itself, a
+  protected branch too). A task already waiting for you at a merge that a
+  change gives to wherdr goes on at once: the engine runs the step again,
+  and the task's log says why.
 - **Effect**: what each task type adds and, for each step that merges, whether
   it is left to you. It follows your changes before you save.
 
 Only you, or Alfred (with [`wherdr alfred project guards`](alfred.md) after
 your yes), can change guards: a project coordinator never can.
+
+A message that sends you to a tab of the project sheet names it as
+*Settings › Projects › KEY › Guards*; an agent also gives its in-app address,
+`#/settings?section=projects&project=KEY&tab=guards` (tabs: `general`,
+`workflow`, `guards`, `automations`, `autopilot`).
 
 ### Automations
 
