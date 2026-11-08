@@ -120,7 +120,8 @@ In the **Guards** tab:
   *You* (the step waits for you) or *wherdr* (it merges by itself, a
   protected branch too). A task already waiting for you at a merge that a
   change gives to wherdr goes on at once: the engine runs the step again,
-  and the task's log says why.
+  and the task's log says why. A merge left to you that you do on GitHub
+  ends the step as merged within a minute: the task goes to *Done*.
 - **Effect**: what each task type adds and, for each step that merges, whether
   it is left to you. It follows your changes before you save.
 
@@ -170,7 +171,8 @@ its [pace](quotas.md#pace) or a machine is short on memory
 The header has **Decisions** (with a count when some wait), **Add task**, the
 project picker (*All projects* or one), a tag filter when tasks have tags, and
 the [Autopilot](#autopilot) button. The first column is **Your turn**, then the
-project's columns, or *To do*, *Working* and *Done* for all projects.
+project's columns, or *To do*, *Working* and *Done* for all projects. A done
+or archived task is never under Your turn.
 
 A card shows the task's title, its id and step, how long it has been in that
 step (*12 min in review*) or, once done, how long it took from start to done
