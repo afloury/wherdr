@@ -271,6 +271,7 @@ onMounted(() => {
         </button>
       </nav>
       <div v-show="activeSection" ref="body" class="settings-body">
+        <div class="settings-column">
         <h2 class="settings-section-title">{{ activeLabel }}</h2>
 
         <div v-show="activeSection === 'appearance'" class="settings-section">
@@ -534,6 +535,7 @@ onMounted(() => {
             <p class="settings-version">wherdr {{ appVersion }} · herdr-core</p>
             <button type="button" class="settings-action solo" @click="reloadApp"><UIcon name="i-lucide-refresh-cw" />{{ t('Reload app') }}</button>
           </div>
+        </div>
         </div>
       </div>
     </div>
