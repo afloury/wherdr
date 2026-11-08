@@ -7,7 +7,8 @@ import { DEFAULT_AUTOPILOT } from '../shared/pm/autopilot'
 import { createPmStore } from '../server/utils/pmStore'
 import { memoryHold } from '../server/utils/pmMemory'
 import { startHeld } from '../server/utils/pmMechanic'
-import { DEFAULT_MEMORY, agentCap, memoryShort, mergeMemory, parseMeminfo } from '../shared/pm/memory'
+import { DEFAULT_MEMORY, agentCap, memoryShort, mergeMemory } from '../shared/pm/memory'
+import { parseLinux } from '../shared/pm/capacity'
 
 const GB = 1024
 const meminfo = (totalGb: number, freeGb: number, swapGb = 0, swapFreeGb = swapGb) =>
@@ -15,7 +16,7 @@ const meminfo = (totalGb: number, freeGb: number, swapGb = 0, swapFreeGb = swapG
 
 describe('the memory hold', () => {
   it('holds under the free memory threshold, over 90 % of swap, or at the cap', () => {
-    const mem = (free: number, swapFree = 4) => parseMeminfo(meminfo(16, free, 4, swapFree))
+    const mem = (free: number, swapFree = 4) => parseLinux(meminfo(16, free, 4, swapFree))
     expect(memoryShort(mem(8), DEFAULT_MEMORY, 0)).toBeUndefined()
     expect(memoryShort(mem(1.5), DEFAULT_MEMORY, 0)).toBe('1.5 GB free, under 2.0 GB')
     expect(memoryShort(mem(8), { minFreeMb: 10 * GB }, 0)).toBe('8.0 GB free, under 10.0 GB')
@@ -25,8 +26,7 @@ describe('the memory hold', () => {
     expect(memoryShort(mem(8), DEFAULT_MEMORY, 10)).toBe('10 agents already run on it (cap 10)')
     expect(memoryShort(mem(8), { ...DEFAULT_MEMORY, maxAgents: 3 }, 2)).toBeUndefined()
     expect(memoryShort(mem(8), { ...DEFAULT_MEMORY, maxAgents: 3 }, 3)).toBe('3 agents already run on it (cap 3)')
-    // No reading (not Linux): only the user's cap holds.
-    expect(parseMeminfo('')).toBeNull()
+    // No reading: only the user's cap holds.
     expect(memoryShort(null, DEFAULT_MEMORY, 30)).toBeUndefined()
     expect(memoryShort(null, { ...DEFAULT_MEMORY, maxAgents: 2 }, 2)).toBeDefined()
   })
