@@ -345,7 +345,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
 // ~/.wherdr/pm/coordinators/<KEY> on the project's machine; never ~/.claude
 // or ~/.codex.
 // The main coordinator's: Alfred's home (writeAlfredHome).
-async function writeRoleFiles(deps: Deps, key: string) {
+export async function writeRoleFiles(deps: Deps, key: string) {
   const { store } = deps
   if (key === MAIN) return { p: undefined, local: true, on: undefined, ...await writeAlfredHome(deps) }
   const projects = await store.projects()

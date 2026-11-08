@@ -100,6 +100,15 @@ describe('runAlfredCommand', () => {
     await expect(run('project', 'template', 'WEB', 'nope')).rejects.toThrow('No template nope')
   })
 
+  it('shows the project\'s guards and changes them after its dry run', async () => {
+    expect(parseAlfredCommand(['project', 'guards', 'WEB', '--merge-others', 'me'])).toEqual({ error: '--merge-protected and --merge-others are user or engine' })
+    await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--template', 'common', '--apply')
+    expect(await run('project', 'guards', 'WEB')).toEqual({ project: 'WEB', guards: common.guards ?? {} })
+    expect(await run('project', 'guards', 'WEB', '--protect', 'main,v3', '--merge-others', 'user')).toMatchObject({ dryRun: true })
+    await run('project', 'guards', 'WEB', '--protect', 'main,v3', '--merge-others', 'user', '--apply')
+    expect((await store.workflow('WEB'))!.guards).toMatchObject({ protected: ['main', 'v3'], merge: { others: 'user' } })
+  })
+
   it('makes the folder checks of --apply in the dry run on this machine', async () => {
     expect(await run('project', 'add', 'APP', '--machine', '', '--path', '/src/app')).toMatchObject({ dryRun: true, change: ['add project APP "APP"', 'folder /src/app on this machine (checked: a git repository)', 'template none'] })
     expect(checked).toEqual([':/src/app'])

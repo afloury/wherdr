@@ -78,8 +78,8 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'list', does: 'the project\'s tasks, their step and what waits for the user' },
   { usage: 'show <task>', does: 'one task, its plan and its log' },
   { usage: 'plan', does: 'the resolved plan of each task type' },
-  { usage: 'template show', does: 'the project\'s template (JSON)' },
-  { usage: 'template edit < template.json', does: 'propose a new template; only in a turn that comes from the user, guards unchanged; the user accepts or refuses its diff in wherdr' },
+  { usage: 'template show', does: 'the project\'s own workflow (JSON), copied from a template when the project started' },
+  { usage: 'template edit < template.json', does: 'propose a new workflow for the project; only in a turn that comes from the user, guards unchanged; the user accepts or refuses its diff in wherdr' },
   { usage: 'task tag <task> <text>', does: 'a short tag on the card (a ticket key, a client)' },
   { usage: 'task link <task> <url> --label <label>', does: 'a link on the card (PR, ticket, pipeline)' },
   { usage: 'step done <task> [--link <url>]', does: 'end the task\'s current step when you hold it (holder: coordinator)' },
@@ -185,13 +185,19 @@ const canon = (v: unknown): string => Array.isArray(v) ? `[${v.map(canon).join('
 const guardsOf = (t: Template | null) =>
   canon({ project: t?.guards, types: Object.fromEntries(Object.entries(t?.taskTypes ?? {}).map(([k, tt]) => [k, tt.guards])) })
 
+// Whether two workflows have the same guards (the project's and each task type's).
+export const sameGuards = (a: Template | null, b: Template | null) => guardsOf(a) === guardsOf(b)
+
+// Where the user changes a project's guards (the coordinator's refusals name it).
+export const guardsPlace = (key: string) => `Settings › Projects › ${key.toUpperCase()} › Guards`
+
 // Why the coordinator may not save `next` over `old`, or undefined. Guards
 // change only through the user's own gesture in the interface.
 export function templateEditRefusal(old: Template | null, next: Template, turn: Turn): string | undefined {
   if (turn !== 'user') return 'template edit is only for a turn that comes from the user: propose the change and wait for their yes'
-  if (!old) return 'The project has no template: the user picks one in Settings › Projects'
-  if (next?.id !== old.id) return `The coordinator edits its project's template only (${old.id})`
-  if (guardsOf(old) !== guardsOf(next)) return 'Guards (protected branches, who merges) change only through the user\'s gesture in Settings › Projects, never with the coordinator\'s token'
+  if (!old) return 'The project has no workflow: the user starts it from a template in Settings › Projects'
+  if (next?.id !== old.id) return `The coordinator edits its project's workflow only (${old.id})`
+  if (!sameGuards(old, next)) return `Guards (protected branches, who merges) are changed by the user in ${guardsPlace(old.id)}, or by Alfred, never with a project coordinator's token`
 }
 
 // `step done` → the engine's event, or why it is refused. --user-said ends a
@@ -296,7 +302,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[]):
     'Every change you make is written to the task\'s or the template\'s log with your name.',
     `Quote a file as inline code with its absolute path (\`${p.path.replace(/\/$/, '')}/README.md\`): the user's interface makes it a link.`, '',
     '## What you never do', '',
-    '- change a guard (protected branches, who merges): the user does it in Settings › Projects;',
+    `- change a guard (protected branches, who merges): the user does it in ${guardsPlace(p.key)};`,
     '- end a step that waits for the user unless they just told you so (`--user-said` with their words);',
     '- edit the template on your own: only the user\'s request starts a proposal, and only their yes in wherdr saves it;',
     '- pass a critical finding with proof, or a send-back whose next step is a guarded merge: those go to the user;',

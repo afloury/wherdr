@@ -316,15 +316,30 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     }),
 
     // Replaces the project's workflow with a copy of a library template or an
-    // example (example:<id>); '' removes it (its log stays).
-    setTemplate: (key: unknown, template: unknown) => write(async () => {
+    // example (example:<id>); '' removes it (its log stays). keepGuards: the
+    // project's own guards stay (the template's task types may still add theirs).
+    setTemplate: (key: unknown, template: unknown, { keepGuards = false, by = 'user' } = {}) => write(async () => {
       const id = typeof template === 'string' ? template : ''
       if (id && !isTemplateId(id.replace(/^example:/, ''))) throw badInput([{ path: 'template', message: 'invalid template id' }])
-      const source = id ? await sourceOf(id) : null
+      let source = id ? await sourceOf(id) : null
       const { list, i } = await findProject(key)
       const { from: _old, ...rest } = list[i]!
-      if (source) list[i] = { ...rest, from: (await copyTemplate(rest.key, source, 'user')).from }
+      if (source && keepGuards) {
+        const { guards: _guards, ...copy } = source, guards = (await readJson<Template>(workflowFile(rest.key)))?.guards
+        source = guards ? { ...copy, guards } : copy
+      }
+      if (source) list[i] = { ...rest, from: (await copyTemplate(rest.key, source, by)).from }
       else { await fs.rm(workflowFile(rest.key), { force: true }); list[i] = rest }
+      await saveProjects(list)
+      return list[i]!
+    }),
+
+    // update: from cleanProjectUpdate (a base of '' goes back to the repository's current branch).
+    updateProject: (key: unknown, update: { name?: string, base?: string }) => write(async () => {
+      const { list, i } = await findProject(key)
+      const { base: _base, ...rest } = list[i]!
+      const base = update.base ?? list[i]!.base
+      list[i] = { ...rest, ...(update.name ? { name: update.name } : {}), ...(base ? { base } : {}) }
       await saveProjects(list)
       return list[i]!
     }),
