@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.resetModules() })
 
-async function navigation(hit: Response | undefined, network: Promise<Response>) {
+async function navigation(hit: Response | undefined, network: Promise<Response>, start?: string) {
   vi.useFakeTimers()
   const handlers: Record<string, (event: unknown) => void> = {}
   const put = vi.fn()
@@ -10,7 +10,11 @@ async function navigation(hit: Response | undefined, network: Promise<Response>)
     __WB_MANIFEST: [], location: new URL('https://app.example'),
     addEventListener: (type: string, fn: (event: unknown) => void) => { handlers[type] = fn },
   })
-  vi.stubGlobal('caches', { match: vi.fn().mockResolvedValue(hit), open: async () => ({ put }) })
+  // The device's app start choice (shared/appStart.ts), read from its own cache.
+  const open = async (name: string) => (name === 'wherdr-device'
+    ? { match: async () => (start ? new Response(start) : undefined) }
+    : { put })
+  vi.stubGlobal('caches', { match: vi.fn().mockResolvedValue(hit), open })
   vi.stubGlobal('fetch', vi.fn().mockReturnValue(network))
   await import('../app/service-worker/sw')
   let served: Response | undefined
@@ -56,4 +60,13 @@ it('waits for the network when the shell has not been cached', async () => {
   await Promise.all(result.background)
   await vi.advanceTimersByTimeAsync(0)
   expect(await result.served()?.text()).toBe('first shell')
+})
+
+it('serves the cached shell at once on Instant start, and still refreshes the cache', async () => {
+  const network = Promise.withResolvers<Response>()
+  const result = await navigation(new Response('cached shell'), network.promise, 'cache')
+  expect(await result.served()?.text()).toBe('cached shell')
+  network.resolve(new Response('next shell'))
+  await Promise.all(result.background)
+  expect(await result.put.mock.calls[0]![1].text()).toBe('next shell')
 })

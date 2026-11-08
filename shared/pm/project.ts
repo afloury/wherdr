@@ -34,6 +34,23 @@ const BRANCH_RE = /^(?!.*\.\.)(?!.*@\{)(?!\/)(?!.*\/$)[A-Za-z0-9._/-]{1,100}$/
 export const isBranch = (b: string) => BRANCH_RE.test(b)
 export const isTemplateId = (id: unknown): id is string => typeof id === 'string' && ID_RE.test(id)
 
+// The fields the user changes on a project (General tab): name, and base ('' clears it).
+export function cleanProjectUpdate(raw: unknown): { update?: { name?: string, base?: string }, errors: WorkflowError[] } {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const errors: WorkflowError[] = [], update: { name?: string, base?: string } = {}
+  if (o.name !== undefined) {
+    const name = typeof o.name === 'string' ? o.name.trim() : ''
+    if (!name || name.length > 80) errors.push({ path: 'name', message: '1 to 80 characters' })
+    else update.name = name
+  }
+  if (o.base !== undefined) {
+    const base = typeof o.base === 'string' ? o.base.trim() : null
+    if (base === null || (base && !BRANCH_RE.test(base))) errors.push({ path: 'base', message: 'invalid branch name' })
+    else update.base = base
+  }
+  return errors.length ? { errors } : { update, errors }
+}
+
 // Checks a project to add; returns its clean form or the errors.
 export function cleanProjectInput(raw: unknown): { project?: ProjectInput, errors: WorkflowError[] } {
   const errors: WorkflowError[] = []
