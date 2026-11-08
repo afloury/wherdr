@@ -1,7 +1,7 @@
 // The coordinators (GET /api/pm/coordinators: Alfred's, then each
 // project's), shared by the sidebar, the board and the conversation view,
 // which shows its coordinator bar on their panes.
-import type { CoordinatorAgent, CoordinatorView } from '#shared/pm/coordinator'
+import { sameAgent, type CoordinatorAgent, type CoordinatorView } from '#shared/pm/coordinator'
 import type { AlfredProgram } from '#shared/pm/alfred'
 import type { Pane } from '#shared/types'
 
@@ -40,6 +40,9 @@ export const alfredPane = computed(() => (alfred.value?.terminal ? herdrState.va
 export const coordinatorOf = (p?: Pane | null) => (p?.coreAddress ? coordinators.value.find(c => c.terminal === p.coreAddress) : undefined)
 // The pane of a coordinator's kept conversation, while it runs.
 export const coordinatorPane = (c: CoordinatorView) => (c.terminal ? herdrState.value?.panes.find(p => p.coreAddress === c.terminal) : undefined)
+
+// Its kept conversation runs with another agent than its default, and the user did not choose to resume it.
+export const coordinatorMismatch = (c: CoordinatorView) => !!coordinatorPane(c) && !!c.ran && !sameAgent(c.ran, coordinatorAgent(c)) && !resumedCoordinators.value.includes(c.terminal!)
 
 // A new conversation (its default agent, or the user's first that can run it,
 // unless one is given), then its pane once herdr-core shows it.

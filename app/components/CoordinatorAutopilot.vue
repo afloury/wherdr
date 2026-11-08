@@ -1,15 +1,14 @@
 <script setup lang="ts">
 // A coordinator's autopilot: its switch, whether it is active or asleep
 // (nothing to do: its scheduled wakes are skipped), today's counters against
-// the limits, and on demand its goal, interval, fixed times, events and limits (saved by the user
-// only), its latest wakes (created, delivered, acked) and "run now".
+// the limits, its goal, interval, fixed times, events and limits (saved by the user
+// only), its latest wakes (created, delivered, acked) and "run now". In the coordinator window.
 import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, LOOK_PER_DAY, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Wake } from '#shared/pm/wakes'
 
 const props = defineProps<{ c: CoordinatorView }>()
 const ap = computed<Autopilot>(() => props.c.autopilot ?? DEFAULT_AUTOPILOT)
-const open = ref(false)
 const busy = ref(false)
 const error = ref('')
 const sent = ref(false)
@@ -72,12 +71,8 @@ const counters = computed(() => props.c.limits
       <USwitch :model-value="ap.on" color="success" size="lg" :disabled="busy" :aria-label="tl('Autopilot', 'Autopilote')" data-testid="autopilot-on" @update:model-value="setOn" />
       <span class="mono-label" data-testid="autopilot-state" :data-asleep="ap.on && c.asleep ? '' : undefined">{{ tl('Autopilot', 'Autopilote') }} · {{ stateText }}</span>
       <span class="ap-count mono-label" data-testid="autopilot-counters">{{ counters }}</span>
-      <UButton color="neutral" variant="ghost" size="lg" :trailing-icon="open ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" :aria-expanded="open" data-testid="autopilot-toggle" @click="open = !open">
-        {{ tl('Details', 'Détails') }}
-      </UButton>
     </div>
-    <p v-if="ap.goal && !open" class="ap-goal muted">{{ ap.goal }}</p>
-    <form v-if="open" class="ap-form" @submit.prevent="save()">
+    <form class="ap-form" @submit.prevent="save()">
       <label class="field-label" :for="`ap-goal-${c.project}`">{{ tl('Goal', 'Objectif') }}</label>
       <UTextarea :id="`ap-goal-${c.project}`" v-model="form.goal" :rows="2" autoresize :maxrows="6" size="xl" class="w-full" :maxlength="2000" data-testid="autopilot-goal"
         :placeholder="tl('What it works toward, e.g. Ship the small fixes first', 'Ce vers quoi il travaille, ex. Les petites corrections d’abord')" />
@@ -139,14 +134,13 @@ const counters = computed(() => props.c.limits
 </template>
 
 <style scoped>
-.ap { display: grid; gap: 6px; padding: 6px 16px 8px; border-top: 1px solid var(--line); }
+.ap { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
 .ap p { margin: 0; overflow-wrap: anywhere; }
 .ap-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ap-head > .mono-label:not(.ap-count) { color: var(--text); }
 .ap-count { flex: 1; color: var(--muted); white-space: nowrap; }
 .ap-look-note { align-self: end; }
-.ap-goal { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
-.ap-form { display: grid; gap: 6px; max-height: 55vh; overflow-y: auto; overscroll-behavior: contain; }
+.ap-form { display: grid; gap: 6px; }
 .ap-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .ap-events, .ap-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ap-actions .mono-label { flex: 1; color: var(--muted); }

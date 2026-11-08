@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // "New" sheet › Project, footer: open the project's coordinator when it
 // runs with the chosen agent, else start it (same API and rules as the
-// CoordinatorBar: a running conversation of another agent offers a new
+// CoordinatorPanel: a running conversation of another agent offers a new
 // conversation first, or resuming it). A project being added (draft) is
 // saved first (and an example template it picked), then its coordinator starts.
 import { isCoordinatorProgram, sameAgent } from '#shared/pm/coordinator'

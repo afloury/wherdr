@@ -49,7 +49,7 @@ onUnmounted(() => {
 })
 
 const pane = computed(() => herdrState.value.panes.find(p => p.id === props.paneId))
-// herdr-core: a project coordinator's pane shows its bar (agent, template change).
+// herdr-core: a coordinator's pane shows its header button (autopilot, agent, template change).
 const coord = computed(() => coordinatorOf(pane.value))
 let coordTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { if (core) { loadCoordinators(); coordTimer = setInterval(() => { if (coord.value) loadCoordinators() }, 15_000) } })
@@ -570,6 +570,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
               <TabMap :layout="tabEnt.layout" :panes="tabEnt.panes" :current="paneId" />
             </button>
           </UTooltip>
+          <CoordinatorButton v-if="coord && !cell" :c="coord" />
           <UButton
             v-if="controls.term" icon="i-lucide-square-terminal" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
             :class="{ on: mode === 'term' }" :aria-label="t('Terminal')" :aria-pressed="mode === 'term'" @click="toggleMode('term')"
@@ -588,7 +589,6 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <div class="agent-body">
     <div class="agent-main hw-backdrop-host">
     <GridBackdrop v-if="desk && !cell && backdrop === 'wherdr' && mode === 'chat'" />
-    <CoordinatorBar v-if="coord && !cell" :c="coord" />
     <div v-if="machineDown && machine" class="term-banner machine-banner">
       <UIcon name="i-lucide-unplug" class="term-banner-icon" />
       <span>{{ machine.status === 'connecting' ? tl(`${machineName(machine.key)} unreachable — reconnecting…`, `${machineName(machine.key)} injoignable — reconnexion…`) : tl(`${machineName(machine.key)} offline`, `${machineName(machine.key)} hors ligne`) }}<small v-if="machine.error">{{ t(machine.error) }}</small></span>
