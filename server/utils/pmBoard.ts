@@ -1,12 +1,14 @@
 // The board's data, and the user's button on a step that waits for them.
-import { boardColumns, cardOf, type Board, type Card } from '../../shared/pm/board'
+import { boardColumns, cardOf, type Board, type BoardMachine, type Card } from '../../shared/pm/board'
 import { initialState, onEvent, planSteps, reviewedCommit, type StepEvent } from '../../shared/pm/steps'
 import { taskGuards, type ActionResult } from '../../shared/pm/actions'
 import type { MergeBy, Template } from '../../shared/pm/workflow'
 import { addShot, isImage, SHOT_TYPES, type Shot } from '../../shared/pm/shots'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { taskPlan, type Task } from '../../shared/pm/run'
-import type { Project } from '../../shared/pm/project'
+import { allowedMachines, type Project } from '../../shared/pm/project'
+import type { MachineInfo } from '../../shared/types'
+import { lastReadiness } from './pmReady'
 import { shownTaskId } from '../../shared/pm/projectKey'
 import { CHOICES, type Choice } from '../../shared/pm/verdict'
 import { actionShell, runAction } from './pmActions'
@@ -28,13 +30,23 @@ async function templatesOf(store: PmStore) {
 export const prSeen = new Map<string, string>()
 const withPr = (c: Card): Card => (prSeen.has(c.id) ? { ...c, prNow: prSeen.get(c.id)! } : c)
 
-export async function board(store: PmStore): Promise<Board> {
+const machinesOf = (p: Project, known: MachineInfo[]): BoardMachine[] | undefined => {
+  const keys = allowedMachines(p)
+  if (keys.length < 2) return undefined
+  return keys.map((key) => {
+    const m = known.find(x => x.key === key), unready = key === p.machine ? undefined : lastReadiness(p.key, key)
+    return { key, label: m?.label ?? key, online: !!m && (m.local || m.status === 'online'), ...(unready !== undefined ? { unready } : {}) }
+  })
+}
+
+// known: the machines wherdr knows, to name those a project allows.
+export async function board(store: PmStore, known: MachineInfo[] = []): Promise<Board> {
   const [projects, templates, tasks, runs] = [await store.projects(), await templatesOf(store), await store.tasks(), await store.runs()]
   return {
     projects: projects.map((p) => {
-      const t = templates.get(p.key)
+      const t = templates.get(p.key), machines = machinesOf(p, known)
       const plans = t ? Object.keys(t.taskTypes).map(type => ({ id: type, steps: planSteps(t, { type }, p.base) })) : []
-      return { key: p.key, ...(p.label ? { label: p.label } : {}), ...(p.aliases ? { aliases: p.aliases } : {}), ...(p.color ? { color: p.color } : {}), name: p.name, columns: boardColumns(plans.map(x => x.steps)), types: plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → ') })) }
+      return { key: p.key, ...(p.label ? { label: p.label } : {}), ...(p.aliases ? { aliases: p.aliases } : {}), ...(p.color ? { color: p.color } : {}), name: p.name, columns: boardColumns(plans.map(x => x.steps)), types: plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → ') })), ...(machines ? { machines } : {}) }
     }),
     cards: tasks.map(task => withPr({ ...cardOf(task, planOf(templates.get(task.project) ?? null, task, projects.find(p => p.key === task.project)), runs), shown: shownTaskId(projects, task.id) })),
   }

@@ -149,6 +149,19 @@ Your turn, the tasks it waits for, its first tags and its PR link. Its menu (rig
 click, long press, or ••• when it has more than *Open*) offers:
 
 - **Start**, on a task to do that waits for no other task;
+- **Start on…**, on the same tasks of a project that allows other machines than
+  its own: pick the machine (offline ones are greyed). Before a task's first
+  start on another machine, wherdr checks that machine is ready for the
+  project, and refuses the start with what fails there: the clone and its
+  origin, `git fetch`, push rights (a dry run), `gh auth status` when the
+  workflow uses GitHub, node and npm (against `.nvmrc` or `engines`), the
+  clone's dependencies (a warning only: each task then runs `npm ci`), the
+  worker's and reviewer's agent CLI and login, the `~/.wherdr/pm` folders, 5 GB
+  free disk, and for a task with screenshots, reaching wherdr (set `APP_URL`
+  behind a proxy) and Playwright's Chromium. A machine found ready is not
+  checked again for 10 minutes; the menu shows the last check's result. A task
+  stays on the machine it first started on. The coordinator does the same with
+  `task start <task> --on <machine>`;
 - **Stop…**, on a running task: its agent ends, the worktree, branch and work
   stay, and nothing is merged;
 - **Continue**, **Take it as it is** or **Archive**, on a stopped task;
