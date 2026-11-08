@@ -10,6 +10,7 @@ import { allowedMachines, type Project } from '../../shared/pm/project'
 import type { MachineInfo } from '../../shared/types'
 import { lastReadiness } from './pmReady'
 import { shownTaskId } from '../../shared/pm/projectKey'
+import { taskAgents, type TaskAgent } from '../../shared/pm/taskAgents'
 import { CHOICES, type Choice } from '../../shared/pm/verdict'
 import { actionShell, runAction } from './pmActions'
 import type { CoreAdminDeps } from './coreCreate'
@@ -50,6 +51,13 @@ export async function board(store: PmStore, known: MachineInfo[] = []): Promise<
     }),
     cards: tasks.map(task => withPr({ ...cardOf(task, planOf(templates.get(task.project) ?? null, task, projects.find(p => p.key === task.project)), runs), shown: shownTaskId(projects, task.id) })),
   }
+}
+
+// The running agents of tasks, by herdr-core address: their task and role (sidebar rows).
+export async function boardAgents(store: PmStore): Promise<Record<string, TaskAgent>> {
+  if (!await store.enabled()) return {}
+  const [projects, templates, tasks, runs] = [await store.projects(), await templatesOf(store), await store.tasks(), await store.runs()]
+  return taskAgents(tasks, runs, t => planOf(templates.get(t.project) ?? null, t, projects.find(p => p.key === t.project)), id => shownTaskId(projects, id))
 }
 
 // The step's userLabel button: the same 'user' event as "it is merged" said

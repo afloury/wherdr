@@ -26,6 +26,12 @@
 - **Compact list**: Settings › Appearance › Home screen › **Compact list** shows one line per
   card; Normal adds the current activity on a second line. It follows you across devices.
   Every agent terminal is its own row, with its pane or tab label.
+- **Task agents**: an agent the [project engine](project-management.md) started for a task keeps
+  its own row, status and group, but is named after its task (`ACME-12 Fix the login`, cut when
+  long; a pane you renamed keeps your name, in the conversation header and search too). A small
+  badge gives its role: **dev** (working on the task), **review**, **fix** (sent back by the
+  review, red CI or you) or **catch-up** (merging the base branch), then how long it has been in
+  its state (`8 min`, `2 h`). A reviewer kept between rounds shows dimmed with **review**.
 - **Order**: the header (logo, version, Search, Board, Settings), the counters, the quotas (a
   machine's own quotas under them), Alfred, the [coordinators](#coordinators), then the agents of
   the machines shown, by state (Your turn, Working, Ready). When the list mixes several machines,

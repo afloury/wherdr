@@ -89,8 +89,10 @@ const workspace = computed(() => herdrState.value.workspaces.find(w => w.id === 
 // Several panes in the tab (cell or full screen): each pane carries its
 // own name; the space name stays in the tab header.
 const ownTitle = computed(() => Boolean(props.cell || (tabEnt.value && tabEnt.value.panes.length > 1)))
-// A coordinator's conversation is titled by its name; its session title stays the subtitle.
-const headTitle = computed(() => (pane.value ? paneCoordinatorName(pane.value) || desktopHeaderTitle(pane.value, workspace.value, ownTitle.value) : herdrState.value.ok ? '—' : ''))
+// A coordinator's conversation is titled by its name, a task agent's by its task
+// (read once here when the list never showed); the session title stays the subtitle.
+onMounted(() => { if (!Object.keys(taskAgents.value).length) loadTaskAgents() })
+const headTitle = computed(() => (pane.value ? paneCoordinatorName(pane.value) || paneTaskTitle(pane.value) || desktopHeaderTitle(pane.value, workspace.value, ownTitle.value) : herdrState.value.ok ? '—' : ''))
 const subtitle = computed(() => {
   const s = pane.value ? conversationSubtitle(pane.value, workspace.value) : ''
   return s && s !== headTitle.value ? s : ''

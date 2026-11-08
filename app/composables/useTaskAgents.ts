@@ -1,0 +1,23 @@
+// The running agents of tasks (GET /api/pm/agents), by herdr-core address:
+// their sidebar row, conversation header and search result name the task.
+import type { TaskAgent } from '#shared/pm/taskAgents'
+import type { Pane } from '#shared/types'
+import { taskAgentTitle } from '~/utils/taskAgentRow'
+
+export const taskAgents = ref<Record<string, TaskAgent>>({})
+// The rows' durations follow this clock, moved on with each read.
+export const taskAgentsNow = ref(Date.now())
+export const loadTaskAgents = () => api<Record<string, TaskAgent>>('/api/pm/agents')
+  .then((v) => { taskAgents.value = v && typeof v === 'object' && !Array.isArray(v) ? v : {} }, () => {})
+  .finally(() => { taskAgentsNow.value = Date.now() })
+
+export const taskAgentOf = (p?: Pane | null) => (p?.coreAddress ? taskAgents.value[p.coreAddress] : undefined)
+// The pane's task title, '' for a renamed pane or one that is no task's.
+export const paneTaskTitle = (p?: Pane | null) => (p ? taskAgentTitle(p, taskAgentOf(p)) : '')
+
+// While the list is on screen: read now, then every 30 s while the page shows.
+export function useTaskAgentsLoader() {
+  let timer: ReturnType<typeof setInterval> | undefined
+  onMounted(() => { loadTaskAgents(); timer = setInterval(() => { if (!document.hidden) loadTaskAgents() }, 30_000) })
+  onBeforeUnmount(() => clearInterval(timer))
+}

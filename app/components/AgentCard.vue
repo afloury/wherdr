@@ -22,6 +22,7 @@ import { longPress } from '~/utils/longPress'
 import { chatHoverIntent } from '~/utils/chatIntent'
 import { interactionWindowFor } from '~/utils/interactionWindow'
 import { individualAgentTitle, isIndividualAgentRow } from '~/utils/homeAgentRows'
+import { stateDuration } from '~/utils/taskAgentRow'
 
 // `machineBadge`: the machine's name on a card of the State grouping.
 const props = defineProps<{ pane: Pane, row?: Row | null, machineBadge?: string }>()
@@ -41,7 +42,15 @@ let touchMenuOpenedAt = 0
 
 const ws = computed(() => herdrState.value.workspaces.find(w => w.id === props.pane.workspace))
 const branch = computed(() => ws.value?.branch || null)
-const title = computed(() => isIndividualAgentRow(props.row) ? individualAgentTitle(props.pane) : homeTitle(props.pane, ws.value))
+// A task's agent (its own row, as herdr-core reports it): named after its task
+// unless renamed, with its role and how long it has been in its state. A
+// reviewer kept between rounds shows dimmed; its status and group stay core's.
+const task = computed(() => (isIndividualAgentRow(props.row) ? taskAgentOf(props.pane) : undefined))
+const title = computed(() => isIndividualAgentRow(props.row) ? paneTaskTitle(props.pane) || individualAgentTitle(props.pane) : homeTitle(props.pane, ws.value))
+const roleTitle = computed(() => !task.value ? '' : task.value.reserve
+  ? tl('Reviewer kept for the next round')
+  : { 'dev': tl('Working on the task'), 'review': tl('Reviewing'), 'fix': tl('Fixing what was sent back'), 'catch-up': tl('Merging the base branch') }[task.value.role])
+const age = computed(() => (task.value ? stateDuration(props.pane.since, taskAgentsNow.value) : ''))
 // Normal mode: the current activity on a second line, unless the answers show below.
 const activityLine = computed(() => !compactList.value && !more.value ? preview.value || '' : '')
 const subtitle = computed(() => conversationSubtitle(props.pane, ws.value))
@@ -191,16 +200,18 @@ onUnmounted(list.unmount)
 <template>
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      ref="card" class="card" :class="[cardStatus, { sel: selected, stale: paneStale(pane), 'space-card': space, compact: true, open: more, 'home-task-two': activityLine }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      ref="card" class="card" :class="[cardStatus, { sel: selected, stale: paneStale(pane), 'space-card': space, 'task-reserve': task?.reserve, compact: true, open: more, 'home-task-two': activityLine }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
       role="button" tabindex="0" @pointerenter="hover" @pointerleave="intent.cancel" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel(); intent.cancel()"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
       <AgentAvatar :agent="pane.agent" />
       <span class="card-title">{{ title }}</span>
+      <span v-if="task" class="card-tag card-role" :class="task.role" :title="roleTitle" data-testid="agent-role">{{ tl(task.role) }}</span>
       <span v-if="machineBadge" class="card-tag card-origin" :title="machineBadge">{{ machineBadge }}</span>
       <span v-if="statePane.usageLimit" class="card-tag quota-limit" :title="stateTitle">{{ tl('Quota', 'Quota') }}</span>
       <span v-if="compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
       <span v-else-if="compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>
+      <span v-if="age" class="card-age" :title="tl(`${statusLabel(statePane)} for ${age}`)">{{ age }}</span>
       <span class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
       <span v-if="activityLine" class="home-task-line" :title="activityLine">{{ activityLine }}</span>
       <OmpContext v-if="statePane.agent === 'omp'" :pane="statePane" variant="bar" />
@@ -237,4 +248,9 @@ onUnmounted(list.unmount)
 
 <style scoped>
 .card.compact .quota-limit { color: var(--ochre); border-color: currentColor; }
+.card.compact .card-role { color: var(--muted); }
+.card.compact .card-role.fix, .card.compact .card-role.catch-up { color: var(--ochre); border-color: currentColor; }
+.card-age { flex: none; font: 500 10px/1 var(--mono); color: var(--dim); }
+/* A reviewer kept between rounds: dimmed, not mistaken for an active agent. */
+.card.task-reserve .card-title, .card.task-reserve .avatar, .card.task-reserve .card-state { opacity: .5; }
 </style>
