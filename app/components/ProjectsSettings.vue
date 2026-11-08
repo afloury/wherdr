@@ -2,9 +2,10 @@
 // Settings › Projects: the project management switch, then the projects (a git
 // folder on a machine herdr-core reaches). A row opens the project's sheet
 // (ProjectSheet), its key and tab in the URL (`?project=WHR&tab=general`).
-// Add project opens the New sheet on a new project. A row whose coordinator
+// Add project opens SetupWizard on a new project. A row whose coordinator
 // proposes a workflow change says so (reviewed on the sheet's Workflow tab).
-// Template library opens TemplateLibrary (`?library=1`).
+// Template library opens TemplateLibrary (`?library=1`). Set up a project opens
+// SetupWizard, at the first step left.
 // Off, the server refuses every change but the switch.
 import type { PmOverview } from '#shared/pm/project'
 import { shownKey } from '#shared/pm/projectKey'
@@ -17,6 +18,7 @@ const router = useRouter()
 const data = ref<PmOverview | null>(null)
 const error = ref('')
 const busy = ref(false)
+const setupOpen = ref(false)
 
 const machineName = (key: string) => key ? (appConfig.value.machines?.find(m => m.key === key)?.label || key) : (appConfig.value.hostLabel || t('This machine'))
 
@@ -37,9 +39,10 @@ async function toggle(on: boolean) {
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = false }
 }
+const setupAdding = ref(false)
 function addProject() {
-  newProjectOpen.value = true
-  newAgentOpen.value = true
+  setupAdding.value = true
+  setupOpen.value = true
 }
 
 // The open project and its tab, from the URL.
@@ -66,7 +69,8 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
       </span>
       <USwitch :model-value="data?.enabled ?? false" :disabled="!data || busy" color="success" size="xl" data-testid="pm-switch" @update:model-value="v => toggle(v)" />
     </label>
-    <UButton to="/board?guide=1" color="neutral" variant="ghost" size="lg" icon="i-lucide-list-checks" class="pm-guide-link" data-testid="pm-guide-link">{{ tl('Getting started', 'Pour commencer') }}</UButton>
+    <UButton color="neutral" variant="ghost" size="lg" icon="i-lucide-list-checks" class="pm-setup" data-testid="pm-setup" @click="setupAdding = false; setupOpen = true">{{ tl('Set up a project') }}</UButton>
+    <SetupWizard v-model:open="setupOpen" :adding="setupAdding" @changed="load" />
 
     <template v-if="data?.enabled">
       <h3>{{ tl('Projects', 'Projets') }}</h3>
@@ -94,7 +98,7 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
 
 <style scoped>
 .pm-settings h3 { margin-top: 24px; }
-.pm-guide-link { margin-top: 8px; }
+.pm-setup { margin-top: 8px; }
 .pm-settings .settings-card { padding: 0; }
 .pm-row { display: flex; width: 100%; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--line); text-align: left; }
 .pm-row:last-child { border-bottom: 0; }
