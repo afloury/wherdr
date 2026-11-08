@@ -39,7 +39,7 @@ unit: see [Installation](installation.md#keep-it-running)), read at each start.
 | `HERDR_WEB_HERDR_NOTIFICATIONS` | `off` to stop relaying `herdr notification show` as push. |
 
 In the app, **Settings** has these sections: Appearance, Conversation, Terminal, Agents
-(Machines, Claude quotas), Notifications, Plugins, Phone, Security, Shortcuts (computer)
+(Machines, Claude quotas), Notifications, Plugins (only once a plugin is installed), Phone, Security, Shortcuts (computer)
 and About. **Settings** holds display preferences such as theme, typing effect and what the
 home screen shows; these follow you across devices through `settings.json`. Notifications, terminal text size and renderer remain device-specific. The passkey lock is
 managed under Settings › Security.
