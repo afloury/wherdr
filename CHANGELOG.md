@@ -15,7 +15,7 @@ All notable changes to this project are documented here. The format follows
 
 - **Faster Tailscale checks (#324).** Status and Serve reads run together with 4.5-second CLI deadlines, inside the socket handshake window; unreadable results remain unknown.
 
-- **Startup updates (#324).** Cached pages open immediately and show the existing Reload banner when a newer build is served, preserving the current view until the user reloads.
+- **Startup updates (#324).** The app opens the server's current build when the server answers within 3 seconds, so a deployment no longer shows the Reload banner followed by an unexpected reload. Past that, or offline, the cached page opens and shows the existing Reload banner when a newer build is served, preserving the current view until the user reloads.
 
 - **Conversation reads recover (#324).** Bottom, older-page and speculative reads stop after 8 seconds so the next refresh can proceed. Speculative reads also work on iOS 16.4 and contain synchronous reader errors.
 
