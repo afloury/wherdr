@@ -1,13 +1,19 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
-import { readBody } from 'h3'
+import { readBody, setResponseStatus } from 'h3'
 import CoordinatorAutopilot from '~/components/CoordinatorAutopilot.vue'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Wake } from '#shared/pm/wakes'
 
 const posts: Record<string, unknown>[] = []
 registerEndpoint('/api/pm/coordinators', () => [])
-registerEndpoint('/api/pm/autopilot', { method: 'POST', handler: async (e) => { posts.push(await readBody(e)); return {} } })
+let refuse = ''
+registerEndpoint('/api/pm/autopilot', { method: 'POST', handler: async (e) => {
+  const body = await readBody(e)
+  posts.push(body)
+  if (refuse) { setResponseStatus(e, 400); return { code: 'bad_input', error: refuse } }
+  return body.autopilot ? { autopilot: body.autopilot } : {}
+} })
 
 const autopilot = { on: false, goal: 'Ship 2.1', every: '2h', events: ['done', 'stuck'], perDay: 10, atOnce: 2 } as const
 const wake = (id: string, more: Partial<Wake>): Wake => ({ id, coordinator: 'CO', reasons: ['CO-1 (Fix it): done', 'CO-2 (Add it): stuck'], createdAt: Date.UTC(2026, 10, 5, 4, 0), tries: 1, ...more })
@@ -24,7 +30,7 @@ const view = (more: Partial<CoordinatorView> = {}): CoordinatorView => ({
 })
 let w: Awaited<ReturnType<typeof mountSuspended>> | null = null
 const mount = async (c = view()) => (w = await mountSuspended(CoordinatorAutopilot, { props: { c } }))
-afterEach(() => { w?.unmount(); w = null; posts.length = 0 })
+afterEach(() => { w?.unmount(); w = null; posts.length = 0; refuse = '' })
 
 it('shows today\'s counters against the limits, and the switch saves the autopilot as it is', async () => {
   const b = await mount()
@@ -94,4 +100,29 @@ it('saves "look for new work" only when on, with its daily limit', async () => {
   await b.find('input#ap-look-CO').setValue('5')
   await b.find('[data-testid="autopilot-save"]').trigger('submit')
   await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', autopilot: { ...autopilot, at: '', lookForWork: true, lookPerDay: 5 } }]))
+})
+
+it('keeps unsaved edits across reloads, takes changes saved elsewhere, and shows the save state', async () => {
+  const b = await mount()
+  const goal = () => (b.find('textarea#ap-goal-CO').element as HTMLTextAreaElement).value
+  const every = () => (b.find('input#ap-every-CO').element as HTMLInputElement).value
+  await b.find('textarea#ap-goal-CO').setValue('Half typed')
+  expect(b.find('[data-testid="autopilot-unsaved"]').exists()).toBe(true)
+  // A reload: a new object, the same saved values.
+  await b.setProps({ c: view() })
+  expect(goal()).toBe('Half typed')
+  // Saved elsewhere: the untouched field follows, the edited one stays.
+  await b.setProps({ c: view({ autopilot: { ...autopilot, every: '4h', goal: 'Other', events: [...autopilot.events] } }) })
+  expect([goal(), every()]).toEqual(['Half typed', '4h'])
+  // A refusal shows under its field, and the edits stay.
+  refuse = 'every: a duration like 30m or 2h'
+  await b.find('input#ap-every-CO').setValue('soon')
+  await b.find('[data-testid="autopilot-save"]').trigger('submit')
+  await vi.waitFor(() => expect(b.find('[data-testid="autopilot-error-every"]').text()).toBe(refuse))
+  expect(b.find('[data-testid="autopilot-unsaved"]').exists()).toBe(true)
+  refuse = ''
+  await b.find('input#ap-every-CO').setValue('1h')
+  await b.find('[data-testid="autopilot-save"]').trigger('submit')
+  await vi.waitFor(() => expect(b.find('[data-testid="autopilot-saved"]').exists()).toBe(true))
+  expect(b.find('[data-testid="autopilot-error-every"]').exists()).toBe(false)
 })
