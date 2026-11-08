@@ -10,10 +10,10 @@ import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { restoreDraft } from '~/utils/queuedCancel'
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
-import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
+import { type PendingMessage, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
-import { createTailLoader, nextTail, restartsTail, tailQuery } from '~/utils/chatTail'
+import { CHAT_READ_MS, createTailLoader, nextTail, restartsTail, tailQuery } from '~/utils/chatTail'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -255,7 +255,8 @@ async function loadStep(current: () => boolean): Promise<boolean> {
   try {
     const ready = chat.value.tailStart === null ? await chatIntent.take(props.pane) : undefined
     if (stale()) return false
-    const r = ready || await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`)
+    const startedAt = Date.now()
+    const r = ready || await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
     if (stale()) return false
     if (!r.available) {
       const m = onUnavailable(misses.value, Boolean(chat.value.file) && items.value.length > 0)
@@ -271,6 +272,8 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     unavailable.value = null
     integration.value = null
     loadError.value = null
+    // The transcript as it was at `startedAt`: sent messages it lacks may go (see utils/outbox.ts).
+    if (!ready) outboxRead(pane, startedAt)
     if (misses.value.misses || misses.value.errors) misses.value = noMisses()
     if (r.unchanged) return false
     savedAt.value = null
@@ -305,7 +308,8 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     if (ready) return true
   } catch (err) {
     if (stale()) return false
-    if (!items.value.length) loadError.value = (err as Error).message
+    if (!items.value.length) loadError.value = (err as Error).name === 'TimeoutError'
+      ? t('The conversation took too long to load. Retry.') : (err as Error).message
     else misses.value = onError(misses.value)
   }
   return false
@@ -322,7 +326,7 @@ async function loadOlder() {
   const file = chat.value.file
   const before = chat.value.olderCursor
   try {
-    const r = await api<ChatResponse>(`/api/chat?pane=${encodeURIComponent(pane)}&before=${before}`)
+    const r = await api<ChatResponse>(`/api/chat?pane=${encodeURIComponent(pane)}&before=${before}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
     if (pane !== props.pane.id || r.file !== file || chat.value.olderCursor !== before) return
     const b = box.value
     const fromBottom = b ? b.scrollHeight - b.scrollTop : 0
@@ -1012,12 +1016,17 @@ async function retryQueued(q: { id: string }) {
     retrying.value = null
   }
 }
-function queuedLabel(q: { state: string | null }) {
-  if (q.state === 'sending') return t('Queued · ') + t('sending…')
-  switch (waitFor.value) {
+function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue'>) {
+  const l = pendingLabel(q, waitFor.value, props.pane.agent)
+  switch (l.kind) {
+    case 'read': return t('Read by the agent')
     case 'stopped': return t('Queued · ') + t('agent stopped')
     case 'question': return t('Queued · ') + t('after you answer the question')
-    case 'working': return t('Queued')
+    case 'agent-queue':
+      if (l.agent === 'claude') return t('Queued by Claude · sent when it finishes')
+      if (l.agent === 'codex') return t('Queued by Codex · sent when it finishes')
+      return t('Queued by the agent · sent when it finishes')
+    case 'queued': return t('Queued')
     default: return t('Queued · ') + t('sending…')
   }
 }
@@ -1542,7 +1551,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </span><UserText :text="q.body" :pasted="q.pasted" />
               </template>
             </UChatMessage>
-            <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Sent · read by the agent') }}</span></div>
+            <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ queuedLabel(q) }}</span></div>
           </div>
           <!-- "!" command running: live output read from the screen. -->
           <div v-if="liveShell" class="msg-user-wrap">

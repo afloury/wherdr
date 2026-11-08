@@ -49,7 +49,7 @@ onUnmounted(() => {
 })
 
 const pane = computed(() => herdrState.value.panes.find(p => p.id === props.paneId))
-// herdr-core: a project coordinator's pane shows its bar (agent, template change).
+// herdr-core: a coordinator's pane shows its header button (autopilot, agent, template change).
 const coord = computed(() => coordinatorOf(pane.value))
 let coordTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { if (core) { loadCoordinators(); coordTimer = setInterval(() => { if (coord.value) loadCoordinators() }, 15_000) } })
@@ -87,7 +87,8 @@ const workspace = computed(() => herdrState.value.workspaces.find(w => w.id === 
 // Several panes in the tab (cell or full screen): each pane carries its
 // own name; the space name stays in the tab header.
 const ownTitle = computed(() => Boolean(props.cell || (tabEnt.value && tabEnt.value.panes.length > 1)))
-const headTitle = computed(() => (pane.value ? desktopHeaderTitle(pane.value, workspace.value, ownTitle.value) : '—'))
+// A coordinator's conversation is titled by its name; its session title stays the subtitle.
+const headTitle = computed(() => (pane.value ? paneCoordinatorName(pane.value) || desktopHeaderTitle(pane.value, workspace.value, ownTitle.value) : '—'))
 const subtitle = computed(() => {
   const s = pane.value ? conversationSubtitle(pane.value, workspace.value) : ''
   return s && s !== headTitle.value ? s : ''
@@ -235,7 +236,8 @@ function onSent(q: QueuedMessage | null) {
   chatRef.value?.scrollToEnd(true)
   chatRef.value?.reload()
 }
-// As soon as the server knows them (or 10 s after its answer), the server state wins.
+// As soon as the server lists them, the server state wins; once taken, they stay
+// until the transcript is read again (see utils/outbox.ts prune).
 watch(pane, p => outboxPrune(props.paneId, p?.queued || []))
 
 const prompt = computed(() => (pane.value && pane.value.status === 'blocked' && pane.value.prompt && pane.value.prompt.options ? pane.value.prompt : null))
@@ -541,6 +543,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
           <div class="agent-title">{{ headTitle }} <UIcon v-if="pane && paneNotificationsMuted(pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
           <div class="agent-meta">
             <StatusPill :pane="pane" kind />
+            <OmpContext v-if="pane?.agent === 'omp'" :pane="pane" variant="head" />
             <span v-if="subtitle" class="agent-subtitle">{{ subtitle }}</span>
             <span v-if="command" class="agent-subtitle agent-command">{{ command }}</span>
             <span v-if="tabName" class="agent-subtitle">{{ tabName }}</span>
@@ -568,6 +571,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
               <TabMap :layout="tabEnt.layout" :panes="tabEnt.panes" :current="paneId" />
             </button>
           </UTooltip>
+          <CoordinatorButton v-if="coord && !cell" :c="coord" />
           <UButton
             v-if="controls.term" icon="i-lucide-square-terminal" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
             :class="{ on: mode === 'term' }" :aria-label="t('Terminal')" :aria-pressed="mode === 'term'" @click="toggleMode('term')"
@@ -586,7 +590,6 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <div class="agent-body">
     <div class="agent-main hw-backdrop-host">
     <GridBackdrop v-if="desk && !cell && backdrop === 'wherdr' && mode === 'chat'" />
-    <CoordinatorBar v-if="coord && !cell" :c="coord" />
     <div v-if="machineDown && machine" class="term-banner machine-banner">
       <UIcon name="i-lucide-unplug" class="term-banner-icon" />
       <span>{{ machine.status === 'connecting' ? tl(`${machineName(machine.key)} unreachable — reconnecting…`, `${machineName(machine.key)} injoignable — reconnexion…`) : tl(`${machineName(machine.key)} offline`, `${machineName(machine.key)} hors ligne`) }}<small v-if="machine.error">{{ t(machine.error) }}</small></span>

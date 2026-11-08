@@ -2,17 +2,21 @@
 // The board: Your turn first, then the columns of the project's template
 // (To do / Working / Done for all projects, with the step on the card). A
 // card's indicator is the live state of the agent holding its step.
-import { boardLanes, boardTags, mainLink, type Board, type Card } from '#shared/pm/board'
+import { boardLanes, boardTags, canStop, mainLink, type Board, type Card } from '#shared/pm/board'
+import { RESUMES } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
 
 const data = ref<Board | null>(null)
 const error = ref('')
 const project = ref('') // '' = all projects
 const tag = ref('') // '' = every tag
-const open = ref<string | null>(null)
+// The task to show, also from Decisions' "Open task" (/board?task=CO-1).
+const route = useRoute()
+const open = ref<string | null>(typeof route.query.task === 'string' ? route.query.task : null)
+const decisions = ref(0) // what waits for the user's choice, on the Decisions screen
 
 async function load() {
-  try { data.value = await api<Board>('/api/pm/board'); error.value = ''; loadCoordinators() }
+  try { data.value = await api<Board>('/api/pm/board'); error.value = ''; loadCoordinators(); api<unknown[]>('/api/pm/decisions').then((d) => { decisions.value = d.length }, () => {}) }
   catch (e) { error.value = (e as Error).message }
 }
 let timer: ReturnType<typeof setInterval> | undefined
@@ -24,8 +28,13 @@ const waitsForYou = (c: Card) => { const p = paneOf(c); return !!p && hasAgent(c
 const cards = computed(() => (data.value?.cards ?? [])
   .filter(c => (!project.value || c.project === project.value) && (!tag.value || c.tags.includes(tag.value)))
   .map(c => (!c.yourTurn && waitsForYou(c) ? { ...c, yourTurn: tl('Answer the agent', 'Réponds à l’agent') } : c)))
+const projectPick = noneModel(project)
+const tagPick = noneModel(tag)
+const projectItems = computed(() => [{ label: tl('All projects', 'Tous les projets'), value: NONE }, ...(data.value?.projects ?? []).map(p => ({ label: p.name, value: p.key }))])
+const tagItems = computed(() => [{ label: tl('Tags', 'Étiquettes'), value: NONE }, ...tags.value.map(x => ({ label: x, value: x }))])
 const tags = computed(() => boardTags((data.value?.cards ?? []).filter(c => !project.value || c.project === project.value)))
-const coordinator = computed(() => coordinators.value.find(c => c.project === project.value))
+// The header's coordinator button: the project's, or Alfred's on All projects.
+const coordinator = computed(() => coordinators.value.find(c => (project.value ? c.project === project.value : c.main)))
 const columns = computed(() => (project.value ? data.value?.projects.find(p => p.key === project.value)?.columns ?? [] : null))
 const lanes = computed(() => boardLanes(cards.value, columns.value))
 const PHASE_LABEL: Record<string, string> = { 'your-turn': 'Your turn', 'todo': 'To do', 'working': 'Working', 'done': 'Done' }
@@ -39,6 +48,21 @@ const live = (c: Card) => {
   const p = paneOf(c)
   return p ? { key: statusKey(p), label: `${t(c.holder === 'reviewer' ? 'Reviewer' : 'Worker')}: ${statusLabel(p)}` } : { key: 'inactive', label: tl('No agent running', 'Aucun agent lancé') }
 }
+// The card's menu: Stop (confirmed in the task's sheet), how a stopped task
+// goes on, or Delete for a task never started (confirmed). It opens on right
+// click and long press of the card; its ••• button shows only when the menu
+// has more than Open (a tap already opens the task).
+const stopping = ref(false)
+const cardMenu = useRowMenu()
+const tap = (id: string) => { if (!cardMenu.swallowClick()) show(id) }
+const show = (id: string, stop = false) => { stopping.value = stop; open.value = id }
+const act = (fn: () => Promise<unknown>) => fn().then(load, (e: Error) => { error.value = e.message })
+const menuOf = (c: Card): MenuItem[] => [
+  { label: tl('Open', 'Ouvrir'), icon: 'i-lucide-panel-right-open', run: () => show(c.id) },
+  ...(canStop(c) ? [{ label: tl('Stop…', 'Arrêter…'), icon: 'i-lucide-square', danger: true, run: () => show(c.id, true) }] : []),
+  ...(c.stopped ? RESUMES.map(how => ({ label: tl(...RESUME_LABEL[how]), danger: how === 'archive', run: () => act(() => resumeTaskApi(c.id, how)) })) : []),
+  ...(c.removable ? [{ label: tl('Delete…', 'Supprimer…'), icon: 'i-lucide-trash-2', danger: true, run: () => act(() => removeTaskApi(c.id)) }] : []),
+]
 const selected = computed(() => cards.value.find(c => c.id === open.value) ?? data.value?.cards.find(c => c.id === open.value) ?? null)
 </script>
 
@@ -47,22 +71,24 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
     <header class="board-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back" :aria-label="t('Back')" to="/" />
       <h1 class="display">{{ tl('Board', 'Tableau') }}</h1>
-      <select v-model="project" class="pm-select" :aria-label="tl('Project', 'Projet')" data-testid="board-project">
-        <option value="">{{ tl('All projects', 'Tous les projets') }}</option>
-        <option v-for="p in data?.projects" :key="p.key" :value="p.key">{{ p.name }}</option>
-      </select>
-      <select v-if="tags.length || tag" v-model="tag" class="pm-select" :aria-label="tl('Tag', 'Étiquette')" data-testid="board-tag">
-        <option value="">{{ tl('Tags', 'Étiquettes') }}</option>
-        <option v-for="x in tags" :key="x" :value="x">{{ x }}</option>
-      </select>
+      <UButton :color="decisions ? 'warning' : 'neutral'" :variant="decisions ? 'solid' : 'outline'" size="lg" to="/decisions" data-testid="board-decisions">
+        {{ tl('Decisions', 'Décisions') }}<span v-if="decisions" class="mono-label board-decisions-n">{{ decisions }}</span>
+      </UButton>
+      <USelect v-model="projectPick" :items="projectItems" size="lg" class="board-select" :aria-label="tl('Project', 'Projet')" data-testid="board-project" />
+      <USelect v-if="tags.length || tag" v-model="tagPick" :items="tagItems" size="lg" class="board-select" :aria-label="tl('Tag', 'Étiquette')" data-testid="board-tag" />
+      <CoordinatorButton v-if="coordinator" :c="coordinator" open />
     </header>
-    <CoordinatorBar v-if="coordinator" :c="coordinator" open />
+    <!-- One scroll on the phone, so a tall guide does not hide the lanes. -->
+    <div class="board-body">
+    <PmGuide :always="route.query.guide === '1'" />
     <p v-if="error" class="error board-note">{{ error }}</p>
     <p v-else-if="data && !data.cards.length" class="muted board-note">{{ tl('No task yet.', 'Aucune tâche pour l’instant.') }}</p>
     <div class="board-lanes">
       <section v-for="l in lanes" :key="l.id" class="board-lane" :class="{ mine: l.id === 'your-turn' }" :data-lane="l.id" data-testid="board-lane">
         <h2 class="mono-label">{{ laneLabel(l.id) }} <span>{{ l.cards.length }}</span></h2>
-        <button v-for="c in l.cards" :key="c.id" type="button" class="board-card" data-testid="board-card" :data-task="c.id" @click="open = c.id">
+        <div v-for="c in l.cards" :key="c.id" class="board-card-wrap" :class="{ 'has-menu': menuOf(c).length > 1 }">
+        <UContextMenu :disabled="sheetMenus" :items="cardMenu.dropdown(() => menuOf(c))" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="cardMenu.opened">
+        <button type="button" class="board-card" data-testid="board-card" :data-task="c.id" v-on="cardMenu.on(() => menuOf(c), c.title)" @click="tap(c.id)">
           <span class="board-card-head">
             <span v-if="hasAgent(c)" class="card-state" :class="live(c).key" role="img" :aria-label="live(c).label" :title="live(c).label" data-testid="holder-state"><i /></span>
             <b>{{ c.title }}</b>
@@ -75,9 +101,18 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
             <a v-if="mainLink(c)" :href="mainLink(c)!.url" target="_blank" rel="noopener" class="board-chip" data-testid="board-link" @click.stop>{{ mainLink(c)!.label }}</a>
           </span>
         </button>
+        </UContextMenu>
+        <template v-if="menuOf(c).length > 1">
+        <UDropdownMenu v-if="!sheetMenus" :items="toDropdown(menuOf(c))" :content="{ align: 'end', sideOffset: 4 }" :ui="{ content: 'hw-dropdown' }">
+          <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn board-card-menu" :aria-label="tl('Task menu', 'Menu de la tâche')" data-testid="card-menu" />
+        </UDropdownMenu>
+        <UButton v-else icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn board-card-menu" :aria-label="tl('Task menu', 'Menu de la tâche')" data-testid="card-menu" @click="openMenu(menuOf(c), c.title)" />
+        </template>
+        </div>
       </section>
     </div>
-    <TaskSheet v-if="selected" :card="selected" :pane="paneOf(selected)" @closed="open = null" @changed="load" />
+    </div>
+    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}`" :card="selected" :pane="paneOf(selected)" :stopping="stopping" @closed="open = null; stopping = false" @changed="load" />
   </section>
 </template>
 
@@ -85,17 +120,23 @@ const selected = computed(() => cards.value.find(c => c.id === open.value) ?? da
 .board { color: var(--text); }
 .board-top { flex: none; display: flex; align-items: center; gap: 8px; min-height: calc(44px + var(--safe-top, 0px)); padding: var(--safe-top, 0px) 8px 0; border-bottom: 1px solid var(--line); }
 .board-top h1 { flex: 1; margin: 0; font-size: 20px; }
-.board-top .pm-select { min-width: 0; flex: 0 1 auto; }
+.board-decisions-n { margin-left: 6px; color: inherit; }
+.board-top :deep(.board-select) { min-width: 0; flex: 0 1 auto; }
 .board-note { padding: 12px 16px; }
-.board-lanes { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding-bottom: var(--safe-bottom, 0px); }
+.board-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+.board-lanes { flex: 1 0 auto; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding-bottom: var(--safe-bottom, 0px); }
 .board-lane { flex: none; border-bottom: 1px solid var(--line); padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
 .board-lane h2 { margin: 0; display: flex; justify-content: space-between; color: var(--muted); }
 .board-lane.mine h2 { color: var(--blocked); }
+.board-card-wrap { position: relative; display: flex; flex-direction: column; }
+.board-card-menu { position: absolute; top: 0; right: 0; }
+.board-card-wrap.has-menu .board-card-head { padding-right: 36px; }
 .board-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 12px; min-height: 44px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
 .board-card:active { background: var(--surface-2); }
 .board-card-head { display: flex; align-items: center; gap: 8px; }
 @media (min-width: 900px) {
-  .board-lanes { flex-direction: row; align-items: stretch; overflow-x: auto; }
+  .board-body { overflow-y: hidden; }
+  .board-lanes { flex: 1; flex-direction: row; align-items: stretch; overflow-x: auto; }
   .board-lane { flex: 1 0 220px; max-width: 360px; border-bottom: 0; border-right: 1px solid var(--line); }
 }
 </style>

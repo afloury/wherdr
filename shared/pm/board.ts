@@ -5,6 +5,7 @@
 import type { Holder } from './workflow'
 import type { PlannedStep, StepState } from './steps'
 import type { Run, Task } from './run'
+import { notStarted, type Stopped } from './stop'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -26,6 +27,8 @@ export interface Card {
   log: { at: number, by: string, text: string }[] // newest last: tags, links, the coordinator's choices and their reason
   plan: PlannedStep[]
   state?: StepState
+  stopped?: Stopped // who stopped it and why: Continue, Take it as it is or Archive
+  removable?: true // never started (no agent, worktree or branch): the user may remove it
 }
 
 export interface BoardProject { key: string, name: string, columns: string[] }
@@ -70,15 +73,21 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[]): Card {
     ...(yourTurn ? { yourTurn } : {}),
     ...(step?.ends === 'user' && started && !s?.done ? { userLabel: step.userLabel || 'Done' } : {}),
     tags: task.tags ?? [],
-    // Then the links steps gave as their proof (the PR), labelled by step.
-    links: [...task.links ?? [], ...plan.flatMap(p => (s?.proofs[p.id]?.link ? [{ label: p.id, url: s.proofs[p.id]!.link! }] : []))],
+    // Then the links steps gave as their proof (the PR), labelled by step; each address once.
+    links: [...task.links ?? [], ...plan.flatMap(p => (s?.proofs[p.id]?.link ? [{ label: p.id, url: s.proofs[p.id]!.link! }] : []))]
+      .filter((l, i, all) => all.findIndex(x => x.url === l.url) === i),
     log: (task.log ?? []).slice(-30),
     plan,
     ...(s ? { state: s } : {}),
+    ...(task.stopped ? { stopped: task.stopped } : {}),
+    ...(notStarted(task, runs) ? { removable: true as const } : {}),
   }
 }
 
 // The card's one-tap link: its PR when it has one, else its first link.
+// A task the user may stop: started, not done, not stopped already.
+export const canStop = (c: Pick<Card, 'state' | 'stopped'>) => !!c.state?.started && !c.state.done && !c.stopped
+
 export const mainLink = (c: Pick<Card, 'links'>) => c.links.find(l => /^pr$/i.test(l.label)) ?? c.links[0]
 
 // The tags of the cards, once each, to filter the board by.

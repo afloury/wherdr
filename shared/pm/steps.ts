@@ -3,7 +3,7 @@
 // the effects for the server to carry out (send a step's instructions to its
 // holder, run an engine action). It knows no tool and no workflow: only who
 // holds a step, how it ends, the proofs it needs and its deadline.
-import type { Evidence, Holder, Step, StepAction, Template, TaskInput } from './workflow'
+import { actionField, type Evidence, type Holder, type Step, type StepAction, type Template, type TaskInput } from './workflow'
 import { mayMerge } from './guards'
 import { taskGuards } from './actions'
 import { shotsMissing, shotsText, shotMode, type Shot } from './shots'
@@ -22,7 +22,8 @@ export interface StepState {
   since?: number // when the current step started
   deadline?: number // absolute time, from the step's timeout
   recheckAt?: number // absolute time, for a step with recheck
-  told?: number // the `since` of the coordinator step whose instructions were delivered
+  told?: number // the `since` of the step whose instructions were delivered to its holder
+  fix?: string // what the worker must fix, when an engine action sent the task back to it
   acting?: boolean // an engine action is running
   yourTurn?: YourTurn
   proofs: Record<string, Partial<Record<Evidence, string>>> // per step id
@@ -49,6 +50,7 @@ export type StepEvent =
   // toAgent: the worker has to fix it (a conflict): the task goes back to its step.
   | { kind: 'action-result', ok: boolean, error?: string, evidence?: Partial<Record<Evidence, string>>, toAgent?: boolean }
   | { kind: 'tick' }
+  | { kind: 'skip' } // the user takes a stopped task as it is: on to the next step
 
 export type Effect =
   | { kind: 'instruct', step: string, holder: Holder, text: string }
@@ -70,22 +72,35 @@ const proofOf = (s: Step) => (e: Evidence) =>
   e === 'screenshots' ? shotsText(shotMode(s) === 'before-after' ? ['before', 'after'] : ['after']) : PROOF[e]
 export const DEFAULT_ROUNDS = 2
 
+// The project's working branch (Project.base) fills the branch an action
+// leaves out: the PR's base, the branch to land on or to check. A step that
+// names its own keeps it. Neither: the action stays without one.
+export function withBase(a: StepAction, base?: string): StepAction {
+  const f = actionField(a.kind)
+  return f && !a[f] && base ? { ...a, [f]: base } : a
+}
+
+// {base} in instructions: the working branch, or plain words when none is set.
+export const fillBase = (text: string, base?: string) => text.replaceAll('{base}', base || 'the base branch')
+
 // The steps of a task type, shared steps resolved, each with the text its
 // holder gets: every level's instructions, broadest first, then the proofs.
-export function planSteps(t: Template, input: TaskInput): PlannedStep[] {
+// base: the project's working branch (withBase, fillBase).
+export function planSteps(t: Template, input: TaskInput, base?: string): PlannedStep[] {
   const tt = t.taskTypes[input.type]
   if (!tt) return []
   const g = taskGuards(t, input.type)
-  let base: string | undefined // of the PR opened by an earlier step
-  return tt.steps.map(s => (typeof s === 'string' ? t.steps![s]! : s)).map((s) => {
-    if (s.action?.kind === 'github.pr') base = s.action.base
-    const into = s.action?.kind === 'git.land' ? s.action.target : s.action?.kind === 'github.merge' ? base : undefined
+  let prBase: string | undefined // of the PR opened by an earlier step
+  return tt.steps.map(s => (typeof s === 'string' ? t.steps![s]! : s)).map((step) => {
+    const s = step.action ? { ...step, action: withBase(step.action, base) } : step
+    if (s.action?.kind === 'github.pr') prBase = s.action.base
+    const into = s.action?.kind === 'git.land' ? s.action.target : s.action?.kind === 'github.merge' ? prBase : undefined
     const guarded = into !== undefined && !mayMerge(g, into, 'engine') ? { guarded: true as const } : {}
     const own = input.steps?.[s.id]
     const parts = [t.instructions, tt.instructions, input.instructions, s.instructions, own?.instructions].map(x => x?.trim()).filter(Boolean)
     if (s.evidence?.length) parts.push(`Before you say you are done, give ${s.evidence.map(proofOf(s)).join(', ')}.`)
     if (s.evidence?.includes('screenshots')) parts.push(SHOT_HOW)
-    return { ...s, ...(own?.timeout ? { timeout: own.timeout } : {}), ...guarded, text: parts.join('\n\n') }
+    return { ...s, ...(own?.timeout ? { timeout: own.timeout } : {}), ...guarded, text: fillBase(parts.join('\n\n'), base) }
   })
 }
 
@@ -102,7 +117,7 @@ function act(s: StepState, step: PlannedStep, effects: Effect[]): StepState {
 // Enters step i: a step with no end is passed through (the last one is done).
 function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, effects: Effect[]): StepState {
   const step = plan[i]
-  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, recheckAt: undefined, acting: undefined, yourTurn: undefined }
+  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, recheckAt: undefined, acting: undefined, yourTurn: undefined, fix: undefined }
   if (!step) return effects.push({ kind: 'done' }), { ...s, done: true }
   if (!step.ends) return i === plan.length - 1 ? (effects.push({ kind: 'done' }), { ...s, done: true }) : enter(plan, s, i + 1, now, effects)
   if (step.timeout) s.deadline = now + durationMs(step.timeout)
@@ -217,14 +232,15 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       const back = plan.slice(0, state.at).findLastIndex(p => p.holder === 'worker')
       if (ev.toAgent && back >= 0) {
         // One message: what to fix, not the step's text again.
-        const s = enter(plan, { ...state, proofs }, back, now, [])
-        effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: `${ev.error}. Fix it, commit, then say you are done.` })
-        return { state: s, effects }
+        const fix = `${ev.error}. Fix it, commit, then say you are done.`
+        effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: fix })
+        return { state: { ...enter(plan, { ...state, proofs }, back, now, []), fix }, effects }
       }
       // The step stays open; the badge says what went wrong.
       const badge = `${step.badge || step.userLabel || step.id}: ${ev.error || `${step.action!.kind} failed`}`
       return { state: { ...state, acting: undefined, yourTurn: { reason: 'action', badge } }, effects }
     }
+    case 'skip': return { state: enter(plan, { ...state, backFrom: undefined }, state.at + 1, now, effects), effects }
     case 'tick': {
       let s = state
       if (s.recheckAt !== undefined && now >= s.recheckAt && hasAgent(step)) {

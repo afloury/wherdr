@@ -20,6 +20,8 @@ import { listMode } from '~/utils/layoutMode'
 import { stateMachines } from '~/utils/homeGrouping'
 import { BAR_ALL } from '~/utils/machineBar'
 import { individualAgentRows, individualAgentTitle, isIndividualAgentRow } from '~/utils/homeAgentRows'
+import { boardEntry } from '~/utils/boardEntry'
+import type { PmOverview } from '#shared/pm/project'
 const emit = defineEmits<{ search: [] }>()
 onMounted(loadUpdate)
 const homeRoute = useRoute()
@@ -83,7 +85,10 @@ function groupsOf(list: Row[], rawGroup = rowGroup) {
 const rowTitle = (r: Row) => isIndividualAgentRow(r) ? individualAgentTitle(r.lead) : homeTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
 // Same row object for a card whose row did not change: it does not re-render.
 const reuseRows = createRowReuse()
-const standaloneRows = (rows: Row[]) => reuseRows(individualAgentRows(rows))
+// Coordinators (Alfred and each project's) have their own rows above the list.
+const coordinatorAddresses = computed(() => new Set([alfred.value?.terminal, ...coordinators.value.map(c => c.terminal)].filter((a): a is string => !!a)))
+const isCoordinatorPane = (p: Pane) => !!p.coreAddress && coordinatorAddresses.value.has(p.coreAddress)
+const standaloneRows = (rows: Row[]) => reuseRows(individualAgentRows(rows, coordinatorAddresses.value))
 // Sort menu of the Ready group; sorted other than in the default order, the
 // list can no longer be reordered manually.
 const READY_SORT_LABELS: Record<ReadySort, [string, string]> = {
@@ -126,7 +131,7 @@ const sections = computed(() => {
   if (only) selected.sort((a, b) => only.indexOf(baseKeyOf(a)) - only.indexOf(baseKeyOf(b)))
   return selected.map((m) => {
     const mine = (p: Pane) => (p.machine || '') === m.key
-    const a = agents.value.filter(mine)
+    const a = agents.value.filter(p => mine(p) && !isCoordinatorPane(p))
     // A group counts the rows of the list, like the tabs.
     const c = coreRows.value.map(r => r.lead).filter(mine)
     return {
@@ -158,7 +163,7 @@ const stateMachineChips = computed(() => stateShown.value.online.map(m => ({
 })))
 const stateAway = computed(() => stateShown.value.away.map(m => ({
   m, name: machineName(m.key) || m.label || t('This machine'), state: t(STATE_LABEL[m.status]),
-  known: agents.value.filter(p => (p.machine || '') === m.key).length,
+  known: agents.value.filter(p => (p.machine || '') === m.key && !isCoordinatorPane(p)).length,
 })))
 const stateCards = computed(() => stateShown.value.online.flatMap(m =>
   standaloneRows(spaceRows(st.value, m.key)).map(row => ({ row, machine: machineName(m.key) || m.label }))))
@@ -267,11 +272,31 @@ const soloMachine = computed<MachineInfo>(() => machines.value[0] || {
 })
 const baseKeyOf = (m: MachineInfo) => m.baseKey ?? m.key
 function machineMenuItems(m: MachineInfo): MenuItem[] {
-  // Machines are managed in Settings › Agents; the menu only suggests Claude quotas.
+  // Only what herdr-core can do from here; rename and forget live in Settings › Agents.
   const items: MenuItem[] = []
+  if (m.status === 'online') {
+    items.push({ label: tl('New agent here', 'Nouvel agent ici'), icon: 'i-lucide-plus', run: () => {
+      haptic()
+      newAgentMachine.value = m.key
+      newAgentOpen.value = true
+    } })
+  }
+  else if (!m.local) {
+    items.push({ label: t('Reconnect'), icon: 'i-lucide-plug', run: async () => {
+      try { await api('/api/machine/connect', { key: baseKeyOf(m) }) }
+      catch (err) { toast(t((err as Error).message)) }
+    } })
+  }
+  items.push({
+    label: tl('Machine settings', 'Réglages des machines'),
+    desc: m.local ? undefined : tl('Rename, forget', 'Renommer, oublier'),
+    icon: 'i-lucide-settings',
+    run: () => navigateTo({ path: '/settings', query: { section: 'agents' } }),
+  })
   const hint = claudeHint(m)
   if (hint) {
     items.push(
+      { kind: 'separator' },
       {
         label: hint.state === 'outdated' ? tl('Update Claude quotas', 'Mettre à jour les quotas Claude') : tl('Set up Claude quotas', 'Configurer les quotas Claude'),
         desc: tl('In Settings › Agents', 'Dans Réglages › Agents'),
@@ -310,7 +335,8 @@ const onQuietVisible = () => readQuiet()
 watch(homeShown, readQuiet)
 onMounted(() => { if (homeShown.value) { quietRead.mark(); refreshQuiet() } document.addEventListener('visibilitychange', onQuietVisible) })
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', onQuietVisible))
-// Header buttons: when the list is too narrow, Settings moves into a "…" menu.
+// Header buttons: when the list is too narrow, Settings then the Board move
+// into a "…" menu.
 const titleRow = ref<HTMLElement | null>(null)
 const titleRowWidth = ref(0)
 let titleRowObserver: ResizeObserver | null = null
@@ -320,7 +346,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => titleRowObserver?.disconnect())
 // First to fold first.
-const headerFoldable = ['settings']
+const headerFoldable = ['settings', 'board']
 const headerFolded = computed(() => {
   if (!titleRowWidth.value) return new Set<string>()
   const total = headerFoldable.length + 1 + (desk.value ? 1 : 0)
@@ -330,8 +356,15 @@ function headerMenuItems(): MenuItem[] {
   const f = headerFolded.value
   return [
     ...(quietCurrent.value ? [{ label: quietLabel.value, icon: 'i-lucide-bell-off', run: () => navigateTo(quietSettings) }] : []),
+    ...(f.has('board') ? [{ label: tl('Board', 'Tableau'), icon: 'i-lucide-square-kanban', run: openBoard }] : []),
     ...(f.has('settings') ? [{ label: t('Settings'), icon: 'i-lucide-settings-2', run: () => navigateTo('/settings') }] : []),
   ]
+}
+// Board: read whether project management is on and has a project at click time
+// (it changes in Settings), and open the board or Settings › Projects.
+async function openBoard() {
+  const o = await api<PmOverview>('/api/pm/overview').catch(() => null)
+  await navigateTo(boardEntry(o))
 }
 function newAgent() {
   haptic()
@@ -434,6 +467,9 @@ function resetListWidth() {
       <UTooltip :text="t('New')" :kbds="shortcutKbds('new-space')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="!eventsOpen || offlineView" @click="newAgent" />
       </UTooltip>
+      <UTooltip :text="tl('Board', 'Tableau')" :content="{ side: 'right' }">
+        <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Board', 'Tableau')" @click="openBoard" />
+      </UTooltip>
       <UTooltip :text="t('Settings')" :kbds="shortcutKbds('settings')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Settings')" to="/settings" />
       </UTooltip>
@@ -459,6 +495,9 @@ function resetListWidth() {
         <div class="home-actions">
           <UTooltip :text="tl('Search agents and conversations', 'Rechercher agents et conversations')" :kbds="shortcutKbds('search-all')" :disabled="!desk">
             <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
+          </UTooltip>
+          <UTooltip v-if="!headerFolded.has('board')" :text="tl('Board', 'Tableau')" :disabled="!desk">
+            <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Board', 'Tableau')" data-testid="home-board" @click="openBoard" />
           </UTooltip>
           <UTooltip v-if="!headerFolded.has('settings')" :text="t('Settings')" :kbds="shortcutKbds('settings')" :disabled="!desk">
             <UButton
@@ -514,6 +553,8 @@ function resetListWidth() {
       </div>
       <NuxtLink v-if="quietHint" :to="quietSettings" class="home-quiet" :aria-label="quietLabel"><UIcon name="i-lucide-bell-off" /><span>{{ quietHint }}</span></NuxtLink>
 
+      <AlfredRow v-if="st.ok" />
+      <CoordinatorsSection v-if="st.ok" />
       <div v-if="showCounters && agents.length" class="stats">
         <div v-for="c in stats" :key="c.s" class="stat" :class="[c.s, { zero: !c.n }]">
           <b>{{ c.n }}</b>
@@ -618,7 +659,7 @@ function resetListWidth() {
                 {{ s.counted.length }}
               </span>
             </button>
-            <UDropdownMenu :items="machineMenu(s.m)" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
+            <UDropdownMenu v-if="machineMenuItems(s.m).length" :items="machineMenu(s.m)" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
               <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="machine-options icon-btn" :aria-label="`${t('Options')} : ${s.name}`" />
             </UDropdownMenu>
           </div>

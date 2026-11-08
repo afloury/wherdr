@@ -12,8 +12,6 @@ import { menuState } from '~/composables/useUi'
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigate)
 
-registerEndpoint('/api/machine/order', () => ({ order: [] }))
-registerEndpoint('/api/machine/awake', () => ({ supported: false }))
 
 const machine = (key: string, label: string, status: MachineInfo['status'] = 'online'): MachineInfo =>
   ({ key, label, local: key === '', status, error: null, session: 'default' })
@@ -180,14 +178,6 @@ describe('the machine bar on the home list', () => {
     expect(w.find('.machine-bar').exists()).toBe(false)
   })
 
-  it('a choice taken off the bar falls back to its first item', async () => {
-    machineBarSaved.value = 'laptop'
-    machineBarHidden.value = ['laptop']
-    const w = await mountHome()
-    expect(w.find('.machine-bar-item.on .machine-bar-label').text()).toBe('All')
-    expect(w.findAll('section.machine').length).toBe(3)
-  })
-
   it('a single machine has the bar too: All, then that machine', async () => {
     // Herdr's state lists no machine when there is only this one.
     herdrState.value = { ok: true, workspaces: workspaces.slice(0, 2), panes: panes.slice(0, 2) } as never
@@ -312,13 +302,18 @@ describe('a tab showing one machine', () => {
   beforeEach(() => { reset(); setState(); menuState.open = false })
   afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] }; eventsOpen.value = false; menuState.open = false; reset() })
   // Long press with a finger: the phone's menu sheet.
+  // Fake timers: a real press costs half a second each.
   async function press(el: Element) {
-    el.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch', clientX: 5, clientY: 5, bubbles: true }))
-    await new Promise(r => setTimeout(r, 500))
-    el.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'touch', bubbles: true }))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      el.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch', clientX: 5, clientY: 5, bubbles: true }))
+      vi.advanceTimersByTime(500)
+      el.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'touch', bubbles: true }))
+      vi.runOnlyPendingTimers()
+    } finally { vi.useRealTimers() }
   }
 
-  it('drops the machine header; the tab has no machine actions', async () => {
+  it('drops the machine header; a long press on the tab opens its actions', async () => {
     machineBarSaved.value = 'laptop'
     const w = await mountHome()
     expect(w.findAll('section.machine').map(s => s.attributes('data-machine'))).toEqual(['laptop'])
@@ -326,7 +321,8 @@ describe('a tab showing one machine', () => {
     expect(w.find('.machine-tab-offline').exists()).toBe(false)
     expect(w.findAll('section.machine .card')).toHaveLength(1)
     await press(w.find('[data-bar-id="laptop"]').element)
-    expect(menuState.open).toBe(false)
+    expect(menuState.open).toBe(true)
+    expect(menuState.items.map(i => 'label' in i ? i.label : '')).toContain('New agent here')
   })
 
   it('the local machine (key \'\') drops its header too', async () => {

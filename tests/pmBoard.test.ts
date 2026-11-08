@@ -39,4 +39,7 @@ it('a working task with no recorded step shows in its worker\'s step with its ag
   expect(cardOf(task, plan, [run])).toMatchObject({ phase: 'working', column: 'Working', step: 'work', holder: 'worker', terminal: 'host-a/t1' })
   const at4 = { ...task, step: { at: 4, started: true, rounds: {}, proofs: { pr: { link: 'https://example.com/pr/12' } } } }
   expect(cardOf(at4, plan, [run]).links).toEqual([{ label: 'pr', url: 'https://example.com/pr/12' }])
+  // The PR given again by the merge step and linked by the coordinator: shown once.
+  const merged = { ...at4, links: [{ label: 'PR #12', url: 'https://example.com/pr/12' }], step: { ...at4.step, proofs: { ...at4.step.proofs, merge: { link: 'https://example.com/pr/12' } } } }
+  expect(cardOf(merged, plan, [run]).links).toEqual([{ label: 'PR #12', url: 'https://example.com/pr/12' }])
 })

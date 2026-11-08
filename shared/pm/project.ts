@@ -1,28 +1,37 @@
-// A managed project: a git folder on a machine reached through herdr-core,
-// and the template its tasks follow. Stored in DATA_DIR/projects/projects.json.
+// A managed project: a folder (git, unless git: false) on a machine reached through herdr-core,
+// and its own workflow (DATA_DIR/projects/workflows/<KEY>.json), which its tasks follow. Stored in DATA_DIR/projects/projects.json.
 import type { WorkflowError } from './workflow'
 import type { Task } from './run'
+import type { RepoVisibility } from './visibility'
 
 export interface Project {
   key: string // task ids are <key>-<n>: WHR-344
   name: string
   machine: string // herdr-core machine key, '' = the wherdr host
   path: string
-  base?: string // branch tasks start from (default: the repo's current one)
-  template?: string // template id; none yet = no task can start
+  git?: false // a folder without git: its coordinator works in it, no task worktree
+  // Working branch: tasks start from it, and a step's PR, land or check uses it
+  // when the step names no branch. Default: the repo's current branch, no default.
+  base?: string
+  // The library template (or example) its workflow was copied from: information
+  // only, never followed. None: no workflow yet, no task can start.
+  from?: { template: string, version: number }
+  visibility?: RepoVisibility // public repository: guardrails for its coordinator and tasks
   addedAt: number
 }
 
-export type ProjectInput = Omit<Project, 'addedAt'>
+// template: a library template id or example:<id>, copied into the project's workflow.
+export type ProjectInput = Omit<Project, 'addedAt' | 'from'> & { template?: string }
 export interface TemplateInfo { id: string, version?: number }
 // GET /api/pm/overview
 export interface PmOverview { enabled: boolean, projects: Project[], templates: TemplateInfo[], tasks?: Task[] }
 
-const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
+export const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/
 // A branch name git takes, without the odd cases (.., @{, spaces, ~^:?*[\).
 const BRANCH_RE = /^(?!.*\.\.)(?!.*@\{)(?!\/)(?!.*\/$)[A-Za-z0-9._/-]{1,100}$/
 
+export const isBranch = (b: string) => BRANCH_RE.test(b)
 export const isTemplateId = (id: unknown): id is string => typeof id === 'string' && ID_RE.test(id)
 
 // Checks a project to add; returns its clean form or the errors.
@@ -39,9 +48,9 @@ export function cleanProjectInput(raw: unknown): { project?: ProjectInput, error
   if (!path.startsWith('/') && !path.startsWith('~')) errors.push({ path: 'path', message: 'an absolute folder path' })
   else if (path.length > 1024 || path.includes('\0')) errors.push({ path: 'path', message: 'invalid folder' })
   const base = str('base')
-  if (base && !BRANCH_RE.test(base)) errors.push({ path: 'base', message: 'invalid branch name' })
+  if (base && !isBranch(base)) errors.push({ path: 'base', message: 'invalid branch name' })
   const template = str('template')
-  if (template && !isTemplateId(template)) errors.push({ path: 'template', message: 'invalid template id' })
+  if (template && !isTemplateId(template.replace(/^example:/, ''))) errors.push({ path: 'template', message: 'invalid template id' })
   if (errors.length) return { errors }
   return {
     errors,

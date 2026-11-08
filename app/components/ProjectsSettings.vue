@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // Settings › Projects: the project management switch, the projects (a git
-// folder on a machine herdr-core reaches), the template each one follows, and
-// the template editor.
+// folder on a machine herdr-core reaches), the template each one follows,
+// whether its repository is public (checked by wherdr, or set by the user),
+// its working branch (the repo's remote branches, or any name), each project's automations and the template editor.
 // Off, the server refuses every change but the switch.
 import type { PmOverview } from '#shared/pm/project'
+import type { RepoVisibility } from '#shared/pm/visibility'
 
 const props = defineProps<{ active: boolean }>()
 const data = ref<PmOverview | null>(null)
@@ -41,6 +43,36 @@ const pickTemplate = (key: string, template: string) => run(`tpl:${key}`, async 
   await api('/api/pm/project-template', { key, template })
   await load()
 })
+// The user's override (public or private), or wherdr's check again.
+const setVisibility = (key: string, body: { value: string } | { check: true }) => run(`vis:${key}`, async () => {
+  await api('/api/pm/project-visibility', { key, ...body })
+  await load()
+})
+// The working branch: a remote branch of the repo, or a name typed in.
+const branches = reactive<Record<string, string[]>>({})
+const loadBranches = async (key: string) => {
+  if (branches[key]) return
+  try { branches[key] = (await api<{ branches: string[] }>(`/api/pm/branches?key=${encodeURIComponent(key)}`)).branches }
+  catch (e) { branches[key] = []; error.value = (e as Error).message }
+}
+const branchItems = (p: { key: string, base?: string }) => [
+  { label: tl('Current branch of the repo', 'Branche actuelle du dépôt'), value: NONE },
+  ...[...new Set([...(p.base ? [p.base] : []), ...(branches[p.key] ?? [])])].map(b => ({ label: b, value: b })),
+]
+const setBase = (key: string, base: string) => run(`base:${key}`, async () => {
+  await api('/api/pm/project-base', { key, base })
+  await load()
+})
+const visibilityNote = (v?: RepoVisibility) => !v ? tl('Not checked yet', 'Pas encore vérifié')
+  : v.by === 'user' ? tl('Set by you', 'Choisi par vous')
+  : `${v.value === 'unknown' ? tl('Not found', 'Introuvable') : tl('Checked', 'Vérifié')} ${new Date(v.at).toLocaleDateString()}`
+const templateItems = computed(() => [{ label: tl('No template', 'Aucun modèle'), value: NONE }, ...(data.value?.templates ?? []).map(tp => ({ label: tp.id, value: tp.id }))])
+const visibilityItems = (v?: RepoVisibility) => [
+  ...((v?.value ?? 'unknown') === 'unknown' ? [{ label: tl('Repository: unknown', 'Dépôt : inconnu'), value: 'unknown', disabled: true }] : []),
+  { label: tl('Public repository', 'Dépôt public'), value: 'public' },
+  { label: tl('Private repository', 'Dépôt privé'), value: 'private' },
+]
+const formTemplate = computed({ get: () => orNone(form.template), set: (v: string) => { form.template = fromNone(v) } })
 const remove = (key: string) => run(`rm:${key}`, async () => {
   await api('/api/pm/project-remove', { key })
   await load()
@@ -56,24 +88,48 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
       </span>
       <USwitch :model-value="data?.enabled ?? false" :disabled="!data || busy === 'switch'" color="success" size="xl" data-testid="pm-switch" @update:model-value="v => toggle(v)" />
     </label>
+    <UButton to="/board?guide=1" color="neutral" variant="ghost" size="lg" icon="i-lucide-list-checks" class="pm-guide-link" data-testid="pm-guide-link">{{ tl('Getting started', 'Pour commencer') }}</UButton>
 
     <template v-if="data?.enabled">
       <h3>{{ tl('Projects', 'Projets') }}</h3>
       <div v-if="data.projects.length" class="settings-card">
         <div v-for="p in data.projects" :key="p.key" class="pm-row" data-testid="pm-project">
-          <span class="pm-id"><b>{{ p.name }}</b><small class="mono-label">{{ p.key }} · {{ machineName(p.machine) }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
-          <select
-            class="pm-select" :value="p.template || ''" :disabled="busy !== ''" :aria-label="tl(`Template of ${p.name}`, `Modèle de ${p.name}`)"
-            data-testid="pm-project-template" @change="pickTemplate(p.key, ($event.target as HTMLSelectElement).value)"
-          >
-            <option value="">{{ tl('No template', 'Aucun modèle') }}</option>
-            <option v-for="tp in data.templates" :key="tp.id" :value="tp.id">{{ tp.id }}</option>
-          </select>
+          <span class="pm-id"><b>{{ p.name }}<span v-if="p.visibility?.value === 'public'" class="pm-public" data-testid="pm-public">{{ tl('Public', 'Public') }}</span></b><small class="mono-label">{{ p.key }} · {{ machineName(p.machine) }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
+          <USelect
+            :model-value="orNone(p.from?.template)" :items="templateItems" size="lg" class="pm-row-template" :disabled="busy !== ''" :aria-label="tl(`Template of ${p.name}`, `Modèle de ${p.name}`)"
+            data-testid="pm-project-template" @update:model-value="v => pickTemplate(p.key, fromNone(v))"
+          />
           <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-trash-2" :aria-label="tl(`Remove ${p.name}`, `Retirer ${p.name}`)" :loading="busy === `rm:${p.key}`" @click="remove(p.key)" />
+          <span class="pm-base">
+            <span class="field-label">{{ tl('Working branch', 'Branche de travail') }}</span>
+            <USelectMenu
+              :model-value="orNone(p.base)" :items="branchItems(p)" value-key="value" size="lg" class="pm-base-pick mono" :disabled="busy !== ''" create-item
+              :search-input="{ placeholder: tl('Branch name', 'Nom de branche'), autocomplete: 'off', ui: { base: 'pointer-coarse:text-[16px]' } }"
+              :aria-label="tl(`Working branch of ${p.name}`, `Branche de travail de ${p.name}`)" data-testid="pm-base"
+              @update:open="o => o && loadBranches(p.key)" @update:model-value="v => setBase(p.key, fromNone(String(v)))" @create="v => setBase(p.key, v.trim())"
+            />
+            <small class="muted">{{ tl('New tasks start from it, and a step that names no branch opens its PR to it or merges into it. Running tasks keep theirs.', 'Les nouvelles tâches en partent, et une étape sans branche y ouvre sa PR ou y fusionne. Les tâches en cours gardent la leur.') }}</small>
+          </span>
+          <span class="pm-vis">
+            <USelect
+              :model-value="p.visibility?.value ?? 'unknown'" :items="visibilityItems(p.visibility)" size="lg" :disabled="busy !== ''" :aria-label="tl(`Repository of ${p.name}`, `Dépôt de ${p.name}`)"
+              data-testid="pm-visibility" @update:model-value="v => setVisibility(p.key, { value: String(v) })"
+            />
+            <small class="mono-label">{{ visibilityNote(p.visibility) }}</small>
+            <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-refresh-cw" :loading="busy === `vis:${p.key}`" :disabled="busy !== ''" data-testid="pm-visibility-check" @click="setVisibility(p.key, { check: true })">{{ tl('Check again', 'Revérifier') }}</UButton>
+          </span>
         </div>
       </div>
       <UButton v-if="data.projects.length" to="/board" color="neutral" variant="outline" size="xl" icon="i-lucide-kanban" class="pm-board" data-testid="pm-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
       <p v-else class="muted settings-hint" data-testid="pm-empty">{{ tl('No project yet.', 'Aucun projet pour l’instant.') }}</p>
+
+      <template v-if="data.projects.length">
+        <h3>{{ tl('Automations', 'Automatisations') }}</h3>
+        <p class="muted settings-hint">{{ tl('Each firing adds a task from the project\'s template and starts it at once.', 'Chaque déclenchement ajoute une tâche du modèle du projet et la lance aussitôt.') }}</p>
+        <div class="settings-card">
+          <ProjectAutomations v-for="p in data.projects" :key="p.key" :project="p.key" :name="p.name" />
+        </div>
+      </template>
 
       <h3>{{ tl('Templates', 'Modèles') }}</h3>
       <TemplateEditor :templates="data.templates" @saved="load" />
@@ -90,13 +146,10 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
         </template>
         <label class="field-label" for="pmPath">{{ tl('Git folder', 'Dossier git') }}</label>
         <UInput id="pmPath" v-model="form.path" size="xl" class="w-full mono" autocapitalize="none" autocorrect="off" :spellcheck="false" placeholder="~/src/web" maxlength="1024" />
-        <label class="field-label" for="pmBase">{{ tl('Base branch', 'Branche de base') }} <span class="muted">{{ t('(optional)') }}</span></label>
+        <label class="field-label" for="pmBase">{{ tl('Working branch', 'Branche de travail') }} <span class="muted">{{ t('(optional)') }}</span></label>
         <UInput id="pmBase" v-model="form.base" size="xl" class="w-full mono" autocapitalize="none" autocorrect="off" :spellcheck="false" placeholder="main" maxlength="100" />
         <label class="field-label" for="pmTemplate">{{ tl('Template', 'Modèle') }}</label>
-        <select id="pmTemplate" v-model="form.template" class="pm-select" data-testid="pm-template">
-          <option value="">{{ tl('No template', 'Aucun modèle') }}</option>
-          <option v-for="tp in data.templates" :key="tp.id" :value="tp.id">{{ tp.id }}</option>
-        </select>
+        <USelect id="pmTemplate" v-model="formTemplate" :items="templateItems" size="lg" class="w-full" data-testid="pm-template" />
         <p v-if="!data.templates.length" class="muted settings-hint">{{ tl('No template saved yet: tasks cannot start until the project has one.', 'Aucun modèle enregistré : les tâches ne pourront pas démarrer tant que le projet n’en a pas.') }}</p>
         <UButton type="submit" size="xl" color="primary" variant="solid" class="hw-cta" icon="i-lucide-plus" :loading="busy === 'add'" :disabled="!canAdd">{{ tl('Add project', 'Ajouter le projet') }}</UButton>
       </form>
@@ -107,17 +160,20 @@ const remove = (key: string) => run(`rm:${key}`, async () => {
 
 <style scoped>
 .pm-settings h3 { margin-top: 24px; }
-.pm-board { margin-top: 8px; }
+.pm-board, .pm-guide-link { margin-top: 8px; }
 .pm-settings .settings-card { padding: 0; }
 .pm-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
 .pm-row:last-child { border-bottom: 0; }
 .pm-id { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.pm-public { margin-left: 8px; padding: 2px 6px; border: 1px solid var(--blocked); color: var(--blocked); font: 600 11px/1 var(--font-mono, 'JetBrains Mono', monospace); letter-spacing: .08em; text-transform: uppercase; vertical-align: 2px; }
+.pm-base { grid-column: 1 / -1; display: grid; gap: 4px; }
+.pm-base-pick { width: min(100%, 320px); }
+.pm-vis { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .pm-path { color: var(--muted); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; }
-form .pm-select { width: 100%; }
 .pm-settings form.sheet-form { margin-top: 8px; }
 .pm-settings form .settings-hint { margin-bottom: 16px; }
 @media (max-width: 520px) {
   .pm-row { grid-template-columns: minmax(0, 1fr) auto; }
-  .pm-row .pm-select { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+  .pm-row > :deep(.pm-row-template) { grid-column: 1 / -1; grid-row: 2; width: 100%; }
 }
 </style>
