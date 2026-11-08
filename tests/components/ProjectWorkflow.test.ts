@@ -85,12 +85,21 @@ it('edits the JSON from the ⋯ menu: the faulty line, then the fixed text saved
 
 it('saves the workflow as a library template, and starts over only after showing the diff', async () => {
   const w = await mount({ ...vibe, id: 'web', version: 1 })
+  const saveAs = () => (w.vm as unknown as { menu: () => MenuItem[] }).menu().find(m => m.label === 'Save as template…')!
+  // Unsaved edits: Save as template would copy the stored workflow, so it waits.
+  await w.find('[data-testid="tpl-add"]').trigger('click')
+  expect(saveAs()).toMatchObject({ disabled: true, desc: 'Save your changes first' })
+  await w.setProps({ workflow: { ...vibe, id: 'web', version: 1 } }) // reloaded: the edit is gone
+  expect(saveAs().disabled).toBe(false)
   await menu(w, 'Save as template…')
   await vi.waitFor(() => expect(q('wf-save-as-id')).not.toBeNull())
   const id = (q('wf-save-as-id')!.querySelector('input') ?? q('wf-save-as-id')) as HTMLInputElement
   expect(id.value).toBe('web-copy') // web is taken in the library
   q('wf-save-as')!.click()
   await vi.waitFor(() => expect(posts[0]).toEqual({ url: '/api/pm/template-from-project', body: { key: 'WEB', id: 'web-copy' } }))
+  // Only the library changed: the project's workflow is not reloaded.
+  await vi.waitFor(() => expect(w.emitted('templates')).toHaveLength(1))
+  expect(w.emitted('changed')).toBeUndefined()
 
   await menu(w, 'Start over from a template…')
   await vi.waitFor(() => expect(q('wf-start-pick')).not.toBeNull())

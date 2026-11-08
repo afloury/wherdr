@@ -152,7 +152,7 @@ async function remove() {
           <span class="field-label">{{ tl('Template') }}</span>
           <small class="muted" data-testid="pm-from">{{ p.from ? tl(`Based on: ${p.from.template} v${p.from.version}. Information only: changes to the template do not reach the project. To start over from a template: Workflow › ⋯.`) : tl('No template yet: start from one in the Workflow tab.') }}</small>
         </form>
-        <ProjectWorkflow v-else-if="tab === 'workflow' && loaded" ref="workflowTab" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" />
+        <ProjectWorkflow v-else-if="tab === 'workflow' && loaded" ref="workflowTab" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" @templates="emit('changed')" />
         <ProjectAutomations v-else-if="tab === 'automations'" :project="p.key" :name="p.name" />
         <template v-else-if="tab === 'autopilot'">
           <CoordinatorAutopilot v-if="coordinator" :c="coordinator" />

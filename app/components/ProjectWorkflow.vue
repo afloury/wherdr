@@ -13,7 +13,8 @@ import { ACTIONS, ENDS, HOLDERS, MERGE_METHODS, SHOT_MODES, startOverFrom, type 
 import type { Project, TemplateInfo } from '#shared/pm/project'
 
 const props = defineProps<{ project: Project, workflow: Template | null, log: LogEntry[], templates: TemplateInfo[] }>()
-const emit = defineEmits<{ changed: [] }>()
+// changed: the workflow was saved or replaced; templates: only the library changed.
+const emit = defineEmits<{ changed: [], templates: [] }>()
 
 const text = ref('')
 const type = ref('')
@@ -38,7 +39,10 @@ const steps = computed(() => {
 })
 const plan = computed(() => (parsed.value?.template && type.value ? planSteps(parsed.value.template, { type: type.value }) : []))
 
-const show = (t: unknown) => { text.value = t ? JSON.stringify(t, null, 2) + '\n' : '' }
+const asText = (t: unknown) => (t ? JSON.stringify(t, null, 2) + '\n' : '')
+const show = (t: unknown) => { text.value = asText(t) }
+// Edits not saved yet: Save as template copies the stored workflow, so it waits for a save.
+const dirty = computed(() => text.value !== asText(props.workflow))
 watch(() => props.workflow, show, { immediate: true })
 
 // A form change: edit a copy of the steps and write it back as text.
@@ -104,11 +108,16 @@ const methodItems = computed(() => [{ label: tl('Method: the repo’s default', 
 const shotItems = computed(() => [{ label: tl('No screenshots', 'Sans captures'), value: NONE }, ...SHOT_MODES.map(m => ({ label: t(SHOT_LABEL[m]), value: m }))])
 const agent = (s: Step) => !!s.holder && s.holder !== 'none'
 
-async function run(what: string, fn: () => Promise<unknown>) {
+async function run(what: string, fn: () => Promise<unknown>, done: 'changed' | 'templates' = 'changed') {
   if (busy.value) return false
   busy.value = what
   error.value = ''
-  try { await fn(); emit('changed'); return true }
+  try {
+    await fn()
+    if (done === 'changed') emit('changed')
+    else emit('templates')
+    return true
+  }
   catch (e) { error.value = (e as Error).message; return false }
   finally { busy.value = '' }
 }
@@ -132,7 +141,7 @@ const freeId = (id: string) => {
 const asId = ref('')
 async function saveAs() {
   const id = asId.value.trim()
-  if (await run('save-as', () => api('/api/pm/template-from-project', { key: props.project.key, id }))) {
+  if (await run('save-as', () => api('/api/pm/template-from-project', { key: props.project.key, id }), 'templates')) {
     toast(tl(`Saved as template ${id}`))
     dialog.value = ''
   }
@@ -167,7 +176,7 @@ const openStart = () => { startPick.value = ''; startNext.value = null; dialog.v
 const menu = (): MenuItem[] => [
   { label: tl('Edit as JSON'), icon: 'i-lucide-braces', disabled: !text.value, run: () => (dialog.value = 'json') },
   { label: tl('Change log'), icon: 'i-lucide-history', disabled: !props.log.length, run: () => (dialog.value = 'log') },
-  { label: tl('Save as template…'), icon: 'i-lucide-copy-plus', disabled: !props.workflow, run: () => { asId.value = freeId(props.project.key.toLowerCase()); dialog.value = 'save-as' } },
+  { label: tl('Save as template…'), icon: 'i-lucide-copy-plus', disabled: !props.workflow || dirty.value, ...(dirty.value ? { desc: tl('Save your changes first') } : {}), run: () => { asId.value = freeId(props.project.key.toLowerCase()); dialog.value = 'save-as' } },
   { label: tl('Start over from a template…'), icon: 'i-lucide-rotate-ccw', run: openStart },
 ]
 defineExpose({ menu })
