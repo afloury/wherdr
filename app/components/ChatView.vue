@@ -1,19 +1,19 @@
 <script setup lang="ts">
 // Conversation: the agent's transcript (without touching the terminal, so
-// without resizing the pane the computer is looking at), re-read every 1.5 s (the server
-// replies "unchanged" as long as the file has not grown).
+// without resizing the pane the computer is looking at), re-read every 1.5 s while
+// the agent works, less often when it rests (see pollDelay; the server replies
+// "unchanged" as long as the file has not grown).
 // Shown = older pages loaded on demand (`older`, up to
 // byte `olderCursor`) + bottom re-read continuously from byte `tailStart`.
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolView, Pane, QueuedMessage } from '#shared/types'
 import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
-import { queueReason, canClearQueued } from '~/utils/queuedReason'
-import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
+import { restoreDraft } from '~/utils/queuedCancel'
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
-import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
+import { type PendingMessage, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
-import { createTailLoader, nextTail, restartsTail, tailQuery } from '~/utils/chatTail'
+import { CHAT_READ_MS, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -22,9 +22,10 @@ import { findReplyOrigin, parseReply, type ReplyTarget } from '#shared/replyQuot
 import { messageId, messageOf, messageRef, pointRef, type Reference } from '#shared/reference'
 import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
+import { keepIfSame, keyedMemo, weakMemo } from '~/utils/keepIfSame'
 import { duplicateImages } from '#shared/imageDupes'
-import { isAutopilotWake } from '~/utils/autopilotWake'
 import { stripPosition } from '#shared/filePaths'
+import { readAloudEngine, stopSpeaking } from '~/composables/useReadAloud'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 // A version of a reply replaced while the agent writes takes its question marks with it.
@@ -44,6 +45,9 @@ interface ChatData {
   olderCursor: number
   tail: ChatItem[]
   queue: ClaudeQueueEntry[]
+  // Items of a previous read kept on screen until the full re-read replaces
+  // them in one step (no empty list in between, see swapTail).
+  held?: boolean
 }
 const fresh = (): ChatData => ({ file: null, token: '', tailStart: null, older: [], olderCursor: 0, tail: [], queue: [] })
 const chat = shallowRef<ChatData>(fresh())
@@ -54,6 +58,9 @@ const integration = ref<ChatResponse['integration'] | null>(null)
 const loadError = ref<string | null>(null)
 const misses = shallowRef<ChatMisses>(noMisses()) // missed polls, view kept
 const rendered = ref(false)
+// The first message typed in the New sheet, shown until the conversation exists.
+const firstPrompt = computed(() => firstPromptOf(props.pane.id))
+watch(() => items.value.length, (n) => { if (n) forgetFirstPrompt(props.pane.id) })
 const olderBusy = ref(false)
 const savedAt = ref<number | null>(null)
 const readOnly = computed(() => offlineView.value || paneStale(props.pane))
@@ -71,8 +78,15 @@ async function restoreChat() {
   const id = props.pane.id
   const saved = await readChat(id)
   if (!saved || synced || rendered.value || unavailable.value || id !== props.pane.id) return
+  // Its replies are known: one that arrives with the server's answer is new,
+  // and comes in as it would live (noteReplies).
+  for (const it of saved.items) {
+    if (it.role === 'assistant') knownReplies.add(replyId(it))
+    else if (it.role === 'thinking') knownThoughts.add(replyId(it))
+  }
+  synced = true
   await apply(() => {
-    chat.value = { ...fresh(), tail: saved.items }
+    chat.value = { ...fresh(), file: saved.file || null, tail: saved.items, held: true }
     savedAt.value = saved.at
   })
   touchChat(props.pane.id)
@@ -89,6 +103,8 @@ function scrollToEnd(force: boolean) {
   if (force || (!held && (stick || nearEnd(160)))) {
     stick = true
     held = false
+    // At once (no frame of a conversation opened at its top), and again once laid out.
+    b.scrollTop = b.scrollHeight
     requestAnimationFrame(() => { b.scrollTop = b.scrollHeight })
   }
 }
@@ -145,6 +161,8 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   if (box.value && rendered.value) saveReadingPosition(props.pane.id, chat.value.file, box.value)
+  // Leaving the pane stops the reply it was reading aloud.
+  stopSpeaking(`${props.pane.id}:`)
 })
 onUnmounted(() => ro?.disconnect())
 function onScroll() {
@@ -205,18 +223,21 @@ function interruptThought() { activeThought.value = null }
 // ------------------------------------------------------------ typewriter
 // Only a reply that arrives while following the conversation is revealed
 // (ChatMarkdown): never on first load, on return to the app or after
-// being offline, nor for older slices.
+// being offline, nor for older slices. Opened on the end kept on this device,
+// what the server's answer adds to it is new (restoreChat).
 const knownReplies = new Set<string>()
 const knownThoughts = new Set<string>()
 const activeThought = ref<{ id: string, at: number } | null>(null)
 const typing = ref<{ id: string, at: number } | null>(null)
-let synced = false // first load from the server done
+let synced = false // replies known: first load from the server, or the end kept on this device
 let away = false // app in the background or offline since the last re-read
 watch(pageVisible, (v) => { if (!v) { away = true; interruptThought() } })
 watch(offlineView, (v) => { if (v) { away = true; interruptThought() } })
 function noteReplies(list: ChatItem[]) {
-  const live = synced && !away && typewriterActive.value && !searchOpen.value && !readOnly.value
-  const revealThinking = synced && !away && !searchOpen.value && !readOnly.value
+  // A server answer means the app is online, even while the home state shown
+  // is still the one kept on this device (offlineView, at startup).
+  const live = synced && !away && typewriterActive.value && !searchOpen.value && !paneStale(props.pane)
+  const revealThinking = synced && !away && !searchOpen.value && !paneStale(props.pane)
   const thought = newestThought(knownThoughts, list.filter(i => i.role === 'thinking').map(replyId), revealThinking)
   if (thought) activeThought.value = { id: thought, at: Date.now() }
   away = false
@@ -249,7 +270,8 @@ async function loadStep(current: () => boolean): Promise<boolean> {
   try {
     const ready = chat.value.tailStart === null ? await chatIntent.take(props.pane) : undefined
     if (stale()) return false
-    const r = ready || await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`)
+    const startedAt = Date.now()
+    const r = ready || await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
     if (stale()) return false
     if (!r.available) {
       const m = onUnavailable(misses.value, Boolean(chat.value.file) && items.value.length > 0)
@@ -265,13 +287,16 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     unavailable.value = null
     integration.value = null
     loadError.value = null
+    // The transcript as it was at `startedAt`: sent messages it lacks may go (see utils/outbox.ts).
+    if (!ready) outboxRead(pane, startedAt)
     if (misses.value.misses || misses.value.errors) misses.value = noMisses()
     if (r.unchanged) return false
     savedAt.value = null
     // New session (/clear, new agent), or a bottom read from another byte:
-    // we start again from the bottom (utils/chatTail.ts).
+    // we start again from the bottom (utils/chatTail.ts), keeping what is
+    // shown until that read replaces it.
     if (restartsTail(chat.value, r)) {
-      chat.value = fresh()
+      chat.value = { ...fresh(), tail: items.value, queue: chat.value.queue, held: true }
       synced = false
       return true
     }
@@ -289,17 +314,19 @@ async function loadStep(current: () => boolean): Promise<boolean> {
       }
       c.file = r.file || null
       c.token = r.token || ''
-      c.tail = tail
+      c.tail = c.held ? swapTail(c.tail, tail) : tail
+      c.held = false
       c.queue = r.queue || []
       chat.value = c
       noteReplies(c.tail)
     })
-    saveChat(pane, items.value)
+    saveChat(pane, items.value, chat.value.file)
     // Paint the prepared tail first, then revalidate using its token and cursor.
     if (ready) return true
   } catch (err) {
     if (stale()) return false
-    if (!items.value.length) loadError.value = (err as Error).message
+    if (!items.value.length) loadError.value = (err as Error).name === 'TimeoutError'
+      ? t('The conversation took too long to load. Retry.') : (err as Error).message
     else misses.value = onError(misses.value)
   }
   return false
@@ -316,7 +343,7 @@ async function loadOlder() {
   const file = chat.value.file
   const before = chat.value.olderCursor
   try {
-    const r = await api<ChatResponse>(`/api/chat?pane=${encodeURIComponent(pane)}&before=${before}`)
+    const r = await api<ChatResponse>(`/api/chat?pane=${encodeURIComponent(pane)}&before=${before}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
     if (pane !== props.pane.id || r.file !== file || chat.value.olderCursor !== before) return
     const b = box.value
     const fromBottom = b ? b.scrollHeight - b.scrollTop : 0
@@ -329,7 +356,7 @@ async function loadOlder() {
         olderCursor: (r.start ?? 0) < before ? (r.start ?? 0) : 0,
       }
     }, true)
-    saveChat(pane, items.value)
+    saveChat(pane, items.value, chat.value.file)
     if (b) b.scrollTop = b.scrollHeight - fromBottom
   } catch (err) {
     toast((err as Error).message, true)
@@ -338,13 +365,10 @@ async function loadOlder() {
   }
 }
 
-let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   // The network at once, the kept end alongside (shown only if it comes first).
   Promise.all([loadChat(), restoreChat()]).then(jumpToResult)
-  timer = setInterval(() => { if (!document.hidden && !offlineView.value) loadChat() }, 1500)
 })
-onUnmounted(() => clearInterval(timer))
 watch(pageVisible, (v) => { if (v) loadChat() })
 
 // ------------------------------------------------------------ rendu
@@ -393,8 +417,7 @@ type Block =
   | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
-  | { k: 'autopilot', key: string, text: string }
-  | { k: 'system', key: string, text: string }
+  | { k: 'system', key: string, text: string, full?: string }
   | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean, scheduled?: boolean }
   // The agent's turn failed (omp: usage limit, credit balance, stalled stream…).
   | { k: 'error', key: string, text: string, long: boolean }
@@ -410,7 +433,7 @@ function itemImageSrcs(it: ChatItem): string[] {
   const srcs: string[] = []
   if (!it.ref || !it.images || !file) return srcs
   for (let k = 0; k < it.images; k++) {
-    srcs.push(`/api/chat/image?pane=${encodeURIComponent(props.pane.id)}&file=${encodeURIComponent(file)}&ref=${it.ref}&i=${(it.imageAt || 0) + k}`)
+    srcs.push(`/api/chat/image?pane=${encodeURIComponent(paneId.value)}&file=${encodeURIComponent(file)}&ref=${it.ref}&i=${(it.imageAt || 0) + k}`)
   }
   return srcs
 }
@@ -442,7 +465,57 @@ function lazyHtml<T extends object>(b: T, render: () => string): T & { html: str
 }
 
 const openTools = reactive(new Set<string>())
+// Small flags read by `blocks` instead of the pane itself: a live state push
+// (new preview, new screen…) changes the pane object, but rebuilds the blocks
+// only when one of these flips.
+const paneId = computed(() => props.pane.id)
 const working = computed(() => !readOnly.value && props.pane.status === 'working')
+const blocked = computed(() => !readOnly.value && props.pane.status === 'blocked')
+const pendingPrompt = computed(() => Boolean(props.pane.pendingPrompt))
+// Read by the template instead of `pane.*`: the conversation sits in one slot,
+// and a read of the pane there re-renders every message on every push.
+const agent = computed(() => props.pane.agent)
+const hasDraft = computed(() => Boolean(props.pane.draft || props.pane.queueSendNow))
+const unsentPane = computed<Pane>(old => (old && old.id === props.pane.id && old.queueSendNow === props.pane.queueSendNow && JSON.stringify(old.draft) === JSON.stringify(props.pane.draft) ? old : props.pane))
+const waitFor = computed(() => waitingOn(props.pane))
+// Same props objects for the messages on each render (none built inline).
+// A user message is one framed bubble: its images first, then its text, so a
+// message of images only still reads as the user's (right side, frame, time).
+const userParts = weakMemo((b: Block & { k: 'user' }) => [{ type: 'text' as const, text: b.text || ' ' }])
+const userUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: 'msg-bubble' }))
+const userRoot = (b: Block & { k: 'user' }) => (b.text.trim() || b.files.length ? 'msg msg-user' : 'msg msg-user msg-no-text')
+const textParts = weakMemo((b: { text: string }) => [{ type: 'text' as const, text: b.text }])
+const aiUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: 'md' }))
+const pendingUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: root.includes(' queued') ? 'msg-bubble queued' : 'msg-bubble' }))
+const firstParts = keyedMemo((text: string) => [{ type: 'text' as const, text }])
+// omp rows always carry their parsed call (isOmpGroup).
+type OmpToolItem = ChatItem & { omp: OmpToolView }
+const MSGS_UI = { root: 'chat-msgs', viewport: 'hw-jump-vp', autoScroll: 'hw-jump' }
+const FIRST_UI = { root: 'msg msg-user msg-pending', container: 'msg-c', content: 'msg-bubble' }
+const THINKING_UI = { root: 'omp-thinking', trigger: 'omp-thinking-head', label: 'omp-thinking-label', content: 'omp-thinking-content', body: 'omp-thinking-body' }
+const TOOL_UI = { root: 'tool', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading' }
+const TOOL_GROUP_UI = { root: 'tool group', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading', body: 'tool-body', trailingIcon: 'tool-chev' }
+
+// Re-read of the conversation: every 1.5 s while the agent works or waits on
+// the user, every few seconds when it rests. A status or preview change in the
+// live state re-reads it at once (the agent started, replied or stopped).
+const CHAT_POLL_ACTIVE_MS = 1500
+const CHAT_POLL_IDLE_MS = 6000
+const pollDelay = computed(() => (working.value || blocked.value || pendingPrompt.value ? CHAT_POLL_ACTIVE_MS : CHAT_POLL_IDLE_MS))
+let pollTimer: ReturnType<typeof setTimeout> | undefined
+let pollStopped = false
+const pollNow = () => { if (!document.hidden && !offlineView.value) loadChat() }
+function schedulePoll() {
+  clearTimeout(pollTimer)
+  if (pollStopped) return
+  pollTimer = setTimeout(() => { pollNow(); schedulePoll() }, pollDelay.value)
+}
+onMounted(schedulePoll)
+onUnmounted(() => { pollStopped = true; clearTimeout(pollTimer) })
+watch(pollDelay, schedulePoll)
+// Two sources, compared one by one: a getter returning a new array would fire
+// on every push (a new pane object), not only when one of them changes.
+watch([() => props.pane.status, () => props.pane.preview], () => { pollNow(); schedulePoll() })
 
 const blocks = computed<Block[]>(() => {
   const out: Block[] = []
@@ -462,7 +535,7 @@ const blocks = computed<Block[]>(() => {
   }
   // A "turn" = a user message and everything the agent does
   // afterwards. At its end: "✓ 2 min 5 s · 7 actions", like "Worked for…".
-  let turn: { start: string | null, end: string | null, tools: number, replies: number } | null = null
+  let turn: { key: string, start: string | null, end: string | null, tools: number, replies: number } | null = null
   let lastDay = ''
   // Agent name at the top of each of its replies (once per turn).
   let needWho = true
@@ -476,12 +549,13 @@ const blocks = computed<Block[]>(() => {
       const acts = turn.tools ? ` · ${turn.tools} ${t(turn.tools > 1 ? 'actions' : 'action')}` : ''
       // "Reply" of the last reply: next to "Copy", on the end-of-turn line.
       if (lastReplyBlock) lastReplyBlock.endsTurn = true
-      out.push({ k: 'turn', key: `e:${out.length}`, text: `✓ ${fmtDuration(s)}${acts}`, copy: lastReply, reply: lastReplyBlock?.key || null })
+      out.push({ k: 'turn', key: `e:${turn.key}`, text: `✓ ${fmtDuration(s)}${acts}`, copy: lastReply, reply: lastReplyBlock?.key || null })
     }
     turn = null
     lastReply = null
     lastReplyBlock = null
   }
+  const keys = itemKeys(list)
   list.forEach((it, i) => {
     if (it.ts) {
       const day = new Date(it.ts).toDateString()
@@ -499,7 +573,7 @@ const blocks = computed<Block[]>(() => {
       closeTurn()
       needWho = true
       // The output of a "!" command also goes to the agent, which may reply to it.
-      if (it.role !== 'cmd') turn = { start: it.ts, end: null, tools: 0, replies: 0 }
+      if (it.role !== 'cmd') turn = { key: keys[i]!, start: it.ts, end: null, tools: 0, replies: 0 }
     } else if (turn && it.ts && it.role !== 'notice' && it.role !== 'job') {
       // A note (background task finished afterwards…) does not extend the turn.
       turn.end = it.ts
@@ -508,17 +582,15 @@ const blocks = computed<Block[]>(() => {
     }
     if ((it.role === 'tool' || it.role === 'assistant' || it.role === 'thinking') && needWho) {
       needWho = false
-      out.push({ k: 'who', key: `w:${it.ts}:${i}` })
+      out.push({ k: 'who', key: `w:${keys[i]}` })
     }
     if (it.role === 'tool') {
       tools.push(it)
       return
     }
     flush()
-    const key = `${it.role}:${it.ts}:${i}`
-    if (isAutopilotWake(it)) {
-      out.push({ k: 'autopilot', key, text: it.text })
-    } else if (it.role === 'user') {
+    const key = keys[i]!
+    if (it.role === 'user') {
       const uploads = it.text.match(UPLOAD_RE) || []
       // Attached files (PDF, text…): a chip each, their line leaves the text.
       const files = it.text.split('\n').map(parseAttachmentLine).filter((f): f is { path: string, name: string } => Boolean(f))
@@ -557,21 +629,22 @@ const blocks = computed<Block[]>(() => {
       out.push(lazyHtml({ k: 'notice' as const, key, label: t(label), icon, scheduled: it.name === 'scheduled', long: it.name === 'scheduled' || it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 }, () => md(it.text)))
     } else {
       const effort = it.role === 'system' ? it.text.match(/^Effort : (low|medium|high|xhigh|max|ultracode) \(cette session\)$/) : null
-      // Local "/" command: one-line system separator ("/cost → …").
+      // Local "/" command: one-line system separator ("/cost → …"); a tap
+      // opens its full output when it has more to say (/context…).
+      const full = it.role === 'cmd' ? [it.err, it.out].filter(Boolean).join('\n') : ''
       out.push({ k: 'system', key, text: effort
         ? tl(`Effort: ${effort[1]} (this session)`, `Effort : ${effort[1]} (cette session)`)
-        : it.role === 'system' ? t(it.text) : it.text })
+        : it.role === 'system' ? t(it.text) : it.text, ...(full ? { full } : {}) })
     }
   })
   flush()
   // Last turn: summary only if it is finished (the agent is no longer working,
   // nor waiting for an approval or an answer in the middle of the turn).
-  const blocked = !readOnly.value && props.pane.status === 'blocked'
-  if (!working.value && !blocked && !props.pane.pendingPrompt) closeTurn()
+  if (!working.value && !blocked.value && !pendingPrompt.value) closeTurn()
   else {
     // In progress: the last action is the one running (or waiting for its approval).
     const last = out[out.length - 1]
-    if (last && last.k === 'tools' && (working.value || blocked)) last.live = true
+    if (last && last.k === 'tools' && (working.value || blocked.value)) last.live = true
   }
   return out
 })
@@ -653,7 +726,6 @@ function okAll(ref: Reference | null, click: boolean) {
   haptic()
   if (click) emit('answered', answerEnd(draft.text, ref))
 }
-const answered = (ref: Reference, a: Answer) => tappedAnswer(answerOf(draftText.value, ref) || '') === a
 // "Quoted" state of the question and point buttons (and of the words of a
 // question) and pressed state of the one-tap answers, read from the draft.
 function syncQuoted() {
@@ -831,18 +903,9 @@ async function runCommand(cmd: string) {
   const queued = await runInAgent(props.pane.id, cmd)
   if (queued !== false) emit('sent', queued)
 }
-async function runInSplit(cmd: string) {
-  if (readOnly.value) return
-  try {
-    const r = await api<{ pane_id: string, created?: boolean }>('/api/split-command', { pane_id: props.pane.id, command: cmd })
-    toast(r.created ? t('Command sent to a new split terminal') : t('Command sent to split terminal'))
-    await navigateTo(desk.value ? { path: tabPath(props.pane.tab), query: { pane: r.pane_id } } : panePath(r.pane_id))
-  } catch (err) { toast((err as Error).message, true) }
-}
 function cmdMenuItems(cmd: string, runnable: boolean): MenuItem[] {
   const items: MenuItem[] = []
   if (runnable) items.push({ label: tl('Run…', 'Lancer…'), icon: 'i-lucide-play', run: () => runCommand(cmd) })
-  if (!readOnly.value) items.push({ label: t('Run in split terminal'), icon: 'i-lucide-columns-2', run: () => runInSplit(cmd) })
   items.push({ label: t('Copy command'), icon: 'i-lucide-copy', desc: cmd, mono: true, run: () => copyText(cmd) })
   return items
 }
@@ -854,8 +917,8 @@ function openCmdMenu(el: HTMLElement) {
 
 // ------------------------------------------------------------ file paths
 // Inline code that looks like a path (utils/markdown.ts): Preview (in a sheet,
-// FilesView) and Download from the agent's machine, wherever it runs; Reveal
-// in Finder and Open there when it is a Mac; Copy path everywhere.
+// FilesView) and Download from the agent's machine, wherever it runs; Copy
+// path everywhere.
 // Paths and commands: dropdown at the code on a computer, sheet on the phone.
 const codeMenu = reactive({ open: false, x: 0, y: 0, w: 0, h: 0 })
 const codeMenuDropdown = ref<ReturnType<typeof toDropdown>>([])
@@ -878,12 +941,6 @@ function pathMenuItems(p: string): MenuItem[] {
     items.push(
       { label: t('Preview'), icon: 'i-lucide-eye', run: () => previewFile(p) },
       { label: t('Download'), icon: 'i-lucide-download', run: () => downloadFile(p) },
-    )
-  }
-  if (canOpenOnMachine(props.pane) && !offlineView.value) {
-    items.push(
-      { label: t('Reveal in Finder'), icon: 'i-lucide-folder-search', run: () => revealOnMachine(p, 'reveal') },
-      { label: t('Open'), icon: 'i-lucide-external-link', run: () => revealOnMachine(p, 'open') },
     )
   }
   items.push({ label: t('Copy path'), icon: 'i-lucide-copy', desc: p, mono: true, run: () => copyText(p) })
@@ -910,17 +967,6 @@ function onListKey(e: KeyboardEvent) {
   if (el.classList.contains('md-cmd')) openCmdMenu(el)
   else openPathMenu(el)
 }
-async function revealOnMachine(p: string, mode: 'reveal' | 'open') {
-  try {
-    const r = await api<{ machine: string }>('/api/reveal', { pane_id: props.pane.id, path: p, mode })
-    toast(mode === 'reveal'
-      ? tl(`Shown in Finder on ${r.machine}`, `Affiché dans le Finder sur ${r.machine}`)
-      : tl(`Opened in the editor on ${r.machine}`, `Ouvert dans l’éditeur sur ${r.machine}`))
-  } catch (err) {
-    toast((err as Error).message, true)
-  }
-}
-
 // ------------------------------------------------------------ queued
 // Messages sent but not yet taken by the agent: dotted bubbles
 // below the conversation, until they appear in its transcript.
@@ -930,35 +976,27 @@ async function revealOnMachine(p: string, mode: 'reveal' | 'open') {
 // "!" command at the end; the screen already says it is running, and which
 // messages were sent or are still in its queue (see shared/queuedPhase.ts).
 // omp: only the "!" / "$" command it runs (it stays idle meanwhile).
-const screen = computed<ClaudeScreen | null>(() => {
+// What a message waits on before the agent reads it.
+function waitingOn(p: Pane): 'stopped' | 'question' | 'working' | 'sending' {
+  if (!p.agent) return 'stopped'
+  if (p.prompt || p.status === 'blocked') return 'question'
+  return p.status === 'working' ? 'working' : 'sending'
+}
+const screen = computed<ClaudeScreen | null>(old => keepIfSame(old, liveScreen()))
+function liveScreen(): ClaudeScreen | null {
   if (readOnly.value) return null
   const p = props.pane
   if (p.agent === 'omp') return p.ompShell ? { shell: p.ompShell, sent: null, queued: [] } : null
   return p.agent === 'claude' && p.status === 'working' ? p.claudeScreen || null : null
-})
+}
 const liveShell = computed(() => (screen.value && screen.value.shell) || null)
-// Duration of the running command, to the second.
-const nowTick = ref(Date.now())
-let tick: ReturnType<typeof setInterval> | undefined
-watch(liveShell, (sh) => {
-  if (sh && !tick) tick = setInterval(() => { nowTick.value = Date.now() }, 1000)
-  if (!sh && tick) { clearInterval(tick); tick = undefined }
-}, { immediate: true })
-onUnmounted(() => clearInterval(tick))
-const shellDuration = computed(() => {
-  const since = liveShell.value && liveShell.value.since
-  if (!since) return null
-  const s = Math.max(0, Math.round((nowTick.value - since) / 1000))
-  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`
-})
-const queuedList = computed(() => {
-  const p = props.pane
-  // A record the server gives back is on its way to the message field (see utils/givenBack.ts).
-  const mine = withOutbox(readOnly.value ? [] : (p.queued || []).filter(q => !q.back), props.localQueued)
-  const memory = rememberSent(p.id, mine)
+const queuedList = computed<ReturnType<typeof queuedNow>>(old => keepIfSame(old, queuedNow()))
+function queuedNow() {
+  const mine = withOutbox([], readOnly.value ? [] : props.localQueued)
+  const memory = rememberSent(paneId.value, mine)
   const replies = blocks.value.filter(b => b.k === 'assistant')
   // Agent idle, nothing holding it: Claude's own queue is empty by now.
-  const idle = queueReason(p, {}) === 'sending'
+  const idle = waitFor.value === 'sending'
   return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle }).map((q) => {
     const lines = q.raw.split('\n')
     const text = lines.filter(l => !isUploadLine(l) && !isAttachmentLine(l)).join('\n').trim()
@@ -973,127 +1011,64 @@ const queuedList = computed(() => {
       origin: parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null,
     }
   })
-})
-const sendingNow = ref(false)
-async function sendNow() {
-  if (sendingNow.value) return
-  sendingNow.value = true
-  try { await api('/api/send-now', { pane_id: props.pane.id }) }
-  catch (err) { toast((err as Error).message, true) }
-  finally { sendingNow.value = false }
 }
-// Same parts as a message in the conversation: thumbnails above the bubble,
-// so nothing moves when it lands.
-const pendingParts = (q: { srcs: string[], missing: number, body: string, files: unknown[] }) => [
-  ...q.srcs.map(url => ({ type: 'file' as const, mediaType: 'image/jpeg', url })),
-  ...Array.from({ length: q.missing }, () => ({ type: 'file' as const, mediaType: 'image/jpeg', url: '' })),
-  ...(q.body || q.files.length ? [{ type: 'text' as const, text: q.body || ' ' }] : []),
-]
-// "Cancel": the message leaves the agent's queue and comes back into the input
-// field. Already read in the meantime: the server refuses, we say so.
-const canCancel = computed(() => !readOnly.value && canCancelQueued(props.pane))
-const cancelling = ref<string | null>(null)
-async function cancelQueued(q: { id: string, raw: string, mine: boolean, local?: boolean, pasted?: string[] }) {
-  if (cancelling.value) return
-  // Never reached the server: the app's copy goes back into the field.
-  if (q.local) {
-    restoreDraft(useDraft(props.pane.id), outboxDrop(props.pane.id, q.id) || q.raw)
-    emit('restored')
-    return
-  }
-  cancelling.value = q.id
-  haptic()
-  try {
-    const r = await api<{ text: string, lost?: number }>('/api/unqueue', { pane_id: props.pane.id, text: q.raw, id: q.mine ? q.id : undefined })
-    restoreDraft(useDraft(props.pane.id), r.text || q.raw, q.pasted)
-    emit('restored')
-    // Photos Claude queued itself, whose files wherdr never had: said, not silently dropped.
-    if (r.lost) toast(t('Removed from the queue'), true, lostPhotosText(r.lost))
-    else toast(t('Removed from the queue'))
-    setTimeout(loadChat, 400)
-  } catch (err) {
-    toast((err as Error).message, true)
-  } finally {
-    cancelling.value = null
-  }
+// Same bubble as a message in the conversation (thumbnails inside, above the
+// text), so nothing moves when it lands.
+const pendingParts = (q: { body: string }) => [{ type: 'text' as const, text: q.body || ' ' }]
+// A message the server never got: "Cancel" puts the app's copy back into the
+// field, "Retry" sends it again.
+function cancelQueued(q: { id: string, raw: string }) {
+  restoreDraft(useDraft(props.pane.id), outboxDrop(props.pane.id, q.id) || q.raw)
+  emit('restored')
 }
-// "Retry" on a message that could not be sent: held again by the server.
 const retrying = ref<string | null>(null)
-async function retryQueued(q: { id: string, local?: boolean }) {
+async function retryQueued(q: { id: string }) {
   if (retrying.value) return
   retrying.value = q.id
   haptic()
   try {
-    if (q.local) await outboxRetry(props.pane, props.pane.id, q.id)
-    else await api('/api/requeue', { pane_id: props.pane.id, id: q.id })
+    await outboxRetry(props.pane, props.pane.id, q.id)
   } catch (err) {
     toast((err as Error).message, true)
   } finally {
     retrying.value = null
   }
 }
-// Menu left open on the agent's screen (see server/utils/queued.ts
-// lookForLeftMenu): closed with Escape, or closed and the messages typed now.
-const menuLeftShown = computed(() => Boolean(props.pane.menuLeftOpen) && queuedList.value.some(q => q.phase === 'queued'))
-const menuLeftBusy = ref<'close' | 'send' | null>(null)
-async function menuLeft(action: 'close' | 'send') {
-  if (menuLeftBusy.value) return
-  menuLeftBusy.value = action
-  haptic()
-  try {
-    await api('/api/menu-left', { pane_id: props.pane.id, action })
-  } catch (err) {
-    toast((err as Error).message, true)
-  } finally {
-    menuLeftBusy.value = null
-  }
-}
-// Why a message is marked not sent (see server/utils/queued.ts).
-function failedText(reason: QueuedMessage['reason'] | undefined) {
-  if (reason === 'busy') return t('Not sent — the agent’s input contains text')
-  if (reason === 'no_input') return t('Not sent — the agent’s input field was not found on its screen')
-  if (reason === 'lost') return t('Not sent — it was taken out of the agent’s queue before being read')
-  if (reason === 'unseen') return t('Not sent — still not in the conversation after an hour')
-  return t('Not sent')
-}
-const clearing = ref<string | null>(null)
-async function clearAndSend(q: { id: string, inputText?: string }) {
-  if (clearing.value) return
-  clearing.value = q.id
-  try { await api('/api/clear-queued-input', { pane_id: props.pane.id, id: q.id, input_text: q.inputText }) }
-  catch (err) { toast((err as Error).message, true) }
-  finally { clearing.value = null }
-}
-function queuedLabel(q: { reason?: QueuedMessage['reason'], inputText?: string, state: string | null }) {
-  if (q.state === 'sending') return t('Queued · ') + t('sending…')
-  switch (queueReason(props.pane, q)) {
-    case 'busy': return q.inputText
-      ? tl(`Not sent: the agent’s input already contains text (“${q.inputText}”)`, `Pas envoyé : la saisie de l’agent contient déjà du texte (« ${q.inputText} »)`)
-      : t('Not sent — the agent’s input contains text')
+function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue'>) {
+  const l = pendingLabel(q, waitFor.value, props.pane.agent)
+  switch (l.kind) {
+    case 'read': return t('Read by the agent')
     case 'stopped': return t('Queued · ') + t('agent stopped')
     case 'question': return t('Queued · ') + t('after you answer the question')
-    case 'dialog': return t('Queued · ') + t('will be sent when the menu closes')
-    case 'starting': return t('Queued · ') + t('agent starting')
-    case 'working': return t('Queued')
+    case 'agent-queue':
+      if (l.agent === 'claude') return t('Queued by Claude · sent when it finishes')
+      if (l.agent === 'codex') return t('Queued by Codex · sent when it finishes')
+      return t('Queued by the agent · sent when it finishes')
+    case 'queued': return t('Queued')
     default: return t('Queued · ') + t('sending…')
   }
 }
 watch(() => queuedList.value.map(q => `${q.id}:${q.phase}`).join(','), () => nextTick(() => scrollToEnd(false)))
 watch(() => liveShell.value && liveShell.value.lines.join('\n'), () => nextTick(() => scrollToEnd(false)))
+watch(() => props.pane.draft?.text, () => nextTick(() => scrollToEnd(false)))
 
 // No conversation yet but a waiting screen (key legend):
 // the agent is waiting for an action. Recognized screen: details and buttons in the
 // "Your turn" panel at the bottom; otherwise preview of the last lines, to do in the terminal.
-const waiting = computed(() => {
+const waiting = computed<ReturnType<typeof waitingNow>>(old => keepIfSame(old, waitingNow()))
+function waitingNow() {
   const p = props.pane
   if (p.menu || p.interaction === 'terminal' || !unavailable.value || unavailable.value === 'unsupported' || !p.screen || p.status === 'working' || readOnly.value) return null
   const who = kindLabel(p.agent)
   return knownScreen(p)
     ? { text: tl(`${who} is waiting for your answer, below or in the terminal.`, `${who} attend ta réponse, ci-dessous ou dans le terminal.`), lines: [] }
     : { text: tl(`${who} is waiting for an action in the terminal.`, `${who} attend une action dans le terminal.`), lines: p.screen.lines }
-})
+}
 
-const status = computed(() => {
+const status = computed<ReturnType<typeof statusNow>>(old => keepIfSame(old, statusNow()))
+// Read by ChatStatusLine itself (its own render), not by the conversation's slot.
+const readStatus = () => status.value
+function statusNow() {
   if (readOnly.value) return null
   const p = props.pane
   if (p.pendingPrompt && p.status !== 'working') {
@@ -1110,9 +1085,10 @@ const status = computed(() => {
     return { typing: true, omp: true, since: a.since, text: a.step || `${kindLabel(p.agent)} ${tl('is working…', 'travaille…')}` }
   }
   if (p.status === 'working') return { typing: true, text: `${kindLabel(p.agent)} ${tl('is working…', 'travaille…')}` }
+  if (p.error) return { typing: false, error: true, text: p.error }
   if (p.status === 'blocked' && !p.menu && !waiting.value && !(p.prompt && p.prompt.options) && !knownScreen(p)) return { typing: false, text: t('Waiting for your reply — details in the Terminal tab') }
   return null
-})
+}
 watch(() => props.pane.status, () => nextTick(() => scrollToEnd(false)))
 
 // ------------------------------------------------------------ search
@@ -1228,7 +1204,7 @@ async function jumpToResult() {
     const ts = String(route.query.ts || '')
     const prefix = String(route.query.prefix || '')
     const index = items.value.findIndex(i => i.role === role && i.ts === ts && i.text.startsWith(prefix))
-    const key = index < 0 ? '' : `${role}:${ts}:${index}`
+    const key = index < 0 ? '' : itemKeys(items.value)[index]
     const target = [...(listEl.value?.querySelectorAll<HTMLElement>('[data-hit-key]') || [])].find(el => el.dataset.hitKey === key)
     applySearchMarks(false, target)
     if (target && !search.hits.length) target.scrollIntoView({ block: 'center' })
@@ -1275,8 +1251,8 @@ function focusSearch() {
 // `asked`: that message, whatever the draft says (the list keeps room for the
 // reminder as long as it may show, so answering moves nothing).
 const asked = computed(() => {
-  if (readOnly.value || working.value || props.pane.status === 'blocked' || queuedList.value.length || liveShell.value) return null
-  const last = blocks.value.findLast(b => b.k === 'assistant' || b.k === 'user' || b.k === 'autopilot' || b.k === 'shell' || b.k === 'ompRun')
+  if (readOnly.value || working.value || blocked.value || queuedList.value.length || liveShell.value) return null
+  const last = blocks.value.findLast(b => b.k === 'assistant' || b.k === 'user' || b.k === 'shell' || b.k === 'ompRun')
   if (!last || last.k !== 'assistant' || typingAt(last.id) !== null) return null
   const targets = replyTargets(last.html)
   return targets.questions.length + targets.rows.length ? { key: last.key, time: last.time, rid: last.rid, targets } : null
@@ -1322,7 +1298,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
     <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" :aria-label="t('Close')" @click="closeSearch" />
   </div>
 
-  <div class="chat-wrap">
+  <div class="chat-wrap" data-wherdr="conversation">
     <OfflineNote v-if="readOnly || netDown" :label="readOnly ? t('Offline reading') : undefined" :at="savedAt" />
     <OfflineNote v-else-if="isStale(misses)" :label="t('Conversation not up to date — reconnecting…')" />
     <!-- The end kept on this device while the network is slow to answer: said, over the list (nothing moves). -->
@@ -1332,10 +1308,20 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         :status="working ? 'streaming' : 'ready'" :should-auto-scroll="false"
         :auto-scroll="{ color: 'neutral', variant: 'outline' }"
         auto-scroll-icon="i-lucide-arrow-down"
-        :ui="{ root: 'chat-msgs', viewport: 'hw-jump-vp', autoScroll: 'hw-jump' }"
+        :ui="MSGS_UI"
       >
         <div ref="listEl" class="chat-list" :class="[readOnly ? 'no-reply' : `rs-${replyStyle}`, { asking: asked, skeleton }]" @click="onListClick" @keydown="onListKey">
-          <div v-if="unavailable && waiting" class="chat-empty waiting">
+          <div v-if="unavailable === 'not_found' && firstPrompt" class="msg-user-wrap" data-testid="first-prompt">
+            <UChatMessage
+              id="first-prompt" role="user" side="right" variant="soft" :parts="firstParts(firstPrompt)"
+              :ui="FIRST_UI"
+            >
+              <template #content>
+                <UserText :text="firstPrompt" />
+              </template>
+            </UChatMessage>
+          </div>
+          <div v-else-if="unavailable && waiting" class="chat-empty waiting">
             <UIcon name="i-lucide-square-terminal" class="chat-empty-icon" />
             <p>{{ waiting.text }}</p>
             <pre v-if="waiting.lines.length" class="choices-screen-text">{{ waiting.lines.join('\n') }}</pre>
@@ -1361,7 +1347,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
           </div>
           <template v-else>
-            <ChatSkeleton v-if="skeleton" :agent="pane.agent" />
+            <ChatSkeleton v-if="skeleton" :agent="agent" />
             <!-- Blocks above not shown yet: no "Load earlier" before them. -->
             <template v-else-if="hiddenBlocks" />
             <div v-else-if="chat.olderCursor > 0" class="chat-more">
@@ -1374,11 +1360,10 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <template v-for="b in (skeleton ? [] : visibleBlocks)" :key="b.key">
               <div v-if="b.k === 'day'" class="day-sep"><span>{{ b.label }}</span></div>
 
-              <div v-else-if="b.k === 'who'" class="msg-who" :class="pane.agent || ''">
-                <UIcon :name="agentIcon(pane.agent) || 'i-lucide-bot'" /><span>{{ kindLabel(pane.agent) }}</span>
+              <div v-else-if="b.k === 'who'" class="msg-who" :class="agent || ''">
+                <UIcon :name="agentIcon(agent) || 'i-lucide-bot'" /><span>{{ kindLabel(agent) }}</span>
               </div>
 
-              <AutopilotMessage v-else-if="b.k === 'autopilot'" :text="b.text" :data-hit-key="b.key" @copy="copyText" />
 
               <div v-else-if="b.k === 'user'" class="msg-user-wrap" :data-hit-key="b.key">
                 <button v-if="b.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(b.origin)">
@@ -1386,14 +1371,11 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </button>
                 <UChatMessage
                   :id="b.key" role="user" side="right" variant="soft"
-                  :parts="[...b.srcs.map(url => ({ type: 'file' as const, mediaType: 'image/jpeg', url })), ...(b.text || b.files.length ? [{ type: 'text' as const, text: b.text || ' ' }] : [])]"
-                  :ui="{ root: b.text.trim() || b.files.length ? 'msg msg-user' : 'msg msg-user msg-no-text', container: 'msg-c', content: 'msg-bubble', header: 'msg-files' }"
+                  :parts="userParts(b)"
+                  :ui="userUi(userRoot(b))"
                 >
-                  <template #files>
-                    <MsgThumbs :srcs="b.srcs" :offline="readOnly" />
-                  </template>
                   <template #content>
-                    <span v-if="b.files.length" class="msg-file-chips">
+                    <span v-if="b.srcs.length" class="msg-media"><MsgThumbs :srcs="b.srcs" :offline="readOnly" /></span><span v-if="b.files.length" class="msg-file-chips">
                       <FileChip v-for="f in b.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
                     </span><UserText :text="b.text" :pasted="b.pasted" />
                   </template>
@@ -1405,46 +1387,29 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <UChatMessage
                   :id="b.key" role="assistant" side="left" variant="naked"
                   :data-hit-key="b.key"
-                  :parts="[{ type: 'text', text: b.text }]"
-                  :ui="{ root: `msg msg-ai tw-${pane.agent || 'agent'}${canRun ? ' can-run' : ''}${pickKey === b.key ? ' q-picking' : ''}`, container: 'msg-c', content: 'md' }"
+                  :parts="textParts(b)"
+                  :ui="aiUi(`msg msg-ai tw-${agent || 'agent'}${canRun ? ' can-run' : ''}${pickKey === b.key ? ' q-picking' : ''}`)"
                 >
                   <template #content>
                     <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" @done="typingDone(b.id)" />
                   </template>
                 </UChatMessage>
-                <div v-if="replyStyle === 'list' && !readOnly && typingAt(b.id) === null && (replyTargets(b.html).questions.length || replyTargets(b.html).pick)" class="q-bar">
-                  <template v-if="replyTargets(b.html).questions.length">
-                    <p class="q-bar-h">{{ tl('Questions · reply to', 'Questions · répondre à') }}</p>
-                    <div v-for="q in replyTargets(b.html).questions" :key="q.n" class="q-line">
-                      <button
-                        type="button" class="q-row" :class="{ quoted: isQuoted(draftText, pointRef(q.text, b.time, b.rid)) }"
-                        :aria-label="`${t('Reply')}: ${q.text}`" @click="quote(pointRef(q.text, b.time, b.rid))"
-                        @mouseenter="hotQuestion(b.key, q.n, true)" @mouseleave="hotQuestion(b.key, q.n, false)" @focus="hotQuestion(b.key, q.n, true)" @blur="hotQuestion(b.key, q.n, false)"
-                      >
-                        <b>{{ isQuoted(draftText, pointRef(q.text, b.time, b.rid)) ? '✓' : q.n }}</b><span>{{ q.text }}</span><i>↳<em> {{ isQuoted(draftText, pointRef(q.text, b.time, b.rid)) ? t('Quoted') : t('Reply') }}</em></i>
-                      </button>
-                      <template v-if="q.closed">
-                        <button
-                          v-for="a in (['yes', 'no'] as const)" :key="a" type="button" class="q-row-ans" :aria-pressed="answered(pointRef(q.text, b.time, b.rid), a)"
-                          :aria-label="`${answerWord(a)}: ${q.text}`" @click="answer(pointRef(q.text, b.time, b.rid), a, $event.detail > 0)"
-                        >{{ answerWord(a) }}</button>
-                      </template>
-                    </div>
-                  </template>
-                  <button v-if="replyTargets(b.html).pick" type="button" class="q-pick" :aria-pressed="pickKey === b.key" @click="pickKey = pickKey === b.key ? null : b.key">
-                    {{ pickKey === b.key ? tl('Pick the point to quote · Cancel', 'Choisis le point à citer · Annuler') : tl('+ Quote a point', '+ Citer un point') }}
-                  </button>
-                </div>
-                <div v-if="!b.endsTurn && !readOnly" class="msg-actions">
-                  <button type="button" class="msg-reply" @click="replyTo(b.key)">
+                <ChatQuestionBar
+                  v-if="replyStyle === 'list' && !readOnly && typingAt(b.id) === null && (replyTargets(b.html).questions.length || replyTargets(b.html).pick)"
+                  :pane-id="paneId" :targets="replyTargets(b.html)" :time="b.time" :rid="b.rid" :picking="pickKey === b.key"
+                  @quote="quote" @answer="answer" @hot="(n, on) => hotQuestion(b.key, n, on)" @pick="pickKey = pickKey === b.key ? null : b.key"
+                />
+                <div v-if="!b.endsTurn && (!readOnly || readAloudEngine !== 'off')" class="msg-actions">
+                  <button v-if="!readOnly" type="button" class="msg-reply" @click="replyTo(b.key)">
                     <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
                   </button>
+                  <ReadAloudButton :id="`${paneId}:${b.key}`" :text="b.text" />
                 </div>
               </template>
 
               <UChatReasoning v-else-if="b.k === 'thinking'" class="omp-thinking" :text="b.text"
                 :streaming="thoughtTyping(b.id) !== null" :duration="b.ms === undefined ? undefined : Math.max(1, Math.round(b.ms / 1000))"
-                :auto-close-delay="450" :ui="{ root: 'omp-thinking', trigger: 'omp-thinking-head', label: 'omp-thinking-label', content: 'omp-thinking-content', body: 'omp-thinking-body' }">
+                :auto-close-delay="450" :ui="THINKING_UI">
                 <ChatMarkdown class="md" :html="b.html" :typing="thoughtTyping(b.id)" :speed="reducedMotion ? 'off' : 'fast'" :cipher="false" @done="thoughtDone(b.id)" />
               </UChatReasoning>
 
@@ -1487,6 +1452,12 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </div>
                 <OmpTool :tool="b.tool" run />
               </div>
+              <div v-else-if="b.k === 'system' && b.full" class="msg-cmd" :class="{ open: isOpen(b.key) }">
+                <button type="button" class="msg-system" :aria-expanded="isOpen(b.key)" :title="isOpen(b.key) ? t('Collapse') : t('Show all')" @click="setOpen(b.key, !isOpen(b.key))">
+                  <span>{{ b.text }}</span><UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="msg-cmd-chev" />
+                </button>
+                <pre v-if="isOpen(b.key)" class="msg-shell-out">{{ b.full }}</pre>
+              </div>
               <div v-else-if="b.k === 'system'" class="msg-system"><span>{{ b.text }}</span></div>
               <div v-else-if="b.k === 'error'" class="msg-notice msg-error" :class="{ long: b.long, open: isOpen(b.key) }">
                 <div class="msg-notice-head"><UIcon name="i-lucide-circle-alert" /><span>{{ t('Error') }}</span></div>
@@ -1511,6 +1482,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <button v-if="b.reply && !readOnly" type="button" class="msg-reply" @click="replyTo(b.reply)">
                   <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
                 </button>
+                <ReadAloudButton v-if="b.copy && b.reply" :id="`${paneId}:${b.reply}`" :text="b.copy" />
                 <span>{{ b.text }}</span>
               </div>
 
@@ -1531,7 +1503,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </button>
                 <MsgThumbs v-for="(srcs, j) in hiddenToolImages(b)" :key="`h${j}`" class="tool-thumbs" :srcs="srcs" :max="TOOL_THUMB_MAX" :offline="readOnly" :dupes="dupeSrcs" />
                 <template v-for="(tool, j) in ompRows(b).rows" :key="`${b.key}:${b.list.length - ompRows(b).rows.length + j}`">
-                  <OmpTool :tool="{ ...tool, omp: tool.omp! }" :live="b.live && tool === b.list[b.list.length - 1]" />
+                  <OmpTool :tool="tool as OmpToolItem" :live="b.live && tool === b.list[b.list.length - 1]" />
                   <MsgThumbs v-if="tool.images" class="tool-thumbs" :srcs="itemImageSrcs(tool)" :max="TOOL_THUMB_MAX" :offline="readOnly" :dupes="dupeSrcs" />
                 </template>
               </div>
@@ -1541,7 +1513,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                     <UChatTool
                       :text="toolLabel(tool)" :suffix="toolText(tool)" :icon="toolIcon(tool)"
                       :loading="b.live && j === b.list.length - 1" :streaming="b.live && j === b.list.length - 1"
-                      :ui="{ root: 'tool', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading' }"
+                      :ui="TOOL_UI"
                       :class="{ err: tool.error }"
                     />
                     <MsgThumbs v-if="tool.images" class="tool-thumbs" :srcs="itemImageSrcs(tool)" :max="TOOL_THUMB_MAX" :offline="readOnly" :dupes="dupeSrcs" />
@@ -1551,7 +1523,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   v-else :open="isOpen(b.key)" :text="`${b.list.length} ${t('actions')}`"
                   :suffix="groupSuffix(b.list[b.list.length - 1]!)"
                   :icon="b.live ? undefined : 'i-lucide-layers'" :loading="b.live" :streaming="b.live" chevron="trailing"
-                  :ui="{ root: 'tool group', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading', body: 'tool-body', trailingIcon: 'tool-chev' }"
+                  :ui="TOOL_GROUP_UI"
                   @update:open="setOpen(b.key, $event)"
                 >
                   <template v-for="(tool, j) in b.list" :key="j">
@@ -1580,10 +1552,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
           </button>
         </Teleport>
-        <div v-if="queuedList.length || liveShell || screen?.sendNow" class="queued-list">
-          <div v-if="!readOnly && screen?.sendNow" class="queued-tag">
-            <button type="button" class="queued-cancel" :disabled="sendingNow" @click="sendNow">{{ t('Send now') }}</button>
-          </div>
+        <div v-if="queuedList.length || liveShell || (!readOnly && hasDraft)" class="queued-list">
           <!-- Already sent (visible as sent on screen), not yet in the transcript. -->
           <div v-for="q in queuedList.filter(x => x.phase === 'sent')" :key="q.id" class="msg-user-wrap">
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
@@ -1592,24 +1561,21 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <UChatMessage
               :id="`q:${q.id}`" role="user" side="right" variant="soft"
               :parts="pendingParts(q)"
-              :ui="{ root: `msg msg-user msg-pending sent${q.body || q.files.length ? '' : ' msg-no-text'}`, container: 'msg-c', content: 'msg-bubble', header: 'msg-files' }"
+              :ui="pendingUi(`msg msg-user msg-pending sent${q.body || q.files.length ? '' : ' msg-no-text'}`)"
             >
-              <template #files>
-                <MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span>
-              </template>
               <template #content>
-                <span v-if="q.files.length" class="msg-file-chips">
+                <span v-if="q.srcs.length || q.missing" class="msg-media"><MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span></span><span v-if="q.files.length" class="msg-file-chips">
                   <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
                 </span><UserText :text="q.body" :pasted="q.pasted" />
               </template>
             </UChatMessage>
-            <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Sent · read by the agent') }}</span></div>
+            <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ queuedLabel(q) }}</span></div>
           </div>
           <!-- "!" command running: live output read from the screen. -->
           <div v-if="liveShell" class="msg-user-wrap">
             <div class="msg-shell bash running">
               <div class="msg-shell-cmd">
-                <span class="msg-shell-sign" aria-hidden="true">{{ pane.agent !== 'omp' ? '!' : liveShell.python ? '>>>' : '$' }}</span>
+                <span class="msg-shell-sign" aria-hidden="true">{{ agent !== 'omp' ? '!' : liveShell.python ? '>>>' : '$' }}</span>
                 <code>{{ liveShell.command }}</code>
               </div>
               <div v-if="liveShell.lines.length" class="msg-shell-body">
@@ -1619,7 +1585,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <div v-else class="msg-shell-empty">{{ t('No output yet') }}</div>
             </div>
             <div class="queued-tag running">
-              <UIcon name="i-lucide-loader-circle" class="spin" /><span>{{ t('Running') }}<template v-if="shellDuration"> · {{ shellDuration }}</template></span>
+              <UIcon name="i-lucide-loader-circle" class="spin" /><ChatRunningTime :since="liveShell.since" />
             </div>
           </div>
           <div v-for="q in queuedList.filter(x => x.phase === 'queued')" :key="q.id" class="msg-user-wrap">
@@ -1629,68 +1595,39 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <UChatMessage
               :id="`q:${q.id}`" role="user" side="right" variant="soft"
               :parts="pendingParts(q)"
-              :ui="{ root: `msg msg-user msg-pending queued${q.body || q.files.length ? '' : ' msg-no-text'}`, container: 'msg-c', content: 'msg-bubble queued', header: 'msg-files' }"
+              :ui="pendingUi(`msg msg-user msg-pending queued${q.body || q.files.length ? '' : ' msg-no-text'}`)"
             >
-              <template #files>
-                <MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span>
-              </template>
               <template #content>
-                <span v-if="q.files.length" class="msg-file-chips">
+                <span v-if="q.srcs.length || q.missing" class="msg-media"><MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span></span><span v-if="q.files.length" class="msg-file-chips">
                   <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
                 </span><UserText :text="q.body" :pasted="q.pasted" />
               </template>
             </UChatMessage>
             <div v-if="q.state === 'failed'" class="queued-tag failed" role="alert">
-              <UIcon name="i-lucide-circle-alert" /><span>{{ failedText(q.reason) }}</span>
+              <UIcon name="i-lucide-circle-alert" /><span>{{ t('Not sent') }}</span>
               <button type="button" class="queued-cancel" :disabled="Boolean(retrying)" @click="retryQueued(q)">
                 <UIcon :name="retrying === q.id ? 'i-lucide-loader-circle' : 'i-lucide-rotate-cw'" :class="{ spin: retrying === q.id }" />{{ t('Retry') }}
               </button>
-              <button type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
-                <UIcon :name="cancelling === q.id ? 'i-lucide-loader-circle' : 'i-lucide-undo-2'" :class="{ spin: cancelling === q.id }" />{{ t('Cancel') }}
+              <button type="button" class="queued-cancel" @click="cancelQueued(q)">
+                <UIcon name="i-lucide-undo-2" />{{ t('Cancel') }}
               </button>
             </div>
             <div v-else class="queued-tag">
               <UIcon name="i-lucide-clock" /><span>{{ queuedLabel(q) }}</span>
-              <button v-if="canClearQueued(pane, q)" type="button" class="queued-cancel" :disabled="Boolean(clearing)" @click="clearAndSend(q)">{{ t('Clear and send') }}</button>
-              <button v-if="q.state === 'held' && queueReason(pane, q) !== 'working'" type="button" class="queued-cancel" @click="emit('gotoTerm')">{{ t('Open terminal') }}</button>
-              <button v-if="q.state !== 'sending' && (canCancel || q.state === 'held') && q.raw" type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
-                <UIcon :name="cancelling === q.id ? 'i-lucide-loader-circle' : 'i-lucide-undo-2'" :class="{ spin: cancelling === q.id }" />{{ t('Cancel') }}
-              </button>
             </div>
           </div>
-          <!-- A menu left open in the agent's terminal (no card shows it) holds the messages back. -->
-          <div v-if="menuLeftShown" class="menu-left" role="status">
-            <p class="menu-left-text">
-              <UIcon name="i-lucide-square-terminal" /><span>{{ t('A menu is still open in the agent’s terminal. Your messages wait for it to close.') }}</span>
-            </p>
-            <div class="menu-left-actions">
-              <button type="button" class="queued-cancel" :disabled="Boolean(menuLeftBusy)" @click="menuLeft('close')">
-                <UIcon :name="menuLeftBusy === 'close' ? 'i-lucide-loader-circle' : 'i-lucide-x'" :class="{ spin: menuLeftBusy === 'close' }" />{{ t('Close menu') }}
-              </button>
-              <button type="button" class="queued-cancel" :disabled="Boolean(menuLeftBusy)" @click="menuLeft('send')">
-                <UIcon :name="menuLeftBusy === 'send' ? 'i-lucide-loader-circle' : 'i-lucide-send'" :class="{ spin: menuLeftBusy === 'send' }" />{{ t('Send anyway') }}
-              </button>
-            </div>
-          </div>
+          <!-- herdr-core: text left unsent in Claude's own input box, Claude's queue. -->
+          <UnsentInput v-if="!readOnly && hasDraft" :pane="unsentPane" />
         </div>
 
-        <div v-if="status" class="chat-status" :class="{ typing: status.typing, waiting: !status.typing }">
-          <!-- Claude's verb and omp's step have their own spinner: no extra state dot. -->
-          <span v-if="'verb' in status" class="claude-verb-line"><ClaudeSpinner /><UChatShimmer :text="status.text" :duration="2.4" class="claude-verb" /></span>
-          <span v-else-if="'omp' in status" class="omp-step-line"><OmpSpinner :since="status.since"><UChatShimmer :text="status.text" :duration="2.4" class="omp-step" /></OmpSpinner></span>
-          <template v-else>
-            <i class="status-dot" />
-            <UChatShimmer v-if="status.typing" :text="status.text" :duration="2.4" />
-            <span v-else>{{ status.text }}</span>
-          </template>
-        </div>
+        <ChatStatusLine :get="readStatus" />
       </UChatMessages>
     </div>
     <UDropdownMenu v-if="!sheetMenus" v-model:open="codeMenu.open" :items="codeMenuDropdown" :content="{ align: 'start', side: 'bottom', sideOffset: 4 }" :ui="{ content: 'hw-dropdown' }">
       <span class="path-anchor" :style="{ left: `${codeMenu.x}px`, top: `${codeMenu.y}px`, width: `${codeMenu.w}px`, height: `${codeMenu.h}px` }" aria-hidden="true" />
     </UDropdownMenu>
     <AppSheet v-model:open="filePeek.open" :title="fileName(stripPosition(filePeek.path))" wide full screen>
-      <FilesView v-if="filePeek.open" :key="filePeek.path" :pane-id="pane.id" :file="filePeek.path" />
+      <FilesView v-if="filePeek.open" :key="filePeek.path" :pane-id="paneId" :file="filePeek.path" />
     </AppSheet>
   </div>
 </template>
