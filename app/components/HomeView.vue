@@ -85,7 +85,10 @@ function groupsOf(list: Row[], rawGroup = rowGroup) {
 const rowTitle = (r: Row) => isIndividualAgentRow(r) ? individualAgentTitle(r.lead) : homeTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
 // Same row object for a card whose row did not change: it does not re-render.
 const reuseRows = createRowReuse()
-const standaloneRows = (rows: Row[]) => reuseRows(individualAgentRows(rows))
+// Coordinators (Alfred and each project's) have their own rows above the list.
+const coordinatorAddresses = computed(() => new Set([alfred.value?.terminal, ...coordinators.value.map(c => c.terminal)].filter((a): a is string => !!a)))
+const isCoordinatorPane = (p: Pane) => !!p.coreAddress && coordinatorAddresses.value.has(p.coreAddress)
+const standaloneRows = (rows: Row[]) => reuseRows(individualAgentRows(rows, coordinatorAddresses.value))
 // Sort menu of the Ready group; sorted other than in the default order, the
 // list can no longer be reordered manually.
 const READY_SORT_LABELS: Record<ReadySort, [string, string]> = {
@@ -128,7 +131,7 @@ const sections = computed(() => {
   if (only) selected.sort((a, b) => only.indexOf(baseKeyOf(a)) - only.indexOf(baseKeyOf(b)))
   return selected.map((m) => {
     const mine = (p: Pane) => (p.machine || '') === m.key
-    const a = agents.value.filter(mine)
+    const a = agents.value.filter(p => mine(p) && !isCoordinatorPane(p))
     // A group counts the rows of the list, like the tabs.
     const c = coreRows.value.map(r => r.lead).filter(mine)
     return {
@@ -160,7 +163,7 @@ const stateMachineChips = computed(() => stateShown.value.online.map(m => ({
 })))
 const stateAway = computed(() => stateShown.value.away.map(m => ({
   m, name: machineName(m.key) || m.label || t('This machine'), state: t(STATE_LABEL[m.status]),
-  known: agents.value.filter(p => (p.machine || '') === m.key).length,
+  known: agents.value.filter(p => (p.machine || '') === m.key && !isCoordinatorPane(p)).length,
 })))
 const stateCards = computed(() => stateShown.value.online.flatMap(m =>
   standaloneRows(spaceRows(st.value, m.key)).map(row => ({ row, machine: machineName(m.key) || m.label }))))
