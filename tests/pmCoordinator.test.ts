@@ -587,7 +587,7 @@ describe('wakes', () => {
       return {}
     }
     const notify = async (title: string) => { pushed.push(title) }
-    const d = { store, call, notify } as unknown as Parameters<typeof wakeTick>[0]
+    const d = { store, call, notify, machines: () => [] } as unknown as Parameters<typeof wakeTick>[0]
     return { sent, pushed, d, run: () => wakeTick(d, now) }
   }
   const atDeploy = async (since: number) => {

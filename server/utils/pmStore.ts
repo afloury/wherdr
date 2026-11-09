@@ -42,6 +42,8 @@ export interface CoordinatorRecord {
   userAt?: number, autopilot?: Autopilot, seen?: Record<string, TaskStatus>, ranAt?: number
   atRan?: number // the last scheduled wake at fixed times (autopilot.at), or when it was set
   woke?: LastWake // the last wake the engine queued, and where tasks stood then
+  quiet?: true // its saved autopilot's old default events dropped, once (quietEvents)
+  health?: { at: number, seen: Record<string, TaskStatus> } // the last health check (health.ts), and where tasks stood then
   skipped?: DayCount // scheduled wakes skipped that day: nothing to do (or the new work limit reached)
   lookAdded?: DayCount // tasks added that day in the turns of look-for-new-work wakes
   // version: wherdr's when this session started; told: the newer version it was told of.
