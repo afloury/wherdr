@@ -25,7 +25,7 @@ async function serveVideo(event: H3Event, p: Pane, q: Record<string, unknown>, t
   res.once('close', () => closed.abort())
   if (res.destroyed) closed.abort()
   const v = q.from === 'chat'
-    ? await openWrittenVideo(m, p.cwd, q.path, await chatFilesPolicy(), closed.signal)
+    ? await openWrittenVideo(m, p.cwd, q.path, closed.signal, await chatFilesPolicy())
     : await openVideo(m, p.cwd!, q.path, closed.signal)
   if (closed.signal.aborted) {
     v.close()

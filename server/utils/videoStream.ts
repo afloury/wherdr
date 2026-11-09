@@ -261,7 +261,7 @@ export async function openVideo(m: Machine, cwd: string, rel: unknown, signal?: 
   return openAt(m, root, p, signal)
 }
 
-export async function openWrittenVideo(m: Machine, cwd: string | null | undefined, written: unknown, policy: ChatFilesPolicy, signal?: AbortSignal) {
+export async function openWrittenVideo(m: Machine, cwd: string | null | undefined, written: unknown, signal?: AbortSignal, policy?: ChatFilesPolicy) {
   const t = writtenTarget(m, cwd, written, policy)
   return openAt(m, t.root, t.rel, signal, t.show)
 }
