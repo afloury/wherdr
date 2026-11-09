@@ -6,8 +6,9 @@ import { PATH_SETUP, type CoreAdminDeps } from './coreCreate'
 import { exec } from './pmLaunch'
 import type { PmStore } from './pmStore'
 import { mayMerge } from '../../shared/pm/guards'
-import { CODE, RETRY_MS, SCRIPT, guardAction, isTransient, leaks, prReady, receiptId, type ActionResult, type PrInfo } from '../../shared/pm/actions'
+import { BB_STRATEGY, CODE, RETRY_MS, SCRIPT, bbReady, guardAction, isTransient, leaks, prReady, receiptId, type ActionResult, type PrInfo } from '../../shared/pm/actions'
 import type { ResolvedGuards } from '../../shared/pm/guards'
+import type { BbStatus } from '../../shared/pm/actions'
 import type { MergeBy, StepAction } from '../../shared/pm/workflow'
 
 type Shell = (script: string, args: string[], input?: string) => Promise<{ code: number | null, out: string }>
@@ -26,7 +27,7 @@ export interface ActionJob {
   worktree: string
   branch: string
   allowed?: string[] // protected branches the task already reached through you
-  reviewed?: string // github.merge: the commit the last review passed
+  reviewed?: string // a PR merge: the commit the last review passed
   halted?: () => Promise<boolean> // the task was stopped meanwhile: no merge
 }
 
@@ -142,6 +143,65 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
         return m.code === 0 ? { ok: true, link: pr!.url, commit: head.trim(), reached: [pr!.baseRefName] } : fail(m)
       }
     }
+    case 'bitbucket.merge': return bitbucketMerge(deps, job, fail)
+  }
+}
+
+interface BbPr { id: number, state: string, destination: { branch: { name: string } }, source: { commit: { hash: string } }, links: { html: { href: string } } }
+
+// As github.merge, through the Bitbucket Cloud API: the task's open PR, its
+// guard on the PR's destination, its head pushed when behind, its build
+// statuses waited for, then a merge commit unless the step names a method.
+// Bitbucket gives a commit's first 12 characters.
+async function bitbucketMerge(deps: ActionDeps, job: ActionJob, fail: (r: { code: number | null, out: string }) => ActionResult): Promise<Done> {
+  const { action: a, worktree: wt, branch } = job
+  const api = async <T>(method: string, path: string, arg: string) => {
+    const r = await run(deps, SCRIPT.bitbucket, [wt, method, path, arg])
+    if (r.code !== 0) return { error: fail(r) }
+    const lines = r.out.trim().split('\n'), status = Number(lines.pop())
+    try { return { status, body: JSON.parse(lines.pop() || '{}') as T & { error?: { message?: string } } } }
+    catch { return { error: { ok: false, error: 'merge: unreadable Bitbucket answer' } } }
+  }
+  const refusal = (r: { status: number, body: { error?: { message?: string } } }) => ({ ok: false, error: `merge: ${r.body.error?.message || `Bitbucket answered ${r.status}`}` })
+  let pushed = false
+  for (let i = 0; ; i++) {
+    const h = await run(deps, SCRIPT.head, [wt])
+    if (h.code !== 0) return fail(h)
+    const head = lastLine(h.out)
+    const list = await api<{ values?: BbPr[] }>('GET', '/pullrequests?state=OPEN&state=MERGED&sort=-updated_on&pagelen=50', `q=source.branch.name="${branch}"`)
+    if ('error' in list) return list.error!
+    if (list.status !== 200) return refusal(list)
+    const prs = list.body.values ?? [], pr = prs.find(p => p.state === 'OPEN')
+    if (!pr) {
+      const done = prs.find(p => p.state === 'MERGED' && head.startsWith(p.source.commit.hash))
+      if (!done) return { ok: false, error: 'merge: no open PR for this task' }
+      const base = done.destination.branch.name
+      return { ok: true, link: done.links.html.href, commit: head, reached: mayMerge(job.guards, base, job.by) ? [base] : [], note: 'already merged on Bitbucket' }
+    }
+    const base = pr.destination.branch.name, link = pr.links.html.href
+    const refused = guardAction(job.guards, a, { branch, by: job.by, base })
+    if (refused) return { ok: false, error: refused }
+    if (job.reviewed && job.reviewed !== head) return { ok: false, error: `merge: new commits since the review (${job.reviewed.slice(0, 7)}..${head.slice(0, 7)})`, review: { since: job.reviewed, head }, commit: head }
+    if (!head.startsWith(pr.source.commit.hash)) {
+      if (pushed) return { ok: false, error: `merge: the PR head ${pr.source.commit.hash.slice(0, 7)} is not the task's commit` }
+      const no = guardAction(job.guards, { kind: 'git.push' }, { branch, by: job.by })
+      if (no) return { ok: false, error: no }
+      const up = await run(deps, SCRIPT.push, [wt, branch])
+      if (up.code !== 0) return fail(up)
+      pushed = true
+      continue
+    }
+    const st = await api<{ values?: BbStatus[] }>('GET', `/commit/${head}/statuses`, 'pagelen=100')
+    if ('error' in st) return st.error!
+    if (st.status !== 200) return refusal(st)
+    const ready = bbReady(st.body.values ?? [], a.checks)
+    if (!ready.ok && ready.later && i < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[i]!); continue }
+    if (!ready.ok) return { ok: false, error: `merge: ${ready.why}` }
+    if (await job.halted?.()) return { ok: false, error: 'merge: the task was stopped' }
+    const body = JSON.stringify({ type: 'pullrequest', merge_strategy: BB_STRATEGY[a.method ?? 'merge'], close_source_branch: false })
+    const m = await api<object>('POST', `/pullrequests/${pr.id}/merge`, body)
+    if ('error' in m) return m.error!
+    return m.status === 200 ? { ok: true, link, commit: head, reached: [base] } : refusal(m)
   }
 }
 

@@ -74,7 +74,7 @@ it('says when a merge is left to you, and what a step with no end does', () => {
 it('labels every action, holder and end, in French too', () => {
   const fr = (_en: string, f: string) => f
   expect(ACTIONS.map(kind => actionLabel({ kind, target: 'dev', base: 'dev' }))).toEqual([
-    'Merge into dev (no PR)', 'Push the branch', 'Open a GitHub PR to dev', 'Merge the GitHub PR', 'Check it is merged into dev',
+    'Merge into dev (no PR)', 'Push the branch', 'Open a GitHub PR to dev', 'Merge the GitHub PR', 'Merge the Bitbucket PR', 'Check it is merged into dev',
   ])
   expect(actionLabel({ kind: 'github.pr' })).toBe('Open a GitHub PR to the working branch')
   for (const h of HOLDERS) expect(holderHint(h, fr)).not.toBe(holderHint(h))

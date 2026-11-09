@@ -172,7 +172,7 @@ export function prNow(pr: (PrInfo & { mergeStateStatus?: string }) | undefined, 
 export const requiredChecks = (plan: PlannedStep[]) => plan.flatMap(p => (p.action?.kind === 'github.merge' ? p.action.checks ?? [] : []))
 
 export interface CardStatus { text: string, tone: 'wait' | 'bad' | 'ok', at?: number }
-const MERGES = ['github.merge', 'git.verify-merged']
+const MERGES = ['github.merge', 'bitbucket.merge', 'git.verify-merged']
 const bad = (text: string): CardStatus => ({ text, tone: 'bad' })
 const blocked = (error: string) => bad(/check\(s\) failed/.test(error) ? 'checks failed' : `blocked: ${error.replace(/^[\w-]+: /, '')}`)
 const ofPr = (pr: string): CardStatus => (pr === 'merged'
