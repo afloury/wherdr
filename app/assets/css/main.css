@@ -2130,6 +2130,20 @@ body.kb .composer { padding-bottom: 8px; }
 /* Sub-section of a settings section shown only on a computer (Appearance › Desktop). */
 .settings-subhead { margin: 6px 0 22px; padding-top: 22px; border-top: 1px solid var(--line); }
 
+/* A pointed-at setting (`&target=`, utils/uiHalo.ts): an accent outline and a
+   soft shadow, drawn around the box so the layout never moves (the 6 px offset
+   stays inside the settings' 16 px side padding); two pulses, then it fades
+   over 4 s. Reduced motion: a still outline that fades. */
+.ui-halo { outline: 2px solid var(--accent); outline-offset: 6px; animation: ui-halo 4s ease-out forwards; }
+@keyframes ui-halo {
+  0%, 24%, 48% { outline-color: var(--accent); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 10%, transparent), 0 0 22px 8px color-mix(in srgb, var(--accent) 22%, transparent); }
+  12%, 36% { outline-color: color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: 0 0 0 6px transparent, 0 0 10px 2px color-mix(in srgb, var(--accent) 8%, transparent); }
+  100% { outline-color: transparent; box-shadow: 0 0 0 6px transparent, 0 0 0 0 transparent; }
+}
+@keyframes ui-halo-still { 0%, 50% { outline-color: var(--accent); } 100% { outline-color: transparent; } }
+@media (prefers-reduced-motion: reduce) { .ui-halo { animation-name: ui-halo-still; } }
+.settings-column > .ui-target-missing { margin: 0 2px 22px; }
+
 .settings-typing .encrypted-toggle { margin-top: 14px; }
 /* Settings › Phone (PhoneSetup.vue): steps with a mono label, live state, QR code. */
 .phone-intro { margin: 0 0 14px; color: var(--text-2); font-size: 13px; line-height: 1.5; }
