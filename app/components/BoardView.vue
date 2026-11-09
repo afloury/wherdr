@@ -12,10 +12,15 @@ import type { Pane } from '#shared/types'
 
 const data = ref<Board | null>(null)
 const error = ref('')
-const project = ref('') // '' = all projects
-const tag = ref('') // '' = every tag
-// The task to show, also from Decisions' "Open task" (/board?task=CO-1).
+// The filters, also from an in-app link (/board?project=CO&tag=ui,
+// shared/appLinks.ts), read again when the board is already open.
 const route = useRoute()
+const queried = (v: unknown) => (typeof v === 'string' ? v : '')
+const project = ref(queried(route.query.project).toUpperCase()) // '' = all projects
+const tag = ref(queried(route.query.tag)) // '' = every tag
+watch(() => queried(route.query.project), (p) => { project.value = p.toUpperCase() })
+watch(() => queried(route.query.tag), (g) => { tag.value = g })
+// The task to show, also from Decisions' "Open task" (/board?task=CO-1).
 const open = ref<string | null>(typeof route.query.task === 'string' ? route.query.task : null)
 // Also when the board is already open (the sidebar's Tasks to handle).
 watch(() => route.query.task, (id) => { if (typeof id === 'string') open.value = id })

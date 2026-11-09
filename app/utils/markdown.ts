@@ -3,6 +3,7 @@
 // conversation is re-read every 1.5 s), within a budget (see MD_CACHE_CHARS).
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { isAppLink } from '../../shared/appLinks'
 import { pathCandidate } from '../../shared/filePaths'
 import { codeKind } from './codeKind'
 import { highlightCode } from './codeHighlight'
@@ -81,6 +82,8 @@ export function md(text: string, options: MdOptions = {}): string {
             + `<span class="code-tools">${run}<button type="button" class="code-copy">${escHtml(t('Copy'))}</button></span></div>`
             + `<pre><code${l ? ` class="language-${l}"` : ''}>${escHtml(text)}</code></pre></div>`
         },
+        // Inline code that is exactly an in-app address (`#/board?task=X`): a
+        // link that opens it in the app, like a Markdown link to it.
         // Inline code that looks like a file path: a menu in the conversation
         // (Reveal in Finder, Open, Copy path; see ChatView.vue); like a
         // command: Copy and Run. Every span carries its kind
@@ -91,6 +94,7 @@ export function md(text: string, options: MdOptions = {}): string {
             const kind = codeKind(text)
             return `<code${kind ? ` data-k="${kind}"` : ''}>${code}</code>`
           }
+          if (isAppLink(text)) return `<a href="${code}"><code>${code}</code></a>`
           if (pathCandidate(text)) return `<code class="md-path" data-k="path" role="button" tabindex="0">${code}</code>`
           const cmd = inlineCommand(text)
           if (cmd !== null) return `<code class="md-cmd" data-k="cmd" data-cmd="${escHtml(cmd)}" role="button" tabindex="0">${code}</code>`
@@ -116,7 +120,9 @@ export function md(text: string, options: MdOptions = {}): string {
           n.removeAttribute('src')
         }
       }
-      if (n.tagName === 'A') {
+      // An in-app address opens in the same tab, through the router
+      // (ChatMarkdown.vue); any other link in a new tab.
+      if (n.tagName === 'A' && !isAppLink(n.getAttribute('href') ?? '')) {
         n.setAttribute('target', '_blank')
         n.setAttribute('rel', 'noopener noreferrer')
       }
