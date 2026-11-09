@@ -39,7 +39,7 @@
 ## Agent list
 
 - [Agents on herdr-core](docs/home.md#agents-on-herdr-core): the live list, states, quick answers, the sidebar's order, and task agents named after their task, one row per task with a line per agent (role, machine, last message).
-- [Alfred](docs/home.md#alfred): wherdr's assistant, its agent, home folder and memory.
+- [Alfred](docs/home.md#alfred): wherdr's assistant, its agent (kept until you change it), home folder and memory.
 - [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred, with the project's colored key badge, and their menu; a stopped one (its terminal ended) offers to resume its conversation or start a new one.
 - [Offered agents](docs/home.md#offered-agents): Settings › Agents, which programs every picker offers and in which order.
 - [Machines as tabs](docs/home.md#machines-as-tabs): the machine tabs, their groups and a machine's actions.
@@ -76,7 +76,7 @@
 - [Report a problem](docs/project-management.md#report-a-problem): tell the coordinator what is wrong with a task waiting for you, block its merge, withdraw.
 - [A stalled task](docs/project-management.md#a-stalled-task): red CI or an idle agent: the coordinator woken, one nudge, then Tasks to handle and a notification after 30 min; a stall or a step past its time limit leaves Tasks to handle once the task is back to work.
 - [A task's temporary files](docs/project-management.md#a-tasks-temporary-files): `.wherdr-tmp` in the task's worktree (TMPDIR, CLAUDE_CODE_TMPDIR, NODE_COMPILE_CACHE), ignored by git, removed with the worktree; no agent started while /tmp has under 500 MB free.
-- [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again; kept while the worker updates the PR (a catch-up, a CI fix), unpushed commits pushed first; which agent a coordinator's `tell` reaches (--to worker|reviewer); in a wake, `tell --fix base|ci|machine|stall --reason` unblocks a mechanical block (autopilot on, twice per task and step, logged), a permission request stays yours.
+- [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again; kept while the worker updates the PR (a catch-up, a CI fix), unpushed commits pushed first; which agent a coordinator's `tell` reaches (--to worker|reviewer); in a wake, `tell --fix base|ci|machine|stall --reason` unblocks a mechanical block (autopilot on, twice per task and step, logged), a permission request stays yours. One worker and one reviewer per task: a second start at once is refused (already starting), a held start dropped, a duplicate agent ended and logged.
 - [Alfred's command](docs/alfred.md): `wherdr alfred`, what Alfred reads and changes after your yes (projects, their machines, guards, coordinators started or resumed, settings).
 - [After an update](docs/alfred.md#after-an-update): new instructions for Alfred and coordinators, and the one-line notice on their next command.
 
@@ -104,7 +104,7 @@
 
 - [Development and tests](docs/development.md): run from source and test.
 - [Design rules](docs/design.md): the interface styling reference, sheets included (where focus goes on open).
-- [Dictation design](docs/dictation.md): the dictation engines and how to add one; read aloud and its voices (iOS gives web apps only its standard voices).
+- [Dictation design](docs/dictation.md): the dictation engines and how to add one; why a server-side model install fails (bzip2 missing, disk full); read aloud and its voices (iOS gives web apps only its standard voices).
 
 ## v2 only
 

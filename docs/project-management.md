@@ -205,8 +205,9 @@ the header shows the autopilot's state (green square: on; hollow: asleep) and a
 count of what waits for you: a workflow change the coordinator proposed, or a
 kept conversation that ran with another agent. A tap opens its window:
 
-- the agent that answers the coordinator, and a warning when its conversation
-  ran with another one; on the board, *Open* opens or starts it; when its
+- the agent that answers the coordinator (Alfred's too), and a warning when its conversation
+  ran with another one: *New conversation* with the default, or *Resume* the one kept (for
+  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it; when its
   conversation stopped (its terminal ended, for example when its machine
   restarted), *Resume the conversation* takes it up again with the agent that
   ran it, and *New conversation* starts a new one;
@@ -461,6 +462,14 @@ updating the PR*: its agents are never ended while wherdr waits for that work.
 The task is yours again once the worker pushes or says it is done. Before it
 ends a task's agents, wherdr pushes the commits the branch has not pushed yet;
 if the push fails, the agents stay and the log says why.
+
+A task has one worker and one reviewer at most. Two starts at the same time
+(yours, the coordinator's, the engine's when the task before it is done, a
+start held for room) start one agent: the other is refused as *already
+starting*, and a start held for room is dropped once the task started another
+way. A task whose worker still runs (waiting for your answer, say) is not
+started again: stop it first. Should two agents of one role ever run on a
+task, wherdr keeps the one it tracks, ends the other and says so in the log.
 
 A message from the coordinator (`wherdr pm tell <task>`) goes to the agent
 that holds the task's current step; at a step held by nobody (the PR, the

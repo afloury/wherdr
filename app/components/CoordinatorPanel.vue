@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// The coordinator window's content (CoordinatorButton): which agent answers a project
-// coordinator (its default changed in one gesture; Alfred's program changes from its
-// row's "Restart with…"), a warning when its kept conversation ran with another agent,
+// The coordinator window's content (CoordinatorButton): which agent answers the
+// coordinator, Alfred included (its default changed in one gesture), a warning when
+// its kept conversation ran with another agent (resuming it makes that agent the default),
 // a line for the workflow change it proposed (reviewed in the project's sheet,
 // ProposalReview), and its autopilot.
 // On the board (`open`), also the button that opens or starts it; a stopped
@@ -27,11 +27,18 @@ async function act(fn: () => Promise<unknown>) {
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = false }
 }
-const agentItems = computed(() => offerCoordinators(undefined, props.c.project).map(p => ({ label: kindLabel(p), value: p })))
+const agentItems = computed(() => (props.c.main ? alfredPrograms.value : offerCoordinators(undefined, props.c.project)).map(p => ({ label: kindLabel(p), value: p })))
+// Alfred's program no longer offered on wherdr's machine: said, never replaced silently.
+const unoffered = computed(() => (props.c.main && agent.value && !alfredPrograms.value.includes(agent.value.program) ? agentName(agent.value) : ''))
 const setDefault = (program: string) => act(() => api('/api/pm/coordinator-agent', { project: props.c.project, program }))
 const fresh = () => act(async () => { const p = await launchCoordinator(props.c.project, agent.value); if (props.c.main) await loadAlfred(); if (p) await navigateTo(panePath(p.id)) })
 const resumeStopped = () => act(async () => { const p = await launchCoordinator(props.c.project, 'resume'); if (props.c.main) await loadAlfred(); if (p) await navigateTo(panePath(p.id)) })
-const resume = () => { resumeCoordinator(props.c.terminal!); if (props.open && pane.value) navigateTo(panePath(pane.value.id)) }
+// Alfred: the agent resumed becomes its default, so the warning does not come back.
+const resume = () => {
+  resumeCoordinator(props.c.terminal!)
+  if (props.c.main && props.c.ran) void act(async () => { await api('/api/pm/coordinator-agent', { project: props.c.project, program: props.c.ran!.program }); await loadAlfred() })
+  if (props.open && pane.value) navigateTo(panePath(pane.value.id))
+}
 const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh())
 </script>
 
@@ -39,9 +46,9 @@ const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh()
   <div class="coord" data-testid="coordinator-panel">
     <!-- Alfred on the board: its row (one tap opens or starts it, its program asked the first time). -->
     <AlfredRow v-if="open && c.main" banner />
-    <div v-else-if="!c.main || (open && !other)" class="coord-head">
-      <div v-if="!c.main" class="coord-field">
-        <span class="field-label">{{ tl('Answering agent', 'Agent qui répond') }}</span>
+    <div v-else class="coord-head">
+      <div class="coord-field">
+        <span class="field-label">{{ c.main ? tl(`${coordinatorName(c)}’s agent`) : tl('Answering agent', 'Agent qui répond') }}</span>
         <USelect :model-value="agent?.program" :items="agentItems" size="lg" class="coord-agent w-full" :disabled="busy" :aria-label="tl('Default agent', 'Agent par défaut')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
       </div>
       <UButton v-if="open && !other && stopped" color="primary" size="lg" :loading="busy" data-testid="coordinator-resume-stopped" @click="resumeStopped">
@@ -51,6 +58,7 @@ const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh()
         {{ pane ? tl('Open', 'Ouvrir') : stopped ? tl('New conversation') : tl(`Start with ${agentName(agent)}`, `Lancer avec ${agentName(agent)}`) }}
       </UButton>
     </div>
+    <p v-if="unoffered" class="coord-note muted" data-testid="coordinator-unoffered">{{ tl(`${unoffered} is no longer offered on this machine (Settings › Agents): pick another agent, or offer it again.`) }}</p>
     <div v-if="other && c.ran" class="term-banner coord-warn" data-testid="coordinator-other-agent">
       <UIcon name="i-lucide-triangle-alert" class="term-banner-icon" />
       <span class="coord-warn-text">{{ tl(`The previous conversation used ${agentName(c.ran)}. The default is ${agentName(agent)}.`, `La conversation précédente utilisait ${agentName(c.ran)}. Le défaut est ${agentName(agent)}.`) }}</span>
@@ -77,5 +85,5 @@ const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh()
 .coord-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .coord-actions .mono-label { flex: 1 1 100%; color: var(--muted); }
 @media (min-width: 600px) { .coord-actions .mono-label { flex-basis: auto; } }
-.coord-error { margin: 0; }
+.coord-error, .coord-note { margin: 0; }
 </style>
