@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import WorkflowDiagram from '~/components/WorkflowDiagram.vue'
-import WorkflowChange from '~/components/WorkflowChange.vue'
+import ProposalCard from '~/components/ProposalCard.vue'
 import PartHead from '~/components/PartHead.vue'
 import { EXAMPLES } from '#shared/pm/examples'
 import { workflowFlow } from '#shared/pm/flow'
@@ -23,13 +23,15 @@ it('marks the steps a change adds or hands to someone else', async () => {
   expect(w.findAll('.wf-step.changed').map(s => s.find('b').text())).toEqual(['review', 'merge'])
 })
 
-it('a workflow change card in the chat: subtitle, before and after, Review opens the Workflow tab', async () => {
-  const flow = { before: [{ id: 'work', holder: 'worker' as const }], after: [{ id: 'work', holder: 'worker' as const }, { id: 'review', holder: 'reviewer' as const }] }
-  const w = await mountSuspended(WorkflowChange, { props: { link: true, c: { project: 'CO', name: 'Company', proposal: { diff: '+ x', at: 1, said: 'Add a review', flow } } } })
-  expect(w.find('.mono-label').text()).toBe('Workflow change')
+registerEndpoint('/api/pm/coordinators', () => [])
+it('the Workflow change card in the chat: its subtitle, and the steps before and after', async () => {
+  const flow = { type: 'task', before: [{ id: 'work', holder: 'worker' as const }], after: [{ id: 'work', holder: 'worker' as const }, { id: 'review', holder: 'reviewer' as const }] }
+  const w = await mountSuspended(ProposalCard, { props: { c: { project: 'CO', name: 'Company', proposal: { diff: '+ x', at: 1, flow } } } })
+  expect(w.find('.part-name').text()).toBe('Workflow change')
   expect(w.find('[data-testid="part-subtitle"]').text()).toBe('How each task runs, step by step')
-  expect(w.findAll('figcaption').map(f => f.text())).toEqual(['Before', 'After'])
-  expect(w.find('[data-testid="proposal-review-link"]').attributes('href')).toBe('#/settings?section=projects&project=CO&tab=workflow&review=1')
+  expect(w.findAll('figcaption').map(f => f.text())).toEqual(['Before · task', 'After · task'])
+  expect(w.findAll('.wf-step.changed').map(s => s.find('b').text())).toEqual(['review'])
+  w.unmount()
 })
 
 it('the Workflow tab\'s head links to the Autopilot tab', async () => {

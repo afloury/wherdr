@@ -25,6 +25,17 @@ describe('pm store', () => {
     expect(await fs.readdir(dir)).toEqual([])
   })
 
+  it('saves a new project\'s autopilot with no daily limit and Auto, and keeps the values a project saved', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await store.saveTemplate(template)
+    await store.saveCoordinator({ project: 'WEB', tokenHash: '', autopilot: { on: true, goal: '', events: [], perDay: 10, atOnce: 2 } })
+    await store.addProject(input, okFolder)
+    await store.addProject({ ...input, key: 'api', path: '~/src/api' }, okFolder)
+    expect((await store.coordinator('WEB'))?.autopilot).toMatchObject({ perDay: 10, atOnce: 2 })
+    expect((await store.coordinator('API'))?.autopilot).toMatchObject({ perDay: null, atOnce: null })
+  })
+
   it('keeps projects and templates across a restart, and refuses again once switched off', async () => {
     const store = createPmStore(dir)
     await store.setEnabled(true)
@@ -97,6 +108,26 @@ describe('workflows migration', () => {
     const again = createPmStore(dir)
     expect(await again.projects()).toEqual(await store.projects())
     expect(await again.workflowLog('WEB')).toHaveLength(3)
+  })
+})
+
+describe('template library', () => {
+  it('renames a template with its version and log, and deletes it; the project keeps its own workflow', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await store.saveTemplate(template)
+    await store.addProject(input, okFolder)
+    await store.saveTemplate({ ...template, id: 'other' })
+    await expect(store.renameTemplate('vibe', 'other')).rejects.toMatchObject({ code: 'exists' })
+    await expect(store.renameTemplate('vibe', 'Bad Id')).rejects.toMatchObject({ code: 'bad_input' })
+    await store.renameTemplate('vibe', 'team')
+    expect((await store.overview()).templates).toEqual([{ id: 'other', version: 1 }, { id: 'team', version: 1 }])
+    expect((await store.templateLog('team')).map(e => e.changes)).toEqual([[], ['renamed from vibe']])
+    expect((await store.project('WEB'))?.from).toEqual({ template: 'team', version: 1 }) // "Based on" follows the name
+    await store.removeTemplate('team')
+    await expect(store.removeTemplate('team')).rejects.toMatchObject({ code: 'not_found' })
+    expect(await store.templateLog('team')).toEqual([])
+    expect(await store.workflow('WEB')).toMatchObject({ id: 'web' })
   })
 })
 

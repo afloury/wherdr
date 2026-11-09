@@ -32,9 +32,26 @@ it('says which agent answers, and changes the default in one gesture', async () 
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: 'CO', program: 'codex' } }]))
 })
 
-it('in Alfred\'s conversation: no agent select (its row\'s "Restart with…" changes it)', async () => {
-  const b = await mount(view({ project: '_main', name: 'Jarvis', main: true }))
-  expect(b.find('[data-testid="coordinator-agent"]').exists()).toBe(false)
+const alfred = (more: Partial<CoordinatorView> = {}) => view({ project: '_main', name: 'Alfred', main: true, ...more })
+
+it('Alfred: its agent picked in its window, and kept when no longer offered (said, never replaced)', async () => {
+  const b = await mount(alfred())
+  expect(b.text()).toContain('Alfred’s agent')
+  expect(b.find('[data-testid="coordinator-autopilot"]').exists()).toBe(false) // Alfred has no autopilot
+  await pick(b, 'coordinator-agent', 'codex')
+  await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: '_main', program: 'codex' } }]))
+  hiddenAgents.value = ['claude']
+  await b.setProps({ c: alfred() })
+  expect(b.find('[data-testid="coordinator-unoffered"]').text()).toContain('Claude is no longer offered on this machine')
+})
+
+it('Alfred: "Resume with" makes the resumed agent its default, so the warning does not come back', async () => {
+  const b = await mount(alfred({ agent: { program: 'codex' }, ran: { program: 'claude' }, terminal: 'host/t1' }))
+  expect(b.find('[data-testid="coordinator-other-agent"]').text()).toContain('The previous conversation used Claude. The default is Codex.')
+  await b.find('[data-testid="coordinator-resume"]').trigger('click')
+  await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: '_main', program: 'claude' } }]))
+  resumedCoordinators.value = []
+  globalThis.localStorage?.removeItem('wherdr.coordinatorsResumed')
 })
 
 it('header button: a clock, the autopilot\'s state, and a tap opens the autopilot only (no workflow proposal)', async () => {

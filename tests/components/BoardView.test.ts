@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import BoardView from '~/components/BoardView.vue'
 import { herdrState } from '~/composables/useHerdr'
@@ -12,6 +12,9 @@ import type { Template } from '#shared/pm/workflow'
 import type { Pane } from '#shared/types'
 import { nextTick } from 'vue'
 import { pick, select, selectLabels, selectValue } from '../helpers/select'
+
+const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
+mockNuxtImport('navigateTo', () => navigate)
 
 // Cards built by the same code as the server (server/utils/pmBoard.ts).
 const run = (task: string, role: Run['role'], terminal: string): Run =>
@@ -40,7 +43,8 @@ const reset = (co1: Partial<StepState> = {}) => {
 }
 reset()
 registerEndpoint('/api/pm/board', () => board)
-registerEndpoint('/api/pm/coordinators', () => [])
+// Alfred has no autopilot: only a project's coordinator gets the header button.
+registerEndpoint('/api/pm/coordinators', () => [{ project: '_main', name: 'Alfred', main: true }, { project: 'VIB', name: 'Vibe', autopilot: { on: true, goal: '', events: [], perDay: 1, atOnce: 1 } }])
 const posts: { url: string, body: Record<string, unknown> }[] = []
 // task: the new task, added to the board; task-start: refused (a limit) when `refuse` is set.
 let refuse = ''
@@ -72,9 +76,11 @@ const laneOf = (w: Awaited<ReturnType<typeof mount>>, id: string) => card(w, id)
 it('shows the columns of a template without review, and of all projects', async () => {
   const w = await mount()
   expect(lanes(w)).toEqual(['your-turn', 'todo', 'working', 'done'])
-  expect(w.find('[data-testid="alfred"]').exists()).toBe(false) // no bar above the columns: Alfred is behind the header button
+  expect(w.find('[data-testid="alfred"]').exists()).toBe(false) // no bar above the columns
+  expect(w.find('[data-testid="coordinator-button"]').exists()).toBe(false) // All projects: no autopilot control
   await pick(w, 'board-project', 'VIB')
   expect(lanes(w)).toEqual(['your-turn', 'To do', 'Working', 'Done'])
+  await vi.waitFor(() => expect(w.find('[data-testid="coordinator-button"]').exists()).toBe(true))
   expect(laneOf(w, 'VIB-1')).toBe('Working')
   await pick(w, 'board-project', 'CO')
   expect(lanes(w)).toEqual(['your-turn', 'To do', 'Working', 'Review', 'Deploy', 'Done'])
@@ -103,6 +109,17 @@ it('moves a card to Your turn when its agent waits for the user', async () => {
     expect(laneOf(w, 'VIB-1')).toBe('your-turn')
     expect(card(w, 'VIB-1').text()).toContain('Answer the agent')
     expect(card(w, 'VIB-1').find('[data-testid="holder-state"]').classes()).toContain('blocked')
+    // WHR-145: a tap opens that agent's conversation; the task's sheet stays in the menu.
+    navigate.mockReset()
+    await card(w, 'VIB-1').trigger('click')
+    expect(navigate).toHaveBeenCalledWith('/a/host-a%2Ft1')
+    expect(document.querySelector('[data-testid="task-panel"]')).toBeNull()
+    await card(w, 'VIB-1').trigger('contextmenu')
+    expect(menuState.items.map(i => ('label' in i ? i.label : '')).slice(0, 2)).toEqual(['Open the agent', 'Open the task'])
+    menuState.open = false
+    // A merge waiting for the user opens its sheet on To do.
+    await card(w, 'CO-2').trigger('click')
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="task-todo"]')).not.toBeNull())
   } finally { herdrState.value = before }
 })
 
@@ -131,11 +148,11 @@ it('splits the task\'s sheet in tabs, Description first, one open at a time; the
   await card(w, 'CO-1').trigger('click')
   const q = (sel: string) => document.querySelector<HTMLElement>(sel)
   const tabs = () => [...document.querySelectorAll<HTMLElement>('[role="tab"]')].map(t => `${t.dataset.tab}${t.getAttribute('aria-selected') === 'true' ? '*' : ''}`)
-  await vi.waitFor(() => expect(tabs()).toEqual(['description*', 'plan', 'log']))
+  await vi.waitFor(() => expect(tabs()).toEqual(['description*', 'plan', 'history', 'log']))
   expect(q('[data-testid="task-panel"] a[href="https://example.com/pr/1"]')).not.toBeNull()
   expect(q('[data-testid="task-plan"]')).toBeNull()
   q('[data-tab="log"]')!.click()
-  await vi.waitFor(() => expect(tabs()).toEqual(['description', 'plan', 'log*']))
+  await vi.waitFor(() => expect(tabs()).toEqual(['description', 'plan', 'history', 'log*']))
   expect(q('[data-testid="task-log"]')!.textContent).toContain('coordinator CO')
   expect(q('[data-testid="task-log"]')!.textContent).toContain('chose pass (advice: pass, nothing above minor). Only a naming nit is left.')
   expect(q('[data-testid="task-panel"] a[href="https://example.com/pr/1"]')).toBeNull()
@@ -245,7 +262,8 @@ it('adds a task: project required on All projects, then title; the type shows it
   await vi.waitFor(() => expect(card(w, 'CO-9').exists()).toBe(true))
 })
 
-it('the board\'s project is preselected; a task after others posts them and does not start now', async () => {
+it('the board\'s project is preselected; a task after others posts them and its weight, and does not start now', async () => {
+  board.projects[1]!.types[0]!.weight = 'heavy (screenshots)'
   board.cards[2] = coTask(task('CO-2', initialState(), { state: 'todo' }))
   const w = await mount()
   await pick(w, 'board-project', 'CO')
@@ -255,12 +273,14 @@ it('the board\'s project is preselected; a task after others posts them and does
   expect(selectValue(sheet, 'add-task-project')).toBe('CO')
   expect(selectLabels(sheet, 'add-task-after')).toEqual(['CO-1 · Task CO-1', 'CO-2 · Task CO-2']) // the same project's, not done
   select(sheet, 'add-task-after').vm.$emit('update:modelValue', ['CO-1', 'CO-2'])
+  expect(selectLabels(sheet, 'add-task-weight')).toEqual(['Auto: heavy (screenshots)', 'Light', 'Standard', 'Heavy'])
+  select(sheet, 'add-task-weight').vm.$emit('update:modelValue', 'light')
   sheet.findComponent({ name: 'UInput' }).vm.$emit('update:modelValue', 'Then deploy')
   sheet.findComponent({ name: 'USwitch' }).vm.$emit('update:modelValue', true)
   await nextTick()
   document.querySelector<HTMLElement>('[data-testid="add-task-submit"]')!.click()
   await vi.waitFor(() => expect(posts.map(p => p.url)).toEqual(['/api/pm/task']))
-  expect(posts[0]!.body).toMatchObject({ project: 'CO', title: 'Then deploy', after: 'CO-1,CO-2' })
+  expect(posts[0]!.body).toMatchObject({ project: 'CO', title: 'Then deploy', after: 'CO-1,CO-2', weight: 'light' })
 })
 
 it('Start on a To do card (menu and sheet) says the server\'s refusal; a task after an open one shows what it waits for instead', async () => {
@@ -295,4 +315,16 @@ it('Start on… lists the machines a project allows, starts on the one picked an
   menuState.items[1]!.run!()
   await vi.waitFor(() => expect(w.find('.error').text()).toBe(refuse))
   expect(posts).toEqual([{ url: '/api/pm/task-start', body: { id: 'VIB-1', machine: 'b' } }])
+})
+
+it('a task the engine resumes after an incident shows why it waits, not Your turn; its follower waits for it to resume', async () => {
+  const why = 'The agent\'s terminal is gone: the machine is offline or unreachable (its herdr-core does not answer) (host-b): wherdr resumes it once host-b is back'
+  board.cards[1] = coTask(task('CO-1', at(2), { state: 'waiting', waiting: why, run: 'r1', recovery: { incident: 'i1', cause: 'offline', machine: 'b', label: 'host-b', run: 'r1', at: 1, n: 1, waits: true } }))
+  board.cards.push(coTask(task('CO-3', initialState(), { state: 'todo', after: 'CO-1', held: 'Waits for CO-1 to resume' })))
+  const w = await mountSuspended(BoardView)
+  mounted = w
+  await vi.waitFor(() => expect(w.findAll('[data-testid="board-card"]')).toHaveLength(4))
+  expect(laneOf(w, 'CO-1')).not.toBe('your-turn')
+  expect(card(w, 'CO-1').find('[data-testid="board-status"]').text()).toBe(why)
+  expect(card(w, 'CO-3').find('[data-testid="board-status"]').text()).toBe('Waits for CO-1 to resume')
 })

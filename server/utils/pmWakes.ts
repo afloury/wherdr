@@ -5,19 +5,23 @@
 // the persisted queue, then each coordinator's queue ticks (shared/pm/wakes.ts): delivery once it is idle and the user is quiet, the
 // end of an open wake, a missed ack tried again, then a push to the user.
 import { randomUUID } from 'node:crypto'
-import { MAIN, coordinatorWake } from '../../shared/pm/coordinator'
-import { LOOK_REASON, autopilotEvents, bump, inHours, scheduledWake, sentence, skippedWake, today } from '../../shared/pm/autopilot'
+import { MAIN, coordinatorBy, coordinatorWake } from '../../shared/pm/coordinator'
+import { LOOK_REASON, quietEvents, autopilotEvents, bump, inHours, scheduledWake, sentence, skippedWake, today } from '../../shared/pm/autopilot'
 import { projectPace } from './pmPace'
-import { durationMs } from '../../shared/pm/steps'
+import { currentStep, durationMs } from '../../shared/pm/steps'
 import { taskPlan } from '../../shared/pm/run'
 import { due as isDue, parseSchedule } from '../../shared/pm/schedule'
-import { enqueue, tickWakes, wakeText, type CoordStatus } from '../../shared/pm/wakes'
+import { enqueue, tickWakes, wakeText, type CoordStatus, type Wake } from '../../shared/pm/wakes'
+import { healthEvery, healthSummary } from '../../shared/pm/health'
+import { allowedMachines, type Project } from '../../shared/pm/project'
+import type { Run } from '../../shared/pm/run'
 import type { Template } from '../../shared/pm/workflow'
 import type { CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
 import { noteTurn } from './pmCoordinator'
 import { pushSend } from './push'
 import { HerdrError } from './herdr'
+import { projectOf, shownKey, showIds } from '../../shared/pm/projectKey'
 
 export interface WakeDeps extends CoreAdminDeps { store: PmStore, notify?: (title: string, body: string, project: string) => Promise<unknown> }
 const newId = () => randomUUID().replace(/-/g, '').slice(0, 8)
@@ -35,36 +39,52 @@ async function statusOf(deps: WakeDeps, terminal: string | undefined): Promise<C
   } catch (e) { return /not.?found|unknown terminal/i.test(`${(e as { kind?: string }).kind} ${(e as Error).message}`) ? 'gone' : null }
 }
 
+// The project's machines online with no agent at work, by name: the health check's.
+const idleMachines = (deps: WakeDeps, p: Project, runs: Run[]) => {
+  const busy = new Set(runs.filter(r => r.state !== 'ended').map(r => r.machine))
+  return allowedMachines(p).flatMap((key) => {
+    const m = deps.machines().find(x => x.key === key)
+    return m?.status === 'online' && !busy.has(key) ? [m.label] : []
+  })
+}
+
 // Reasons of this tick, per project.
 async function gather(deps: WakeDeps, now: number) {
   const { store } = deps
-  const reasons = new Map<string, string[]>()
-  const add = (k: string, r: string[]) => r.length && reasons.set(k, [...(reasons.get(k) ?? []), ...r])
-  const projects = await store.projects(), tasks = await store.tasks()
+  // One entry per project and source: a step check is its own wake, per task and step.
+  const reasons: { key: string, reasons: string[], from: Pick<Wake, 'kind' | 'about'> }[] = []
+  const add = (key: string, r: string[], from: Pick<Wake, 'kind' | 'about'> = { kind: 'autopilot' }) => {
+    if (!r.length) return
+    const e = reasons.find(x => x.key === key && x.from.kind === from.kind && x.from.about === from.about)
+    if (e) e.reasons.push(...r)
+    else reasons.push({ key, reasons: [...r], from })
+  }
+  const projects = await store.projects(), tasks = await store.tasks(), runs = await store.runs()
   const templates = new Map<string, Template | null>()
   for (const p of projects) templates.set(p.key, p ? await store.workflow(p.key) : null)
   for (const task of tasks) {
     const t = templates.get(task.project)
     if (!task.step?.started || task.step.done || !t) continue
-    const w = coordinatorWake(taskPlan(t, task, projects.find(p => p.key === task.project)), task.step, now)
+    const plan = taskPlan(t, task, projects.find(p => p.key === task.project))
+    const w = coordinatorWake(plan, task.step, now)
     if (JSON.stringify(w.state) === JSON.stringify(task.step)) continue
     // No coordinator: the tick still counts (timeouts), the step start stays to announce.
     const has = !!(await store.coordinator(task.project))?.terminal
     await store.saveTask({ ...task, step: has ? w.state : { ...w.state, told: task.step.told } })
-    if (has) add(task.project, w.texts.map(x => `${task.id} (${task.title}): ${x}`))
+    const step = currentStep(plan, task.step)
+    if (has) add(task.project, w.texts.map(x => `${task.id} (${task.title}): ${x}`), { kind: 'step', about: `${task.id} (${step?.id ?? 'step'})` })
   }
-  // The main coordinator's autopilot counts every task; a project's pace holds
-  // it only when no project may go.
-  const paceOf = async (k: string) => {
-    if (k !== MAIN) return (await projectPace(store, k, undefined, now))?.verdict
-    const all = await Promise.all(projects.map(async x => (await projectPace(store, x.key, undefined, now))?.verdict))
-    return all.find(v => v?.go) ?? all.find(Boolean)
-  }
-  for (const p of [...projects, { key: MAIN }]) {
-    const c = await store.coordinator(p.key)
+  // The main coordinator (Alfred) has no autopilot: one saved before is turned off.
+  const main = await store.coordinator(MAIN)
+  if (main?.autopilot?.on) await store.saveCoordinator({ ...main, autopilot: { ...main.autopilot, on: false } })
+  // Each project's autopilot: its own goal, limits, hours and pace.
+  for (const p of projects) {
+    let c = await store.coordinator(p.key)
     if (!c) continue
-    const ap = c.autopilot, mine = tasks.filter(x => p.key === MAIN || x.project === p.key)
-    const ev = autopilotEvents(ap ?? { on: false, goal: '', events: [], perDay: 0, atOnce: 0 }, mine, c.seen ?? {})
+    // Routine events off by default: an autopilot saved with the old default events drops them, once.
+    if (!c.quiet) await store.saveCoordinator(c = { ...c, quiet: true, ...(c.autopilot ? { autopilot: quietEvents(c.autopilot) } : {}) })
+    const ap = c.autopilot, mine = tasks.filter(x => x.project === p.key)
+    const ev = autopilotEvents(ap ?? { on: false, goal: '', events: [], perDay: 0, atOnce: 0 }, mine, c.seen ?? {}, { key: p.key, by: coordinatorBy(p.key) })
     const on = !!ap?.on && !!c.terminal && inHours(ap.hours, new Date(now))
     // The first look only notes where tasks stand.
     if (on && c.seen) add(p.key, ev.reasons)
@@ -76,19 +96,26 @@ async function gather(deps: WakeDeps, now: number) {
     // Nothing to do, or the worker's account ahead of its pace: the slot counts
     // as run, the paid turn is saved. The pace is read only for a wake that would go.
     let kind = due || atDue ? scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now)) : null
-    if (kind === 'send' || kind === 'look') kind = scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now), await paceOf(p.key))
+    if (kind === 'send' || kind === 'look') kind = scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now), (await projectPace(store, p.key, undefined, now))?.verdict)
     const skip = skippedWake(kind)
     if (kind && !skip) add(p.key, [`Scheduled wake (${due ? `every ${ap!.every}` : ap!.at}). ${kind === 'look' ? `${LOOK_REASON} ` : ''}${goal}`])
-    const woke = !!reasons.get(p.key)?.length
-    if (due || atDue || woke || JSON.stringify(ev.seen) !== JSON.stringify(c.seen ?? null)) {
+    // The health check: the first look only notes where tasks stand; off (or
+    // outside the hours), it starts over once back on.
+    const every = on ? healthEvery(ap) : null
+    const healthDue = !!every && !!c.health && now - c.health.at >= durationMs(every)
+    if (healthDue) add(p.key, healthSummary(mine, c.health!.seen, now, idleMachines(deps, p, runs)), { kind: 'health' })
+    const health = every && (!c.health || healthDue) ? { health: { at: now, seen: ev.seen } } : !every && c.health ? { health: undefined } : null
+    const woke = reasons.some(x => x.key === p.key)
+    if (due || atDue || woke || health || JSON.stringify(ev.seen) !== JSON.stringify(c.seen ?? null)) {
       await store.saveCoordinator({
-        ...c, seen: ev.seen, ...(due ? { ranAt: now } : {}), ...(atDue ? { atRan: now } : {}),
+        ...c, seen: ev.seen, ...(due ? { ranAt: now } : {}), ...(atDue ? { atRan: now } : {}), ...health,
         ...(woke ? { woke: { at: now, seen: ev.seen } } : {}),
         ...(skip ? { skipped: bump(c.skipped, now) } : {}),
       })
     }
   }
-  return reasons
+  // Task ids as the user sees them (CMP-9, not its fixed CP-9).
+  return reasons.map(x => ({ ...x, reasons: showIds(projects, x.reasons) }))
 }
 
 // The user's "run now": queued at once, delivered at the next idle moment,
@@ -107,9 +134,10 @@ export async function wakeTick(deps: WakeDeps, now = Date.now()) {
   if (!(await store.enabled())) return []
   const reasons = await gather(deps, now)
   let queue = await store.wakes()
-  const fresh = [...reasons].map(([k, r]) => enqueue(queue, k, r, now, newId()))
+  const fresh = reasons.map(r => enqueue(queue, r.key, r.reasons, now, newId(), false, r.from))
   if (fresh.length) { await store.saveWakes(fresh); queue = await store.wakes() }
-  const sent: string[] = []
+  const sent: string[] = [], projects = await store.projects()
+  const shown = (k: string) => { const p = projectOf(projects, k); return p ? shownKey(p) : k }
   for (const key of new Set(queue.filter(w => !w.ackedAt && w.ended !== 'unanswered' && w.ended !== 'merged').map(w => w.coordinator))) {
     const c = await store.coordinator(key)
     const status = await statusOf(deps, c?.terminal)
@@ -117,12 +145,12 @@ export async function wakeTick(deps: WakeDeps, now = Date.now()) {
     const r = tickWakes(queue, key, { status, lastUserAt: c?.userAt, now })
     if (r.deliver) {
       await noteTurn(store, key, 'wake', undefined, r.deliver.reasons.some(x => x.includes(LOOK_REASON)))
-      try { await deps.call('terminal.send', { terminal: c!.terminal, text: wakeText(r.deliver) }, 30000) }
+      try { await deps.call('terminal.send', { terminal: c!.terminal, text: showIds(projects, wakeText(r.deliver, key !== MAIN && !!c?.autopilot?.on)) }, 30000) }
       catch { r.changed.splice(r.changed.indexOf(r.deliver), 1, { ...r.deliver, deliveredAt: undefined, tries: r.deliver.tries - 1 }) }
     }
     await store.saveWakes(r.changed)
     if (r.deliver && r.changed.some(w => w.id === r.deliver!.id && w.deliveredAt)) sent.push(key)
-    if (r.notify) await (deps.notify ?? pushNotify)(`${key}: the coordinator is not answering`, `Wake ${r.notify.id} got no ack after two tries: ${r.notify.reasons[0]?.slice(0, 120) ?? ''}`, key).catch(() => {})
+    if (r.notify) await (deps.notify ?? pushNotify)(`${shown(key)}: the coordinator is not answering`, showIds(projects, `Wake ${r.notify.id} got no ack after two tries: ${r.notify.reasons[0]?.slice(0, 120) ?? ''}`), key).catch(() => {})
   }
   return sent
 }
