@@ -10,7 +10,7 @@
 // One row per agent terminal (individualAgentRows), as in v2.5; rows without
 // a status (plain shells) list as Ready.
 import type { MachineInfo, Pane } from '#shared/types'
-import { type ReadySort, type Row, createRowReuse, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
+import { type ReadySort, type Row, createRowReuse, readyLists, rowGroup, sortReady, spaceRows, urgency } from '#shared/spaces'
 import { coreRowCounts } from '#shared/coreState'
 import { claudeApiShown, claudeSuggestion, machineQuotaRows, quotaRows, tabQuotaRows } from '~/utils/quotas'
 import { longPress } from '~/utils/longPress'
@@ -23,6 +23,7 @@ import { stateMachines } from '~/utils/homeGrouping'
 import { BAR_ALL } from '~/utils/machineBar'
 import { individualAgentRows, individualAgentTitle, isIndividualAgentRow } from '~/utils/homeAgentRows'
 import { boardEntry } from '~/utils/boardEntry'
+import { groupTaskAgents } from '~/utils/taskAgentRow'
 import type { PmOverview } from '#shared/pm/project'
 const emit = defineEmits<{ search: [] }>()
 onMounted(loadUpdate)
@@ -141,8 +142,13 @@ const stateAway = computed(() => stateShown.value.away.map(m => ({
 const mixed = computed(() => stateShown.value.online.length > 1)
 const stateCards = computed(() => stateShown.value.online.flatMap(m =>
   standaloneRows(spaceRows(st.value, m.key)).map(row => ({ row, machine: mixed.value ? machineName(m.key) || m.label : undefined }))))
-const stateCardByKey = computed(() => new Map(stateCards.value.map(c => [c.row.key, c])))
-const stateGroups = computed(() => groupsOf(stateCards.value.map(c => c.row)))
+// Agents of the same task share one row, in the group of the most urgent one.
+const stateEntries = computed(() => groupTaskAgents(stateCards.value, c => (isIndividualAgentRow(c.row) ? taskAgentOf(c.row.lead)?.task : undefined), c => urgency(c.row.lead)))
+const stateCardByKey = computed(() => new Map(stateEntries.value.map(e => [e.lead.row.key, {
+  machine: e.lead.machine,
+  agents: e.agents.length > 1 ? e.agents.map(c => ({ pane: c.row.lead, machine: c.machine })) : undefined,
+}])))
+const stateGroups = computed(() => groupsOf(stateEntries.value.map(e => e.lead.row)))
 // Machine bar: "All", then each machine (a named session counts as its machine),
 // with its state and the number of agents the list counts.
 // A tab counts the rows of the list, not the terminals.
@@ -558,7 +564,7 @@ function resetListWidth() {
         <template v-for="(cards, i) in g.lists" :key="i">
           <p v-if="g.key === 'ready' && g.lists.length > 1" class="ready-subgroup-label">{{ t(i === 0 ? 'Unread' : 'Read') }}</p>
           <div class="card-list">
-            <AgentCard v-for="r in cards" :key="r.key" :pane="r.lead" :row="r" :machine-badge="stateCardByKey.get(r.key)?.machine" />
+            <AgentCard v-for="r in cards" :key="r.key" :pane="r.lead" :row="r" :machine-badge="stateCardByKey.get(r.key)?.machine" :agents="stateCardByKey.get(r.key)?.agents" />
           </div>
         </template>
       </section>
