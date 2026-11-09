@@ -5,6 +5,7 @@ import type { Prefs, Step, Template, Weight } from './workflow'
 import { fillBase, planSteps, type StepState } from './steps'
 import { needsShots, shotMode } from './shots'
 import type { Stopped } from './stop'
+import type { Report } from './report'
 import type { Mark } from './times'
 import { isPublic, publicWorkerSection } from './visibility'
 
@@ -46,6 +47,7 @@ export interface Task {
   origin?: TaskOrigin // who made it: only automatic work is held by the pace (pace.ts)
   held?: string // an automatic start waits for memory on its machine (memory.ts): the engine starts it once memory is back
   cleanup?: { done?: true, skipped?: string } // its worktree removed, or why it stays (cleanup.ts)
+  report?: Report // a problem the user reported, open until the coordinator acts (report.ts)
   createdAt: number
 }
 
