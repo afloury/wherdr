@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { ChatItem, HerdrState, Pane } from '../../shared/types'
-import type { NotificationEvent } from '../../shared/notificationRules'
+import { coordinatorTarget, type NotificationEvent } from '../../shared/notificationRules'
 import { readCoreState, staleCoreDocs, useCoreSession } from './readCoreState'
 import { CoreSession } from './coreSession'
 import { type CoreAlertKind, createCoreAlerts } from './coreAlerts'
@@ -13,6 +13,7 @@ import { DATA_DIR, HOME, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { sleep } from './herdr'
 import { takeBackInterrupted } from './interruptRestore'
 import { uploadNames } from '../../shared/queuedMatch'
+import { startingState } from '../../shared/stateReady'
 import { type TranscriptPane } from './transcripts'
 import { type CoreTranscripts, createCoreTranscripts } from './coreTranscripts'
 import { coreCall } from './core'
@@ -41,7 +42,6 @@ const corePreviews = () => coreSubtitles ||= createCorePreviews({
 export const transcripts = {
   chat: (p: TranscriptPane, o: Parameters<CoreTranscripts['chat']>[1] = {}) => coreTranscriptsOf().chat(p, o),
   preview: (p: TranscriptPane) => coreTranscriptsOf().preview(p),
-  latestReply: (p: TranscriptPane) => coreTranscriptsOf().latestReply(p),
   image: (p: TranscriptPane, file: string | null, ref: string | null, i: number) => coreTranscriptsOf().image(p, file, ref, i),
   model: (p: TranscriptPane) => coreTranscriptsOf().model(p),
   locate: (p: TranscriptPane) => coreTranscriptsOf().locate(p),
@@ -57,7 +57,7 @@ export const transcripts = {
 export interface EventClient { send: (data: string) => void, pane: string | null, visible: boolean }
 export const eventClients = new Map<string, EventClient>()
 
-let state: HerdrState = { ok: false, error: 'starting…', workspaces: [], panes: [] }
+let state: HerdrState = startingState()
 let stateJson = JSON.stringify(state)
 export const getStateJson = () => stateJson
 export const getState = () => state
@@ -66,6 +66,16 @@ export const findPane = (id: string | null | undefined) => state.panes.find(p =>
 function broadcastState() {
   for (const c of eventClients.values()) {
     try { c.send(stateJson) }
+    catch { /* client gone */ }
+  }
+}
+
+// The server is stopping (a restart for an update): open pages keep what they
+// show until it is back, instead of switching to their offline look.
+export function announceRestart() {
+  const msg = JSON.stringify({ type: 'restarting' })
+  for (const c of eventClients.values()) {
+    try { c.send(msg) }
     catch { /* client gone */ }
   }
 }
@@ -233,13 +243,20 @@ const isTaskAgent = async (address: string) => {
   catch { return false }
 }
 
+// Alfred's or a project coordinator's terminal: its coordinator exception decides.
+const coordinatorAt = async (address: string) => {
+  try { const c = (await pmStore().coordinators()).find(x => x.terminal === address); return c ? coordinatorTarget(c.project) : undefined }
+  catch { return undefined }
+}
+
 async function notifyCorePane(address: string, kind: CoreAlertKind) {
   const p = state.panes.find(x => x.coreAddress === address)
   if (!p || isViewed(p.id)) return
   // A project task's agent waiting for the user goes into the grouped Decisions push.
   if (kind === 'needs-you' && await isTaskAgent(address)) return
   const event: NotificationEvent = kind === 'needs-you' ? 'needs-you' : 'finished'
-  if (!await notificationAllowed(event, state, p, { machine: p.machine ?? '' })) return
+  const coordinator = await coordinatorAt(address)
+  if (!await notificationAllowed(event, state, p, { machine: p.machine ?? '', ...(coordinator ? { coordinator } : {}) })) return
   const ws = state.workspaces.find(w => w.id === p.workspace)
   const where = [ws && ws.label, notificationTitle(p.title)].filter(Boolean).join(' · ')
   const on = state.machines && state.machines.length > 1 && p.machine ? `${state.machines.find(m => m.key === p.machine)?.label ?? p.machine} · ` : ''

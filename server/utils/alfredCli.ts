@@ -2,26 +2,28 @@
 // (never in its environment, never sent off this machine), and its commands.
 // A change is only described unless the call says --apply; Alfred applies it
 // after the user's yes. Nothing here removes data.
+import path from 'node:path'
 import { CHANGES, SETTING_VALUES, alfredCommandList, dryRun, parseAlfredCommand, workflowEditRefusal, type AlfredPlan } from '../../shared/pm/alfredCli'
 import { GUARDED_PROGRAMS, MAIN, templateDiff, type CoordinatorAgent } from '../../shared/pm/coordinator'
-import { EXAMPLES } from '../../shared/pm/examples'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges } from '../../shared/pm/templateText'
 import { ALFRED } from '../../shared/pm/alfred'
-import type { Pane } from '../../shared/types'
 import { offeredAgents, readAgentOrder, readHiddenAgents } from '../../shared/agentList'
-import { cleanProjectInput } from '../../shared/pm/project'
+import { allowedMachines, cleanProjectInput, cleanProjectUpdate, machinesOf } from '../../shared/pm/project'
 import { keyClash, projectOf as findProject, shownKey } from '../../shared/pm/projectKey'
 import { HerdrError } from './herdr'
-import { alfredTokenOk, coordinatorsView, noteTurn, startCoordinator, type CoordinatorUrls } from './pmCoordinator'
+import { alfredTokenOk, coordinatorsView, noteTurn, readV2Projects, startCoordinator, type CoordinatorUrls, type V2Candidate } from './pmCoordinator'
 import { sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
+import { lastWords } from './pmRead'
 import type { FolderCheck, PmStore } from './pmStore'
 import { patchSettings, readSettings } from './settings'
 import { saveProjectGuards } from './pmProject'
+import { checkMachine } from './pmReady'
 import { projectPlace } from '../../shared/pm/places'
+import { EXAMPLES } from '../../shared/pm/examples'
+import { DATA_DIR } from './env'
 
-// reply: an agent's last reply, read from its conversation.
-type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string, reply?: (pane: Pane) => Promise<{ text: string } | null> }
+type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string, dataDir?: string }
 
 // A turn the server saw start over an hour ago is not trusted any more (as a coordinator's).
 const TURN_MS = 3_600_000
@@ -47,7 +49,7 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
   const remoteOf = (key: string) => (key && !machines.find(m => m.key === key)?.local ? machineName(key) : undefined)
   const needPm = async () => { if (!(await store.enabled())) throw new HerdrError('pm_off', `Projects are off: the user switches them on in ${projectPlace(undefined, 'general', true)}`) }
   const knownTemplate = async (id: string) => {
-    if (id && !(await store.overview()).templates.some(t => t.id === id)) throw new HerdrError('not_found', `No template ${id} (see wherdr alfred templates)`)
+    if (id && !EXAMPLES.some(e => `example:${e.id}` === id) && !(await store.overview()).templates.some(t => t.id === id)) throw new HerdrError('not_found', `No template ${id} (see wherdr alfred templates)`)
   }
   // A project coordinator's agent: its default while the user offers it, else
   // their first offered agent that can run it (Settings › Agents), else Claude.
@@ -78,9 +80,20 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       const c = (await coordinatorsView(store)).find(x => x.project === p.key)
       const tasks: Record<string, number> = {}
       for (const t of await store.tasks()) if (t.project === p.key) tasks[t.state] = (tasks[t.state] ?? 0) + 1
-      return { project: { ...p, machineName: machineName(p.machine) }, coordinator: c && { agent: (await projectAgent(p.key)).program, running: !!c.terminal, ...(c.proposal ? { proposalWaits: { by: c.proposal.by ?? 'the coordinator', at: c.proposal.at } } : {}) }, tasks }
+      return { project: { ...p, machineName: machineName(p.machine) }, coordinator: c && { agent: (await projectAgent(p.key)).program, running: !!c.terminal, ...(c.proposal ? { proposalWaits: { by: c.proposal.by === 'main' ? ALFRED : 'the coordinator', at: c.proposal.at } } : {}) }, tasks }
     }
-    case 'templates': return { templates: (await store.overview()).templates, examples: EXAMPLES.map(e => `example:${e.id}`) }
+    case 'templates': return { templates: (await store.overview()).templates, examples: EXAMPLES.map(e => ({ id: `example:${e.id}`, instructions: e.instructions, taskTypes: Object.keys(e.taskTypes), guards: e.guards })) }
+    case 'v2': {
+      const candidates = await readV2Projects(deps.dataDir)
+      if (!candidates.length) return { fromV2: false }
+      // The v3 project made from each: same folder (on any machine) or same name.
+      const made = (c: V2Candidate) => projects.find(p => p.path === c.path || p.name === c.name)?.key ?? null
+      return {
+        fromV2: true, report: path.join(deps.dataDir ?? DATA_DIR, 'migration-report.md'),
+        projects: candidates.map(c => ({ ...c, project: made(c) })),
+        note: 'Folders are those of the machine v2 ran on (this one). Add tasks again with wherdr pm task add once the project has a template',
+      }
+    }
     case 'machines': return { machines: machines.map(m => ({ key: m.key, label: m.label, local: m.local, status: m.status })) }
     case 'coordinators': return { coordinators: await Promise.all((await coordinatorsView(store)).map(async c => ({ project: c.project, name: c.name, agent: c.main ? c.agent?.program : (await projectAgent(c.project)).program, running: !!c.terminal }))) }
     case 'coordinator open': {
@@ -125,17 +138,6 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       if (!cmd.template && !p.from) return { unchanged: true, project: p.key, template: 'none' }
       return change({ change: [`project ${p.key} template: ${p.from?.template ?? 'none'} → ${cmd.template || 'none'}`] }, () => store.setTemplate(p.key, cmd.template))
     }
-    case 'project workflow': {
-      await needPm()
-      const p = projectOf(cmd.key)
-      // A template by its id, an example by example:<id> (or its bare id when no template has it).
-      const templates = (await store.overview()).templates
-      const bare = !cmd.from.startsWith('example:') && !templates.some(t => t.id === cmd.from) ? `example:${cmd.from}` : cmd.from
-      if (bare.startsWith('example:') && !EXAMPLES.some(e => `example:${e.id}` === bare)) throw new HerdrError('not_found', `No template or example ${cmd.from} (see wherdr alfred templates)`)
-      const old = await store.workflow(p.key)
-      return change({ change: [old ? `replace the workflow of ${p.key} (v${old.version ?? 1}) with a copy of ${bare}; its guards stay` : `start the workflow of ${p.key} as a copy of ${bare}`] },
-        () => store.setTemplate(p.key, bare, { keepGuards: true, by: ALFRED }))
-    }
     case 'project workflow edit': {
       await needPm()
       const p = projectOf(cmd.key)
@@ -152,11 +154,11 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       if (errors.length) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
       // Saved where the coordinator's proposal waits: the user answers it in the same review.
       const rec = await store.coordinator(p.key)
-      const proposal = { template: next, diff: templateDiff(old, next), at: Date.now(), base: old!.version ?? 1, by: ALFRED, ...(turn?.said ? { said: turn.said } : {}) }
+      const proposal = { template: next, diff: templateDiff(old, next), at: Date.now(), base: old!.version ?? 1, by: 'main', ...(turn?.said ? { said: turn.said, saidAt: turn.at } : {}) }
       await store.saveCoordinator({ project: p.key, tokenHash: '', ...rec, proposal })
       return {
         proposed: true, changes: templateChanges(old, next), diff: proposal.diff,
-        ...(rec?.proposal ? { replaced: `the change proposed by ${rec.proposal.by ?? 'the coordinator'} that waited` } : {}),
+        ...(rec?.proposal ? { replaced: `the change proposed by ${rec.proposal.by === 'main' ? 'you' : 'the coordinator'} that waited` } : {}),
         next: `The user accepts or refuses it in ${projectPlace(p.key, 'workflow', true)}; wherdr alfred project ${p.key} shows whether it still waits`,
       }
     }
@@ -179,8 +181,9 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       const p = projectOf(cmd.key)
       const pane = await coordinatorPane(p.key)
       if (!pane) throw new HerdrError('not_found', `The coordinator of ${p.key} is not running: wherdr alfred tell ${p.key} "<text>" starts it`)
-      const reply = (await deps.reply?.(pane).catch(() => null)) ?? null
-      return { project: p.key, working: pane.status === 'working', reply: reply?.text ?? null }
+      const said = await lastWords(deps, pane.coreAddress!)
+      if (!said) throw new HerdrError('unreachable', `Nothing to read from the coordinator of ${p.key}: its conversation and its terminal are out of reach`)
+      return { project: p.key, working: pane.status === 'working', ...said }
     }
     case 'project guards': {
       await needPm()
@@ -194,6 +197,32 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       const cp = contributorPrs ? (contributorPrs === 'off' ? undefined : contributorPrs) : old.contributorPrs
       const guards = { ...(branches ? { protected: branches } : {}), ...(Object.keys(merge).length ? { merge } : {}), ...(cp ? { contributorPrs: cp } : {}) }
       return change({ change: [`project ${p.key} guards: ${JSON.stringify(old)} → ${JSON.stringify(guards)}`] }, () => saveProjectGuards(store, p.key, guards, 'Alfred', deps))
+    }
+    case 'project machine': {
+      await needPm()
+      const p = projectOf(cmd.key)
+      const allowed = allowedMachines(p).slice(1)
+      // The machine by its key or its label; one no longer known is removed by its key.
+      const m = machines.find(x => x.key === cmd.machine) ?? machines.find(x => x.label === cmd.machine)
+      const mk = m?.key ?? (cmd.action === 'remove' && allowed.includes(cmd.machine) ? cmd.machine : undefined)
+      if (mk === undefined) throw new HerdrError('not_found', `Unknown machine ${cmd.machine} (see wherdr alfred machines)`)
+      if (mk === p.machine) throw new HerdrError('bad_input', `${machineName(mk)} is the project's own machine`)
+      if (cmd.action === 'remove') {
+        if (!allowed.includes(mk)) return { unchanged: true, project: p.key, machines: allowedMachines(p).map(machineName) }
+        return change({ change: [`project ${p.key}: its tasks no longer start on ${machineName(mk)} (tasks already there stay)`] },
+          () => store.updateProject(p.key, { machines: allowed.filter(x => x !== mk) }))
+      }
+      const { update, errors } = cleanProjectUpdate({ machines: [...allowed.filter(x => x !== mk), mk], clones: { [mk]: cmd.clone } })
+      const bad = update ? machinesOf(p, update).errors : errors
+      if (!update || bad.length) throw new HerdrError('bad_input', bad.map(e => `${e.path}: ${e.message}`).join('; '))
+      return change({
+        change: [`project ${p.key}: its tasks may run on ${machineName(mk)}, in its clone ${update.clones![mk]}`, `then the readiness check of ${machineName(mk)} runs (read-only)`],
+        remote: remoteOf(mk),
+      }, async () => {
+        const project = await store.updateProject(p.key, update)
+        const ready = await checkMachine(deps, p.key, mk).catch((e: Error) => ({ refused: e.message }))
+        return { project, ready }
+      })
     }
     case 'coordinator start': {
       await needPm()

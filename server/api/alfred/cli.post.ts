@@ -9,13 +9,12 @@ import { coordinatorUrls, takeUpdateNotice } from '../../utils/pmCoordinator'
 import { MAIN } from '../../../shared/pm/coordinator'
 import { pmFolderCheck } from '../../utils/pmFolder'
 import { pmStore } from '../../utils/pmStore'
-import { transcripts } from '../../utils/state'
 
 export default defineApi(async (event, body) => {
   const check = checkRequestClient(event.node.req.socket?.remoteAddress, event.node.req.headers)
   if (!check.ok || check.zone !== 'local') throw new HerdrError('forbidden', 'wherdr alfred works on wherdr\'s own machine only')
   const token = String(getRequestHeader(event, 'authorization') || '').replace(/^Bearer\s+/i, '')
-  const out = await runAlfredCommand({ ...coreAdminDeps(), store: pmStore(), check: pmFolderCheck, urls: coordinatorUrls(getRequestURL(event)), reply: p => transcripts.latestReply(p) }, token, body)
+  const out = await runAlfredCommand({ ...coreAdminDeps(), store: pmStore(), check: pmFolderCheck, urls: coordinatorUrls(getRequestURL(event)) }, token, body)
   const notice = await takeUpdateNotice(pmStore(), MAIN)
   if (notice) setResponseHeader(event, 'x-wherdr-notice', notice)
   return out
