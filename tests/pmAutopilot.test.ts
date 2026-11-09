@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_AUTOPILOT, holdsSlot, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, pastLimit, scheduledWake, startRefusal, today, tellRefusal, countFix } from '../shared/pm/autopilot'
 import type { Run, Task } from '../shared/pm/run'
+import { HEALTH_ACK, healthEvery, healthSummary } from '../shared/pm/health'
 import { accountQuota, pacedStart, paceLine } from '../shared/pm/pace'
 import { DEFAULT_PACE, type PaceVerdict } from '../shared/pm/pacing'
 import type { Quotas } from '../shared/types'
@@ -18,7 +19,10 @@ describe('autopilot settings', () => {
     for (const at of ['every 2h', 'soon']) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, at })).toEqual({ error: expect.stringMatching(/^at:/) })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, events: ['merged'] })).toEqual({ error: expect.stringMatching(/events/) })
     // Tasks / day: empty is no daily limit, up to 1000 otherwise.
-    for (const perDay of ['', null]) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay })).toEqual({ autopilot: { on: false, goal: '', events: ['done', 'stuck'], perDay: null, atOnce: 2 } })
+    for (const perDay of ['', null]) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay })).toEqual({ autopilot: { on: false, goal: '', events: [], perDay: null, atOnce: 2 } })
+    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, health: ' 6h ' })).toMatchObject({ autopilot: { health: '6h' } })
+    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, health: 'off' })).toMatchObject({ autopilot: { health: 'off' } })
+    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, health: 'soon' })).toEqual({ error: expect.stringMatching(/^health:/) })
     for (const perDay of [0, 250]) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay })).toMatchObject({ autopilot: { perDay } })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay: 2000 })).toEqual({ error: expect.stringMatching(/perDay/) })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, hours: { from: 8, to: 8 } })).toEqual({ error: expect.stringMatching(/hours/) })
@@ -85,6 +89,24 @@ describe('autopilot events', () => {
     expect(r.reasons).toEqual(['CO-1 (T1): stuck: Which DB?', 'CO-3 (T3): added'])
     expect(r.seen).toEqual({ 'CO-1': 'waiting', 'CO-2': 'done', 'CO-3': 'todo' })
     expect(autopilotEvents({ ...ap, events: [...ap.events] }, tasks, r.seen).reasons).toEqual([])
+  })
+
+  it('by default, wakes only for what needs judgment', () => {
+    const seen = { 'CO-1': 'working', 'CO-2': 'working', 'CO-3': 'working', 'CO-4': 'working', 'CO-5': 'working', 'CO-6': 'todo' } as const
+    const step = { at: 2, started: true, proofs: {}, rounds: {} }
+    const tasks = [
+      task(1, { state: 'waiting', waitKind: 'question', waiting: 'Which DB?' }),
+      task(2, { state: 'waiting', waitKind: 'permission', waiting: 'Run rm?' }), // the user's
+      task(3, { step: { ...step, yourTurn: { reason: 'rounds', badge: 'Decide: review failed 3 times' } } }),
+      task(4, { step: { ...step, done: true } }),
+      task(5, { step: { ...step, yourTurn: { reason: 'user', badge: 'Merge' } } }),
+      task(6), // started
+      task(7, { state: 'todo' }), // added
+    ]
+    expect(autopilotEvents(DEFAULT_AUTOPILOT, tasks, seen).reasons).toEqual(['CO-1 (T1): question: Which DB?', 'CO-3 (T3): decide: Decide: review failed 3 times'])
+    // Turned back on, routine events come too; a question is never also stuck.
+    expect(autopilotEvents({ ...DEFAULT_AUTOPILOT, events: ['added', 'done', 'stuck', 'ready'] }, tasks, seen).reasons)
+      .toEqual(['CO-1 (T1): question: Which DB?', 'CO-2 (T2): stuck: Run rm?', 'CO-3 (T3): decide: Decide: review failed 3 times', 'CO-4 (T4): done', 'CO-5 (T5): ready', 'CO-7 (T7): added'])
   })
 
   it('wakes for a task added by someone else than this coordinator only', () => {
@@ -282,5 +304,38 @@ describe('the pace holds automatic starts only', () => {
     expect(paceLine({ ...s, policy: DEFAULT_PACE }, now)).toBe('claude:ab12cd34 Pro work · free · week 41 % / limit 100 % · today +9 % · 5 h 30 % · go')
     expect(paceLine({ ...s, policy: { ...DEFAULT_PACE, mode: 'workdays' }, verdict: wait }, now)).toMatch(/· working days · week 41 % \/ line \d+ % · .* · wait: ahead of the target line until Fri 00:00$/)
     expect(paceLine({ ...s, account: null, quota: null, verdict: { go: true, unknown: true }, today: null }, now)).toBe('claude · quota unknown (no reading of claude on this project\'s machine) · task-count limits only')
+  })
+})
+
+describe('the health check', () => {
+  const now = at(12), hour = 3_600_000
+  it('runs every 3h unless set or off', () => {
+    expect(healthEvery(DEFAULT_AUTOPILOT)).toBe('3h')
+    expect(healthEvery({ health: '6h' })).toBe('6h')
+    expect(healthEvery({ health: 'off' })).toBeNull()
+  })
+
+  it('sums up done, waiting for the user, stuck for long and idle machines', () => {
+    const step = { at: 2, started: true, proofs: {}, rounds: {} }
+    const tasks = [
+      task(1, { step: { ...step, done: true } }),
+      task(2, { step: { ...step, done: true } }), // done before the last check
+      task(3, { state: 'waiting', waiting: 'Which DB?\nmore' }),
+      task(4, { step: { ...step, yourTurn: { reason: 'user', badge: 'Merge' } } }),
+      task(5, { stall: { cause: 'idle', reason: 'agent idle', since: now - 2 * hour } }),
+      task(6, { stall: { cause: 'idle', reason: 'agent idle', since: now - 10 * 60_000 } }), // not long yet
+      task(7, { state: 'todo', createdAt: 1 }),
+    ]
+    const seen = { 'CO-1': 'working', 'CO-2': 'done' } as const
+    expect(healthSummary(tasks, seen, now, ['mini'])).toEqual([
+      'Done since the last check: CO-1 (T1).',
+      'Waiting for the user: CO-3 (T3): Which DB?; CO-4 (T4): Merge.',
+      'Stuck for over 1 h: CO-5 (T5): agent idle, for 2 h.',
+      'Machines idle while 1 to-do task waits: mini.',
+      HEALTH_ACK,
+    ])
+    // No machine idle: no line for it. Nothing at all to say: no wake.
+    expect(healthSummary(tasks, seen, now, [])).not.toContainEqual(expect.stringMatching(/^Machines idle/))
+    expect(healthSummary([task(2, { step: { ...step, done: true } }), task(6)], seen, now, ['mini'])).toEqual([])
   })
 })

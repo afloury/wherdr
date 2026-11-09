@@ -12,6 +12,9 @@ import { currentStep, durationMs } from '../../shared/pm/steps'
 import { taskPlan } from '../../shared/pm/run'
 import { due as isDue, parseSchedule } from '../../shared/pm/schedule'
 import { enqueue, tickWakes, wakeText, type CoordStatus, type Wake } from '../../shared/pm/wakes'
+import { healthEvery, healthSummary } from '../../shared/pm/health'
+import { allowedMachines, type Project } from '../../shared/pm/project'
+import type { Run } from '../../shared/pm/run'
 import type { Template } from '../../shared/pm/workflow'
 import type { CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
@@ -35,6 +38,15 @@ async function statusOf(deps: WakeDeps, terminal: string | undefined): Promise<C
   } catch (e) { return /not.?found|unknown terminal/i.test(`${(e as { kind?: string }).kind} ${(e as Error).message}`) ? 'gone' : null }
 }
 
+// The project's machines online with no agent at work, by name: the health check's.
+const idleMachines = (deps: WakeDeps, p: Project, runs: Run[]) => {
+  const busy = new Set(runs.filter(r => r.state !== 'ended').map(r => r.machine))
+  return allowedMachines(p).flatMap((key) => {
+    const m = deps.machines().find(x => x.key === key)
+    return m?.status === 'online' && !busy.has(key) ? [m.label] : []
+  })
+}
+
 // Reasons of this tick, per project.
 async function gather(deps: WakeDeps, now: number) {
   const { store } = deps
@@ -46,7 +58,7 @@ async function gather(deps: WakeDeps, now: number) {
     if (e) e.reasons.push(...r)
     else reasons.push({ key, reasons: [...r], from })
   }
-  const projects = await store.projects(), tasks = await store.tasks()
+  const projects = await store.projects(), tasks = await store.tasks(), runs = await store.runs()
   const templates = new Map<string, Template | null>()
   for (const p of projects) templates.set(p.key, p ? await store.workflow(p.key) : null)
   for (const task of tasks) {
@@ -84,10 +96,16 @@ async function gather(deps: WakeDeps, now: number) {
     if (kind === 'send' || kind === 'look') kind = scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now), (await projectPace(store, p.key, undefined, now))?.verdict)
     const skip = skippedWake(kind)
     if (kind && !skip) add(p.key, [`Scheduled wake (${due ? `every ${ap!.every}` : ap!.at}). ${kind === 'look' ? `${LOOK_REASON} ` : ''}${goal}`])
+    // The health check: the first look only notes where tasks stand; off (or
+    // outside the hours), it starts over once back on.
+    const every = on ? healthEvery(ap) : null
+    const healthDue = !!every && !!c.health && now - c.health.at >= durationMs(every)
+    if (healthDue) add(p.key, healthSummary(mine, c.health!.seen, now, idleMachines(deps, p, runs)), { kind: 'health' })
+    const health = every && (!c.health || healthDue) ? { health: { at: now, seen: ev.seen } } : !every && c.health ? { health: undefined } : null
     const woke = reasons.some(x => x.key === p.key)
-    if (due || atDue || woke || JSON.stringify(ev.seen) !== JSON.stringify(c.seen ?? null)) {
+    if (due || atDue || woke || health || JSON.stringify(ev.seen) !== JSON.stringify(c.seen ?? null)) {
       await store.saveCoordinator({
-        ...c, seen: ev.seen, ...(due ? { ranAt: now } : {}), ...(atDue ? { atRan: now } : {}),
+        ...c, seen: ev.seen, ...(due ? { ranAt: now } : {}), ...(atDue ? { atRan: now } : {}), ...health,
         ...(woke ? { woke: { at: now, seen: ev.seen } } : {}),
         ...(skip ? { skipped: bump(c.skipped, now) } : {}),
       })

@@ -63,11 +63,11 @@ export const wakeKindOf = (text: string): WakeKind | null => {
 
 // The coordinators (keys: the task's project, the main one) that get the
 // engine's give-up on a block (selfFix.ts): each running with its autopilot
-// on, waking for stuck tasks, in its hours, as its 'stuck' event would have.
+// on, in its hours. A give-up needs judgment: it wakes whatever the events.
 export const wakesFor = (keys: string[], coordinator: (key: string) => { terminal?: string, autopilot?: Autopilot } | undefined, now: number) =>
   keys.filter((key) => {
     const c = coordinator(key), ap = c?.autopilot
-    return !!c?.terminal && !!ap?.on && ap.events.includes('stuck') && inHours(ap.hours, new Date(now))
+    return !!c?.terminal && !!ap?.on && inHours(ap.hours, new Date(now))
   })
 
 // What a wake may do beyond answering a question: a project coordinator's, its autopilot on.
