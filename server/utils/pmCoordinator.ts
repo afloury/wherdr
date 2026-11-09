@@ -32,6 +32,8 @@ import { removeTask, resumeTask, stopTask } from './pmStop'
 import { checkOnGithub } from './pmGhCheck'
 import { noteBack } from './pmStall'
 import { reviveWorker } from './pmRelease'
+import { handFix } from '../../shared/pm/release'
+import { DONE_CMD } from '../../shared/pm/advance'
 import { READ_LINES, lastWords } from './pmRead'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
@@ -249,17 +251,24 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const task = await taskOf(cmd.task)
       const holder = t && !task.step?.done ? currentStep(planOf(t, task, p), task.step ?? initialState())?.holder : undefined
       const { role, run, released } = tellTarget(await store.runs(), task.id, holder, cmd.to, !!cmd.fix)
-      const said = `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}`
+      // A failed step action handed over with a fix: the worker reports it done, then the engine tries it again.
+      const fixesAction = !!(cmd.fix && t && handFix(planOf(t, task, p), task.step, cmd.fix, Date.now()))
+      const said = `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}${fixesAction ? `\n\nWhen done: ${DONE_CMD}` : ''}`
       const wake = turn !== 'user', fix = cmd.fix && { autopilot: rec?.autopilot, main }
       // A wake's fix counts against the step's; the log keeps its kind and reason.
       const fixed = (x: Task) => (cmd.fix && wake ? { ...x, fixes: countFix(task) } : x)
       const fixNote = cmd.fix ? ` (fix ${cmd.fix}: ${cmd.reason})` : ''
+      // A failed step action handed over with a fix: off Your turn while the agent fixes it, then tried again.
+      const handed = async (x: Task) => {
+        const step = cmd.fix && t ? handFix(planOf(t, x, p), x.step, cmd.fix, Date.now()) : undefined
+        return step ? store.logTask({ ...x, step }, by, `${currentStep(planOf(t!, x, p), step)?.id ?? 'step'}: the agent is fixing it, then it is tried again`) : x
+      }
       if (released) {
         const why = tellRefusal(task, wake, fix)
         if (why) throw new HerdrError('refused', why)
         const started = await reviveWorker(deps, task.id, cmd.fix ? `a fix of the coordinator: ${cmd.reason}` : 'a message of the coordinator', said)
         if (started?.state !== 'working') throw new HerdrError('refused', 'The task\'s worker could not start again now (short on memory?): try again later')
-        const told = await store.logTask(fixed(started), by, `told the worker, started again${fixNote}: ${cmd.text.slice(0, 300)}`)
+        const told = await handed(await store.logTask(fixed(started), by, `told the worker, started again${fixNote}: ${cmd.text.slice(0, 300)}`))
         return { task: t ? await noteBack(store, told, planOf(t, told, p), by, `the ${by} told the worker`) : told, sentTo: 'worker (started again with your message)' }
       }
       if (!run?.terminal) throw new HerdrError('not_found', `The task's ${role} is not running${cmd.to ? '' : ` (--to ${role === 'worker' ? 'reviewer' : 'worker'} picks the other agent)`}`)
@@ -268,7 +277,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const why = tellRefusal({ ...task, state: live ? 'waiting' : task.state, waitKind: live ?? task.waitKind }, wake, fix)
       if (why) throw new HerdrError('refused', why)
       await deps.call('terminal.send', { terminal: run.terminal, text: said }, 30000)
-      const saved = await store.logTask(fixed(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task), by, `told the ${role}${fixNote}: ${cmd.text.slice(0, 300)}`)
+      const saved = await handed(await store.logTask(fixed(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task), by, `told the ${role}${fixNote}: ${cmd.text.slice(0, 300)}`))
       return { task: t ? await noteBack(store, saved, planOf(t, saved, p), by, `the ${by} told the ${role}`) : saved, sentTo: role }
     }
     case 'read': {

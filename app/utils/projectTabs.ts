@@ -20,3 +20,17 @@ export function projectTabMachines(project: { machines: readonly string[] }, ove
 // selection: the tab's machines (barMachineSelection), null = the All tab.
 export const projectOnTab = (tabMachines: readonly string[] | null, selection: readonly string[] | null) =>
   !selection || !tabMachines || tabMachines.some(m => selection.includes(m))
+
+// What a home tab counts, for its counters and its badge alike: the agent rows
+// it lists (by their machine's base key) and the coordinators it shows.
+// Alfred shows on every tab (tabMachines null); a coordinator waiting for the
+// user (a proposal to answer) counts in Your turn.
+export type CountGroup = 'blocked' | 'working' | 'ready'
+export interface TabCounted { group: CountGroup }
+export function tabCounts(rows: readonly (TabCounted & { base: string })[], coordinators: readonly (TabCounted & { tabMachines: readonly string[] | null })[], selection: readonly string[] | null) {
+  const counts: Record<CountGroup, number> = { blocked: 0, working: 0, ready: 0 }
+  for (const r of rows) if (!selection || selection.includes(r.base)) counts[r.group]++
+  for (const c of coordinators) if (projectOnTab(c.tabMachines, selection)) counts[c.group]++
+  return counts
+}
+export const countsTotal = (c: Record<CountGroup, number>) => c.blocked + c.working + c.ready
