@@ -42,7 +42,7 @@
 - [Alfred](docs/home.md#alfred): wherdr's assistant, its agent, home folder and memory.
 - [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred, with the project's colored key badge, and their menu.
 - [Offered agents](docs/home.md#offered-agents): Settings › Agents, which programs every picker offers and in which order.
-- [Machines as tabs](docs/home.md#machines-as-tabs): the machine tabs, their groups and a machine's actions.
+- [Machines as tabs](docs/home.md#machines-as-tabs): the machine tabs, their groups, a machine's actions, and the offline machines' line with Reconnect (no machine chips while all are online).
 - [New agents and tabs](docs/home.md#new-agents-and-tabs): the New sheet, the + of a space's tabs, and renaming or closing a tab or a space.
 - [Search](docs/home.md#search): search agents and conversations.
 - [Inventory](docs/core.md#inventory): how terminals are placed in spaces and tabs, and how states are read.

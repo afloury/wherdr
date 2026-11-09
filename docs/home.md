@@ -84,9 +84,10 @@ The **machine tabs** at the top of the list are **All**, then one tab per machin
 each core machine, online or offline) with its count of rows. A tap shows that machine alone,
 with its Claude and Codex quotas at the top; an offline or reconnecting machine says so there.
 The tabs hide when they would show a single machine. A machine's actions (New agent here, Keep awake,
-Reconnect, Machine settings, Claude quota setup) open on a right click or long press of its
-tab; with the tabs hidden and several machines, on its chip above the list; offline machines are
-listed at the bottom, with **Reconnect**.
+Reconnect, Machine settings) open on a right click or long press of its tab. With the tabs hidden,
+the list shows no machine chips while every machine is online: the New sheet picks the machine.
+An offline or reconnecting machine gets one compact line at the bottom (state, name, known
+agents) with **Reconnect**. Claude quota setup lives in Settings › Agents only.
 Settings › Appearance › Home screen › **Machine tabs** orders the tabs, hides some of them, or
 hides them all. In **Groups**, create a named selection of machines; groups follow you across
 devices. Machines themselves are managed in [Settings › Machines](machines.md#manage-machines).
