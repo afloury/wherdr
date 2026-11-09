@@ -16,6 +16,7 @@ const remote = computed(() => machines.value.filter(m => !m.local && !gone.value
   const from = renamedTo.value[m.label]
   return from && m.status !== 'online' ? { ...m, status: 'connecting' as const, error: undefined } : m
 }))
+const localKey = computed(() => machines.value.find(m => m.local)?.key ?? '')
 const STATE: Record<string, string> = { online: 'connected', connecting: 'connecting…', offline: 'offline' }
 
 async function add() {
@@ -95,7 +96,11 @@ async function reconnect(key: string) {
   <div class="settings-group core-machines">
     <p class="muted settings-hint">{{ t('Other machines running herdr-core, reached over SSH. Terminals and agents can be started on them from New.') }}</p>
     <div class="settings-card">
-      <div class="machine-row"><b>{{ hostLabel || t('This machine') }}</b><span class="mono-label">{{ t('this machine') }}</span></div>
+      <div class="machine-row">
+        <span><b>{{ hostLabel || t('This machine') }}</b><MachineAwake :machine-key="localKey" online /></span>
+        <span class="mono-label">{{ t('this machine') }}</span>
+        <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-sun" :aria-label="t('Keep awake')" data-testid="machine-awake-open" @click="openAwake({ key: localKey, label: hostLabel })" />
+      </div>
       <div v-for="m in remote" :key="m.key" class="machine-row" data-testid="core-machine">
         <form v-if="renaming === m.key" class="rename-form" @submit.prevent="rename(m.key)">
           <UInput v-model="newName" size="lg" class="w-full mono" autocapitalize="none" autocorrect="off" :spellcheck="false" maxlength="32" :aria-label="t('Name')" autofocus />
@@ -103,9 +108,10 @@ async function reconnect(key: string) {
           <UButton type="button" size="sm" color="neutral" variant="outline" @click="renaming = ''">{{ t('Cancel') }}</UButton>
         </form>
         <template v-else>
-          <span><b>{{ m.label }}</b><small v-if="m.error" class="muted">{{ m.error }}</small></span>
+          <span><b>{{ m.label }}</b><small v-if="m.error" class="muted">{{ m.error }}</small><MachineAwake :machine-key="m.key" :online="m.status === 'online'" /></span>
           <span class="mono-label" :data-status="m.status">{{ t(STATE[m.status] || m.status) }}</span>
           <UButton v-if="m.status !== 'online'" color="neutral" variant="outline" size="sm" :loading="busyKey === m.key" @click="reconnect(m.key)">{{ t('Reconnect') }}</UButton>
+          <UButton v-if="m.status === 'online'" color="neutral" variant="ghost" size="sm" icon="i-lucide-sun" :aria-label="t('Keep awake')" @click="openAwake(m)" />
           <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-pencil" :aria-label="t('Rename')" data-testid="machine-rename" @click="startRename(m)" />
           <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-trash-2" :aria-label="tl('Forget', 'Oublier')" data-testid="machine-forget" @click="forget(m)" />
         </template>

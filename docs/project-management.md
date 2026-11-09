@@ -264,6 +264,8 @@ click, long press, or ••• when it has more than *Open*) offers:
 - **Stop…**, on a running task: its agent ends, the worktree, branch and work
   stay, and nothing is merged;
 - **Continue**, **Take it as it is** or **Archive**, on a stopped task;
+- **Check on GitHub**, on a task at its merge step or archived with a PR: its
+  sheet opens with what wherdr found (see [Task sheet](#task-sheet));
 - **Delete…**, on a task never started (no agent, worktree or branch). A task
   other tasks wait for cannot be deleted; its number is never given again.
 
@@ -288,10 +290,27 @@ with this version: an older task shows only its total. Below, tabs: **Descriptio
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
 and screenshots) and **Log**. A refused merge says why under its button.
 
+**Check on GitHub** shows on a task with a PR at its merge step, or archived:
+wherdr reads the PR now, for a merge stuck after a guard refusal, a PR merged
+by hand on GitHub, or GitHub slow to see a push. Merged: the merge step ends as
+merged and the task goes on (next step or Done), out of Your turn; an archived
+task ends as merged. Still open: why it waits (its checks, a review, a branch
+only you may merge into), with a link to the PR; a merge wherdr may do is tried
+again within a minute. Closed without a merge: said, with **Archive…**. The
+coordinator and Alfred run the same check with `wherdr pm task check <task>`
+when you ask them to unblock a task.
+
 ### A task waiting for you
 
 Open a task under *Your turn* and its sheet starts on **To do**: what the task
 needs from you and the buttons for it, before its Description, Plan and Log.
+
+A tap on a card under *Your turn*, or on an entry of the home's **Tasks to
+handle**, goes where you act: when the task's agent (worker or reviewer, on any
+machine) asks a question or a permission, it opens that agent's conversation,
+its question last; anything else opens the sheet on **To do**. The sheet stays
+one tap away: *Open the task* in the card's menu, or the small icon at the end
+of the entry. An agent that is not on screen here opens the sheet instead.
 
 - **A visual change to merge**: its screenshots large (swipe between them, tap
   one to zoom; each is labelled phone or desktop), the review's verdict, the PR,

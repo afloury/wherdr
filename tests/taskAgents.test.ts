@@ -2,7 +2,7 @@ import { expect, it } from 'vitest'
 import { agentRole, taskAgents } from '../shared/pm/taskAgents'
 import { planSteps } from '../shared/pm/steps'
 import { company } from '../shared/pm/examples'
-import { stateDuration, taskAgentTitle } from '../app/utils/taskAgentRow'
+import { groupTaskAgents, stateDuration, taskAgentTitle } from '../app/utils/taskAgentRow'
 import type { Run, Task } from '../shared/pm/run'
 
 // company's feature: todo, work (worker), review (reviewer), pr (worker), merge, deploy, done.
@@ -51,4 +51,15 @@ it('the duration reads in minutes, hours, then days', () => {
   expect(stateDuration(0, 8 * min)).toBe('8 min')
   expect(stateDuration(0, 125 * min)).toBe('2 h')
   expect(stateDuration(0, 50 * 60 * min)).toBe('2 d')
+})
+
+it('agents of the same task make one row, led by the most urgent, where the first one was', () => {
+  const rows = [
+    { id: 'a', task: 'CO-1', u: 2 }, { id: 'b' }, { id: 'c', task: 'CO-2', u: 2 },
+    { id: 'd', task: 'CO-1', u: 1 }, { id: 'e', task: 'CO-1', u: 1 },
+  ] as { id: string, task?: string, u?: number }[]
+  const groups = groupTaskAgents(rows, r => r.task, r => r.u ?? 9)
+  expect(groups.map(g => [g.lead.id, g.agents.map(r => r.id)])).toEqual([
+    ['d', ['a', 'd', 'e']], ['b', ['b']], ['c', ['c']],
+  ])
 })
