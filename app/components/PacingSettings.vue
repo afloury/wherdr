@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Settings › Agents › Pace: one row per quota account. The weekly bar with the target
 // line (or the reserve's limit), today's use, the 5-hour window, the mode and
-// its settings, the end-of-week burn, the account's name, and whether automatic
+// its settings ('Free' has none: no line, no reserve, no burn), the end-of-week burn, the account's name, and whether automatic
 // work may start now.
 // A program with no reading at all shows 'Quota unknown'.
 import type { PaceRow } from '#shared/pm/pace'
@@ -65,7 +65,8 @@ function setNumber(r: PaceRow, field: NumField, e: Event) {
 }
 
 // End-of-week burn: on while set, unless its one week is over.
-const burnOn = (r: PaceRow) => !!r.policy.burn && (r.policy.burn.until === undefined || r.policy.burn.until > Date.now())
+const unlimited = (r: PaceRow) => r.policy.mode === 'unlimited'
+const burnOn = (r: PaceRow) => !unlimited(r) && !!r.policy.burn && (r.policy.burn.until === undefined || r.policy.burn.until > Date.now())
 const toggleBurn = (r: PaceRow, on: boolean) => change(r.account!.key, { burn: on ? { until: null } : null })
 const repeatItems = (r: PaceRow) => [
   { value: 'weekly', label: t('Every week') },
@@ -89,9 +90,10 @@ const toggleDay = (r: PaceRow, d: number) => {
 }
 
 const modeItems = computed(() => [
-  { value: 'workdays', label: tl('Working days', 'Jours ouvrés') },
-  { value: 'everyday', label: tl('Every day', '7/7') },
+  { value: 'unlimited', label: t('Free') },
   { value: 'free', label: tl('Free with reserve', 'Libre avec réserve') },
+  { value: 'everyday', label: tl('Every day', '7/7') },
+  { value: 'workdays', label: tl('Working days', 'Jours ouvrés') },
 ] satisfies { value: PaceMode, label: string }[])
 // Monday first.
 const days = computed(() => [1, 2, 3, 4, 5, 6, 0].map(d => ({ d, label: new Date(2026, 0, 4 + d).toLocaleDateString(language, { weekday: 'short' }) })))
@@ -160,7 +162,7 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
           </div>
           <div v-if="r.five" class="pace-line">
             <span class="mono-label">5 h</span>
-            <span class="pace-bar"><i :style="barStyle(r.five.used)" /><b :style="tickStyle(100 - r.policy.reserve5h)" /></span>
+            <span class="pace-bar"><i :style="barStyle(r.five.used)" /><b :style="tickStyle(unlimited(r) ? 100 : 100 - r.policy.reserve5h)" /></span>
             <span class="pace-num">{{ amount(r.five.used) }}</span>
           </div>
           <p class="pace-meta">
@@ -171,7 +173,7 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
           </p>
         </template>
 
-        <template v-if="r.account">
+        <template v-if="r.account && !unlimited(r)">
           <button type="button" class="pace-more mono-label" :aria-expanded="open === r.account.key" data-testid="pace-more" @click="open = open === r.account.key ? null : r.account.key">
             <UIcon :name="open === r.account.key ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />{{ tl('Mode settings', 'Réglages du mode') }}
           </button>
