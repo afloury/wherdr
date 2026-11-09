@@ -54,3 +54,11 @@ machine with its state (connected, connecting…, offline) and last error:
   else one per 1.5 GB of RAM), and for heavy work its load is under 0.8 per core. When no machine fits, automatic
   starts (autopilot, chains, automations) wait, with each machine's reason on the card, and start
   by themselves once one has room. Your own starts still go. A task that started stays on its machine.
+- **Online or offline, and available hours**: each machine, offline ones too, shows whether
+  herdr-core reaches it now. Placement asks herdr-core again at each start, so a machine that just
+  went offline takes nothing. A new task asked for an offline machine starts on another machine its
+  project allows when one fits, else waits with *Waits for … (offline)*. **Available** (Always,
+  Weekdays, Every day, with **From** and **To**, in the wherdr server's time; *To* before *From*
+  runs over midnight) keeps automatic starts off a machine outside its hours, and heavy work off it
+  in its last 2 hours, so a laptop that leaves at 19:00 is not handed a long build at 18:30. The
+  coordinator sees the same in `autopilot show` (`machines`).
