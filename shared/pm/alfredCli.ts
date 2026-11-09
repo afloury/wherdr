@@ -36,7 +36,7 @@ export type AlfredCommand =
   // Changes: a dry run unless apply.
   | { name: 'project add', apply: boolean, input: { key: string, machine: string, path: string, name?: string, template?: string } }
   | { name: 'project template', apply: boolean, key: string, template: string } // '' clears it
-  | { name: 'coordinator start', apply: boolean, key: string, program?: 'claude' | 'codex' }
+  | { name: 'coordinator start', apply: boolean, key: string, program?: 'claude' | 'codex', resume?: true }
   // No change given: the project's guards are shown.
   | { name: 'project guards', apply: boolean, key: string, change: { protect?: string[], mergeProtected?: MergeBy, mergeOthers?: MergeBy, contributorPrs?: 'off' | 'others' | 'all' } }
   | { name: 'setting set', apply: boolean, key: SyncedSetting, value: string }
@@ -61,7 +61,7 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'project guards <KEY> [--protect <branch,branch|none>] [--merge-protected user|engine] [--merge-others user|engine] [--contributor-prs off|others|all]', does: 'the project\'s guards: protected branches, who merges into them and into the others (user: the user, engine: wherdr), and whether its coordinator may merge an outside contributor\'s PR after the user\'s yes (others: not into a branch reserved for the user; all: into any); without an option, shown only. A project coordinator never changes them' },
   { usage: 'project machine add <KEY> <machine> --clone <folder>', does: 'let the project\'s tasks run on another machine (its key or label), in its clone of the repo there; once applied, the machine\'s readiness check runs and its result is in the answer' },
   { usage: 'project machine remove <KEY> <machine>', does: 'the project\'s tasks no longer start on that machine (tasks already there stay)' },
-  { usage: 'coordinator start <KEY> [--program claude|codex]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one)' },
+  { usage: 'coordinator start <KEY> [--program claude|codex] [--resume]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one); --resume takes up its last conversation again, with the agent that ran it' },
   { usage: 'setting set <key> <value>', does: 'change a setting to one of the values `settings` lists for it' },
 ]
 
@@ -79,13 +79,15 @@ const usage = (verb: string) => ({ error: `usage: wherdr alfred ${ALFRED_COMMAND
 
 // argv after `wherdr alfred` → a command, or the reason it is not one.
 // --apply (no value) makes a change; without it, the change is only shown.
+// --resume (no value): coordinator start only.
 export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: string } {
   if (!Array.isArray(argv) || !argv.every(a => typeof a === 'string')) return { error: 'argv must be a list of words' }
   const words: string[] = [], flags: Record<string, string> = {}
-  let apply = false
+  let apply = false, resume = false
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i] as string
     if (a === '--apply') { apply = true; continue }
+    if (a === '--resume') { resume = true; continue }
     if (!a.startsWith('--')) { words.push(a); continue }
     const v = argv[i + 1] as string | undefined
     if (v === undefined || v.startsWith('--')) return { error: `${a} needs a value` }
@@ -97,6 +99,7 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
   const extra = Object.keys(flags).find(f => !(FLAGS[verb] ?? []).includes(f))
   if (extra) return { error: `unknown option --${extra}` }
   if (apply && !CHANGES.includes(verb)) return { error: '--apply is for a change only' }
+  if (resume && verb !== 'coordinator start') return { error: '--resume is for coordinator start only' }
   const key = (k: string | undefined) => (k && KEY_RE.test(k) ? k.toUpperCase() : '')
 
   if (['help', 'projects', 'templates', 'machines', 'coordinators', 'settings', 'v2'].includes(w0) && !w1)
@@ -144,7 +147,8 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
     const { program } = flags
     if (!key(w2) || w3) return usage(verb)
     if (program !== undefined && program !== 'claude' && program !== 'codex') return { error: '--program is claude or codex' }
-    return { name: verb, apply, key: key(w2), ...(program ? { program: program as 'claude' | 'codex' } : {}) }
+    if (program && resume) return { error: '--resume takes up the conversation with the agent that ran it: no --program' }
+    return { name: verb, apply, key: key(w2), ...(program ? { program: program as 'claude' | 'codex' } : {}), ...(resume ? { resume: true as const } : {}) }
   }
   if (verb === 'setting set') {
     if (!w2 || w3 === undefined || rest.length) return usage(verb)
