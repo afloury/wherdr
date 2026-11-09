@@ -38,9 +38,8 @@ describe('autopilot limits', () => {
     expect(limitsLeft(ap, tasks, [], at(12))).toMatchObject({ working: 1, startLeft: 1 })
     expect(startRefusal(ap, tasks, [], at(12))).toBeUndefined()
     expect(startRefusal(ap, [...tasks, task(4)], [], at(12))).toMatch(/2 tasks already work at once/)
-    // While the account burns, the burn's tasks at once replace the autopilot's.
-    expect(startRefusal(ap, [...tasks, task(4)], [], at(12), { go: true, atOnce: 3 })).toBeUndefined()
-    expect(startRefusal(ap, [...tasks, task(4), task(5)], [], at(12), { go: true, atOnce: 3 })).toMatch(/limit 3/)
+    // While the account burns, tasks at once are Auto.
+    expect(startRefusal(ap, [...tasks, task(4)], [], at(12), { go: true, burning: true })).toBeUndefined()
     // Auto (null): no project ceiling, the machines decide; only the day's limit holds.
     expect(cleanAutopilot({ ...ap, atOnce: null })).toMatchObject({ autopilot: { atOnce: null } })
     expect(startRefusal({ ...ap, atOnce: null }, [...tasks, task(4), task(5)], [], at(12))).toBeUndefined()

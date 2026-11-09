@@ -33,7 +33,6 @@ const REASONS: Record<PaceReason, string> = {
   ahead: 'ahead of the target line',
   reserveWeek: 'the weekly reserve is reached',
   reserve5h: 'the 5-hour reserve is reached',
-  burnCap: 'the burn\'s cap is reached',
   stale: 'the last reading is too old for the margin left',
 }
 
@@ -51,10 +50,10 @@ export const paceRefusal = (v: PaceVerdict | undefined) =>
 const MODES: Record<PacePolicy['mode'], string> = { unlimited: 'free', workdays: 'working days', everyday: 'every day', free: 'free with reserve' }
 
 // The weekly % automatic work may reach now: the target line, the free mode's
-// limit (100 − the reserve of the days left), or the burn's cap. 'unlimited': 100.
+// limit (100 − the reserve of the days left), or all of it while burning. 'unlimited': 100.
 export function weekLimit(p: PacePolicy, resetsAt: number, now: number) {
   if (p.mode === 'unlimited') return { label: 'limit' as const, value: 100 }
-  if (burning(p.burn, resetsAt, now)) return { label: 'burn cap' as const, value: p.burn!.cap }
+  if (burning(p.burn, now)) return { label: 'burn' as const, value: 100 }
   if (p.mode === 'free') return { label: 'limit' as const, value: 100 - p.reservePerDay * Math.ceil((resetsAt - now) / 86_400_000) }
   return { label: 'line' as const, value: targetLine(p, resetsAt, now) }
 }
