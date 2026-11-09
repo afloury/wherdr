@@ -43,6 +43,7 @@ export interface Card {
   after?: string[] // tasks of the same project it starts after
   prNow?: string // its PR as the engine last read it (prNow)
   held?: string // waits for memory on its machine
+  machine?: string // the machine it went to, named, when its project allows several
   queue?: number // its place in its project's merge queue (mergeQueue.ts)
   queueOut?: string // why it stepped out of the queue's line
   asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
