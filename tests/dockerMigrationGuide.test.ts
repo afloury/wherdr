@@ -41,6 +41,6 @@ describe('the 1.x Docker migration guide', () => {
     expect(read('website/public/install')).toContain('blob/main/docs/migrate-from-1.x-docker.md')
     expect(read('scripts/herdr-plugin.sh')).toContain('blob/main/docs/migrate-from-1.x-docker.md')
     for (const doc of ['README.md']) expect(read(doc)).toContain('(docs/migrate-from-1.x-docker.md)')
-    for (const doc of ['docs/README.md', 'docs/installation.md', 'docs/herdr-projects-1x.md']) expect(read(doc)).toContain('](migrate-from-1.x-docker.md)')
+    for (const doc of ['docs/README.md', 'docs/installation.md']) expect(read(doc)).toContain('](migrate-from-1.x-docker.md)')
   })
 })

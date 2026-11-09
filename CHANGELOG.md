@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **No blank conversation on return to the app.** A conversation shown from the device's copy stays on screen while a server that just restarted answers "not found" or a read times out, instead of emptying and coming back. If a conversation list still alternates, the last non-empty one stays and a diagnostic is logged. A coordinator's pane gets its name back in the header when the coordinators list failed to load as the app woke up.
+- **Conversations open on their last read.** After a reload, an update or a network cut, the conversation kept on the device shows at once (the home state no longer waits for the server's first answer), then the server's answer merges in without moving what is on screen; replies that arrived meanwhile come in at the bottom like live ones. The startup background is the theme last shown on the device, so a reload no longer flashes another colour.
+- **Devin conversations on herdr-core.** Read saved ATIF transcripts from the running process, locally or on a core machine, with tools, inline images, search and previews. Updates arrive when Devin saves a turn; only history retained after compaction is available.
+
+- **App start, per device.** Settings › Phone › App start: **Up to date** (default, the current version, the saved copy past 3 seconds) or **Instant** (the saved copy at once, with the Reload banner for a newer version). After an update, the server keeps the previous two versions' files, so a page opened before it no longer reloads itself on a missing file.
+- **Qwen3-ASR WebGPU groundwork.** Added the ORT WebGPU worker and its scoped CSP route. Qwen is not selectable yet.
+- **omp context at a glance.** omp agent cards show their context usage as a thin line along their bottom edge, and the conversation header shows the percentage and estimated tokens, with omp's status line on demand. Read from omp's own gauge on screen (current and older layouts, every symbol preset); unknown readings stay hidden, old ones are marked. Thanks to [@guileen](https://github.com/guileen) (ported from 2.x).
+- **herdr-core 0.1.17: machines with an SSH port.** Settings › Agents › Machines › Add machine takes `user@host:port` when the core accepts one (read from its `rpc.discover`, not its version); on herdr-core 0.1.16 the form says so before sending.
+- **SVG diagrams in conversations.** Static `svg` code fences now show an isolated theme-aware preview with source, Copy and enlargement; incomplete or unsafe content stays readable code without executing or loading external resources (port of [#416](https://github.com/afloury/wherdr/pull/416) by [@guileen](https://github.com/guileen)).
+
+- **Clearer recovery messages.** A first conversation read that times out asks you to retry. A silent terminal reports that the machine sent nothing in time and offers Retry after four failed attaches.
+
+- **Faster Tailscale checks (#324).** Status and Serve reads run together with 4.5-second CLI deadlines, inside the socket handshake window; unreadable results remain unknown.
+
+- **Startup updates (#324).** The app opens the server's current build when the server answers within 3 seconds, so a deployment no longer shows the Reload banner followed by an unexpected reload. Past that, or offline, the cached page opens and shows the existing Reload banner when a newer build is served, preserving the current view until the user reloads.
+
+- **Conversation reads recover (#324).** Bottom, older-page and speculative reads stop after 8 seconds so the next refresh can proceed. Speculative reads also work on iOS 16.4 and contain synchronous reader errors.
+
+- **Recovery after suspend (#324).** Unlock and Settings checks allow 10 seconds to save the offline lease; resume checks keep their 3-second deadline. Events sockets with no real packet after 8 seconds and terminal sockets with no core paint after 12 seconds close through the existing retry paths. Relay reset/resize messages do not count as paint; core's attach snapshot does, even for an idle or blank terminal.
+
 ## [2.5.0] — 2026-11-02
 
 ### Added and improved
@@ -180,11 +200,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Documentation
 
-- Documentation: prerequisites for Windows remote machines (#182, documenting #132). [docs/machines.md](docs/machines.md#windows-remote-machines) says to set Git Bash as the OpenSSH server's default shell, and the error shown when the remote shell is `cmd.exe` now names that section.
+- Documentation: prerequisites for Windows remote machines (#182, documenting #132). [docs/machines.md](https://github.com/afloury/wherdr/blob/v2.0.0/docs/machines.md#windows-remote-machines) says to set Git Bash as the OpenSSH server's default shell, and the error shown when the remote shell is `cmd.exe` now names that section.
 
 ## [2.0.0] — 2026-10-25
 
-This major release follows 1.3.4. Read the [migration guide](docs/herdr-projects-1x.md)
+This major release follows 1.3.4. Read the [migration guide](https://github.com/afloury/wherdr/blob/v2.0.0/docs/herdr-projects-1x.md)
 (#152) before upgrading; Docker installs also need the [native migration guide](docs/migrate-from-1.x-docker.md).
 
 ### Added and improved
@@ -261,7 +281,7 @@ This major release follows 1.3.4. Read the [migration guide](docs/herdr-projects
 - **A draft follows its agent when Herdr replaces its pane**: when a pane is closed and a new one opens for the same agent (the same conversation, or the same herdr-projects coordinator or task, as after `coordinator restart`), the open view moves to the new pane and the message being written (text, quotes, pasted texts, attachments) comes along; opening the new pane from the list brings it back too. A pane closed with no successor keeps its draft under the “pane closed” banner, with **Copy draft**.
 - **Yes, No and OK to all hand the field the focus on a computer**: after a click, the caret sits right after the answer written in the field, so Enter sends it at once. On a phone the keyboard stays down as before (Enter adds a line there), and a button pressed with the keyboard keeps the focus, to answer the next question.
 - **Enter sends in a narrow computer window too**: a window narrow enough for the phone layout no longer turns Enter into a new line when the device has no touch screen (Shift+Enter still adds one).
-- **Windows remote machines are reached through a relay (#144, fixes #132).** wherdr no longer passes a Windows socket path (`C:\…`) to `ssh -L`: it uses Herdr's `remote-api-bridge` and `remote-client-bridge` over the same SSH connection (Herdr 0.9.3+). The OpenSSH server must use Git Bash as its default shell; see [docs/machines.md](docs/machines.md#windows-remote-machines).
+- **Windows remote machines are reached through a relay (#144, fixes #132).** wherdr no longer passes a Windows socket path (`C:\…`) to `ssh -L`: it uses Herdr's `remote-api-bridge` and `remote-client-bridge` over the same SSH connection (Herdr 0.9.3+). The OpenSSH server must use Git Bash as its default shell; see [docs/machines.md](https://github.com/afloury/wherdr/blob/v2.0.0/docs/machines.md#windows-remote-machines).
 
 - Task panels use one compact header and Conversation / Terminal / Task tabs, with structured Needs you explanations and actions, setup failures kept visible, and the Board’s state vocabulary on home rows. The Task tab holds descriptions, closing notes, review findings, limits and actions in English and French.
 - Claude quota snapshots bind the account fingerprint and observation time atomically. Update older status lines to remove the ten-minute identity cache. Failed Claude reads are retried once; after two failures, that machine's Claude gauge is temporarily omitted until reading recovers, instead of reusing an old account reading indefinitely. This supersedes the earlier keep-last-reading behavior for Claude; Codex is unchanged.
@@ -277,15 +297,15 @@ PRs #153, #154, #155 and #71 are reserved for 2.0.1 and are not included.
 ### Breaking changes and migration from 1.3.4
 
 - **Shared display settings** now belong to the server (`DATA_DIR/settings.json`), rather than each browser. Each browser imports only keys missing on the server once; existing server choices win. Back up the data directory before upgrading. Screen and hardware preferences, language, drafts and authentication remain local. Compact list resets to Normal once; enable it again in Settings if wanted.
-- **Upgrade checklist:** back up wherdr's data and any herdr-projects 0.2 projects first. Follow the [herdr-projects migration guide](docs/herdr-projects-1x.md) before running upstream 1.x; the old Project panel is replaced by the Board. Docker users must [move to the native service](docs/herdr-projects-1x.md#moving-from-docker-to-the-native-service). Native plugin users can update through Herdr, npm users with `npm install -g wherdr@2.0.0 && wherdr restart`, and Homebrew users with `brew upgrade wherdr && brew services restart wherdr`, once 2.0.0 is published. Open each browser once to import its settings, then check Settings and the Board.
+- **Upgrade checklist:** back up wherdr's data and any herdr-projects 0.2 projects first. Follow the [herdr-projects migration guide](https://github.com/afloury/wherdr/blob/v2.0.0/docs/herdr-projects-1x.md) before running upstream 1.x; the old Project panel is replaced by the Board. Docker users must [move to the native service](https://github.com/afloury/wherdr/blob/v2.0.0/docs/herdr-projects-1x.md#moving-from-docker-to-the-native-service). Native plugin users can update through Herdr, npm users with `npm install -g wherdr@2.0.0 && wherdr restart`, and Homebrew users with `brew upgrade wherdr && brew services restart wherdr`, once 2.0.0 is published. Open each browser once to import its settings, then check Settings and the Board.
 
 ### ⚠ Breaking change: native service only (2.0.0)
 
-- Docker support is removed completely: no images, compose files, container modes or read-only Board in 2.0. Run wherdr as your user through the installer or Herdr plugin (`systemd --user` on Linux, LaunchAgent on macOS). Existing plugin settings switch to native on update, with a migration message. Published 1.x images remain on GHCR unchanged for users staying on 1.x; see the [migration guide](docs/herdr-projects-1x.md#moving-from-docker-to-the-native-service) to keep the same port and data.
+- Docker support is removed completely: no images, compose files, container modes or read-only Board in 2.0. Run wherdr as your user through the installer or Herdr plugin (`systemd --user` on Linux, LaunchAgent on macOS). Existing plugin settings switch to native on update, with a migration message. Published 1.x images remain on GHCR unchanged for users staying on 1.x; see the [migration guide](https://github.com/afloury/wherdr/blob/v2.0.0/docs/herdr-projects-1x.md#moving-from-docker-to-the-native-service) to keep the same port and data.
 
 ### ⚠ Breaking change: herdr-projects 1.2.1 or later (2.0.0)
 
-- **herdr-projects 0.2 is no longer read; wherdr now reads herdr-projects 1.2.1 and later.** Upstream herdr-projects 1.x is a different product (one work board of tasks, each handed to an agent, reviewed and merged on your yes), and wherdr now follows it. wherdr 1.3.4 is the last version for herdr-projects 0.2. See [docs/herdr-projects-1x.md](docs/herdr-projects-1x.md) for the move, with a backup and the way back.
+- **herdr-projects 0.2 is no longer read; wherdr now reads herdr-projects 1.2.1 and later.** Upstream herdr-projects 1.x is a different product (one work board of tasks, each handed to an agent, reviewed and merged on your yes), and wherdr now follows it. wherdr 1.3.4 is the last version for herdr-projects 0.2. See [docs/herdr-projects-1x.md](https://github.com/afloury/wherdr/blob/v2.0.0/docs/herdr-projects-1x.md) for the move, with a backup and the way back.
   - **New Board**: every machine's herdr-projects tasks, in the board's own five groups (needs you, ready to approve, working, to do, done), side by side on a computer and one at a time on a phone. A task shows its key, title, the line its agent reports, the agent, progress, pull request and review; it opens its description, plan, branch and what went wrong, with **Reply** (to its agent, or a plan sent back), **Approve** (merge, or yes to a plan, after a confirmation) and **Open its agent**. wherdr reads the board only through herdr-projects' command line (`list --json`, `details <id> --json`, `tell`, `approve`, `coordinator tell`), one command at a time per machine and only while the Board is open.
   - **herdr-projects missing, 0.2, or older than 1.2.1**: Settings › Plugins and the Board say “Update herdr-projects to 1.2.1 or later, or downgrade wherdr to 1.3.4”, with the commands; nothing else in wherdr changes, and wherdr never runs herdr-projects there (its first run would take over the older install's files). **Install herdr-projects** installs `eliasstravik/herdr-projects` pinned to v1.2.1.
   - **Removed with herdr-projects 0.2**: the Project panel (TASKS.md lists, threads, inbox, routines, settings, memory), the Board of projects, threads and agents, thread limits per machine, **New project** and the other 0.2 actions, `Mod+Alt+P` and `Mod+Alt+Shift+N`, the grouping of coordinators and threads in the agent list, the herdr-projects folder marks in folder pickers, and the “Notify for: project coordinators” setting (every agent now notifies, as without herdr-projects).

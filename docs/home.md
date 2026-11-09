@@ -4,58 +4,106 @@
 
 ## Features
 
-### Everywhere
+### Agents on herdr-core
 
-- **Home grouping**: Settings › Appearance › Home screen › **Group by** chooses **Machine**
-  (default, projects under their coordinator) or **State** (Needs you, Working, Ready merged
-  across online machines). State mode adds machine and project badges to flat cards; the
-  machine bar and its groups filter both modes. Compact/normal applies to both. In State mode,
-  a row of machine chips at the top opens each machine's menu (sessions, keep awake, board,
-  Claude quota setup), and offline or reconnecting machines stay on one line at the bottom.
-- **Live agent list**, one line per Herdr space, grouped by state (your turn, working, ready).
-  The list is normal by default; turn on Settings › Appearance › Home screen › **Compact list**
-  for one line per card (agent, title, project badge and state). When an agent asks for
-  permission or asks a question, its card opens on the question and its options: **answer in one
-  tap** without opening it; the card is one line again once answered. Board tasks use one line in
-  compact mode (agent, key, title, progress, duration, state and Your turn when needed); normal
-  mode adds the current activity and relevant limit or review labels on a second line. Task
-  details stay in the task sheet. A compact list turned on in 1.x goes back to normal once, on
-  the first 2.0 load; turning it on again is kept. Other agents
-  also use dense rows, with a last-answer preview in normal mode; waiting agents keep their
-  questions and one-tap answers in both modes.
-  With [herdr-projects](board.md#works-great-with-herdr-projects), the board's spaces follow Herdr's sidebar:
-  the Coordinators on top, then one group per repo, headed by its project coordinator (the repo's
-  name, the wherdr mark, **Coordinator** and its state), a bar that folds the group and sums up its
-  tasks (`4 TASKS · 1 YOUR TURN · 1 LIMIT`, the branch and `↓` commits behind its upstream, the
-  repo space's menu), then its tasks, indented (key, title, progress, time on it, the board's
-  current line). A remote coordinator link replaces the local coordinator above the bar.
-  Without a coordinator, the group starts with the bar; the repo terminal opens from its **…**
-  menu. Closing a space that holds task agents names the tasks it stops.
-- **New agent**: pick an installed agent (or a plain terminal), a folder, optionally a separate
-  Git **worktree** and branch, resume the last conversation, and queue a first message.
-- **Machine bar**: at the top of the list, “All”, then each machine with its state and count; a
-  tap shows one machine alone, without its header: its Claude and Codex quotas sit together at
-  the top, and an offline or reconnecting machine says so there. Right click (long press on a
-  phone) a machine's tab for its actions, those of its **…** menu; on a group's tab, for **Group
-  settings**. Settings › Appearance › Home screen › **Machine bar** orders its
-  items, takes some off it or hides it (saved on the server). A machine's **…** menu opens the
-  Board filtered on it (**Open the board**). In **Groups**, create a named selection of machines,
-  check its members and drag their handles to set their order. Groups appear after All by default,
-  with their combined task count and a group icon; order or hide them alongside the machines.
-  Choosing a group shows its members in the group's order. Groups follow you across devices.
-  Switching selections keeps the current conversation if it belongs there; otherwise the desktop
-  restores that selection's last conversation on this device, then its machine coordinator (a group's
-  first online machine), or the empty view. All always keeps the current conversation. Phones keep
-  the list first and check the same rule when reopening a conversation through browser history.
-  Explicit choices from search, cards or links open the chosen conversation. Unsent drafts stay saved.
-- **Global search** (magnifier, ⌘K) finds agents, conversations and Board tasks: a task's name
-  (`WHR-12`), title or description, with its machine, project and state. Choosing a task opens it on the Board.
-- **Named Herdr sessions**, **quotas** (remaining Claude and Codex usage limits), **Herdr plugin
-  actions** in the menus, **passkey lock** (Face ID, Touch ID, Windows Hello, Android…).
+- **Live list** of every hc terminal, on this machine and on each core machine, refreshed from
+  core's events. Terminals are placed as herdr-app places them: by their `herdr.space` /
+  `herdr.tab` labels, else by the tab of the machine's herdr-app layout that holds them (space
+  and tab names and the tab order come from it). Other terminals are grouped by machine and
+  folder. Details in [herdr-core › Inventory](core.md#inventory).
+- **States**: three only: **Your turn** (blocked: a question or a permission), **Working** and
+  **Ready** (idle or done; an agent that reports no status also counts as Ready, as in v2.5).
+  A space with several terminals follows its most urgent one. Three counters at the top (your
+  turn, working, ready) count the same rows as the headings. When core does not answer, the last
+  list stays visible, marked offline, and the home says **herdr-core is not responding**.
+  An omp card also shows its context usage as a thin line along its bottom edge (green, ochre
+  from 60 %, rose from 85 %; paler when it is the last reading); the figures are in the
+  conversation header. omp's own status line, gauge and welcome screen never stand as the card's
+  preview.
+- **Quick answers**: a waiting agent's card shows its question and options; **answer in one tap**
+  without opening it. The question is read again before the answer is sent; if it changed, the
+  answer is refused.
+- **Compact list**: Settings › Appearance › Home screen › **Compact list** shows one line per
+  card; Normal adds the current activity on a second line. It follows you across devices.
+  Every agent terminal is its own row, with its pane or tab label.
+- **Order**: the header (logo, version, Search, Board, Settings), the counters, the quotas (a
+  machine's own quotas under them), Alfred, the [coordinators](#coordinators), then the agents of
+  the machines shown, by state (Your turn, Working, Ready). When the list mixes several machines,
+  each card carries its machine's name. There is no section per machine.
 
-Settings › Appearance › Home screen › **Individual agents** expands standalone
-agent spaces into one row per pane, using their pane or tab labels. Workspace
-cards remain the default. Board tasks and repository headers keep their existing
-grouping, and **Show terminals** still controls plain terminal rows. The setting
-follows you across devices. Workspace drag reordering is disabled in this view;
-switch it off to reorder spaces.
+### Alfred
+
+Alfred, wherdr's assistant, is always the first row of the agent list, even
+with no agent and projects off. It helps you get started and, with projects
+on, coordinates all of them. The first *Start* asks which agent (Claude,
+Codex, OMP…, those offered in Settings › Agents) runs it; the choice is kept. It runs with that agent's default
+model: change the model inside Alfred. Its menu (right click, or long press on a touch
+screen), *Restart with…*, moves it
+to another agent (when an account runs out of tokens, for instance): the old session
+stops and the new one carries on from the same home folder, `alfred/` in
+wherdr's data folder. There, `AGENTS.md` (and `CLAUDE.md`, `GEMINI.md`,
+`QWEN.md`, which point to it) is wherdr's and rewritten at each start; `identity.md` (its name and tone) and `memory.md` (what it learns about
+you, cleaned up at each start) are its own. Give it another name and the row
+shows it. Alfred reads and changes projects, coordinators and settings with
+[`wherdr alfred`](alfred.md): it shows you each
+change first and makes it only after your yes.
+
+### Coordinators
+
+Under Alfred, while project management is on, one row per running project coordinator, its
+project's key badge in the project's color (*[WHR] coordinator*)
+([Project management](project-management.md)). A tap opens its conversation, shown as selected
+while it is open; its menu (right click or long press), *Restart with…*, picks another agent,
+which becomes its default: its folder and memory stay, the current session stops. A coordinator
+shows only in its own row, never again among the agents.
+
+### Offered agents
+
+Settings › Agents › **Offered agents** is the one list behind every agent choice: the New
+sheet, a project coordinator's agent, Alfred's. Uncheck a program to hide it everywhere; drag
+a row by its ⠿ handle (or use its arrows) to reorder: the first is the default and comes first
+in every picker. Programs only: each starts with its own default model, changed inside the
+agent. Alfred runs with any of Claude, Codex, OMP, Pi, OpenCode, Kimi, Gemini CLI, Qwen Code,
+Copilot, Amp and Droid (other programs are left out of its picker: wherdr knows no instructions
+file they read). A project's coordinator runs with Claude or Codex only: they are the ones wherdr
+can keep out of the project's repository (a deny rule for Claude, the sandbox for Codex). Choices and order follow you on every device.
+
+### Machines as tabs
+
+The **machine tabs** at the top of the list are **All**, then one tab per machine (this core and
+each core machine, online or offline) with its count of rows. A tap shows that machine alone,
+with its Claude and Codex quotas at the top; an offline or reconnecting machine says so there.
+The tabs hide when they would show a single machine. A machine's actions (New agent here,
+Reconnect, Machine settings, Claude quota setup) open on a right click or long press of its
+tab; with the tabs hidden and several machines, on its chip above the list; offline machines are
+listed at the bottom, with **Reconnect**.
+Settings › Appearance › Home screen › **Machine tabs** orders the tabs, hides some of them, or
+hides them all. In **Groups**, create a named selection of machines; groups follow you across
+devices. Machines themselves are managed in [Settings › Machines](machines.md#manage-machines).
+
+### New agents and tabs
+
+- **New** opens a sheet: an agent (Claude Code, Codex…, those installed on that machine and offered
+  in Settings › Agents, in the order set there: the first is preselected) or
+  a plain terminal, the machine, a folder (recent folders, a folder browser, Git detection), a
+  name, **resume** the last conversation, and an optional first message. The terminal is started
+  by core in that folder; it joins the space whose folder holds it, else a new space.
+- **+** in a space's tab row starts at once a terminal like the space's current one (same kind,
+  same folder) in a new tab of that space; **New tab…** in the tab menu opens the sheet. The new
+  terminal carries the space's labels, so it also appears in herdr-app.
+- Rename, close, split and move of spaces and tabs stay in herdr-app. Closing an agent's pane
+  from wherdr ends its program.
+- Worktrees are v2 only.
+
+### Search
+
+The magnifier (⌘K / Ctrl+K) searches every agent and the conversations of the Claude Code and
+Codex agents of online machines. Choosing a result opens it.
+
+### Also
+
+**Quotas** (remaining Claude and Codex usage, see [quotas](quotas.md)), **notifications**
+([Notifications](notifications.md)), the **passkey lock** (Face ID, Touch ID, Windows Hello,
+Android…) and optional [wherdr plugins](plugins.md#wherdr-plugins).
+
+Herdr sessions, Herdr plugin actions and keep-awake are v2 only.
