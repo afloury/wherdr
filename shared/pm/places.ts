@@ -1,3 +1,5 @@
+import { projectLink, settingsLink } from '../appLinks'
+
 // Where the user changes a project's settings, as texts name it: the project
 // sheet (Settings › Projects › a project) and its tabs, opened by the URL
 // `#/settings?section=projects&project=<key>&tab=<tab>` (ProjectsSettings).
@@ -10,5 +12,5 @@ export const PROJECT_TAB_LABEL: Record<ProjectTab, string> = { general: 'General
 export function projectPlace(key?: string, tab: ProjectTab = 'general', link = false): string {
   const k = key?.toUpperCase()
   const name = k ? `Settings › Projects › ${k} › ${PROJECT_TAB_LABEL[tab]}` : 'Settings › Projects'
-  return link ? `${name} (\`#/settings?section=projects${k ? `&project=${encodeURIComponent(k)}&tab=${tab}` : ''}\`)` : name
+  return link ? `${name} (\`${k ? projectLink(k, tab) : settingsLink('projects')}\`)` : name
 }

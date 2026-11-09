@@ -19,6 +19,14 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   reference instances. Incomplete, unsupported or unsafe diagrams stay readable code. Scripts,
   foreign HTML, animation and external resources are rejected; raw inline SVG is not inserted
   into the page. Other fence languages and file-explorer document fences remain code.
+- **Links into wherdr**: an agent sending you somewhere in wherdr gives its in-app address, as a
+  Markdown link (`[Phone](#/settings?section=phone)`) or as inline code that is only the address
+  (`` `#/board?task=KEY-12` ``). Either opens the place in the app, on a computer and a phone,
+  without reloading; Back returns to the conversation. Other links open in a new tab, other
+  inline code stays plain. The addresses: `#/`, `#/decisions`, `#/board` (with `?project=KEY`,
+  `?tag=TAG` or `?task=ID`), `#/settings?section=<section>` and a project's sheet
+  `#/settings?section=projects&project=KEY&tab=<tab>`; Alfred and coordinators get the list in
+  their instructions.
 - **Questions and permissions**: native questions, approvals and menus show their options; a tap
   answers. wherdr reads the screen again right before answering and refuses the answer if the
   question changed meanwhile. A free answer selects its option, waits for the field, then types

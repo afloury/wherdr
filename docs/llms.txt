@@ -52,10 +52,10 @@
 
 ## Conversation, terminal and files
 
-- [Conversation and replies](docs/conversation.md): transcripts, one-tap answers, quoted replies, attachments and dictation.
+- [Conversation and replies](docs/conversation.md): transcripts, one-tap answers, quoted replies, attachments, dictation, and in-app links (`#/settings?section=…`, `#/board?task=…`) that open a place in wherdr.
 - [Conversations on hc](docs/core.md#conversations): which agents open on their transcript and how it is read, and text left unsent in Claude's input box (never shown as read, never glued to the next message).
 - [Terminal](docs/terminal.md): the real terminal, shared viewers and taking control.
-- [Files](docs/files.md): browse an agent's folder, preview text, Markdown, images, PDFs and videos, download.
+- [Files](docs/files.md): browse an agent's folder, preview text, Markdown, images, PDFs and videos, download; which files a path in a conversation may open.
 - [On a computer](docs/devices.md#on-a-computer): layout and keyboard shortcuts.
 - [On a phone](docs/devices.md#on-a-phone): touch controls and the phone keybar.
 - [On an iPad](docs/devices.md#on-an-ipad): the iPad layout.
@@ -69,7 +69,7 @@
 - [Guards](docs/project-management.md#guards): protected branches, who may merge (a waiting merge goes on once wherdr may do it; one you merge on GitHub ends as merged; one cut by a restart goes on by itself), contributor PRs, the project sheet's in-app addresses.
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
 - [Template library](docs/project-management.md#template-library): saved templates and examples, read, rename and delete; projects keep their own copy.
-- [Autopilot](docs/project-management.md#autopilot): each project's own (Alfred has none), the header button and its window, goal, wakes and limits (Tasks / day: empty for no daily limit; At once: Auto by default for new projects; Task added wakes only for tasks added by someone else than this coordinator); the coordinator's view of machines and weights (`autopilot show`, `show <task>`, `--on`, `--weight`).
+- [Autopilot](docs/project-management.md#autopilot): each project's own (Alfred has none), the header button and its window, goal, wakes and limits (new projects: Tasks / day unlimited and At once Auto, pace and machine room still hold automatic work; a hint on the older 10 / 2; Task added wakes only for tasks added by someone else than this coordinator); the coordinator's view of machines and weights (`autopilot show`, `show <task>`, `--on`, `--weight`).
 - [What a task's agent said](docs/project-management.md#what-a-tasks-agent-said): `wherdr pm read`, an agent's last message or question from any machine, and the question in the wake.
 - [Board](docs/project-management.md#board): columns (a done or archived task is never under Your turn), cards (the id badge copies the id), time in the step and total time, Add task (with its weight: Auto, Light, Standard, Heavy), Start, Start on another machine (its readiness check), Stop, Delete; a refused merge said in plain words (a conflict the agent is already fixing leaves Your turn).
 - [Task sheet](docs/project-management.md#task-sheet): the id badge by the title (copies the id), time per step, waits for you, review rounds and CI fixes, the task's buttons (Check on GitHub, also `wherdr pm task check`, for a stuck merge step or an archived task's PR) and its Description (Markdown), Plan and Log tabs.
@@ -89,7 +89,7 @@
 - [Manage machines](docs/machines.md#manage-machines): Settings › Machines (one card per machine: name, state, actions, keep awake, memory), add, reconnect, rename, forget, keep awake (until a time or turned off, laptop battery and lid warning), capacity (memory, cores, load on Linux and macOS; swap on Linux, memory pressure on macOS), memory limits, available hours and offline machines, and where each start goes (placement across a project's machines).
 - [Machines on hc](docs/core.md#creating-terminals-and-agents-machines): how hc reaches core machines.
 - [Claude and Codex quotas](docs/quotas.md#claude-and-codex-quotas): remaining usage per account, with the machines sharing it, and its setup.
-- [Pace](docs/quotas.md#pace): Settings › Agents › Pace, when automatic work may start.
+- [Pace](docs/quotas.md#pace): Settings › Agents › Pace, when automatic work may start, and the end-of-week burn.
 - [Notifications](docs/notifications.md#notifications): Web Push and Do not disturb.
 - [A default and exceptions](docs/notifications.md#a-default-and-exceptions): one synced policy: a default and its exceptions, a coordinator's kept across restarts.
 - [Notifications on hc](docs/core.md#notifications): when v3 sends a push, from hc's events.
