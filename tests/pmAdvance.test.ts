@@ -130,7 +130,7 @@ describe('end signals', () => {
   it('reads the engine\'s script output, and the proofs a note gives', () => {
     const r = parseRead(['abc1234', '42', 'See https://github.com/o/r/pull/3.\n', '{"findings":[]}'].join(`\n${READ_SEP}\n`))
     expect(r).toEqual({ head: 'abc1234', diffLines: 42, note: 'See https://github.com/o/r/pull/3.', verdict: '{"findings":[]}' })
-    expect(proofsOf(r)).toMatchObject({ link: 'https://github.com/o/r/pull/3.', commit: 'abc1234', report: r.note })
+    expect(proofsOf(r)).toMatchObject({ link: 'https://github.com/o/r/pull/3', commit: 'abc1234', report: r.note })
     expect(proofsOf(read({ head: undefined }))).toEqual({})
   })
 

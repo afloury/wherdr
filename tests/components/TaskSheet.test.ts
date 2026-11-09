@@ -93,6 +93,9 @@ it('a link proof that is a PR shows Open the PR at the merge step and on the car
   expect(w.get('[data-testid="todo-pr"]').attributes('href')).toBe(url)
   expect(w.get('[data-testid="step-user"]').text()).toBe('Merged')
   w.unmount()
+  // A proof stored with the note's closing period is still the PR.
+  const dotted = cardOf({ ...task, step: { ...task.step!, proofs: { pr: { link: `${url}.` } } } }, planSteps(company, { type: 'feature' }), [])
+  expect(linkLabel(mainLink(dotted)!)).toBe('PR #12')
 })
 
 let sentBack: unknown

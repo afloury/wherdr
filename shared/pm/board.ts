@@ -152,8 +152,9 @@ export const waitsFor = (c: Pick<Card, 'after'>, cards: Pick<Card, 'id' | 'phase
 
 export const mainLink = (c: Pick<Card, 'links'>) => c.links.find(l => /^pr$/i.test(l.label)) ?? c.links[0]
 // A pull request's address, whatever its host: GitHub /pull/12, Bitbucket
-// /pull-requests/12, GitLab /merge_requests/12, Azure DevOps /pullrequest/12.
-const PR_URL = /\/(?:pull|pull-requests|merge_requests|pullrequest)\/(\d+)(?:[/?#]|$)/i
+// /pull-requests/12, GitLab /merge_requests/12, Azure DevOps /pullrequest/12;
+// a proof stored with a sentence's period after it ('…/12.') still counts.
+const PR_URL = /\/(?:pull|pull-requests|merge_requests|pullrequest)\/(\d+)(?![\w-])/i
 const prNumber = (url: string) => PR_URL.exec(url)?.[1]
 export const isPrUrl = (url: string) => !!prNumber(url)
 // The card's PR: its first link to a pull request.
