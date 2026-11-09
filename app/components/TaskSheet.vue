@@ -10,7 +10,7 @@
 // segmented style) for the rest, only the open one scrolling: Description (the
 // text, tags and links, the PR among them), Plan (each step with its
 // screenshots), Log.
-import { canStart, canStop, cardStatus, linkLabel, type Card } from '#shared/pm/board'
+import { canStart, canStop, cardStatus, linkLabel, statusText, type Card } from '#shared/pm/board'
 import type { Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
 import type { Task } from '#shared/pm/run'
@@ -31,8 +31,8 @@ const proofs = (id: string) => Object.entries(props.card.state?.proofs[id] ?? {}
 const rounds = (id: string) => props.card.state?.rounds[id] ?? 0
 // The steps that have screenshots, to look at before the push, the PR or the merge.
 const shots = (id: string) => props.card.state?.shots?.[id] ?? []
-// Where its PR and merge stand (the card's line), with the full time.
-const status = computed(() => { const s = cardStatus(props.card); return s && { ...s, text: s.at ? `${s.text} ${fmtDateTime(s.at)}` : s.text } })
+// Where its PR and merge stand (the card's line), with the full time and the approval's date.
+const status = computed(() => { const s = cardStatus(props.card); return s && { ...s, text: statusText(s, fmtDateTime, true) } })
 
 // Time per step, the waits for the user apart, review rounds and CI fixes, in one line.
 const times = computed(() => (props.card.times ? timesText(props.card.times) : ''))

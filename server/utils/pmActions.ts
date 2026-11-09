@@ -27,6 +27,7 @@ export interface ActionJob {
   branch: string
   allowed?: string[] // protected branches the task already reached through you
   reviewed?: string // github.merge: the commit the last review passed
+  approved?: string // github.merge: the commit the user approved; the interface changed since → asked again
   halted?: () => Promise<boolean> // the task was stopped meanwhile: no merge
 }
 
@@ -129,6 +130,11 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
           if (where === 'foreign') return { ok: false, error: `merge: the PR head ${pr.headRefOid.slice(0, 7)} has commits the task's worktree never had (pushed from elsewhere): bring them into the worktree, or merge by hand` }
           // The head moved after the review (catch-up, conflict, CI fix): reviewed again first.
           if (job.reviewed && job.reviewed !== h) return { ok: false, error: `merge: new commits since the review (${job.reviewed.slice(0, 7)}..${h.slice(0, 7)})`, review: { since: job.reviewed, head: h }, commit: h }
+          // Approved earlier: a new look at the interface only if the task's own UI files changed since.
+          if (job.approved && job.approved !== h) {
+            const ui = await run(deps, SCRIPT.uiChanged, [wt, pr.baseRefName, job.approved, h])
+            if (ui.code !== 0 || lastLine(ui.out) !== 'same') return { ok: false, error: `merge: the interface changed since your approval (${job.approved.slice(0, 7)}..${h.slice(0, 7)})`, unapproved: true, commit: h }
+          }
           if (where === 'behind') {
             if (pushed) {
               // GitHub's API can lag a fresh push: the remote branch is the truth.

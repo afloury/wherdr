@@ -24,7 +24,7 @@ import { withMark } from '../../shared/pm/times'
 import { HerdrError } from './herdr'
 import type { FolderOptions } from '../../shared/pm/newProject'
 import { MAIN, type CoordinatorAgent, type Proposal, type ProposalAnswer } from '../../shared/pm/coordinator'
-import type { Autopilot, DayCount, LastWake, TaskStatus } from '../../shared/pm/autopilot'
+import { NEW_AUTOPILOT, type Autopilot, type DayCount, type LastWake, type TaskStatus } from '../../shared/pm/autopilot'
 import { readQueue, type Wake } from '../../shared/pm/wakes'
 import type { Automation, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
@@ -343,6 +343,9 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       let added: Project = { ...fields, color: fields.color ?? defaultColor(list), path: folder, ...(git ? {} : { git: false as const }), addedAt: Date.now() }
       if (source) added = { ...added, from: (await copyTemplate(added.key, source, 'user')).from }
       await saveProjects([...list, added])
+      // A new project's tasks at once: Auto, from its machines (an existing project keeps its number).
+      const coordinator = path.join(files.coordinators, `${added.key}.json`)
+      if (!(await readJson(coordinator))) await writeJson(coordinator, { project: added.key, tokenHash: '', autopilot: NEW_AUTOPILOT } satisfies CoordinatorRecord)
       return added
     }),
 
@@ -372,10 +375,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const next = update.key ?? shownKey(list[i]!)
       const clash = keyClash(list, next, rest.key)
       if (clash) throw new HerdrError('exists', `Project ${clash.name} already has the key ${next}`)
-      const { machines: _m, clones: _c, ...kept } = rest
+      const { machines: _m, clones: _c, placement: _s, ...kept } = rest
+      const placement = update.placement ?? rest.placement
       const allowed = machinesOf(rest, update)
       if (allowed.errors.length) throw badInput(allowed.errors)
-      list[i] = { ...kept, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...(base ? { base } : {}), ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}) }
+      list[i] = { ...kept, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...(base ? { base } : {}), ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}) }
       await saveProjects(list)
       return list[i]!
     }),

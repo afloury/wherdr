@@ -106,13 +106,13 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     const result: ActionResult = run
       ? await runAction({ store, sh: actionShell(deps, runOn(deps, run)) }, {
           task, step: act.step, attempt: act.attempt, action: act.action, by: approved ? 'user' : by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
-          reviewed: reviewedCommit(plan, state),
+          reviewed: reviewedCommit(plan, state), ...(approved && state.approved!.commit ? { approved: state.approved!.commit } : {}),
           halted: async () => !!(await store.task(task.id))?.stopped,
         }).catch((e: Error) => ({ ok: false, error: e.message }))
       : { ok: false, error: 'No worktree: the task never started' }
     const evidence = { ...(result.link ? { link: result.link } : {}), ...(result.commit ? { commit: result.commit } : {}) }
     const catchUp = result.catchUp && result.commit ? { catchUp: { base: result.catchUp, head: result.commit } } : {}
-    const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), ...catchUp, evidence }, Date.now())
+    const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), ...(result.unapproved ? { unapproved: true as const } : {}), ...catchUp, evidence }, Date.now())
     state = back.state
     const log = back.effects.find(e => e.kind === 'log')
     if (log?.kind === 'log') return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', log.text)
@@ -165,7 +165,8 @@ export async function uploadShot(store: PmStore, id: unknown, phase: unknown, da
   await store.addShot(task.id, shot.file, data, (fresh) => {
     const r = addShot(plan, fresh.step, shot)
     if ('refused' in r) throw new HerdrError('refused', r.refused)
-    return { ...fresh, step: r.state }
+    const dropped = fresh.step?.approved ? [{ at: shot.at, by: 'engine', text: 'approval dropped: new screenshots, the user looks again before the merge' }] : []
+    return { ...fresh, step: r.state, ...(dropped.length ? { log: [...(fresh.log ?? []), ...dropped] } : {}) }
   })
   return shot
 }

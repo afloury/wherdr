@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { github } from '../shared/pm/examples'
 import { DEFAULT_AUTOPILOT } from '../shared/pm/autopilot'
 import { createPmStore } from '../server/utils/pmStore'
-import { memoryHold } from '../server/utils/pmMemory'
+import { placeFor } from '../server/utils/pmPlace'
 import { startHeld } from '../server/utils/pmMechanic'
 import { DEFAULT_MEMORY, agentCap, memoryShort, mergeMemory } from '../shared/pm/memory'
 import { parseLinux } from '../shared/pm/capacity'
@@ -47,21 +47,23 @@ describe('the memory hold', () => {
       const run = (id: string, task: string) => store.saveRun({ id, task, role: 'worker', program: 'claude', model: 'sonnet', machine: 'm1', worktree: '/w', branch: 'b', instructions: '/i', attempt: 1, state: 'running', startedAt: 1 })
       // At their worker's step (work).
       const work = async (key: string) => store.saveTask({ ...(await store.addTask({ project: key, title: 'Work', type: 'simple' })), state: 'working', step: { at: 1, started: true, proofs: {}, rounds: {} } })
-      // 3 GB of RAM: a cap of two agents. One runs for each project.
+      // 6 GB of RAM, 5 free: room for one more standard agent (≈1.8 GB) above 2 GB free, not two. One runs for each project.
       for (const key of ['AA', 'BB']) await work(key)
       await run('r1', 'AA-1')
       await run('r2', 'BB-1')
-      const call = async (method: string) => (method === 'machine.exec' ? { code: 0, stdout: Buffer.from(meminfo(3, 2.5)).toString('base64') } : {})
-      const deps = { store, call, machines: () => [{ key: 'm1', local: false, label: 'box', status: 'online' }] } as unknown as Parameters<typeof memoryHold>[0]
-      expect(await memoryHold(deps, 'BB')).toBe('Waits for memory on box: 2 agents already run on it (cap 2)')
+      const call = async (method: string) => (method === 'machine.exec' ? { code: 0, stdout: Buffer.from(meminfo(6, 5)).toString('base64') } : {})
+      const deps = { store, call, machines: () => [{ key: 'm1', local: false, label: 'box', status: 'online' }] } as unknown as Parameters<typeof placeFor>[0]
+      const next = await store.addTask({ project: 'BB', title: 'Next', type: 'simple' })
+      const memoryHold = async () => { const r = await placeFor(deps, next); return 'hold' in r ? r.hold : undefined }
+      expect(await memoryHold()).toBe('Waits for room (Heavy to the strongest): standard (≈1.8 GB) fits nowhere — box: 2 agents take ≈3.5 GB of 6.0 GB')
       // A task waiting for the user (Your turn) does not count its agent.
       const aa = (await store.task('AA-1'))!
       await store.saveTask({ ...aa, step: { ...aa.step!, yourTurn: { reason: 'user', badge: 'Check it' } } })
-      expect(await memoryHold(deps, 'BB')).toBeUndefined()
+      expect(await memoryHold()).toBeUndefined()
       await store.saveTask(aa)
-      expect(await memoryHold(deps, 'BB')).toBeDefined()
+      expect(await memoryHold()).toBeDefined()
       await store.saveRun({ ...(await store.runs()).find(r => r.id === 'r1')!, state: 'ended' })
-      expect(await memoryHold(deps, 'BB')).toBeUndefined()
+      expect(await memoryHold()).toBeUndefined()
 
       // Memory back, a wake's held task still holds to its autopilot: over atOnce it waits, with why; off, the hold goes.
       const held = await store.saveTask({ ...(await store.addTask({ project: 'BB', title: 'Held', type: 'simple' })), autopilot: true, held: 'Waits for memory on box' })

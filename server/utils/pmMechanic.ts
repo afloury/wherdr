@@ -3,7 +3,8 @@
 // a login back), then at most one move (shared/pm/mechanic.ts). A move is
 // noted on the task before it runs, so it is never made twice.
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
-import { ciOf, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
+import { CATCH_UP_TRIES, catchUpGaveUp, ciOf, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
+import { inMergeQueue, mergeOrder, ordinal } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
 import { onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
 import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
@@ -14,10 +15,10 @@ import { prNow, requiredChecks } from '../../shared/pm/board'
 import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
 import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
 import { originOf, pacedStart, paceRefusal } from '../../shared/pm/pace'
-import { projectPace } from './pmPace'
+import { paceOf, placeFor } from './pmPlace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { advanceTick } from './pmAdvance'
-import { forgetMemory, memoryHold } from './pmMemory'
+import { forgetMemory } from './pmMemory'
 import { releaseIdle, reviveWorker } from './pmRelease'
 import { agentBack, handToAgent, wasReleased } from '../../shared/pm/release'
 import { noteBack, noteStall } from './pmStall'
@@ -73,30 +74,33 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
     // Held by its chain, and the task before it goes on again: to do, the engine starts it once that one is done.
     else if (t.state === 'waiting' && !held && t.waiting?.includes(CHAIN_WAIT)) await store.logTask({ ...t, state: 'todo', waiting: undefined }, 'engine', 'to do again: the tasks before it go on')
   }
+  const machines = new Set<string>() // one start per machine and tick: the next reading counts the new agent
   for (const p of await store.projects()) {
     const ap = (await store.coordinator(p.key))?.autopilot
     const mine = (await store.tasks()).filter(t => t.project === p.key)
     // A chain the coordinator or an automation made is automatic work: held by the pace.
-    let next: typeof mine[number] | undefined
+    let next: typeof mine[number] | undefined, pace: Awaited<ReturnType<typeof paceOf>> | undefined
     for (const t of mine.filter(x => x.after && x.state === 'todo')) {
-      const pace = pacedStart(t, 'engine') ? (await projectPace(store, p.key, t, now))?.verdict : undefined
-      if (!coordinatorStartRefusal(ap, t, mine, runs, now, false, { pace, engine: true })) { next = t; break }
+      pace = pacedStart(t, 'engine') ? await paceOf(store, p, t, now) : undefined
+      if (!coordinatorStartRefusal(ap, t, mine, runs, now, false, { pace: pace?.verdict, engine: true })) { next = t; break }
     }
     if (!next) continue
-    // Short on memory: held, with why on its card, until a later tick finds memory back.
-    const held = await memoryHold(deps, p.key)
-    if (held) { if (next.held !== held) await store.logTask({ ...next, held }, 'engine', held); continue }
-    forgetMemory(p.machine)
-    const r = await startTask(deps, next.id).catch((e: Error) => ({ ...next, state: 'waiting' as const, waiting: e.message }))
+    // No room on any allowed machine: held, with why on its card, until a later tick finds room.
+    const placed = await placeFor(deps, next, { waits: pace?.waits })
+    if ('hold' in placed) { if (next.held !== placed.hold) await store.logTask({ ...next, held: placed.hold }, 'engine', placed.hold); continue }
+    if (machines.has(placed.machine)) continue
+    machines.add(placed.machine)
+    forgetMemory(placed.machine)
+    const r = await startTask(deps, next.id, { on: placed.machine }).catch((e: Error) => ({ ...next, state: 'waiting' as const, waiting: e.message }))
     await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} done` : `could not start after ${next.after}: ${r.waiting ?? ''}`)
     started.push(next.id)
   }
   return started
 }
 
-// Tasks a wake or an automation would have started, held for memory: each
-// starts once its machine has memory back, one per machine and tick (the next
-// reading counts the new agent). Chained ones are startChained's. A wake's task
+// Tasks a wake or an automation would have started, held for room: each
+// starts once a machine the project allows has room, one per machine and tick
+// (the next reading counts the new agent). Chained ones are startChained's. A wake's task
 // still holds to its autopilot (on, limits, hours, pace), an automation's to
 // the pace: over a limit it waits, with why; the autopilot off drops the hold.
 export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
@@ -104,17 +108,18 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
   const projects = await store.projects(), runs = await store.runs(), started: string[] = [], machines = new Set<string>()
   for (const t of (await store.tasks()).filter(x => x.held && x.state === 'todo' && !x.after)) {
     const p = projects.find(x => x.key === t.project)
-    if (!p || machines.has(p.machine)) continue
-    const pace = pacedStart(t, 'wake') ? (await projectPace(store, p.key, t, now))?.verdict : undefined
-    const why = originOf(t) === 'automation' ? paceRefusal(pace)
-      : coordinatorStartRefusal((await store.coordinator(p.key))?.autopilot, t, (await store.tasks()).filter(x => x.project === p.key), runs, now, true, { pace })
+    if (!p) continue
+    const pace = pacedStart(t, 'wake') ? await paceOf(store, p, t, now) : undefined
+    const why = originOf(t) === 'automation' ? paceRefusal(pace?.verdict)
+      : coordinatorStartRefusal((await store.coordinator(p.key))?.autopilot, t, (await store.tasks()).filter(x => x.project === p.key), runs, now, true, { pace: pace?.verdict })
     if (why && /autopilot on/.test(why)) { await store.logTask({ ...t, held: undefined }, 'engine', `no longer held: ${why}`); continue }
-    const held = why ? `Waits: ${why}` : await memoryHold(deps, p.key)
-    if (held) { if (held !== t.held) await store.saveTask({ ...t, held }); continue }
-    machines.add(p.machine)
-    forgetMemory(p.machine)
-    const r = await startTask(deps, t.id).catch((e: Error) => ({ ...t, state: 'waiting' as const, waiting: e.message }))
-    await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? 'started: memory is back' : `could not start: ${r.waiting ?? ''}`)
+    const placed = why ? { hold: `Waits: ${why}` } : await placeFor(deps, t, { waits: pace?.waits })
+    if ('hold' in placed) { if (placed.hold !== t.held) await store.saveTask({ ...t, held: placed.hold }); continue }
+    if (machines.has(placed.machine)) continue
+    machines.add(placed.machine)
+    forgetMemory(placed.machine)
+    const r = await startTask(deps, t.id, { on: placed.machine }).catch((e: Error) => ({ ...t, state: 'waiting' as const, waiting: e.message }))
+    await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? 'started: there is room' : `could not start: ${r.waiting ?? ''}`)
     started.push(t.id)
   }
   return started
@@ -151,8 +156,13 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   await startHeld(deps, now).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
+  const seen: Seen[] = []
   for (let task of await store.tasks()) {
-    if (task.state === 'todo' || task.step?.done) { prSeen.delete(task.id); continue }
+    if (task.state === 'todo' || task.step?.done) {
+      prSeen.delete(task.id)
+      if (task.queue) { const { queue: _, ...t } = task; await store.saveTask(t) }
+      continue
+    }
     const p = projects.find(x => x.key === task.project)
     const t = p ? await store.workflow(p.key) : null
     if (!p || !t) continue
@@ -163,7 +173,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
     const sh = actionShell(deps, on)
     const plan = taskPlan(t, task, p)
     task = await noteIdle(deps, task, plan, runs, now)
-    const facts: MechFacts = { task, plan, guards: taskGuards(t, task.type), branch: run.branch, agentBusy: false }
+    const facts: MechFacts = { task, plan, guards: taskGuards(t, task.type), branch: run.branch, agentBusy: false, now }
     if (task.state === 'waiting' && task.waitKind === 'auth') {
       facts.loggedIn = (await exec(deps, on, `${PATH_SETUP}\n${LOGIN_SCRIPT}`, [run.program]).catch(() => null))?.code === 0
     } else if (task.step && plan.slice(0, task.step.at).some(s => s.action?.kind === 'github.pr')) {
@@ -188,6 +198,11 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
     }
     // A stall: the coordinator's wake, one nudge, then the user's (pmStall.ts).
     facts.task = task = await noteStall(deps, task, plan, runs, run.worktree, sh, now).catch(() => task)
+    seen.push({ facts, run, sh })
+  }
+  await queueTick(deps, seen)
+  for (const { facts, run, sh } of seen) {
+    const task = facts.task
     const next = nextMove(facts)
     if (!next) continue
     const noted = await store.saveTask({ ...task, mech: { ...task.mech, [next.key]: now } })
@@ -251,13 +266,50 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
           ? { kind: 'caught-up', head, ...(f.head !== from ? { review: { since, head } } : {}) }
           : { kind: 'caught-up', error: `update with ${move.base}: ${lastLine(r.out)}` })
       }
-      return r.code === 0 ? `caught up with ${move.base}` : lastLine(r.out)
+      if (r.code === 0) return `caught up with ${move.base}`
+      return catchUpGaveUp(task, f.head) ? `${lastLine(r.out)} (failed ${CATCH_UP_TRIES} times: it leaves the front of the merge queue)` : lastLine(r.out)
     }
     case 'rerun-ci': {
       const r = await sh(SCRIPT.rerun, [run.worktree, f.head!])
       return r.code === 0 ? `ran ${move.checks.join(', ')} again` : lastLine(r.out)
     }
     case 'ci-to-agent': return hand(redCiText(move.checks, f.head!))
+  }
+}
+
+interface Seen { facts: MechFacts, run: Run, sh: ReturnType<typeof actionShell> }
+
+// Each project's merge queue (shared/pm/mergeQueue.ts): every task's place
+// kept on it and logged as it enters or reaches the front; the first one is
+// checked against its base, as GitHub flags a branch behind only when it must be up to date.
+async function queueTick(deps: PmLaunchDeps, seen: Seen[]) {
+  const queued = seen.filter(x => inMergeQueue(x.facts.task, x.facts.plan, x.facts.guards, x.facts.pr))
+  for (const project of new Set(seen.map(x => x.facts.task.project))) {
+    const mine = queued.filter(x => x.facts.task.project === project)
+    const order = mergeOrder(mine.map(({ facts: { task, pr, head } }) => ({
+      id: task.id, files: (pr!.files ?? []).map(f => f.path), size: (pr!.additions ?? 0) + (pr!.deletions ?? 0),
+      first: task.queue === 1 || !!task.step!.catchUp || !!task.step!.agent, red: !!task.ci?.red || catchUpGaveUp(task, head),
+    })))
+    for (const x of mine) {
+      const place = order.indexOf(x.facts.task.id) + 1
+      x.facts.queue = place
+      if (x.facts.task.queue === place) continue
+      const t = { ...x.facts.task, queue: place }
+      const said = place === 1 ? 'first in the merge queue: it is updated with its base, then merges once its checks pass'
+        : x.facts.task.queue ? undefined : `${ordinal(place)} in the merge queue`
+      x.facts.task = await (said ? deps.store.logTask(t, 'engine', said) : deps.store.saveTask(t))
+    }
+    const first = mine.find(x => x.facts.queue === 1)
+    const pr = first?.facts.pr
+    if (first && pr && !first.facts.agentBusy && !['BEHIND', 'DIRTY'].includes(pr.mergeStateStatus ?? '')) {
+      const r = await first.sh(SCRIPT.behind, [first.run.worktree, pr.baseRefName]).catch(() => null)
+      first.facts.behind = r?.code === 0 && lastLine(r.out) === 'behind'
+    }
+  }
+  // Out of the queue (merged, stopped, waiting for the user): its place goes.
+  for (const x of seen.filter(y => y.facts.task.queue && !queued.includes(y))) {
+    const { queue: _, ...t } = x.facts.task
+    x.facts.task = await deps.store.saveTask(t)
   }
 }
 
