@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_AUTOPILOT, holdsSlot, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, scheduledWake, startRefusal, today, tellRefusal, countFix } from '../shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, holdsSlot, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, pastLimit, scheduledWake, startRefusal, today, tellRefusal, countFix } from '../shared/pm/autopilot'
 import type { Run, Task } from '../shared/pm/run'
 import { accountQuota, pacedStart, paceLine } from '../shared/pm/pace'
 import { DEFAULT_PACE, type PaceVerdict } from '../shared/pm/pacing'
@@ -183,11 +183,10 @@ describe('starting a task (coordinator, or the engine for a chained one)', () =>
   const todo = (n: number, more: Partial<Task> = {}) => task(n, { state: 'todo', ...more })
   const done = task(1, { step: { at: 3, started: true, done: true, proofs: {}, rounds: {} } })
 
-  it('in a wake only with the autopilot on, within its limits; a user turn keeps the limits', () => {
+  it('in a wake only with the autopilot on, within its limits', () => {
     expect(coordinatorStartRefusal(ap, todo(2), [todo(2)], [], at(12), true)).toBeUndefined()
     expect(coordinatorStartRefusal({ ...ap, on: false }, todo(2), [todo(2)], [], at(12), true)).toBe('In a wake, a task starts only with the autopilot on')
     expect(coordinatorStartRefusal({ ...ap, on: false }, todo(2), [todo(2)], [], at(12), false)).toBeUndefined()
-    expect(coordinatorStartRefusal(ap, todo(2), [task(3), todo(2)], [], at(12), false)).toMatch(/already work at once/)
     const finished = (n: number) => task(n, { step: { at: 3, started: true, done: true, proofs: {}, rounds: {} } })
     expect(coordinatorStartRefusal(ap, todo(2), [todo(2), finished(4), finished(5)], [run(4, at(9)), run(5, at(10))], at(12), true)).toMatch(/Today's limit/)
     expect(coordinatorStartRefusal({ ...ap, hours: { from: 22, to: 6 } }, todo(2), [todo(2)], [], at(12), true)).toBe('Outside the autopilot\'s hours')
@@ -200,6 +199,25 @@ describe('starting a task (coordinator, or the engine for a chained one)', () =>
     expect(coordinatorStartRefusal(ap, stopped, [stopped], [run(2, at(9)), run(2, at(10))], at(12), true)).toBe('CO-2 already ran 2 times: starting it again is the user\'s call')
     expect(coordinatorStartRefusal(ap, stopped, [stopped], [run(2, at(9)), run(2, at(10))], at(12), false)).toBeUndefined()
     expect(coordinatorStartRefusal(ap, { ...stopped, waitKind: 'question' }, [stopped], [], at(12), false)).toBe('CO-2 is not to do (waiting)')
+  })
+
+  it('a user turn goes past each limit, and says so; a wake and the engine are still refused', () => {
+    const finished = (n: number) => task(n, { step: { at: 3, started: true, done: true, proofs: {}, rounds: {} } })
+    const cases: [typeof ap, Task[], Run[], RegExp, string][] = [
+      [ap, [task(3), todo(2)], [], /1 tasks already work at once/, 'past the autopilot\'s limit of 1 at once'],
+      [ap, [todo(2), finished(4), finished(5)], [run(4, at(9)), run(5, at(10))], /Today's limit/, 'past the autopilot\'s limit of 2 tasks a day'],
+      [{ ...ap, hours: { from: 22, to: 6 } }, [todo(2)], [], /hours/, 'outside the autopilot\'s hours'],
+    ]
+    for (const [pilot, tasks, runs, refused, past] of cases) {
+      expect(coordinatorStartRefusal(pilot, todo(2), tasks, runs, at(12), false)).toBeUndefined()
+      expect(pastLimit(pilot, tasks, runs, at(12))).toBe(past)
+      expect(coordinatorStartRefusal(pilot, todo(2), tasks, runs, at(12), true)).toMatch(refused)
+      expect(coordinatorStartRefusal(pilot, todo(2), tasks, runs, at(12), false, { engine: true })).toMatch(refused)
+    }
+    expect(pastLimit(ap, [todo(2)], [], at(12))).toBeUndefined()
+    // Real refusals stay: not to do, 'after' not done.
+    expect(coordinatorStartRefusal(ap, task(2), [task(2)], [], at(12), false)).toBe('CO-2 is not to do (working)')
+    expect(coordinatorStartRefusal(ap, todo(2, { after: 'CO-1' }), [task(1, { state: 'todo' }), todo(2, { after: 'CO-1' })], [], at(12), false)).toMatch(/starts after CO-1/)
   })
 
   it('a chained task waits until the task before it is done', () => {
