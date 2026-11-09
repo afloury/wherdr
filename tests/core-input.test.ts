@@ -56,12 +56,15 @@ describe('core input routes', () => {
 
   it('our photo message left in Claude\'s input (also during a turn): Enter once; not for other text', async () => {
     const msg = '/home/user/.cache/herdr-web/uploads/a.jpg\nwhat is wrong here?'
-    for (const [after, enters] of [['[Image #120] what is wrong here?', 1], ['', 0], ['[Image #120] what is wrong here? more', 0]] as const) {
+    const long = `${msg}\n${Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n')}`
+    for (const [text, after, enters] of [[msg, '[Image #120] what is wrong here?', 1], [msg, '', 0], [msg, '[Image #120] what is wrong here? more', 0],
+      // A long paste, shown as its stand-in: still ours alone.
+      [long, '[Image #120] what is wrong here? [Pasted text #1 +29 lines]', 1]] as const) {
       const t = deps(m => (m === 'terminal.send' ? { started: false } : {}))
       t.d.settleMs = 1
       let reads = 0
       t.d.field = async () => (reads++ ? after : null)
-      await coreSend(t.d, { pane_id: 't1', text: msg })
+      await coreSend(t.d, { pane_id: 't1', text })
       expect(t.calls.filter(c => c[0] === 'terminal.keys')).toHaveLength(enters)
     }
   })

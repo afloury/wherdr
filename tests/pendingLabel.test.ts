@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { inputShown, pendingLabel, pendingQueue } from '../app/utils/pendingQueue'
 import type { ClaudeScreen } from '../shared/types'
+import { fieldHolds } from '../shared/queuedMatch'
 
 const ONE = 'first queued note, please answer with ONE'
 const TWO = 'second queued note, please answer with TWO'
@@ -78,6 +79,16 @@ describe('message left in Claude\'s input field', () => {
     expect(pendingLabel(list[0]!, 'sending', 'claude')).toEqual({ kind: 'input' })
     // The field's own "Not sent" bubble is not shown a second time.
     expect(inputShown(list, FIELD)).toBe(true)
+  })
+
+  it('a long multi-line message Claude shows as "[Pasted text #N +K lines]": waiting there too', () => {
+    const long = `${PHOTO}\n${Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n')}`
+    const field = '[Image #3] [Pasted text #1 +29 lines]'
+    const list = pendingQueue({ mine: [{ ...sent, text: long }], claude: [], items: [], screen: null, idle: true, input: field })
+    expect(list.map(q => [q.phase, q.inInput])).toEqual([['queued', true]])
+    expect(inputShown(list, field)).toBe(true)
+    // A one-line message is never a paste stand-in.
+    expect(fieldHolds('[Pasted text #1 +29 lines]', 'one line')).toBe(false)
   })
 
   it('delivered: the field is empty, read by the agent', () => {
