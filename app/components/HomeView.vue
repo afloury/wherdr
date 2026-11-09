@@ -47,6 +47,7 @@ const HomePollers = defineComponent({
   name: 'HomePollers',
   setup() {
     useQuotaLoader()
+    useTaskAgentsLoader()
     return () => null
   },
 })
@@ -84,7 +85,7 @@ function groupsOf(list: Row[], rawGroup = rowGroup) {
     { key: 'ready', title: tl('Ready', 'Prêts'), list: list.filter(r => group(r) === 'ready') },
   ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value).map(l => sortReady(l, readySort.value, rowTitle)) : [g.list] }))
 }
-const rowTitle = (r: Row) => isIndividualAgentRow(r) ? individualAgentTitle(r.lead) : homeTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
+const rowTitle = (r: Row) => isIndividualAgentRow(r) ? paneTaskTitle(r.lead) || individualAgentTitle(r.lead) : homeTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
 // Same row object for a card whose row did not change: it does not re-render.
 const reuseRows = createRowReuse()
 // Coordinators (Alfred and each project's) have their own rows above the list.
