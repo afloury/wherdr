@@ -109,7 +109,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     const run = await workerRun(store, task.id)
     const result: ActionResult = run
       ? await runAction({ store, sh: actionShell(deps, runOn(deps, run)) }, {
-          task, step: act.step, attempt: act.attempt, action: act.action, by: approved ? 'user' : by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
+          task, shown: shownTaskId(p ? [p] : [], task.id), step: act.step, attempt: act.attempt, action: act.action, by: approved ? 'user' : by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
           reviewed: reviewedCommit(plan, state), ...(approved && state.approved!.commit ? { approved: state.approved!.commit } : {}),
           halted: async () => !!(await store.task(task.id))?.stopped,
         }).catch((e: Error) => ({ ok: false, error: e.message }))

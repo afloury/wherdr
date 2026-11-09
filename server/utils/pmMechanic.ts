@@ -32,6 +32,7 @@ import { startFileWaits, syncFiles } from './pmFiles'
 import { agentBack, fixWatch, handToAgent, retriesAction, wasReleased } from '../../shared/pm/release'
 import { noteBack, noteStall } from './pmStall'
 import { askedQuestion } from './pmRead'
+import { showIds, shownTaskId } from '../../shared/pm/projectKey'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -308,7 +309,7 @@ const TRY_TEXT: Partial<Record<Move['kind'], string>> = {
 // woken once with what was tried, each whose autopilot wakes it for stuck
 // tasks (as its 'stuck' event would have); else the user's (Your turn).
 async function escalate(deps: PmLaunchDeps, task: Task, now: number) {
-  const why = escalation(task, now)
+  const why = showIds(await deps.store.projects(), escalation(task, now))
   if (!why) return
   const { store } = deps
   const coords = new Map([[task.project, await store.coordinator(task.project)], [MAIN, await store.coordinator(MAIN)]])
@@ -320,8 +321,8 @@ async function escalate(deps: PmLaunchDeps, task: Task, now: number) {
 
 async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: MechFacts, sh: ReturnType<typeof actionShell>): Promise<string | null> {
   // A worker released while the task waited for the user starts again with it (null: not now, short on memory).
-  const tell = (text: string) => run.terminal && run.state !== 'ended'
-    ? deps.call('terminal.send', { terminal: run.terminal, text }, 30000).then(() => 'sent to the agent', () => null)
+  const tell = async (text: string) => run.terminal && run.state !== 'ended'
+    ? deps.call('terminal.send', { terminal: run.terminal, text: showIds(await deps.store.projects(), text) }, 30000).then(() => 'sent to the agent', () => null)
     : wasReleased(run)
       ? reviveWorker(deps, task.id, move.kind, text).then(t => (t ? (t.state === 'working' ? 'started the worker again with it' : 'could not start the worker again') : null))
       : Promise.resolve(null)
@@ -351,7 +352,7 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
     case 'fix-base': {
       const refused = guardAction(f.guards, { kind: 'github.pr', base: move.base }, { branch: run.branch, by: 'engine' })
       if (refused) return refused
-      const r = await sh(SCRIPT.pr, [run.worktree, run.branch, move.base, `${task.id}: ${task.title}`], task.description || task.title)
+      const r = await sh(SCRIPT.pr, [run.worktree, run.branch, move.base, `${shownTaskId(await deps.store.projects(), task.id)}: ${task.title}`], task.description || task.title)
       return r.code === 0 ? `PR base set to ${move.base}` : lastLine(r.out)
     }
     case 'catch-up': {

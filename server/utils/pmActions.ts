@@ -19,6 +19,7 @@ export interface ActionDeps {
 }
 export interface ActionJob {
   task: { id: string, title: string, description: string, project?: string }
+  shown?: string // the task id as the user sees it, for the PR title
   step: string
   attempt: number // from the step engine's action effect
   action: StepAction
@@ -117,7 +118,7 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
     case 'git.push': return commit(SCRIPT.push, [branch])
     case 'git.verify-merged': return commit(SCRIPT.verify, [a.target!, branch])
     case 'github.pr': {
-      const r = await run(deps, SCRIPT.pr, [wt, branch, a.base!, `${job.task.id}: ${job.task.title}`], job.task.description || job.task.title)
+      const r = await run(deps, SCRIPT.pr, [wt, branch, a.base!, `${job.shown ?? job.task.id}: ${job.task.title}`], job.task.description || job.task.title)
       return r.code === 0 ? { ok: true, link: lastLine(r.out) } : fail(r)
     }
     case 'github.merge': {
