@@ -1,6 +1,7 @@
 // Machine bar of the home list (utils/machineBar.ts): its settings and the
 // current choice.
 import { flag, syncedRef } from './useSyncedSettings'
+import { readProjectTabs } from '#shared/settings'
 import { BAR_ALL, groupedBarItems, barMachineSelection, barPick, readBarList, readBarPick, readMachineGroups } from '~/utils/machineBar'
 
 const store = {
@@ -44,3 +45,6 @@ export function resetMachineBar() {
   machineBarHidden.value = []
   machineBarSaved.value = BAR_ALL
 }
+
+// Which home tab shows each project (utils/projectTabs.ts): fixed project key -> group id or '*'.
+export const projectTabs = syncedRef('projectTabs', readProjectTabs, v => JSON.stringify(v), { deep: true })
