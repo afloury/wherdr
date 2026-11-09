@@ -16,6 +16,7 @@ import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type
 import { PUBLIC_RULE, isPublic } from './visibility'
 import { appLinkList } from '../appLinks'
 import { projectPlace } from './places'
+import { parseFiles } from './files'
 import { MERGE_METHODS, contributorPrsLine, type MergeMethod } from './contributorPr'
 
 // The agent of a coordinator: the project's default, and the one its kept
@@ -99,7 +100,7 @@ export type Command =
   | { name: 'task check', task: string }
   | { name: 'task stop', task: string, reason: string }
   | { name: 'task remove', task: string, reason: string }
-  | { name: 'task add', title: string, type: string, after?: string, description?: string, weight?: Weight }
+  | { name: 'task add', title: string, type: string, after?: string, description?: string, weight?: Weight, files?: string[] }
   | { name: 'pr merge', pr: number, userSaid: string, method?: MergeMethod }
   | { name: 'report back' | 'report close', task: string, text: string }
 
@@ -123,7 +124,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task check <task>', does: 'read the task\'s PR on GitHub now, for a task at its merge step or archived with a PR: merged, its merge step ends as merged and the task goes on; open, why it waits; closed without a merge, said (the user may archive it). At any time, when the user asks to unblock a task' },
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
-  { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"] [--weight light|standard|heavy]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done. --weight says what it needs of a machine (light: docs, a study; standard: tests and typecheck; heavy: a build, e2e, screenshots); left out, it comes from its task type and steps (show gives it)' },
+  { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"] [--weight light|standard|heavy] [--files <path>,<path>]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done. --weight says what it needs of a machine (light: docs, a study; standard: tests and typecheck; heavy: a build, e2e, screenshots); left out, it comes from its task type and steps (show gives it). --files: the files or folders it will change, so that its start waits behind a started task that touches them' },
   { usage: 'report back <task> "<what to fix>"', does: 'on a problem the user reported: send their step back to the worker with precise fixes, and close the report' },
   { usage: 'report close <task> "<what you did>"', does: 'close a problem the user reported once handled (you told the agent, added a follow-up task, or it is fine); the merge it blocked is free again' },
   { usage: 'tell <task> "<text>" [--to worker|reviewer] [--fix base|ci|machine|stall --reason "<one sentence>"]', does: `a message to one of the task\'s agents: the one that holds its current step, else (a step held by nobody or by you: pr, merge, a user step) its worker; --to picks it. The answer says which agent got it. In a wake, only to answer its question, or with --fix to unblock a mechanical block (${FIX_KINDS.map(k => `${k}: ${FIX_TEXT[k]}`).join('; ')}): a worker that was let go or has ended starts again with your message; with the autopilot on, a task of your project, at most ${FIXES_PER_STEP} times per task and step, written to its log with the reason; past that, tell the user. A permission request is always the user\'s` },
@@ -181,7 +182,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight'], 'task start': ['on'] }[w0 === 'tell' || w0 === 'read' ? w0 : verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files'], 'task start': ['on'] }[w0 === 'tell' || w0 === 'read' ? w0 : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (verb === 'autopilot show' || verb === 'automation list') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
@@ -217,7 +218,8 @@ function parseWords(argv: unknown): Command | { error: string } {
     if (description && description.length > 20000) return { error: '--description is 20000 characters at most' }
     const weight = flags.weight?.trim()
     if (weight !== undefined && !isWeight(weight)) return { error: `--weight is one of ${WEIGHTS.join(', ')}` }
-    return { name: verb, title, type, ...(after ? { after } : {}), ...(description ? { description } : {}), ...(weight ? { weight } : {}) }
+    const files = parseFiles(flags.files ?? '')
+    return { name: verb, title, type, ...(after ? { after } : {}), ...(description ? { description } : {}), ...(weight ? { weight } : {}), ...(files.length ? { files } : {}) }
   }
   if (verb === 'pr merge') {
     const said = flags['user-said']?.trim(), method = flags.method as MergeMethod | undefined
@@ -425,10 +427,11 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
       ? `You coordinate project ${p.key} only. Its folder is ${p.path}, without git: its tasks cannot start (a task needs git for its own worktree), so you do the work yourself, directly in that folder: read and change its files as the user asks. Add no task for that work.`
       : `You coordinate project ${p.key} only. Its repository is ${p.path}: read it, never change it; task agents do the work in their own worktrees.`,
     'Wakes are messages sent by wherdr, not the user; the first line names who sends it. The server knows which, and refuses what a wake may not do:',
-    '- "Autopilot:": your autopilot (its schedule, its events, the user\'s "run now");',
+    '- "Autopilot:": your autopilot (its schedule, an agent\'s question, a choice after N send-backs, the routine events the user turned on, the user\'s "run now");',
     '- "Step check: <task> (<step>)": a step you hold, at its start, recheck or timeout; it comes even with the autopilot off;',
     '- "Engine:": the engine gave up on a block after failed fixes, with what it tried;',
-    '- "Health check:": wherdr\'s health check found something to look at.', '',
+    '- "Health check:": every few hours, a short summary of your project (tasks done since the last check, waiting for the user, stuck for long, machines idle while to-do tasks wait). When nothing in it is wrong, ack at once with no further work: look into a line only when it needs you.',
+    'The engine runs the board on its own: it starts to-do tasks while machines have room and moves them through their steps. By default no wake comes for a task done, ready or started, nor for a block the engine fixed itself; you wake only for what needs judgment, and for the health check.', '',
     '## Your memory', '',
     `\`memory.md\` in your folder is yours: wherdr creates it once and never rewrites it, so it outlives a restart and a change of program. Read it first, at each start, and follow it: the user's decisions and preferences there come before your defaults. Note there, as you go, each decision or preference the user gives you, one fact per line; nothing a command or the board already says. Keep it clean: merge duplicates, drop stale lines, stay under ${MEMORY_CAP} characters.`, '',
     '## Commands (your token: this project only)', '', ...commandList(t), '',

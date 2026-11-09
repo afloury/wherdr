@@ -18,6 +18,7 @@ import { cloneOn, taskMachine } from '../../shared/pm/project'
 import { ensureVisibility, readLeakCheck } from './pmVisibility'
 import { DEPS_SCRIPT, depsNote } from './pmDeps'
 import { ensureReady } from './pmReady'
+import { fileConflict, filesSection } from '../../shared/pm/files'
 import { branchFor } from '../../shared/pm/branchName'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
 import { LABEL, TMP_DIR, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
@@ -107,7 +108,7 @@ async function liveWorker(deps: PmLaunchDeps, id: string) {
   }
 }
 
-const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitKind']) => store.saveTask({ ...task, state: 'waiting', waiting: reason, waitKind, held: undefined })
+const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitKind']) => store.saveTask({ ...task, state: 'waiting', waiting: reason, waitKind, held: undefined, sameFiles: undefined })
 
 // Starts the worker of a task to do (or waiting, to try again). Any reason it
 // cannot start puts the task in 'waiting' with that reason, after one attempt.
@@ -117,13 +118,15 @@ const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitK
 // worktree, whatever the task's state and the holder of its current step.
 // on: the machine key a new task goes to (one its project allows); a started
 // task always goes back to its own (taskMachine).
+// anyway: the user's start of a task whose files a started task touches (files.ts);
+// any other first start of it stays to do, behind that task (the engine starts it then).
 // by: who starts it (the log's 'back to work' line, when that clears a timeout or a stall).
-type StartOpts = { handover?: string, revive?: true, on?: string, by?: string }
+type StartOpts = { handover?: string, revive?: true, on?: string, by?: string, anyway?: true }
 export async function startTask(deps: PmLaunchDeps, id: unknown, opts: StartOpts = {}): Promise<Task> {
   return oneStart(String(id), 'worker', () => startOnce(deps, id, opts))
 }
 
-async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on: asked, by = 'engine' }: StartOpts): Promise<Task> {
+async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on: asked, by = 'engine', anyway }: StartOpts): Promise<Task> {
   const { store } = deps
   const asRead = await store.task(id)
   if (!asRead) throw new HerdrError('not_found', 'Unknown task')
@@ -133,6 +136,11 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   if (!found) throw new HerdrError('not_found', 'Unknown project')
   const placed = taskMachine(task, found, asked)
   if ('refused' in placed) throw new HerdrError('refused', placed.refused)
+  const same = task.step?.started || revive || anyway ? undefined : fileConflict(task, await store.tasks())
+  if (same) {
+    if (task.state === 'todo' && task.sameFiles === same.task) return task
+    return store.logTask({ ...task, state: 'todo', waiting: undefined, waitKind: undefined, sameFiles: same.task }, 'engine', `waits for ${same.task}: same files (${same.files.join(', ')})`)
+  }
   if (found.git === false) return wait(store, task, 'The project folder is not a git repository: a task needs git for its own worktree')
   const p = await ensureVisibility(deps, found)
   const t = p ? await store.workflow(p.key) : null
@@ -145,7 +153,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const held = s?.started && !s.done ? taskPlan(t, task, p)[s.at] : undefined
   if (held && held.holder !== 'worker' && !revive) {
     const { told: _told, ...step } = s!
-    const saved = await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, step })
+    const saved = await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, sameFiles: undefined, step })
     return noteBack(store, saved, taskPlan(t, saved, p), by, `started again by the ${by}`)
   }
   // Only where a worker is launched: a running one would share its worktree.
@@ -177,7 +185,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const shotToken = shotStep(t, task.type) ? task.shotToken || randomBytes(16).toString('hex') : undefined
   const leakCheck = isPublic(p) ? (await readLeakCheck(deps, on, paths).catch(() => ({ check: undefined }))).check : undefined
   const text = showIds([p], instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(machine, deps.origin), token: shotToken } : undefined, leakCheck)
-    + ['', ...(depsLine ? [depsLine, ''] : []), ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n'))
+    + ['', ...filesSection(runFiles(paths.instructions).files, task.files), ...(depsLine ? [depsLine, ''] : []), ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n'))
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')
 
   // The engine's start: the task enters its first step (the worker's); the
@@ -189,7 +197,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now() }
   for (;;) {
     await store.saveRun(run) // the receipt, before the terminal exists
-    await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, run: run.id, step, base, branch: paths.branch, branchStart: task.branchStart ?? paths.branch, ...(shotToken ? { shotToken } : {}) })
+    await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, sameFiles: undefined, run: run.id, step, base, branch: paths.branch, branchStart: task.branchStart ?? paths.branch, ...(shotToken ? { shotToken } : {}) })
     let address: string
     try {
       address = (await deps.call<{ address: string }>('terminal.run', {

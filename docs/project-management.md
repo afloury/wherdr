@@ -261,7 +261,11 @@ kept conversation that ran with another agent. A tap opens its window:
   kept the older defaults (10 a day, 2 at once) keeps them, with the hint *Older
   defaults: clear the fields for unlimited and Auto*; a task whose step
   holds no agent, such as a PR or merge waiting for checks or the queue, or a
-  step of yours, takes no slot), the events it wakes on (*Task added*: by someone else than this
+  step of yours, takes no slot), the **Health check** interval (empty: every
+  3h; `off`: never; see [Who sends a wake](#who-sends-a-wake)), the routine
+  events it wakes on, all off by default since the engine handles them (an
+  autopilot saved earlier with the old default, *Task done* and *Task stuck*,
+  has them turned off once; turn them back on if you want them; *Task added*: by someone else than this
   coordinator, such as you, another coordinator or an automation; *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
   even with nothing to do, with its own *New tasks / day*), and **Keep the
@@ -307,13 +311,26 @@ weight that differs from the task type's.
 A wake is a message wherdr sends the coordinator; its first line names who
 sends it, and the conversation shows a small label of that kind above it:
 
-- **Autopilot**: the autopilot's scheduled wakes, its events and *Run now*;
+- **Autopilot**: the autopilot's scheduled wakes, what needs judgment (an
+  agent's question that is not a permission request, the choice after N review
+  rounds), the routine events you turned on and *Run now*;
 - **Step check** (`Step check: CO-1 (deploy)`): a step the coordinator holds,
   such as *watch the deploy*, at its start, each `recheck` and its timeout. It
   comes even with the autopilot off;
 - **Engine**: wherdr gave up on a block after failed fixes
   ([What wherdr fixes on its own](#what-wherdr-fixes-on-its-own));
-- **Health check**: wherdr's health check found something to look at.
+- **Health check**: every 3 hours by default (the autopilot's *Health check*
+  field), a short summary of the project: tasks done since the last check,
+  tasks waiting for you, tasks stalled for over an hour, and machines idle
+  while to-do tasks wait. When nothing is wrong the coordinator acks it with no
+  further work; with nothing at all to report, no wake is sent.
+
+Waking the coordinator costs a turn with its whole context, so with the
+autopilot on and its events left off, it wakes only for these: an agent's
+question, a choice after review rounds, a block the engine gave up on, a step
+it holds, its schedule and the health check. A task done, ready or started, or
+a block the engine fixed itself, wakes nobody. A permission request is yours,
+in *Tasks to handle*.
 
 Each kind is its own wake, sent one after the other. Every wake ends with
 `wherdr pm ack <id>`, whatever its kind.
@@ -326,7 +343,7 @@ screen when the conversation can't be read. It reads the agent `tell` reaches
 (the one that holds the current step, else the worker); `--to worker` or `--to
 reviewer` picks one, and `--lines N` (1 to 200, default 40) sets how much. A project's coordinator reads its own project's tasks only.
 When an agent asks a question, its task's waiting line and the coordinator's
-*Task stuck* wake carry the question itself, and `wherdr pm tell` answers it.
+wake (*question*) carry the question itself, and `wherdr pm tell` answers it.
 
 ## Board
 
@@ -381,6 +398,26 @@ task type's `weight` when the workflow sets one, else heavy when a worker step
 asks for screenshots, light when the type lands no code (no commit, link or git
 action), standard otherwise. The coordinator does the same with `task add
 --weight`, and `show <task>` gives it.
+
+### Tasks that touch the same files
+
+Tasks that change the same files do not run at the same time. At the start of
+its work, the worker writes the files or folders it plans to change to
+`files.txt` beside its instructions file (a folder covers what is in it); the
+coordinator can name them ahead with `task add … --files app,docs/board.md`.
+Every 5 minutes wherdr reads, for each started task not done yet (running,
+waiting for you or for its merge, or stopped), those declared paths and the
+files its branch changed (`git diff` since the branch started, new files
+included).
+
+When a task starts for the first time (by you, the coordinator or an *after*
+chain), and its declared paths overlap what such a task declared or changed, it
+stays to do and its card says *Waits for WHR-12, same files*. It starts by
+itself once that task is done or no longer touches them. **Start anyway**, on
+its card's menu or in its sheet, starts it at once. A task with no declared
+paths never waits. A worker that changes files beyond its declared ones adds
+them to `files.txt` and says which in its closing note; the task's log notes
+them too.
 
 ## Task sheet
 
@@ -537,10 +574,11 @@ the mechanical blocks itself and wakes it only when that fails:
 - **a stalled agent** (below): nudged, then restarted once.
 
 These blocks do not wake the coordinator. After 2 failed tries on the same
-step (or 15 minutes with nothing left to try), wherdr wakes it once, as the
-autopilot's *Task stuck* event, and says what it tried. Every try, and giving
+step (or 15 minutes with nothing left to try), wherdr wakes it once (an
+*Engine* wake, whatever the autopilot's events) and says what it tried. Every try, and giving
 up, is written to the task's **Log**. Any other failure (a refused merge, a
-check that waits for you) wakes the coordinator at once, as before.
+check that waits for you) goes to *Tasks to handle*, and wakes the coordinator
+only when its *Task stuck* event is on.
 
 ### A stalled task
 
