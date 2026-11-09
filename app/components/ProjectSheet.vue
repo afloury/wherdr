@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // A project's sheet (Settings › Projects › a row): tabs, the one shown in the
-// URL (`tab=`). General: name, base branch, repository visibility, the agents
+// URL (`tab=`). General: name, key and color, base branch, repository visibility, the agents
 // its tasks start with (the workflow's prefs), where its workflow came from,
 // and the machines its tasks may run on (ProjectMachines).
 // Workflow: ProjectWorkflow, its own entries first in the ⋯ menu. The ⋯ menu
@@ -11,7 +11,7 @@
 // coordinator's proposed workflow change: a badge on Workflow, its first row
 // there opens the review (ProposalReview), at once when the URL asks (`review=1`).
 import type { Project, TemplateInfo } from '#shared/pm/project'
-import { shownKey } from '#shared/pm/projectKey'
+import { PROJECT_COLORS, shownKey } from '#shared/pm/projectKey'
 import type { LogEntry } from '#shared/pm/templateText'
 import type { Prefs, Template } from '#shared/pm/workflow'
 import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
@@ -28,13 +28,13 @@ const log = ref<LogEntry[]>([])
 const loaded = ref(false)
 const error = ref('')
 const busy = ref('')
-const form = reactive({ name: '', key: '', base: '', agent: '', model: '', reviewAgent: '', reviewModel: '' })
+const form = reactive({ name: '', key: '', color: '', base: '', agent: '', model: '', reviewAgent: '', reviewModel: '' })
 async function load() {
   const r = await api<{ workflow: Template | null, log: LogEntry[] }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
   workflow.value = r.workflow
   log.value = r.log
   const prefs: Prefs = r.workflow?.prefs ?? {}
-  Object.assign(form, { name: p.value.name, key: shownKey(p.value), base: p.value.base ?? '', agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '' })
+  Object.assign(form, { name: p.value.name, key: shownKey(p.value), color: p.value.color ?? '', base: p.value.base ?? '', agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '' })
   loaded.value = true
 }
 onMounted(() => { load().catch((e) => { error.value = (e as Error).message }); loadCoordinators() })
@@ -48,8 +48,8 @@ async function run(what: string, fn: () => Promise<unknown>) {
   finally { busy.value = '' }
 }
 const save = () => run('save', async () => {
-  const { name, key, base, ...prefs } = form
-  await api('/api/pm/project-update', { key: p.value.key, name, base, ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs } : {}) })
+  const { name, key, color, base, ...prefs } = form
+  await api('/api/pm/project-update', { key: p.value.key, name, base, ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs } : {}) })
   await load()
   toast(tl('Saved'))
 })
@@ -126,7 +126,16 @@ async function remove() {
 
           <label class="field-label" for="pmKey">{{ tl('Key') }}</label>
           <span class="pm-field">
-            <UInput id="pmKey" v-model="form.key" size="lg" class="pm-key mono" maxlength="10" autocomplete="off" data-testid="pm-key" @update:model-value="v => (form.key = String(v).toUpperCase())" />
+            <span class="pm-key-row">
+              <UInput id="pmKey" v-model="form.key" size="lg" class="pm-key mono" maxlength="10" autocomplete="off" data-testid="pm-key" @update:model-value="v => (form.key = String(v).toUpperCase())" />
+              <ProjectBadge :text="form.key || shownKey(p)" :color="form.color" />
+            </span>
+            <span class="pm-colors" role="radiogroup" :aria-label="tl('Color')" data-testid="pm-colors">
+              <button
+                v-for="c in PROJECT_COLORS" :key="c" type="button" role="radio" class="pm-color" :class="{ on: form.color === c }" :aria-checked="form.color === c" :aria-label="tl(c)" :title="tl(c)"
+                :style="{ '--key-c': projectColorVar(c) }" :data-color="c" @click="form.color = c"
+              ><i /></button>
+            </span>
             <small class="muted">{{ tl('Task ids start with it. Every task, old ones too, shows the new key; links and commands with a former key still work.') }}</small>
           </span>
 
@@ -201,6 +210,13 @@ async function remove() {
 .pm-field { display: grid; gap: 4px; }
 .pm-base-pick { width: min(100%, 320px); }
 .pm-key { width: min(100%, 160px); }
+.pm-key-row { display: flex; align-items: center; gap: 10px; }
+/* The palette: small squares, each in a 44 px button; the picked one framed. */
+.pm-colors { display: flex; flex-wrap: wrap; margin: 0 -10px; }
+.pm-color { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer; }
+.pm-color i { width: 20px; height: 20px; background: var(--key-c); box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px transparent; }
+.pm-color.on i { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--text); }
+.pm-color:focus-visible { outline: 1px solid var(--accent); outline-offset: -4px; }
 .pm-path { color: var(--muted); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; overflow-wrap: anywhere; }
 .pm-later { margin-top: 18px; }
 .pm-prefs { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px 10px; }

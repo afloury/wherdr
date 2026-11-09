@@ -19,7 +19,7 @@ const open = (id: string) => navigateTo({ path: '/board', query: { task: id } })
     <h2 class="group-title"><span>{{ tl('Tasks to handle', 'Tâches à traiter') }}</span><span class="count">{{ tasks.length }}</span></h2>
     <button v-for="x in tasks" :key="x.id" type="button" class="handle-row" :data-task="x.id" :title="x.action" @click="open(x.id)">
       <span class="handle-head">
-        <span class="handle-id mono-label">{{ x.shown }}</span>
+        <ProjectBadge :text="x.shown" :color="x.color" />
         <b class="handle-title">{{ x.title }}</b>
         <small class="handle-label mono-label">{{ t(x.label) }}</small>
       </span>
@@ -37,7 +37,6 @@ const open = (id: string) => navigateTo({ path: '/board', query: { task: id } })
 .handle-row:hover { background: var(--surface-2); }
 .handle-row:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 .handle-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.handle-id { flex: none; padding: 1px 5px; border: 1px solid var(--line); font-size: 11px; }
 .handle-title { flex: 1; min-width: 0; overflow: hidden; font: 600 14px/1.3 var(--display); text-overflow: ellipsis; white-space: nowrap; }
 .handle-label { flex: none; color: var(--blocked); font-size: 11px; }
 .handle-action { overflow: hidden; color: var(--muted); font: 12px/1.4 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
