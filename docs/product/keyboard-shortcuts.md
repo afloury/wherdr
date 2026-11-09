@@ -5,14 +5,14 @@ Status: **implemented** (2026-10-01). Code: `app/utils/shortcuts.ts` (table and 
 (help sheet), `app/components/ShortcutsReference.vue` (shared with Settings › Shortcuts). Tests: `tests/shortcuts.test.ts`, `tests/cardKeys.test.ts`.
 `[INFERENCE]` marks claims nobody has tested on a device yet.
 
+> v3 (herdr-core): pane swaps (`Alt+Shift+arrows`) and side-by-side focus moves are v2 only;
+> Mod+Alt+O (reveal) needs `/api/reveal`, which herdr-core mode does not serve.
+
 > 2026-10-02: Mod+Alt+O (current agent folder in the default editor, via the existing
 > /api/reveal "Open" action on the folder path) added since; action in
 > `app/composables/useHerdr.ts` (`openFolderOnMachine`). First bound to E, moved to O the
 > same day: Firefox and Zen own ⌘⌥E (Network Monitor) on macOS, Zen also Ctrl+Alt+E
 > ("Forward workspace").
-
-> 2026-10-06: herdr-projects keys Mod+Alt+P (Project panel) and Mod+Alt+Shift+N (New project),
-> decision Q10. Removed with herdr-projects 0.2 (wherdr 2.0).
 
 ## Capability
 
@@ -40,30 +40,25 @@ promise that wherdr "can replace the Herdr terminal client day to day".
 | Stop the working agent, same as the Stop button | Esc | Conversation mode, Stop shown, empty field, no conversation search open | No (Esc goes to the program) |
 | Settings | Mod+, | Computer | Yes |
 | Shortcut list | Mod+/, or `?` outside a field | Computer; also Settings › Shortcuts | Mod+/ only |
-| Board: the herdr-projects tasks of every machine | `H` outside a field | Computer | No (the program gets the key) |
 
 These existing shortcuts are unchanged and listed in the help sheet:
 
-- Alt+Shift+arrows or Alt+Shift+H J K L swap panes (`useSpaces.swapShortcut`).
 - Ctrl/⌘+Alt+arrows move focus between side-by-side cells (`viewMode.cellFocusStep`).
-- In the composer: Enter, Shift+Enter, Tab and the slash menu keys. ↑ on the first logical
+- In the composer: Enter, Shift+Enter and Tab. ↑ on the first logical
   line recalls previous sent texts; ↓ on the last returns to newer texts, then the saved draft
-  and caret. Cards and slash suggestions keep priority. History is per device and pane, keeps
+  and caret. Cards keep priority. History is per device and pane, keeps
   100 texts, drops consecutive duplicates, and excludes attachments and reference lines.
   Editing a recalled text does not change stored entries.
 - In the terminal: Shift+Enter and the copy keys (⌘C or Ctrl+Shift+C copy the on-screen selection,
   which releasing the mouse button also copies).
-- On a "Your turn" card: ↑ ↓ Enter Esc, 1–9 and ← →.
-- On an interactive menu card, the Ctrl+letters of its legend (/resume: Ctrl+A, all projects or
-  the current one) press the matching button. Ctrl on every platform, as in the terminal; ⌘A
-  keeps "select all" on macOS. Not taken in a field with text (select all), in the terminal
-  (it sends the key itself), or for Ctrl+W/N/T (the browser keeps them).
+- On a "Your turn" card: ↑ ↓ Enter Esc, 1–9 and ← →. The empty message field lets Enter through
+  to the card (a field that handles a key itself, like search, keeps it); the server sends a key
+  only while the same question is on screen.
 - In the lightbox, conversation search and global search: their own keys.
 
 Where the keys are shown:
 
 - Tooltips: global search, new agent (rail) and settings in the sidebar; search in the agent header.
-- The Board button (header and collapsed rail of the list) shows `H` in its tooltip.
 - The agent menu's "Close this pane" entry shows Mod+Alt+W.
 - The agent menu's "Open in editor" entry shows Mod+Alt+O (on the agent's Mac).
 - The composer shows `Esc stop` while Stop is visible.
@@ -141,12 +136,10 @@ Esc stops the agent only after all of the following have had their chance:
 
 1. IME composition
 2. An open window
-3. A pane drag, whose listener moved to the capture phase so it runs first
-4. The slash menu, which needs text in the field, so Stop isn't shown
-5. Conversation search. Its field takes Esc when focused. While it's open, Composer's `escStops` is
+3. Conversation search. Its field takes Esc when focused. While it's open, Composer's `escStops` is
    false, which hides the `Esc stop` hint.
-6. A "Your turn" card, where the pane is blocked rather than working
-7. The terminal, where Esc goes to the program
+4. A "Your turn" card, where the pane is blocked rather than working
+5. The terminal, where Esc goes to the program
 
 The composer blurs itself on Esc. After a stop it gets the focus back.
 
@@ -186,18 +179,6 @@ The composer blurs itself on Esc. After a stop it gets the focus back.
   free in Firefox, Zen, Chromium and Safari (⌘O "Open File" needs no Alt). The agent menu gets
   an "Open in editor" entry, the help sheet a row.
 
-- **Q10.** herdr-projects keys, live only where the plugin is installed. Mod+Alt+P for the
-  Project panel: VS Code's secondary side bar is ⌥⌘B, but Chrome on macOS binds ⌥⌘B to the
-  Bookmark Manager; ⌥⌘P is unbound in Chrome, Firefox and Safari (Finder's path bar only)
-  `[INFERENCE]`, not checked on a device. On a coordinator it toggles the panel (shared state
-  `projectSideOpen`, the same as its collapse button); from a thread it opens the coordinator with
-  the panel shown. New project is Mod+Alt+Shift+N, the Shift sibling of New agent; on Windows,
-  AltGr+Shift+letter typing a non-Latin letter (Polish `Ń`) stays text. Both are caught before
-  the terminal like the other Mod+Alt keys.
-- **Q11.** (2026-10-12) Board key: bare `H`, like `?`, because the user asked for H.
-  Mod+Alt+H is unusable on macOS: ⌘⌥H is "Hide Others", the page never sees it. Bare `H`
-  does not fire while typing (any text field) or in the terminal, nor with Shift, Alt, Ctrl or ⌘
-  (Alt+Shift+H stays the pane swap). Computer layout only.
 - **Q5.** Sidebar toggle: not now.
 
 ## Still open

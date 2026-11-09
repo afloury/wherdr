@@ -1,10 +1,8 @@
 import { readFileSync } from 'node:fs'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { parseUsageLimit } from '../shared/usageLimit'
 import { parseChoices } from '../server/utils/choices'
 import { classifyScreen } from '../shared/interactiveScreen'
-import { bindFunction } from './stateFunction'
-import { isSlashCommand } from '../shared/queuedMatch'
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/claude-limit-${name}.txt`, import.meta.url), 'utf8')
 
 describe('Claude live quota wait', () => {
@@ -32,25 +30,4 @@ describe('Claude live quota wait', () => {
     const approval = readFileSync(new URL('./fixtures/claude-approve-bash.txt', import.meta.url), 'utf8')
     expect(parseUsageLimit(`${fixture('weekly')}\n${approval}`, 'claude')).toBeNull()
   })
-})
-
-// Exercise the production sender: Herdr's raw state can still be blocked while
-// the enriched pane exposes the usable quota input.
-it('sends quota commands through the checked field, preserving other slash routing', async () => {
-  const source = readFileSync(new URL('../server/utils/state.ts', import.meta.url), 'utf8')
-  const guardedSend = vi.fn(async () => ({ unsent: [] }))
-  const agentPrompt = vi.fn(async () => {})
-  let p = { id: 'w1:p1', agent: 'claude', status: 'idle', usageLimit: parseUsageLimit(fixture('weekly'), 'claude') }
-  const send = bindFunction(source.replace('export function sendPrompt', 'function sendPrompt'), 'sendPrompt', {
-    withPaneLock: (_id: string, fn: () => unknown) => fn(), findPane: () => p,
-    GUARD_STATES: new Set(['idle', 'done', 'working']), isSlashCommand,
-    guardedSend, agentPrompt, sleep: async () => {}, typedFor: (_p: unknown, text: string) => text,
-    fieldDeps: () => ({}), inputBox: () => '', codexFieldLine: () => '', confirmSubmitted: async () => {},
-  })
-  await send(p, '/usage-credits')
-  expect(guardedSend).toHaveBeenCalledOnce()
-  expect(agentPrompt).not.toHaveBeenCalled()
-  p = { ...p, usageLimit: null }
-  await send(p, '/usage')
-  expect(agentPrompt).toHaveBeenCalledExactlyOnceWith('w1:p1', '/usage')
 })
