@@ -1,7 +1,9 @@
 // What each started task touches (shared/pm/files.ts), read from its worktree:
-// the paths its worker declared in its files marker, and the files changed
-// since its branch started (committed or not, new ones included). Then the
-// to-do tasks that wait behind one of them start once it no longer touches
+// the paths its worker declared in its files marker, and the files it changed
+// (committed or not, new ones included) since its fork from its base as of now:
+// origin's base, else the local one, else where its branch started. Never from
+// that start alone: once the base is merged in, the base's own changes would count.
+// Then the to-do tasks that wait behind one of them start once it no longer touches
 // their files (it is done, or its files moved on).
 import { beyond, fileConflict, parseFiles } from '../../shared/pm/files'
 import { runFiles } from '../../shared/pm/advance'
@@ -9,9 +11,11 @@ import type { Task } from '../../shared/pm/run'
 import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
 
 const SEP = '--wherdr-files--'
-export const FILES_SCRIPT = `wt=$1 b=$2
+export const FILES_SCRIPT = `wt=$1 b=$2 base=$4
 cat "$3" 2>/dev/null; echo; echo "${SEP}"
-s=$(git -C "$wt" config "branch.$b.wherdrstart") || exit 0
+s=
+[ -n "$base" ] && { s=$(git -C "$wt" merge-base HEAD "origin/$base" 2>/dev/null) || s=$(git -C "$wt" merge-base HEAD "$base" 2>/dev/null); }
+[ -n "$s" ] || s=$(git -C "$wt" config "branch.$b.wherdrstart") || exit 0
 git -C "$wt" diff --name-only "$s" 2>/dev/null; git -C "$wt" ls-files --others --exclude-standard 2>/dev/null`
 
 export function parseFilesRead(out: string): { files: string[], changed: string[] } {
@@ -35,7 +39,7 @@ export async function syncFiles(deps: PmLaunchDeps, now = Date.now()) {
     readAt.set(task.id, now)
     let on: string | undefined
     try { on = runOn(deps, run) } catch { continue }
-    const r = await exec(deps, on, FILES_SCRIPT, [run.worktree, run.branch, runFiles(run.instructions).files]).catch(() => null)
+    const r = await exec(deps, on, FILES_SCRIPT, [run.worktree, run.branch, runFiles(run.instructions).files, task.base ?? '']).catch(() => null)
     if (r?.code !== 0) continue
     const read = parseFilesRead(r.out)
     const files = read.files.length ? read.files : task.files

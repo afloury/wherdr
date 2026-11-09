@@ -1,6 +1,10 @@
+import { execFileSync } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { beyond, fileConflict, overlap, parseFiles } from '../shared/pm/files'
-import { parseFilesRead } from '../server/utils/pmFiles'
+import { FILES_SCRIPT, parseFilesRead } from '../server/utils/pmFiles'
 import type { Task } from '../shared/pm/run'
 
 const task = (id: string, over: Partial<Task> = {}): Task => ({ id, project: 'WEB', title: 'T', description: '', type: 'simple', state: 'working', createdAt: 0, ...over })
@@ -39,5 +43,21 @@ describe('declared files', () => {
 
   it('reads the marker and the diff of a worktree', () => {
     expect(parseFilesRead('app/\n\n--wherdr-files--\napp/x.vue\nnew.ts\n')).toEqual({ files: ['app'], changed: ['app/x.vue', 'new.ts'] })
+  })
+
+  it('a worktree\'s changes leave out what merging its base brought in', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-files-'))
+    const git = (...a: string[]) => execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=user@example.com', ...a], { stdio: 'pipe' }).toString().trim()
+    const put = (f: string) => fs.writeFileSync(path.join(dir, f), f)
+    try {
+      git('init', '-q', '-b', 'main'); put('a'); git('add', '.'); git('commit', '-qm', 'a')
+      git('switch', '-qc', 'task/X-1'); git('config', 'branch.task/X-1.wherdrstart', git('rev-parse', 'HEAD'))
+      put('mine'); git('add', '.'); git('commit', '-qm', 'mine')
+      git('switch', '-q', 'main'); put('theirs'); git('add', '.'); git('commit', '-qm', 'theirs')
+      git('switch', '-q', 'task/X-1'); git('merge', '-q', '--no-edit', 'main'); put('new')
+      const out = execFileSync('sh', ['-c', FILES_SCRIPT, 'sh', dir, 'task/X-1', path.join(dir, 'none.txt'), 'main']).toString()
+      expect(parseFilesRead(out).changed).toEqual(['mine', 'new'])
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }) }
   })
 })
