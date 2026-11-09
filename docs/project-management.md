@@ -72,6 +72,18 @@ its folder, branches and task worktrees stay on the machine.
   from it, and a step that names no branch opens its PR to it or merges into it.
   Pick one of the repository's branches or type a name; unset, the repository's
   current branch. A running task keeps the branch it started with.
+- **Branch name**: the template each new task's branch is named from, for
+  repositories that require names such as `feature/PROJ-12-fix-login`. Fields:
+  `{id}` (the task id), `{tag}` (the card's ticket key, such as `PROJ-12`, else
+  its first tag, else the task id), `{type}` (`bugfix` for a task type whose name
+  has *bug* or *fix*, else `feature`) and `{slug}` (the title in lower case, cut
+  to 40 characters). Example: `{type}/{tag}-{slug}`. It needs `{id}` or `{tag}`;
+  characters git refuses are dropped. Empty: `task/{id}`. The name is set at the
+  task's first start: a later title, tag or template change leaves it alone.
+  When the worker pushes to another branch (it checks one out, or its note has a
+  `Branch: <name>` line or a link with `?source=<branch>`, as a Bitbucket pull
+  request link), wherdr follows that branch: its pushes, PR and merge checks
+  use it, never the old one.
 - **Agents**: the worker and the reviewer its tasks start with, each with an
   optional model (empty: the agent's default).
 - **Repository**: public or private, as wherdr found it (*Check again*) or as

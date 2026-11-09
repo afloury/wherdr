@@ -18,6 +18,7 @@ import { cloneOn, taskMachine } from '../../shared/pm/project'
 import { ensureVisibility, readLeakCheck } from './pmVisibility'
 import { DEPS_SCRIPT, depsNote } from './pmDeps'
 import { ensureReady } from './pmReady'
+import { branchFor } from '../../shared/pm/branchName'
 import { LABEL, TMP_DIR, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 
 // Reuses the worktree of an earlier attempt; else a new branch from the base,
@@ -156,7 +157,8 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   if (!repo) return wait(store, task, `wherdr knows no clone of the project on ${label}: allow that machine again in the project's settings`)
   // A new task on another machine than home: refused (left as it was) while that machine is not ready.
   if (task.machine === undefined && !task.run && machine !== p.machine) await ensureReady(deps, p, t, task, machine, repo)
-  const paths = taskPaths(home, task.id)
+  // Named at the first start (a task started before has task/<id>): a later title, tag or template change leaves it alone.
+  const paths = taskPaths(home, task.id, task.branch || (task.run ? undefined : branchFor(p.branchName, task)))
   // Recorded at the first start: changing the project's branch later leaves this task alone.
   const base = taskBase(task, p) ?? ''
   const wt = await exec(deps, on, WORKTREE_SCRIPT, [repo, paths.worktree, paths.branch, base])
@@ -183,7 +185,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now() }
   for (;;) {
     await store.saveRun(run) // the receipt, before the terminal exists
-    await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, run: run.id, step, base, ...(shotToken ? { shotToken } : {}) })
+    await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, run: run.id, step, base, branch: paths.branch, ...(shotToken ? { shotToken } : {}) })
     let address: string
     try {
       address = (await deps.call<{ address: string }>('terminal.run', {
