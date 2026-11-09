@@ -50,9 +50,10 @@ export function parseRead(out: string): SignalRead {
   return { ...(head.trim() ? { head: head.trim() } : {}), ...(Number.isFinite(n) ? { diffLines: n } : {}), note: note.trim(), verdict: verdict.trim() }
 }
 
-// The note gives the proofs a report needs: itself, and its first link.
+// The note gives the proofs a report needs: itself, and its first link
+// (without the sentence's closing punctuation: 'PR: <url>.').
 export function proofsOf(r: SignalRead): Partial<Record<Evidence, string>> {
-  const link = /https?:\/\/[^\s)>\]]+/.exec(r.note)?.[0]
+  const link = /https?:\/\/[^\s)>\]]+/.exec(r.note)?.[0].replace(/[.,;:!?'"]+$/, '')
   return { ...(r.note ? { report: r.note, 'proposed-tasks': r.note } : {}), ...(link ? { link } : {}), ...(r.head ? { commit: r.head } : {}) }
 }
 
