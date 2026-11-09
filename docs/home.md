@@ -76,6 +76,12 @@ the same options) or *New conversation*; its menu (right click or long press), *
 which becomes its default: its folder and memory stay, the current session stops. A coordinator
 shows only in its own row, never again among the agents.
 
+Coordinators and **Tasks to handle** follow the [machine tab](#machines-as-tabs): a tab shows the
+projects whose allowed machines it holds (a project on machines of several groups shows on each
+of those tabs), **All** shows every project, and Alfred shows on every tab. An open coordinator
+conversation stays open on the tabs that show its project. Notifications and the board stay
+global.
+
 ### Offered agents
 
 Settings › Agents › **Offered agents** is the one list behind every agent choice: the New
@@ -91,7 +97,8 @@ can keep out of the project's repository (a deny rule for Claude, the sandbox fo
 
 The **machine tabs** at the top of the list are **All**, then one tab per machine (this core and
 each core machine, online or offline) with its count: the total of its counters (its rows,
-Alfred and its coordinators). A tap shows that machine alone,
+Alfred and its coordinators). A tap shows that machine alone, with its projects' coordinators
+and tasks to handle,
 with its Claude and Codex quotas at the top; an offline or reconnecting machine says so there.
 The tabs hide when they would show a single machine. A machine's actions (New agent here, Keep awake,
 Reconnect, Machine settings) open on a right click or long press of its tab. With the tabs hidden,
@@ -100,7 +107,13 @@ An offline or reconnecting machine gets one compact line at the bottom (state, n
 agents) with **Reconnect**. Claude quota setup lives in Settings › Agents only.
 Settings › Appearance › Home screen › **Machine tabs** orders the tabs, hides some of them, or
 hides them all. In **Groups**, create a named selection of machines; groups follow you across
-devices. Machines themselves are managed in [Settings › Machines](machines.md#manage-machines).
+devices; deleting a group puts the projects shown in it back to Automatic.
+Machines themselves are managed in [Settings › Machines](machines.md#manage-machines).
+
+A project's coordinator and its tasks to handle show on the tabs holding one of its machines
+(**All** shows every project). The project sheet's **Shown in** (General tab) keeps it on one
+group or on all tabs instead ([General](project-management.md#general)). Push notifications are
+not filtered by tab, and the board stays the same on every tab.
 
 ### New agents and tabs
 

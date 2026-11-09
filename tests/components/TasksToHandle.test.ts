@@ -7,6 +7,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import TasksToHandle from '~/components/TasksToHandle.vue'
 import { herdrState } from '~/composables/useHerdr'
+import { coordinators } from '~/composables/useCoordinators'
+import { machineBarSaved, machineGroups } from '~/composables/useMachineBar'
 import type { Pane } from '#shared/types'
 import type { ToHandle } from '#shared/pm/board'
 
@@ -31,6 +33,24 @@ it('lists each task waiting for the user, and a tap opens its sheet on the board
   await row.find('.handle-row').trigger('click')
   expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { task: 'CO-4' } })
   w.unmount()
+})
+
+it('follows the home tab: a personal tab hides a work project\'s tasks, All shows all (WHR-152)', async () => {
+  coordinators.value = [{ project: 'home', name: 'Home', machines: ['laptop'] }, { project: 'work', name: 'Work', machines: ['office'] }]
+  machineGroups.value = [{ id: '*group:personal', name: 'Personal', machines: ['laptop'] }, { id: '*group:work', name: 'Work', machines: ['office'] }]
+  list = [
+    { id: 'HO-1', shown: 'HO-1', project: 'home', title: 'Home task', action: 'Merge', label: 'Merge' },
+    { id: 'WK-1', shown: 'WK-1', project: 'work', title: 'Work task', action: 'Merge', label: 'Merge' },
+  ]
+  try {
+    machineBarSaved.value = '*group:personal'
+    const w = await mountSuspended(TasksToHandle)
+    const shown = () => w.findAll('[data-task]').map(r => r.attributes('data-task'))
+    await expect.poll(shown).toEqual(['HO-1'])
+    machineBarSaved.value = '*'
+    await expect.poll(shown).toEqual(['HO-1', 'WK-1'])
+    w.unmount()
+  } finally { coordinators.value = []; machineGroups.value = []; machineBarSaved.value = null }
 })
 
 it('is hidden when nothing waits for the user', async () => {

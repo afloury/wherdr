@@ -52,7 +52,9 @@ export async function board(store: PmStore, known: MachineInfo[] = []): Promise<
     }),
     cards: tasks.map((task) => {
       const p = projects.find(x => x.key === task.project)
-      return withPr({ ...cardOf(task, planOf(templates.get(task.project) ?? null, task, p), runs), shown: shownTaskId(projects, task.id), ...(p?.color ? { color: p.color } : {}) })
+      // A project with several machines: the card names the one its task went to.
+      const on = task.machine !== undefined && p && allowedMachines(p).length > 1 ? known.find(m => m.key === task.machine)?.label ?? (task.machine || 'Local') : undefined
+      return withPr({ ...cardOf(task, planOf(templates.get(task.project) ?? null, task, p), runs), shown: shownTaskId(projects, task.id), ...(p?.color ? { color: p.color } : {}), ...(on ? { machine: on } : {}) })
     }),
   }
 }

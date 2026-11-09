@@ -1,15 +1,16 @@
 <script setup lang="ts">
 // The COORDINATORS section under Alfred (AlfredRow, which coordinates all projects) at
 // the top of the agent list: the project coordinators that run, or whose
-// conversation stopped (its terminal ended). One tap opens its conversation, or
-// asks whether to resume the stopped one or start a new one; its menu (right click, or long press on a touch screen)
+// conversation stopped (its terminal ended), those the home tab picked shows
+// (useMachineBar.projectOnBar). One tap opens its conversation, or asks whether
+// to resume the stopped one or start a new one; its menu (right click, or long press on a touch screen)
 // restarts it with another agent, which becomes its default. Hidden while
 // project management is off.
 import type { CoordinatorView } from '#shared/pm/coordinator'
 
 const busy = ref('')
 const error = ref('')
-const rows = computed(() => projectCoordinators.value.filter(c => coordinatorPane(c) || coordinatorStopped(c)))
+const rows = computed(() => projectCoordinators.value.filter(c => (coordinatorPane(c) || coordinatorStopped(c)) && projectOnBar(c.project)))
 
 async function run(c: CoordinatorView, fn: () => Promise<unknown>) {
   busy.value = c.project
