@@ -105,6 +105,8 @@ export interface Tab {
   machine?: string
   workspace: string
   label: string
+  // herdr-core: the name comes from herdr-app's layout document (wherdr does not write it).
+  docName?: true
   number: number
   // Missing if Herdr did not give it: the app then stacks the panes.
   layout: TabLayout | null

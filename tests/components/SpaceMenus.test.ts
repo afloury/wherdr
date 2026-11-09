@@ -45,6 +45,10 @@ it('tab menu: two clear new-tab entries, then rename and close', () => {
   // Folder unknown: nothing to copy, only the sheet.
   setState([pane('p1', 't1', { cwd: null })])
   expect(labels(tabItems('t1'))[0]).toBe('New tab…')
+  // Named in herdr-app's document: the terminal's name would not show, no rename.
+  setState([pane('p1', 't1')])
+  herdrState.value = { ...herdrState.value, tabs: herdrState.value.tabs!.map(t => ({ ...t, docName: true as const })) }
+  expect(labels(tabItems('t1'))).not.toContain('Rename tab')
 })
 
 it('rename tab opens the rename sheet on its terminal, titled for a tab', () => {

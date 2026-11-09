@@ -49,7 +49,7 @@ export function coreState(terminals: CoreTerminal[], machines: CoreMachine[], do
     const commands = [terminal.template, terminal.status?.app, ...(terminal.foreground?.argv ?? []), ...(terminal.argv ?? [])]
     const agent = terminal.agent || (commands.map(c => c?.split('/').pop()?.replace(/^claude-code$/, 'claude').replace(/^gemini-cli$/, 'gemini')).find(c => c && ['claude', 'codex', 'omp', 'devin', 'opencode', 'gemini', 'aider'].includes(c)) ?? null)
     if (!result.tabs!.some(t => t.id === tab)) {
-      result.tabs!.push({ id: tab, workspace, machine, label: docTab?.name || coreTitle(terminal), number: result.tabs!.length + 1, layout: null })
+      result.tabs!.push({ id: tab, workspace, machine, label: docTab?.name || coreTitle(terminal), ...(docTab?.name ? { docName: true as const } : {}), number: result.tabs!.length + 1, layout: null })
       if (docTab) order.set(tab, space!.tabs!.indexOf(docTab))
     }
     const state = activity === 'error' ? 'blocked' : activity

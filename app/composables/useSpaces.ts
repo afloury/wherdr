@@ -54,13 +54,14 @@ export function copyPaneIdItem(p: Pane): MenuItem {
   }
 }
 // Tab menu: a new tab like this one (when its folder is known) or chosen in
-// the sheet; rename (a tab of one terminal: its name is the tab's), close.
+// the sheet; rename (a tab of one terminal whose name is the tab's, not one
+// named in herdr-app's document), close.
 export function tabItems(tabId: string): MenuItem[] {
   const e = tabOf(tabId)
   if (!e) return []
   const ws = e.tab.workspace
   const like = sameTabBody(leadPane(e.panes) || undefined, [...HERDR_AGENT_KINDS])
-  const only = e.panes.length === 1 ? e.panes[0] : undefined
+  const only = e.panes.length === 1 && !e.tab.docName ? e.panes[0] : undefined
   return [
     ...(like ? [{ label: t('New tab like this one'), icon: 'i-lucide-copy-plus', run: () => { haptic(); quickTab(like) } }] : []),
     { label: t('New tab…'), icon: 'i-lucide-folder-plus', run: () => newTabChoose(ws) },

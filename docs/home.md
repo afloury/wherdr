@@ -103,8 +103,8 @@ devices. Machines themselves are managed in [Settings › Machines](machines.md#
   also appears in herdr-app.
 - A tab's menu (right click, or long press on its chip) has **New tab like this one** (same kind
   and folder as that tab, when its folder is known), **New tab…** (opens the sheet), **Rename
-  tab** (a tab of one terminal: the name is stored as that terminal's name in core, so herdr-app
-  shows it too) and **Close tab**.
+  tab** (a tab of one terminal not named in herdr-app's layout: the name is stored as that
+  terminal's name in core) and **Close tab**.
 - A space's menu (right click, or long press on its card; on an agent's row, its Space group)
   has **Close space**, except for a project coordinator's or a task agent's space: its project
   manages it.
