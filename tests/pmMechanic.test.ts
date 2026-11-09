@@ -198,7 +198,9 @@ describe('what a task waits for', () => {
       await store.saveRun({ id: 'r1', task: t.id, role: 'worker', program: 'claude', model: 'opus', machine: '', worktree: '/w', branch: 'b', instructions: '', terminal: 'host/t3', attempt: 1, state: 'running', startedAt: 1 })
       await store.saveTask({ ...t, state: 'working', run: 'r1' })
       let term: Record<string, unknown> = { address: 'host/t3', status: { state: 'blocked' } }
-      const deps = { store, call: async () => ({ terminals: [term] }) } as unknown as Parameters<typeof syncWaits>[0]
+      // The agent's conversation, for the question's text.
+      const panes = () => [{ id: 'w1:p1', coreAddress: 'host/t3' }], chat = async () => [{ role: 'assistant', text: 'Two options.\nPostgres or SQLite?', ts: null }]
+      const deps = { store, call: async () => ({ terminals: [term] }), panes, chat } as unknown as Parameters<typeof syncWaits>[0]
       await syncWaits(deps)
       expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waitKind: 'permission' })
       term = { address: 'host/t3', status: { state: 'working' } }
@@ -206,7 +208,7 @@ describe('what a task waits for', () => {
       expect((await store.task(t.id))!.state).toBe('working')
       term = { address: 'host/t3', labels: { 'wherdr.report': 'blocked:question' }, status: { state: 'idle' } }
       await syncWaits(deps)
-      expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waitKind: 'question', waiting: 'The agent asks a question' })
+      expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waitKind: 'question', waiting: 'The agent asks a question: Two options. Postgres or SQLite?' })
       // A permission says what is asked, as herdr-core reads it.
       await store.saveTask({ ...(await store.task(t.id))!, state: 'working', waitKind: undefined, waiting: undefined })
       term = { address: 'host/t3', status: { state: 'blocked', msg: 'approve Bash: npm test' } }

@@ -85,6 +85,7 @@ export type Command =
   | { name: 'task decide', task: string, choice: Choice, reason: string }
   | { name: 'ack', wakes: string[] } | { name: 'automation show', id: string }
   | { name: 'tell', task: string, text: string, to?: AgentRole, fix?: FixKind, reason?: string }
+  | { name: 'read', task: string, to?: AgentRole, lines?: number }
   | { name: 'task start', task: string, on?: string }
   | { name: 'task check', task: string }
   | { name: 'task stop', task: string, reason: string }
@@ -117,6 +118,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'report back <task> "<what to fix>"', does: 'on a problem the user reported: send their step back to the worker with precise fixes, and close the report' },
   { usage: 'report close <task> "<what you did>"', does: 'close a problem the user reported once handled (you told the agent, added a follow-up task, or it is fine); the merge it blocked is free again' },
   { usage: 'tell <task> "<text>" [--to worker|reviewer] [--fix base|ci|machine|stall --reason "<one sentence>"]', does: `a message to one of the task\'s agents: the one that holds its current step, else (a step held by nobody or by you: pr, merge, a user step) its worker; --to picks it. The answer says which agent got it. In a wake, only to answer its question, or with --fix to unblock a mechanical block (${FIX_KINDS.map(k => `${k}: ${FIX_TEXT[k]}`).join('; ')}): a worker that was let go or has ended starts again with your message; with the autopilot on, a task of your project, at most ${FIXES_PER_STEP} times per task and step, written to its log with the reason; past that, tell the user. A permission request is always the user\'s` },
+  { usage: 'read <task> [--to worker|reviewer] [--lines N]', does: 'what the task\'s agent last said (its question, its answer to your tell), on whichever machine it runs: the last message of its conversation, else the bottom of its screen; the agent tell reaches by default, --to picks it; --lines 1 to 200 (default 40)' },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
 ]
@@ -170,7 +172,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight'], 'task start': ['on'] }[w0 === 'tell' ? 'tell' : verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight'], 'task start': ['on'] }[w0 === 'tell' || w0 === 'read' ? w0 : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (verb === 'autopilot show' || verb === 'automation list') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
@@ -183,6 +185,13 @@ function parseWords(argv: unknown): Command | { error: string } {
     if (fix !== undefined && !FIX_KINDS.includes(fix as FixKind)) return { error: `--fix is one of ${FIX_KINDS.join(', ')}` }
     if ((fix === undefined) !== (reason === undefined) || (reason !== undefined && !reason.trim())) return { error: '--fix and --reason "<one sentence>" go together' }
     return w1 && TASK_RE.test(w1) && text && text.length <= 4000 ? { name: 'tell', task: w1, text, ...(to ? { to: to as AgentRole } : {}), ...(fix ? { fix: fix as FixKind, reason: reason!.trim().slice(0, 500) } : {}) } : usage('tell')
+  }
+  if (w0 === 'read') {
+    const to = flags.to as AgentRole | undefined, lines = flags.lines === undefined ? undefined : Number(flags.lines)
+    if (!w1 || !TASK_RE.test(w1) || w2) return usage('read')
+    if (to !== undefined && !AGENT_ROLES.includes(to)) return { error: `--to is one of ${AGENT_ROLES.join(', ')}` }
+    if (lines !== undefined && !(Number.isInteger(lines) && lines >= 1 && lines <= 200)) return { error: '--lines is a number from 1 to 200' }
+    return { name: 'read', task: w1, ...(to ? { to } : {}), ...(lines ? { lines } : {}) }
   }
   if (verb === 'report back' || verb === 'report close') {
     const text = words.slice(3).join(' ').trim()
