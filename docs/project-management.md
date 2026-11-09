@@ -302,14 +302,16 @@ says *updating with* the base and leaves *Your turn* until the PR is clean
 again; an agent's conflict resolution gets a short re-review first. One update
 runs at a time per task.
 
-Clicking *Merge* is an approval that stays: the log records who approved, when
-and at which commit. If the merge is refused because the PR conflicts or is
-behind, wherdr updates it the same way, and the card shows *Approved, merging
-when ready*. Once the PR is clean, its checks are green and the re-review of the
-commits since your approval finds nothing major, wherdr merges by itself, even
-on a branch only you may merge into, and the log says so. The task comes back
-to you only if the re-review finds something major, or says the new commits
-change behaviour or the interface beyond resolving conflicts, with why.
+Clicking *Merge* is an approval of the task's screenshots that stays: the log
+records who approved, when and at which commit. Later updates keep it: the base
+merged in, a conflict resolved, red CI fixed. The card shows *Approved, merges
+by itself*, and the task sheet *Approved on* its date. Once the PR is clean and
+its checks are green, wherdr merges by itself, even on a branch only you may
+merge into, and the log says so. The task comes back to *Your turn* (*Look
+again, then merge*) only when its agent uploads new screenshots, or when the
+task's own changes to interface files (`components`, `assets`, `pages` and
+`layouts` folders) differ from those you approved; what a merge of the base
+brought does not count.
 
 #### The merge queue
 
