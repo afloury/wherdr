@@ -36,6 +36,10 @@ new project.
 5. **Start its coordinator.** Pick the agent and start it: the coordinator is
    the agent you talk to about the project. It adds tasks and follows them on
    the board. Its [autopilot](#autopilot) can be set under it (optional).
+   It keeps a memory of its own, `memory.md` in its folder: your decisions
+   and preferences, read at each start. wherdr never rewrites it, so the
+   coordinator remembers them after a restart or a change of agent (Claude,
+   Codex…).
 6. **Add a first task.** A title and, with several, its type.
 
 **New › Project** also opens a project's coordinator, or adds a new or empty
