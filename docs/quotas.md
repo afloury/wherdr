@@ -7,6 +7,11 @@
 The home screen shows what is left of the Claude and Codex usage limits (5-hour window and
 week, with reset times), for every online machine. wherdr reads each machine's quota files: this
 machine's from disk, a core machine's through `machine.exec`, with a 30-second cache.
+An account shared by every online machine shows once at the top. Otherwise the machine quotas
+come as one block per account (Claude or Codex): its name, the machines that share it as small
+chips (`machine-a` `machine-b`), then its 5-hour and weekly bars with their reset times, or
+**Limit reached · resets …**. A machine whose account is unknown (Claude on API billing, an older
+reading without an account key) keeps a block of its own, titled with the machine's name.
 
 - **Codex**: nothing to do, Codex writes its limits in its session files. Machines on different
   Codex accounts get one block each (told apart by a short hash of the account ID found in the

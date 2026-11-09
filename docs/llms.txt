@@ -68,7 +68,7 @@
 - [Guards](docs/project-management.md#guards): protected branches, who may merge (a waiting merge goes on once wherdr may do it; one you merge on GitHub ends as merged; one cut by a restart goes on by itself), contributor PRs, the project sheet's in-app addresses.
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
 - [Template library](docs/project-management.md#template-library): saved templates and examples, read, rename and delete; projects keep their own copy.
-- [Autopilot](docs/project-management.md#autopilot): the header button and its window, goal, wakes and limits (At once: Auto by default for new projects); the coordinator's view of machines and weights (`autopilot show`, `show <task>`, `--on`, `--weight`).
+- [Autopilot](docs/project-management.md#autopilot): the header button and its window, goal, wakes and limits (Tasks / day: empty for no daily limit; At once: Auto by default for new projects); the coordinator's view of machines and weights (`autopilot show`, `show <task>`, `--on`, `--weight`).
 - [Board](docs/project-management.md#board): columns (a done or archived task is never under Your turn), cards (the id badge copies the id), time in the step and total time, Add task (with its weight: Auto, Light, Standard, Heavy), Start, Start on another machine (its readiness check), Stop, Delete; a refused merge said in plain words (a conflict the agent is already fixing leaves Your turn).
 - [Task sheet](docs/project-management.md#task-sheet): the id badge by the title (copies the id), time per step, waits for you, review rounds and CI fixes, the task's buttons (Check on GitHub, also `wherdr pm task check`, for a stuck merge step or an archived task's PR) and its Description, Plan and Log tabs.
 - [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back and other answers; a waiting PR kept up to date with its base, an approved merge that goes on by itself once ready (kept across updates, asked again only on new screenshots or interface changes), and the project's merge queue (one merge at a time, the first updated with its base, its place on the card); a tap on Your turn or Tasks to handle opens the asking agent's conversation, else the sheet.
@@ -84,7 +84,7 @@
 - [Before adding a machine](docs/machines.md#before-adding-a-machine): what a machine needs first.
 - [Manage machines](docs/machines.md#manage-machines): Settings › Machines (one card per machine: name, state, actions, keep awake, memory), add, reconnect, rename, forget, keep awake (until a time or turned off, laptop battery and lid warning), capacity (memory, cores, load on Linux and macOS), memory limits, available hours and offline machines, and where each start goes (placement across a project's machines).
 - [Machines on hc](docs/core.md#creating-terminals-and-agents-machines): how hc reaches core machines.
-- [Claude and Codex quotas](docs/quotas.md#claude-and-codex-quotas): remaining usage on every machine and its setup.
+- [Claude and Codex quotas](docs/quotas.md#claude-and-codex-quotas): remaining usage per account, with the machines sharing it, and its setup.
 - [Pace](docs/quotas.md#pace): Settings › Agents › Pace, when automatic work may start.
 - [Notifications](docs/notifications.md#notifications): Web Push and Do not disturb.
 - [A default and exceptions](docs/notifications.md#a-default-and-exceptions): one synced policy: a default and its exceptions.
