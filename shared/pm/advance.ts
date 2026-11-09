@@ -16,7 +16,7 @@ const ASK_CMD = `hc label "$HC_TERMINAL_ID" ${LABEL.report}=blocked:question`
 // The files of a task's run, beside its instructions file.
 export const runFiles = (instructions: string) => {
   const dir = instructions.replace(/\/[^/]+$/, '')
-  return { note: `${dir}/report.md`, review: `${dir}/review.md`, verdict: `${dir}/verdict.json` }
+  return { note: `${dir}/report.md`, review: `${dir}/review.md`, verdict: `${dir}/verdict.json`, files: `${dir}/files.txt` }
 }
 
 // How a worker ends its step: the last section of its instructions file.
