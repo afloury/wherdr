@@ -5,7 +5,8 @@
 // each move has its guard here; server/utils/pmMechanic.ts gathers the facts
 // and carries the move out. A move is made once per key (task.mech).
 import { isTransient, prReady, type PrInfo } from './actions'
-import { isProtected, mayMerge, type ResolvedGuards } from './guards'
+import { isProtected, type ResolvedGuards } from './guards'
+import { mergeGoesOn } from './mergeQueue'
 import { DEFAULT_ROUNDS, waitsToMerge, type PlannedStep } from './steps'
 import type { Task } from './run'
 
@@ -19,6 +20,8 @@ export interface MechFacts {
   head?: string // the task's commit
   pr?: PrState // its open PR, else its merged one (merged: true)
   loggedIn?: boolean // the agent's program answers its login status again
+  queue?: number // its place in the merge queue (mergeQueue.ts): past the first, it waits its turn
+  behind?: boolean // the first in the queue lacks its base's last commits
 }
 
 export type Move =
@@ -71,8 +74,9 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   // A merge step waiting for the user: watched while it waits; once the user
   // approved it, the engine merges it when ready, under the user's approval.
   const waits = waitsToMerge(step) && !s.acting
-  const engineMerges = (step.action?.kind === 'github.merge' && step.ends === 'action' && !step.guarded && mayMerge(guards, pr.baseRefName, 'engine'))
-    || (waits && !!s.approved && !s.catchUp)
+  // In the merge queue past the first: neither updated nor merged until its turn.
+  const held = (f.queue ?? 1) > 1
+  const engineMerges = mergeGoesOn(step, s, guards, pr.baseRefName) && !(waits && s.catchUp) && !held
   // One per commit and merge attempt: a head reviewed again is merged on the step's next attempt.
   const n = s.tries?.[step.id] ?? 0
   const mergeKey = `merge:${head}${n > 1 ? `:${n}` : ''}`
@@ -91,7 +95,7 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   if (pr.headRefOid !== head) return engineMerges && !f.agentBusy ? pick(mergeKey, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
   if (pr.baseRefName !== base) return pick(`base:${head}`, { kind: 'fix-base', base })
   if (f.agentBusy) return
-  if (['BEHIND', 'DIRTY'].includes(pr.mergeStateStatus ?? '') && !isProtected(guards, f.branch)) return pick(`catch-up:${head}`, { kind: 'catch-up', base })
+  if (!held && (['BEHIND', 'DIRTY'].includes(pr.mergeStateStatus ?? '') || f.behind) && !isProtected(guards, f.branch)) return pick(`catch-up:${head}`, { kind: 'catch-up', base })
   const red = redChecks(pr)
   if (red.length && red.every(c => INFRA.includes(c.conclusion || ''))) return pick(`rerun:${head}`, { kind: 'rerun-ci', checks: red.map(checkName) })
   if (red.length) {

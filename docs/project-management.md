@@ -294,6 +294,24 @@ on a branch only you may merge into, and the log says so. The task comes back
 to you only if the re-review finds something major, or says the new commits
 change behaviour or the interface beyond resolving conflicts, with why.
 
+#### The merge queue
+
+Each project has a **merge queue**: every task whose merge may go on without
+you (a merge the guards give to wherdr, or one you approved) enters it, and
+wherdr merges them one at a time. The first in the queue is updated with its
+base: wherdr merges the base into the branch and pushes it when that merges
+cleanly, even when GitHub does not flag the branch as behind; on a conflict it
+hands the conflicting files to the task's agent (started again if it was
+ended), and the task keeps its place. wherdr then waits for the required
+checks on the updated PR and merges it, and the next task comes up. Checks that
+fail after an update go back to the agent as red CI, not to you, and that task
+goes to the end of the queue meanwhile. The others wait their turn and are not
+updated before it: PRs that touch no file another queued PR touches come first,
+then smaller changes. A PR already ready when it reaches its merge step merges
+at once. The card shows the place (*2nd in merge queue*), a refused merge
+waiting its turn stays off *Your turn*, and the log says when a task enters
+the queue and when it comes first.
+
 ### A stalled task
 
 A working task is **stalled** when nothing moves: its CI is still red 10 minutes

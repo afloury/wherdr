@@ -4,6 +4,7 @@
 // noted on the task before it runs, so it is never made twice.
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { ciOf, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
+import { inMergeQueue, mergeOrder, ordinal } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
 import { onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
 import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
@@ -151,8 +152,13 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   await startHeld(deps, now).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
+  const seen: Seen[] = []
   for (let task of await store.tasks()) {
-    if (task.state === 'todo' || task.step?.done) { prSeen.delete(task.id); continue }
+    if (task.state === 'todo' || task.step?.done) {
+      prSeen.delete(task.id)
+      if (task.queue) { const { queue: _, ...t } = task; await store.saveTask(t) }
+      continue
+    }
     const p = projects.find(x => x.key === task.project)
     const t = p ? await store.workflow(p.key) : null
     if (!p || !t) continue
@@ -188,6 +194,11 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
     }
     // A stall: the coordinator's wake, one nudge, then the user's (pmStall.ts).
     facts.task = task = await noteStall(deps, task, plan, runs, run.worktree, sh, now).catch(() => task)
+    seen.push({ facts, run, sh })
+  }
+  await queueTick(deps, seen)
+  for (const { facts, run, sh } of seen) {
+    const task = facts.task
     const next = nextMove(facts)
     if (!next) continue
     const noted = await store.saveTask({ ...task, mech: { ...task.mech, [next.key]: now } })
@@ -258,6 +269,42 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
       return r.code === 0 ? `ran ${move.checks.join(', ')} again` : lastLine(r.out)
     }
     case 'ci-to-agent': return hand(redCiText(move.checks, f.head!))
+  }
+}
+
+interface Seen { facts: MechFacts, run: Run, sh: ReturnType<typeof actionShell> }
+
+// Each project's merge queue (shared/pm/mergeQueue.ts): every task's place
+// kept on it and logged as it enters or reaches the front; the first one is
+// checked against its base, as GitHub flags a branch behind only when it must be up to date.
+async function queueTick(deps: PmLaunchDeps, seen: Seen[]) {
+  const queued = seen.filter(x => inMergeQueue(x.facts.task, x.facts.plan, x.facts.guards, x.facts.pr))
+  for (const project of new Set(seen.map(x => x.facts.task.project))) {
+    const mine = queued.filter(x => x.facts.task.project === project)
+    const order = mergeOrder(mine.map(({ facts: { task, pr } }) => ({
+      id: task.id, files: (pr!.files ?? []).map(f => f.path), size: (pr!.additions ?? 0) + (pr!.deletions ?? 0),
+      first: task.queue === 1 || !!task.step!.catchUp || !!task.step!.agent, red: !!task.ci?.red,
+    })))
+    for (const x of mine) {
+      const place = order.indexOf(x.facts.task.id) + 1
+      x.facts.queue = place
+      if (x.facts.task.queue === place) continue
+      const t = { ...x.facts.task, queue: place }
+      const said = place === 1 ? 'first in the merge queue: it is updated with its base, then merges once its checks pass'
+        : x.facts.task.queue ? undefined : `${ordinal(place)} in the merge queue`
+      x.facts.task = await (said ? deps.store.logTask(t, 'engine', said) : deps.store.saveTask(t))
+    }
+    const first = mine.find(x => x.facts.queue === 1)
+    const pr = first?.facts.pr
+    if (first && pr && !first.facts.agentBusy && !['BEHIND', 'DIRTY'].includes(pr.mergeStateStatus ?? '')) {
+      const r = await first.sh(SCRIPT.behind, [first.run.worktree, pr.baseRefName]).catch(() => null)
+      first.facts.behind = r?.code === 0 && lastLine(r.out) === 'behind'
+    }
+  }
+  // Out of the queue (merged, stopped, waiting for the user): its place goes.
+  for (const x of seen.filter(y => y.facts.task.queue && !queued.includes(y))) {
+    const { queue: _, ...t } = x.facts.task
+    x.facts.task = await deps.store.saveTask(t)
   }
 }
 
