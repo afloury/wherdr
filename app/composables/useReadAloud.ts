@@ -1,16 +1,20 @@
 // Read aloud: the Play button under agent replies (ReadAloudButton.vue) and
 // Settings › Conversation › Read aloud (ReadAloudSettings.vue). One reply at a
-// time for the whole app. The engine is the device's own voices
-// (speechSynthesis): free, on the device, never through the wherdr server.
-// Choice and voice are kept on this device.
+// time for the whole app. Engines: the device's own voices (speechSynthesis),
+// or `wherdr`, a neural voice run on the device (utils/speech/neuralVoice.ts),
+// which falls back to the device's voices while its voice is not installed.
+// Both are free and never go through the wherdr server. Choice and voice are
+// kept on this device.
 import { speakableText, speechChunks } from '~/utils/speech/plainText'
+import { VOICES, createNeuralVoice, defaultVoice } from '~/utils/speech/neuralVoice'
 import { toast } from './useHerdr'
 
-export type ReadAloudEngine = 'off' | 'device'
+export type ReadAloudEngine = 'off' | 'device' | 'wherdr'
 export const READ_ALOUD_KEY = 'readAloud'
 export const READ_ALOUD_VOICE_KEY = 'readAloudVoice'
 export const READ_ALOUD_LANG_KEY = 'readAloudVoiceLang'
 export const READ_ALOUD_HIDE_LOW_KEY = 'readAloudHideLow'
+export const READ_ALOUD_NEURAL_KEY = 'readAloudNeuralVoice'
 
 const store = {
   get: (k: string) => { try { return localStorage.getItem(k) } catch { return null } },
@@ -19,8 +23,11 @@ const store = {
 const synth = (): SpeechSynthesis | null => typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis : null
 
 export const readAloudSupported = !!synth()
+export const neuralVoice = typeof Worker !== 'undefined' && typeof AudioContext !== 'undefined' ? createNeuralVoice() : null
+void neuralVoice?.refresh()
 // On by default where the browser has voices: the button is the feature.
-export const readAloudEngine = ref<ReadAloudEngine>(store.get(READ_ALOUD_KEY) === 'off' || !readAloudSupported ? 'off' : 'device')
+const savedEngine = store.get(READ_ALOUD_KEY)
+export const readAloudEngine = ref<ReadAloudEngine>(savedEngine === 'wherdr' && neuralVoice ? 'wherdr' : savedEngine === 'off' || !readAloudSupported ? 'off' : 'device')
 watch(readAloudEngine, v => store.set(READ_ALOUD_KEY, v))
 // voiceURI of the chosen voice; '' = the system's default voice.
 export const readAloudVoice = ref(store.get(READ_ALOUD_VOICE_KEY) || '')
@@ -31,6 +38,9 @@ export const readAloudVoiceLang = ref(store.get(READ_ALOUD_LANG_KEY) || 'mine')
 watch(readAloudVoiceLang, v => store.set(READ_ALOUD_LANG_KEY, v))
 export const readAloudHideLow = ref(store.get(READ_ALOUD_HIDE_LOW_KEY) !== 'off')
 watch(readAloudHideLow, v => store.set(READ_ALOUD_HIDE_LOW_KEY, v ? 'on' : 'off'))
+// The neural voice's id (voices.json); '' = the default for the device's language.
+export const readAloudNeuralVoice = ref(store.get(READ_ALOUD_NEURAL_KEY) || '')
+watch(readAloudNeuralVoice, v => store.set(READ_ALOUD_NEURAL_KEY, v))
 
 // The device's voices: often empty at first, filled on `voiceschanged`.
 export const deviceVoices = shallowRef<SpeechSynthesisVoice[]>([])
@@ -62,11 +72,26 @@ function done(g: number) {
 // a user gesture, so every piece is queued at once, here.
 export function speak(id: string, md: string) {
   const s = synth()
-  if (!s) return
+  if (!s && readAloudEngine.value !== 'wherdr') return
   const g = ++gen
-  s.cancel()
+  s?.cancel()
+  neuralVoice?.stop()
   const chunks = speechChunks(speakableText(md, tl('Code block.', 'Bloc de code.')))
   if (!chunks.length) return done(g)
+  if (readAloudEngine.value === 'wherdr' && neuralVoice?.speak({
+    voice: VOICES.find(v => v.id === readAloudNeuralVoice.value) ?? defaultVoice(),
+    chunks,
+    onEnd: () => done(g),
+    onError: (e) => {
+      if (g !== gen) return
+      done(g)
+      toast(tl(`Could not read aloud (${e.message})`), true)
+    },
+  })) {
+    speakingId.value = id
+    return
+  }
+  if (!s) return done(g)
   const voice = deviceVoices.value.find(v => v.voiceURI === readAloudVoice.value)
   speakingId.value = id
   live = chunks.map((text, i) => {
@@ -95,5 +120,6 @@ export function stopSpeaking(prefix?: string) {
   if (!speakingId.value || (prefix && !speakingId.value.startsWith(prefix))) return
   const g = gen
   synth()?.cancel()
+  neuralVoice?.stop()
   done(g)
 }
