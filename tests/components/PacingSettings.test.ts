@@ -13,7 +13,7 @@ const calls: { url: string, body: Record<string, unknown> }[] = []
 const reset = () => {
   rows = [
     {
-      program: 'claude', account: { key: 'claude:a1b2c3d4', program: 'claude', machines: [''] }, policy: { ...DEFAULT_PACE, days: [1, 5] },
+      program: 'claude', account: { key: 'claude:a1b2c3d4', program: 'claude', machines: [''] }, policy: { ...DEFAULT_PACE, mode: 'free', days: [1, 5] },
       week: { used: 60, resetsAt: now + 3 * 86_400_000, limit: 54, label: 'line' }, five: { used: 30, resetsAt: now + 3_600_000 },
       at: now, today: 9, verdict: { go: false, reason: 'ahead', until: now + 86_400_000 },
     },
@@ -80,8 +80,15 @@ it('shows each account\'s pace, changes its mode, days, numbers and name; a prog
   await vi.waitFor(() => expect(calls[2]).toEqual({ url: '/api/pacing', body: { key: 'claude:a1b2c3d4', policy: { cap: 80 } } }))
   expect(w.find('[data-testid="pace-invalid"]').exists()).toBe(false)
 
+  // End-of-week burn: on (every week), its start shown on the row.
+  await w.find('[data-testid="pace-burn"]').trigger('click')
+  await vi.waitFor(() => expect(calls[3]).toEqual({ url: '/api/pacing', body: { key: 'claude:a1b2c3d4', policy: { burn: { until: null } } } }))
+  await vi.waitFor(() => expect(claude!.find('[data-testid="pace-burn-state"]').text()).toContain('Burn from'))
+  await w.find('[data-testid="pace-burn-cap"]').setValue('100')
+  await vi.waitFor(() => expect(calls[4]!.body.policy).toEqual({ burn: { cap: 100 } }))
+
   const name = w.find('[data-testid="pace-name"]')
   await name.setValue('  Work Pro ')
   await name.trigger('blur')
-  await vi.waitFor(() => expect(calls[3]).toEqual({ url: '/api/quotas/name', body: { key: 'claude:a1b2c3d4', name: 'Work Pro' } }))
+  await vi.waitFor(() => expect(calls[5]).toEqual({ url: '/api/quotas/name', body: { key: 'claude:a1b2c3d4', name: 'Work Pro' } }))
 })

@@ -29,6 +29,7 @@
     "scripts/fetch-dictation-files.mjs",
     "scripts/dictation-files.mjs",
     "app/utils/dictation/models.json",
+    "app/utils/speech/voices.json",
     "docs/*.md"
   ],
   "engines": {

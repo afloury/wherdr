@@ -25,7 +25,7 @@ it('company: review rounds, a PR link, your merge checked, the engine watching t
   expect(say(company, 'feature')).toMatchObject({
     review: 'The reviewer checks the work: a major finding sends it back to work, up to 2 times, then you decide.',
     pr: 'The worker does the task and says when it is done; it must attach a link.',
-    merge: 'Waits here until you act (button “Merged”). Then: the engine checks the branch is merged into develop; if not, it waits for you.',
+    merge: 'Waits here until you act (button “I merged it”). Then: the engine checks the branch is merged into develop; if not, it waits for you.',
     deploy: 'The engine follows the GitHub Actions runs of develop’s latest commit every 2m, up to 90m. A failure is said to the coordinator and comes to you.',
   })
 })

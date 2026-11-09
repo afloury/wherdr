@@ -4,7 +4,7 @@
 // Pure: the caller passes its own tl(en, fr) for the language.
 import { WATCH, actionField, type End, type Holder, type Step, type StepAction } from './workflow'
 import { shotMode } from './shots'
-import { DEFAULT_ROUNDS } from './steps'
+import { DEFAULT_ROUNDS, stepLabels } from './steps'
 
 export type Tl = (en: string, fr: string) => string
 const english: Tl = en => en
@@ -106,7 +106,8 @@ export function describeStep(s: Step & { guarded?: boolean }, tl: Tl = english, 
         `${who(s.holder, tl)} vérifie le travail : un problème majeur le renvoie à ${s.sendBack || '…'}, jusqu’à ${n} fois, puis tu décides.`) + after(s, tl)
     }
     case 'user': {
-      const button = s.userLabel ? tl(` (button “${s.userLabel}”)`, ` (bouton « ${s.userLabel} »)`) : ''
+      const label = stepLabels(s).button
+      const button = tl(` (button “${label}”)`, ` (bouton « ${label} »)`)
       const then = s.action ? ' ' + tl('Then:', 'Ensuite :') + ' ' + engineDoes(s.action, false, tl).replace(/^./, c => c.toLowerCase()) : ''
       return tl(`Waits here until you act${button}.`, `Attend ici que tu agisses${button}.`) + then + after(s, tl)
     }

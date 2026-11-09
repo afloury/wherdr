@@ -31,8 +31,7 @@ export const company: Template = {
       { id: 'review', column: 'Review', holder: 'reviewer', ends: 'verdict', sendBack: 'work', rounds: 2 },
       { id: 'pr', column: 'Review', holder: 'worker', ends: 'report', evidence: ['link'],
         instructions: 'Create the PR to develop with your PR tool, with the task description as its body.' },
-      { id: 'merge', column: 'Review', holder: 'none', ends: 'user', userLabel: 'Merged', badge: 'Merge the PR',
-        action: { kind: 'git.verify-merged', target: 'develop' } },
+      { id: 'merge', column: 'Review', holder: 'none', ends: 'user', action: { kind: 'git.verify-merged', target: 'develop' } },
       // The engine watches the develop pipeline: the coordinator hears only of a failure.
       { id: 'deploy', column: 'Deploy', ends: 'action', action: { kind: 'pipeline.watch', branch: 'develop', every: '2m', timeout: '90m' } },
       done] },

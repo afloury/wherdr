@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { EXAMPLES, common, company, github, vibe, wherdr } from '../shared/pm/examples'
-import { currentStep, initialState, onEvent, planSteps, withBase, type Effect, type StepEvent, type StepState } from '../shared/pm/steps'
+import { currentStep, initialState, onEvent, planSteps, stepLabels, withBase, type Effect, type StepEvent, type StepState } from '../shared/pm/steps'
 import { validateTemplate, type Template } from '../shared/pm/workflow'
 import type { Finding } from '../shared/pm/verdict'
 import { taskBase } from '../shared/pm/run'
@@ -112,19 +112,37 @@ describe('step engine, company flow', () => {
     expect(r.refused).toEqual(['Not done yet: step "pr" needs a link.'])
     expect(r.state.proofs.pr).toEqual({ link: 'https://git.example/pr/7' })
     expect(r.state.rounds).toEqual({ review: 1 })
-    expect(r.state.yourTurn).toEqual({ reason: 'user', badge: 'Merge the PR' })
+    expect(r.state.yourTurn).toEqual({ reason: 'user', badge: 'Merge the PR on your Git host' })
     expect(kinds(r.effects)).toEqual(['instruct:work', 'instruct:review', 'instruct:work', 'instruct:review', 'instruct:pr', 'instruct:pr'])
     expect(r.effects[5]).toMatchObject({ text: 'Not done yet: step "pr" needs a link.' })
   })
 
-  it('checks "Merged" in git; not merged keeps the step open in Your turn', () => {
+  it('checks "I merged it" in git; not merged keeps the step open, saying what to do with the PR link', () => {
+    const error = 'verify-merged: commit abc1234 is not in develop'
     const r = play(company, 'feature', [...toMerge,
       [60, { kind: 'user' }],
-      [61, { kind: 'action-result', ok: false, error: 'commit not in develop' }],
+      [61, { kind: 'action-result', ok: false, error }],
     ])
     expect(r.effects.at(-1)).toEqual({ kind: 'action', step: 'merge', action: { kind: 'git.verify-merged', target: 'develop' }, attempt: 1 })
     expect(currentStep(r.plan, r.state)!.id).toBe('merge')
-    expect(r.state.yourTurn).toEqual({ reason: 'action', badge: 'Merge the PR: commit not in develop', error: 'commit not in develop' })
+    expect(r.state.yourTurn).toEqual({ reason: 'action', error,
+      badge: 'The PR is not merged into develop yet: merge it on your Git host (https://git.example/pr/7), then press “I merged it” again' })
+    // No PR link given: the same words without it; another failure keeps the badge and the raw error.
+    const plan = r.plan, at = { ...r.state, proofs: {}, acting: true as const }
+    expect(onEvent(plan, at, { kind: 'action-result', ok: false, error }, 0).state.yourTurn!.badge)
+      .toBe('The PR is not merged into develop yet: merge it on your Git host, then press “I merged it” again')
+    expect(onEvent(plan, at, { kind: 'action-result', ok: false, error: 'verify-merged: task/A-1 has no commit of its own: nothing was merged' }, 0).state.yourTurn!.badge)
+      .toBe('Merge the PR on your Git host: verify-merged: task/A-1 has no commit of its own: nothing was merged')
+  })
+
+  it('a step you end with git.verify-merged: the host from the PR link, the workflow\'s own words first', () => {
+    const merge = { id: 'merge', ends: 'user', action: { kind: 'git.verify-merged', target: 'develop' } } as const
+    expect(stepLabels(merge, 'https://bitbucket.org/example-org/example-repo/pull-requests/7')).toEqual({ badge: 'Merge the PR on Bitbucket', button: 'I merged it' })
+    expect(stepLabels(merge, 'https://github.com/example-org/example-repo/pull/7').badge).toBe('Merge the PR on GitHub')
+    expect(stepLabels(merge, 'https://gitlab.com/example-org/example-repo/-/merge_requests/7').badge).toBe('Merge the PR on GitLab')
+    expect(stepLabels(merge, 'https://dev.azure.com/example-org/example-repo/_git/example-repo/pullrequest/7').badge).toBe('Merge the PR on Azure DevOps')
+    expect(stepLabels({ ...merge, userLabel: 'Merged', badge: 'Merge it' })).toEqual({ badge: 'Merge it', button: 'Merged' })
+    expect(stepLabels({ id: 'pick', ends: 'user' })).toEqual({ badge: 'pick', button: 'Done' })
   })
 
   // The deploy step is a pipeline.watch: the engine polls, the coordinator hears only of a failure.
