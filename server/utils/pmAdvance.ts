@@ -9,6 +9,7 @@ import { DONE_CMD, READ_SEP, dueText, parseRead, reviewFile, runFiles, runsNow, 
 import { onEvent, type PlannedStep } from '../../shared/pm/steps'
 import { followedBranch } from '../../shared/pm/branchName'
 import { LABEL, agentEnv, agentLine, duplicateAgents, reviewerPlan, runLabels, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { showIds } from '../../shared/pm/projectKey'
 import { PATH_SETUP, launchFailure } from './coreCreate'
 import { WRITE_SCRIPT, exec, oneStart, prepareTmp, runOn, type PmLaunchDeps } from './pmLaunch'
 import { HerdrError } from './herdr'
@@ -86,7 +87,7 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
     return
   }
   if (!ev) return
-  const tell = (text: string) => deps.call('terminal.send', { terminal: run.terminal, text }, 30000)
+  const tell = (text: string) => deps.call('terminal.send', { terminal: run.terminal, text: showIds([c.p], text) }, 30000)
   if ('fix' in ev) return void await tell(ev.fix)
   // A public repository with no leak check of its own: the engine scans the diff first.
   if (run.role === 'worker' && isPublic(c.p)) {
@@ -159,7 +160,7 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
   await clearSignal(deps, worker!.terminal!)
   // A new note for this step: the last one's link must not pass as this step's proof.
   await exec(deps, c.on, 'rm -f "$1"', [runFiles(worker!.instructions).note])
-  await deps.call('terminal.send', { terminal: worker!.terminal, text: due.text }, 30000)
+  await deps.call('terminal.send', { terminal: worker!.terminal, text: showIds([c.p], due.text) }, 30000)
   await deps.store.logTask({ ...task, step: told, run: worker!.id }, 'engine', `${plan[s.at]!.id}: sent to the worker`)
 }
 
@@ -171,7 +172,7 @@ async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: strin
   const plan = reviewerPlan(t, task)
   if (!worker || 'reason' in plan) return void (task.state !== 'waiting' && await waitFor(deps, task.id, worker ? (plan as { reason: string }).reason : 'No worktree: the task never started'))
   const files = runFiles(worker.instructions)
-  if ((await exec(deps, on, `rm -f "$2" && ${WRITE_SCRIPT}`, [files.review, files.verdict], reviewFile(task, worker, text, files.verdict, isPublic(p)))).code !== 0)
+  if ((await exec(deps, on, `rm -f "$2" && ${WRITE_SCRIPT}`, [files.review, files.verdict], showIds([p], reviewFile(task, worker, text, files.verdict, isPublic(p))))).code !== 0)
     return void await waitFor(deps, task.id, 'Could not write the review file')
   const told = { ...task.step!, told: task.step!.since }
   if (live) {
