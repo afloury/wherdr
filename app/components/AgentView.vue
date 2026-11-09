@@ -258,7 +258,7 @@ const filesOpen = ref(false)
 const termShown = computed(() => mode.value === 'term')
 const interactionWindow = interactionWindowFor(props.paneId)
 const interactionOpen = ref(interactionWindow.resume(pane.value?.interaction || 'unknown'))
-const interactionAvailable = computed(() => mode.value === 'chat' && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value))
+const interactionAvailable = computed(() => mode.value === 'chat' && linkShown.value && !offlineView.value && !machineDown.value && !paneStale(pane.value))
 const interactive = computed(() => pane.value?.interaction === 'terminal')
 // No polling: the window only changes with an observation (watchers below) or
 // when a debounce ends, which gets a single timeout. A hidden page arms none
@@ -292,7 +292,7 @@ const coreDeskComposer = computed(() => core && desk.value && live.value && !pro
 const composerShown = computed(() => (coreDeskComposer.value || showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) })) && !(mode.value === 'chat' && interactionOpen.value))
 const canAttachTerminal = computed(() => terminalAttachment({
   desk: desk.value, live: live.value, mode: mode.value,
-  available: Boolean(pane.value && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value)),
+  available: Boolean(pane.value && linkShown.value && !offlineView.value && !machineDown.value && !paneStale(pane.value)),
 }))
 
 async function sendFiles(files: File[]) {
@@ -387,7 +387,7 @@ function openAgentMenu() { openMenu(agentMenu.value) }
 
 // Terminal keys: under the terminal, and in the active side-by-side cell on a
 // touch screen (iPad without a hardware keyboard: Esc, arrows, ^C).
-const keysAvailable = computed(() => Boolean(pane.value) && live.value && eventsOpen.value && !offlineView.value && !machineDown.value)
+const keysAvailable = computed(() => Boolean(pane.value) && live.value && linkShown.value && !offlineView.value && !machineDown.value)
 const keybarToggleShown = computed(() => compactPhone.value && keysAvailable.value && !interactionShown.value)
 const keybarId = computed(() => `pane-keys-${encodeURIComponent(props.paneId)}`)
 const keybarShown = computed(() => keysAvailable.value && (compactPhone.value ? phoneKeysOpen.value
@@ -617,7 +617,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         @goto-term="setMode('term')" @restored="composer?.focus()" @quote="composer?.focusEnd()" @answered="composer?.focusAnswer($event)" @unanswered="unanswered = $event" @sent="onSent"
       />
     </div>
-    <div v-else-if="mode === 'term' && (!eventsOpen || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal unavailable offline') }}</p></div>
+    <div v-else-if="mode === 'term' && (!linkShown || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal unavailable offline') }}</p></div>
     <TerminalView
       v-else-if="mode === 'term'" :ctl="ctl" :class="enter ? (enter > 0 ? 'enter-next' : 'enter-prev') : undefined" :style="swipeStyle"
     />
@@ -631,7 +631,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <button v-else-if="(interactive || interactionOpen) && interactionAvailable" type="button" class="interactive-terminal-reopen" @click="reopenInteraction">
       <UIcon name="i-lucide-square-terminal" />{{ tl('Open interactive terminal', 'Ouvrir le terminal interactif') }}
     </button>
-    <ChoicesPanel v-if="prompt && !interactionOpen && !interactive && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :keys="live" />
+    <ChoicesPanel v-if="prompt && !interactionOpen && !interactive && !termShown && linkShown && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :keys="live" />
     <div v-if="keybarToggleShown" class="phone-keybar-controls">
       <button type="button" class="phone-keybar-toggle" :class="{ on: phoneKeysOpen }" :aria-label="t('Show or hide terminal keys')" :aria-expanded="phoneKeysOpen" :aria-controls="keybarId"
         @pointerdown.prevent @mousedown.prevent @click.stop="togglePhoneKeys"><UIcon :name="phoneKeysOpen ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'" /></button>

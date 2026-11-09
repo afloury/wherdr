@@ -56,6 +56,11 @@ export const eventsOpen = ref(false)
 export const netDown = ref(false)
 export const cachedAt = ref<number | null>(null)
 export const offlineView = computed(() => cachedAt.value !== null)
+// The live connection as views show it: a cut shorter than the "Connection
+// lost" delay (a server restart for an update) leaves every view as it was,
+// with no offline placeholder in between.
+const linkGrace = ref(false)
+export const linkShown = computed(() => eventsOpen.value || linkGrace.value)
 export const locked = ref(false)
 export const appConfig = ref<AppConfig>({ kinds: ['claude', 'codex'], home: '', dirs: [], push: { enabled: false, key: null, devices: 0 } })
 // Machine name (HOST_LABEL on the server): "<name> · herdr", otherwise "herdr".
@@ -420,13 +425,14 @@ let evTimer: ReturnType<typeof setTimeout> | undefined
 let netTimer: ReturnType<typeof setTimeout> | undefined
 const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
 
-// "Connection lost" banner: shown if the server stays unreachable for more than
-// 2.5 s (a lightning reconnection does not flicker).
+// "Connection lost" banner and the last known state: shown if the server stays
+// unreachable for more than 2.5 s (a lightning reconnection does not flicker).
 function setNetDown(down: boolean) {
   if (!down) {
     clearTimeout(netTimer)
     netTimer = undefined
     netDown.value = false
+    linkGrace.value = false
     return
   }
   // Already shown or about to be: the following attempts do not push the delay back.
@@ -434,6 +440,8 @@ function setNetDown(down: boolean) {
   netTimer = setTimeout(() => {
     netTimer = undefined
     netDown.value = true
+    linkGrace.value = false
+    if (herdrState.value.ok && lastStateAt) cachedAt.value = lastStateAt
   }, 2500)
 }
 
@@ -563,9 +571,9 @@ export function connectEvents() {
     clearTimeout(evHandshake)
     clearTimeout(evFirst)
     evWs = null
+    if (eventsOpen.value && !netDown.value) linkGrace.value = true
     eventsOpen.value = false
     eventProbe.cancel()
-    if (herdrState.value.ok && lastStateAt) cachedAt.value = lastStateAt
     // Refused because of the lock (session expired) rather than a network cut?
     confirmLock()
     if (locked.value) return

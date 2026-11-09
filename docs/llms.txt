@@ -26,7 +26,7 @@
 - [Auto-deploy from a build machine](docs/migrate-from-v2.md#auto-deploy-from-a-build-machine): build elsewhere and deploy to the server.
 - [Fall back to v2](docs/migrate-from-v2.md#fall-back-to-v2): go back to v2, and [uninstall v3](docs/migrate-from-v2.md#uninstall-v3).
 - [Install as an app](docs/phone.md#install-it-as-an-app): add wherdr to a phone's home screen or a desktop browser.
-- [App start](docs/phone.md#app-start): Settings › Phone › App start, network first or saved copy first.
+- [App start](docs/phone.md#app-start): Settings › Phone › App start, network first or saved copy first; after an update, a Reload banner and no reload by itself.
 
 ## Network and security
 

@@ -13,6 +13,7 @@ import { DATA_DIR, HOME, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { sleep } from './herdr'
 import { takeBackInterrupted } from './interruptRestore'
 import { uploadNames } from '../../shared/queuedMatch'
+import { startingState } from '../../shared/stateReady'
 import { type TranscriptPane } from './transcripts'
 import { type CoreTranscripts, createCoreTranscripts } from './coreTranscripts'
 import { coreCall } from './core'
@@ -56,7 +57,7 @@ export const transcripts = {
 export interface EventClient { send: (data: string) => void, pane: string | null, visible: boolean }
 export const eventClients = new Map<string, EventClient>()
 
-let state: HerdrState = { ok: false, error: 'starting…', workspaces: [], panes: [] }
+let state: HerdrState = startingState()
 let stateJson = JSON.stringify(state)
 export const getStateJson = () => stateJson
 export const getState = () => state

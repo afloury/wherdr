@@ -61,7 +61,7 @@ const counts = computed(() => {
 
 const conn = computed(() => {
   if (offlineView.value) return { ok: false, text: t('offline'), idle: false }
-  if (!eventsOpen.value) return { ok: false, text: everOpen.value ? t('offline — reconnecting…') : t('connecting…'), idle: !everOpen.value }
+  if (!linkShown.value) return { ok: false, text: everOpen.value ? t('offline — reconnecting…') : t('connecting…'), idle: !everOpen.value }
   if (!st.value.ok) return { ok: false, text: t('herdr-core unavailable'), idle: false }
   return { ok: true, text: 'wherdr v3 · herdr-core', idle: false }
 })
@@ -435,7 +435,7 @@ function resetListWidth() {
         <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
       </UTooltip>
       <UTooltip :text="t('New')" :kbds="shortcutKbds('new-space')" :content="{ side: 'right' }">
-        <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="!eventsOpen || offlineView" @click="newAgent" />
+        <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="!linkShown || offlineView" @click="newAgent" />
       </UTooltip>
       <UTooltip :text="tl('Board', 'Tableau')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Board', 'Tableau')" @click="openBoard" />
@@ -506,7 +506,7 @@ function resetListWidth() {
     <Transition :name="swipeDirection < 0 ? 'home-next' : 'home-prev'" @before-leave="retireHomeContent">
     <div :key="machineBarPick ?? BAR_ALL" ref="homeScroll" class="scroll">
       <OfflineNote v-if="(offlineView && cachedAt) || netDown" class="home-offline" :label="offlineView && cachedAt ? t('Last known state') : undefined" :at="cachedAt" date-style="medium" />
-      <div v-if="eventsOpen && !st.ok" class="notice">
+      <div v-if="linkShown && !st.ok" class="notice">
         {{ t('herdr-core is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
         {{ t('Run hc server start for the configured core session.') }}
       </div>
@@ -587,7 +587,7 @@ function resetListWidth() {
     </div>
 
     <div class="fab-wrap">
-      <UButton class="fab hw-cta" icon="i-lucide-plus" color="primary" variant="solid" size="xl" :disabled="!eventsOpen || offlineView" @click="newAgent">
+      <UButton class="fab hw-cta" icon="i-lucide-plus" color="primary" variant="solid" size="xl" :disabled="!linkShown || offlineView" @click="newAgent">
         {{ t('New') }}
       </UButton>
     </div>
