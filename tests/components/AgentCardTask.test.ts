@@ -39,6 +39,12 @@ it('a task agent\'s row: state, key badge, task title and duration, then role ·
     expect(w.find('[data-testid="agent-role"]').exists()).toBe(false)
     expect(w.find('[data-testid="task-agent-line"]').exists()).toBe(false)
     expect(w.find('.card-age').exists()).toBe(false)
+    // After a restart: a new address and run, the same task and role labels: still the task's row.
+    taskAgents.value = { 'CO-1#reviewer': { task: 'CO-1', shown: 'AC-1', title: 'Fix the login', role: 'review' } }
+    await w.setProps({ pane: { ...pane, coreAddress: 't9', task: 'CO-1', role: 'reviewer' } })
+    expect(w.find('[data-testid="project-badge"]').text()).toBe('AC-1')
+    expect(w.find('.card-title').text()).toBe('Fix the login')
+    expect(w.find('[data-testid="task-agent-line"]').text()).toBe('review · laptop · Looks good')
   } finally { w.unmount() }
 })
 
