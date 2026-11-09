@@ -112,6 +112,13 @@ its folder, branches and task worktrees stay on the machine.
   again in its worktree (a catch-up, red CI, a send-back, the step it is woken
   for) is weighed by what it does, not by its type: heavy only while its step
   still lacks its screenshots, standard otherwise.
+- **Shown in**: the home tab that shows the project's coordinator and its tasks
+  to handle, saved at once. *Automatic* (the default, with the groups it means
+  in brackets): every tab holding one of its machines, so a project whose
+  machines are in several groups shows on each of them. Or one machine group,
+  or *All tabs*. Without a machine group the sheet points to Settings ›
+  Appearance › Machine tabs; deleting a group puts the projects shown in it
+  back to Automatic ([Machines as tabs](home.md#machines-as-tabs)).
 
 ### Workflow
 

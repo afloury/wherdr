@@ -43,6 +43,8 @@ function deleteGroup() {
   machineBarOrder.value = machineBarOrder.value.filter(x => x !== id)
   machineBarHidden.value = machineBarHidden.value.filter(x => x !== id)
   if (machineBarSaved.value === id) machineBarSaved.value = BAR_ALL
+  // Projects shown in it go back to Automatic.
+  if (Object.values(projectTabs.value).includes(id)) projectTabs.value = Object.fromEntries(Object.entries(projectTabs.value).filter(([, v]) => v !== id))
   editing.value = null
 }
 const list = ref<HTMLElement | null>(null)

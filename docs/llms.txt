@@ -41,9 +41,9 @@
 
 - [Agents on herdr-core](docs/home.md#agents-on-herdr-core): the live list, states and their counters (agent rows plus the tab's coordinators), quick answers, the sidebar's order (no sideways scroll: long titles and badges ellipsized, a thin scrollbar), and task agents named after their task, one row per task with a line per agent (role, machine, last message).
 - [Alfred](docs/home.md#alfred): wherdr's assistant, its agent (kept until you change it), name, home folder and memory.
-- [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred, with the project's colored key badge, and their menu.
+- [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred, with the project's colored key badge, and their menu; coordinators and Tasks to handle follow the machine tab (a project shows on the tabs holding its machines, Alfred on every tab).
 - [Offered agents](docs/home.md#offered-agents): Settings › Agents, which programs every picker offers and in which order.
-- [Machines as tabs](docs/home.md#machines-as-tabs): the machine tabs and their counts (rows and coordinators), their groups, a machine's actions, and the offline machines' line with Reconnect (no machine chips while all are online).
+- [Machines as tabs](docs/home.md#machines-as-tabs): the machine tabs and their counts (rows and coordinators), their groups (deleting one puts its projects back to Automatic), which tabs show a project (its machines', or its Shown in; notifications and the board are not filtered), a machine's actions, and the offline machines' line with Reconnect (no machine chips while all are online).
 - [New agents and tabs](docs/home.md#new-agents-and-tabs): the New sheet, the + of a space's tabs, and renaming or closing a tab or a space.
 - [Search](docs/home.md#search): search agents and conversations.
 - [Inventory](docs/core.md#inventory): how terminals are placed in spaces and tabs, and how states are read.
@@ -52,7 +52,7 @@
 
 ## Conversation, terminal and files
 
-- [Conversation and replies](docs/conversation.md): transcripts, one-tap answers, quoted replies, attachments, dictation, and in-app links (`#/settings?section=…`, `#/board?task=…`) that open a place in wherdr.
+- [Conversation and replies](docs/conversation.md): transcripts, one-tap answers, quoted replies, attachments (shown as chips once sent), dictation, and in-app links (`#/settings?section=…`, `#/board?task=…`) that open a place in wherdr.
 - [Conversations on hc](docs/core.md#conversations): which agents open on their transcript and how it is read, and text left unsent in Claude's input box (never shown as read, never glued to the next message).
 - [Terminal](docs/terminal.md): the real terminal, shared viewers and taking control.
 - [Files](docs/files.md): browse an agent's folder, preview text, Markdown, images, PDFs and videos, download; which files a path in a conversation may open.
@@ -65,6 +65,7 @@
 - [Getting started](docs/project-management.md#getting-started): the setup window, six steps from turning projects on to a first task; Finish setup on the board; New › Project (a typed, browsed or listed folder fills name and key, shown as ~/…; a wider sheet on a computer).
 - [Projects](docs/project-management.md#projects): Settings › Projects, the project list and the project sheet's tabs.
 - [General tab](docs/project-management.md#general): name, key and its badge color, base (working) branch, branch name template ({id}, {tag}, {type}, {slug}; default task/{id}; a branch the worker pushed is followed), agents, repository visibility, allowed machines and their clone paths (each with its last readiness check, run again with ↻), placement (Heavy to the strongest, Balance the load, Home first; a task too big for every machine runs on the best one; a worker started again is heavy only while its step takes screenshots).
+- [General tab](docs/project-management.md#general): name, key and its badge color, base (working) branch, branch name template ({id}, {tag}, {type}, {slug}; default task/{id}; a branch the worker pushed is followed), agents, repository visibility, allowed machines and their clone paths (with a readiness check), Shown in (the home tab showing it: Automatic with its groups, a group, or All tabs; a hint without groups), placement (Heavy to the strongest, Balance the load, Home first; a task too big for every machine runs on the best one; a worker started again is heavy only while its step takes screenshots).
 - [Workflow tab](docs/project-management.md#workflow): task types (with an optional weight) and steps (a merge that pushes first waits up to a minute for GitHub), Edit as JSON, Save as template, Start over, review of the change the coordinator or Alfred proposed (one-line summary, who proposed it, your full request with a link back to it, readable or JSON), and its card in the coordinator's conversation.
 - [Guards](docs/project-management.md#guards): protected branches, who may merge (a waiting merge goes on once wherdr may do it; one you merge on GitHub ends as merged; one cut by a restart goes on by itself), contributor PRs, the project sheet's in-app addresses.
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
