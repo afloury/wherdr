@@ -70,11 +70,14 @@ it('starts a task of a two-machine project on either; a started task goes back t
   expect(worktreeCall()).toMatchObject({ on: 'machine-b', argv: expect.arrayContaining(['/h/src-b']) })
   expect((await store().runs()).at(-1)).toMatchObject({ machine: 'b' })
 
-  // Resume (stopped, a retry): back on B, never home.
+  // Resume (stopped, a retry): back on B, never home. Its worker ended first: never two.
+  const endRuns = async () => { for (const r of await store().runs()) await store().saveRun({ ...r, state: 'ended', endedBy: 'stopped' }) }
+  await endRuns()
   await store().saveTask({ ...started, state: 'waiting' })
   calls = []
   expect(await startTask(deps(), t.id)).toMatchObject({ state: 'working', machine: 'b' })
   expect(worktreeCall()).toMatchObject({ on: 'machine-b' })
+  await endRuns()
   await store().saveTask({ ...started, state: 'waiting' })
   await expect(startTask(deps(), t.id, { on: '' })).rejects.toThrow('stays there')
 

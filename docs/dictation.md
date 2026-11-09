@@ -263,7 +263,14 @@ posts again every second, Settings shows *Preparing on the server… 40 %*, and 
 starts once the answer is `ready`. It runs the fetch script's own code (`scripts/dictation-files.mjs`:
 same pinned URLs, sha256 checks, `.part` resume), one fetch at a time for the whole server; a
 second request for the same model joins the running one. A failed fetch (`error`, shown in the
-row) is told once; the next Install tries again and resumes. Cancel stops the phone's polling, not
+row) is told once in plain words; the next Install tries again and resumes. Before downloading
+an archive the server checks that its `tar` can unpack the format (`extractCommand` maps
+`.tar.bz2`, `.tar.gz`, `.tar.xz`, `.tar.zst` and `.tar` to a flag and the decompressor GNU tar
+runs; bsdtar has them built in), so a server without `bzip2` says *this archive format needs bzip2
+on the server* instead of `tar exited with 2` after 200 MB (on Linux: `sudo apt install bzip2`;
+macOS has both). A failed unpack removes the archive
+and the half-written files and says why (disk full, permission denied, incomplete archive, missing
+files: `tarFailure`); a cut download says how far it got and keeps its `.part` to resume. Cancel stops the phone's polling, not
 the server's fetch. A server without the route (older build) falls back to the 404 message with
 the command to run.
 
@@ -468,7 +475,9 @@ browser has `speechSynthesis`).
 Every piece is queued in the tap itself: iOS only speaks from a user gesture. iOS may stop
 speech when the screen locks or the app goes to the background, without an `end` event; a check
 every 1.5 s puts the button back to Play. Leaving the pane stops its reply. Voices marked
-"online" (Chrome's Google voices) send the text to their vendor. An OpenRouter engine
+"online" (Chrome's Google voices) send the text to their vendor. On iPhone and iPad, the Premium and
+Enhanced voices downloaded in iOS Settings are kept for native apps: Safari and home-screen web
+apps only list the standard ones, and the settings say so under the voice list. An OpenRouter engine
 (`POST /api/v1/audio/speech`, relayed by the server like dictation) is a planned follow-up.
 
 ## Known limits
