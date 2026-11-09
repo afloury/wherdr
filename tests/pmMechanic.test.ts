@@ -32,7 +32,8 @@ describe('mechanical moves', () => {
   it('retries a push that failed on a passing error, not a send-back nor a guarded step', () => {
     const failed = (badge: string, tries = 1) => task({ step: step(1, { tries: { push: tries }, yourTurn: { reason: 'action', badge } }) })
     expect(nextMove(facts({ task: failed('push: remote end hung up') }))).toEqual({ key: 'retry:push:1', move: { kind: 'retry-action', step: 'push' } })
-    expect(nextMove(facts({ task: failed('push: rejected (non-fast-forward)') }))).toBeUndefined()
+    // Refused as behind its remote: synced first (selfFix.ts), not tried again as is.
+    expect(nextMove(facts({ task: failed('push: rejected (non-fast-forward)') }))?.move.kind).toBe('sync-push')
     expect(nextMove(facts({ task: failed('push: remote end hung up', 3) }))).toBeUndefined()
     const guarded = plan.map(s => (s.id === 'push' ? { ...s, guarded: true as const } : s))
     expect(nextMove(facts({ task: failed('push: remote end hung up'), plan: guarded }))).toBeUndefined()
@@ -140,10 +141,10 @@ describe('mechanical moves', () => {
     })
   })
 
-  it('re-runs CI once when it failed for infrastructure reasons', () => {
+  it('re-runs CI once when it failed for infrastructure reasons, then sends it to the agent', () => {
     const f = facts({ pr: pr({ statusCheckRollup: red('CANCELLED') }) })
     expect(nextMove(f)).toEqual({ key: 'rerun:abc1234', move: { kind: 'rerun-ci', checks: ['e2e'] } })
-    expect(nextMove({ ...f, task: task({ mech: { 'rerun:abc1234': 1 } }) })).toBeUndefined()
+    expect(nextMove({ ...f, task: task({ mech: { 'rerun:abc1234': 1 } }) })?.move.kind).toBe('ci-to-agent')
     // Still running: wait.
     expect(nextMove(facts({ pr: pr({ statusCheckRollup: [{ name: 'e2e', status: 'IN_PROGRESS' }, ...red('FAILURE', 'unit')] }) }))).toBeUndefined()
   })
