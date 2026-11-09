@@ -17,13 +17,15 @@ function open() {
 </script>
 
 <template>
-  <div class="ui-open-card" role="status">
-    <button type="button" class="ui-open-main" @click="open">
-      <span class="ui-open-by">{{ tl(`Opened by ${event.by}`) }}</span>
-      <span class="ui-open-place"><UIcon name="i-lucide-panel-right-open" />{{ label }}</span>
-    </button>
-    <button type="button" class="ui-open-x" :aria-label="t('Close')" :title="t('Close')" @click="emit('close')">
-      <UIcon name="i-lucide-x" />
-    </button>
+  <div class="ui-open-row">
+    <div class="ui-open-card" role="status">
+      <button type="button" class="ui-open-main" @click="open">
+        <span class="ui-open-by">{{ tl(`Opened by ${event.by}`) }}</span>
+        <span class="ui-open-place"><UIcon name="i-lucide-panel-right-open" />{{ label }}</span>
+      </button>
+      <button type="button" class="ui-open-x" :aria-label="t('Close')" :title="t('Close')" @click="emit('close')">
+        <UIcon name="i-lucide-x" />
+      </button>
+    </div>
   </div>
 </template>

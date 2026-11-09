@@ -898,7 +898,8 @@ body.short-bottom { --safe-bottom: 0px; }
 .term-banner > span { flex: 1; }
 .term-banner > .term-banner-icon { width: 16px; height: 16px; color: var(--ochre); flex: none; }
 /* A place an agent opened with `ui open` (UiOpenCard.vue), above the message field. */
-.ui-open-card { display: flex; align-items: stretch; flex: none; margin: 6px 12px; background: var(--surface); border: 1px solid var(--line); }
+.ui-open-row { flex: none; padding: 6px 12px; }
+.ui-open-card { display: flex; align-items: stretch; background: var(--surface); border: 1px solid var(--line); }
 .ui-open-card:hover, .ui-open-card:focus-within { border-color: var(--accent); }
 .ui-open-main { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; padding: 8px 12px; text-align: left; cursor: pointer; }
 .ui-open-main:focus-visible { outline: none; }
@@ -2691,8 +2692,10 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .md { font-size: 15.5px; }
   .msg-user .msg-c { max-width: 78%; }
   .choices, .composer { padding-left: max(12px, calc((100% - var(--read)) / 2 + 12px)); padding-right: max(12px, calc((100% - var(--read)) / 2 + 12px)); }
+  /* An agent's opened place: in the reading column, as wide as the message field. */
+  .ui-open-row { padding-left: max(12px, calc((100% - var(--read)) / 2 + 12px)); padding-right: max(12px, calc((100% - var(--read)) / 2 + 12px)); }
   /* Reading column framed by thin lines, grid in the margins. */
-  .chat, .composer, .keybar {
+  .chat, .composer, .keybar, .ui-open-row {
     --col-l: calc(50% - var(--read) / 2);
     --col-r: calc(50% + var(--read) / 2);
     background-color: var(--bg);
@@ -2708,7 +2711,7 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   }
   /* Background "wherdr grid": the margins show GridBackdrop instead of the flat grid;
      the reading column stays solid, nothing behind the text. */
-  html[data-backdrop='wherdr'] :is(.chat, .composer) {
+  html[data-backdrop='wherdr'] :is(.chat, .composer, .ui-open-row) {
     background-color: transparent;
     background-image:
       linear-gradient(90deg, transparent calc(var(--col-l) - 1px), var(--line) calc(var(--col-l) - 1px), var(--line) var(--col-l),
@@ -2759,10 +2762,11 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .cell-view .md { font-size: 14px; }
   .cell-view .choices, .cell-view .composer { padding-left: 10px; padding-right: 10px; }
   .cell-view .composer { padding-bottom: 10px; }
+  .cell-view .ui-open-row { padding-left: 10px; padding-right: 10px; }
   /* Also over the "wherdr grid" rule above (html[data-backdrop] outweighs .cell-view):
      a cell keeps a solid background, without the column lines. */
-  .cell-view .chat, .cell-view .composer,
-  html[data-backdrop='wherdr'] .cell-view :is(.chat, .composer) { background-color: var(--bg); background-image: none; }
+  .cell-view .chat, .cell-view .composer, .cell-view .ui-open-row,
+  html[data-backdrop='wherdr'] .cell-view :is(.chat, .composer, .ui-open-row) { background-color: var(--bg); background-image: none; }
   /* Narrow cell: no reading column, the margins of its composer. */
   .cell-view .keybar { background-image: none; border-top: 1px solid var(--line-soft); padding-left: 10px; padding-right: 10px; }
   .cell-view .keybar::before { content: none; }

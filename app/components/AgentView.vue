@@ -26,7 +26,7 @@ import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 import { carriesFiles, dragDepth } from '~/utils/fileDrop'
 import { interactionWindowFor } from '~/utils/interactionWindow'
 import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
-import { appRoute } from '#shared/appLinks'
+import { uiOpenPanel } from '~/utils/settingsPanel'
 import type { UiOpenEvent } from '#shared/uiOpen'
 
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
@@ -42,11 +42,11 @@ const uiCard = ref<UiOpenEvent | null>(null)
 watch(uiOpenRequest, (e) => {
   if (!e || e.pane !== props.paneId) return
   uiOpenRequest.value = null
-  const to = appRoute(e.link)
-  if (!sidePanelRoom.value || !to.startsWith('/settings?')) { uiCard.value = e; return }
+  const panel = uiOpenPanel(e.link, route, sidePanelRoom.value)
+  if (!panel) { uiCard.value = e; return }
   uiCard.value = null
-  uiOpenedBy.value = { by: e.by, section: new URLSearchParams(to.split('?')[1]).get('section') ?? '' }
-  router.push(to)
+  uiOpenedBy.value = { by: e.by, section: panel.query.section }
+  router.push(panel)
 })
 
 // Pane being viewed (no notification for it, read as soon as it finishes): the active
