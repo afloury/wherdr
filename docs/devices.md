@@ -10,6 +10,9 @@
 - **Composer under the terminal**: an agent's terminal keeps the message field below it.
   The sidebar can be resized, or collapsed to a narrow rail (search, new agent, settings and
   state counters) with the button next to Settings; the choice is kept on the device.
+- **Terminal key bar**: as wide as the message field, most used keys first (esc, arrows, tab,
+  ^C, y, n). When the column is too narrow the keys scroll sideways; the keyboard button
+  stays at the end of the bar.
 - **Keyboard shortcuts** (`Mod` is ⌘ on macOS, Ctrl elsewhere; `Mod+/` or `?` lists them all,
   also in Settings › Computer):
   - `Ctrl/⌘+K` global search across agents and conversations, `Alt+↑/↓` previous / next agent

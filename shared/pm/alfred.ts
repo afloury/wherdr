@@ -5,7 +5,7 @@
 // (server/utils/pmCoordinator.ts) reads and writes.
 import { projectPlace } from './places'
 import type { Project } from './project'
-import { ROLE_POINTERS, docsRule, isCoordinatorProgram, type CoordinatorProgram } from './coordinator'
+import { MEMORY_CAP, MEMORY_FILE, ROLE_POINTERS, docsRule, isCoordinatorProgram, type CoordinatorProgram } from './coordinator'
 import { alfredCommandList } from './alfredCli'
 
 export const ALFRED = 'Alfred'
@@ -13,12 +13,11 @@ export const ALFRED = 'Alfred'
 // default model (no --model: the user changes the model inside Alfred).
 export type AlfredProgram = CoordinatorProgram
 export const isAlfredProgram = isCoordinatorProgram
-export const MEMORY_CAP = 4000
 
 // Alfred's own files: created when missing, never overwritten.
 export const OWN_FILES: Record<string, string> = {
   'identity.md': `# Identity\n\nName: ${ALFRED}\nTone: warm and brief; plain words, no jargon; one question at a time.\n`,
-  'memory.md': `# Memory\n\n<!-- What you learn about the user and their setup, one fact per line. Under ${MEMORY_CAP} characters. -->\n`,
+  'memory.md': MEMORY_FILE,
 }
 
 // The name on identity.md's "Name:" line (the sidebar shows it).
