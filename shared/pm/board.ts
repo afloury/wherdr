@@ -16,6 +16,7 @@ import { MERGE_REFUSED, ordinal } from './mergeQueue'
 import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
 import { retriesAction } from './release'
 import { recovering } from './incident'
+import { showIds } from './projectKey'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -146,6 +147,18 @@ export function handleLabel(c: Pick<Card, 'stopped' | 'asks' | 'state' | 'stall'
 
 // A task waiting for the user, as the sidebar's Tasks to handle lists it (GET /api/pm/handle).
 // project: the task's project (its fixed key); terminal: the agent that asks (a question, a permission, a login), whose conversation a tap opens.
+// The card's texts for people with each stored task id in its shown form
+// (CP-16 → CMP-16), texts stored before a key change too; its ids stay stored.
+export function shownTexts(projects: Parameters<typeof showIds>[0], c: Card): Card {
+  const show = <T>(v: T) => showIds(projects, v)
+  return {
+    ...c, description: show(c.description), log: c.log.map(e => ({ ...e, text: show(e.text) })),
+    ...(c.yourTurn ? { yourTurn: show(c.yourTurn) } : {}), ...(c.stall ? { stall: { ...c.stall, reason: show(c.stall.reason) } } : {}),
+    ...(c.stopped ? { stopped: { ...c.stopped, why: show(c.stopped.why) } } : {}), ...(c.asks ? { asks: { ...c.asks, text: show(c.asks.text) } } : {}),
+    ...(c.queueOut ? { queueOut: show(c.queueOut) } : {}), ...(c.held ? { held: show(c.held) } : {}), ...(c.summary ? { summary: show(c.summary) } : {}),
+  }
+}
+
 export interface ToHandle { id: string, shown: string, project: string, color?: string, title: string, action: string, label: string, terminal?: string }
 export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn)
   .map(c => ({ id: c.id, shown: c.shown, project: c.project, ...(c.color ? { color: c.color } : {}), title: c.title, action: c.yourTurn!.split('\n')[0]!, label: handleLabel(c), ...(asker(c) ? { terminal: asker(c) } : {}) }))
