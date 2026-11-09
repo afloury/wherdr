@@ -90,7 +90,7 @@
 - [Claude and Codex quotas](docs/quotas.md#claude-and-codex-quotas): remaining usage per account, with the machines sharing it, and its setup.
 - [Pace](docs/quotas.md#pace): Settings › Agents › Pace, when automatic work may start.
 - [Notifications](docs/notifications.md#notifications): Web Push and Do not disturb.
-- [A default and exceptions](docs/notifications.md#a-default-and-exceptions): one synced policy: a default and its exceptions.
+- [A default and exceptions](docs/notifications.md#a-default-and-exceptions): one synced policy: a default and its exceptions, a coordinator's kept across restarts.
 - [Notifications on hc](docs/core.md#notifications): when v3 sends a push, from hc's events.
 
 ## Extending and fixing
