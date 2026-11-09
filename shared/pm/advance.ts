@@ -42,17 +42,18 @@ export function reviewFile(task: Pick<Task, 'id' | 'title' | 'description'>, run
 
 // What the engine read after a signal: the task's commit, the size of its
 // diff, the worker's note and the reviewer's verdict file.
-export interface SignalRead { head?: string, diffLines?: number, note: string, verdict: string }
+export interface SignalRead { head?: string, diffLines?: number, note: string, verdict: string, branch?: string } // branch: the worktree's checked-out one
 export const READ_SEP = '--wherdr-read--'
 export function parseRead(out: string): SignalRead {
-  const [head = '', lines = '', note = '', verdict = ''] = out.split(`${READ_SEP}\n`)
+  const [head = '', lines = '', note = '', verdict = '', branch = ''] = out.split(`${READ_SEP}\n`)
   const n = Number.parseInt(lines, 10)
-  return { ...(head.trim() ? { head: head.trim() } : {}), ...(Number.isFinite(n) ? { diffLines: n } : {}), note: note.trim(), verdict: verdict.trim() }
+  return { ...(head.trim() ? { head: head.trim() } : {}), ...(Number.isFinite(n) ? { diffLines: n } : {}), note: note.trim(), verdict: verdict.trim(), ...(branch.trim() ? { branch: branch.trim() } : {}) }
 }
 
-// The note gives the proofs a report needs: itself, and its first link.
+// The note gives the proofs a report needs: itself, and its first link
+// (without the sentence's closing punctuation: 'PR: <url>.').
 export function proofsOf(r: SignalRead): Partial<Record<Evidence, string>> {
-  const link = /https?:\/\/[^\s)>\]]+/.exec(r.note)?.[0]
+  const link = /https?:\/\/[^\s)>\]]+/.exec(r.note)?.[0].replace(/[.,;:!?'"]+$/, '')
   return { ...(r.note ? { report: r.note, 'proposed-tasks': r.note } : {}), ...(link ? { link } : {}), ...(r.head ? { commit: r.head } : {}) }
 }
 

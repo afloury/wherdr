@@ -35,6 +35,8 @@ export interface Task {
   machine?: string // where its first start put it: it always goes back there (none, once started: its project's machine)
   step?: StepState // where the step engine has it
   base?: string // the project's working branch when it started ('' none): a later change leaves it alone
+  branch?: string // its branch, named at its first start (branchName.ts), or the one its worker said it pushed
+  branchStart?: string // the branch its worktree was made on (none: task/<id>)
   prefs?: Prefs
   tags?: string[] // short texts, shown on the card
   links?: { label: string, url: string }[] // the PR, the ticket…
@@ -105,10 +107,10 @@ export const runLabels = (install: string, run: Run) =>
   ({ [LABEL.install]: install, [LABEL.task]: run.task, [LABEL.run]: run.id, [LABEL.role]: run.role })
 
 // Where a task works on its machine, under that machine's home.
-export const taskPaths = (home: string, id: string) => ({
+export const taskPaths = (home: string, id: string, branch = `task/${id}`) => ({
   worktree: `${home}/.wherdr/pm/worktrees/${id}`,
   instructions: `${home}/.wherdr/pm/tasks/${id}/instructions.md`,
-  branch: `task/${id}`,
+  branch,
 })
 
 // A task's agents keep their temporary files in its worktree, not in the
@@ -207,7 +209,7 @@ export function instructionsText(p: Project, t: Template, task: Task, run: Pick<
     '## Instructions', '', ...(parts.length ? parts : ['(none)']), '',
     ...(visual && shots ? shotsSection(visual, task, shots) : []),
     ...(isPublic(p) ? publicWorkerSection(leakCheck) : []),
-    `You work in ${run.worktree} on branch ${run.branch} of project ${p.name}.`, '',
+    `You work in ${run.worktree} on branch ${run.branch} of project ${p.name}. If you push your work to another branch, add a line \`Branch: <its name>\` to your note: the engine then follows that branch.`, '',
   ].join('\n')
 }
 

@@ -39,16 +39,19 @@
 - **Order**: the header (logo, version, Search, Board, Settings), the counters, the quotas (a
   machine's own quotas under them), Alfred, the [coordinators](#coordinators), then the agents of
   the machines shown, by state (Your turn, Working, Ready). When the list mixes several machines,
-  each card carries its machine's name. There is no section per machine.
+  each card carries its machine's name. There is no section per machine. The list never scrolls
+  sideways: long titles and badges are cut with an ellipsis, and its scrollbar stays thin, shown
+  while the pointer is over the list.
 
 ### Alfred
 
 Alfred, wherdr's assistant, is always the first row of the agent list, even
 with no agent and projects off. It helps you get started and, with projects
-on, coordinates all of them. The first *Start* asks which agent (Claude,
+on, coordinates all of them when you ask it: it has no autopilot, each
+project's coordinator runs its own. The first *Start* asks which agent (Claude,
 Codex, OMP…, those offered in Settings › Agents) runs it; the choice is kept, and wherdr
-never changes it on its own: if that agent is no longer offered, Alfred's
-[Autopilot](project-management.md#autopilot) window says so and you pick another. The same window
+never changes it on its own: if that agent is no longer offered, the **Agent**
+button in Alfred's conversation opens a window that says so, and you pick another there. The same window
 changes Alfred's agent for its next conversation. It runs with that agent's default
 model: change the model inside Alfred. Its menu (right click, or long press on a touch
 screen), *Restart with…*, moves it

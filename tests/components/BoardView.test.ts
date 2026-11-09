@@ -43,7 +43,8 @@ const reset = (co1: Partial<StepState> = {}) => {
 }
 reset()
 registerEndpoint('/api/pm/board', () => board)
-registerEndpoint('/api/pm/coordinators', () => [])
+// Alfred has no autopilot: only a project's coordinator gets the header button.
+registerEndpoint('/api/pm/coordinators', () => [{ project: '_main', name: 'Alfred', main: true }, { project: 'VIB', name: 'Vibe', autopilot: { on: true, goal: '', events: [], perDay: 1, atOnce: 1 } }])
 const posts: { url: string, body: Record<string, unknown> }[] = []
 // task: the new task, added to the board; task-start: refused (a limit) when `refuse` is set.
 let refuse = ''
@@ -75,9 +76,11 @@ const laneOf = (w: Awaited<ReturnType<typeof mount>>, id: string) => card(w, id)
 it('shows the columns of a template without review, and of all projects', async () => {
   const w = await mount()
   expect(lanes(w)).toEqual(['your-turn', 'todo', 'working', 'done'])
-  expect(w.find('[data-testid="alfred"]').exists()).toBe(false) // no bar above the columns: Alfred is behind the header button
+  expect(w.find('[data-testid="alfred"]').exists()).toBe(false) // no bar above the columns
+  expect(w.find('[data-testid="coordinator-button"]').exists()).toBe(false) // All projects: no autopilot control
   await pick(w, 'board-project', 'VIB')
   expect(lanes(w)).toEqual(['your-turn', 'To do', 'Working', 'Done'])
+  await vi.waitFor(() => expect(w.find('[data-testid="coordinator-button"]').exists()).toBe(true))
   expect(laneOf(w, 'VIB-1')).toBe('Working')
   await pick(w, 'board-project', 'CO')
   expect(lanes(w)).toEqual(['your-turn', 'To do', 'Working', 'Review', 'Deploy', 'Done'])
