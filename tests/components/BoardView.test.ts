@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import BoardView from '~/components/BoardView.vue'
 import { herdrState } from '~/composables/useHerdr'
@@ -12,6 +12,9 @@ import type { Template } from '#shared/pm/workflow'
 import type { Pane } from '#shared/types'
 import { nextTick } from 'vue'
 import { pick, select, selectLabels, selectValue } from '../helpers/select'
+
+const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
+mockNuxtImport('navigateTo', () => navigate)
 
 // Cards built by the same code as the server (server/utils/pmBoard.ts).
 const run = (task: string, role: Run['role'], terminal: string): Run =>
@@ -103,6 +106,17 @@ it('moves a card to Your turn when its agent waits for the user', async () => {
     expect(laneOf(w, 'VIB-1')).toBe('your-turn')
     expect(card(w, 'VIB-1').text()).toContain('Answer the agent')
     expect(card(w, 'VIB-1').find('[data-testid="holder-state"]').classes()).toContain('blocked')
+    // WHR-145: a tap opens that agent's conversation; the task's sheet stays in the menu.
+    navigate.mockReset()
+    await card(w, 'VIB-1').trigger('click')
+    expect(navigate).toHaveBeenCalledWith('/a/host-a%2Ft1')
+    expect(document.querySelector('[data-testid="task-panel"]')).toBeNull()
+    await card(w, 'VIB-1').trigger('contextmenu')
+    expect(menuState.items.map(i => ('label' in i ? i.label : '')).slice(0, 2)).toEqual(['Open the agent', 'Open the task'])
+    menuState.open = false
+    // A merge waiting for the user opens its sheet on To do.
+    await card(w, 'CO-2').trigger('click')
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="task-todo"]')).not.toBeNull())
   } finally { herdrState.value = before }
 })
 
@@ -245,7 +259,8 @@ it('adds a task: project required on All projects, then title; the type shows it
   await vi.waitFor(() => expect(card(w, 'CO-9').exists()).toBe(true))
 })
 
-it('the board\'s project is preselected; a task after others posts them and does not start now', async () => {
+it('the board\'s project is preselected; a task after others posts them and its weight, and does not start now', async () => {
+  board.projects[1]!.types[0]!.weight = 'heavy (screenshots)'
   board.cards[2] = coTask(task('CO-2', initialState(), { state: 'todo' }))
   const w = await mount()
   await pick(w, 'board-project', 'CO')
@@ -255,12 +270,14 @@ it('the board\'s project is preselected; a task after others posts them and does
   expect(selectValue(sheet, 'add-task-project')).toBe('CO')
   expect(selectLabels(sheet, 'add-task-after')).toEqual(['CO-1 · Task CO-1', 'CO-2 · Task CO-2']) // the same project's, not done
   select(sheet, 'add-task-after').vm.$emit('update:modelValue', ['CO-1', 'CO-2'])
+  expect(selectLabels(sheet, 'add-task-weight')).toEqual(['Auto: heavy (screenshots)', 'Light', 'Standard', 'Heavy'])
+  select(sheet, 'add-task-weight').vm.$emit('update:modelValue', 'light')
   sheet.findComponent({ name: 'UInput' }).vm.$emit('update:modelValue', 'Then deploy')
   sheet.findComponent({ name: 'USwitch' }).vm.$emit('update:modelValue', true)
   await nextTick()
   document.querySelector<HTMLElement>('[data-testid="add-task-submit"]')!.click()
   await vi.waitFor(() => expect(posts.map(p => p.url)).toEqual(['/api/pm/task']))
-  expect(posts[0]!.body).toMatchObject({ project: 'CO', title: 'Then deploy', after: 'CO-1,CO-2' })
+  expect(posts[0]!.body).toMatchObject({ project: 'CO', title: 'Then deploy', after: 'CO-1,CO-2', weight: 'light' })
 })
 
 it('Start on a To do card (menu and sheet) says the server\'s refusal; a task after an open one shows what it waits for instead', async () => {

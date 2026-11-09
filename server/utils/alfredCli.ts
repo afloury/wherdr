@@ -5,7 +5,7 @@
 import { CHANGES, SETTING_VALUES, alfredCommandList, dryRun, parseAlfredCommand, type AlfredPlan } from '../../shared/pm/alfredCli'
 import { GUARDED_PROGRAMS, MAIN, type CoordinatorAgent } from '../../shared/pm/coordinator'
 import { offeredAgents, readAgentOrder, readHiddenAgents } from '../../shared/agentList'
-import { cleanProjectInput } from '../../shared/pm/project'
+import { allowedMachines, cleanProjectInput, cleanProjectUpdate, machinesOf } from '../../shared/pm/project'
 import { keyClash, projectOf as findProject, shownKey } from '../../shared/pm/projectKey'
 import { HerdrError } from './herdr'
 import { alfredTokenOk, coordinatorsView, startCoordinator, type CoordinatorUrls } from './pmCoordinator'
@@ -13,6 +13,7 @@ import type { CoreAdminDeps } from './coreCreate'
 import type { FolderCheck, PmStore } from './pmStore'
 import { patchSettings, readSettings } from './settings'
 import { saveProjectGuards } from './pmProject'
+import { checkMachine } from './pmReady'
 import { projectPlace } from '../../shared/pm/places'
 
 type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string }
@@ -117,6 +118,32 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       const cp = contributorPrs ? (contributorPrs === 'off' ? undefined : contributorPrs) : old.contributorPrs
       const guards = { ...(branches ? { protected: branches } : {}), ...(Object.keys(merge).length ? { merge } : {}), ...(cp ? { contributorPrs: cp } : {}) }
       return change({ change: [`project ${p.key} guards: ${JSON.stringify(old)} → ${JSON.stringify(guards)}`] }, () => saveProjectGuards(store, p.key, guards, 'Alfred', deps))
+    }
+    case 'project machine': {
+      await needPm()
+      const p = projectOf(cmd.key)
+      const allowed = allowedMachines(p).slice(1)
+      // The machine by its key or its label; one no longer known is removed by its key.
+      const m = machines.find(x => x.key === cmd.machine) ?? machines.find(x => x.label === cmd.machine)
+      const mk = m?.key ?? (cmd.action === 'remove' && allowed.includes(cmd.machine) ? cmd.machine : undefined)
+      if (mk === undefined) throw new HerdrError('not_found', `Unknown machine ${cmd.machine} (see wherdr alfred machines)`)
+      if (mk === p.machine) throw new HerdrError('bad_input', `${machineName(mk)} is the project's own machine`)
+      if (cmd.action === 'remove') {
+        if (!allowed.includes(mk)) return { unchanged: true, project: p.key, machines: allowedMachines(p).map(machineName) }
+        return change({ change: [`project ${p.key}: its tasks no longer start on ${machineName(mk)} (tasks already there stay)`] },
+          () => store.updateProject(p.key, { machines: allowed.filter(x => x !== mk) }))
+      }
+      const { update, errors } = cleanProjectUpdate({ machines: [...allowed.filter(x => x !== mk), mk], clones: { [mk]: cmd.clone } })
+      const bad = update ? machinesOf(p, update).errors : errors
+      if (!update || bad.length) throw new HerdrError('bad_input', bad.map(e => `${e.path}: ${e.message}`).join('; '))
+      return change({
+        change: [`project ${p.key}: its tasks may run on ${machineName(mk)}, in its clone ${update.clones![mk]}`, `then the readiness check of ${machineName(mk)} runs (read-only)`],
+        remote: remoteOf(mk),
+      }, async () => {
+        const project = await store.updateProject(p.key, update)
+        const ready = await checkMachine(deps, p.key, mk).catch((e: Error) => ({ refused: e.message }))
+        return { project, ready }
+      })
     }
     case 'coordinator start': {
       await needPm()
