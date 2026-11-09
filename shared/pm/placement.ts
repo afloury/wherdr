@@ -17,6 +17,15 @@ export interface Candidate {
   running: Estimate[] // the agents at work on it, every project
 }
 
+// How a project spreads its tasks over its allowed machines (project sheet):
+// strongest: light and standard work at home when it fits, heavy work on the
+// machine with most room; balance: every task on the one with the largest
+// share of memory and cores left after it; home: home while it fits, the others only once it is full.
+export const STRATEGIES = ['strongest', 'balance', 'home'] as const
+export type Strategy = typeof STRATEGIES[number]
+export const STRATEGY_LABELS: Record<Strategy, string> = { strongest: 'Heavy to the strongest', balance: 'Balance the load', home: 'Home first' }
+export const isStrategy = (s: unknown): s is Strategy => STRATEGIES.includes(s as Strategy)
+
 // best: where a start that must go (the user's) goes when nothing fits.
 export type Placement = { machine: string } | { hold: string, best?: string }
 
@@ -55,19 +64,30 @@ export function misfit(c: Candidate, weight: Weight, e: Estimate): string | unde
 // Most room first, then most cores, then fewest agents.
 const stronger = (a: Candidate, b: Candidate) =>
   roomOf(b) - roomOf(a) || (b.capacity?.cores ?? 0) - (a.capacity?.cores ?? 0) || a.running.length - b.running.length
+// The share of a machine left once the task runs: the lesser of its memory's
+// and its cores' (agents' estimates count at once, the reading lags). Infinity
+// when it cannot be read.
+function leftShare(c: Candidate, e: Estimate) {
+  const m = c.capacity
+  if (!m) return Infinity
+  const mem = (roomOf(c) - e.mb) / m.total
+  return m.cores ? Math.min(mem, (m.cores - sum(c.running, 'cores') - e.cores) / m.cores) : mem
+}
+// Most of it left, then fewest agents.
+const roomier = (e: Estimate) => (a: Candidate, b: Candidate) =>
+  leftShare(b, e) - leftShare(a, e) || a.running.length - b.running.length
 
 // pinned: the machine the task must go to (its own once started, or the one
 // asked for); otherwise the candidates are the project's allowed machines.
-// Heavy work goes to the strongest machine that fits; light and standard work
-// stays home when it fits, else goes to the one with most room.
-export function placeTask({ weight, estimate = WEIGHT_DEFAULTS[weight], home, pinned, candidates }: {
-  weight: Weight, estimate?: Estimate, home: string, pinned?: string, candidates: Candidate[]
+// strategy: the project's (STRATEGIES), which the hold names.
+export function placeTask({ weight, estimate = WEIGHT_DEFAULTS[weight], home, pinned, candidates, strategy = 'strongest' }: {
+  weight: Weight, estimate?: Estimate, home: string, pinned?: string, candidates: Candidate[], strategy?: Strategy
 }): Placement {
   const pool = pinned === undefined ? candidates : candidates.filter(c => c.key === pinned)
   const why = new Map(pool.map(c => [c.key, misfit(c, weight, estimate)]))
   const fits = pool.filter(c => !why.get(c.key))
-  const homeFirst = weight !== 'heavy' && fits.find(c => c.key === home)
-  const pick = homeFirst || [...fits].sort(stronger)[0]
+  const homeFirst = strategy === 'home' || (strategy === 'strongest' && weight !== 'heavy')
+  const pick = (homeFirst && fits.find(c => c.key === home)) || [...fits].sort(strategy === 'balance' ? roomier(estimate) : stronger)[0]
   if (pick) return { machine: pick.key }
   // Nothing fits: the machine a start that must go takes, home when it has as much room.
   const usable = pool.filter(c => c.online && !c.wait).sort(stronger)
@@ -76,5 +96,5 @@ export function placeTask({ weight, estimate = WEIGHT_DEFAULTS[weight], home, pi
   const label = (c: Candidate) => c.label || 'this host'
   if (pinned !== undefined && !pool[0]?.online) return { hold: `Waits for ${pool[0] ? label(pool[0]) : pinned} (offline)`, best }
   const reasons = pool.map(c => `${label(c)}: ${why.get(c.key)}`).join('; ')
-  return { hold: `Waits for room: ${weight} (≈${gb(estimate.mb)}) fits nowhere — ${reasons}`, ...(best !== undefined ? { best } : {}) }
+  return { hold: `Waits for room (${STRATEGY_LABELS[strategy]}): ${weight} (≈${gb(estimate.mb)}) fits nowhere — ${reasons}`, ...(best !== undefined ? { best } : {}) }
 }

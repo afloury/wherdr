@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { placeTask, type Candidate } from '../shared/pm/placement'
+import { placeTask, type Candidate, type Strategy } from '../shared/pm/placement'
 import { WEIGHT_DEFAULTS, type Weight } from '../shared/pm/weight'
 import { DEFAULT_MEMORY } from '../shared/pm/memory'
 
@@ -30,12 +30,36 @@ describe('placing a task', () => {
       machine('machine-b', 32, 30, 8, [], { wait: 'not ready (gh login: logged out)' }),
       machine('machine-c', 16, 12, 8, [], { online: false }),
     ])
-    expect(r).toEqual({ hold: 'Waits for room: heavy (≈3.9 GB) fits nowhere — machine-a: 5.0 GB free; machine-b: not ready (gh login: logged out); machine-c: offline', best: 'machine-a' })
+    expect(r).toEqual({ hold: 'Waits for room (Heavy to the strongest): heavy (≈3.9 GB) fits nowhere — machine-a: 5.0 GB free; machine-b: not ready (gh login: logged out); machine-c: offline', best: 'machine-a' })
     // The estimates of the agents already started count, though the reading has not caught up.
     expect(place('standard', [machine('machine-a', 8, 7, 8, ['standard', 'standard', 'standard'])])).toMatchObject({ hold: expect.stringContaining('machine-a: 3 agents take ≈5.3 GB of 8.0 GB') })
     expect(place('light', [machine('machine-a', 64, 60, 8, ['light'], { settings: { ...DEFAULT_MEMORY, maxAgents: 1 } })])).toMatchObject({ hold: expect.stringContaining('1 agents (cap 1)') })
     // No cap set: one agent per 1.5 GB of RAM, though memory is left (8 GB: 5).
     expect(place('light', [machine('machine-a', 8, 7, 8, Array(5).fill('light'))])).toMatchObject({ hold: expect.stringContaining('5 agents (cap 5)') })
+  })
+
+  it('places the same tasks by each strategy', () => {
+    // Home is small and busy; b has the most room, c the largest share free.
+    const set = () => [machine('machine-a', 16, 10, 4, ['light']), machine('machine-b', 64, 40, 8), machine('machine-c', 32, 30, 32)]
+    const on = (strategy: Strategy, weight: Weight, candidates = set()) => placeTask({ weight, home: 'machine-a', candidates, strategy })
+    expect(['light', 'standard', 'heavy'].map(w => on('strongest', w as Weight))).toEqual([{ machine: 'machine-a' }, { machine: 'machine-a' }, { machine: 'machine-b' }])
+    expect(['light', 'standard', 'heavy'].map(w => on('balance', w as Weight))).toEqual([{ machine: 'machine-c' }, { machine: 'machine-c' }, { machine: 'machine-c' }])
+    expect(['light', 'standard', 'heavy'].map(w => on('home', w as Weight))).toEqual([{ machine: 'machine-a' }, { machine: 'machine-a' }, { machine: 'machine-a' }])
+    // Balance spreads a run of starts; home first fills home before the others.
+    const fill = (strategy: Strategy) => {
+      const candidates = set(), order: string[] = []
+      for (let i = 0; i < 8; i++) {
+        const r = on(strategy, 'standard', candidates)
+        if (!('machine' in r)) break
+        candidates.find(c => c.key === r.machine)!.running.push(WEIGHT_DEFAULTS.standard)
+        order.push(r.machine)
+      }
+      return order
+    }
+    expect(new Set(fill('balance')).size).toBeGreaterThan(1)
+    expect(fill('home').slice(0, 2)).toEqual(['machine-a', 'machine-a'])
+    // A hold names the strategy.
+    expect(on('balance', 'heavy', [machine('machine-a', 8, 2, 4)])).toMatchObject({ hold: expect.stringContaining('Waits for room (Balance the load): heavy') })
   })
 
   it('never moves a task from its machine', () => {

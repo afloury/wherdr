@@ -46,8 +46,9 @@ machine with its state (connected, connecting…, offline) and last error:
   free figure is close to Activity Monitor's, not exact) and its agents at once (all projects), with two
   settings: **Agents at once, all projects** (empty: one agent per 1.5 GB of RAM) and
   **Automatic starts wait under (GB free)**. Each start goes to a machine its project allows
-  where the task fits: heavy work to the strongest one, light and standard work to the project's
-  own machine when it fits. A task fits when the machine keeps its minimum free after the task's
+  where the task fits, by the project's **Placement** ([project sheet](project-management.md#general)):
+  by default heavy work to the strongest one, light and standard work to the project's
+  own machine when it fits; or *Balance the load*, or *Home first*. A task fits when the machine keeps its minimum free after the task's
   estimate (light ≈ 0.7 GB, standard ≈ 1.8 GB, heavy ≈ 3.9 GB), counting the agents just started,
   its swap is under 90 % used, its cores are not all taken, it runs fewer agents than its cap (yours,
   else one per 1.5 GB of RAM), and for heavy work its load is under 0.8 per core. When no machine fits, automatic

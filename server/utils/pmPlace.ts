@@ -52,7 +52,7 @@ export async function placeFor(deps: PmLaunchDeps, task: Task, { asked, waits = 
     }
   })).catch(() => null)
   if (!candidates) return { machine: fixed.machine }
-  return placeTask({ weight: weightOf(t, task).weight, home: p.machine, pinned, candidates })
+  return placeTask({ weight: weightOf(t, task).weight, home: p.machine, pinned, candidates, strategy: p.placement })
 }
 
 // The machine a start that must go (the user's) takes, and the hold it goes past.
