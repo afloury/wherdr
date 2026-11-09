@@ -248,8 +248,8 @@ kept conversation that ran with another agent. A tap opens its window:
   step of yours, takes no slot), the events it wakes on (*Task added*: by someone else than this
   coordinator, such as you, another coordinator or an automation; *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
-  even with nothing to do, with its own *New tasks / day*). The form says
-  *Unsaved changes* until you save;
+  even with nothing to do, with its own *New tasks / day*), and **Keep the
+  board busy** (see below). The form says *Unsaved changes* until you save;
 - its wakes and *Run now*: one line for the last wake (*Last wake 15:44*, its
   reason, *handled* or how it ended), a highlighted line for each other wake not
   handled (waiting, no answer, timed out, coordinator gone), and *History* folds
@@ -264,7 +264,16 @@ the hours) hold automatic work only too: a start you ask Alfred or a coordinator
 for goes at once, with a word when it goes past one (*started; past the
 autopilot's limit of 3 at once*), and still counts in them.
 
-The coordinator sees the same with `wherdr pm autopilot show`: the project's
+**Keep the board busy** (on by default while the autopilot is on): the engine
+itself starts the next task to do, oldest first, whenever a machine the project
+allows has room, within the autopilot's limits, hours and pace. It never starts
+a task that waits for its *after* tasks (those start once they are done), nor
+one already under way, and each start goes in the task's log (*started by the
+autopilot: room on* a machine) without waking the coordinator. Turn it off to
+leave every start to the coordinator's wakes and to you.
+
+The coordinator sees the same with `wherdr pm autopilot show`: whether Keep the
+board busy is on and the task it starts next (or why none), the project's
 placement strategy, one line per machine the project allows (memory, cores and load, its agents at work by
 weight, and the heaviest weight it takes now, or why none: full, not ready,
 paced, offline), and what each weight counts (*light* ≈ 0.7 GB, *standard* ≈

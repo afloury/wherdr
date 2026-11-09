@@ -20,7 +20,7 @@ import { actionShell } from './pmActions'
 import { prSeen, stepAction } from './pmBoard'
 import { prNow, requiredChecks } from '../../shared/pm/board'
 import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
-import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
+import { busyNext, busyQueue, coordinatorStartRefusal } from '../../shared/pm/autopilot'
 import { originOf, pacedStart, paceRefusal } from '../../shared/pm/pace'
 import { paceOf, placeFor, slotsOf } from './pmPlace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
@@ -156,6 +156,36 @@ async function noteFixWork(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], 
   return step.yourTurn ? deps.store.logTask({ ...task, step }, 'engine', step.yourTurn.badge) : deps.store.saveTask({ ...task, step })
 }
 
+// Keep the board busy (shared/pm/autopilot.ts busyNext): each project's next
+// to-do task starts by itself while a machine it allows has room, within its
+// autopilot's limits, hours and pace; no coordinator wake for it. One per
+// project, one per machine and tick. Started another way meanwhile: dropped.
+export async function startNext(deps: PmLaunchDeps, now = Date.now()) {
+  const { store } = deps
+  const runs = await store.runs(), started: string[] = [], machines = new Set<string>()
+  for (const p of await store.projects()) {
+    const ap = (await store.coordinator(p.key))?.autopilot
+    const mine = (await store.tasks()).filter(t => t.project === p.key)
+    const first = ap?.on ? busyQueue(mine)[0] : undefined
+    if (!first) continue
+    const pace = await paceOf(store, p, first, now)
+    const next = busyNext(ap, mine, runs, now, { pace: pace.verdict, holds: await slotsOf(store, [p]) })
+    if (!('task' in next)) continue
+    const placed = await placeFor(deps, first, { waits: pace.waits })
+    if ('hold' in placed || machines.has(placed.machine)) continue
+    machines.add(placed.machine)
+    forgetMemory(placed.machine)
+    const r = await startTask(deps, first.id, { on: placed.machine })
+      .catch((e: Error) => (startedElsewhere(e) ? null : { ...first, state: 'waiting' as const, waiting: e.message }))
+    if (!r) continue
+    const label = deps.machines().find(m => m.key === placed.machine)?.label ?? placed.machine
+    const t = (await store.task(first.id))!
+    await store.logTask(r.state === 'working' ? { ...t, autopilot: true } : t, 'engine', r.state === 'working' ? `started by the autopilot: room on ${label}` : `the autopilot could not start it: ${r.waiting ?? ''}`)
+    started.push(first.id)
+  }
+  return started
+}
+
 // Kept for the board: since when the agent holding the step sits idle while
 // the step waits for its report (pm/blocked.ts), also past its timeout. Unread
 // status: unchanged. Idle, then seen working: back to work (backToWork).
@@ -185,6 +215,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   await releaseIdle(deps, now).catch(() => {})
   await startChained(deps, now).catch(() => {})
   await startHeld(deps, now).catch(() => {})
+  await startNext(deps, now).catch(() => {})
   await samplePeaks(deps).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
