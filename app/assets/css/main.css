@@ -897,6 +897,17 @@ body.short-bottom { --safe-bottom: 0px; }
 }
 .term-banner > span { flex: 1; }
 .term-banner > .term-banner-icon { width: 16px; height: 16px; color: var(--ochre); flex: none; }
+/* A place an agent opened with `ui open` (UiOpenCard.vue), above the message field. */
+.ui-open-card { display: flex; align-items: stretch; flex: none; margin: 6px 12px; background: var(--surface); border: 1px solid var(--line); }
+.ui-open-card:hover, .ui-open-card:focus-within { border-color: var(--accent); }
+.ui-open-main { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; padding: 8px 12px; text-align: left; cursor: pointer; }
+.ui-open-main:focus-visible { outline: none; }
+.ui-open-by, .settings-opened-by { font: 600 10px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--text-2); }
+.settings-opened-by { display: block; margin-top: 5px; }
+.ui-open-place { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text); }
+.ui-open-place .iconify { flex: none; color: var(--accent); }
+.ui-open-x { display: grid; place-items: center; width: 44px; flex: none; border-left: 1px solid var(--line); color: var(--muted); cursor: pointer; }
+.ui-open-x:hover { color: var(--text); }
 
 /* ---------- Terminal ---------- */
 #termWrap { position: relative; flex: 1; min-height: 0; padding: 6px 4px 0 6px; background: var(--bg); }

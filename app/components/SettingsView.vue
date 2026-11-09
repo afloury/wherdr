@@ -87,6 +87,12 @@ function openSection(id: SettingsSection) {
   if (desk.value) router.replace(to)
   else router.push(to)
 }
+// Opened by an agent's `ui open` (AgentView.vue): its name, while its section shows.
+const openedBy = computed(() => {
+  const o = uiOpenedBy.value
+  return props.panel && o && o.section === route.query.section ? o.by : null
+})
+if (props.panel) onBeforeUnmount(() => { uiOpenedBy.value = null })
 function closePanel() {
   const { section: _s, project: _p, tab: _t, review: _r, library: _l, group: _g, ...query } = route.query
   router.replace({ query })
@@ -350,7 +356,7 @@ onMounted(() => {
   <section id="settings" data-wherdr="settings" class="view settings-view" :class="{ 'settings-panel': panel }" :aria-label="panel ? t('Settings') : undefined">
     <header class="top bar settings-top">
       <UButton v-if="!panel" icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Back')" @click="back" />
-      <h2>{{ desk ? t('Settings') : activeLabel }}</h2>
+      <h2>{{ desk ? t('Settings') : activeLabel }}<span v-if="openedBy" class="settings-opened-by">{{ tl(`Opened by ${openedBy}`) }}</span></h2>
       <template v-if="panel">
         <UButton icon="i-lucide-maximize-2" color="neutral" variant="ghost" size="lg" class="icon-btn settings-panel-full" :aria-label="t('Open full page')" :title="t('Open full page')" @click="openFullPage" />
         <UButton icon="i-lucide-panel-right-close" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Close settings')" :title="t('Close settings')" @click="closePanel" />

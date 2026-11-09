@@ -103,6 +103,8 @@ export type Command =
   | { name: 'task add', title: string, type: string, after?: string, description?: string, weight?: Weight, files?: string[] }
   | { name: 'pr merge', pr: number, userSaid: string, method?: MergeMethod }
   | { name: 'report back' | 'report close', task: string, text: string }
+  // Show a place beside the coordinator's conversation (shared/uiOpen.ts).
+  | { name: 'ui open', link: string }
 
 // One table for the parser, the skill and the role file.
 export const COMMANDS: { usage: string, does: string }[] = [
@@ -129,6 +131,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'report close <task> "<what you did>"', does: 'close a problem the user reported once handled (you told the agent, added a follow-up task, or it is fine); the merge it blocked is free again' },
   { usage: 'tell <task> "<text>" [--to worker|reviewer] [--fix base|ci|machine|stall --reason "<one sentence>"]', does: `a message to one of the task\'s agents: the one that holds its current step, else (a step held by nobody or by you: pr, merge, a user step) its worker; --to picks it. The answer says which agent got it. In a wake, only to answer its question, or with --fix to unblock a mechanical block (${FIX_KINDS.map(k => `${k}: ${FIX_TEXT[k]}`).join('; ')}): a worker that was let go or has ended starts again with your message; with the autopilot on, a task of your project, at most ${FIXES_PER_STEP} times per task and step, written to its log with the reason; past that, tell the user. A permission request is always the user\'s` },
   { usage: 'read <task> [--to worker|reviewer] [--lines N]', does: 'what the task\'s agent last said (its question, its answer to your tell), on whichever machine it runs: the last message of its conversation, else the bottom of its screen; the agent tell reaches by default, --to picks it; --lines 1 to 200 (default 40)' },
+  { usage: 'ui open \'<in-app link>\'', does: 'show one of your project\'s places (its board, a task, its sheet) or a global Settings section in the user\'s open wherdr, beside your conversation (a card on a phone), quoted; only in a turn that comes from the user, only to an app showing your conversation. It changes nothing' },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
 ]
@@ -207,6 +210,7 @@ function parseWords(argv: unknown): Command | { error: string } {
     const text = words.slice(3).join(' ').trim()
     return TASK_RE.test(task) && text && text.length <= 2000 ? { name: verb, task, text } : usage(verb)
   }
+  if (verb === 'ui open') return w2 && !w3 ? { name: verb, link: w2 } : usage(verb)
   if (w0 === 'help' || w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0 }
   if (w0 === 'show') return w1 && TASK_RE.test(w1) && !w2 ? { name: 'show', task: w1 } : usage('show')
   if (verb === 'template show' || verb === 'template edit') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
@@ -345,8 +349,9 @@ cat "$out"; echo; rm -f "$out" "$hdr"
 
 // How an agent answers about wherdr: from the docs of the version that runs,
 // never from memory. docs: the docs folder, when it is on the agent's machine;
-// help: the command(s) that list its commands.
-export function docsRule(docs: string | undefined, help: string): string[] {
+// help: the command(s) that list its commands; open: its `ui open` command,
+// and which places it may open.
+export function docsRule(docs: string | undefined, help: string, open: { cmd: string, places: string }): string[] {
   return ['## Answering about wherdr', '',
     'Never explain wherdr\'s interface or commands from memory: wherdr changes with each update.',
     docs
@@ -355,7 +360,8 @@ export function docsRule(docs: string | undefined, help: string): string[] {
     `The current commands: ${help}.`, '',
     '## Links into wherdr', '',
     'Whenever you send the user somewhere in wherdr ("open Settings › Phone"), give the in-app link too, as inline code (`#/settings?section=phone`) or a Markdown link ([Phone settings](#/settings?section=phone)): the chat opens it in place. Only these addresses (KEY: a project key, TAG: a tag, ID: a task id):',
-    ...appLinkList(), '']
+    ...appLinkList(),
+    `To show the user ${open.places} at once, beside your conversation in their open wherdr (a card on a phone): \`${open.cmd} '#/settings?section=phone'\`, the address quoted (an unquoted # starts a shell comment). Only when the user asks to see it, in their turn (refused in a wake), and only to an app showing your conversation; otherwise give the link. It opens the place and changes nothing.`, '']
 }
 
 // The line a coordinator's next command starts with once wherdr was updated
@@ -438,7 +444,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     '## Commands (your token: this project only)', '', ...commandList(t), '',
     'Every change you make is written to the task\'s or the workflow\'s log with your name.',
     `Quote a file as inline code with its absolute path (\`${p.path.replace(/\/$/, '')}/README.md\`): the user's interface makes it a link.`, '',
-    ...docsRule(docs, '`wherdr pm help`'),
+    ...docsRule(docs, '`wherdr pm help`', { cmd: 'wherdr pm ui open', places: `one of your project's places (its board, a task, its sheet: KEY ${p.key}) or a global Settings section` }),
     '## What you never do', '',
     `- change a guard (protected branches, who merges): the user does it in ${projectPlace(p.key, 'guards', true)};`,
     '- end a step that waits for the user unless they just told you so (`--user-said` with their words);',
