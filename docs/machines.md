@@ -55,7 +55,7 @@ and the machine's memory settings (side by side on a computer, stacked on a phon
   wherdr started (same PID, command and start time) counts, and **Turn off** stops that one alone.
   A sleeping machine cannot be woken remotely. While a machine is awake and online, placement
   counts on it like any online machine.
-- **Memory**: each machine's free memory, cores and load (read on Linux and macOS; on macOS the
+- **Memory**: each machine's free memory, swap (Linux) or memory pressure (macOS), cores and load (read on Linux and macOS; on macOS the
   free figure is close to Activity Monitor's, not exact) and its agents at once (all projects), with two
   settings, both **Auto** when left empty (the grey placeholder shows wherdr's pick):
   **Agents at once, all projects** (Auto: one agent per 1.5 GB of RAM) and **Automatic
@@ -65,7 +65,9 @@ and the machine's memory settings (side by side on a computer, stacked on a phon
   by default heavy work to the strongest one, light and standard work to the project's
   own machine when it fits; or *Balance the load*, or *Home first*. A task fits when the machine keeps its minimum free after the task's
   estimate (light ≈ 0.7 GB, standard ≈ 1.8 GB, heavy ≈ 3.9 GB), counting the agents just started,
-  its swap is under 90 % used, its cores are not all taken, it runs fewer agents than its cap (yours,
+  its swap is under 90 % used (on macOS, where the swap grows on demand: its memory pressure,
+  `kern.memorystatus_vm_pressure_level`, is normal; at warn it takes light work only, at critical
+  nothing; the line shows *pressure normal* instead of the swap), its cores are not all taken, it runs fewer agents than its cap (yours,
   else one per 1.5 GB of RAM), and for heavy work its load is under 0.8 per core. When no machine fits, automatic
   starts (autopilot, chains, automations) wait, with each machine's reason on the card, and start
   by themselves once one has room. Your own starts still go. A task that started stays on its machine.

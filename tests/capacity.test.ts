@@ -14,7 +14,7 @@ SwapFree:        2031616 kB`
 const macos = `cores: 10
 memsize: 17179869184
 loadavg: { 3.42 2.97 2.71 }
-swapusage: total = 2048.00M  used = 512.00M  free = 1536.00M  (encrypted)
+pressure: 1
 Mach Virtual Memory Statistics: (page size of 16384 bytes)
 Pages free:                               65536.
 Pages active:                            300000.
@@ -31,8 +31,13 @@ describe('machine capacity', () => {
 
   it('reads macOS: available is free + inactive + speculative + purgeable pages', () => {
     // (65536 + 131072 + 32768 + 32768) × 16 KB = 4096 MB.
-    expect(parseCapacity(macos)).toEqual({ cores: 10, load1: 3.42, total: 16384, available: 4096, swapTotal: 2048, swapFree: 1536 })
-    expect(memoryLine(parseCapacity(macos), DEFAULT_MEMORY, 1)).toBe('4.0 GB free of 16.0 GB · 10 cores, load 3.4 · swap 25 % · 1 of 10 agents · go')
+    expect(parseCapacity(macos)).toEqual({ cores: 10, load1: 3.42, total: 16384, available: 4096, swapTotal: 0, swapFree: 0, pressure: 'normal' })
+    expect(memoryLine(parseCapacity(macos), DEFAULT_MEMORY, 1)).toBe('4.0 GB free of 16.0 GB · 10 cores, load 3.4 · pressure normal · 1 of 10 agents · go')
+  })
+
+  it('reads the macOS pressure level: 2 warn, 4 critical, unset when unreadable', () => {
+    const at = (level: string) => parseCapacity(macos.replace('pressure: 1', `pressure: ${level}`))?.pressure
+    expect([at('2'), at('4'), at('')]).toEqual(['warn', 'critical', undefined])
   })
 
   it('is unknown when the memory cannot be read', () => {
