@@ -20,7 +20,7 @@ import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { advanceTick } from './pmAdvance'
 import { forgetMemory } from './pmMemory'
 import { releaseIdle, reviveWorker } from './pmRelease'
-import { agentBack, handToAgent, wasReleased } from '../../shared/pm/release'
+import { agentBack, fixWatch, handToAgent, retriesAction, wasReleased } from '../../shared/pm/release'
 import { noteBack, noteStall } from './pmStall'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
@@ -125,6 +125,21 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
   return started
 }
 
+// The worker fixing a failed step action (release.ts fixWatch): its quiet
+// time kept; stopped or ended without its report, the step is the user's again.
+async function noteFixWork(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], run: Run, now: number): Promise<Task> {
+  if (!task.step || !retriesAction(plan, task.step)) return task
+  let status: Parameters<typeof fixWatch>[2] = 'gone'
+  if (run.terminal && run.state !== 'ended') {
+    const st = await deps.call<{ status?: string | { state?: string } }>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null)
+    const s = typeof st?.status === 'string' ? st.status : st?.status?.state
+    status = !st ? undefined : s === 'idle' || s === 'done' ? 'idle' : 'working'
+  }
+  const step = fixWatch(plan, task.step, status, now)
+  if (!step) return task
+  return step.yourTurn ? deps.store.logTask({ ...task, step }, 'engine', step.yourTurn.badge) : deps.store.saveTask({ ...task, step })
+}
+
 // Kept for the board: since when the agent holding the step sits idle while
 // the step waits for its report (pm/blocked.ts), also past its timeout. Unread
 // status: unchanged. Idle, then seen working: back to work (backToWork).
@@ -173,6 +188,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
     const sh = actionShell(deps, on)
     const plan = taskPlan(t, task, p)
     task = await noteIdle(deps, task, plan, runs, now)
+    task = await noteFixWork(deps, task, plan, run, now)
     const facts: MechFacts = { task, plan, guards: taskGuards(t, task.type), branch: run.branch, agentBusy: false, now }
     if (task.state === 'waiting' && task.waitKind === 'auth') {
       facts.loggedIn = (await exec(deps, on, `${PATH_SETUP}\n${LOGIN_SCRIPT}`, [run.program]).catch(() => null))?.code === 0
@@ -184,8 +200,11 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       facts.head = lines[0]?.trim()
       // The worker pushed the work the engine handed it: the step's Your turn, if any, comes back.
       const work = task.step?.agent
-      if (work && facts.pr && facts.pr.headRefOid !== work.head)
-        facts.task = task = await store.logTask({ ...task, step: agentBack(task.step!) }, 'engine', `${work.kind}: the worker pushed it`)
+      if (work?.head && facts.pr && facts.pr.headRefOid !== work.head) {
+        const retry = retriesAction(plan, task.step!)
+        facts.task = task = await store.logTask({ ...task, step: agentBack(task.step!) }, 'engine', `${work.kind}: the worker pushed it${retry ? `, ${plan[task.step!.at]!.id} is tried again` : ''}`)
+        if (retry) facts.task = task = await stepAction(deps, task.id, 'engine').catch(() => task)
+      }
       // Kept for the board: a task is stalled only while its CI is still red (pm/blocked.ts).
       const ci = ciOf(facts.pr, facts.head)
       if (ci && (ci.head !== task.ci?.head || ci.red !== task.ci?.red)) facts.task = task = await store.saveTask({ ...task, ci })

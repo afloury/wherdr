@@ -432,6 +432,16 @@ twice per task and step; after that the block is yours, and the coordinator
 tells you. Each wake's text lists these fixes. A permission request, a merge,
 an approval, guards, settings and limits stay yours.
 
+A step whose action failed (a push refused, a PR not opened) and that the
+coordinator, or you, hand to the worker with `--fix` leaves *Your turn* and
+**Tasks to handle** while the worker fixes it: the card says *the agent is
+fixing it*, with no **Try again** in the middle of the fix. A failed action
+wherdr hands the worker on its own (a catch-up, a CI fix) works the same way.
+Once the worker says it is done (or pushes, for wherdr's own hand-off), wherdr
+tries the action again itself. If that fails again, or the worker stops for 3
+minutes, or ends, without saying it is done, the task is back in **Tasks to
+handle** with the new reason. The Log says each of these.
+
 A machine's cap of agents (Settings › Machines) counts only the agents working
 on a step: not those of a task that waits for you, and not the coordinators.
 Its free-memory threshold still holds automatic starts.
