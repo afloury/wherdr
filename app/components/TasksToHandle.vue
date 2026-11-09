@@ -49,6 +49,7 @@ const open = (x: ToHandle) => { const p = agentOf(x); return p ? navigateTo(pane
 .handle-row:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 .handle-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .handle-title { flex: 1; min-width: 0; overflow: hidden; font: 600 14px/1.3 var(--display); text-overflow: ellipsis; white-space: nowrap; }
-.handle-label { flex: none; color: var(--blocked); font-size: 11px; }
+/* A long step label (a custom button text) shrinks to half the row and ellipsizes. */
+.handle-label { flex: 0 1 auto; min-width: 0; max-width: 50%; overflow: hidden; color: var(--blocked); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .handle-action { overflow: hidden; color: var(--muted); font: 12px/1.4 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 </style>
