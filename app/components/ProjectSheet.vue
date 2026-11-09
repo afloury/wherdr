@@ -236,8 +236,9 @@ async function remove() {
 .pm-base-pick { width: min(100%, 320px); }
 .pm-key { width: min(100%, 160px); }
 .pm-key-row { display: flex; align-items: center; gap: 10px; }
-/* The palette: small squares, each in a 44 px button; the picked one framed. */
-.pm-colors { display: flex; flex-wrap: wrap; margin: 0 -10px; }
+/* The palette: small squares, each in a 44 px button; the picked one framed.
+   No negative margin: it would stick out of the sheet and scroll it sideways. */
+.pm-colors { display: flex; flex-wrap: wrap; }
 .pm-color { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer; }
 .pm-color i { width: 20px; height: 20px; background: var(--key-c); box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px transparent; }
 .pm-color.on i { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--text); }

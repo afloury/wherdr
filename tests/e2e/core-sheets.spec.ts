@@ -11,17 +11,16 @@ import { wherdr } from '../../shared/pm/examples'
 const LONG = 'a-rather-long-name-without-any-space-to-check-that-it-wraps-or-shrinks'
 const SHOTS = ['0123456789a1.png', '0123456789a2.png', '0123456789a3.png']
 
-// What breaks the rule: an element past the sheet's edges, a box that scrolls
+// What breaks the rule: an element past the sheet body's edges, a box that scrolls
 // sideways, a box inside the body that scrolls on its own. The phone's row of
 // screenshots scrolls sideways on purpose (swipe between them).
 const overflows = (page: Page) => page.evaluate(() => {
   const sheet = document.querySelector<HTMLElement>('.hw-sheet')!
-  const body = sheet.querySelector('[data-slot="body"]')
-  const edge = sheet.getBoundingClientRect()
+  const body = sheet.querySelector<HTMLElement>('[data-slot="body"]')!
+  const edge = body.getBoundingClientRect()
   const name = (el: Element) => `${el.tagName.toLowerCase()}.${[...el.classList].join('.')}[${el.getAttribute('data-testid') ?? ''}]`
   const found: string[] = []
-  for (const el of sheet.querySelectorAll('*')) {
-    if (el.closest('[style*="clip"]')) continue // the window's title for screen readers
+  for (const el of [body, ...body.querySelectorAll('*')]) {
     const row = el.closest('.todo-shots')
     const r = el.getBoundingClientRect()
     if (r.width && !(row && row !== el) && (r.left < edge.left - 1 || r.right > edge.right + 1)) found.push(`wider: ${name(el)}`)
