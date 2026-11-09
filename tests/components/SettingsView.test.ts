@@ -7,7 +7,7 @@ import { useRouter } from '#app'
 import SettingsView from '~/components/SettingsView.vue'
 import ShortcutsSheet from '~/components/ShortcutsSheet.vue'
 import ShortcutsReference from '~/components/ShortcutsReference.vue'
-import { coarse, defaultViewMode, desk, encryptedText, reducedMotion, smoothTouchScrolling, typewriterSpeed } from '~/composables/useHerdr'
+import { coarse, defaultViewMode, desk, encryptedText, reducedMotion, sidePanelRoom, smoothTouchScrolling, typewriterSpeed } from '~/composables/useHerdr'
 
 const global = { stubs: { UTooltip: { template: '<span><slot /></span>' } } }
 const original = {
@@ -18,6 +18,7 @@ afterEach(async () => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   desk.value = original.desk
+  sidePanelRoom.value = false
   coarse.value = original.coarse
   defaultViewMode.value = original.mode
   encryptedText.value = original.encrypted
@@ -155,5 +156,39 @@ it('Machines has its own section; Agents holds Pace, which ?section=pacing still
     await vi.waitFor(() => expect(shown(machines)).toBe(true))
     expect(machines.find('.core-machines').exists()).toBe(true)
     expect(shown(agents)).toBe(false)
+  } finally { w.unmount() }
+})
+
+it('Wide computer: Settings open beside the conversation, on the linked section, and close', async () => {
+  desk.value = true
+  coarse.value = false
+  sidePanelRoom.value = true
+  const router = useRouter()
+  const w = await mountSuspended(SettingsView, { props: { panel: true }, route: '/a/w1:p1', global })
+  const path = () => router.currentRoute.value.fullPath
+  const shown = (el: { element: Element }) => (el.element as HTMLElement).style.display !== 'none'
+  try {
+    // A link to a section, from the conversation: the panel opens on it, the conversation stays.
+    await router.push('/settings?section=pacing')
+    await vi.waitFor(() => expect(path()).toBe('/a/w1:p1?section=pacing'))
+    const agents = w.findAll('.settings-section').find(s => s.find('#settings-pace').exists())!
+    await vi.waitFor(() => expect(shown(agents)).toBe(true))
+    expect(w.get('#settings').classes()).toContain('settings-panel')
+    // Another section stays in the panel.
+    await w.findAll('.settings-nav-item').find(b => b.attributes('title') === 'Terminal')!.trigger('click')
+    await vi.waitFor(() => expect(path()).toBe('/a/w1:p1?section=terminal'))
+    // Escape closes it.
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await vi.waitFor(() => expect(path()).toBe('/a/w1:p1'))
+    // The gear (a plain /settings) opens it again; the close button closes it.
+    await router.push('/settings')
+    await vi.waitFor(() => expect(path()).toBe('/a/w1:p1?section=appearance'))
+    await w.get('button[aria-label="Close settings"]').trigger('click')
+    await vi.waitFor(() => expect(path()).toBe('/a/w1:p1'))
+    // "Open full page" keeps today's page.
+    await router.push('/settings?section=about')
+    await vi.waitFor(() => expect(path()).toBe('/a/w1:p1?section=about'))
+    await w.get('button[aria-label="Open full page"]').trigger('click')
+    await vi.waitFor(() => expect(path()).toBe('/settings?section=about'))
   } finally { w.unmount() }
 })
