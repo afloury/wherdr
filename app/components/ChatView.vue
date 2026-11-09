@@ -187,6 +187,21 @@ const MORE_BLOCKS = 10
 const shown = ref(Infinity)
 const hiddenBlocks = computed(() => Math.max(0, blocks.value.length - shown.value))
 const visibleBlocks = computed(() => (hiddenBlocks.value ? blocks.value.slice(hiddenBlocks.value) : blocks.value))
+// A coordinator's proposed workflow change: its card (ProposalCard) follows
+// the agent's first message since the proposal; none yet, the conversation's end
+// (an answered one without its message in view shows nowhere).
+const coord = computed(() => coordinatorOf(props.pane))
+const proposalKey = computed(() => {
+  const at = coord.value?.proposal?.at ?? coord.value?.answered?.proposedAt
+  if (at === undefined) return null
+  return blocks.value.find(b => b.k === 'assistant' && (b.ms ?? 0) >= at)?.key ?? (coord.value?.proposal ? '' : null)
+})
+// The user's request it follows: the last message they sent before the card.
+const proposalSaidKey = computed(() => {
+  if (proposalKey.value === null || !coord.value?.proposal?.said) return null
+  const end = proposalKey.value ? blocks.value.findIndex(b => b.key === proposalKey.value) : blocks.value.length
+  return blocks.value.slice(0, end).findLast(b => b.k === 'user')?.key ?? null
+})
 let lastScroll = 0
 let revealTimer = false
 let unmounted = false
@@ -416,7 +431,7 @@ type Block =
   | { k: 'who', key: string }
   | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null }
   // `rid`: its code in the references to it (shared/reference.ts messageId).
-  | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean }
+  | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean, ms?: number }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
   | { k: 'system', key: string, text: string, full?: string }
@@ -615,7 +630,7 @@ const blocks = computed<Block[]>(() => {
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
-      lastReplyBlock = lazyHtml({ k: 'assistant' as const, key, id: replyId(it), rid: messageId(it), text: it.text, time, endsTurn: false }, () => withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss'), yes: t('Yes'), no: t('No'), okAll: t('OK to all'), decisions: t('Decisions') }))
+      lastReplyBlock = lazyHtml({ k: 'assistant' as const, key, id: replyId(it), rid: messageId(it), text: it.text, time, endsTurn: false, ...(it.ts ? { ms: new Date(it.ts).getTime() } : {}) }, () => withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss'), yes: t('Yes'), no: t('No'), okAll: t('OK to all'), decisions: t('Decisions') }))
       out.push(lastReplyBlock)
       replies.push({ key, time, text: it.text, rid: lastReplyBlock.rid })
     } else if (it.role === 'thinking') {
@@ -1414,6 +1429,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   </button>
                   <ReadAloudButton :id="`${paneId}:${b.key}`" :text="b.text" />
                 </div>
+                <ProposalCard v-if="coord && b.key === proposalKey" :c="coord" :can-goto="!!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" />
               </template>
 
               <UChatReasoning v-else-if="b.k === 'thinking'" class="omp-thinking" :text="b.text"
@@ -1549,6 +1565,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />
               <p>{{ t('No messages yet.') }}</p>
             </div>
+            <ProposalCard v-if="coord && proposalKey === ''" :c="coord" :can-goto="!!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" />
             <div v-if="loadError" class="chat-empty"><p>{{ loadError }}</p></div>
           </template>
         </div>
