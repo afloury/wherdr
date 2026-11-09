@@ -203,7 +203,7 @@ kept conversation that ran with another agent. A tap opens its window:
   ran with another one; on the board, *Open* opens or starts it;
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
-  limits (*Tasks / day*, *At once*: empty is *Auto*, as many as the project's
+  limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's
   machines have room for, the default for a new project; a task whose step
   holds no agent, such as a PR or merge waiting for checks or the queue, or a
   step of yours, takes no slot), the events it wakes on (*Task added*, *Task
