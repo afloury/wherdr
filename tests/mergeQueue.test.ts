@@ -56,6 +56,15 @@ describe('merge queue', () => {
     expect(nextMove(facts({ queue: 1, pr: pr({ mergeStateStatus: 'UNSTABLE' }) }))).toEqual(merge)
     // Behind when the branch rules require it: updated, every such PR in the same pass, whatever its place.
     expect(nextMove(facts({ queue: 3, queueOut: 'updating with v3', pr: pr({ mergeStateStatus: 'BEHIND' }) }))).toEqual(catchUp)
+    // A merge refused at its commit, or green yet blocked by the branch rules: out of line, so the clean one behind it comes first.
+    const policy = 'merge: base branch policy prohibits the merge'
+    const refused = task({ mech: { 'merge:abc1234': 0 }, step: step({ yourTurn: { reason: 'action', badge: policy, error: policy } }) })
+    const blocked = pr({ mergeStateStatus: 'BLOCKED' })
+    expect(queueOut(facts({ task: refused, pr: blocked }))).toBe(`merge refused: ${policy}`)
+    expect(queueOut(facts({ pr: blocked }))).toBe('blocked by the branch rules')
+    expect(mergeOrder([{ id: 'A', files: ['x.ts'], size: 1, out: queueOut(facts({ task: refused, pr: blocked })) }, { id: 'B', files: ['y.ts'], size: 9 }])).toEqual(['B', 'A'])
+    // A new commit since the refusal: back in line.
+    expect(queueOut(facts({ task: refused, head: 'def5678', pr: pr({ headRefOid: 'def5678' }) }))).toBeUndefined()
     // Ready, but not first: waits one turn.
     expect(nextMove(facts({ queue: 2 }))).toBeUndefined()
     // Red: back to its worker as red CI, not to the user.

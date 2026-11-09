@@ -412,7 +412,8 @@ touches come first, then smaller changes.
 
 A PR that needs work steps out of line until it is ready again, so it never
 holds up the others: a conflict with its base, checks still running or red,
-work handed to its agent. A ready PR merges as it is, without first being
+work handed to its agent, a merge GitHub blocks (a required review) or
+refused (that one is yours, under *Your turn*, until a new commit). A ready PR merges as it is, without first being
 updated with its base, unless GitHub requires it: wherdr updates a branch only
 when GitHub reports a conflict, or reports it behind because the branch rules
 want branches up to date. When the base moves, every queued PR that needs an

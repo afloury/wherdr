@@ -11,7 +11,7 @@ import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
 import type { Report } from './report'
 import { timesOf, type Times } from './times'
-import { ordinal } from './mergeQueue'
+import { MERGE_REFUSED, ordinal } from './mergeQueue'
 import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
 import { retriesAction } from './release'
 
@@ -91,7 +91,8 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
   // In the merge queue, waiting its turn or out of line: a refused merge is the queue's, not the user's.
   const queue = task.queue && !s?.done ? task.queue : undefined
   const queueOut = queue ? task.queueOut : undefined
-  const queued = (queue ?? 0) > 1 || !!queueOut
+  // A refused merge out of line is the user's: the engine does not try it again at that commit.
+  const queued = (queue ?? 0) > 1 || (!!queueOut && !queueOut.startsWith(MERGE_REFUSED))
   const yourTurn = s?.done ? undefined : (queued && s?.yourTurn?.reason === 'action' ? undefined : s?.yourTurn?.badge) || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
     || (stall && now - stall.since >= HANDLE_AFTER_MS ? stallTurn(stall) : undefined)
   return {
