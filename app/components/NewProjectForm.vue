@@ -8,7 +8,7 @@
 import type { MachineConfig } from '#shared/types'
 import type { PmOverview } from '#shared/pm/project'
 import { EXAMPLES } from '#shared/pm/examples'
-import { canGitInit, draftGit, folderKind, proposeKey, proposeName, type FolderProbe, type ProjectDraft } from '#shared/pm/newProject'
+import { canGitInit, draftGit, folderKind, proposeKey, proposeName, shortHome, type FolderProbe, type ProjectDraft } from '#shared/pm/newProject'
 
 const project = defineModel<string>('project', { required: true })
 const agent = defineModel<string>('agent', { required: true })
@@ -67,7 +67,7 @@ watch(() => [props.machine, !!draft.value] as const, async ([m, on]) => {
     if (draft.value?.machine === m) { repos.value = r.repos; home.value = r.home }
   } catch { repos.value = [] }
 }, { immediate: true })
-const short = (p: string) => (home.value && p.startsWith(`${home.value}/`) ? `~${p.slice(home.value.length)}` : p)
+const short = (p: string) => shortHome(p, home.value)
 const shown = computed(() => {
   const q = search.value.trim().toLowerCase()
   return (repos.value ?? []).filter(p => !q || short(p).toLowerCase().includes(q)).slice(0, 50)
@@ -211,6 +211,8 @@ const notes = {
 .coord-state { flex: none; font: 500 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
 .coord-state.run { color: var(--green); }
 .repo-list { margin-top: 8px; max-height: 240px; overflow-y: auto; overscroll-behavior: contain; }
+/* Desktop: a wider sheet (main.css), room for more repositories. */
+@media (min-width: 900px) and (min-height: 700px) { .repo-list { max-height: 360px; } }
 .repo-path { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px/1.2 var(--mono); color: var(--muted); }
 .path-row { display: flex; gap: 8px; }
 .path-row > :last-child { flex: none; width: 48px; justify-content: center; }
