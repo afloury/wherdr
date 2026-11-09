@@ -8,6 +8,7 @@ import { codeKind } from './codeKind'
 import { highlightCode } from './codeHighlight'
 import { createRenderCache, createSupersedeTracker } from './renderCache'
 import { blockCommand, inlineCommand } from './shellCommand'
+import { svgPreview } from './svgPreview'
 
 let hooked = false
 // Budget of the cache, in characters of text + HTML: about 4 MB of strings
@@ -28,7 +29,9 @@ export function onMdDropped(fn: (html: string) => void) { dropListeners.add(fn) 
 // `plain`: Markdown from a file kept on disk (a project's memory), shown
 // outside a conversation. Its raw HTML must not restyle the app or draw
 // controls over it: no `<style>`, no `style` attribute, no form or field. A
-// task list's own checkbox (`- [ ]`, disabled) is kept.
+// task list's own checkbox (`- [ ]`, disabled) is kept. Code is never a
+// control there (no path menu, no Run): only a code block's Copy. Raw HTML
+// shows as text (a task's description), except in `doc`, sanitized as above.
 // `doc`: a whole Markdown document read in the file explorer (implies
 // `plain`). Line breaks follow Markdown (a single newline is a space), code
 // blocks get light syntax colours and only Copy, inline code is never a
@@ -57,16 +60,31 @@ export function md(text: string, options: MdOptions = {}): string {
       renderer: {
         code({ text, lang }) {
           const l = escHtml((lang || '').split(/\s/)[0] || '')
+          // A language fence is an explicit preview request. A normal HTML/XML
+          // fence (including examples containing SVG) remains ordinary code.
+          if (!docNow && l.toLowerCase() === 'svg') {
+            const src = svgPreview(text)
+            const source = `<pre class="svg-source"${src ? ' hidden' : ''}><code class="language-svg">${escHtml(text)}</code></pre>`
+            const head = `<div class="code-head"><span>svg</span><span class="code-tools">${src ? `<button type="button" class="svg-toggle" aria-pressed="false">${escHtml(t('Source'))}</button>` : ''}<button type="button" class="code-copy">${escHtml(t('Copy'))}</button></span></div>`
+            return `<div class="code-block svg-block">${head}`
+              + (src
+                ? `<img class="svg-preview" src="${escHtml(src)}" alt="${escHtml(t('SVG preview'))}" role="button" tabindex="0" aria-label="${escHtml(t('Enlarge SVG preview'))}">${source}`
+                : `<p class="svg-note">${escHtml(t('SVG preview unavailable. Source shown below.'))}</p>${source}`)
+              + '</div>'
+          }
           if (docNow) {
             return `<div class="code-block"><div class="code-head"><span>${l || 'code'}</span>`
               + `<span class="code-tools"><button type="button" class="code-copy">${escHtml(t('Copy'))}</button></span></div>`
               + `<pre><code${l ? ` class="language-${l}"` : ''}>${highlightCode(text, l)}</code></pre></div>`
           }
-          const cmd = blockCommand(text, lang)
+          const cmd = plainNow ? null : blockCommand(text, lang)
           const run = cmd === null ? '' : `<button type="button" class="code-run">${escHtml(tl('Run', 'Lancer'))}</button>`
           return `<div class="code-block"${cmd === null ? '' : ` data-cmd="${escHtml(cmd)}"`}><div class="code-head"><span>${l || 'code'}</span>`
             + `<span class="code-tools">${run}<button type="button" class="code-copy">${escHtml(t('Copy'))}</button></span></div>`
             + `<pre><code${l ? ` class="language-${l}"` : ''}>${escHtml(text)}</code></pre></div>`
+        },
+        html({ text }) {
+          return plainNow && !docNow ? escHtml(text) : text
         },
         // Inline code that looks like a file path: a menu in the conversation
         // (Reveal in Finder, Open, Copy path; see ChatView.vue); like a
@@ -74,7 +92,7 @@ export function md(text: string, options: MdOptions = {}): string {
         // (utils/codeKind.ts) for the terminal-style tints.
         codespan({ text }) {
           const code = escHtml(text)
-          if (docNow) {
+          if (plainNow) {
             const kind = codeKind(text)
             return `<code${kind ? ` data-k="${kind}"` : ''}>${code}</code>`
           }
@@ -87,6 +105,10 @@ export function md(text: string, options: MdOptions = {}): string {
       },
     })
     DOMPurify.addHook('uponSanitizeElement', (n, data) => {
+      if (data.tagName === 'svg') {
+        n.parentNode?.removeChild(n)
+        return
+      }
       if (!plainNow || data.tagName !== 'input') return
       const el = n as Element
       if (!(el.getAttribute('type') === 'checkbox' && el.hasAttribute('disabled'))) el.parentNode?.removeChild(el)
@@ -110,7 +132,10 @@ export function md(text: string, options: MdOptions = {}): string {
   docNow = Boolean(options.doc)
   try {
     const parsed = marked.parse(text, { breaks: !docNow, gfm: true, async: false }) as string
-    html = plainNow ? DOMPurify.sanitize(parsed, PLAIN) : DOMPurify.sanitize(parsed)
+    // Raw inline SVG is not a preview request and must not enter the parent
+    // DOM. The explicit fenced subset above renders only as an inert image.
+    const config = { ...(plainNow ? PLAIN : {}), FORBID_TAGS: [...(plainNow ? PLAIN.FORBID_TAGS : []), 'svg'] }
+    html = DOMPurify.sanitize(parsed, config)
   } catch { html = `<p>${escHtml(text)}</p>` }
   finally { plainNow = false; docNow = false }
   for (const old of superseded(key)) {

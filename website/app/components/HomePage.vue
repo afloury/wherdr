@@ -30,21 +30,13 @@ const stories = [
     text: 'Install wherdr on your phone as a PWA. A push tells you when an agent finishes or needs you, with its question and options. Answer right from the agent list, without opening the conversation.',
     points: ['Web Push when an agent is done or blocked, and for herdr notification show', 'Do not disturb, per device or for all', 'Offline reading of recent conversations'],
   },
-  {
-    id: 'projects',
-    label: 'herdr-projects',
-    title: 'Tasks, coordinators, one Board.',
-    text: 'With herdr-projects 1.2.1 or later, each task gets its own agent, is reviewed when it finishes and merged on your yes. The Board shows every machine\'s tasks in five groups — needs you, ready to approve, working, to do, done — with each task\'s agent, pull request and review. Write to a Coordinator from the Board: it turns your words into tasks.',
-    points: ['Approve finished work: herdr-projects merges it', 'Reply to a task\'s agent, start, stop, retry or archive it', 'Coordinators for all work, a machine\'s setup or one repo'],
-  },
 ] as const
 
-// What sets wherdr apart, in six lines. Each one is detailed further down the page.
+// What sets wherdr apart, in five lines. Each one is detailed further down the page.
 const why = [
   { k: 'SPLITS', title: 'Herdr\'s splits, live', text: 'A tab with several panes is drawn in Herdr\'s real layout, every pane live. Drag a pane to move it or a divider to resize: the change goes to Herdr itself.' },
   { k: 'LOCK', title: 'A passkey lock', text: 'Face ID, Touch ID, Windows Hello or Android unlock the app. Once a passkey exists, nothing about your agents is served to a locked session.' },
   { k: 'DIFF', title: 'The agent\'s diff', text: 'Git status and diff of each agent\'s working folder, one click away from its conversation.' },
-  { k: 'BOARD', title: 'The herdr-projects Board', text: 'Every machine\'s tasks in five groups, each with its agent, pull request and review. Reply, approve, and talk to the Coordinator.' },
   { k: 'KEYS', title: 'Keyboard and global search', text: 'One shortcut searches every agent and conversation. Next agent, new tab, pane swaps and 1–9 answers never need the mouse.' },
   { k: 'LIVE', title: 'Real time, and private', text: 'The real terminal over a WebSocket, a push when an agent needs you, and your phone through Tailscale. Nothing is on the Internet.' },
 ]
@@ -148,7 +140,7 @@ const faq = [
           <div v-reveal class="section-head">
             <p class="label"><span class="k">01</span> Why wherdr</p>
             <h2 class="display h2">Herdr, whole.<br>In a browser.</h2>
-            <p class="lead">The layout, the terminal, the diff and the project board of your Herdr session, behind your own lock.</p>
+            <p class="lead">The layout, the terminal and the diff of your Herdr session, behind your own lock.</p>
           </div>
           <ul v-reveal class="why">
             <li v-for="w in why" :key="w.k" class="why-row">
@@ -184,7 +176,7 @@ const faq = [
               <BrowserFrame v-if="s.id === 'conversation'" alt="wherdr on a computer: grouped tool calls unfold, the effort picker switches to high, the proposed command is copied and run in the live terminal">
                 <ConversationDemo />
               </BrowserFrame>
-              <div v-else-if="s.id === 'phone'" class="duo">
+              <div v-else class="duo">
                 <PhoneFrame alt="Lock screen: a wherdr notification says the agent needs you, with its question and options, then that it is done">
                   <NotifyDemo />
                 </PhoneFrame>
@@ -192,9 +184,6 @@ const faq = [
                   <AgentListDemo />
                 </PhoneFrame>
               </div>
-              <BrowserFrame v-else alt="The herdr-projects Board: a task becomes ready to approve, is approved and moves to Done; the Coordinator, opened from the Board, turns a message into a new task">
-                <BoardDemo />
-              </BrowserFrame>
             </div>
           </article>
 
@@ -202,7 +191,7 @@ const faq = [
             <div v-for="(f, i) in features" :key="f.title" class="cell">
               <div class="cell-top">
                 <UIcon :name="f.icon" class="size-5 cell-icon" />
-                <span class="label">2.{{ i + 4 }}</span>
+                <span class="label">2.{{ stories.length + i + 1 }}</span>
               </div>
               <h3 class="cell-title">{{ f.title }}</h3>
               <p class="cell-text">{{ f.text }}</p>
