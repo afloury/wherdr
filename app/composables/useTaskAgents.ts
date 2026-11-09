@@ -7,8 +7,12 @@ import { taskAgentTitle } from '~/utils/taskAgentRow'
 export const taskAgents = ref<Record<string, TaskAgent>>({})
 // The rows' durations follow this clock, moved on with each read.
 export const taskAgentsNow = ref(Date.now())
+// An unchanged answer leaves the rows as they are.
 export const loadTaskAgents = () => api<Record<string, TaskAgent>>('/api/pm/agents')
-  .then((v) => { taskAgents.value = v && typeof v === 'object' && !Array.isArray(v) ? v : {} }, () => {})
+  .then((v) => {
+    const next = v && typeof v === 'object' && !Array.isArray(v) ? v : {}
+    if (JSON.stringify(next) !== JSON.stringify(taskAgents.value)) taskAgents.value = next
+  }, () => {})
   .finally(() => { taskAgentsNow.value = Date.now() })
 
 export const taskAgentOf = (p?: Pane | null) => (p?.coreAddress ? taskAgents.value[p.coreAddress] : undefined)
