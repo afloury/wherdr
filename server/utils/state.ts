@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { ChatItem, HerdrState, Pane } from '../../shared/types'
-import type { NotificationEvent } from '../../shared/notificationRules'
+import { coordinatorTarget, type NotificationEvent } from '../../shared/notificationRules'
 import { readCoreState, staleCoreDocs, useCoreSession } from './readCoreState'
 import { CoreSession } from './coreSession'
 import { type CoreAlertKind, createCoreAlerts } from './coreAlerts'
@@ -232,13 +232,20 @@ const isTaskAgent = async (address: string) => {
   catch { return false }
 }
 
+// Alfred's or a project coordinator's terminal: its coordinator exception decides.
+const coordinatorAt = async (address: string) => {
+  try { const c = (await pmStore().coordinators()).find(x => x.terminal === address); return c ? coordinatorTarget(c.project) : undefined }
+  catch { return undefined }
+}
+
 async function notifyCorePane(address: string, kind: CoreAlertKind) {
   const p = state.panes.find(x => x.coreAddress === address)
   if (!p || isViewed(p.id)) return
   // A project task's agent waiting for the user goes into the grouped Decisions push.
   if (kind === 'needs-you' && await isTaskAgent(address)) return
   const event: NotificationEvent = kind === 'needs-you' ? 'needs-you' : 'finished'
-  if (!await notificationAllowed(event, state, p, { machine: p.machine ?? '' })) return
+  const coordinator = await coordinatorAt(address)
+  if (!await notificationAllowed(event, state, p, { machine: p.machine ?? '', ...(coordinator ? { coordinator } : {}) })) return
   const ws = state.workspaces.find(w => w.id === p.workspace)
   const where = [ws && ws.label, notificationTitle(p.title)].filter(Boolean).join(' · ')
   const on = state.machines && state.machines.length > 1 && p.machine ? `${state.machines.find(m => m.key === p.machine)?.label ?? p.machine} · ` : ''
