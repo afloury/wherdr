@@ -2,7 +2,8 @@
 // A project's sheet (Settings › Projects › a row): tabs, the one shown in the
 // URL (`tab=`). General: name, key and color, base branch, branch name, repository visibility, the agents
 // its tasks start with (the workflow's prefs), where its workflow came from,
-// and the machines its tasks may run on (ProjectMachines).
+// the machines its tasks may run on (ProjectMachines) and the home tab that
+// shows it (ProjectShownIn).
 // Workflow: ProjectWorkflow, its own entries first in the ⋯ menu. The ⋯ menu
 // removes the project. Guards: ProjectGuards. Automations: ProjectAutomations,
 // this project's only. Autopilot: CoordinatorAutopilot, the one in the
@@ -25,14 +26,16 @@ const p = computed(() => props.project)
 
 const workflow = ref<Template | null>(null)
 const log = ref<LogEntry[]>([])
+const ready = ref<Record<string, string>>({}) // each other machine's last readiness check
 const loaded = ref(false)
 const error = ref('')
 const busy = ref('')
 const form = reactive({ name: '', key: '', color: '', base: '', branchName: '', agent: '', model: '', reviewAgent: '', reviewModel: '' })
 async function load() {
-  const r = await api<{ workflow: Template | null, log: LogEntry[] }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
+  const r = await api<{ workflow: Template | null, log: LogEntry[], ready?: Record<string, string> }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
   workflow.value = r.workflow
   log.value = r.log
+  ready.value = r.ready ?? {}
   fill(p.value, r.workflow?.prefs ?? {})
   loaded.value = true
 }
@@ -188,7 +191,9 @@ async function remove() {
         </form>
         <template v-if="tab === 'general'">
           <span class="field-label pm-later">{{ tl('Machines') }}</span>
-          <ProjectMachines :project="p" @changed="emit('changed')" />
+          <ProjectMachines :project="p" :ready="ready" @changed="emit('changed')" />
+          <span class="field-label pm-later">{{ tl('Shown in') }}</span>
+          <ProjectShownIn :project="p" />
         </template>
         <button v-if="tab === 'workflow' && coordinator?.proposal" type="button" class="settings-card pm-proposal" data-testid="workflow-proposal" @click="reviewOpen = true">
           <span class="card-state blocked" aria-hidden="true"><i /></span>

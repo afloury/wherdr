@@ -48,11 +48,12 @@ export function paceWait(v: Extract<PaceVerdict, { go: false }>): string {
 export const paceRefusal = (v: PaceVerdict | undefined) =>
   v && !v.go ? `Paced: ${paceWait(v)} (automatic work waits; the user's own starts never do)` : undefined
 
-const MODES: Record<PacePolicy['mode'], string> = { workdays: 'working days', everyday: 'every day', free: 'free with reserve' }
+const MODES: Record<PacePolicy['mode'], string> = { unlimited: 'free', workdays: 'working days', everyday: 'every day', free: 'free with reserve' }
 
 // The weekly % automatic work may reach now: the target line, the free mode's
-// limit (100 − the reserve of the days left), or the burn's cap.
+// limit (100 − the reserve of the days left), or the burn's cap. 'unlimited': 100.
 export function weekLimit(p: PacePolicy, resetsAt: number, now: number) {
+  if (p.mode === 'unlimited') return { label: 'limit' as const, value: 100 }
   if (burning(p.burn, resetsAt, now)) return { label: 'burn cap' as const, value: p.burn!.cap }
   if (p.mode === 'free') return { label: 'limit' as const, value: 100 - p.reservePerDay * Math.ceil((resetsAt - now) / 86_400_000) }
   return { label: 'line' as const, value: targetLine(p, resetsAt, now) }

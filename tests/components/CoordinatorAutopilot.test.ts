@@ -36,6 +36,7 @@ it('shows today\'s counters against the limits, and the switch saves the autopil
   const b = await mount()
   expect(b.find('[data-testid="autopilot-counters"]').text()).toBe('3/10 today · 1/2 at once')
   expect(b.text()).toContain('Autopilot · Off')
+  expect(b.find('[data-testid="autopilot-old-defaults"]').text()).toBe('Older defaults: clear the fields for unlimited and Auto')
   expect((b.find('textarea#ap-goal-CO').element as HTMLTextAreaElement).value).toBe('Ship 2.1')
   await b.find('[data-testid="autopilot-on"]').trigger('click')
   await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', autopilot: { ...autopilot, on: true } }]))
@@ -59,10 +60,28 @@ it('with Tasks / day empty, has no daily limit: counts today alone and saves no 
   await b.find('input#ap-day-CO').setValue('')
   await b.find('[data-testid="autopilot-save"]').trigger('submit')
   await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', autopilot: { ...autopilot, perDay: null, at: '', events: [...autopilot.events] } }]))
+  b.unmount()
+  expect((await mount(view({ autopilot: { ...autopilot, events: [], perDay: null, atOnce: null } }))).find('[data-testid="autopilot-old-defaults"]').exists()).toBe(false)
 })
 
-it('lists the wakes as waiting, delivered, acked or unanswered, and runs now', async () => {
+it('shows the last wake on one line, handled, with its ids and times only in the history', async () => {
+  const b = await mount(view({ wakes: [wake('aaaaaaa1', { deliveredAt: 2, ackedAt: 3, endedAt: 3, ended: 'ack' }), wake('aaaaaaa0', { deliveredAt: 2, endedAt: 3, ended: 'merged' })] }))
+  const line = b.find('[data-testid="autopilot-last-wake"]')
+  expect(line.text()).toMatch(/^Last wake .+CO-1 \(Fix it\): done \(\+1\)handled$/)
+  expect(line.classes()).not.toContain('problem')
+  expect(line.text()).not.toContain('aaaaaaa1')
+  expect(b.findAll('[data-testid="autopilot-wake-problem"]')).toHaveLength(0)
+  expect(b.find('[data-testid="autopilot-history"]').attributes('open')).toBeUndefined()
+  expect(b.find('[data-testid="autopilot-history"] summary').text()).toBe('History (2)')
+})
+
+it('highlights the wakes not handled, lists them all in the history, and runs now', async () => {
   const b = await mount()
+  // The last wake waits; an older one had no answer; delivered and acked ones are fine.
+  const line = b.find('[data-testid="autopilot-last-wake"]')
+  expect([line.classes('problem'), line.find('.ap-state').text()]).toEqual([true, 'waiting'])
+  const problems = b.findAll('[data-testid="autopilot-wake-problem"]')
+  expect(problems.map(p => [p.attributes('data-state'), p.find('.ap-state').text()])).toEqual([['unanswered', 'no answer']])
   const rows = b.findAll('[data-testid="autopilot-wake"]')
   expect(rows.map(r => r.attributes('data-state'))).toEqual(['pending', 'delivered', 'ack', 'unanswered'])
   expect(rows.map(r => r.find('.ap-state').text())).toEqual(['Waiting', 'Delivered', 'Acked', 'No answer'])

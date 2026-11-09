@@ -1,20 +1,23 @@
 <script setup lang="ts">
 // Tasks to handle: the tasks waiting for the user (the board's Your turn,
-// GET /api/pm/handle), between the coordinators and the agent sessions;
-// hidden when there is none. Rows are tasks, not agents: the task's id,
+// GET /api/pm/handle) of the projects the home tab picked shows
+// (useMachineBar.projectOnBar), between the coordinators and the agent
+// sessions; hidden when there is none. Rows are tasks, not agents: the task's id,
 // title, what to do and a short action. A tap goes where the user acts: an
 // agent that asks (a question, a permission) opens its conversation, on any
-// machine; anything else opens the task's sheet on the board, on its To do
+// machine; anything else opens the task's sheet over the current page, on its To do
 // tab. The sheet stays one tap away (the row's small icon).
 import type { ToHandle } from '#shared/pm/board'
 
-const tasks = ref<ToHandle[]>([])
-const load = () => api<ToHandle[]>('/api/pm/handle').then((v) => { tasks.value = Array.isArray(v) ? v : [] }, () => {})
+const all = ref<ToHandle[]>([])
+const tasks = computed(() => all.value.filter(x => projectOnBar(x.project)))
+const load = () => api<ToHandle[]>('/api/pm/handle').then((v) => { all.value = Array.isArray(v) ? v : [] }, () => {})
 let timer: ReturnType<typeof setInterval> | undefined
 // Read while the list is on screen: a hidden page waits for the next tick it is shown.
 onMounted(() => { load(); timer = setInterval(() => { if (!document.hidden) load() }, 15_000) })
 onBeforeUnmount(() => clearInterval(timer))
-const sheet = (id: string) => navigateTo({ path: '/board', query: { task: id } })
+watch(taskSheetTick, load) // an action in a task's sheet
+const sheet = (id: string) => openTaskSheet(id)
 // The asking agent's pane, when it is on screen here.
 const agentOf = (x: ToHandle) => (x.terminal ? herdrState.value?.panes.find(p => p.coreAddress === x.terminal) : undefined)
 const open = (x: ToHandle) => { const p = agentOf(x); return p ? navigateTo(panePath(p.id)) : sheet(x.id) }

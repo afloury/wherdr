@@ -4,6 +4,7 @@
 import type { ThemeDef, ThemeGroup } from '~/utils/themes'
 import type { TypingSpeed } from '~/utils/typewriter'
 import { SETTINGS_ALIASES, SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
+import { CONVERSATION_TABS, conversationTab, type ConversationTab } from '#shared/appLinks'
 import type { SettingsSection } from '~/utils/settingsNav'
 import { type QuietDuration, type QuietScope, quietUntil } from '#shared/quiet'
 import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
@@ -46,13 +47,17 @@ const activeSection = computed<SettingsSection | null>(() => {
   if (section.value && sections.value.some(s => s.id === section.value)) return section.value
   return desk.value ? 'appearance' : null
 })
+// Conversation's tabs, the one shown in the URL (`&tab=dictation`).
+const convTab = computed(() => conversationTab(route.query.tab))
+const CONV_TAB_LABEL: Record<ConversationTab, string> = { 'display': 'Display', 'dictation': 'Dictation', 'read-aloud': 'Read aloud' }
+const openConvTab = (tab: ConversationTab) => router.replace({ query: { ...route.query, tab } })
 const activeLabel = computed(() => sections.value.find(s => s.id === activeSection.value)?.label || t('Settings'))
 const body = ref<HTMLElement | null>(null)
-// A new section starts at the top; an alias (?section=pacing) scrolls to its
+// A new section (or Conversation tab) starts at the top; an alias (?section=pacing) scrolls to its
 // group, and keeps it in place while the groups above finish loading, until
 // the user scrolls or for 3 s.
 let stopFollow = () => {}
-watch(() => route.query.section, () => nextTick(() => {
+watch(() => `${route.query.section}|${route.query.section === 'conversation' ? convTab.value : ''}`, () => nextTick(() => {
   stopFollow()
   const b = body.value
   if (!b) return
@@ -417,35 +422,42 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'conversation'" class="settings-section">
-          <div class="settings-group">
-            <h3>{{ t('Default pane view') }}</h3>
-            <URadioGroup v-model="defaultPane" :items="defaultPaneItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
-            <p class="muted settings-hint">{{ t('What an agent pane opens on. A pane you switched to Terminal stays there. Follows you on every device.') }}</p>
+          <div class="segmented settings-tabs" role="tablist" :aria-label="t('Conversation')" :style="{ '--segment-count': CONVERSATION_TABS.length }">
+            <button v-for="k in CONVERSATION_TABS" :id="`conversation-tab-${k}`" :key="k" type="button" role="tab" :class="{ on: convTab === k }" :aria-selected="convTab === k" :aria-controls="`conversation-panel-${k}`" :data-tab="k" @click="openConvTab(k)">
+              <span>{{ t(CONV_TAB_LABEL[k]) }}</span>
+            </button>
           </div>
-          <div class="settings-group settings-typing">
-            <h3>{{ t('Typewriter') }}</h3>
-            <URadioGroup v-model="typewriter" :items="typingItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" :disabled="reducedMotion" />
-            <p class="muted settings-hint">{{ t(reducedMotion ? 'Off: the system asks for reduced motion.' : 'Only new replies are animated; history appears at once. Tap a reply while it types to show it in full. Follows you on every device.') }}</p>
-            <label class="settings-toggle encrypted-toggle" :class="{ 'is-disabled': !typewriterActive }">
-              <span><b>{{ t('Encrypted text') }}</b><small>{{ t('Writing advances in glyphs, then the text decrypts behind it.') }}</small></span>
-              <USwitch v-model="encryptedOn" :disabled="!typewriterActive" color="success" size="xl" />
-            </label>
-            <TypingPreview v-if="activeSection === 'conversation'" />
+          <div v-show="convTab === 'display'" id="conversation-panel-display" role="tabpanel" aria-labelledby="conversation-tab-display">
+            <div class="settings-group">
+              <h3>{{ t('Default pane view') }}</h3>
+              <URadioGroup v-model="defaultPane" :items="defaultPaneItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+              <p class="muted settings-hint">{{ t('What an agent pane opens on. A pane you switched to Terminal stays there. Follows you on every device.') }}</p>
+            </div>
+            <div class="settings-group settings-typing">
+              <h3>{{ t('Typewriter') }}</h3>
+              <URadioGroup v-model="typewriter" :items="typingItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" :disabled="reducedMotion" />
+              <p class="muted settings-hint">{{ t(reducedMotion ? 'Off: the system asks for reduced motion.' : 'Only new replies are animated; history appears at once. Tap a reply while it types to show it in full. Follows you on every device.') }}</p>
+              <label class="settings-toggle encrypted-toggle" :class="{ 'is-disabled': !typewriterActive }">
+                <span><b>{{ t('Encrypted text') }}</b><small>{{ t('Writing advances in glyphs, then the text decrypts behind it.') }}</small></span>
+                <USwitch v-model="encryptedOn" :disabled="!typewriterActive" color="success" size="xl" />
+              </label>
+              <TypingPreview v-if="activeSection === 'conversation' && convTab === 'display'" />
+            </div>
+            <div class="settings-group">
+              <h3>{{ tl('Reply style', 'Style de réponse') }}</h3>
+              <p class="muted settings-lead">{{ tl('Each question an agent asks, and each point it lists, can be quoted in the field to answer them one by one. Choose how they offer it.', 'Chaque question d’un agent, et chaque point qu’il liste, peut être cité dans le champ pour y répondre un par un. Choisis comment ils le proposent.') }}</p>
+              <URadioGroup v-model="replyStyleChoice" :items="replyStyleItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio reply-style-radio" />
+              <p class="muted settings-hint">{{ tl('Follows you on every device.', 'Te suit sur tous tes appareils.') }}</p>
+            </div>
+            <div class="settings-group">
+              <h3>{{ tl('Quoted replies', 'Réponses citées') }}</h3>
+              <p class="muted settings-lead">{{ tl('Answer several questions, passages or decisions of an agent in one message: each one goes into the field as a “↳ … —” line that names the message and quotes it, your answer below. Choose how the field shows these lines; the message sent is the same.', 'Réponds à plusieurs questions, passages ou décisions d’un agent dans un seul message : chacun entre dans le champ sous la forme d’une ligne « ↳ … — » qui nomme le message et le cite, ta réponse en dessous. Choisis comment le champ affiche ces lignes ; le message envoyé est le même.') }}</p>
+              <QuoteTokensPreview v-if="activeSection === 'conversation' && convTab === 'display'" :mode="quoteChoice" />
+              <URadioGroup v-model="quoteChoice" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio quote-mode-radio" />
+              <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
+            </div>
           </div>
-          <div class="settings-group">
-            <h3>{{ tl('Reply style', 'Style de réponse') }}</h3>
-            <p class="muted settings-lead">{{ tl('Each question an agent asks, and each point it lists, can be quoted in the field to answer them one by one. Choose how they offer it.', 'Chaque question d’un agent, et chaque point qu’il liste, peut être cité dans le champ pour y répondre un par un. Choisis comment ils le proposent.') }}</p>
-            <URadioGroup v-model="replyStyleChoice" :items="replyStyleItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio reply-style-radio" />
-            <p class="muted settings-hint">{{ tl('Follows you on every device.', 'Te suit sur tous tes appareils.') }}</p>
-          </div>
-          <div class="settings-group">
-            <h3>{{ tl('Quoted replies', 'Réponses citées') }}</h3>
-            <p class="muted settings-lead">{{ tl('Answer several questions, passages or decisions of an agent in one message: each one goes into the field as a “↳ … —” line that names the message and quotes it, your answer below. Choose how the field shows these lines; the message sent is the same.', 'Réponds à plusieurs questions, passages ou décisions d’un agent dans un seul message : chacun entre dans le champ sous la forme d’une ligne « ↳ … — » qui nomme le message et le cite, ta réponse en dessous. Choisis comment le champ affiche ces lignes ; le message envoyé est le même.') }}</p>
-            <QuoteTokensPreview v-if="activeSection === 'conversation'" :mode="quoteChoice" />
-            <URadioGroup v-model="quoteChoice" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio quote-mode-radio" />
-            <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
-          </div>
-          <div class="settings-group" data-testid="dictation-settings">
+          <div v-show="convTab === 'dictation'" id="conversation-panel-dictation" role="tabpanel" aria-labelledby="conversation-tab-dictation" class="settings-group" data-testid="dictation-settings">
             <h3>{{ tl('Dictation', 'Dictée') }}</h3>
             <p class="muted settings-lead">{{ tl('A mic next to +: hold it and talk, or tap it to start and again to stop. The text goes into the field; nothing is sent on its own.', 'Un micro à côté de + : maintiens-le et parle, ou touche-le pour démarrer puis encore pour arrêter. Le texte va dans le champ ; rien n’est envoyé tout seul.') }}</p>
             <URadioGroup v-model="dictationChoice" :items="dictationItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
@@ -454,7 +466,7 @@ onMounted(() => {
             <DictationRewriteSettings v-if="dictationChoice !== 'off'" />
             <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
           </div>
-          <div class="settings-group" data-testid="read-aloud-group">
+          <div v-show="convTab === 'read-aloud'" id="conversation-panel-read-aloud" role="tabpanel" aria-labelledby="conversation-tab-read-aloud" class="settings-group" data-testid="read-aloud-group">
             <h3>{{ tl('Read aloud', 'Lecture à voix haute') }}</h3>
             <p class="muted settings-lead">{{ tl('Play under each agent reply reads it aloud: the words only, with “code block” in place of code. One reply at a time; tap Stop to end it. On iPhone, iOS may stop reading when the screen locks or you leave the app.', 'Lire sous chaque réponse d’agent la lit à voix haute : les mots seulement, avec « bloc de code » à la place du code. Une réponse à la fois ; Arrêter y met fin. Sur iPhone, iOS peut arrêter la lecture quand l’écran se verrouille ou que tu quittes l’app.') }}</p>
             <ReadAloudSettings />

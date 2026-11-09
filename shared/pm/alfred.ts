@@ -5,7 +5,7 @@
 // (server/utils/pmCoordinator.ts) reads and writes.
 import { projectPlace } from './places'
 import type { Project } from './project'
-import { ROLE_POINTERS, docsRule, isCoordinatorProgram, type CoordinatorProgram } from './coordinator'
+import { MEMORY_CAP, MEMORY_FILE, ROLE_POINTERS, docsRule, isCoordinatorProgram, type CoordinatorProgram } from './coordinator'
 import { alfredCommandList } from './alfredCli'
 
 export const ALFRED = 'Alfred'
@@ -13,12 +13,11 @@ export const ALFRED = 'Alfred'
 // default model (no --model: the user changes the model inside Alfred).
 export type AlfredProgram = CoordinatorProgram
 export const isAlfredProgram = isCoordinatorProgram
-export const MEMORY_CAP = 4000
 
 // Alfred's own files: created when missing, never overwritten.
 export const OWN_FILES: Record<string, string> = {
   'identity.md': `# Identity\n\nName: ${ALFRED}\nTone: warm and brief; plain words, no jargon; one question at a time.\n`,
-  'memory.md': `# Memory\n\n<!-- What you learn about the user and their setup, one fact per line. Under ${MEMORY_CAP} characters. -->\n`,
+  'memory.md': MEMORY_FILE,
 }
 
 // The name on identity.md's "Name:" line (the sidebar shows it).
@@ -91,6 +90,8 @@ export function alfredFiles(c: AlfredContext, pmSection: string[]): Record<strin
     ...alfredCommandList(), '',
     'Show, then do: without `--apply`, a change only prints what it would do (`dryRun`, `change`). Show those lines to the user, ask, and run the same command with `--apply` only after their yes in this chat. When the answer says `remote`, the change reaches another machine: make it only when the user asked for that.',
     'When the user wants a project\'s tasks to run on another machine, ask for the path of the repository\'s clone there, then use `project machine add`; tell them what its readiness check (`ready` in the answer) says is missing.',
+    'A project\'s workflow: when the user asks you to set it up, start it with `project template <KEY> <id|example:id>` (a dry run first, like any change). To change one it has, write the whole workflow JSON (`wherdr pm template show --project <KEY>` gives the current one) and send it with `project workflow edit <KEY> < workflow.json`, only on the user\'s request in this chat: it waits as a proposal the user accepts or refuses in wherdr. Guard changes go through `project guards`, after the user\'s yes, never in a workflow edit.',
+    'Delegating: `tell <KEY> "<text>"` sends a message to the project\'s coordinator (it starts it when it does not run), for work that is the project\'s ("propose a workflow for WEB", "what is blocked?"). It acts on the user\'s behalf only when you relay their message in this chat. Then `last <KEY>` reads its reply (`working: true`: not finished yet, read again later) and you report back to the user. Never pass off its answer as yours, and never relay the user\'s yes to a change it proposes: the user answers it in wherdr.',
     'No `wherdr alfred` command deletes anything (removing a project\'s machine leaves its clone and tasks there): removing a project, a template or a setting is the user\'s, in wherdr\'s Settings. The one removal you have is `wherdr pm task remove`, for a task never started (a duplicate), with a reason kept in its project\'s log.', '',
     '## Your role', '',
     'You live on the machine that hosts wherdr and are always available. You help with wherdr, and you can start tasks or act on projects on any machine.',

@@ -36,6 +36,10 @@ new project.
 5. **Start its coordinator.** Pick the agent and start it: the coordinator is
    the agent you talk to about the project. It adds tasks and follows them on
    the board. Its [autopilot](#autopilot) can be set under it (optional).
+   It keeps a memory of its own, `memory.md` in its folder: your decisions
+   and preferences, read at each start. wherdr never rewrites it, so the
+   coordinator remembers them after a restart or a change of agent (Claude,
+   Codex…).
 6. **Add a first task.** A title and, with several, its type.
 
 **New › Project** also opens a project's coordinator, or adds a new or empty
@@ -95,7 +99,8 @@ its folder, branches and task worktrees stay on the machine.
   own (*Home*, its folder), read only. *Add a machine* picks one of the connected
   machines and takes the path of the repository's clone there (`~/project`); once
   saved, wherdr runs that machine's readiness check (see *Start on…* under
-  [Board](#board)) and shows *Ready* or what is missing. ✕ removes a machine:
+  [Board](#board)) and shows *Ready* or what is missing. Each machine shows its
+  last check (*Not checked yet* before the first); ↻ runs it again. ✕ removes a machine:
   new tasks no longer start there, tasks already there stay. Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
   **Placement** chooses how new tasks spread over these machines: *Heavy to the
@@ -111,6 +116,13 @@ its folder, branches and task worktrees stay on the machine.
   again in its worktree (a catch-up, red CI, a send-back, the step it is woken
   for) is weighed by what it does, not by its type: heavy only while its step
   still lacks its screenshots, standard otherwise.
+- **Shown in**: the home tab that shows the project's coordinator and its tasks
+  to handle, saved at once. *Automatic* (the default, with the groups it means
+  in brackets): every tab holding one of its machines, so a project whose
+  machines are in several groups shows on each of them. Or one machine group,
+  or *All tabs*. Without a machine group the sheet points to Settings ›
+  Appearance › Machine tabs; deleting a group puts the projects shown in it
+  back to Automatic ([Machines as tabs](home.md#machines-as-tabs)).
 
 ### Workflow
 
@@ -141,7 +153,8 @@ removed or changed marked, and each changed field before → after (holder, ends
 action, merge rule, guards; instructions as a text diff). *JSON* shows the raw
 diff. A proposal made before the workflow changed again is refused, and the
 review says so: ask the coordinator to propose again. The coordinator's window
-and the *Decisions* view link to this review.
+and the *Decisions* view link to this review. [Alfred](alfred.md) can propose
+a change too, on your request in its chat: you answer it in the same review.
 
 In the coordinator's conversation, a card follows the message that made the
 proposal: what changes in one line, who proposed it, your request with its
@@ -221,32 +234,64 @@ kept conversation that ran with another agent. A tap opens its window:
 
 - the agent that answers the coordinator (Alfred's too), and a warning when its conversation
   ran with another one: *New conversation* with the default, or *Resume* the one kept (for
-  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it;
+  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it; when its
+  conversation stopped (its terminal ended, for example when its machine
+  restarted), *Resume the conversation* takes it up again with the agent that
+  ran it, and *New conversation* starts a new one;
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's
-  machines have room for, the default for a new project; a task whose step
+  machines have room for; both empty for a new project, while a project that
+  kept the older defaults (10 a day, 2 at once) keeps them, with the hint *Older
+  defaults: clear the fields for unlimited and Auto*; a task whose step
   holds no agent, such as a PR or merge waiting for checks or the queue, or a
   step of yours, takes no slot), the events it wakes on (*Task added*: by someone else than this
   coordinator, such as you, another coordinator or an automation; *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
   even with nothing to do, with its own *New tasks / day*). The form says
   *Unsaved changes* until you save;
-- its wakes, each created, delivered and acknowledged, and *Run now*.
+- its wakes and *Run now*: one line for the last wake (*Last wake 15:44*, its
+  reason, *handled* or how it ended), a highlighted line for each other wake not
+  handled (waiting, no answer, timed out, coordinator gone), and *History* folds
+  the full list, each wake with its id, created, delivered and acknowledged times.
 
 Automatic work (the autopilot, automations) waits while an account is ahead of
 its [pace](quotas.md#pace) (a machine whose account waits is skipped) or no
 machine the project allows has room for the task
-([Machines](machines.md#manage-machines)); your own starts never wait.
+([Machines](machines.md#manage-machines)), whatever the task counts; your own
+starts never wait. The autopilot's limits and hours (*Tasks / day*, *At once*,
+the hours) hold automatic work only too: a start you ask Alfred or a coordinator
+for goes at once, with a word when it goes past one (*started; past the
+autopilot's limit of 3 at once*), and still counts in them.
 
 The coordinator sees the same with `wherdr pm autopilot show`: the project's
 placement strategy, one line per machine the project allows (memory, cores and load, its agents at work by
 weight, and the heaviest weight it takes now, or why none: full, not ready,
 paced, offline), and what each weight counts (*light* ≈ 0.7 GB, *standard* ≈
-1.8 GB, *heavy* ≈ 3.9 GB) with the weight of each task type. `show <task>`
+1.8 GB, *heavy* ≈ 3.9 GB at first) with the weight of each task type. While a
+task runs, the engine measures the memory its worktree's processes take (the
+agent, builds, tests, the dev server and its browser). Once 3 runs of a weight
+have a measured peak in the project, that weight counts the largest of its
+last 5 peaks plus 15 %, for example `heavy ≈ 2.7 GB, 2 cores (from 5 runs)`. `show <task>`
 gives the machine a started task runs on. Its instructions say the engine
 places tasks, `task start --on` picks a machine and `task add --weight` sets a
 weight that differs from the task type's.
+
+### Who sends a wake
+
+A wake is a message wherdr sends the coordinator; its first line names who
+sends it, and the conversation shows a small label of that kind above it:
+
+- **Autopilot**: the autopilot's scheduled wakes, its events and *Run now*;
+- **Step check** (`Step check: CO-1 (deploy)`): a step the coordinator holds,
+  such as *watch the deploy*, at its start, each `recheck` and its timeout. It
+  comes even with the autopilot off;
+- **Engine**: wherdr gave up on a block after failed fixes
+  ([What wherdr fixes on its own](#what-wherdr-fixes-on-its-own));
+- **Health check**: wherdr's health check found something to look at.
+
+Each kind is its own wake, sent one after the other. Every wake ends with
+`wherdr pm ack <id>`, whatever its kind.
 
 ### What a task's agent said
 
@@ -267,7 +312,8 @@ project's columns, or *To do*, *Working* and *Done* for all projects. A done
 or archived task is never under Your turn.
 
 A card shows the task's title, its id (a badge in the project's color: a tap
-copies it, *Copied*, without opening the task) and step, how long it has been in that
+copies it, *Copied*, without opening the task), the machine it runs on when its
+project allows several (*machine-b*), its step, how long it has been in that
 step (*12 min in review*) or, once done, how long it took from start to done
 (*42 min*), a dot with its agent's state (worker or reviewer), where its PR stands (*PR open · waiting for checks*,
 *checks failed*, *merging*, *The PR conflicts with v3*, *merged …*), what you have to do under
@@ -333,7 +379,10 @@ them too.
 
 ## Task sheet
 
-A card opens the task's sheet: its id badge by the title (a tap copies it) and step, a note when it waits or was
+A card opens the task's sheet. Tasks to handle, Decisions' *Open task* and a task
+link in the chat (`#/board?task=ID`) open it over the page you are on (a bottom
+sheet on a phone), with `?task=ID` added to that page's address, so it survives a
+reload and can be shared; closing it leaves the page as it was. The sheet shows its id badge by the title (a tap copies it) and step, a note when it waits or was
 stopped, the time it spent in each step with the time it waited for you apart,
 its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
 waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
@@ -375,17 +424,28 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   with what it does.
 - **A stopped task**: who stopped it and why, then *Continue*, *Take it as it is*
   or *Archive*, each with what it does.
-- **A step that ends with you** (*Merged*, or the step's own button): what to do,
+- **A step that ends with you** (*Done*, or the step's own button): what to do,
   and its button, with *Open the PR* when the task has one.
 - **The PR** is any link a step gave as its proof (`evidence: ["link"]`, such as
   a PR the worker opened with its own Bitbucket or GitLab tool) or the one the
   engine's `github.pr` opened. A pull request address from GitHub, Bitbucket,
   GitLab or Azure DevOps is added to the card's links as *PR #12*, and opens
   from *Open the PR* at the merge step, or after a refused merge.
+- **A PR to merge on your Git host** (a step you end that checks the merge,
+  `git.verify-merged`): wherdr does not merge it, you do. Its badge says
+  *Merge the PR on GitHub* (or Bitbucket, GitLab, Azure DevOps, *your Git
+  host*, from the PR link), and its button *I merged it* checks that the branch
+  is in its target; the step's own badge and button text win. Not merged yet:
+  *The PR is not merged into develop yet: merge it on Bitbucket (PR link), then
+  press “I merged it” again*.
 - **An agent's question or permission**: its text, and a button to open that agent.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (start it, open its agent). A failed action step (a merge GitHub
   refused) has *Try again* at the top of the sheet, which runs it again.
+
+On a phone, the To do buttons (*Merge*, the step's button, *Open the PR*,
+*Start*, *Open the agent*) stay pinned at the bottom of the tab while its
+content scrolls, so they are always in reach above the home bar.
 
 ### Report a problem
 
@@ -424,22 +484,34 @@ brought does not count.
 #### The merge queue
 
 Each project has a **merge queue**: every task whose merge may go on without
-you (a merge the guards give to wherdr, or one you approved) enters it, and
-wherdr merges them one at a time. The first in the queue is updated with its
-base: wherdr merges the base into the branch and pushes it when that merges
-cleanly, even when GitHub does not flag the branch as behind; on a conflict it
-hands the conflicting files to the task's agent (started again if it was
-ended), and the task keeps its place. An update that fails (a network error)
-is tried again twice, a few minutes apart; past that, the task goes to the end
-of the queue so the others go on. wherdr then waits for the required
-checks on the updated PR and merges it, and the next task comes up. Checks that
-fail after an update go back to the agent as red CI, not to you, and that task
-goes to the end of the queue meanwhile. The others wait their turn and are not
-updated before it: PRs that touch no file another queued PR touches come first,
-then smaller changes. A PR already ready when it reaches its merge step merges
-at once. The card shows the place (*2nd in merge queue*), a refused merge
-waiting its turn stays off *Your turn*, and the log says when a task enters
-the queue and when it comes first.
+you (a merge the guards give to wherdr, or one you approved) enters it. Only
+PRs ready to merge now stand in line: no conflict, no update required, the
+task's last commit on the PR and its checks green. The first in line merges,
+then the next one, a minute apart; PRs that touch no file another queued PR
+touches come first, then smaller changes.
+
+A PR that needs work steps out of line until it is ready again, so it never
+holds up the others: a conflict with its base, checks still running or red,
+work handed to its agent, a merge GitHub blocks (a required review) or
+refused (that one is yours, under *Your turn*, until a new commit). A ready PR merges as it is, without first being
+updated with its base, unless GitHub requires it: wherdr updates a branch only
+when GitHub reports a conflict, or reports it behind because the branch rules
+want branches up to date. When the base moves, every queued PR that needs an
+update gets it in the same pass, and their checks run side by side. An update
+that merges cleanly is pushed by wherdr alone; a conflict goes to the task's
+agent (started again if it was ended). An update that fails (a network error)
+is tried again twice, a few minutes apart. Checks that fail go back to the
+agent as red CI, not to you.
+
+A task waiting in the queue with no work handed to its agent lets its agents
+go once they are idle for 10 minutes, as for [a task that waits for
+you](#agents-of-a-task-that-waits-for-you); wherdr starts the worker again
+only if the queue hands it work.
+
+The card shows the place (*2nd in merge queue*) or why the PR stepped out
+(*in merge queue, out of line: conflict with its base*); a refused merge in the
+queue stays off *Your turn*, and the log says when a task enters the queue and
+when it comes first.
 
 ### What wherdr fixes on its own
 

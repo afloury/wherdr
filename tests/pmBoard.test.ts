@@ -12,7 +12,7 @@ import type { CoreAdminDeps } from '../server/utils/coreCreate'
 let dir = ''
 afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 
-// "Merged" runs the step's git.verify-merged at once; with no worktree to check,
+// "I merged it" runs the step's git.verify-merged at once; with no worktree to check,
 // the step stays open and the card stays in Your turn, saying why.
 it('the Merged button runs the step\'s check, and a failed check stays in Your turn', async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-board-'))
@@ -25,12 +25,19 @@ it('the Merged button runs the step\'s check, and a failed check stays in Your t
 
   const deps = { store } as unknown as CoreAdminDeps & { store: typeof store }
   const after = await userStep(deps, task.id)
-  expect(after.step).toMatchObject({ at: 4, yourTurn: { reason: 'action', badge: 'Merge the PR: No worktree: the task never started' } })
+  expect(after.step).toMatchObject({ at: 4, yourTurn: { reason: 'action', badge: 'Merge the PR on your Git host: No worktree: the task never started' } })
   expect(after.step?.acting).toBeUndefined()
   const { cards, projects } = await board(store)
   expect(projects[0]!.columns).toEqual(['To do', 'Working', 'Review', 'Deploy', 'Done'])
   expect(projects[0]!.types.find(x => x.id === 'feature')?.plan).toMatch(/ → review → /)
-  expect(cards[0]).toMatchObject({ column: 'Review', step: 'merge', holder: 'none', userLabel: 'Merged', yourTurn: 'Merge the PR: No worktree: the task never started' })
+  expect(cards[0]).toMatchObject({ column: 'Review', step: 'merge', holder: 'none', userLabel: 'I merged it', yourTurn: 'Merge the PR on your Git host: No worktree: the task never started' })
+  expect(cards[0]!.machine).toBeUndefined() // one machine: no need to name it
+
+  // A project that allows several machines: the card names the one its task went to.
+  await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [{ key: 'CO', name: 'Company', machine: '', path: '/src/co', template: 'company', addedAt: 1, machines: ['', 'b'], clones: { b: '~/project' } }] }))
+  await store.saveTask({ ...(await store.task(task.id))!, machine: 'b' })
+  const known = [{ key: 'b', label: 'machine-b', local: false, status: 'online', error: null }] as unknown as Parameters<typeof board>[1]
+  expect((await board(store, known)).cards[0]!.machine).toBe('machine-b')
 })
 
 it('a working task with no recorded step shows in its worker\'s step with its agent, and a proof link is the card\'s link', () => {

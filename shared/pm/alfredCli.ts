@@ -3,7 +3,8 @@
 // (also written in Alfred's AGENTS.md) and the "show, then do" text; the
 // server (server/utils/alfredCli.ts) reads and writes.
 import type { SyncedSetting } from '../settings'
-import { MERGE_BY, type MergeBy } from './workflow'
+import { MERGE_BY, type MergeBy, type Template } from './workflow'
+import { sameGuards, type Turn } from './coordinator'
 import { READY_SORTS } from '../spaces'
 import { THEMES } from '../../app/utils/themes'
 import { FOCUS_BORDERS } from '../../app/utils/focusBorder'
@@ -27,10 +28,15 @@ export type AlfredCommand =
   | { name: 'help' | 'projects' | 'templates' | 'machines' | 'coordinators' | 'settings' | 'v2' }
   | { name: 'project', key: string }
   | { name: 'coordinator open', key: string }
+  | { name: 'last', key: string }
+  // Delegation: a message to the project's coordinator (started if needed).
+  | { name: 'tell', key: string, text: string }
+  // A proposal the user answers in wherdr (the workflow JSON comes as the call's input).
+  | { name: 'project workflow edit', key: string }
   // Changes: a dry run unless apply.
   | { name: 'project add', apply: boolean, input: { key: string, machine: string, path: string, name?: string, template?: string } }
   | { name: 'project template', apply: boolean, key: string, template: string } // '' clears it
-  | { name: 'coordinator start', apply: boolean, key: string, program?: 'claude' | 'codex' }
+  | { name: 'coordinator start', apply: boolean, key: string, program?: 'claude' | 'codex', resume?: true }
   // No change given: the project's guards are shown.
   | { name: 'project guards', apply: boolean, key: string, change: { protect?: string[], mergeProtected?: MergeBy, mergeOthers?: MergeBy, contributorPrs?: 'off' | 'others' | 'all' } }
   | { name: 'setting set', apply: boolean, key: SyncedSetting, value: string }
@@ -45,14 +51,17 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'machines', does: 'the machines herdr-core knows (key, label, status); the key "" is this machine' },
   { usage: 'coordinators', does: 'each coordinator: its agent and whether it runs' },
   { usage: 'coordinator open <KEY>', does: 'the link that opens a running project coordinator, to give the user' },
+  { usage: 'tell <KEY> "<text>"', does: 'send a message to the project\'s coordinator, as from Alfred (started first when it does not run); written to the project\'s log' },
+  { usage: 'last <KEY>', does: 'the last reply of the project\'s coordinator, and whether it is still working' },
   { usage: 'v2', does: 'when the user comes from wherdr v2: its projects the migration listed (suggested key, name, folder on this machine and whether it is there: here, base branch, v2 settings to redo, open tasks), each with the v3 project made from it, if any, and the migration report' },
   { usage: 'settings', does: 'the synced settings, their values, and the values each one Alfred may change accepts (1 = on, 0 = off)' },
   { usage: 'project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]', does: 'add a project: a git folder on a machine' },
   { usage: 'project template <KEY> <id|none>', does: 'replace the project\'s workflow with a copy of a template or example:<id> (its guards come with it), or none' },
+  { usage: 'project workflow edit <KEY> < workflow.json', does: 'propose a new workflow for the project (the whole JSON on stdin, guards unchanged): the user accepts or refuses it in wherdr, like a coordinator\'s proposal. Only in a turn that comes from the user' },
   { usage: 'project guards <KEY> [--protect <branch,branch|none>] [--merge-protected user|engine] [--merge-others user|engine] [--contributor-prs off|others|all]', does: 'the project\'s guards: protected branches, who merges into them and into the others (user: the user, engine: wherdr), and whether its coordinator may merge an outside contributor\'s PR after the user\'s yes (others: not into a branch reserved for the user; all: into any); without an option, shown only. A project coordinator never changes them' },
   { usage: 'project machine add <KEY> <machine> --clone <folder>', does: 'let the project\'s tasks run on another machine (its key or label), in its clone of the repo there; once applied, the machine\'s readiness check runs and its result is in the answer' },
   { usage: 'project machine remove <KEY> <machine>', does: 'the project\'s tasks no longer start on that machine (tasks already there stay)' },
-  { usage: 'coordinator start <KEY> [--program claude|codex]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one)' },
+  { usage: 'coordinator start <KEY> [--program claude|codex] [--resume]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one); --resume takes up its last conversation again, with the agent that ran it' },
   { usage: 'setting set <key> <value>', does: 'change a setting to one of the values `settings` lists for it' },
 ]
 
@@ -70,13 +79,15 @@ const usage = (verb: string) => ({ error: `usage: wherdr alfred ${ALFRED_COMMAND
 
 // argv after `wherdr alfred` → a command, or the reason it is not one.
 // --apply (no value) makes a change; without it, the change is only shown.
+// --resume (no value): coordinator start only.
 export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: string } {
   if (!Array.isArray(argv) || !argv.every(a => typeof a === 'string')) return { error: 'argv must be a list of words' }
   const words: string[] = [], flags: Record<string, string> = {}
-  let apply = false
+  let apply = false, resume = false
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i] as string
     if (a === '--apply') { apply = true; continue }
+    if (a === '--resume') { resume = true; continue }
     if (!a.startsWith('--')) { words.push(a); continue }
     const v = argv[i + 1] as string | undefined
     if (v === undefined || v.startsWith('--')) return { error: `${a} needs a value` }
@@ -88,11 +99,19 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
   const extra = Object.keys(flags).find(f => !(FLAGS[verb] ?? []).includes(f))
   if (extra) return { error: `unknown option --${extra}` }
   if (apply && !CHANGES.includes(verb)) return { error: '--apply is for a change only' }
+  if (resume && verb !== 'coordinator start') return { error: '--resume is for coordinator start only' }
   const key = (k: string | undefined) => (k && KEY_RE.test(k) ? k.toUpperCase() : '')
 
   if (['help', 'projects', 'templates', 'machines', 'coordinators', 'settings', 'v2'].includes(w0) && !w1)
     return { name: w0 as 'help' }
-  if (w0 === 'project' && words.length === 2 && !['add', 'template', 'guards', 'machine'].includes(w1)) return key(w1) ? { name: 'project', key: key(w1) } : usage('project <KEY>')
+  if (w0 === 'last') return key(w1) && !w2 ? { name: 'last', key: key(w1) } : usage('last')
+  if (w0 === 'tell') {
+    const text = words.slice(2).join(' ').trim()
+    if (!key(w1) || !text) return usage('tell')
+    if (text.length > 4000) return { error: 'The message is over 4000 characters' }
+    return { name: 'tell', key: key(w1), text }
+  }
+  if (w0 === 'project' && words.length === 2 && !['add', 'template', 'workflow', 'guards', 'machine'].includes(w1)) return key(w1) ? { name: 'project', key: key(w1) } : usage('project <KEY>')
   if (verb === 'coordinator open') return key(w2) && !w3 ? { name: verb, key: key(w2) } : usage(verb)
   if (verb === 'project add') {
     const { machine, path, name, template } = flags
@@ -104,6 +123,10 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
     if (!key(w2) || !w3 || rest.length) return usage(verb)
     if (w3 !== 'none' && !ID_RE.test(w3)) return { error: 'The template is a template id, example:<id>, or none' }
     return { name: verb, apply, key: key(w2), template: w3 === 'none' ? '' : w3 }
+  }
+  if (verb === 'project workflow' && w2 === 'edit') {
+    if (!key(w3) || rest.length) return { error: 'usage: wherdr alfred project workflow edit <KEY> < workflow.json' }
+    return { name: 'project workflow edit', key: key(w3) }
   }
   if (verb === 'project guards') {
     const { protect, 'merge-protected': mp, 'merge-others': mo, 'contributor-prs': cp } = flags
@@ -124,7 +147,8 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
     const { program } = flags
     if (!key(w2) || w3) return usage(verb)
     if (program !== undefined && program !== 'claude' && program !== 'codex') return { error: '--program is claude or codex' }
-    return { name: verb, apply, key: key(w2), ...(program ? { program: program as 'claude' | 'codex' } : {}) }
+    if (program && resume) return { error: '--resume takes up the conversation with the agent that ran it: no --program' }
+    return { name: verb, apply, key: key(w2), ...(program ? { program: program as 'claude' | 'codex' } : {}), ...(resume ? { resume: true as const } : {}) }
   }
   if (verb === 'setting set') {
     if (!w2 || w3 === undefined || rest.length) return usage(verb)
@@ -148,3 +172,10 @@ export function dryRun(argv: string[], plan: AlfredPlan) {
 const quoteWord = (w: string) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`)
 
 export const alfredCommandList = () => ALFRED_COMMANDS.map(c => `- \`wherdr alfred ${c.usage}${CHANGES.some(v => c.usage.startsWith(v)) ? ' [--apply]' : ''}\`: ${c.does}`)
+
+// Why Alfred may not propose `next` as project `key`'s workflow.
+export function workflowEditRefusal(old: Template | null, next: Template, turn: Turn, key: string): string | undefined {
+  if (turn !== 'user') return 'project workflow edit is only for a turn that comes from the user, never a wake: tell the user what you would change'
+  if (!old) return `Project ${key} has no workflow: start one with wherdr alfred project template ${key} <id|example:id>`
+  if (!sameGuards(old, next)) return `Guards are not changed in a workflow edit: use wherdr alfred project guards ${key}, after the user's yes`
+}

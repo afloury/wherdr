@@ -1,4 +1,5 @@
-// A task that waits for the user lets its agents go: once they have been idle
+// A task that waits for the user, or waits in the merge queue with no work
+// handed to its agent, lets its agents go: once they have been idle
 // RELEASE_IDLE_MS, the engine ends them (worktree, branch and files stay) and
 // starts the worker (or the reviewer) again in the same worktree when the task
 // needs it. Only agents that hold a step under way count against a machine's
@@ -9,7 +10,7 @@ import type { PlannedStep, StepState } from './steps'
 export const RELEASE_IDLE_MS = 10 * 60_000
 
 // Why a released worker's handover says it was stopped.
-export const RELEASED_WHY = 'the task waited for the user and its agents were idle for 10 minutes, so they were ended to free memory'
+export const RELEASED_WHY = 'the task waited (for the user or in the merge queue) and its agents were idle for 10 minutes, so they were ended to free memory'
 
 // Waits for the user: Your turn (a step that ends by the user, a refused or
 // guarded merge, a decision), or waiting on a failure. Not on an agent's
@@ -19,10 +20,15 @@ export const RELEASED_WHY = 'the task waited for the user and its agents were id
 export const waitsForUser = (t: Task) => !!t.step?.started && !t.step.done && !t.step.acting && !t.step.agent
   && ((!!t.step.yourTurn && t.step.yourTurn.reason !== 'timeout') || (t.state === 'waiting' && !t.waitKind))
 
-// When the task's agents became idle while it waits for the user, carried
-// from one tick to the next; undefined when it does not wait or one works.
+// Waits in the merge queue (task.queue) with nothing handed to its agent: the
+// engine updates and merges it alone, and starts the worker again only if it
+// hands it work (a conflict, red CI).
+export const waitsInQueue = (t: Task) => !!t.queue && !!t.step?.started && !t.step.done && !t.step.acting && !t.step.agent && !t.step.catchUp
+
+// When the task's agents became idle while it waits for the user or in the
+// merge queue, carried from one tick to the next; undefined when it does not wait or one works.
 export const idleSince = (prev: number | undefined, task: Task, busy: boolean, now: number) =>
-  !waitsForUser(task) || busy ? undefined : prev ?? now
+  !(waitsForUser(task) || waitsInQueue(task)) || busy ? undefined : prev ?? now
 
 export const releaseDue = (since: number | undefined, now: number) => since !== undefined && now - since >= RELEASE_IDLE_MS
 

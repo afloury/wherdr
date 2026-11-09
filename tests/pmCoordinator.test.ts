@@ -6,6 +6,8 @@ import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
 import { alfredView, answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, takeUpdateNotice, userMessageTo } from '../server/utils/pmCoordinator'
 import { REMOTE_SCRIPT } from '../server/utils/pmVisibility'
+import { CREATE_SCRIPT } from '../server/utils/pmLaunch'
+import { execFileSync } from 'node:child_process'
 import { MAIN, parseCommand, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
 import pkg from '../package.json'
 import { EXAMPLES, common, company, github } from '../shared/pm/examples'
@@ -348,27 +350,29 @@ it('tell goes to the step\'s agent, else the worker; --to picks one', () => {
 describe('role files', () => {
   // A fake herdr-core: the machine's home is /h; files written; terminals started.
   const fakeCore = (local = true) => {
-    const written: string[] = [], runs: Record<string, unknown>[] = []
+    const written: string[] = [], runs: Record<string, unknown>[] = [], scripts = new Map<string, string>()
     const call = async (method: string, params: Record<string, unknown>) => {
       const argv = params.argv as string[] | undefined
       if (method === 'machine.exec' && argv?.[2] === 'printf %s "$HOME"') return { code: 0, stdout: Buffer.from('/h').toString('base64') }
       // The repository's remote and gh's answer: a public GitHub repository.
       if (method === 'machine.exec' && argv?.[2] === REMOTE_SCRIPT) return { code: 0, stdout: Buffer.from('git@github.com:o/co.git\n{"visibility":"PUBLIC"}').toString('base64') }
-      if (method === 'machine.exec') return written.push(argv![4]!), { code: 0, stdout: '' }
+      if (method === 'machine.exec') return written.push(argv![4]!), scripts.set(argv![4]!, argv![2]!), { code: 0, stdout: '' }
       runs.push({ method, ...params })
       return { address: `host/t${runs.length + 4}` }
     }
     const machines = () => [{ key: '', label: 'here', local, status: 'online' }]
-    return { written, runs, deps: { store, call, machines } as unknown as Parameters<typeof startCoordinator>[0] }
+    return { written, runs, scripts, deps: { store, call, machines } as unknown as Parameters<typeof startCoordinator>[0] }
   }
   const urls = { local: 'http://127.0.0.1:7690', remote: 'https://host.tailnet.example' }
 
   it('are written in the coordinator\'s own folder when it starts, with a new token and its wherdr script in its environment', async () => {
-    const { written, runs, deps } = fakeCore()
+    const { written, runs, scripts, deps } = fakeCore()
     const r = await startCoordinator(deps, 'CO', { program: 'claude', model: 'opus' }, urls)
     expect(r).toEqual({ terminal: 'host/t5', folder: '/h/.wherdr/pm/coordinators/CO' })
     expect(written.every(f => f.startsWith('/h/.wherdr/pm/coordinators/CO/'))).toBe(true)
     expect(written).toContain('/h/.wherdr/pm/coordinators/CO/bin/wherdr')
+    // Its memory is its own: created only when missing, so a restart or another program keeps it.
+    expect(scripts.get('/h/.wherdr/pm/coordinators/CO/memory.md')).toBe(CREATE_SCRIPT)
     expect(runs[0]).toMatchObject({ cwd: '/h/.wherdr/pm/coordinators/CO', labels: { 'wherdr.coordinator': 'CO' }, env: { DISABLE_AUTOUPDATER: '1', WHERDR_URL: urls.local } })
     expect(runs[0]!.line).toContain(`export PATH='/h/.wherdr/pm/coordinators/CO/bin':"$PATH"; exec 'claude' '--add-dir' '/src/co'`)
     const fresh = (runs[0]!.env as { WHERDR_PM_TOKEN: string }).WHERDR_PM_TOKEN
@@ -400,6 +404,21 @@ describe('role files', () => {
     await refused(setCoordinatorAgent(store, 'NOPE', { program: 'claude', model: 'opus' }), 'Unknown project')
   })
 
+  it('resume its last conversation in its folder, with the agent that ran it and the same options', async () => {
+    const { runs, deps } = fakeCore()
+    await refused(startCoordinator(deps, 'CO', { resume: true }, urls), 'No conversation to resume')
+    await startCoordinator(deps, 'CO', { program: 'codex' }, urls)
+    await setCoordinatorAgent(store, 'CO', { program: 'claude' })
+    await startCoordinator(deps, 'CO', { resume: true }, urls, ['A task was reported'])
+    expect(runs[1]).toMatchObject({ cwd: '/h/.wherdr/pm/coordinators/CO', labels: { 'wherdr.coordinator': 'CO' } })
+    // Its message is typed once it is ready: a word after `resume --last` would be read as a session.
+    expect(runs[1]!.line).toMatch(/exec 'codex' '-C' '\/h\/\.wherdr\/pm\/coordinators\/CO' .*'permissions\.wherdr\.network\.enabled=true' 'resume' '--last'$/)
+    expect(await store.coordinator('CO')).toMatchObject({ ran: { program: 'codex' }, agent: { program: 'claude' }, terminal: 'host/t6' })
+    await startCoordinator(deps, 'CO', {}, urls)
+    await startCoordinator(deps, 'CO', { resume: true }, urls)
+    expect(runs.filter(r => r.method === 'terminal.run').at(-1)!.line).toMatch(/exec 'claude' '--continue' '--add-dir' '\/src\/co'$/)
+  })
+
   it('on another machine, the coordinator gets wherdr\'s published address, never loopback', async () => {
     const remote = fakeCore(false)
     await startCoordinator(remote.deps, 'CO', { program: 'codex', model: 'gpt-5' }, urls)
@@ -407,11 +426,20 @@ describe('role files', () => {
     await refused(startCoordinator(fakeCore(false).deps, 'CO', { program: 'codex', model: 'gpt-5' }, { local: urls.local }), 'publish it on your tailnet')
   })
 
+  it('create a coordinator\'s own file once and never overwrite it', async () => {
+    const file = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'own-')), 'c/memory.md')
+    const create = (text: string) => execFileSync('sh', ['-c', CREATE_SCRIPT, 'sh', file], { input: text })
+    create('first\n')
+    create('second\n')
+    expect(await fs.readFile(file, 'utf8')).toBe('first\n')
+  })
+
   it('say who it is, its commands, each plan and the user\'s instructions, all inside its own folder', () => {
     const files = roleFiles({ key: 'CO', name: 'Company', machine: '', path: '/src/co', from: { template: 'company', version: 1 }, addedAt: 1 }, company, EXAMPLES)
     expect(Object.keys(files).sort()).toEqual(['.claude/settings.json', '.claude/skills/wherdr-pm/SKILL.md', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'QWEN.md', 'bin/wherdr'])
     const agents = files['AGENTS.md']!
     expect(agents).toContain('You coordinate project CO only')
+    expect(agents).toContain('`memory.md` in your folder is yours')
     expect(agents).toContain('`wherdr pm task link <task> <url> --label <label>`')
     expect(agents).toContain('- deploy (Deploy): holder coordinator, ends report, recheck 5m, timeout 90m')
     expect(agents).toContain('- Base branch is develop.')
@@ -570,11 +598,11 @@ describe('wakes', () => {
   }
   const wakeId = (text: string) => /wherdr pm ack ([0-9a-f]{8})/.exec(text)![1]!
 
-  it('tells the coordinator its step once, then each recheck, as an Autopilot wake turn', async () => {
+  it('tells the coordinator its step once, then each recheck, as a Step check wake turn', async () => {
     const id = await atDeploy(1000)
     const first = deliver('idle', 2000)
     expect(await first.run()).toEqual(['CO'])
-    expect(first.sent).toEqual([{ terminal: 'host/t9', text: expect.stringMatching(/^Autopilot: wake [0-9a-f]{8}\n\nCO-1 \(Fix\): Base branch is develop\.[\s\S]*Watch the develop pipeline/) }])
+    expect(first.sent).toEqual([{ terminal: 'host/t9', text: expect.stringMatching(/^Step check: CO-1 \([\w-]+\), wake [0-9a-f]{8}\n\nCO-1 \(Fix\): Base branch is develop\.[\s\S]*Watch the develop pipeline/) }])
     expect((await store.coordinator('CO'))!.turn).toMatchObject({ kind: 'wake' })
     // A wake turn: the user's words cannot be claimed.
     await store.saveTask({ ...(await store.task(id))!, step: { ...(await store.task(id))!.step!, at: 4, yourTurn: { reason: 'user', badge: 'Merge the PR' } } })
@@ -670,8 +698,8 @@ describe('wakes', () => {
       await store.saveTask({ ...task, state: 'waiting', step: state(5) })
       await store.saveCoordinator({ ...(await store.coordinator('CO'))!, seen: { 'CO-1': 'waiting' } })
       const now = day(2, 8, 1)
-      // The 5-hour window at 90 %: past the 25 % reserve.
-      quotas.q = { codex: null, claude: { at: now, five: { used: 90, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
+      // The account hit its 5-hour limit (the default pace, Free, waits only for that).
+      quotas.q = { codex: null, claude: { at: now, limited: { resetsAt: now + 3_600_000 }, five: { used: 100, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
       expect(await deliver('idle', now).run()).toEqual([])
       expect(await scheduled()).toBe(0)
       expect((await store.coordinator('CO'))!).toMatchObject({ ranAt: now, atRan: now, skipped: { n: 1 } })
@@ -763,7 +791,7 @@ describe('commands of lot 10', () => {
  
     // A machine whose account is ahead of its pace takes nothing, as placement skips it.
     const now = Date.now()
-    quotas.q = { codex: null, claude: { at: now, five: { used: 90, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
+    quotas.q = { codex: null, claude: { at: now, limited: { resetsAt: now + 3_600_000 }, five: { used: 100, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
     const here = { ...deps(), machines: () => [{ key: '', label: 'machine-a', local: true }] } as never
     expect((await runCommand(here, token, { argv: ['autopilot', 'show'] })).machines).toEqual([expect.stringMatching(/^machine-a \(home\): .* · takes nothing now: paced: /)])
   })
