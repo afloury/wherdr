@@ -67,7 +67,7 @@ echo "\${cur#* }"`,
   // else its latest merged one, marked stray too: the step ends merged, saying
   // the task's commit is not in it.
   prInfo: `${IN} h=$(git rev-parse HEAD) || exit 1; echo "$h"
-j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup 2>&1) || { echo "$j"; exit 1; }
+j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup,files,additions,deletions 2>&1) || { echo "$j"; exit 1; }
 j=$(echo "$j" | tail -1)
 if [ "$j" = "[]" ]; then
   m=$(gh pr list --head "$1" --state merged --json url,baseRefName,headRefOid -q '.[] | .headRefOid+" "+(. + {merged: true} | tojson)' 2>&1) || { echo "$m"; exit 1; }
@@ -112,6 +112,8 @@ echo "$why"; exit ${CODE.NOT_MERGED}`,
 if ! git merge -q --no-edit "origin/$1" >/dev/null 2>&1; then
   f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict with $1 in $f"; exit ${CODE.SEND_BACK}; fi
 git push -q origin "HEAD:refs/heads/$2" 2>&1 || exit 1; git rev-parse HEAD`,
+  // "behind" when the branch lacks its base's last commits (GitHub says so only when the branch must be up to date).
+  behind: `${IN} git fetch -q origin "$1" 2>&1 || exit 1; git merge-base --is-ancestor "origin/$1" HEAD || echo behind`,
   // Where the PR head ($1) stands against the task's commit: same; behind (in
   // its history: the task's later commits are not pushed yet); or foreign (a
   // commit the task's worktree never had: pushed from elsewhere).
@@ -131,7 +133,7 @@ for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
 export interface Check { name?: string, context?: string, status?: string, conclusion?: string, state?: string }
 // merged: no PR open, this one of the branch is merged already and holds the
 // task's commit; stray: merged, but at a head without the task's commit.
-export interface PrInfo { url: string, baseRefName: string, headRefOid: string, mergeStateStatus?: string, statusCheckRollup?: Check[], merged?: boolean, stray?: boolean }
+export interface PrInfo { url: string, baseRefName: string, headRefOid: string, mergeStateStatus?: string, statusCheckRollup?: Check[], merged?: boolean, stray?: boolean, files?: { path: string }[], additions?: number, deletions?: number }
 
 export const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
 // May the open PR be merged now? Its head must be the task's commit, every
