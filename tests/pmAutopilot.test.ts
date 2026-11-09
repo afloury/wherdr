@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_AUTOPILOT, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, scheduledWake, startRefusal, today, tellRefusal, countFix } from '../shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, holdsSlot, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, scheduledWake, startRefusal, today, tellRefusal, countFix } from '../shared/pm/autopilot'
 import type { Run, Task } from '../shared/pm/run'
 import { accountQuota, pacedStart, paceLine } from '../shared/pm/pace'
 import { DEFAULT_PACE, type PaceVerdict } from '../shared/pm/pacing'
@@ -39,6 +39,17 @@ describe('autopilot limits', () => {
     expect(cleanAutopilot({ ...ap, atOnce: null })).toMatchObject({ autopilot: { atOnce: null } })
     expect(startRefusal({ ...ap, atOnce: null }, [...tasks, task(4), task(5)], [], at(12))).toBeUndefined()
     expect(limitsLeft({ ...ap, atOnce: null }, tasks, [], at(12))).toMatchObject({ startLeft: 3, atOnce: null })
+  })
+
+  it('a working task whose step holds no agent takes no slot, unless the engine handed its worker work', () => {
+    const plan = [{ holder: 'worker' as const }, { holder: 'none' as const }]
+    const step = (at: number, more = {}) => ({ step: { at, started: true, proofs: {}, rounds: {}, ...more } })
+    const tasks = [task(1, step(0)), task(2, step(1)), task(3, step(1, { agent: { kind: 'catch-up', head: 'abc', at: 0 } }))]
+    const holds = (t: Task) => holdsSlot(t, plan)
+    expect(limitsLeft(ap, tasks, [], at(12), holds)).toMatchObject({ working: 2, startLeft: 0 })
+    expect(startRefusal(ap, tasks.slice(0, 2), [], at(12), undefined, holds)).toBeUndefined()
+    // Without its plan, a task holds its slot.
+    expect(holdsSlot(tasks[1]!)).toBe(true)
   })
 
   it('counts the tasks started since midnight, a task once', () => {

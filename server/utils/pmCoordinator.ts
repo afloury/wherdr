@@ -34,7 +34,7 @@ import { reviveWorker } from './pmRelease'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
 import { forgetMemory } from './pmMemory'
-import { goesTo, machineLines, paceOf, placeFor } from './pmPlace'
+import { goesTo, machineLines, paceOf, placeFor, slotsOf } from './pmPlace'
 import { STRATEGY_LABELS } from '../../shared/pm/placement'
 import { projectPace } from './pmPace'
 import type { CoordinatorRecord, PmStore } from './pmStore'
@@ -227,7 +227,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
         pacing: key ? await line(key) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await line(x.key)]))),
         machines: key ? await lines(p!) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await lines(x)]))),
         weights: key ? weights(p!, t) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, weights(x, await store.workflow(x.key))]))),
-        today: { ...limitsLeft(ap, mine, await store.runs(), now), skippedWakes: today(rec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(rec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
+        today: { ...limitsLeft(ap, mine, await store.runs(), now, await slotsOf(store, p ? [p] : projects)), skippedWakes: today(rec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(rec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
         note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. The engine places each start on one of the project\'s allowed machines by its placement strategy (Heavy to the strongest: heavy work on the strongest, light and standard work at home when it fits; Balance the load: each task on the machine with most room; Home first: home until it is full; --on picks one); automatic starts wait while no machine has room (memory, cores, its cap of agents, all projects together) and start by themselves once one has. atOnce null is Auto: as many tasks as the machines take. machines: each allowed machine, its agents at work by weight, its available hours (automatic starts skip it outside them, heavy work in its last 2 hours) and the heaviest weight it takes now (or why none: offline, away, full…); weights: what placement counts per weight, and the weight each task type gets',
       }
     }
@@ -273,14 +273,14 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const wake = turn !== 'user', who = { who: 'coordinator' as const, wake }, now = Date.now()
       const pace = pacedStart(task, wake ? 'wake' : 'user') ? await paceOf(store, p!, task, now) : undefined
       const why = (task.stopped ? resumeRefusal(task, 'continue', who, undefined) : undefined)
-        ?? coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), now, wake, { pace: pace?.verdict })
+        ?? coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), now, wake, { pace: pace?.verdict, holds: await slotsOf(store, p ? [p] : projects) })
       if (why) throw new HerdrError('refused', why)
       // No room on any allowed machine: a wake's start waits for it (the engine starts it then); the user's goes, with a word.
       const { on, short } = goesTo(await placeFor(deps, task, { asked: placed?.machine, waits: pace?.waits }))
       // A failed task a wake starts again goes back to do, where the engine starts held tasks.
       if (short && wake && !task.stopped) return { task: await store.logTask({ ...task, state: 'todo', waiting: undefined, waitKind: undefined, autopilot: true, held: short }, by, short), held: `${short}. It starts by itself once there is room` }
       // Started in a wake: the autopilot's own task, which it may stop in a wake.
-      if (wake && !task.autopilot) await store.saveTask({ ...task, autopilot: true })
+      if (wake && !task.autopilot) await store.saveTask({ ...(await store.task(task.id) ?? task), autopilot: true })
       const memory = short ? { memory: `${short}: started anyway, as the user asked` } : {}
       if (task.stopped) return { task: await resumeTask(deps, task.id, 'continue', who, by), ...memory }
       if (on !== undefined) forgetMemory(on)
@@ -403,6 +403,7 @@ function asleepOf(ap: Autopilot, tasks: Task[], c: CoordinatorRecord | null | un
 export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[]> {
   if (!(await store.enabled())) return []
   const [tasks, runs, wakes, now] = [await store.tasks(), await store.runs(), await store.wakes(), Date.now()]
+  const holds = await slotsOf(store, await store.projects())
   // The main coordinator first: every project's tasks are its own.
   return Promise.all([{ key: MAIN, name: await readAlfredName({}) }, ...await store.projects()].map(async (p) => {
     const c = await store.coordinator(p.key)
@@ -410,7 +411,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
     const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => p.key === MAIN || t.project === p.key)
     return {
       ...(p.key === MAIN ? { main: true } : {}),
-      autopilot, limits: limitsLeft(autopilot, mine, runs, now),
+      autopilot, limits: limitsLeft(autopilot, mine, runs, now, holds),
       ...asleepOf(autopilot, mine, c, now), skippedToday: today(c?.skipped, now),
       ...(c?.woke?.at ? { wokeAt: c.woke.at } : {}),
       wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
