@@ -10,8 +10,7 @@
 // One row per agent terminal (individualAgentRows), as in v2.5; rows without
 // a status (plain shells) list as Ready.
 import type { MachineInfo, Pane } from '#shared/types'
-import { type ReadySort, type Row, createRowReuse, readyLists, rowGroup, sortReady, spaceRows, urgency } from '#shared/spaces'
-import { coreRowCounts } from '#shared/coreState'
+import { type ReadySort, type Row, type RowGroup, createRowReuse, paneGroup, readyLists, rowGroup, sortReady, spaceRows, urgency } from '#shared/spaces'
 import { claudeApiShown, machineQuotaRows, quotaBlocks, quotaRows, tabQuotaRows } from '~/utils/quotas'
 import { longPress } from '~/utils/longPress'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
@@ -20,7 +19,8 @@ import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
 import { onceEvery } from '~/utils/onceEvery'
 import { listMode } from '~/utils/layoutMode'
 import { stateMachines } from '~/utils/homeGrouping'
-import { BAR_ALL } from '~/utils/machineBar'
+import { BAR_ALL, barMachineSelection } from '~/utils/machineBar'
+import { type CountGroup, countsTotal, projectTabMachines, tabCounts } from '~/utils/projectTabs'
 import { individualAgentRows, individualAgentTitle, isIndividualAgentRow } from '~/utils/homeAgentRows'
 import { boardEntry } from '~/utils/boardEntry'
 import { groupTaskAgents } from '~/utils/taskAgentRow'
@@ -56,10 +56,7 @@ const HomePollers = defineComponent({
 useNotificationRekey()
 // Counters follow the selected machine or group; unreachable machines stay out.
 const baseOfPane = (p: Pane) => { const m = machineInfo(p.machine); return m ? m.baseKey ?? m.key : p.machine || '' }
-const counts = computed(() => {
-  const sel = machineBarSelection.value
-  return coreRowCounts(standaloneRows(spaceRows(st.value)), r => !paneStale(r.lead) && (sel === null || sel.includes(baseOfPane(r.lead))))
-})
+const counts = computed(() => tabCounts(countedRows.value, countedCoordinators.value, machineBarSelection.value))
 
 const conn = computed(() => {
   if (offlineView.value) return { ok: false, text: t('offline'), idle: false }
@@ -142,20 +139,31 @@ const stateCardByKey = computed(() => new Map(stateEntries.value.map(e => [e.lea
 const stateGroups = computed(() => groupsOf(stateEntries.value.map(e => e.lead.row)))
 // Machine bar: "All", then each machine (a named session counts as its machine),
 // with its state and the number of agents the list counts.
-// A tab counts the rows of the list, not the terminals.
-const coreRows = computed(() => standaloneRows(spaceRows(st.value)).filter(r => !paneStale(r.lead)))
+// A tab counts what it lists (the same helper as the counters): the rows of
+// the list, not the terminals, and its running coordinators.
+const countGroup = (g: RowGroup): CountGroup => (g === 'unknown' ? 'ready' : g)
+const countedRows = computed(() => standaloneRows(spaceRows(st.value)).filter(r => !paneStale(r.lead))
+  .map(r => ({ base: baseOfPane(r.lead), group: countGroup(rowGroup(r)) })))
+const countedCoordinators = computed(() => [
+  ...(alfredPane.value && !paneStale(alfredPane.value) ? [{ tabMachines: null, group: countGroup(paneGroup(alfredPane.value)) }] : []),
+  ...projectCoordinators.value.flatMap((c) => {
+    const p = coordinatorPane(c)
+    return p && !paneStale(p)
+      ? [{ tabMachines: projectTabMachines({ machines: c.machines ?? [] }, projectTabs.value[c.project], machineGroups.value), group: c.proposal ? 'blocked' as const : countGroup(paneGroup(p)) }]
+      : []
+  }),
+])
 const barEntries = computed(() => machineBarShown.value.map((id) => {
-  const total = (keep: (p: Pane) => boolean) => coreRows.value.filter(r => keep(r.lead)).length
-  if (id === BAR_ALL) return { id, label: t('All'), status: null, title: undefined, n: total(() => true) }
+  const n = countsTotal(tabCounts(countedRows.value, countedCoordinators.value, barMachineSelection(id, machineGroups.value)))
+  if (id === BAR_ALL) return { id, label: t('All'), status: null, title: undefined, n }
   const group = machineGroups.value.find(g => g.id === id)
-  if (group) return { id, label: group.name, status: null, title: group.name, n: total(p => group.machines.includes(baseOfPane(p))) }
+  if (group) return { id, label: group.name, status: null, title: group.name, n }
   // A single machine Herdr's state does not list: the one shown in the session row.
   const listed = machines.value.filter(m => baseKeyOf(m) === id)
   const mine = listed.length ? listed : id === soloMachine.value.key ? [soloMachine.value] : []
-  const keys = new Set(mine.map(m => m.key))
   const status: MachineInfo['status'] = mine.some(m => m.status === 'online') ? 'online' : mine.some(m => m.status === 'connecting') ? 'connecting' : 'offline'
   const label = (listed.length ? machineName(listed[0]!.key) : mine[0]?.label) || id || t('This machine')
-  return { id, label, status, title: `${label} · ${t(STATE_LABEL[status])}`, n: total(p => keys.has(p.machine || '')) }
+  return { id, label, status, title: `${label} · ${t(STATE_LABEL[status])}`, n }
 }))
 // The machine a bar item stands for (a named session counts as its machine):
 // the base machine itself when Herdr lists it, else its first session.

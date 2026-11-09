@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BAR_ALL, barMachineSelection, type MachineGroup } from '../app/utils/machineBar'
-import { projectOnTab, projectTabMachines } from '../app/utils/projectTabs'
+import { countsTotal, projectOnTab, projectTabMachines, tabCounts } from '../app/utils/projectTabs'
 import { readProjectTabs } from '../shared/settings'
 
 const groups: MachineGroup[] = [
@@ -61,5 +61,32 @@ describe('project tabs', () => {
     expect(readProjectTabs('[]')).toEqual({})
     expect(readProjectTabs('nope')).toEqual({})
     expect(readProjectTabs(null)).toEqual({})
+  })
+})
+
+describe('tab counts', () => {
+  // Agent rows by machine, then Alfred (every tab) and two project coordinators.
+  const rows = [
+    { base: '', group: 'working' as const },
+    { base: 'laptop', group: 'blocked' as const },
+    { base: 'devbox', group: 'ready' as const },
+  ]
+  const coordinators = [
+    { tabMachines: null, group: 'ready' as const }, // Alfred
+    { tabMachines: projectTabMachines(home, undefined, groups), group: 'blocked' as const }, // waiting for the user
+    { tabMachines: projectTabMachines(mix, undefined, groups), group: 'working' as const }, // on both groups
+  ]
+  const tab = (pick: string) => tabCounts(rows, coordinators, barMachineSelection(pick, groups))
+
+  it('counts the rows and coordinators the tab shows, a waiting coordinator in Your turn', () => {
+    expect(tab(BAR_ALL)).toEqual({ blocked: 2, working: 2, ready: 2 })
+    expect(tab('*group:personal')).toEqual({ blocked: 2, working: 2, ready: 1 })
+    expect(tab('*group:work')).toEqual({ blocked: 0, working: 1, ready: 2 })
+    expect(tab('laptop')).toEqual({ blocked: 1, working: 0, ready: 1 })
+  })
+
+  it('a tab badge is its counters total', () => {
+    expect(countsTotal(tab(BAR_ALL))).toBe(6)
+    expect(countsTotal(tab('*group:work'))).toBe(3)
   })
 })

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // Settings › Agents › Pace: one row per quota account. The weekly bar with the target
 // line (or the reserve's limit), today's use, the 5-hour window, the mode and
-// its settings, the account's name, and whether automatic work may start now.
+// its settings, the end-of-week burn, the account's name, and whether automatic
+// work may start now.
 // A program with no reading at all shows 'Quota unknown'.
 import type { PaceRow } from '#shared/pm/pace'
-import type { PaceMode, PacePolicy, PaceReason } from '#shared/pm/pacing'
+import { DEFAULT_BURN, burnStart, type BurnSettings, type PaceMode, type PacePolicy, type PaceReason } from '#shared/pm/pacing'
 import { defaultAccountName } from '#shared/quotaAccount'
 
 const props = defineProps<{ active: boolean }>()
@@ -32,7 +33,7 @@ async function run(what: string, fn: () => Promise<void>) {
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = '' }
 }
-const change = (key: string, policy: Partial<PacePolicy>) => run(key, async () => set(await api<{ rows: PaceRow[] }>('/api/pacing', { key, policy })))
+const change = (key: string, policy: Partial<Omit<PacePolicy, 'burn'>> & { burn?: Partial<Omit<BurnSettings, 'until'>> & { until?: number | null } | null }) => run(key, async () => set(await api<{ rows: PaceRow[] }>('/api/pacing', { key, policy })))
 function rename(r: PaceRow) {
   const a = r.account
   if (!a || names[a.key]!.trim() === (a.name ?? '')) return
@@ -43,20 +44,41 @@ function rename(r: PaceRow) {
 }
 // A number field saves only a whole number in its range; anything else (an
 // emptied field included) keeps the saved value and says why.
-type NumField = 'cap' | 'reserve5h' | 'reservePerDay'
-const RANGES: Record<NumField, [number, number]> = { cap: [10, 100], reserve5h: [0, 90], reservePerDay: [0, 14] }
+type NumField = 'cap' | 'reserve5h' | 'reservePerDay' | 'burnHours' | 'burnCap' | 'burn5h' | 'atOnce'
+const RANGES: Record<NumField, [number, number]> = { cap: [10, 100], reserve5h: [0, 90], reservePerDay: [0, 14], burnHours: [1, 168], burnCap: [10, 100], burn5h: [0, 90], atOnce: [1, 10] }
+const BURN_FIELD: Partial<Record<NumField, 'hours' | 'cap' | 'reserve5h' | 'atOnce'>> = { burnHours: 'hours', burnCap: 'cap', burn5h: 'reserve5h', atOnce: 'atOnce' }
+const burnOf = (r: PaceRow) => ({ ...DEFAULT_BURN, hours: 24, ...r.policy.burn })
+const saved = (r: PaceRow, field: NumField) => { const b = BURN_FIELD[field]; return b ? burnOf(r)[b] : r.policy[field as 'cap'] }
 const invalid = ref<{ key: string, field: NumField } | null>(null)
 function setNumber(r: PaceRow, field: NumField, e: Event) {
   const el = e.target as HTMLInputElement
   const [lo, hi] = RANGES[field]
   const n = Number(el.value)
   if (el.value.trim() === '' || !Number.isInteger(n) || n < lo || n > hi) {
-    el.value = String(r.policy[field])
+    el.value = String(saved(r, field))
     invalid.value = { key: r.account!.key, field }
     return
   }
   invalid.value = null
-  change(r.account!.key, { [field]: n })
+  const b = BURN_FIELD[field]
+  change(r.account!.key, b ? { burn: { [b]: n } } : { [field]: n })
+}
+
+// End-of-week burn: on while set, unless its one week is over.
+const burnOn = (r: PaceRow) => !!r.policy.burn && (r.policy.burn.until === undefined || r.policy.burn.until > Date.now())
+const toggleBurn = (r: PaceRow, on: boolean) => change(r.account!.key, { burn: on ? { until: null } : null })
+const repeatItems = (r: PaceRow) => [
+  { value: 'weekly', label: t('Every week') },
+  { value: 'once', label: t('This week only'), disabled: !r.week },
+]
+const setRepeat = (r: PaceRow, v: string) => change(r.account!.key, { burn: { until: v === 'once' && r.week ? r.week.resetsAt : null } })
+// 'Burning until the reset', or 'Burn from Sat 21:00'.
+function burnText(r: PaceRow) {
+  if (!burnOn(r)) return ''
+  if (!r.week) return t('Burn on')
+  const start = burnStart(r.policy.burn, r.week.resetsAt, Date.now())
+  if (start === null) return ''
+  return start <= Date.now() ? t('Burning until the reset') : tl(`Burn from ${when(start)}`)
 }
 const invalidText = (field: NumField) => tl(`Enter a whole number from ${RANGES[field][0]} to ${RANGES[field][1]}: the saved value is kept.`, `Saisis un nombre entier de ${RANGES[field][0]} à ${RANGES[field][1]} : la valeur enregistrée est gardée.`)
 // Working days: the last chosen day stays on (with none, automatic work would wait until the reset).
@@ -144,6 +166,7 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
           <p class="pace-meta">
             <span v-if="r.today !== null">{{ tl('Today', 'Aujourd’hui') }} +{{ pct(r.today) }}</span>
             <span v-if="r.week">{{ tl('Reset', 'Reset') }} {{ when(r.week.resetsAt) }}</span>
+            <span v-if="r.account && burnText(r)" class="pace-burn-on" data-testid="pace-burn-state">{{ burnText(r) }}</span>
             <span class="pace-state" :class="{ wait: !r.verdict.go }" data-testid="pace-state">{{ state(r) }}</span>
           </p>
         </template>
@@ -170,6 +193,31 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
             <label>{{ tl('5 h reserve', 'Réserve 5 h') }} (%)
               <input class="pm-select" type="number" min="0" max="90" :value="r.policy.reserve5h" data-testid="pace-5h" @change="setNumber(r, 'reserve5h', $event)">
             </label>
+            <label class="settings-toggle pace-burn">
+              <span>
+                <b>{{ t('End-of-week burn') }}</b>
+                <small>{{ t('Before the weekly reset, automatic work may use the week up to the burn\'s cap, with its own 5 h reserve.') }}</small>
+              </span>
+              <USwitch :model-value="burnOn(r)" color="success" size="xl" :disabled="busy !== ''" data-testid="pace-burn" @update:model-value="v => toggleBurn(r, v)" />
+            </label>
+            <template v-if="burnOn(r)">
+              <label>{{ t('Start (hours before the reset)') }}
+                <input class="pm-select" type="number" min="1" max="168" :value="burnOf(r).hours" data-testid="pace-burn-hours" @change="setNumber(r, 'burnHours', $event)">
+              </label>
+              <label>{{ t('Cap of the week') }} (%)
+                <input class="pm-select" type="number" min="10" max="100" :value="burnOf(r).cap" data-testid="pace-burn-cap" @change="setNumber(r, 'burnCap', $event)">
+              </label>
+              <label>{{ t('5 h reserve while burning') }} (%)
+                <input class="pm-select" type="number" min="0" max="90" :value="burnOf(r).reserve5h" data-testid="pace-burn-5h" @change="setNumber(r, 'burn5h', $event)">
+              </label>
+              <label>{{ t('Tasks at once') }}
+                <input class="pm-select" type="number" min="1" max="10" :value="burnOf(r).atOnce" data-testid="pace-burn-at-once" @change="setNumber(r, 'atOnce', $event)">
+              </label>
+              <USelect
+                :model-value="r.policy.burn?.until ? 'once' : 'weekly'" :items="repeatItems(r)" size="lg" class="pace-repeat" :disabled="busy !== ''"
+                :aria-label="t('Repeat')" data-testid="pace-burn-repeat" @update:model-value="v => setRepeat(r, v as string)"
+              />
+            </template>
             <p v-if="invalid?.key === r.account.key" class="pace-error" data-testid="pace-invalid">{{ invalidText(invalid.field) }}</p>
             <p v-if="r.policy.mode === 'workdays'" class="muted pace-hint">{{ tl('At least one day stays chosen. Days not chosen add nothing to the line.', 'Au moins un jour reste choisi. Les jours non choisis n’ajoutent rien à la ligne.') }}</p>
           </div>
@@ -203,6 +251,9 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
 }
 .pace-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; font: 500 12px var(--font-mono); color: var(--text-2); text-transform: uppercase; }
 .pace-state { color: var(--green); }
+.pace-burn-on { color: var(--ochre); }
+.pace-form .pace-burn { flex-basis: 100%; flex-direction: row; }
+.pace-repeat { align-self: flex-end; }
 .pace-state.wait { color: var(--ochre); }
 .pace-unknown { margin: 0; font-size: 13px; color: var(--text-2); }
 .pace-error, .pace-hint { flex-basis: 100%; margin: 0; font-size: 13px; }

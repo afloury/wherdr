@@ -5,6 +5,7 @@ import type { Task } from './run'
 import type { RepoVisibility } from './visibility'
 import { isProjectColor, type ProjectColor } from './projectKey'
 import { isStrategy, type Strategy } from './placement'
+import { branchNameError } from './branchName'
 
 export interface Project {
   key: string // the fixed id (see projectKey.ts): task ids are <key>-<n>: WHR-344
@@ -23,6 +24,7 @@ export interface Project {
   // Working branch: tasks start from it, and a step's PR, land or check uses it
   // when the step names no branch. Default: the repo's current branch, no default.
   base?: string
+  branchName?: string // its tasks' branch template (branchName.ts); missing: task/{id}
   // The library template (or example) its workflow was copied from: information
   // only, never followed. None: no workflow yet, no task can start.
   from?: { template: string, version: number }
@@ -45,7 +47,7 @@ export const isBranch = (b: string) => BRANCH_RE.test(b)
 export const isTemplateId = (id: unknown): id is string => typeof id === 'string' && ID_RE.test(id)
 
 const KEY_HINT = '2 to 10 letters or digits, starting with a letter'
-export interface ProjectUpdate { name?: string, base?: string, key?: string, color?: ProjectColor, machines?: string[], clones?: Record<string, string>, placement?: Strategy }
+export interface ProjectUpdate { name?: string, base?: string, key?: string, color?: ProjectColor, machines?: string[], clones?: Record<string, string>, placement?: Strategy, branchName?: string }
 
 // The machines a project's tasks may run on, its home machine first.
 export const allowedMachines = (p: Pick<Project, 'machine' | 'machines'>) => [p.machine, ...(p.machines ?? []).filter(m => m !== p.machine)]
@@ -111,6 +113,12 @@ export function cleanProjectUpdate(raw: unknown): { update?: ProjectUpdate, erro
     const base = typeof o.base === 'string' ? o.base.trim() : null
     if (base === null || (base && !BRANCH_RE.test(base))) errors.push({ path: 'base', message: 'invalid branch name' })
     else update.base = base
+  }
+  if (o.branchName !== undefined) {
+    const tpl = typeof o.branchName === 'string' ? o.branchName.trim() : ''
+    const why = tpl && branchNameError(tpl)
+    if (why) errors.push({ path: 'branchName', message: why })
+    else update.branchName = tpl
   }
   const isKey = (m: unknown): m is string => typeof m === 'string' && m.length <= 64
   if (o.machines !== undefined) {

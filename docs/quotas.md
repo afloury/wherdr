@@ -74,6 +74,12 @@ work (the autopilot, automations) waits while an account is ahead of its pace; y
 never wait. An account with no quota reading is held by task-count limits only. Each machine's
 memory state shows below ([Machines](machines.md#manage-machines)).
 
+**End-of-week burn** (under **Mode settings**, per account): from a chosen number of hours
+before the weekly reset (24 by default) until the reset, automatic work ignores the mode and
+may use the week up to the burn's cap (up to 100 %), with its own 5-hour reserve (down to 0 %)
+and number of tasks at once (it replaces the autopilot's own limit while burning). **Every week** starts again before each new reset; **This week
+only** ends at the current reset. The row shows when the burn starts, or that it is burning.
+
 ## v2 only: Codex updates and restarts
 
 The Codex **Update** and **Restart Codex** cards below belong to wherdr v2 on Herdr.

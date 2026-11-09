@@ -407,11 +407,12 @@ body.short-bottom { --safe-bottom: 0px; }
 .stat + .stat { border-left: 1px solid var(--line); }
 .stat b { display: block; font: 850 30px/1 var(--display); letter-spacing: -.04em; color: var(--text); }
 .stat span {
-  display: flex; align-items: center; gap: 6px; margin-top: 8px;
+  display: block; margin-top: 8px;
   font: 500 9.5px/1.2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.stat span i { width: 6px; height: 6px; flex: none; background: currentColor; }
+/* Block line, not flex: text-overflow only ellipsizes the text of a block. */
+.stat span i { display: inline-block; width: 6px; height: 6px; margin-right: 6px; vertical-align: 1px; background: currentColor; }
 .stat.blocked span i { background: var(--blocked); }
 .stat.working span i { background: var(--working); }
 .stat.done span i { background: var(--done); }
@@ -2105,6 +2106,7 @@ body.kb .composer { padding-bottom: 8px; }
 .settings-group h3::before, .theme-section-title::before { content: ''; width: 18px; height: 1px; background: var(--line); }
 .settings-hint { font-size: 13px; margin: -20px 2px 30px; }
 .settings-group .settings-hint { margin: 9px 2px 0; }
+.settings-group .settings-warning { color: var(--danger); }
 /* Sub-section of a settings section shown only on a computer (Appearance › Desktop). */
 .settings-subhead { margin: 6px 0 22px; padding-top: 22px; border-top: 1px solid var(--line); }
 
@@ -3338,7 +3340,14 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 
 /* Only tab content moves; the header and footer are outside this clipped viewport. */
 .home-content { position: relative; flex: 1; min-height: 0; overflow: hidden; isolation: isolate; background: inherit; }
-.home-content > .scroll { position: absolute; inset: 0; padding-bottom: 16px; background: inherit; }
+.home-content > .scroll { position: absolute; inset: 0; padding-bottom: 16px; background: inherit; overflow-x: hidden; }
+/* The list's scrollbar: thin, shown while the pointer is over the list. Rows shrink
+   or ellipsize; overflow-x above is only a last guard against a row too wide. */
+.home-content > .scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.home-content > .scroll:hover, .home-content > .scroll:focus-within { scrollbar-color: var(--line) transparent; }
+.home-content > .scroll::-webkit-scrollbar { width: 6px; height: 0; }
+.home-content > .scroll::-webkit-scrollbar-thumb { background: transparent; }
+.home-content > .scroll:hover::-webkit-scrollbar-thumb { background: var(--line); }
 #home > .fab-wrap { position: static; flex: none; display: flex; justify-content: flex-end; padding: 12px 16px calc(var(--safe-bottom) + 18px); }
 .home-next-enter-active, .home-next-leave-active,
 .home-prev-enter-active, .home-prev-leave-active { transition-property: transform, opacity; transition-duration: 260ms; transition-timing-function: cubic-bezier(.22,.68,0,1); will-change: transform, opacity; }

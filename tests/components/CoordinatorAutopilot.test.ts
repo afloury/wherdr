@@ -36,6 +36,7 @@ it('shows today\'s counters against the limits, and the switch saves the autopil
   const b = await mount()
   expect(b.find('[data-testid="autopilot-counters"]').text()).toBe('3/10 today · 1/2 at once')
   expect(b.text()).toContain('Autopilot · Off')
+  expect(b.find('[data-testid="autopilot-old-defaults"]').text()).toBe('Older defaults: clear the fields for unlimited and Auto')
   expect((b.find('textarea#ap-goal-CO').element as HTMLTextAreaElement).value).toBe('Ship 2.1')
   await b.find('[data-testid="autopilot-on"]').trigger('click')
   await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', autopilot: { ...autopilot, on: true } }]))
@@ -59,6 +60,8 @@ it('with Tasks / day empty, has no daily limit: counts today alone and saves no 
   await b.find('input#ap-day-CO').setValue('')
   await b.find('[data-testid="autopilot-save"]').trigger('submit')
   await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', autopilot: { ...autopilot, perDay: null, at: '', events: [...autopilot.events] } }]))
+  b.unmount()
+  expect((await mount(view({ autopilot: { ...autopilot, events: [], perDay: null, atOnce: null } }))).find('[data-testid="autopilot-old-defaults"]').exists()).toBe(false)
 })
 
 it('lists the wakes as waiting, delivered, acked or unanswered, and runs now', async () => {
