@@ -447,7 +447,8 @@ an approval, guards, settings and limits stay yours.
 A step whose action failed (a push refused, a PR not opened) and that the
 coordinator, or you, hand to the worker with `--fix` leaves *Your turn* and
 **Tasks to handle** while the worker fixes it: the card says *the agent is
-fixing it*, with no **Try again** in the middle of the fix. A failed action
+fixing it*, with no **Try again** in the middle of the fix, and the
+message asks the worker to say when it is done. A failed action
 wherdr hands the worker on its own (a catch-up, a CI fix) works the same way.
 Once the worker says it is done (or pushes, for wherdr's own hand-off), wherdr
 tries the action again itself. If that fails again, or the worker stops for 3

@@ -33,6 +33,7 @@ import { checkOnGithub } from './pmGhCheck'
 import { noteBack } from './pmStall'
 import { reviveWorker } from './pmRelease'
 import { handFix } from '../../shared/pm/release'
+import { DONE_CMD } from '../../shared/pm/advance'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
 import { forgetMemory } from './pmMemory'
@@ -243,7 +244,9 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const task = await taskOf(cmd.task)
       const holder = t && !task.step?.done ? currentStep(planOf(t, task, p), task.step ?? initialState())?.holder : undefined
       const { role, run, released } = tellTarget(await store.runs(), task.id, holder, cmd.to, !!cmd.fix)
-      const said = `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}`
+      // A failed step action handed over with a fix: the worker reports it done, then the engine tries it again.
+      const fixesAction = !!(cmd.fix && t && handFix(planOf(t, task, p), task.step, cmd.fix, Date.now()))
+      const said = `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}${fixesAction ? `\n\nWhen done: ${DONE_CMD}` : ''}`
       const wake = turn !== 'user', fix = cmd.fix && { autopilot: rec?.autopilot, main }
       // A wake's fix counts against the step's; the log keeps its kind and reason.
       const fixed = (x: Task) => (cmd.fix && wake ? { ...x, fixes: countFix(task) } : x)
