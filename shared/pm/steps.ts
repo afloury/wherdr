@@ -43,6 +43,7 @@ export interface StepState {
   rounds: Record<string, number> // send-backs per verdict step id
   tries?: Record<string, number> // engine actions started per step id: one receipt each
   reviews?: Record<string, Round[]> // the send-backs of each verdict step
+  minor?: Record<string, Finding[]> // what each verdict step's passing verdict left, all minor
   backFrom?: string // the verdict step that sent the task back last
   extra?: Record<string, true> // verdict steps that had their one extra round
   swapped?: Record<string, true> // verdict steps after which the agent was changed
@@ -262,7 +263,10 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       if (ev.head) state = { ...state, proofs: { ...state.proofs, [step.id]: { ...state.proofs[step.id], commit: ev.head } } }
       // The engine decides: only a finding that weighs major or more sends back.
       const left = blocking(ev.findings)
-      if (!left.length) return next()
+      if (!left.length) {
+        state = { ...state, minor: { ...state.minor, [step.id]: ev.findings } }
+        return next()
+      }
       const n = (state.rounds[step.id] ?? 0) + 1
       const rounds = { ...state.rounds, [step.id]: n }
       const history = [...(state.reviews?.[step.id] ?? []), { findings: left, ...(ev.diffLines !== undefined ? { diffLines: ev.diffLines } : {}) }]
