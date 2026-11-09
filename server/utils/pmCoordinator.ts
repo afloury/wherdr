@@ -35,6 +35,7 @@ import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
 import { forgetMemory, memoryState } from './pmMemory'
 import { goesTo, paceOf, placeFor } from './pmPlace'
+import { STRATEGY_LABELS } from '../../shared/pm/placement'
 import { projectPace } from './pmPace'
 import type { CoordinatorRecord, PmStore } from './pmStore'
 import { OWN_FILES, alfredFiles, alfredName, isAlfredProgram, startPrompt } from '../../shared/pm/alfred'
@@ -215,10 +216,11 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       return {
         autopilot: ap, lookForWork: !!ap.lookForWork,
         workingBranch: key ? workingBranch(p) : Object.fromEntries(projects.map(x => [x.key, workingBranch(x)])),
+        placement: key ? STRATEGY_LABELS[p!.placement ?? 'strongest'] : Object.fromEntries(projects.map(x => [x.key, STRATEGY_LABELS[x.placement ?? 'strongest']])),
         pacing: key ? await line(key) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await line(x.key)]))),
         memory: key ? await mem(p!.machine) : await Promise.all([...new Set(projects.map(x => x.machine))].map(mem)),
         today: { ...limitsLeft(ap, mine, await store.runs(), now), skippedWakes: today(rec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(rec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
-        note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. The engine places each start on one of the project\'s allowed machines (heavy work on the strongest, light and standard work at home when it fits; --on picks one); automatic starts wait while no machine has room (memory, cores, its cap of agents, all projects together) and start by themselves once one has. atOnce null is Auto: as many tasks as the machines take',
+        note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. The engine places each start on one of the project\'s allowed machines by its placement strategy (Heavy to the strongest: heavy work on the strongest, light and standard work at home when it fits; Balance the load: each task on the machine with most room; Home first: home until it is full; --on picks one); automatic starts wait while no machine has room (memory, cores, its cap of agents, all projects together) and start by themselves once one has. atOnce null is Auto: as many tasks as the machines take',
       }
     }
     case 'automation list': return { automations: (await store.automations(needProject().key)).automations.map(automationLine), note: 'Only the user adds or changes automations, in wherdr' }
