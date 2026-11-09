@@ -137,6 +137,11 @@ describe('the coordinator\'s view of machines', () => {
     expect(view(machine('machine-b', 16, 12, 8, [], { wait: 'not ready (node missing)' }))).toBe('machine-b: 12.0 GB free of 16.0 GB · 8 cores, load 0.0 · 0 of 10 agents · takes nothing now: not ready (node missing)')
     expect(view(machine('machine-b', 16, 2, 8))).toMatch(/ · takes nothing now: 2\.0 GB free, needs 2\.7 GB with its reserve$/)
     expect(view(machine('machine-c', 16, 12, 8, [], { online: false }))).toBe('machine-c: offline')
+    // macOS: the memory pressure decides, not the swap (it grows on demand).
+    const mac = (pressure: 'normal' | 'warn' | 'critical') => { const c = machine('machine-m', 18, 5, 8, ['standard']); return view({ ...c, capacity: { ...c.capacity!, pressure } }) }
+    expect(mac('normal')).toBe('machine-m: 5.0 GB free of 18.0 GB · 8 cores, load 0.0 · pressure normal · 1 of 12 agents · running 1 standard · fits standard')
+    expect(mac('warn')).toMatch(/ · fits light$/)
+    expect(mac('critical')).toMatch(/ · takes nothing now: memory pressure critical$/)
     expect(weightsLine()).toBe('light ≈ 0.7 GB, 0.25 core · standard ≈ 1.8 GB, 1 core · heavy ≈ 3.9 GB, 2 cores')
   })
 })
