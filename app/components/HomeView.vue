@@ -12,7 +12,7 @@
 import type { MachineInfo, Pane } from '#shared/types'
 import { type ReadySort, type Row, createRowReuse, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
 import { coreRowCounts } from '#shared/coreState'
-import { claudeApiShown, claudeSuggestion, machineQuotaRows, quotaRows, tabQuotaRows } from '~/utils/quotas'
+import { claudeApiShown, claudeSuggestion, machineQuotaRows, quotaBlocks, quotaRows, tabQuotaRows } from '~/utils/quotas'
 import { longPress } from '~/utils/longPress'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
 import { headerFold } from '~/utils/headerFold'
@@ -211,6 +211,8 @@ const headerMachine = computed(() => {
 const oneChip = computed(() => (stateMachineChips.value.length === 1 ? stateMachineChips.value[0]! : null))
 const listQuotas = computed(() => (oneChip.value ? tabQuotaRows(topQuotas.value, oneChip.value.quotas) : topQuotas.value))
 const listApi = computed(() => topApi.value || Boolean(oneChip.value?.api))
+// Several online machines: their quotas grouped by account.
+const machineQuotaBlocks = computed(() => quotaBlocks(stateMachineChips.value.map(c => ({ key: c.m.key, name: c.name, quotas: c.quotas, api: c.api }))))
 const homeRoot = ref<HTMLElement | null>(null)
 const homeScroll = ref<HTMLElement | null>(null)
 const swipeDirection = useHomeSwipe(homeRoot, () => barEntries.value.map(b => b.id), () => machineBarPick.value, id => pickBar(id))
@@ -518,14 +520,7 @@ function resetListWidth() {
         </div>
       </div>
       <QuotaStrip :rows="listQuotas" :api="listApi" :class="{ 'after-stats': showCounters && agents.length }" />
-      <template v-if="!oneChip">
-        <template v-for="c in stateMachineChips" :key="`q-${c.m.key}`">
-          <div v-if="c.quotas.length || c.api" class="state-machine-quotas">
-            <p class="state-machine-quotas-label">{{ c.name }}</p>
-            <QuotaStrip :rows="c.quotas" :api="c.api" class="machine-quotas" />
-          </div>
-        </template>
-      </template>
+      <MachineQuotaBlocks v-if="!oneChip" :blocks="machineQuotaBlocks" />
 
       <AlfredRow v-if="st.ok" />
       <CoordinatorsSection v-if="st.ok" />

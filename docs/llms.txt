@@ -84,7 +84,7 @@
 - [Before adding a machine](docs/machines.md#before-adding-a-machine): what a machine needs first.
 - [Manage machines](docs/machines.md#manage-machines): Settings › Machines, add, reconnect, rename, forget, capacity (memory, cores, load on Linux and macOS), memory limits, available hours and offline machines, and where each start goes (placement across a project's machines).
 - [Machines on hc](docs/core.md#creating-terminals-and-agents-machines): how hc reaches core machines.
-- [Claude and Codex quotas](docs/quotas.md#claude-and-codex-quotas): remaining usage on every machine and its setup.
+- [Claude and Codex quotas](docs/quotas.md#claude-and-codex-quotas): remaining usage per account, with the machines sharing it, and its setup.
 - [Pace](docs/quotas.md#pace): Settings › Agents › Pace, when automatic work may start.
 - [Notifications](docs/notifications.md#notifications): Web Push and Do not disturb.
 - [A default and exceptions](docs/notifications.md#a-default-and-exceptions): one synced policy: a default and its exceptions.
