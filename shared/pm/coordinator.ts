@@ -102,6 +102,7 @@ export type Command =
   | { name: 'task check', task: string }
   | { name: 'task stop', task: string, reason: string }
   | { name: 'task remove', task: string, reason: string }
+  | { name: 'task order', task: string, tasks: string[] } // task: the first, for its project
   | { name: 'task add', title: string, type: string, after?: string, description?: string, weight?: Weight, files?: string[] }
   | { name: 'pr merge', pr: number, userSaid: string, method?: MergeMethod }
   | { name: 'report back' | 'report close', task: string, text: string }
@@ -129,6 +130,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task check <task>', does: 'read the task\'s PR on GitHub now, for a task at its merge step or archived with a PR: merged, its merge step ends as merged and the task goes on; open, why it waits; closed without a merge, said (the user may archive it). At any time, when the user asks to unblock a task' },
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
+  { usage: 'task order <task> [<task>…]', does: 'put these tasks first in their column (To do, Your turn…), in this order; the others keep their order after them. Keep the board busy starts to-do tasks in board order, and the merge queue takes approved merges in it. A done task is refused. In a turn of the user at any time, in a wake only with the autopilot on; written to the project\'s log' },
   { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"] [--weight light|standard|heavy] [--files <path>,<path>]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done. --weight says what it needs of a machine (light: docs, a study; standard: tests and typecheck; heavy: a build, e2e, screenshots); left out, it comes from its task type and steps (show gives it). --files: the files or folders it will change, so that its start waits behind a started task that touches them' },
   { usage: 'report back <task> "<what to fix>"', does: 'on a problem the user reported: send their step back to the worker with precise fixes, and close the report' },
   { usage: 'report close <task> "<what you did>"', does: 'close a problem the user reported once handled (you told the agent, added a follow-up task, or it is fine); the merge it blocked is free again' },
@@ -253,6 +255,10 @@ function parseWords(argv: unknown): Command | { error: string } {
     const on = flags.on?.trim()
     if (flags.on !== undefined && !on) return { error: '--on needs a machine\'s name' }
     return TASK_RE.test(task) && !w3 ? { name: verb, task, ...(on ? { on } : {}) } : usage(verb)
+  }
+  if (verb === 'task order') {
+    const tasks = words.slice(2)
+    return tasks.length && tasks.length <= 100 && tasks.every(x => TASK_RE.test(x)) ? { name: verb, task: tasks[0]!, tasks } : usage(verb)
   }
   if (verb === 'task check') return TASK_RE.test(task) && !w3 ? { name: verb, task } : usage(verb)
   if (verb === 'task stop' || verb === 'task remove') {

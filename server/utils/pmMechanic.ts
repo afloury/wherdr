@@ -404,7 +404,7 @@ async function queueTick(deps: PmLaunchDeps, seen: Seen[]) {
     const mine = queued.filter(x => x.facts.task.project === project)
     for (const x of mine) x.facts.queueOut = queueOut(x.facts)
     const order = mergeOrder(mine.map(({ facts: { task, pr, queueOut: out } }) => ({
-      id: task.id, files: (pr!.files ?? []).map(f => f.path), size: (pr!.additions ?? 0) + (pr!.deletions ?? 0), out,
+      id: task.id, files: (pr!.files ?? []).map(f => f.path), size: (pr!.additions ?? 0) + (pr!.deletions ?? 0), out, order: task.order,
     })))
     for (const x of mine) {
       const place = order.indexOf(x.facts.task.id) + 1, out = x.facts.queueOut
