@@ -113,7 +113,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, whether it looks for new work (and how many tasks those wakes may still add today), the scheduled wakes skipped today (nothing to do, or ahead of the pace), what is left of today\'s limits, the pacing of your worker\'s account (go, or what automatic work waits for), each machine the project allows (online or offline, its available hours, memory, cores and load, its agents at work by weight, the heaviest weight it takes now or why none) and the weights (what each counts, the weight of each task type)' },
   { usage: 'automation list', does: 'the project\'s automations: on or off, schedule or event, last firing' },
   { usage: 'automation show <automation>', does: 'one automation, its prompt and its last firings; only the user adds or changes them, in wherdr' },
-  { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there; while it is offline the task goes to another allowed machine that fits, else waits for it. A started task always goes back to its own machine' },
+  { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, past the autopilot\'s limits and hours (the output says when: "started; past the autopilot\'s limit of 3 at once"; the start still counts in them), in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there; while it is offline the task goes to another allowed machine that fits, else waits for it. A started task always goes back to its own machine' },
   { usage: 'task check <task>', does: 'read the task\'s PR on GitHub now, for a task at its merge step or archived with a PR: merged, its merge step ends as merged and the task goes on; open, why it waits; closed without a merge, said (the user may archive it). At any time, when the user asks to unblock a task' },
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
@@ -297,11 +297,14 @@ export function stepDoneEvent(step: PlannedStep | undefined, cmd: { userSaid?: s
 // ~/.codex) extends :workspace (reads everywhere, writes in its folder and
 // temp folders) with the network on. The others start bare in the folder.
 // works: the project's folder is the coordinator's to change (a folder without git).
-export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string, works = false): string[] {
-  if (program === 'claude') return ['claude', ...(repo ? ['--add-dir', repo] : [])]
-  if (program === 'codex') return ['codex', '-C', folder, ...(repo && works ? ['--add-dir', repo] : []), '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true']
+// resume: its last conversation again, the last one started in its own folder
+// (Claude and Codex only, see canResume), with the same options.
+export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string, works = false, resume = false): string[] {
+  if (program === 'claude') return ['claude', ...(resume ? ['--continue'] : []), ...(repo ? ['--add-dir', repo] : [])]
+  if (program === 'codex') return ['codex', '-C', folder, ...(repo && works ? ['--add-dir', repo] : []), '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true', ...(resume ? ['resume', '--last'] : [])]
   return [program]
 }
+export const canResume = (program: CoordinatorProgram) => program === 'claude' || program === 'codex'
 // Claude and Codex take the first message as an argument; the others get it
 // typed once they are ready.
 export const promptAsArg = (program: CoordinatorProgram) => program === 'claude' || program === 'codex'

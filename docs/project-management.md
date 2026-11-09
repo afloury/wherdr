@@ -230,7 +230,10 @@ kept conversation that ran with another agent. A tap opens its window:
 
 - the agent that answers the coordinator (Alfred's too), and a warning when its conversation
   ran with another one: *New conversation* with the default, or *Resume* the one kept (for
-  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it;
+  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it; when its
+  conversation stopped (its terminal ended, for example when its machine
+  restarted), *Resume the conversation* takes it up again with the agent that
+  ran it, and *New conversation* starts a new one;
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's
@@ -243,13 +246,19 @@ kept conversation that ran with another agent. A tap opens its window:
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
   even with nothing to do, with its own *New tasks / day*). The form says
   *Unsaved changes* until you save;
-- its wakes, each created, delivered and acknowledged, and *Run now*.
+- its wakes and *Run now*: one line for the last wake (*Last wake 15:44*, its
+  reason, *handled* or how it ended), a highlighted line for each other wake not
+  handled (waiting, no answer, timed out, coordinator gone), and *History* folds
+  the full list, each wake with its id, created, delivered and acknowledged times.
 
 Automatic work (the autopilot, automations) waits while an account is ahead of
 its [pace](quotas.md#pace) (a machine whose account waits is skipped) or no
 machine the project allows has room for the task
 ([Machines](machines.md#manage-machines)), whatever the task counts; your own
-starts never wait.
+starts never wait. The autopilot's limits and hours (*Tasks / day*, *At once*,
+the hours) hold automatic work only too: a start you ask Alfred or a coordinator
+for goes at once, with a word when it goes past one (*started; past the
+autopilot's limit of 3 at once*), and still counts in them.
 
 The coordinator sees the same with `wherdr pm autopilot show`: the project's
 placement strategy, one line per machine the project allows (memory, cores and load, its agents at work by

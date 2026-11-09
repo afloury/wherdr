@@ -2,8 +2,8 @@
 // A coordinator's autopilot: its switch, whether it is active or asleep
 // (nothing to do: its scheduled wakes are skipped), today's counters against
 // the limits, its goal, interval, fixed times, events and limits (saved by the user
-// only), its latest wakes (created, delivered, acked) and "run now". In the coordinator
-// window and the project sheet's Autopilot tab.
+// only), its last wake on one line, the wakes not handled, the full history folded
+// and "run now". In the coordinator window and the project sheet's Autopilot tab.
 import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, LOOK_PER_DAY, MAX_PER_DAY, oldDefaults, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Wake } from '#shared/pm/wakes'
@@ -99,6 +99,14 @@ const stateLabel = (w: Wake) => {
   const s = wakeState(w)
   return s === 'pending' ? tl('Waiting', 'En attente') : s === 'delivered' ? tl('Delivered', 'Livré') : tl(...ENDED[s as keyof typeof ENDED])
 }
+// The compact view: the last wake on one line, then each older wake that was not handled
+// (waiting, no answer, timed out, coordinator gone); ids and times only in the history.
+const PROBLEM = new Set(['pending', 'unanswered', 'timeout', 'quit'])
+const unhandled = (w: Wake) => PROBLEM.has(wakeState(w))
+const last = computed(() => props.c.wakes?.[0])
+const problems = computed(() => (props.c.wakes ?? []).slice(1).filter(unhandled))
+const reasonLine = (w: Wake) => `${w.reasons[0] ?? ''}${w.reasons.length > 1 ? ` (+${w.reasons.length - 1})` : ''}`
+const outcome = (w: Wake) => (wakeState(w) === 'ack' ? tl('handled') : stateLabel(w).toLowerCase())
 const counters = computed(() => props.c.limits
   ? tl(`${props.c.limits.started}${props.c.limits.perDay === null ? '' : `/${props.c.limits.perDay}`} today · ${props.c.limits.working}/${props.c.limits.atOnce ?? 'Auto'} at once`)
   : '')
@@ -171,13 +179,24 @@ const counters = computed(() => props.c.limits
       </div>
       <p v-if="!c.terminal" class="muted">{{ tl('Start the coordinator to wake it.', 'Lance le coordinateur pour le réveiller.') }}</p>
       <p v-else-if="sent" class="muted" role="status">{{ tl('Queued: it goes as soon as the coordinator is idle.', 'En file : il part dès que le coordinateur est inactif.') }}</p>
-      <ol v-if="c.wakes?.length" class="ap-wakes" data-testid="autopilot-wakes">
-        <li v-for="w in c.wakes" :key="w.id" :data-state="wakeState(w)" data-testid="autopilot-wake">
-          <span class="ap-wake-head"><b class="mono-label">{{ w.id }}</b><span class="ap-state" :class="wakeState(w)">{{ stateLabel(w) }}</span></span>
-          <small class="mono-label muted">{{ tl('Created', 'Créé') }} {{ time(w.createdAt) }} · {{ tl('Delivered', 'Livré') }} {{ time(w.deliveredAt) }} · {{ tl('Acked', 'Accusé') }} {{ time(w.ackedAt) }}<template v-if="w.tries > 1"> · ×{{ w.tries }}</template></small>
-          <span class="ap-reason">{{ w.reasons[0] }}<template v-if="w.reasons.length > 1"> (+{{ w.reasons.length - 1 }})</template></span>
-        </li>
-      </ol>
+      <template v-if="last">
+        <p class="ap-line" :class="{ problem: unhandled(last) }" :data-state="wakeState(last)" data-testid="autopilot-last-wake">
+          <span class="mono-label">{{ tl('Last wake') }} {{ when(last.createdAt) }}</span><span class="ap-line-reason">{{ reasonLine(last) }}</span><span class="ap-state" :class="wakeState(last)">{{ outcome(last) }}</span>
+        </p>
+        <p v-for="w in problems" :key="w.id" class="ap-line problem" :data-state="wakeState(w)" data-testid="autopilot-wake-problem">
+          <span class="mono-label">{{ when(w.createdAt) }}</span><span class="ap-line-reason">{{ reasonLine(w) }}</span><span class="ap-state" :class="wakeState(w)">{{ outcome(w) }}</span>
+        </p>
+        <details class="ap-history" data-testid="autopilot-history">
+          <summary class="mono-label">{{ tl('History') }} ({{ c.wakes!.length }})</summary>
+          <ol class="ap-wakes" data-testid="autopilot-wakes">
+            <li v-for="w in c.wakes" :key="w.id" :data-state="wakeState(w)" data-testid="autopilot-wake">
+              <span class="ap-wake-head"><b class="mono-label">{{ w.id }}</b><span class="ap-state" :class="wakeState(w)">{{ stateLabel(w) }}</span></span>
+              <small class="mono-label muted">{{ tl('Created', 'Créé') }} {{ time(w.createdAt) }} · {{ tl('Delivered', 'Livré') }} {{ time(w.deliveredAt) }} · {{ tl('Acked', 'Accusé') }} {{ time(w.ackedAt) }}<template v-if="w.tries > 1"> · ×{{ w.tries }}</template></small>
+              <span class="ap-reason">{{ w.reasons[0] }}<template v-if="w.reasons.length > 1"> (+{{ w.reasons.length - 1 }})</template></span>
+            </li>
+          </ol>
+        </details>
+      </template>
       <p v-else class="muted">{{ tl('No wake yet.', 'Aucun réveil pour l’instant.') }}</p>
     </form>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
@@ -204,5 +223,12 @@ const counters = computed(() => props.c.limits
 .ap-state.ack { color: var(--green); }
 .ap-state.delivered { color: var(--accent); }
 .ap-state.unanswered, .ap-state.timeout { color: var(--rose); }
+.ap-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding: 4px 0; }
+.ap-line > .mono-label { flex: none; color: var(--muted); }
+.ap-line-reason { flex: 1; min-width: 0; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ap-line .ap-state { flex: none; }
+.ap-line.problem { padding: 4px 8px; border-left: 2px solid var(--rose); background: color-mix(in srgb, var(--rose) 8%, transparent); }
+.ap-line.problem .ap-state { color: var(--rose); }
+.ap-history summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--muted); }
 .ap-reason { color: var(--text-2); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 </style>

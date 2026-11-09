@@ -1,7 +1,7 @@
 // The pace policy of each quota account (WHR-376 § 2.1), by stable account key:
 // DATA_DIR/pacing.json, written atomically, one write at a time. Only the user
 // changes it, from Settings › Pace; an account without an entry keeps the
-// default, 'free with reserve'.
+// default, 'unlimited' (shown as 'Free'). A saved policy keeps its mode.
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'

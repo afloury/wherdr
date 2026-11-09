@@ -400,6 +400,21 @@ describe('role files', () => {
     await refused(setCoordinatorAgent(store, 'NOPE', { program: 'claude', model: 'opus' }), 'Unknown project')
   })
 
+  it('resume its last conversation in its folder, with the agent that ran it and the same options', async () => {
+    const { runs, deps } = fakeCore()
+    await refused(startCoordinator(deps, 'CO', { resume: true }, urls), 'No conversation to resume')
+    await startCoordinator(deps, 'CO', { program: 'codex' }, urls)
+    await setCoordinatorAgent(store, 'CO', { program: 'claude' })
+    await startCoordinator(deps, 'CO', { resume: true }, urls, ['A task was reported'])
+    expect(runs[1]).toMatchObject({ cwd: '/h/.wherdr/pm/coordinators/CO', labels: { 'wherdr.coordinator': 'CO' } })
+    // Its message is typed once it is ready: a word after `resume --last` would be read as a session.
+    expect(runs[1]!.line).toMatch(/exec 'codex' '-C' '\/h\/\.wherdr\/pm\/coordinators\/CO' .*'permissions\.wherdr\.network\.enabled=true' 'resume' '--last'$/)
+    expect(await store.coordinator('CO')).toMatchObject({ ran: { program: 'codex' }, agent: { program: 'claude' }, terminal: 'host/t6' })
+    await startCoordinator(deps, 'CO', {}, urls)
+    await startCoordinator(deps, 'CO', { resume: true }, urls)
+    expect(runs.filter(r => r.method === 'terminal.run').at(-1)!.line).toMatch(/exec 'claude' '--continue' '--add-dir' '\/src\/co'$/)
+  })
+
   it('on another machine, the coordinator gets wherdr\'s published address, never loopback', async () => {
     const remote = fakeCore(false)
     await startCoordinator(remote.deps, 'CO', { program: 'codex', model: 'gpt-5' }, urls)
@@ -670,8 +685,8 @@ describe('wakes', () => {
       await store.saveTask({ ...task, state: 'waiting', step: state(5) })
       await store.saveCoordinator({ ...(await store.coordinator('CO'))!, seen: { 'CO-1': 'waiting' } })
       const now = day(2, 8, 1)
-      // The 5-hour window at 90 %: past the 25 % reserve.
-      quotas.q = { codex: null, claude: { at: now, five: { used: 90, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
+      // The account hit its 5-hour limit (the default pace, Free, waits only for that).
+      quotas.q = { codex: null, claude: { at: now, limited: { resetsAt: now + 3_600_000 }, five: { used: 100, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
       expect(await deliver('idle', now).run()).toEqual([])
       expect(await scheduled()).toBe(0)
       expect((await store.coordinator('CO'))!).toMatchObject({ ranAt: now, atRan: now, skipped: { n: 1 } })
@@ -763,7 +778,7 @@ describe('commands of lot 10', () => {
  
     // A machine whose account is ahead of its pace takes nothing, as placement skips it.
     const now = Date.now()
-    quotas.q = { codex: null, claude: { at: now, five: { used: 90, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
+    quotas.q = { codex: null, claude: { at: now, limited: { resetsAt: now + 3_600_000 }, five: { used: 100, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
     const here = { ...deps(), machines: () => [{ key: '', label: 'machine-a', local: true }] } as never
     expect((await runCommand(here, token, { argv: ['autopilot', 'show'] })).machines).toEqual([expect.stringMatching(/^machine-a \(home\): .* · takes nothing now: paced: /)])
   })
