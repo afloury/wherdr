@@ -234,7 +234,10 @@ kept conversation that ran with another agent. A tap opens its window:
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
   even with nothing to do, with its own *New tasks / day*). The form says
   *Unsaved changes* until you save;
-- its wakes, each created, delivered and acknowledged, and *Run now*.
+- its wakes and *Run now*: one line for the last wake (*Last wake 15:44*, its
+  reason, *handled* or how it ended), a highlighted line for each other wake not
+  handled (waiting, no answer, timed out, coordinator gone), and *History* folds
+  the full list, each wake with its id, created, delivered and acknowledged times.
 
 Automatic work (the autopilot, automations) waits while an account is ahead of
 its [pace](quotas.md#pace) (a machine whose account waits is skipped) or no
