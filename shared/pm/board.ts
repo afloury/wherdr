@@ -9,6 +9,7 @@ import { notStarted, type Stopped } from './stop'
 import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
 import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
+import type { Report } from './report'
 import { timesOf, type Times } from './times'
 import { ordinal } from './mergeQueue'
 import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
@@ -43,6 +44,7 @@ export interface Card {
   held?: string // waits for memory on its machine
   queue?: number // its place in its project's merge queue, past the first (mergeQueue.ts)
   asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
+  report?: Report // a problem the user reported, open (report.ts)
   times?: Times // time per step, waits for the user, rounds, CI fixes (times.ts), once started
 }
 
@@ -109,6 +111,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(task.stopped ? { stopped: task.stopped } : {}),
     ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '' } } : {}),
     ...(task.held && task.state === 'todo' ? { held: task.held } : {}),
+    ...(task.report ? { report: task.report } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
     ...(task.after ? { after: afterIds(task) } : {}),
     ...(s?.started ? { times: timesOf(task, plan, runs, now) } : {}),
