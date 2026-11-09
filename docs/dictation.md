@@ -496,7 +496,8 @@ licence and the attribution to show (Siwis: CC BY 4.0). Each voice is a fetch se
 (`tts-siwis-medium`, ...), and `POST /api/dictation/prepare` with `{ voice }` has the server fetch
 it, as `{ model }` does for a dictation model. The runtime set also carries sherpa-onnx's TTS
 binding, `sherpa-onnx-tts.js`, unchanged from v1.12.34 to v1.12.40, the releases the pinned WASM
-build matches. `tests/speechVoices.test.ts` checks the catalog.
+build matches. `tests/speechVoices.test.ts` checks the catalog. Licences, the espeak-ng note,
+the memory budget and the phone figures are in [Read aloud: the voice of wherdr](read-aloud.md).
 
 The engine, `app/utils/speech/neuralVoice.ts`, is the `wherdr` choice of `useReadAloud`. Its
 voice is installed through the dictation model store (`installModel`, Cache Storage); a voice
@@ -510,6 +511,8 @@ dropped. The worker and the `AudioContext` are released after 60 s without speec
 
 With **Voice of wherdr** chosen, the settings list one voice per language, Siwis (French) and
 Cori (English), each with its size and attribution and its own Install, Cancel, Delete and Test.
+Install and Test then show what they measured on the device (download, load, first sentence,
+real-time factor, heap; see [How to measure](read-aloud.md#how-to-measure)).
 Each reply is read by the voice of its language: `replyLanguage()` guesses French or English from
 common short words and French accents. A reply whose voice is not installed is read by the
 device's voices. An OpenRouter engine

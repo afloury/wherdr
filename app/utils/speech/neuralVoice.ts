@@ -28,6 +28,20 @@ export interface Voice {
   model: string
   members: { path: string, bytes: number }[]
   attribution: string
+  // Measured on a phone (docs/read-aloud.md): WASM heap after load and while
+  // speaking, and the real-time factor. Absent until measured.
+  memory?: { heap: number, speaking?: number, basis: string }
+  speed?: { rtf: number, basis: string }
+}
+
+// What the last reply measured (shown by the settings' Test).
+export interface VoiceStats {
+  voice: string
+  loadMs?: number // worker: runtime, files and model, on a cold start only
+  firstMs?: number // tap to the first sentence's audio
+  genMs: number // time spent generating speech
+  audioMs: number // length of the speech generated
+  heap: number // largest WASM heap seen, bytes
 }
 
 export const VOICES = catalog.voices as Voice[]
@@ -40,6 +54,8 @@ export const voiceBytes = (v: Voice) => v.members.reduce((n, m) => n + m.bytes, 
 // WASM heap a voice needs, until measured on a phone: its weights, the ONNX
 // runtime's copy of them and the working buffers.
 export const heapEstimate = (v: Voice) => 3 * voiceBytes(v)
+// What the memory budget checks: the measured heap, else the estimate.
+export const heapNeeded = (v: Voice) => Math.max(v.memory?.heap ?? 0, v.memory?.speaking ?? 0) || heapEstimate(v)
 
 // The default voice for the first of the device's languages that has one, else English.
 export function defaultVoice(langs: readonly string[] = globalThis.navigator?.languages ?? []): Voice {
@@ -76,8 +92,8 @@ export interface NeuralVoiceDeps {
 
 type FromWorker =
   | { t: 'phase' | 'dl' }
-  | { t: 'ready', heap: number }
-  | { t: 'audio', id: string, pcm: ArrayBuffer, sampleRate: number }
+  | { t: 'ready', heap: number, ms?: number }
+  | { t: 'audio', id: string, pcm: ArrayBuffer, sampleRate: number, ms?: number, heap?: number }
   | { t: 'error', id?: string, error: string }
 
 interface Job {
@@ -106,8 +122,12 @@ export function createNeuralVoice(deps: NeuralVoiceDeps = {}) {
   let job: Job | null = null
   let gen = 0
   let idle: ReturnType<typeof setTimeout> | undefined
+  let stats: VoiceStats | null = null
+  let tapAt = 0
+  const now = () => globalThis.performance?.now() ?? Date.now()
+  const sawHeap = (h?: number) => { if (stats && h) stats.heap = Math.max(stats.heap, h) }
 
-  const fits = (v: Voice) => !crashedModels()[v.id] && (budget == null || heapEstimate(v) <= budget)
+  const fits = (v: Voice) => !crashedModels()[v.id] && (budget == null || heapNeeded(v) <= budget)
   const usable = (v: Voice) => installed.has(v.id) && fits(v)
 
   // Which voices this device holds whole: speak() decides from this, in the tap.
@@ -180,6 +200,8 @@ export function createNeuralVoice(deps: NeuralVoiceDeps = {}) {
         if (budget != null && m.heap > budget) return fail(`out of memory: the voice takes ${m.heap} bytes`)
         ready = true
         markLoading(null)
+        if (stats) stats.loadMs = m.ms
+        sawHeap(m.heap)
         pump()
       }
       else if (m.t === 'audio') onAudio(m.id, m)
@@ -215,10 +237,16 @@ export function createNeuralVoice(deps: NeuralVoiceDeps = {}) {
     }
   }
 
-  function onAudio(id: string, a: { pcm: ArrayBuffer, sampleRate: number }) {
+  function onAudio(id: string, a: { pcm: ArrayBuffer, sampleRate: number, ms?: number, heap?: number }) {
     const [g, i] = id.split('.').map(Number)
     const j = job
     if (!j || !ctx || g !== j.gen) return // late audio of a stopped reply
+    if (stats) {
+      stats.firstMs ??= Math.round(now() - tapAt)
+      stats.genMs += a.ms ?? 0
+      stats.audioMs += Math.round(a.pcm.byteLength / 4 / a.sampleRate * 1000)
+      sawHeap(a.heap)
+    }
     j.audio.set(i!, a)
     // In order, each one right after the previous (gapless).
     for (let next = j.audio.get(j.scheduled); next; next = j.audio.get(j.scheduled)) {
@@ -253,6 +281,8 @@ export function createNeuralVoice(deps: NeuralVoiceDeps = {}) {
     if (!ctx || ctx.state === 'closed') ctx = makeAudio()
     void ctx.resume().catch(() => {})
     job = { gen: ++gen, opts, sent: 0, scheduled: 0, ended: 0, at: 0, audio: new Map(), sources: [] }
+    stats = { voice: opts.voice.id, genMs: 0, audioMs: 0, heap: 0 }
+    tapAt = now()
     startWorker(opts.voice)
     pump()
     return true
@@ -260,7 +290,7 @@ export function createNeuralVoice(deps: NeuralVoiceDeps = {}) {
 
   globalThis.addEventListener?.('pagehide', release)
 
-  return { speak, stop, release, refresh, install, remove, usable, fits }
+  return { speak, stop, release, refresh, install, remove, usable, fits, stats: () => stats }
 }
 
 export type NeuralVoice = ReturnType<typeof createNeuralVoice>

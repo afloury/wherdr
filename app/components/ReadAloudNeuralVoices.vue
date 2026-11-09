@@ -3,18 +3,22 @@
 // voice (voices.json, the default ones), with its size, attribution, Install /
 // progress / Cancel / Delete and a Test. A reply is read by the voice of its
 // language; one not installed here falls back to the device's voices.
+// Install and Test show what they measured on this device (download, load,
+// first sentence, speed, heap): the figures recorded in voices.json.
 // Rows styled like DictationDeviceSettings.vue.
 import { neuralVoice, speak, speakingId, stopSpeaking } from '~/composables/useReadAloud'
 import { fmtBytes } from '~/utils/bytes'
 import { cancelInstall, fetchCommand, MissingOnServer, storedBytes, watchInstall } from '~/utils/dictation/modelStore'
 import type { Progress } from '~/utils/dictation/modelStore'
 import { asStored, VOICES, voiceBytes } from '~/utils/speech/neuralVoice'
-import type { Voice } from '~/utils/speech/neuralVoice'
+import type { Voice, VoiceStats } from '~/utils/speech/neuralVoice'
 
 const voices = VOICES.filter(v => v.default)
 const have = reactive<Record<string, number>>({})
 const progress = reactive<Record<string, Progress | null>>({})
 const errors = reactive<Record<string, string>>({})
+const downloadMs = reactive<Record<string, number>>({})
+const measured = reactive<Record<string, VoiceStats>>({})
 const canKeep = typeof caches !== 'undefined'
 const LANGS: Record<string, string> = { fr: 'French', en: 'English' }
 // Spoken in the voice's own language: sample speech, not interface text.
@@ -29,9 +33,12 @@ async function refresh(v: Voice) {
   have[v.id] = await storedBytes(asStored(v)).catch(() => 0)
 }
 
-async function follow(v: Voice, run: Promise<void>) {
+async function follow(v: Voice, run: Promise<void>, startedAt?: number) {
   errors[v.id] = ''
-  try { await run }
+  try {
+    await run
+    if (startedAt != null) downloadMs[v.id] = performance.now() - startedAt
+  }
   catch (e) {
     if (e instanceof MissingOnServer) errors[v.id] = `${t('The wherdr server does not have this voice’s files. On the server, in the wherdr folder, run:')} ${fetchCommand(asStored(v))}`
     else if ((e as Error).name !== 'AbortError') errors[v.id] = (e as Error).message
@@ -50,11 +57,13 @@ const onRun = (v: Voice) => (p: Progress) => {
 
 function install(v: Voice) {
   progress[v.id] = { got: have[v.id] ?? 0, total: voiceBytes(v) }
-  follow(v, neuralVoice!.install(v, onRun(v)))
+  follow(v, neuralVoice!.install(v, onRun(v)), performance.now())
 }
 
 async function remove(v: Voice) {
   if (speakingId.value === `settings:${v.id}`) stopSpeaking()
+  delete downloadMs[v.id]
+  delete measured[v.id]
   await neuralVoice?.remove(v).catch(e => toast((e as Error).message, true))
   await refresh(v)
 }
@@ -62,6 +71,24 @@ async function remove(v: Voice) {
 function test(v: Voice) {
   if (speakingId.value === `settings:${v.id}`) return stopSpeaking()
   speak(`settings:${v.id}`, SAMPLES[v.lang] ?? SAMPLES.en!, v)
+}
+
+// When a Test ends, keep what it measured.
+watch(speakingId, (_now, was) => {
+  const s = neuralVoice?.stats()
+  if (was?.startsWith('settings:') && s && was === `settings:${s.voice}`) measured[s.voice] = { ...s }
+})
+
+const secs = (ms: number) => `${(ms / 1000).toFixed(1)} s`
+function measures(v: Voice) {
+  const s = measured[v.id]
+  const parts: string[] = []
+  if (downloadMs[v.id] != null) parts.push(`${t('Download')} ${secs(downloadMs[v.id]!)}`)
+  if (s?.loadMs != null) parts.push(`${t('Load')} ${secs(s.loadMs)}`)
+  if (s?.firstMs != null) parts.push(`${t('First sentence')} ${secs(s.firstMs)}`)
+  if (s?.audioMs) parts.push(`${t('Real-time factor')} ${(s.genMs / s.audioMs).toFixed(2)}`)
+  if (s?.heap) parts.push(`${t('Heap')} ${fmtBytes(s.heap)}`)
+  return parts.join(' · ')
 }
 
 onMounted(async () => {
@@ -101,6 +128,7 @@ const pct = (p: Progress) => Math.floor((p.got / Math.max(1, p.total)) * 100)
           <UButton color="primary" variant="outline" size="md" icon="i-lucide-download" :disabled="!canKeep || !neuralVoice" :label="have[v.id] ? t('Resume') : t(`Install · ${fmtBytes(voiceBytes(v))}`)" data-testid="voice-install" @click="install(v)" />
           <UButton v-if="have[v.id]" color="neutral" variant="ghost" size="md" :label="t('Delete')" data-testid="voice-delete" @click="remove(v)" />
         </template>
+        <small v-if="measures(v)" class="neural-voice-measure" data-testid="voice-measure">{{ measures(v) }}</small>
         <small v-if="errors[v.id]" class="neural-voice-error" role="status">{{ errors[v.id] }}</small>
       </div>
     </div>
@@ -122,5 +150,6 @@ const pct = (p: Progress) => Math.floor((p.got / Math.max(1, p.total)) * 100)
 .neural-voice-state progress::-webkit-progress-value { background: var(--accent); }
 .neural-voice-state progress::-moz-progress-bar { background: var(--accent); }
 .neural-voice-error { display: block !important; flex-basis: 100%; color: var(--rose) !important; text-transform: none !important; overflow-wrap: anywhere; }
+.neural-voice-measure { flex-basis: 100%; text-transform: none !important; letter-spacing: 0 !important; }
 .neural-voices .settings-hint { margin-top: 10px; }
 </style>
