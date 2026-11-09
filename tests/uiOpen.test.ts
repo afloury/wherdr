@@ -62,4 +62,12 @@ describe('ui open', () => {
     expect(uiPlaceLabel('#/settings?section=conversation&tab=read-aloud')).toBe('Settings › Conversation › Read aloud')
     expect(uiPlaceLabel('#/settings?section=projects&project=WEB&tab=guards')).toBe('Settings › Projects › WEB › Guards')
   })
+
+  // WHR-196: the same names label a chat's in-app links.
+  it('names every kind of place', () => {
+    const names = ['#/settings', '#/settings?section=phone', '#/settings?section=pacing', '#/settings?section=projects', '#/settings?section=projects&project=web&tab=nope',
+      '#/board', '#/board?project=WEB', '#/board?tag=ui', '#/board?project=WEB&tag=ui', '#/board?task=WEB-3', '#/decisions', '#/'].map(uiPlaceLabel)
+    expect(names).toEqual(['Settings', 'Settings › Phone', 'Settings › Agents › Pace', 'Settings › Projects', 'Settings › Projects › WEB › General',
+      'Board', 'Board › WEB', 'Board › ui', 'Board › WEB › ui', 'Task WEB-3', 'Decisions', 'Home'])
+  })
 })
