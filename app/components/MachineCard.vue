@@ -11,6 +11,8 @@ const online = computed(() => props.machine.local || props.machine.status === 'o
 const newName = ref('')
 watch(() => props.editing, (on) => { if (on) newName.value = props.machine.label })
 const gb = (mb: number) => Math.round(mb / 102.4) / 10
+// An empty field is Auto: its placeholder shows what wherdr picked.
+const auto = (v?: number, unit = '') => v === undefined ? t('Auto') : `${t('Auto')} (${unit ? `≈${gb(v)} ${unit}` : v})`
 const pickDays = (r: MemoryRow, e: Event) => {
   const v = (e.target as HTMLSelectElement).value
   return saveHours(r, v === 'always' ? null : { days: v as 'weekdays' | 'all' })
@@ -26,7 +28,7 @@ const time = (r: MemoryRow, field: 'from' | 'to', e: Event) => saveHours(r, { [f
       <UButton type="button" size="sm" color="neutral" variant="outline" @click="emit('cancel')">{{ t('Cancel') }}</UButton>
     </form>
     <template v-else>
-      <b class="machine-name">{{ machine.label }}</b>
+      <b class="machine-name" :title="machine.label">{{ machine.label }}</b>
       <span class="mono-label machine-state" :data-status="machine.local ? 'local' : machine.status" data-testid="machine-state">{{ machine.local ? t('This machine') : t(STATE[machine.status] || machine.status) }}</span>
       <span class="machine-actions">
         <UButton v-if="online" color="neutral" variant="ghost" size="sm" icon="i-lucide-sun" :aria-label="t('Keep awake')" data-testid="machine-awake-open" @click="openAwake(machine)" />
@@ -46,10 +48,10 @@ const time = (r: MemoryRow, field: 'from' | 'to', e: Event) => saveHours(r, { [f
       <span class="mono-label" :class="{ wait: memory.short }" data-testid="memory-line">{{ memory.line }}</span>
       <div class="memory-form">
         <label>{{ t('Automatic starts wait under (GB free)') }}
-          <input class="pm-select" type="number" min="0" max="256" step="0.5" :value="gb(memory.settings.minFreeMb)" data-testid="memory-min" @change="saveMemory(memory, 'minFreeGb', $event)">
+          <input class="pm-select" type="number" min="0" max="256" step="0.5" :value="memory.settings.minFreeMb === undefined ? '' : gb(memory.settings.minFreeMb)" :placeholder="auto(memory.autoReserve, 'GB')" data-testid="memory-min" @change="saveMemory(memory, 'minFreeGb', $event)">
         </label>
         <label>{{ t('Agents at once, all projects') }}
-          <input class="pm-select" type="number" min="1" max="50" :value="memory.settings.maxAgents ?? ''" :placeholder="memory.cap ? String(memory.cap) : ''" data-testid="memory-cap" @change="saveMemory(memory, 'maxAgents', $event)">
+          <input class="pm-select" type="number" min="1" max="50" :value="memory.settings.maxAgents ?? ''" :placeholder="auto(memory.cap)" data-testid="memory-cap" @change="saveMemory(memory, 'maxAgents', $event)">
         </label>
         <label>{{ t('Available') }}
           <select class="pm-select" :value="memory.settings.hours?.days ?? 'always'" data-testid="memory-hours" @change="pickDays(memory, $event)">
@@ -63,6 +65,7 @@ const time = (r: MemoryRow, field: 'from' | 'to', e: Event) => saveHours(r, { [f
           <label>{{ t('To') }}<input class="pm-select" type="time" :value="memory.settings.hours.to" @change="time(memory, 'to', $event)"></label>
         </template>
       </div>
+      <small class="muted" data-testid="memory-auto-hint">{{ t('Leave empty: wherdr decides from the machine\'s memory and cores') }}</small>
     </div>
   </div>
 </template>
@@ -70,7 +73,7 @@ const time = (r: MemoryRow, field: 'from' | 'to', e: Event) => saveHours(r, { [f
 <style scoped>
 /* Name | state | three 44 px action slots: the same columns on every card. */
 .machine-card { display: grid; grid-template-columns: minmax(0, 1fr) auto 132px; align-items: center; column-gap: 12px; padding: 13px 16px; }
-.machine-name { min-width: 0; overflow-wrap: anywhere; }
+.machine-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .machine-state { white-space: nowrap; justify-self: end; }
 .machine-state[data-status='online'] { color: var(--green, var(--text)); }
 .machine-actions { display: grid; grid-template-columns: repeat(3, 44px); justify-items: center; }
@@ -82,7 +85,7 @@ const time = (r: MemoryRow, field: 'from' | 'to', e: Event) => saveHours(r, { [f
 .machine-memory > .mono-label.wait { color: var(--ochre); }
 .memory-form { display: flex; flex-wrap: wrap; gap: 12px; }
 .memory-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-2); }
-.memory-form input { width: 120px; }
+.memory-form input { width: 180px; }
 @media (max-width: 699px) {
   .memory-form { flex-direction: column; }
   .memory-form input, .memory-form select { width: 100%; }

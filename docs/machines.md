@@ -57,8 +57,10 @@ and the machine's memory settings (side by side on a computer, stacked on a phon
   counts on it like any online machine.
 - **Memory**: each machine's free memory, cores and load (read on Linux and macOS; on macOS the
   free figure is close to Activity Monitor's, not exact) and its agents at once (all projects), with two
-  settings: **Agents at once, all projects** (empty: one agent per 1.5 GB of RAM) and
-  **Automatic starts wait under (GB free)**. Each start goes to a machine its project allows
+  settings, both **Auto** when left empty (the grey placeholder shows wherdr's pick):
+  **Agents at once, all projects** (Auto: one agent per 1.5 GB of RAM) and **Automatic
+  starts wait under (GB free)** (Auto: 15 % of the machine's RAM, at least 1 GB, at most 4 GB;
+  0 turns this guard off). Emptying a field goes back to Auto; a saved value stays yours. Each start goes to a machine its project allows
   where the task fits, by the project's **Placement** ([project sheet](project-management.md#general)):
   by default heavy work to the strongest one, light and standard work to the project's
   own machine when it fits; or *Balance the load*, or *Home first*. A task fits when the machine keeps its minimum free after the task's
