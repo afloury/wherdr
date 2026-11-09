@@ -1,6 +1,7 @@
 // Settings › Read aloud voice picker: the user's languages and no low-quality
 // voices by default, a language filter, and the chosen voice always listed.
-// The voice of wherdr: install, cancel and delete each language voice.
+// The voice of wherdr: install, cancel and delete each language voice, and
+// the download time shown once installed.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
@@ -129,6 +130,8 @@ describe('ReadAloudSettings voice of wherdr', () => {
     await row(w, 'cori-medium').find('[data-testid="voice-install"]').trigger('click')
     await vi.waitFor(() => expect(state(w, 'cori-medium')).toContain('Installed'), { timeout: 5000 })
     expect(row(w, 'cori-medium').find('[data-testid="voice-test"]').exists()).toBe(true)
+    // What the download took on this device, for the catalog's figures.
+    expect(row(w, 'cori-medium').find('[data-testid="voice-measure"]').text()).toMatch(/^Download \d+\.\d s$/)
     await row(w, 'cori-medium').find('[data-testid="voice-delete"]').trigger('click')
     await vi.waitFor(() => expect(state(w, 'cori-medium')).toMatch(/^Install · \d+ MB$/))
     w.unmount()
