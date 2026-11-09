@@ -28,8 +28,12 @@ On the machine to add:
 
 ## Manage machines
 
-**Settings › Machines** shows the core's version and uptime, this machine, and each core
-machine with its state (connected, connecting…, offline) and last error:
+**Settings › Machines** shows the core's version and uptime and one card per machine, this
+machine first. Each card has the same columns: the name, its state (*This machine*, *Connected*,
+*Connecting…* or *Offline*), then the keep awake, rename and forget buttons at the right edge (a
+button that does not apply leaves its place empty, so the buttons line up across cards). Under
+the name come the last error, the keep-awake line and the battery warning, then the memory line
+and the machine's memory settings (side by side on a computer, stacked on a phone):
 
 - **Add machine** (`machine.add`): an **SSH target** (`user@host`, a `~/.ssh/config` host, or
   `user@host:port` when the core takes a port, as herdr-core 0.1.17 does; wherdr reads this from
