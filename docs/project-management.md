@@ -63,8 +63,11 @@ its folder, branches and task worktrees stay on the machine.
 
 ### General
 
-- **Name** and **Key**. Task ids start with the key. Change it and every task,
+- **Name**, **Key** and **Color**. Task ids start with the key. Change it and every task,
   old ones too, shows the new key; links and commands with a former key still work.
+  The color, picked from a small palette, is the project's key badge everywhere:
+  its coordinator row and conversation header, board cards, the task sheet, its
+  task agents' headers and *Tasks to handle*.
 - **Base branch**: the project's working branch. New tasks start their worktree
   from it, and a step that names no branch opens its PR to it or merges into it.
   Pick one of the repository's branches or type a name; unset, the repository's
@@ -205,7 +208,8 @@ the [Autopilot](#autopilot) button. The first column is **Your turn**, then the
 project's columns, or *To do*, *Working* and *Done* for all projects. A done
 or archived task is never under Your turn.
 
-A card shows the task's title, its id and step, how long it has been in that
+A card shows the task's title, its id (a badge in the project's color: a tap
+copies it, *Copied*, without opening the task) and step, how long it has been in that
 step (*12 min in review*) or, once done, how long it took from start to done
 (*42 min*), a dot with its agent's state (worker or reviewer), where its PR stands (*PR open · waiting for checks*,
 *checks failed*, *merging*, *The PR conflicts with v3*, *merged …*), what you have to do under
@@ -249,7 +253,7 @@ action), standard otherwise. The coordinator does the same with `task add
 
 ## Task sheet
 
-A card opens the task's sheet: its id and step, a note when it waits or was
+A card opens the task's sheet: its id badge by the title (a tap copies it) and step, a note when it waits or was
 stopped, the time it spent in each step with the time it waited for you apart,
 its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
 waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
@@ -303,6 +307,21 @@ working again. The step's time limit and the stall's 30 minutes start again
 from then, so the task comes back if its agent stops again. The Log says
 *back to work* and who sent it back. What only you can do (a merge, an answer,
 a permission, a decision) stays until you do it.
+
+### A task's temporary files
+
+A task's worker and reviewer keep their temporary files in the task's
+worktree, in `.wherdr-tmp` (`~/.wherdr/pm/worktrees/<task>/.wherdr-tmp`), not
+in the machine's `/tmp`, which is often small and shared by every agent:
+wherdr sets `TMPDIR`, `CLAUDE_CODE_TMPDIR` and `NODE_COMPILE_CACHE` to it for
+Claude Code and Codex alike. git ignores the folder (through the repository's
+`.git/info/exclude`), so it is never committed and never keeps a worktree from
+being removed. It goes with the worktree when the task ends (done, archived);
+it stays when wherdr ends idle agents, for the ones started again later.
+
+Before it starts an agent, wherdr checks the machine's `/tmp`: with less than
+500 MB free, the agent is not started and the task waits with the reason
+(free some space, then start it again).
 
 ### Agents of a task that waits for you
 
