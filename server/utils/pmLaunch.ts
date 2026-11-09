@@ -22,8 +22,9 @@ import { fileConflict, filesSection } from '../../shared/pm/files'
 import { branchFor } from '../../shared/pm/branchName'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
 import { LABEL, TMP_DIR, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type Run, type Task } from '../../shared/pm/run'
-import { incidentLine, type Incident } from '../../shared/pm/incident'
+import type { Incident } from '../../shared/pm/incident'
 import { recordGone, type CoreList } from './pmIncidents'
+import { interruptTask } from './pmRecovery'
 
 // Reuses the worktree of an earlier attempt; else a new branch from the base,
 // origin's as fetched now when origin has it (a local one may be stale: a
@@ -123,12 +124,14 @@ const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitK
 // anyway: the user's start of a task whose files a started task touches (files.ts);
 // any other first start of it stays to do, behind that task (the engine starts it then).
 // by: who starts it (the log's 'back to work' line, when that clears a timeout or a stall).
-type StartOpts = { handover?: string, revive?: true, on?: string, by?: string, anyway?: true }
+// resume: a Claude worker's conversation taken up again (crash recovery), with
+// that first message; failing at once, a new conversation reads the instructions.
+type StartOpts = { handover?: string, revive?: true, on?: string, by?: string, anyway?: true, resume?: { session: string, text: string } }
 export async function startTask(deps: PmLaunchDeps, id: unknown, opts: StartOpts = {}): Promise<Task> {
   return oneStart(String(id), 'worker', () => startOnce(deps, id, opts))
 }
 
-async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on: asked, by = 'engine', anyway }: StartOpts): Promise<Task> {
+async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on: asked, by = 'engine', anyway, resume }: StartOpts): Promise<Task> {
   const { store } = deps
   const asRead = await store.task(id)
   if (!asRead) throw new HerdrError('not_found', 'Unknown task')
@@ -196,7 +199,10 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const first = onEvent(taskPlan(t, task, p), initialState(), { kind: 'start' }, Date.now()).state
   const step = task.step?.started ? task.step : { ...first, told: first.since }
   const install = await store.install()
-  let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now() }
+  // Claude's conversation id, pinned: a later resume takes it up again.
+  const taken = plan.program === 'claude' ? resume : undefined
+  const session = () => (plan.program === 'claude' ? { session: randomUUID() } : {})
+  let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now(), ...(taken ? { session: taken.session } : session()) }
   for (;;) {
     await store.saveRun(run) // the receipt, before the terminal exists
     await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, sameFiles: undefined, run: run.id, step, base, branch: paths.branch, branchStart: task.branchStart ?? paths.branch, ...(shotToken ? { shotToken } : {}) })
@@ -205,7 +211,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
       address = (await deps.call<{ address: string }>('terminal.run', {
         cwd: paths.worktree, ...(on ? { on } : {}), no_parent: true, wait: false,
         env: agentEnv(paths.worktree), labels: runLabels(install, run),
-        line: `${PATH_SETUP}; ${agentLine(plan.program, plan.model, paths.instructions)}`,
+        line: `${PATH_SETUP}; ${agentLine(plan.program, plan.model, paths.instructions, run.session ? { id: run.session, ...(taken && run.attempt === 1 ? { resume: taken.text } : {}) } : undefined)}`,
       }, 30000)).address
     } catch (e) {
       // Unconfirmed: it may run anyway. The next reconciliation finds it by its labels.
@@ -224,7 +230,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
     // An agent that exits at once gets one more attempt, never a loop.
     if (run.attempt > 1 || failed.code === NOT_FOUND)
       return wait(store, task, `${plan.program} stopped right after starting (exit code ${failed.code}). Last output:\n${failed.lines || '(none)'}`, isAuthFailure(failed.lines) ? 'auth' : undefined)
-    run = { ...run, id: randomUUID().replace(/-/g, '').slice(0, 12), terminal: undefined, attempt: 2, state: 'starting' }
+    run = { ...run, id: randomUUID().replace(/-/g, '').slice(0, 12), terminal: undefined, attempt: 2, state: 'starting', ...session() }
   }
 }
 
@@ -247,8 +253,10 @@ export async function reconcileRuns(deps: PmLaunchDeps) {
       continue
     }
     await store.saveRun({ ...f.run, state: 'ended', endedBy: f.state })
-    if (task?.run === f.run.id && task.state === 'working')
-      await wait(store, task, why.has(f.run.id) ? incidentLine(why.get(f.run.id)!) : f.state === 'exit' ? 'The agent ended while wherdr was stopped' : 'The agent\'s terminal is gone (not found after a restart)')
+    if (task?.run !== f.run.id || task.state !== 'working') continue
+    // An incident: the engine resumes it once its cause is gone (pmRecovery.ts).
+    const i = why.get(f.run.id)
+    await (i ? interruptTask(deps, task, i) : wait(store, task, f.state === 'exit' ? 'The agent ended while wherdr was stopped' : 'The agent\'s terminal is gone (not found after a restart)'))
   }
   return found
 }

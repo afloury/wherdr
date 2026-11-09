@@ -24,7 +24,8 @@ async function machineFacts(deps: IncidentDeps, list: CoreList, now: number): Pr
   })
 }
 
-const limitOf = (q: Quotas | null): LimitAt => (program, machine, at) => {
+export const readAccounts = (deps: IncidentDeps) => (deps.quotas ?? (async () => (await import('./quotas')).readQuotas()))().catch(() => null)
+export const limitOf = (q: Quotas | null): LimitAt => (program, machine, at) => {
   if (!q) return null
   const account = q.accounts?.find(a => a.program === program && a.machines.includes(machine))
   const quota = account ? accountQuota(q, account) : program === 'claude' || program === 'codex' ? q[program] : null
@@ -46,7 +47,7 @@ export async function recordGone(deps: IncidentDeps, runs: Run[], list: CoreList
     return { run, terminal: { ...t, lastLines: String(out?.text ?? '') } }
   }))
   const ended = gone.some(g => g.terminal)
-  const quotas = ended ? await (deps.quotas ?? (async () => (await import('./quotas')).readQuotas()))().catch(() => null) : null
+  const quotas = ended ? await readAccounts(deps) : null
   const added = await deps.store.addIncidents(diagnose(gone, await machineFacts(deps, list, now), limitOf(quotas), now))
   for (const i of added) for (const id of i.runs) byRun.set(id, i)
   for (const i of added) for (const id of i.tasks) {

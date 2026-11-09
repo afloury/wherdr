@@ -21,7 +21,8 @@ import type { Project } from '../../shared/pm/project'
 import { agentBack, retriesAction, wasReleased } from '../../shared/pm/release'
 import { reviveWorker } from './pmRelease'
 import { recordGone, type CoreList } from './pmIncidents'
-import { incidentLine, type Incident } from '../../shared/pm/incident'
+import type { Incident } from '../../shared/pm/incident'
+import { interruptTask } from './pmRecovery'
 
 // The task's commit, its diff size since the branch started, the worker's note, the verdict file.
 export const SIGNAL_READ_SCRIPT = `wt=$1 b=$2
@@ -162,7 +163,14 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
   const worker = latest(runs, id, 'worker')
   // Released while the task waited for the user: started again, the handover gives the step.
   if (!alive(worker) && wasReleased(worker)) return void await reviveWorker(deps, id, `${plan[s.at]!.id} needs it`)
-  if (!alive(worker)) return void (task.state !== 'waiting' && await waitFor(deps, id, why.has(worker?.id ?? '') ? `${incidentLine(why.get(worker!.id)!)}: start the task again to go on` : 'The worker\'s agent is not running: start the task again to go on'))
+  if (!alive(worker)) {
+    if (task.state === 'waiting') return
+    const i = why.get(worker?.id ?? '')
+    if (!i) return void await waitFor(deps, id, 'The worker\'s agent is not running: start the task again to go on')
+    // An incident: its run ends, the engine resumes the task once the cause is gone (pmRecovery.ts).
+    await deps.store.saveRun({ ...worker!, state: 'ended', endedBy: 'lost' })
+    return void await interruptTask(deps, task, i)
+  }
   await clearSignal(deps, worker!.terminal!)
   // A new note for this step: the last one's link must not pass as this step's proof.
   await exec(deps, c.on, 'rm -f "$1"', [runFiles(worker!.instructions).note])

@@ -316,3 +316,15 @@ it('Start on… lists the machines a project allows, starts on the one picked an
   await vi.waitFor(() => expect(w.find('.error').text()).toBe(refuse))
   expect(posts).toEqual([{ url: '/api/pm/task-start', body: { id: 'VIB-1', machine: 'b' } }])
 })
+
+it('a task the engine resumes after an incident shows why it waits, not Your turn; its follower waits for it to resume', async () => {
+  const why = 'The agent\'s terminal is gone: the machine is offline or unreachable (its herdr-core does not answer) (host-b): wherdr resumes it once host-b is back'
+  board.cards[1] = coTask(task('CO-1', at(2), { state: 'waiting', waiting: why, run: 'r1', recovery: { incident: 'i1', cause: 'offline', machine: 'b', label: 'host-b', run: 'r1', at: 1, n: 1, waits: true } }))
+  board.cards.push(coTask(task('CO-3', initialState(), { state: 'todo', after: 'CO-1', held: 'Waits for CO-1 to resume' })))
+  const w = await mountSuspended(BoardView)
+  mounted = w
+  await vi.waitFor(() => expect(w.findAll('[data-testid="board-card"]')).toHaveLength(4))
+  expect(laneOf(w, 'CO-1')).not.toBe('your-turn')
+  expect(card(w, 'CO-1').find('[data-testid="board-status"]').text()).toBe(why)
+  expect(card(w, 'CO-3').find('[data-testid="board-status"]').text()).toBe('Waits for CO-1 to resume')
+})
