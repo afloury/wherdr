@@ -31,12 +31,13 @@ export const wasReleased = (r?: Pick<Run, 'state' | 'endedBy'>) => r?.state === 
 
 // The agents a machine's cap counts: running there, holding their task's
 // current step, the task not waiting for the user. Coordinators are no runs.
+// Returns their runs.
 export function agentsAtWork(runs: Run[], tasks: Task[], machine: string, holder: (t: Task) => string | undefined) {
   return runs.filter((r) => {
     if (r.machine !== machine || r.state === 'ended') return false
     const t = tasks.find(x => x.id === r.task)
     return !!t && !t.step?.done && !waitsForUser(t) && (!t.step?.started || holder(t) === r.role)
-  }).length
+  })
 }
 
 // The engine hands the worker work of its own (a catch-up, red CI) at the PR
