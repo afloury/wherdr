@@ -2,11 +2,13 @@
 // Settings › Conversation › Read aloud (ReadAloudSettings.vue). One reply at a
 // time for the whole app. Engines: the device's own voices (speechSynthesis),
 // or `wherdr`, a neural voice run on the device (utils/speech/neuralVoice.ts),
-// which falls back to the device's voices while its voice is not installed.
+// which reads each reply with the voice of its language (French or English,
+// a guess) and falls back to the device's voices while that voice is not installed.
 // Both are free and never go through the wherdr server. Choice and voice are
 // kept on this device.
 import { speakableText, speechChunks } from '~/utils/speech/plainText'
-import { VOICES, createNeuralVoice, defaultVoice } from '~/utils/speech/neuralVoice'
+import { createNeuralVoice, defaultVoice, replyLanguage } from '~/utils/speech/neuralVoice'
+import type { Voice } from '~/utils/speech/neuralVoice'
 import { toast } from './useHerdr'
 
 export type ReadAloudEngine = 'off' | 'device' | 'wherdr'
@@ -14,7 +16,6 @@ export const READ_ALOUD_KEY = 'readAloud'
 export const READ_ALOUD_VOICE_KEY = 'readAloudVoice'
 export const READ_ALOUD_LANG_KEY = 'readAloudVoiceLang'
 export const READ_ALOUD_HIDE_LOW_KEY = 'readAloudHideLow'
-export const READ_ALOUD_NEURAL_KEY = 'readAloudNeuralVoice'
 
 const store = {
   get: (k: string) => { try { return localStorage.getItem(k) } catch { return null } },
@@ -38,9 +39,6 @@ export const readAloudVoiceLang = ref(store.get(READ_ALOUD_LANG_KEY) || 'mine')
 watch(readAloudVoiceLang, v => store.set(READ_ALOUD_LANG_KEY, v))
 export const readAloudHideLow = ref(store.get(READ_ALOUD_HIDE_LOW_KEY) !== 'off')
 watch(readAloudHideLow, v => store.set(READ_ALOUD_HIDE_LOW_KEY, v ? 'on' : 'off'))
-// The neural voice's id (voices.json); '' = the default for the device's language.
-export const readAloudNeuralVoice = ref(store.get(READ_ALOUD_NEURAL_KEY) || '')
-watch(readAloudNeuralVoice, v => store.set(READ_ALOUD_NEURAL_KEY, v))
 
 // The device's voices: often empty at first, filled on `voiceschanged`.
 export const deviceVoices = shallowRef<SpeechSynthesisVoice[]>([])
@@ -69,8 +67,9 @@ function done(g: number) {
 }
 
 // `md`: the reply as Markdown. Called from the tap itself: iOS only speaks from
-// a user gesture, so every piece is queued at once, here.
-export function speak(id: string, md: string) {
+// a user gesture, so every piece is queued at once, here. `neural`: this neural
+// voice rather than the one of the reply’s language (Settings’ Test).
+export function speak(id: string, md: string, neural?: Voice) {
   const s = synth()
   if (!s && readAloudEngine.value !== 'wherdr') return
   const g = ++gen
@@ -79,7 +78,7 @@ export function speak(id: string, md: string) {
   const chunks = speechChunks(speakableText(md, tl('Code block.', 'Bloc de code.')))
   if (!chunks.length) return done(g)
   if (readAloudEngine.value === 'wherdr' && neuralVoice?.speak({
-    voice: VOICES.find(v => v.id === readAloudNeuralVoice.value) ?? defaultVoice(),
+    voice: neural ?? defaultVoice([replyLanguage(chunks.join(' '))]),
     chunks,
     onEnd: () => done(g),
     onError: (e) => {
