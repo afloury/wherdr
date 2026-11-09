@@ -102,8 +102,8 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(queue ? { queue } : {}),
     ...(step?.ends === 'user' && started && !s?.done ? { userLabel: step.userLabel || 'Done' } : {}),
     tags: task.tags ?? [],
-    // Then the links steps gave as their proof (the PR), labelled by step; each address once.
-    links: [...task.links ?? [], ...plan.flatMap(p => (s?.proofs[p.id]?.link ? [{ label: p.id, url: s.proofs[p.id]!.link! }] : []))]
+    // Then the links steps gave as their proof, labelled 'PR' when a pull request, else by step; each address once.
+    links: [...task.links ?? [], ...plan.flatMap((p) => { const url = s?.proofs[p.id]?.link; return url ? [{ label: isPrUrl(url) ? 'PR' : p.id, url }] : [] })]
       .filter((l, i, all) => all.findIndex(x => x.url === l.url) === i),
     log: (task.log ?? []).slice(-30),
     plan,
@@ -151,8 +151,16 @@ export const waitsFor = (c: Pick<Card, 'after'>, cards: Pick<Card, 'id' | 'phase
   (c.after ?? []).filter(id => cards.some(x => x.id === id && x.phase !== 'done'))
 
 export const mainLink = (c: Pick<Card, 'links'>) => c.links.find(l => /^pr$/i.test(l.label)) ?? c.links[0]
-// A GitHub PR's link reads 'PR #12'; any other keeps its label.
-export const linkLabel = (l: { label: string, url: string }) => { const n = /\/pull\/(\d+)/.exec(l.url)?.[1]; return n ? `PR #${n}` : l.label }
+// A pull request's address, whatever its host: GitHub /pull/12, Bitbucket
+// /pull-requests/12, GitLab /merge_requests/12, Azure DevOps /pullrequest/12;
+// a proof stored with a sentence's period after it ('…/12.') still counts.
+const PR_URL = /\/(?:pull|pull-requests|merge_requests|pullrequest)\/(\d+)(?![\w-])/i
+const prNumber = (url: string) => PR_URL.exec(url)?.[1]
+export const isPrUrl = (url: string) => !!prNumber(url)
+// The card's PR: its first link to a pull request.
+export const prLink = (c: Pick<Card, 'links'>) => c.links.find(l => isPrUrl(l.url))
+// A PR's link reads 'PR #12'; any other keeps its label.
+export const linkLabel = (l: { label: string, url: string }) => { const n = prNumber(l.url); return n ? `PR #${n}` : l.label }
 
 // The tags of the cards, once each, to filter the board by.
 export const boardTags = (cards: Pick<Card, 'tags'>[]) => [...new Set(cards.flatMap(c => c.tags))].sort()

@@ -155,8 +155,13 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
   const by = coordinatorBy(scope)
   const needProject = () => { if (!p) throw new HerdrError('bad_input', `Name the project: --project <KEY> (${projects.map(shownKey).join(', ')})`); return p }
   const needPlan = () => { needProject(); if (!t) throw new HerdrError('not_found', 'The project has no template'); return t }
-  // The tasks the token's limits count: its project's, or every task for the main coordinator.
-  const mineOf = async () => (await store.tasks()).filter(x => main || x.project === key)
+  // The tasks the limits count: the project's (every task for the main coordinator with no project named).
+  const mineOf = async () => (await store.tasks()).filter(x => (main && !key) || x.project === key)
+  // The autopilot that holds the command: the project's own, also for Alfred (which has none).
+  const pilotRec = main ? (key ? await store.coordinator(key) : null) : rec, pilot = pilotRec?.autopilot
+
+  // Alfred has no autopilot: it starts or adds tasks in the user's turns only.
+  if (main && turn !== 'user' && (cmd.name === 'task start' || cmd.name === 'task add')) throw new HerdrError('refused', `${cmd.name} is the user's request for Alfred: each project's coordinator runs its own autopilot`)
 
   switch (cmd.name) {
     case 'help': return { commands: commandList(t) }
@@ -216,7 +221,8 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       return { acked: cmd.wakes }
     }
     case 'autopilot show': {
-      const ap = rec?.autopilot ?? DEFAULT_AUTOPILOT
+      if (main && !key) return { autopilots: Object.fromEntries(await Promise.all(projects.map(async x => [x.key, { on: !!(await store.coordinator(x.key))?.autopilot?.on }]))), note: 'You have no autopilot: each project\'s coordinator runs its own. Add --project <KEY> for one project\'s' }
+      const ap = pilot ?? DEFAULT_AUTOPILOT
       const mine = await mineOf()
       const now = Date.now()
       const line = async (k: string) => { const pace = await projectPace(store, k, undefined, now, true); return pace ? paceLine(pace, now) : 'unknown: the project has no template or no worker program' }
@@ -229,7 +235,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
         pacing: key ? await line(key) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await line(x.key)]))),
         machines: key ? await lines(p!) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await lines(x)]))),
         weights: key ? weights(p!, t) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, weights(x, await store.workflow(x.key))]))),
-        today: { ...limitsLeft(ap, mine, await store.runs(), now, await slotsOf(store, p ? [p] : projects)), skippedWakes: today(rec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(rec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
+        today: { ...limitsLeft(ap, mine, await store.runs(), now, await slotsOf(store, p ? [p] : projects)), skippedWakes: today(pilotRec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(pilotRec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
         note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. The engine places each start on one of the project\'s allowed machines by its placement strategy (Heavy to the strongest: heavy work on the strongest, light and standard work at home when it fits; Balance the load: each task on the machine with most room; Home first: home until it is full; --on picks one); automatic starts wait while no machine has room (memory, cores, its cap of agents, all projects together) and start by themselves once one has. atOnce null is Auto: as many tasks as the machines take. machines: each allowed machine, its agents at work by weight, its available hours (automatic starts skip it outside them, heavy work in its last 2 hours) and the heaviest weight it takes now (or why none: offline, away, full…); weights: what placement counts per weight, and the weight each task type gets',
       }
     }
@@ -287,7 +293,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const wake = turn !== 'user', who = { who: 'coordinator' as const, wake }, now = Date.now()
       const pace = pacedStart(task, wake ? 'wake' : 'user') ? await paceOf(store, p!, task, now) : undefined
       const why = (task.stopped ? resumeRefusal(task, 'continue', who, undefined) : undefined)
-        ?? coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), now, wake, { pace: pace?.verdict, holds: await slotsOf(store, p ? [p] : projects) })
+        ?? coordinatorStartRefusal(pilot, task, mine, await store.runs(), now, wake, { pace: pace?.verdict, holds: await slotsOf(store, p ? [p] : projects) })
       if (why) throw new HerdrError('refused', why)
       // No room on any allowed machine: a wake's start waits for it (the engine starts it then); the user's goes, with a word.
       const { on, short } = goesTo(await placeFor(deps, task, { asked: placed?.machine, waits: pace?.waits }))
@@ -312,7 +318,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     }
     case 'task add': {
       const look = turn === 'wake' && !!rec?.turn?.look
-      const why = addRefusal(rec?.autopilot, turn !== 'user') ?? (look ? lookAddRefusal(rec?.autopilot, today(rec?.lookAdded, Date.now())) : undefined)
+      const why = addRefusal(pilot, turn !== 'user') ?? (look ? lookAddRefusal(pilot, today(rec?.lookAdded, Date.now())) : undefined)
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
       // Added in the user's turn: their request, never held by the pace.
@@ -329,7 +335,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       // No GitHub call in a wake or with the guard off.
       const ask = prMergeAskRefusal(base)
       if (ask) throw new HerdrError('refused', ask)
-      const taskLinks = (await store.tasks()).flatMap(x => (x.links ?? []).map(l => l.url))
+      const taskLinks = (await store.tasks()).flatMap(x => [...(x.links ?? []).map(l => l.url), ...(x.branch ? [x.branch] : [])])
       const sh = actionShell(deps, machineOn(deps, proj.machine).on)
       const view = await sh(`cd "$1" || exit 1; gh pr view "$2" --json ${PR_FIELDS}`, [proj.path, String(cmd.pr)])
       let pr: ContributorPr | null = null
@@ -425,17 +431,20 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
   if (!(await store.enabled())) return []
   const [tasks, runs, wakes, now] = [await store.tasks(), await store.runs(), await store.wakes(), Date.now()]
   const holds = await slotsOf(store, await store.projects())
-  // The main coordinator first: every project's tasks are its own.
+  // The main coordinator first; it has no autopilot (each project's coordinator runs its own).
   return Promise.all([{ key: MAIN, name: await readAlfredName({}) }, ...await store.projects()].map(async (p) => {
     const c = await store.coordinator(p.key)
     const changes = c?.proposal ? workflowChanges(await store.workflow(p.key), c.proposal.template) : undefined
-    const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => p.key === MAIN || t.project === p.key)
+    const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => t.project === p.key)
     return {
-      ...(p.key === MAIN ? { main: true } : {}),
-      autopilot, limits: limitsLeft(autopilot, mine, runs, now, holds),
-      ...asleepOf(autopilot, mine, c, now), skippedToday: today(c?.skipped, now),
-      ...(c?.woke?.at ? { wokeAt: c.woke.at } : {}),
-      wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
+      ...(p.key === MAIN
+        ? { main: true }
+        : {
+            autopilot, limits: limitsLeft(autopilot, mine, runs, now, holds),
+            ...asleepOf(autopilot, mine, c, now), skippedToday: today(c?.skipped, now),
+            ...(c?.woke?.at ? { wokeAt: c.woke.at } : {}),
+            wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
+          }),
       project: p.key, name: p.name, ...('machine' in p ? { machines: allowedMachines(p) } : {}), ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...('from' in p && p.from ? { template: p.from.template } : {}),
       ...(c?.ran ? { ran: agentOf(c.ran) ?? FALLBACK } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
       ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, changes, by: c.proposal.by ?? (p.key === MAIN ? 'main' : p.key), ...(c.proposal.said ? { said: c.proposal.said } : {}), ...(c.proposal.saidAt ? { saidAt: c.proposal.saidAt } : {}) } } : {}),
