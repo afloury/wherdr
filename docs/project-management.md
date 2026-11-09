@@ -129,13 +129,27 @@ its folder, branches and task worktrees stay on the machine.
 The project's own workflow: its task types, and the steps of each. Each step
 has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
-action, what it does: land on a branch, push, open a PR, merge a PR, or check
-that a branch was merged, with its branch, merge method and required checks.
+action, what it does: land on a branch, push, open a PR, merge a GitHub or
+Bitbucket PR, or check that a branch was merged, with its branch, merge method and required checks.
 A merge that first pushes the task's last commits waits up to a minute for
 GitHub to show them on the PR.
 In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
 *Add task* under [Board](#board)). Under the form, the plan of the chosen task type. *Save* checks the workflow
 and shows each problem with its line.
+
+**Bitbucket Cloud.** A worker step can open the PR with the agent's own
+Bitbucket tool (`evidence: ["link"]`). Then either a step that ends with you and
+checks the merge (`action: { kind: "git.verify-merged" }`: you merge on
+Bitbucket, then press its button), or a step that lets wherdr merge
+(`action: { kind: "bitbucket.merge" }`): it finds the task's open PR on
+Bitbucket, waits for its builds (and the step's required checks, by name or
+key), then merges with a **merge commit** unless the step names another method
+(a squash makes a new commit that a later `git.verify-merged` cannot find). A
+PR into a protected branch waits for you, as on GitHub, and a merge Bitbucket
+refuses (approvals, branch restrictions) says why. The credentials come from
+the machine that runs the task: `BITBUCKET_TOKEN` (an access token), or
+`BITBUCKET_USERNAME` with `BITBUCKET_APP_PASSWORD`, in the environment
+herdr-core runs with; wherdr never stores them.
 
 The ⋯ menu adds *Edit as JSON*, *Change log*, *Save as template* (copies the
 saved workflow into your templates; the project is untouched) and *Start over

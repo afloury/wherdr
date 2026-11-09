@@ -3,14 +3,14 @@
 // Pure: the server runs the scripts on the project's machine (pmActions.ts).
 import { combineGuards, isProtected, mayMerge, type ResolvedGuards } from './guards'
 import { projectPlace } from './places'
-import { actionField, type MergeBy, type StepAction, type Template } from './workflow'
+import { actionField, isPrMerge, type MergeBy, type StepAction, type Template } from './workflow'
 
 // The guards of a task: the project's, hardened by its task type.
 export const taskGuards = (t: Template, type: string) =>
   combineGuards([{ source: 'project', guards: t.guards }, { source: 'task-type', guards: t.taskTypes[type]?.guards }])
 
 // Why the action may not run, or undefined. `by`: 'user' when the user's
-// gesture started it, else 'engine'. `base`: the PR's base, for github.merge.
+// gesture started it, else 'engine'. `base`: the PR's base, for a PR merge.
 // `project`: the task's, for where its working branch is set.
 export function guardAction(g: ResolvedGuards, a: StepAction, ctx: { branch: string, by: MergeBy, base?: string, project?: string }): string | undefined {
   const onlyYou = (b: string) => `${b} is protected: only you may merge into it`
@@ -18,7 +18,7 @@ export function guardAction(g: ResolvedGuards, a: StepAction, ctx: { branch: str
   if (f && !a[f]) return `${a.kind} has no branch: name one in the step, or set the project's working branch in ${projectPlace(ctx.project)}`
   if (a.kind === 'git.land' && !mayMerge(g, a.target!, ctx.by)) return onlyYou(a.target!)
   if ((a.kind === 'git.push' || a.kind === 'github.pr') && isProtected(g, ctx.branch)) return `${ctx.branch} is protected: the engine never pushes to it`
-  if (a.kind === 'github.merge' && ctx.base !== undefined && !mayMerge(g, ctx.base, ctx.by)) return onlyYou(ctx.base)
+  if (isPrMerge(a.kind) && ctx.base !== undefined && !mayMerge(g, ctx.base, ctx.by)) return onlyYou(ctx.base)
 }
 
 // Exit codes the scripts use. SEND_BACK: the agent has to fix it (conflict,
@@ -143,6 +143,22 @@ for c in "$2" "$3"; do git cat-file -e "$c^{commit}" 2>/dev/null || git fetch -q
 own() { m=$(git merge-base "$b" "$1") && git diff -U0 --no-color --no-ext-diff "$m" "$1" -- ${UI_FILES} | sed '/^index /d; /^@@/d'; }
 x=$(own "$2") && y=$(own "$3") || exit 1
 [ "$x" = "$y" ] && echo same || echo changed`,
+  head: `${IN} git rev-parse HEAD`,
+  // One Bitbucket Cloud API call on origin's repository: method ($1), path
+  // ($2), then a query (GET) or a JSON body. Credentials from the machine's
+  // environment, passed to curl on stdin (never on its command line). Prints
+  // the body, then the HTTP status; a server error or rate limit fails, to be
+  // tried again.
+  bitbucket: `${IN} r=$(git remote get-url origin | sed -nE 's#^.*bitbucket\\.org[:/]([^/]+/[^/]+)$#\\1#p' | sed 's/\\.git$//')
+[ -n "$r" ] || { echo "origin is not a Bitbucket Cloud repository"; exit 1; }
+if [ -n "$BITBUCKET_USERNAME" ]; then auth="user = \\"$BITBUCKET_USERNAME:\${BITBUCKET_APP_PASSWORD:-$BITBUCKET_TOKEN}\\""
+elif [ -n "$BITBUCKET_TOKEN" ]; then auth="header = \\"Authorization: Bearer $BITBUCKET_TOKEN\\""
+else echo "no Bitbucket credentials: set BITBUCKET_TOKEN, or BITBUCKET_USERNAME and BITBUCKET_APP_PASSWORD, on this machine"; exit 1; fi
+if [ "$1" = GET ]; then g=-G; d=--data-urlencode; else g=; d=--data; fi
+o=$(printf '%s\\n' "$auth" | curl -sS -K - -X "$1" $g -H 'Content-Type: application/json' "$d" "$3" -w '\\n%{http_code}' "\${BITBUCKET_API:-https://api.bitbucket.org/2.0}/repositories/$r$2" 2>&1) || { printf '%s\\n' "$o"; exit 1; }
+c=$(printf '%s\\n' "$o" | tail -1)
+case $c in 429) echo "rate limit"; exit 1;; 5*) echo "HTTP $c"; exit 1;; esac
+printf '%s\\n' "$o"`,
   // Remote branches holding the task's commit, for the protected-branch alert.
   contains: `${IN} git fetch -q origin 2>&1 || exit 1; git branch -r --contains HEAD --format='%(refname:short)'`,
 }
@@ -165,6 +181,21 @@ export function prReady(pr: PrInfo | undefined, head: string, required: string[]
   if (absent.length) return { ok: false, later: true, why: `waiting for check ${absent.join(', ')}` }
   if (checks.some(c => (c.status && c.status !== 'COMPLETED') || ['PENDING', 'EXPECTED'].includes(c.state ?? ''))) return { ok: false, later: true, why: 'checks still running' }
   const red = checks.filter(c => !GREEN.includes(state(c)))
+  if (red.length) return { ok: false, why: `${red.length} check(s) failed` }
+  return { ok: true }
+}
+
+// Bitbucket Cloud: the merge strategy of a method, a merge commit by default
+// (a squash makes a new commit, which git.verify-merged would not find).
+export const BB_STRATEGY = { merge: 'merge_commit', squash: 'squash', rebase: 'rebase_merge' } as const
+export interface BbStatus { key?: string, name?: string, state?: string }
+// May the PR be merged, from its commit's build statuses? As prReady: every
+// one green, each required one (by name or key) there; running means later.
+export function bbReady(statuses: BbStatus[], required: string[] = []): { ok: true } | { ok: false, later?: boolean, why: string } {
+  const absent = required.filter(n => !statuses.some(c => c.name === n || c.key === n))
+  if (absent.length) return { ok: false, later: true, why: `waiting for check ${absent.join(', ')}` }
+  if (statuses.some(c => c.state === 'INPROGRESS')) return { ok: false, later: true, why: 'checks still running' }
+  const red = statuses.filter(c => c.state !== 'SUCCESSFUL')
   if (red.length) return { ok: false, why: `${red.length} check(s) failed` }
   return { ok: true }
 }
