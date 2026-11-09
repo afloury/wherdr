@@ -292,6 +292,21 @@ shows the reason, and wherdr:
 The task's **Log** lists each of these: the stall, the nudge, the hand-over to
 you and the notification.
 
+### A task's temporary files
+
+A task's worker and reviewer keep their temporary files in the task's
+worktree, in `.wherdr-tmp` (`~/.wherdr/pm/worktrees/<task>/.wherdr-tmp`), not
+in the machine's `/tmp`, which is often small and shared by every agent:
+wherdr sets `TMPDIR`, `CLAUDE_CODE_TMPDIR` and `NODE_COMPILE_CACHE` to it for
+Claude Code and Codex alike. git ignores the folder (through the repository's
+`.git/info/exclude`), so it is never committed and never keeps a worktree from
+being removed. It goes with the worktree when the task ends (done, archived);
+it stays when wherdr ends idle agents, for the ones started again later.
+
+Before it starts an agent, wherdr checks the machine's `/tmp`: with less than
+500 MB free, the agent is not started and the task waits with the reason
+(free some space, then start it again).
+
 ### Agents of a task that waits for you
 
 Needs: [A task waiting for you](#a-task-waiting-for-you).
