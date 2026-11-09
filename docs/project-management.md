@@ -304,7 +304,9 @@ wherdr merges them one at a time. The first in the queue is updated with its
 base: wherdr merges the base into the branch and pushes it when that merges
 cleanly, even when GitHub does not flag the branch as behind; on a conflict it
 hands the conflicting files to the task's agent (started again if it was
-ended), and the task keeps its place. wherdr then waits for the required
+ended), and the task keeps its place. An update that fails (a network error)
+is tried again twice, a few minutes apart; past that, the task goes to the end
+of the queue so the others go on. wherdr then waits for the required
 checks on the updated PR and merges it, and the next task comes up. Checks that
 fail after an update go back to the agent as red CI, not to you, and that task
 goes to the end of the queue meanwhile. The others wait their turn and are not

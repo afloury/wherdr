@@ -22,6 +22,7 @@ export interface MechFacts {
   loggedIn?: boolean // the agent's program answers its login status again
   queue?: number // its place in the merge queue (mergeQueue.ts): past the first, it waits its turn
   behind?: boolean // the first in the queue lacks its base's last commits
+  now?: number
 }
 
 export type Move =
@@ -37,6 +38,13 @@ const RETRIED = ['git.push', 'github.pr', 'git.land']
 // Conclusions that say nothing of the code: run again once.
 const INFRA = ['CANCELLED', 'TIMED_OUT', 'STARTUP_FAILURE', 'STALE']
 const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
+// An update with the base that failed (a passing git error) is tried again,
+// spaced out, a few times per commit; past them it gives up the merge queue's front.
+export const CATCH_UP_TRIES = 3
+const CATCH_UP_GAP_MS = 2 * 60_000
+const catchUps = (task: Task, head: string) =>
+  Object.entries(task.mech ?? {}).filter(([k]) => k === `catch-up:${head}` || k.startsWith(`catch-up:${head}:`)).map(([, at]) => at)
+export const catchUpGaveUp = (task: Task, head?: string) => !!head && catchUps(task, head).length >= CATCH_UP_TRIES
 
 const checkName = (c: { name?: string, context?: string }) => c.name || c.context || 'a check'
 
@@ -95,7 +103,16 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   if (pr.headRefOid !== head) return engineMerges && !f.agentBusy ? pick(mergeKey, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
   if (pr.baseRefName !== base) return pick(`base:${head}`, { kind: 'fix-base', base })
   if (f.agentBusy) return
-  if (!held && (['BEHIND', 'DIRTY'].includes(pr.mergeStateStatus ?? '') || f.behind) && !isProtected(guards, f.branch)) return pick(`catch-up:${head}`, { kind: 'catch-up', base })
+  if (!held && (['BEHIND', 'DIRTY'].includes(pr.mergeStateStatus ?? '') || f.behind) && !isProtected(guards, f.branch)) {
+    const tries = catchUps(task, head)
+    if (!tries.length) return pick(`catch-up:${head}`, { kind: 'catch-up', base })
+    // Tried already at this commit: again unless its agent holds a conflict, spaced out.
+    if (tries.length < CATCH_UP_TRIES) {
+      return s.agent || (f.now ?? Date.now()) - Math.max(...tries) < CATCH_UP_GAP_MS ? undefined
+        : pick(`catch-up:${head}:${tries.length + 1}`, { kind: 'catch-up', base })
+    }
+    // Past its tries: what GitHub allows goes on below.
+  }
   const red = redChecks(pr)
   if (red.length && red.every(c => INFRA.includes(c.conclusion || ''))) return pick(`rerun:${head}`, { kind: 'rerun-ci', checks: red.map(checkName) })
   if (red.length) {

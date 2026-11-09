@@ -3,7 +3,7 @@
 // a login back), then at most one move (shared/pm/mechanic.ts). A move is
 // noted on the task before it runs, so it is never made twice.
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
-import { ciOf, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
+import { CATCH_UP_TRIES, catchUpGaveUp, ciOf, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
 import { inMergeQueue, mergeOrder, ordinal } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
 import { onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
@@ -173,7 +173,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
     const sh = actionShell(deps, on)
     const plan = taskPlan(t, task, p)
     task = await noteIdle(deps, task, plan, runs, now)
-    const facts: MechFacts = { task, plan, guards: taskGuards(t, task.type), branch: run.branch, agentBusy: false }
+    const facts: MechFacts = { task, plan, guards: taskGuards(t, task.type), branch: run.branch, agentBusy: false, now }
     if (task.state === 'waiting' && task.waitKind === 'auth') {
       facts.loggedIn = (await exec(deps, on, `${PATH_SETUP}\n${LOGIN_SCRIPT}`, [run.program]).catch(() => null))?.code === 0
     } else if (task.step && plan.slice(0, task.step.at).some(s => s.action?.kind === 'github.pr')) {
@@ -266,7 +266,8 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
           ? { kind: 'caught-up', head, ...(f.head !== from ? { review: { since, head } } : {}) }
           : { kind: 'caught-up', error: `update with ${move.base}: ${lastLine(r.out)}` })
       }
-      return r.code === 0 ? `caught up with ${move.base}` : lastLine(r.out)
+      if (r.code === 0) return `caught up with ${move.base}`
+      return catchUpGaveUp(task, f.head) ? `${lastLine(r.out)} (failed ${CATCH_UP_TRIES} times: it leaves the front of the merge queue)` : lastLine(r.out)
     }
     case 'rerun-ci': {
       const r = await sh(SCRIPT.rerun, [run.worktree, f.head!])
@@ -285,9 +286,9 @@ async function queueTick(deps: PmLaunchDeps, seen: Seen[]) {
   const queued = seen.filter(x => inMergeQueue(x.facts.task, x.facts.plan, x.facts.guards, x.facts.pr))
   for (const project of new Set(seen.map(x => x.facts.task.project))) {
     const mine = queued.filter(x => x.facts.task.project === project)
-    const order = mergeOrder(mine.map(({ facts: { task, pr } }) => ({
+    const order = mergeOrder(mine.map(({ facts: { task, pr, head } }) => ({
       id: task.id, files: (pr!.files ?? []).map(f => f.path), size: (pr!.additions ?? 0) + (pr!.deletions ?? 0),
-      first: task.queue === 1 || !!task.step!.catchUp || !!task.step!.agent, red: !!task.ci?.red,
+      first: task.queue === 1 || !!task.step!.catchUp || !!task.step!.agent, red: !!task.ci?.red || catchUpGaveUp(task, head),
     })))
     for (const x of mine) {
       const place = order.indexOf(x.facts.task.id) + 1

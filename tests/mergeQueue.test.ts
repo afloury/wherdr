@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { inMergeQueue, mergeOrder, ordinal } from '../shared/pm/mergeQueue'
-import { nextMove, type MechFacts, type PrState } from '../shared/pm/mechanic'
+import { catchUpGaveUp, nextMove, type MechFacts, type PrState } from '../shared/pm/mechanic'
 import { combineGuards } from '../shared/pm/guards'
 import { cardStatus } from '../shared/pm/board'
 import type { PlannedStep, StepState } from '../shared/pm/steps'
@@ -53,6 +53,21 @@ describe('merge queue', () => {
     // Red after its update: back to its worker as red CI, not to the user.
     const red = pr({ statusCheckRollup: [{ name: 'unit', status: 'COMPLETED', conclusion: 'FAILURE' }] })
     expect(nextMove(facts({ queue: 1, pr: red }))?.move).toEqual({ kind: 'ci-to-agent', checks: ['unit'] })
+  })
+
+  it('tries a failed update again, spaced out, then gives up the front so the queue goes on', () => {
+    const at = (mech: Record<string, number>, more: Partial<MechFacts> = {}) => nextMove(facts({ queue: 1, behind: true, now: 10 * 60_000, task: task({ mech }), ...more }))
+    // Too soon after the failed try, or its agent holds a conflict: it waits.
+    expect(at({ 'catch-up:abc1234': 9 * 60_000 })).toBeUndefined()
+    expect(at({ 'catch-up:abc1234': 0 }, { task: task({ mech: { 'catch-up:abc1234': 0 }, step: step({ agent: { kind: 'catch-up', head: 'abc1234', at: 0 } }) }) })).toBeUndefined()
+    expect(at({ 'catch-up:abc1234': 0 })).toEqual({ key: 'catch-up:abc1234:2', move: { kind: 'catch-up', base: 'v3' } })
+    expect(at({ 'catch-up:abc1234': 0, 'catch-up:abc1234:2': 0 })?.key).toBe('catch-up:abc1234:3')
+    // Past its tries: it leaves the front, and merges as GitHub allows once its turn comes back.
+    const spent = { 'catch-up:abc1234': 0, 'catch-up:abc1234:2': 0, 'catch-up:abc1234:3': 0 }
+    expect(catchUpGaveUp(task({ mech: spent }), 'abc1234')).toBe(true)
+    expect(at(spent)?.move.kind).toBe('merge')
+    const order = mergeOrder([{ id: 'A', files: ['x.ts'], size: 1, first: true, red: catchUpGaveUp(task({ mech: spent }), 'abc1234') }, { id: 'B', files: ['y.ts'], size: 9 }])
+    expect(order).toEqual(['B', 'A'])
   })
 
   it('shows its place on the card, and a refused merge waiting its turn is not the user\'s', () => {
