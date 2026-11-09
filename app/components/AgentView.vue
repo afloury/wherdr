@@ -26,6 +26,8 @@ import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 import { carriesFiles, dragDepth } from '~/utils/fileDrop'
 import { interactionWindowFor } from '~/utils/interactionWindow'
 import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
+import { appRoute } from '#shared/appLinks'
+import type { UiOpenEvent } from '#shared/uiOpen'
 
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
 const emit = defineEmits<{ activate: [], 'update:selectedMode': [mode: PaneViewMode] }>()
@@ -33,6 +35,19 @@ const core = useRuntimeConfig().public.core
 const paneChat = (p: Pane | null | undefined) => hasChat(p)
 const route = useRoute()
 const router = useRouter()
+// An agent's `ui open` for this conversation (shared/uiOpen.ts): Settings
+// beside it on a wide computer, else a card above the message field. It never
+// moves the user away: the card waits for their tap.
+const uiCard = ref<UiOpenEvent | null>(null)
+watch(uiOpenRequest, (e) => {
+  if (!e || e.pane !== props.paneId) return
+  uiOpenRequest.value = null
+  const to = appRoute(e.link)
+  if (!sidePanelRoom.value || !to.startsWith('/settings?')) { uiCard.value = e; return }
+  uiCard.value = null
+  uiOpenedBy.value = { by: e.by, section: new URLSearchParams(to.split('?')[1]).get('section') ?? '' }
+  router.push(to)
+})
 
 // Pane being viewed (no notification for it, read as soon as it finishes): the active
 // cell. Only the view that set it clears it (the next view of the same pane
@@ -640,6 +655,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         @pointerdown.prevent @mousedown.prevent @click.stop="togglePhoneKeys"><UIcon :name="phoneKeysOpen ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'" /></button>
     </div>
     <Keybar v-if="keybarShown" :id="keybarId" :ctl="ctl" :compact="compactPhone" :terminal="termShown" @keyboard="toggleComposerKeyboard" />
+    <UiOpenCard v-if="uiCard" :event="uiCard" @close="uiCard = null" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @pointerdown="takeTerminalControl" @keydown="onComposerKey" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
     </div>
     </div>

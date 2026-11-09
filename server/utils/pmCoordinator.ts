@@ -44,12 +44,13 @@ import { STRATEGY_LABELS } from '../../shared/pm/placement'
 import { projectPace } from './pmPace'
 import { sameFilesText } from '../../shared/pm/files'
 import type { CoordinatorRecord, PmStore } from './pmStore'
-import { OWN_FILES, alfredFiles, alfredName, isAlfredProgram, startPrompt } from '../../shared/pm/alfred'
+import { ALFRED, OWN_FILES, alfredFiles, alfredName, isAlfredProgram, startPrompt } from '../../shared/pm/alfred'
 import { APP_URL_FILE, DATA_DIR, ENV_APP_URL } from './env'
 import pkg from '../../package.json'
+import { openUi, type UiOpenDeps } from './uiOpen'
 
 // alfredHome: Alfred's home folder (DATA_DIR/alfred by default).
-type Deps = CoreAdminDeps & { store: PmStore, alfredHome?: string }
+type Deps = CoreAdminDeps & { store: PmStore, alfredHome?: string, clients?: UiOpenDeps['clients'] }
 const homeOfAlfred = (deps: { alfredHome?: string }) => deps.alfredHome ?? path.join(DATA_DIR, 'alfred')
 const sha = (s: string) => createHash('sha256').update(s).digest()
 
@@ -169,6 +170,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
 
   switch (cmd.name) {
     case 'help': return { commands: commandList(t) }
+    case 'ui open': return openUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope, main, raw: cmd.link, turn, by: main ? ALFRED : `${scope} coordinator` })
     case 'list': {
       const ts = new Map(await Promise.all(projects.map(async x => [x.key, x ? await store.workflow(x.key) : null] as const)))
       return { tasks: (await store.tasks()).filter(x => !key || x.project === key).map(x => summary(ts.get(x.project) ?? null, x, projects.find(y => y.key === x.project))) }

@@ -28,6 +28,15 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   `#/settings?section=conversation&tab=<tab>` (`display`, `dictation`, `read-aloud`) and a
   project's sheet `#/settings?section=projects&project=KEY&tab=<tab>`; Alfred and coordinators get the list in
   their instructions.
+- **Places an agent opens for you**: when you ask Alfred or a project's coordinator to show you
+  a place, it can open it in the wherdr that shows its conversation (`wherdr alfred ui open
+  '#/settings?section=phone'`, `wherdr pm ui open '…'`). On a computer window at least 1280 px
+  wide, a Settings place opens in the side panel beside the conversation; elsewhere, and for
+  the board, a task or Decisions, a card above the message field names the place, and a tap
+  opens it. Either says who opened it ("Opened by Alfred"); close the panel or dismiss the card
+  with ×. Opening is all it does: it changes no setting. It works only in a turn that follows
+  your message (never in an Autopilot wake), only on apps showing that agent's conversation, and
+  a coordinator opens its own project's places and global Settings sections only.
 - **Questions and permissions**: native questions, approvals and menus show their options; a tap
   answers. wherdr reads the screen again right before answering and refuses the answer if the
   question changed meanwhile. A free answer selects its option, waits for the field, then types
