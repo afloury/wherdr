@@ -43,7 +43,19 @@ export interface StepState {
   swapped?: Record<string, true> // verdict steps after which the agent was changed
   done?: boolean
   abandoned?: true
+  approved?: Approval // the user clicked Merge: it stays, the engine merges once the PR is clean
+  catchUp?: CatchUp // the PR conflicts with or is behind its base: being updated, one at a time
 }
+
+// The user's Merge click, kept: who, when, at which reviewed commit.
+export interface Approval { by: 'user', at: number, commit?: string }
+// from: the task's commit when the catch-up started; base: the branch merged in.
+export interface CatchUp { base: string, from: string, at: number }
+
+// A merge step that waits for the user's click (a visual merge).
+export const waitsToMerge = (step: PlannedStep | undefined) => step?.ends === 'user' && step.action?.kind === 'github.merge'
+// The finding id a re-review after an approval gives when the new commits do more than resolve conflicts.
+export const BEYOND = 'beyond-conflicts'
 
 export type StepEvent =
   | { kind: 'start' }
@@ -54,10 +66,15 @@ export type StepEvent =
   | { kind: 'verdict', from: Holder, findings: Finding[], diffLines?: number, head?: string }
   // The choice after N send-backs. The coordinator gives its reason, and only picks among the advice's options.
   | { kind: 'decide', by: 'user' | 'coordinator', choice: Choice, note?: string }
-  | { kind: 'user' } // the step's button, or "it is merged" said by the user
+  | { kind: 'user', engine?: true } // the step's button, or "it is merged" said by the user; engine: run again by the engine
   // toAgent: the worker has to fix it (a conflict): the task goes back to its step.
   // review: new commits since the reviewed one: back to the review step, for them only.
-  | { kind: 'action-result', ok: boolean, error?: string, evidence?: Partial<Record<Evidence, string>>, toAgent?: boolean, review?: Rereview }
+  // catchUp: the merge was refused because the PR conflicts with or is behind its base.
+  | { kind: 'action-result', ok: boolean, error?: string, evidence?: Partial<Record<Evidence, string>>, toAgent?: boolean, review?: Rereview, catchUp?: { base: string, head: string } }
+  // A merge step waiting for the user: its PR is updated with its base (catch-up), then
+  // caught up (head: the pushed commit; review: what the agent changed, else a clean merge).
+  | { kind: 'catch-up', base: string, head: string }
+  | { kind: 'caught-up', head?: string, review?: Rereview, error?: string }
   | { kind: 'tick' }
   | { kind: 'skip' } // the user takes a stopped task as it is: on to the next step
   | { kind: 'back', note: string } // the user sends a step of theirs (a visual merge) back to the worker, with what to change
@@ -81,10 +98,11 @@ export function reviewedCommit(plan: PlannedStep[], s: StepState): string | unde
 }
 
 // The reviewer's text for a short re-review of what came after its pass.
-export const rereviewText = ({ since, head }: Rereview) => [
+export const rereviewText = ({ since, head }: Rereview, approved?: boolean) => [
   `Short re-review: the PR head moved after your review passed (${since.slice(0, 7)} → ${head.slice(0, 7)}), through a catch-up merge, a conflict resolution or a CI fix.`,
   `Review only that change. List it with \`git log --oneline ${since}..${head}\`. For a merge of the base branch, \`git show --remerge-diff <commit>\` shows only how its conflicts were resolved; for any other commit, \`git show <commit>\`.`,
   'Pass unless one of them breaks the task or goes beyond it; what the base branch brought is not reviewed again.',
+  ...(approved ? [`The user already approved the merge: it goes on by itself unless you find something major, or these commits change behaviour or the interface beyond resolving conflicts. Then add a minor finding with id "${BEYOND}" that says what changes.`] : []),
 ].join('\n\n')
 
 export interface StepResult { state: StepState, effects: Effect[], refused?: string }
@@ -143,14 +161,15 @@ function act(s: StepState, step: PlannedStep, effects: Effect[]): StepState {
 // Enters step i: a step with no end is passed through (the last one is done).
 function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, effects: Effect[]): StepState {
   const step = plan[i]
-  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, recheckAt: undefined, acting: undefined, yourTurn: undefined, agent: undefined, fix: undefined, rereview: undefined }
+  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, recheckAt: undefined, acting: undefined, yourTurn: undefined, agent: undefined, fix: undefined, rereview: undefined, catchUp: undefined }
   if (!step) return effects.push({ kind: 'done' }), { ...s, done: true }
   if (!step.ends) return i === plan.length - 1 ? (effects.push({ kind: 'done' }), { ...s, done: true }) : enter(plan, s, i + 1, now, effects)
   if (step.timeout) s.deadline = now + durationMs(step.timeout)
   if (step.recheck) s.recheckAt = now + durationMs(step.recheck)
   const text = step.ends === 'verdict' ? reviewText(step.text, s.reviews?.[step.id]?.at(-1)) : step.text
   if (hasAgent(step)) effects.push({ kind: 'instruct', step: step.id, holder: step.holder!, text })
-  if (step.ends === 'user') s.yourTurn = { reason: 'user', badge: step.badge || step.userLabel || step.id }
+  // An approved merge does not ask again: the engine merges it once the PR is ready.
+  if (step.ends === 'user' && !(s.approved && waitsToMerge(step))) s.yourTurn = { reason: 'user', badge: step.badge || step.userLabel || step.id }
   return step.ends === 'action' ? act(s, step, effects) : s
 }
 
@@ -201,7 +220,17 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       if (ev.head) state = { ...state, proofs: { ...state.proofs, [step.id]: { ...state.proofs[step.id], commit: ev.head } } }
       // The engine decides: only a finding that weighs major or more sends back.
       const left = blocking(ev.findings)
-      if (!left.length) return next()
+      // A re-review after the user's approval: something major, or more than conflicts resolved, hands it back to the user.
+      const beyond = state.approved && state.rereview ? ev.findings.find(f => f.id === BEYOND) : undefined
+      if (state.approved && state.rereview && (left.length || beyond)) {
+        effects.push({ kind: 'log', text: `${step.id}: approval dropped, the user looks again: ${(left[0] ?? beyond)!.title}` })
+        state = { ...state, approved: undefined }
+      }
+      if (!left.length) {
+        const r = next()
+        if (beyond && r.state.yourTurn) r.state.yourTurn = { ...r.state.yourTurn, badge: `Look again, then merge: ${beyond.title}` }
+        return r
+      }
       const n = (state.rounds[step.id] ?? 0) + 1
       const rounds = { ...state.rounds, [step.id]: n }
       const history = [...(state.reviews?.[step.id] ?? []), { findings: left, ...(ev.diffLines !== undefined ? { diffLines: ev.diffLines } : {}) }]
@@ -249,6 +278,10 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       const retry = step.ends === 'action' && !state.acting && state.yourTurn?.reason === 'action'
       if (step.ends !== 'user' && !retry) return refuse(`Step "${step.id}" does not wait for you`)
       if (state.acting) return refuse('Already checking')
+      // The click on Merge is an approval that stays, at the reviewed commit.
+      if (waitsToMerge(step) && !state.approved && !ev.engine) state = { ...state, approved: { by: 'user', at: now, ...(reviewedCommit(plan, state) ? { commit: reviewedCommit(plan, state) } : {}) } }
+      // Updating with its base already: it merges once that is done.
+      if (state.catchUp) return { state, effects }
       if (!step.action) return next()
       return { state: act(state, step, effects), effects }
     }
@@ -256,6 +289,10 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       if (!state.acting) return refuse('No action is running')
       const proofs = ev.evidence ? { ...state.proofs, [step.id]: { ...state.proofs[step.id], ...ev.evidence } } : state.proofs
       if (ev.ok) return { state: enter(plan, { ...state, proofs }, state.at + 1, now, effects), effects }
+      if (ev.catchUp && waitsToMerge(step)) {
+        effects.push({ kind: 'log', text: `${step.id}: ${ev.error ?? 'refused'}: updating it with ${ev.catchUp.base}${state.approved ? ', then it merges by itself' : ''}` })
+        return { state: { ...state, proofs, acting: undefined, yourTurn: undefined, catchUp: { base: ev.catchUp.base, from: ev.catchUp.head, at: now } }, effects }
+      }
       const review = ev.review ? plan.slice(0, state.at).findLastIndex(p => p.ends === 'verdict') : -1
       if (review >= 0) {
         effects.push({ kind: 'log', text: `${step.id}: ${ev.error ?? 'new commits'}, back to ${plan[review]!.id}` })
@@ -278,10 +315,34 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       if (back < 0) return refuse('No earlier step of the agent to send it back to')
       if (!ev.note.trim()) return refuse('Say what to change')
       const fix = `The user sent it back from "${step.id}": ${ev.note.trim()}\nFix it, commit, then say you are done.`
-      effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: fix }, { kind: 'log', text: `${step.id}: sent back by the user. ${ev.note.trim()}` })
+      effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: fix }, { kind: 'log', text: `${step.id}: sent back by the user${state.approved ? ', approval dropped' : ''}. ${ev.note.trim()}` })
       // The screens sent back are dropped: the worker gives new ones, and the merge shows only those.
       const { [plan[back]!.id]: _sentBack, ...shots } = state.shots ?? {}
-      return { state: { ...enter(plan, { ...state, shots }, back, now, []), fix }, effects }
+      // The reworked task waits for the user's look again: an earlier Merge click no longer counts.
+      return { state: { ...enter(plan, { ...state, shots, approved: undefined }, back, now, []), fix }, effects }
+    }
+    case 'catch-up': {
+      if (!waitsToMerge(step) || state.acting || state.catchUp) return refuse('No merge waits to be updated')
+      effects.push({ kind: 'log', text: `${step.id}: the PR conflicts with or is behind ${ev.base}: updating it` })
+      return { state: { ...state, yourTurn: undefined, catchUp: { base: ev.base, from: ev.head, at: now } }, effects }
+    }
+    case 'caught-up': {
+      const c = state.catchUp
+      if (!c) return refuse('No catch-up runs')
+      const done = { ...state, catchUp: undefined }
+      if (ev.error) return { state: { ...done, yourTurn: { reason: 'action', badge: `${step.badge || step.userLabel || step.id}: ${ev.error}`, error: ev.error } }, effects }
+      // The agent resolved conflicts: that change only is reviewed again.
+      const review = ev.review ? plan.slice(0, state.at).findLastIndex(p => p.ends === 'verdict') : -1
+      if (review >= 0) {
+        effects.push({ kind: 'log', text: `${step.id}: updated with ${c.base}, back to ${plan[review]!.id} for the conflict resolution` })
+        return { state: { ...enter(plan, done, review, now, []), rereview: ev.review }, effects }
+      }
+      // A clean merge of the base: nothing new to review, the reviewed commit moves with it.
+      const r = plan.slice(0, state.at).findLast(p => p.ends === 'verdict')
+      const proofs = r && ev.head && state.proofs[r.id]?.commit === c.from ? { ...state.proofs, [r.id]: { ...state.proofs[r.id], commit: ev.head } } : state.proofs
+      effects.push({ kind: 'log', text: `${step.id}: updated with ${c.base}${state.approved ? ', merges once ready' : ''}` })
+      const yourTurn = state.approved ? undefined : { reason: 'user' as const, badge: step.badge || step.userLabel || step.id }
+      return { state: { ...done, proofs, yourTurn }, effects }
     }
     case 'skip': return { state: enter(plan, { ...state, backFrom: undefined }, state.at + 1, now, effects), effects }
     case 'tick': {

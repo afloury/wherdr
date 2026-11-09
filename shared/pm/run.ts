@@ -25,7 +25,8 @@ export interface Task {
   ci?: { head: string, red: boolean } // its PR's CI at the task's commit, as the engine last read it
   idle?: number // since when the agent holding its step sits idle, its report still due (blocked.ts)
   stall?: { cause: string, reason: string, since: number } // its stall as the engine last saw it (blocked.ts)
-  stalls?: Record<string, { since: number, nudged?: number, handled?: number }> // each cause seen: when it began, its one nudge and hand-over
+  stalls?: Record<string, { since: number, nudged?: number, handled?: number, back?: number }> // each cause seen: when it began, its one nudge and hand-over, when its agent went back to work
+  fixes?: { step: string, n: number } // mechanical fixes the coordinator's wakes made in this step (tell --fix)
   run?: string // the current run
   weight?: Weight // light, standard or heavy, set by the user or the coordinator (weight.ts); else from its type
   machine?: string // where its first start put it: it always goes back there (none, once started: its project's machine)
@@ -101,6 +102,23 @@ export const taskPaths = (home: string, id: string) => ({
   instructions: `${home}/.wherdr/pm/tasks/${id}/instructions.md`,
   branch: `task/${id}`,
 })
+
+// A task's agents keep their temporary files in its worktree, not in the
+// machine's /tmp (often small, in memory, and shared by every agent): ignored
+// by git, removed with the worktree, kept when the agents are released.
+export const TMP_DIR = '.wherdr-tmp'
+export const agentEnv = (worktree: string) => {
+  const tmp = `${worktree}/${TMP_DIR}`
+  return { DISABLE_AUTOUPDATER: '1', TMPDIR: tmp, CLAUDE_CODE_TMPDIR: tmp, NODE_COMPILE_CACHE: tmp }
+}
+// Below this, the machine's /tmp would make the agent's shell commands fail.
+export const MIN_TMP_FREE_KB = 500 * 1024
+// The temp folder script's output: the KB free in /tmp. Unknown: no refusal.
+export function tmpRefusal(out: string) {
+  const kb = Number(out.trim().split('\n').pop())
+  if (!out.trim() || !Number.isFinite(kb) || kb >= MIN_TMP_FREE_KB) return undefined
+  return `/tmp on the task's machine has only ${Math.floor(kb / 1024)} MB free (needs ${MIN_TMP_FREE_KB / 1024} MB): free some space, then start the task again`
+}
 
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 // The shell line that starts the agent: model pinned, first message points at the file.

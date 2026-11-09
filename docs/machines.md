@@ -8,7 +8,7 @@ Other machines are **core machines**: herdr-core (hc) reaches them over SSH and 
 terminals there, as `hc machine add` does. wherdr shows what `machine.list` returns; it opens no
 SSH connection of its own.
 
-- **On the home screen**, each machine is a tab of the machine bar, online or offline, with its
+- **On the home screen**, each machine is one of the machine tabs, online or offline, with its
   count of rows ([Machines as tabs](home.md#machines-as-tabs)). When a machine goes offline, its
   last terminals stay visible, marked offline, until core reaches it again.
 - **New** starts a terminal or an agent on any online machine (`terminal.run` with `on`). Home,

@@ -188,9 +188,36 @@ export const USER_ONLY: Record<string, string> = {
 export const addRefusal = (ap: Autopilot | undefined, wake: boolean) =>
   wake && !ap?.on ? 'In a wake, a task is added only with the autopilot on' : undefined
 
-// `tell <task>`: in a wake, only to answer an agent's question; a permission
-// request always stays the user's.
-export function tellRefusal(task: Pick<Task, 'state' | 'waitKind'>, wake: boolean): string | undefined {
+// What a wake may fix with `tell --fix`: a mechanical block, never a decision.
+export const FIX_KINDS = ['base', 'ci', 'machine', 'stall'] as const
+export type FixKind = typeof FIX_KINDS[number]
+export const FIX_TEXT: Record<FixKind, string> = {
+  base: 'merge the base into the branch and solve the conflict',
+  ci: 'fix a red CI',
+  machine: 'retry after a machine problem (disk, memory)',
+  stall: 'restart a stalled agent',
+}
+// Fixes a wake may make per task and step; past them, the block is the user's.
+export const FIXES_PER_STEP = 2
+// The task's step, as `fixes` counts it: a new step starts a new count.
+const stepKey = (t: Pick<Task, 'step'>) => `${t.step?.at ?? 0}:${t.step?.since ?? 0}`
+export const fixesInStep = (t: Pick<Task, 'step' | 'fixes'>) => t.fixes?.step === stepKey(t) ? t.fixes.n : 0
+export const countFix = (t: Pick<Task, 'step' | 'fixes'>) => ({ step: stepKey(t), n: fixesInStep(t) + 1 })
+
+// `tell <task>`: in a wake, only to answer an agent's question, or with
+// `fix` (a project coordinator, its autopilot on) to unblock a mechanical
+// block, twice per task and step. A permission request stays the user's.
+export function tellRefusal(task: Pick<Task, 'state' | 'waitKind' | 'step' | 'fixes' | 'stopped'>, wake: boolean, fix?: { autopilot?: Autopilot, main: boolean }): string | undefined {
   if (task.waitKind === 'permission') return 'A permission request is the user\'s to answer'
-  if (wake && !(task.state === 'waiting' && task.waitKind === 'question')) return 'In a wake, tell only answers an agent\'s question'
+  if (!wake) return
+  if (fix) {
+    if (fix.main) return 'In a wake, only the project\'s coordinator fixes its tasks\' blocks'
+    if (!fix.autopilot?.on) return 'In a wake, a block is fixed only with the autopilot on'
+    // Going on after a stop is `task start`'s, with its checks; a finished task has nothing to fix.
+    if (task.stopped) return 'The task was stopped: --fix does not start it again (use task start)'
+    if (task.step?.done) return 'The task is done: nothing to fix'
+    if (fixesInStep(task) >= FIXES_PER_STEP) return `Already fixed ${FIXES_PER_STEP} times in this step: this block is the user's now, tell them`
+    return
+  }
+  if (!(task.state === 'waiting' && task.waitKind === 'question')) return 'In a wake, tell only answers an agent\'s question, or fixes a mechanical block with --fix'
 }

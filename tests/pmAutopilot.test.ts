@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_AUTOPILOT, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, scheduledWake, startRefusal, today, tellRefusal } from '../shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, scheduledWake, startRefusal, today, tellRefusal, countFix } from '../shared/pm/autopilot'
 import type { Run, Task } from '../shared/pm/run'
 import { accountQuota, pacedStart, paceLine } from '../shared/pm/pace'
 import { DEFAULT_PACE, type PaceVerdict } from '../shared/pm/pacing'
@@ -117,6 +117,22 @@ describe('tell', () => {
     expect(tellRefusal({ state: 'working' }, true)).toMatch(/only answers an agent's question/)
     expect(tellRefusal({ state: 'working' }, false)).toBeUndefined()
     expect(tellRefusal({ state: 'waiting', waitKind: 'permission' }, false)).toMatch(/permission request is the user's/)
+  })
+  it('in a wake, fixes a mechanical block: a project coordinator, its autopilot on, twice per step', () => {
+    const on = { autopilot: { ...DEFAULT_AUTOPILOT, on: true }, main: false }
+    const step = { at: 2, since: 50, started: true, proofs: {} }
+    expect(tellRefusal({ state: 'working', step }, true, on)).toBeUndefined()
+    expect(tellRefusal({ state: 'working' }, true, { ...on, autopilot: DEFAULT_AUTOPILOT })).toMatch(/only with the autopilot on/)
+    expect(tellRefusal({ state: 'working' }, true, { ...on, main: true })).toMatch(/only the project's coordinator/)
+    expect(tellRefusal({ state: 'waiting', waitKind: 'permission' }, true, on)).toMatch(/permission request is the user's/)
+    expect(tellRefusal({ state: 'waiting', stopped: { by: 'the user', why: 'x', at: 1 } }, true, on)).toMatch(/was stopped: --fix does not start it again/)
+    expect(tellRefusal({ state: 'working', step: { ...step, done: true } }, true, on)).toMatch(/task is done/)
+    const twice = countFix({ step, fixes: countFix({ step }) })
+    expect(twice).toEqual({ step: '2:50', n: 2 })
+    expect(tellRefusal({ state: 'working', step, fixes: twice }, true, on)).toMatch(/Already fixed 2 times in this step/)
+    // The next step counts again; the user's turn is never counted.
+    expect(tellRefusal({ state: 'working', step: { ...step, at: 3, since: 90 }, fixes: twice }, true, on)).toBeUndefined()
+    expect(tellRefusal({ state: 'working', step, fixes: twice }, false, on)).toBeUndefined()
   })
 })
 

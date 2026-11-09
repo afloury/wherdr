@@ -13,7 +13,7 @@ import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
 import { validateTemplate } from '../../shared/pm/workflow'
 import { weightOf, weightText } from '../../shared/pm/weight'
 import { EXAMPLES } from '../../shared/pm/examples'
-import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, coordinatorStartRefusal, limitsLeft, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, coordinatorStartRefusal, countFix, limitsLeft, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
 import { ackWakes } from '../../shared/pm/wakes'
 import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
@@ -29,6 +29,7 @@ import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from
 import { userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
 import { removeTask, resumeTask, stopTask } from './pmStop'
+import { noteBack } from './pmStall'
 import { reviveWorker } from './pmRelease'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
@@ -229,23 +230,28 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     case 'tell': {
       const task = await taskOf(cmd.task)
       const holder = t && !task.step?.done ? currentStep(planOf(t, task, p), task.step ?? initialState())?.holder : undefined
-      const { role, run, released } = tellTarget(await store.runs(), task.id, holder, cmd.to)
+      const { role, run, released } = tellTarget(await store.runs(), task.id, holder, cmd.to, !!cmd.fix)
       const said = `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}`
+      const wake = turn !== 'user', fix = cmd.fix && { autopilot: rec?.autopilot, main }
+      // A wake's fix counts against the step's; the log keeps its kind and reason.
+      const fixed = (x: Task) => (cmd.fix && wake ? { ...x, fixes: countFix(task) } : x)
+      const fixNote = cmd.fix ? ` (fix ${cmd.fix}: ${cmd.reason})` : ''
       if (released) {
-        const why = tellRefusal(task, turn !== 'user')
+        const why = tellRefusal(task, wake, fix)
         if (why) throw new HerdrError('refused', why)
-        const started = await reviveWorker(deps, task.id, 'a message of the coordinator', said)
-        if (started?.state !== 'working') throw new HerdrError('refused', 'The task\'s worker was let go while the task waited and could not start again now (short on memory?): try again later')
-        return { task: await store.logTask(started, by, `told the worker, started again: ${cmd.text.slice(0, 300)}`), sentTo: 'worker (started again with your message)' }
+        const started = await reviveWorker(deps, task.id, cmd.fix ? `a fix of the coordinator: ${cmd.reason}` : 'a message of the coordinator', said)
+        if (started?.state !== 'working') throw new HerdrError('refused', 'The task\'s worker could not start again now (short on memory?): try again later')
+        const told = await store.logTask(fixed(started), by, `told the worker, started again${fixNote}: ${cmd.text.slice(0, 300)}`)
+        return { task: t ? await noteBack(store, told, planOf(t, told, p), by, `the ${by} told the worker`) : told, sentTo: 'worker (started again with your message)' }
       }
       if (!run?.terminal) throw new HerdrError('not_found', `The task's ${role} is not running${cmd.to ? '' : ` (--to ${role === 'worker' ? 'reviewer' : 'worker'} picks the other agent)`}`)
       // What the agent waits for now, from its terminal: a permission prompt is never typed into.
       const live = waitOf(await deps.call<Parameters<typeof waitOf>[0]>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null))
-      const why = tellRefusal({ state: live ? 'waiting' : task.state, waitKind: live ?? task.waitKind }, turn !== 'user')
+      const why = tellRefusal({ ...task, state: live ? 'waiting' : task.state, waitKind: live ?? task.waitKind }, wake, fix)
       if (why) throw new HerdrError('refused', why)
       await deps.call('terminal.send', { terminal: run.terminal, text: said }, 30000)
-      const saved = await store.logTask(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task, by, `told the ${role}: ${cmd.text.slice(0, 300)}`)
-      return { task: saved, sentTo: role }
+      const saved = await store.logTask(fixed(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task), by, `told the ${role}${fixNote}: ${cmd.text.slice(0, 300)}`)
+      return { task: t ? await noteBack(store, saved, planOf(t, saved, p), by, `the ${by} told the ${role}`) : saved, sentTo: role }
     }
     case 'task start': {
       const task = await taskOf(cmd.task)
@@ -268,7 +274,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const memory = short ? { memory: `${short}: started anyway, as the user asked` } : {}
       if (task.stopped) return { task: await resumeTask(deps, task.id, 'continue', who, by), ...memory }
       if (on !== undefined) forgetMemory(on)
-      const started = await startTask(deps, task.id, on !== undefined ? { on } : {})
+      const started = await startTask(deps, task.id, { by, ...(on !== undefined ? { on } : {}) })
       return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`), ...memory }
     }
     case 'task stop': {

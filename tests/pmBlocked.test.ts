@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
-import { github } from '../shared/pm/examples'
-import { planSteps, type StepState } from '../shared/pm/steps'
-import { awaitsHolder, failingTests, HANDLE_AFTER_MS, IDLE_WAIT_MS, RED_CI_WAIT_MS, stallMoves, stallOf } from '../shared/pm/blocked'
+import { github, wherdr } from '../shared/pm/examples'
+import { durationMs, onEvent, planSteps, type StepState } from '../shared/pm/steps'
+import { awaitsHolder, backToWork, failingTests, HANDLE_AFTER_MS, IDLE_WAIT_MS, RED_CI_WAIT_MS, stallMoves, stallOf } from '../shared/pm/blocked'
 import { DEFAULT_AUTOPILOT, autopilotEvents } from '../shared/pm/autopilot'
 import { cardOf, handleLabel, toHandle } from '../shared/pm/board'
 import { ciOf } from '../shared/pm/mechanic'
@@ -56,6 +56,41 @@ it('a stall shows on the card; after 30 min it is Your turn and in Tasks to hand
   expect(merge.stall).toBeUndefined()
   expect(handleLabel(merge)).toBe('Retry')
   expect(handleLabel({ stopped: { by: 'user', why: 'x', at: 1 } })).toBe('Resume')
+})
+
+it('back to work: a timeout leaves Your turn and its deadline starts again; what the user must do stays', () => {
+  // The coordinator tells the agent something, starts it again, or the agent is seen working.
+  const timed = planSteps(wherdr, { type: 'simple' }) // work: 3h
+  const late = onEvent(timed, at(1, { deadline: 2000, told: 1000 }), { kind: 'tick' }, 5000).state
+  expect(late.yourTurn?.badge).toBe('Check work: over 3h')
+  const back = backToWork(task(late), timed, 6000)!
+  expect(back.step!.yourTurn).toBeUndefined()
+  expect(back.step!.deadline).toBe(6000 + durationMs('3h'))
+  expect(cardOf(back, timed, [], 6000).yourTurn).toBeUndefined()
+  // The new deadline passes too: Your turn again.
+  expect(onEvent(timed, back.step!, { kind: 'tick' }, 6000 + durationMs('3h')).state.yourTurn?.reason).toBe('timeout')
+  // Told while still idle since long before: a new stall counts from now, nothing to hand over yet.
+  const told = backToWork(task(late, { idle: 2000 }), timed, 6000)!
+  expect(told.idle).toBe(6000)
+  expect(stallOf(told, timed, 6000 + IDLE_WAIT_MS)?.since).toBe(6000 + IDLE_WAIT_MS)
+  expect(toHandle([cardOf(told, timed, [], 6000 + IDLE_WAIT_MS)])).toEqual([])
+  // A merge, an answer or a decision is the user's: kept.
+  expect(backToWork(task(at(4, { yourTurn: { reason: 'action', badge: 'merge: head moved' } })), plan, 6000)).toBeUndefined()
+  expect(backToWork(task(at(1), { state: 'waiting', waiting: 'The agent asks a question', waitKind: 'question' }), plan, 6000)).toBeUndefined()
+})
+
+it('back to work: a working agent clears a stall from Tasks to handle, its clock starts again', () => {
+  const since = 3000 + IDLE_WAIT_MS, now = since + HANDLE_AFTER_MS
+  const stalled = task(at(1, { told: 1000 }), { idle: 3000, stall: { cause: 'idle:1:1000', reason: 'r', since }, stalls: { 'idle:1:1000': { since, nudged: since, handled: now } } })
+  expect(toHandle([cardOf(stalled, plan, [], now)])).toHaveLength(1)
+  const back = backToWork({ ...stalled, idle: undefined }, plan, now)!
+  expect(back.stalls!['idle:1:1000']).toEqual({ since, nudged: since, back: now })
+  expect(toHandle([cardOf(back, plan, [], now)])).toEqual([])
+  // Idle again: a stall dated from the return, no hand-over before another 30 min.
+  const again = { ...back, idle: now + 1 }
+  expect(stallOf(again, plan, now + IDLE_WAIT_MS + 1)?.since).toBe(now)
+  expect(toHandle([cardOf(again, plan, [], now + HANDLE_AFTER_MS - 1)])).toEqual([])
+  expect(stallMoves(again, stallOf(again, plan, now + HANDLE_AFTER_MS)!, now + HANDLE_AFTER_MS).handle).toBe(true)
 })
 
 it('one nudge per cause at once, one hand-over to the user 30 min after the stall began', () => {

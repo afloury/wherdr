@@ -14,7 +14,7 @@ export default defineApi(async (event, body) => {
   const deps = { ...coreAdminDeps(), store: pmStore(), origin: getRequestURL(event).origin }
   const before = await deps.store.task(body.id)
   const { on, short } = before && before.state !== 'working' ? goesTo(await placeFor(deps, before, typeof body.machine === 'string' ? { asked: body.machine } : {})) : { on: undefined, short: undefined }
-  let task = await startTask(deps, body.id, on !== undefined ? { on } : {})
+  let task = await startTask(deps, body.id, { by: 'user', ...(on !== undefined ? { on } : {}) })
   if (on !== undefined) forgetMemory(on)
   if (short) task = await deps.store.logTask(task, 'user', `${short}: started anyway, as the user asked`)
   return { task: publicTask(task), ...(short ? { memory: `${short}: started anyway` } : {}) }

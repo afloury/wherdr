@@ -21,7 +21,7 @@ it('lists each task waiting for the user, and a tap opens its sheet on the board
   await expect.poll(() => w.findAll('.handle-row').length).toBe(2)
   expect(w.find('.group-title').text()).toBe('Tasks to handle2')
   const row = w.find('[data-task="CO-4"]')
-  expect([row.find('.handle-id').text(), row.find('.handle-title').text(), row.find('.handle-action').text(), row.find('.handle-label').text()])
+  expect([row.find('[data-testid="project-badge"]').text(), row.find('.handle-title').text(), row.find('.handle-action').text(), row.find('.handle-label').text()])
     .toEqual(['CO-4', 'Fix login redirect', 'Stalled: CI red, no new push for 15 min', 'Unblock'])
   expect(w.find('.card-state').exists()).toBe(false) // a task, not an agent
   await row.trigger('click')

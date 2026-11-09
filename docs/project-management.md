@@ -60,8 +60,11 @@ its folder, branches and task worktrees stay on the machine.
 
 ### General
 
-- **Name** and **Key**. Task ids start with the key. Change it and every task,
+- **Name**, **Key** and **Color**. Task ids start with the key. Change it and every task,
   old ones too, shows the new key; links and commands with a former key still work.
+  The color, picked from a small palette, is the project's key badge everywhere:
+  its coordinator row and conversation header, board cards, the task sheet, its
+  task agents' headers and *Tasks to handle*.
 - **Base branch**: the project's working branch. New tasks start their worktree
   from it, and a step that names no branch opens its PR to it or merges into it.
   Pick one of the repository's branches or type a name; unset, the repository's
@@ -204,7 +207,8 @@ the [Autopilot](#autopilot) button. The first column is **Your turn**, then the
 project's columns, or *To do*, *Working* and *Done* for all projects. A done
 or archived task is never under Your turn.
 
-A card shows the task's title, its id and step, how long it has been in that
+A card shows the task's title, its id (a badge in the project's color: a tap
+copies it, *Copied*, without opening the task) and step, how long it has been in that
 step (*12 min in review*) or, once done, how long it took from start to done
 (*42 min*), a dot with its agent's state (worker or reviewer), where its PR stands (*PR open · waiting for checks*,
 *checks failed*, *merging*, *The PR conflicts with v3*, *merged …*), what you have to do under
@@ -248,7 +252,7 @@ action), standard otherwise. The coordinator does the same with `task add
 
 ## Task sheet
 
-A card opens the task's sheet: its id and step, a note when it waits or was
+A card opens the task's sheet: its id badge by the title (a tap copies it) and step, a note when it waits or was
 stopped, the time it spent in each step with the time it waited for you apart,
 its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
 waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
@@ -275,6 +279,23 @@ needs from you and the buttons for it, before its Description, Plan and Log.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (try again, start it, open its agent).
 
+While a merge waits for you, wherdr watches its PR. When the PR starts to
+conflict with its base, or falls behind it under a branch rule that wants it up
+to date, wherdr merges the base into the branch at once (or asks the task's
+agent to resolve the conflicts, starting it again if it was ended). The card
+says *updating with* the base and leaves *Your turn* until the PR is clean
+again; an agent's conflict resolution gets a short re-review first. One update
+runs at a time per task.
+
+Clicking *Merge* is an approval that stays: the log records who approved, when
+and at which commit. If the merge is refused because the PR conflicts or is
+behind, wherdr updates it the same way, and the card shows *Approved, merging
+when ready*. Once the PR is clean, its checks are green and the re-review of the
+commits since your approval finds nothing major, wherdr merges by itself, even
+on a branch only you may merge into, and the log says so. The task comes back
+to you only if the re-review finds something major, or says the new commits
+change behaviour or the interface beyond resolving conflicts, with why.
+
 ### A stalled task
 
 A working task is **stalled** when nothing moves: its CI is still red 10 minutes
@@ -293,6 +314,30 @@ shows the reason, and wherdr:
 
 The task's **Log** lists each of these: the stall, the nudge, the hand-over to
 you and the notification.
+
+A step that runs past its time limit (*Check work: over 3h*, *Check review:
+over 45m*) or a stall leaves *Your turn* and **Tasks to handle** once the task
+is back to work: the coordinator tells its agent something (`wherdr pm tell`),
+you or the coordinator start it again, or the step's agent, idle, is seen
+working again. The step's time limit and the stall's 30 minutes start again
+from then, so the task comes back if its agent stops again. The Log says
+*back to work* and who sent it back. What only you can do (a merge, an answer,
+a permission, a decision) stays until you do it.
+
+### A task's temporary files
+
+A task's worker and reviewer keep their temporary files in the task's
+worktree, in `.wherdr-tmp` (`~/.wherdr/pm/worktrees/<task>/.wherdr-tmp`), not
+in the machine's `/tmp`, which is often small and shared by every agent:
+wherdr sets `TMPDIR`, `CLAUDE_CODE_TMPDIR` and `NODE_COMPILE_CACHE` to it for
+Claude Code and Codex alike. git ignores the folder (through the repository's
+`.git/info/exclude`), so it is never committed and never keeps a worktree from
+being removed. It goes with the worktree when the task ends (done, archived);
+it stays when wherdr ends idle agents, for the ones started again later.
+
+Before it starts an agent, wherdr checks the machine's `/tmp`: with less than
+500 MB free, the agent is not started and the task waits with the reason
+(free some space, then start it again).
 
 ### Agents of a task that waits for you
 
@@ -319,6 +364,17 @@ that holds the task's current step; at a step held by nobody (the PR, the
 merge, a step you end) it goes to the worker, started again if it was ended.
 The coordinator can pick one with `--to worker` or `--to reviewer`, and its
 answer says which agent got the message.
+
+In a wake, the coordinator may tell an agent something only to answer its
+question, or, with the autopilot on, to unblock a mechanical block of a task of
+its project: `wherdr pm tell <task> "<what to do>" --fix <kind> --reason "<one
+sentence>"`, where the kind is `base` (merge the base and solve a conflict),
+`ci` (fix a red CI), `machine` (retry after a disk or memory problem) or
+`stall` (restart a stalled agent). A worker that was let go or ended on its
+own starts again with the message; a stopped or finished task is never fixed. Each fix is written to the task's log with its reason, at most
+twice per task and step; after that the block is yours, and the coordinator
+tells you. Each wake's text lists these fixes. A permission request, a merge,
+an approval, guards, settings and limits stay yours.
 
 A machine's cap of agents (Settings › Machines) counts only the agents working
 on a step: not those of a task that waits for you, and not the coordinators.

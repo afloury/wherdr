@@ -5,7 +5,7 @@
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { ciOf, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
 import { awaitsHolder } from '../../shared/pm/blocked'
-import type { PlannedStep } from '../../shared/pm/steps'
+import { onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
 import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP } from './coreCreate'
 import { actionShell } from './pmActions'
@@ -20,7 +20,7 @@ import { advanceTick } from './pmAdvance'
 import { forgetMemory } from './pmMemory'
 import { releaseIdle, reviveWorker } from './pmRelease'
 import { agentBack, handToAgent, wasReleased } from '../../shared/pm/release'
-import { noteStall } from './pmStall'
+import { noteBack, noteStall } from './pmStall'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -125,9 +125,11 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
 }
 
 // Kept for the board: since when the agent holding the step sits idle while
-// the step waits for its report (pm/blocked.ts). Unread status: unchanged.
+// the step waits for its report (pm/blocked.ts), also past its timeout. Unread
+// status: unchanged. Idle, then seen working: back to work (backToWork).
 async function noteIdle(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], runs: Run[], now: number): Promise<Task> {
-  const step = awaitsHolder(task, plan) ? plan[task.step!.at] : undefined
+  const open = task.step?.yourTurn?.reason === 'timeout' ? { ...task, step: { ...task.step, yourTurn: undefined } } : task
+  const step = awaitsHolder(open, plan) ? plan[task.step!.at] : undefined
   const holder = step && runs.filter(r => r.task === task.id && r.role === step.holder && r.state !== 'ended' && r.terminal).sort((a, b) => b.startedAt - a.startedAt)[0]
   let idle: number | undefined
   if (holder) {
@@ -135,6 +137,10 @@ async function noteIdle(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], run
     if (!st) return task
     const s = typeof st.status === 'string' ? st.status : st.status?.state
     idle = s === 'idle' || s === 'done' ? task.idle ?? now : undefined
+    if (task.idle !== undefined && s === 'working') {
+      const saved = await deps.store.saveTask({ ...task, idle })
+      return noteBack(deps.store, saved, plan, 'engine', `the ${step!.holder} is working again`, now)
+    }
   }
   return idle === task.idle ? task : deps.store.saveTask({ ...task, idle })
 }
@@ -232,8 +238,23 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
       return r.code === 0 ? `PR base set to ${move.base}` : lastLine(r.out)
     }
     case 'catch-up': {
+      // A merge step waiting for the user: the card says it is updating, until the PR is clean.
+      const waiting = waitsToMerge(f.plan[task.step!.at])
+      const from = task.step!.catchUp?.from ?? f.head!
+      if (waiting && !task.step!.catchUp) await stepEvent(deps, task.id, f.plan, { kind: 'catch-up', base: move.base, head: f.head! })
       const r = await sh(SCRIPT.catchUp, [run.worktree, move.base, run.branch])
-      if (r.code === CODE.SEND_BACK) return hand(`${lastLine(r.out)}. Merge origin/${move.base} into your branch, fix it, commit, then say you are done.`)
+      if (r.code === CODE.SEND_BACK) {
+        return hand(waiting
+          ? `${lastLine(r.out)}. Merge origin/${move.base} into your branch, resolve the conflicts, commit, then stop: the engine pushes it.`
+          : `${lastLine(r.out)}. Merge origin/${move.base} into your branch, fix it, commit, then say you are done.`)
+      }
+      if (waiting) {
+        const head = r.code === 0 ? lastLine(r.out) : undefined
+        const since = reviewedCommit(f.plan, task.step!) ?? from
+        await stepEvent(deps, task.id, f.plan, head
+          ? { kind: 'caught-up', head, ...(f.head !== from ? { review: { since, head } } : {}) }
+          : { kind: 'caught-up', error: `update with ${move.base}: ${lastLine(r.out)}` })
+      }
       return r.code === 0 ? `caught up with ${move.base}` : lastLine(r.out)
     }
     case 'rerun-ci': {
@@ -242,4 +263,13 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
     }
     case 'ci-to-agent': return hand(redCiText(move.checks, f.head!))
   }
+}
+
+// A step event the mechanic gives a task, on its fresh state; its log lines go to the task's log.
+async function stepEvent(deps: PmLaunchDeps, id: string, plan: PlannedStep[], ev: StepEvent) {
+  const task = (await deps.store.task(id))!
+  const r = onEvent(plan, task.step!, ev, Date.now())
+  if (r.refused) return
+  const log = r.effects.flatMap(e => (e.kind === 'log' ? [e.text] : [])).join('; ')
+  await (log ? deps.store.logTask({ ...task, step: r.state }, 'engine', log) : deps.store.saveTask({ ...task, step: r.state }))
 }

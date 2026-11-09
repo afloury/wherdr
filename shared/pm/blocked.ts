@@ -7,7 +7,7 @@
 // for the user (a refused merge, a failed action, a question) is in Your turn
 // at once, not here. Pure: the engine's pass records what it reads (task.ci,
 // task.idle, task.stalls), the board computes from it.
-import type { PlannedStep } from './steps'
+import { durationMs, type PlannedStep } from './steps'
 import type { Task } from './run'
 
 // Red CI sent to the agent, still red on that same commit, no other engine move.
@@ -39,12 +39,38 @@ export function stallOf(task: Task, plan: PlannedStep[], now: number): Stall | u
   const sent = task.ci?.red ? task.mech?.[`red:${task.ci.head}`] : undefined
   const last = Math.max(0, ...Object.values(task.mech ?? {}))
   // A cause seen before keeps when it first began: an agent idle again after its nudge is not new.
-  const of = (cause: string, reason: string, from: number) => ({ cause, reason, since: Math.min(from, task.stalls?.[cause]?.since ?? from) })
+  // Back to work since (backToWork): its clock starts again from then.
+  const of = (cause: string, reason: string, from: number) => {
+    const seen = task.stalls?.[cause]
+    return { cause, reason, since: Math.max(seen?.back ?? 0, Math.min(from, seen?.since ?? from)) }
+  }
   if (sent !== undefined && sent === last && sent >= since && now - sent >= RED_CI_WAIT_MS)
     return of(`red:${task.ci!.head}`, 'CI red, no new push for 10 min', sent + RED_CI_WAIT_MS)
   if (task.idle !== undefined && awaitsHolder(task, plan)) {
     const from = Math.max(task.idle, since) + IDLE_WAIT_MS
     if (now >= from) return of(`idle:${c.s.at}:${since}`, `The ${c.step.holder} stopped before saying it is done`, from)
+  }
+}
+
+// Back to work: the coordinator or the user told the task's agent something or
+// started the task again, or the step's agent is seen working again. A timeout
+// in Your turn goes and the step's deadline starts again from now; a stall's
+// clock starts again from now too (no hand-over yet, so it comes back if the
+// agent stops again). What the user must do (a merge, an answer, a decision)
+// stays. Undefined: nothing to clear.
+export function backToWork(task: Task, plan: PlannedStep[], now: number): Task | undefined {
+  const s = task.step, step = s?.started && !s.done ? plan[s.at] : undefined
+  if (!s || !step) return
+  const timeout = s.yourTurn?.reason === 'timeout' && !!step.timeout
+  if (!timeout && !task.stall) return
+  const stalls = task.stalls && Object.fromEntries(Object.entries(task.stalls).map(([k, v]) => [k, { ...v, back: now, handled: undefined }]))
+  return {
+    ...task,
+    // Idle since before: counted from now, or the stall would be handed over at once.
+    ...(task.idle !== undefined ? { idle: now } : {}),
+    ...(timeout ? { step: { ...s, yourTurn: undefined, deadline: now + durationMs(step.timeout!) } } : {}),
+    ...(task.stall ? { stall: { ...task.stall, since: now } } : {}),
+    ...(stalls ? { stalls } : {}),
   }
 }
 

@@ -147,6 +147,9 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
             continue
           }
         }
+        // Conflicting or behind its base: no check runs on it, it needs a catch-up first.
+        const stale = { DIRTY: 'conflicts with', BEHIND: 'is behind' }[pr?.mergeStateStatus ?? '']
+        if (pr && stale) return { ok: false, error: `merge: the PR ${stale} ${pr.baseRefName}`, catchUp: pr.baseRefName, commit: head.trim() }
         const ready = prReady(pr, head.trim(), a.checks)
         if (!ready.ok && ready.later && ci < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[ci++]!); continue }
         if (!ready.ok) return { ok: false, error: `merge: ${ready.why}` }
@@ -154,7 +157,8 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
         const m = await run(deps, SCRIPT.merge, [wt, pr!.url, head.trim(), a.method ?? ''])
         if (m.code === 0) return { ok: true, link: pr!.url, commit: head.trim(), reached: [pr!.baseRefName] }
         // GitHub's refusal ends with the commands to fix it: those are the agent's (the catch-up), not the error's.
-        return CONFLICT.test(m.out) ? { ok: false, error: `merge: the PR conflicts with ${pr!.baseRefName}` } : fail(m)
+        const stuck = CONFLICT.test(m.out) ? 'conflicts with' : /not up to date/i.test(m.out) ? 'is behind' : undefined
+        return stuck ? { ok: false, error: `merge: the PR ${stuck} ${pr!.baseRefName}`, catchUp: pr!.baseRefName, commit: head.trim() } : fail(m)
       }
     }
   }
