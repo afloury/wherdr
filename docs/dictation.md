@@ -469,6 +469,7 @@ browser has `speechSynthesis`).
 | --- | --- |
 | `app/utils/speech/plainText.ts` | `speakableText()`: the words of a reply, "Code block." for code; `speechChunks()`: pieces of at most 220 characters (Chrome cuts long utterances) |
 | `app/composables/useReadAloud.ts` | Engine and voice choice, the voice list (`voiceschanged`), one reply at a time for the app |
+| `app/utils/speech/neuralVoice.ts` | The `wherdr` engine: a neural voice in the TTS worker, played through WebAudio (see below) |
 | `app/utils/speech/voicePicker.ts` | Voice quality (Premium, Enhanced, Standard, Online, Low quality, from the name or Apple's voiceURI) and the language and quality filters of the voice list |
 | `app/utils/speech/lowQualityVoices.ts` | Names of Apple's novelty, MacinTalk and Eloquence voices, hidden by default |
 | `app/components/ReadAloudButton.vue`, `ReadAloudSettings.vue` | Play / Stop under a reply; the settings (language filter, hide low-quality voices, voice search in sections, Test) |
@@ -488,7 +489,17 @@ licence and the attribution to show (Siwis: CC BY 4.0). Each voice is a fetch se
 (`tts-siwis-medium`, ...), and `POST /api/dictation/prepare` with `{ voice }` has the server fetch
 it, as `{ model }` does for a dictation model. The runtime set also carries sherpa-onnx's TTS
 binding, `sherpa-onnx-tts.js`, unchanged from v1.12.34 to v1.12.40, the releases the pinned WASM
-build matches. `tests/speechVoices.test.ts` checks the catalog. An OpenRouter engine
+build matches. `tests/speechVoices.test.ts` checks the catalog.
+
+The engine, `app/utils/speech/neuralVoice.ts`, is the `wherdr` choice of `useReadAloud`. Its
+voice is installed through the dictation model store (`installModel`, Cache Storage); a voice
+not installed, or too large for this device (memory budget, or a crash mark as for dictation
+models), is not used and the reply goes to the device's voices instead. A reply goes to
+`public/workers/tts-worker.js` one piece at a time, at most two pieces ahead of the one playing,
+so Stop never waits behind a long queue; the pieces play back to back through WebAudio, whose
+`AudioContext` is resumed inside the tap (iOS). Audio that arrives for a stopped reply is
+dropped. The worker and the `AudioContext` are released after 60 s without speech and on
+`pagehide`. `tests/neuralVoice.test.ts` covers it with a fake worker. An OpenRouter engine
 (`POST /api/v1/audio/speech`, relayed by the server like dictation) is a planned follow-up.
 
 ## Known limits
