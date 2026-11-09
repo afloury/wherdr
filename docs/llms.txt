@@ -1,0 +1,115 @@
+# wherdr v3 documentation
+
+> wherdr is a web app to start coding agents on herdr-core (hc), follow their work and answer
+> them from a phone. Read this index first, then only the section that answers your question.
+> Links are relative to the repository root. A section that starts with "Needs:" makes sense only
+> with the section it names: read that one too.
+
+## Start here
+
+- [Documentation home](docs/README.md): the list of pages, v3 and v2 only.
+- [Overview](docs/overview.md#why-wherdr): what wherdr does for you.
+- [How it works](docs/overview.md#how-it-works): wherdr's server, the hc socket, transcripts and the data folder.
+- [herdr-core](docs/core.md): what v3 supports on hc, the reference for inventory, terminals and conversations.
+- [First launch](docs/quick-start.md#quick-start): build, start and open wherdr, then the first settings.
+
+## Install and update
+
+- [Requirements](docs/installation.md#requirements): hc, Linux or macOS, Node.js 22 and Git.
+- [Installation](docs/installation.md#installation): install v3 and run it as a service.
+- [Keep it running](docs/installation.md#keep-it-running): run wherdr as a service (a systemd --user unit, a macOS LaunchAgent).
+- [On-device dictation files](docs/installation.md#on-device-dictation-files): where the dictation models are fetched and kept.
+- [Updating](docs/installation.md#updating): update v3 by hand; there is no update banner.
+- [Install with an agent](docs/install-with-an-agent.md): ready-to-paste prompts for an agent that installs or updates wherdr.
+- [Migrate from v2](docs/migrate-from-v2.md): install v3 beside v2 and import its machines and settings; its projects are listed for Alfred.
+- [What is imported](docs/migrate-from-v2.md#what-is-imported): what the v2 import brings over, and what to redo.
+- [Set up your v2 projects with Alfred](docs/migrate-from-v2.md#set-up-your-v2-projects-with-alfred): Alfred's first message offers to bring v2 projects over (machine, template, coordinator, open tasks).
+- [Auto-deploy from a build machine](docs/migrate-from-v2.md#auto-deploy-from-a-build-machine): build elsewhere and deploy to the server.
+- [Fall back to v2](docs/migrate-from-v2.md#fall-back-to-v2): go back to v2, and [uninstall v3](docs/migrate-from-v2.md#uninstall-v3).
+- [Install as an app](docs/phone.md#install-it-as-an-app): add wherdr to a phone's home screen or a desktop browser.
+- [App start](docs/phone.md#app-start): Settings › Phone › App start, network first or saved copy first; after an update, a Reload banner and no reload by itself.
+
+## Network and security
+
+- [Tailscale setup](docs/networks.md#recommended-always-on-server--tailscale): reach wherdr from a phone over a tailnet with HTTPS.
+- [Other private networks](docs/networks.md#other-private-networks): Headscale, NetBird, ZeroTier or WireGuard instead.
+- [Security](docs/security.md#security): who may reach wherdr, the passkey lock and remote-shell risks.
+- [Network access](docs/security.md#network-access): which networks wherdr answers, and `WHERDR_TRUSTED_NETWORKS`.
+- [Configuration](docs/configuration.md#configuration): environment variables and the data folder.
+
+## Agent list
+
+- [Agents on herdr-core](docs/home.md#agents-on-herdr-core): the live list, states, quick answers, the sidebar's order (no sideways scroll: long titles and badges ellipsized, a thin scrollbar), and task agents named after their task, one row per task with a line per agent (role, machine, last message).
+- [Alfred](docs/home.md#alfred): wherdr's assistant, its agent (kept until you change it), name, home folder and memory.
+- [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred, with the project's colored key badge, and their menu.
+- [Offered agents](docs/home.md#offered-agents): Settings › Agents, which programs every picker offers and in which order.
+- [Machines as tabs](docs/home.md#machines-as-tabs): the machine tabs, their groups, a machine's actions, and the offline machines' line with Reconnect (no machine chips while all are online).
+- [New agents and tabs](docs/home.md#new-agents-and-tabs): the New sheet, the + of a space's tabs, and renaming or closing a tab or a space.
+- [Search](docs/home.md#search): search agents and conversations.
+- [Inventory](docs/core.md#inventory): how terminals are placed in spaces and tabs, and how states are read.
+- [Creating terminals and agents](docs/core.md#creating-terminals-and-agents-machines): what the New sheet asks hc to run.
+- [Agent actions](docs/core.md#agent-actions): the agent's … menu: rename, keep after restart, answers, attachments.
+
+## Conversation, terminal and files
+
+- [Conversation and replies](docs/conversation.md): transcripts, one-tap answers, quoted replies, attachments and dictation.
+- [Conversations on hc](docs/core.md#conversations): which agents open on their transcript and how it is read, and text left unsent in Claude's input box (never shown as read, never glued to the next message).
+- [Terminal](docs/terminal.md): the real terminal, shared viewers and taking control.
+- [Files](docs/files.md): browse an agent's folder, preview text, Markdown, images, PDFs and videos, download.
+- [On a computer](docs/devices.md#on-a-computer): layout and keyboard shortcuts.
+- [On a phone](docs/devices.md#on-a-phone): touch controls and the phone keybar.
+- [On an iPad](docs/devices.md#on-an-ipad): the iPad layout.
+
+## Project management
+
+- [Getting started](docs/project-management.md#getting-started): the setup window, six steps from turning projects on to a first task; Finish setup on the board; New › Project (a typed, browsed or listed folder fills name and key, shown as ~/…; a wider sheet on a computer).
+- [Projects](docs/project-management.md#projects): Settings › Projects, the project list and the project sheet's tabs.
+- [General tab](docs/project-management.md#general): name, key and its badge color, base (working) branch, agents, repository visibility, allowed machines and their clone paths (with a readiness check), placement (Heavy to the strongest, Balance the load, Home first; a task too big for every machine runs on the best one; a worker started again is heavy only while its step takes screenshots).
+- [Workflow tab](docs/project-management.md#workflow): task types (with an optional weight) and steps (a merge that pushes first waits up to a minute for GitHub), Edit as JSON, Save as template, Start over, review of the coordinator's proposed change (one-line summary, who proposed it, your full request with a link back to it, readable or JSON), and its card in the coordinator's conversation.
+- [Guards](docs/project-management.md#guards): protected branches, who may merge (a waiting merge goes on once wherdr may do it; one you merge on GitHub ends as merged; one cut by a restart goes on by itself), contributor PRs, the project sheet's in-app addresses.
+- [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
+- [Template library](docs/project-management.md#template-library): saved templates and examples, read, rename and delete; projects keep their own copy.
+- [Autopilot](docs/project-management.md#autopilot): the header button and its window, goal, wakes and limits (Tasks / day: empty for no daily limit; At once: Auto by default for new projects; Task added wakes only for tasks added by someone else than this coordinator); the coordinator's view of machines and weights (`autopilot show`, `show <task>`, `--on`, `--weight`).
+- [What a task's agent said](docs/project-management.md#what-a-tasks-agent-said): `wherdr pm read`, an agent's last message or question from any machine, and the question in the wake.
+- [Board](docs/project-management.md#board): columns (a done or archived task is never under Your turn), cards (the id badge copies the id), time in the step and total time, Add task (with its weight: Auto, Light, Standard, Heavy), Start, Start on another machine (its readiness check), Stop, Delete; a refused merge said in plain words (a conflict the agent is already fixing leaves Your turn).
+- [Task sheet](docs/project-management.md#task-sheet): the id badge by the title (copies the id), time per step, waits for you, review rounds and CI fixes, the task's buttons (Check on GitHub, also `wherdr pm task check`, for a stuck merge step or an archived task's PR) and its Description (Markdown), Plan and Log tabs.
+- [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back, Try again and other answers; Open the PR at the merge step for a PR a step gave as its link proof (GitHub, Bitbucket, GitLab, Azure DevOps), also on the card as PR #12; screenshots replaced after a rework (new commits since the review); a waiting PR kept up to date with its base, an approved merge that goes on by itself once ready (kept across updates, asked again only on new screenshots or interface changes), and the project's merge queue (one merge at a time, the first updated with its base, its place on the card); a tap on Your turn or Tasks to handle opens the asking agent's conversation, else the sheet.
+- [Report a problem](docs/project-management.md#report-a-problem): tell the coordinator what is wrong with a task waiting for you, block its merge, withdraw.
+- [What wherdr fixes on its own](docs/project-management.md#what-wherdr-fixes-on-its-own): a conflict with the base (to the worker), red CI (an infrastructure error in the log run again once, else to the worker), a push refused as behind its remote (synced, pushed again), an interrupted action (run again), a stalled agent; the coordinator woken once only after 2 failed tries, with what was tried.
+- [A stalled task](docs/project-management.md#a-stalled-task): red CI or an idle agent: one nudge, a restart 10 min later, the coordinator woken 10 min after that, then Tasks to handle and a notification after 30 min; a stall or a step past its time limit leaves Tasks to handle once the task is back to work.
+- [A task's temporary files](docs/project-management.md#a-tasks-temporary-files): `.wherdr-tmp` in the task's worktree (TMPDIR, CLAUDE_CODE_TMPDIR, NODE_COMPILE_CACHE), ignored by git, removed with the worktree; no agent started while /tmp has under 500 MB free.
+- [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again; kept while the worker updates the PR (a catch-up, a CI fix), unpushed commits pushed first; which agent a coordinator's `tell` reaches (--to worker|reviewer); in a wake, `tell --fix base|ci|machine|stall --reason` unblocks a mechanical block (autopilot on, twice per task and step, logged), a permission request stays yours. One worker and one reviewer per task: a second start at once is refused (already starting), a held start dropped, a duplicate agent ended and logged.
+- [Alfred's command](docs/alfred.md): `wherdr alfred`, what Alfred reads and changes after your yes (projects, their machines, guards, coordinators, settings, v2 projects to set up).
+- [After an update](docs/alfred.md#after-an-update): new instructions for Alfred and coordinators, and the one-line notice on their next command.
+
+## Machines, quotas and notifications
+
+- [Several machines](docs/machines.md#several-machines-ssh): machines reached by hc over SSH.
+- [Before adding a machine](docs/machines.md#before-adding-a-machine): what a machine needs first.
+- [Manage machines](docs/machines.md#manage-machines): Settings › Machines (one card per machine: name, state, actions, keep awake, memory), add, reconnect, rename, forget, keep awake (until a time or turned off, laptop battery and lid warning), capacity (memory, cores, load on Linux and macOS; swap on Linux, memory pressure on macOS), memory limits, available hours and offline machines, and where each start goes (placement across a project's machines).
+- [Machines on hc](docs/core.md#creating-terminals-and-agents-machines): how hc reaches core machines.
+- [Claude and Codex quotas](docs/quotas.md#claude-and-codex-quotas): remaining usage per account, with the machines sharing it, and its setup.
+- [Pace](docs/quotas.md#pace): Settings › Agents › Pace, when automatic work may start.
+- [Notifications](docs/notifications.md#notifications): Web Push and Do not disturb.
+- [A default and exceptions](docs/notifications.md#a-default-and-exceptions): one synced policy: a default and its exceptions, a coordinator's kept across restarts.
+- [Notifications on hc](docs/core.md#notifications): when v3 sends a push, from hc's events.
+
+## Extending and fixing
+
+- [Plugins](docs/plugins.md#wherdr-plugins): optional page plugins and how to install them.
+- [The plugin module](docs/plugins.md#the-module): what a plugin file exports.
+- [Markers](docs/plugins.md#markers-data-wherdr): `data-wherdr` markers a plugin can find.
+- [Troubleshooting](docs/troubleshooting.md#troubleshooting): hc connection, conversations, machines and network problems.
+- [Setup on hc](docs/core.md#setup): `HC_SOCKET`, the hc endpoint wherdr talks to.
+
+## Contributors
+
+- [Development and tests](docs/development.md): run from source and test.
+- [Design rules](docs/design.md): the interface styling reference, sheets included (where focus goes on open).
+- [Dictation design](docs/dictation.md): the dictation engines and how to add one; why a server-side model install fails (bzip2 missing, disk full); read aloud and its voices (iOS gives web apps only its standard voices).
+
+## v2 only
+
+- [The wherdr command](docs/command.md): the 2.x npm and Homebrew packages and service.
+- [Migrate from a 1.x Docker install](docs/migrate-from-1.x-docker.md): Docker to the native 2.0 service.
+- [Releasing](docs/RELEASING.md): release process of the 2.x line.
