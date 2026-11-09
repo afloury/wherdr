@@ -13,6 +13,9 @@ import { DEFAULT_MAX_SESSION_DAYS, MAX_SESSION_DAYS, type MaxSessionDays } from 
 import { APP_START_DEFAULT, readAppStart, writeAppStart, type AppStart } from '#shared/appStart'
 import { chatFilesLevel, type ChatFilesLevel } from '#shared/chatFiles'
 
+// panel: beside the conversation on a wide computer (utils/settingsPanel.ts);
+// the section lives in the conversation's URL, the full page stays one click away.
+const props = defineProps<{ panel?: boolean }>()
 const router = useRouter()
 // v3's own version (shared/v3Version.ts), also in /api/health.
 const appVersion = useRuntimeConfig().public.version
@@ -24,7 +27,7 @@ const appVersion = useRuntimeConfig().public.version
 const route = useRoute()
 watch(() => [route.path, route.query.section], () => {
   if (route.query.section === 'desktop' || route.path === '/settings/desktop') {
-    router.replace({ path: '/settings', query: { ...route.query, section: 'conversation' } })
+    router.replace({ path: props.panel ? route.path : '/settings', query: { ...route.query, section: 'conversation' } })
   }
 }, { immediate: true })
 const alias = computed(() => SETTINGS_ALIASES[String(route.query.section)] ?? null)
@@ -80,9 +83,35 @@ watch(() => `${route.query.section}|${route.query.section === 'conversation' ? c
 onBeforeUnmount(() => stopFollow())
 function openSection(id: SettingsSection) {
   if (id === section.value) return
-  const to = { path: '/settings', query: { section: id } }
+  const to = { path: props.panel ? route.path : '/settings', query: { section: id } }
   if (desk.value) router.replace(to)
   else router.push(to)
+}
+function closePanel() {
+  const { section: _s, project: _p, tab: _t, review: _r, library: _l, group: _g, ...query } = route.query
+  router.replace({ query })
+}
+function openFullPage() {
+  fullSettingsOnce.value = true
+  navigateTo({ path: '/settings', query: route.query })
+}
+// Escape closes the panel first, unless a window or menu is open or the key is
+// typed in the conversation (message field, terminal). Capture phase: the
+// conversation's own Escape (Stop, the Your turn card) waits for the next press.
+function onPanelKey(e: KeyboardEvent) {
+  if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented) return
+  if (anySheetOpen.value || document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+  // HeaderMenu closes its menu with a fake Escape sent to the document: not for us.
+  const el = e.target instanceof Element ? e.target : null
+  if (!el || el.closest('[role="menu"], [role="listbox"]')) return
+  if (!el.closest('#settings') && (el.closest('.xterm') || el.matches('input, textarea, [contenteditable="true"]'))) return
+  e.preventDefault()
+  e.stopPropagation()
+  closePanel()
+}
+if (props.panel) {
+  onMounted(() => document.addEventListener('keydown', onPanelKey, true))
+  onBeforeUnmount(() => document.removeEventListener('keydown', onPanelKey, true))
 }
 function back() {
   const to = settingsBack({ desk: desk.value, section: section.value, historyBack: (history.state as { back?: unknown } | null)?.back })
@@ -94,7 +123,7 @@ function back() {
 // underneath, the system Back button would close the app. We slip the home screen
 // underneath, as if we came from the agent list.
 onMounted(async () => {
-  if (desk.value || typeof (history.state as { back?: unknown } | null)?.back === 'string') return
+  if (props.panel || desk.value || typeof (history.state as { back?: unknown } | null)?.back === 'string') return
   const here = route.fullPath
   await router.replace('/')
   await router.push(here)
@@ -318,16 +347,20 @@ onMounted(() => {
 </script>
 
 <template>
-  <section id="settings" data-wherdr="settings" class="view settings-view">
+  <section id="settings" data-wherdr="settings" class="view settings-view" :class="{ 'settings-panel': panel }" :aria-label="panel ? t('Settings') : undefined">
     <header class="top bar settings-top">
-      <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Back')" @click="back" />
+      <UButton v-if="!panel" icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Back')" @click="back" />
       <h2>{{ desk ? t('Settings') : activeLabel }}</h2>
+      <template v-if="panel">
+        <UButton icon="i-lucide-maximize-2" color="neutral" variant="ghost" size="lg" class="icon-btn settings-panel-full" :aria-label="t('Open full page')" :title="t('Open full page')" @click="openFullPage" />
+        <UButton icon="i-lucide-panel-right-close" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Close settings')" :title="t('Close settings')" @click="closePanel" />
+      </template>
     </header>
     <div class="settings-layout" :class="{ 'section-open': activeSection }">
       <nav class="settings-nav" :aria-label="t('Settings sections')">
         <button
           v-for="item in sections" :key="item.id" type="button" class="settings-nav-item"
-          :class="{ selected: activeSection === item.id }" :aria-current="activeSection === item.id ? 'page' : undefined"
+          :class="{ selected: activeSection === item.id }" :title="panel ? item.label : undefined" :aria-current="activeSection === item.id ? 'page' : undefined"
           @click="openSection(item.id)"
         >
           <UIcon :name="item.icon" /><span>{{ item.label }}</span><UIcon name="i-lucide-chevron-right" class="settings-nav-arrow" />

@@ -1,7 +1,7 @@
 // Global app state: live agents (WebSocket /ws/events), device
 // settings, lock, API calls. Module singletons (client app).
 import { createSocketProbe } from '~/utils/socketProbe'
-import { DESK_QUERY, SLIM_QUERY, TABLET_QUERY, provesHardwareKeyboard } from '~/utils/layoutMode'
+import { DESK_QUERY, SIDE_PANEL_QUERY, SLIM_QUERY, TABLET_QUERY, provesHardwareKeyboard } from '~/utils/layoutMode'
 import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, Pane, Quotas } from '#shared/types'
 import { LOCAL, splitId } from '#shared/ids'
 import { clearOffline, readHome, saveHome, type SavedHome } from '~/utils/offlineCache'
@@ -231,6 +231,10 @@ watch(herdrState, pruneViewModes)
 // (utils/layoutMode.ts).
 export const desk = ref(false)
 export const slim = ref(false)
+// Room for Settings beside the conversation (≥ 1280 px, utils/settingsPanel.ts).
+export const sidePanelRoom = ref(false)
+// The panel's "Open full page": the next move to /settings stays a page.
+export const fullSettingsOnce = ref(false)
 // Slim: the list opened over the agent (HomeView; backdrop in app.vue).
 export const listDrawer = ref(false)
 // Tablet (shortest side ≥ 700 px, or a touch tablet's screen while the
@@ -254,7 +258,9 @@ if (import.meta.client) {
 if (import.meta.client) {
   const mq = matchMedia(DESK_QUERY)
   const narrow = matchMedia(SLIM_QUERY)
-  const read = () => { desk.value = mq.matches; slim.value = mq.matches && narrow.matches }
+  const room = matchMedia(SIDE_PANEL_QUERY)
+  const read = () => { desk.value = mq.matches; slim.value = mq.matches && narrow.matches; sidePanelRoom.value = mq.matches && room.matches }
+  room.addEventListener('change', read)
   read()
   mq.addEventListener('change', read)
   narrow.addEventListener('change', read)
