@@ -4,15 +4,15 @@ import { killTerminal, leftoversKilled, sweepOrphans } from '../server/utils/pmP
 import type { PmLaunchDeps } from '../server/utils/pmLaunch'
 
 const ROOT = '/home/user/.wherdr/pm/worktrees'
-const p = (pid: number, ppid: number, pgid: number, comm = 'sh', cwd?: string, age = 60): Proc => ({ pid, ppid, pgid, age, comm, ...(cwd ? { cwd } : {}) })
+const p = (pid: number, ppid: number, pgid: number, comm = 'sh', tmp?: string, age = 60): Proc => ({ pid, ppid, pgid, age, comm, ...(tmp ? { tmp } : {}) })
 // What PROCS_SCRIPT prints for these processes.
-const text = (procs: Proc[]) => procs.map(x => [`p${x.pid}`, `P${x.ppid}`, `g${x.pgid}`, `t${x.age}`, `c${x.comm}`, ...(x.cwd ? [`n${x.cwd}`] : [])].join('\n')).join('\n')
+const text = (procs: Proc[]) => procs.map(x => [`p${x.pid}`, `P${x.ppid}`, `g${x.pgid}`, `t${x.age}`, `c${x.comm}`, ...(x.tmp ? [`e${x.tmp}`] : [])].join('\n')).join('\n')
 
 describe('reading ps', () => {
-  it('reads each field, ps\'s elapsed time and a deleted folder', () => {
+  it('reads each field, ps\'s elapsed time and the agent mark', () => {
     expect(seconds('05:03')).toBe(303)
     expect(seconds('1-06:00:00')).toBe(108_000)
-    const out = 'p7\nP1\ng7\nt06:00:01\nc/bin/sh\np7\nn/home/user/x (deleted)\np8\nP7\ng7\nt01\ncCode Helper'
+    const out = 'p7\nP1\ng7\nt06:00:01\nc/bin/sh\np7\ne/home/user/x\np8\nP7\ng7\nt01\ncCode Helper'
     expect(parseProcs(out)).toEqual([p(7, 1, 7, '/bin/sh', '/home/user/x', 21_601), p(8, 7, 7, 'Code Helper', undefined, 1)])
   })
 })
@@ -43,26 +43,24 @@ describe('the group kill', () => {
 })
 
 describe('the orphan sweep', () => {
-  const done = `${ROOT}/WH-1`, live = `${ROOT}/WH-2`
+  const mark = (task: string) => `${ROOT}/${task}/.wherdr-tmp`
+  // Only the mark counts, never the folder: the user's own processes have none.
   const procs = [
     p(1, 0, 1, '/sbin/launchd'),
-    p(100, 1, 100, 'sh', done, 21_600), p(101, 100, 100, 'ffmpeg', '/tmp/x'), // a finished task's test, re-parented
-    p(110, 1, 110, 'sh', `${done}/.wherdr-tmp/v`, 30), // in its temp folder
-    p(120, 1, 120, 'sh', `${ROOT}/WH-9`), // a removed task
-    p(200, 1, 200, 'sh', live), // a live agent's
-    p(300, 1, 300, 'Terminal'), p(301, 300, 301, 'zsh', done), // the user's shell there
-    p(400, 1, 400, 'code'), p(401, 400, 400, 'node', done), // the user's editor
-    p(500, 1, 500, 'sh', '/home/user/project'), // the user's own, elsewhere
-    p(600, 1, 600, 'node', `${done}`), // wherdr itself, kept
+    p(100, 1, 100, 'sh', mark('WH-1'), 21_600), p(101, 100, 100, 'ffmpeg', mark('WH-1')), // a finished task's test, re-parented
+    p(110, 300, 110, 'node', mark('WH-1'), 30), // still under its old shell
+    p(120, 1, 120, 'sh', mark('WH-9')), // a removed task
+    p(200, 1, 200, 'sh', mark('WH-2')), // a live agent's
+    p(300, 1, 300, 'Terminal'), p(301, 300, 301, 'zsh'), // the user's shell in a worktree: no mark
+    p(400, 1, 400, '/Applications/Tailscale.app/Contents/MacOS/Tailscale'), // an app re-parented to launchd, its folder a removed worktree
+    p(500, 1, 500, 'sh', '/home/user/project/.wherdr-tmp'), p(501, 1, 501, 'sh', `${ROOT}/WH-1`), // not a task's temp folder
+    p(600, 1, 600, 'node', mark('WH-1')), // wherdr itself, kept
   ]
-  it('kills a finished or removed task\'s detached processes and what they started, nothing else', () => {
+  it('kills every process marked with a finished or removed task\'s temp folder, nothing else', () => {
     expect(orphanTargets(procs, ROOT, id => id === 'WH-2', [600])).toEqual([
       { task: 'WH-1', pids: [100, 101, 110], age: 21_600 },
       { task: 'WH-9', pids: [120], age: 60 },
     ])
-  })
-  it('a subreaper like systemd --user counts as init', () => {
-    expect(orphanTargets([p(5, 1, 5, 'systemd'), p(6, 5, 6, 'sh', done)], ROOT, () => false)).toEqual([{ task: 'WH-1', pids: [6], age: 60 }])
   })
   it('logs the kill on the task and counts it for the machine', async () => {
     const logs: string[] = [], kills: string[][] = []

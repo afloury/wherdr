@@ -1,18 +1,22 @@
 // Processes an agent leaves behind. Ending an agent ends its terminal's whole
 // process tree and every process group in it (groupTargets): a test runner's
-// shells re-parented to init keep their group. A sweep finds the rest by their
-// folder (orphanTargets): a process in the worktree of a task with no live
-// agent, detached from any terminal or app, goes.
-import { underRoot } from './cleanup'
+// shells re-parented to init keep their group. A sweep finds the rest by the
+// mark every agent's process inherits (orphanTargets): CLAUDE_CODE_TMPDIR set to
+// its task's `.wherdr-tmp` (agentEnv), never by its folder alone, which an app
+// or daemon of the user's may share.
+import { TMP_DIR } from './run'
 
-export interface Proc { pid: number, ppid: number, pgid: number, age: number, comm: string, cwd?: string }
+export interface Proc { pid: number, ppid: number, pgid: number, age: number, comm: string, tmp?: string }
 
+const MARK = 'CLAUDE_CODE_TMPDIR='
 // Lines `p<pid>`, `P<ppid>`, `g<pgid>`, `t<elapsed>`, `c<command>`, then with
-// $1 = cwd `n<folder>` (lsof -F on macOS, /proc on Linux; peaks.ts does the same).
+// $1 = env `e<its CLAUDE_CODE_TMPDIR>` for the processes that have one (ps -E
+// on macOS, /proc/<pid>/environ on Linux; a process whose environment cannot
+// be read has none).
 export const PROCS_SCRIPT = `ps -A -o pid=,ppid=,pgid=,etime=,comm= | awk '{c=$5; for(i=6;i<=NF;i++) c=c" "$i; print "p"$1; print "P"$2; print "g"$3; print "t"$4; print "c"c}'
-[ "$1" = cwd ] || exit 0
-if [ "$(uname -s)" = Darwin ]; then lsof -a -d cwd -Fpn 2>/dev/null || true
-else find /proc -mindepth 2 -maxdepth 2 -name cwd -printf 'p%h\\nn%l\\n' 2>/dev/null | sed 's|^p/proc/|p|'; fi`
+[ "$1" = env ] || exit 0
+if [ "$(uname -s)" = Darwin ]; then ps -A -wwE -o pid=,command= 2>/dev/null | awk '{for(i=2;i<=NF;i++) if (index($i,"${MARK}")==1) v=substr($i,${MARK.length + 1}); if (v!="") {print "p"$1; print "e"v}; v=""}'
+else grep -a -z -o -m1 '^${MARK}.*' /proc/[0-9]*/environ 2>/dev/null | tr '\\0' '\\n' | awk '{f=$0; sub(":.*","",f); gsub("[^0-9]","",f); print "p"f; print "e"substr($0, index($0,"=")+1)}'; fi`
 
 // TERM, then KILL for those still there after 3 s.
 export const KILL_SCRIPT = `kill -TERM "$@" 2>/dev/null
@@ -40,7 +44,7 @@ export function parseProcs(text: string): Proc[] {
     else if (k === 'g') cur.pgid = Number(v)
     else if (k === 't') cur.age = seconds(v) || 0
     else if (k === 'c') cur.comm = v
-    else if (k === 'n') cur.cwd = v.replace(/ \(deleted\)$/, '')
+    else if (k === 'e') cur.tmp = v
   }
   return [...out.values()].filter(p => p.pid > 1 && p.comm)
 }
@@ -70,35 +74,21 @@ export function groupTargets(procs: Proc[], root: number): number[] {
   return procs.filter(p => mine.has(p.pid) || groups.has(p.pgid)).map(p => p.pid).sort((a, b) => a - b)
 }
 
-const INIT = new Set(['launchd', 'systemd', 'init'])
-const isInit = (p: Proc) => INIT.has(p.comm.split('/').pop()!)
-
 export interface Leftovers { task: string, pids: number[], age: number }
 
-// Per task, the leftovers under `root` (the pm worktrees folder): a process
-// whose topmost parent below init is itself in the worktree of a task with no
-// live agent (or a removed one), with all it started. A user's shell, editor
-// or terminal there has a parent outside it (its app): never touched; nor `keep`.
+// Per task, the leftovers under `root` (the pm worktrees folder): every
+// process marked with the `.wherdr-tmp` of a task with no live agent (or a
+// removed one), wherever it runs and whoever its parent is; never `keep`. A
+// process without the mark (the user's shell, editor, an app or daemon started
+// in a worktree) is never touched.
 export function orphanTargets(procs: Proc[], root: string, live: (task: string) => boolean, keep: number[] = []): Leftovers[] {
-  const by = new Map(procs.map(p => [p.pid, p]))
-  const taskOf = (p: Proc) => {
-    if (!p.cwd || !underRoot(p.cwd, root) || p.cwd === root) return undefined
-    const id = p.cwd.slice(root.replace(/\/$/, '').length + 1).split('/')[0]!
-    return id && !live(id) ? id : undefined
+  const base = `${root.replace(/\/+$/, '')}/`, out = new Map<string, Proc[]>()
+  for (const p of procs) {
+    const [id, tmp, ...rest] = p.tmp?.startsWith(base) ? p.tmp.slice(base.length).replace(/\/+$/, '').split('/') : []
+    if (!id || tmp !== TMP_DIR || rest.length || id === '.' || id === '..' || live(id) || keep.includes(p.pid)) continue
+    out.set(id, [...(out.get(id) ?? []), p])
   }
-  const kids = children(procs), out = new Map<string, Set<number>>()
-  for (const top of procs) {
-    const task = taskOf(top)
-    // A top: its parent is init (re-parented), or a subreaper like systemd --user.
-    const parent = by.get(top.ppid)
-    if (!task || (top.ppid > 1 && !(parent && isInit(parent)))) continue
-    const pids = out.get(task) ?? new Set<number>()
-    for (const pid of tree(kids, top.pid)) if (!keep.includes(pid)) pids.add(pid)
-    out.set(task, pids)
-  }
-  return [...out].filter(([, pids]) => pids.size).map(([task, pids]) => ({
-    task, pids: [...pids].sort((a, b) => a - b), age: Math.max(...[...pids].map(pid => by.get(pid)!.age)),
-  }))
+  return [...out].map(([task, ps]) => ({ task, pids: ps.map(p => p.pid).sort((a, b) => a - b), age: Math.max(...ps.map(p => p.age)) }))
 }
 
 // '6 h', '12 min', '40 s': the log's "killed 7 leftover processes, 6 h old".

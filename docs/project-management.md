@@ -771,14 +771,15 @@ terminal's process tree and each process group in it (a test runner's shells
 keep their group even once re-parented), with TERM, then KILL after 3 seconds,
 on Linux and macOS alike.
 
-At start and every 5 minutes, wherdr also looks on each machine for
-processes whose folder is in a task's worktree (its `.wherdr-tmp` included)
-while that task has no live agent, or no longer exists, and that no terminal
-or app holds any more (re-parented to `launchd`, `init` or `systemd --user`).
-It kills them, with what they started, and says so in the task's log
-(*killed 7 leftover processes, 6 h old*). Your own shell or editor open in a
-worktree is never touched, nor the processes of a task whose agent runs. The
-machine's line in Settings › Machines then says *n leftover processes killed*
+At start and every 5 minutes, wherdr also looks on each machine for the
+processes an agent started that are still there while their task has no live
+agent, or no longer exists. It knows them by the temporary folder they
+inherited from the agent (`CLAUDE_CODE_TMPDIR`, set to the task's
+`.wherdr-tmp`), wherever they run, never by their folder alone. It kills them
+and says so in the task's log (*killed 7 leftover processes, 6 h old*). Your
+own shell, editor, apps and daemons are never touched, even when they run in a
+worktree, nor the processes of a task whose agent runs. The machine's line in
+Settings › Machines then says *n leftover processes killed*
 (since wherdr started).
 
 The wherdr template tells its workers to run a test command that could hang
