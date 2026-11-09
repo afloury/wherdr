@@ -11,6 +11,7 @@ import type { WorkflowChanges } from './workflowChanges'
 import type { ProjectColor } from './projectKey'
 import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, type Autopilot, type FixKind, type limitsLeft } from './autopilot'
 import type { Wake } from './wakes'
+import { CAUSE_RULE } from './incidentWake'
 import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
 import { PUBLIC_RULE, isPublic } from './visibility'
@@ -452,6 +453,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     '- "Autopilot:": your autopilot (its schedule, an agent\'s question, a choice after N send-backs, the routine events the user turned on, the user\'s "run now");',
     '- "Step check: <task> (<step>)": a step you hold, at its start, recheck or timeout; it comes even with the autopilot off;',
     '- "Engine:": the engine gave up on a block after failed fixes, with what it tried;',
+    '- "Incident: <incident>, wake <id>": agents were gone (a restart, a machine offline, a crash, an account limit): once per incident, the engine\'s facts: the cause and its evidence, what it resumed, what still waits and why, what needs you or the user. It comes even with the autopilot off. The engine resumes the rest by itself: tell the user what needs them, start again what needs you, then ack;',
     '- "Health check:": every few hours, a short summary of your project (tasks done since the last check, waiting for the user, stuck for long, machines idle while to-do tasks wait). When nothing in it is wrong, ack at once with no further work: look into a line only when it needs you.',
     'The engine runs the board on its own: it starts to-do tasks while machines have room and moves them through their steps. By default no wake comes for a task done, ready or started, nor for a block the engine fixed itself; you wake only for what needs judgment, and for the health check.', '',
     '## Your memory', '',
@@ -460,6 +462,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     'Every change you make is written to the task\'s or the workflow\'s log with your name.',
     `Quote a file as inline code with its absolute path (\`${p.path.replace(/\/$/, '')}/README.md\`): the user's interface makes it a link.`, '',
     ...docsRule(docs, '`wherdr pm help`', { cmd: 'wherdr pm ui open', places: `one of your project's places (its board, a task, its sheet: KEY ${p.key}) or a global Settings section` }),
+    '## Why a task stopped', '', CAUSE_RULE, '',
     '## What you never do', '',
     `- change a guard (protected branches, who merges): the user does it in ${projectPlace(p.key, 'guards', true)};`,
     '- end a step that waits for the user unless they just told you so (`--user-said` with their words);',
@@ -515,6 +518,9 @@ export function mainRoleFiles(projects: Pick<Project, 'key' | 'name' | 'path' | 
     'Every change you make is written to the task\'s log as the main coordinator\'s.', '',
     '### Project coordinators', '',
     'Each project may have its own coordinator. You reach it only through the board: add a task, a tag or a link it will see. There is no other channel, and you never type into its terminal.', '',
+    '### Why a task stopped', '',
+    'An "Incident: <incident>, wake <id>" message comes from wherdr, once per incident (agents gone after a restart, a machine offline, a crash, an account limit), with the engine\'s facts for every project it hit: the cause and its evidence, what it resumed, what still waits and why, what needs the user. Use it to answer "what happened?" for all projects; the engine resumes the rest by itself. Ack it once read.',
+    CAUSE_RULE, '',
     '### What you never do', '',
     '- approve, merge, change an autopilot; answer a permission request: those are the user\'s;',
     '- change guards other than through `wherdr alfred project guards`, after the user\'s yes;',

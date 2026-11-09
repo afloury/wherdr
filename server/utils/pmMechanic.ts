@@ -25,7 +25,7 @@ import { originOf, pacedStart, paceRefusal } from '../../shared/pm/pace'
 import { paceOf, placeFor, slotsOf } from './pmPlace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { isResumeWait, resumeWait } from '../../shared/pm/recovery'
-import { resumeInterrupted } from './pmRecovery'
+import { resumeInterrupted, wakeIncidents } from './pmRecovery'
 import { advanceTick } from './pmAdvance'
 import { forgetMemory } from './pmMemory'
 import { samplePeaks } from './pmPeaks'
@@ -221,7 +221,8 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   await syncWaits(deps).catch(() => {})
   await advanceTick(deps, now).catch(() => {})
   // Before the chain: a resumed task's followers then see it working.
-  await resumeInterrupted(deps, now).catch(() => {})
+  const resumes = await resumeInterrupted(deps, now).catch(() => null)
+  if (resumes) await wakeIncidents(deps, resumes.busy, now).catch(() => {})
   await releaseIdle(deps, now).catch(() => {})
   await startChained(deps, now).catch(() => {})
   await startHeld(deps, now).catch(() => {})

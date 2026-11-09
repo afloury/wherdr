@@ -4,7 +4,7 @@
 //
 // A wake waits until the coordinator is idle and the user has not written for
 // a minute; its pending reasons go as one message whose first line names its
-// kind (Autopilot, Step check, Engine, Health check). Delivered, it
+// kind (Autopilot, Step check, Engine, Health check, Incident). Delivered, it
 // is open until the coordinator acks it, stays idle 2 min, quits, or 1 h
 // passes; no other wake goes while one is open, except the user's "run now".
 // Not acked within 15 min (and its turn over): delivered once more, then the user is told.
@@ -12,9 +12,10 @@ import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, inHours, type Autopilot } from './
 
 // Who sends it: the autopilot (its schedule, events, the user's "run now"), a
 // step the coordinator holds (its start, recheck or timeout), the engine giving
-// up on a block, or the health check. Old wakes without one: the autopilot.
-export type WakeKind = 'autopilot' | 'step' | 'engine' | 'health'
-export const WAKE_LABEL: Record<WakeKind, string> = { autopilot: 'Autopilot', step: 'Step check', engine: 'Engine', health: 'Health check' }
+// up on a block, the health check, or an incident (incidentWake.ts, about: its
+// id). Old wakes without one: the autopilot.
+export type WakeKind = 'autopilot' | 'step' | 'engine' | 'health' | 'incident'
+export const WAKE_LABEL: Record<WakeKind, string> = { autopilot: 'Autopilot', step: 'Step check', engine: 'Engine', health: 'Health check', incident: 'Incident' }
 
 export interface Wake {
   id: string
