@@ -58,7 +58,7 @@ stops and the new one carries on from the same home folder, `alfred/` in
 wherdr's data folder. There, `AGENTS.md` (and `CLAUDE.md`, `GEMINI.md`,
 `QWEN.md`, which point to it) is wherdr's and rewritten at each start; `identity.md` (its name and tone) and `memory.md` (what it learns about
 you, cleaned up at each start) are its own. Give it another name and the row
-shows it. Alfred reads and changes projects, coordinators and settings with
+shows it as soon as its turn ends. Alfred reads and changes projects, coordinators and settings with
 [`wherdr alfred`](alfred.md): it shows you each
 change first and makes it only after your yes.
 

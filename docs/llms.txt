@@ -39,7 +39,7 @@
 ## Agent list
 
 - [Agents on herdr-core](docs/home.md#agents-on-herdr-core): the live list, states and their counters (agent rows plus the tab's coordinators), quick answers, the sidebar's order, and task agents named after their task, one row per task with a line per agent (role, machine, last message).
-- [Alfred](docs/home.md#alfred): wherdr's assistant, its agent (kept until you change it), home folder and memory.
+- [Alfred](docs/home.md#alfred): wherdr's assistant, its agent (kept until you change it), name, home folder and memory.
 - [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred, with the project's colored key badge, and their menu.
 - [Offered agents](docs/home.md#offered-agents): Settings › Agents, which programs every picker offers and in which order.
 - [Machines as tabs](docs/home.md#machines-as-tabs): the machine tabs and their counts (rows and coordinators), their groups, a machine's actions, and the offline machines' line with Reconnect (no machine chips while all are online).
@@ -52,7 +52,7 @@
 ## Conversation, terminal and files
 
 - [Conversation and replies](docs/conversation.md): transcripts, one-tap answers, quoted replies, attachments and dictation.
-- [Conversations on hc](docs/core.md#conversations): which agents open on their transcript and how it is read.
+- [Conversations on hc](docs/core.md#conversations): which agents open on their transcript and how it is read, and text left unsent in Claude's input box (never shown as read, never glued to the next message).
 - [Terminal](docs/terminal.md): the real terminal, shared viewers and taking control.
 - [Files](docs/files.md): browse an agent's folder, preview text, Markdown, images, PDFs and videos, download.
 - [On a computer](docs/devices.md#on-a-computer): layout and keyboard shortcuts.
@@ -90,7 +90,7 @@
 - [Claude and Codex quotas](docs/quotas.md#claude-and-codex-quotas): remaining usage per account, with the machines sharing it, and its setup.
 - [Pace](docs/quotas.md#pace): Settings › Agents › Pace, when automatic work may start.
 - [Notifications](docs/notifications.md#notifications): Web Push and Do not disturb.
-- [A default and exceptions](docs/notifications.md#a-default-and-exceptions): one synced policy: a default and its exceptions.
+- [A default and exceptions](docs/notifications.md#a-default-and-exceptions): one synced policy: a default and its exceptions, a coordinator's kept across restarts.
 - [Notifications on hc](docs/core.md#notifications): when v3 sends a push, from hc's events.
 
 ## Extending and fixing

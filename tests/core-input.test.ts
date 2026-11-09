@@ -47,6 +47,28 @@ describe('core input routes', () => {
     expect(w.calls.filter(c => c[0] === 'terminal.keys')).toHaveLength(0)
   })
 
+  it('Claude\'s input already holds text: nothing typed, the send is refused', async () => {
+    const t = deps(() => ({ started: true }))
+    t.d.field = async () => '[Image #120] what is wrong here?'
+    await expect(coreSend(t.d, { pane_id: 't1', text: 'and this?' })).rejects.toMatchObject({ code: 'input_busy' })
+    expect(t.calls).toEqual([])
+  })
+
+  it('our photo message left in Claude\'s input (also during a turn): Enter once; not for other text', async () => {
+    const msg = '/home/user/.cache/herdr-web/uploads/a.jpg\nwhat is wrong here?'
+    const long = `${msg}\n${Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n')}`
+    for (const [text, after, enters] of [[msg, '[Image #120] what is wrong here?', 1], [msg, '', 0], [msg, '[Image #120] what is wrong here? more', 0],
+      // A long paste, shown as its stand-in: still ours alone.
+      [long, '[Image #120] what is wrong here? [Pasted text #1 +29 lines]', 1], [long.split('\n').slice(1).join('\n'), '[Pasted text #1 +29 lines]', 1]] as const) {
+      const t = deps(m => (m === 'terminal.send' ? { started: false } : {}))
+      t.d.settleMs = 1
+      let reads = 0
+      t.d.field = async () => (reads++ ? after : null)
+      await coreSend(t.d, { pane_id: 't1', text })
+      expect(t.calls.filter(c => c[0] === 'terminal.keys')).toHaveLength(enters)
+    }
+  })
+
   it('sends a multi-line "!" command as it is, in one terminal.send', async () => {
     // Claude Code 2.1.318 runs the whole text in bash mode, lines included.
     const cmd = '! cd /srv/app\nnpm run build\n. ./env.sh dev\nls dist/'

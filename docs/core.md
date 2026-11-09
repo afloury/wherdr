@@ -116,6 +116,13 @@ paint of a passive `terminal.attach`) confirms it is typed text, not Claude's gr
 check that the box emptied and a turn started) and **Clear**. When Claude's queue offers
 "ctrl+enter to send now", the conversation offers **Send now** too. Each action re-reads the
 screen first and refuses a box that changed (`server/utils/coreDraft.ts`).
+A message sent from wherdr that Claude left in that box (a photo message is pasted, and
+Claude may keep a paste there) is pressed Enter once more when the box holds it alone,
+also during a turn; while it stays there, its bubble reads **Not sent yet · waiting in
+the agent's input**, never **Read by the agent**, and the box's own bubble is not shown
+twice. A new message is never typed into a box that holds text: Claude would submit both
+as one message. The send is refused ("Not sent", with Retry): send or clear that text
+first (`server/utils/coreInput.ts`).
 
 ## Creating terminals and agents, machines
 
