@@ -103,7 +103,8 @@ its folder, branches and task worktrees stay on the machine.
   saved, wherdr runs that machine's readiness check (see *Start on…* under
   [Board](#board)) and shows *Ready* or what is missing. Each machine shows its
   last check (*Not checked yet* before the first); ↻ runs it again. ✕ removes a machine:
-  new tasks no longer start there, tasks already there stay. Alfred does the
+  new tasks no longer start there, tasks already there stay. Its switch off pauses it
+  for the project instead, its clone kept ([Pause a machine for a project](machines.md#pause-a-machine-for-a-project)). Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
   **Placement** chooses how new tasks spread over these machines: *Heavy to the
   strongest* (the default: light and standard work at home when it fits, heavy

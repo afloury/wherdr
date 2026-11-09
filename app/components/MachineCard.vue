@@ -46,6 +46,7 @@ const time = (r: MemoryRow, field: 'from' | 'to', e: Event) => saveHours(r, { [f
     </div>
     <div v-if="memory" class="machine-memory">
       <span class="mono-label" :class="{ wait: memory.short }" data-testid="memory-line">{{ memory.line }}</span>
+      <span v-if="memory.pausedAll" class="mono-label wait" data-testid="machine-paused-all">{{ t('Paused in every project') }}</span>
       <div class="memory-form">
         <label>{{ t('Automatic starts wait under (GB free)') }}
           <input class="pm-select" type="number" min="0" max="256" step="0.5" :value="memory.settings.minFreeMb === undefined ? '' : gb(memory.settings.minFreeMb)" :placeholder="auto(memory.autoReserve, 'GB')" data-testid="memory-min" @change="saveMemory(memory, 'minFreeGb', $event)">
