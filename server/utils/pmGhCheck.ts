@@ -9,6 +9,7 @@ import { prReady, taskGuards } from '../../shared/pm/actions'
 import { requiredChecks } from '../../shared/pm/board'
 import { mayMerge } from '../../shared/pm/guards'
 import { taskPlan, type Task } from '../../shared/pm/run'
+import { waitsToMerge } from '../../shared/pm/steps'
 import { actionShell } from './pmActions'
 import { stepAction } from './pmBoard'
 import { runOn } from './pmLaunch'
@@ -50,8 +51,9 @@ export async function checkOnGithub(deps: CoreAdminDeps & { store: PmStore }, id
   const guards = taskGuards(t, task.type), step = plan[s.at]
   let text = openWhy(pr, requiredChecks(plan), guards, s.done ? undefined : step)
   let next: Task = task
-  // A merge the engine may do, ready now: its next pass tries it again, even after an attempt it already made.
-  if (!s.done && !step?.guarded && mayMerge(guards, pr.baseRefName, 'engine') && prReady(pr, pr.headRefOid, step?.action?.checks).ok && task.mech) {
+  // A merge the engine may do (or one the user approved), ready now: its next pass tries it again, even after an attempt it already made.
+  const engineMerges = (!step?.guarded && mayMerge(guards, pr.baseRefName, 'engine')) || (waitsToMerge(step) && !!s.approved && !s.catchUp)
+  if (!s.done && engineMerges && prReady(pr, pr.headRefOid, step?.action?.checks).ok && task.mech) {
     next = { ...task, mech: Object.fromEntries(Object.entries(task.mech).filter(([k]) => !k.startsWith('merge:'))) }
     text += '. wherdr tries the merge again within a minute'
   }

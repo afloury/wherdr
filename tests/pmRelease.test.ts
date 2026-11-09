@@ -120,14 +120,14 @@ describe('work the engine handed the worker', () => {
     await store.saveTemplate(wherdr)
     await store.addProject({ key: 'WH', machine: 'm1', path: '/home/u/wh', template: 'wherdr' }, async (_m, p) => p)
     await store.addTask({ project: 'WH', title: 'Fix it', type: 'visual' })
-    const env = { prHead: 'abc1234', push: { code: 0, out: '' }, calls: [] as [string, Record<string, unknown>][] }
+    const env = { head: 'abc1234', prHead: 'abc1234', merge: { code: 3, out: 'conflict with v3 in a.ts' }, push: { code: 0, out: '' }, calls: [] as [string, Record<string, unknown>][] }
     const out = (code: number, text: string) => ({ code, stdout: Buffer.from(text).toString('base64') })
     const call = async (method: string, p: Record<string, unknown>) => {
       env.calls.push([method, p])
       if (method === 'machine.exec') {
         const script = (p.argv as string[])[2]!
-        if (script.includes('gh pr list --head')) return out(0, `abc1234\n${JSON.stringify([{ url: 'https://github.com/o/r/pull/9', baseRefName: 'v3', headRefOid: env.prHead, mergeStateStatus: 'DIRTY', statusCheckRollup: [] }])}`)
-        if (script.includes('merge -q --no-edit')) return out(3, 'conflict with v3 in a.ts')
+        if (script.includes('gh pr list --head')) return out(0, `${env.head}\n${JSON.stringify([{ url: 'https://github.com/o/r/pull/9', baseRefName: 'v3', headRefOid: env.prHead, mergeStateStatus: 'DIRTY', statusCheckRollup: [] }])}`)
+        if (script.includes('merge -q --no-edit')) return out(env.merge.code, env.merge.out)
         if (script.includes('ls-remote')) return out(env.push.code, env.push.out)
         if (script.includes('command -v')) return out(0, 'claude')
         if (script.includes('$HOME')) return out(0, '/home/u')
@@ -145,7 +145,7 @@ describe('work the engine handed the worker', () => {
     return { store, deps, env, log: async () => (await store.task('WH-1'))!.log!.map(e => e.text) }
   }
 
-  it('a catch-up sent to the agent keeps its agents and leaves Your turn until it is pushed', async () => {
+  it('a catch-up sent to the agent keeps its agents, then the pushed resolution is checked and reviewed again', async () => {
     const { store, deps, env, log } = await setup()
     await mechanicTick(deps, 0)
     expect(env.calls.some(c => c[0] === 'terminal.send' && /Merge origin\/v3/.test(String(c[1].text)))).toBe(true)
@@ -153,12 +153,14 @@ describe('work the engine handed the worker', () => {
     expect(sent.yourTurn).toBeUndefined()
     expect(sent.agent).toMatchObject({ kind: 'catch-up', head: 'abc1234' })
     expect(await releaseIdle(deps, 3 * RELEASE_IDLE_MS)).toEqual([])
-    // Pushed: the merge is the user's again.
-    env.prHead = 'def5678'
+    // Pushed: the engine checks the PR again; clean now, the resolution is reviewed before the user's turn.
+    env.head = env.prHead = 'def5678'
+    env.merge = { code: 0, out: 'def5678' }
     await mechanicTick(deps, 4 * RELEASE_IDLE_MS)
     const t = (await store.task('WH-1'))!
     expect(t.step!.agent).toBeUndefined()
-    expect(t.step!.yourTurn).toMatchObject({ reason: 'user' })
+    expect(t.step!.catchUp).toBeUndefined()
+    expect(t.step!.rereview).toEqual({ since: 'abc1234', head: 'def5678' })
     expect(await log()).toContain('catch-up: the worker pushed it')
   })
 
