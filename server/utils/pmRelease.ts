@@ -10,6 +10,7 @@ import { actionShell } from './pmActions'
 import { endAgents, load } from './pmStop'
 import { forgetMemory } from './pmMemory'
 import { placeFor } from './pmPlace'
+import { reviveWeight, weightOf } from '../../shared/pm/weight'
 
 type StatusTerminal = LabelledTerminal & { status?: string | { state?: string } | null }
 const busyNow = (t?: StatusTerminal) => {
@@ -71,7 +72,9 @@ export async function reviveWorker(deps: PmLaunchDeps, id: string, why: string, 
   const { task, plan } = await load(deps, id)
   const worker = (await store.runs()).filter(r => r.task === id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
   if (!worker) return
-  const placed = await placeFor(deps, task)
+  const t = await store.workflow(task.project).catch(() => null)
+  const weight = reviveWeight(weightOf(t, task).weight, task.step && plan[task.step.at], task.step?.shots)
+  const placed = await placeFor(deps, task, { weight })
   if ('hold' in placed) {
     if (!heldLogged.has(id)) await store.logTask(task, 'engine', `the worker starts again once there is room (${why}): ${placed.hold}`)
     return void heldLogged.add(id)
