@@ -456,7 +456,16 @@ waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
 *Open the agent* or *Open the reviewer*, *Stop*, *Delete…*). Step times start
 with this version: an older task shows only its total. Below, tabs: **Description** (the text rendered as Markdown, as in the chat but with no raw HTML; tags, links and the PR),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
-and screenshots) and **Log**. A refused merge says why under its button.
+and screenshots), **History** and **Log**. A refused merge says why under its button.
+
+**History** reads the task as a conversation, oldest first: the worker's *Done*
+(its closing report on its last one), the reviewer's *Sent back* (the findings,
+with their weight) or *Passed* (what it left as minor), the worker's *Fixed*
+(and the findings it contested), wherdr's catch-ups and CI fixes, the
+coordinator's and your actions. Each entry says who, when and, for an agent,
+its program and model; its text is Markdown, folded past a few lines with
+*Show more*. Only the worker's last report is kept, so an earlier *Done* says
+just that. **Log** keeps the raw lines, newest first.
 
 **Check on GitHub** shows on a task with a PR at its merge step, or archived:
 wherdr reads the PR now, for a merge stuck after a guard refusal, a PR merged
