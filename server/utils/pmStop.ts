@@ -7,6 +7,7 @@ import { cleanTask } from './pmCleanup'
 import { onEvent } from '../../shared/pm/steps'
 import { archivedStep, doneTurnRepair, handoverText, removeRefusal, resumeRefusal, stopRefusal, stoppedTask, type Resume, type Stopper } from '../../shared/pm/stop'
 import { taskPlan, type Task } from '../../shared/pm/run'
+import { killTerminal } from './pmProcs'
 
 export async function load(deps: PmLaunchDeps, id: unknown) {
   const task = await deps.store.task(id)
@@ -34,7 +35,7 @@ export async function endAgents(deps: Pick<PmLaunchDeps, 'store' | 'call'>, task
   const { store } = deps
   let saved = task
   for (const r of (await store.runs()).filter(x => x.task === task.id && x.state !== 'ended')) {
-    const err = r.terminal ? await deps.call('terminal.kill', { terminal: r.terminal }, 15000).then(() => '', (e: Error) => e.message) : ''
+    const err = r.terminal ? await killTerminal(deps, r.terminal).then(() => '', (e: Error) => e.message) : ''
     await store.saveRun({ ...r, state: 'ended', endedBy })
     saved = await store.logTask(saved, 'engine', err ? `could not end the ${r.role} (${err}): close its terminal by hand` : `ended the ${r.role} (${r.program} ${r.model})${why}; its worktree stays`)
   }

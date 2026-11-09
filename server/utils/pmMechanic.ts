@@ -35,6 +35,7 @@ import { agentBack, fixWatch, handToAgent, retriesAction, wasReleased } from '..
 import { noteBack, noteStall } from './pmStall'
 import { askedQuestion } from './pmRead'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
+import { killTerminal } from './pmProcs'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -345,7 +346,7 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
   switch (move.kind) {
     case 'restart':
       // The agent stopped on its login may still sit in its terminal: one agent per task.
-      if (run.terminal && run.state !== 'ended') await deps.call('terminal.kill', { terminal: run.terminal }, 15000).catch(() => {})
+      if (run.terminal && run.state !== 'ended') await killTerminal(deps, run.terminal).catch(() => {})
       await deps.store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
       await deps.store.saveTask({ ...task, waitKind: undefined })
       return `the login is back; ${(await startTask(deps, task.id)).state}`

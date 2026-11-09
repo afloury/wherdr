@@ -7,7 +7,9 @@
 // minute the engine makes its mechanical moves (pmMechanic.ts). Every 30 s,
 // one grouped push for new Decisions (pmDecisions.ts), and the projects'
 // automations fire (pmAutomations.ts). Every minute, one task's summary is
-// made again after a new report or verdict (pmSummary.ts). A merge cut by the last restart goes on
+// made again after a new report or verdict (pmSummary.ts). At start and every
+// 5 minutes, the processes left in the worktrees of tasks with no live agent
+// are killed (pmProcs.ts). A merge cut by the last restart goes on
 // (resumeMerges), and a shutdown first waits a little for a merge that runs.
 import { coreAdminDeps } from '../utils/coreAdminDeps'
 import { reconcileRuns } from '../utils/pmLaunch'
@@ -21,6 +23,7 @@ import { decisionsTick } from '../utils/pmDecisions'
 import { automationTick } from '../utils/pmAutomations'
 import { resumeMerges } from '../utils/pmBoard'
 import { mergesSettled } from '../utils/pmActions'
+import { sweepOrphans } from '../utils/pmProcs'
 import { summaryTick } from '../utils/pmSummary'
 
 // Under Nitro's 30 s shutdown and the updater's wait before it kills the server.
@@ -46,6 +49,7 @@ export default defineNitroPlugin((nitroApp) => {
       void sweepWorktrees({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})
       void rewriteRoleFiles({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})
       void resumeMerges({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})
+      void sweepOrphans({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})
     }, () => {})
   }, 10_000)
   const wakes = every(30_000, () => wakeTick({ ...coreAdminDeps(), store: pmStore() }))
@@ -53,8 +57,9 @@ export default defineNitroPlugin((nitroApp) => {
   const decisions = every(30_000, () => decisionsTick(pmStore()))
   const automations = every(30_000, () => automationTick({ ...coreAdminDeps(), store: pmStore() }))
   const summaries = every(60_000, () => summaryTick({ store: pmStore() }))
+  const orphans = every(300_000, () => sweepOrphans({ ...coreAdminDeps(), store: pmStore() }))
   nitroApp.hooks.hook('close', async () => {
-    clearInterval(timer); clearInterval(wakes); clearInterval(mechanic); clearInterval(decisions); clearInterval(automations); clearInterval(summaries)
+    clearInterval(timer); clearInterval(wakes); clearInterval(mechanic); clearInterval(decisions); clearInterval(automations); clearInterval(summaries); clearInterval(orphans)
     await mergesSettled(MERGE_WAIT_MS)
   })
 })
