@@ -308,7 +308,7 @@ async function escalate(deps: PmLaunchDeps, task: Task, now: number) {
   const { store } = deps
   const coords = new Map([[task.project, await store.coordinator(task.project)], [MAIN, await store.coordinator(MAIN)]])
   const keys = wakesFor([task.project, MAIN], k => coords.get(k) ?? undefined, now)
-  for (const key of keys) await store.saveWakes([enqueue(await store.wakes(), key, [why], now, randomUUID().replace(/-/g, '').slice(0, 8))])
+  for (const key of keys) await store.saveWakes([enqueue(await store.wakes(), key, [why], now, randomUUID().replace(/-/g, '').slice(0, 8), false, { kind: 'engine' })])
   const woken = keys.map(k => (k === MAIN ? 'the main coordinator' : 'the project\'s coordinator'))
   await store.logTask({ ...task, selfFix: { ...task.selfFix!, woke: now } }, 'engine', `gave up: ${why}${woken.length ? ` Woke ${woken.join(' and ')}.` : ''}`)
 }

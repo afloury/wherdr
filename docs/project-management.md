@@ -36,6 +36,10 @@ new project.
 5. **Start its coordinator.** Pick the agent and start it: the coordinator is
    the agent you talk to about the project. It adds tasks and follows them on
    the board. Its [autopilot](#autopilot) can be set under it (optional).
+   It keeps a memory of its own, `memory.md` in its folder: your decisions
+   and preferences, read at each start. wherdr never rewrites it, so the
+   coordinator remembers them after a restart or a change of agent (Claude,
+   Codex…).
 6. **Add a first task.** A title and, with several, its type.
 
 **New › Project** also opens a project's coordinator, or adds a new or empty
@@ -95,7 +99,8 @@ its folder, branches and task worktrees stay on the machine.
   own (*Home*, its folder), read only. *Add a machine* picks one of the connected
   machines and takes the path of the repository's clone there (`~/project`); once
   saved, wherdr runs that machine's readiness check (see *Start on…* under
-  [Board](#board)) and shows *Ready* or what is missing. ✕ removes a machine:
+  [Board](#board)) and shows *Ready* or what is missing. Each machine shows its
+  last check (*Not checked yet* before the first); ↻ runs it again. ✕ removes a machine:
   new tasks no longer start there, tasks already there stay. Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
   **Placement** chooses how new tasks spread over these machines: *Heavy to the
@@ -111,6 +116,13 @@ its folder, branches and task worktrees stay on the machine.
   again in its worktree (a catch-up, red CI, a send-back, the step it is woken
   for) is weighed by what it does, not by its type: heavy only while its step
   still lacks its screenshots, standard otherwise.
+- **Shown in**: the home tab that shows the project's coordinator and its tasks
+  to handle, saved at once. *Automatic* (the default, with the groups it means
+  in brackets): every tab holding one of its machines, so a project whose
+  machines are in several groups shows on each of them. Or one machine group,
+  or *All tabs*. Without a machine group the sheet points to Settings ›
+  Appearance › Machine tabs; deleting a group puts the projects shown in it
+  back to Automatic ([Machines as tabs](home.md#machines-as-tabs)).
 
 ### Workflow
 
@@ -222,7 +234,10 @@ kept conversation that ran with another agent. A tap opens its window:
 
 - the agent that answers the coordinator (Alfred's too), and a warning when its conversation
   ran with another one: *New conversation* with the default, or *Resume* the one kept (for
-  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it;
+  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it; when its
+  conversation stopped (its terminal ended, for example when its machine
+  restarted), *Resume the conversation* takes it up again with the agent that
+  ran it, and *New conversation* starts a new one;
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's
@@ -235,13 +250,19 @@ kept conversation that ran with another agent. A tap opens its window:
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
   even with nothing to do, with its own *New tasks / day*), and **Keep the
   board busy** (see below). The form says *Unsaved changes* until you save;
-- its wakes, each created, delivered and acknowledged, and *Run now*.
+- its wakes and *Run now*: one line for the last wake (*Last wake 15:44*, its
+  reason, *handled* or how it ended), a highlighted line for each other wake not
+  handled (waiting, no answer, timed out, coordinator gone), and *History* folds
+  the full list, each wake with its id, created, delivered and acknowledged times.
 
 Automatic work (the autopilot, automations) waits while an account is ahead of
 its [pace](quotas.md#pace) (a machine whose account waits is skipped) or no
 machine the project allows has room for the task
 ([Machines](machines.md#manage-machines)), whatever the task counts; your own
-starts never wait.
+starts never wait. The autopilot's limits and hours (*Tasks / day*, *At once*,
+the hours) hold automatic work only too: a start you ask Alfred or a coordinator
+for goes at once, with a word when it goes past one (*started; past the
+autopilot's limit of 3 at once*), and still counts in them.
 
 **Keep the board busy** (on by default while the autopilot is on): the engine
 itself starts the next task to do, oldest first, whenever a machine the project
@@ -260,6 +281,22 @@ paced, offline), and what each weight counts (*light* ≈ 0.7 GB, *standard* ≈
 gives the machine a started task runs on. Its instructions say the engine
 places tasks, `task start --on` picks a machine and `task add --weight` sets a
 weight that differs from the task type's.
+
+### Who sends a wake
+
+A wake is a message wherdr sends the coordinator; its first line names who
+sends it, and the conversation shows a small label of that kind above it:
+
+- **Autopilot**: the autopilot's scheduled wakes, its events and *Run now*;
+- **Step check** (`Step check: CO-1 (deploy)`): a step the coordinator holds,
+  such as *watch the deploy*, at its start, each `recheck` and its timeout. It
+  comes even with the autopilot off;
+- **Engine**: wherdr gave up on a block after failed fixes
+  ([What wherdr fixes on its own](#what-wherdr-fixes-on-its-own));
+- **Health check**: wherdr's health check found something to look at.
+
+Each kind is its own wake, sent one after the other. Every wake ends with
+`wherdr pm ack <id>`, whatever its kind.
 
 ### What a task's agent said
 
@@ -280,7 +317,8 @@ project's columns, or *To do*, *Working* and *Done* for all projects. A done
 or archived task is never under Your turn.
 
 A card shows the task's title, its id (a badge in the project's color: a tap
-copies it, *Copied*, without opening the task) and step, how long it has been in that
+copies it, *Copied*, without opening the task), the machine it runs on when its
+project allows several (*machine-b*), its step, how long it has been in that
 step (*12 min in review*) or, once done, how long it took from start to done
 (*42 min*), a dot with its agent's state (worker or reviewer), where its PR stands (*PR open · waiting for checks*,
 *checks failed*, *merging*, *The PR conflicts with v3*, *merged …*), what you have to do under
@@ -326,7 +364,10 @@ action), standard otherwise. The coordinator does the same with `task add
 
 ## Task sheet
 
-A card opens the task's sheet: its id badge by the title (a tap copies it) and step, a note when it waits or was
+A card opens the task's sheet. Tasks to handle, Decisions' *Open task* and a task
+link in the chat (`#/board?task=ID`) open it over the page you are on (a bottom
+sheet on a phone), with `?task=ID` added to that page's address, so it survives a
+reload and can be shared; closing it leaves the page as it was. The sheet shows its id badge by the title (a tap copies it) and step, a note when it waits or was
 stopped, the time it spent in each step with the time it waited for you apart,
 its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
 waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
@@ -386,6 +427,10 @@ of the entry. An agent that is not on screen here opens the sheet instead.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (start it, open its agent). A failed action step (a merge GitHub
   refused) has *Try again* at the top of the sheet, which runs it again.
+
+On a phone, the To do buttons (*Merge*, the step's button, *Open the PR*,
+*Start*, *Open the agent*) stay pinned at the bottom of the tab while its
+content scrolls, so they are always in reach above the home bar.
 
 ### Report a problem
 

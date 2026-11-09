@@ -6,10 +6,12 @@
 // midnight of each chosen day up to `cap` at the weekly reset; 'free' keeps a
 // weekly reserve of `reservePerDay` per day left before the reset. A burn
 // (one-shot, before a reset) replaces the usual mode from its start to the
-// reset. Every mode keeps the 5-hour reserve.
+// reset. Every mode keeps the 5-hour reserve, except 'unlimited' (shown as
+// 'Free'): no line, no reserve, no burn; automatic work stops only when the
+// account itself hits its limit.
 import type { Quota, QuotaWindow } from '../types'
 
-export type PaceMode = 'workdays' | 'everyday' | 'free'
+export type PaceMode = 'unlimited' | 'workdays' | 'everyday' | 'free'
 
 export interface BurnSettings {
   cap: number // weekly % the burn may reach
@@ -31,7 +33,7 @@ export interface PacePolicy {
 }
 
 export const DEFAULT_PACE: PacePolicy = {
-  mode: 'free', days: [1, 2, 3, 4, 5], cap: 90, reserve5h: 25, reservePerDay: 10, margin: 2,
+  mode: 'unlimited', days: [1, 2, 3, 4, 5], cap: 90, reserve5h: 25, reservePerDay: 10, margin: 2,
   stale: { minutes: 30, margin: 5 },
 }
 export const DEFAULT_BURN: BurnSettings = { cap: 95, atOnce: 3, reserve5h: 10 }
@@ -127,6 +129,7 @@ export function paceVerdict(policy: PacePolicy, quota: Quota | null, now: number
     intent === 'user' ? { go: true, warn: reason } : { go: false, reason, until }
   if (!quota) return { go: true, unknown: true }
   if (quota.limited && (quota.limited.resetsAt === null || quota.limited.resetsAt > now)) return refuse('limited', quota.limited.resetsAt)
+  if (policy.mode === 'unlimited') return { go: true }
 
   const week = current(quota.week, now), five = current(quota.five, now)
   if (!week?.resetsAt && !five) return { go: true, unknown: true }
@@ -151,7 +154,7 @@ export function paceVerdict(policy: PacePolicy, quota: Quota | null, now: number
   return intent === 'auto' && checks[0]?.reason === 'burnCap' ? { go: true, atOnce: policy.burn!.atOnce } : { go: true }
 }
 
-const PACE_MODES: PaceMode[] = ['workdays', 'everyday', 'free']
+const PACE_MODES: PaceMode[] = ['unlimited', 'workdays', 'everyday', 'free']
 const pctIn = (v: unknown, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : undefined)
 
 // The user's changes to a policy (Settings › Pace), checked field by field over

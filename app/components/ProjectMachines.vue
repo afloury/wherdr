@@ -2,13 +2,14 @@
 // The project sheet's Machines block (General tab): the machines its tasks may
 // run on. Home is the project's own (read only); each other one has its clone
 // of the repo, and is added (among herdr-core's connected machines) or removed
-// through project-update. After an add, that machine's readiness check runs
-// (project-machine-check) and its result shows under it. Placement: how its
+// through project-update. Under each one: its last readiness check (ready: the
+// sheet's reading of it), run again with Check and at once after an add
+// (project-machine-check). Placement: how its
 // tasks spread over these machines (shared/pm/placement.ts), saved at once.
 import { allowedMachines, type Project } from '#shared/pm/project'
 import { STRATEGIES, STRATEGY_LABELS, type Strategy } from '#shared/pm/placement'
 
-const props = defineProps<{ project: Project }>()
+const props = defineProps<{ project: Project, ready?: Record<string, string> }>()
 const emit = defineEmits<{ changed: [] }>()
 const p = computed(() => props.project)
 
@@ -21,8 +22,21 @@ const addable = computed(() => machines.value
 const form = reactive({ machine: '', clone: '' })
 const busy = ref('')
 const error = ref('')
-// Each machine's last check here: checking, or its failures ('' ready).
+// Each machine's check run here: checking, or its failures ('' ready).
 const checks = reactive<Record<string, { checking: true } | { refused: string }>>({})
+// What shows under a machine: this sheet's check, else the last one wherdr ran, else none yet.
+const status = (k: string) => {
+  const c = checks[k]
+  if (c && 'checking' in c) return { text: tl('Checking…'), bad: false }
+  const refused = c ? c.refused : props.ready?.[k]
+  if (refused === undefined) return { text: tl('Not checked yet'), bad: false }
+  return refused ? { text: tl(`Not ready: ${refused}`), bad: true } : { text: tl('Ready'), bad: false }
+}
+async function check(k: string) {
+  checks[k] = { checking: true }
+  try { checks[k] = { refused: (await api<{ refused?: string }>('/api/pm/project-machine-check', { key: p.value.key, machine: k })).refused ?? '' } }
+  catch (e) { checks[k] = { refused: (e as Error).message } }
+}
 
 const save = (machines: string[], clones: Record<string, string> = {}) => api('/api/pm/project-update', { key: p.value.key, machines, clones })
 async function run(what: string, fn: () => Promise<unknown>) {
@@ -38,9 +52,7 @@ const add = () => run('add', async () => {
   await save([...others.value, k], { [k]: form.clone.trim() })
   Object.assign(form, { machine: '', clone: '' })
   emit('changed')
-  checks[k] = { checking: true }
-  try { checks[k] = { refused: (await api<{ refused?: string }>('/api/pm/project-machine-check', { key: p.value.key, machine: k })).refused ?? '' } }
-  catch (e) { checks[k] = { refused: (e as Error).message } }
+  await check(k)
 })
 const strategies = STRATEGIES.map(s => ({ label: tl(STRATEGY_LABELS[s]), value: s }))
 const strategy = computed({
@@ -66,10 +78,11 @@ const remove = (k: string) => run(`rm:${k}`, async () => {
     <div v-for="k in others" :key="k" class="pm-machine" data-testid="pm-machine">
       <span>{{ labelOf(k) }}</span>
       <small class="pm-clone">{{ ltr(p.clones?.[k] ?? '') }}</small>
-      <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-x" :aria-label="tl(`Remove ${labelOf(k)}`)" :loading="busy === `rm:${k}`" :disabled="busy !== ''" data-testid="pm-machine-remove" @click="remove(k)" />
-      <small v-if="checks[k]" class="pm-ready" :class="{ bad: 'refused' in checks[k]! && checks[k]!.refused }" data-testid="pm-machine-ready">
-        {{ 'checking' in checks[k]! ? tl('Checking…') : checks[k]!.refused ? tl(`Not ready: ${checks[k]!.refused}`) : tl('Ready') }}
-      </small>
+      <span class="pm-machine-actions">
+        <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-refresh-cw" :aria-label="tl(`Check ${labelOf(k)}`)" :disabled="!!checks[k] && 'checking' in checks[k]!" data-testid="pm-machine-check" @click="check(k)" />
+        <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-x" :aria-label="tl(`Remove ${labelOf(k)}`)" :loading="busy === `rm:${k}`" :disabled="busy !== ''" data-testid="pm-machine-remove" @click="remove(k)" />
+      </span>
+      <small class="pm-ready" :class="{ bad: status(k).bad }" data-testid="pm-machine-ready">{{ status(k).text }}</small>
     </div>
     <form class="pm-machine-add" @submit.prevent="add">
       <USelect v-model="form.machine" :items="addable" size="lg" :placeholder="tl('Add a machine')" :aria-label="tl('Machine to add')" data-testid="pm-machine-pick" />
@@ -90,6 +103,7 @@ const remove = (k: string) => run(`rm:${k}`, async () => {
 .pm-machines { display: grid; gap: 8px; }
 .pm-machine { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; }
 .pm-clone { color: var(--muted); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; overflow-wrap: anywhere; }
+.pm-machine-actions { display: flex; }
 .pm-ready { grid-column: 1 / -1; color: var(--muted); overflow-wrap: anywhere; }
 .pm-ready.bad { color: var(--blocked); }
 .pm-placement { display: flex; align-items: center; gap: 10px; }

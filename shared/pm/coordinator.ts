@@ -38,6 +38,12 @@ export const canRunCoordinator = (program: unknown, key: string): program is Coo
   key === MAIN ? isCoordinatorProgram(program) : (GUARDED_PROGRAMS as readonly unknown[]).includes(program)
 // Each harness's own instructions file, pointing to AGENTS.md.
 export const ROLE_POINTERS: Record<string, string> = { 'CLAUDE.md': '@AGENTS.md\n', 'GEMINI.md': '@AGENTS.md\n', 'QWEN.md': '@AGENTS.md\n' }
+
+// A coordinator's memory (Alfred's too): its own file, created when missing and
+// never overwritten, so it outlives restarts and a change of program.
+export const MEMORY_CAP = 4000
+export const MEMORY_FILE = `# Memory\n\n<!-- The user's decisions and preferences, and what you learn about their setup, one fact per line. Under ${MEMORY_CAP} characters. -->\n`
+export const OWN_ROLE_FILES: Record<string, string> = { 'memory.md': MEMORY_FILE }
 // The main coordinator: one for all projects, kept under this reserved key
 // (never a project key: those start with a letter).
 export const MAIN = '_main'
@@ -109,11 +115,11 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'step done <task> [--link <url>]', does: 'end the task\'s current step when you hold it (holder: coordinator)' },
   { usage: 'step done <task> --user-said "<their words>"', does: 'end a step that waits for the user, with the user\'s own words; only in a turn that comes from the user' },
   { usage: 'task decide <task> <choice> --reason "<one sentence>"', does: 'after N send-backs, pick one of the engine\'s options' },
-  { usage: 'ack <wake> [<wake>…]', does: 'say you handled an Autopilot wake (each wake ends with its id); unacked, it comes back once, then the user is told' },
+  { usage: 'ack <wake> [<wake>…]', does: 'say you handled a wake (each wake ends with its id); unacked, it comes back once, then the user is told' },
   { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, whether it looks for new work (and how many tasks those wakes may still add today), the scheduled wakes skipped today (nothing to do, or ahead of the pace), what is left of today\'s limits, the pacing of your worker\'s account (go, or what automatic work waits for), each machine the project allows (online or offline, its available hours, memory, cores and load, its agents at work by weight, the heaviest weight it takes now or why none) and the weights (what each counts, the weight of each task type)' },
   { usage: 'automation list', does: 'the project\'s automations: on or off, schedule or event, last firing' },
   { usage: 'automation show <automation>', does: 'one automation, its prompt and its last firings; only the user adds or changes them, in wherdr' },
-  { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there; while it is offline the task goes to another allowed machine that fits, else waits for it. A started task always goes back to its own machine' },
+  { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, past the autopilot\'s limits and hours (the output says when: "started; past the autopilot\'s limit of 3 at once"; the start still counts in them), in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there; while it is offline the task goes to another allowed machine that fits, else waits for it. A started task always goes back to its own machine' },
   { usage: 'task check <task>', does: 'read the task\'s PR on GitHub now, for a task at its merge step or archived with a PR: merged, its merge step ends as merged and the task goes on; open, why it waits; closed without a merge, said (the user may archive it). At any time, when the user asks to unblock a task' },
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
@@ -297,11 +303,14 @@ export function stepDoneEvent(step: PlannedStep | undefined, cmd: { userSaid?: s
 // ~/.codex) extends :workspace (reads everywhere, writes in its folder and
 // temp folders) with the network on. The others start bare in the folder.
 // works: the project's folder is the coordinator's to change (a folder without git).
-export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string, works = false): string[] {
-  if (program === 'claude') return ['claude', ...(repo ? ['--add-dir', repo] : [])]
-  if (program === 'codex') return ['codex', '-C', folder, ...(repo && works ? ['--add-dir', repo] : []), '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true']
+// resume: its last conversation again, the last one started in its own folder
+// (Claude and Codex only, see canResume), with the same options.
+export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string, works = false, resume = false): string[] {
+  if (program === 'claude') return ['claude', ...(resume ? ['--continue'] : []), ...(repo ? ['--add-dir', repo] : [])]
+  if (program === 'codex') return ['codex', '-C', folder, ...(repo && works ? ['--add-dir', repo] : []), '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true', ...(resume ? ['resume', '--last'] : [])]
   return [program]
 }
+export const canResume = (program: CoordinatorProgram) => program === 'claude' || program === 'codex'
 // Claude and Codex take the first message as an argument; the others get it
 // typed once they are ready.
 export const promptAsArg = (program: CoordinatorProgram) => program === 'claude' || program === 'codex'
@@ -402,7 +411,8 @@ const stepLine = (s: PlannedStep) => `- ${s.id} (${s.column ?? s.id}): ${[
 
 export const commandList = (t?: Template | null) => COMMANDS.filter(c => !c.usage.startsWith(GUARDED_COMMAND) || t?.guards?.contributorPrs).map(c => `- \`wherdr pm ${c.usage}\`: ${c.does}`)
 
-// The files of the coordinator's folder, path → text. Nothing outside it.
+// The files of the coordinator's folder wherdr rewrites, path → text (its own
+// files: OWN_ROLE_FILES). Nothing outside it.
 // docs: wherdr's docs folder, when the coordinator runs on wherdr's machine.
 export function roleFiles(p: Project, t: Template | null, examples: Template[], docs?: string): Record<string, string> {
   // A folder without git: no task worktree, the coordinator does the work there itself.
@@ -414,7 +424,13 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     plain
       ? `You coordinate project ${p.key} only. Its folder is ${p.path}, without git: its tasks cannot start (a task needs git for its own worktree), so you do the work yourself, directly in that folder: read and change its files as the user asks. Add no task for that work.`
       : `You coordinate project ${p.key} only. Its repository is ${p.path}: read it, never change it; task agents do the work in their own worktrees.`,
-    'Messages that start with "Autopilot:" are wakes sent by the engine; the others come from the user. The server knows which, and refuses what a wake may not do.', '',
+    'Wakes are messages sent by wherdr, not the user; the first line names who sends it. The server knows which, and refuses what a wake may not do:',
+    '- "Autopilot:": your autopilot (its schedule, its events, the user\'s "run now");',
+    '- "Step check: <task> (<step>)": a step you hold, at its start, recheck or timeout; it comes even with the autopilot off;',
+    '- "Engine:": the engine gave up on a block after failed fixes, with what it tried;',
+    '- "Health check:": wherdr\'s health check found something to look at.', '',
+    '## Your memory', '',
+    `\`memory.md\` in your folder is yours: wherdr creates it once and never rewrites it, so it outlives a restart and a change of program. Read it first, at each start, and follow it: the user's decisions and preferences there come before your defaults. Note there, as you go, each decision or preference the user gives you, one fact per line; nothing a command or the board already says. Keep it clean: merge duplicates, drop stale lines, stay under ${MEMORY_CAP} characters.`, '',
     '## Commands (your token: this project only)', '', ...commandList(t), '',
     'Every change you make is written to the task\'s or the workflow\'s log with your name.',
     `Quote a file as inline code with its absolute path (\`${p.path.replace(/\/$/, '')}/README.md\`): the user's interface makes it a link.`, '',
@@ -428,7 +444,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     ...(contributorPrsLine(t?.guards) ? ['', '## What you may do on the user\'s yes', '', contributorPrsLine(t?.guards)!] : []), '',
     ...(isPublic(p) ? ['## Public repository', '', PUBLIC_RULE,
       'This holds for what you write too: each task description you write (`task add --description`) says the repository is public and repeats this rule. wherdr gives every task\'s worker and reviewer the rule as well.', ''] : []),
-    'Each Autopilot wake ends with its id: once you have handled it, run `wherdr pm ack <id>`. The engine already fixes PR bases, re-runs CI that failed on the infrastructure, retries pushes (synced with the remote first when refused), runs an interrupted action again, catches up branches (a conflict goes to the worker), sends red CI back, nudges then restarts a stalled agent and merges what the branch rule allows: leave those to it. It wakes you for one of those blocks only after 2 failed tries, with what it tried.',
+    'Each wake ends with its id: once you have handled it, run `wherdr pm ack <id>`. The engine already fixes PR bases, re-runs CI that failed on the infrastructure, retries pushes (synced with the remote first when refused), runs an interrupted action again, catches up branches (a conflict goes to the worker), sends red CI back, nudges then restarts a stalled agent and merges what the branch rule allows: leave those to it. It wakes you for one of those blocks only after 2 failed tries, with what it tried.',
     `What it cannot fix, a wake may unblock with \`tell --fix\` when the block is mechanical: ${FIX_KINDS.map(k => FIX_TEXT[k]).join(', ')}. With the autopilot on, at most ${FIXES_PER_STEP} times per task and step; then the block is the user's: tell them.`,
     ...(plain ? [''] : ['The engine also moves each started task through its steps: when the worker says it is done, it runs the next step (a PR, a reviewer of another model, a merge the branch rule allows) and sends a review\'s findings back to the worker. It starts a task with "after" once those tasks are done, and makes it wait for the user when one of them failed. It starts no other task: add the tasks your goal needs with `task add` (chain a follow-up with `--after`), and start the next one with `task start`.', '',
     '## Machines', '',

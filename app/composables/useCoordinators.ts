@@ -44,6 +44,8 @@ export const alfredPane = computed(() => (alfred.value?.terminal ? herdrState.va
 export const coordinatorOf = (p?: Pane | null) => (p?.coreAddress ? coordinators.value.find(c => c.terminal === p.coreAddress) : undefined)
 // A coordinator's name, as the sidebar shows it: Alfred's current name for the main one.
 export const coordinatorName = (c: CoordinatorView) => (c.main ? alfred.value?.name || 'Alfred' : tl(`${c.label ?? c.project} coordinator`))
+// Alfred's own pane: its header shows its emblem.
+export const isAlfredPane = (p?: Pane | null) => Boolean(p?.coreAddress && p.coreAddress === alfred.value?.terminal)
 // A pane's project key badge, in its header: a project coordinator's key (its
 // title then reads "coordinator"), or a task agent's task id (shown key, WD-5).
 export function paneBadge(p?: Pane | null): { text: string, color?: string, coordinator?: true } | null {
@@ -76,15 +78,20 @@ export function coordinatorNameOf(project: string) {
 }
 // The pane of a coordinator's kept conversation, while it runs.
 export const coordinatorPane = (c: CoordinatorView) => (c.terminal ? herdrState.value?.panes.find(p => p.coreAddress === c.terminal) : undefined)
+// Its conversation stopped (its terminal ended: its machine restarted, say):
+// it can be resumed. Unknown until herdr-core's panes are read live (ok), and
+// while the offline copy shows: a running one would look stopped.
+export const coordinatorStopped = (c: CoordinatorView) => !!c.terminal && !!c.ran && herdrState.value.ok && !offlineView.value && !coordinatorPane(c)
 
 // Its kept conversation runs with another agent than its default, and the user did not choose to resume it.
 export const coordinatorMismatch = (c: CoordinatorView) => !!coordinatorPane(c) && !!c.ran && !sameAgent(c.ran, coordinatorAgent(c)) && !resumedCoordinators.value.includes(c.terminal!)
 
 // A new conversation (its default agent, or the user's first that can run it,
-// unless one is given), then its pane once herdr-core shows it.
-export async function launchCoordinator(project: string, agent?: CoordinatorAgent) {
+// unless one is given), or its last one resumed, then its pane once herdr-core shows it.
+export async function launchCoordinator(project: string, agent?: CoordinatorAgent | 'resume') {
   const c = coordinators.value.find(x => x.project === project)
-  const { terminal } = await api<{ terminal: string }>('/api/pm/coordinator-start', { project, ...(agent ?? (c ? coordinatorAgent(c) : undefined)) })
+  const how = agent === 'resume' ? { resume: true } : agent ?? (c ? coordinatorAgent(c) : undefined)
+  const { terminal } = await api<{ terminal: string }>('/api/pm/coordinator-start', { project, ...how })
   await loadCoordinators()
   for (let i = 0; i < 40; i++) {
     const p = herdrState.value?.panes.find(x => x.coreAddress === terminal)
