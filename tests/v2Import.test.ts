@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanProjectInput } from '../shared/pm/project'
-import { detectV2, mapMachines, mapProjects, mapSettings, mapTasks, parseEnvFile, parseUnit, readBoard, remapMachineSettings, runImport, sshProblem, v3MachineKey } from '../scripts/v2-import.mjs'
+import { V2_PROJECTS, detectV2, mapCandidates, mapMachines, mapSettings, parseEnvFile, parseUnit, readBoard, remapMachineSettings, runImport, sshProblem, v3MachineKey } from '../scripts/v2-import.mjs'
 import { EXIT, buildCommand, buildTuning, deployUnits, hcTarget, hcUnit, main, parseArgs, pickHttpsPort, unitProtections, updateScript, v3Unit } from '../scripts/install-v3-beside-v2.mjs'
 
 const FIX = path.resolve(__dirname, 'fixtures/v2-install')
@@ -82,35 +82,14 @@ describe('import mapping', () => {
   const board = readBoard(path.join(FIX, 'herdr-projects'))
   const exists = (p: string) => !p.endsWith('/gone')
 
-  it('turns board repos into valid v3 projects, with key, base branch and the settings left to redo', () => {
-    const r = mapProjects(board, [], exists)
-    expect(r.projects.map((p: { key: string }) => p.key)).toEqual(['APP', 'MYDOCS', 'SITE'])
-    expect(r.projects[0]).toMatchObject({ name: 'app', machine: '', path: '/home/user/code/app', base: 'develop', left: ['merge.by', 'reviewer.agent'] })
-    for (const p of r.projects) expect(cleanProjectInput(p).errors).toEqual([])
-    expect(r.skipped).toEqual([{ name: 'gone', path: '/home/user/code/gone', reason: 'folder missing' }])
-  })
-
-  it('keeps a project already in v3 and takes another key when one is used', () => {
-    const r = mapProjects(board, [{ key: 'APP', name: 'other', machine: '', path: '/elsewhere', addedAt: 1 }, { key: 'SITE', name: 'site', machine: '', path: '/home/user/code/site', addedAt: 1 }], exists)
-    expect(r.projects.map((p: { key: string }) => p.key)).toEqual(['APP2', 'MYDOCS'])
-    expect(r.byRepo.site).toBe('SITE')
-  })
-
-  it('imports open tasks only, keeping their v2 number when it is free, and lists the others', () => {
-    const r = mapTasks(board, { app: 'APP' }, [{ id: 'APP-7', project: 'APP' }], {}, 5)
-    expect(r.tasks.map((t: { from: string, v2: string, task: { id: string, state: string } }) => [t.from, t.v2, t.task.id, t.task.state])).toEqual([['app/1', 'APP-1', 'APP-1', 'todo'], ['app/2', 'APP-2', 'APP-2', 'todo']])
-    expect(r.tasks[0].task).toMatchObject({ project: 'APP', title: 'Fix the login form', description: 'The form loses focus.', origin: 'user', createdAt: 1700000000000 })
-    expect(r.tasks[0].task.log[0].text).toBe('Imported from v2 APP-1 (herdr-projects app/1), stage todo')
-    expect(r.listed).toEqual([{ id: 'site/1', title: 'New landing page', reason: 'its project site was not imported' }])
-  })
-
-  it('renumbers a task whose number v3 already uses, after the kept ones, and says so in its description', () => {
-    const r = mapTasks(board, { app: 'APP', site: 'SITE' }, [{ id: 'APP-1', project: 'APP' }], {}, 5)
-    expect(r.tasks.map((t: { task: { id: string } }) => t.task.id)).toEqual(['APP-3', 'APP-2', 'SITE-1'])
-    expect(r.tasks[0]).toMatchObject({ v2: 'APP-1', renamed: true, task: { description: 'From v2 APP-1.\n\nThe form loses focus.' } })
-    expect(r.tasks[1]).toMatchObject({ renamed: false, task: { description: '' } })
-    // site's v2 key "x" is not a valid key: v2 showed it as site/1.
-    expect(r.tasks[2]).toMatchObject({ v2: 'site/1', renamed: true, task: { description: 'From v2 site/1.\n\nHero and pricing.' } })
+  it('lists board repos as v3 project candidates, with a free key, base branch, settings to redo and open tasks', () => {
+    const r = mapCandidates(board, [{ key: 'SITE', name: 'other', machine: '', path: '/elsewhere', addedAt: 1 }], exists)
+    expect(r.projects.map((p: { key: string, here: boolean }) => [p.key, p.here])).toEqual([['APP', true], ['GONE', false], ['MYDOCS', true], ['SITE2', true]])
+    expect(r.projects[0]).toMatchObject({ name: 'app', path: '/home/user/code/app', base: 'develop', left: ['merge.by', 'reviewer.agent'] })
+    for (const p of r.projects) expect(cleanProjectInput({ ...p, machine: '' }).errors).toEqual([])
+    // Open tasks only, by the name v2 showed (site's key "x" is not valid: site/1).
+    expect(r.projects[0].tasks).toEqual([{ v2: 'APP-1', stage: 'todo', title: 'Fix the login form', description: 'The form loses focus.' }, { v2: 'APP-2', stage: 'progress', title: 'Add dark mode', description: '' }])
+    expect(r.projects[3].tasks.map((t: { v2: string }) => t.v2)).toEqual(['site/1'])
   })
 
   it('carries the settings v3 reads, never over a v3 value', () => {
@@ -151,7 +130,7 @@ describe('import mapping', () => {
 })
 
 describe('runImport', () => {
-  it('writes v3 projects, tasks, settings and the report, leaves v2 byte-identical, and is idempotent', () => {
+  it('lists v2 projects for Alfred without adding any, writes settings and the report, leaves v2 byte-identical, and is idempotent', () => {
     const before = hashTree(FIX)
     const data = tmp()
     const repoRoot = tmp()
@@ -161,10 +140,11 @@ describe('runImport', () => {
     const { run, calls } = fakeRun()
     const r = runImport({ v2, dataDir: data, run, exists, hcSession: 'test', hcReachable: true, now: 1000 })
 
-    const projects = JSON.parse(fs.readFileSync(path.join(data, 'projects/projects.json'), 'utf8')).projects
-    expect(projects.map((p: { key: string }) => p.key)).toEqual(['APP', 'SITE'])
+    expect(fs.existsSync(path.join(data, 'projects/projects.json'))).toBe(false)
+    expect(fs.existsSync(path.join(data, 'projects/tasks'))).toBe(false)
+    const listed = JSON.parse(fs.readFileSync(path.join(data, V2_PROJECTS), 'utf8')).projects
+    expect(listed.map((p: { key: string, here: boolean, tasks: unknown[] }) => [p.key, p.here, p.tasks.length])).toEqual([['APP', true, 2], ['GONE', false, 0], ['MYDOCS', false, 0], ['SITE', true, 1]])
     expect(JSON.parse(fs.readFileSync(path.join(data, 'projects/pm.json'), 'utf8')).enabled).toBe(true)
-    expect(fs.readdirSync(path.join(data, 'projects/tasks')).sort()).toEqual(['APP-1.json', 'APP-2.json', 'SITE-1.json'])
     const settings = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).settings
     expect(settings).toMatchObject({ theme: 'dark', typewriterSpeed: 'fast', showQuotas: '0' })
     // Group Perso: Laptop (added as laptop) is remapped, Build VPS (not added) dropped.
@@ -176,8 +156,8 @@ describe('runImport', () => {
     expect(r.machines.missing).toMatchObject([{ target: 'vps', reason: expect.stringMatching(/unreachable/), note: expect.stringMatching(/session was work/) }])
 
     const report = fs.readFileSync(path.join(data, 'migration-report.md'), 'utf8')
-    expect(report).toContain('| APP | app | /home/user/code/app | develop | merge.by, reviewer.agent |')
-    expect(report).toContain('APP-2 ← v2 APP-2 (progress): Add dark mode')
+    expect(report).toContain('| APP | app | /home/user/code/app | develop | 2 | merge.by, reviewer.agent |')
+    expect(report).toContain('| GONE | gone | /home/user/code/gone (not on this machine) |  | 0 |  |')
     expect(report).toContain('Added laptop (v2 name Laptop → laptop), user@laptop')
     expect(report).toContain('**To do:** build-vps (v2 name Build VPS → build-vps), vps: unreachable')
     expect(report).toMatch(/\*\*Passkeys\*\*: not moved/)
@@ -185,9 +165,7 @@ describe('runImport', () => {
     expect(report).toContain('- machineGroups, group Perso: Build VPS (v2 f27df2ea) dropped: no v3 machine was made from it')
 
     const again = runImport({ v2, dataDir: data, run: fakeRun().run, exists, hcSession: 'test', hcReachable: true, now: 2000 })
-    expect(again.projects.added).toEqual([])
-    expect(again.tasks.added).toEqual([])
-    expect(fs.readdirSync(path.join(data, 'projects/tasks'))).toHaveLength(3)
+    expect(again.projects.candidates).toEqual(r.projects.candidates)
     expect(fs.readdirSync(path.join(data, 'migration')).filter(f => f.startsWith('report-'))).toHaveLength(1) // the first report is kept
     expect(hashTree(FIX)).toBe(before)
   })
@@ -221,7 +199,7 @@ describe('runImport', () => {
     const v2 = { ...detectV2({ ...v2Opts, run: fakeRun().run }), dataDir: path.join(FIX, 'wherdr/data') }
     const { run, calls } = fakeRun()
     const r = runImport({ v2, dataDir: data, run, exists: () => true, dryRun: true })
-    expect(r.projects.added.length).toBe(4)
+    expect(r.projects.candidates.length).toBe(4)
     expect(r.machines.added).toMatchObject([{ name: 'laptop', planned: true }])
     expect(calls.some(c => c.startsWith('hc machine add'))).toBe(false)
     expect(fs.readdirSync(data)).toEqual([])

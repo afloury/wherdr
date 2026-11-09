@@ -24,7 +24,7 @@ export const SETTING_VALUES: Partial<Record<SyncedSetting, readonly string[]>> =
 const settable = (k: string): k is SyncedSetting => Object.hasOwn(SETTING_VALUES, k)
 
 export type AlfredCommand =
-  | { name: 'help' | 'projects' | 'templates' | 'machines' | 'coordinators' | 'settings' }
+  | { name: 'help' | 'projects' | 'templates' | 'machines' | 'coordinators' | 'settings' | 'v2' }
   | { name: 'project', key: string }
   | { name: 'coordinator open', key: string }
   // Changes: a dry run unless apply.
@@ -34,33 +34,39 @@ export type AlfredCommand =
   // No change given: the project's guards are shown.
   | { name: 'project guards', apply: boolean, key: string, change: { protect?: string[], mergeProtected?: MergeBy, mergeOthers?: MergeBy, contributorPrs?: 'off' | 'others' | 'all' } }
   | { name: 'setting set', apply: boolean, key: SyncedSetting, value: string }
+  // Another machine its tasks may run on (by key or label), with its clone; or no longer.
+  | { name: 'project machine', apply: boolean, key: string, machine: string } & ({ action: 'add', clone: string } | { action: 'remove' })
 
 // One table for the parser's usage errors, `help` and AGENTS.md.
 export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'projects', does: 'whether projects are on, and each project (key, name, machine, folder, template)' },
   { usage: 'project <KEY>', does: 'one project, its coordinator and its tasks by state' },
-  { usage: 'templates', does: 'the saved templates' },
+  { usage: 'templates', does: 'the saved templates, and the examples (example:<id>) a project\'s template can start from' },
   { usage: 'machines', does: 'the machines herdr-core knows (key, label, status); the key "" is this machine' },
   { usage: 'coordinators', does: 'each coordinator: its agent and whether it runs' },
   { usage: 'coordinator open <KEY>', does: 'the link that opens a running project coordinator, to give the user' },
+  { usage: 'v2', does: 'when the user comes from wherdr v2: its projects the migration listed (suggested key, name, folder on this machine and whether it is there: here, base branch, v2 settings to redo, open tasks), each with the v3 project made from it, if any, and the migration report' },
   { usage: 'settings', does: 'the synced settings, their values, and the values each one Alfred may change accepts (1 = on, 0 = off)' },
   { usage: 'project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]', does: 'add a project: a git folder on a machine' },
-  { usage: 'project template <KEY> <id|none>', does: 'give the project a template, or none' },
+  { usage: 'project template <KEY> <id|none>', does: 'replace the project\'s workflow with a copy of a template or example:<id> (its guards come with it), or none' },
   { usage: 'project guards <KEY> [--protect <branch,branch|none>] [--merge-protected user|engine] [--merge-others user|engine] [--contributor-prs off|others|all]', does: 'the project\'s guards: protected branches, who merges into them and into the others (user: the user, engine: wherdr), and whether its coordinator may merge an outside contributor\'s PR after the user\'s yes (others: not into a branch reserved for the user; all: into any); without an option, shown only. A project coordinator never changes them' },
+  { usage: 'project machine add <KEY> <machine> --clone <folder>', does: 'let the project\'s tasks run on another machine (its key or label), in its clone of the repo there; once applied, the machine\'s readiness check runs and its result is in the answer' },
+  { usage: 'project machine remove <KEY> <machine>', does: 'the project\'s tasks no longer start on that machine (tasks already there stay)' },
   { usage: 'coordinator start <KEY> [--program claude|codex]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one)' },
   { usage: 'setting set <key> <value>', does: 'change a setting to one of the values `settings` lists for it' },
 ]
 
 const KEY_RE = /^[A-Za-z][A-Za-z0-9]{1,9}$/
-const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/
+const ID_RE = /^(example:)?[a-z0-9][a-z0-9-]{0,39}$/
 const FLAGS: Record<string, string[]> = {
   'project add': ['machine', 'path', 'name', 'template'],
   'coordinator start': ['program'],
   'project guards': ['protect', 'merge-protected', 'merge-others', 'contributor-prs'],
+  'project machine': ['clone'],
 }
 
-export const CHANGES = ['project add', 'project template', 'project guards', 'coordinator start', 'setting set']
-const usage = (verb: string) => ({ error: `usage: wherdr alfred ${ALFRED_COMMANDS.find(c => c.usage.startsWith(verb))!.usage}${CHANGES.includes(verb) ? ' [--apply]' : ''}` })
+export const CHANGES = ['project add', 'project template', 'project guards', 'project machine', 'coordinator start', 'setting set']
+const usage = (verb: string) => ({ error: `usage: wherdr alfred ${ALFRED_COMMANDS.filter(c => c.usage.startsWith(verb)).map(c => c.usage).join(' | ')}${CHANGES.some(v => verb.startsWith(v)) ? ' [--apply]' : ''}` })
 
 // argv after `wherdr alfred` → a command, or the reason it is not one.
 // --apply (no value) makes a change; without it, the change is only shown.
@@ -84,19 +90,19 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
   if (apply && !CHANGES.includes(verb)) return { error: '--apply is for a change only' }
   const key = (k: string | undefined) => (k && KEY_RE.test(k) ? k.toUpperCase() : '')
 
-  if (['help', 'projects', 'templates', 'machines', 'coordinators', 'settings'].includes(w0) && !w1)
+  if (['help', 'projects', 'templates', 'machines', 'coordinators', 'settings', 'v2'].includes(w0) && !w1)
     return { name: w0 as 'help' }
-  if (w0 === 'project' && words.length === 2 && !['add', 'template', 'guards'].includes(w1)) return key(w1) ? { name: 'project', key: key(w1) } : usage('project <KEY>')
+  if (w0 === 'project' && words.length === 2 && !['add', 'template', 'guards', 'machine'].includes(w1)) return key(w1) ? { name: 'project', key: key(w1) } : usage('project <KEY>')
   if (verb === 'coordinator open') return key(w2) && !w3 ? { name: verb, key: key(w2) } : usage(verb)
   if (verb === 'project add') {
     const { machine, path, name, template } = flags
     if (!key(w2) || w3 || machine === undefined || !path) return usage(verb)
-    if (template !== undefined && !ID_RE.test(template)) return { error: '--template is a template id (see wherdr alfred templates)' }
+    if (template !== undefined && !ID_RE.test(template)) return { error: '--template is a template id or example:<id> (see wherdr alfred templates)' }
     return { name: verb, apply, input: { key: key(w2), machine, path, ...(name ? { name } : {}), ...(template ? { template } : {}) } }
   }
   if (verb === 'project template') {
     if (!key(w2) || !w3 || rest.length) return usage(verb)
-    if (w3 !== 'none' && !ID_RE.test(w3)) return { error: 'The template is a template id, or none' }
+    if (w3 !== 'none' && !ID_RE.test(w3)) return { error: 'The template is a template id, example:<id>, or none' }
     return { name: verb, apply, key: key(w2), template: w3 === 'none' ? '' : w3 }
   }
   if (verb === 'project guards') {
@@ -106,6 +112,12 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
     if ([mp, mo].some(v => v !== undefined && !MERGE_BY.includes(v as MergeBy))) return { error: '--merge-protected and --merge-others are user or engine' }
     const branches = protect === undefined ? undefined : protect === 'none' ? [] : protect.split(',').map(b => b.trim()).filter(Boolean)
     return { name: verb, apply, key: key(w2), change: { ...(branches ? { protect: branches } : {}), ...(mp ? { mergeProtected: mp as MergeBy } : {}), ...(mo ? { mergeOthers: mo as MergeBy } : {}), ...(cp ? { contributorPrs: cp as 'off' } : {}) } }
+  }
+  if (verb === 'project machine') {
+    const [machine, more] = rest, { clone } = flags
+    if ((w2 !== 'add' && w2 !== 'remove') || !key(w3) || !machine || more !== undefined) return usage(verb)
+    if (w2 === 'remove') return clone === undefined ? { name: verb, apply, key: key(w3), action: w2, machine } : { error: '--clone is for add only' }
+    return clone ? { name: verb, apply, key: key(w3), action: w2, machine, clone } : usage(`${verb} add`)
   }
   if (verb === 'coordinator start') {
     // A program only: it runs with its harness's default model.

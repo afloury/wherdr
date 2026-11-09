@@ -55,7 +55,7 @@ const cases: [string, Card, string, string[]][] = [
   ['a stopped task', waiting({ yourTurn: 'Stopped by the user: wrong way', stopped: { by: 'the user', why: 'wrong way', at: 1 }, state: at(1) }), 'stopped', []],
   ['a step the user ends', waiting({ yourTurn: 'Deploy it', userLabel: 'Deployed', state: at(4, { yourTurn: { reason: 'user', badge: 'Deploy it' } }) }), 'step', ['step-user']],
   ['an agent question', waiting({ yourTurn: 'Which port?', asks: { kind: 'question', text: 'Which port?' }, state: at(1) }), 'ask', []],
-  ['a refused merge', waiting({ yourTurn: 'Merge: merge: 2 check(s) failed', state: at(4, { yourTurn: { reason: 'action', badge: 'Merge: merge: 2 check(s) failed' } }) }), 'refused', ['step-user']],
+  ['a refused merge', waiting({ yourTurn: 'Merge: merge: 2 check(s) failed', state: at(4, { yourTurn: { reason: 'action', badge: 'Merge: merge: 2 check(s) failed' } }) }), 'refused', ['task-retry', 'task-report-start']],
   ['a blocked task', waiting({ yourTurn: 'WHR-2, which this task starts after, failed', phase: 'todo', state: undefined }), 'blocked', ['task-start']],
 ]
 
@@ -84,5 +84,21 @@ it('a visual merge is sent back with a note', async () => {
   await w.get('textarea[data-testid="todo-back-note"]').setValue('The button is cut on the phone')
   await w.get('[data-testid="todo-back"]').trigger('submit')
   await vi.waitFor(() => expect(sentBack).toEqual({ id: 'WHR-1', note: 'The button is cut on the phone' }))
+  w.unmount()
+})
+
+it('renders the description as Markdown, with no raw HTML', async () => {
+  const description = 'Intro with **bold** and `npm test`.\n\n- one\n- two\n\n<img src=x onerror="alert(1)"><script>alert(2)</script><b style="color:red">raw</b>'
+  const w = await mountSuspended(TaskSheet, { props: { card: { ...card, yourTurn: undefined, description } }, global: { stubs } })
+  await w.get('[data-tab="description"]').trigger('click')
+  const desc = w.get('[data-testid="task-description"]')
+  expect(desc.find('strong').text()).toBe('bold')
+  expect(desc.find('code').text()).toBe('npm test')
+  expect(desc.find('code').attributes('role')).toBeUndefined() // not a chat control here
+  expect(desc.findAll('li').map(li => li.text())).toEqual(['one', 'two'])
+  expect(desc.find('script').exists()).toBe(false)
+  expect(desc.find('[onerror]').exists()).toBe(false)
+  expect(desc.find('[style]').exists()).toBe(false)
+  expect(desc.text()).toContain('<script>alert(2)</script>') // shown as text
   w.unmount()
 })

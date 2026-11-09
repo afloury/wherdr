@@ -5,7 +5,7 @@
 // the persisted queue, then each coordinator's queue ticks (shared/pm/wakes.ts): delivery once it is idle and the user is quiet, the
 // end of an open wake, a missed ack tried again, then a push to the user.
 import { randomUUID } from 'node:crypto'
-import { MAIN, coordinatorWake } from '../../shared/pm/coordinator'
+import { MAIN, coordinatorBy, coordinatorWake } from '../../shared/pm/coordinator'
 import { LOOK_REASON, autopilotEvents, bump, inHours, scheduledWake, sentence, skippedWake, today } from '../../shared/pm/autopilot'
 import { projectPace } from './pmPace'
 import { durationMs } from '../../shared/pm/steps'
@@ -64,7 +64,7 @@ async function gather(deps: WakeDeps, now: number) {
     const c = await store.coordinator(p.key)
     if (!c) continue
     const ap = c.autopilot, mine = tasks.filter(x => p.key === MAIN || x.project === p.key)
-    const ev = autopilotEvents(ap ?? { on: false, goal: '', events: [], perDay: 0, atOnce: 0 }, mine, c.seen ?? {})
+    const ev = autopilotEvents(ap ?? { on: false, goal: '', events: [], perDay: 0, atOnce: 0 }, mine, c.seen ?? {}, { key: p.key, by: coordinatorBy(p.key) })
     const on = !!ap?.on && !!c.terminal && inHours(ap.hours, new Date(now))
     // The first look only notes where tasks stand.
     if (on && c.seen) add(p.key, ev.reasons)
@@ -117,7 +117,7 @@ export async function wakeTick(deps: WakeDeps, now = Date.now()) {
     const r = tickWakes(queue, key, { status, lastUserAt: c?.userAt, now })
     if (r.deliver) {
       await noteTurn(store, key, 'wake', undefined, r.deliver.reasons.some(x => x.includes(LOOK_REASON)))
-      try { await deps.call('terminal.send', { terminal: c!.terminal, text: wakeText(r.deliver) }, 30000) }
+      try { await deps.call('terminal.send', { terminal: c!.terminal, text: wakeText(r.deliver, key !== MAIN && !!c?.autopilot?.on) }, 30000) }
       catch { r.changed.splice(r.changed.indexOf(r.deliver), 1, { ...r.deliver, deliveredAt: undefined, tries: r.deliver.tries - 1 }) }
     }
     await store.saveWakes(r.changed)

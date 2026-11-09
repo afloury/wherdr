@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto'
 import { cleanProjectInput, isBranch, machinesOf, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
 import { defaultColor, keyClash, projectOf, renamed, shownKey, storedTaskId } from '../../shared/pm/projectKey'
 import type { RepoVisibility } from '../../shared/pm/visibility'
-import { startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
+import { WEIGHTS, isWeight, startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
 import { publicTask, type Run, type Task, type TaskLogEntry } from '../../shared/pm/run'
 import { afterIds } from '../../shared/pm/advance'
@@ -23,8 +23,8 @@ import { SHOT_FILE_RE } from '../../shared/pm/shots'
 import { withMark } from '../../shared/pm/times'
 import { HerdrError } from './herdr'
 import type { FolderOptions } from '../../shared/pm/newProject'
-import { MAIN, type CoordinatorAgent, type Proposal, type ProposalOutcome } from '../../shared/pm/coordinator'
-import type { Autopilot, DayCount, LastWake, TaskStatus } from '../../shared/pm/autopilot'
+import { MAIN, type CoordinatorAgent, type Proposal, type ProposalAnswer } from '../../shared/pm/coordinator'
+import { NEW_AUTOPILOT, type Autopilot, type DayCount, type LastWake, type TaskStatus } from '../../shared/pm/autopilot'
 import { readQueue, type Wake } from '../../shared/pm/wakes'
 import type { Automation, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
@@ -37,7 +37,7 @@ import { DATA_DIR } from './env'
 export interface CoordinatorRecord {
   // cliHash: Alfred's `wherdr alfred` token (the main coordinator's record only).
   project: string, tokenHash: string, cliHash?: string, terminal?: string, turn?: { kind: 'user' | 'wake', at: number, said?: string, look?: true }
-  agent?: CoordinatorAgent, ran?: CoordinatorAgent, proposal?: Proposal, answered?: { outcome: ProposalOutcome, at: number }
+  agent?: CoordinatorAgent, ran?: CoordinatorAgent, proposal?: Proposal, answered?: ProposalAnswer
   // userAt: the user's last message. seen: each task's status at the last tick; ranAt: the last interval wake.
   userAt?: number, autopilot?: Autopilot, seen?: Record<string, TaskStatus>, ranAt?: number
   atRan?: number // the last scheduled wake at fixed times (autopilot.at), or when it was set
@@ -249,6 +249,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await writeJson(path.join(files.tasks, `${id}.json`), next)
       return next
     }),
+    // Where it is on this machine, for the coordinator to open.
+    shotPath: (id: string, file: string) => path.join(files.shots, id, file),
     shot: (id: string, file: string) => (TASK_ID_RE.test(id) && SHOT_FILE_RE.test(file) ? fs.readFile(path.join(files.shots, id, file)).catch(() => null) : Promise.resolve(null)),
     // A line of the task's log, saved with the task.
     logTask: (t: Task, by: string, text: string) => write(async () => {
@@ -303,7 +305,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     receipt: (id: string) => readJson<Receipt>(path.join(files.receipts, `${id}.json`)),
     saveReceipt: (r: Receipt) => write(() => writeJson(path.join(files.receipts, `${r.id}.json`), r)),
 
-    // { project, title, description?, type, after?, auto?, origin? }: a new task, to do (origin: 'user' when unset).
+    // { project, title, description?, type, after?, auto?, origin?, addedBy? }: a new task, to do (origin: 'user' when unset).
     addTask: (raw: unknown) => write(async () => {
       const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
       const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string).trim() : '')
@@ -318,9 +320,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const after = afterIds({ after: str('after') }).map(a => storedTaskId([p], a) ?? a).join(',')
       const known = await tasks()
       if (afterIds({ after }).some(a => !known.some(t => t.id === a && t.project === p.key))) throw badInput([{ path: 'after', message: 'tasks of the same project, comma-separated' }])
-      const auto = str('auto')
+      const auto = str('auto'), addedBy = str('addedBy').slice(0, 100)
+      if (o.weight !== undefined && o.weight !== '' && !isWeight(o.weight)) throw badInput([{ path: 'weight', message: `one of ${WEIGHTS.join(', ')}` }])
+      const weight = isWeight(o.weight) ? o.weight : undefined
       const origin = (['coordinator', 'automation', 'mission'] as const).find(x => x === o.origin) ?? 'user'
-      const task: Task = { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(after ? { after } : {}), ...(auto ? { auto } : {}) }
+      const task: Task = { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(after ? { after } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}) }
       await writeJson(path.join(files.tasks, `${task.id}.json`), task)
       return task
     }),
@@ -341,6 +345,9 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       let added: Project = { ...fields, color: fields.color ?? defaultColor(list), path: folder, ...(git ? {} : { git: false as const }), addedAt: Date.now() }
       if (source) added = { ...added, from: (await copyTemplate(added.key, source, 'user')).from }
       await saveProjects([...list, added])
+      // A new project's tasks at once: Auto, from its machines (an existing project keeps its number).
+      const coordinator = path.join(files.coordinators, `${added.key}.json`)
+      if (!(await readJson(coordinator))) await writeJson(coordinator, { project: added.key, tokenHash: '', autopilot: NEW_AUTOPILOT } satisfies CoordinatorRecord)
       return added
     }),
 
@@ -370,10 +377,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const next = update.key ?? shownKey(list[i]!)
       const clash = keyClash(list, next, rest.key)
       if (clash) throw new HerdrError('exists', `Project ${clash.name} already has the key ${next}`)
-      const { machines: _m, clones: _c, ...kept } = rest
+      const { machines: _m, clones: _c, placement: _s, ...kept } = rest
+      const placement = update.placement ?? rest.placement
       const allowed = machinesOf(rest, update)
       if (allowed.errors.length) throw badInput(allowed.errors)
-      list[i] = { ...kept, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...(base ? { base } : {}), ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}) }
+      list[i] = { ...kept, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...(base ? { base } : {}), ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}) }
       await saveProjects(list)
       return list[i]!
     }),
@@ -417,6 +425,29 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const old = await readJson<Template>(file)
       if (old && !replace) throw new HerdrError('exists', 'A template already has this id')
       return { id: id!, version: await saveVersioned(file, path.join(files.templateLog, `${id}.json`), t as Template, old, by, said) }
+    }),
+
+    // A library template gets a new id (its version and log come along). No
+    // project depends on it: "Based on" is information only, renamed with it.
+    renameTemplate: (id: unknown, to: unknown) => write(async () => {
+      if (typeof to !== 'string' || !isTemplateId(to)) throw badInput([{ path: 'to', message: 'lowercase letters, digits, . _ -' }])
+      const t = await knownTemplate(typeof id === 'string' ? id : '')
+      if (to === t.id) return { id: to }
+      const file = path.join(files.templates, `${to}.json`)
+      if (await readJson(file)) throw new HerdrError('exists', 'A template already has this id')
+      const log = await readLog(path.join(files.templateLog, `${t.id}.json`))
+      await writeJson(path.join(files.templateLog, `${to}.json`), { v: 1, entries: [...log, { at: Date.now(), by: 'user', version: t.version ?? 1, changes: [`renamed from ${t.id}`] }].slice(-200) })
+      await writeJson(file, { ...t, id: to })
+      await Promise.all([files.templates, files.templateLog].map(d => fs.rm(path.join(d, `${t.id}.json`), { force: true })))
+      const list = await projects()
+      if (list.some(p => p.from?.template === t.id)) await saveProjects(list.map(p => (p.from?.template === t.id ? { ...p, from: { ...p.from, template: to } } : p)))
+      return { id: to }
+    }),
+
+    // Deletes a library template and its log; projects keep their own copies.
+    removeTemplate: (id: unknown) => write(async () => {
+      const t = await knownTemplate(typeof id === 'string' ? id : '')
+      await Promise.all([files.templates, files.templateLog].map(d => fs.rm(path.join(d, `${t.id}.json`), { force: true })))
     }),
   }
 }

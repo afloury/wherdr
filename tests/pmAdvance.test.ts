@@ -192,6 +192,35 @@ describe('advanceTick (store and a fake herdr-core)', () => {
     finally { await fs.rm(dir, { recursive: true, force: true }) }
   })
 
+  it('two live workers on a task: the one the task tracks goes on, the other is ended and logged', async () => {
+    const { createPmStore } = await import('../server/utils/pmStore')
+    const { advanceTick } = await import('../server/utils/pmAdvance')
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-advance-'))
+    try {
+      const store = createPmStore(dir)
+      await store.setEnabled(true)
+      await store.saveTemplate(github)
+      await store.addProject({ key: 'CO', machine: '', path: '/src', template: 'github' }, async (_m, p) => p)
+      const t = await store.addTask({ project: 'CO', title: 'Fix', type: 'simple' })
+      const r = (id: string, startedAt: number) => store.saveRun({ id, task: t.id, role: 'worker', program: 'claude', model: 'sonnet', machine: '', worktree: '/w', branch: 'task/CO-1', instructions: '/i.md', terminal: `h/${id}`, attempt: 1, state: 'running', startedAt })
+      await r('r1', 1)
+      await r('r2', 2)
+      const first = onEvent(planSteps(github, { type: 'simple' }), initialState(), { kind: 'start' }, 1).state
+      await store.saveTask({ ...t, state: 'working', run: 'r1', step: { ...first, told: first.since } })
+      const install = await store.install()
+      const killed: unknown[] = []
+      const call = async (method: string, p: Record<string, unknown>) => {
+        if (method === 'terminal.list') return { terminals: ['r1', 'r2'].map(id => ({ address: `h/${id}`, labels: { 'wherdr.install': install, 'wherdr.task': t.id, 'wherdr.run': id, 'wherdr.role': 'worker' } })) }
+        if (method === 'terminal.kill') killed.push(p.terminal)
+        return method === 'machine.exec' ? { code: 0, stdout: '' } : {}
+      }
+      await advanceTick({ store, call, machines: () => [{ key: '', local: true, label: 'host' }], launchWatchMs: 0 } as unknown as Parameters<typeof advanceTick>[0])
+      expect(killed).toEqual(['h/r2'])
+      expect((await store.runs()).map(x => [x.id, x.state])).toEqual(expect.arrayContaining([['r1', 'running'], ['r2', 'ended']]))
+      expect((await store.task(t.id))!.log?.map(l => l.text)).toContain('ended a second worker (run r2): one worker per task, run r1 goes on')
+    } finally { await fs.rm(dir, { recursive: true, force: true }) }
+  })
+
   it('turns the worker\'s done into the PR, starts the reviewer of another model, then reads its verdict', async () => {
     const { createPmStore } = await import('../server/utils/pmStore')
     const { advanceTick } = await import('../server/utils/pmAdvance')

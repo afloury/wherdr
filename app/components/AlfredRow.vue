@@ -17,8 +17,7 @@ const pick = ref('')
 
 const name = computed(() => alfred.value?.name || 'Alfred')
 const current = computed(() => (alfredPane.value ? alfred.value?.ran : undefined) ?? alfred.value?.program)
-// The offered agents installed on wherdr's own machine that can carry Alfred.
-const choices = computed(() => offerCoordinators(appConfig.value.machines?.find(m => m.local)?.kinds ?? appConfig.value.kinds))
+const choices = alfredPrograms
 // Its conversation is the one open: the same selected style as agent cards.
 const selected = computed(() => !props.banner && !!alfredPane.value && alfredPane.value.id === curPane.value)
 const sub = computed(() => {
@@ -61,6 +60,9 @@ const picked = () => choices.value.find(p => p === pick.value)
 
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { loadAlfred(); timer = setInterval(loadAlfred, 30_000) })
+// A rename lands in identity.md during one of its turns: read the name again
+// as soon as its status changes (pushed live), not at the next poll.
+watch(() => alfredPane.value?.status, (s, was) => { if (was && s !== was) loadAlfred() })
 onUnmounted(() => clearInterval(timer))
 </script>
 

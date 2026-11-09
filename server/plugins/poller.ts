@@ -18,4 +18,6 @@ export default defineNitroPlugin((nitroApp) => {
     void sweepWorktrees({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})
   }, 6 * 3600 * 1000)
   nitroApp.hooks.hook('close', () => { stopPolling(); stopTailnetWatch(); clearInterval(purge) })
+  // Before Nitro's graceful shutdown closes the sockets (a service restart sends SIGTERM).
+  process.once('SIGTERM', announceRestart)
 })
