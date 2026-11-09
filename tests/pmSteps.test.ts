@@ -138,6 +138,7 @@ describe('step engine, company flow', () => {
     expect(stepLabels(merge, 'https://bitbucket.org/example-org/example-repo/pull-requests/7')).toEqual({ badge: 'Merge the PR on Bitbucket', button: 'I merged it' })
     expect(stepLabels(merge, 'https://github.com/example-org/example-repo/pull/7').badge).toBe('Merge the PR on GitHub')
     expect(stepLabels(merge, 'https://gitlab.com/example-org/example-repo/-/merge_requests/7').badge).toBe('Merge the PR on GitLab')
+    expect(stepLabels(merge, 'https://dev.azure.com/example-org/example-repo/_git/example-repo/pullrequest/7').badge).toBe('Merge the PR on Azure DevOps')
     expect(stepLabels({ ...merge, userLabel: 'Merged', badge: 'Merge it' })).toEqual({ badge: 'Merge it', button: 'Merged' })
     expect(stepLabels({ id: 'pick', ends: 'user' })).toEqual({ badge: 'pick', button: 'Done' })
   })

@@ -331,8 +331,8 @@ one tap away: *Open the task* in the card's menu, or the small icon at the end
 of the entry. An agent that is not on screen here opens the sheet instead.
 
 - **A visual change to merge**: its screenshots large (swipe between them, tap
-  one to zoom; each is labelled phone or desktop), the review's verdict, the PR,
-  then *Merge*, or *Send back* with a note: the agent gets your note as what to fix.
+  one to zoom; each is labelled phone or desktop), the review's verdict, then
+  *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
   When the agent reworks the task after its review (new commits since the
   review), its new screenshots replace the shown ones, marked *after rework*;
   the earlier set stays in the Plan tab under *Earlier screenshots*. The merge
@@ -342,14 +342,19 @@ of the entry. An agent that is not on screen here opens the sheet instead.
 - **A stopped task**: who stopped it and why, then *Continue*, *Take it as it is*
   or *Archive*, each with what it does.
 - **A step that ends with you** (*Done*, or the step's own button): what to do,
-  and its button.
+  and its button, with *Open the PR* when the task has one.
+- **The PR** is any link a step gave as its proof (`evidence: ["link"]`, such as
+  a PR the worker opened with its own Bitbucket or GitLab tool) or the one the
+  engine's `github.pr` opened. A pull request address from GitHub, Bitbucket,
+  GitLab or Azure DevOps is added to the card's links as *PR #12*, and opens
+  from *Open the PR* at the merge step, or after a refused merge.
 - **A PR to merge on your Git host** (a step you end that checks the merge,
   `git.verify-merged`): wherdr does not merge it, you do. Its badge says
-  *Merge the PR on GitHub* (or Bitbucket, GitLab, *your Git host*, from the PR
-  link), and its button *I merged it* checks that the branch is in its target;
-  the step's own badge and button text win. Not merged yet: *The PR is not
-  merged into develop yet: merge it on Bitbucket (PR link), then press “I
-  merged it” again*.
+  *Merge the PR on GitHub* (or Bitbucket, GitLab, Azure DevOps, *your Git
+  host*, from the PR link), and its button *I merged it* checks that the branch
+  is in its target; the step's own badge and button text win. Not merged yet:
+  *The PR is not merged into develop yet: merge it on Bitbucket (PR link), then
+  press “I merged it” again*.
 - **An agent's question or permission**: its text, and a button to open that agent.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (start it, open its agent). A failed action step (a merge GitHub
