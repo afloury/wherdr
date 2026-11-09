@@ -205,8 +205,9 @@ the header shows the autopilot's state (green square: on; hollow: asleep) and a
 count of what waits for you: a workflow change the coordinator proposed, or a
 kept conversation that ran with another agent. A tap opens its window:
 
-- the agent that answers the coordinator, and a warning when its conversation
-  ran with another one; on the board, *Open* opens or starts it;
+- the agent that answers the coordinator (Alfred's too), and a warning when its conversation
+  ran with another one: *New conversation* with the default, or *Resume* the one kept (for
+  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it;
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's
@@ -332,6 +333,10 @@ of the entry. An agent that is not on screen here opens the sheet instead.
 - **A visual change to merge**: its screenshots large (swipe between them, tap
   one to zoom; each is labelled phone or desktop), the review's verdict, the PR,
   then *Merge*, or *Send back* with a note: the agent gets your note as what to fix.
+  When the agent reworks the task after its review (new commits since the
+  review), its new screenshots replace the shown ones, marked *after rework*;
+  the earlier set stays in the Plan tab under *Earlier screenshots*. The merge
+  step then sends the task back to review, which sees the new set.
 - **A review to settle** after several send-backs: each choice the engine offers,
   with what it does.
 - **A stopped task**: who stopped it and why, then *Continue*, *Take it as it is*
@@ -397,6 +402,31 @@ at once. The card shows the place (*2nd in merge queue*), a refused merge
 waiting its turn stays off *Your turn*, and the log says when a task enters
 the queue and when it comes first.
 
+### What wherdr fixes on its own
+
+Waking the coordinator costs a turn with its whole context, so wherdr fixes
+the mechanical blocks itself and wakes it only when that fails:
+
+- **a PR in conflict with or behind its base**: wherdr merges the base into the
+  branch; a conflict goes to the worker (started again if it was let go);
+- **red CI**: when the failed job's log shows an infrastructure error (an HTTP
+  5xx, a download that timed out, a lost runner), wherdr runs the failed jobs
+  again, once; otherwise, or red again after that, the failure goes to the
+  worker;
+- **a push refused because the branch is behind its remote**: wherdr brings the
+  remote's commits into the task's worktree (a fast-forward, else a merge; a
+  conflict goes to the worker), then pushes again;
+- **an action interrupted** by a restart of wherdr: run again (a merge done
+  meanwhile is recorded as merged);
+- **a stalled agent** (below): nudged, then restarted once.
+
+These blocks do not wake the coordinator. After 2 failed tries on the same
+step (or 15 minutes with nothing left to try), wherdr wakes it once (and the
+main coordinator, when its autopilot wakes it for stuck tasks), as the
+autopilot's *Task stuck* event, and says what it tried. Every try, and giving
+up, is written to the task's **Log**. Any other failure (a refused merge, a
+check that waits for you) wakes the coordinator at once, as before.
+
 ### A stalled task
 
 A working task is **stalled** when nothing moves: its CI is still red 10 minutes
@@ -404,17 +434,20 @@ after wherdr sent the failure to the agent and nothing was pushed, or the agent
 holding its step has been idle for 5 minutes without saying it is done. Its card
 shows the reason, and wherdr:
 
-- wakes the coordinator (the autopilot's *Task stuck* event, with the reason;
-  a refused merge or an action failing again wakes it the same way);
 - nudges the agent once: the red CI again, with the failing tests read from
   `gh run view --log-failed`, or a reminder to finish its step. Never twice for
   the same cause (the same commit, the same step);
+- 10 minutes after the nudge, if it is still stalled: ends the agent and starts
+  it again (the worker with the red CI to fix, or the step's holder with its
+  step), once;
+- 10 minutes after the restart, if it is still stalled: wakes the coordinator
+  (*Task stuck*, with the reason and what was tried);
 - 30 minutes after the stall began, if it is still there: puts the task under
   *Your turn* and in the sidebar's **Tasks to handle**, with the reason, and
   sends a notification (it needs the *Needs you* level).
 
-The task's **Log** lists each of these: the stall, the nudge, the hand-over to
-you and the notification.
+The task's **Log** lists each of these: the stall, the nudge, the restart, the
+hand-over to you and the notification.
 
 A step that runs past its time limit (*Check work: over 3h*, *Check review:
 over 45m*) or a stall leaves *Your turn* and **Tasks to handle** once the task
@@ -459,6 +492,14 @@ updating the PR*: its agents are never ended while wherdr waits for that work.
 The task is yours again once the worker pushes or says it is done. Before it
 ends a task's agents, wherdr pushes the commits the branch has not pushed yet;
 if the push fails, the agents stay and the log says why.
+
+A task has one worker and one reviewer at most. Two starts at the same time
+(yours, the coordinator's, the engine's when the task before it is done, a
+start held for room) start one agent: the other is refused as *already
+starting*, and a start held for room is dropped once the task started another
+way. A task whose worker still runs (waiting for your answer, say) is not
+started again: stop it first. Should two agents of one role ever run on a
+task, wherdr keeps the one it tracks, ends the other and says so in the log.
 
 A message from the coordinator (`wherdr pm tell <task>`) goes to the agent
 that holds the task's current step; at a step held by nobody (the PR, the

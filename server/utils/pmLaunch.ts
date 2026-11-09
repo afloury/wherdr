@@ -83,6 +83,25 @@ export function wherdrBase(machine: string, origin = '', appUrl = process.env.AP
 // machine. Throws when that machine is unknown or unreachable.
 export const runOn = (deps: CoreAdminDeps, run: Pick<Run, 'machine'>) => machineOn(deps, run.machine).on
 
+// The task and role of each agent being started now: a second start of the
+// same one, from anywhere (user, coordinator, the engine's chain, a held start,
+// a revive), is refused while the first runs, never run beside it.
+const starting = new Set<string>()
+export async function oneStart<T>(task: string, role: Run['role'], fn: () => Promise<T>): Promise<T> {
+  const key = `${task}\u0000${role}`
+  if (starting.has(key)) throw new HerdrError('busy', `The ${role} of ${task} is already starting`)
+  starting.add(key)
+  try { return await fn() } finally { starting.delete(key) }
+}
+
+// A worker run of the task whose terminal still runs: a new one would share its worktree.
+async function liveWorker(deps: PmLaunchDeps, id: string) {
+  for (const r of (await deps.store.runs()).filter(x => x.task === id && x.role === 'worker' && x.state !== 'ended' && x.terminal)) {
+    const st = await deps.call<{ state?: string }>('terminal.get', { terminal: r.terminal }, 3000).catch(() => null)
+    if (st && st.state !== 'finished') return r
+  }
+}
+
 const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitKind']) => store.saveTask({ ...task, state: 'waiting', waiting: reason, waitKind, held: undefined })
 
 // Starts the worker of a task to do (or waiting, to try again). Any reason it
@@ -94,7 +113,12 @@ const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitK
 // on: the machine key a new task goes to (one its project allows); a started
 // task always goes back to its own (taskMachine).
 // by: who starts it (the log's 'back to work' line, when that clears a timeout or a stall).
-export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, revive, on: asked, by = 'engine' }: { handover?: string, revive?: true, on?: string, by?: string } = {}): Promise<Task> {
+type StartOpts = { handover?: string, revive?: true, on?: string, by?: string }
+export async function startTask(deps: PmLaunchDeps, id: unknown, opts: StartOpts = {}): Promise<Task> {
+  return oneStart(String(id), 'worker', () => startOnce(deps, id, opts))
+}
+
+async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on: asked, by = 'engine' }: StartOpts): Promise<Task> {
   const { store } = deps
   const asRead = await store.task(id)
   if (!asRead) throw new HerdrError('not_found', 'Unknown task')
@@ -119,6 +143,9 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, rev
     const saved = await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, step })
     return noteBack(store, saved, taskPlan(t, saved, p), by, `started again by the ${by}`)
   }
+  // Only where a worker is launched: a running one would share its worktree.
+  const live = await liveWorker(deps, task.id)
+  if (live) throw new HerdrError('busy', `This task's worker is still running (${live.program} ${live.model}): stop the task first`)
   const { machine } = placed
   let on: string | undefined, label = ''
   try { ({ on, m: { label } } = machineOn(deps, machine)) } catch (e) { return wait(store, task, (e as Error).message) }

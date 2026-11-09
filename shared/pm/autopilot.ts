@@ -7,6 +7,7 @@ import { chainState } from './advance'
 import { parseSchedule } from './schedule'
 import type { PaceVerdict } from './pacing'
 import { pacedStart, paceRefusal } from './pace'
+import { engineOwns } from './selfFix'
 
 export const AUTOPILOT_EVENTS = ['added', 'done', 'stuck', 'ready'] as const
 export type AutopilotEvent = typeof AUTOPILOT_EVENTS[number]
@@ -177,13 +178,14 @@ export const addedBySelf = (t: Pick<Task, 'addedBy' | 'log'>, key: string, by: s
 // coordinator, `self`), done, stuck (waiting, stalled, an action refused or
 // failing) or ready, among those the autopilot wakes for.
 // `seen`: each task's last status. A stopped task is not stuck: someone chose to stop it.
+// Nor is a block the engine fixes itself (selfFix.ts): it wakes the coordinator once it gives up.
 export function autopilotEvents(ap: Autopilot, tasks: Task[], seen: Record<string, TaskStatus>, self?: { key: string, by: string }) {
   const now: Record<string, TaskStatus> = {}, reasons: string[] = []
   for (const t of tasks) {
     const s = now[t.id] = taskStatus(t)
     const failed = s === 'ready' && t.step?.yourTurn?.reason === 'action'
     const ev: AutopilotEvent | undefined = !(t.id in seen) ? (self && addedBySelf(t, self.key, self.by) ? undefined : 'added') : seen[t.id] === s ? undefined
-      : s === 'waiting' || s === 'stalled' || failed ? (t.stopped ? undefined : 'stuck') : s === 'done' || s === 'ready' ? s : undefined
+      : s === 'waiting' || s === 'stalled' || failed ? (t.stopped || engineOwns(t) ? undefined : 'stuck') : s === 'done' || s === 'ready' ? s : undefined
     const why = s === 'stalled' ? t.stall?.reason : failed ? t.step?.yourTurn?.badge : t.waiting
     if (ev && ap.events.includes(ev)) reasons.push(`${t.id} (${t.title}): ${ev}${ev === 'stuck' && why ? `: ${why.split('\n')[0]}` : ''}`)
   }
