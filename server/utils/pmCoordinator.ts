@@ -486,6 +486,8 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
     const c = await store.coordinator(p.key)
     const changes = c?.proposal ? workflowChanges(await store.workflow(p.key), c.proposal.template) : undefined
     const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => t.project === p.key)
+    const paused = 'paused' in p ? p.paused ?? [] : []
+    const busy = paused.filter(m => runs.some(r => r.state !== 'ended' && r.machine === m && mine.some(t => t.id === r.task)))
     return {
       ...(p.key === MAIN
         ? { main: true }
@@ -495,7 +497,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
             ...(c?.woke?.at ? { wokeAt: c.woke.at } : {}),
             wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
           }),
-      project: p.key, name: p.name, ...('machine' in p ? { machines: allowedMachines(p) } : {}), ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...('from' in p && p.from ? { template: p.from.template } : {}),
+      project: p.key, name: p.name, ...('machine' in p ? { machines: allowedMachines(p) } : {}), ...(paused.length ? { paused } : {}), ...(busy.length ? { busy } : {}), ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...('from' in p && p.from ? { template: p.from.template } : {}),
       ...(c?.ran ? { ran: agentOf(c.ran) ?? FALLBACK } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
       ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, changes, by: c.proposal.by ?? (p.key === MAIN ? 'main' : p.key), ...(c.proposal.said ? { said: c.proposal.said } : {}), ...(c.proposal.saidAt ? { saidAt: c.proposal.saidAt } : {}) } } : {}),
       ...('label' in p && p.label ? { label: p.label } : {}), ...('color' in p && p.color ? { color: p.color } : {}),
