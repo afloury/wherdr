@@ -54,7 +54,7 @@ export const projectTabs = syncedRef('projectTabs', readProjectTabs, v => JSON.s
 // Each project's tab machines (utils/projectTabs.ts), by its fixed key.
 // Alfred is not in it: it shows on every tab.
 export const projectTabPlaces = computed(() => new Map(projectCoordinators.value.map(c =>
-  [c.project, projectTabMachines({ machines: c.machines ?? [] }, projectTabs.value[c.project], machineGroups.value)])))
+  [c.project, projectTabMachines({ machines: c.machines ?? [], paused: c.paused, busy: c.busy }, projectTabs.value[c.project], machineGroups.value)])))
 // The home tab picked shows this project (a project not loaded yet shows).
 export const projectOnBar = (project: string) => {
   const m = projectTabPlaces.value.get(project)
