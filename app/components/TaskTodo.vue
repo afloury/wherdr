@@ -23,11 +23,10 @@ const badge = computed(() => stepRefusalText(props.card.yourTurn ?? '', told.val
 const advice = computed(() => props.card.state?.yourTurn?.advice)
 const choices = computed(() => (advice.value ? adviceChoices(advice.value) : { options: [] }))
 
-// Visual merge: the newest step's screenshots of the result.
-const shots = computed(() => {
-  const s = shotSteps(props.card)[0]
-  return s ? props.card.state!.shots![s.id]!.filter(x => x.phase === 'after').map(x => shotUrl(props.card.id, x.file)) : []
-})
+// Visual merge: the newest step's screenshots of the result (after a rework, its new set).
+const latest = computed(() => { const s = shotSteps(props.card)[0]; return s ? props.card.state!.shots![s.id]!.filter(x => x.phase === 'after') : [] })
+const shots = computed(() => latest.value.map(x => shotUrl(props.card.id, x.file)))
+const reworked = computed(() => latest.value.some(x => x.rework))
 // Phone or desktop, from the image's shape once loaded.
 const shape = ref<Record<string, 'phone' | 'desktop'>>({})
 const loaded = (src: string, e: Event) => { const i = e.target as HTMLImageElement; shape.value = { ...shape.value, [src]: i.naturalWidth < i.naturalHeight ? 'phone' : 'desktop' } }
@@ -42,6 +41,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
   <div class="todo" :data-todo="kind" data-testid="task-todo">
     <template v-if="kind === 'merge'">
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
+      <span v-if="reworked" class="mono-label muted" data-testid="todo-rework">{{ tl('Screenshots after rework') }}</span>
       <ul class="todo-shots" data-testid="todo-shots">
         <li v-for="(src, i) in shots" :key="src">
           <button type="button" class="todo-shot" :aria-label="tl(`Screenshot ${i + 1}, full size`)" data-testid="shot" @click="openLightbox(shots, i)">
