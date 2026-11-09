@@ -211,7 +211,9 @@ kept conversation that ran with another agent. A tap opens its window:
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's
-  machines have room for, the default for a new project; a task whose step
+  machines have room for; both empty for a new project, while a project that
+  kept the older defaults (10 a day, 2 at once) keeps them, with the hint *Older
+  defaults: clear the fields for unlimited and Auto*; a task whose step
   holds no agent, such as a PR or merge waiting for checks or the queue, or a
   step of yours, takes no slot), the events it wakes on (*Task added*: by someone else than this
   coordinator, such as you, another coordinator or an automation; *Task
@@ -223,7 +225,8 @@ kept conversation that ran with another agent. A tap opens its window:
 Automatic work (the autopilot, automations) waits while an account is ahead of
 its [pace](quotas.md#pace) (a machine whose account waits is skipped) or no
 machine the project allows has room for the task
-([Machines](machines.md#manage-machines)); your own starts never wait.
+([Machines](machines.md#manage-machines)), whatever the task counts; your own
+starts never wait.
 
 The coordinator sees the same with `wherdr pm autopilot show`: the project's
 placement strategy, one line per machine the project allows (memory, cores and load, its agents at work by

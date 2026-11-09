@@ -28,9 +28,13 @@ export interface Autopilot {
 export const LOOK_PER_DAY = 3
 export const MAX_PER_DAY = 1000
 
-// A project with no saved autopilot (one added before Auto) keeps 2 at once; a new one is saved with Auto.
+// A project with no saved autopilot (one added before Auto) keeps 10 a day and
+// 2 at once; a new one is saved with no daily limit and Auto: the account's pace
+// and the machines' room still hold its automatic work.
 export const DEFAULT_AUTOPILOT: Autopilot = { on: false, goal: '', events: ['done', 'stuck'], perDay: 10, atOnce: 2 }
-export const NEW_AUTOPILOT: Autopilot = { ...DEFAULT_AUTOPILOT, atOnce: null }
+export const NEW_AUTOPILOT: Autopilot = { ...DEFAULT_AUTOPILOT, perDay: null, atOnce: null }
+// Still on those older defaults: the Autopilot tab hints they can be cleared.
+export const oldDefaults = (ap: Autopilot) => ap.perDay === DEFAULT_AUTOPILOT.perDay && ap.atOnce === DEFAULT_AUTOPILOT.atOnce
 
 // The user's settings, checked. Unknown fields dropped.
 export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error: string } {
