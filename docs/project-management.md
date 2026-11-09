@@ -90,8 +90,15 @@ its folder, branches and task worktrees stay on the machine.
   strongest* (the default: light and standard work at home when it fits, heavy
   work on the machine with most room), *Balance the load* (each task on the
   machine with the largest share of memory and cores left after it) or *Home
-  first* (other machines only once home is full). A task that waits for room
-  names it, and so does the coordinator's `autopilot show`.
+  first* (other machines only once home is full). A machine fits a task when
+  its free memory covers the task's estimate plus the machine's reserve
+  (Settings › Machines). A task that waits for room names it, and so does the
+  coordinator's `autopilot show`. A task too big for every machine it may use
+  (their RAM less the reserve is under its estimate) runs on the best one
+  instead of waiting forever, and its log says so once. A worker started
+  again in its worktree (a catch-up, red CI, a send-back, the step it is woken
+  for) is weighed by what it does, not by its type: heavy only while its step
+  still lacks its screenshots, standard otherwise.
 
 ### Workflow
 
@@ -197,7 +204,9 @@ kept conversation that ran with another agent. A tap opens its window:
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*, *At once*: empty is *Auto*, as many as the project's
-  machines have room for, the default for a new project), the events it wakes on (*Task added*, *Task
+  machines have room for, the default for a new project; a task whose step
+  holds no agent, such as a PR or merge waiting for checks or the queue, or a
+  step of yours, takes no slot), the events it wakes on (*Task added*, *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
   even with nothing to do, with its own *New tasks / day*). The form says
   *Unsaved changes* until you save;

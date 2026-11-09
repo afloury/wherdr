@@ -16,7 +16,7 @@ import { prNow, requiredChecks } from '../../shared/pm/board'
 import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
 import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
 import { originOf, pacedStart, paceRefusal } from '../../shared/pm/pace'
-import { paceOf, placeFor } from './pmPlace'
+import { paceOf, placeFor, slotsOf } from './pmPlace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { advanceTick } from './pmAdvance'
 import { forgetMemory } from './pmMemory'
@@ -86,7 +86,7 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
     let next: typeof mine[number] | undefined, pace: Awaited<ReturnType<typeof paceOf>> | undefined
     for (const t of mine.filter(x => x.after && x.state === 'todo')) {
       pace = pacedStart(t, 'engine') ? await paceOf(store, p, t, now) : undefined
-      if (!coordinatorStartRefusal(ap, t, mine, runs, now, false, { pace: pace?.verdict, engine: true })) { next = t; break }
+      if (!coordinatorStartRefusal(ap, t, mine, runs, now, false, { pace: pace?.verdict, engine: true, holds: await slotsOf(store, [p]) })) { next = t; break }
     }
     if (!next) continue
     // No room on any allowed machine: held, with why on its card, until a later tick finds room.
@@ -116,7 +116,7 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
     if (!p) continue
     const pace = pacedStart(t, 'wake') ? await paceOf(store, p, t, now) : undefined
     const why = originOf(t) === 'automation' ? paceRefusal(pace?.verdict)
-      : coordinatorStartRefusal((await store.coordinator(p.key))?.autopilot, t, (await store.tasks()).filter(x => x.project === p.key), runs, now, true, { pace: pace?.verdict })
+      : coordinatorStartRefusal((await store.coordinator(p.key))?.autopilot, t, (await store.tasks()).filter(x => x.project === p.key), runs, now, true, { pace: pace?.verdict, holds: await slotsOf(store, [p]) })
     if (why && /autopilot on/.test(why)) { await store.logTask({ ...t, held: undefined }, 'engine', `no longer held: ${why}`); continue }
     const placed = why ? { hold: `Waits: ${why}` } : await placeFor(deps, t, { waits: pace?.waits })
     if ('hold' in placed) { if (placed.hold !== t.held) await store.saveTask({ ...t, held: placed.hold }); continue }
