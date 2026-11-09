@@ -68,8 +68,34 @@ its folder, branches and task worktrees stay on the machine.
 The project's own workflow: its task types, and the steps of each. Each step
 has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
-action, what it does: land on a branch, push, open a PR, merge a PR, or check
-that a branch was merged, with its branch, merge method and required checks.
+action, what it does: land on a branch, push, open a PR, merge a PR, check
+that a branch was merged, or watch a pipeline, with its branch, merge method
+and required checks.
+
+A **pipeline watch** (`pipeline.watch`) has the engine follow CI or a deploy
+by itself, so no agent is woken only to read *still running*. It checks every
+`every` (default `1m`) until `timeout` (default `30m`). Its `source`:
+
+- `github` (default): the GitHub Actions runs of the task's commit, or of the
+  latest commit of `branch`; `workflow` keeps one workflow only.
+- `command`: `command`, run in the task's worktree on the project's machine,
+  exits `0` done, `1` failed, `2` still running: a CircleCI or Bitbucket
+  check, a `helm` or `kubectl` status, a health URL. Its output is the step's
+  proof.
+
+Green: the step ends, and the coordinator is not woken. Failed (which run and
+job, and the tail of the output) or past its timeout: the task's log and the
+coordinator get it once, and the step comes to you, or goes back to the worker
+with `"onFail": "worker"` (a timeout always comes to you). A step that had the
+coordinator watch the deploy with a recheck becomes, in *Edit as JSON*:
+
+```json
+{ "id": "deploy", "column": "Deploy", "ends": "action",
+  "action": { "kind": "pipeline.watch", "branch": "develop", "every": "2m", "timeout": "90m" } }
+```
+
+or, outside GitHub, `"source": "command", "command": "./scripts/ci-status.sh develop"`.
+
 Under the form, the plan of the chosen task type. *Save* checks the workflow
 and shows each problem with its line.
 

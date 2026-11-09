@@ -3,7 +3,7 @@
 // the effects for the server to carry out (send a step's instructions to its
 // holder, run an engine action). It knows no tool and no workflow: only who
 // holds a step, how it ends, the proofs it needs and its deadline.
-import { actionField, type Evidence, type Holder, type Step, type StepAction, type Template, type TaskInput } from './workflow'
+import { WATCH, actionField, type Evidence, type Holder, type Step, type StepAction, type Template, type TaskInput } from './workflow'
 import { mayMerge } from './guards'
 import { taskGuards } from './actions'
 import { shotsMissing, shotsText, shotMode, type Shot } from './shots'
@@ -27,6 +27,8 @@ export interface StepState {
   fix?: string // what the worker must fix, when an engine action sent the task back to it
   rereview?: Rereview // the PR head moved after the review: only that change is reviewed again
   acting?: boolean // an engine action is running
+  watch?: { from: number, next: number } // pipeline.watch: since when, and its next poll
+  notify?: string // for the coordinator, once: what a watched pipeline said when it failed
   yourTurn?: YourTurn
   proofs: Record<string, Partial<Record<Evidence, string>>> // per step id
   shots?: Record<string, Shot[]> // the screenshots uploaded per step id (shots.ts)
@@ -52,7 +54,8 @@ export type StepEvent =
   | { kind: 'user' } // the step's button, or "it is merged" said by the user
   // toAgent: the worker has to fix it (a conflict): the task goes back to its step.
   // review: new commits since the reviewed one: back to the review step, for them only.
-  | { kind: 'action-result', ok: boolean, error?: string, evidence?: Partial<Record<Evidence, string>>, toAgent?: boolean, review?: Rereview }
+  // later: a watched pipeline still runs. detail: the tail of a failed one's output.
+  | { kind: 'action-result', ok: boolean, later?: boolean, detail?: string, error?: string, evidence?: Partial<Record<Evidence, string>>, toAgent?: boolean, review?: Rereview }
   | { kind: 'tick' }
   | { kind: 'skip' } // the user takes a stopped task as it is: on to the next step
   | { kind: 'back', note: string } // the user sends a step of theirs (a visual merge) back to the worker, with what to change
@@ -129,16 +132,17 @@ export const initialState = (): StepState => ({ at: 0, started: false, proofs: {
 export const currentStep = (plan: PlannedStep[], s: StepState): PlannedStep | undefined => plan[s.at]
 const hasAgent = (s: Step) => !!s.holder && s.holder !== 'none'
 
-function act(s: StepState, step: PlannedStep, effects: Effect[]): StepState {
+function act(s: StepState, step: PlannedStep, effects: Effect[], now: number): StepState {
   const attempt = (s.tries?.[step.id] ?? 0) + 1
   effects.push({ kind: 'action', step: step.id, action: step.action!, attempt })
-  return { ...s, acting: true, yourTurn: undefined, tries: { ...s.tries, [step.id]: attempt } }
+  const watch = step.action!.kind === 'pipeline.watch' ? { watch: { from: now, next: now } } : {}
+  return { ...s, acting: true, yourTurn: undefined, ...watch, tries: { ...s.tries, [step.id]: attempt } }
 }
 
 // Enters step i: a step with no end is passed through (the last one is done).
 function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, effects: Effect[]): StepState {
   const step = plan[i]
-  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, recheckAt: undefined, acting: undefined, yourTurn: undefined, fix: undefined, rereview: undefined }
+  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, recheckAt: undefined, acting: undefined, watch: undefined, yourTurn: undefined, fix: undefined, rereview: undefined }
   if (!step) return effects.push({ kind: 'done' }), { ...s, done: true }
   if (!step.ends) return i === plan.length - 1 ? (effects.push({ kind: 'done' }), { ...s, done: true }) : enter(plan, s, i + 1, now, effects)
   if (step.timeout) s.deadline = now + durationMs(step.timeout)
@@ -146,7 +150,7 @@ function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, eff
   const text = step.ends === 'verdict' ? reviewText(step.text, s.reviews?.[step.id]?.at(-1)) : step.text
   if (hasAgent(step)) effects.push({ kind: 'instruct', step: step.id, holder: step.holder!, text })
   if (step.ends === 'user') s.yourTurn = { reason: 'user', badge: step.badge || step.userLabel || step.id }
-  return step.ends === 'action' ? act(s, step, effects) : s
+  return step.ends === 'action' ? act(s, step, effects, now) : s
 }
 
 // Back to the verdict step's sendBack step, with one message: what to fix.
@@ -245,27 +249,43 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       if (step.ends !== 'user' && !retry) return refuse(`Step "${step.id}" does not wait for you`)
       if (state.acting) return refuse('Already checking')
       if (!step.action) return next()
-      return { state: act(state, step, effects), effects }
+      return { state: act(state, step, effects, now), effects }
     }
     case 'action-result': {
       if (!state.acting) return refuse('No action is running')
+      let { error, toAgent } = ev
+      const w = step.action?.kind === 'pipeline.watch' ? step.action : undefined
+      if (w && ev.later) {
+        // Still running: polled again after `every`, until `timeout`, which goes to you.
+        const from = state.watch?.from ?? now, limit = w.timeout ?? WATCH.timeout
+        if (now - from < durationMs(limit)) return { state: { ...state, watch: { from, next: now + durationMs(w.every ?? WATCH.every) } }, effects }
+        error = `pipeline: still running after ${limit}`
+      }
+      else if (ev.later) return { state, effects }
       const proofs = ev.evidence ? { ...state.proofs, [step.id]: { ...state.proofs[step.id], ...ev.evidence } } : state.proofs
       if (ev.ok) return { state: enter(plan, { ...state, proofs }, state.at + 1, now, effects), effects }
+      if (w) {
+        // Failed: said once in the log and to the coordinator; back to the worker if the step says so.
+        const said = `${step.id}: ${error}${ev.detail ? `\n${ev.detail}` : ''}`
+        effects.push({ kind: 'log', text: said })
+        state = { ...state, watch: undefined, notify: said }
+        toAgent = w.onFail === 'worker' && !ev.later
+      }
       const review = ev.review ? plan.slice(0, state.at).findLastIndex(p => p.ends === 'verdict') : -1
       if (review >= 0) {
         effects.push({ kind: 'log', text: `${step.id}: ${ev.error ?? 'new commits'}, back to ${plan[review]!.id}` })
         return { state: { ...enter(plan, { ...state, proofs }, review, now, []), rereview: ev.review }, effects }
       }
       const back = plan.slice(0, state.at).findLastIndex(p => p.holder === 'worker')
-      if (ev.toAgent && back >= 0) {
+      if (toAgent && back >= 0) {
         // One message: what to fix, not the step's text again.
-        const fix = `${ev.error}. Fix it, commit, then say you are done.`
+        const fix = `${error}.${w && ev.detail ? `\n\n${ev.detail}\n\n` : ' '}Fix it, commit, then say you are done.`
         effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: fix })
         return { state: { ...enter(plan, { ...state, proofs }, back, now, []), fix }, effects }
       }
       // The step stays open; the badge says what went wrong.
-      const badge = `${step.badge || step.userLabel || step.id}: ${ev.error || `${step.action!.kind} failed`}`
-      return { state: { ...state, acting: undefined, yourTurn: { reason: 'action', badge, ...(ev.error ? { error: ev.error } : {}) } }, effects }
+      const badge = `${step.badge || step.userLabel || step.id}: ${error || `${step.action!.kind} failed`}`
+      return { state: { ...state, acting: undefined, watch: undefined, yourTurn: { reason: 'action', badge, ...(error ? { error } : {}) } }, effects }
     }
     case 'back': {
       const back = plan.slice(0, state.at).findLastIndex(p => p.holder === 'worker')

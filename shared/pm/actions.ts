@@ -120,6 +120,15 @@ if [ "$(git rev-parse HEAD)" = "$p" ]; then echo same; elif git merge-base --is-
   // Runs again the failed or cancelled workflow runs of a commit.
   rerun: `${IN} ids=$(gh run list --commit "$1" --json databaseId,conclusion -q '.[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .conclusion != "") | .databaseId' 2>&1) || { echo "$ids"; exit 1; }
 for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
+  // pipeline.watch, github: the runs of branch $1's latest commit, else of the
+  // task's commit; only workflow $2 when named.
+  ghRuns: `${IN} if [ -n "$1" ]; then k=--branch v=$1; else k=--commit; v=$(git rev-parse HEAD) || exit 1; fi
+gh run list "$k" "$v" \${2:+--workflow "$2"} --limit 30 --json databaseId,workflowName,status,conclusion,headSha,url 2>&1`,
+  // The failed jobs of run $1, then the tail of their logs.
+  ghFailed: `${IN} gh run view "$1" --json jobs -q '.jobs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral") | .name' 2>&1 | head -5 | paste -sd ',' -
+gh run view "$1" --log-failed 2>&1 | tail -n 20`,
+  // pipeline.watch, command: the step's command, in the worktree; its exit code is the answer.
+  watchCommand: `${IN} sh -c "$1" 2>&1`,
   // Remote branches holding the task's commit, for the protected-branch alert.
   contains: `${IN} git fetch -q origin 2>&1 || exit 1; git branch -r --contains HEAD --format='%(refname:short)'`,
 }
@@ -146,6 +155,27 @@ export function prReady(pr: PrInfo | undefined, head: string, required: string[]
   return { ok: true }
 }
 
+// pipeline.watch, github: where the runs of one commit stand. None yet (CI
+// not started) or one not completed: running. Each green: done. Else the first
+// that failed. Runs of a branch: only those of its latest commit (listed first).
+export interface GhRun { databaseId: number, workflowName?: string, status: string, conclusion: string, headSha: string, url: string }
+const RUN_OK = ['success', 'skipped', 'neutral']
+export function runsState(all: GhRun[]): { state: 'running' } | { state: 'done', link: string } | { state: 'failed', run: GhRun } {
+  const runs = all.filter(r => r.headSha === all[0]?.headSha)
+  if (!runs.length || runs.some(r => r.status !== 'completed')) return { state: 'running' }
+  const bad = runs.find(r => !RUN_OK.includes(r.conclusion))
+  return bad ? { state: 'failed', run: bad } : { state: 'done', link: runs[0]!.url }
+}
+
+// pipeline.watch, command: exit 0 done, 1 failed, 2 still running; the output
+// is the proof. Timed out (code null): still running, the step's timeout decides.
+export function commandState(code: number | null, out: string): ActionResult {
+  const tail = out.trim().split('\n').slice(-20).join('\n').slice(-2000)
+  if (code === 0) return { ok: true, report: tail || 'done' }
+  if (code === 2 || code === null) return { ok: false, later: true }
+  return { ok: false, error: `pipeline: the command failed${code === 1 ? '' : ` (exit code ${code})`}`, ...(tail ? { detail: tail } : {}) }
+}
+
 // Errors that pass by themselves: a git host refusing a push for a while,
 // a branch policy not yet updated, a server error, the network.
 const TRANSIENT = [
@@ -170,6 +200,8 @@ export function leaks(g: ResolvedGuards, remoteBranches: string[], allowed: stri
 // becomes 'uncertain' instead of being run again blindly.
 // note: a line for the task's log.
 // review: new commits since the reviewed one, to review before the merge.
-export interface ActionResult { ok: boolean, error?: string, toAgent?: boolean, review?: { since: string, head: string }, link?: string, commit?: string, alert?: string, note?: string }
+// later: a pipeline still running, polled again. report: a watch's output, its
+// proof. detail: what a failed watch printed, for the log and the coordinator.
+export interface ActionResult { ok: boolean, later?: boolean, report?: string, detail?: string, error?: string, toAgent?: boolean, review?: { since: string, head: string }, link?: string, commit?: string, alert?: string, note?: string }
 export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain', result?: ActionResult, at: number }
 export const receiptId = (task: string, step: string, attempt: number) => `${task}.${attempt}.${encodeURIComponent(step)}`

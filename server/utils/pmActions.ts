@@ -6,7 +6,7 @@ import { PATH_SETUP, type CoreAdminDeps } from './coreCreate'
 import { exec } from './pmLaunch'
 import type { PmStore } from './pmStore'
 import { mayMerge } from '../../shared/pm/guards'
-import { CODE, RETRY_MS, SCRIPT, guardAction, isTransient, leaks, prReady, receiptId, type ActionResult, type PrInfo } from '../../shared/pm/actions'
+import { CODE, RETRY_MS, SCRIPT, commandState, guardAction, isTransient, leaks, prReady, receiptId, runsState, type ActionResult, type GhRun, type PrInfo } from '../../shared/pm/actions'
 import type { ResolvedGuards } from '../../shared/pm/guards'
 import type { MergeBy, StepAction } from '../../shared/pm/workflow'
 
@@ -45,6 +45,8 @@ export async function runAction(deps: ActionDeps, job: ActionJob): Promise<Actio
   const { store } = deps
   const id = receiptId(job.task.id, job.step, job.attempt)
   const base = { id, task: job.task.id, step: job.step, action: job.action }
+  // A watch only reads: no receipt, each poll is a new one.
+  if (job.action.kind === 'pipeline.watch') return watch(deps, job)
   const prev = await store.receipt(id)
   if (prev?.state === 'done') return prev.result!
   if (prev) {
@@ -142,7 +144,29 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
         return m.code === 0 ? { ok: true, link: pr!.url, commit: head.trim(), reached: [pr!.baseRefName] } : fail(m)
       }
     }
+    case 'pipeline.watch': return watch(deps, job)
   }
+}
+
+// One poll of a pipeline: done, failed (with which run and job, and the tail
+// of the output), or later. An error that passes by itself is a later too.
+export async function watch(deps: Pick<ActionDeps, 'sh'>, job: Pick<ActionJob, 'action' | 'worktree'>): Promise<ActionResult> {
+  const a = job.action
+  if (a.source === 'command') {
+    const r = await deps.sh(SCRIPT.watchCommand, [job.worktree, a.command!])
+    return commandState(r.code, r.out)
+  }
+  const r = await deps.sh(SCRIPT.ghRuns, [job.worktree, a.branch ?? '', a.workflow ?? ''])
+  if (r.code !== 0) return isTransient(r.code, r.out) ? { ok: false, later: true } : { ok: false, error: `pipeline: ${lastLine(r.out) || `exit code ${r.code}`}` }
+  let runs: GhRun[]
+  try { runs = JSON.parse(r.out.trim().split('\n').pop() || '[]') }
+  catch { return { ok: false, later: true } }
+  const st = runsState(runs)
+  if (st.state === 'running') return { ok: false, later: true }
+  if (st.state === 'done') return { ok: true, link: st.link }
+  const f = await deps.sh(SCRIPT.ghFailed, [job.worktree, String(st.run.databaseId)])
+  const [jobs = '', ...tail] = f.out.split('\n')
+  return { ok: false, error: `pipeline: ${st.run.workflowName || 'a run'} failed${jobs.trim() ? ` (${jobs.trim()})` : ''}: ${st.run.url}`, ...(tail.join('\n').trim() ? { detail: tail.join('\n').trim().slice(-2000) } : {}) }
 }
 
 // Only after a success: a failed action reached nothing new.

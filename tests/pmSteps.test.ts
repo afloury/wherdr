@@ -5,6 +5,8 @@ import { validateTemplate, type Template } from '../shared/pm/workflow'
 import type { Finding } from '../shared/pm/verdict'
 import { taskBase } from '../shared/pm/run'
 import { guardAction } from '../shared/pm/actions'
+import { runsNow } from '../shared/pm/advance'
+import { coordinatorWake } from '../shared/pm/coordinator'
 import { combineGuards } from '../shared/pm/guards'
 
 const MIN = 60_000
@@ -125,17 +127,43 @@ describe('step engine, company flow', () => {
     expect(r.state.yourTurn).toEqual({ reason: 'action', badge: 'Merge the PR: commit not in develop', error: 'commit not in develop' })
   })
 
-  it('the coordinator watches the deploy, is told again on recheck, and the timeout goes to Your turn', () => {
-    const r = play(company, 'feature', [...toMerge,
-      [60, { kind: 'user' }], [61, { kind: 'action-result', ok: true }],
-      [64, { kind: 'tick' }], [66, { kind: 'tick' }], [151, { kind: 'tick' }],
-    ])
+  // The deploy step is a pipeline.watch: the engine polls, the coordinator hears only of a failure.
+  const toDeploy: [number, StepEvent][] = [...toMerge, [60, { kind: 'user' }], [61, { kind: 'action-result', ok: true }]]
+  const later: StepEvent = { kind: 'action-result', ok: false, later: true }
+
+  it('the engine watches the deploy every 2m and ends the step on success, with no coordinator wake', () => {
+    const r = play(company, 'feature', [...toDeploy, [62, later]])
     expect(r.steps.at(-1)).toBe('deploy')
-    expect(kinds(r.effects).slice(-3)).toEqual(['instruct:deploy', 'instruct:deploy', 'instruct:deploy'])
-    expect(r.effects.at(-1)).toMatchObject({ holder: 'coordinator', text: expect.stringMatching(/^Check again: /) })
-    expect(r.state.yourTurn).toEqual({ reason: 'timeout', badge: 'Check deploy: over 90m' })
-    const end = onEvent(r.plan, r.state, { kind: 'report', from: 'coordinator' }, 152 * MIN)
-    expect(end.state).toMatchObject({ done: true, yourTurn: undefined })
+    expect(r.state).toMatchObject({ acting: true, watch: { from: 61 * MIN, next: 64 * MIN } })
+    expect([runsNow(r.plan.at(-2), r.state, 63 * MIN), runsNow(r.plan.at(-2), r.state, 64 * MIN)]).toEqual([false, true])
+    expect(coordinatorWake(r.plan, r.state, 64 * MIN).texts).toEqual([])
+    const end = onEvent(r.plan, r.state, { kind: 'action-result', ok: true, evidence: { link: 'https://ci.example/run/1' } }, 64 * MIN)
+    expect(end.state).toMatchObject({ done: true, proofs: { deploy: { link: 'https://ci.example/run/1' } } })
+  })
+
+  it('a failure is logged and said to the coordinator once; the timeout comes to you', () => {
+    const r = play(company, 'feature', [...toDeploy, [62, { kind: 'action-result', ok: false, error: 'pipeline: CI failed (unit): https://ci.example/run/2', detail: 'FAIL a.test.ts' }]])
+    const said = 'deploy: pipeline: CI failed (unit): https://ci.example/run/2\nFAIL a.test.ts'
+    expect(r.effects.at(-1)).toEqual({ kind: 'log', text: said })
+    expect(r.state.yourTurn).toMatchObject({ reason: 'action', error: 'pipeline: CI failed (unit): https://ci.example/run/2' })
+    const first = coordinatorWake(r.plan, r.state, 63 * MIN)
+    expect(first.texts).toEqual([`Pipeline watch failed at ${said}`])
+    expect(coordinatorWake(r.plan, first.state, 64 * MIN).texts).toEqual([])
+    const slow = play(company, 'feature', [...toDeploy, [62, later], [150, later], [151, later]])
+    expect(slow.state.yourTurn).toMatchObject({ reason: 'action', error: 'pipeline: still running after 90m' })
+  })
+
+  it('onFail worker sends a failed watch back to the worker with the output', () => {
+    const t: Template = { id: 'w', taskTypes: { s: { steps: [
+      { id: 'work', holder: 'worker', ends: 'report' },
+      { id: 'ci', ends: 'action', action: { kind: 'pipeline.watch', source: 'command', command: './ci-status', onFail: 'worker' } }, { id: 'done' }] } } }
+    expect(validateTemplate(t)).toEqual([])
+    const r = play(t, 's', [[0, { kind: 'start' }], [1, { kind: 'report', from: 'worker' }], [2, { kind: 'action-result', ok: false, error: 'pipeline: the command failed', detail: 'job lint: red' }]])
+    expect(r.steps.at(-1)).toBe('work')
+    expect(r.state.fix).toBe('pipeline: the command failed.\n\njob lint: red\n\nFix it, commit, then say you are done.')
+    expect(r.state.notify).toBe('ci: pipeline: the command failed\njob lint: red')
+    expect(validateTemplate({ ...t, taskTypes: { s: { steps: [{ id: 'ci', holder: 'coordinator', ends: 'action', action: { kind: 'pipeline.watch', source: 'command' } }] } } }).map(e => e.path))
+      .toEqual(['taskTypes.s.steps[0].action.command', 'taskTypes.s.steps[0].holder'])
   })
 
   it('takes a step\'s end only from its holder', () => {
