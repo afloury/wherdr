@@ -46,6 +46,16 @@ export async function ensureReady(deps: PmLaunchDeps, p: Project, t: Template, t
   if (refused) throw new HerdrError('refused', `${machineOn(deps, machine).m.label} is not ready for this project: ${refused}`)
 }
 
+// For placement: why the machine cannot take the task ('' ready). Any result
+// is trusted for 10 minutes, so a machine that fails is not checked every tick.
+export async function readiness(deps: PmLaunchDeps, p: Project, t: Template | null, task: Task, machine: string): Promise<string> {
+  const seen = last.get(`${p.key}|${machine}|${t && shotStep(t, task.type) ? 1 : 0}`)
+  if (seen && Date.now() - seen.at < FRESH_MS) return seen.refused ?? ''
+  const clone = cloneOn(p, machine, await homeOf(deps, machineOn(deps, machine).on))
+  if (!clone) return 'no clone path'
+  return (await runCheck(deps, p, t, task, machine, clone)).refused ?? ''
+}
+
 // An allowed machine's check for the project (its sheet, after adding it):
 // each check's result, and refused when one fails.
 export async function checkMachine(deps: PmLaunchDeps, key: unknown, machine: unknown) {

@@ -32,9 +32,6 @@ export function memoryShort(mem: MachineCapacity | null, s: MemorySettings, agen
   if (cap !== undefined && agents >= cap) return `${agents} agents already run on it (cap ${cap})`
 }
 
-// The words on a held task's card.
-export const memoryWait = (machine: string, why: string) => `Waits for memory on ${machine}: ${why}`
-
 // One line for `autopilot show` and Settings: "5.2 GB free of 16.0 GB · 8 cores, load 2.1 · swap 3 % · 2 of 10 agents · go".
 export function memoryLine(mem: MachineCapacity | null, s: MemorySettings, agents: number): string {
   const cap = agentCap(s, mem)
