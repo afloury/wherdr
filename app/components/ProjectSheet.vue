@@ -33,10 +33,10 @@ async function load() {
   const r = await api<{ workflow: Template | null, log: LogEntry[] }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
   workflow.value = r.workflow
   log.value = r.log
-  const prefs: Prefs = r.workflow?.prefs ?? {}
-  Object.assign(form, { name: p.value.name, key: shownKey(p.value), color: p.value.color ?? '', base: p.value.base ?? '', agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '' })
+  fill(p.value, r.workflow?.prefs ?? {})
   loaded.value = true
 }
+const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, key: shownKey(x), color: x.color ?? '', base: x.base ?? '', agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '' })
 onMounted(() => { load().catch((e) => { error.value = (e as Error).message }); loadCoordinators() })
 
 async function run(what: string, fn: () => Promise<unknown>) {
@@ -49,8 +49,13 @@ async function run(what: string, fn: () => Promise<unknown>) {
 }
 const save = () => run('save', async () => {
   const { name, key, color, base, ...prefs } = form
-  await api('/api/pm/project-update', { key: p.value.key, name, base, ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs } : {}) })
+  const r = await api<{ project: Project }>('/api/pm/project-update', { key: p.value.key, name, base, ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs } : {}) })
+  // The prop is refreshed only after `changed`: the form takes the saved
+  // project, and the shared lists that show its key and color are read again.
   await load()
+  fill(r.project, workflow.value?.prefs ?? {})
+  loadCoordinators()
+  loadTaskAgents()
   toast(tl('Saved'))
 })
 
