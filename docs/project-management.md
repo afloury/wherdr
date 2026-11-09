@@ -122,7 +122,8 @@ its folder, branches and task worktrees stay on the machine.
 - **Shown in**: the home tab that shows the project's coordinator and its tasks
   to handle, saved at once. *Automatic* (the default, with the groups it means
   in brackets): every tab holding one of its machines, so a project whose
-  machines are in several groups shows on each of them. Or one machine group,
+  machines are in several groups shows on each of them. A machine paused for
+  the project is left out, unless one of its tasks still runs there. Or one machine group,
   or *All tabs*. Without a machine group the sheet points to Settings ›
   Appearance › Machine tabs; deleting a group puts the projects shown in it
   back to Automatic ([Machines as tabs](home.md#machines-as-tabs)).
