@@ -10,7 +10,9 @@ SSH connection of its own.
 
 - **On the home screen**, each machine is one of the machine tabs, online or offline, with its
   count of rows ([Machines as tabs](home.md#machines-as-tabs)). When a machine goes offline, its
-  last terminals stay visible, marked offline, until core reaches it again.
+  last terminals stay visible, marked offline, until core reaches it again. A project shows on
+  the tabs of its machines, or where its sheet's **Shown in** puts it
+  ([General](project-management.md#general)).
 - **New** starts a terminal or an agent on any online machine (`terminal.run` with `on`). Home,
   folders, Git detection and installed agents of that machine come from `machine.exec`; folders
   must stay under the machine's home.
