@@ -50,7 +50,7 @@ it('a stall shows on the card; after 30 min it is Your turn and in Tasks to hand
   expect(toHandle([young])).toEqual([])
   const old = cardOf(red, plan, [], RED_CI_WAIT_MS + HANDLE_AFTER_MS)
   expect(old.yourTurn).toBe('Stalled: CI red, no new push for 10 min')
-  expect(toHandle([old])).toEqual([{ id: 'CO-1', shown: 'CO-1', title: 'T', action: 'Stalled: CI red, no new push for 10 min', label: 'Unblock' }])
+  expect(toHandle([old])).toEqual([{ id: 'CO-1', shown: 'CO-1', project: 'CO', title: 'T', action: 'Stalled: CI red, no new push for 10 min', label: 'Unblock' }])
   // What already waits for the user is there at once, with its action.
   const merge = cardOf(task(at(4, { yourTurn: { reason: 'action', badge: 'merge: head moved' } })), plan, [])
   expect(merge.stall).toBeUndefined()

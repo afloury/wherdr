@@ -60,7 +60,8 @@ export interface CoordinatorView {
   // agent: the default the user set for it, if any (else the first of their agents).
   // git: false: a folder without git, its coordinator works in it (no template needed).
   // label, color: the project's shown key and its badge's color.
-  project: string, name: string, label?: string, color?: ProjectColor, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string
+  // machines: the project's allowed machines, home first (none for the main coordinator).
+  project: string, machines?: string[], name: string, label?: string, color?: ProjectColor, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string
   // proposal: the change waiting for the user, as a person reads it too; answered: the last answer.
   proposal?: Omit<Proposal, 'template' | 'base'> & { changes?: WorkflowChanges }, answered?: ProposalAnswer
   // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
