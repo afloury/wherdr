@@ -1801,6 +1801,8 @@ body.kb .composer { padding-bottom: 8px; }
   padding: 8px 16px calc(var(--safe-bottom) + 16px);
   display: flex; flex-direction: column; gap: 0;
 }
+/* Focused on open (AppSheet): no outline, its buttons keep their own ring. */
+.hw-sheet:focus { outline: none; }
 /* A confirmation asked from an open window sits above it. */
 .hw-scrim.top { z-index: 22; }
 .hw-sheet.top { z-index: 23; }
