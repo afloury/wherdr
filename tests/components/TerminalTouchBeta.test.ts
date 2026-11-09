@@ -18,7 +18,7 @@ async function mounted(enabled: boolean) {
   smoothTouchScrolling.value = enabled
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
   const ctl = {
-    mount: vi.fn((el: HTMLElement) => { el.innerHTML = '<div class="xterm"><div class="xterm-screen">terminal grid</div></div>' }),
+    mount: vi.fn(async (el: HTMLElement) => { el.innerHTML = '<div class="xterm"><div class="xterm-screen">terminal grid</div></div>'; return true }),
     scroll: vi.fn(() => true), rowHeight: () => 16, pageRows: () => 24,
     fitNow: vi.fn(), hasBanner: () => true, connect: vi.fn(), dispose: vi.fn(),
     focus: vi.fn(), blur: vi.fn(), tapLink: vi.fn(() => false), tapMouse: vi.fn(),
