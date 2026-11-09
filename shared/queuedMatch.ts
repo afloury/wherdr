@@ -1,11 +1,14 @@
 // Photos of a queued message. A message sent from wherdr carries its photos
-// as path lines ("<home>/.cache/herdr-web/uploads/<name>"); the agent turns
-// them into images (Claude Code writes "[Image #1]" in its own queue and the
-// image itself in the transcript). A message with photos and no text has
-// nothing else to be recognized by: it is matched by its photos.
+// as path lines: "<home>/.cache/herdr-web/uploads/<name>", or on herdr-core
+// the path `terminal.put` returned (its own folder, on the agent's machine),
+// told apart by the name wherdr gives a photo (see corePutPhoto). The agent
+// turns them into images (Claude Code writes "[Image #1]" in its own queue
+// and the image itself in the transcript). A message with photos and no text
+// has nothing else to be recognized by: it is matched by its photos.
 
 const UPLOAD = '/.cache/herdr-web/uploads/'
-export const isUploadLine = (l: string) => l.includes(UPLOAD)
+const CORE_PHOTO = /^\/\S*\/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{6}\.(?:jpg|png|webp|gif|heic)$/
+export const isUploadLine = (l: string) => l.includes(UPLOAD) || CORE_PHOTO.test(l.trim())
 
 // Stored names of the photos of a message.
 export function uploadNames(text: string): string[] {
@@ -38,3 +41,8 @@ export const uploadSrc = (name: string) => `/uploads/${encodeURIComponent(name)}
 // A command for the agent ("/compact", "/model opus"…), not a message that
 // starts with a path (a photo sent alone is "/…/uploads/<name>").
 export const isSlashCommand = (text: string) => /^\/[^\s/]*(?:\s|$)/.test(String(text || '').trim())
+
+// "!" with nothing after it: Claude Code switches to bash mode with an empty
+// field and stays there, so the next message would run as a shell command
+// (Claude Code 2.1.318). Nothing to send.
+export const isBareBang = (text: string) => /^\s*!\s*$/.test(String(text || ''))

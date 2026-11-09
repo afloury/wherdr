@@ -3,7 +3,7 @@
 // The "+" of a single tab is in its view's header. Mini-map for
 // a tab with several panes, otherwise state dot of the most urgent pane.
 // The open tab is remembered for the space. Long press (phone) or right
-// click (computer) on a tab: its options (rename, new tab, close).
+// click (computer) on a tab: its options (new tab).
 import { leadPane } from '#shared/spaces'
 import { longPress } from '~/utils/longPress'
 
@@ -13,7 +13,7 @@ const tabs = computed(() => spaceTabs(props.workspace).map((e) => {
   return {
     ...e,
     label: e.tab.label || String(e.tab.number),
-    tone: lead && lead.agent ? statusKey(lead) : '',
+    tone: lead && (lead.coreAddress || lead.agent) ? statusKey(lead) : '',
     title: e.panes.map(p => paneTitle(p)).join(' · '),
   }
 }))
