@@ -208,8 +208,8 @@ kept conversation that ran with another agent. A tap opens its window:
   holds no agent, such as a PR or merge waiting for checks or the queue, or a
   step of yours, takes no slot), the events it wakes on (*Task added*, *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
-  even with nothing to do, with its own *New tasks / day*). The form says
-  *Unsaved changes* until you save;
+  even with nothing to do, with its own *New tasks / day*), and **Keep the
+  board busy** (see below). The form says *Unsaved changes* until you save;
 - its wakes, each created, delivered and acknowledged, and *Run now*.
 
 Automatic work (the autopilot, automations) waits while an account is ahead of
@@ -217,7 +217,16 @@ its [pace](quotas.md#pace) (a machine whose account waits is skipped) or no
 machine the project allows has room for the task
 ([Machines](machines.md#manage-machines)); your own starts never wait.
 
-The coordinator sees the same with `wherdr pm autopilot show`: the project's
+**Keep the board busy** (on by default while the autopilot is on): the engine
+itself starts the next task to do, oldest first, whenever a machine the project
+allows has room, within the autopilot's limits, hours and pace. It never starts
+a task that waits for its *after* tasks (those start once they are done), nor
+one already under way, and each start goes in the task's log (*started by the
+autopilot: room on* a machine) without waking the coordinator. Turn it off to
+leave every start to the coordinator's wakes and to you.
+
+The coordinator sees the same with `wherdr pm autopilot show`: whether Keep the
+board busy is on and the task it starts next (or why none), the project's
 placement strategy, one line per machine the project allows (memory, cores and load, its agents at work by
 weight, and the heaviest weight it takes now, or why none: full, not ready,
 paced, offline), and what each weight counts (*light* ≈ 0.7 GB, *standard* ≈

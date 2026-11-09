@@ -14,9 +14,9 @@ const busy = ref(false)
 const error = ref('')
 const sent = ref(false)
 // The form's fields, from a saved autopilot. Empty: Tasks / day has no limit, At once is Auto.
-type Form = { goal: string, every: string, at: string, events: AutopilotEvent[], perDay: string, atOnce: string, lookForWork: boolean, lookPerDay: number }
+type Form = { goal: string, every: string, at: string, events: AutopilotEvent[], perDay: string, atOnce: string, lookForWork: boolean, lookPerDay: number, keepBusy: boolean }
 const text = (n: number | null) => (n === null ? '' : String(n))
-const formOf = (a: Autopilot): Form => ({ goal: a.goal, every: a.every ?? '', at: a.at ?? '', events: [...a.events], perDay: text(a.perDay), atOnce: text(a.atOnce), lookForWork: !!a.lookForWork, lookPerDay: a.lookPerDay ?? LOOK_PER_DAY })
+const formOf = (a: Autopilot): Form => ({ goal: a.goal, every: a.every ?? '', at: a.at ?? '', events: [...a.events], perDay: text(a.perDay), atOnce: text(a.atOnce), lookForWork: !!a.lookForWork, lookPerDay: a.lookPerDay ?? LOOK_PER_DAY, keepBusy: a.keepBusy !== false })
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 // A field as it would be saved: numbers as numbers (empty: null), times trimmed.
 const orNull = (v: unknown) => (v === '' || v === null || v === undefined ? null : Number(v))
@@ -58,11 +58,11 @@ const fieldError = (k: keyof Form) => (errorField.value === k ? saveError.value 
 async function save() {
   saveError.value = ''
   await act(async () => {
-    const { lookForWork: _, lookPerDay: __, ...kept } = ap.value
+    const { lookForWork: _, lookPerDay: __, keepBusy: ___, ...kept } = ap.value
     try {
       const r = await api<{ autopilot: Autopilot }>('/api/pm/autopilot', {
         project: props.c.project,
-        autopilot: { ...kept, goal: form.goal, every: form.every.trim(), at: form.at.trim(), events: form.events, perDay: orNull(form.perDay), atOnce: orNull(form.atOnce), ...(form.lookForWork ? { lookForWork: true, lookPerDay: Number(form.lookPerDay) } : {}) },
+        autopilot: { ...kept, goal: form.goal, every: form.every.trim(), at: form.at.trim(), events: form.events, perDay: orNull(form.perDay), atOnce: orNull(form.atOnce), ...(form.lookForWork ? { lookForWork: true, lookPerDay: Number(form.lookPerDay) } : {}), ...(form.keepBusy ? {} : { keepBusy: false }) },
       })
       // The form takes the saved values (the goal trimmed…).
       if (r?.autopilot) { base.value = formOf(r.autopilot); Object.assign(form, formOf(r.autopilot)) }
@@ -147,6 +147,8 @@ const counters = computed(() => props.c.limits
         </UButton>
       </div>
       <p v-if="fieldError('events')" class="error" role="alert" data-testid="autopilot-error-events">{{ fieldError('events') }}</p>
+      <USwitch v-model="form.keepBusy" size="lg" :label="tl('Keep the board busy')" data-testid="autopilot-keep-busy"
+        :description="tl('Start the next to-do task, oldest first, whenever a machine has room, within the limits and hours, without waking the coordinator.')" />
       <USwitch v-model="form.lookForWork" size="lg" :label="tl('Look for new work', 'Chercher du travail')" data-testid="autopilot-look-for-work"
         :description="tl('Keep the scheduled wakes when there is nothing to do, for a goal that adds its own tasks.', 'Garder les réveils programmés quand il n’y a rien à faire, pour un objectif qui crée ses propres tâches.')" />
       <div v-if="form.lookForWork" class="ap-grid">
