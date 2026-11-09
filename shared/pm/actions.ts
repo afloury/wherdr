@@ -157,10 +157,10 @@ if [ -n "$BITBUCKET_USERNAME" ]; then auth="user = \\"$BITBUCKET_USERNAME:\${BIT
 elif [ -n "$BITBUCKET_TOKEN" ]; then auth="header = \\"Authorization: Bearer $BITBUCKET_TOKEN\\""
 else echo "no Bitbucket credentials: set BITBUCKET_TOKEN, or BITBUCKET_USERNAME and BITBUCKET_APP_PASSWORD, on this machine"; exit 1; fi
 if [ "$1" = GET ]; then g=-G; d=--data-urlencode; else g=; d=--data; fi
-o=$(printf '%s\\n' "$auth" | curl -sS -K - -X "$1" $g -H 'Content-Type: application/json' "$d" "$3" -w '\\n%{http_code}' "\${BITBUCKET_API:-https://api.bitbucket.org/2.0}/repositories/$r$2" 2>&1) || { echo "$o"; exit 1; }
-c=$(echo "$o" | tail -1)
+o=$(printf '%s\\n' "$auth" | curl -sS -K - -X "$1" $g -H 'Content-Type: application/json' "$d" "$3" -w '\\n%{http_code}' "\${BITBUCKET_API:-https://api.bitbucket.org/2.0}/repositories/$r$2" 2>&1) || { printf '%s\\n' "$o"; exit 1; }
+c=$(printf '%s\\n' "$o" | tail -1)
 case $c in 429) echo "rate limit"; exit 1;; 5*) echo "HTTP $c"; exit 1;; esac
-echo "$o"`,
+printf '%s\\n' "$o"`,
   // Remote branches holding the task's commit, for the protected-branch alert.
   contains: `${IN} git fetch -q origin 2>&1 || exit 1; git branch -r --contains HEAD --format='%(refname:short)'`,
 }

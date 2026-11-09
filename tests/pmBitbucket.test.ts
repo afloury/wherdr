@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { SCRIPT, bbReady, taskGuards, type Receipt } from '../shared/pm/actions'
 import { runAction, type ActionJob } from '../server/utils/pmActions'
@@ -60,5 +64,16 @@ describe('bitbucket.merge', () => {
     expect(await main.go({ kind: 'bitbucket.merge', method: 'squash' }, { by: 'user', attempt: 2 })).toMatchObject({ ok: true })
     expect(JSON.parse(main.calls.find(c => c[0] === 'POST')![2]!)).toMatchObject({ merge_strategy: 'squash' })
     expect(await fakeBitbucket({ prs: [pr({ state: 'MERGED' })] }).go()).toMatchObject({ ok: true, note: 'already merged on Bitbucket' })
+  })
+
+  it('prints the API body as it came, JSON escapes kept (a multi-line PR description)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-'))
+    try {
+      execFileSync('git', ['init', '-q', dir]); execFileSync('git', ['-C', dir, 'remote', 'add', 'origin', 'git@bitbucket.org:example-org/example-repo.git'])
+      const body = String.raw`{"values":[{"summary":{"raw":"line one\nline two \\ \c"}}]}`
+      fs.writeFileSync(path.join(dir, 'curl'), `#!/bin/sh\ncat >/dev/null\nprintf '%s\\n200' '${body}'\n`, { mode: 0o755 })
+      const out = execFileSync('sh', ['-c', SCRIPT.bitbucket, 'sh', dir, 'GET', '/pullrequests', 'q=x'], { env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, BITBUCKET_TOKEN: 't' }, encoding: 'utf8' })
+      expect(out.trim().split('\n')).toEqual([body, '200'])
+    } finally { fs.rmSync(dir, { recursive: true, force: true }) }
   })
 })
