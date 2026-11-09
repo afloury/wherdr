@@ -60,6 +60,9 @@ const picked = () => choices.value.find(p => p === pick.value)
 
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { loadAlfred(); timer = setInterval(loadAlfred, 30_000) })
+// A rename lands in identity.md during one of its turns: read the name again
+// as soon as its status changes (pushed live), not at the next poll.
+watch(() => alfredPane.value?.status, (s, was) => { if (was && s !== was) loadAlfred() })
 onUnmounted(() => clearInterval(timer))
 </script>
 

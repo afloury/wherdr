@@ -146,6 +146,7 @@ const counters = computed(() => props.c.limits
           {{ tl(...EVENT_LABEL[e]) }}
         </UButton>
       </div>
+      <p class="muted" data-testid="autopilot-added-hint">{{ tl('Task added: added by someone else than this coordinator (you, another coordinator, an automation).') }}</p>
       <p v-if="fieldError('events')" class="error" role="alert" data-testid="autopilot-error-events">{{ fieldError('events') }}</p>
       <USwitch v-model="form.keepBusy" size="lg" :label="tl('Keep the board busy')" data-testid="autopilot-keep-busy"
         :description="tl('Start the next to-do task, oldest first, whenever a machine has room, within the limits and hours, without waking the coordinator.')" />
