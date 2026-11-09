@@ -55,7 +55,7 @@
 - [Conversation and replies](docs/conversation.md): transcripts, one-tap answers, quoted replies, attachments, dictation, and in-app links (`#/settings?section=…`, `#/board?task=…`) that open a place in wherdr.
 - [Conversations on hc](docs/core.md#conversations): which agents open on their transcript and how it is read, and text left unsent in Claude's input box (never shown as read, never glued to the next message).
 - [Terminal](docs/terminal.md): the real terminal, shared viewers and taking control.
-- [Files](docs/files.md): browse an agent's folder, preview text, Markdown, images, PDFs and videos, download.
+- [Files](docs/files.md): browse an agent's folder, preview text, Markdown, images, PDFs and videos, download; which files a path in a conversation may open.
 - [On a computer](docs/devices.md#on-a-computer): layout and keyboard shortcuts.
 - [On a phone](docs/devices.md#on-a-phone): touch controls and the phone keybar.
 - [On an iPad](docs/devices.md#on-an-ipad): the iPad layout.
