@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import BoardView from '~/components/BoardView.vue'
 import { herdrState } from '~/composables/useHerdr'
@@ -12,6 +12,9 @@ import type { Template } from '#shared/pm/workflow'
 import type { Pane } from '#shared/types'
 import { nextTick } from 'vue'
 import { pick, select, selectLabels, selectValue } from '../helpers/select'
+
+const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
+mockNuxtImport('navigateTo', () => navigate)
 
 // Cards built by the same code as the server (server/utils/pmBoard.ts).
 const run = (task: string, role: Run['role'], terminal: string): Run =>
@@ -103,6 +106,17 @@ it('moves a card to Your turn when its agent waits for the user', async () => {
     expect(laneOf(w, 'VIB-1')).toBe('your-turn')
     expect(card(w, 'VIB-1').text()).toContain('Answer the agent')
     expect(card(w, 'VIB-1').find('[data-testid="holder-state"]').classes()).toContain('blocked')
+    // WHR-145: a tap opens that agent's conversation; the task's sheet stays in the menu.
+    navigate.mockReset()
+    await card(w, 'VIB-1').trigger('click')
+    expect(navigate).toHaveBeenCalledWith('/a/host-a%2Ft1')
+    expect(document.querySelector('[data-testid="task-panel"]')).toBeNull()
+    await card(w, 'VIB-1').trigger('contextmenu')
+    expect(menuState.items.map(i => ('label' in i ? i.label : '')).slice(0, 2)).toEqual(['Open the agent', 'Open the task'])
+    menuState.open = false
+    // A merge waiting for the user opens its sheet on To do.
+    await card(w, 'CO-2').trigger('click')
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="task-todo"]')).not.toBeNull())
   } finally { herdrState.value = before }
 })
 

@@ -70,7 +70,7 @@
 - [Autopilot](docs/project-management.md#autopilot): the header button and its window, goal, wakes and limits.
 - [Board](docs/project-management.md#board): columns, cards, time in the step and total time, Add task, Start, Start on another machine (its readiness check), Stop, Delete.
 - [Task sheet](docs/project-management.md#task-sheet): time per step, waits for you, review rounds and CI fixes, the task's buttons and its Description, Plan and Log tabs.
-- [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back and other answers.
+- [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back and other answers; a tap on Your turn or Tasks to handle opens the asking agent's conversation, else the sheet.
 - [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again.
 - [Alfred's command](docs/alfred.md): `wherdr alfred`, what Alfred reads and changes after your yes.
 - [After an update](docs/alfred.md#after-an-update): new instructions for Alfred and coordinators, and the one-line notice on their next command.
