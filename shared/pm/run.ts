@@ -26,6 +26,7 @@ export interface Task {
   idle?: number // since when the agent holding its step sits idle, its report still due (blocked.ts)
   stall?: { cause: string, reason: string, since: number } // its stall as the engine last saw it (blocked.ts)
   stalls?: Record<string, { since: number, nudged?: number, handled?: number, back?: number }> // each cause seen: when it began, its one nudge and hand-over, when its agent went back to work
+  fixes?: { step: string, n: number } // mechanical fixes the coordinator's wakes made in this step (tell --fix)
   run?: string // the current run
   weight?: Weight // light, standard or heavy, set by the user or the coordinator (weight.ts); else from its type
   machine?: string // where its first start put it: it always goes back there (none, once started: its project's machine)

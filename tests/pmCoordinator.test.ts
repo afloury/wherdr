@@ -302,6 +302,9 @@ describe('arbitration after N send-backs', () => {
 it('tell goes to the step\'s agent, else the worker; --to picks one', () => {
   expect(parseCommand(['tell', 'CO-1', 'rework', 'it', '--to', 'worker'])).toEqual({ name: 'tell', task: 'CO-1', text: 'rework it', to: 'worker' })
   expect(parseCommand(['tell', 'CO-1', 'hi', '--to', 'coordinator'])).toEqual({ error: '--to is one of worker, reviewer' })
+  expect(parseCommand(['tell', 'CO-1', 'retry', '--fix', 'machine', '--reason', ' Disk full. '])).toEqual({ name: 'tell', task: 'CO-1', text: 'retry', fix: 'machine', reason: 'Disk full.' })
+  expect(parseCommand(['tell', 'CO-1', 'retry', '--fix', 'approve', '--reason', 'x'])).toEqual({ error: '--fix is one of base, ci, machine, stall' })
+  expect(parseCommand(['tell', 'CO-1', 'retry', '--fix', 'ci'])).toEqual({ error: '--fix and --reason "<one sentence>" go together' })
   const run = (id: string, role: 'worker' | 'reviewer', startedAt: number, more = {}) => ({ id, task: 'CO-1', role, program: 'claude', model: 'opus', machine: '', worktree: '/w', branch: 'b', instructions: '', terminal: `host/${id}`, attempt: 1, state: 'running' as const, startedAt, ...more })
   const runs = [run('w', 'worker', 1), run('r', 'reviewer', 2)] // the reviewer is the latest
   for (const holder of ['none', 'coordinator', 'worker', undefined] as const) expect(tellTarget(runs, 'CO-1', holder)).toMatchObject({ role: 'worker', run: { id: 'w' } })
@@ -310,6 +313,8 @@ it('tell goes to the step\'s agent, else the worker; --to picks one', () => {
   // A worker let go while the task waited is started again; one that exited is not running.
   expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'released' })], 'CO-1', 'none')).toEqual({ role: 'worker', run: undefined, released: true })
   expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'exit' })], 'CO-1', 'none')).toEqual({ role: 'worker', run: undefined, released: false })
+  // A fix starts again a worker that ended, not only one let go.
+  expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'exit' })], 'CO-1', 'none', undefined, true)).toEqual({ role: 'worker', run: undefined, released: true })
 })
 
 
@@ -783,6 +788,14 @@ describe('commands of lot 10', () => {
     const told = (await store.task(task.id))!
     expect([told.state, told.waitKind, told.log?.at(-1)?.text]).toEqual(['working', undefined, 'told the worker: Postgres, as in the README'])
     await refused(tell(['tell', task.id, 'and also…']), 'only answers an agent\'s question')
+    // A mechanical fix: with the autopilot on, twice per step, logged with its reason.
+    const fix = ['tell', task.id, 'Merge', 'the', 'base', '--fix', 'base', '--reason', 'The PR conflicts with v3.']
+    await refused(tell(fix), 'only with the autopilot on')
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { ...DEFAULT_AUTOPILOT, on: true } })
+    await tell(fix)
+    await tell(fix)
+    expect((await store.task(task.id))!.log?.at(-1)?.text).toBe('told the worker (fix base: The PR conflicts with v3.): Merge the base')
+    await refused(tell(fix), 'Already fixed 2 times in this step')
     // A permission prompt on its screen, even in the user's turn: never typed into.
     await noteTurn(store, 'CO', 'user', 'tell it')
     const blocked = async (method: string, p: { text: string }) => (method === 'terminal.get' ? { status: { state: 'blocked' } } : call(method, p))
