@@ -460,6 +460,14 @@ The task is yours again once the worker pushes or says it is done. Before it
 ends a task's agents, wherdr pushes the commits the branch has not pushed yet;
 if the push fails, the agents stay and the log says why.
 
+A task has one worker and one reviewer at most. Two starts at the same time
+(yours, the coordinator's, the engine's when the task before it is done, a
+start held for room) start one agent: the other is refused as *already
+starting*, and a start held for room is dropped once the task started another
+way. A task whose worker still runs (waiting for your answer, say) is not
+started again: stop it first. Should two agents of one role ever run on a
+task, wherdr keeps the one it tracks, ends the other and says so in the log.
+
 A message from the coordinator (`wherdr pm tell <task>`) goes to the agent
 that holds the task's current step; at a step held by nobody (the PR, the
 merge, a step you end) it goes to the worker, started again if it was ended.
