@@ -2,7 +2,7 @@
 // fits now, or a hold that names each machine's reason. Pure: the server reads
 // each machine (capacity, settings, agents at work, readiness, pace) and asks.
 import type { MachineCapacity } from './capacity'
-import { SWAP_MAX, agentCap, reserveOf, capacityParts, hoursLabel, hoursWait, type MemorySettings } from './memory'
+import { agentCap, memoryStrain, reserveOf, capacityParts, hoursLabel, hoursWait, type MemorySettings } from './memory'
 import { WEIGHTS, WEIGHT_DEFAULTS, type Weight } from './weight'
 
 export interface Estimate { mb: number, cores: number }
@@ -65,7 +65,8 @@ export function misfit(c: Candidate, weight: Weight, e: Estimate, now = new Date
   if (!m) return undefined
   const reserve = reserveOf(c.settings, m)
   if (m.available - e.mb < reserve) return `${gb(m.available)} free, needs ${gb(e.mb + reserve)} with its reserve`
-  if (m.swapTotal && (m.swapTotal - m.swapFree) / m.swapTotal > SWAP_MAX) return `swap ${Math.round((m.swapTotal - m.swapFree) / m.swapTotal * 100)} % used`
+  const strain = memoryStrain(m, weight === 'light')
+  if (strain) return strain
   if (sum(c.running, 'mb') + e.mb > m.total - reserve) return `${agents} agents take ≈${gb(sum(c.running, 'mb'))} of ${gb(m.total)}`
   if (m.cores && sum(c.running, 'cores') + e.cores > m.cores) return `${agents} agents take its ${m.cores} cores`
   if (weight === 'heavy' && m.cores && m.load1 / m.cores > HEAVY_LOAD) return `load ${m.load1.toFixed(1)} on ${m.cores} cores`

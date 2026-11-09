@@ -54,22 +54,33 @@ export const agentCap = (s: MemorySettings, mem: MachineCapacity | null) =>
 const gb = (mb: number) => `${(mb / 1024).toFixed(1)} GB`
 const swapUsed = (m: MachineCapacity) => (m.swapTotal ? (m.swapTotal - m.swapFree) / m.swapTotal : 0)
 
+// Why the machine's memory takes no more work beyond its free figure, or
+// undefined. macOS: its pressure (normal: the free rule alone; warn: light
+// work only; critical: nothing). Linux: swap over SWAP_MAX.
+export function memoryStrain(m: MachineCapacity, light: boolean): string | undefined {
+  if (m.pressure === 'critical') return 'memory pressure critical'
+  if (m.pressure === 'warn') return light ? undefined : 'memory pressure warn: light work only'
+  if (swapUsed(m) > SWAP_MAX) return `swap ${Math.round(swapUsed(m) * 100)} % used`
+}
+
 // Why the machine is short for one more agent, or undefined. `agents`: the
 // agents running on it now, all projects together. An unknown reading holds
 // only by the user's cap.
 export function memoryShort(mem: MachineCapacity | null, s: MemorySettings, agents: number): string | undefined {
   if (mem && mem.available < reserveOf(s, mem)) return `${gb(mem.available)} free, under ${gb(reserveOf(s, mem))}`
-  if (mem && swapUsed(mem) > SWAP_MAX) return `swap ${Math.round(swapUsed(mem) * 100)} % used`
+  const strain = mem && memoryStrain(mem, false)
+  if (strain) return strain
   const cap = agentCap(s, mem)
   if (cap !== undefined && agents >= cap) return `${agents} agents already run on it (cap ${cap})`
 }
 
-// The reading's parts: "5.2 GB free of 16.0 GB", "8 cores, load 2.1", "swap 3 %", "2 of 10 agents".
+// The reading's parts: "5.2 GB free of 16.0 GB", "8 cores, load 2.1", "swap 3 %" (macOS: "pressure normal"), "2 of 10 agents".
 export function capacityParts(mem: MachineCapacity | null, s: MemorySettings, agents: number): string[] {
   const cap = agentCap(s, mem)
   return [
     mem ? `${gb(mem.available)} free of ${gb(mem.total)}` : 'memory unknown',
     ...(mem?.cores ? [`${mem.cores} cores, load ${mem.load1.toFixed(1)}`] : []),
+    ...(mem?.pressure ? [`pressure ${mem.pressure}`] : []),
     ...(mem?.swapTotal ? [`swap ${Math.round(swapUsed(mem) * 100)} %`] : []),
     cap !== undefined ? `${agents} of ${cap} agents` : `${agents} agents`,
   ]
