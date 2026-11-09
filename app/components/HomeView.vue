@@ -249,6 +249,7 @@ function machineMenuItems(m: MachineInfo): MenuItem[] {
       newAgentMachine.value = m.key
       newAgentOpen.value = true
     } })
+    items.push({ label: t('Keep awake'), desc: awakeLabel(awakeByMachine.value[baseKeyOf(m)]) || undefined, icon: 'i-lucide-sun', run: () => openAwake({ key: baseKeyOf(m), label: m.label }) })
   }
   else if (!m.local) {
     items.push({ label: t('Reconnect'), icon: 'i-lucide-plug', run: async () => {
