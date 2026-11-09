@@ -12,10 +12,11 @@ Reading:
 | --- | --- |
 | `wherdr alfred projects` | whether projects are on, and each project (key, name, machine, folder, template) |
 | `wherdr alfred project <KEY>` | one project, its coordinator and its tasks by state |
-| `wherdr alfred templates` | the saved templates |
+| `wherdr alfred templates` | the saved templates, and the examples (`example:<id>`) a project's template can start from |
 | `wherdr alfred machines` | the machines herdr-core knows (key, label, status); `""` is this machine |
 | `wherdr alfred coordinators` | each coordinator, its agent and whether it runs (`stopped`: its terminal ended, see `--resume`) |
 | `wherdr alfred coordinator open <KEY>` | the link that opens a running project coordinator |
+| `wherdr alfred v2` | when you come from wherdr v2: the projects its migration listed, their open tasks, the v3 project made from each, and the migration report ([set up your v2 projects](migrate-from-v2.md#set-up-your-v2-projects-with-alfred)) |
 | `wherdr alfred settings` | the synced settings, their values, and the values each setting Alfred may change accepts (`1` on, `0` off) |
 | `wherdr alfred help` | this list |
 
@@ -24,7 +25,7 @@ Changing (show, then do):
 | Command | Does |
 | --- | --- |
 | `wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]` | adds a project: a git folder inside the home folder of a machine, not already a project (on this machine, checked before the yes too) |
-| `wherdr alfred project template <KEY> <id\|none>` | gives the project a template, or none |
+| `wherdr alfred project template <KEY> <id\|none>` | gives the project a template (a saved one or `example:<id>`), or none |
 | `wherdr alfred project guards <KEY> [--protect <branch,branch\|none>] [--merge-protected user\|engine] [--merge-others user\|engine] [--contributor-prs off\|others\|all]` | the project's [guards](project-management.md#guards): protected branches, who merges into them and into the others (`user`: you, `engine`: wherdr), and whether its coordinator may merge an outside contributor's PR after your yes; without an option, only shown |
 | `wherdr alfred project machine add <KEY> <machine> --clone <folder>` | lets the project's tasks run on another machine (its key or label), in its clone of the repository there; once applied, the machine's [readiness check](project-management.md#board) runs and its result is in the answer |
 | `wherdr alfred project machine remove <KEY> <machine>` | the project's tasks no longer start on that machine (tasks already there stay) |
