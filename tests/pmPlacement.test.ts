@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { machineLine, placeTask, type Candidate, type Strategy } from '../shared/pm/placement'
 import { WEIGHT_DEFAULTS, weightsLine, type Weight } from '../shared/pm/weight'
-import { DEFAULT_MEMORY } from '../shared/pm/memory'
+import type { MemorySettings } from '../shared/pm/memory'
 
 const GB = 1024
+// A saved 2 GB reserve: the cases below are sized on it.
+const RESERVE_2GB: MemorySettings = { minFreeMb: 2 * GB }
 // A machine with `totalGb` of RAM, `freeGb` free and `cores` cores, running these agents.
 const machine = (key: string, totalGb: number, freeGb: number, cores: number, running: Weight[] = [], more: Partial<Candidate> = {}): Candidate => ({
-  key, label: key, online: true, settings: DEFAULT_MEMORY, running: running.map(w => ({ ...WEIGHT_DEFAULTS[w], weight: w })),
+  key, label: key, online: true, settings: RESERVE_2GB, running: running.map(w => ({ ...WEIGHT_DEFAULTS[w], weight: w })),
   capacity: { cores, total: totalGb * GB, available: freeGb * GB, swapTotal: 0, swapFree: 0, load1: 0 }, ...more,
 })
 const place = (weight: Weight, candidates: Candidate[], pinned?: string) => placeTask({ weight, home: 'machine-a', pinned, candidates })
@@ -33,7 +35,7 @@ describe('placing a task', () => {
     expect(r).toEqual({ hold: 'Waits for room (Heavy to the strongest): heavy (≈3.9 GB) fits nowhere — machine-a: 5.0 GB free, needs 5.9 GB with its reserve; machine-b: not ready (gh login: logged out); machine-c: offline', best: 'machine-a' })
     // The estimates of the agents already started count, though the reading has not caught up.
     expect(place('standard', [machine('machine-a', 8, 7, 8, ['standard', 'standard', 'standard'])])).toMatchObject({ hold: expect.stringContaining('machine-a: 3 agents take ≈5.3 GB of 8.0 GB') })
-    expect(place('light', [machine('machine-a', 64, 60, 8, ['light'], { settings: { ...DEFAULT_MEMORY, maxAgents: 1 } })])).toMatchObject({ hold: expect.stringContaining('1 agents (cap 1)') })
+    expect(place('light', [machine('machine-a', 64, 60, 8, ['light'], { settings: { ...RESERVE_2GB, maxAgents: 1 } })])).toMatchObject({ hold: expect.stringContaining('1 agents (cap 1)') })
     // No cap set: one agent per 1.5 GB of RAM, though memory is left (8 GB: 5).
     expect(place('light', [machine('machine-a', 8, 7, 8, Array(5).fill('light'))])).toMatchObject({ hold: expect.stringContaining('5 agents (cap 5)') })
   })
@@ -92,19 +94,19 @@ describe('placing a task', () => {
   it('keeps automatic starts within each machine\'s available hours', () => {
     const hours = { days: 'weekdays', from: '09:00', to: '19:00' } as const
     const at = (iso: string, weight: Weight = 'standard') => placeTask({ weight, home: 'machine-a', now: new Date(iso), candidates: [
-      machine('machine-a', 16, 8, 4), machine('machine-b', 64, 40, 16, [], { settings: { ...DEFAULT_MEMORY, hours } }),
+      machine('machine-a', 16, 8, 4), machine('machine-b', 64, 40, 16, [], { settings: { ...RESERVE_2GB, hours } }),
     ] })
     // A Monday at noon: heavy work goes to the strongest; at 18:00 it leaves in an hour, too late for heavy work.
     expect(at('2026-11-09T12:00:00')).toEqual({ machine: 'machine-a' })
     expect(at('2026-11-09T12:00:00', 'heavy')).toEqual({ machine: 'machine-b' })
     expect(at('2026-11-09T18:00:00', 'heavy')).toEqual({ machine: 'machine-a' })
     // Saturday, or a weekday night: away.
-    const alone = (iso: string) => placeTask({ weight: 'light', home: 'machine-b', now: new Date(iso), candidates: [machine('machine-b', 64, 40, 16, [], { settings: { ...DEFAULT_MEMORY, hours } })] })
+    const alone = (iso: string) => placeTask({ weight: 'light', home: 'machine-b', now: new Date(iso), candidates: [machine('machine-b', 64, 40, 16, [], { settings: { ...RESERVE_2GB, hours } })] })
     expect(alone('2026-11-14T12:00:00')).toMatchObject({ hold: expect.stringContaining('machine-b: away (weekdays 09:00-19:00)') })
     expect(alone('2026-11-09T20:00:00')).toMatchObject({ hold: expect.stringContaining('away') })
     // Over midnight: Friday 22:00 to 06:00 covers Saturday 02:00, not Saturday 22:00.
     const night = { days: 'weekdays', from: '22:00', to: '06:00' } as const
-    const n = (iso: string) => placeTask({ weight: 'light', home: 'm', now: new Date(iso), candidates: [machine('m', 64, 40, 16, [], { settings: { ...DEFAULT_MEMORY, hours: night } })] })
+    const n = (iso: string) => placeTask({ weight: 'light', home: 'm', now: new Date(iso), candidates: [machine('m', 64, 40, 16, [], { settings: { ...RESERVE_2GB, hours: night } })] })
     expect(n('2026-11-14T02:00:00')).toEqual({ machine: 'm' })
     expect(n('2026-11-14T22:00:00')).toMatchObject({ hold: expect.stringContaining('away') })
   })

@@ -4,7 +4,7 @@
 // the limits, its goal, interval, fixed times, events and limits (saved by the user
 // only), its latest wakes (created, delivered, acked) and "run now". In the coordinator
 // window and the project sheet's Autopilot tab.
-import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, LOOK_PER_DAY, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
+import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, LOOK_PER_DAY, MAX_PER_DAY, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Wake } from '#shared/pm/wakes'
 
@@ -13,13 +13,14 @@ const ap = computed<Autopilot>(() => props.c.autopilot ?? DEFAULT_AUTOPILOT)
 const busy = ref(false)
 const error = ref('')
 const sent = ref(false)
-// The form's fields, from a saved autopilot.
-type Form = { goal: string, every: string, at: string, events: AutopilotEvent[], perDay: number, atOnce: string, lookForWork: boolean, lookPerDay: number }
-const formOf = (a: Autopilot): Form => ({ goal: a.goal, every: a.every ?? '', at: a.at ?? '', events: [...a.events], perDay: a.perDay, atOnce: a.atOnce === null ? '' : String(a.atOnce), lookForWork: !!a.lookForWork, lookPerDay: a.lookPerDay ?? LOOK_PER_DAY })
+// The form's fields, from a saved autopilot. Empty: Tasks / day has no limit, At once is Auto.
+type Form = { goal: string, every: string, at: string, events: AutopilotEvent[], perDay: string, atOnce: string, lookForWork: boolean, lookPerDay: number }
+const text = (n: number | null) => (n === null ? '' : String(n))
+const formOf = (a: Autopilot): Form => ({ goal: a.goal, every: a.every ?? '', at: a.at ?? '', events: [...a.events], perDay: text(a.perDay), atOnce: text(a.atOnce), lookForWork: !!a.lookForWork, lookPerDay: a.lookPerDay ?? LOOK_PER_DAY })
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
-// A field as it would be saved: numbers as numbers (at once empty: Auto, null), times trimmed.
-const atOnceOf = (v: unknown) => (v === '' || v === null || v === undefined ? null : Number(v))
-const norm = (k: keyof Form, v: unknown) => (k === 'atOnce' ? atOnceOf(v) : typeof v === 'number' || k === 'perDay' || k === 'lookPerDay' ? Number(v) : k === 'every' || k === 'at' ? String(v).trim() : v)
+// A field as it would be saved: numbers as numbers (empty: null), times trimmed.
+const orNull = (v: unknown) => (v === '' || v === null || v === undefined ? null : Number(v))
+const norm = (k: keyof Form, v: unknown) => (k === 'perDay' || k === 'atOnce' ? orNull(v) : typeof v === 'number' || k === 'lookPerDay' ? Number(v) : k === 'every' || k === 'at' ? String(v).trim() : v)
 const KEYS = Object.keys(formOf(DEFAULT_AUTOPILOT)) as (keyof Form)[]
 const form = reactive<Form>(formOf(ap.value))
 // What the form was last filled with: the saved values it shows.
@@ -61,7 +62,7 @@ async function save() {
     try {
       const r = await api<{ autopilot: Autopilot }>('/api/pm/autopilot', {
         project: props.c.project,
-        autopilot: { ...kept, goal: form.goal, every: form.every.trim(), at: form.at.trim(), events: form.events, perDay: Number(form.perDay), atOnce: atOnceOf(form.atOnce), ...(form.lookForWork ? { lookForWork: true, lookPerDay: Number(form.lookPerDay) } : {}) },
+        autopilot: { ...kept, goal: form.goal, every: form.every.trim(), at: form.at.trim(), events: form.events, perDay: orNull(form.perDay), atOnce: orNull(form.atOnce), ...(form.lookForWork ? { lookForWork: true, lookPerDay: Number(form.lookPerDay) } : {}) },
       })
       // The form takes the saved values (the goal trimmed…).
       if (r?.autopilot) { base.value = formOf(r.autopilot); Object.assign(form, formOf(r.autopilot)) }
@@ -99,7 +100,7 @@ const stateLabel = (w: Wake) => {
   return s === 'pending' ? tl('Waiting', 'En attente') : s === 'delivered' ? tl('Delivered', 'Livré') : tl(...ENDED[s as keyof typeof ENDED])
 }
 const counters = computed(() => props.c.limits
-  ? tl(`${props.c.limits.started}/${props.c.limits.perDay} today · ${props.c.limits.working}/${props.c.limits.atOnce ?? 'Auto'} at once`)
+  ? tl(`${props.c.limits.started}${props.c.limits.perDay === null ? '' : `/${props.c.limits.perDay}`} today · ${props.c.limits.working}/${props.c.limits.atOnce ?? 'Auto'} at once`)
   : '')
 </script>
 
@@ -128,7 +129,7 @@ const counters = computed(() => props.c.limits
         </div>
         <div>
           <label class="field-label" :for="`ap-day-${c.project}`">{{ tl('Tasks / day', 'Tâches / jour') }}</label>
-          <UInput :id="`ap-day-${c.project}`" v-model="form.perDay" type="number" min="0" max="100" inputmode="numeric" size="xl" class="w-full mono" data-testid="autopilot-per-day" />
+          <UInput :id="`ap-day-${c.project}`" v-model="form.perDay" type="number" min="0" :max="MAX_PER_DAY" inputmode="numeric" :placeholder="tl('No limit')" size="xl" class="w-full mono" data-testid="autopilot-per-day" />
           <p v-if="fieldError('perDay')" class="error" role="alert" data-testid="autopilot-error-perDay">{{ fieldError('perDay') }}</p>
         </div>
         <div>

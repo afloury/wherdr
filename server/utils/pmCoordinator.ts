@@ -26,7 +26,7 @@ import { WRITE_SCRIPT, exec, startTask } from './pmLaunch'
 import { actionShell } from './pmActions'
 import { SCRIPT } from '../../shared/pm/actions'
 import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from '../../shared/pm/contributorPr'
-import { userStep } from './pmBoard'
+import { userEvent, userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
 import { removeTask, resumeTask, stopTask } from './pmStop'
 import { checkOnGithub } from './pmGhCheck'
@@ -329,6 +329,12 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       await store.logProject(proj.key, { by, pr: pr!.number, text: `merged contributor PR #${pr!.number} into ${pr!.baseRefName}${cmd.method ? ` (${cmd.method})` : ''} on the user's yes: "${cmd.userSaid}"`, ...(rec?.turn?.said ? { said: rec.turn.said } : {}) })
       return { merged: pr!.url, into: pr!.baseRefName }
     }
+    case 'report back': case 'report close': {
+      const task = await taskOf(cmd.task)
+      if (!task.report) throw new HerdrError('refused', 'No open report on this task: the user withdrew it, or it is closed')
+      if (cmd.name === 'report back') return { task: await userEvent(store, task.id, { kind: 'back', note: cmd.text }, by) }
+      return { task: await store.logTask({ ...task, report: undefined }, by, `closed the reported problem: ${cmd.text.slice(0, 300)}`) }
+    }
     case 'task decide': {
       const task = await taskOf(cmd.task)
       const r = onEvent(planOf(needPlan(), task, p), task.step ?? initialState(), { kind: 'decide', by: 'coordinator', choice: cmd.choice, note: cmd.reason }, Date.now())
@@ -528,7 +534,8 @@ export async function prepareCoordinator(deps: Deps, key: string, program: Coord
 
 // Starts the coordinator in its folder, its harness's default model, token in its environment,
 // its folder's bin/ (the `wherdr` script) first in its PATH.
-export async function startCoordinator(deps: Deps, key: unknown, agent: { program?: unknown }, urls: CoordinatorUrls) {
+// first: messages it gets once ready, after its own start prompt.
+export async function startCoordinator(deps: Deps, key: unknown, agent: { program?: unknown }, urls: CoordinatorUrls, first: string[] = []) {
   if (typeof key !== 'string') throw new HerdrError('not_found', 'Unknown project')
   // No agent given: the project's default. Alfred: a program only, with its own default model.
   const a = key === MAIN ? alfredAgent(agent.program ?? (await deps.store.coordinator(key))?.agent?.program)
@@ -538,7 +545,8 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   const { program } = a
   const before = await deps.store.coordinator(key)
   const c = await prepareCoordinator(deps, key, program, urls)
-  const argv = [...c.argv, ...(promptAsArg(program) ? c.prompt : [])]
+  const prompt = [...c.prompt, ...first]
+  const argv = [...c.argv, ...(promptAsArg(program) ? prompt : [])]
   const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
   const { address } = await deps.call<{ address: string }>('terminal.run', {
     cwd: c.folder, ...(c.on ? { on: c.on } : {}), no_parent: true, wait: false, env: c.env,
@@ -546,7 +554,7 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
     line: `${PATH_SETUP}; export PATH=${quote(`${c.folder}/bin`)}:"$PATH"; exec ${argv.map(quote).join(' ')}`,
   }, 30000)
   // Typed once the program is ready (in the background: it may wait on a dialog).
-  if (!promptAsArg(program)) for (const text of c.prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
+  if (!promptAsArg(program)) for (const text of prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
   // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
   // version: what this session knows (takeUpdateNotice tells it of an update).
   const { told: _told, ...rec } = (await deps.store.coordinator(key))!

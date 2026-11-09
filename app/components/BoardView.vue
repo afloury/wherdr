@@ -73,13 +73,15 @@ const tap = (c: Card) => { if (cardMenu.swallowClick()) return; const p = asking
 // question, a permission) when it is on screen here; else the task's sheet, on
 // its To do tab when it waits for the user. The sheet stays in the menu.
 const askingPane = (c: Card) => (c.yourTurn && (asker(c) || waitsForYou(c)) ? paneOf(c) : undefined)
-const show = (id: string, stop = false, check = false) => { stopping.value = stop; checking.value = check; open.value = id }
+const reporting = ref(false)
+const show = (id: string, stop = false, check = false, report = false) => { stopping.value = stop; checking.value = check; reporting.value = report; open.value = id }
 const act = (fn: () => Promise<unknown>) => fn().then(load, (e: Error) => { error.value = e.message })
 const menuOf = (c: Card): MenuItem[] => [
   ...(askingPane(c) ? [{ label: c.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent'), icon: 'i-lucide-terminal', run: () => navigateTo(panePath(askingPane(c)!.id)) }] : []),
   { label: askingPane(c) ? tl('Open the task') : tl('Open', 'Ouvrir'), icon: 'i-lucide-panel-right-open', run: () => show(c.id) },
   ...(canStart(c) && !waiting(c).length ? [{ label: tl('Start', 'Lancer'), icon: 'i-lucide-play', run: () => act(() => startTaskApi(c.id)) }] : []),
   ...(canStart(c) && !waiting(c).length && machinesOf(c) ? [{ label: tl('Start on…'), icon: 'i-lucide-server', run: () => openMenu(startOn(c), tl('Start on')) }] : []),
+  ...(c.yourTurn && !c.state?.done && !c.report ? [{ label: tl('Report a problem…'), icon: 'i-lucide-flag', run: () => show(c.id, false, false, true) }] : []),
   ...(canStop(c) ? [{ label: tl('Stop…', 'Arrêter…'), icon: 'i-lucide-square', danger: true, run: () => show(c.id, true) }] : []),
   ...(canCheckGithub(c) ? [{ label: tl('Check on GitHub'), icon: 'i-lucide-refresh-cw', run: () => show(c.id, false, true) }] : []),
   ...(c.stopped ? RESUMES.map(how => ({ label: tl(...RESUME_LABEL[how]), danger: how === 'archive', run: () => act(() => resumeTaskApi(c.id, how)) })) : []),
@@ -137,6 +139,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
           <small class="mono-label board-card-id"><ProjectBadge :text="c.shown" :color="c.color" copy /><template v-if="timeOf(c)"> · <span data-testid="board-time">{{ timeOf(c) }}</span></template><template v-else-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
           <small v-if="statusOf(c)" class="board-status" :class="statusOf(c)!.tone" :title="statusOf(c)!.text" data-testid="board-status">{{ statusOf(c)!.text }}</small>
           <span v-if="turnText(c)" class="board-badge" data-testid="board-badge">{{ turnText(c) }}</span>
+          <small v-if="c.report" class="board-status wait" :title="c.report.text" data-testid="board-report">{{ tl('Problem reported') }} {{ fmtTime(c.report.at) }}</small>
           <small v-else-if="waiting(c).length" class="muted" data-testid="board-waits">{{ tl('Waits for', 'Attend') }} {{ waiting(c).map(id => shownTaskId(data?.projects ?? [], id)).join(', ') }}</small>
           <!-- Stalled, the machine may still fix it: a warning only; after 30 min it is Your turn. -->
           <small v-if="c.stall && !c.yourTurn" class="board-stall" :title="c.stall.reason" data-testid="board-stall"><UIcon name="i-lucide-triangle-alert" aria-hidden="true" />{{ t(c.stall.reason) }}</small>
@@ -158,7 +161,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
     </div>
     </div>
     <AddTaskSheet v-if="adding && data" v-model:open="adding" :projects="data.projects" :cards="data.cards" :project="project" @added="added" />
-    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}:${checking}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" :checking="checking" @closed="open = null; stopping = false; checking = false" @changed="load" />
+    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}:${checking}:${reporting}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" :checking="checking" :reporting="reporting" @closed="open = null; stopping = false; checking = false; reporting = false" @changed="load" />
   </section>
 </template>
 
