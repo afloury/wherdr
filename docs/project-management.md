@@ -129,13 +129,27 @@ its folder, branches and task worktrees stay on the machine.
 The project's own workflow: its task types, and the steps of each. Each step
 has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
-action, what it does: land on a branch, push, open a PR, merge a PR, or check
-that a branch was merged, with its branch, merge method and required checks.
+action, what it does: land on a branch, push, open a PR, merge a GitHub or
+Bitbucket PR, or check that a branch was merged, with its branch, merge method and required checks.
 A merge that first pushes the task's last commits waits up to a minute for
 GitHub to show them on the PR.
 In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
 *Add task* under [Board](#board)). Under the form, the plan of the chosen task type. *Save* checks the workflow
 and shows each problem with its line.
+
+**Bitbucket Cloud.** A worker step can open the PR with the agent's own
+Bitbucket tool (`evidence: ["link"]`). Then either a step that ends with you and
+checks the merge (`action: { kind: "git.verify-merged" }`: you merge on
+Bitbucket, then press its button), or a step that lets wherdr merge
+(`action: { kind: "bitbucket.merge" }`): it finds the task's open PR on
+Bitbucket, waits for its builds (and the step's required checks, by name or
+key), then merges with a **merge commit** unless the step names another method
+(a squash makes a new commit that a later `git.verify-merged` cannot find). A
+PR into a protected branch waits for you, as on GitHub, and a merge Bitbucket
+refuses (approvals, branch restrictions) says why. The credentials come from
+the machine that runs the task: `BITBUCKET_TOKEN` (an access token), or
+`BITBUCKET_USERNAME` with `BITBUCKET_APP_PASSWORD`, in the environment
+herdr-core runs with; wherdr never stores them.
 
 The ⋯ menu adds *Edit as JSON*, *Change log*, *Save as template* (copies the
 saved workflow into your templates; the project is untouched) and *Start over
@@ -248,8 +262,8 @@ kept conversation that ran with another agent. A tap opens its window:
   step of yours, takes no slot), the events it wakes on (*Task added*: by someone else than this
   coordinator, such as you, another coordinator or an automation; *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
-  even with nothing to do, with its own *New tasks / day*). The form says
-  *Unsaved changes* until you save;
+  even with nothing to do, with its own *New tasks / day*), and **Keep the
+  board busy** (see below). The form says *Unsaved changes* until you save;
 - its wakes and *Run now*: one line for the last wake (*Last wake 15:44*, its
   reason, *handled* or how it ended), a highlighted line for each other wake not
   handled (waiting, no answer, timed out, coordinator gone), and *History* folds
@@ -264,7 +278,16 @@ the hours) hold automatic work only too: a start you ask Alfred or a coordinator
 for goes at once, with a word when it goes past one (*started; past the
 autopilot's limit of 3 at once*), and still counts in them.
 
-The coordinator sees the same with `wherdr pm autopilot show`: the project's
+**Keep the board busy** (on by default while the autopilot is on): the engine
+itself starts the next task to do, oldest first, whenever a machine the project
+allows has room, within the autopilot's limits, hours and pace. It never starts
+a task that waits for its *after* tasks (those start once they are done), nor
+one already under way, and each start goes in the task's log (*started by the
+autopilot: room on* a machine) without waking the coordinator. Turn it off to
+leave every start to the coordinator's wakes and to you.
+
+The coordinator sees the same with `wherdr pm autopilot show`: whether Keep the
+board busy is on and the task it starts next (or why none), the project's
 placement strategy, one line per machine the project allows (memory, cores and load, its agents at work by
 weight, and the heaviest weight it takes now, or why none: full, not ready,
 paced, offline), and what each weight counts (*light* ≈ 0.7 GB, *standard* ≈
