@@ -141,7 +141,8 @@ removed or changed marked, and each changed field before → after (holder, ends
 action, merge rule, guards; instructions as a text diff). *JSON* shows the raw
 diff. A proposal made before the workflow changed again is refused, and the
 review says so: ask the coordinator to propose again. The coordinator's window
-and the *Decisions* view link to this review.
+and the *Decisions* view link to this review. [Alfred](alfred.md) can propose
+a change too, on your request in its chat: you answer it in the same review.
 
 In the coordinator's conversation, a card follows the message that made the
 proposal: what changes in one line, who proposed it, your request with its
