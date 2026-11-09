@@ -43,7 +43,7 @@
 - [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred, with the project's colored key badge, and their menu.
 - [Offered agents](docs/home.md#offered-agents): Settings › Agents, which programs every picker offers and in which order.
 - [Machines as tabs](docs/home.md#machines-as-tabs): the machine tabs, their groups and a machine's actions.
-- [New agents and tabs](docs/home.md#new-agents-and-tabs): the New sheet and the + of a space's tabs.
+- [New agents and tabs](docs/home.md#new-agents-and-tabs): the New sheet, the + of a space's tabs, and renaming or closing a tab or a space.
 - [Search](docs/home.md#search): search agents and conversations.
 - [Inventory](docs/core.md#inventory): how terminals are placed in spaces and tabs, and how states are read.
 - [Creating terminals and agents](docs/core.md#creating-terminals-and-agents-machines): what the New sheet asks hc to run.
@@ -102,7 +102,7 @@
 ## Contributors
 
 - [Development and tests](docs/development.md): run from source and test.
-- [Design rules](docs/design.md): the interface styling reference.
+- [Design rules](docs/design.md): the interface styling reference, sheets included (where focus goes on open).
 - [Dictation design](docs/dictation.md): the dictation engines and how to add one; read aloud and its voices (iOS gives web apps only its standard voices).
 
 ## v2 only

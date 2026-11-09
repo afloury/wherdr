@@ -80,7 +80,9 @@ integration points, not evidence that every current header already meets this ru
 
 Reuse [AppSheet.vue](../app/components/AppSheet.vue) for drawers and sheets:
 outside tap and downward swipe close a phone sheet; the handle also supports tap,
-and Escape closes the modal. **Do not add a cross close button to sheets.**
+and Escape closes the modal. On open, focus goes to the sheet itself (no outline),
+not to its handle or first button; Tab reaches the buttons, which keep their
+keyboard focus ring. **Do not add a cross close button to sheets.**
 The gesture implementation is `dragStart` / `dragMove` / `dragEnd`, with the
 `.hw-sheet-handle` target. Current implementation gap: `AppSheet` still renders
 `.hw-sheet-close` with `i-lucide-x`; this is not a pattern to copy. Full-screen
