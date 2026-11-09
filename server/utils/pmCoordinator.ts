@@ -13,6 +13,7 @@ import { validateTemplate } from '../../shared/pm/workflow'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, coordinatorStartRefusal, limitsLeft, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
 import { ackWakes } from '../../shared/pm/wakes'
+import { nextWakeAt, workflowFlow } from '../../shared/pm/flow'
 import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
 import { machineNamed, taskMachine, type Project } from '../../shared/pm/project'
@@ -373,6 +374,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
   return Promise.all([{ key: MAIN, name: await readAlfredName({}) }, ...await store.projects()].map(async (p) => {
     const c = await store.coordinator(p.key)
     const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => p.key === MAIN || t.project === p.key)
+    const next = nextWakeAt(c?.autopilot, c?.ranAt, c?.atRan, now)
     return {
       ...(p.key === MAIN ? { main: true } : {}),
       autopilot, limits: limitsLeft(autopilot, mine, runs, now),
@@ -381,7 +383,8 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
       wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
       project: p.key, name: p.name, ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...('from' in p && p.from ? { template: p.from.template } : {}),
       ...(c?.ran ? { ran: agentOf(c.ran) ?? FALLBACK } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
-      ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, ...(c.proposal.said ? { said: c.proposal.said } : {}) } } : {}),
+      ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, ...(c.proposal.said ? { said: c.proposal.said } : {}), flow: { before: workflowFlow(await store.workflow(p.key)), after: workflowFlow(c.proposal.template) } } } : {}),
+      ...(next ? { nextWake: next } : {}),
     }
   }))
 }

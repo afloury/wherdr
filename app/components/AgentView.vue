@@ -609,6 +609,9 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
       <UButton size="xs" color="warning" variant="outline" @click="banner.fn()">{{ banner.btn }}</UButton>
     </div>
 
+    <!-- A workflow change the coordinator proposed: a card here, never in its Autopilot window. -->
+    <WorkflowChange v-if="coord?.proposal && !cell" :c="coord" link class="chat-wf-change" />
+
     <div
       v-if="pane && mode === 'chat'" class="swipe-area" :class="enter ? (enter > 0 ? 'enter-next' : 'enter-prev') : undefined" :style="swipeStyle"
     >
@@ -651,4 +654,5 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
 .dismissible-transcript-note > span { flex: 1; padding: 7px 0; }
 .dismissible-transcript-note > button { flex: none; align-self: stretch; min-width: 40px; min-height: 40px; color: var(--muted); font: 22px/1 var(--sans); border-radius: 6px; touch-action: manipulation; }
 .dismissible-transcript-note > button:hover, .dismissible-transcript-note > button:focus-visible { color: var(--text); background: var(--line-soft); }
+.chat-wf-change { flex: none; margin: 8px 12px 0; max-height: 40vh; overflow-y: auto; }
 </style>

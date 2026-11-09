@@ -5,6 +5,7 @@ import type { Project } from './project'
 import type { Template } from './workflow'
 import type { Autopilot, limitsLeft } from './autopilot'
 import type { Wake } from './wakes'
+import type { FlowStep } from './flow'
 import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
 import { PUBLIC_RULE, isPublic } from './visibility'
@@ -48,11 +49,13 @@ export interface CoordinatorView {
   // main: the main coordinator (project is MAIN).
   // agent: the default the user set for it, if any (else the first of their agents).
   // git: false: a folder without git, its coordinator works in it (no template needed).
-  project: string, name: string, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'>
+  project: string, name: string, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'> & { flow?: { before: FlowStep[], after: FlowStep[] } }
   // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
   autopilot?: Autopilot, limits?: ReturnType<typeof limitsLeft>, wakes?: Wake[]
   // Nothing to do: its scheduled wakes are skipped (asleep), since its last wake.
   asleep?: 'idle' | 'limit', wokeAt?: number, skippedToday?: number
+  // When its autopilot wakes next (interval or fixed times), if on.
+  nextWake?: number
 }
 
 // Where the coordinator's current turn comes from: a message the user sent

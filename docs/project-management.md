@@ -65,6 +65,12 @@ its folder, branches and task worktrees stay on the machine.
 
 ### Workflow
 
+The **Workflow** is *how each task runs, step by step*; the
+[Autopilot](#autopilot) is *when the project works without you*. The tab
+starts with that line and a link to the Autopilot tab (who starts tasks and
+when), then draws the first task type's steps as a row of linked boxes (for
+example work → pr → review → merge), each with who holds it.
+
 The project's own workflow: its task types, and the steps of each. Each step
 has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
@@ -80,11 +86,12 @@ Neither *Save* nor *Start over* changes the project's [guards](#guards).
 
 When the project's coordinator proposes a change to the workflow (only after
 your request), a square marks the project's row (*1 to review*) and the
-**Workflow** tab, whose first row, *Change proposed by the coordinator*, opens
-the review: your sentence it followed, the diff, *Refuse* or *Accept*. A
+**Workflow** tab, where a *Workflow change* card shows your sentence it followed
+and the steps before and after (the steps that change are outlined); its
+*Review* opens the review: the diff, *Refuse* or *Accept*. A
 proposal made before the workflow changed again is refused, and the review says
-so: ask the coordinator to propose again. The coordinator's window and the
-*Decisions* view link to this review.
+so: ask the coordinator to propose again. The same card shows in the
+coordinator's conversation, and the *Decisions* view links to this review.
 
 ### Guards
 
@@ -126,20 +133,23 @@ task's description), its task type, a switch, its last firings and *Run now*.
 
 ### Autopilot tab
 
-The project coordinator's [autopilot](#autopilot), as in its window, and a link
-to the [pace](quotas.md#pace) of every account.
+The project coordinator's [autopilot](#autopilot), as in its window, under its
+line (*when the project works without you*) and a link to the Workflow tab
+(the tasks it starts follow it), and a link to the [pace](quotas.md#pace) of
+every account.
 
 ## Autopilot
 
 On the board and in a coordinator's conversation, the **Autopilot** button in
-the header shows the autopilot's state (green square: on; hollow: asleep) and a
-count of what waits for you: a workflow change the coordinator proposed, or a
-kept conversation that ran with another agent. A tap opens its window:
+the header (a clock) shows the autopilot's state (green square: on; hollow:
+asleep) and a count when the kept conversation ran with another agent. It is
+only about the autopilot: a workflow change the coordinator proposed shows as a
+*Workflow change* card in its conversation (see [Workflow](#workflow)). A tap
+opens its window:
 
 - the agent that answers the coordinator, and a warning when its conversation
   ran with another one; on the board, *Open* opens or starts it;
-- the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
-- the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
+- the autopilot: its state and next wake, a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*, *At once*), the events it wakes on (*Task added*, *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
   even with nothing to do, with its own *New tasks / day*). The form says

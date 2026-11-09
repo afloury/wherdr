@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // A coordinator's autopilot: its switch, whether it is active or asleep
 // (nothing to do: its scheduled wakes are skipped), today's counters against
-// the limits, its goal, interval, fixed times, events and limits (saved by the user
+// the limits, its next scheduled wake, its goal, interval, fixed times, events and limits (saved by the user
 // only), its latest wakes (created, delivered, acked) and "run now". In the coordinator window.
 import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, LOOK_PER_DAY, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
 import type { CoordinatorView } from '#shared/pm/coordinator'
@@ -107,6 +107,7 @@ const counters = computed(() => props.c.limits
       <USwitch :model-value="ap.on" color="success" size="lg" :disabled="busy" :aria-label="tl('Autopilot', 'Autopilote')" data-testid="autopilot-on" @update:model-value="setOn" />
       <span class="mono-label" data-testid="autopilot-state" :data-asleep="ap.on && c.asleep ? '' : undefined">{{ tl('Autopilot', 'Autopilote') }} · {{ stateText }}</span>
       <span class="ap-count mono-label" data-testid="autopilot-counters">{{ counters }}</span>
+      <span v-if="c.nextWake" class="ap-next mono-label" data-testid="autopilot-next-wake">{{ tl(`Next wake ${when(c.nextWake)}`) }}</span>
     </div>
     <form class="ap-form" @submit.prevent="save()">
       <label class="field-label" :for="`ap-goal-${c.project}`">{{ tl('Goal', 'Objectif') }}</label>
@@ -184,6 +185,7 @@ const counters = computed(() => props.c.limits
 .ap-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ap-head > .mono-label:not(.ap-count) { color: var(--text); }
 .ap-count { flex: 1; color: var(--muted); white-space: nowrap; }
+.ap-next { flex: 1 1 100%; color: var(--muted); }
 .ap-look-note { align-self: end; }
 .ap-actions .ap-unsaved { color: var(--ochre); }
 .ap-actions .ap-saved { color: var(--green); }

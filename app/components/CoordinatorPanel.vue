@@ -2,8 +2,7 @@
 // The coordinator window's content (CoordinatorButton): which agent answers a project
 // coordinator (its default changed in one gesture; Alfred's program changes from its
 // row's "Restart with…"), a warning when its kept conversation ran with another agent,
-// a line for the workflow change it proposed (reviewed in the project's sheet,
-// ProposalReview), and its autopilot.
+// and its autopilot. Not its proposed workflow change: a card in its conversation.
 // On the board (`open`), also the button that opens or starts it.
 import type { CoordinatorView } from '#shared/pm/coordinator'
 
@@ -34,6 +33,7 @@ const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh()
 
 <template>
   <div class="coord" data-testid="coordinator-panel">
+    <PartHead part="autopilot" :project="c.main ? undefined : c.project" />
     <!-- Alfred on the board: its row (one tap opens or starts it, its program asked the first time). -->
     <AlfredRow v-if="open && c.main" banner />
     <div v-else-if="!c.main || (open && !other)" class="coord-head">
@@ -51,10 +51,6 @@ const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh()
       <UButton size="xs" color="warning" :loading="busy" data-testid="coordinator-new" @click="fresh">{{ tl(`New conversation with ${agentName(agent)}`, `Nouvelle conversation avec ${agentName(agent)}`) }}</UButton>
       <UButton size="xs" color="warning" variant="outline" data-testid="coordinator-resume" @click="resume">{{ tl(`Resume with ${agentName(c.ran)}`, `Reprendre avec ${agentName(c.ran)}`) }}</UButton>
     </div>
-    <div v-if="c.proposal" class="coord-actions" data-testid="template-proposal">
-      <span class="mono-label">{{ tl('Workflow change proposed') }}</span>
-      <UButton color="primary" size="lg" :to="proposalReviewPath(c.project)" data-testid="proposal-review-link">{{ tl('Review') }}</UButton>
-    </div>
     <p v-if="error" class="error coord-error">{{ error }}</p>
     <CoordinatorAutopilot :c="c" />
   </div>
@@ -68,8 +64,5 @@ const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh()
 .coord-warn { flex-wrap: wrap; }
 .coord-warn-text { flex: 1 1 calc(100% - 40px); }
 .coord-head :deep(.coord-agent) { min-width: 0; max-width: 100%; }
-.coord-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.coord-actions .mono-label { flex: 1 1 100%; color: var(--muted); }
-@media (min-width: 600px) { .coord-actions .mono-label { flex-basis: auto; } }
 .coord-error { margin: 0; }
 </style>

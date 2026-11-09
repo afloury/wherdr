@@ -5,13 +5,15 @@
 // Workflow: ProjectWorkflow, its own entries first in the ⋯ menu. The ⋯ menu
 // removes the project. Guards: ProjectGuards. Automations and Autopilot reuse
 // the components shown elsewhere. A coordinator's proposed workflow change:
-// a badge on Workflow, its first row there opens the review (ProposalReview),
-// at once when the URL asks (`review=1`).
+// a badge on Workflow, its card there (WorkflowChange) opens the review
+// (ProposalReview), at once when the URL asks (`review=1`). Workflow and
+// Autopilot start with their name, what each is, and a link to the other.
 import type { Project, TemplateInfo } from '#shared/pm/project'
 import { shownKey } from '#shared/pm/projectKey'
 import type { LogEntry } from '#shared/pm/templateText'
 import type { Prefs, Template } from '#shared/pm/workflow'
 import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
+import { workflowFlow } from '#shared/pm/flow'
 import type { RepoVisibility } from '#shared/pm/visibility'
 import { PROJECT_TABS, PROJECT_TAB_LABEL as TAB_LABEL, type ProjectTab } from '~/utils/projectTabs'
 
@@ -163,12 +165,11 @@ async function remove() {
           <span class="field-label">{{ tl('Template') }}</span>
           <small class="muted" data-testid="pm-from">{{ p.from ? tl(`Based on: ${p.from.template} v${p.from.version}. Information only: changes to the template do not reach the project. To start over from a template: Workflow › ⋯.`) : tl('No template yet: start from one in the Workflow tab.') }}</small>
         </form>
-        <button v-if="tab === 'workflow' && coordinator?.proposal" type="button" class="settings-card pm-proposal" data-testid="workflow-proposal" @click="reviewOpen = true">
-          <span class="card-state blocked" aria-hidden="true"><i /></span>
-          <span class="pm-proposal-text">{{ tl('Change proposed by the coordinator') }}</span>
-          <span class="mono-label">{{ tl('Review') }}</span>
-          <UIcon name="i-lucide-chevron-right" />
-        </button>
+        <template v-if="tab === 'workflow'">
+          <PartHead part="workflow" :project="p.key" class="pm-part" />
+          <WorkflowDiagram v-if="workflow" :steps="workflowFlow(workflow)" class="pm-part" />
+          <WorkflowChange v-if="coordinator?.proposal" :c="coordinator" class="pm-part" @review="reviewOpen = true" />
+        </template>
         <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" @templates="emit('changed')" />
         <template v-else-if="tab === 'guards' && loaded">
           <ProjectGuards v-if="workflow" :project="p" :workflow="workflow" @changed="workflowChanged" />
@@ -176,6 +177,7 @@ async function remove() {
         </template>
         <ProjectAutomations v-else-if="tab === 'automations'" :project="p.key" :name="p.name" />
         <template v-else-if="tab === 'autopilot'">
+          <PartHead part="autopilot" :project="p.key" class="pm-part" />
           <CoordinatorAutopilot v-if="coordinator" :c="coordinator" />
           <p v-else class="muted settings-hint">{{ tl('This project has no coordinator yet.') }}</p>
           <UButton to="/settings?section=pacing" color="neutral" variant="ghost" size="lg" icon="i-lucide-gauge">{{ tl('Pace of every account') }}</UButton>
@@ -198,7 +200,6 @@ async function remove() {
 .pm-later { margin-top: 18px; }
 .pm-prefs { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px 10px; }
 .project-tab-badge { margin-left: 6px; }
-.pm-proposal { display: flex; align-items: center; gap: 10px; width: 100%; margin-bottom: 12px; padding: 12px 16px; text-align: left; color: var(--blocked); }
-.pm-proposal-text { flex: 1; min-width: 0; color: var(--text); }
+.pm-part { margin-bottom: 12px; }
 .pm-vis { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 </style>
