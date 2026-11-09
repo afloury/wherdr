@@ -1,6 +1,6 @@
 // WHR-403: Alfred's row at the top of the agent list: not started (the first
 // tap asks for its agent), running (its agent shown), renamed (identity.md's name).
-// WHR-119: its own card (emblem, what it is, its state square) and its Ask field.
+// WHR-119: its own card (emblem, what it is, its state square).
 import { afterEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
@@ -8,7 +8,6 @@ import { readBody } from 'h3'
 import AlfredRow from '~/components/AlfredRow.vue'
 import { agentOrder, appConfig, coarse, curPane, desk, herdrState, hiddenAgents } from '~/composables/useHerdr'
 import { menuState } from '~/composables/useUi'
-import { useDraft } from '~/composables/useDraft'
 import { loadAlfred } from '~/composables/useCoordinators'
 import { MAIN } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
@@ -109,6 +108,8 @@ it('its card: the emblem, what it is, and its state as a square (not started, re
   const sub = () => w!.find('[data-testid="alfred-sub"]')
   expect(w!.find('[data-testid="alfred-emblem"]').exists()).toBe(true)
   expect(w!.text()).toContain('Your assistant · all projects')
+  // No Ask field under it (WHR-183): a tap on the row opens its conversation.
+  expect(w!.find('input').exists()).toBe(false)
   await vi.waitFor(() => expect(sub().text()).toBe('Not started · Claude'))
   expect(sub().classes()).toContain('inactive')
   view = { ...view, ran: 'claude', terminal: 'host/t1' }
@@ -120,33 +121,6 @@ it('its card: the emblem, what it is, and its state as a square (not started, re
   herdrState.value = { ok: true, workspaces: [], panes: [{ ...pane('w:p1', 'host/t1'), status: 'working' }] }
   await vi.waitFor(() => expect(sub().text()).toBe('Working · Claude'))
   expect(sub().classes()).toContain('working')
-})
-
-it('Ask field: the typed text waits in its composer, its conversation opened (started first when needed)', async () => {
-  herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p1', 'host/t1')] }
-  view = { name: 'Jeeves', program: 'claude', ran: 'claude', terminal: 'host/t1' }
-  await mount()
-  expect(w!.find('[data-testid="alfred-ask"]').attributes('placeholder')).toBe('Ask Jeeves…')
-  await w!.find('[data-testid="alfred-ask"]').setValue('  What is waiting for me?  ')
-  await w!.find('form').trigger('submit')
-  await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w%3Ap1'))
-  expect(useDraft('w:p1').text).toBe('What is waiting for me?')
-  expect((w!.find('[data-testid="alfred-ask"]').element as HTMLInputElement).value).toBe('')
-  expect(posts).toEqual([])
-  // A draft already in its composer stays: the asked text goes after it.
-  await w!.find('[data-testid="alfred-ask"]').setValue('And the board?')
-  await w!.find('form').trigger('submit')
-  await vi.waitFor(() => expect(useDraft('w:p1').text).toBe('What is waiting for me?\nAnd the board?'))
-  w!.unmount()
-  // Not started: started with its agent, then the same.
-  herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p9', 'host/t9')] }
-  view = { name: 'Jeeves', program: 'claude' }
-  await mount()
-  await w!.find('[data-testid="alfred-ask"]').setValue('Hello')
-  await w!.find('form').trigger('submit')
-  await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w%3Ap9'))
-  expect(posts).toEqual([{ project: MAIN, program: 'claude' }])
-  expect(useDraft('w:p9').text).toBe('Hello')
 })
 
 it('no ••• button: right click (computer) and long press (touch) open its menu, Restart with… asks for the agent', async () => {
