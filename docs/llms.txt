@@ -21,8 +21,9 @@
 - [On-device dictation files](docs/installation.md#on-device-dictation-files): where the dictation models are fetched and kept.
 - [Updating](docs/installation.md#updating): update v3 by hand; there is no update banner.
 - [Install with an agent](docs/install-with-an-agent.md): ready-to-paste prompts for an agent that installs or updates wherdr.
-- [Migrate from v2](docs/migrate-from-v2.md): install v3 beside v2 and import its projects, machines and settings.
+- [Migrate from v2](docs/migrate-from-v2.md): install v3 beside v2 and import its machines and settings; its projects are listed for Alfred.
 - [What is imported](docs/migrate-from-v2.md#what-is-imported): what the v2 import brings over, and what to redo.
+- [Set up your v2 projects with Alfred](docs/migrate-from-v2.md#set-up-your-v2-projects-with-alfred): Alfred's first message offers to bring v2 projects over (machine, template, coordinator, open tasks).
 - [Auto-deploy from a build machine](docs/migrate-from-v2.md#auto-deploy-from-a-build-machine): build elsewhere and deploy to the server.
 - [Fall back to v2](docs/migrate-from-v2.md#fall-back-to-v2): go back to v2, and [uninstall v3](docs/migrate-from-v2.md#uninstall-v3).
 - [Install as an app](docs/phone.md#install-it-as-an-app): add wherdr to a phone's home screen or a desktop browser.
@@ -68,7 +69,7 @@
 - [Guards](docs/project-management.md#guards): protected branches, who may merge (a waiting merge goes on once wherdr may do it; one you merge on GitHub ends as merged; one cut by a restart goes on by itself), contributor PRs, the project sheet's in-app addresses.
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
 - [Template library](docs/project-management.md#template-library): saved templates and examples, read, rename and delete; projects keep their own copy.
-- [Autopilot](docs/project-management.md#autopilot): the header button and its window, goal, wakes and limits (Tasks / day: empty for no daily limit; At once: Auto by default for new projects); the coordinator's view of machines and weights (`autopilot show`, `show <task>`, `--on`, `--weight`).
+- [Autopilot](docs/project-management.md#autopilot): the header button and its window, goal, wakes and limits (Tasks / day: empty for no daily limit; At once: Auto by default for new projects; Task added wakes only for tasks added by someone else than this coordinator); the coordinator's view of machines and weights (`autopilot show`, `show <task>`, `--on`, `--weight`).
 - [What a task's agent said](docs/project-management.md#what-a-tasks-agent-said): `wherdr pm read`, an agent's last message or question from any machine, and the question in the wake.
 - [Board](docs/project-management.md#board): columns (a done or archived task is never under Your turn), cards (the id badge copies the id), time in the step and total time, Add task (with its weight: Auto, Light, Standard, Heavy), Start, Start on another machine (its readiness check), Stop, Delete; a refused merge said in plain words (a conflict the agent is already fixing leaves Your turn).
 - [Task sheet](docs/project-management.md#task-sheet): the id badge by the title (copies the id), time per step, waits for you, review rounds and CI fixes, the task's buttons (Check on GitHub, also `wherdr pm task check`, for a stuck merge step or an archived task's PR) and its Description (Markdown), Plan and Log tabs.
@@ -78,7 +79,7 @@
 - [A stalled task](docs/project-management.md#a-stalled-task): red CI or an idle agent: one nudge, a restart 10 min later, the coordinator woken 10 min after that, then Tasks to handle and a notification after 30 min; a stall or a step past its time limit leaves Tasks to handle once the task is back to work.
 - [A task's temporary files](docs/project-management.md#a-tasks-temporary-files): `.wherdr-tmp` in the task's worktree (TMPDIR, CLAUDE_CODE_TMPDIR, NODE_COMPILE_CACHE), ignored by git, removed with the worktree; no agent started while /tmp has under 500 MB free.
 - [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again; kept while the worker updates the PR (a catch-up, a CI fix), unpushed commits pushed first; which agent a coordinator's `tell` reaches (--to worker|reviewer); in a wake, `tell --fix base|ci|machine|stall --reason` unblocks a mechanical block (autopilot on, twice per task and step, logged), a permission request stays yours; a failed step action handed over with `--fix` leaves Tasks to handle (*the agent is fixing it*), is tried again once the worker is done, and comes back with the new reason if it fails again or the worker stops without a report. One worker and one reviewer per task: a second start at once is refused (already starting), a held start dropped, a duplicate agent ended and logged.
-- [Alfred's command](docs/alfred.md): `wherdr alfred`, what Alfred reads and changes after your yes (projects, their machines, guards, coordinators, settings).
+- [Alfred's command](docs/alfred.md): `wherdr alfred`, what Alfred reads and changes after your yes (projects, their machines, guards, coordinators, settings, v2 projects to set up).
 - [After an update](docs/alfred.md#after-an-update): new instructions for Alfred and coordinators, and the one-line notice on their next command.
 
 ## Machines, quotas and notifications

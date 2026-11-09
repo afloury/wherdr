@@ -6,7 +6,7 @@ import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
-import { MAIN, canRunCoordinator, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
+import { MAIN, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
@@ -154,7 +154,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
   const rec = await store.coordinator(scope)
   // A turn the server saw start over an hour ago is not trusted any more.
   const turn: Turn = rec?.turn && Date.now() - rec.turn.at < TURN_MS ? rec.turn.kind : 'none'
-  const by = main ? 'main coordinator' : `coordinator ${key}`
+  const by = coordinatorBy(scope)
   const needProject = () => { if (!p) throw new HerdrError('bad_input', `Name the project: --project <KEY> (${projects.map(shownKey).join(', ')})`); return p }
   const needPlan = () => { needProject(); if (!t) throw new HerdrError('not_found', 'The project has no template'); return t }
   // The tasks the token's limits count: its project's, or every task for the main coordinator.
@@ -325,7 +325,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
       // Added in the user's turn: their request, never held by the pace.
-      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', ...(cmd.weight ? { weight: cmd.weight } : {}), origin: turn === 'user' ? 'user' : 'coordinator' })
+      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', ...(cmd.weight ? { weight: cmd.weight } : {}), origin: turn === 'user' ? 'user' : 'coordinator', addedBy: scope })
       const task = turn !== 'user' ? { ...added, autopilot: true as const } : added
       if (look) await store.saveCoordinator({ ...rec!, lookAdded: bump(rec!.lookAdded, Date.now()) })
       return { task: await store.logTask(task, by, `added the task${cmd.after ? `, after ${cmd.after}` : ''}`) }
@@ -473,7 +473,7 @@ export async function writeRoleFiles(deps: Deps, key: string) {
   for (const [file, text] of Object.entries(roleFiles(p, t, EXAMPLES, m.local ? docsDir() : undefined)))
     if ((await exec(deps, on, WRITE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not write ${file}`)
   await exec(deps, on, 'chmod 755 "$1"', [`${folder}/bin/wherdr`])
-  return { p, local: !!m.local, on, folder, first: false }
+  return { p, local: !!m.local, on, folder, first: false, v2: false }
 }
 
 // wherdr's docs on its own machine: the install's, so an update brings new ones.
@@ -499,16 +499,25 @@ export async function takeUpdateNotice(store: PmStore, key: string | null) {
 const alfredAgent = (program: unknown): CoordinatorAgent | null => (isAlfredProgram(program) ? { program } : null)
 const readAlfredName = (deps: { alfredHome?: string }) => fs.readFile(path.join(homeOfAlfred(deps), 'identity.md'), 'utf8').then(alfredName, () => alfredName(''))
 
+// The v2 projects the migration listed for Alfred (V2_PROJECTS of scripts/v2-import.mjs).
+export interface V2Candidate { key: string, name: string, path: string, here: boolean, base?: string, left: string[], tasks: { v2: string, stage: string, title: string, description: string }[] }
+export async function readV2Projects(dataDir = DATA_DIR): Promise<V2Candidate[]> {
+  try { const j = JSON.parse(await fs.readFile(path.join(dataDir, 'migration', 'v2-projects.json'), 'utf8')); return Array.isArray(j?.projects) ? j.projects : [] }
+  catch { return [] }
+}
+
 // Alfred's home, on wherdr's own machine: wherdr's files rewritten at each
 // start (an update ships new ones), its own files created once.
 // first: identity.md was just created, so this is its very first start.
+// v2: the user comes from wherdr v2, whose projects the migration listed.
 export async function writeAlfredHome(deps: Deps) {
   const folder = homeOfAlfred(deps)
   const projects = await deps.store.projects()
   const docs = docsDir()
   const docFiles = (await fs.readdir(docs).catch(() => [] as string[])).filter(n => n.endsWith('.md')).sort()
   const main = mainRoleFiles(projects)
-  const files = { ...main, ...alfredFiles({ home: folder, version: pkg.version, docs, docFiles, pm: await deps.store.enabled(), projects }, main['AGENTS.md']!.split('\n')) }
+  const v2 = (await readV2Projects()).length > 0
+  const files = { ...main, ...alfredFiles({ home: folder, version: pkg.version, docs, docFiles, pm: await deps.store.enabled(), projects, v2 }, main['AGENTS.md']!.split('\n')) }
   for (const [file, text] of Object.entries(files)) {
     await fs.mkdir(path.dirname(path.join(folder, file)), { recursive: true, mode: 0o700 })
     await fs.writeFile(path.join(folder, file), text, { mode: 0o600 })
@@ -519,7 +528,7 @@ export async function writeAlfredHome(deps: Deps) {
     try { await fs.writeFile(path.join(folder, file), text, { flag: 'wx', mode: 0o600 }); if (file === 'identity.md') first = true }
     catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e }
   }
-  return { folder, first }
+  return { folder, first, v2 }
 }
 
 // The sidebar's Alfred row: its name (identity.md), the program the user chose
@@ -544,13 +553,13 @@ export function coordinatorUrls(here: URL): CoordinatorUrls {
 
 // When a project coordinator starts: its files, a new token, how to start it.
 export async function prepareCoordinator(deps: Deps, key: string, program: CoordinatorProgram, urls: CoordinatorUrls) {
-  const { p, local, on, folder, first } = await writeRoleFiles(deps, key)
+  const { p, local, on, folder, first, v2 } = await writeRoleFiles(deps, key)
   const url = local ? urls.local : urls.remote
   if (!url) throw new HerdrError('unreachable', 'The project\'s machine cannot reach this wherdr: publish it on your tailnet first (Settings › Phone)')
   const token = await issueToken(deps.store, key)
   if (key === MAIN) await issueAlfredToken(deps.store, folder!)
   // Alfred starts with its greeting (startPrompt).
-  const prompt = key === MAIN ? [startPrompt(first, await readAlfredName(deps))] : []
+  const prompt = key === MAIN ? [startPrompt(first, await readAlfredName(deps), v2)] : []
   return { on, folder, argv: coordinatorArgs(program, folder, p?.path, p?.git === false), prompt, env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
 }
 
