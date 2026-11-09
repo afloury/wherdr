@@ -4,7 +4,8 @@
 // its kept conversation ran with another agent (resuming it makes that agent the default),
 // a line for the workflow change it proposed (reviewed in the project's sheet,
 // ProposalReview), and a project coordinator's autopilot (Alfred has none).
-// On the board (`open`), also the button that opens or starts it.
+// On the board (`open`), also the button that opens or starts it; a stopped
+// conversation (its terminal ended) can be resumed instead.
 import type { CoordinatorView } from '#shared/pm/coordinator'
 
 const props = defineProps<{ c: CoordinatorView, open?: boolean }>()
@@ -15,6 +16,7 @@ const error = ref('')
 const agent = computed(() => coordinatorAgent(props.c))
 const agentName = (a?: { program: string }) => (a ? kindLabel(a.program) : '')
 const pane = computed(() => coordinatorPane(props.c))
+const stopped = computed(() => coordinatorStopped(props.c))
 // The kept conversation is another agent's: warn, a new one first.
 const other = computed(() => coordinatorMismatch(props.c))
 
@@ -30,6 +32,7 @@ const agentItems = computed(() => (props.c.main ? alfredPrograms.value : offerCo
 const unoffered = computed(() => (props.c.main && agent.value && !alfredPrograms.value.includes(agent.value.program) ? agentName(agent.value) : ''))
 const setDefault = (program: string) => act(() => api('/api/pm/coordinator-agent', { project: props.c.project, program }))
 const fresh = () => act(async () => { const p = await launchCoordinator(props.c.project, agent.value); if (props.c.main) await loadAlfred(); if (p) await navigateTo(panePath(p.id)) })
+const resumeStopped = () => act(async () => { const p = await launchCoordinator(props.c.project, 'resume'); if (props.c.main) await loadAlfred(); if (p) await navigateTo(panePath(p.id)) })
 // Alfred: the agent resumed becomes its default, so the warning does not come back.
 const resume = () => {
   resumeCoordinator(props.c.terminal!)
@@ -46,8 +49,11 @@ const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh()
         <span class="field-label">{{ c.main ? tl(`${coordinatorName(c)}’s agent`) : tl('Answering agent', 'Agent qui répond') }}</span>
         <USelect :model-value="agent?.program" :items="agentItems" size="lg" class="coord-agent w-full" :disabled="busy" :aria-label="tl('Default agent', 'Agent par défaut')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
       </div>
-      <UButton v-if="open && !other" color="primary" size="lg" :loading="busy" data-testid="coordinator-open" @click="openIt">
-        {{ pane ? tl('Open', 'Ouvrir') : tl(`Start with ${agentName(agent)}`, `Lancer avec ${agentName(agent)}`) }}
+      <UButton v-if="open && !other && stopped" color="primary" size="lg" :loading="busy" data-testid="coordinator-resume-stopped" @click="resumeStopped">
+        {{ tl('Resume the conversation') }}
+      </UButton>
+      <UButton v-if="open && !other" :color="stopped ? 'neutral' : 'primary'" :variant="stopped ? 'outline' : 'solid'" size="lg" :loading="busy" data-testid="coordinator-open" @click="openIt">
+        {{ pane ? tl('Open', 'Ouvrir') : stopped ? tl('New conversation') : tl(`Start with ${agentName(agent)}`, `Lancer avec ${agentName(agent)}`) }}
       </UButton>
     </div>
     <p v-if="unoffered" class="coord-note muted" data-testid="coordinator-unoffered">{{ tl(`${unoffered} is no longer offered on this machine (Settings › Agents): pick another agent, or offer it again.`) }}</p>
