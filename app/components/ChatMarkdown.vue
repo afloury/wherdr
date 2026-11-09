@@ -20,10 +20,10 @@ const el = ref<HTMLElement | null>(null)
 
 let plan: RevealPlan | null = null
 let raf = 0
-// Reveal the SVG card atomically so typing never rewrites its source or controls.
+// Reveal the SVG card and the choice buttons atomically so typing never rewrites their source or controls.
 const atomic = (n: RevealNode) => {
   const classes = (n as unknown as Element).classList
-  return Boolean(classes?.contains('code-head') || classes?.contains('svg-block'))
+  return Boolean(classes?.contains('code-head') || classes?.contains('svg-block') || classes?.contains('w-choices'))
 }
 const keep = (n: RevealNode) => /^T[DH]$/.test((n as unknown as Element).tagName || '')
 

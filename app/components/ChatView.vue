@@ -19,7 +19,7 @@ import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
 import { findReplyOrigin, parseReply, type ReplyTarget } from '#shared/replyQuote'
-import { messageId, messageOf, messageRef, pointRef, type Reference } from '#shared/reference'
+import { messageId, messageOf, messageRef, pointRef, refLine, refsIn, sameRef, type Reference } from '#shared/reference'
 import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { WAKE_LABEL, wakeKindOf, type WakeKind } from '#shared/pm/wakes'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
@@ -32,7 +32,7 @@ const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 // A version of a reply replaced while the agent writes takes its question marks with it.
 onMdDropped(forgetReply)
 const route = useRoute()
-const emit = defineEmits<{ gotoTerm: [], restored: [], quote: [], answered: [caret: number], unanswered: [count: number], sent: [queued: QueuedMessage | null] }>()
+const emit = defineEmits<{ gotoTerm: [], restored: [], quote: [], answered: [caret: number], unanswered: [count: number], sent: [queued: QueuedMessage | null], choose: [text: string] }>()
 const searchOpen = defineModel<boolean>('search', { default: false })
 
 const box = ref<HTMLElement | null>(null)
@@ -760,12 +760,54 @@ function syncQuoted() {
     btn.setAttribute('aria-pressed', String(Boolean(ref) && tappedAnswer(answerOf(text, ref!) || '') === btn.dataset.a))
   }
   for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-all') || []) btn.setAttribute('aria-pressed', String(isQuoted(text, refOf(btn)!)))
+  syncChoices()
   for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-reply, .q-point, .q-tquote') || []) {
     const ref = refOf(btn)
     const on = Boolean(ref) && isQuoted(text, ref!)
     btn.classList.toggle('quoted', on)
     if (btn.dataset.n && !btn.classList.contains('q-tquote')) for (const span of wordsOf(btn)) span.classList.toggle('quoted', on)
   }
+}
+// `choices` buttons (utils/markdown.ts): a tap sends the option as the user's
+// reply, quoted to the question before them (or to the message). Only those
+// of the agent's last message are live, until a sent message answers them;
+// the others are greyed, the answer given pressed.
+function choiceRef(btn: HTMLElement): Reference | null {
+  const key = btn.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey
+  const b = key ? blocks.value.find(x => x.key === key) : null
+  if (!b || b.k !== 'assistant') return null
+  return btn.dataset.q ? pointRef(btn.dataset.q, b.time, b.rid) : messageRef(b.text.replace(/^```wherdr\n[\s\S]*?^```$/gm, ''), b.time, b.rid)
+}
+function sentAnswer(key: string, ref: Reference): string | null {
+  const at = blocks.value.findIndex(b => b.key === key)
+  for (const b of blocks.value.slice(at + 1)) {
+    if (b.k !== 'user') continue
+    const refs = refsIn(b.text)
+    const i = refs.findIndex(r => sameRef(r, ref))
+    if (i >= 0) return b.text.slice(refs[i]!.end, refs[i + 1]?.start ?? b.text.length).trim()
+  }
+  return null
+}
+function syncChoices() {
+  const last = blocks.value.findLast(b => b.k === 'assistant')?.key
+  for (const group of listEl.value?.querySelectorAll<HTMLElement>('.w-choices') || []) {
+    const key = group.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey || ''
+    const buttons = [...group.querySelectorAll<HTMLButtonElement>('.q-choice')]
+    const ref = buttons[0] ? choiceRef(buttons[0]) : null
+    const given = ref ? sentAnswer(key, ref)?.toLowerCase() ?? null : null
+    const live = key === last && given === null && !readOnly.value
+    group.classList.toggle('done', !live)
+    for (const b of buttons) {
+      b.disabled = !live
+      b.setAttribute('aria-pressed', String(given !== null && given === (b.dataset.a || '').toLowerCase()))
+    }
+  }
+}
+function choose(btn: HTMLButtonElement) {
+  const ref = choiceRef(btn)
+  if (!ref || btn.disabled || !btn.dataset.a) return
+  haptic()
+  emit('choose', `${refLine(ref)}\n${btn.dataset.a}`)
 }
 // The words of a question (`.q-text`) and its button share a number in their message.
 const wordsOf = (btn: HTMLElement) => btn.closest('.md-body')?.querySelectorAll<HTMLElement>(`.q-text[data-n="${btn.dataset.n}"]`) || []
@@ -879,6 +921,8 @@ const copyText = copyCode
 // their menu (event delegation, the HTML comes from v-html).
 function onListClick(e: MouseEvent) {
   const target = e.target as HTMLElement
+  const choice = target.closest?.('.q-choice') as HTMLButtonElement | null
+  if (choice) { e.preventDefault(); choose(choice); return }
   const ans = target.closest?.('.q-ans') as HTMLElement | null
   // `detail` counts the clicks of a pointer; 0 for a button pressed with the keyboard.
   const click = e.detail > 0

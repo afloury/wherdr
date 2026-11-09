@@ -53,7 +53,7 @@
 
 ## Conversation, terminal and files
 
-- [Conversation and replies](docs/conversation.md): transcripts, one-tap answers, quoted replies, attachments (shown as chips once sent), dictation, and in-app links (`#/settings?section=…`, `#/board?task=…`) that open a place in wherdr.
+- [Conversation and replies](docs/conversation.md): transcripts, one-tap answers, choice buttons (`wherdr` blocks), quoted replies, attachments (shown as chips once sent), dictation, and in-app links (`#/settings?section=…`, `#/board?task=…`) that open a place in wherdr.
 - [Places an agent opens for you](docs/conversation.md): `wherdr alfred ui open` / `wherdr pm ui open '<in-app link>'` shows a place beside the agent's conversation (Settings side panel on a wide computer, a tappable card otherwise), only in a turn from the user, changing nothing.
 - [Conversations on hc](docs/core.md#conversations): which agents open on their transcript and how it is read, and text left unsent in Claude's input box (never shown as read, never glued to the next message).
 - [Terminal](docs/terminal.md): the real terminal, shared viewers and taking control.
