@@ -5,6 +5,7 @@
 // the user changes them, the coordinator reads them (`wherdr pm automation`).
 import type { Task } from './run'
 import { parseSchedule } from './schedule'
+import { isPrUrl } from './board'
 
 export const AUTOMATION_EVENTS = ['added', 'approval', 'review-failed', 'failed', 'needs-you', 'merged'] as const
 export type AutomationEvent = typeof AUTOMATION_EVENTS[number]
@@ -69,7 +70,7 @@ export function markOf(t: Task): Mark {
     ...(failed ? { failed } : {}),
     ...(s?.yourTurn || t.state === 'waiting' ? { needs: true } : {}),
     // Done with a PR: merged. A study task ends done without one.
-    ...(s?.done && !s.abandoned && (t.links ?? []).some(l => /\/pull\/\d+/.test(l.url)) ? { merged: true } : {}),
+    ...(s?.done && !s.abandoned && (t.links ?? []).some(l => isPrUrl(l.url)) ? { merged: true } : {}),
   }
 }
 

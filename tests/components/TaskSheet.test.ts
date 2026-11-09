@@ -2,9 +2,10 @@ import { expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import TaskSheet from '~/components/TaskSheet.vue'
 import { initialState, planSteps, type StepState } from '#shared/pm/steps'
-import { wherdr } from '#shared/pm/examples'
+import { company, wherdr } from '#shared/pm/examples'
 import { readBody } from 'h3'
-import type { Card } from '#shared/pm/board'
+import { cardOf, linkLabel, mainLink, type Card } from '#shared/pm/board'
+import type { Task } from '#shared/pm/run'
 
 const badge = 'Look at the screenshots, then merge: merge: the PR head is not the task\'s commit'
 let release: () => void = () => {}
@@ -74,6 +75,23 @@ it('a task not waiting for the user opens as before, on its description', async 
   const w = await mountSuspended(TaskSheet, { props: { card: { ...card, description: 'Do it', yourTurn: undefined, userLabel: undefined } }, global: { stubs } })
   expect(w.get('[role="tab"][aria-selected="true"]').attributes('data-tab')).toBe('description')
   expect(w.find('[data-tab="todo"]').exists()).toBe(false)
+  w.unmount()
+})
+
+// A PR the worker opened with its own tool (Bitbucket here), given as the pr step's link proof.
+it('a link proof that is a PR shows Open the PR at the merge step and on the card', async () => {
+  const url = 'https://bitbucket.org/example-org/example-repo/pull-requests/12'
+  const task: Task = {
+    id: 'WHR-1', project: 'WHR', title: 'A task', description: '', type: 'feature', state: 'working',
+    step: { ...initialState(), started: true, at: 4, proofs: { pr: { link: url } }, yourTurn: { reason: 'user', badge: 'Merge the PR' } },
+  }
+  const c = cardOf(task, planSteps(company, { type: 'feature' }), [])
+  expect(mainLink(c)).toEqual({ label: 'PR', url })
+  expect(linkLabel(mainLink(c)!)).toBe('PR #12')
+  const w = await mountSuspended(TaskSheet, { props: { card: c }, global: { stubs } })
+  expect(w.get('[data-testid="task-todo"]').attributes('data-todo')).toBe('step')
+  expect(w.get('[data-testid="todo-pr"]').attributes('href')).toBe(url)
+  expect(w.get('[data-testid="step-user"]').text()).toBe('Merged')
   w.unmount()
 })
 
