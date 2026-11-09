@@ -11,10 +11,18 @@ vi.hoisted(() => {
   Object.assign(globalThis, { speechSynthesis: synth, SpeechSynthesisUtterance: class {} })
 })
 
+// iOS (utils/format.ts, read from the user agent at load) is switched here per test.
+const device = vi.hoisted(() => ({ ios: false }))
+vi.mock('~/utils/format', async (importOriginal) => {
+  const real = await importOriginal<typeof import('~/utils/format')>()
+  return { ...real, get isIOS() { return device.ios } }
+})
+
 const { deviceVoices, readAloudEngine, readAloudHideLow, readAloudVoice, readAloudVoiceLang } = await import('~/composables/useReadAloud')
 const ReadAloudSettings = (await import('~/components/ReadAloudSettings.vue')).default
 
 beforeEach(() => {
+  device.ios = false
   deviceVoices.value = [...macChromiumVoices]
   readAloudEngine.value = 'device'
   readAloudVoice.value = ''
@@ -67,5 +75,16 @@ describe('ReadAloudSettings voice picker', () => {
     expect(options().join('|')).not.toContain('Eddy (French (France))')
     expect(sections()).toContain('Low quality')
     w.unmount()
+  })
+
+  it('says on iOS only that Premium and Enhanced voices are kept for native apps', async () => {
+    const note = '[data-testid="read-aloud-ios-note"]'
+    const w = await mountSuspended(ReadAloudSettings)
+    expect(w.find(note).exists()).toBe(false)
+    w.unmount()
+    device.ios = true
+    const w2 = await mountSuspended(ReadAloudSettings)
+    expect(w2.find(note).text()).toContain('web apps like wherdr only get the standard ones')
+    w2.unmount()
   })
 })
