@@ -468,7 +468,9 @@ browser has `speechSynthesis`).
 Every piece is queued in the tap itself: iOS only speaks from a user gesture. iOS may stop
 speech when the screen locks or the app goes to the background, without an `end` event; a check
 every 1.5 s puts the button back to Play. Leaving the pane stops its reply. Voices marked
-"online" (Chrome's Google voices) send the text to their vendor. An OpenRouter engine
+"online" (Chrome's Google voices) send the text to their vendor. On iPhone and iPad, the Premium and
+Enhanced voices downloaded in iOS Settings are kept for native apps: Safari and home-screen web
+apps only list the standard ones, and the settings say so under the voice list. An OpenRouter engine
 (`POST /api/v1/audio/speech`, relayed by the server like dictation) is a planned follow-up.
 
 ## Known limits
