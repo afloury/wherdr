@@ -230,7 +230,10 @@ kept conversation that ran with another agent. A tap opens its window:
 
 - the agent that answers the coordinator (Alfred's too), and a warning when its conversation
   ran with another one: *New conversation* with the default, or *Resume* the one kept (for
-  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it;
+  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it; when its
+  conversation stopped (its terminal ended, for example when its machine
+  restarted), *Resume the conversation* takes it up again with the agent that
+  ran it, and *New conversation* starts a new one;
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's

@@ -297,11 +297,14 @@ export function stepDoneEvent(step: PlannedStep | undefined, cmd: { userSaid?: s
 // ~/.codex) extends :workspace (reads everywhere, writes in its folder and
 // temp folders) with the network on. The others start bare in the folder.
 // works: the project's folder is the coordinator's to change (a folder without git).
-export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string, works = false): string[] {
-  if (program === 'claude') return ['claude', ...(repo ? ['--add-dir', repo] : [])]
-  if (program === 'codex') return ['codex', '-C', folder, ...(repo && works ? ['--add-dir', repo] : []), '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true']
+// resume: its last conversation again, the last one started in its own folder
+// (Claude and Codex only, see canResume), with the same options.
+export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string, works = false, resume = false): string[] {
+  if (program === 'claude') return ['claude', ...(resume ? ['--continue'] : []), ...(repo ? ['--add-dir', repo] : [])]
+  if (program === 'codex') return ['codex', '-C', folder, ...(repo && works ? ['--add-dir', repo] : []), '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true', ...(resume ? ['resume', '--last'] : [])]
   return [program]
 }
+export const canResume = (program: CoordinatorProgram) => program === 'claude' || program === 'codex'
 // Claude and Codex take the first message as an argument; the others get it
 // typed once they are ready.
 export const promptAsArg = (program: CoordinatorProgram) => program === 'claude' || program === 'codex'
