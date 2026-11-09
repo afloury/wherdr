@@ -54,8 +54,6 @@ export interface CatchUp { base: string, from: string, at: number }
 
 // A merge step that waits for the user's click (a visual merge).
 export const waitsToMerge = (step: PlannedStep | undefined) => step?.ends === 'user' && step.action?.kind === 'github.merge'
-// The finding id a re-review after an approval gives when the new commits do more than resolve conflicts.
-export const BEYOND = 'beyond-conflicts'
 
 export type StepEvent =
   | { kind: 'start' }
@@ -70,7 +68,8 @@ export type StepEvent =
   // toAgent: the worker has to fix it (a conflict): the task goes back to its step.
   // review: new commits since the reviewed one: back to the review step, for them only.
   // catchUp: the merge was refused because the PR conflicts with or is behind its base.
-  | { kind: 'action-result', ok: boolean, error?: string, evidence?: Partial<Record<Evidence, string>>, toAgent?: boolean, review?: Rereview, catchUp?: { base: string, head: string } }
+  // unapproved: the task's interface files changed since the user approved: they look again.
+  | { kind: 'action-result', ok: boolean, error?: string, evidence?: Partial<Record<Evidence, string>>, toAgent?: boolean, review?: Rereview, catchUp?: { base: string, head: string }, unapproved?: true }
   // A merge step waiting for the user: its PR is updated with its base (catch-up), then
   // caught up (head: the pushed commit; review: what the agent changed, else a clean merge).
   | { kind: 'catch-up', base: string, head: string }
@@ -98,11 +97,10 @@ export function reviewedCommit(plan: PlannedStep[], s: StepState): string | unde
 }
 
 // The reviewer's text for a short re-review of what came after its pass.
-export const rereviewText = ({ since, head }: Rereview, approved?: boolean) => [
+export const rereviewText = ({ since, head }: Rereview) => [
   `Short re-review: the PR head moved after your review passed (${since.slice(0, 7)} → ${head.slice(0, 7)}), through a catch-up merge, a conflict resolution or a CI fix.`,
   `Review only that change. List it with \`git log --oneline ${since}..${head}\`. For a merge of the base branch, \`git show --remerge-diff <commit>\` shows only how its conflicts were resolved; for any other commit, \`git show <commit>\`.`,
   'Pass unless one of them breaks the task or goes beyond it; what the base branch brought is not reviewed again.',
-  ...(approved ? [`The user already approved the merge: it goes on by itself unless you find something major, or these commits change behaviour or the interface beyond resolving conflicts. Then add a minor finding with id "${BEYOND}" that says what changes.`] : []),
 ].join('\n\n')
 
 export interface StepResult { state: StepState, effects: Effect[], refused?: string }
@@ -220,17 +218,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       if (ev.head) state = { ...state, proofs: { ...state.proofs, [step.id]: { ...state.proofs[step.id], commit: ev.head } } }
       // The engine decides: only a finding that weighs major or more sends back.
       const left = blocking(ev.findings)
-      // A re-review after the user's approval: something major, or more than conflicts resolved, hands it back to the user.
-      const beyond = state.approved && state.rereview ? ev.findings.find(f => f.id === BEYOND) : undefined
-      if (state.approved && state.rereview && (left.length || beyond)) {
-        effects.push({ kind: 'log', text: `${step.id}: approval dropped, the user looks again: ${(left[0] ?? beyond)!.title}` })
-        state = { ...state, approved: undefined }
-      }
-      if (!left.length) {
-        const r = next()
-        if (beyond && r.state.yourTurn) r.state.yourTurn = { ...r.state.yourTurn, badge: `Look again, then merge: ${beyond.title}` }
-        return r
-      }
+      if (!left.length) return next()
       const n = (state.rounds[step.id] ?? 0) + 1
       const rounds = { ...state.rounds, [step.id]: n }
       const history = [...(state.reviews?.[step.id] ?? []), { findings: left, ...(ev.diffLines !== undefined ? { diffLines: ev.diffLines } : {}) }]
@@ -289,6 +277,11 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       if (!state.acting) return refuse('No action is running')
       const proofs = ev.evidence ? { ...state.proofs, [step.id]: { ...state.proofs[step.id], ...ev.evidence } } : state.proofs
       if (ev.ok) return { state: enter(plan, { ...state, proofs }, state.at + 1, now, effects), effects }
+      // The approval covered the screens the user saw: the interface changed since, so they look again.
+      if (ev.unapproved && waitsToMerge(step)) {
+        effects.push({ kind: 'log', text: `${step.id}: approval dropped, the interface changed since: the user looks again` })
+        return { state: { ...state, proofs, acting: undefined, approved: undefined, yourTurn: { reason: 'user', badge: 'Look again, then merge: the interface changed' } }, effects }
+      }
       if (ev.catchUp && waitsToMerge(step)) {
         effects.push({ kind: 'log', text: `${step.id}: ${ev.error ?? 'refused'}: updating it with ${ev.catchUp.base}${state.approved ? ', then it merges by itself' : ''}` })
         return { state: { ...state, proofs, acting: undefined, yourTurn: undefined, catchUp: { base: ev.catchUp.base, from: ev.catchUp.head, at: now } }, effects }
