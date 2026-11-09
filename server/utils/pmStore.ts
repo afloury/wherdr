@@ -305,6 +305,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await writeJson(files.incidents, { v: 1, incidents: [...old, ...added].slice(-200) })
       return added
     }),
+    // Their Incident wake queued: never again.
+    toldIncidents: (ids: string[], at: number) => write(async () => {
+      const old = (await readJson<{ incidents?: Incident[] }>(files.incidents))?.incidents ?? []
+      await writeJson(files.incidents, { v: 1, incidents: old.map(i => (ids.includes(i.id) ? { ...i, told: at } : i)) })
+    }),
     automations: async (key: string): Promise<AutomationsFile> =>
       ({ automations: [], ...(TASK_ID_RE.test(`${key}-1`) ? await readJson<AutomationsFile>(path.join(files.automations, `${key}.json`)) : null) }),
     // `change` gets the file as it is now, inside the write: no firing is lost to a concurrent save.

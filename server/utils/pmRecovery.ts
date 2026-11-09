@@ -6,7 +6,9 @@
 // agent reads its instructions with a handover note.
 import { randomUUID } from 'node:crypto'
 import { MAIN } from '../../shared/pm/coordinator'
-import { enqueue, wakesFor } from '../../shared/pm/wakes'
+import { enqueue } from '../../shared/pm/wakes'
+import { incidentReasons, toTell } from '../../shared/pm/incidentWake'
+import { showIds } from '../../shared/pm/projectKey'
 import type { Incident } from '../../shared/pm/incident'
 import { causeGone, interrupted, interruptedWhy, resumeOrder, resumeText } from '../../shared/pm/recovery'
 import { handoverText } from '../../shared/pm/stop'
@@ -20,26 +22,44 @@ import { forgetMemory } from './pmMemory'
 import { load } from './pmStop'
 
 // The task's agent gone with this incident: it waits for the engine's resume,
-// or, the same cause again right after one, the coordinators are woken once.
+// or, the same cause again right after one, for the coordinators (told in the incident's wake).
 export async function interruptTask(deps: PmLaunchDeps, task: Task, i: Incident, now = Date.now()): Promise<Task> {
   const r = interrupted(task, i, now)
   if (!r.escalate) return deps.store.saveTask(r.task)
+  return deps.store.logTask(r.task, 'engine', `not resumed again: the same cause right after a resume; the coordinators are told in incident ${i.id}'s wake`)
+}
+
+// One Incident wake per incident, once no resume of it is under way (busy):
+// to the coordinator of each project it hit, and to the main one with them all; running ones only.
+export async function wakeIncidents(deps: PmLaunchDeps, busy: Set<string>, now = Date.now()) {
   const { store } = deps
-  const coords = new Map([[task.project, await store.coordinator(task.project)], [MAIN, await store.coordinator(MAIN)]])
-  const keys = wakesFor([task.project, MAIN], k => coords.get(k) ?? undefined, now)
-  for (const key of keys) await store.saveWakes([enqueue(await store.wakes(), key, [r.escalate], now, randomUUID().replace(/-/g, '').slice(0, 8), false, { kind: 'engine' })])
-  return store.logTask(r.task, 'engine', `not resumed again: the same cause right after a resume${keys.length ? `; woke ${keys.map(k => (k === MAIN ? 'the main coordinator' : 'the project\'s coordinator')).join(' and ')}` : ''}`)
+  const told = toTell(await store.incidents(), busy, now)
+  if (!told.length) return []
+  const tasks = await store.tasks(), projects = await store.projects()
+  for (const i of told) {
+    const keys = [...new Set(i.tasks.map(id => tasks.find(t => t.id === id)?.project).filter((k): k is string => !!k)), MAIN]
+    for (const key of keys) {
+      if (!(await store.coordinator(key))?.terminal) continue
+      const reasons = showIds(projects, incidentReasons(i, tasks, key === MAIN ? undefined : key))
+      await store.saveWakes([enqueue(await store.wakes(), key, reasons, now, randomUUID().replace(/-/g, '').slice(0, 8), false, { kind: 'incident', about: i.id })])
+    }
+  }
+  await store.toldIncidents(told.map(i => i.id), now)
+  return told.map(i => i.id)
 }
 
 export async function resumeInterrupted(deps: IncidentDeps, now = Date.now()) {
   const { store } = deps
   const runs = await store.runs(), projects = await store.projects(), machines = new Set<string>(), resumed: string[] = []
+  // Incidents with a resume under way this tick: their wake waits for the next one.
+  const busy = new Set<string>()
   let accounts: Awaited<ReturnType<typeof readAccounts>> | undefined
   for (const t of resumeOrder(await store.tasks())) {
     const r = t.recovery!
     const worker = runs.filter(x => x.task === t.id && x.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
     const p = projects.find(x => x.key === t.project)
-    if (!worker || !p || machines.has(worker.machine)) continue
+    if (!worker || !p) continue
+    if (machines.has(worker.machine)) { busy.add(r.incident); continue }
     let online = true
     try { machineOn(deps, worker.machine) } catch { online = false }
     const limited = online && r.cause === 'limit' && !!limitOf(accounts ??= await readAccounts(deps))(worker.program, worker.machine, now)
@@ -47,6 +67,7 @@ export async function resumeInterrupted(deps: IncidentDeps, now = Date.now()) {
     const placed = await placeFor(deps, t, { waits: (await paceOf(store, p, t, now)).waits })
     if ('hold' in placed) { if (t.held !== placed.hold) await store.logTask({ ...t, held: placed.hold }, 'engine', `resumes once there is room: ${placed.hold}`); continue }
     machines.add(placed.machine)
+    busy.add(r.incident)
     forgetMemory(placed.machine)
     // Not waiting any more: a failed start is the user's, never tried again in a loop.
     const fresh = await store.saveTask({ ...t, held: undefined, recovery: { ...r, waits: undefined, resumedAt: now } })
@@ -64,5 +85,5 @@ export async function resumeInterrupted(deps: IncidentDeps, now = Date.now()) {
       : `could not resume after incident ${r.incident}: ${res.waiting ?? ''}`)
     resumed.push(t.id)
   }
-  return resumed
+  return { resumed, busy }
 }

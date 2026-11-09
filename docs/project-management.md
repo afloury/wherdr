@@ -694,12 +694,36 @@ Once the cause is gone, the engine resumes it by itself, every minute:
   account's pace lets it ([Machines](machines.md#manage-machines)), one start per machine and
   minute, never a second worker on the task;
 - **once in a row**: stopped again for the same cause within an hour of the
-  engine's resume, it is not resumed again. The project's coordinator and the
-  main one are woken once, with the incident; the task waits in Your turn
-  until it is started again.
+  engine's resume, it is not resumed again: the incident's wake says so, and
+  the task waits in Your turn until it is started again.
 
 Its Log says *resumed after incident …*, and a stall or a step past its time
 limit from the outage leaves Tasks to handle once the task works again.
+
+### The incident wake
+
+Once the engine's resumes after an incident are done (none still under way),
+the coordinators get **one wake per incident**, never one per task, headed
+*Incident: <incident>, wake <id>*, even with the autopilot off. It gives the
+engine's facts:
+
+- the cause and the evidence it read (machine, times, exit codes, the
+  account's reading);
+- **Resumed**: the tasks working again;
+- **Still waits**: those the engine resumes by itself, and why (*host-b still
+  offline*, *the account's limit until <time>*, *waits for WEB-1 to resume
+  first*, no room on the machine);
+- **Needs you**: a task stopped again right after its resume, for the
+  coordinator to start once the cause is fixed;
+- **Needs the user**: a permission, a question, a sign-in, a merge or another
+  Your turn.
+
+Each project's coordinator gets its own tasks; the main coordinator (Alfred)
+gets every project's, so he can say what happened for all of them. Both
+follow one rule: **never state a cause they did not read**. Before explaining
+a stop they run `wherdr pm incidents`, `wherdr pm autopilot show` and
+`wherdr pm read <task>`; when those facts do not decide, they say the cause is
+unknown and what they checked.
 
 ### A task's temporary files
 
