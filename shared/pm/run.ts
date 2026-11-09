@@ -104,6 +104,23 @@ export const taskPaths = (home: string, id: string) => ({
   branch: `task/${id}`,
 })
 
+// A task's agents keep their temporary files in its worktree, not in the
+// machine's /tmp (often small, in memory, and shared by every agent): ignored
+// by git, removed with the worktree, kept when the agents are released.
+export const TMP_DIR = '.wherdr-tmp'
+export const agentEnv = (worktree: string) => {
+  const tmp = `${worktree}/${TMP_DIR}`
+  return { DISABLE_AUTOUPDATER: '1', TMPDIR: tmp, CLAUDE_CODE_TMPDIR: tmp, NODE_COMPILE_CACHE: tmp }
+}
+// Below this, the machine's /tmp would make the agent's shell commands fail.
+export const MIN_TMP_FREE_KB = 500 * 1024
+// The temp folder script's output: the KB free in /tmp. Unknown: no refusal.
+export function tmpRefusal(out: string) {
+  const kb = Number(out.trim().split('\n').pop())
+  if (!out.trim() || !Number.isFinite(kb) || kb >= MIN_TMP_FREE_KB) return undefined
+  return `/tmp on the task's machine has only ${Math.floor(kb / 1024)} MB free (needs ${MIN_TMP_FREE_KB / 1024} MB): free some space, then start the task again`
+}
+
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 // The shell line that starts the agent: model pinned, first message points at the file.
 export function agentLine(program: string, model: string, instructions: string) {
