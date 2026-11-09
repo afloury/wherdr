@@ -303,6 +303,13 @@ and screenshots) and **Log**. A refused merge says why under its button.
 Open a task under *Your turn* and its sheet starts on **To do**: what the task
 needs from you and the buttons for it, before its Description, Plan and Log.
 
+A tap on a card under *Your turn*, or on an entry of the home's **Tasks to
+handle**, goes where you act: when the task's agent (worker or reviewer, on any
+machine) asks a question or a permission, it opens that agent's conversation,
+its question last; anything else opens the sheet on **To do**. The sheet stays
+one tap away: *Open the task* in the card's menu, or the small icon at the end
+of the entry. An agent that is not on screen here opens the sheet instead.
+
 - **A visual change to merge**: its screenshots large (swipe between them, tap
   one to zoom; each is labelled phone or desktop), the review's verdict, the PR,
   then *Merge*, or *Send back* with a note: the agent gets your note as what to fix.
