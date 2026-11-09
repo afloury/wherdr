@@ -263,13 +263,13 @@ onUnmounted(list.unmount)
             </div>
             <div v-if="preview" class="card-preview">{{ preview }}</div>
             <div v-if="interactive" class="card-choices">
-              <button type="button" :disabled="!eventsOpen || offlineView || paneStale(pane)" @click.stop="openInteraction">
+              <button type="button" :disabled="!linkShown || offlineView || paneStale(pane)" @click.stop="openInteraction">
                 <UIcon name="i-lucide-square-terminal" /><span class="l">{{ tl('Open interactive terminal', 'Ouvrir le terminal interactif') }}</span>
               </button>
             </div>
             <div v-else-if="quick.length" class="card-choices">
               <button
-                v-for="o in quick" :key="o.i" type="button" :disabled="busy || prompt?.unavailable || !eventsOpen || offlineView || paneStale(pane)"
+                v-for="o in quick" :key="o.i" type="button" :disabled="busy || prompt?.unavailable || !linkShown || offlineView || paneStale(pane)"
                 @click.stop="pick(o.i, o.label)"
               >
                 <span class="n">{{ o.i + 1 }}</span><span class="l">{{ prompt?.kind === 'self-update' ? t(o.label) : o.label }}</span>
