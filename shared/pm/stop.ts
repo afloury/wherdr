@@ -4,7 +4,7 @@
 // agents and saves the task.
 import type { Task } from './run'
 import { afterIds, dueText } from './advance'
-import type { PlannedStep } from './steps'
+import type { PlannedStep, StepState } from './steps'
 
 export interface Stopped { by: string, why: string, at: number }
 
@@ -34,6 +34,17 @@ export const stoppedText = (s: Stopped) => `Stopped by ${s.by}: ${s.why}`
 // The task once stopped: waiting for the user, on no agent's question.
 export const stoppedTask = (task: Task, s: Stopped): Task =>
   ({ ...task, state: 'waiting', waiting: stoppedText(s), waitKind: undefined, stopped: s })
+
+// The step of an archived task: done, no longer acting nor waiting for the user.
+export const archivedStep = (s: StepState): StepState =>
+  ({ ...s, done: true, abandoned: true, acting: undefined, yourTurn: undefined })
+
+// A done task still marked as the user's turn (archived before archivedStep):
+// the same task without it, or undefined when there is nothing to repair.
+export const doneTurnRepair = (task: Task): Task | undefined =>
+  task.step?.done && (task.step.yourTurn || task.step.acting || task.state === 'waiting')
+    ? { ...task, state: task.state === 'waiting' ? 'working' : task.state, waiting: undefined, waitKind: undefined, step: { ...task.step, acting: undefined, yourTurn: undefined } }
+    : undefined
 
 // Why the task may not be taken up that way, or undefined. The coordinator
 // only continues (its `task start`), and in a wake only its autopilot's tasks.

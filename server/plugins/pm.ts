@@ -1,20 +1,28 @@
 // Project management after a restart: once herdr-core answers, each unfinished
 // run finds its terminal again by its labels (server/utils/pmLaunch.ts), and
 // leftover worktrees of done tasks go (pmCleanup.ts; again in poller.ts), and
+// done tasks still marked as the user's turn leave it (pmStop.ts), and
 // the running coordinators get this version's role files. Then,
 // every 30 s, the coordinators' wake queue ticks (pmWakes.ts), and every
 // minute the engine makes its mechanical moves (pmMechanic.ts). Every 30 s,
 // one grouped push for new Decisions (pmDecisions.ts), and the projects'
-// automations fire (pmAutomations.ts).
+// automations fire (pmAutomations.ts). A merge cut by the last restart goes on
+// (resumeMerges), and a shutdown first waits a little for a merge that runs.
 import { coreAdminDeps } from '../utils/coreAdminDeps'
 import { reconcileRuns } from '../utils/pmLaunch'
 import { rewriteRoleFiles } from '../utils/pmCoordinator'
 import { sweepWorktrees } from '../utils/pmCleanup'
+import { repairDoneTasks } from '../utils/pmStop'
 import { wakeTick } from '../utils/pmWakes'
 import { mechanicTick } from '../utils/pmMechanic'
 import { pmStore } from '../utils/pmStore'
 import { decisionsTick } from '../utils/pmDecisions'
 import { automationTick } from '../utils/pmAutomations'
+import { resumeMerges } from '../utils/pmBoard'
+import { mergesSettled } from '../utils/pmActions'
+
+// Under Nitro's 30 s shutdown and the updater's wait before it kills the server.
+const MERGE_WAIT_MS = 20_000
 
 // One run at a time: a tick still going skips the next.
 const every = (ms: number, fn: () => Promise<unknown>) => {
@@ -27,6 +35,7 @@ const every = (ms: number, fn: () => Promise<unknown>) => {
 }
 
 export default defineNitroPlugin((nitroApp) => {
+  void repairDoneTasks(pmStore()).catch(() => {})
   let tries = 0
   const timer = setInterval(() => {
     if (++tries > 30) return clearInterval(timer)
@@ -34,11 +43,15 @@ export default defineNitroPlugin((nitroApp) => {
       clearInterval(timer)
       void sweepWorktrees({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})
       void rewriteRoleFiles({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})
+      void resumeMerges({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})
     }, () => {})
   }, 10_000)
   const wakes = every(30_000, () => wakeTick({ ...coreAdminDeps(), store: pmStore() }))
   const mechanic = every(60_000, () => mechanicTick({ ...coreAdminDeps(), store: pmStore() }))
   const decisions = every(30_000, () => decisionsTick(pmStore()))
   const automations = every(30_000, () => automationTick({ ...coreAdminDeps(), store: pmStore() }))
-  nitroApp.hooks.hook('close', () => { clearInterval(timer); clearInterval(wakes); clearInterval(mechanic); clearInterval(decisions); clearInterval(automations) })
+  nitroApp.hooks.hook('close', async () => {
+    clearInterval(timer); clearInterval(wakes); clearInterval(mechanic); clearInterval(decisions); clearInterval(automations)
+    await mergesSettled(MERGE_WAIT_MS)
+  })
 })

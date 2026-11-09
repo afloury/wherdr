@@ -43,7 +43,17 @@ export const alfredPane = computed(() => (alfred.value?.terminal ? herdrState.va
 // The coordinator a pane is, by its herdr-core address.
 export const coordinatorOf = (p?: Pane | null) => (p?.coreAddress ? coordinators.value.find(c => c.terminal === p.coreAddress) : undefined)
 // A coordinator's name, as the sidebar shows it: Alfred's current name for the main one.
-export const coordinatorName = (c: CoordinatorView) => (c.main ? alfred.value?.name || 'Alfred' : tl(`${c.project} coordinator`, `Coordinateur ${c.project}`))
+export const coordinatorName = (c: CoordinatorView) => (c.main ? alfred.value?.name || 'Alfred' : tl(`${c.label ?? c.project} coordinator`))
+// A pane's project key badge, in its header: a project coordinator's key (its
+// title then reads "coordinator"), or a task agent's task id (shown key, WD-5).
+export function paneBadge(p?: Pane | null): { text: string, color?: string, coordinator?: true } | null {
+  const c = coordinatorOf(p)
+  if (c) return c.main ? null : { text: c.label ?? c.project, color: c.color, coordinator: true }
+  const i = p?.task?.lastIndexOf('-') ?? -1
+  if (!p?.task || i < 1) return null
+  const pc = projectCoordinators.value.find(x => x.project === p.task!.slice(0, i))
+  return { text: `${pc?.label ?? p.task.slice(0, i)}${p.task.slice(i)}`, color: pc?.color }
+}
 // A coordinator's pane (Alfred's included, projects on or off) is titled by its name; '' for any other pane.
 export function paneCoordinatorName(p?: Pane | null) {
   if (p?.coreAddress && p.coreAddress === alfred.value?.terminal) return alfred.value.name || 'Alfred'

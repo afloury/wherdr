@@ -7,7 +7,7 @@
 // machine.
 // On the phone it opens full screen, Launch pinned at the bottom.
 import type { MachineConfig } from '#shared/types'
-import type { ProjectDraft } from '#shared/pm/newProject'
+import { shortHome, type ProjectDraft } from '#shared/pm/newProject'
 import { machineOf } from '#shared/ids'
 import { selectedAgentKind, visibleAgentKinds } from '~/utils/agentChoices'
 
@@ -115,7 +115,7 @@ function pickKind(k: string) {
 
 // ------------------------------------------------------------ navigateur de dossiers
 function chooseDir(d: string) {
-  if (coordinator.value && draft.value) draft.value.path = d
+  if (coordinator.value && draft.value) draft.value.path = shortHome(d, home.value || '')
   else dir.value = d
   browsing.value = false
 }
@@ -170,7 +170,8 @@ async function launch() {
 
 <template>
   <AppSheet v-model:open="open" :title="newTabSpace ? t('Start in a new tab') : coordinator ? tl('Project', 'Projet') : t(shell ? 'New terminal' : 'New agent')" tall screen>
-    <div v-if="!browsing" class="sheet-form">
+    <!-- Kept mounted while browsing: the project form then sees the chosen folder. -->
+    <div v-show="!browsing" class="sheet-form">
       <div v-if="newTabSpace" class="into-pane">
         <span class="tabmap" aria-hidden="true"><i class="cur" style="inset: 0" /></span>
         <span>
@@ -222,7 +223,7 @@ async function launch() {
       </template>
     </div>
 
-    <DirBrowser v-else :start="coordinator && draft ? (draft.probe?.exists ? draft.probe.path : null) : dir" :machine="machine" @choose="chooseDir" @cancel="browsing = false" />
+    <DirBrowser v-if="browsing" :start="coordinator && draft ? (draft.probe?.exists ? draft.probe.path : null) : dir" :machine="machine" @choose="chooseDir" @cancel="browsing = false" />
 
     <template #footer>
       <NewProjectActions
