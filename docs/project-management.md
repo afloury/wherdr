@@ -213,7 +213,8 @@ kept conversation that ran with another agent. A tap opens its window:
   limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's
   machines have room for, the default for a new project; a task whose step
   holds no agent, such as a PR or merge waiting for checks or the queue, or a
-  step of yours, takes no slot), the events it wakes on (*Task added*, *Task
+  step of yours, takes no slot), the events it wakes on (*Task added*: by someone else than this
+  coordinator, such as you, another coordinator or an automation; *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
   even with nothing to do, with its own *New tasks / day*). The form says
   *Unsaved changes* until you save;

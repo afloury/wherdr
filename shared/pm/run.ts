@@ -46,6 +46,7 @@ export interface Task {
   autopilot?: true // started or added by the coordinator in a wake: its autopilot's own
   auto?: string // the automation that added it
   origin?: TaskOrigin // who made it: only automatic work is held by the pace (pace.ts)
+  addedBy?: string // who added it: 'user', 'automation', or a coordinator's key (MAIN for the main one)
   held?: string // an automatic start waits for memory on its machine (memory.ts): the engine starts it once memory is back
   files?: string[] // the files or folders it plans to change (files.ts)
   changed?: string[] // what it changed since its branch started, as the engine last read it

@@ -306,7 +306,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     receipt: (id: string) => readJson<Receipt>(path.join(files.receipts, `${id}.json`)),
     saveReceipt: (r: Receipt) => write(() => writeJson(path.join(files.receipts, `${r.id}.json`), r)),
 
-    // { project, title, description?, type, after?, auto?, origin? }: a new task, to do (origin: 'user' when unset).
+    // { project, title, description?, type, after?, auto?, origin?, addedBy? }: a new task, to do (origin: 'user' when unset).
     addTask: (raw: unknown) => write(async () => {
       const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
       const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string).trim() : '')
@@ -321,11 +321,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const after = afterIds({ after: str('after') }).map(a => storedTaskId([p], a) ?? a).join(',')
       const known = await tasks()
       if (afterIds({ after }).some(a => !known.some(t => t.id === a && t.project === p.key))) throw badInput([{ path: 'after', message: 'tasks of the same project, comma-separated' }])
-      const auto = str('auto'), planned = parseFiles(o.files)
+      const auto = str('auto'), addedBy = str('addedBy').slice(0, 100), planned = parseFiles(o.files)
       if (o.weight !== undefined && o.weight !== '' && !isWeight(o.weight)) throw badInput([{ path: 'weight', message: `one of ${WEIGHTS.join(', ')}` }])
       const weight = isWeight(o.weight) ? o.weight : undefined
       const origin = (['coordinator', 'automation', 'mission'] as const).find(x => x === o.origin) ?? 'user'
-      const task: Task = { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(after ? { after } : {}), ...(auto ? { auto } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}) }
+      const task: Task = { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(after ? { after } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}) }
       await writeJson(path.join(files.tasks, `${task.id}.json`), task)
       return task
     }),

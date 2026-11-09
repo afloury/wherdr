@@ -41,6 +41,8 @@ export const ROLE_POINTERS: Record<string, string> = { 'CLAUDE.md': '@AGENTS.md\
 // The main coordinator: one for all projects, kept under this reserved key
 // (never a project key: those start with a letter).
 export const MAIN = '_main'
+// How a coordinator signs the task log (key: its project, or MAIN).
+export const coordinatorBy = (key: string) => (key === MAIN ? 'main coordinator' : `coordinator ${key}`)
 export const sameAgent = (a?: CoordinatorAgent, b?: CoordinatorAgent) => !!a && !!b && a.program === b.program
 
 // A template change the coordinator proposed: the user accepts or refuses it
