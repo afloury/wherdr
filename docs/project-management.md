@@ -255,7 +255,10 @@ Automatic work (the autopilot, automations) waits while an account is ahead of
 its [pace](quotas.md#pace) (a machine whose account waits is skipped) or no
 machine the project allows has room for the task
 ([Machines](machines.md#manage-machines)), whatever the task counts; your own
-starts never wait.
+starts never wait. The autopilot's limits and hours (*Tasks / day*, *At once*,
+the hours) hold automatic work only too: a start you ask Alfred or a coordinator
+for goes at once, with a word when it goes past one (*started; past the
+autopilot's limit of 3 at once*), and still counts in them.
 
 The coordinator sees the same with `wherdr pm autopilot show`: the project's
 placement strategy, one line per machine the project allows (memory, cores and load, its agents at work by
