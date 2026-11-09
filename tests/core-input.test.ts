@@ -59,7 +59,7 @@ describe('core input routes', () => {
     const long = `${msg}\n${Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n')}`
     for (const [text, after, enters] of [[msg, '[Image #120] what is wrong here?', 1], [msg, '', 0], [msg, '[Image #120] what is wrong here? more', 0],
       // A long paste, shown as its stand-in: still ours alone.
-      [long, '[Image #120] what is wrong here? [Pasted text #1 +29 lines]', 1]] as const) {
+      [long, '[Image #120] what is wrong here? [Pasted text #1 +29 lines]', 1], [long.split('\n').slice(1).join('\n'), '[Pasted text #1 +29 lines]', 1]] as const) {
       const t = deps(m => (m === 'terminal.send' ? { started: false } : {}))
       t.d.settleMs = 1
       let reads = 0

@@ -38,7 +38,7 @@ const PASTE_TAG = /\[Pasted text #\d+(?: \+\d+ lines)?\]/
 export function fieldHolds(field: string | null | undefined, text: string, exact = false): boolean {
   const m = fieldForm(String(text || '').split('\n').map(l => (isUploadLine(l) ? '[Image]' : l)).join('\n'))
   const parts = String(field || '').split(PASTE_TAG).map(fieldForm)
-  if (!m || !parts.some(Boolean)) return false
+  if (!m || !fieldForm(field || '')) return false
   if (parts.length === 1) return exact ? parts[0] === m : m.length > 0 && parts[0]!.startsWith(m)
   // One paste stand-in, for a multi-line message: the text around it is ours,
   // and it stands for at least one character of it.

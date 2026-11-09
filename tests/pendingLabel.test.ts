@@ -87,6 +87,8 @@ describe('message left in Claude\'s input field', () => {
     const list = pendingQueue({ mine: [{ ...sent, text: long }], claude: [], items: [], screen: null, idle: true, input: field })
     expect(list.map(q => [q.phase, q.inInput])).toEqual([['queued', true]])
     expect(inputShown(list, field)).toBe(true)
+    // Text only: the field is the stand-in alone.
+    expect(fieldHolds('[Pasted text #1 +29 lines]', long.split('\n').slice(1).join('\n'), true)).toBe(true)
     // A one-line message is never a paste stand-in.
     expect(fieldHolds('[Pasted text #1 +29 lines]', 'one line')).toBe(false)
   })
