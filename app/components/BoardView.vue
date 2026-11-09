@@ -3,7 +3,7 @@
 // (To do / Working / Done for all projects, with the step on the card). A
 // card's indicator is the live state of the agent holding its step.
 import { turnText } from '#shared/pm/refusal'
-import { boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, statusText, waitsFor, type Board, type BoardMachine, type Card } from '#shared/pm/board'
+import { asker, boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, statusText, waitsFor, type Board, type BoardMachine, type Card } from '#shared/pm/board'
 import type { Task } from '#shared/pm/run'
 import { RESUMES } from '#shared/pm/stop'
 import { cardTime } from '#shared/pm/times'
@@ -65,11 +65,16 @@ const live = (c: Card) => {
 // has more than Open (a tap already opens the task).
 const stopping = ref(false)
 const cardMenu = useRowMenu()
-const tap = (id: string) => { if (!cardMenu.swallowClick()) show(id) }
+const tap = (c: Card) => { if (cardMenu.swallowClick()) return; const p = askingPane(c); if (p) navigateTo(panePath(p.id)); else show(c.id) }
+// A tap goes where the user acts: the conversation of the agent that asks (a
+// question, a permission) when it is on screen here; else the task's sheet, on
+// its To do tab when it waits for the user. The sheet stays in the menu.
+const askingPane = (c: Card) => (c.yourTurn && (asker(c) || waitsForYou(c)) ? paneOf(c) : undefined)
 const show = (id: string, stop = false) => { stopping.value = stop; open.value = id }
 const act = (fn: () => Promise<unknown>) => fn().then(load, (e: Error) => { error.value = e.message })
 const menuOf = (c: Card): MenuItem[] => [
-  { label: tl('Open', 'Ouvrir'), icon: 'i-lucide-panel-right-open', run: () => show(c.id) },
+  ...(askingPane(c) ? [{ label: c.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent'), icon: 'i-lucide-terminal', run: () => navigateTo(panePath(askingPane(c)!.id)) }] : []),
+  { label: askingPane(c) ? tl('Open the task') : tl('Open', 'Ouvrir'), icon: 'i-lucide-panel-right-open', run: () => show(c.id) },
   ...(canStart(c) && !waiting(c).length ? [{ label: tl('Start', 'Lancer'), icon: 'i-lucide-play', run: () => act(() => startTaskApi(c.id)) }] : []),
   ...(canStart(c) && !waiting(c).length && machinesOf(c) ? [{ label: tl('Start on…'), icon: 'i-lucide-server', run: () => openMenu(startOn(c), tl('Start on')) }] : []),
   ...(canStop(c) ? [{ label: tl('Stop…', 'Arrêter…'), icon: 'i-lucide-square', danger: true, run: () => show(c.id, true) }] : []),
@@ -120,7 +125,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
         <h2 class="mono-label">{{ laneLabel(l.id) }} <span>{{ l.cards.length }}</span></h2>
         <div v-for="c in l.cards" :key="c.id" class="board-card-wrap" :class="{ 'has-menu': menuOf(c).length > 1 }">
         <UContextMenu :disabled="sheetMenus" :items="cardMenu.dropdown(() => menuOf(c))" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="cardMenu.opened">
-        <button type="button" class="board-card" data-testid="board-card" :data-task="c.id" v-on="cardMenu.on(() => menuOf(c), c.title)" @click="tap(c.id)">
+        <button type="button" class="board-card" data-testid="board-card" :data-task="c.id" v-on="cardMenu.on(() => menuOf(c), c.title)" @click="tap(c)">
           <span class="board-card-head">
             <span v-if="hasAgent(c)" class="card-state" :class="live(c).key" role="img" :aria-label="live(c).label" :title="live(c).label" data-testid="holder-state"><i /></span>
             <b>{{ c.title }}</b>
