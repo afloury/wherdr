@@ -42,6 +42,15 @@ machine with its state (connected, connecting…, offline) and last error:
   changes; links that use the old name stop working.
 - **Forget** (`machine.rm`): this core drops the machine, but its terminals keep running there,
   and the machine can be added again later.
+- **Keep awake** (the sun button on a machine's card, or **Keep awake** in its tab's menu on the
+  home screen): 1 hour, 4 hours, until this evening (8 pm, machine time), until turned off, or
+  extend by one hour. The card then says *Awake until 18:00* or *Awake until turned off*, and on a
+  laptop on battery it warns that closing the lid puts it to sleep (or that the lid is closed).
+  It runs on that machine through herdr-core (`machine.exec`): `caffeinate -i -s` on macOS,
+  `systemd-inhibit --what=idle:sleep` in a `systemd-run --user` unit on Linux. Only the inhibitor
+  wherdr started (same PID, command and start time) counts, and **Turn off** stops that one alone.
+  A sleeping machine cannot be woken remotely. While a machine is awake and online, placement
+  counts on it like any online machine.
 - **Memory**: each machine's free memory, cores and load (read on Linux and macOS; on macOS the
   free figure is close to Activity Monitor's, not exact) and its agents at once (all projects), with two
   settings: **Agents at once, all projects** (empty: one agent per 1.5 GB of RAM) and
