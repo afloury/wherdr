@@ -40,9 +40,13 @@ it('lists the running project coordinators only (Alfred, the main one, has its o
 })
 
 it('shows a coordinator whose terminal ended as stopped, and resumes its conversation on demand (WHR-136)', async () => {
-  herdrState.value = { ok: true, workspaces: [], panes: [] }
+  // Panes not read yet: not stopped, no row.
+  herdrState.value = { ok: false, workspaces: [], panes: [] }
   views = [view('CO', { terminal: 'host/t1', ran: { program: 'codex' } })]
   w = await mountSuspended(CoordinatorsSection, { attachTo: document.body })
+  await vi.waitFor(() => expect(coordinators.value).toHaveLength(1))
+  expect(w.findAll('[data-testid="coordinator-row"]')).toHaveLength(0)
+  herdrState.value = { ok: true, workspaces: [], panes: [] }
   await vi.waitFor(() => expect(w!.findAll('[data-testid="coordinator-row"]')).toHaveLength(1))
   const row = w.find('[data-testid="coordinator-row"]')
   expect(row.text()).toContain('Codex · Stopped')

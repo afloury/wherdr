@@ -63,8 +63,9 @@ export function paneCoordinatorName(p?: Pane | null) {
 // The pane of a coordinator's kept conversation, while it runs.
 export const coordinatorPane = (c: CoordinatorView) => (c.terminal ? herdrState.value?.panes.find(p => p.coreAddress === c.terminal) : undefined)
 // Its conversation stopped (its terminal ended: its machine restarted, say):
-// it can be resumed. Unknown until herdr-core's panes are read.
-export const coordinatorStopped = (c: CoordinatorView) => !!c.terminal && !!c.ran && !!herdrState.value && !coordinatorPane(c)
+// it can be resumed. Unknown until herdr-core's panes are read live (ok), and
+// while the offline copy shows: a running one would look stopped.
+export const coordinatorStopped = (c: CoordinatorView) => !!c.terminal && !!c.ran && herdrState.value.ok && !offlineView.value && !coordinatorPane(c)
 
 // Its kept conversation runs with another agent than its default, and the user did not choose to resume it.
 export const coordinatorMismatch = (c: CoordinatorView) => !!coordinatorPane(c) && !!c.ran && !sameAgent(c.ran, coordinatorAgent(c)) && !resumedCoordinators.value.includes(c.terminal!)
