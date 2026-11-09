@@ -95,7 +95,7 @@ async function gather(deps: WakeDeps, now: number) {
     }
   }
   // Task ids as the user sees them (CMP-9, not its fixed CP-9).
-  return new Map([...reasons].map(([k, r]) => [k, showIds(projects, r)]))
+  return reasons.map(x => ({ ...x, reasons: showIds(projects, x.reasons) }))
 }
 
 // The user's "run now": queued at once, delivered at the next idle moment,
