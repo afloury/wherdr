@@ -41,7 +41,7 @@ export function useMachineConversation() {
     if (viewed()) {
       reopen = false
       if (restore) {
-        const destination = machineConversation(herdrState.value, machineBarPick.value, machineGroups.value, memory, viewed(), boardLinksNow())
+        const destination = machineConversation(herdrState.value, machineBarPick.value, machineGroups.value, memory, viewed())
         if (destination !== undefined) { open(destination); return }
       }
     }
@@ -49,7 +49,7 @@ export function useMachineConversation() {
   })
   watch(herdrState, remember, { immediate: true })
   return () => {
-    const destination = machineConversation(herdrState.value, machineBarPick.value, machineGroups.value, memory, viewed(), boardLinksNow())
+    const destination = machineConversation(herdrState.value, machineBarPick.value, machineGroups.value, memory, viewed())
     // Phones keep the list first; restore only when history reopens a view
     // outside the new filter, leaving explicit conversation choices alone.
     if (desk.value) open(destination)
