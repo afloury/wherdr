@@ -1,5 +1,6 @@
 // WHR-398/403: the COORDINATORS section under Alfred: the project
-// coordinators that run. One tap opens a conversation.
+// coordinators that run, or whose conversation stopped (WHR-136). One tap
+// opens a conversation, or offers to resume the stopped one.
 import { afterEach, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
@@ -37,6 +38,23 @@ it('lists the running project coordinators only (Alfred, the main one, has its o
   await co.trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w%3Ap1'))
   expect(posts).toEqual([])
+})
+
+it('shows a coordinator whose terminal ended as stopped, and resumes its conversation on demand (WHR-136)', async () => {
+  // Panes not read yet: not stopped, no row.
+  herdrState.value = { ok: false, workspaces: [], panes: [] }
+  views = [view('CO', { terminal: 'host/t1', ran: { program: 'codex' } })]
+  w = await mountSuspended(CoordinatorsSection, { attachTo: document.body })
+  await vi.waitFor(() => expect(coordinators.value).toHaveLength(1))
+  expect(w.findAll('[data-testid="coordinator-row"]')).toHaveLength(0)
+  herdrState.value = { ok: true, workspaces: [], panes: [] }
+  await vi.waitFor(() => expect(w!.findAll('[data-testid="coordinator-row"]')).toHaveLength(1))
+  const row = w.find('[data-testid="coordinator-row"]')
+  expect(row.text()).toContain('Codex · Stopped')
+  await row.trigger('click')
+  await vi.waitFor(() => expect(document.querySelector('[data-testid="coordinator-stopped-new"]')).not.toBeNull())
+  ;(document.querySelector('[data-testid="coordinator-stopped-resume"]') as HTMLElement).click()
+  await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', resume: true }]))
 })
 
 it('shows the coordinator whose conversation is open as selected, one at a time, following navigation', async () => {
