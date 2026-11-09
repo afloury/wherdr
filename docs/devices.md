@@ -58,6 +58,9 @@
 - **Terminal key bar** (Esc, Enter, arrows, Shift+Tab, Ctrl+C…) and touch scrolling.
   On iPhone and iPad a tap on the terminal does not open the on-screen keyboard: type in the
   message field, or tap the key bar's keyboard button to type in the terminal.
+  In **Settings › Terminal › Phone key bar**, reorder the keys and uncheck the ones you never
+  use: a hidden key keeps its place for when you show it again, and the keyboard button is
+  always shown. **Reset to default** restores the order and shows every key. Saved on the device.
   Terminal links back to this app stay in the current window on a phone; external
   links still open separately.
 - **Offline reading** of the last known state and of recently opened conversations.

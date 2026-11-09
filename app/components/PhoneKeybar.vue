@@ -3,11 +3,12 @@ import { createKeyboardTap } from '~/utils/keyboardTap'
 import type { VirtualModifier } from '~/utils/terminalModifiers'
 import { displayVirtualChord } from '~/utils/keybarKeys'
 import { PHONE_KEYS, type PhoneKey } from '~/utils/phoneKeys'
+import { shownKeys } from '~/utils/keybarOrder'
 
 const props = defineProps<{ ctl: TerminalCtl, allDigits?: boolean, terminal?: boolean }>()
 const emit = defineEmits<{ keyboard: [] }>()
-// The order chosen in Settings › Terminal (utils/keybarOrder.ts); the digits stay last.
-const keys = computed(() => phoneKeyOrder.value.map(id => PHONE_KEYS[id]))
+// The order and shown keys chosen in Settings › Terminal (utils/keybarOrder.ts); the digits stay last.
+const keys = computed(() => shownKeys(phoneKeyOrder.value, phoneKeyHidden.value).map(id => PHONE_KEYS[id]))
 const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
 const active = computed(() => props.ctl.virtualModifiers.value)
 const preview = computed(() => active.value.length
