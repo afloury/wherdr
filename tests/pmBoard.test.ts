@@ -12,7 +12,7 @@ import type { CoreAdminDeps } from '../server/utils/coreCreate'
 let dir = ''
 afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 
-// "Merged" runs the step's git.verify-merged at once; with no worktree to check,
+// "I merged it" runs the step's git.verify-merged at once; with no worktree to check,
 // the step stays open and the card stays in Your turn, saying why.
 it('the Merged button runs the step\'s check, and a failed check stays in Your turn', async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-board-'))
@@ -25,12 +25,12 @@ it('the Merged button runs the step\'s check, and a failed check stays in Your t
 
   const deps = { store } as unknown as CoreAdminDeps & { store: typeof store }
   const after = await userStep(deps, task.id)
-  expect(after.step).toMatchObject({ at: 4, yourTurn: { reason: 'action', badge: 'Merge the PR: No worktree: the task never started' } })
+  expect(after.step).toMatchObject({ at: 4, yourTurn: { reason: 'action', badge: 'Merge the PR on your Git host: No worktree: the task never started' } })
   expect(after.step?.acting).toBeUndefined()
   const { cards, projects } = await board(store)
   expect(projects[0]!.columns).toEqual(['To do', 'Working', 'Review', 'Deploy', 'Done'])
   expect(projects[0]!.types.find(x => x.id === 'feature')?.plan).toMatch(/ → review → /)
-  expect(cards[0]).toMatchObject({ column: 'Review', step: 'merge', holder: 'none', userLabel: 'Merged', yourTurn: 'Merge the PR: No worktree: the task never started' })
+  expect(cards[0]).toMatchObject({ column: 'Review', step: 'merge', holder: 'none', userLabel: 'I merged it', yourTurn: 'Merge the PR on your Git host: No worktree: the task never started' })
 })
 
 it('a working task with no recorded step shows in its worker\'s step with its agent, and a proof link is the card\'s link', () => {
@@ -65,7 +65,7 @@ it('the card says where its PR and merge stand: waiting for checks, merging, fai
   expect(cardStatus({ ...at(3, { acting: true }), prNow: 'ready to merge' })).toEqual({ text: 'merging', tone: 'wait' })
   const failed = (error: string) => at(3, { yourTurn: { reason: 'action', badge: `merge: ${error}`, error } })
   expect(cardStatus(failed('merge: 1 check(s) failed'))).toEqual({ text: 'checks failed', tone: 'bad' })
-  expect(cardStatus(failed('merge: the PR head is not the task\'s commit'))).toEqual({ text: 'blocked: the PR head is not the task\'s commit', tone: 'bad' })
+  expect(cardStatus(failed('merge: the PR head is not the task\'s commit'))).toEqual({ text: 'The PR is not at the task\'s latest commit', tone: 'bad' })
   expect(cardStatus({ ...at(3), stopped: { by: 'user', why: '', at: 1 } })).toBeUndefined()
   const done = { plan, state: { at: plan.length - 1, started: true, done: true, since: 5, proofs: { merge: { link: pr.url, commit: 'abc' } }, rounds: {} } }
   expect(cardStatus(done)).toEqual({ text: 'merged', tone: 'ok', at: 5 })

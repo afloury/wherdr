@@ -4,6 +4,8 @@ import type { WorkflowError } from './workflow'
 import type { Task } from './run'
 import type { RepoVisibility } from './visibility'
 import { isProjectColor, type ProjectColor } from './projectKey'
+import { isStrategy, type Strategy } from './placement'
+import { branchNameError } from './branchName'
 
 export interface Project {
   key: string // the fixed id (see projectKey.ts): task ids are <key>-<n>: WHR-344
@@ -17,10 +19,12 @@ export interface Project {
   // which keeps the coordinator, the repo's settings and visibility).
   machines?: string[]
   clones?: Record<string, string> // machine key → its clone of the repo, for each allowed machine but home
+  placement?: Strategy // how its tasks spread over those machines; missing: strongest
   git?: false // a folder without git: its coordinator works in it, no task worktree
   // Working branch: tasks start from it, and a step's PR, land or check uses it
   // when the step names no branch. Default: the repo's current branch, no default.
   base?: string
+  branchName?: string // its tasks' branch template (branchName.ts); missing: task/{id}
   // The library template (or example) its workflow was copied from: information
   // only, never followed. None: no workflow yet, no task can start.
   from?: { template: string, version: number }
@@ -43,7 +47,7 @@ export const isBranch = (b: string) => BRANCH_RE.test(b)
 export const isTemplateId = (id: unknown): id is string => typeof id === 'string' && ID_RE.test(id)
 
 const KEY_HINT = '2 to 10 letters or digits, starting with a letter'
-export interface ProjectUpdate { name?: string, base?: string, key?: string, color?: ProjectColor, machines?: string[], clones?: Record<string, string> }
+export interface ProjectUpdate { name?: string, base?: string, key?: string, color?: ProjectColor, machines?: string[], clones?: Record<string, string>, placement?: Strategy, branchName?: string }
 
 // The machines a project's tasks may run on, its home machine first.
 export const allowedMachines = (p: Pick<Project, 'machine' | 'machines'>) => [p.machine, ...(p.machines ?? []).filter(m => m !== p.machine)]
@@ -86,7 +90,7 @@ export function machinesOf(p: Pick<Project, 'machine' | 'machines' | 'clones'>, 
 }
 
 // The fields the user changes on a project (General tab): name, base ('' clears it), key, color,
-// the allowed machines and their clones (checked against the project by machinesOf).
+// the allowed machines and their clones (checked against the project by machinesOf), the placement strategy.
 export function cleanProjectUpdate(raw: unknown): { update?: ProjectUpdate, errors: WorkflowError[] } {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const errors: WorkflowError[] = [], update: ProjectUpdate = {}
@@ -110,10 +114,20 @@ export function cleanProjectUpdate(raw: unknown): { update?: ProjectUpdate, erro
     if (base === null || (base && !BRANCH_RE.test(base))) errors.push({ path: 'base', message: 'invalid branch name' })
     else update.base = base
   }
+  if (o.branchName !== undefined) {
+    const tpl = typeof o.branchName === 'string' ? o.branchName.trim() : ''
+    const why = tpl && branchNameError(tpl)
+    if (why) errors.push({ path: 'branchName', message: why })
+    else update.branchName = tpl
+  }
   const isKey = (m: unknown): m is string => typeof m === 'string' && m.length <= 64
   if (o.machines !== undefined) {
     if (!Array.isArray(o.machines) || o.machines.length > 16 || !o.machines.every(isKey)) errors.push({ path: 'machines', message: 'a list of machine keys' })
     else update.machines = [...new Set(o.machines)]
+  }
+  if (o.placement !== undefined) {
+    if (!isStrategy(o.placement)) errors.push({ path: 'placement', message: 'strongest, balance or home' })
+    else update.placement = o.placement
   }
   if (o.clones !== undefined) {
     const entries = o.clones && typeof o.clones === 'object' && !Array.isArray(o.clones) ? Object.entries(o.clones) : null

@@ -23,6 +23,10 @@ export type MergeBy = typeof MERGE_BY[number]
 
 export const MERGE_METHODS = ['merge', 'squash', 'rebase'] as const
 export type MergeMethod = typeof MERGE_METHODS[number]
+// What a task needs of a machine (weight.ts).
+export const WEIGHTS = ['light', 'standard', 'heavy'] as const
+export type Weight = typeof WEIGHTS[number]
+export const isWeight = (v: unknown): v is Weight => (WEIGHTS as readonly unknown[]).includes(v)
 // github.merge: method (default: the first the repo allows) and checks, the
 // names that must be there and green (a PR whose CI has not started yet has none).
 // bitbucket.merge: the same; its default method is a merge commit.
@@ -65,6 +69,7 @@ export const PREF_KEYS = ['agent', 'model', 'reviewAgent', 'reviewModel'] as con
 
 export interface TaskType {
   instructions?: string
+  weight?: Weight // what its tasks need of a machine (weight.ts); left out, read from its steps
   guards?: Guards // may only make the project's guards stricter
   prefs?: Prefs
   childType?: string // the type of the tasks this one proposes (a split)
@@ -192,7 +197,8 @@ export function validateTemplate(t: unknown): WorkflowError[] {
   for (const [name, tt] of Object.entries(t.taskTypes)) {
     const path = `taskTypes.${name}`
     if (!isObj(tt)) { errs.push({ path, message: 'must be an object' }); continue }
-    checkKeys(tt, ['instructions', 'guards', 'prefs', 'childType', 'steps'], path, errs)
+    checkKeys(tt, ['instructions', 'weight', 'guards', 'prefs', 'childType', 'steps'], path, errs)
+    if (tt.weight !== undefined && !isWeight(tt.weight)) errs.push({ path: `${path}.weight`, message: `must be one of ${WEIGHTS.join(', ')}` })
     if (tt.instructions !== undefined && typeof tt.instructions !== 'string') errs.push({ path: `${path}.instructions`, message: 'must be text' })
     checkGuards(tt.guards, `${path}.guards`, errs)
     checkPrefs(tt.prefs, `${path}.prefs`, errs)
