@@ -1,6 +1,7 @@
 // Starts a task's worker through herdr-core, on its project's machine: a git
 // worktree, the instructions file, then a terminal labelled wherdr.* running
-// the agent with its model pinned and DISABLE_AUTOUPDATER=1. Nothing is ever
+// the agent with its model pinned, DISABLE_AUTOUPDATER=1 and its temp files in
+// the worktree (agentEnv). Nothing is ever
 // started twice blindly: the run is saved before the terminal, and a restart
 // finds it again by its labels (reconcileRuns).
 import { projectPlace } from '../../shared/pm/places'
@@ -9,6 +10,7 @@ import { CoreError } from './core'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, kindsOf, launchFailure, machineOn, type CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
+import { noteBack } from './pmStall'
 import { initialState, onEvent } from '../../shared/pm/steps'
 import { doneSection, runFiles } from '../../shared/pm/advance'
 import { isPublic } from '../../shared/pm/visibility'
@@ -16,7 +18,7 @@ import { cloneOn, taskMachine } from '../../shared/pm/project'
 import { ensureVisibility, readLeakCheck } from './pmVisibility'
 import { DEPS_SCRIPT, depsNote } from './pmDeps'
 import { ensureReady } from './pmReady'
-import { LABEL, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, TMP_DIR, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 
 // Reuses the worktree of an earlier attempt; else a new branch from the base,
 // origin's as fetched now when origin has it (a local one may be stale: a
@@ -35,7 +37,26 @@ if git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then gi
 else git -C "$repo" worktree add --no-track -b "$branch" "$dir" \${from:+"$from"} 2>&1 && base=HEAD; fi || exit 1
 k="branch.$branch.wherdrstart"
 [ -z "$base" ] || git -C "$repo" config "$k" >/dev/null || git -C "$repo" config "$k" "$(git -C "$dir" merge-base HEAD "$base")"`
+// The agents' temp folder in the worktree ($2 under $1), ignored through the
+// repository's info/exclude (shared by its worktrees); prints the KB free in /tmp.
+export const TMP_SCRIPT = `dir=$1 name=$2
+mkdir -p "$dir/$name" || exit 1
+x=$(git -C "$dir" rev-parse --git-path info/exclude) || exit 1
+case $x in /*) ;; *) x=$dir/$x;; esac
+if ! grep -qxF "/$name/" "$x" 2>/dev/null; then
+  mkdir -p "$(dirname "$x")" || exit 1
+  [ -s "$x" ] && [ -n "$(tail -c1 "$x")" ] && echo >> "$x"
+  printf '/%s/\\n' "$name" >> "$x" || exit 1
+fi
+df -Pk /tmp | awk 'NR==2 {print $4}'`
 export const WRITE_SCRIPT = 'mkdir -p "$(dirname "$1")" && cat > "$1"'
+// Makes the temp folder: why the agent may not start, or undefined.
+export async function prepareTmp(deps: Pick<CoreAdminDeps, 'call'>, on: string | undefined, worktree: string) {
+  const r = await exec(deps, on, TMP_SCRIPT, [worktree, TMP_DIR])
+  const why = r.code !== 0 ? `Could not make the agents' temp folder ${TMP_DIR} in the worktree` : tmpRefusal(r.out)
+  if (why) console.warn(`[pm] ${worktree}: ${why}`)
+  return why
+}
 const NOT_FOUND = '127' // the shell found no such program: starting again cannot help
 
 export async function exec(deps: Pick<CoreAdminDeps, 'call'>, on: string | undefined, script: string, args: string[], input?: string, timeout = 60) {
@@ -62,6 +83,25 @@ export function wherdrBase(machine: string, origin = '', appUrl = process.env.AP
 // machine. Throws when that machine is unknown or unreachable.
 export const runOn = (deps: CoreAdminDeps, run: Pick<Run, 'machine'>) => machineOn(deps, run.machine).on
 
+// The task and role of each agent being started now: a second start of the
+// same one, from anywhere (user, coordinator, the engine's chain, a held start,
+// a revive), is refused while the first runs, never run beside it.
+const starting = new Set<string>()
+export async function oneStart<T>(task: string, role: Run['role'], fn: () => Promise<T>): Promise<T> {
+  const key = `${task}\u0000${role}`
+  if (starting.has(key)) throw new HerdrError('busy', `The ${role} of ${task} is already starting`)
+  starting.add(key)
+  try { return await fn() } finally { starting.delete(key) }
+}
+
+// A worker run of the task whose terminal still runs: a new one would share its worktree.
+async function liveWorker(deps: PmLaunchDeps, id: string) {
+  for (const r of (await deps.store.runs()).filter(x => x.task === id && x.role === 'worker' && x.state !== 'ended' && x.terminal)) {
+    const st = await deps.call<{ state?: string }>('terminal.get', { terminal: r.terminal }, 3000).catch(() => null)
+    if (st && st.state !== 'finished') return r
+  }
+}
+
 const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitKind']) => store.saveTask({ ...task, state: 'waiting', waiting: reason, waitKind, held: undefined })
 
 // Starts the worker of a task to do (or waiting, to try again). Any reason it
@@ -72,7 +112,13 @@ const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitK
 // worktree, whatever the task's state and the holder of its current step.
 // on: the machine key a new task goes to (one its project allows); a started
 // task always goes back to its own (taskMachine).
-export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, revive, on: asked }: { handover?: string, revive?: true, on?: string } = {}): Promise<Task> {
+// by: who starts it (the log's 'back to work' line, when that clears a timeout or a stall).
+type StartOpts = { handover?: string, revive?: true, on?: string, by?: string }
+export async function startTask(deps: PmLaunchDeps, id: unknown, opts: StartOpts = {}): Promise<Task> {
+  return oneStart(String(id), 'worker', () => startOnce(deps, id, opts))
+}
+
+async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on: asked, by = 'engine' }: StartOpts): Promise<Task> {
   const { store } = deps
   const asRead = await store.task(id)
   if (!asRead) throw new HerdrError('not_found', 'Unknown task')
@@ -94,8 +140,12 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, rev
   const held = s?.started && !s.done ? taskPlan(t, task, p)[s.at] : undefined
   if (held && held.holder !== 'worker' && !revive) {
     const { told: _told, ...step } = s!
-    return store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, step })
+    const saved = await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, step })
+    return noteBack(store, saved, taskPlan(t, saved, p), by, `started again by the ${by}`)
   }
+  // Only where a worker is launched: a running one would share its worktree.
+  const live = await liveWorker(deps, task.id)
+  if (live) throw new HerdrError('busy', `This task's worker is still running (${live.program} ${live.model}): stop the task first`)
   const { machine } = placed
   let on: string | undefined, label = ''
   try { ({ on, m: { label } } = machineOn(deps, machine)) } catch (e) { return wait(store, task, (e as Error).message) }
@@ -113,6 +163,8 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, rev
   if (wt.code !== 0) return wait(store, task, `git worktree failed: ${wt.out.split('\n').slice(-3).join(' ') || 'timeout'}`)
   // Its worktree is there now: the task stays on this machine.
   if (task.machine !== machine) task = await store.saveTask({ ...task, machine })
+  const tmpWhy = await prepareTmp(deps, on, paths.worktree)
+  if (tmpWhy) return wait(store, task, tmpWhy)
   // A copy of a large node_modules on a cold disk can take minutes.
   const depsLine = depsNote((await exec(deps, on, DEPS_SCRIPT, [repo, paths.worktree], undefined, 300).catch(() => ({ out: '' }))).out)
   // A visual task: the worker's key to upload its screenshots, kept with the task.
@@ -136,7 +188,7 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, rev
     try {
       address = (await deps.call<{ address: string }>('terminal.run', {
         cwd: paths.worktree, ...(on ? { on } : {}), no_parent: true, wait: false,
-        env: { DISABLE_AUTOUPDATER: '1' }, labels: runLabels(install, run),
+        env: agentEnv(paths.worktree), labels: runLabels(install, run),
         line: `${PATH_SETUP}; ${agentLine(plan.program, plan.model, paths.instructions)}`,
       }, 30000)).address
     } catch (e) {
@@ -148,7 +200,10 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, rev
     run = { ...run, terminal: address, state: 'running', startedAt: Date.now() }
     await store.saveRun(run)
     const failed = await launchFailure(deps, address, deps.launchWatchMs ?? 5000)
-    if (!failed) return (await store.task(task.id))!
+    if (!failed) {
+      const now = (await store.task(task.id))!
+      return task.step?.started ? noteBack(store, now, taskPlan(t, now, p), by, `started again by the ${by}`) : now
+    }
     await store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
     // An agent that exits at once gets one more attempt, never a loop.
     if (run.attempt > 1 || failed.code === NOT_FOUND)

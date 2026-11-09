@@ -32,6 +32,28 @@ it('says which agent answers, and changes the default in one gesture', async () 
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: 'CO', program: 'codex' } }]))
 })
 
+const alfred = (more: Partial<CoordinatorView> = {}) => view({ project: '_main', name: 'Alfred', main: true, ...more })
+
+it('Alfred: its agent picked in its window, and kept when no longer offered (said, never replaced)', async () => {
+  const b = await mount(alfred())
+  expect(b.text()).toContain('Alfred’s agent')
+  expect(b.find('[data-testid="coordinator-autopilot"]').exists()).toBe(false) // Alfred has no autopilot
+  await pick(b, 'coordinator-agent', 'codex')
+  await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: '_main', program: 'codex' } }]))
+  hiddenAgents.value = ['claude']
+  await b.setProps({ c: alfred() })
+  expect(b.find('[data-testid="coordinator-unoffered"]').text()).toContain('Claude is no longer offered on this machine')
+})
+
+it('Alfred: "Resume with" makes the resumed agent its default, so the warning does not come back', async () => {
+  const b = await mount(alfred({ agent: { program: 'codex' }, ran: { program: 'claude' }, terminal: 'host/t1' }))
+  expect(b.find('[data-testid="coordinator-other-agent"]').text()).toContain('The previous conversation used Claude. The default is Codex.')
+  await b.find('[data-testid="coordinator-resume"]').trigger('click')
+  await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: '_main', program: 'claude' } }]))
+  resumedCoordinators.value = []
+  globalThis.localStorage?.removeItem('wherdr.coordinatorsResumed')
+})
+
 it('header button: the autopilot\'s state, a count of what waits for the user, and a tap opens the window', async () => {
   w = await mountSuspended(CoordinatorButton, { attachTo: document.body, props: { c: view({ autopilot: { on: true, goal: '', events: [], perDay: 1, atOnce: 1 }, asleep: 'idle', proposal: { diff: '+ x', at: 1 } }) } })
   const btn = w.get('[data-testid="coordinator-button"]')

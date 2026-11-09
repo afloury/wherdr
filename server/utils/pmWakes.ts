@@ -114,7 +114,7 @@ export async function wakeTick(deps: WakeDeps, now = Date.now()) {
     const r = tickWakes(queue, key, { status, lastUserAt: c?.userAt, now })
     if (r.deliver) {
       await noteTurn(store, key, 'wake', undefined, r.deliver.reasons.some(x => x.includes(LOOK_REASON)))
-      try { await deps.call('terminal.send', { terminal: c!.terminal, text: wakeText(r.deliver) }, 30000) }
+      try { await deps.call('terminal.send', { terminal: c!.terminal, text: wakeText(r.deliver, key !== MAIN && !!c?.autopilot?.on) }, 30000) }
       catch { r.changed.splice(r.changed.indexOf(r.deliver), 1, { ...r.deliver, deliveredAt: undefined, tries: r.deliver.tries - 1 }) }
     }
     await store.saveWakes(r.changed)

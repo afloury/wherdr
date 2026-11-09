@@ -3,6 +3,7 @@
 // its autopilot's state (green square: on, hollow while asleep), a count of
 // what waits for the user (a proposed template change, a conversation of
 // another agent), and a tap opens its window (CoordinatorPanel) with all the rest.
+// Alfred has no autopilot: in its conversation the button is its Agent's, without a state.
 import type { CoordinatorView } from '#shared/pm/coordinator'
 
 const props = defineProps<{ c: CoordinatorView, open?: boolean }>()
@@ -11,15 +12,16 @@ const on = computed(() => !!props.c.autopilot?.on)
 const state = computed(() => (!on.value ? 'inactive' : props.c.asleep ? 'idle' : 'done'))
 const stateText = computed(() => (!on.value ? tl('Off', 'Arrêté') : props.c.asleep ? tl('Asleep', 'Endormi') : tl('On', 'Actif')))
 const pending = computed(() => Number(!!props.c.proposal) + Number(coordinatorMismatch(props.c)))
-const label = computed(() => `${tl('Autopilot', 'Autopilote')}: ${stateText.value}${pending.value ? ` · ${tl(`${pending.value} to review`, `${pending.value} à voir`)}` : ''}`)
-const title = computed(() => `${tl('Autopilot', 'Autopilote')} · ${props.c.project}`)
+const word = computed(() => (props.c.main ? tl('Agent') : tl('Autopilot', 'Autopilote')))
+const label = computed(() => `${word.value}${props.c.main ? '' : `: ${stateText.value}`}${pending.value ? ` · ${tl(`${pending.value} to review`, `${pending.value} à voir`)}` : ''}`)
+const title = computed(() => (props.c.main ? tl(`${coordinatorName(props.c)}’s agent`) : `${word.value} · ${props.c.project}`))
 </script>
 
 <template>
   <UButton color="neutral" variant="outline" size="lg" class="coord-btn" :class="{ on }" :aria-label="label" :title="label" data-testid="coordinator-button" :data-state="state" @click.stop="sheet = true">
-    <span class="card-state" :class="state" aria-hidden="true"><i /></span>
-    <UIcon name="i-lucide-plane" class="coord-btn-icon" aria-hidden="true" />
-    <span class="coord-btn-text">{{ tl('Autopilot', 'Autopilote') }}</span>
+    <span v-if="!c.main" class="card-state" :class="state" aria-hidden="true"><i /></span>
+    <UIcon :name="c.main ? 'i-lucide-bot' : 'i-lucide-plane'" class="coord-btn-icon" aria-hidden="true" />
+    <span class="coord-btn-text">{{ word }}</span>
     <span v-if="pending" class="mono-label coord-btn-n" data-testid="coordinator-pending">{{ pending }}</span>
   </UButton>
   <AppSheet v-model:open="sheet" :title="title" tall>
