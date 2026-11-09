@@ -14,10 +14,10 @@ import { prNow, requiredChecks } from '../../shared/pm/board'
 import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
 import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
 import { originOf, pacedStart, paceRefusal } from '../../shared/pm/pace'
-import { projectPace } from './pmPace'
+import { paceOf, placeFor } from './pmPlace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { advanceTick } from './pmAdvance'
-import { forgetMemory, memoryHold } from './pmMemory'
+import { forgetMemory } from './pmMemory'
 import { releaseIdle, reviveWorker } from './pmRelease'
 import { agentBack, handToAgent, wasReleased } from '../../shared/pm/release'
 import { noteBack, noteStall } from './pmStall'
@@ -73,30 +73,33 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
     // Held by its chain, and the task before it goes on again: to do, the engine starts it once that one is done.
     else if (t.state === 'waiting' && !held && t.waiting?.includes(CHAIN_WAIT)) await store.logTask({ ...t, state: 'todo', waiting: undefined }, 'engine', 'to do again: the tasks before it go on')
   }
+  const machines = new Set<string>() // one start per machine and tick: the next reading counts the new agent
   for (const p of await store.projects()) {
     const ap = (await store.coordinator(p.key))?.autopilot
     const mine = (await store.tasks()).filter(t => t.project === p.key)
     // A chain the coordinator or an automation made is automatic work: held by the pace.
-    let next: typeof mine[number] | undefined
+    let next: typeof mine[number] | undefined, pace: Awaited<ReturnType<typeof paceOf>> | undefined
     for (const t of mine.filter(x => x.after && x.state === 'todo')) {
-      const pace = pacedStart(t, 'engine') ? (await projectPace(store, p.key, t, now))?.verdict : undefined
-      if (!coordinatorStartRefusal(ap, t, mine, runs, now, false, { pace, engine: true })) { next = t; break }
+      pace = pacedStart(t, 'engine') ? await paceOf(store, p, t, now) : undefined
+      if (!coordinatorStartRefusal(ap, t, mine, runs, now, false, { pace: pace?.verdict, engine: true })) { next = t; break }
     }
     if (!next) continue
-    // Short on memory: held, with why on its card, until a later tick finds memory back.
-    const held = await memoryHold(deps, p.key)
-    if (held) { if (next.held !== held) await store.logTask({ ...next, held }, 'engine', held); continue }
-    forgetMemory(p.machine)
-    const r = await startTask(deps, next.id).catch((e: Error) => ({ ...next, state: 'waiting' as const, waiting: e.message }))
+    // No room on any allowed machine: held, with why on its card, until a later tick finds room.
+    const placed = await placeFor(deps, next, { waits: pace?.waits })
+    if ('hold' in placed) { if (next.held !== placed.hold) await store.logTask({ ...next, held: placed.hold }, 'engine', placed.hold); continue }
+    if (machines.has(placed.machine)) continue
+    machines.add(placed.machine)
+    forgetMemory(placed.machine)
+    const r = await startTask(deps, next.id, { on: placed.machine }).catch((e: Error) => ({ ...next, state: 'waiting' as const, waiting: e.message }))
     await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} done` : `could not start after ${next.after}: ${r.waiting ?? ''}`)
     started.push(next.id)
   }
   return started
 }
 
-// Tasks a wake or an automation would have started, held for memory: each
-// starts once its machine has memory back, one per machine and tick (the next
-// reading counts the new agent). Chained ones are startChained's. A wake's task
+// Tasks a wake or an automation would have started, held for room: each
+// starts once a machine the project allows has room, one per machine and tick
+// (the next reading counts the new agent). Chained ones are startChained's. A wake's task
 // still holds to its autopilot (on, limits, hours, pace), an automation's to
 // the pace: over a limit it waits, with why; the autopilot off drops the hold.
 export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
@@ -104,17 +107,18 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
   const projects = await store.projects(), runs = await store.runs(), started: string[] = [], machines = new Set<string>()
   for (const t of (await store.tasks()).filter(x => x.held && x.state === 'todo' && !x.after)) {
     const p = projects.find(x => x.key === t.project)
-    if (!p || machines.has(p.machine)) continue
-    const pace = pacedStart(t, 'wake') ? (await projectPace(store, p.key, t, now))?.verdict : undefined
-    const why = originOf(t) === 'automation' ? paceRefusal(pace)
-      : coordinatorStartRefusal((await store.coordinator(p.key))?.autopilot, t, (await store.tasks()).filter(x => x.project === p.key), runs, now, true, { pace })
+    if (!p) continue
+    const pace = pacedStart(t, 'wake') ? await paceOf(store, p, t, now) : undefined
+    const why = originOf(t) === 'automation' ? paceRefusal(pace?.verdict)
+      : coordinatorStartRefusal((await store.coordinator(p.key))?.autopilot, t, (await store.tasks()).filter(x => x.project === p.key), runs, now, true, { pace: pace?.verdict })
     if (why && /autopilot on/.test(why)) { await store.logTask({ ...t, held: undefined }, 'engine', `no longer held: ${why}`); continue }
-    const held = why ? `Waits: ${why}` : await memoryHold(deps, p.key)
-    if (held) { if (held !== t.held) await store.saveTask({ ...t, held }); continue }
-    machines.add(p.machine)
-    forgetMemory(p.machine)
-    const r = await startTask(deps, t.id).catch((e: Error) => ({ ...t, state: 'waiting' as const, waiting: e.message }))
-    await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? 'started: memory is back' : `could not start: ${r.waiting ?? ''}`)
+    const placed = why ? { hold: `Waits: ${why}` } : await placeFor(deps, t, { waits: pace?.waits })
+    if ('hold' in placed) { if (placed.hold !== t.held) await store.saveTask({ ...t, held: placed.hold }); continue }
+    if (machines.has(placed.machine)) continue
+    machines.add(placed.machine)
+    forgetMemory(placed.machine)
+    const r = await startTask(deps, t.id, { on: placed.machine }).catch((e: Error) => ({ ...t, state: 'waiting' as const, waiting: e.message }))
+    await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? 'started: there is room' : `could not start: ${r.waiting ?? ''}`)
     started.push(t.id)
   }
   return started
