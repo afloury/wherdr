@@ -268,7 +268,11 @@ The coordinator sees the same with `wherdr pm autopilot show`: the project's
 placement strategy, one line per machine the project allows (memory, cores and load, its agents at work by
 weight, and the heaviest weight it takes now, or why none: full, not ready,
 paced, offline), and what each weight counts (*light* ≈ 0.7 GB, *standard* ≈
-1.8 GB, *heavy* ≈ 3.9 GB) with the weight of each task type. `show <task>`
+1.8 GB, *heavy* ≈ 3.9 GB at first) with the weight of each task type. While a
+task runs, the engine measures the memory its worktree's processes take (the
+agent, builds, tests, the dev server and its browser). Once 3 runs of a weight
+have a measured peak in the project, that weight counts the largest of its
+last 5 peaks plus 15 %, for example `heavy ≈ 2.7 GB, 2 cores (from 5 runs)`. `show <task>`
 gives the machine a started task runs on. Its instructions say the engine
 places tasks, `task start --on` picks a machine and `task add --weight` sets a
 weight that differs from the task type's.
