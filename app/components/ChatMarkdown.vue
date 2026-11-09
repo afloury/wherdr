@@ -10,6 +10,7 @@ import type { RevealNode, RevealPlan } from '~/utils/typewriter'
 import type { TypingSpeed } from '~/utils/typewriter'
 import { SVG_THEME_VARS, svgPreview } from '~/utils/svgPreview'
 import type { SvgColors } from '~/utils/svgPreview'
+import { appRoute, isAppLink } from '#shared/appLinks'
 
 // `cipher` must default to undefined, not false: Vue casts a missing Boolean
 // prop to false, which would switch the encrypted text off everywhere.
@@ -163,6 +164,15 @@ watchImageViolations()
 function onImageError(e: Event) {
   if (e.target instanceof HTMLImageElement && !revealSvgSource(e.target)) showImageFallback(e.target)
 }
+// An in-app address (utils/markdown.ts): the router opens it, no reload, the
+// conversation's history entry kept for Back.
+const router = useRouter()
+function onAppLink(event: MouseEvent) {
+  const href = (event.target as Element).closest('a[href]')?.getAttribute('href')
+  if (!href || !isAppLink(href) || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+  event.preventDefault()
+  router.push(appRoute(href))
+}
 function onClick() {
   if (plan) {
     stop()
@@ -198,7 +208,7 @@ onBeforeUnmount(() => {
 
 <template>
   <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
-  <div ref="el" class="md-body" :class="{ typing: typing !== null }" @click.capture="onClick" @click="onSvgToggle" @keydown="onKey" @error.capture="onImageError" v-html="html" />
+  <div ref="el" class="md-body" :class="{ typing: typing !== null }" @click.capture="onClick" @click="onAppLink($event); onSvgToggle($event)" @keydown="onKey" @error.capture="onImageError" v-html="html" />
 </template>
 
 <style scoped>
