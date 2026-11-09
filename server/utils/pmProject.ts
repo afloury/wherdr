@@ -5,13 +5,14 @@
 import { MAIN, sameGuards } from '../../shared/pm/coordinator'
 import { projectPlace } from '../../shared/pm/places'
 import { freedMerge } from '../../shared/pm/guardEffects'
-import { cleanProjectUpdate, type Project } from '../../shared/pm/project'
+import { allowedMachines, cleanProjectUpdate, type Project } from '../../shared/pm/project'
 import { taskPlan } from '../../shared/pm/run'
 import { PREF_KEYS, type Guards, type Prefs, type Template } from '../../shared/pm/workflow'
 import { HerdrError } from './herdr'
 import { alfredTokenOk, scopeOf } from './pmCoordinator'
 import type { CoreAdminDeps } from './coreCreate'
 import { stepAction } from './pmBoard'
+import { lastReadiness } from './pmReady'
 import type { PmStore } from './pmStore'
 
 const bearer = (authorization: unknown) => String(authorization || '').replace(/^Bearer\s+/i, '')
@@ -41,8 +42,10 @@ export async function projectView(store: PmStore, key: string) {
   const p = await store.project(key)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
   const proposal = (await store.coordinator(p.key))?.proposal
+  // ready: each other allowed machine's last readiness check ('' ready, its failures otherwise; none never checked).
+  const ready = Object.fromEntries(allowedMachines(p).slice(1).flatMap(m => { const r = lastReadiness(p.key, m); return r === undefined ? [] : [[m, r]] }))
   return {
-    project: p, workflow: await store.workflow(p.key), log: await store.workflowLog(p.key),
+    project: p, workflow: await store.workflow(p.key), log: await store.workflowLog(p.key), ready,
     ...(proposal ? { proposal: { diff: proposal.diff, at: proposal.at, base: proposal.base, ...(proposal.said ? { said: proposal.said } : {}) } } : {}),
   }
 }
