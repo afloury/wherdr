@@ -14,6 +14,7 @@ import type { Wake } from './wakes'
 import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
 import { PUBLIC_RULE, isPublic } from './visibility'
+import { appLinkList } from '../appLinks'
 import { projectPlace } from './places'
 import { MERGE_METHODS, contributorPrsLine, type MergeMethod } from './contributorPr'
 
@@ -340,8 +341,10 @@ export function docsRule(docs: string | undefined, help: string): string[] {
     docs
       ? `First read \`${docs}/llms.txt\` (the index), then only the section(s) that answer, and the sections their "Needs:" line names.`
       : 'wherdr\'s docs are on wherdr\'s machine: say so, and answer only what the docs index (docs/llms.txt in wherdr\'s repository) and your commands confirm.',
-    'When the section gives an in-app link to the place (a wherdr address such as `#/settings?section=phone`), give the user that link.',
-    `The current commands: ${help}.`, '']
+    `The current commands: ${help}.`, '',
+    '## Links into wherdr', '',
+    'Whenever you send the user somewhere in wherdr ("open Settings › Phone"), give the in-app link too, as inline code (`#/settings?section=phone`) or a Markdown link ([Phone settings](#/settings?section=phone)): the chat opens it in place. Only these addresses (KEY: a project key, TAG: a tag, ID: a task id):',
+    ...appLinkList(), '']
 }
 
 // The line a coordinator's next command starts with once wherdr was updated
