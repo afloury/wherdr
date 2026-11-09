@@ -273,6 +273,22 @@ gives the machine a started task runs on. Its instructions say the engine
 places tasks, `task start --on` picks a machine and `task add --weight` sets a
 weight that differs from the task type's.
 
+### Who sends a wake
+
+A wake is a message wherdr sends the coordinator; its first line names who
+sends it, and the conversation shows a small label of that kind above it:
+
+- **Autopilot**: the autopilot's scheduled wakes, its events and *Run now*;
+- **Step check** (`Step check: CO-1 (deploy)`): a step the coordinator holds,
+  such as *watch the deploy*, at its start, each `recheck` and its timeout. It
+  comes even with the autopilot off;
+- **Engine**: wherdr gave up on a block after failed fixes
+  ([What wherdr fixes on its own](#what-wherdr-fixes-on-its-own));
+- **Health check**: wherdr's health check found something to look at.
+
+Each kind is its own wake, sent one after the other. Every wake ends with
+`wherdr pm ack <id>`, whatever its kind.
+
 ### What a task's agent said
 
 A coordinator reads a task's agent with `wherdr pm read <task>`, on whichever
@@ -339,7 +355,10 @@ action), standard otherwise. The coordinator does the same with `task add
 
 ## Task sheet
 
-A card opens the task's sheet: its id badge by the title (a tap copies it) and step, a note when it waits or was
+A card opens the task's sheet. Tasks to handle, Decisions' *Open task* and a task
+link in the chat (`#/board?task=ID`) open it over the page you are on (a bottom
+sheet on a phone), with `?task=ID` added to that page's address, so it survives a
+reload and can be shared; closing it leaves the page as it was. The sheet shows its id badge by the title (a tap copies it) and step, a note when it waits or was
 stopped, the time it spent in each step with the time it waited for you apart,
 its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
 waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,

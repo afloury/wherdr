@@ -16,6 +16,7 @@ async function load() {
 }
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { load(); timer = setInterval(load, 10_000) })
+watch(taskSheetTick, load) // an action in a task's sheet opened from here
 onBeforeUnmount(() => clearInterval(timer))
 
 // A permission answered from here leaves at once, not at the engine's next
@@ -92,7 +93,7 @@ const stop = (d: Decision) => act(d, async () => {
                 :loading="busy === d.id && how === 'continue'" :disabled="!!busy" :data-resume="how" @click="resume(d, how)">{{ tl(...RESUME_LABEL[how]) }}</UButton>
             </template>
             <UButton v-else-if="g.group === 'coordinator'" color="primary" size="lg" icon="i-lucide-play" :loading="busy === d.id" :disabled="!!busy" data-testid="decision-run-now" @click="runNow(d)">{{ tl('Run now', 'Lancer maintenant') }}</UButton>
-            <UButton v-else-if="g.group === 'overdue'" color="neutral" variant="outline" size="lg" icon="i-lucide-square-arrow-out-up-right" :to="{ path: '/board', query: { task: d.task } }" data-testid="decision-task">{{ tl('Open task', 'Ouvrir la tâche') }}</UButton>
+            <UButton v-else-if="g.group === 'overdue' && d.task" color="neutral" variant="outline" size="lg" icon="i-lucide-square-arrow-out-up-right" data-testid="decision-task" @click="openTaskSheet(d.task)">{{ tl('Open task', 'Ouvrir la tâche') }}</UButton>
             <UButton v-if="g.group === 'agent' && paneOf(d)" :color="promptOf(d) ? 'neutral' : 'primary'" :variant="promptOf(d) ? 'ghost' : 'solid'" size="lg" icon="i-lucide-terminal" :to="panePath(paneOf(d)!.id)" data-testid="decision-open">
               {{ tl('Open the agent', 'Ouvrir l’agent') }}
             </UButton>

@@ -598,11 +598,11 @@ describe('wakes', () => {
   }
   const wakeId = (text: string) => /wherdr pm ack ([0-9a-f]{8})/.exec(text)![1]!
 
-  it('tells the coordinator its step once, then each recheck, as an Autopilot wake turn', async () => {
+  it('tells the coordinator its step once, then each recheck, as a Step check wake turn', async () => {
     const id = await atDeploy(1000)
     const first = deliver('idle', 2000)
     expect(await first.run()).toEqual(['CO'])
-    expect(first.sent).toEqual([{ terminal: 'host/t9', text: expect.stringMatching(/^Autopilot: wake [0-9a-f]{8}\n\nCO-1 \(Fix\): Base branch is develop\.[\s\S]*Watch the develop pipeline/) }])
+    expect(first.sent).toEqual([{ terminal: 'host/t9', text: expect.stringMatching(/^Step check: CO-1 \([\w-]+\), wake [0-9a-f]{8}\n\nCO-1 \(Fix\): Base branch is develop\.[\s\S]*Watch the develop pipeline/) }])
     expect((await store.coordinator('CO'))!.turn).toMatchObject({ kind: 'wake' })
     // A wake turn: the user's words cannot be claimed.
     await store.saveTask({ ...(await store.task(id))!, step: { ...(await store.task(id))!.step!, at: 4, yourTurn: { reason: 'user', badge: 'Merge the PR' } } })
