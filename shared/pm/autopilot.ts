@@ -39,6 +39,11 @@ export const MAX_PER_DAY = 1000
 // and the machines' room still hold its automatic work.
 export const DEFAULT_AUTOPILOT: Autopilot = { on: false, goal: '', events: [], perDay: 10, atOnce: 2 }
 export const NEW_AUTOPILOT: Autopilot = { ...DEFAULT_AUTOPILOT, perDay: null, atOnce: null }
+// Saved before routine events went off by default (WHR-161): the old default
+// events, done and stuck, are dropped once (CoordinatorRecord.quiet marks it).
+export const OLD_DEFAULT_EVENTS: AutopilotEvent[] = ['done', 'stuck']
+export const quietEvents = (ap: Autopilot): Autopilot =>
+  ap.events.length === OLD_DEFAULT_EVENTS.length && OLD_DEFAULT_EVENTS.every(e => ap.events.includes(e)) ? { ...ap, events: [] } : ap
 // Still on those older defaults: the Autopilot tab hints they can be cleared.
 export const oldDefaults = (ap: Autopilot) => ap.perDay === DEFAULT_AUTOPILOT.perDay && ap.atOnce === DEFAULT_AUTOPILOT.atOnce
 

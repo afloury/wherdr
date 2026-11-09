@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_AUTOPILOT, holdsSlot, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, pastLimit, scheduledWake, startRefusal, today, tellRefusal, countFix } from '../shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, quietEvents, holdsSlot, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, pastLimit, scheduledWake, startRefusal, today, tellRefusal, countFix } from '../shared/pm/autopilot'
 import type { Run, Task } from '../shared/pm/run'
 import { HEALTH_ACK, healthEvery, healthSummary } from '../shared/pm/health'
 import { accountQuota, pacedStart, paceLine } from '../shared/pm/pace'
@@ -107,6 +107,11 @@ describe('autopilot events', () => {
     // Turned back on, routine events come too; a question is never also stuck.
     expect(autopilotEvents({ ...DEFAULT_AUTOPILOT, events: ['added', 'done', 'stuck', 'ready'] }, tasks, seen).reasons)
       .toEqual(['CO-1 (T1): question: Which DB?', 'CO-2 (T2): stuck: Run rm?', 'CO-3 (T3): decide: Decide: review failed 3 times', 'CO-4 (T4): done', 'CO-5 (T5): ready', 'CO-7 (T7): added'])
+  })
+
+  it('an autopilot saved with the old default events drops them; any other choice stays', () => {
+    expect(quietEvents({ ...DEFAULT_AUTOPILOT, on: true, events: ['stuck', 'done'] })).toEqual({ ...DEFAULT_AUTOPILOT, on: true, events: [] })
+    for (const events of [['done'], ['done', 'stuck', 'ready'], []] as const) expect(quietEvents({ ...DEFAULT_AUTOPILOT, events: [...events] }).events).toEqual(events)
   })
 
   it('wakes for a task added by someone else than this coordinator only', () => {

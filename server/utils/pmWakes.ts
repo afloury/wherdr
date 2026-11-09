@@ -6,7 +6,7 @@
 // end of an open wake, a missed ack tried again, then a push to the user.
 import { randomUUID } from 'node:crypto'
 import { MAIN, coordinatorBy, coordinatorWake } from '../../shared/pm/coordinator'
-import { LOOK_REASON, autopilotEvents, bump, inHours, scheduledWake, sentence, skippedWake, today } from '../../shared/pm/autopilot'
+import { LOOK_REASON, quietEvents, autopilotEvents, bump, inHours, scheduledWake, sentence, skippedWake, today } from '../../shared/pm/autopilot'
 import { projectPace } from './pmPace'
 import { currentStep, durationMs } from '../../shared/pm/steps'
 import { taskPlan } from '../../shared/pm/run'
@@ -78,8 +78,10 @@ async function gather(deps: WakeDeps, now: number) {
   if (main?.autopilot?.on) await store.saveCoordinator({ ...main, autopilot: { ...main.autopilot, on: false } })
   // Each project's autopilot: its own goal, limits, hours and pace.
   for (const p of projects) {
-    const c = await store.coordinator(p.key)
+    let c = await store.coordinator(p.key)
     if (!c) continue
+    // Routine events off by default: an autopilot saved with the old default events drops them, once.
+    if (!c.quiet) await store.saveCoordinator(c = { ...c, quiet: true, ...(c.autopilot ? { autopilot: quietEvents(c.autopilot) } : {}) })
     const ap = c.autopilot, mine = tasks.filter(x => x.project === p.key)
     const ev = autopilotEvents(ap ?? { on: false, goal: '', events: [], perDay: 0, atOnce: 0 }, mine, c.seen ?? {}, { key: p.key, by: coordinatorBy(p.key) })
     const on = !!ap?.on && !!c.terminal && inHours(ap.hours, new Date(now))

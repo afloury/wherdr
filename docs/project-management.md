@@ -261,7 +261,9 @@ kept conversation that ran with another agent. A tap opens its window:
   holds no agent, such as a PR or merge waiting for checks or the queue, or a
   step of yours, takes no slot), the **Health check** interval (empty: every
   3h; `off`: never; see [Who sends a wake](#who-sends-a-wake)), the routine
-  events it wakes on, all off by default since the engine handles them (*Task added*: by someone else than this
+  events it wakes on, all off by default since the engine handles them (an
+  autopilot saved earlier with the old default, *Task done* and *Task stuck*,
+  has them turned off once; turn them back on if you want them; *Task added*: by someone else than this
   coordinator, such as you, another coordinator or an automation; *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
   even with nothing to do, with its own *New tasks / day*), and **Keep the
