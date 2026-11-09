@@ -21,8 +21,9 @@
 - [On-device dictation files](docs/installation.md#on-device-dictation-files): where the dictation models are fetched and kept.
 - [Updating](docs/installation.md#updating): update v3 by hand; there is no update banner.
 - [Install with an agent](docs/install-with-an-agent.md): ready-to-paste prompts for an agent that installs or updates wherdr.
-- [Migrate from v2](docs/migrate-from-v2.md): install v3 beside v2 and import its projects, machines and settings.
+- [Migrate from v2](docs/migrate-from-v2.md): install v3 beside v2 and import its machines and settings; its projects are listed for Alfred.
 - [What is imported](docs/migrate-from-v2.md#what-is-imported): what the v2 import brings over, and what to redo.
+- [Set up your v2 projects with Alfred](docs/migrate-from-v2.md#set-up-your-v2-projects-with-alfred): Alfred's first message offers to bring v2 projects over (machine, template, coordinator, open tasks).
 - [Auto-deploy from a build machine](docs/migrate-from-v2.md#auto-deploy-from-a-build-machine): build elsewhere and deploy to the server.
 - [Fall back to v2](docs/migrate-from-v2.md#fall-back-to-v2): go back to v2, and [uninstall v3](docs/migrate-from-v2.md#uninstall-v3).
 - [Install as an app](docs/phone.md#install-it-as-an-app): add wherdr to a phone's home screen or a desktop browser.
@@ -78,7 +79,7 @@
 - [A stalled task](docs/project-management.md#a-stalled-task): red CI or an idle agent: one nudge, a restart 10 min later, the coordinator woken 10 min after that, then Tasks to handle and a notification after 30 min; a stall or a step past its time limit leaves Tasks to handle once the task is back to work.
 - [A task's temporary files](docs/project-management.md#a-tasks-temporary-files): `.wherdr-tmp` in the task's worktree (TMPDIR, CLAUDE_CODE_TMPDIR, NODE_COMPILE_CACHE), ignored by git, removed with the worktree; no agent started while /tmp has under 500 MB free.
 - [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again; kept while the worker updates the PR (a catch-up, a CI fix), unpushed commits pushed first; which agent a coordinator's `tell` reaches (--to worker|reviewer); in a wake, `tell --fix base|ci|machine|stall --reason` unblocks a mechanical block (autopilot on, twice per task and step, logged), a permission request stays yours. One worker and one reviewer per task: a second start at once is refused (already starting), a held start dropped, a duplicate agent ended and logged.
-- [Alfred's command](docs/alfred.md): `wherdr alfred`, what Alfred reads and changes after your yes (projects, their machines, guards, coordinators, settings).
+- [Alfred's command](docs/alfred.md): `wherdr alfred`, what Alfred reads and changes after your yes (projects, their machines, guards, coordinators, settings, v2 projects to set up).
 - [After an update](docs/alfred.md#after-an-update): new instructions for Alfred and coordinators, and the one-line notice on their next command.
 
 ## Machines, quotas and notifications

@@ -68,7 +68,7 @@ describe('runAlfredCommand', () => {
   const checked: string[] = []
   let failCheck = false
   const deps = () => ({
-    store, machines: () => machines, panes: () => [], urls: { local: 'http://127.0.0.1:7690' }, settingsFile: path.join(dir, 'settings.json'),
+    store, machines: () => machines, panes: () => [], urls: { local: 'http://127.0.0.1:7690' }, settingsFile: path.join(dir, 'settings.json'), dataDir: dir,
     check: async (m: string, f: string) => { if (failCheck) throw new Error('path: a folder inside the home folder'); checked.push(`${m}:${f}`); return f },
   }) as unknown as Parameters<typeof runAlfredCommand>[0]
   const run = (...argv: string[]) => runAlfredCommand(deps(), token, { argv })
@@ -104,6 +104,17 @@ describe('runAlfredCommand', () => {
     await run('project', 'template', 'WEB', 'common', '--apply')
     expect(await run('projects')).toMatchObject({ enabled: true, projects: [{ key: 'WEB', from: { template: 'common' }, machineName: 'Mac' }] })
     await expect(run('project', 'template', 'WEB', 'nope')).rejects.toThrow('No template nope')
+    // A built-in example works as a template too.
+    expect(await run('project', 'template', 'WEB', 'example:vibe', '--apply')).toMatchObject({ applied: true, change: ['project WEB template: common → example:vibe'] })
+  })
+
+  it('lists the v2 projects the migration left for it, with the v3 project made from each', async () => {
+    expect(await run('v2')).toEqual({ fromV2: false })
+    const listed = [{ key: 'WEB', name: 'web', path: '/src/web', here: true, left: [], tasks: [] }, { key: 'API', name: 'api', path: '/src/api', here: false, left: ['merge.by'], tasks: [] }]
+    await fs.mkdir(path.join(dir, 'migration'))
+    await fs.writeFile(path.join(dir, 'migration/v2-projects.json'), JSON.stringify({ v: 1, projects: listed }))
+    await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--apply')
+    expect(await run('v2')).toMatchObject({ fromV2: true, report: path.join(dir, 'migration-report.md'), projects: [{ key: 'WEB', project: 'WEB' }, { key: 'API', here: false, project: null }] })
   })
 
   it('shows the project\'s guards and changes them after its dry run', async () => {
