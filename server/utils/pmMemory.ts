@@ -13,7 +13,8 @@ import type { PmStore } from './pmStore'
 import { DATA_DIR } from './env'
 import { agentsAtWork } from '../../shared/pm/release'
 import { taskPlan } from '../../shared/pm/run'
-import { WEIGHT_DEFAULTS, weightOf, type Weight } from '../../shared/pm/weight'
+import { weightOf, type Weight } from '../../shared/pm/weight'
+import { learnedEstimates } from '../../shared/pm/peaks'
 import type { Estimate } from '../../shared/pm/placement'
 
 export const MEMORY_FILE = path.join(DATA_DIR, 'machine-memory.json')
@@ -62,13 +63,14 @@ export interface MemoryState { key: string, label: string, online: boolean, mem:
 
 // The agents at work on a machine, every project: those that hold their task's
 // step under way (agentsAtWork), not those of a task that waits for the user.
-// Each one's estimate comes from its task's weight.
+// Each one's estimate comes from its task's weight, learned in its project (peaks.ts).
 export async function atWork(store: PmStore, machine: string): Promise<(Estimate & { weight: Weight })[]> {
   const [runs, tasks, projects] = await Promise.all([store.runs(), store.tasks(), store.projects()])
   const known = new Map<string, { holder?: string, estimate: Estimate & { weight: Weight } }>()
   for (const t of tasks.filter(x => runs.some(r => r.task === x.id && r.machine === machine && r.state !== 'ended'))) {
     const p = projects.find(x => x.key === t.project), tpl = p ? await store.workflow(p.key) : null
-    known.set(t.id, { holder: tpl && t.step ? taskPlan(tpl, t, p)[t.step.at]?.holder : undefined, estimate: (w => ({ ...WEIGHT_DEFAULTS[w], weight: w }))(weightOf(tpl, t).weight) })
+    const w = weightOf(tpl, t).weight, { mb, cores } = learnedEstimates(tpl, tasks.filter(x => x.project === t.project), runs)[w]
+    known.set(t.id, { holder: tpl && t.step ? taskPlan(tpl, t, p)[t.step.at]?.holder : undefined, estimate: { mb, cores, weight: w } })
   }
   return agentsAtWork(runs, tasks, machine, t => known.get(t.id)?.holder).map(r => known.get(r.task)!.estimate)
 }
