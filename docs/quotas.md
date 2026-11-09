@@ -7,6 +7,11 @@
 The home screen shows what is left of the Claude and Codex usage limits (5-hour window and
 week, with reset times), for every online machine. wherdr reads each machine's quota files: this
 machine's from disk, a core machine's through `machine.exec`, with a 30-second cache.
+An account shared by every online machine shows once at the top. Otherwise the machine quotas
+come as one block per account (Claude or Codex): its name, the machines that share it as small
+chips (`machine-a` `machine-b`), then its 5-hour and weekly bars with their reset times, or
+**Limit reached · resets …**. A machine whose account is unknown (Claude on API billing, an older
+reading without an account key) keeps a block of its own, titled with the machine's name.
 
 - **Codex**: nothing to do, Codex writes its limits in its session files. Machines on different
   Codex accounts get one block each (told apart by a short hash of the account ID found in the
@@ -30,8 +35,7 @@ machine's from disk, a core machine's through `machine.exec`, with a 30-second c
 
   The app offers the same thing in **Settings › Agents › Claude quotas**: each machine with
   Claude, its state (set up, installed, update available, not set up), **Install** or **Update**
-  (on a core machine, through `machine.exec`, the installer on its stdin) and **Copy command**. The home list only adds **Set up Claude quotas** and **Don’t
-  suggest again** to the machine's **…** menu, never a banner. Skipped or declined, it is no
+  (on a core machine, through `machine.exec`, the installer on its stdin) and **Copy command**. The home list never suggests it: no banner, no menu item. Skipped or declined, it is no
   longer suggested on any device (`data/claude-quotas.json`); Settings still offers it. A machine
   whose quotas show from an older status line reads **Update available**, never "not set up".
   Quotas show after the next exchange with a Claude agent. The status line stores the limits in `~/.cache/herdr-web/claude-status.json`

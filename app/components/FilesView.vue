@@ -164,14 +164,7 @@ function onDocClick(e: MouseEvent) {
   if (copy) {
     const text = copy.closest('.code-block')?.querySelector('pre')?.textContent
     if (text == null) return
-    navigator.clipboard.writeText(text).then(() => {
-      copy.textContent = t('Copied')
-      copy.classList.add('done')
-      setTimeout(() => {
-        copy.textContent = t('Copy')
-        copy.classList.remove('done')
-      }, 1400)
-    }).catch(() => toast(t('Copy failed'), true))
+    copyCodeBlock(copy, text)
     return
   }
   const a = target.closest?.('a[href]') as HTMLAnchorElement | null

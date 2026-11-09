@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { nextMove, redCiText, type MechFacts, type PrState } from '../shared/pm/mechanic'
 import { combineGuards } from '../shared/pm/guards'
-import type { PlannedStep, StepState } from '../shared/pm/steps'
+import { onEvent, type PlannedStep, type StepState } from '../shared/pm/steps'
+import { cardStatus, statusText } from '../shared/pm/board'
+import { addShot } from '../shared/pm/shots'
 import type { Task } from '../shared/pm/run'
 
 const plan: PlannedStep[] = [
@@ -30,7 +32,8 @@ describe('mechanical moves', () => {
   it('retries a push that failed on a passing error, not a send-back nor a guarded step', () => {
     const failed = (badge: string, tries = 1) => task({ step: step(1, { tries: { push: tries }, yourTurn: { reason: 'action', badge } }) })
     expect(nextMove(facts({ task: failed('push: remote end hung up') }))).toEqual({ key: 'retry:push:1', move: { kind: 'retry-action', step: 'push' } })
-    expect(nextMove(facts({ task: failed('push: rejected (non-fast-forward)') }))).toBeUndefined()
+    // Refused as behind its remote: synced first (selfFix.ts), not tried again as is.
+    expect(nextMove(facts({ task: failed('push: rejected (non-fast-forward)') }))?.move.kind).toBe('sync-push')
     expect(nextMove(facts({ task: failed('push: remote end hung up', 3) }))).toBeUndefined()
     const guarded = plan.map(s => (s.id === 'push' ? { ...s, guarded: true as const } : s))
     expect(nextMove(facts({ task: failed('push: remote end hung up'), plan: guarded }))).toBeUndefined()
@@ -52,6 +55,10 @@ describe('mechanical moves', () => {
     // Merged by hand after the step's own attempt was refused at this head: recorded all the same.
     expect(nextMove(facts({ pr: { ...merged, baseRefName: 'v3' }, task: task({ mech: { 'merge:abc1234': 1 } }) }))).toEqual(mergedMove)
     expect(nextMove(facts({ task: task({ step: step(1) }), pr: pr({ baseRefName: 'main' }) }))).toBeUndefined()
+    // A guarded merge into main the guard refused, merged by the user on GitHub: recorded too.
+    const guarded = plan.map(s => (s.id === 'merge' ? { ...s, guarded: true as const } : s))
+    const refused = task({ step: step(3, { yourTurn: { reason: 'action', badge: 'merge: main is protected: only you may merge into it' } }) })
+    expect(nextMove(facts({ plan: guarded, task: refused, pr: merged }))).toEqual({ ...mergedMove, move: { ...mergedMove.move, base: 'main' } })
   })
 
   it('catches up a branch behind its target, never while the agent works nor on a protected branch', () => {
@@ -61,10 +68,83 @@ describe('mechanical moves', () => {
     expect(nextMove(facts({ pr: behind, branch: 'main' }))?.move.kind).not.toBe('catch-up')
   })
 
-  it('re-runs CI once when it failed for infrastructure reasons', () => {
+  describe('a merge step waiting for the user', () => {
+    const visual: PlannedStep[] = [
+      { id: 'work', holder: 'worker', ends: 'report', text: '' },
+      { id: 'pr', ends: 'action', action: { kind: 'github.pr', base: 'v3' }, text: '' },
+      { id: 'review', holder: 'reviewer', ends: 'verdict', sendBack: 'work', text: '' },
+      { id: 'merge', ends: 'user', userLabel: 'Merge', badge: 'Look, then merge', action: { kind: 'github.merge' }, text: '', guarded: true },
+    ]
+    const waiting = step(3, { proofs: { review: { commit: 'abc1234' } }, yourTurn: { reason: 'user', badge: 'Look, then merge' } })
+    const at = (st: StepState, more: Partial<MechFacts> = {}) => facts({ plan: visual, task: task({ step: st }), ...more })
+    const status = (st: StepState) => { const s = cardStatus({ plan: visual, state: st, prNow: 'ready to merge' }); return s && statusText(s, String, true) }
+
+    it('catches up a conflicting PR at once, one at a time, then hands it back to the user', () => {
+      expect(nextMove(at(waiting))).toBeUndefined()
+      const dirty = pr({ mergeStateStatus: 'DIRTY' })
+      expect(nextMove(at(waiting, { pr: dirty }))).toEqual({ key: 'catch-up:abc1234', move: { kind: 'catch-up', base: 'v3' } })
+      const up = onEvent(visual, waiting, { kind: 'catch-up', base: 'v3', head: 'abc1234' }, 5).state
+      expect(up.yourTurn).toBeUndefined()
+      expect(status(up)).toBe('updating with v3')
+      // A second catch-up is refused while one runs; the conflict sent to the agent waits for its commit.
+      expect(onEvent(visual, up, { kind: 'catch-up', base: 'v3', head: 'abc1234' }, 6).refused).toBeTruthy()
+      const sent = { mech: { 'catch-up:abc1234': 1 } }
+      expect(nextMove(at(up, { pr: dirty, task: task({ step: up, ...sent }) }))).toBeUndefined()
+      expect(nextMove(at(up, { head: 'def5678', agentBusy: true, task: task({ step: up, ...sent }) }))).toBeUndefined()
+      expect(nextMove(at(up, { head: 'def5678', task: task({ step: up, ...sent }) }))?.key).toBe('catch-up:def5678')
+      // The agent's resolution is reviewed again; a clean merge of the base is not, and the user's turn comes back.
+      expect(onEvent(visual, up, { kind: 'caught-up', head: 'fff0000', review: { since: 'abc1234', head: 'fff0000' } }, 7).state).toMatchObject({ at: 2, rereview: { since: 'abc1234' } })
+      const clean = onEvent(visual, up, { kind: 'caught-up', head: 'fff0000' }, 7).state
+      expect(clean).toMatchObject({ at: 3, yourTurn: { reason: 'user' }, proofs: { review: { commit: 'fff0000' } } })
+      expect(clean.catchUp).toBeUndefined()
+    })
+
+    it('keeps the user\'s approval through a refused merge, then merges by itself once ready', () => {
+      const clicked = onEvent(visual, waiting, { kind: 'user' }, 10).state
+      expect(clicked.approved).toEqual({ by: 'user', at: 10, commit: 'abc1234' })
+      // The engine running the step again is no approval.
+      expect(onEvent(visual, waiting, { kind: 'user', engine: true }, 10).state.approved).toBeUndefined()
+      const refused = onEvent(visual, clicked, { kind: 'action-result', ok: false, error: 'merge: the PR conflicts with v3', catchUp: { base: 'v3', head: 'abc1234' } }, 11).state
+      expect(refused).toMatchObject({ acting: undefined, yourTurn: undefined, catchUp: { base: 'v3', from: 'abc1234' } })
+      expect(status(refused)).toBe('Approved on 10, merges by itself · updating with v3')
+      const clean = onEvent(visual, refused, { kind: 'caught-up', head: 'fff0000' }, 12).state
+      expect(clean.yourTurn).toBeUndefined()
+      expect(nextMove(at(clean, { head: 'fff0000', pr: pr({ headRefOid: 'fff0000' }) }))).toEqual({ key: 'merge:fff0000', move: { kind: 'merge', url: 'https://gh/pr/7', base: 'v3' } })
+      // A conflict resolution passes its short re-review and keeps the approval.
+      const review = onEvent(visual, refused, { kind: 'caught-up', head: 'fff0000', review: { since: 'abc1234', head: 'fff0000' } }, 12).state
+      const passed = onEvent(visual, review, { kind: 'verdict', from: 'reviewer', findings: [{ id: 'f1', severity: 'minor', title: 'a name' }], head: 'fff0000' }, 13).state
+      expect(passed).toMatchObject({ at: 3, approved: { at: 10 }, yourTurn: undefined })
+      // The merge finds the task's interface files changed since the approval: the user looks again.
+      const ui = onEvent(visual, { ...passed, acting: true }, { kind: 'action-result', ok: false, error: 'merge: the interface changed', unapproved: true }, 14).state
+      expect(ui).toMatchObject({ at: 3, acting: undefined, approved: undefined, yourTurn: { reason: 'user', badge: 'Look again, then merge: the interface changed' } })
+      // A Send back after the click drops the approval: the reworked task waits for the user again.
+      const failed = onEvent(visual, clicked, { kind: 'action-result', ok: false, error: 'merge: 1 check(s) failed' }, 14).state
+      const sentBack = onEvent(visual, failed, { kind: 'back', note: 'make the button blue' }, 15)
+      expect(sentBack.state).toMatchObject({ at: 0, approved: undefined })
+      expect(sentBack.effects).toContainEqual({ kind: 'log', text: 'merge: sent back by the user, approval dropped. make the button blue' })
+    })
+
+    it('keeps the approval through a red CI fix; new screenshots drop it', () => {
+      const shotsPlan = visual.map(p => (p.id === 'work' ? { ...p, evidence: ['screenshots' as const] } : p))
+      const clicked = onEvent(shotsPlan, { ...waiting, shots: { work: [{ file: 'a.png', phase: 'after', at: 1 }] } }, { kind: 'user' }, 10).state
+      // Red CI goes back to the worker; fixed, reviewed again, the merge waits for no one.
+      const red = onEvent(shotsPlan, clicked, { kind: 'action-result', ok: false, error: 'CI failed', toAgent: true }, 11).state
+      expect(red).toMatchObject({ at: 0, approved: { at: 10 } })
+      const ev = (st: StepState, e: Parameters<typeof onEvent>[2]) => onEvent(shotsPlan, st, e, 12).state
+      const toMerge = (st: StepState) => ev(ev(ev(st, { kind: 'report', from: 'worker' }), { kind: 'action-result', ok: true }), { kind: 'verdict', from: 'reviewer', findings: [] })
+      const reviewed = toMerge(red)
+      expect(reviewed).toMatchObject({ at: 3, approved: { at: 10 }, yourTurn: undefined })
+      // A new screenshot from the worker: the merge waits for the user's look again.
+      const shot = addShot(shotsPlan, red, { file: 'b.png', phase: 'after', at: 12 })
+      expect('state' in shot && shot.state.approved).toBeUndefined()
+      expect(toMerge('state' in shot ? shot.state : red)).toMatchObject({ at: 3, yourTurn: { reason: 'user' } })
+    })
+  })
+
+  it('re-runs CI once when it failed for infrastructure reasons, then sends it to the agent', () => {
     const f = facts({ pr: pr({ statusCheckRollup: red('CANCELLED') }) })
     expect(nextMove(f)).toEqual({ key: 'rerun:abc1234', move: { kind: 'rerun-ci', checks: ['e2e'] } })
-    expect(nextMove({ ...f, task: task({ mech: { 'rerun:abc1234': 1 } }) })).toBeUndefined()
+    expect(nextMove({ ...f, task: task({ mech: { 'rerun:abc1234': 1 } }) })?.move.kind).toBe('ci-to-agent')
     // Still running: wait.
     expect(nextMove(facts({ pr: pr({ statusCheckRollup: [{ name: 'e2e', status: 'IN_PROGRESS' }, ...red('FAILURE', 'unit')] }) }))).toBeUndefined()
   })
@@ -119,7 +199,9 @@ describe('what a task waits for', () => {
       await store.saveRun({ id: 'r1', task: t.id, role: 'worker', program: 'claude', model: 'opus', machine: '', worktree: '/w', branch: 'b', instructions: '', terminal: 'host/t3', attempt: 1, state: 'running', startedAt: 1 })
       await store.saveTask({ ...t, state: 'working', run: 'r1' })
       let term: Record<string, unknown> = { address: 'host/t3', status: { state: 'blocked' } }
-      const deps = { store, call: async () => ({ terminals: [term] }) } as unknown as Parameters<typeof syncWaits>[0]
+      // The agent's conversation, for the question's text.
+      const panes = () => [{ id: 'w1:p1', coreAddress: 'host/t3' }], chat = async () => [{ role: 'assistant', text: 'Two options.\nPostgres or SQLite?', ts: null }]
+      const deps = { store, call: async () => ({ terminals: [term] }), panes, chat } as unknown as Parameters<typeof syncWaits>[0]
       await syncWaits(deps)
       expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waitKind: 'permission' })
       term = { address: 'host/t3', status: { state: 'working' } }
@@ -127,7 +209,7 @@ describe('what a task waits for', () => {
       expect((await store.task(t.id))!.state).toBe('working')
       term = { address: 'host/t3', labels: { 'wherdr.report': 'blocked:question' }, status: { state: 'idle' } }
       await syncWaits(deps)
-      expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waitKind: 'question', waiting: 'The agent asks a question' })
+      expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waitKind: 'question', waiting: 'The agent asks a question: Two options. Postgres or SQLite?' })
       // A permission says what is asked, as herdr-core reads it.
       await store.saveTask({ ...(await store.task(t.id))!, state: 'working', waitKind: undefined, waiting: undefined })
       term = { address: 'host/t3', status: { state: 'blocked', msg: 'approve Bash: npm test' } }
