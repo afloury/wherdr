@@ -112,13 +112,18 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
 .todo-say { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
 .todo-actions { display: flex; flex-direction: column; gap: 10px; }
 .todo-choice { display: grid; gap: 4px; justify-items: start; }
-/* The screenshots large, one per screen width on the phone: swipe between them. */
-.todo-shots { display: flex; gap: 12px; margin: 0; padding: 0 0 4px; list-style: none; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }
+/* The screenshots large, one per screen width on the phone: swipe between
+   them (a thin bar under the row). On a computer they wrap as a grid. */
+.todo-shots { display: flex; gap: 12px; margin: 0; padding: 0 0 6px; list-style: none; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }
 .todo-shots li { flex: 0 0 auto; max-width: 100%; display: grid; gap: 4px; align-content: start; scroll-snap-align: start; }
 .todo-shot { display: block; max-width: 100%; padding: 0; border: 1px solid var(--line); background: var(--surface); cursor: zoom-in; }
 /* Large, yet leaving Merge in view. */
-.todo-shot img { display: block; height: auto; max-height: min(40vh, 420px); max-width: 100%; width: auto; }
-@media (max-width: 699px) { .todo-shot img { max-height: 26vh; } }
+.todo-shot img { display: block; height: auto; max-height: 26vh; max-width: 100%; width: auto; }
+@media (min-width: 700px) {
+  .todo-shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); overflow: visible; padding: 0; }
+  .todo-shots li { min-width: 0; justify-items: start; }
+  .todo-shot img { max-height: min(40vh, 420px); }
+}
 .todo-review { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .todo-pr { min-height: 44px; display: inline-flex; align-items: center; }
 .todo-back { display: grid; gap: 8px; }

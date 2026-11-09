@@ -45,7 +45,8 @@ and the project list: each row shows the name (with a **Public** badge for a
 public repository), the key, the machine and the folder. *Add project* opens the
 New sheet on a new project; *Open the board* goes to the board. A row opens the
 project's sheet, with five tabs: General, Workflow, Guards, Automations and
-Autopilot. Its ⋯ menu removes the project from wherdr, after a confirmation:
+Autopilot; on a computer it is a wide window, and its General fields pair up
+side by side (name and key, worker and reviewer). Its ⋯ menu removes the project from wherdr, after a confirmation:
 its folder, branches and task worktrees stay on the machine.
 
 ### General
@@ -196,15 +197,15 @@ waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
 *Open the agent* or *Open the reviewer*, *Stop*, *Delete…*). Step times start
 with this version: an older task shows only its total. Below, tabs: **Description** (text, tags, links and the PR),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
-and screenshots) and **Log**. A refused merge says why under its button.
+and screenshots) and **Log**, all in the sheet's one scroll. A refused merge says why under its button.
 
 ### A task waiting for you
 
 Open a task under *Your turn* and its sheet starts on **To do**: what the task
 needs from you and the buttons for it, before its Description, Plan and Log.
 
-- **A visual change to merge**: its screenshots large (swipe between them, tap
-  one to zoom; each is labelled phone or desktop), the review's verdict, the PR,
+- **A visual change to merge**: its screenshots large (swipe between them on
+  the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop), the review's verdict, the PR,
   then *Merge*, or *Send back* with a note: the agent gets your note as what to fix.
 - **A review to settle** after several send-backs: each choice the engine offers,
   with what it does.

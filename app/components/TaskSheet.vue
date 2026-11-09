@@ -7,7 +7,7 @@
 // the tasks it waits for; a refusal said under it), Stop (with its
 // reason, confirmed here), how a stopped task goes on, and Delete for a task
 // never started (confirmed). Those stay at the top; below, tabs (the app's
-// segmented style) for the rest, only the open one scrolling: Description (the
+// segmented style) for the rest, in the sheet's one scroll: Description (the
 // text, tags and links, the PR among them), Plan (each step with its
 // screenshots), Log.
 import { canStart, canStop, cardStatus, linkLabel, type Card } from '#shared/pm/board'
@@ -150,8 +150,8 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 </template>
 
 <style scoped>
-/* The whole sheet's height: the top stays, only the tab's panel scrolls. */
-.task-sheet { display: flex; flex-direction: column; gap: 12px; height: 100%; padding: 0 16px 16px; }
+/* One scroll, the sheet's: the tab's panel takes its natural height. */
+.task-sheet { display: flex; flex-direction: column; gap: 12px; padding: 0 16px 16px; }
 .task-sheet-top { display: flex; flex-direction: column; gap: 10px; flex: none; }
 .task-sheet p { margin: 0; }
 .task-tabs { flex: none; }
@@ -160,7 +160,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-status.bad { color: var(--danger); }
 .task-status.ok { color: var(--done); }
 .task-times { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-.task-panel { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; }
+.task-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .task-desc { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-sheet-actions:empty { display: none; }

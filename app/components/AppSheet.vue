@@ -20,7 +20,7 @@ const ui = computed(() => ({
   content: `hw-sheet${props.tall ? ' tall' : ''}${props.wide ? ' wide' : ''}${props.full ? ' full' : ''}${props.screen ? ' screen' : ''}${props.top ? ' top' : ''}`,
 }))
 
-// The content, or a part of it that scrolls on its own (a task sheet's tab),
+// The content, or a part of it that scrolls on its own,
 // is scrolled down: the swipe scrolls it back up, it does not close the sheet.
 function scrolled(from: EventTarget | null, body: HTMLElement) {
   for (let n = from as HTMLElement | null; n; n = n === body ? null : n.parentElement) if (n.scrollTop > 0) return true
