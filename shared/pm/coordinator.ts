@@ -14,6 +14,7 @@ import type { Wake } from './wakes'
 import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
 import { PUBLIC_RULE, isPublic } from './visibility'
+import { appLinkList } from '../appLinks'
 import { projectPlace } from './places'
 import { MERGE_METHODS, contributorPrsLine, type MergeMethod } from './contributorPr'
 
@@ -322,7 +323,7 @@ b64() { base64 | tr -d '\\n'; }
 body='{"argv64":[' sep=
 for a in "$@"; do body="$body$sep\\"$(printf %s "$a" | b64)\\"" sep=,; done
 body="$body]"
-[ "$route $1 $2" = "pm/cli template edit" ] && body="$body,\\"input64\\":\\"$(b64)\\""
+case "$route $1 $2 $3" in "pm/cli template edit"*|"alfred/cli project workflow edit") body="$body,\\"input64\\":\\"$(b64)\\"" ;; esac
 out=$(mktemp) hdr=$(mktemp) || exit 1
 code=$(printf '%s}' "$body" | curl -sS -D "$hdr" -o "$out" -w '%{http_code}' -X POST --data-binary @- \\
   -H 'content-type: application/json' -H "origin: $WHERDR_URL" -H "authorization: Bearer $tok" "$WHERDR_URL/api/$route")
@@ -340,8 +341,10 @@ export function docsRule(docs: string | undefined, help: string): string[] {
     docs
       ? `First read \`${docs}/llms.txt\` (the index), then only the section(s) that answer, and the sections their "Needs:" line names.`
       : 'wherdr\'s docs are on wherdr\'s machine: say so, and answer only what the docs index (docs/llms.txt in wherdr\'s repository) and your commands confirm.',
-    'When the section gives an in-app link to the place (a wherdr address such as `#/settings?section=phone`), give the user that link.',
-    `The current commands: ${help}.`, '']
+    `The current commands: ${help}.`, '',
+    '## Links into wherdr', '',
+    'Whenever you send the user somewhere in wherdr ("open Settings › Phone"), give the in-app link too, as inline code (`#/settings?section=phone`) or a Markdown link ([Phone settings](#/settings?section=phone)): the chat opens it in place. Only these addresses (KEY: a project key, TAG: a tag, ID: a task id):',
+    ...appLinkList(), '']
 }
 
 // The line a coordinator's next command starts with once wherdr was updated
@@ -435,7 +438,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     '## Turning a workflow request into steps', '',
     'wherdr imposes no workflow: it knows ordered steps, who holds each (worker, reviewer, coordinator, none), how it ends (report, verdict, user, action), the proofs it needs (evidence) and the user\'s guards. What an agent must do is plain text in `instructions`.',
     `The project's working branch (set by the user in ${projectPlace(p.key, 'general', true)}) is where tasks start; a \`github.pr\`, \`git.land\` or \`git.verify-merged\` step without its own branch uses it, and \`{base}\` in any instructions becomes its name. Prefer these to a branch written in the workflow.`,
-    'When the user says "after each task, create the PR with my Bitbucket tool, then wait until I say it is merged", write a worker step with that instruction and `evidence: ["link"]`, then a step `{ holder: "none", ends: "user", userLabel: "Merged", action: { kind: "git.verify-merged", target } }`. "Watch the deploy" is a step you hold: `holder: "coordinator", ends: "report", recheck: "5m"`.',
+    'When the user says "after each task, create the PR with my Bitbucket tool, then wait until I say it is merged", write a worker step with that instruction and `evidence: ["link"]`, then a step `{ holder: "none", ends: "user", action: { kind: "git.verify-merged", target } }` (its badge and button say the user merges on their Git host, then presses "I merged it"). "Watch the deploy" is a step you hold: `holder: "coordinator", ends: "report", recheck: "5m"`.',
     'Read the project\'s workflow (`template show`), write the new one and run `template edit`: wherdr shows the user its diff, to accept or refuse; `template show` tells you which. Examples to copy from:', '',
     ...examples.map(e => `\`\`\`json\n${JSON.stringify(e)}\n\`\`\``), '',
     '## A problem the user reports', '',
