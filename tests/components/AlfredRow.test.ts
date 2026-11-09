@@ -91,6 +91,12 @@ it('running and renamed: its name, its current agent, one tap opens the conversa
   expect(w!.find('[data-testid="alfred"]').classes()).not.toContain('sel')
   expect(open.attributes('aria-current')).toBeUndefined()
   curPane.value = null
+  // Renamed during a turn: the new name shows as soon as the turn ends, not at the next poll.
+  herdrState.value = { ok: true, workspaces: [], panes: [{ ...pane('w:p1', 'host/t1'), status: 'working' }] }
+  await nextTick()
+  view = { ...view, name: 'Bunter' }
+  herdrState.value = { ok: true, workspaces: [], panes: [{ ...pane('w:p1', 'host/t1'), status: 'done' }] }
+  await vi.waitFor(() => expect(w!.find('[data-testid="alfred-name"]').text()).toBe('Bunter'))
 })
 
 it('no ••• button: right click (computer) and long press (touch) open its menu, Restart with… asks for the agent', async () => {

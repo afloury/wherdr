@@ -106,6 +106,9 @@ DATA_DIR=/path/to/data node scripts/fetch-dictation-files.mjs
 | `canary` | 207 MB | Canary 180M, the iPhone's default: French, English, German, Spanish (the device's language, not detected) |
 | `sensevoice` | 237 MB | SenseVoice, lighter, no French (Chinese, English, Japanese, Korean, Cantonese) |
 | `ort` | 59 MB | onnxruntime-web 1.23.2, in `models/runtime/`, for WebGPU models only |
+| `tts-siwis-medium` | 64 MB | Siwis, the French neural read-aloud voice (preparation for an on-device voice) |
+| `tts-cori-medium` | 64 MB | Cori, the English (UK) neural read-aloud voice |
+| `tts-mls-medium` | 78 MB | MLS, a fallback French voice |
 
 Name sets to choose (`… fetch-dictation-files.mjs runtime ort`), or `all`. Every file has a fixed
 URL and a sha256: a file that does not match is never kept. Run it again after an interruption:

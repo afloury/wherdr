@@ -263,7 +263,14 @@ posts again every second, Settings shows *Preparing on the server… 40 %*, and 
 starts once the answer is `ready`. It runs the fetch script's own code (`scripts/dictation-files.mjs`:
 same pinned URLs, sha256 checks, `.part` resume), one fetch at a time for the whole server; a
 second request for the same model joins the running one. A failed fetch (`error`, shown in the
-row) is told once; the next Install tries again and resumes. Cancel stops the phone's polling, not
+row) is told once in plain words; the next Install tries again and resumes. Before downloading
+an archive the server checks that its `tar` can unpack the format (`extractCommand` maps
+`.tar.bz2`, `.tar.gz`, `.tar.xz`, `.tar.zst` and `.tar` to a flag and the decompressor GNU tar
+runs; bsdtar has them built in), so a server without `bzip2` says *this archive format needs bzip2
+on the server* instead of `tar exited with 2` after 200 MB (on Linux: `sudo apt install bzip2`;
+macOS has both). A failed unpack removes the archive
+and the half-written files and says why (disk full, permission denied, incomplete archive, missing
+files: `tarFailure`); a cut download says how far it got and keeps its `.part` to resume. Cancel stops the phone's polling, not
 the server's fetch. A server without the route (older build) falls back to the 404 message with
 the command to run.
 
@@ -279,12 +286,13 @@ next piece (the piece being decoded cannot be stopped).
 
 ### The fetch script
 
-`scripts/fetch-dictation-files.mjs` downloads named **sets** (`runtime`, `ort`, model sets;
-default `runtime parakeet`; `all`). Every entry has a pinned URL and a **sha256**: a download
+`scripts/fetch-dictation-files.mjs` downloads named **sets** (`runtime`, `ort`, model sets,
+read-aloud voice sets `tts-<voice>`; default `runtime parakeet`; `all`). Every entry has a pinned URL and a **sha256**: a download
 goes to `file.part`, resumes with `Range` after an interruption, and is moved into place only
 when its hash matches. An entry is either a single file (`{ url, sha256, to }`) or a `.tar.bz2`
 archive (`{ url, sha256, dir, members }`) from which only the listed members are extracted; a
-`.complete` stamp holding the archive's hash marks it done. `tests/fetchDictationFiles.test.ts`
+`.complete` stamp holding the archive's hash marks it done. A voice with no published archive
+lists its files one by one, each with its own sha256. `tests/fetchDictationFiles.test.ts`
 covers resume, mismatch and the set list; `tests/dictationServerFiles.test.ts` the server's use of
 it. The code lives in `scripts/dictation-files.mjs`, which has no CLI, since the server bundles it.
 
@@ -461,6 +469,7 @@ browser has `speechSynthesis`).
 | --- | --- |
 | `app/utils/speech/plainText.ts` | `speakableText()`: the words of a reply, "Code block." for code; `speechChunks()`: pieces of at most 220 characters (Chrome cuts long utterances) |
 | `app/composables/useReadAloud.ts` | Engine and voice choice, the voice list (`voiceschanged`), one reply at a time for the app |
+| `app/utils/speech/neuralVoice.ts` | The `wherdr` engine: a neural voice in the TTS worker, played through WebAudio (see below) |
 | `app/utils/speech/voicePicker.ts` | Voice quality (Premium, Enhanced, Standard, Online, Low quality, from the name or Apple's voiceURI) and the language and quality filters of the voice list |
 | `app/utils/speech/lowQualityVoices.ts` | Names of Apple's novelty, MacinTalk and Eloquence voices, hidden by default |
 | `app/components/ReadAloudButton.vue`, `ReadAloudSettings.vue` | Play / Stop under a reply; the settings (language filter, hide low-quality voices, voice search in sections, Test) |
@@ -468,7 +477,29 @@ browser has `speechSynthesis`).
 Every piece is queued in the tap itself: iOS only speaks from a user gesture. iOS may stop
 speech when the screen locks or the app goes to the background, without an `end` event; a check
 every 1.5 s puts the button back to Play. Leaving the pane stops its reply. Voices marked
-"online" (Chrome's Google voices) send the text to their vendor. An OpenRouter engine
+"online" (Chrome's Google voices) send the text to their vendor. On iPhone and iPad, the Premium and
+Enhanced voices downloaded in iOS Settings are kept for native apps: Safari and home-screen web
+apps only list the standard ones, and the settings say so under the voice list.
+
+Neural voices that run on the phone (sherpa-onnx with Piper models, as for dictation) are being
+added. Their catalog is `app/utils/speech/voices.json`: Siwis (French, default), Cori (English,
+UK, default) and MLS (French, fallback), each with its files (the model, `tokens.txt`, and
+espeak-ng data trimmed to French and English, about 0.9 MB), its source pinned by sha256, its
+licence and the attribution to show (Siwis: CC BY 4.0). Each voice is a fetch set
+(`tts-siwis-medium`, ...), and `POST /api/dictation/prepare` with `{ voice }` has the server fetch
+it, as `{ model }` does for a dictation model. The runtime set also carries sherpa-onnx's TTS
+binding, `sherpa-onnx-tts.js`, unchanged from v1.12.34 to v1.12.40, the releases the pinned WASM
+build matches. `tests/speechVoices.test.ts` checks the catalog.
+
+The engine, `app/utils/speech/neuralVoice.ts`, is the `wherdr` choice of `useReadAloud`. Its
+voice is installed through the dictation model store (`installModel`, Cache Storage); a voice
+not installed, or too large for this device (memory budget, or a crash mark as for dictation
+models), is not used and the reply goes to the device's voices instead. A reply goes to
+`public/workers/tts-worker.js` one piece at a time, at most two pieces ahead of the one playing,
+so Stop never waits behind a long queue; the pieces play back to back through WebAudio, whose
+`AudioContext` is resumed inside the tap (iOS). Audio that arrives for a stopped reply is
+dropped. The worker and the `AudioContext` are released after 60 s without speech and on
+`pagehide`. `tests/neuralVoice.test.ts` covers it with a fake worker. An OpenRouter engine
 (`POST /api/v1/audio/speech`, relayed by the server like dictation) is a planned follow-up.
 
 ## Known limits
