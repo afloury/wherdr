@@ -5,11 +5,13 @@
 // Modes: 'workdays' and 'everyday' follow a target line that rises at local
 // midnight of each chosen day up to `cap` at the weekly reset; 'free' keeps a
 // weekly reserve of `reservePerDay` per day left before the reset. Every mode
-// keeps the 5-hour reserve. The end-of-week burn lifts all of it from the
+// keeps the 5-hour reserve, except 'unlimited' (shown as 'Free'): no line, no
+// reserve, no burn; automatic work stops only when the account itself hits its
+// limit. The end-of-week burn lifts all of it in the other modes, from the
 // moment the user turns it on until the weekly reset, where it turns off.
 import type { Quota, QuotaWindow } from '../types'
 
-export type PaceMode = 'workdays' | 'everyday' | 'free'
+export type PaceMode = 'unlimited' | 'workdays' | 'everyday' | 'free'
 
 export interface BurnSettings {
   until: number // ms: the weekly reset it ends at
@@ -27,7 +29,7 @@ export interface PacePolicy {
 }
 
 export const DEFAULT_PACE: PacePolicy = {
-  mode: 'free', days: [1, 2, 3, 4, 5], cap: 90, reserve5h: 25, reservePerDay: 10, margin: 2,
+  mode: 'unlimited', days: [1, 2, 3, 4, 5], cap: 90, reserve5h: 25, reservePerDay: 10, margin: 2,
   stale: { minutes: 30, margin: 5 },
 }
 
@@ -109,10 +111,12 @@ function weekCheck(p: PacePolicy, w: { used: number, resetsAt: number }, now: nu
 export function paceVerdict(policy: PacePolicy, quota: Quota | null, now: number, intent: PaceIntent = 'auto'): PaceVerdict {
   const refuse = (reason: PaceReason, until: number | null): PaceVerdict =>
     intent === 'user' ? { go: true, warn: reason } : { go: false, reason, until }
-  if (!quota) return { go: true, unknown: true, ...(burning(policy.burn, now) ? { burning: true as const } : {}) }
+  const burns = policy.mode !== 'unlimited' && burning(policy.burn, now)
+  if (!quota) return { go: true, unknown: true, ...(burns ? { burning: true as const } : {}) }
   if (quota.limited && (quota.limited.resetsAt === null || quota.limited.resetsAt > now)) return refuse('limited', quota.limited.resetsAt)
+  if (policy.mode === 'unlimited') return { go: true }
   // Burning: no pacing at all, only the account's own limit above.
-  if (burning(policy.burn, now)) return { go: true, burning: true }
+  if (burns) return { go: true, burning: true }
 
   const week = current(quota.week, now), five = current(quota.five, now)
   if (!week?.resetsAt && !five) return { go: true, unknown: true }
@@ -133,7 +137,7 @@ export function paceVerdict(policy: PacePolicy, quota: Quota | null, now: number
   return { go: true }
 }
 
-const PACE_MODES: PaceMode[] = ['workdays', 'everyday', 'free']
+const PACE_MODES: PaceMode[] = ['unlimited', 'workdays', 'everyday', 'free']
 const pctIn = (v: unknown, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : undefined)
 
 // The user's changes to a policy (Settings › Pace), checked field by field over

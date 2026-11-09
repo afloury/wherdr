@@ -13,7 +13,7 @@ const calls: { url: string, body: Record<string, unknown> }[] = []
 const reset = () => {
   rows = [
     {
-      program: 'claude', account: { key: 'claude:a1b2c3d4', program: 'claude', machines: [''] }, policy: { ...DEFAULT_PACE, days: [1, 5] },
+      program: 'claude', account: { key: 'claude:a1b2c3d4', program: 'claude', machines: [''] }, policy: { ...DEFAULT_PACE, mode: 'free', days: [1, 5] },
       week: { used: 60, resetsAt: now + 3 * 86_400_000, limit: 54, label: 'line' }, five: { used: 30, resetsAt: now + 3_600_000 },
       at: now, today: 9, verdict: { go: false, reason: 'ahead', until: now + 86_400_000 },
     },
