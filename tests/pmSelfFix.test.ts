@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { infraLog, nextMove, type MechFacts, type PrState } from '../shared/pm/mechanic'
 import { SELF_FIX_GRACE_MS, SELF_FIX_IDLE_MS, blockOf, engineOwns, escalation, mayTry, noteFix } from '../shared/pm/selfFix'
+import { wakesFor } from '../shared/pm/wakes'
+import { handToAgent, agentBack } from '../shared/pm/release'
+import { MAIN } from '../shared/pm/coordinator'
 import { DEFAULT_AUTOPILOT, autopilotEvents } from '../shared/pm/autopilot'
 import { combineGuards } from '../shared/pm/guards'
 import type { PlannedStep, StepState } from '../shared/pm/steps'
@@ -46,6 +49,19 @@ describe('blocks the engine fixes itself', () => {
     expect(nextMove(facts(push, { pr: undefined }))).toEqual({ key: 'sync:pr:0', move: { kind: 'sync-push', step: 'pr' } })
     expect(nextMove(facts(interrupted))).toEqual({ key: 'again:merge:1', move: { kind: 'retry-action', step: 'merge' } })
     expect(nextMove(facts(conflict, { pr: pr({ mergeStateStatus: 'DIRTY' }) }))).toEqual({ key: 'catch-up:abc1234', move: { kind: 'catch-up', base: 'v3' } })
+  })
+
+  it('a sync conflict handed to the worker is synced and pushed again once the worker is back', () => {
+    const first = nextMove(facts(push, { pr: undefined }))!
+    const back = { ...push, mech: { [first.key]: 1 }, step: agentBack(handToAgent(push.step!, 'sync-push', 'abc1234', 2)) }
+    expect(nextMove(facts(back, { pr: undefined }))).toEqual({ key: 'sync:pr:1', move: { kind: 'sync-push', step: 'pr' } })
+  })
+
+  it('a give-up wakes the project\'s coordinator and the main one, each that wakes for stuck tasks', () => {
+    const on = { terminal: 't1', autopilot: ap && { ...ap, on: true } }
+    expect(wakesFor(['CO', MAIN], () => on, 0)).toEqual(['CO', MAIN])
+    expect(wakesFor(['CO', MAIN], k => (k === MAIN ? on : undefined), 0)).toEqual([MAIN])
+    expect(wakesFor(['CO', MAIN], k => (k === MAIN ? { ...on, autopilot: { ...on.autopilot, events: ['done' as const] } } : { ...on, terminal: undefined }), 0)).toEqual([])
   })
 
   it('fixed alone: the block gone, nothing to escalate and no wake', () => {

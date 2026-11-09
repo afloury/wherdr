@@ -8,8 +8,8 @@ import { randomUUID } from 'node:crypto'
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { CATCH_UP_TRIES, catchUpGaveUp, ciOf, infraLog, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
 import { FIX_MOVE, blockOf, escalation, fixOf, mayTry, noteFix } from '../../shared/pm/selfFix'
-import { enqueue } from '../../shared/pm/wakes'
-import { inHours } from '../../shared/pm/autopilot'
+import { enqueue, wakesFor } from '../../shared/pm/wakes'
+import { MAIN } from '../../shared/pm/coordinator'
 import { inMergeQueue, mergeOrder, ordinal } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
 import { onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
@@ -249,16 +249,18 @@ const TRY_TEXT: Partial<Record<Move['kind'], string>> = {
   'retry-action': 'the action again',
 }
 
-// The engine gives up on a block: the coordinator woken once with what was
-// tried, when its autopilot wakes it for stuck tasks; else the user's (Your turn).
+// The engine gives up on a block: the project's coordinator and the main one
+// woken once with what was tried, each whose autopilot wakes it for stuck
+// tasks (as its 'stuck' event would have); else the user's (Your turn).
 async function escalate(deps: PmLaunchDeps, task: Task, now: number) {
   const why = escalation(task, now)
   if (!why) return
   const { store } = deps
-  const c = await store.coordinator(task.project), ap = c?.autopilot
-  const wake = !!c?.terminal && !!ap?.on && ap.events.includes('stuck') && inHours(ap.hours, new Date(now))
-  if (wake) await store.saveWakes([enqueue(await store.wakes(), task.project, [why], now, randomUUID().replace(/-/g, '').slice(0, 8))])
-  await store.logTask({ ...task, selfFix: { ...task.selfFix!, woke: now } }, 'engine', `gave up: ${why}${wake ? ' The coordinator is woken.' : ''}`)
+  const coords = new Map([[task.project, await store.coordinator(task.project)], [MAIN, await store.coordinator(MAIN)]])
+  const keys = wakesFor([task.project, MAIN], k => coords.get(k) ?? undefined, now)
+  for (const key of keys) await store.saveWakes([enqueue(await store.wakes(), key, [why], now, randomUUID().replace(/-/g, '').slice(0, 8))])
+  const woken = keys.map(k => (k === MAIN ? 'the main coordinator' : 'the project\'s coordinator'))
+  await store.logTask({ ...task, selfFix: { ...task.selfFix!, woke: now } }, 'engine', `gave up: ${why}${woken.length ? ` Woke ${woken.join(' and ')}.` : ''}`)
 }
 
 async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: MechFacts, sh: ReturnType<typeof actionShell>): Promise<string | null> {

@@ -86,8 +86,11 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   const n = s.tries?.[step.id] ?? 0
   const failed = step.action && !s.acting && s.yourTurn?.reason === 'action'
   // Refused as behind its remote: the worktree takes the remote's commits, then pushes again.
-  if (failed && step.ends === 'action' && RETRIED.includes(step.action!.kind) && !step.guarded && blockOf(task) === 'push')
-    return pick(`sync:${step.id}:${n}`, { kind: 'sync-push', step: step.id })
+  // Counted by syncs, not attempts: a sync conflict handed to the worker runs no attempt.
+  if (failed && step.ends === 'action' && RETRIED.includes(step.action!.kind) && !step.guarded && blockOf(task) === 'push') {
+    const syncs = Object.keys(task.mech ?? {}).filter(k => k.startsWith(`sync:${step.id}:`)).length
+    return pick(`sync:${step.id}:${syncs}`, { kind: 'sync-push', step: step.id })
+  }
   // Interrupted by a restart: run again (a merge done meanwhile is recorded as merged).
   if (failed && blockOf(task) === 'interrupted' && (step.ends === 'action' ? !step.guarded : waitsToMerge(step) && !!s.approved))
     return pick(`again:${step.id}:${n}`, { kind: 'retry-action', step: step.id })
