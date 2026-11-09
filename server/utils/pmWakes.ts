@@ -53,17 +53,14 @@ async function gather(deps: WakeDeps, now: number) {
     await store.saveTask({ ...task, step: has ? w.state : { ...w.state, told: task.step.told } })
     if (has) add(task.project, w.texts.map(x => `${task.id} (${task.title}): ${x}`))
   }
-  // The main coordinator's autopilot counts every task; a project's pace holds
-  // it only when no project may go.
-  const paceOf = async (k: string) => {
-    if (k !== MAIN) return (await projectPace(store, k, undefined, now))?.verdict
-    const all = await Promise.all(projects.map(async x => (await projectPace(store, x.key, undefined, now))?.verdict))
-    return all.find(v => v?.go) ?? all.find(Boolean)
-  }
-  for (const p of [...projects, { key: MAIN }]) {
+  // The main coordinator (Alfred) has no autopilot: one saved before is turned off.
+  const main = await store.coordinator(MAIN)
+  if (main?.autopilot?.on) await store.saveCoordinator({ ...main, autopilot: { ...main.autopilot, on: false } })
+  // Each project's autopilot: its own goal, limits, hours and pace.
+  for (const p of projects) {
     const c = await store.coordinator(p.key)
     if (!c) continue
-    const ap = c.autopilot, mine = tasks.filter(x => p.key === MAIN || x.project === p.key)
+    const ap = c.autopilot, mine = tasks.filter(x => x.project === p.key)
     const ev = autopilotEvents(ap ?? { on: false, goal: '', events: [], perDay: 0, atOnce: 0 }, mine, c.seen ?? {}, { key: p.key, by: coordinatorBy(p.key) })
     const on = !!ap?.on && !!c.terminal && inHours(ap.hours, new Date(now))
     // The first look only notes where tasks stand.
@@ -76,7 +73,7 @@ async function gather(deps: WakeDeps, now: number) {
     // Nothing to do, or the worker's account ahead of its pace: the slot counts
     // as run, the paid turn is saved. The pace is read only for a wake that would go.
     let kind = due || atDue ? scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now)) : null
-    if (kind === 'send' || kind === 'look') kind = scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now), await paceOf(p.key))
+    if (kind === 'send' || kind === 'look') kind = scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now), (await projectPace(store, p.key, undefined, now))?.verdict)
     const skip = skippedWake(kind)
     if (kind && !skip) add(p.key, [`Scheduled wake (${due ? `every ${ap!.every}` : ap!.at}). ${kind === 'look' ? `${LOOK_REASON} ` : ''}${goal}`])
     const woke = !!reasons.get(p.key)?.length

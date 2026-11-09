@@ -8,7 +8,8 @@ import { alfredView, answerProposal, coordinatorsView, issueToken, noteTurn, run
 import { REMOTE_SCRIPT } from '../server/utils/pmVisibility'
 import { MAIN, parseCommand, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
 import pkg from '../package.json'
-import { EXAMPLES, common, company } from '../shared/pm/examples'
+import { EXAMPLES, common, company, github } from '../shared/pm/examples'
+import { DONE_CMD } from '../shared/pm/advance'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
 import type { Finding } from '../shared/pm/verdict'
 import type { Template } from '../shared/pm/workflow'
@@ -93,6 +94,29 @@ describe('the main coordinator (WHR-398)', () => {
     await refused(cli(['task', 'tag', st.id, 'Y']), 'Unknown task')
     expect(ids(await cli(['list']))).toEqual([co.id])
     expect(parseCommand(['show', 'CO-1', '--project', 'CO'])).toEqual({ error: expect.stringContaining('--project is for') })
+  })
+
+  it('has no autopilot (WHR-51): no wake, none in its view, the route refuses it, a wake turn starts or adds nothing', async () => {
+    const main = await issueToken(store, MAIN)
+    const st = await store.addTask({ project: 'ST', title: 'Study', type: 'study' })
+    // An autopilot saved before: turned off and ignored.
+    await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, terminal: 'host/t1', ranAt: 0, autopilot: { ...DEFAULT_AUTOPILOT, on: true, goal: 'Ship', every: '30m' } })
+    const sent: unknown[] = []
+    const call = async (method: string, params: unknown) => { if (method === 'terminal.send') sent.push(params); return method === 'terminal.get' ? { status: 'idle' } : {} }
+    expect(await wakeTick({ store, call } as unknown as Parameters<typeof wakeTick>[0], 3_600_000)).toEqual([])
+    expect(sent).toEqual([])
+    expect((await store.coordinator(MAIN))!.autopilot!.on).toBe(false)
+    const [alfred] = await coordinatorsView(store)
+    expect(alfred).toMatchObject({ main: true })
+    expect(alfred).not.toHaveProperty('autopilot')
+    await noteTurn(store, MAIN, 'wake')
+    await refused(cli(['task', 'start', st.id], undefined, main), 'its own autopilot')
+    await refused(cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST'], undefined, main), 'its own autopilot')
+    vi.stubGlobal('defineApi', (h: unknown) => h)
+    const route = (await import('../server/api/pm/autopilot.post')).default as unknown as (e: unknown, b: unknown) => Promise<unknown>
+    await refused(route({}, { project: MAIN, autopilot: { on: true } }), 'Alfred has no autopilot')
+    await refused(route({}, { project: MAIN, runNow: true }), 'Alfred has no autopilot')
+    vi.unstubAllGlobals()
   })
 
   it('is Alfred: starts in its home in the data dir, greets once, keeps its own files and the agent picked', async () => {
@@ -805,6 +829,15 @@ describe('commands of lot 10', () => {
     await tell(fix)
     expect((await store.task(task.id))!.log?.at(-1)?.text).toBe('told the worker (fix base: The PR conflicts with v3.): Merge the base')
     await refused(tell(fix), 'Already fixed 2 times in this step')
+    // A failed step action handed over with a fix: off Your turn, the worker asked for its done report.
+    await store.saveWorkflow('CO', { ...structuredClone(company), taskTypes: { ...company.taskTypes, simple: github.taskTypes.simple! } })
+    const pr = await store.addTask({ project: 'CO', title: 'Push', type: 'simple' })
+    await store.saveRun({ id: 'r2', task: pr.id, role: 'worker', program: 'claude', model: 'opus', machine: '', worktree: '/w', branch: 'b2', instructions: '', terminal: 'host/t4', attempt: 1, state: 'running', startedAt: 1 })
+    await store.saveTask({ ...pr, run: 'r2', state: 'working', step: state(2, { yourTurn: { reason: 'action', badge: 'pr: push refused', error: 'push refused' } }) })
+    await tell(['tell', pr.id, 'Rebase', 'and', 'push', '--fix', 'machine', '--reason', 'Non-fast-forward push.'])
+    expect(sent.at(-1)).toBe(`From the project coordinator: Rebase and push\n\nWhen done: ${DONE_CMD}`)
+    const fixing = (await store.task(pr.id))!
+    expect([fixing.step?.yourTurn, fixing.step?.agent?.kind, fixing.log?.at(-1)?.text]).toEqual([undefined, 'fix machine', 'pr: the agent is fixing it, then it is tried again'])
     // A permission prompt on its screen, even in the user's turn: never typed into.
     await noteTurn(store, 'CO', 'user', 'tell it')
     const blocked = async (method: string, p: { text: string }) => (method === 'terminal.get' ? { status: { state: 'blocked' } } : call(method, p))

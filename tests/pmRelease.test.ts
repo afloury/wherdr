@@ -7,9 +7,9 @@ import { startTask, type PmLaunchDeps } from '../server/utils/pmLaunch'
 import { releaseIdle } from '../server/utils/pmRelease'
 import { advanceTick } from '../server/utils/pmAdvance'
 import { mechanicTick } from '../server/utils/pmMechanic'
-import { RELEASE_IDLE_MS, agentBack, agentsAtWork, handToAgent, idleSince, releaseDue } from '../shared/pm/release'
+import { FIX_QUIET_MS, RELEASE_IDLE_MS, agentBack, agentsAtWork, fixWatch, handFix, handToAgent, idleSince, releaseDue, retriesAction } from '../shared/pm/release'
 import { cardStatus } from '../shared/pm/board'
-import { initialState } from '../shared/pm/steps'
+import { initialState, onEvent, type PlannedStep } from '../shared/pm/steps'
 import { wherdr } from '../shared/pm/examples'
 import type { Run, Task } from '../shared/pm/run'
 
@@ -40,6 +40,36 @@ describe('the release rules', () => {
     expect(idleSince(10, sent, false, 99)).toBeUndefined() // never released while the engine waits for it
     expect(cardStatus({ plan: [], state: sent.step })).toEqual({ text: 'the agent is updating the PR', tone: 'wait' })
     expect(agentBack(sent.step)).toEqual(yourTurn().step) // pushed or reported: the merge is the user's again
+  })
+
+  it('a failed step action handed over with a fix is tried again once fixed, and comes back if not', () => {
+    const plan: PlannedStep[] = [
+      { id: 'work', holder: 'worker', ends: 'report', text: '' },
+      { id: 'pr', ends: 'action', action: { kind: 'github.pr', base: 'main' }, text: '' },
+    ]
+    const failed = { ...initialState(), started: true, at: 1, yourTurn: { reason: 'action' as const, badge: 'pr: push refused', error: 'push refused' } }
+    expect(handFix(plan, { ...failed, yourTurn: { reason: 'user', badge: 'Merge' } }, 'machine', 7)).toBeUndefined() // only a failed action
+    // tell --fix: out of Your turn, the card says the agent fixes it.
+    const fixing = handFix(plan, failed, 'machine', 7)!
+    expect(fixing.yourTurn).toBeUndefined()
+    expect(retriesAction(plan, fixing)).toBe(true)
+    expect(cardStatus({ plan, state: fixing })?.text).toBe('the agent is fixing it')
+    // Its done report: the engine tries the action again itself (agentBack, then the engine's 'user' event).
+    const retried = onEvent(plan, agentBack(fixing), { kind: 'user', engine: true }, 8)
+    expect(retried.state.acting).toBe(true)
+    expect(retried.effects).toContainEqual(expect.objectContaining({ kind: 'action', step: 'pr' }))
+    // Failing again: back in Your turn, with the new reason.
+    const again = onEvent(plan, retried.state, { kind: 'action-result', ok: false, error: 'no PR opened' }, 9).state
+    expect(again.yourTurn).toMatchObject({ reason: 'action', error: 'no PR opened' })
+    // Stopped without a report: kept while working or briefly idle, back once quiet, or at once when ended.
+    expect(fixWatch(plan, fixing, 'working', 8)).toBeUndefined()
+    const quiet = fixWatch(plan, fixing, 'idle', 8)!
+    expect(quiet.agent?.idle).toBe(8)
+    expect(fixWatch(plan, quiet, 'idle', 8 + FIX_QUIET_MS - 1)).toBeUndefined()
+    expect(fixWatch(plan, quiet, 'working', 9)?.agent?.idle).toBeUndefined()
+    expect(fixWatch(plan, quiet, 'idle', 8 + FIX_QUIET_MS)).toMatchObject({ yourTurn: { reason: 'action', error: 'fix machine: the agent stopped without saying it is done' } })
+    expect(fixWatch(plan, quiet, 'idle', 8 + FIX_QUIET_MS)?.agent).toBeUndefined()
+    expect(fixWatch(plan, fixing, 'gone', 8)?.yourTurn?.error).toBe('fix machine: the agent ended without saying it is done')
   })
 
   it('the machine cap counts only agents holding a step under way', () => {

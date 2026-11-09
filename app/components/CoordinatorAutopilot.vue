@@ -4,7 +4,7 @@
 // the limits, its goal, interval, fixed times, events and limits (saved by the user
 // only), its latest wakes (created, delivered, acked) and "run now". In the coordinator
 // window and the project sheet's Autopilot tab.
-import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, LOOK_PER_DAY, MAX_PER_DAY, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
+import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, LOOK_PER_DAY, MAX_PER_DAY, oldDefaults, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Wake } from '#shared/pm/wakes'
 
@@ -139,6 +139,7 @@ const counters = computed(() => props.c.limits
           <p v-if="fieldError('atOnce')" class="error" role="alert" data-testid="autopilot-error-atOnce">{{ fieldError('atOnce') }}</p>
         </div>
       </div>
+      <p v-if="oldDefaults(ap)" class="muted" data-testid="autopilot-old-defaults">{{ tl('Older defaults: clear the fields for unlimited and Auto') }}</p>
       <span class="field-label">{{ tl('Wakes on', 'Réveillé quand') }}</span>
       <div class="ap-events" role="group">
         <UButton v-for="e in AUTOPILOT_EVENTS" :key="e" type="button" size="lg" :color="form.events.includes(e) ? 'primary' : 'neutral'" :variant="form.events.includes(e) ? 'solid' : 'outline'"

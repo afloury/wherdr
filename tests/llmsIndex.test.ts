@@ -1,4 +1,7 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { docAnchors } from '../scripts/check-doc-links.mjs'
@@ -21,6 +24,34 @@ describe('docs/llms.txt', () => {
     expect(path).toMatch(/^docs\/[\w.-]+\.md$/)
     expect(existsSync(`${root}${path}`)).toBe(true)
     if (anchor) expect([...docAnchors(`${root}${path}`)]).toContain(anchor)
+  })
+
+  // A union merge keeps both sides' lines, so a line two tasks added twice stays twice.
+  it('has no duplicated line', () => {
+    const lines = index.split('\n').filter(l => l.trim())
+    expect(lines.filter((l, i) => lines.indexOf(l) !== i)).toEqual([])
+  })
+
+  it('merges two appended lines without a conflict', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'llms-union-'))
+    try {
+      const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd: dir, stdio: 'pipe' })
+      git('init', '-q', '-b', 'base')
+      writeFileSync(join(dir, '.gitattributes'), readFileSync(`${root}.gitattributes`))
+      const file = join(dir, 'docs/llms.txt')
+      mkdirSync(join(dir, 'docs'))
+      writeFileSync(file, '# Index\n\n- [A](docs/a.md): a.\n')
+      git('add', '.')
+      git('commit', '-qm', 'base')
+      for (const [branch, line] of [['one', '- [B](docs/b.md): b.'], ['two', '- [C](docs/c.md): c.']]) {
+        git('checkout', '-qb', branch!, 'base')
+        writeFileSync(file, `${readFileSync(file, 'utf8')}${line}\n`)
+        git('commit', '-qam', branch!)
+      }
+      git('merge', '-q', '--no-edit', 'one')
+      expect(readFileSync(file, 'utf8')).toBe('# Index\n\n- [A](docs/a.md): a.\n- [C](docs/c.md): c.\n- [B](docs/b.md): b.\n')
+    }
+    finally { rmSync(dir, { recursive: true, force: true }) }
   })
 
   it('lists every documentation page', () => {

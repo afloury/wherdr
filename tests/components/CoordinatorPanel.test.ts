@@ -37,6 +37,7 @@ const alfred = (more: Partial<CoordinatorView> = {}) => view({ project: '_main',
 it('Alfred: its agent picked in its window, and kept when no longer offered (said, never replaced)', async () => {
   const b = await mount(alfred())
   expect(b.text()).toContain('Alfred’s agent')
+  expect(b.find('[data-testid="coordinator-autopilot"]').exists()).toBe(false) // Alfred has no autopilot
   await pick(b, 'coordinator-agent', 'codex')
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: '_main', program: 'codex' } }]))
   hiddenAgents.value = ['claude']

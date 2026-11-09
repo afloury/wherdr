@@ -17,9 +17,11 @@ export interface PlannedStep extends Step { text: string, guarded?: true }
 // error: what the failed engine action said (reason 'action').
 export interface YourTurn { reason: 'user' | 'timeout' | 'rounds' | 'action', badge: string, advice?: Advice, error?: string }
 
-// Work the engine handed the worker on its own (a catch-up, red CI): the step's
-// Your turn (`was`) waits until the PR head moves from `head` or the worker reports.
-export interface AgentWork { kind: string, head: string, at: number, was?: YourTurn }
+// Work handed to the worker (a catch-up, red CI, a coordinator's fix): the
+// step's Your turn (`was`) waits until the PR head moves from `head` or the
+// worker reports. A failed action is then tried again (release.ts retriesAction);
+// idle: since when its agent sits idle, its report not in (fixWatch).
+export interface AgentWork { kind: string, head?: string, at: number, was?: YourTurn, idle?: number }
 
 export interface StepState {
   at: number // index of the current step
@@ -133,6 +135,36 @@ export function withBase(a: StepAction, base?: string): StepAction {
 // {base} in instructions: the working branch, or plain words when none is set.
 export const fillBase = (text: string, base?: string) => text.replaceAll('{base}', base || 'the base branch')
 
+// The Git host of a link, named for people.
+export function gitHost(url?: string): string {
+  const h = (url && /^https?:\/\/([^/]+)/i.exec(url)?.[1]?.toLowerCase()) || ''
+  return h.includes('github') ? 'GitHub' : h.includes('bitbucket') ? 'Bitbucket' : h.includes('gitlab') ? 'GitLab' : /dev\.azure\.com|visualstudio\.com/.test(h) ? 'Azure DevOps' : 'your Git host'
+}
+
+// The link the latest earlier step gave as its proof: the PR.
+export const proofLink = (plan: Step[], s: Pick<StepState, 'at' | 'proofs'>) =>
+  plan.slice(0, s.at).map(p => s.proofs[p.id]?.link).findLast(Boolean)
+
+// A step's badge and button. A step you end with git.verify-merged only
+// checks: you merge on the host, then say so. A workflow's own text wins.
+export function stepLabels(step: Step, link?: string): { badge: string, button: string } {
+  const verify = step.ends === 'user' && step.action?.kind === 'git.verify-merged'
+  return {
+    badge: step.badge || (verify ? `Merge the PR on ${gitHost(link)}` : step.userLabel || step.id),
+    button: step.userLabel || (verify ? 'I merged it' : 'Done'),
+  }
+}
+
+// What a failed action says in the badge. git.verify-merged that finds the
+// commit not in its target yet says what to do next, with the PR link.
+function failureText(step: Step, error: string | undefined, link?: string): string {
+  const l = stepLabels(step, link)
+  const m = step.action?.kind === 'git.verify-merged' && error?.match(/^verify-merged: commit \S+ is not in \S+(.*)$/)
+  if (!m) return `${l.badge}: ${error || `${step.action!.kind} failed`}`
+  const pr = link ? ` (${link})` : ''
+  return `The PR is not merged into ${step.action!.target} yet: merge it on ${gitHost(link)}${pr}, then press “${l.button}” again${m[1]}`
+}
+
 // The steps of a task type, shared steps resolved, each with the text its
 // holder gets: every level's instructions, broadest first, then the proofs.
 // base: the project's working branch (withBase, fillBase).
@@ -175,7 +207,7 @@ function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, eff
   const text = step.ends === 'verdict' ? reviewText(step.text, s.reviews?.[step.id]?.at(-1)) : step.text
   if (hasAgent(step)) effects.push({ kind: 'instruct', step: step.id, holder: step.holder!, text })
   // An approved merge does not ask again: the engine merges it once the PR is ready.
-  if (step.ends === 'user' && !(s.approved && waitsToMerge(step))) s.yourTurn = { reason: 'user', badge: step.badge || step.userLabel || step.id }
+  if (step.ends === 'user' && !(s.approved && waitsToMerge(step))) s.yourTurn = { reason: 'user', badge: stepLabels(step, proofLink(plan, s)).badge }
   return step.ends === 'action' ? act(s, step, effects) : s
 }
 
@@ -307,7 +339,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
         return { state: { ...enter(plan, { ...state, proofs }, back, now, []), fix }, effects }
       }
       // The step stays open; the badge says what went wrong.
-      const badge = `${step.badge || step.userLabel || step.id}: ${ev.error || `${step.action!.kind} failed`}`
+      const badge = failureText(step, ev.error, proofLink(plan, state))
       return { state: { ...state, acting: undefined, yourTurn: { reason: 'action', badge, ...(ev.error ? { error: ev.error } : {}) } }, effects }
     }
     case 'back': {
@@ -331,7 +363,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       const c = state.catchUp
       if (!c) return refuse('No catch-up runs')
       const done = { ...state, catchUp: undefined }
-      if (ev.error) return { state: { ...done, yourTurn: { reason: 'action', badge: `${step.badge || step.userLabel || step.id}: ${ev.error}`, error: ev.error } }, effects }
+      if (ev.error) return { state: { ...done, yourTurn: { reason: 'action', badge: `${stepLabels(step, proofLink(plan, state)).badge}: ${ev.error}`, error: ev.error } }, effects }
       // The agent resolved conflicts: that change only is reviewed again.
       const review = ev.review ? plan.slice(0, state.at).findLastIndex(p => p.ends === 'verdict') : -1
       if (review >= 0) {
@@ -342,7 +374,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       const r = plan.slice(0, state.at).findLast(p => p.ends === 'verdict')
       const proofs = r && ev.head && state.proofs[r.id]?.commit === c.from ? { ...state.proofs, [r.id]: { ...state.proofs[r.id], commit: ev.head } } : state.proofs
       effects.push({ kind: 'log', text: `${step.id}: updated with ${c.base}${state.approved ? ', merges once ready' : ''}` })
-      const yourTurn = state.approved ? undefined : { reason: 'user' as const, badge: step.badge || step.userLabel || step.id }
+      const yourTurn = state.approved ? undefined : { reason: 'user' as const, badge: stepLabels(step, proofLink(plan, state)).badge }
       return { state: { ...done, proofs, yourTurn }, effects }
     }
     case 'skip': return { state: enter(plan, { ...state, backFrom: undefined }, state.at + 1, now, effects), effects }
