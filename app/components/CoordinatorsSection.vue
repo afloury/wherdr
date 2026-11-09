@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // The COORDINATORS section under Alfred (AlfredRow, which coordinates all projects) at
-// the top of the agent list: the project coordinators that run. One tap opens
+// the top of the agent list: the project coordinators that run, those the
+// home tab picked shows (useMachineBar.projectOnBar). One tap opens
 // its conversation; its menu (right click, or long press on a touch screen)
 // restarts it with another agent, which becomes its default. Hidden while
 // project management is off.
@@ -8,7 +9,7 @@ import type { CoordinatorView } from '#shared/pm/coordinator'
 
 const busy = ref('')
 const error = ref('')
-const rows = computed(() => projectCoordinators.value.filter(c => coordinatorPane(c)))
+const rows = computed(() => projectCoordinators.value.filter(c => coordinatorPane(c) && projectOnBar(c.project)))
 
 async function open(c: CoordinatorView) {
   if (busy.value || rowMenu.swallowClick()) return

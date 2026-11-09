@@ -20,7 +20,7 @@ import { onceEvery } from '~/utils/onceEvery'
 import { listMode } from '~/utils/layoutMode'
 import { stateMachines } from '~/utils/homeGrouping'
 import { BAR_ALL, barMachineSelection } from '~/utils/machineBar'
-import { type CountGroup, countsTotal, projectTabMachines, tabCounts } from '~/utils/projectTabs'
+import { type CountGroup, countsTotal, tabCounts } from '~/utils/projectTabs'
 import { individualAgentRows, individualAgentTitle, isIndividualAgentRow } from '~/utils/homeAgentRows'
 import { boardEntry } from '~/utils/boardEntry'
 import { groupTaskAgents } from '~/utils/taskAgentRow'
@@ -149,7 +149,7 @@ const countedCoordinators = computed(() => [
   ...projectCoordinators.value.flatMap((c) => {
     const p = coordinatorPane(c)
     return p && !paneStale(p)
-      ? [{ tabMachines: projectTabMachines({ machines: c.machines ?? [] }, projectTabs.value[c.project], machineGroups.value), group: c.proposal ? 'blocked' as const : countGroup(paneGroup(p)) }]
+      ? [{ tabMachines: projectTabPlaces.value.get(c.project) ?? null, group: c.proposal ? 'blocked' as const : countGroup(paneGroup(p)) }]
       : []
   }),
 ])

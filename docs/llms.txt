@@ -41,7 +41,7 @@
 
 - [Agents on herdr-core](docs/home.md#agents-on-herdr-core): the live list, states and their counters (agent rows plus the tab's coordinators), quick answers, the sidebar's order (no sideways scroll: long titles and badges ellipsized, a thin scrollbar), and task agents named after their task, one row per task with a line per agent (role, machine, last message).
 - [Alfred](docs/home.md#alfred): wherdr's assistant, its agent (kept until you change it), name, home folder and memory.
-- [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred, with the project's colored key badge, and their menu.
+- [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred, with the project's colored key badge, and their menu; coordinators and Tasks to handle follow the machine tab (a project shows on the tabs holding its machines, Alfred on every tab).
 - [Offered agents](docs/home.md#offered-agents): Settings › Agents, which programs every picker offers and in which order.
 - [Machines as tabs](docs/home.md#machines-as-tabs): the machine tabs and their counts (rows and coordinators), their groups, a machine's actions, and the offline machines' line with Reconnect (no machine chips while all are online).
 - [New agents and tabs](docs/home.md#new-agents-and-tabs): the New sheet, the + of a space's tabs, and renaming or closing a tab or a space.
