@@ -38,7 +38,7 @@
 
 ## Agent list
 
-- [Agents on herdr-core](docs/home.md#agents-on-herdr-core): the live list, states, quick answers, the sidebar's order, and task agents named after their task with a role badge and a duration.
+- [Agents on herdr-core](docs/home.md#agents-on-herdr-core): the live list, states, quick answers, the sidebar's order, and task agents named after their task, one row per task with a line per agent (role, machine, last message).
 - [Alfred](docs/home.md#alfred): wherdr's assistant, its agent, home folder and memory.
 - [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred, with the project's colored key badge, and their menu.
 - [Offered agents](docs/home.md#offered-agents): Settings › Agents, which programs every picker offers and in which order.
@@ -82,7 +82,7 @@
 
 - [Several machines](docs/machines.md#several-machines-ssh): machines reached by hc over SSH.
 - [Before adding a machine](docs/machines.md#before-adding-a-machine): what a machine needs first.
-- [Manage machines](docs/machines.md#manage-machines): Settings › Machines, add, reconnect, rename, forget, capacity (memory, cores, load on Linux and macOS), memory limits, available hours and offline machines, and where each start goes (placement across a project's machines).
+- [Manage machines](docs/machines.md#manage-machines): Settings › Machines, add, reconnect, rename, forget, keep awake (until a time or turned off, laptop battery and lid warning), capacity (memory, cores, load on Linux and macOS), memory limits, available hours and offline machines, and where each start goes (placement across a project's machines).
 - [Machines on hc](docs/core.md#creating-terminals-and-agents-machines): how hc reaches core machines.
 - [Claude and Codex quotas](docs/quotas.md#claude-and-codex-quotas): remaining usage on every machine and its setup.
 - [Pace](docs/quotas.md#pace): Settings › Agents › Pace, when automatic work may start.
