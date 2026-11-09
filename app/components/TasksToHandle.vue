@@ -5,7 +5,7 @@
 // sessions; hidden when there is none. Rows are tasks, not agents: the task's id,
 // title, what to do and a short action. A tap goes where the user acts: an
 // agent that asks (a question, a permission) opens its conversation, on any
-// machine; anything else opens the task's sheet on the board, on its To do
+// machine; anything else opens the task's sheet over the current page, on its To do
 // tab. The sheet stays one tap away (the row's small icon).
 import type { ToHandle } from '#shared/pm/board'
 
@@ -16,7 +16,8 @@ let timer: ReturnType<typeof setInterval> | undefined
 // Read while the list is on screen: a hidden page waits for the next tick it is shown.
 onMounted(() => { load(); timer = setInterval(() => { if (!document.hidden) load() }, 15_000) })
 onBeforeUnmount(() => clearInterval(timer))
-const sheet = (id: string) => navigateTo({ path: '/board', query: { task: id } })
+watch(taskSheetTick, load) // an action in a task's sheet
+const sheet = (id: string) => openTaskSheet(id)
 // The asking agent's pane, when it is on screen here.
 const agentOf = (x: ToHandle) => (x.terminal ? herdrState.value?.panes.find(p => p.coreAddress === x.terminal) : undefined)
 const open = (x: ToHandle) => { const p = agentOf(x); return p ? navigateTo(panePath(p.id)) : sheet(x.id) }
