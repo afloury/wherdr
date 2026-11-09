@@ -83,6 +83,17 @@ export function wherdrBase(machine: string, origin = '', appUrl = process.env.AP
 // machine. Throws when that machine is unknown or unreachable.
 export const runOn = (deps: CoreAdminDeps, run: Pick<Run, 'machine'>) => machineOn(deps, run.machine).on
 
+// The task and role of each agent being started now: a second start of the
+// same one, from anywhere (user, coordinator, the engine's chain, a held start,
+// a revive), is refused while the first runs, never run beside it.
+const starting = new Set<string>()
+export async function oneStart<T>(task: string, role: Run['role'], fn: () => Promise<T>): Promise<T> {
+  const key = `${task}\u0000${role}`
+  if (starting.has(key)) throw new HerdrError('busy', `The ${role} of ${task} is already starting`)
+  starting.add(key)
+  try { return await fn() } finally { starting.delete(key) }
+}
+
 const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitKind']) => store.saveTask({ ...task, state: 'waiting', waiting: reason, waitKind, held: undefined })
 
 // Starts the worker of a task to do (or waiting, to try again). Any reason it
@@ -94,7 +105,12 @@ const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitK
 // on: the machine key a new task goes to (one its project allows); a started
 // task always goes back to its own (taskMachine).
 // by: who starts it (the log's 'back to work' line, when that clears a timeout or a stall).
-export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, revive, on: asked, by = 'engine' }: { handover?: string, revive?: true, on?: string, by?: string } = {}): Promise<Task> {
+type StartOpts = { handover?: string, revive?: true, on?: string, by?: string }
+export async function startTask(deps: PmLaunchDeps, id: unknown, opts: StartOpts = {}): Promise<Task> {
+  return oneStart(String(id), 'worker', () => startOnce(deps, id, opts))
+}
+
+async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on: asked, by = 'engine' }: StartOpts): Promise<Task> {
   const { store } = deps
   const asRead = await store.task(id)
   if (!asRead) throw new HerdrError('not_found', 'Unknown task')

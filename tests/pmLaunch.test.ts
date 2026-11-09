@@ -171,6 +171,14 @@ describe('startTask', () => {
     expect((await store.runs()).map(r => [r.attempt, r.state])).toEqual(expect.arrayContaining([[1, 'ended'], [2, 'ended']]))
   })
 
+  it('two starts at once (the user and the engine\'s chain): one worker, the other refused as already starting', async () => {
+    const { deps, runs } = await setup()
+    const [a, b] = await Promise.allSettled([startTask(deps, 'WEB-1', { by: 'user' }), startTask(deps, 'WEB-1')])
+    expect(a).toMatchObject({ status: 'fulfilled', value: { state: 'working' } })
+    expect(b).toMatchObject({ status: 'rejected', reason: { code: 'busy', message: expect.stringContaining('already starting') } })
+    expect(runs).toHaveLength(1)
+  })
+
   it('a program the shell cannot find is not started again', async () => {
     const { deps, runs } = await setup({ exits: [127] })
     expect(await startTask(deps, 'WEB-1')).toMatchObject({ state: 'waiting' })
