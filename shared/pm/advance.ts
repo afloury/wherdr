@@ -16,7 +16,7 @@ const ASK_CMD = `hc label "$HC_TERMINAL_ID" ${LABEL.report}=blocked:question`
 // The files of a task's run, beside its instructions file.
 export const runFiles = (instructions: string) => {
   const dir = instructions.replace(/\/[^/]+$/, '')
-  return { note: `${dir}/report.md`, review: `${dir}/review.md`, verdict: `${dir}/verdict.json` }
+  return { note: `${dir}/report.md`, review: `${dir}/review.md`, verdict: `${dir}/verdict.json`, files: `${dir}/files.txt` }
 }
 
 // How a worker ends its step: the last section of its instructions file.
@@ -82,9 +82,10 @@ export function dueText(plan: PlannedStep[], s: StepState | undefined): { holder
 
 // An engine action the advance pass runs at once. A merge the engine may do
 // waits for its PR's checks (pmMechanic's merge move); a guarded one runs so
-// its guard refuses it and hands it to the user's step.
-export const runsNow = (step: PlannedStep | undefined, s: StepState | undefined) =>
-  !!step && !!s?.acting && step.ends === 'action' && !(step.action?.kind === 'github.merge' && !step.guarded)
+// its guard refuses it and hands it to the user's step. A watched pipeline is
+// polled once its next poll is due.
+export const runsNow = (step: PlannedStep | undefined, s: StepState | undefined, now = Date.now()) =>
+  !!step && !!s?.acting && step.ends === 'action' && !(step.action?.kind === 'github.merge' && !step.guarded) && !(s.watch && s.watch.next > now)
 
 // The tasks a task waits for: `after: A-1,A-2`.
 export const afterIds = (t: Pick<Task, 'after'>) => (t.after ?? '').split(',').map(s => s.trim()).filter(Boolean)

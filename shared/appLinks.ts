@@ -13,6 +13,10 @@ export type SettingsSection = typeof SETTINGS_SECTIONS[number]
 export const SETTINGS_ALIASES: Record<string, { section: SettingsSection, anchor: string }> = {
   pacing: { section: 'agents', anchor: 'settings-pace' },
 }
+// Settings › Conversation's tabs, by their ?tab= key: Display by default.
+export const CONVERSATION_TABS = ['display', 'dictation', 'read-aloud'] as const
+export type ConversationTab = typeof CONVERSATION_TABS[number]
+export const conversationTab = (q: unknown): ConversationTab => (CONVERSATION_TABS as readonly unknown[]).includes(q) ? q as ConversationTab : 'display'
 
 const query = (q: Record<string, string | undefined>) => {
   const s = new URLSearchParams(Object.entries(q).filter((e): e is [string, string] => !!e[1])).toString()
@@ -31,7 +35,7 @@ export function appLinkList(): string[] {
   return [
     `- Home: \`#/\`; Decisions (what waits for the user's choice): \`${DECISIONS_LINK}\`.`,
     `- The board: \`${boardLink()}\`; one project: \`${boardLink({ project: 'KEY' })}\`; one tag: \`${boardLink({ tag: 'TAG' })}\`; a task's sheet: \`${boardLink({ task: 'ID' })}\`.`,
-    `- A Settings section: \`#/settings?section=<section>\`, section one of ${SETTINGS_SECTIONS.join(', ')}; the agents' Pace group: \`${settingsLink('pacing')}\`.`,
+    `- A Settings section: \`#/settings?section=<section>\`, section one of ${SETTINGS_SECTIONS.join(', ')}; the agents' Pace group: \`${settingsLink('pacing')}\`; a Conversation tab: \`#/settings?section=conversation&tab=<tab>\`, tab one of ${CONVERSATION_TABS.join(', ')}.`,
     `- A project's sheet: \`#/settings?section=projects&project=KEY&tab=<tab>\`, tab one of ${PROJECT_TABS.join(', ')} (autopilot: its coordinator's autopilot).`,
   ]
 }
@@ -39,5 +43,8 @@ export function appLinkList(): string[] {
 // A whole in-app address: `#/`, a path of plain segments, an optional query,
 // no space or quote. Anything else (`#heading`, `https://…`) is not one.
 export const isAppLink = (s: string) => /^#\/(?:[\w.-]+(?:\/[\w.:-]+)*)?(?:\?[\w.~%&=+:,-]*)?$/.test(s)
+// The task of a task's sheet address (`#/board?task=X`, nothing else): it
+// opens over the current page.
+export const linkedTask = (s: string) => /^#\/board\?task=([\w.-]+)$/.exec(s)?.[1] ?? null
 // The router path of an in-app address (`#/board?task=X` → `/board?task=X`).
 export const appRoute = (s: string) => s.slice(1)

@@ -54,7 +54,7 @@ export async function board(store: PmStore, known: MachineInfo[] = []): Promise<
       const p = projects.find(x => x.key === task.project)
       // A project with several machines: the card names the one its task went to.
       const on = task.machine !== undefined && p && allowedMachines(p).length > 1 ? known.find(m => m.key === task.machine)?.label ?? (task.machine || 'Local') : undefined
-      return withPr({ ...cardOf(task, planOf(templates.get(task.project) ?? null, task, p), runs), shown: shownTaskId(projects, task.id), ...(p?.color ? { color: p.color } : {}), ...(on ? { machine: on } : {}) })
+      return withPr({ ...cardOf(task, planOf(templates.get(task.project) ?? null, task, p), runs), shown: shownTaskId(projects, task.id), ...(p?.color ? { color: p.color } : {}), ...(on ? { machine: on } : {}), ...(task.sameFiles && task.state === 'todo' ? { sameFiles: shownTaskId(projects, task.sameFiles) } : {}) })
     }),
   }
 }
@@ -109,14 +109,14 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     const run = await workerRun(store, task.id)
     const result: ActionResult = run
       ? await runAction({ store, sh: actionShell(deps, runOn(deps, run)) }, {
-          task, step: act.step, attempt: act.attempt, action: act.action, by: approved ? 'user' : by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
+          task, shown: shownTaskId(p ? [p] : [], task.id), step: act.step, attempt: act.attempt, action: act.action, by: approved ? 'user' : by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
           reviewed: reviewedCommit(plan, state), ...(approved && state.approved!.commit ? { approved: state.approved!.commit } : {}),
           halted: async () => !!(await store.task(task.id))?.stopped,
         }).catch((e: Error) => ({ ok: false, error: e.message }))
       : { ok: false, error: 'No worktree: the task never started' }
-    const evidence = { ...(result.link ? { link: result.link } : {}), ...(result.commit ? { commit: result.commit } : {}) }
+    const evidence = { ...(result.link ? { link: result.link } : {}), ...(result.commit ? { commit: result.commit } : {}), ...(result.report ? { report: result.report } : {}) }
     const catchUp = result.catchUp && result.commit ? { catchUp: { base: result.catchUp, head: result.commit } } : {}
-    const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), ...(result.unapproved ? { unapproved: true as const } : {}), ...catchUp, evidence }, Date.now())
+    const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.later ? { later: true } : {}), ...(result.detail ? { detail: result.detail } : {}), ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), ...(result.unapproved ? { unapproved: true as const } : {}), ...catchUp, evidence }, Date.now())
     state = back.state
     const log = back.effects.find(e => e.kind === 'log')
     if (log?.kind === 'log') return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', log.text)

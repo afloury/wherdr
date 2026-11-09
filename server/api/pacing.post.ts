@@ -1,5 +1,5 @@
 // { key, policy }: changes a quota account's pace policy (mode, days, cap,
-// reserves, end-of-week burn: null turns it off), checked by mergePolicy. The user's only: a coordinator's token reaches /api/pm/cli alone
+// reserves, end-of-week burn: { until: the reset } turns it on, null off), checked by mergePolicy. The user's only: a coordinator's token reaches /api/pm/cli alone
 // (middleware/guard.ts), where `pacing` is refused too (USER_ONLY).
 import { ACCOUNT_KEY } from '../../shared/quotaAccount'
 import { HerdrError } from '../utils/herdr'

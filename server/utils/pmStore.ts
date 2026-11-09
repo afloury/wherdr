@@ -13,12 +13,13 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { cleanProjectInput, isBranch, machinesOf, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
-import { defaultColor, keyClash, projectOf, renamed, shownKey, storedTaskId } from '../../shared/pm/projectKey'
+import { defaultColor, keyClash, projectOf, renamed, showIds, shownKey, storedTaskId } from '../../shared/pm/projectKey'
 import type { RepoVisibility } from '../../shared/pm/visibility'
 import { WEIGHTS, isWeight, startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
 import { publicTask, type Run, type Task, type TaskLogEntry } from '../../shared/pm/run'
 import { afterIds } from '../../shared/pm/advance'
+import { parseFiles } from '../../shared/pm/files'
 import type { Receipt } from '../../shared/pm/actions'
 import { SHOT_FILE_RE } from '../../shared/pm/shots'
 import { withMark } from '../../shared/pm/times'
@@ -44,6 +45,8 @@ export interface CoordinatorRecord {
   userAt?: number, autopilot?: Autopilot, seen?: Record<string, TaskStatus>, ranAt?: number
   atRan?: number // the last scheduled wake at fixed times (autopilot.at), or when it was set
   woke?: LastWake // the last wake the engine queued, and where tasks stood then
+  quiet?: true // its saved autopilot's old default events dropped, once (quietEvents)
+  health?: { at: number, seen: Record<string, TaskStatus> } // the last health check (health.ts), and where tasks stood then
   skipped?: DayCount // scheduled wakes skipped that day: nothing to do (or the new work limit reached)
   lookAdded?: DayCount // tasks added that day in the turns of look-for-new-work wakes
   // version: wherdr's when this session started; told: the newer version it was told of.
@@ -257,7 +260,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     shot: (id: string, file: string) => (TASK_ID_RE.test(id) && SHOT_FILE_RE.test(file) ? fs.readFile(path.join(files.shots, id, file)).catch(() => null) : Promise.resolve(null)),
     // A line of the task's log, saved with the task.
     logTask: (t: Task, by: string, text: string) => write(async () => {
-      const out = await marked({ ...t, log: [...(t.log ?? []), { at: Date.now(), by, text }].slice(-200) })
+      const out = await marked({ ...t, log: [...(t.log ?? []), { at: Date.now(), by, text: showIds(await readProjects(), text) }].slice(-200) })
       await writeJson(path.join(files.tasks, `${t.id}.json`), out)
       return out
     }),
@@ -266,7 +269,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     removeTask: (t: Task, by: string, text: string) => write(async () => {
       const logFile = path.join(files.projectLog, `${t.project}.json`)
       const entries = await projectLog(t.project)
-      await writeJson(logFile, { v: 1, entries: [...entries, { at: Date.now(), by, text, task: t.id }].slice(-500) })
+      await writeJson(logFile, { v: 1, entries: [...entries, { at: Date.now(), by, text: showIds(await readProjects(), text), task: t.id }].slice(-500) })
       await fs.rm(path.join(files.tasks, `${t.id}.json`), { force: true })
     }),
     projectLog,
@@ -331,11 +334,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const after = afterIds({ after: str('after') }).map(a => storedTaskId([p], a) ?? a).join(',')
       const known = await tasks()
       if (afterIds({ after }).some(a => !known.some(t => t.id === a && t.project === p.key))) throw badInput([{ path: 'after', message: 'tasks of the same project, comma-separated' }])
-      const auto = str('auto'), addedBy = str('addedBy').slice(0, 100)
+      const auto = str('auto'), addedBy = str('addedBy').slice(0, 100), planned = parseFiles(o.files)
       if (o.weight !== undefined && o.weight !== '' && !isWeight(o.weight)) throw badInput([{ path: 'weight', message: `one of ${WEIGHTS.join(', ')}` }])
       const weight = isWeight(o.weight) ? o.weight : undefined
       const origin = (['coordinator', 'automation', 'mission'] as const).find(x => x === o.origin) ?? 'user'
-      const task: Task = { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(after ? { after } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}) }
+      const task: Task = { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(after ? { after } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}) }
       await writeJson(path.join(files.tasks, `${task.id}.json`), task)
       return task
     }),

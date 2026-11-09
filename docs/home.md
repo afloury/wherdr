@@ -47,7 +47,10 @@
 ### Alfred
 
 Alfred, wherdr's assistant, is always the first row of the agent list, even
-with no agent and projects off. It helps you get started and, with projects
+with no agent and projects off. Its row is a card of its own: its emblem (the
+wherdr ram in a bow tie, also in its conversation's header), *Your assistant ·
+all projects*, and its state (*Not started*, *Ready*, *Working*…) with its
+agent. A tap on it opens its conversation. It helps you get started and, with projects
 on, coordinates all of them when you ask it: it has no autopilot, each
 project's coordinator runs its own. The first *Start* asks which agent (Claude,
 Codex, OMP…, those offered in Settings › Agents) runs it; the choice is kept, and wherdr
@@ -70,7 +73,9 @@ change first and makes it only after your yes.
 Under Alfred, while project management is on, one row per running project coordinator, its
 project's key badge in the project's color (*[WHR] coordinator*)
 ([Project management](project-management.md)). A tap opens its conversation, shown as selected
-while it is open; its menu (right click or long press), *Restart with…*, picks another agent,
+while it is open. A coordinator whose terminal ended (its machine restarted, say) stays, marked
+*Stopped*: a tap offers *Resume the conversation* (its last one, with the agent that ran it and
+the same options) or *New conversation*; its menu (right click or long press), *Restart with…*, picks another agent,
 which becomes its default: its folder and memory stay, the current session stops. A coordinator
 shows only in its own row, never again among the agents.
 

@@ -36,6 +36,10 @@ new project.
 5. **Start its coordinator.** Pick the agent and start it: the coordinator is
    the agent you talk to about the project. It adds tasks and follows them on
    the board. Its [autopilot](#autopilot) can be set under it (optional).
+   It keeps a memory of its own, `memory.md` in its folder: your decisions
+   and preferences, read at each start. wherdr never rewrites it, so the
+   coordinator remembers them after a restart or a change of agent (Claude,
+   Codex…).
 6. **Add a first task.** A title and, with several, its type.
 
 **New › Project** also opens a project's coordinator, or adds a new or empty
@@ -64,7 +68,9 @@ its folder, branches and task worktrees stay on the machine.
 ### General
 
 - **Name**, **Key** and **Color**. Task ids start with the key. Change it and every task,
-  old ones too, shows the new key; links and commands with a former key still work.
+  old ones too, shows the new key: on the board, and in what wherdr writes for you
+  and its agents (wakes, notifications, task logs, PR titles, `wherdr pm` outputs,
+  branches of tasks started from then on). Links and commands with a former key still work.
   The color, picked from a small palette, is the project's key badge everywhere:
   its coordinator row and conversation header, board cards, the task sheet, its
   task agents' headers and *Tasks to handle*.
@@ -125,13 +131,54 @@ its folder, branches and task worktrees stay on the machine.
 The project's own workflow: its task types, and the steps of each. Each step
 has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
-action, what it does: land on a branch, push, open a PR, merge a PR, or check
-that a branch was merged, with its branch, merge method and required checks.
+action, what it does: land on a branch, push, open a PR, merge a GitHub or
+Bitbucket PR, check that a branch was merged, or watch a pipeline, with its
+branch, merge method and required checks.
+
+A **pipeline watch** (`pipeline.watch`) has the engine follow CI or a deploy
+by itself, so no agent is woken only to read *still running*. It checks every
+`every` (default `1m`) until `timeout` (default `30m`). Its `source`:
+
+- `github` (default): the GitHub Actions runs of the task's commit, or of
+  `branch`'s commit on origin now (no run yet: still running, so an earlier
+  commit's green run never counts); `workflow` keeps one workflow only.
+- `command`: `command`, run in the task's worktree on the project's machine,
+  exits `0` done, `1` failed, `2` still running: a CircleCI or Bitbucket
+  check, a `helm` or `kubectl` status, a health URL. Its output is the step's
+  proof.
+
+Green: the step ends, and the coordinator is not woken. Failed (which run and
+job, and the tail of the output) or past its timeout: the task's log and the
+coordinator get it once, and the step comes to you, or goes back to the worker
+with `"onFail": "worker"` (a timeout always comes to you). A step that had the
+coordinator watch the deploy with a recheck becomes, in *Edit as JSON*:
+
+```json
+{ "id": "deploy", "column": "Deploy", "ends": "action",
+  "action": { "kind": "pipeline.watch", "branch": "develop", "every": "2m", "timeout": "90m" } }
+```
+
+or, outside GitHub, `"source": "command", "command": "./scripts/ci-status.sh develop"`.
+
 A merge that first pushes the task's last commits waits up to a minute for
 GitHub to show them on the PR.
 In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
 *Add task* under [Board](#board)). Under the form, the plan of the chosen task type. *Save* checks the workflow
 and shows each problem with its line.
+
+**Bitbucket Cloud.** A worker step can open the PR with the agent's own
+Bitbucket tool (`evidence: ["link"]`). Then either a step that ends with you and
+checks the merge (`action: { kind: "git.verify-merged" }`: you merge on
+Bitbucket, then press its button), or a step that lets wherdr merge
+(`action: { kind: "bitbucket.merge" }`): it finds the task's open PR on
+Bitbucket, waits for its builds (and the step's required checks, by name or
+key), then merges with a **merge commit** unless the step names another method
+(a squash makes a new commit that a later `git.verify-merged` cannot find). A
+PR into a protected branch waits for you, as on GitHub, and a merge Bitbucket
+refuses (approvals, branch restrictions) says why. The credentials come from
+the machine that runs the task: `BITBUCKET_TOKEN` (an access token), or
+`BITBUCKET_USERNAME` with `BITBUCKET_APP_PASSWORD`, in the environment
+herdr-core runs with; wherdr never stores them.
 
 The ⋯ menu adds *Edit as JSON*, *Change log*, *Save as template* (copies the
 saved workflow into your templates; the project is untouched) and *Start over
@@ -230,7 +277,10 @@ kept conversation that ran with another agent. A tap opens its window:
 
 - the agent that answers the coordinator (Alfred's too), and a warning when its conversation
   ran with another one: *New conversation* with the default, or *Resume* the one kept (for
-  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it;
+  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it; when its
+  conversation stopped (its terminal ended, for example when its machine
+  restarted), *Resume the conversation* takes it up again with the agent that
+  ran it, and *New conversation* starts a new one;
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's
@@ -238,11 +288,15 @@ kept conversation that ran with another agent. A tap opens its window:
   kept the older defaults (10 a day, 2 at once) keeps them, with the hint *Older
   defaults: clear the fields for unlimited and Auto*; a task whose step
   holds no agent, such as a PR or merge waiting for checks or the queue, or a
-  step of yours, takes no slot), the events it wakes on (*Task added*: by someone else than this
+  step of yours, takes no slot), the **Health check** interval (empty: every
+  3h; `off`: never; see [Who sends a wake](#who-sends-a-wake)), the routine
+  events it wakes on, all off by default since the engine handles them (an
+  autopilot saved earlier with the old default, *Task done* and *Task stuck*,
+  has them turned off once; turn them back on if you want them; *Task added*: by someone else than this
   coordinator, such as you, another coordinator or an automation; *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
-  even with nothing to do, with its own *New tasks / day*). The form says
-  *Unsaved changes* until you save;
+  even with nothing to do, with its own *New tasks / day*), and **Keep the
+  board busy** (see below). The form says *Unsaved changes* until you save;
 - its wakes and *Run now*: one line for the last wake (*Last wake 15:44*, its
   reason, *handled* or how it ended), a highlighted line for each other wake not
   handled (waiting, no answer, timed out, coordinator gone), and *History* folds
@@ -252,16 +306,61 @@ Automatic work (the autopilot, automations) waits while an account is ahead of
 its [pace](quotas.md#pace) (a machine whose account waits is skipped) or no
 machine the project allows has room for the task
 ([Machines](machines.md#manage-machines)), whatever the task counts; your own
-starts never wait.
+starts never wait. The autopilot's limits and hours (*Tasks / day*, *At once*,
+the hours) hold automatic work only too: a start you ask Alfred or a coordinator
+for goes at once, with a word when it goes past one (*started; past the
+autopilot's limit of 3 at once*), and still counts in them.
 
-The coordinator sees the same with `wherdr pm autopilot show`: the project's
+**Keep the board busy** (on by default while the autopilot is on): the engine
+itself starts the next task to do, oldest first, whenever a machine the project
+allows has room, within the autopilot's limits, hours and pace. It never starts
+a task that waits for its *after* tasks (those start once they are done), nor
+one already under way, and each start goes in the task's log (*started by the
+autopilot: room on* a machine) without waking the coordinator. Turn it off to
+leave every start to the coordinator's wakes and to you.
+
+The coordinator sees the same with `wherdr pm autopilot show`: whether Keep the
+board busy is on and the task it starts next (or why none), the project's
 placement strategy, one line per machine the project allows (memory, cores and load, its agents at work by
 weight, and the heaviest weight it takes now, or why none: full, not ready,
 paced, offline), and what each weight counts (*light* ≈ 0.7 GB, *standard* ≈
-1.8 GB, *heavy* ≈ 3.9 GB) with the weight of each task type. `show <task>`
+1.8 GB, *heavy* ≈ 3.9 GB at first) with the weight of each task type. While a
+task runs, the engine measures the memory its worktree's processes take (the
+agent, builds, tests, the dev server and its browser). Once 3 runs of a weight
+have a measured peak in the project, that weight counts the largest of its
+last 5 peaks plus 15 %, for example `heavy ≈ 2.7 GB, 2 cores (from 5 runs)`. `show <task>`
 gives the machine a started task runs on. Its instructions say the engine
 places tasks, `task start --on` picks a machine and `task add --weight` sets a
 weight that differs from the task type's.
+
+### Who sends a wake
+
+A wake is a message wherdr sends the coordinator; its first line names who
+sends it, and the conversation shows a small label of that kind above it:
+
+- **Autopilot**: the autopilot's scheduled wakes, what needs judgment (an
+  agent's question that is not a permission request, the choice after N review
+  rounds), the routine events you turned on and *Run now*;
+- **Step check** (`Step check: CO-1 (deploy)`): a step the coordinator holds,
+  such as *watch the deploy*, at its start, each `recheck` and its timeout. It
+  comes even with the autopilot off;
+- **Engine**: wherdr gave up on a block after failed fixes
+  ([What wherdr fixes on its own](#what-wherdr-fixes-on-its-own));
+- **Health check**: every 3 hours by default (the autopilot's *Health check*
+  field), a short summary of the project: tasks done since the last check,
+  tasks waiting for you, tasks stalled for over an hour, and machines idle
+  while to-do tasks wait. When nothing is wrong the coordinator acks it with no
+  further work; with nothing at all to report, no wake is sent.
+
+Waking the coordinator costs a turn with its whole context, so with the
+autopilot on and its events left off, it wakes only for these: an agent's
+question, a choice after review rounds, a block the engine gave up on, a step
+it holds, its schedule and the health check. A task done, ready or started, or
+a block the engine fixed itself, wakes nobody. A permission request is yours,
+in *Tasks to handle*.
+
+Each kind is its own wake, sent one after the other. Every wake ends with
+`wherdr pm ack <id>`, whatever its kind.
 
 ### What a task's agent said
 
@@ -271,7 +370,7 @@ screen when the conversation can't be read. It reads the agent `tell` reaches
 (the one that holds the current step, else the worker); `--to worker` or `--to
 reviewer` picks one, and `--lines N` (1 to 200, default 40) sets how much. A project's coordinator reads its own project's tasks only.
 When an agent asks a question, its task's waiting line and the coordinator's
-*Task stuck* wake carry the question itself, and `wherdr pm tell` answers it.
+wake (*question*) carry the question itself, and `wherdr pm tell` answers it.
 
 ## Board
 
@@ -327,9 +426,32 @@ asks for screenshots, light when the type lands no code (no commit, link or git
 action), standard otherwise. The coordinator does the same with `task add
 --weight`, and `show <task>` gives it.
 
+### Tasks that touch the same files
+
+Tasks that change the same files do not run at the same time. At the start of
+its work, the worker writes the files or folders it plans to change to
+`files.txt` beside its instructions file (a folder covers what is in it); the
+coordinator can name them ahead with `task add … --files app,docs/board.md`.
+Every 5 minutes wherdr reads, for each started task not done yet (running,
+waiting for you or for its merge, or stopped), those declared paths and the
+files its branch changed (`git diff` since the branch started, new files
+included).
+
+When a task starts for the first time (by you, the coordinator or an *after*
+chain), and its declared paths overlap what such a task declared or changed, it
+stays to do and its card says *Waits for WHR-12, same files*. It starts by
+itself once that task is done or no longer touches them. **Start anyway**, on
+its card's menu or in its sheet, starts it at once. A task with no declared
+paths never waits. A worker that changes files beyond its declared ones adds
+them to `files.txt` and says which in its closing note; the task's log notes
+them too.
+
 ## Task sheet
 
-A card opens the task's sheet: its id badge by the title (a tap copies it) and step, a note when it waits or was
+A card opens the task's sheet. Tasks to handle, Decisions' *Open task* and a task
+link in the chat (`#/board?task=ID`) open it over the page you are on (a bottom
+sheet on a phone), with `?task=ID` added to that page's address, so it survives a
+reload and can be shared; closing it leaves the page as it was. The sheet shows its id badge by the title (a tap copies it) and step, a note when it waits or was
 stopped, the time it spent in each step with the time it waited for you apart,
 its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
 waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
@@ -360,9 +482,14 @@ its question last; anything else opens the sheet on **To do**. The sheet stays
 one tap away: *Open the task* in the card's menu, or the small icon at the end
 of the entry. An agent that is not on screen here opens the sheet instead.
 
-- **A visual change to merge**: its screenshots large (swipe between them, tap
-  one to zoom; each is labelled phone or desktop), the review's verdict, then
+- **A visual change to merge**: the **Worker's note** (its closing report: what
+  was done, why it is done, what was tested) and the **Reviewer's note** (the
+  verdict, what it sent back and was fixed during the rounds, what it left as
+  minor), each in Markdown, folded to a few lines with *Show more*, side by
+  side on a wide screen; then its screenshots large (swipe between them, tap
+  one to zoom; each is labelled phone or desktop), then
   *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
+  A step you end (*Deployed*, …) shows the same two notes under its badge.
   When the agent reworks the task after its review (new commits since the
   review), its new screenshots replace the shown ones, marked *after rework*;
   the earlier set stays in the Plan tab under *Earlier screenshots*. The merge
@@ -389,6 +516,10 @@ of the entry. An agent that is not on screen here opens the sheet instead.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (start it, open its agent). A failed action step (a merge GitHub
   refused) has *Try again* at the top of the sheet, which runs it again.
+
+On a phone, the To do buttons (*Merge*, the step's button, *Open the PR*,
+*Start*, *Open the agent*) stay pinned at the bottom of the tab while its
+content scrolls, so they are always in reach above the home bar.
 
 ### Report a problem
 
@@ -427,22 +558,34 @@ brought does not count.
 #### The merge queue
 
 Each project has a **merge queue**: every task whose merge may go on without
-you (a merge the guards give to wherdr, or one you approved) enters it, and
-wherdr merges them one at a time. The first in the queue is updated with its
-base: wherdr merges the base into the branch and pushes it when that merges
-cleanly, even when GitHub does not flag the branch as behind; on a conflict it
-hands the conflicting files to the task's agent (started again if it was
-ended), and the task keeps its place. An update that fails (a network error)
-is tried again twice, a few minutes apart; past that, the task goes to the end
-of the queue so the others go on. wherdr then waits for the required
-checks on the updated PR and merges it, and the next task comes up. Checks that
-fail after an update go back to the agent as red CI, not to you, and that task
-goes to the end of the queue meanwhile. The others wait their turn and are not
-updated before it: PRs that touch no file another queued PR touches come first,
-then smaller changes. A PR already ready when it reaches its merge step merges
-at once. The card shows the place (*2nd in merge queue*), a refused merge
-waiting its turn stays off *Your turn*, and the log says when a task enters
-the queue and when it comes first.
+you (a merge the guards give to wherdr, or one you approved) enters it. Only
+PRs ready to merge now stand in line: no conflict, no update required, the
+task's last commit on the PR and its checks green. The first in line merges,
+then the next one, a minute apart; PRs that touch no file another queued PR
+touches come first, then smaller changes.
+
+A PR that needs work steps out of line until it is ready again, so it never
+holds up the others: a conflict with its base, checks still running or red,
+work handed to its agent, a merge GitHub blocks (a required review) or
+refused (that one is yours, under *Your turn*, until a new commit). A ready PR merges as it is, without first being
+updated with its base, unless GitHub requires it: wherdr updates a branch only
+when GitHub reports a conflict, or reports it behind because the branch rules
+want branches up to date. When the base moves, every queued PR that needs an
+update gets it in the same pass, and their checks run side by side. An update
+that merges cleanly is pushed by wherdr alone; a conflict goes to the task's
+agent (started again if it was ended). An update that fails (a network error)
+is tried again twice, a few minutes apart. Checks that fail go back to the
+agent as red CI, not to you.
+
+A task waiting in the queue with no work handed to its agent lets its agents
+go once they are idle for 10 minutes, as for [a task that waits for
+you](#agents-of-a-task-that-waits-for-you); wherdr starts the worker again
+only if the queue hands it work.
+
+The card shows the place (*2nd in merge queue*) or why the PR stepped out
+(*in merge queue, out of line: conflict with its base*); a refused merge in the
+queue stays off *Your turn*, and the log says when a task enters the queue and
+when it comes first.
 
 ### What wherdr fixes on its own
 
@@ -463,10 +606,11 @@ the mechanical blocks itself and wakes it only when that fails:
 - **a stalled agent** (below): nudged, then restarted once.
 
 These blocks do not wake the coordinator. After 2 failed tries on the same
-step (or 15 minutes with nothing left to try), wherdr wakes it once, as the
-autopilot's *Task stuck* event, and says what it tried. Every try, and giving
+step (or 15 minutes with nothing left to try), wherdr wakes it once (an
+*Engine* wake, whatever the autopilot's events) and says what it tried. Every try, and giving
 up, is written to the task's **Log**. Any other failure (a refused merge, a
-check that waits for you) wakes the coordinator at once, as before.
+check that waits for you) goes to *Tasks to handle*, and wakes the coordinator
+only when its *Task stuck* event is on.
 
 ### A stalled task
 

@@ -1,7 +1,7 @@
 // The pace policy of each quota account (WHR-376 § 2.1), by stable account key:
 // DATA_DIR/pacing.json, written atomically, one write at a time. Only the user
 // changes it, from Settings › Pace; an account without an entry keeps the
-// default, 'free with reserve'.
+// default, 'unlimited' (shown as 'Free'). A saved policy keeps its mode.
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -11,7 +11,7 @@ import { DATA_DIR } from './env'
 
 export const PACING_FILE = path.join(DATA_DIR, 'pacing.json')
 
-// A stored 'this week only' burn whose reset has passed is dropped.
+// A stored burn whose reset has passed is dropped.
 export async function readPolicies(file = PACING_FILE, now = Date.now()): Promise<Record<string, PacePolicy>> {
   try {
     const raw = JSON.parse(await fs.readFile(file, 'utf8'))?.policies

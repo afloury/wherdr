@@ -25,6 +25,7 @@ export interface Task {
   mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
   ci?: { head: string, red: boolean } // its PR's CI at the task's commit, as the engine last read it
   queue?: number // its place in its project's merge queue (mergeQueue.ts), 1: merging now
+  queueOut?: string // why it stepped out of the queue's line (a conflict, its checks, its agent's work)
   idle?: number // since when the agent holding its step sits idle, its report still due (blocked.ts)
   stall?: { cause: string, reason: string, since: number } // its stall as the engine last saw it (blocked.ts)
   stalls?: Record<string, { since: number, nudged?: number, restarted?: number, handled?: number, back?: number }> // each cause seen: when it began, its one nudge, restart and hand-over, when its agent went back to work
@@ -50,6 +51,9 @@ export interface Task {
   origin?: TaskOrigin // who made it: only automatic work is held by the pace (pace.ts)
   addedBy?: string // who added it: 'user', 'automation', or a coordinator's key (MAIN for the main one)
   held?: string // an automatic start waits for memory on its machine (memory.ts): the engine starts it once memory is back
+  files?: string[] // the files or folders it plans to change (files.ts)
+  changed?: string[] // what it changed since its branch started, as the engine last read it
+  sameFiles?: string // the started task its start waits behind: same files (files.ts)
   cleanup?: { done?: true, skipped?: string } // its worktree removed, or why it stays (cleanup.ts)
   report?: Report // a problem the user reported, open until the coordinator acts (report.ts)
   createdAt: number
@@ -75,6 +79,7 @@ export interface Run {
   state: 'starting' | 'running' | 'ended'
   endedBy?: 'exit' | 'lost' | 'stopped' | 'released' // released: idle while its task waited for the user (release.ts)
   startedAt: number
+  peakMb?: number // the most its worktree's processes took, sampled each tick (peaks.ts)
 }
 
 export const LABEL = { install: 'wherdr.install', task: 'wherdr.task', run: 'wherdr.run', role: 'wherdr.role', report: 'wherdr.report' } as const

@@ -14,6 +14,7 @@ import type { PmStore } from './pmStore'
 import { atWork, machineCapacity, readMemorySettings } from './pmMemory'
 import { lastReadiness, readiness } from './pmReady'
 import { projectPace } from './pmPace'
+import { projectEstimates } from './pmPeaks'
 import type { PmLaunchDeps } from './pmLaunch'
 import type { CoreMachine } from '../../shared/coreState'
 
@@ -60,7 +61,9 @@ export async function placeFor(deps: PmLaunchDeps, task: Task, { asked, waits = 
     }
   })).catch(() => null)
   if (!candidates) return { machine: fixed.machine }
-  const placed = placeTask({ weight: weight ?? weightOf(t, task).weight, home: p.machine, pinned, ...(fresh && asked !== undefined ? { prefer: asked } : {}), candidates, strategy: p.placement })
+  const w = weight ?? weightOf(t, task).weight
+  const estimate = (await projectEstimates(deps.store, p.key))[w]
+  const placed = placeTask({ weight: w, estimate, home: p.machine, pinned, ...(fresh && asked !== undefined ? { prefer: asked } : {}), candidates, strategy: p.placement })
   if ('anyway' in placed && placed.anyway && !anywayLogged.has(task.id)) {
     anywayLogged.add(task.id)
     await deps.store.logTask((await deps.store.task(task.id)) ?? task, 'engine', placed.anyway)

@@ -3,8 +3,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { RETRY_MS, SCRIPT, guardAction, isTransient, leaks, prReady, taskGuards, type Receipt } from '../shared/pm/actions'
-import { runAction, type ActionDeps, type ActionJob } from '../server/utils/pmActions'
+import { RETRY_MS, SCRIPT, commandState, guardAction, isTransient, leaks, prReady, runsState, taskGuards, type Receipt } from '../shared/pm/actions'
+import { runAction, watch, type ActionDeps, type ActionJob } from '../server/utils/pmActions'
 import { WORKTREE_SCRIPT } from '../server/utils/pmLaunch'
 import { initialState, onEvent, planSteps, reviewedCommit } from '../shared/pm/steps'
 import { dueText } from '../shared/pm/advance'
@@ -509,5 +509,49 @@ esac
     expect(dueText(plan, s)?.text).toMatch(/^Short re-review: .*r1 → h2.*git log --oneline r1\.\.h2.*--remerge-diff/s)
     s = onEvent(plan, s, { kind: 'verdict', from: 'reviewer', findings: [], head: 'h2' }, 2).state
     expect([plan[s.at]!.id, s.acting, s.rereview, reviewedCommit(plan, s), s.rounds.review]).toEqual(['merge', true, undefined, 'h2', undefined])
+  })
+})
+
+describe('pipeline.watch', () => {
+  const run = (o: object) => ({ databaseId: 1, workflowName: 'CI', status: 'completed', conclusion: 'success', headSha: 'h2', url: 'https://ci.example/run/1', ...o })
+
+  it('reads the runs of the latest commit and the command\'s exit code', () => {
+    expect(runsState([])).toEqual({ state: 'running' })
+    expect(runsState([run({ status: 'in_progress', conclusion: '' })])).toEqual({ state: 'running' })
+    // An older commit's failed run does not count.
+    expect(runsState([run({}), run({ databaseId: 2, conclusion: 'skipped' }), run({ headSha: 'h1', conclusion: 'failure' })])).toEqual({ state: 'done', link: 'https://ci.example/run/1' })
+    expect(runsState([run({}), run({ databaseId: 2, conclusion: 'failure' })])).toMatchObject({ state: 'failed', run: { databaseId: 2 } })
+    expect(commandState(0, 'deployed 1.2.3')).toEqual({ ok: true, report: 'deployed 1.2.3' })
+    expect(commandState(2, 'pending')).toEqual({ ok: false, later: true })
+    expect(commandState(null, '')).toEqual({ ok: false, later: true })
+    expect(commandState(1, 'job test: red')).toEqual({ ok: false, error: 'pipeline: the command failed', detail: 'job test: red' })
+    expect(commandState(127, 'not found')).toMatchObject({ error: 'pipeline: the command failed (exit code 127)' })
+  })
+
+  it('polls GitHub without a receipt and says which job failed, with the log tail', async () => {
+    const calls: string[][] = []
+    const sh: ActionDeps['sh'] = async (script, args) => {
+      calls.push(args)
+      if (script === SCRIPT.ghRuns) return { code: 0, out: JSON.stringify([run({ databaseId: 7, conclusion: 'failure', url: 'https://ci.example/run/7' })]) }
+      return { code: 0, out: 'unit, e2e\nunit\tnpm test\tFAIL a.test.ts' }
+    }
+    const job = { action: { kind: 'pipeline.watch' as const, branch: 'develop' }, worktree: '/wt' }
+    expect(await watch({ sh }, job)).toEqual({ ok: false, error: 'pipeline: CI failed (unit, e2e): https://ci.example/run/7', detail: 'unit\tnpm test\tFAIL a.test.ts' })
+    expect(calls).toEqual([['/wt', 'develop', ''], ['/wt', '7']])
+    expect(await watch({ sh: async () => ({ code: 1, out: 'HTTP 502: Bad Gateway' }) }, job)).toEqual({ ok: false, later: true })
+  })
+
+  it('watches a branch at its tip on origin: a run of the previous commit never passes for the merge\'s', async () => {
+    const dir = path.join(tmp, 'watch'), origin = path.join(dir, 'origin.git'), wt = path.join(dir, 'wt'), bin = path.join(dir, 'bin')
+    fs.mkdirSync(bin, { recursive: true }); git(dir, 'init', '-q', '--bare', '-b', 'main', origin); git(dir, 'clone', '-q', origin, wt)
+    const commit = (m: string) => { fs.writeFileSync(path.join(wt, 'a.txt'), m); git(wt, 'add', '.'); git(wt, 'commit', '-qm', m); return git(wt, 'rev-parse', 'HEAD') }
+    const old = commit('old'); git(wt, 'push', '-q', 'origin', 'HEAD:develop')
+    commit('merged'); git(wt, 'push', '-q', 'origin', 'HEAD:develop'); git(wt, 'reset', '-q', '--hard', old)
+    // GitHub has registered only the old commit's green run, also the newest listed by branch.
+    fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\ncase "$*" in *"--commit ${old}"*|*"--branch develop"*) echo '${JSON.stringify([run({ headSha: old })])}';; *) echo '[]';; esac\n`, { mode: 0o755 })
+    const sh: ActionDeps['sh'] = (script, args) => localSh(`PATH="${bin}:$PATH"\n${script}`, args)
+    expect(await watch({ sh }, { action: { kind: 'pipeline.watch', branch: 'develop' }, worktree: wt })).toEqual({ ok: false, later: true })
+    expect((await sh(SCRIPT.ghRuns, [wt, 'develop', ''])).code).toBe(0)
+    expect(await watch({ sh }, { action: { kind: 'pipeline.watch', branch: 'nope' }, worktree: wt })).toEqual({ ok: false, error: 'pipeline: no branch nope on origin' })
   })
 })

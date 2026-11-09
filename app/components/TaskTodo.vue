@@ -2,13 +2,14 @@
 // The task sheet's "To do" tab: what a task waiting for the user needs from
 // them, and the buttons for it, nothing else (taskTodo picks the case). A
 // visual merge shows its screenshots large (swipe between them, tap to zoom),
-// the review's verdict, then Merge or Send back with a note. A step to merge
+// the worker's and the reviewer's notes (folded, Markdown), then Merge or Send
+// back with a note. A step the user ends shows the two notes too. A step to merge
 // or a refused one has Open the PR when a link proof is a pull request (any host).
 import { adviceChoices } from '#shared/pm/decisions'
 import { canStart, prLink, type Card } from '#shared/pm/board'
 import { RESUMES, stoppedText, type Resume } from '#shared/pm/stop'
 import { shotUrl } from '#shared/pm/shots'
-import { reviewLine } from '#shared/pm/report'
+import { reviewNote, workerNote } from '#shared/pm/report'
 import { agentCatchingUp } from '#shared/pm/refusal'
 import type { Choice } from '#shared/pm/verdict'
 import type { Pane } from '#shared/types'
@@ -31,7 +32,10 @@ const reworked = computed(() => latest.value.some(x => x.rework))
 // Phone or desktop, from the image's shape once loaded.
 const shape = ref<Record<string, 'phone' | 'desktop'>>({})
 const loaded = (src: string, e: Event) => { const i = e.target as HTMLImageElement; shape.value = { ...shape.value, [src]: i.naturalWidth < i.naturalHeight ? 'phone' : 'desktop' } }
-const verdict = computed(() => { const v = reviewLine(props.card.plan, props.card.state?.at ?? 0, props.card.state?.rounds ?? {}); return v ? tl(v) : '' })
+// The notes before the user's step: the worker's report and the review's verdict.
+const notes = computed(() => (props.kind === 'merge' || props.kind === 'step') && props.card.state
+  ? { worker: workerNote(props.card.plan, props.card.state), review: reviewNote(props.card.plan, props.card.state) }
+  : {})
 const pr = computed(() => (props.kind === 'merge' || props.kind === 'step' || props.kind === 'refused' ? prLink(props.card) : undefined))
 const note = ref('')
 
@@ -42,6 +46,10 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
   <div class="todo" :data-todo="kind" data-testid="task-todo">
     <template v-if="kind === 'merge'">
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
+      <div v-if="notes.worker || notes.review" class="todo-notes">
+        <TaskNote v-if="notes.worker" :label="tl('Worker\'s note')" :text="notes.worker" data-testid="todo-worker-note" />
+        <TaskNote v-if="notes.review" :label="tl('Reviewer\'s note')" :text="notes.review" data-testid="todo-review-note" />
+      </div>
       <span v-if="reworked" class="mono-label muted" data-testid="todo-rework">{{ tl('Screenshots after rework') }}</span>
       <ul class="todo-shots" data-testid="todo-shots">
         <li v-for="(src, i) in shots" :key="src">
@@ -51,7 +59,6 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
           <span v-if="shape[src]" class="mono-label muted">{{ shape[src] === 'phone' ? tl('Phone', 'Téléphone') : tl('Desktop', 'Ordinateur') }}</span>
         </li>
       </ul>
-      <p v-if="verdict" class="muted" data-testid="todo-verdict">{{ verdict }}</p>
     </template>
 
     <template v-else-if="kind === 'decide' && advice">
@@ -67,7 +74,13 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       <p v-if="!pane" class="muted">{{ tl('Its agent is not on screen here: open it from its machine.') }}</p>
     </template>
 
-    <p v-else-if="!refused" class="todo-say" data-testid="task-badge">{{ badge }}</p>
+    <template v-else-if="!refused">
+      <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
+      <div v-if="notes.worker || notes.review" class="todo-notes">
+        <TaskNote v-if="notes.worker" :label="tl('Worker\'s note')" :text="notes.worker" data-testid="todo-worker-note" />
+        <TaskNote v-if="notes.review" :label="tl('Reviewer\'s note')" :text="notes.review" data-testid="todo-review-note" />
+      </div>
+    </template>
 
     <div class="todo-actions">
       <template v-if="kind === 'decide'">
@@ -84,7 +97,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
           <small class="muted">{{ tl(RESUME_MEANING[how]) }}</small>
         </div>
       </template>
-      <div v-else class="task-sheet-actions">
+      <div v-else class="task-sheet-actions todo-buttons">
         <!-- A refused action is tried again from the sheet's top (Try again). -->
         <UButton v-if="card.userLabel && kind !== 'refused'" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="emit('press')">{{ card.userLabel }}</UButton>
         <UButton v-if="pr" color="neutral" variant="outline" size="xl" icon="i-lucide-square-arrow-out-up-right" :to="pr.url" target="_blank" data-testid="todo-pr">{{ tl('Open the PR') }}</UButton>
@@ -118,7 +131,14 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
 .todo-shot { display: block; max-width: 100%; padding: 0; border: 1px solid var(--line); background: var(--surface); cursor: zoom-in; }
 /* Large, yet leaving Merge in view. */
 .todo-shot img { display: block; height: auto; max-height: min(40vh, 420px); max-width: 100%; width: auto; }
-@media (max-width: 699px) { .todo-shot img { max-height: 26vh; } }
+/* On the phone the step's buttons (Merge…) stay pinned at the bottom of the
+   tab while its content scrolls: always in reach, never under the sheet's edge. */
+@media (max-width: 699px) {
+  .todo-shot img { max-height: 26vh; }
+  .todo-actions:has(> .todo-buttons:not(:empty)) { position: sticky; bottom: 0; z-index: 1; padding: 10px 0; background: var(--bg); border-top: 1px solid var(--line-soft); }
+}
+/* Side by side on a wide sheet, one above the other on the phone. */
+.todo-notes { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); align-items: start; }
 .todo-back { display: grid; gap: 8px; }
 .todo-back > button { justify-self: start; }
 </style>

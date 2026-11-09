@@ -309,13 +309,20 @@ family is added there without code; the app needs a rebuild to ship it. An entry
 | `requires` | `[]`, `['webgpu']` or `['webgpu', 'shader-f16']`: Settings hides the model when the browser lacks it |
 | `set`, `source` | The fetch script's set name and its pinned archive (`url`, `sha256`) |
 | `dir`, `files` | Folder under `/models/` and its files, each with its exact `bytes` (checked against the server's on download) |
-| `languages`, `punctuation` | ISO 639-1 codes; punctuation and capitals |
+| `languages`, `punctuation` | ISO 639-1 codes (639-3 when there is none: `yue`); punctuation and capitals |
+| `ranked` | The same languages, best first, from the model's own published figures (sources in the `RANKING SOURCES` comment of `deviceModels.ts`) |
 | `autoDetect` | `false` when the model does not detect the language (Canary): the worker is given the first of the device's languages it speaks, else English |
 | `textCase` | `"upper"` when the model writes in capitals (SenseVoice, even with inverse text normalization on): the app puts its text in sentence case |
 | `memory` | Measured `{ heap, peak, basis }`: WASM heap after load, and the page's peak memory. `heap` is what the device budget checks |
-| `quality` | Raw published WER per language: `{ lang, dataset, wer, source }` |
+| `quality` | Raw published error rate per language: `{ lang, dataset, wer, source }`, plus `metric: "CER"` for a character error rate (Chinese, Cantonese, Japanese, Korean) |
 | `speed` | `{ estimate: 1–5, basis, source }`, absent when there is no source |
 | `license` | `{ id, url }` |
+
+**Each card shows what the model is good at, not a fixed pair of languages.** The language line
+gives the first three of `ranked` and how many more (`ZH · YUE · EN · +2`); a model of 10
+languages or more shows its best two and `Multi (25)`. Only languages the model speaks are
+listed. The quality bars follow the two best languages, then the device's own language when the
+model speaks it, marked "yours" (never forced first).
 
 **Ratings are computed, never typed by hand.** Quality: the WER for the language, FLEURS first,
 else MLS, else Common Voice; ≤ 5 → 5 dots, ≤ 7 → 4, ≤ 10 → 3, ≤ 15 → 2, above → 1, no figure →
@@ -462,8 +469,8 @@ memory reported in the pull request; a device without WebGPU or `shader-f16` get
 ## Read aloud
 
 The other direction: **Play** under each agent reply reads it aloud, chosen in **Settings ›
-Conversation › Read aloud** (per device: Off, or the device's voices; on by default where the
-browser has `speechSynthesis`).
+Conversation › Read aloud** (per device: Off, the device's voices, or **Voice of wherdr (on this
+device)**; the device's voices by default where the browser has `speechSynthesis`).
 
 | File | Role |
 | --- | --- |
@@ -473,6 +480,7 @@ browser has `speechSynthesis`).
 | `app/utils/speech/voicePicker.ts` | Voice quality (Premium, Enhanced, Standard, Online, Low quality, from the name or Apple's voiceURI) and the language and quality filters of the voice list |
 | `app/utils/speech/lowQualityVoices.ts` | Names of Apple's novelty, MacinTalk and Eloquence voices, hidden by default |
 | `app/components/ReadAloudButton.vue`, `ReadAloudSettings.vue` | Play / Stop under a reply; the settings (language filter, hide low-quality voices, voice search in sections, Test) |
+| `app/components/ReadAloudNeuralVoices.vue` | The Voice of wherdr settings: one row per language voice (name, size, attribution, Install / progress / Cancel / Delete, Test) |
 
 Every piece is queued in the tap itself: iOS only speaks from a user gesture. iOS may stop
 speech when the screen locks or the app goes to the background, without an `end` event; a check
@@ -481,8 +489,7 @@ every 1.5 s puts the button back to Play. Leaving the pane stops its reply. Voic
 Enhanced voices downloaded in iOS Settings are kept for native apps: Safari and home-screen web
 apps only list the standard ones, and the settings say so under the voice list.
 
-Neural voices that run on the phone (sherpa-onnx with Piper models, as for dictation) are being
-added. Their catalog is `app/utils/speech/voices.json`: Siwis (French, default), Cori (English,
+Neural voices run on the phone (sherpa-onnx with Piper models, as for dictation). Their catalog is `app/utils/speech/voices.json`: Siwis (French, default), Cori (English,
 UK, default) and MLS (French, fallback), each with its files (the model, `tokens.txt`, and
 espeak-ng data trimmed to French and English, about 0.9 MB), its source pinned by sha256, its
 licence and the attribution to show (Siwis: CC BY 4.0). Each voice is a fetch set
@@ -499,7 +506,13 @@ models), is not used and the reply goes to the device's voices instead. A reply 
 so Stop never waits behind a long queue; the pieces play back to back through WebAudio, whose
 `AudioContext` is resumed inside the tap (iOS). Audio that arrives for a stopped reply is
 dropped. The worker and the `AudioContext` are released after 60 s without speech and on
-`pagehide`. `tests/neuralVoice.test.ts` covers it with a fake worker. An OpenRouter engine
+`pagehide`. `tests/neuralVoice.test.ts` covers it with a fake worker.
+
+With **Voice of wherdr** chosen, the settings list one voice per language, Siwis (French) and
+Cori (English), each with its size and attribution and its own Install, Cancel, Delete and Test.
+Each reply is read by the voice of its language: `replyLanguage()` guesses French or English from
+common short words and French accents. A reply whose voice is not installed is read by the
+device's voices. An OpenRouter engine
 (`POST /api/v1/audio/speech`, relayed by the server like dictation) is a planned follow-up.
 
 ## Known limits
