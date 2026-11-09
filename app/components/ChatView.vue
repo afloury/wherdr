@@ -10,10 +10,10 @@ import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { restoreDraft } from '~/utils/queuedCancel'
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
-import { type PendingMessage, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
+import { type PendingMessage, inputShown, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
-import { CHAT_READ_MS, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
+import { CHAT_READ_MS, createFlipGuard, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -187,6 +187,21 @@ const MORE_BLOCKS = 10
 const shown = ref(Infinity)
 const hiddenBlocks = computed(() => Math.max(0, blocks.value.length - shown.value))
 const visibleBlocks = computed(() => (hiddenBlocks.value ? blocks.value.slice(hiddenBlocks.value) : blocks.value))
+// A coordinator's proposed workflow change: its card (ProposalCard) follows
+// the agent's first message since the proposal; none yet, the conversation's end
+// (an answered one without its message in view shows nowhere).
+const coord = computed(() => coordinatorOf(props.pane))
+const proposalKey = computed(() => {
+  const at = coord.value?.proposal?.at ?? coord.value?.answered?.proposedAt
+  if (at === undefined) return null
+  return blocks.value.find(b => b.k === 'assistant' && (b.ms ?? 0) >= at)?.key ?? (coord.value?.proposal ? '' : null)
+})
+// The user's request it follows: the last message they sent before the card.
+const proposalSaidKey = computed(() => {
+  if (proposalKey.value === null || !coord.value?.proposal?.said) return null
+  const end = proposalKey.value ? blocks.value.findIndex(b => b.key === proposalKey.value) : blocks.value.length
+  return blocks.value.slice(0, end).findLast(b => b.k === 'user')?.key ?? null
+})
 let lastScroll = 0
 let revealTimer = false
 let unmounted = false
@@ -274,7 +289,9 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     const r = ready || await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
     if (stale()) return false
     if (!r.available) {
-      const m = onUnavailable(misses.value, Boolean(chat.value.file) && items.value.length > 0)
+      // Any list on screen counts, the end kept on this device too: a server
+      // that just restarted answers "not found" for a while (no blank list).
+      const m = onUnavailable(misses.value, items.value.length > 0)
       misses.value = m.next
       if (!m.clear) return false
       chat.value = fresh()
@@ -414,7 +431,7 @@ type Block =
   | { k: 'who', key: string }
   | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null }
   // `rid`: its code in the references to it (shared/reference.ts messageId).
-  | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean }
+  | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean, ms?: number }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
   | { k: 'system', key: string, text: string, full?: string }
@@ -517,9 +534,16 @@ watch(pollDelay, schedulePoll)
 // on every push (a new pane object), not only when one of them changes.
 watch([() => props.pane.status, () => props.pane.preview], () => { pollNow(); schedulePoll() })
 
+// The list the blocks show (createFlipGuard): never empty while it alternates.
+let steadyItems = createFlipGuard()
+watch(() => props.pane.id, () => { steadyItems = createFlipGuard() })
+const steadyList = computed(() => steadyItems(items.value))
+// The guard keeps a list the reads just emptied: no empty state over it either.
+const holding = computed(() => steadyList.value !== items.value)
+const shownUnavailable = computed(() => (holding.value ? null : unavailable.value))
 const blocks = computed<Block[]>(() => {
   const out: Block[] = []
-  const list = items.value
+  const list = steadyList.value
   let tools: ChatItem[] = []
   // Stable key of an action block (keeps its expanded state when older
   // pages are added above).
@@ -606,7 +630,7 @@ const blocks = computed<Block[]>(() => {
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
-      lastReplyBlock = lazyHtml({ k: 'assistant' as const, key, id: replyId(it), rid: messageId(it), text: it.text, time, endsTurn: false }, () => withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss'), yes: t('Yes'), no: t('No'), okAll: t('OK to all'), decisions: t('Decisions') }))
+      lastReplyBlock = lazyHtml({ k: 'assistant' as const, key, id: replyId(it), rid: messageId(it), text: it.text, time, endsTurn: false, ...(it.ts ? { ms: new Date(it.ts).getTime() } : {}) }, () => withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss'), yes: t('Yes'), no: t('No'), okAll: t('OK to all'), decisions: t('Decisions') }))
       out.push(lastReplyBlock)
       replies.push({ key, time, text: it.text, rid: lastReplyBlock.rid })
     } else if (it.role === 'thinking') {
@@ -885,14 +909,7 @@ function onListClick(e: MouseEvent) {
   // A shell command is copied without its prompts ("! ", "$ ") nor output.
   const text = block?.dataset.cmd ?? block?.querySelector('pre')?.textContent
   if (text == null) return
-  navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = t('Copied')
-    btn.classList.add('done')
-    setTimeout(() => {
-      btn.textContent = t('Copy')
-      btn.classList.remove('done')
-    }, 1400)
-  }).catch(() => toast(t('Copy failed'), true))
+  copyCodeBlock(btn, text)
 }
 
 // ------------------------------------------------------------ commands
@@ -997,7 +1014,7 @@ function queuedNow() {
   const replies = blocks.value.filter(b => b.k === 'assistant')
   // Agent idle, nothing holding it: Claude's own queue is empty by now.
   const idle = waitFor.value === 'sending'
-  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle }).map((q) => {
+  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle, input: props.pane.draft?.text }).map((q) => {
     const lines = q.raw.split('\n')
     const text = lines.filter(l => !isUploadLine(l) && !isAttachmentLine(l)).join('\n').trim()
     const parsed = parseReply(text)
@@ -1034,10 +1051,11 @@ async function retryQueued(q: { id: string }) {
     retrying.value = null
   }
 }
-function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue'>) {
+function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' | 'inInput'>) {
   const l = pendingLabel(q, waitFor.value, props.pane.agent)
   switch (l.kind) {
     case 'read': return t('Read by the agent')
+    case 'input': return t('Not sent yet · waiting in the agent’s input')
     case 'stopped': return t('Queued · ') + t('agent stopped')
     case 'question': return t('Queued · ') + t('after you answer the question')
     case 'agent-queue':
@@ -1311,7 +1329,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         :ui="MSGS_UI"
       >
         <div ref="listEl" class="chat-list" :class="[readOnly ? 'no-reply' : `rs-${replyStyle}`, { asking: asked, skeleton }]" @click="onListClick" @keydown="onListKey">
-          <div v-if="unavailable === 'not_found' && firstPrompt" class="msg-user-wrap" data-testid="first-prompt">
+          <div v-if="shownUnavailable === 'not_found' && firstPrompt" class="msg-user-wrap" data-testid="first-prompt">
             <UChatMessage
               id="first-prompt" role="user" side="right" variant="soft" :parts="firstParts(firstPrompt)"
               :ui="FIRST_UI"
@@ -1321,13 +1339,13 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               </template>
             </UChatMessage>
           </div>
-          <div v-else-if="unavailable && waiting" class="chat-empty waiting">
+          <div v-else-if="shownUnavailable && waiting" class="chat-empty waiting">
             <UIcon name="i-lucide-square-terminal" class="chat-empty-icon" />
             <p>{{ waiting.text }}</p>
             <pre v-if="waiting.lines.length" class="choices-screen-text">{{ waiting.lines.join('\n') }}</pre>
             <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
           </div>
-          <div v-else-if="unavailable === 'no_integration' && integration" class="chat-empty no-integration">
+          <div v-else-if="shownUnavailable === 'no_integration' && integration" class="chat-empty no-integration">
             <UIcon name="i-lucide-plug-zap" class="chat-empty-icon" />
             <p class="no-integration-title">{{ tl(`Herdr's ${kindLabel(integration.agent)} integration is missing`, `L’intégration ${kindLabel(integration.agent)} de Herdr manque`) }}</p>
             <p class="no-integration-text">
@@ -1341,7 +1359,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
             </div>
           </div>
-          <div v-else-if="unavailable" class="chat-empty">
+          <div v-else-if="shownUnavailable" class="chat-empty">
             <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />
             <p>{{ unavailable === 'not_found' ? t('No conversation for this agent yet.') : t('Conversation unavailable for this agent.') }}</p>
             <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
@@ -1405,6 +1423,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   </button>
                   <ReadAloudButton :id="`${paneId}:${b.key}`" :text="b.text" />
                 </div>
+                <ProposalCard v-if="coord && b.key === proposalKey" :c="coord" :can-goto="!!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" />
               </template>
 
               <UChatReasoning v-else-if="b.k === 'thinking'" class="omp-thinking" :text="b.text"
@@ -1536,10 +1555,11 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <MsgThumbs v-for="(srcs, j) in hiddenToolImages(b)" :key="`h${j}`" class="tool-thumbs" :srcs="srcs" :max="TOOL_THUMB_MAX" :offline="readOnly" :dupes="dupeSrcs" />
               </div>
             </template>
-            <div v-if="rendered && !items.length && !loadError" class="chat-empty">
+            <div v-if="rendered && !steadyList.length && !loadError" class="chat-empty">
               <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />
               <p>{{ t('No messages yet.') }}</p>
             </div>
+            <ProposalCard v-if="coord && proposalKey === ''" :c="coord" :can-goto="!!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" />
             <div v-if="loadError" class="chat-empty"><p>{{ loadError }}</p></div>
           </template>
         </div>
@@ -1617,7 +1637,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             </div>
           </div>
           <!-- herdr-core: text left unsent in Claude's own input box, Claude's queue. -->
-          <UnsentInput v-if="!readOnly && hasDraft" :pane="unsentPane" />
+          <UnsentInput v-if="!readOnly && hasDraft" :pane="unsentPane" :shown="inputShown(queuedList, pane.draft?.text)" />
         </div>
 
         <ChatStatusLine :get="readStatus" />

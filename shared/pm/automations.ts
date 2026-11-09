@@ -5,6 +5,7 @@
 // the user changes them, the coordinator reads them (`wherdr pm automation`).
 import type { Task } from './run'
 import { parseSchedule } from './schedule'
+import { isPrUrl } from './board'
 
 export const AUTOMATION_EVENTS = ['added', 'approval', 'review-failed', 'failed', 'needs-you', 'merged'] as const
 export type AutomationEvent = typeof AUTOMATION_EVENTS[number]
@@ -19,7 +20,7 @@ export interface Automation {
   on: boolean
   schedule?: string
   event?: AutomationEvent
-  filter?: string // glob on the task's title, or its branch (task/<id>): docs*, task/W3-*
+  filter?: string // glob on the task's title, or its branch (task/<id>, or its own): docs*, task/W3-*
   last?: number // the last firing, or when it was switched on: missed slots count from here
   firings?: Firing[] // newest last
 }
@@ -69,7 +70,7 @@ export function markOf(t: Task): Mark {
     ...(failed ? { failed } : {}),
     ...(s?.yourTurn || t.state === 'waiting' ? { needs: true } : {}),
     // Done with a PR: merged. A study task ends done without one.
-    ...(s?.done && !s.abandoned && (t.links ?? []).some(l => /\/pull\/\d+/.test(l.url)) ? { merged: true } : {}),
+    ...(s?.done && !s.abandoned && (t.links ?? []).some(l => isPrUrl(l.url)) ? { merged: true } : {}),
   }
 }
 
@@ -97,14 +98,14 @@ export function taskEvents(tasks: Task[], seen: Record<string, Mark> | undefined
 // two automations cannot feed each other.
 export const firesOn = (a: Automation, e: TaskEvent) =>
   a.on && a.event === e.event && !e.task.auto
-  && (!a.filter || globMatch(a.filter, e.task.title) || globMatch(a.filter, `task/${e.task.id}`))
+  && (!a.filter || globMatch(a.filter, e.task.title) || globMatch(a.filter, e.task.branch ?? `task/${e.task.id}`))
 
 // The task a firing adds: its title says which automation and when.
 export function firingTask(a: Automation, project: string, firstType: string, now: number, cause?: string) {
   const d = new Date(now), pad = (n: number) => String(n).padStart(2, '0')
   const when = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   return {
-    project, title: `${a.name} · ${when}`.slice(0, 200), type: a.type || firstType, auto: a.id, origin: 'automation' as const,
+    project, title: `${a.name} · ${when}`.slice(0, 200), type: a.type || firstType, auto: a.id, origin: 'automation' as const, addedBy: 'automation',
     description: cause ? `${a.prompt}\n\nTriggered by ${cause}.` : a.prompt,
   }
 }

@@ -16,7 +16,6 @@ let views: CoordinatorView[] = []
 const post = (url: string, reply: () => unknown) => registerEndpoint(url, { method: 'POST', handler: async (e) => { posts.push({ url, body: await readBody(e) }); return reply() } })
 registerEndpoint('/api/pm/coordinators', () => views)
 post('/api/pm/coordinator-agent', () => ({}))
-post('/api/pm/template-proposal', () => ({ accepted: true }))
 post('/api/pm/coordinator-start', () => ({ terminal: 'host/t2' }))
 herdrState.value = { ok: true, workspaces: [], panes: [{ id: 'w1:p1', coreAddress: 'host/t1', status: 'idle', agent: 'codex', workspace: 'w', tab: 't' } as Pane] }
 
@@ -33,9 +32,26 @@ it('says which agent answers, and changes the default in one gesture', async () 
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: 'CO', program: 'codex' } }]))
 })
 
-it('in Alfred\'s conversation: no agent select (its row\'s "Restart with…" changes it)', async () => {
-  const b = await mount(view({ project: '_main', name: 'Jarvis', main: true }))
-  expect(b.find('[data-testid="coordinator-agent"]').exists()).toBe(false)
+const alfred = (more: Partial<CoordinatorView> = {}) => view({ project: '_main', name: 'Alfred', main: true, ...more })
+
+it('Alfred: its agent picked in its window, and kept when no longer offered (said, never replaced)', async () => {
+  const b = await mount(alfred())
+  expect(b.text()).toContain('Alfred’s agent')
+  expect(b.find('[data-testid="coordinator-autopilot"]').exists()).toBe(false) // Alfred has no autopilot
+  await pick(b, 'coordinator-agent', 'codex')
+  await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: '_main', program: 'codex' } }]))
+  hiddenAgents.value = ['claude']
+  await b.setProps({ c: alfred() })
+  expect(b.find('[data-testid="coordinator-unoffered"]').text()).toContain('Claude is no longer offered on this machine')
+})
+
+it('Alfred: "Resume with" makes the resumed agent its default, so the warning does not come back', async () => {
+  const b = await mount(alfred({ agent: { program: 'codex' }, ran: { program: 'claude' }, terminal: 'host/t1' }))
+  expect(b.find('[data-testid="coordinator-other-agent"]').text()).toContain('The previous conversation used Claude. The default is Codex.')
+  await b.find('[data-testid="coordinator-resume"]').trigger('click')
+  await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: '_main', program: 'claude' } }]))
+  resumedCoordinators.value = []
+  globalThis.localStorage?.removeItem('wherdr.coordinatorsResumed')
 })
 
 it('header button: the autopilot\'s state, a count of what waits for the user, and a tap opens the window', async () => {
@@ -70,9 +86,8 @@ it('warns when the kept conversation ran with another agent, and offers a new on
   await vi.waitFor(() => expect(posts[0]).toEqual({ url: '/api/pm/coordinator-start', body: { project: 'CO', program: 'claude' } }))
 })
 
-it('remembers "Resume with" after a reload, and shows the board\'s diff open', async () => {
-  const b = await mount(view({ ran: { program: 'codex' }, terminal: 'host/t1', proposal: { diff: '+ x', at: 1 } }), true)
-  expect(b.find('[data-testid="proposal-diff"]').exists()).toBe(true)
+it('remembers "Resume with" after a reload', async () => {
+  const b = await mount(view({ ran: { program: 'codex' }, terminal: 'host/t1' }), true)
   await b.find('[data-testid="coordinator-resume"]').trigger('click')
   // It opens the conversation: wait until the agent page (and its lazy imports) is there,
   // else they load after the test environment is torn down.
@@ -91,23 +106,9 @@ it('shows no warning when the kept conversation is the default agent\'s', async 
   expect(b.find('[data-testid="coordinator-open"]').text()).toBe('Open')
 })
 
-it('shows a proposed template change as a diff, to accept or refuse', async () => {
-  const proposal = { diff: '-   "instructions": "a",\n+   "instructions": "b",', at: 1, said: 'Use b' }
-  for (const accept of [true, false]) {
-    posts.length = 0
-    const b = await mount(view({ proposal }))
-    // In the conversation the diff is folded, so the chat stays visible on a phone.
-    expect(b.find('[data-testid="proposal-diff"]').exists()).toBe(false)
-    await b.find('[data-testid="proposal-toggle"]').trigger('click')
-    const box = b.find('[data-testid="template-proposal"]')
-    expect(box.text()).toContain('“Use b”')
-    expect(box.findAll('.del').map(x => x.text())).toEqual(['-   "instructions": "a",'])
-    expect(box.findAll('.add').map(x => x.text())).toEqual(['+   "instructions": "b",'])
-    views = [view()] // answered: the server no longer has it
-    await b.find(`[data-testid="proposal-${accept ? 'accept' : 'refuse'}"]`).trigger('click')
-    await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/template-proposal', body: { project: 'CO', accept } }]))
-    await vi.waitFor(() => expect(coordinators.value).toEqual([view()]))
-    b.unmount()
-  }
-  w = null
+it('a proposed workflow change: one line, no diff, its Review opens the project\'s Workflow tab', async () => {
+  const b = await mount(view({ proposal: { diff: '+ x', at: 1, said: 'Use b' } }))
+  expect(b.find('[data-testid="template-proposal"]').text()).toContain('Workflow change proposed')
+  expect(b.find('[data-testid="proposal-diff"]').exists()).toBe(false)
+  expect(b.find('[data-testid="proposal-review-link"]').attributes('href')).toBe('#/settings?section=projects&project=CO&tab=workflow&review=1')
 })

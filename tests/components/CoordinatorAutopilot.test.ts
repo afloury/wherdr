@@ -36,6 +36,7 @@ it('shows today\'s counters against the limits, and the switch saves the autopil
   const b = await mount()
   expect(b.find('[data-testid="autopilot-counters"]').text()).toBe('3/10 today · 1/2 at once')
   expect(b.text()).toContain('Autopilot · Off')
+  expect(b.find('[data-testid="autopilot-old-defaults"]').text()).toBe('Older defaults: clear the fields for unlimited and Auto')
   expect((b.find('textarea#ap-goal-CO').element as HTMLTextAreaElement).value).toBe('Ship 2.1')
   await b.find('[data-testid="autopilot-on"]').trigger('click')
   await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', autopilot: { ...autopilot, on: true } }]))
@@ -51,6 +52,16 @@ it('saves the goal, interval, events and limits edited', async () => {
   await b.find('[data-testid="autopilot-event-stuck"]').trigger('click')
   await b.find('[data-testid="autopilot-save"]').trigger('submit')
   await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', autopilot: { ...autopilot, goal: '  Fix the board first ', every: '30m', at: 'daily 08:00', perDay: 4, events: ['done', 'ready'] } }]))
+})
+
+it('with Tasks / day empty, has no daily limit: counts today alone and saves no cap', async () => {
+  const b = await mount(view({ limits: { started: 12, perDay: null, startLeft: 1, working: 1, atOnce: 2 } }))
+  expect(b.find('[data-testid="autopilot-counters"]').text()).toBe('12 today · 1/2 at once')
+  await b.find('input#ap-day-CO').setValue('')
+  await b.find('[data-testid="autopilot-save"]').trigger('submit')
+  await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', autopilot: { ...autopilot, perDay: null, at: '', events: [...autopilot.events] } }]))
+  b.unmount()
+  expect((await mount(view({ autopilot: { ...autopilot, events: [], perDay: null, atOnce: null } }))).find('[data-testid="autopilot-old-defaults"]').exists()).toBe(false)
 })
 
 it('lists the wakes as waiting, delivered, acked or unanswered, and runs now', async () => {

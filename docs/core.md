@@ -42,7 +42,9 @@ such placement are grouped by machine and cwd, one tab and pane per terminal.
 "+" in a space's tab row (or header) starts at once a terminal like the space's current one (same kind, same folder; "New tab…" in the tab menu opens the sheet to choose). The header map button lists the space's terminals to switch between. The new terminal carries that
 space's `herdr.space`, a new `herdr.tab` and `herdr.seen=0`, so it also appears in
 herdr-app. Terminals made from the "New" sheet get the space whose folder holds
-their cwd, else a new one. Rename, close, split and move stay in herdr-app.
+their cwd, else a new one. A tab of one terminal not named in herdr-app's layout is renamed
+through that terminal's `herdr.title`; closing a tab or a space kills each of its terminals.
+Split, move and renaming a tab named in the layout stay in herdr-app.
 Each pane preserves its full core address behind a stable interface identifier.
 Agent identity uses core's `agent` field when supplied, otherwise recognised
 application/template/command names. Identity does not gate status: OSC 7501
@@ -114,6 +116,13 @@ paint of a passive `terminal.attach`) confirms it is typed text, not Claude's gr
 check that the box emptied and a turn started) and **Clear**. When Claude's queue offers
 "ctrl+enter to send now", the conversation offers **Send now** too. Each action re-reads the
 screen first and refuses a box that changed (`server/utils/coreDraft.ts`).
+A message sent from wherdr that Claude left in that box (a photo message is pasted, and
+Claude may keep a paste there) is pressed Enter once more when the box holds it alone,
+also during a turn; while it stays there, its bubble reads **Not sent yet · waiting in
+the agent's input**, never **Read by the agent**, and the box's own bubble is not shown
+twice. A new message is never typed into a box that holds text: Claude would submit both
+as one message. The send is refused ("Not sent", with Retry): send or clear that text
+first (`server/utils/coreInput.ts`).
 
 ## Creating terminals and agents, machines
 
@@ -132,7 +141,7 @@ Claude and Codex quotas work as in v2 (home rows, Settings › Agents › Claude
 machine's quota files, this machine's from disk and core machines' through `machine.exec` (the status line
 installer goes on its stdin), with a 30 s cache.
 
-Settings › Agents › Machines lists core's machines with their state, reconnects one
+Settings › Machines lists core's machines with their state, reconnects one
 (`machine.connect`), renames (`machine.rename`) or forgets (`machine.rm`) one, and adds one over
 SSH (`machine.add` with a target and an optional name, like `hc machine add`). The target must already accept this host's SSH login: wherdr never
 asks for a password, installs core on the machine, or accepts a `via` command.

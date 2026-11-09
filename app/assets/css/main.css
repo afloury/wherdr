@@ -155,6 +155,17 @@
   --rose: #ff4757;
   --blue: #1fb2ff;
   --teal: #00dbe4;
+  /* Project colors (shared/pm/projectKey.ts): fixed and distinct in every theme
+     (theme colors coincide in some, lav = blue…), mid-tones that read on dark and
+     light backgrounds; the badge mixes its text with --text-strong (ProjectBadge.vue). */
+  --project-violet: #8b5cf6;
+  --project-blue: #3b82f6;
+  --project-teal: #14b8a6;
+  --project-green: #22c55e;
+  --project-amber: #f59e0b;
+  --project-orange: #f97316;
+  --project-red: #ef4444;
+  --project-pink: #ec4899;
 
   --working: #a98bff;
   --blocked: #ffb347;
@@ -396,11 +407,12 @@ body.short-bottom { --safe-bottom: 0px; }
 .stat + .stat { border-left: 1px solid var(--line); }
 .stat b { display: block; font: 850 30px/1 var(--display); letter-spacing: -.04em; color: var(--text); }
 .stat span {
-  display: flex; align-items: center; gap: 6px; margin-top: 8px;
+  display: block; margin-top: 8px;
   font: 500 9.5px/1.2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.stat span i { width: 6px; height: 6px; flex: none; background: currentColor; }
+/* Block line, not flex: text-overflow only ellipsizes the text of a block. */
+.stat span i { display: inline-block; width: 6px; height: 6px; margin-right: 6px; vertical-align: 1px; background: currentColor; }
 .stat.blocked span i { background: var(--blocked); }
 .stat.working span i { background: var(--working); }
 .stat.done span i { background: var(--done); }
@@ -547,42 +559,38 @@ body.short-bottom { --safe-bottom: 0px; }
 /* One-tap update: the Updating screen reuses the lock screen's frame. */
 .lock-screen.self-update { z-index: 61; }
 .machine-empty { margin: -2px 0 20px 24px; font: 400 12px/1.4 var(--mono); color: var(--dim); }
-/* Machine chips (no machine bar, several machines), each opening the machine's
-   menu; machine quotas under the shared ones; offline or reconnecting
-   machines on one compact line at the bottom of the list. */
-.state-machines { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 18px; padding: 0; list-style: none; }
-.state-machine { min-width: 0; max-width: 100%; }
-.state-machine-chip, .state-away-item {
-  display: inline-flex; align-items: center; gap: 7px; max-width: 100%; min-height: 34px; padding: 0 8px 0 10px;
-  border: 1px solid var(--line); background: var(--bg-2); color: var(--text);
-  font: 600 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; white-space: nowrap;
-  cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
-}
-.state-machine-chip:hover, .state-away-item:hover { background: var(--surface); border-color: var(--line-strong); }
-.state-machine-chip:focus-visible, .state-away-item:focus-visible { outline: 1px solid var(--accent); outline-offset: -3px; }
+/* Machine quotas under the shared ones; offline or reconnecting machines on
+   one compact line at the bottom of the list, each with Reconnect. */
 .state-machine-dot { width: 6px; height: 6px; flex: none; background: var(--green); }
 .state-machine-name { min-width: 0; max-width: 18ch; overflow: hidden; text-overflow: ellipsis; }
-.state-machine-session { flex: none; color: var(--mauve); font: 500 10px/1 var(--mono); letter-spacing: .1em; text-transform: none; }
-.state-machine-claude { width: 13px; height: 13px; flex: none; color: var(--ochre); }
-.state-machine-more { width: 14px; height: 14px; flex: none; color: var(--dim); }
 .state-machine-quotas { margin: -6px 0 18px; }
 .state-machine-quotas-label { margin: 0 0 6px; font: 500 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 .state-machine-quotas .quotas { margin: 0; }
+.state-machine-quotas-machines { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; padding: 0; list-style: none; }
+.state-machine-quotas-machines li { padding: 2px 6px; border: 1px solid var(--line); font: 500 10px/1.3 var(--mono); color: var(--text-2); }
 .machine-empty.state-empty { margin-left: 0; }
 .state-away {
   display: flex; align-items: center; margin: 4px 0 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
   overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
 }
 .state-away::-webkit-scrollbar { display: none; }
-.state-away-item { flex: none; gap: 6px; min-height: 36px; padding: 0 10px; border: 0; border-right: 1px solid var(--line); background: transparent; color: var(--muted); }
+.state-away-item {
+  display: inline-flex; flex: none; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px; border-right: 1px solid var(--line);
+  color: var(--muted); font: 600 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; white-space: nowrap;
+}
 .state-away-item:first-child { padding-left: 2px; }
 .state-away-item:last-child { border-right: 0; }
-.state-away-item:hover { border-color: var(--line); }
 .state-away-item .state-machine-dot { background: var(--rose); }
 .state-away-item.connecting .state-machine-dot { background: var(--ochre); animation: pulse 1.2s ease-in-out infinite; }
 .state-away-state { color: var(--rose); font-weight: 500; letter-spacing: .1em; }
 .state-away-item.connecting .state-away-state { color: var(--ochre); }
 .state-away-known { color: var(--text-3); font-weight: 700; letter-spacing: 0; }
+.state-away-reconnect {
+  min-height: 28px; padding: 0 8px; border: 1px solid var(--line); background: var(--bg-2); color: var(--text);
+  font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.state-away-reconnect:hover { background: var(--surface); border-color: var(--line-strong); }
+.state-away-reconnect:focus-visible { outline: 1px solid var(--accent); outline-offset: -3px; }
 
 /* Card of an unreachable machine (agent view, etc.). */
 .card.stale { cursor: pointer; }
@@ -1784,15 +1792,19 @@ body.kb .composer { padding-bottom: 8px; }
   bottom: var(--vv-bottom, 0px);
   width: 100%; max-width: none; max-height: calc(var(--vv-h, 100dvh) * .88);
   border-radius: 0; border-top: 1px solid var(--line);
-  /* Second shadow: the sheet's background carries on below its edge, so no
-     strip of scrim shows under it if iOS paints past the visible area. */
-  box-shadow: 0 -20px 50px var(--shadow), 0 160px 0 var(--bg-2); --tw-ring-shadow: 0 0 #0000;
+  box-shadow: 0 -20px 50px var(--shadow); --tw-ring-shadow: 0 0 #0000;
   padding: 8px 16px calc(var(--safe-bottom) + 16px);
   display: flex; flex-direction: column; gap: 0;
 }
+/* Focused on open (AppSheet): no outline, its buttons keep their own ring. */
+.hw-sheet:focus { outline: none; }
 /* A confirmation asked from an open window sits above it. */
 .hw-scrim.top { z-index: 22; }
 .hw-sheet.top { z-index: 23; }
+/* Floating content (select, select menu, dropdown, context menu, popover,
+   tooltip) opens above every window, `.top` ones included, and under the
+   lightbox (50). Reka copies the content's z-index inline on this wrapper. */
+[data-reka-popper-content-wrapper] { z-index: 40 !important; }
 .hw-sheet[data-state="open"] { animation: rise .24s cubic-bezier(.2, .8, .2, 1); }
 .hw-sheet[data-state="closed"] { animation: sink .16s ease-in; }
 .hw-sheet.tall { height: calc(var(--vv-h, 100dvh) * .88); }
@@ -1801,8 +1813,11 @@ body.kb .composer { padding-bottom: 8px; }
    agent view, on the whole layout viewport, so its bottom edge is the page's
    (no strip of scrim under it, nothing cut). In the page color, the same as
    html/body and the theme-color meta, so whatever iOS paints past the edge
-   matches. Keyboard open: it sits on the visible area above the keyboard and
-   its content scrolls. */
+   matches. Its second shadow carries that color on below its edge, so no
+   strip of scrim shows if iOS paints past the visible area (bottom sheet
+   only: the centered window on a computer has a plain drop shadow).
+   Keyboard open: it sits on the visible area above the keyboard and its
+   content scrolls. */
 @media (max-width: 699px), (max-width: 899px) and (max-height: 699px) and (max-device-width: 699px), (max-width: 899px) and (max-height: 699px) and (max-device-height: 699px), (max-width: 899px) and (max-height: 699px) and (pointer: fine), (max-width: 899px) and (max-height: 699px) and (pointer: none) {
   .hw-sheet:not(.screen) {
     bottom: 0; max-height: calc((100% - var(--safe-top)) * .85);
@@ -1816,6 +1831,9 @@ body.kb .composer { padding-bottom: 8px; }
 .hw-sheet > [data-slot="body"] { padding: 0; order: 2; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; scroll-padding-bottom: 16px; }
 .hw-sheet-title { min-width: 0; font: 850 24px/1 var(--display); letter-spacing: -.035em; word-spacing: .06em; color: var(--text); overflow-wrap: anywhere; }
 .hw-sheet [data-slot="close"] { position: static; inset: auto; }
+/* Before the title (a task's id badge): the title follows it. */
+.hw-sheet-lead { flex: none; align-self: flex-start; margin: 3px 10px 0 0; }
+.hw-sheet-lead + .hw-sheet-title { flex: 1; }
 /* Handle at the top of the sheet, on the phone: tap or swipe down to close.
    The bar is drawn small; the button around it is a 44 px touch target. */
 .hw-sheet-handle {
@@ -2088,6 +2106,7 @@ body.kb .composer { padding-bottom: 8px; }
 .settings-group h3::before, .theme-section-title::before { content: ''; width: 18px; height: 1px; background: var(--line); }
 .settings-hint { font-size: 13px; margin: -20px 2px 30px; }
 .settings-group .settings-hint { margin: 9px 2px 0; }
+.settings-group .settings-warning { color: var(--danger); }
 /* Sub-section of a settings section shown only on a computer (Appearance › Desktop). */
 .settings-subhead { margin: 6px 0 22px; padding-top: 22px; border-top: 1px solid var(--line); }
 
@@ -2727,6 +2746,8 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .hw-sheet.tall { height: auto; max-height: 86vh; }
   /* A task's sheet: wider, and one height whatever its open tab (TaskSheet.vue). */
   .hw-sheet:has(.task-sheet) { width: min(780px, 92vw); height: min(820px, 86vh); }
+  /* New › Project: room for folder paths and the repository list (NewProjectForm.vue). */
+  .hw-sheet:has(.coord-new) { width: min(760px, 92vw); }
   .hw-sheet.full { width: min(1100px, 92vw); height: 86vh; max-height: 86vh; padding-top: 20px; }
   :root[data-content-width="full"] .hw-sheet.full { width: calc(100vw - 48px); }
   /* On-screen keyboard (iPad): the window is centered in the visible area
@@ -3319,7 +3340,14 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 
 /* Only tab content moves; the header and footer are outside this clipped viewport. */
 .home-content { position: relative; flex: 1; min-height: 0; overflow: hidden; isolation: isolate; background: inherit; }
-.home-content > .scroll { position: absolute; inset: 0; padding-bottom: 16px; background: inherit; }
+.home-content > .scroll { position: absolute; inset: 0; padding-bottom: 16px; background: inherit; overflow-x: hidden; }
+/* The list's scrollbar: thin, shown while the pointer is over the list. Rows shrink
+   or ellipsize; overflow-x above is only a last guard against a row too wide. */
+.home-content > .scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.home-content > .scroll:hover, .home-content > .scroll:focus-within { scrollbar-color: var(--line) transparent; }
+.home-content > .scroll::-webkit-scrollbar { width: 6px; height: 0; }
+.home-content > .scroll::-webkit-scrollbar-thumb { background: transparent; }
+.home-content > .scroll:hover::-webkit-scrollbar-thumb { background: var(--line); }
 #home > .fab-wrap { position: static; flex: none; display: flex; justify-content: flex-end; padding: 12px 16px calc(var(--safe-bottom) + 18px); }
 .home-next-enter-active, .home-next-leave-active,
 .home-prev-enter-active, .home-prev-leave-active { transition-property: transform, opacity; transition-duration: 260ms; transition-timing-function: cubic-bezier(.22,.68,0,1); will-change: transform, opacity; }

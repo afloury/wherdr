@@ -2,19 +2,29 @@
 // The board: Your turn first, then the columns of the project's template
 // (To do / Working / Done for all projects, with the step on the card). A
 // card's indicator is the live state of the agent holding its step.
-import { boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, waitsFor, type Board, type Card } from '#shared/pm/board'
+import { canCheckGithub } from '#shared/pm/ghCheck'
+import { turnText } from '#shared/pm/refusal'
+import { asker, boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, statusText, waitsFor, type Board, type BoardMachine, type Card } from '#shared/pm/board'
 import type { Task } from '#shared/pm/run'
 import { RESUMES } from '#shared/pm/stop'
+import { cardTime } from '#shared/pm/times'
 import { shownTaskId, storedTaskId } from '#shared/pm/projectKey'
 import type { Pane } from '#shared/types'
 
 const data = ref<Board | null>(null)
 const error = ref('')
-const project = ref('') // '' = all projects
-const tag = ref('') // '' = every tag
-// The task to show, also from Decisions' "Open task" (/board?task=CO-1).
+// The filters, also from an in-app link (/board?project=CO&tag=ui,
+// shared/appLinks.ts), read again when the board is already open.
 const route = useRoute()
+const queried = (v: unknown) => (typeof v === 'string' ? v : '')
+const project = ref(queried(route.query.project).toUpperCase()) // '' = all projects
+const tag = ref(queried(route.query.tag)) // '' = every tag
+watch(() => queried(route.query.project), (p) => { project.value = p.toUpperCase() })
+watch(() => queried(route.query.tag), (g) => { tag.value = g })
+// The task to show, also from Decisions' "Open task" (/board?task=CO-1).
 const open = ref<string | null>(typeof route.query.task === 'string' ? route.query.task : null)
+// Also when the board is already open (the sidebar's Tasks to handle).
+watch(() => route.query.task, (id) => { if (typeof id === 'string') open.value = id })
 const decisions = ref(0) // what waits for the user's choice, on the Decisions screen
 
 async function load() {
@@ -35,15 +45,17 @@ const tagPick = noneModel(tag)
 const projectItems = computed(() => [{ label: tl('All projects', 'Tous les projets'), value: NONE }, ...(data.value?.projects ?? []).map(p => ({ label: p.name, value: p.key }))])
 const tagItems = computed(() => [{ label: tl('Tags', 'Étiquettes'), value: NONE }, ...tags.value.map(x => ({ label: x, value: x }))])
 const tags = computed(() => boardTags((data.value?.cards ?? []).filter(c => !project.value || c.project === project.value)))
-// The header's coordinator button: the project's, or Alfred's on All projects.
-const coordinator = computed(() => coordinators.value.find(c => (project.value ? c.project === project.value : c.main)))
+// The header's coordinator button: the project's; none on All projects (Alfred has no autopilot).
+const coordinator = computed(() => (project.value ? coordinators.value.find(c => c.project === project.value) : undefined))
 const columns = computed(() => (project.value ? data.value?.projects.find(p => p.key === project.value)?.columns ?? [] : null))
 const lanes = computed(() => boardLanes(cards.value, columns.value))
 const PHASE_LABEL: Record<string, string> = { 'your-turn': 'Your turn', 'todo': 'To do', 'working': 'Working', 'done': 'Done' }
 const laneLabel = (id: string) => (columns.value && id !== 'your-turn' ? id : t(PHASE_LABEL[id]!))
 // Where its PR and merge stand, one line: 'PR open · waiting for checks (smoke)', 'merged 14:05'.
-const statusOf = (c: Card) => { const s = cardStatus(c); return s && { ...s, text: s.at ? `${s.text} ${fmtWhen(new Date(s.at).toISOString())}` : s.text } }
+const statusOf = (c: Card) => { const s = cardStatus(c); return s && { ...s, text: statusText(s, at => fmtWhen(new Date(at).toISOString())) } }
 const showStep = (c: Card, lane: string) => c.step && (!columns.value || lane === 'your-turn')
+// '12 min in review' while it works (the step in it), '42 min' from start to done.
+const timeOf = (c: Card) => cardTime(c, Date.now())
 
 // The holder's pane, by its herdr-core address; none for holder: none.
 const hasAgent = (c: Card) => c.holder !== 'none' && !c.state?.done
@@ -53,22 +65,39 @@ const live = (c: Card) => {
   return p ? { key: statusKey(p), label: `${t(c.holder === 'reviewer' ? 'Reviewer' : 'Worker')}: ${statusLabel(p)}` } : { key: 'inactive', label: tl('No agent running', 'Aucun agent lancé') }
 }
 // The card's menu: Start for a task to do (not one waiting for others: its
-// card says which), Stop (confirmed in the task's sheet), how a stopped task
-// goes on, or Delete for a task never started (confirmed). It opens on right
+// card says which), Start on… another machine the project allows, Stop (confirmed in the task's sheet), how a stopped task
+// goes on, Check on GitHub for a task at its merge step or archived with a PR
+// (its sheet opens with the result), or Delete for a task never started (confirmed). It opens on right
 // click and long press of the card; its ••• button shows only when the menu
 // has more than Open (a tap already opens the task).
 const stopping = ref(false)
+const checking = ref(false)
 const cardMenu = useRowMenu()
-const tap = (id: string) => { if (!cardMenu.swallowClick()) show(id) }
-const show = (id: string, stop = false) => { stopping.value = stop; open.value = id }
+const tap = (c: Card) => { if (cardMenu.swallowClick()) return; const p = askingPane(c); if (p) navigateTo(panePath(p.id)); else show(c.id) }
+// A tap goes where the user acts: the conversation of the agent that asks (a
+// question, a permission) when it is on screen here; else the task's sheet, on
+// its To do tab when it waits for the user. The sheet stays in the menu.
+const askingPane = (c: Card) => (c.yourTurn && (asker(c) || waitsForYou(c)) ? paneOf(c) : undefined)
+const reporting = ref(false)
+const show = (id: string, stop = false, check = false, report = false) => { stopping.value = stop; checking.value = check; reporting.value = report; open.value = id }
 const act = (fn: () => Promise<unknown>) => fn().then(load, (e: Error) => { error.value = e.message })
 const menuOf = (c: Card): MenuItem[] => [
-  { label: tl('Open', 'Ouvrir'), icon: 'i-lucide-panel-right-open', run: () => show(c.id) },
+  ...(askingPane(c) ? [{ label: c.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent'), icon: 'i-lucide-terminal', run: () => navigateTo(panePath(askingPane(c)!.id)) }] : []),
+  { label: askingPane(c) ? tl('Open the task') : tl('Open', 'Ouvrir'), icon: 'i-lucide-panel-right-open', run: () => show(c.id) },
   ...(canStart(c) && !waiting(c).length ? [{ label: tl('Start', 'Lancer'), icon: 'i-lucide-play', run: () => act(() => startTaskApi(c.id)) }] : []),
+  ...(canStart(c) && !waiting(c).length && machinesOf(c) ? [{ label: tl('Start on…'), icon: 'i-lucide-server', run: () => openMenu(startOn(c), tl('Start on')) }] : []),
+  ...(c.yourTurn && !c.state?.done && !c.report ? [{ label: tl('Report a problem…'), icon: 'i-lucide-flag', run: () => show(c.id, false, false, true) }] : []),
   ...(canStop(c) ? [{ label: tl('Stop…', 'Arrêter…'), icon: 'i-lucide-square', danger: true, run: () => show(c.id, true) }] : []),
+  ...(canCheckGithub(c) ? [{ label: tl('Check on GitHub'), icon: 'i-lucide-refresh-cw', run: () => show(c.id, false, true) }] : []),
   ...(c.stopped ? RESUMES.map(how => ({ label: tl(...RESUME_LABEL[how]), danger: how === 'archive', run: () => act(() => resumeTaskApi(c.id, how)) })) : []),
   ...(c.removable ? [{ label: tl('Delete…', 'Supprimer…'), icon: 'i-lucide-trash-2', danger: true, run: () => act(() => removeTaskApi(c.id)) }] : []),
 ]
+// A project that allows other machines: Start on one of them (Start alone: its own).
+const machinesOf = (c: Card) => data.value?.projects.find(p => p.key === c.project)?.machines
+const machineNote = (m: BoardMachine, home: boolean) => (!m.online ? tl('Offline') : home ? tl('The project\'s own machine') : m.unready ? `${tl('Not ready')}: ${m.unready}` : m.unready === '' ? tl('Ready') : tl('Checked when the task starts'))
+const startOn = (c: Card): MenuItem[] => (machinesOf(c) ?? []).map((m, i) => ({
+  label: m.label, desc: machineNote(m, i === 0), disabled: !m.online, run: () => act(() => startTaskApi(c.id, m.key)),
+}))
 const waiting = (c: Card) => (c.phase === 'todo' ? waitsFor(c, data.value?.cards ?? []) : [])
 
 // Add a task: the board's project preselected; the board is read again at
@@ -88,6 +117,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
     <header class="board-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back" :aria-label="t('Back')" to="/" />
       <h1 class="display">{{ tl('Board', 'Tableau') }}</h1>
+      <SetupButton />
       <UButton :color="decisions ? 'warning' : 'neutral'" :variant="decisions ? 'solid' : 'outline'" size="lg" to="/decisions" data-testid="board-decisions">
         {{ tl('Decisions', 'Décisions') }}<span v-if="decisions" class="mono-label board-decisions-n">{{ decisions }}</span>
       </UButton>
@@ -98,9 +128,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
       <USelect v-if="tags.length || tag" v-model="tagPick" :items="tagItems" size="lg" class="board-select" :aria-label="tl('Tag', 'Étiquette')" data-testid="board-tag" />
       <CoordinatorButton v-if="coordinator" :c="coordinator" open />
     </header>
-    <!-- One scroll on the phone, so a tall guide does not hide the lanes. -->
     <div class="board-body">
-    <PmGuide :always="route.query.guide === '1'" />
     <p v-if="error" class="error board-note">{{ error }}</p>
     <p v-else-if="data && !data.cards.length" class="muted board-note">{{ tl('No task yet.', 'Aucune tâche pour l’instant.') }}</p>
     <div class="board-lanes">
@@ -108,15 +136,18 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
         <h2 class="mono-label">{{ laneLabel(l.id) }} <span>{{ l.cards.length }}</span></h2>
         <div v-for="c in l.cards" :key="c.id" class="board-card-wrap" :class="{ 'has-menu': menuOf(c).length > 1 }">
         <UContextMenu :disabled="sheetMenus" :items="cardMenu.dropdown(() => menuOf(c))" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="cardMenu.opened">
-        <button type="button" class="board-card" data-testid="board-card" :data-task="c.id" v-on="cardMenu.on(() => menuOf(c), c.title)" @click="tap(c.id)">
+        <button type="button" class="board-card" data-testid="board-card" :data-task="c.id" v-on="cardMenu.on(() => menuOf(c), c.title)" @click="tap(c)">
           <span class="board-card-head">
             <span v-if="hasAgent(c)" class="card-state" :class="live(c).key" role="img" :aria-label="live(c).label" :title="live(c).label" data-testid="holder-state"><i /></span>
             <b>{{ c.title }}</b>
           </span>
-          <small class="mono-label">{{ c.shown }}<template v-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
+          <small class="mono-label board-card-id"><ProjectBadge :text="c.shown" :color="c.color" copy /><template v-if="timeOf(c)"> · <span data-testid="board-time">{{ timeOf(c) }}</span></template><template v-else-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
           <small v-if="statusOf(c)" class="board-status" :class="statusOf(c)!.tone" :title="statusOf(c)!.text" data-testid="board-status">{{ statusOf(c)!.text }}</small>
-          <span v-if="c.yourTurn" class="board-badge" data-testid="board-badge">{{ c.yourTurn }}</span>
+          <span v-if="turnText(c)" class="board-badge" data-testid="board-badge">{{ turnText(c) }}</span>
+          <small v-if="c.report" class="board-status wait" :title="c.report.text" data-testid="board-report">{{ tl('Problem reported') }} {{ fmtTime(c.report.at) }}</small>
           <small v-else-if="waiting(c).length" class="muted" data-testid="board-waits">{{ tl('Waits for', 'Attend') }} {{ waiting(c).map(id => shownTaskId(data?.projects ?? [], id)).join(', ') }}</small>
+          <!-- Stalled, the machine may still fix it: a warning only; after 30 min it is Your turn. -->
+          <small v-if="c.stall && !c.yourTurn" class="board-stall" :title="c.stall.reason" data-testid="board-stall"><UIcon name="i-lucide-triangle-alert" aria-hidden="true" />{{ t(c.stall.reason) }}</small>
           <span v-if="c.tags.length || c.links.length" class="board-tags">
             <span v-for="tag in c.tags.slice(0, 2)" :key="tag" class="board-chip">{{ tag }}</span>
             <span v-if="c.tags.length > 2" class="board-chip">+{{ c.tags.length - 2 }}</span>
@@ -135,7 +166,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
     </div>
     </div>
     <AddTaskSheet v-if="adding && data" v-model:open="adding" :projects="data.projects" :cards="data.cards" :project="project" @added="added" />
-    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" @closed="open = null; stopping = false" @changed="load" />
+    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}:${checking}:${reporting}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" :checking="checking" :reporting="reporting" @closed="open = null; stopping = false; checking = false; reporting = false" @changed="load" />
   </section>
 </template>
 
@@ -168,6 +199,8 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
 .board-status.wait { color: var(--working); }
 .board-status.bad { color: var(--danger); }
 .board-status.ok { color: var(--done); }
+.board-stall { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 12px; color: var(--blocked); }
+.board-stall span { flex: none; }
 @media (min-width: 900px) {
   .board-body { overflow-y: hidden; }
   .board-lanes { flex: 1; flex-direction: row; align-items: stretch; overflow-x: auto; }

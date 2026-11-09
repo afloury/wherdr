@@ -15,7 +15,7 @@ import { cleanLabel } from '../../shared/spaceActions'
 import { fmt } from '../../shared/message'
 import { placementLabels } from '../../shared/coreLayout'
 import { coreCapabilities, hasPort, type CoreCapabilities } from '../../shared/coreCapabilities'
-import type { DirEntry, DirListing, MachineConfig, MachineInfo, Pane, Workspace } from '../../shared/types'
+import type { ChatItem, DirEntry, DirListing, MachineConfig, MachineInfo, Pane, Workspace } from '../../shared/types'
 
 export interface CoreAdminDeps {
   call: <T>(method: string, params: object, timeout: number) => Promise<T>
@@ -25,6 +25,7 @@ export interface CoreAdminDeps {
   settle: () => Promise<unknown> // fresh inventory, published
   recent: (m: MachineInfo) => Promise<string[]>
   remember: (dir: string, m: MachineInfo) => Promise<unknown>
+  chat?: (pane: Pane) => Promise<ChatItem[] | null> // an agent's conversation, on any machine (pmRead.ts)
   launchWatchMs?: number // how long a new agent is watched for an immediate failure (default 2 s)
   queueWatchMs?: number // how long a first message waits for a dialog to be answered (default 10 min)
   onQueued?: (watch: Promise<unknown>) => void // test hook: the background wait of a queued first message

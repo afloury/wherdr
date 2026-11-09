@@ -2,11 +2,16 @@
 // Guards are changed by the user or by Alfred only: a project coordinator's
 // token is refused, and a workflow save (the user's or a coordinator's
 // proposal) may not touch them.
-import { MAIN, guardsPlace, sameGuards } from '../../shared/pm/coordinator'
-import { cleanProjectUpdate } from '../../shared/pm/project'
+import { MAIN, sameGuards } from '../../shared/pm/coordinator'
+import { projectPlace } from '../../shared/pm/places'
+import { freedMerge } from '../../shared/pm/guardEffects'
+import { cleanProjectUpdate, type Project } from '../../shared/pm/project'
+import { taskPlan } from '../../shared/pm/run'
 import { PREF_KEYS, type Guards, type Prefs, type Template } from '../../shared/pm/workflow'
 import { HerdrError } from './herdr'
 import { alfredTokenOk, scopeOf } from './pmCoordinator'
+import type { CoreAdminDeps } from './coreCreate'
+import { stepAction } from './pmBoard'
 import type { PmStore } from './pmStore'
 
 const bearer = (authorization: unknown) => String(authorization || '').replace(/^Bearer\s+/i, '')
@@ -19,7 +24,7 @@ export async function guardsAuthor(store: PmStore, authorization: unknown): Prom
   if (!token) return 'user'
   const scope = await scopeOf(store, token)
   if (scope === MAIN || await alfredTokenOk(store, token)) return 'Alfred'
-  if (scope) throw new HerdrError('forbidden', `A project coordinator never changes guards: the user does it in ${guardsPlace(scope)}`)
+  if (scope) throw new HerdrError('forbidden', `A project coordinator never changes guards: the user does it in ${projectPlace(scope, 'guards', true)}`)
   throw new HerdrError('forbidden', 'Guards are changed by the user or by Alfred only')
 }
 
@@ -60,16 +65,31 @@ export async function updateProject(store: PmStore, key: unknown, body: Record<s
 // The user's save of the workflow: everything but the guards.
 export async function saveProjectWorkflow(store: PmStore, key: unknown, next: unknown) {
   const { p, t } = await workflowOf(store, key)
-  if (!sameGuards(t, next as Template)) throw new HerdrError('refused', `Guards are saved in ${guardsPlace(p.key)}, not with the workflow`)
+  if (!sameGuards(t, next as Template)) throw new HerdrError('refused', `Guards are saved in ${projectPlace(p.key, 'guards')}, not with the workflow`)
   return { workflow: await store.saveWorkflow(p.key, next, { by: 'user' }) }
 }
 
-// The project's own guards (each task type's stay in its workflow).
-export async function saveProjectGuards(store: PmStore, key: unknown, guards: unknown, by: 'user' | 'Alfred') {
+// The project's own guards (each task type's stay in its workflow). With
+// deps, the merges they now give the engine are tried again at once (retryFreedMerges).
+export async function saveProjectGuards(store: PmStore, key: unknown, guards: unknown, by: 'user' | 'Alfred', deps?: CoreAdminDeps) {
   const { p, t } = await workflowOf(store, key)
   const { guards: _old, ...rest } = t
   const next = guards && typeof guards === 'object' && Object.keys(guards).length ? { ...rest, guards: guards as Guards } : rest
-  return { workflow: await store.saveWorkflow(p.key, next, { by }) }
+  const workflow = await store.saveWorkflow(p.key, next, { by })
+  if (deps) void retryFreedMerges({ ...deps, store }, p, t, next).catch(() => {})
+  return { workflow }
+}
+
+// Each task of the project waiting at a merge its old guards refused and the
+// new ones give the engine: the log says why, then the engine runs the step
+// again, as its minute tick would for a merge it may do.
+export async function retryFreedMerges(deps: CoreAdminDeps & { store: PmStore }, p: Project, before: Template, after: Template) {
+  for (const task of (await deps.store.tasks()).filter(x => x.project === p.key)) {
+    const into = freedMerge(task, taskPlan(before, task, p), taskPlan(after, task, p))
+    if (!into) continue
+    await deps.store.logTask(task, 'engine', `guards changed: the engine may now merge into ${into}, so it tries the step again`)
+    await stepAction(deps, task.id, 'engine').catch(() => {})
+  }
 }
 
 // Save as template: a copy of the project's workflow joins the library under

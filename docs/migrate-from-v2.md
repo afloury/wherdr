@@ -68,10 +68,9 @@ done or plan printed, `2` bad option, `3` missing prerequisite, `4` conflict, `5
 
 | From v2 | In v3 |
 | --- | --- |
-| herdr-projects repos | Projects (Settings › Projects): name, folder, key, and `workspace.from` as the base branch. Each needs a template before its tasks can start; the report lists the board settings to redo in it (reviewer, merge, worker…). Folders that no longer exist are skipped. |
-| Open board tasks (to do, under way, waiting) | Tasks to do in their project, with title, description and creation date. A task keeps its v2 number (WHR-37 stays WHR-37) when that number is free in v3; otherwise it takes the next free one and its description starts with "From v2 WHR-37.". Done and archived tasks are not imported. |
+| herdr-projects repos, with their open tasks (to do, under way, waiting) | Not added: listed for [Alfred](#set-up-your-v2-projects-with-alfred), who sets them up with you. The import switches Projects on. The report lists each one: its suggested key, folder (and whether it is on this machine), `workspace.from` as the base branch, its open tasks, and the board settings to redo in its template (reviewer, merge, worker…). Done and archived tasks are left out. |
 | Herdr SSH machines | herdr-core machines (`hc machine add` with the same target) when SSH logs in there without a password; otherwise the report says what is missing. The name is made valid for hc (1-32 of a-z 0-9 - _ ., unique), and the report shows a change (`Beast → beast`). hc is looked for on the PATH, in `~/.local/bin` and in `/opt/homebrew/bin`; when it is not seen there, `hc machine add` is still tried and its own error is reported. |
-| Synced settings (appearance, home, conversation, files, notification rules), Do not disturb, this machine's name, recent folders | The same settings in v3. A setting already set in v3 is never replaced. The machine bar's order, hidden items and groups name each v2 machine by its v2 id: the import turns each into the v3 machine made from it (same SSH target) and drops those with none; the report lists both. |
+| Synced settings (appearance, home, conversation, files, notification rules), Do not disturb, this machine's name, recent folders | The same settings in v3. A setting already set in v3 is never replaced. The machine tabs' order, hidden items and groups name each v2 machine by its v2 id: the import turns each into the v3 machine made from it (same SSH target) and drops those with none; the report lists both. |
 
 Not moved, to do again in v3: **passkeys** (add one in v3 on each device), **devices and push
 notifications** (install the app from v3's address and turn notifications on), per-device settings
@@ -89,6 +88,23 @@ node ~/wherdr-v3/src/scripts/v2-import.mjs import --data-dir ~/wherdr-v3/data
 ```
 
 It skips what is already imported. `detect` instead of `import` only prints what it finds of v2.
+
+## Set up your v2 projects with Alfred
+
+The import adds none of your v2 projects: you choose which ones come over, and how. In its first
+message, [Alfred](home.md#alfred) sees that you come from v2 and offers to set them up with you,
+one project at a time:
+
+- which projects to bring over (none or some is fine);
+- the machine its repository is on, and its folder there when that is not the machine v2 ran on;
+- its template, starting from a saved template or an example, with the v2 settings to redo in mind;
+- whether to start its coordinator;
+- which of its open v2 tasks to add again (each description starts with "From v2 WHR-37.");
+- its guards and the other machines its tasks may run on, when its v2 settings call for them.
+
+Alfred shows each change before making it, and makes it only after your yes. You can also ask it
+later; `wherdr alfred v2` lists the v2 projects and the v3 project made from each. A user who
+does not come from v2 sees none of this.
 
 ## Auto-deploy from a build machine
 

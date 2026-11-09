@@ -3,7 +3,7 @@
 // quota among the readings, and the words the coordinator and the firings get.
 import type { Quota, QuotaAccount, Quotas } from '../types'
 import type { Task, TaskOrigin } from './run'
-import { DEFAULT_PACE, current, paceVerdict, targetLine, type PacePolicy, type PaceReason, type PaceVerdict } from './pacing'
+import { DEFAULT_PACE, burning, current, paceVerdict, targetLine, type PacePolicy, type PaceReason, type PaceVerdict } from './pacing'
 
 // Tasks made before `origin` existed: from their other marks.
 export const originOf = (t: Pick<Task, 'origin' | 'auto' | 'autopilot'>): TaskOrigin =>
@@ -53,7 +53,7 @@ const MODES: Record<PacePolicy['mode'], string> = { workdays: 'working days', ev
 // The weekly % automatic work may reach now: the target line, the free mode's
 // limit (100 − the reserve of the days left), or the burn's cap.
 export function weekLimit(p: PacePolicy, resetsAt: number, now: number) {
-  if (p.burn && now >= (p.burn.start ?? resetsAt - 86_400_000)) return { label: 'burn cap' as const, value: p.burn.cap }
+  if (burning(p.burn, resetsAt, now)) return { label: 'burn cap' as const, value: p.burn!.cap }
   if (p.mode === 'free') return { label: 'limit' as const, value: 100 - p.reservePerDay * Math.ceil((resetsAt - now) / 86_400_000) }
   return { label: 'line' as const, value: targetLine(p, resetsAt, now) }
 }

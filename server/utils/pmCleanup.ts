@@ -1,12 +1,13 @@
 // Removes the worktree of a done task (and its local branch once merged), on
-// its project's machine, with git worktree remove: never a forced removal,
+// the machine its worker ran on, with git worktree remove: never a forced removal,
 // never rm. Each removal, and each worktree kept with why, goes to the task's
 // log (shared/pm/cleanup.ts decides). Runs once a done task's agents have
 // ended (pmAdvance.ts), on Archive, and in
 // a sweep at start and every few hours for leftovers.
-import { exec, type PmLaunchDeps } from './pmLaunch'
-import { homeOf, machineOn } from './coreCreate'
+import { exec, runOn, type PmLaunchDeps } from './pmLaunch'
+import { homeOf } from './coreCreate'
 import { taskPaths } from '../../shared/pm/run'
+import { cloneOn } from '../../shared/pm/project'
 import { cleanupOf, cleanupRefusal, factsRefusal, parseFacts } from '../../shared/pm/cleanup'
 
 // Prints `exists listed dirty unique` (see Facts).
@@ -63,19 +64,21 @@ async function clean(deps: Deps, id: string) {
     if (fresh.cleanup?.skipped !== why) await store.logTask({ ...fresh, cleanup: { skipped: why } }, 'engine', `worktree kept: ${why}`)
   }
   if (!run) return finish() // never started: no worktree
-  const { on } = machineOn(deps, p.machine)
+  if (!cloneOn(p, run.machine, '~')) return keep('wherdr knows no clone of the project on its machine (no longer allowed for the project)')
+  const on = runOn(deps, run)
   const home = await homeOf(deps, on)
   if (!home) return
+  const repo = cloneOn(p, run.machine, home)!
   const root = taskPaths(home, task.id).worktree.replace(/\/[^/]+$/, '')
   const refused = cleanupRefusal(task, runs, run.worktree, root)
   if (refused) return keep(refused)
-  const probe = await exec(deps, on, WORKTREE_PROBE_SCRIPT, [p.path, run.worktree, run.branch])
+  const probe = await exec(deps, on, WORKTREE_PROBE_SCRIPT, [repo, run.worktree, run.branch])
   const facts = probe.code === 0 ? parseFacts(probe.out) : undefined
   if (!facts) return
   const why = factsRefusal(facts)
   if (why) return keep(why)
   const branch = kind === 'worktree+branch'
-  const r = await exec(deps, on, WORKTREE_REMOVE_SCRIPT, [p.path, run.worktree, run.branch, branch ? '1' : '0'])
+  const r = await exec(deps, on, WORKTREE_REMOVE_SCRIPT, [repo, run.worktree, run.branch, branch ? '1' : '0'])
   if (r.code !== 0) return keep(`git could not remove it: ${r.out.split('\n').pop()?.slice(0, 200) || 'timeout'}`)
   const what = facts.exists ? 'removed its worktree' : 'its worktree was already gone'
   return finish(branch ? `${what} and its local branch ${run.branch}` : `${what}; its branch ${run.branch} stays`)
