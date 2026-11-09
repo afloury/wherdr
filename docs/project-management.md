@@ -412,6 +412,10 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   can do (start it, open its agent). A failed action step (a merge GitHub
   refused) has *Try again* at the top of the sheet, which runs it again.
 
+On a phone, the To do buttons (*Merge*, the step's button, *Open the PR*,
+*Start*, *Open the agent*) stay pinned at the bottom of the tab while its
+content scrolls, so they are always in reach above the home bar.
+
 ### Report a problem
 
 Something is wrong with a task waiting for you (the screenshots miss the asked
