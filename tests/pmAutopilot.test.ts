@@ -260,8 +260,9 @@ describe('the pace holds automatic starts only', () => {
     const q: Quotas = { claude: quota, codex: null, accounts: [account] }
     expect(accountQuota(q, account)).toBe(quota)
     expect(accountQuota({ ...q, claudeAccounts: [{ ...quota, key: 'claude:ffff0000', machines: [] }] }, account)).toBeNull()
-    const s = { program: 'claude', account, quota, policy: DEFAULT_PACE, verdict: { go: true } as PaceVerdict, today: 9 }
+    const s = { program: 'claude', account, quota, policy: { ...DEFAULT_PACE, mode: 'free' as const }, verdict: { go: true } as PaceVerdict, today: 9 }
     expect(paceLine(s, now)).toBe('claude:ab12cd34 Pro work · free with reserve · week 41 % / limit 60 % · today +9 % · 5 h 30 % · go')
+    expect(paceLine({ ...s, policy: DEFAULT_PACE }, now)).toBe('claude:ab12cd34 Pro work · free · week 41 % / limit 100 % · today +9 % · 5 h 30 % · go')
     expect(paceLine({ ...s, policy: { ...DEFAULT_PACE, mode: 'workdays' }, verdict: wait }, now)).toMatch(/· working days · week 41 % \/ line \d+ % · .* · wait: ahead of the target line until Fri 00:00$/)
     expect(paceLine({ ...s, account: null, quota: null, verdict: { go: true, unknown: true }, today: null }, now)).toBe('claude · quota unknown (no reading of claude on this project\'s machine) · task-count limits only')
   })
