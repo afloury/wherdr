@@ -55,17 +55,21 @@ export function memoryShort(mem: MachineCapacity | null, s: MemorySettings, agen
   if (cap !== undefined && agents >= cap) return `${agents} agents already run on it (cap ${cap})`
 }
 
-// One line for `autopilot show` and Settings: "5.2 GB free of 16.0 GB · 8 cores, load 2.1 · swap 3 % · 2 of 10 agents · go".
-export function memoryLine(mem: MachineCapacity | null, s: MemorySettings, agents: number): string {
+// The reading's parts: "5.2 GB free of 16.0 GB", "8 cores, load 2.1", "swap 3 %", "2 of 10 agents".
+export function capacityParts(mem: MachineCapacity | null, s: MemorySettings, agents: number): string[] {
   const cap = agentCap(s, mem)
-  const short = memoryShort(mem, s, agents)
   return [
     mem ? `${gb(mem.available)} free of ${gb(mem.total)}` : 'memory unknown',
     ...(mem?.cores ? [`${mem.cores} cores, load ${mem.load1.toFixed(1)}`] : []),
     ...(mem?.swapTotal ? [`swap ${Math.round(swapUsed(mem) * 100)} %`] : []),
     cap !== undefined ? `${agents} of ${cap} agents` : `${agents} agents`,
-    short ? `wait: ${short}` : 'go',
-  ].join(' · ')
+  ]
+}
+
+// One line for Settings: "5.2 GB free of 16.0 GB · 8 cores, load 2.1 · swap 3 % · 2 of 10 agents · go".
+export function memoryLine(mem: MachineCapacity | null, s: MemorySettings, agents: number): string {
+  const short = memoryShort(mem, s, agents)
+  return [...capacityParts(mem, s, agents), short ? `wait: ${short}` : 'go'].join(' · ')
 }
 
 // Whether a machine is there now, for `autopilot show` and Settings: "online · weekdays 09:00-19:00, away now".

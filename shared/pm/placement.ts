@@ -2,8 +2,8 @@
 // fits now, or a hold that names each machine's reason. Pure: the server reads
 // each machine (capacity, settings, agents at work, readiness, pace) and asks.
 import type { MachineCapacity } from './capacity'
-import { SWAP_MAX, agentCap, hoursWait, type MemorySettings } from './memory'
-import { WEIGHT_DEFAULTS, type Weight } from './weight'
+import { SWAP_MAX, agentCap, capacityParts, hoursLabel, hoursWait, type MemorySettings } from './memory'
+import { WEIGHTS, WEIGHT_DEFAULTS, type Weight } from './weight'
 
 export interface Estimate { mb: number, cores: number }
 
@@ -109,4 +109,26 @@ export function placeTask(args: {
   if (pinned !== undefined && !pool[0]?.online) return { hold: `Waits for ${pool[0] ? label(pool[0]) : pinned} (offline)`, best }
   const reasons = pool.map(c => `${label(c)}: ${why.get(c.key)}`).join('; ')
   return { hold: `Waits for room (${STRATEGY_LABELS[strategy]}): ${weight} (≈${gb(estimate.mb)}) fits nowhere — ${reasons}`, ...(best !== undefined ? { best } : {}) }
+}
+
+// An allowed machine as `autopilot show` gives it. running: its agents at work
+// with their task's weight; unchecked: another machine than home whose
+// readiness for the project was not checked yet (it is before its first task).
+export type MachineView = Omit<Candidate, 'running'> & { home: boolean, running: (Estimate & { weight: Weight })[], unchecked?: boolean }
+
+// "machine-a (home): 9.1 GB free of 32.0 GB · 8 cores, load 2.1 · 2 of 21 agents
+// · running 1 heavy, 1 light · fits heavy": the heaviest weight it takes now,
+// else why it takes nothing (full, not ready, paced).
+export function machineLine(c: MachineView): string {
+  const name = `${c.label || 'this host'}${c.home ? ' (home)' : ''}`
+  const hours = c.settings.hours ? [`available ${hoursLabel(c.settings.hours)}`] : []
+  if (!c.online) return [`${name}: offline`, ...hours].join(' · ')
+  const count = WEIGHTS.slice().reverse().map(w => [w, c.running.filter(r => r.weight === w).length] as const).filter(([, n]) => n)
+  const fits = WEIGHTS.slice().reverse().find(w => !misfit(c, w, WEIGHT_DEFAULTS[w]))
+  return `${name}: ${[
+    ...capacityParts(c.capacity, c.settings, c.running.length),
+    ...hours,
+    ...(count.length ? [`running ${count.map(([w, n]) => `${n} ${w}`).join(', ')}`] : []),
+    fits ? `fits ${fits}${c.unchecked ? ' (readiness checked before its first task)' : ''}` : `takes nothing now: ${misfit(c, 'light', WEIGHT_DEFAULTS.light)}`,
+  ].join(' · ')}`
 }

@@ -11,13 +11,13 @@ import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/s
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
 import { validateTemplate } from '../../shared/pm/workflow'
-import { weightOf, weightText } from '../../shared/pm/weight'
+import { weightOf, weightText, weightsLine } from '../../shared/pm/weight'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, coordinatorStartRefusal, countFix, limitsLeft, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
 import { ackWakes } from '../../shared/pm/wakes'
 import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
-import { allowedMachines, machineNamed, taskMachine, type Project } from '../../shared/pm/project'
+import { machineNamed, taskMachine, type Project } from '../../shared/pm/project'
 import { projectOf, shownKey, shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
@@ -33,8 +33,8 @@ import { noteBack } from './pmStall'
 import { reviveWorker } from './pmRelease'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
-import { forgetMemory, memoryState } from './pmMemory'
-import { goesTo, paceOf, placeFor } from './pmPlace'
+import { forgetMemory } from './pmMemory'
+import { goesTo, machineLines, paceOf, placeFor } from './pmPlace'
 import { STRATEGY_LABELS } from '../../shared/pm/placement'
 import { projectPace } from './pmPace'
 import type { CoordinatorRecord, PmStore } from './pmStore'
@@ -110,6 +110,12 @@ const summary = (t: Template | null, task: Task, p?: Project) => {
   return { id: p ? shownTaskId([p], task.id) : task.id, title: task.title, type: task.type, state: task.step?.abandoned ? 'abandoned' : task.step?.done ? 'done' : task.stopped ? 'stopped' : task.state, ...(task.stopped ? { stopped: task.stopped } : {}), step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}) }
 }
 
+// The machine a task runs on, by its name; before its first start, none yet.
+const machineOf = (task: Task, p: Project | undefined, known: { key: string, label: string }[]) => {
+  const on = task.machine ?? (task.run ? p?.machine : undefined)
+  return on !== undefined ? known.find(m => m.key === on)?.label ?? on : 'not started: the engine places it at its start (task start --on picks one)'
+}
+
 const unb64 = (v: unknown) => (typeof v === 'string' ? Buffer.from(v, 'base64').toString('utf8') : v)
 
 // POST /api/pm/cli: { argv, input? } with the coordinator's token, or
@@ -156,7 +162,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const ts = new Map(await Promise.all(projects.map(async x => [x.key, x ? await store.workflow(x.key) : null] as const)))
       return { tasks: (await store.tasks()).filter(x => !key || x.project === key).map(x => summary(ts.get(x.project) ?? null, x, projects.find(y => y.key === x.project))) }
     }
-    case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task, p), weight: weightText(weightOf(t, task)), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task, p) : [] } }
+    case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task, p), weight: weightText(weightOf(t, task)), machine: machineOf(task, p, deps.machines()), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task, p) : [] } }
     case 'plan': return { template: t && { id: t.id, version: t.version }, workingBranch: workingBranch(p), plans: Object.fromEntries(Object.keys(needPlan().taskTypes).map(type => [type, planSteps(t!, { type }, p?.base)])) }
     case 'template show': return {
       template: needPlan(),
@@ -212,15 +218,17 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const mine = await mineOf()
       const now = Date.now()
       const line = async (k: string) => { const pace = await projectPace(store, k, undefined, now, true); return pace ? paceLine(pace, now) : 'unknown: the project has no template or no worker program' }
-      const mem = (machine: string) => memoryState(deps, machine).then(s => `${s.label}: ${s.line}`, () => 'memory unknown')
+      const lines = (x: Project) => machineLines(deps, x).catch(() => ['machines unknown'])
+      const weights = (x: Project, tpl: Template | null) => ({ estimates: weightsLine(), types: Object.fromEntries(Object.keys(tpl?.taskTypes ?? {}).map(type => [type, weightText(weightOf(tpl, { type }))])) })
       return {
         autopilot: ap, lookForWork: !!ap.lookForWork,
         workingBranch: key ? workingBranch(p) : Object.fromEntries(projects.map(x => [x.key, workingBranch(x)])),
         placement: key ? STRATEGY_LABELS[p!.placement ?? 'strongest'] : Object.fromEntries(projects.map(x => [x.key, STRATEGY_LABELS[x.placement ?? 'strongest']])),
         pacing: key ? await line(key) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await line(x.key)]))),
-        machines: await Promise.all([...new Set((key ? [p!] : projects).flatMap(x => allowedMachines(x)))].map(mem)),
+        machines: key ? await lines(p!) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await lines(x)]))),
+        weights: key ? weights(p!, t) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, weights(x, await store.workflow(x.key))]))),
         today: { ...limitsLeft(ap, mine, await store.runs(), now), skippedWakes: today(rec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(rec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
-        note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. The engine places each start on one of the project\'s allowed machines by its placement strategy (Heavy to the strongest: heavy work on the strongest, light and standard work at home when it fits; Balance the load: each task on the machine with most room; Home first: home until it is full; --on picks one); automatic starts wait while no machine has room (memory, cores, its cap of agents, all projects together) and start by themselves once one has. machines: each allowed machine, online or offline, its availability hours (automatic starts skip it outside them, heavy work in its last 2 hours) and its memory. atOnce null is Auto: as many tasks as the machines take',
+        note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. The engine places each start on one of the project\'s allowed machines by its placement strategy (Heavy to the strongest: heavy work on the strongest, light and standard work at home when it fits; Balance the load: each task on the machine with most room; Home first: home until it is full; --on picks one); automatic starts wait while no machine has room (memory, cores, its cap of agents, all projects together) and start by themselves once one has. atOnce null is Auto: as many tasks as the machines take. machines: each allowed machine, its agents at work by weight, its available hours (automatic starts skip it outside them, heavy work in its last 2 hours) and the heaviest weight it takes now (or why none: offline, away, full…); weights: what placement counts per weight, and the weight each task type gets',
       }
     }
     case 'automation list': return { automations: (await store.automations(needProject().key)).automations.map(automationLine), note: 'Only the user adds or changes automations, in wherdr' }

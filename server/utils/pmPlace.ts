@@ -3,7 +3,7 @@
 // then placeTask picks one or holds the start with each machine's reason.
 import { HerdrError } from './herdr'
 import { allowedMachines, taskMachine, type Project } from '../../shared/pm/project'
-import { placeTask, type Candidate, type Placement } from '../../shared/pm/placement'
+import { machineLine, placeTask, type Candidate, type Placement } from '../../shared/pm/placement'
 import { DEFAULT_MEMORY } from '../../shared/pm/memory'
 import { weightOf } from '../../shared/pm/weight'
 import { paceWait } from '../../shared/pm/pace'
@@ -11,7 +11,7 @@ import type { PaceVerdict } from '../../shared/pm/pacing'
 import type { Task } from '../../shared/pm/run'
 import type { PmStore } from './pmStore'
 import { atWork, machineCapacity, readMemorySettings } from './pmMemory'
-import { readiness } from './pmReady'
+import { lastReadiness, readiness } from './pmReady'
 import { projectPace } from './pmPace'
 import type { PmLaunchDeps } from './pmLaunch'
 import type { CoreMachine } from '../../shared/coreState'
@@ -20,7 +20,7 @@ import type { CoreMachine } from '../../shared/coreState'
 // another account): the verdict the project's limits see (home's when it goes,
 // else the first machine's that goes) and the machines whose account waits,
 // which placement skips.
-export async function paceOf(store: PmStore, p: Project, task: Pick<Task, 'type' | 'prefs'>, now = Date.now()) {
+export async function paceOf(store: PmStore, p: Project, task?: Pick<Task, 'type' | 'prefs'>, now = Date.now()) {
   const all = await Promise.all(allowedMachines(p).map(async m => [m, (await projectPace(store, p.key, task, now, false, m))?.verdict] as const))
   const waits: Record<string, string> = {}
   for (const [m, v] of all) if (v && !v.go) waits[m] = `paced: ${paceWait(v)}`
@@ -61,3 +61,19 @@ export async function placeFor(deps: PmLaunchDeps, task: Task, { asked, waits = 
 // The machine a start that must go (the user's) takes, and the hold it goes past.
 export const goesTo = (placed: Placement) =>
   'machine' in placed ? { on: placed.machine } : { on: placed.best, short: placed.hold }
+
+// The project's allowed machines for `autopilot show`, one line each
+// (machineLine). Readiness is the last check's, never run from here; pace is
+// each machine's account, for a task of the workflow's first type (paceOf).
+export async function machineLines(deps: PmLaunchDeps, p: Project, now = Date.now()): Promise<string[]> {
+  const [settings, { waits }] = await Promise.all([readMemorySettings(), paceOf(deps.store, p, undefined, now).catch(() => ({ waits: {} as Record<string, string> }))])
+  return Promise.all(allowedMachines(p).map(async (key) => {
+    const m = deps.machines().find(x => x.key === key)
+    const online = !!m && (m.local || m.status === 'online')
+    const home = key === p.machine, ready = home ? '' : lastReadiness(p.key, key)
+    return machineLine({
+      key, label: m?.label ?? key, online, home, ...(waits[key] ? { wait: waits[key] } : ready ? { wait: `not ready (${ready})` } : {}), ...(ready === undefined ? { unchecked: true } : {}),
+      settings: settings[key] ?? DEFAULT_MEMORY, capacity: online ? await machineCapacity(deps, key) : null, running: online ? await atWork(deps.store, key) : [],
+    })
+  }))
+}
