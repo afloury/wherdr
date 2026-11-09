@@ -12,7 +12,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { cleanProjectInput, isBranch, machinesOf, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
-import { defaultColor, keyClash, projectOf, renamed, shownKey, storedTaskId } from '../../shared/pm/projectKey'
+import { defaultColor, keyClash, projectOf, renamed, showIds, shownKey, storedTaskId } from '../../shared/pm/projectKey'
 import type { RepoVisibility } from '../../shared/pm/visibility'
 import { WEIGHTS, isWeight, startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
@@ -257,7 +257,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     shot: (id: string, file: string) => (TASK_ID_RE.test(id) && SHOT_FILE_RE.test(file) ? fs.readFile(path.join(files.shots, id, file)).catch(() => null) : Promise.resolve(null)),
     // A line of the task's log, saved with the task.
     logTask: (t: Task, by: string, text: string) => write(async () => {
-      const out = await marked({ ...t, log: [...(t.log ?? []), { at: Date.now(), by, text }].slice(-200) })
+      const out = await marked({ ...t, log: [...(t.log ?? []), { at: Date.now(), by, text: showIds(await readProjects(), text) }].slice(-200) })
       await writeJson(path.join(files.tasks, `${t.id}.json`), out)
       return out
     }),
@@ -266,7 +266,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     removeTask: (t: Task, by: string, text: string) => write(async () => {
       const logFile = path.join(files.projectLog, `${t.project}.json`)
       const entries = await projectLog(t.project)
-      await writeJson(logFile, { v: 1, entries: [...entries, { at: Date.now(), by, text, task: t.id }].slice(-500) })
+      await writeJson(logFile, { v: 1, entries: [...entries, { at: Date.now(), by, text: showIds(await readProjects(), text), task: t.id }].slice(-500) })
       await fs.rm(path.join(files.tasks, `${t.id}.json`), { force: true })
     }),
     projectLog,
