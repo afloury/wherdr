@@ -469,6 +469,17 @@ its program and model; its text is Markdown, folded past a few lines with
 *Show more*. Only the worker's last report is kept, so an earlier *Done* says
 just that. **Log** keeps the raw lines, newest first.
 
+At the top of **History**, and of the worker's note in **To do**, a
+**Summary** says in 3 to 6 lines how the task went: what was built, the main
+review findings and how they were solved, what is left. Claude Haiku writes it
+through the `claude` CLI on the wherdr machine (`claude -p`, safe mode, no
+tools), from the task's title, the worker's reports and the reviewer's
+findings only: no description, no proof, no file contents, and home paths,
+e-mail addresses and tokens masked. It is made once per round, again when a
+new report or verdict arrives, one task a minute, and skipped while the pace
+of this machine's Claude account holds automatic work. A task whose last
+report is more than a day old keeps its summary as it is.
+
 **Check on GitHub** shows on a task with a PR at its merge step, or archived:
 wherdr reads the PR now, for a merge stuck after a guard refusal, a PR merged
 by hand on GitHub, or GitHub slow to see a push. Merged: the merge step ends as
@@ -494,7 +505,8 @@ of the entry. An agent that is not on screen here opens the sheet instead.
 - **A visual change to merge**: the **Worker's note** (its closing report: what
   was done, why it is done, what was tested) and the **Reviewer's note** (the
   verdict, what it sent back and was fixed during the rounds, what it left as
-  minor), each in Markdown, folded to a few lines with *Show more*, full
+  minor), each in Markdown, folded to a few lines with *Show more* (the
+  task's [summary](#task-sheet) above the worker's note), full
   width, one above the other (on a phone, *Worker* / *Reviewer* tabs above
   one note); then its screenshots large (swipe between them, tap
   one to zoom; each is labelled phone or desktop), then

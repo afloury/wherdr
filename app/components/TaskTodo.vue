@@ -46,7 +46,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
   <div class="todo" :data-todo="kind" data-testid="task-todo">
     <template v-if="kind === 'merge'">
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
-      <TaskNotes v-if="notes.worker || notes.review" :worker="notes.worker" :review="notes.review" />
+      <TaskNotes v-if="notes.worker || notes.review" :worker="notes.worker" :review="notes.review" :summary="card.summary" />
       <span v-if="reworked" class="mono-label muted" data-testid="todo-rework">{{ tl('Screenshots after rework') }}</span>
       <ul class="todo-shots" data-testid="todo-shots">
         <li v-for="(src, i) in shots" :key="src">
@@ -73,7 +73,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
 
     <template v-else-if="!refused">
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
-      <TaskNotes v-if="notes.worker || notes.review" :worker="notes.worker" :review="notes.review" />
+      <TaskNotes v-if="notes.worker || notes.review" :worker="notes.worker" :review="notes.review" :summary="card.summary" />
     </template>
 
     <div class="todo-actions">
