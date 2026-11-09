@@ -15,7 +15,7 @@ export interface BurnSettings {
   cap: number // weekly % the burn may reach
   hours?: number // starts this many hours before each weekly reset; unset: 24
   until?: number // ms, 'this week only': the reset it ends at; unset: every week
-  atOnce: number // tasks at once while burning (read by the burn loop)
+  atOnce: number // tasks at once while burning: replaces the autopilot's limit for automatic starts
   reserve5h: number // 5-hour reserve while burning
 }
 
@@ -42,7 +42,7 @@ export const DEFAULT_BURN: BurnSettings = { cap: 95, atOnce: 3, reserve5h: 10 }
 export type PaceReason = 'limited' | 'ahead' | 'reserveWeek' | 'reserve5h' | 'burnCap' | 'stale'
 export type PaceIntent = 'auto' | 'user'
 export type PaceVerdict =
-  | { go: true, warn?: PaceReason, unknown?: true } // unknown: no reading, only the task-count limits apply
+  | { go: true, warn?: PaceReason, unknown?: true, atOnce?: number } // unknown: no reading, only the task-count limits apply; atOnce: burning, the burn's tasks at once
   | { go: false, reason: PaceReason, until: number | null } // until: ms, null = on the next reading
 
 const HOUR = 3_600_000
@@ -148,7 +148,7 @@ export function paceVerdict(policy: PacePolicy, quota: Quota | null, now: number
   if (intent === 'auto' && now - quota.at > policy.stale.minutes * 60_000 && checks.some(c => c.room < policy.stale.margin)) {
     return { go: false, reason: 'stale', until: null }
   }
-  return { go: true }
+  return intent === 'auto' && checks[0]?.reason === 'burnCap' ? { go: true, atOnce: policy.burn!.atOnce } : { go: true }
 }
 
 const PACE_MODES: PaceMode[] = ['workdays', 'everyday', 'free']

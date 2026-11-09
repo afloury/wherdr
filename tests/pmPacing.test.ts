@@ -91,7 +91,7 @@ describe('burn before the reset', () => {
     const before = at(14, 12) // Saturday noon: the usual line (90) still applies
     expect(paceVerdict(burn, quota(91, 0, before), before)).toMatchObject({ go: false, reason: 'ahead' })
     const now = at(14, 22)
-    expect(paceVerdict(burn, quota(91, 85, now), now)).toEqual({ go: true })
+    expect(paceVerdict(burn, quota(91, 85, now), now)).toEqual({ go: true, atOnce: 3 }) // the burn's tasks at once
     expect(paceVerdict(burn, quota(95, 0, now), now)).toEqual({ go: false, reason: 'burnCap', until: R })
     expect(paceVerdict(burn, quota(50, 90, now), now)).toMatchObject({ go: false, reason: 'reserve5h' })
   })
@@ -100,7 +100,7 @@ describe('burn before the reset', () => {
     const full: PacePolicy = { ...workdays, burn: { ...DEFAULT_BURN, hours: 48, cap: 100, reserve5h: 0 } }
     const start = R - 48 * 3_600_000
     expect(paceVerdict(full, quota(91, 0, start - 1), start - 1)).toMatchObject({ go: false, reason: 'ahead' })
-    expect(paceVerdict(full, quota(99, 99, start), start)).toEqual({ go: true })
+    expect(paceVerdict(full, quota(99, 99, start), start)).toEqual({ go: true, atOnce: 3 })
     expect(paceVerdict(full, quota(100, 0, start), start)).toEqual({ go: false, reason: 'burnCap', until: R })
     // After the reset: the usual line again, then the burn 48 h before the next reset.
     const after = R + 3_600_000
@@ -110,7 +110,7 @@ describe('burn before the reset', () => {
 
   it('this week only: ends at its reset and does not come back', () => {
     const once: PacePolicy = { ...workdays, burn: { ...DEFAULT_BURN, until: R } }
-    expect(paceVerdict(once, quota(91, 0, at(14, 22)), at(14, 22))).toEqual({ go: true })
+    expect(paceVerdict(once, quota(91, 0, at(14, 22)), at(14, 22))).toEqual({ go: true, atOnce: 3 })
     const next = R + 6 * DAY + 3_600_000 // the next week's last day, after the old reset
     expect(burnStart(once.burn, R + 7 * DAY, next)).toBeNull()
     expect(paceVerdict(once, { ...quota(91, 0, next), week: { used: 91, resetsAt: R + 7 * DAY, minutes: 7 * 24 * 60 } }, next)).toMatchObject({ go: false, reason: 'ahead' })

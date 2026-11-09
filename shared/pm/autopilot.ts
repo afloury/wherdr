@@ -96,9 +96,10 @@ export function limitsLeft(ap: Autopilot, tasks: Task[], runs: Run[], now: numbe
 }
 
 // Why the autopilot may not start one more task now, or undefined. `pace`:
-// the verdict of the worker's account, given only for automatic work.
+// the verdict of the worker's account, given only for automatic work; while
+// its account burns, the burn's tasks at once replace the autopilot's.
 export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: number, pace?: PaceVerdict, holds?: SlotOf): string | undefined {
-  const l = limitsLeft(ap, tasks, runs, now, holds)
+  const l = limitsLeft(pace?.go && pace.atOnce !== undefined ? { ...ap, atOnce: pace.atOnce } : ap, tasks, runs, now, holds)
   if (l.perDay !== null && l.started >= l.perDay) return `Today's limit is reached (${l.perDay} tasks started)`
   if (l.atOnce !== null && l.working >= l.atOnce) return `${l.working} tasks already work at once (limit ${l.atOnce})`
   if (!inHours(ap.hours, new Date(now))) return 'Outside the autopilot\'s hours'
