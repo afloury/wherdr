@@ -18,7 +18,7 @@
 - [Requirements](docs/installation.md#requirements): hc, Linux or macOS, Node.js 22 and Git.
 - [Installation](docs/installation.md#installation): install v3 and run it as a service.
 - [Keep it running](docs/installation.md#keep-it-running): run wherdr as a service (a systemd --user unit, a macOS LaunchAgent).
-- [On-device dictation files](docs/installation.md#on-device-dictation-files): where the dictation models are fetched and kept.
+- [On-device dictation files](docs/installation.md#on-device-dictation-files): where the dictation models and read-aloud voices are fetched and kept.
 - [Updating](docs/installation.md#updating): update v3 by hand; there is no update banner.
 - [Install with an agent](docs/install-with-an-agent.md): ready-to-paste prompts for an agent that installs or updates wherdr.
 - [Migrate from v2](docs/migrate-from-v2.md): install v3 beside v2 and import its machines and settings; its projects are listed for Alfred.
@@ -39,7 +39,7 @@
 
 ## Agent list
 
-- [Agents on herdr-core](docs/home.md#agents-on-herdr-core): the live list, states, quick answers, the sidebar's order, and task agents named after their task, one row per task with a line per agent (role, machine, last message).
+- [Agents on herdr-core](docs/home.md#agents-on-herdr-core): the live list, states, quick answers, the sidebar's order (no sideways scroll: long titles and badges ellipsized, a thin scrollbar), and task agents named after their task, one row per task with a line per agent (role, machine, last message).
 - [Alfred](docs/home.md#alfred): wherdr's assistant, its agent (kept until you change it), name, home folder and memory.
 - [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred, with the project's colored key badge, and their menu.
 - [Offered agents](docs/home.md#offered-agents): Settings › Agents, which programs every picker offers and in which order.
@@ -64,16 +64,16 @@
 
 - [Getting started](docs/project-management.md#getting-started): the setup window, six steps from turning projects on to a first task; Finish setup on the board; New › Project (a typed, browsed or listed folder fills name and key, shown as ~/…; a wider sheet on a computer).
 - [Projects](docs/project-management.md#projects): Settings › Projects, the project list and the project sheet's tabs.
-- [General tab](docs/project-management.md#general): name, key and its badge color, base (working) branch, agents, repository visibility, allowed machines and their clone paths (with a readiness check), placement (Heavy to the strongest, Balance the load, Home first; a task too big for every machine runs on the best one; a worker started again is heavy only while its step takes screenshots).
+- [General tab](docs/project-management.md#general): name, key and its badge color, base (working) branch, branch name template ({id}, {tag}, {type}, {slug}; default task/{id}; a branch the worker pushed is followed), agents, repository visibility, allowed machines and their clone paths (with a readiness check), placement (Heavy to the strongest, Balance the load, Home first; a task too big for every machine runs on the best one; a worker started again is heavy only while its step takes screenshots).
 - [Workflow tab](docs/project-management.md#workflow): task types (with an optional weight) and steps (a merge that pushes first waits up to a minute for GitHub), Edit as JSON, Save as template, Start over, review of the coordinator's proposed change (one-line summary, who proposed it, your full request with a link back to it, readable or JSON), and its card in the coordinator's conversation.
 - [Guards](docs/project-management.md#guards): protected branches, who may merge (a waiting merge goes on once wherdr may do it; one you merge on GitHub ends as merged; one cut by a restart goes on by itself), contributor PRs, the project sheet's in-app addresses.
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
 - [Template library](docs/project-management.md#template-library): saved templates and examples, read, rename and delete; projects keep their own copy.
-- [Autopilot](docs/project-management.md#autopilot): the header button and its window, goal, wakes and limits (new projects: Tasks / day unlimited and At once Auto, pace and machine room still hold automatic work; a hint on the older 10 / 2; Task added wakes only for tasks added by someone else than this coordinator); the coordinator's view of machines and weights (`autopilot show`, `show <task>`, `--on`, `--weight`).
+- [Autopilot](docs/project-management.md#autopilot): each project's own (Alfred has none), the header button and its window, goal, wakes and limits (new projects: Tasks / day unlimited and At once Auto, pace and machine room still hold automatic work; a hint on the older 10 / 2; Task added wakes only for tasks added by someone else than this coordinator); the coordinator's view of machines and weights (`autopilot show`, `show <task>`, `--on`, `--weight`).
 - [What a task's agent said](docs/project-management.md#what-a-tasks-agent-said): `wherdr pm read`, an agent's last message or question from any machine, and the question in the wake.
 - [Board](docs/project-management.md#board): columns (a done or archived task is never under Your turn), cards (the id badge copies the id), time in the step and total time, Add task (with its weight: Auto, Light, Standard, Heavy), Start, Start on another machine (its readiness check), Stop, Delete; a refused merge said in plain words (a conflict the agent is already fixing leaves Your turn).
 - [Task sheet](docs/project-management.md#task-sheet): the id badge by the title (copies the id), time per step, waits for you, review rounds and CI fixes, the task's buttons (Check on GitHub, also `wherdr pm task check`, for a stuck merge step or an archived task's PR) and its Description (Markdown), Plan and Log tabs.
-- [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back, Try again and other answers; screenshots replaced after a rework (new commits since the review); a waiting PR kept up to date with its base, an approved merge that goes on by itself once ready (kept across updates, asked again only on new screenshots or interface changes), and the project's merge queue (one merge at a time, the first updated with its base, its place on the card); a tap on Your turn or Tasks to handle opens the asking agent's conversation, else the sheet.
+- [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back, Try again and other answers; Open the PR at the merge step for a PR a step gave as its link proof (GitHub, Bitbucket, GitLab, Azure DevOps), also on the card as PR #12; screenshots replaced after a rework (new commits since the review); a waiting PR kept up to date with its base, an approved merge that goes on by itself once ready (kept across updates, asked again only on new screenshots or interface changes), and the project's merge queue (one merge at a time, the first updated with its base, its place on the card); a tap on Your turn or Tasks to handle opens the asking agent's conversation, else the sheet.
 - [Report a problem](docs/project-management.md#report-a-problem): tell the coordinator what is wrong with a task waiting for you, block its merge, withdraw.
 - [What wherdr fixes on its own](docs/project-management.md#what-wherdr-fixes-on-its-own): a conflict with the base (to the worker), red CI (an infrastructure error in the log run again once, else to the worker), a push refused as behind its remote (synced, pushed again), an interrupted action (run again), a stalled agent; the coordinator woken once only after 2 failed tries, with what was tried.
 - [A stalled task](docs/project-management.md#a-stalled-task): red CI or an idle agent: one nudge, a restart 10 min later, the coordinator woken 10 min after that, then Tasks to handle and a notification after 30 min; a stall or a step past its time limit leaves Tasks to handle once the task is back to work.
@@ -106,7 +106,7 @@
 
 - [Development and tests](docs/development.md): run from source and test.
 - [Design rules](docs/design.md): the interface styling reference, sheets included (where focus goes on open).
-- [Dictation design](docs/dictation.md): the dictation engines and how to add one; why a server-side model install fails (bzip2 missing, disk full); read aloud and its voices (iOS gives web apps only its standard voices).
+- [Dictation design](docs/dictation.md): the dictation engines and how to add one; why a server-side model install fails (bzip2 missing, disk full); read aloud and its voices (iOS gives web apps only its standard voices); the neural voice catalog (Siwis, Cori, MLS).
 
 ## v2 only
 

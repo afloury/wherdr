@@ -7,6 +7,7 @@
 import { randomUUID } from 'node:crypto'
 import { DONE_CMD, READ_SEP, dueText, parseRead, reviewFile, runFiles, runsNow, signalEvent } from '../../shared/pm/advance'
 import { onEvent, type PlannedStep } from '../../shared/pm/steps'
+import { followedBranch } from '../../shared/pm/branchName'
 import { LABEL, agentEnv, agentLine, duplicateAgents, reviewerPlan, runLabels, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP, launchFailure } from './coreCreate'
 import { WRITE_SCRIPT, exec, oneStart, prepareTmp, runOn, type PmLaunchDeps } from './pmLaunch'
@@ -25,7 +26,10 @@ git -C "$wt" rev-parse -q --verify HEAD; echo "${READ_SEP}"
 s=$(git -C "$wt" config "branch.$b.wherdrstart")
 git -C "$wt" diff --numstat \${s:+"$s"} HEAD 2>/dev/null | awk '{n+=$1+$2} END {print n+0}'; echo "${READ_SEP}"
 cat "$3" 2>/dev/null; echo; echo "${READ_SEP}"
-cat "$4" 2>/dev/null`
+cat "$4" 2>/dev/null; echo; echo "${READ_SEP}"
+git -C "$wt" symbolic-ref -q --short HEAD`
+// The task moves to the branch its worker pushed: its start point goes with it.
+const FOLLOW_SCRIPT = `s=$(git -C "$1" config "branch.$2.wherdrstart") && git -C "$1" config "branch.$3.wherdrstart" "$s"; exit 0`
 
 type Ctx = { task: Task, p: Project, on: string | undefined, plan: PlannedStep[], t: NonNullable<Awaited<ReturnType<PmLaunchDeps['store']['template']>>> }
 
@@ -68,7 +72,10 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   const step = c.plan[c.task.step!.at]
   const files = runFiles(latest(await deps.store.runs(), run.task, 'worker')?.instructions ?? run.instructions)
   const r = await exec(deps, c.on, SIGNAL_READ_SCRIPT, [run.worktree, run.branch, files.note, files.verdict])
-  const ev = signalEvent(step, run.role, parseRead(r.out))
+  const read = parseRead(r.out)
+  const ev = signalEvent(step, run.role, read)
+  const moved = ev && 'kind' in ev && ev.kind === 'report' ? followedBranch(run.branch, read, c.task.branchStart ?? `task/${c.task.id}`) : undefined
+  if (moved) await follow(deps, c, run, moved)
   // The worker reports the work the engine handed it (a catch-up, red CI): the step's Your turn, if any, comes back.
   const work = c.task.step!.agent
   if (!ev && work && run.role === 'worker') return void await deps.store.logTask({ ...c.task, step: agentBack(c.task.step!) }, 'engine', `${work.kind}: the worker says it is done`)
@@ -86,6 +93,15 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   if (res.refused) return void await Promise.all([tell(`${res.refused}\n\nWhen done: ${DONE_CMD}`), deps.store.logTask(c.task, 'engine', `${step!.id}: ${res.refused}`)])
   const what = ev.kind === 'verdict' ? `verdict, ${ev.findings.length} finding(s)` : 'done'
   await deps.store.logTask({ ...(await deps.store.task(run.task))!, step: res.state }, `${run.role} ${run.program} ${run.model}`, `${step!.id}: ${what}`)
+}
+
+// The worker pushed another branch than the task's: the engine pushes, opens
+// PRs and checks merges on that one from now on, never on the old one.
+async function follow(deps: PmLaunchDeps, c: Ctx, run: Run, branch: string) {
+  await exec(deps, c.on, FOLLOW_SCRIPT, [run.worktree, run.branch, branch]).catch(() => {})
+  for (const r of (await deps.store.runs()).filter(x => x.task === run.task && x.branch === run.branch)) await deps.store.saveRun({ ...r, branch })
+  await deps.store.logTask({ ...(await deps.store.task(run.task))!, branch }, 'engine', `follows branch ${branch}, the worker's (was ${run.branch})`)
+  run.branch = branch
 }
 
 // Two live agents of one role on a task: the tracked one stays, the others

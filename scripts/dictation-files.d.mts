@@ -9,6 +9,7 @@ export interface FetchOptions {
   onUnpack?: () => void
 }
 export const CATALOG: { models: { id: string, set: string, dir: string, files: { path: string, bytes: number }[] }[] }
+export const VOICES: { voices: { id: string, set: string, dir: string, members: { path: string, bytes: number }[] }[] }
 export const SETS: Record<string, FetchEntry[]>
 export const DEFAULT_SETS: string[]
 export function sha256Of(file: string): Promise<string>
