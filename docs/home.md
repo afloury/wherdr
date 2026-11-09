@@ -27,11 +27,15 @@
   card; Normal adds the current activity on a second line. It follows you across devices.
   Every agent terminal is its own row, with its pane or tab label.
 - **Task agents**: an agent the [project engine](project-management.md) started for a task keeps
-  its own row, status and group, but is named after its task (`ACME-12 Fix the login`, cut when
-  long; a pane you renamed keeps your name, in the conversation header and search too). A small
-  badge gives its role: **dev** (working on the task), **review**, **fix** (sent back by the
-  review, red CI or you) or **catch-up** (merging the base branch), then how long it has been in
-  its state (`8 min`, `2 h`). A reviewer kept between rounds shows dimmed with **review**.
+  its own status, but its row is named after its task: the state square, the task id badge, the
+  task title (cut when long; a pane you renamed keeps your name, in the conversation header and
+  search too) and how long it has been in its state (`8 min`, `2 h`). A second line gives its
+  role, then its machine (when the list mixes several) and its last message: **DEV** (working on
+  the task), **REVIEW**, **FIX** (sent back by the review, red CI or you) or **CATCH-UP** (merging
+  the base branch). Only an agent other than Claude keeps its small icon. Several agents of the
+  same task (the worker and its reviewer) share one row, in the group of the most urgent: the
+  title line, then one line per agent with its own state, which opens that agent; the row's menu
+  lists each agent's actions under its role. A reviewer kept between rounds shows dimmed.
 - **Order**: the header (logo, version, Search, Board, Settings), the counters, the quotas (a
   machine's own quotas under them), Alfred, the [coordinators](#coordinators), then the agents of
   the machines shown, by state (Your turn, Working, Ready). When the list mixes several machines,
