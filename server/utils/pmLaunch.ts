@@ -19,6 +19,7 @@ import { ensureVisibility, readLeakCheck } from './pmVisibility'
 import { DEPS_SCRIPT, depsNote } from './pmDeps'
 import { ensureReady } from './pmReady'
 import { branchFor } from '../../shared/pm/branchName'
+import { showIds, shownTaskId } from '../../shared/pm/projectKey'
 import { LABEL, TMP_DIR, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 
 // Reuses the worktree of an earlier attempt; else a new branch from the base,
@@ -158,7 +159,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   // A new task on another machine than home: refused (left as it was) while that machine is not ready.
   if (task.machine === undefined && !task.run && machine !== p.machine) await ensureReady(deps, p, t, task, machine, repo)
   // Named at the first start (a task started before has task/<id>): a later title, tag or template change leaves it alone.
-  const paths = taskPaths(home, task.id, task.branch || (task.run ? undefined : branchFor(p.branchName, task)))
+  const paths = taskPaths(home, task.id, task.branch || (task.run ? undefined : branchFor(p.branchName, { ...task, id: shownTaskId([p], task.id) })))
   // Recorded at the first start: changing the project's branch later leaves this task alone.
   const base = taskBase(task, p) ?? ''
   const wt = await exec(deps, on, WORKTREE_SCRIPT, [repo, paths.worktree, paths.branch, base])
@@ -172,8 +173,8 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   // A visual task: the worker's key to upload its screenshots, kept with the task.
   const shotToken = shotStep(t, task.type) ? task.shotToken || randomBytes(16).toString('hex') : undefined
   const leakCheck = isPublic(p) ? (await readLeakCheck(deps, on, paths).catch(() => ({ check: undefined }))).check : undefined
-  const text = instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(machine, deps.origin), token: shotToken } : undefined, leakCheck)
-    + ['', ...(depsLine ? [depsLine, ''] : []), ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n')
+  const text = showIds([p], instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(machine, deps.origin), token: shotToken } : undefined, leakCheck)
+    + ['', ...(depsLine ? [depsLine, ''] : []), ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n'))
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')
 
   // The engine's start: the task enters its first step (the worker's); the

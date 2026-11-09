@@ -552,15 +552,15 @@ it('an update notice only when the session started on another version, and only 
 
 describe('wakes', () => {
   const deliver = (status: string, now: number) => {
-    const sent: { terminal: string, text: string }[] = [], pushed: string[] = []
+    const sent: { terminal: string, text: string }[] = [], pushed: string[] = [], bodies: string[] = []
     const call = async (method: string, params: Record<string, string>) => {
       if (method === 'terminal.get') return { status }
       if (method === 'terminal.send') sent.push({ terminal: params.terminal!, text: params.text! })
       return {}
     }
-    const notify = async (title: string) => { pushed.push(title) }
+    const notify = async (title: string, body: string) => { pushed.push(title); bodies.push(body) }
     const d = { store, call, notify } as unknown as Parameters<typeof wakeTick>[0]
-    return { sent, pushed, d, run: () => wakeTick(d, now) }
+    return { sent, pushed, bodies, d, run: () => wakeTick(d, now) }
   }
   const atDeploy = async (since: number) => {
     await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9' })
@@ -585,6 +585,29 @@ describe('wakes', () => {
     const recheck = deliver('idle', 1000 + 300_000)
     await recheck.run()
     expect(recheck.sent[0]!.text).toContain('Check again: ')
+  })
+
+  it('names tasks by the shown key of a renamed project: wakes, the push, pm list, logs, refusals', async () => {
+    await store.updateProject('CO', { key: 'ABC' })
+    const id = await atDeploy(1000)
+    expect(id).toBe('CO-1') // stored ids keep the fixed key
+    const first = deliver('idle', 2000)
+    await first.run()
+    expect(first.sent[0]!.text).toContain('ABC-1 (Fix): ')
+    expect(first.sent[0]!.text).not.toMatch(/\bCO-1\b/)
+    await deliver('idle', 3000).run()
+    await deliver('idle', 2000 + WAKE.ACK_MS + WAKE.IDLE_MS).run()
+    await deliver('idle', 3000 + WAKE.ACK_MS + WAKE.IDLE_MS).run()
+    const last = deliver('idle', 3000 + 2 * (WAKE.ACK_MS + WAKE.IDLE_MS))
+    await last.run()
+    expect(last.pushed).toEqual(['ABC: the coordinator is not answering'])
+    expect(last.bodies[0]).toContain('ABC-1 (Fix)')
+    // Both keys still name the task; the output reads the shown one.
+    expect((await cli(['list']) as { tasks: { id: string }[] }).tasks.map(t => t.id)).toEqual(['ABC-1'])
+    for (const k of ['CO-1', 'ABC-1']) expect((await cli(['show', k]) as { task: { id: string } }).task.id).toBe('ABC-1')
+    await store.logTask((await store.task(id))!, 'engine', `after CO-1, in ~/.wherdr/pm/worktrees/CO-1 on task/CO-1`)
+    expect((await store.task(id))!.log!.at(-1)!.text).toBe('after ABC-1, in ~/.wherdr/pm/worktrees/CO-1 on task/CO-1')
+    await refused(cli(['task', 'remove', id, '--reason', 'not needed']), 'ABC-1 has started')
   })
 
   it('waits while the coordinator works or the user just wrote; the queue keeps the reason', async () => {

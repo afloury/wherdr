@@ -18,7 +18,7 @@ import { ackWakes } from '../../shared/pm/wakes'
 import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
 import { allowedMachines, machineNamed, taskMachine, type Project } from '../../shared/pm/project'
-import { projectOf, shownKey, shownTaskId } from '../../shared/pm/projectKey'
+import { projectOf, showIds, shownKey, shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
@@ -125,7 +125,17 @@ const unb64 = (v: unknown) => (typeof v === 'string' ? Buffer.from(v, 'base64').
 // POST /api/pm/cli: { argv, input? } with the coordinator's token, or
 // { argv64, input64 } from the folder's `wherdr` script. A project's token
 // acts on its project only; the main coordinator's on every project.
-export async function runCommand(deps: Deps, token: unknown, body: { argv?: unknown, input?: unknown, argv64?: unknown, input64?: unknown }) {
+// The output and a refusal name tasks by their shown key (CMP-9, not CP-9).
+type CliBody = { argv?: unknown, input?: unknown, argv64?: unknown, input64?: unknown }
+export async function runCommand(deps: Deps, token: unknown, body: CliBody) {
+  try { return showIds(await deps.store.projects(), await command(deps, token, body)) }
+  catch (e) {
+    if (e instanceof Error) e.message = showIds(await deps.store.projects().catch(() => []), e.message)
+    throw e
+  }
+}
+
+async function command(deps: Deps, token: unknown, body: CliBody) {
   const { store } = deps
   const scope = await scopeOf(store, token)
   if (!scope) throw new HerdrError('forbidden', 'Unknown coordinator token')

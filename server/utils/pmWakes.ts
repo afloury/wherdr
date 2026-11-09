@@ -18,6 +18,7 @@ import type { PmStore } from './pmStore'
 import { noteTurn } from './pmCoordinator'
 import { pushSend } from './push'
 import { HerdrError } from './herdr'
+import { projectOf, shownKey, showIds } from '../../shared/pm/projectKey'
 
 export interface WakeDeps extends CoreAdminDeps { store: PmStore, notify?: (title: string, body: string, project: string) => Promise<unknown> }
 const newId = () => randomUUID().replace(/-/g, '').slice(0, 8)
@@ -85,7 +86,8 @@ async function gather(deps: WakeDeps, now: number) {
       })
     }
   }
-  return reasons
+  // Task ids as the user sees them (CMP-9, not its fixed CP-9).
+  return new Map([...reasons].map(([k, r]) => [k, showIds(projects, r)]))
 }
 
 // The user's "run now": queued at once, delivered at the next idle moment,
@@ -106,7 +108,8 @@ export async function wakeTick(deps: WakeDeps, now = Date.now()) {
   let queue = await store.wakes()
   const fresh = [...reasons].map(([k, r]) => enqueue(queue, k, r, now, newId()))
   if (fresh.length) { await store.saveWakes(fresh); queue = await store.wakes() }
-  const sent: string[] = []
+  const sent: string[] = [], projects = await store.projects()
+  const shown = (k: string) => { const p = projectOf(projects, k); return p ? shownKey(p) : k }
   for (const key of new Set(queue.filter(w => !w.ackedAt && w.ended !== 'unanswered' && w.ended !== 'merged').map(w => w.coordinator))) {
     const c = await store.coordinator(key)
     const status = await statusOf(deps, c?.terminal)
@@ -114,12 +117,12 @@ export async function wakeTick(deps: WakeDeps, now = Date.now()) {
     const r = tickWakes(queue, key, { status, lastUserAt: c?.userAt, now })
     if (r.deliver) {
       await noteTurn(store, key, 'wake', undefined, r.deliver.reasons.some(x => x.includes(LOOK_REASON)))
-      try { await deps.call('terminal.send', { terminal: c!.terminal, text: wakeText(r.deliver, key !== MAIN && !!c?.autopilot?.on) }, 30000) }
+      try { await deps.call('terminal.send', { terminal: c!.terminal, text: showIds(projects, wakeText(r.deliver, key !== MAIN && !!c?.autopilot?.on)) }, 30000) }
       catch { r.changed.splice(r.changed.indexOf(r.deliver), 1, { ...r.deliver, deliveredAt: undefined, tries: r.deliver.tries - 1 }) }
     }
     await store.saveWakes(r.changed)
     if (r.deliver && r.changed.some(w => w.id === r.deliver!.id && w.deliveredAt)) sent.push(key)
-    if (r.notify) await (deps.notify ?? pushNotify)(`${key}: the coordinator is not answering`, `Wake ${r.notify.id} got no ack after two tries: ${r.notify.reasons[0]?.slice(0, 120) ?? ''}`, key).catch(() => {})
+    if (r.notify) await (deps.notify ?? pushNotify)(`${shown(key)}: the coordinator is not answering`, showIds(projects, `Wake ${r.notify.id} got no ack after two tries: ${r.notify.reasons[0]?.slice(0, 120) ?? ''}`), key).catch(() => {})
   }
   return sent
 }

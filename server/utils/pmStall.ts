@@ -14,12 +14,14 @@ import { notificationAllowed } from './notificationRules'
 import { pushSend } from './push'
 import { reviveWorker } from './pmRelease'
 import { noteFix } from '../../shared/pm/selfFix'
+import { showIds, shownTaskId } from '../../shared/pm/projectKey'
 
-export type StallNotify = (task: Task, s: Stall) => Promise<number>
+// shown: the task id as the user sees it (CMP-9, not its fixed CP-9).
+export type StallNotify = (task: Task, s: Stall, shown: string) => Promise<number>
 
-const pushNotify: StallNotify = async (task, s) =>
+const pushNotify: StallNotify = async (task, s, shown) =>
   await notificationAllowed('needs-you', { workspaces: [] }, undefined, { machine: task.machine ?? '', project: task.project, board: true })
-    ? pushSend({ title: `${task.id} needs you`, body: `${task.title}: stalled, ${s.reason}`, tag: `pm-stall-${task.id}`, url: `/#/board?task=${encodeURIComponent(task.id)}` })
+    ? pushSend({ title: `${shown} needs you`, body: `${task.title}: stalled, ${s.reason}`, tag: `pm-stall-${task.id}`, url: `/#/board?task=${encodeURIComponent(task.id)}` })
     : 0
 
 // The agent the stall waits on: the step's holder (idle), else the worker (red CI).
@@ -48,7 +50,7 @@ export async function noteStall(deps: PmLaunchDeps, task: Task, plan: PlannedSte
   if (moves.nudge) {
     const agent = agentOf(task, plan, runs, s)
     const failing = await tests(s)
-    const sent = agent && await deps.call('terminal.send', { terminal: agent.terminal, text: nudgeText(s, failing) }, 30000).then(() => true, () => false)
+    const sent = agent && await deps.call('terminal.send', { terminal: agent.terminal, text: showIds(await store.projects(), nudgeText(s, failing)) }, 30000).then(() => true, () => false)
     out = await store.logTask(out, 'engine', sent
       ? `nudged the ${agent.role}${failing.length ? ` with the failing tests: ${failing.join('; ')}` : ''}`
       : 'could not nudge the agent: its terminal is gone')
@@ -56,7 +58,7 @@ export async function noteStall(deps: PmLaunchDeps, task: Task, plan: PlannedSte
   if (moves.restart) out = await restart(deps, out, plan, agentOf(task, plan, runs, s), s, () => tests(s))
   if (moves.handle) {
     out = await store.logTask(out, 'engine', `still stalled after 30 min: in Tasks to handle (${s.reason})`)
-    const n = await notify(out, s).catch(() => 0)
+    const n = await notify(out, s, shownTaskId(await store.projects(), out.id)).catch(() => 0)
     out = await store.logTask(out, 'engine', n ? `notified the user (${n} device${n > 1 ? 's' : ''})` : 'no notification sent (none allowed or no device)')
   }
   return out
