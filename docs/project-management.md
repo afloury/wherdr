@@ -314,7 +314,7 @@ for goes at once, with a word when it goes past one (*started; past the
 autopilot's limit of 3 at once*), and still counts in them.
 
 **Keep the board busy** (on by default while the autopilot is on): the engine
-itself starts the next task to do, oldest first, whenever a machine the project
+itself starts the next task to do, in [board order](#board-order), whenever a machine the project
 allows has room, within the autopilot's limits, hours and pace. It never starts
 a task that waits for its *after* tasks (those start once they are done), nor
 one already under way, and each start goes in the task's log (*started by the
@@ -427,6 +427,22 @@ task type's `weight` when the workflow sets one, else heavy when a worker step
 asks for screenshots, light when the type lands no code (no commit, link or git
 action), standard otherwise. The coordinator does the same with `task add
 --weight`, and `show <task>` gives it.
+
+### Board order
+
+Each column lists its cards in board order: the tasks the coordinator put
+first, in the order it gave, then the others, oldest first. Ask the
+coordinator (or Alfred) to order them, for example the tasks waiting for a
+merge in the order they should merge: it runs `wherdr pm task order <task>
+[<task>…]`, which puts these tasks first in their column, in this order, and
+leaves the others in their order after them. A done task is refused. The order
+is the same for everyone and survives a restart; the project's log says who
+ordered what. In a wake, the coordinator orders the board only with the
+autopilot on.
+
+Keep the board busy starts to-do tasks in this order, the merge queue takes
+approved merges in it when several are ready at once, and `wherdr pm list`
+returns tasks in it.
 
 ### Tasks that touch the same files
 
@@ -585,8 +601,9 @@ Each project has a **merge queue**: every task whose merge may go on without
 you (a merge the guards give to wherdr, or one you approved) enters it. Only
 PRs ready to merge now stand in line: no conflict, no update required, the
 task's last commit on the PR and its checks green. The first in line merges,
-then the next one, a minute apart; PRs that touch no file another queued PR
-touches come first, then smaller changes.
+then the next one, a minute apart; the tasks the coordinator put first on the
+board come first, in [board order](#board-order), then PRs that touch no file
+another queued PR touches, then smaller changes.
 
 A PR that needs work steps out of line until it is ready again, so it never
 holds up the others: a conflict with its base, checks still running or red,

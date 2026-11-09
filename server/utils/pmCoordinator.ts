@@ -29,6 +29,7 @@ import { SCRIPT } from '../../shared/pm/actions'
 import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from '../../shared/pm/contributorPr'
 import { userEvent, userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
+import { boardOrder, orderTasks } from '../../shared/pm/boardOrder'
 import { removeTask, resumeTask, stopTask } from './pmStop'
 import { checkOnGithub } from './pmGhCheck'
 import { noteBack } from './pmStall'
@@ -193,7 +194,7 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
     case 'ui open': return openUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope, main, raw: cmd.link, turn, by: main ? ALFRED : `${scope} coordinator` })
     case 'list': {
       const ts = new Map(await Promise.all(projects.map(async x => [x.key, x ? await store.workflow(x.key) : null] as const)))
-      return { tasks: (await store.tasks()).filter(x => !key || x.project === key).map(x => summary(ts.get(x.project) ?? null, x, projects.find(y => y.key === x.project))) }
+      return { tasks: boardOrder(await store.tasks()).filter(x => !key || x.project === key).map(x => summary(ts.get(x.project) ?? null, x, projects.find(y => y.key === x.project))) }
     }
     case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task, p), weight: weightText(weightOf(t, task)), machine: machineOf(task, p, deps.machines()), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task, p) : [] } }
     case 'plan': return { template: t && { id: t.id, version: t.version }, workingBranch: workingBranch(p), plans: Object.fromEntries(Object.keys(needPlan().taskTypes).map(type => [type, planSteps(t!, { type }, p?.base)])) }
@@ -365,6 +366,17 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
     case 'task remove': {
       const task = await taskOf(cmd.task)
       return removeTask(deps, task.id, { who: 'coordinator', wake: turn !== 'user' }, cmd.reason, by)
+    }
+    case 'task order': {
+      if (turn !== 'user' && !pilot?.on) throw new HerdrError('refused', 'In a wake, the board is ordered only with the autopilot on')
+      const picked = await Promise.all(cmd.tasks.map(taskOf))
+      const mine = (await store.tasks()).filter(x => x.project === key)
+      const r = orderTasks(mine, picked.map(x => x.id))
+      if ('refused' in r) throw new HerdrError('refused', r.refused)
+      // Read again: the engine may have moved it since.
+      for (const x of picked) await store.saveTask({ ...(await store.task(x.id)) ?? x, order: r.order[x.id] })
+      await store.logProject(key, { by, text: `put first on the board, in this order: ${cmd.tasks.join(', ')}`, ...(rec?.turn?.said ? { said: rec.turn.said } : {}) })
+      return { ordered: cmd.tasks, tasks: boardOrder(await store.tasks()).filter(x => x.project === key && !x.step?.done).map(x => x.id) }
     }
     case 'task add': {
       const look = turn === 'wake' && !!rec?.turn?.look
