@@ -135,6 +135,8 @@ export interface Pane {
   title: string | null
   cwd: string | null
   agentSession: string | null
+  // herdr-core: started by wherdr's projects (its labels wherdr.task, wherdr.coordinator).
+  pm?: 'task' | 'coordinator'
   bornAt?: number
   // Number of the agent's last state change (Herdr's `state_change_seq`,
   // increasing on a machine): "recent" sort of Ready.

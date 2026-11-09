@@ -57,6 +57,7 @@ export function coreState(terminals: CoreTerminal[], machines: CoreMachine[], do
     const pane: Pane = { id: `${workspace}:p${id}`, coreAddress: terminal.address, machine, workspace, tab, tabLabel: result.tabs!.find(t => t.id === tab)!.label,
       agent, name: addressOnly(terminal.name, terminal.address) ? null : terminal.name ?? null, label: ownTitle(terminal), title: terminal.title == null ? null : cleanTitle(terminal.title), cwd, agentSession: null,
       status, interaction: 'unknown',
+      ...(terminal.labels?.['wherdr.task'] ? { pm: 'task' as const } : terminal.labels?.['wherdr.coordinator'] !== undefined ? { pm: 'coordinator' as const } : {}),
       ...(typeof terminal.status_ms === 'number' ? { stateSeq: terminal.status_ms } : terminal.turn ? { stateSeq: terminal.turn } : {}) }
     result.panes.push(pane)
   }
