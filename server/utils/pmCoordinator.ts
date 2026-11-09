@@ -329,7 +329,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       // No GitHub call in a wake or with the guard off.
       const ask = prMergeAskRefusal(base)
       if (ask) throw new HerdrError('refused', ask)
-      const taskLinks = (await store.tasks()).flatMap(x => (x.links ?? []).map(l => l.url))
+      const taskLinks = (await store.tasks()).flatMap(x => [...(x.links ?? []).map(l => l.url), ...(x.branch ? [x.branch] : [])])
       const sh = actionShell(deps, machineOn(deps, proj.machine).on)
       const view = await sh(`cd "$1" || exit 1; gh pr view "$2" --json ${PR_FIELDS}`, [proj.path, String(cmd.pr)])
       let pr: ContributorPr | null = null
