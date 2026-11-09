@@ -10,6 +10,7 @@ import { CoreError } from './core'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, kindsOf, launchFailure, machineOn, type CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
+import { noteBack } from './pmStall'
 import { initialState, onEvent } from '../../shared/pm/steps'
 import { doneSection, runFiles } from '../../shared/pm/advance'
 import { isPublic } from '../../shared/pm/visibility'
@@ -92,7 +93,8 @@ const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitK
 // worktree, whatever the task's state and the holder of its current step.
 // on: the machine key a new task goes to (one its project allows); a started
 // task always goes back to its own (taskMachine).
-export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, revive, on: asked }: { handover?: string, revive?: true, on?: string } = {}): Promise<Task> {
+// by: who starts it (the log's 'back to work' line, when that clears a timeout or a stall).
+export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, revive, on: asked, by = 'engine' }: { handover?: string, revive?: true, on?: string, by?: string } = {}): Promise<Task> {
   const { store } = deps
   const asRead = await store.task(id)
   if (!asRead) throw new HerdrError('not_found', 'Unknown task')
@@ -114,7 +116,8 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, rev
   const held = s?.started && !s.done ? taskPlan(t, task, p)[s.at] : undefined
   if (held && held.holder !== 'worker' && !revive) {
     const { told: _told, ...step } = s!
-    return store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, step })
+    const saved = await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, step })
+    return noteBack(store, saved, taskPlan(t, saved, p), by, `started again by the ${by}`)
   }
   const { machine } = placed
   let on: string | undefined, label = ''
@@ -170,7 +173,10 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, rev
     run = { ...run, terminal: address, state: 'running', startedAt: Date.now() }
     await store.saveRun(run)
     const failed = await launchFailure(deps, address, deps.launchWatchMs ?? 5000)
-    if (!failed) return (await store.task(task.id))!
+    if (!failed) {
+      const now = (await store.task(task.id))!
+      return task.step?.started ? noteBack(store, now, taskPlan(t, now, p), by, `started again by the ${by}`) : now
+    }
     await store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
     // An agent that exits at once gets one more attempt, never a loop.
     if (run.attempt > 1 || failed.code === NOT_FOUND)
