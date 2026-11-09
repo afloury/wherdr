@@ -1,9 +1,9 @@
-// Agents of a task that waits for the user are ended once idle for 10 minutes
+// Agents of a task that waits for the user, or in the merge queue, are ended once idle for 10 minutes
 // (every minute, from the mechanic's pass), and its worker starts again in the
 // same worktree when the task needs it: a send-back, a conflict, red CI. The
 // rules are in shared/pm/release.ts.
 import { LABEL, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
-import { PUSH_LEFT_SCRIPT, RELEASED_WHY, idleSince, releaseDue } from '../../shared/pm/release'
+import { PUSH_LEFT_SCRIPT, RELEASED_WHY, idleSince, releaseDue, waitsForUser, waitsInQueue } from '../../shared/pm/release'
 import { handoverText } from '../../shared/pm/stop'
 import { runOn, startTask, type PmLaunchDeps } from './pmLaunch'
 import { actionShell } from './pmActions'
@@ -56,7 +56,7 @@ export async function releaseIdle(deps: PmLaunchDeps, now = Date.now()) {
     unpushedLogged.delete(task.id)
     idle.delete(task.id)
     if (push.pushed) task = await store.logTask(task, 'engine', 'pushed the branch\'s unpushed commits before releasing its agents')
-    const t = await store.logTask(task, 'engine', 'released its agents: idle for 10 minutes while the task waits for you; they start again when it needs them')
+    const t = await store.logTask(task, 'engine', `released its agents: idle for 10 minutes while the task waits ${waitsInQueue(task) && !waitsForUser(task) ? 'in the merge queue' : 'for you'}; they start again when it needs them`)
     await endAgents(deps, t, 'released', ' to free memory')
     released.push(task.id)
   }

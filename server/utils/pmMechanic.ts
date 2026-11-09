@@ -10,7 +10,7 @@ import { CATCH_UP_TRIES, catchUpGaveUp, ciOf, infraLog, nextMove, redCiText, typ
 import { FIX_MOVE, blockOf, escalation, fixOf, mayTry, noteFix } from '../../shared/pm/selfFix'
 import { enqueue, wakesFor } from '../../shared/pm/wakes'
 import { MAIN } from '../../shared/pm/coordinator'
-import { inMergeQueue, mergeOrder, ordinal } from '../../shared/pm/mergeQueue'
+import { inMergeQueue, mergeOrder, ordinal, queueOut } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
 import { onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
 import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
@@ -26,6 +26,7 @@ import { paceOf, placeFor, slotsOf } from './pmPlace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { advanceTick } from './pmAdvance'
 import { forgetMemory } from './pmMemory'
+import { samplePeaks } from './pmPeaks'
 import { releaseIdle, reviveWorker } from './pmRelease'
 import { agentBack, fixWatch, handToAgent, retriesAction, wasReleased } from '../../shared/pm/release'
 import { noteBack, noteStall } from './pmStall'
@@ -184,13 +185,14 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   await releaseIdle(deps, now).catch(() => {})
   await startChained(deps, now).catch(() => {})
   await startHeld(deps, now).catch(() => {})
+  await samplePeaks(deps).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
   const seen: Seen[] = []
   for (let task of await store.tasks()) {
     if (task.state === 'todo' || task.step?.done) {
       prSeen.delete(task.id)
-      if (task.queue) { const { queue: _, ...t } = task; await store.saveTask(t) }
+      if (task.queue) { const { queue: _, queueOut: __, ...t } = task; await store.saveTask(t) }
       continue
     }
     const p = projects.find(x => x.key === task.project)
@@ -337,7 +339,7 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
           : { kind: 'caught-up', error: `update with ${move.base}: ${lastLine(r.out)}` })
       }
       if (r.code === 0) return `caught up with ${move.base}`
-      return catchUpGaveUp(task, f.head) ? `${lastLine(r.out)} (failed ${CATCH_UP_TRIES} times: it leaves the front of the merge queue)` : lastLine(r.out)
+      return catchUpGaveUp(task, f.head) ? `${lastLine(r.out)} (failed ${CATCH_UP_TRIES} times: wherdr stops updating this commit)` : lastLine(r.out)
     }
     case 'rerun-ci': {
       const r = await sh(SCRIPT.rerun, [run.worktree, f.head!])
@@ -349,36 +351,30 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
 
 interface Seen { facts: MechFacts, run: Run, sh: ReturnType<typeof actionShell> }
 
-// Each project's merge queue (shared/pm/mergeQueue.ts): every task's place
-// kept on it and logged as it enters or reaches the front; the first one is
-// checked against its base, as GitHub flags a branch behind only when it must be up to date.
+// Each project's merge queue (shared/pm/mergeQueue.ts): every task's place,
+// and why it stepped out of line, kept on it; logged as it enters or comes first.
 async function queueTick(deps: PmLaunchDeps, seen: Seen[]) {
   const queued = seen.filter(x => inMergeQueue(x.facts.task, x.facts.plan, x.facts.guards, x.facts.pr))
   for (const project of new Set(seen.map(x => x.facts.task.project))) {
     const mine = queued.filter(x => x.facts.task.project === project)
-    const order = mergeOrder(mine.map(({ facts: { task, pr, head } }) => ({
-      id: task.id, files: (pr!.files ?? []).map(f => f.path), size: (pr!.additions ?? 0) + (pr!.deletions ?? 0),
-      first: task.queue === 1 || !!task.step!.catchUp || !!task.step!.agent, red: !!task.ci?.red || catchUpGaveUp(task, head),
+    for (const x of mine) x.facts.queueOut = queueOut(x.facts)
+    const order = mergeOrder(mine.map(({ facts: { task, pr, queueOut: out } }) => ({
+      id: task.id, files: (pr!.files ?? []).map(f => f.path), size: (pr!.additions ?? 0) + (pr!.deletions ?? 0), out,
     })))
     for (const x of mine) {
-      const place = order.indexOf(x.facts.task.id) + 1
+      const place = order.indexOf(x.facts.task.id) + 1, out = x.facts.queueOut
       x.facts.queue = place
-      if (x.facts.task.queue === place) continue
-      const t = { ...x.facts.task, queue: place }
-      const said = place === 1 ? 'first in the merge queue: it is updated with its base, then merges once its checks pass'
-        : x.facts.task.queue ? undefined : `${ordinal(place)} in the merge queue`
-      x.facts.task = await (said ? deps.store.logTask(t, 'engine', said) : deps.store.saveTask(t))
-    }
-    const first = mine.find(x => x.facts.queue === 1)
-    const pr = first?.facts.pr
-    if (first && pr && !first.facts.agentBusy && !['BEHIND', 'DIRTY'].includes(pr.mergeStateStatus ?? '')) {
-      const r = await first.sh(SCRIPT.behind, [first.run.worktree, pr.baseRefName]).catch(() => null)
-      first.facts.behind = r?.code === 0 && lastLine(r.out) === 'behind'
+      if (x.facts.task.queue === place && x.facts.task.queueOut === out) continue
+      const { queueOut: _, ...t } = { ...x.facts.task, queue: place }
+      const said = !x.facts.task.queue ? `in the merge queue${out ? `, out of line: ${out}` : `, ${ordinal(place)}`}`
+        : place === 1 && !out && (x.facts.task.queue !== 1 || x.facts.task.queueOut) ? 'first in the merge queue: it merges now' : undefined
+      const next = out ? { ...t, queueOut: out } : t
+      x.facts.task = await (said ? deps.store.logTask(next, 'engine', said) : deps.store.saveTask(next))
     }
   }
   // Out of the queue (merged, stopped, waiting for the user): its place goes.
   for (const x of seen.filter(y => y.facts.task.queue && !queued.includes(y))) {
-    const { queue: _, ...t } = x.facts.task
+    const { queue: _, queueOut: __, ...t } = x.facts.task
     x.facts.task = await deps.store.saveTask(t)
   }
 }

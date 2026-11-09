@@ -123,8 +123,6 @@ if git merge-base --is-ancestor HEAD FETCH_HEAD; then git merge -q --ff-only FET
 if ! git merge -q --no-edit FETCH_HEAD >/dev/null 2>&1; then
   f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict with origin/$1 in $f"; exit ${CODE.SEND_BACK}; fi
 echo "merged origin/$1"`,
-  // "behind" when the branch lacks its base's last commits (GitHub says so only when the branch must be up to date).
-  behind: `${IN} git fetch -q origin "$1" 2>&1 || exit 1; git merge-base --is-ancestor "origin/$1" HEAD || echo behind`,
   // Where the PR head ($1) stands against the task's commit: same; behind (in
   // its history: the task's later commits are not pushed yet); or foreign (a
   // commit the task's worktree never had: pushed from elsewhere).

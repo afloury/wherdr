@@ -48,8 +48,9 @@ const FROM_TEXT: Record<WeightFrom, string> = { 'task': 'set on the task', 'type
 // "heavy (screenshots)": what task show and the Add task sheet say.
 export const weightText = (w: { weight: Weight, from: WeightFrom }) => `${w.weight} (${FROM_TEXT[w.from]})`
 
-// "light ≈ 0.7 GB, 0.25 core · standard ≈ 1.8 GB, 1 core · heavy ≈ 3.9 GB, 2 cores": what placement counts per weight.
-export const weightsLine = () => WEIGHTS.map(w => {
-  const e = WEIGHT_DEFAULTS[w]
-  return `${w} ≈ ${(e.mb / 1024).toFixed(1)} GB, ${e.cores} ${e.cores > 1 ? 'cores' : 'core'}`
+// "light ≈ 0.7 GB, 0.25 core (default) · standard ≈ 1.8 GB, 1 core (default) · heavy ≈ 3.2 GB, 2 cores (from 5 runs)":
+// what placement counts per weight, learned from measured peaks (peaks.ts) once there are enough.
+export const weightsLine = (est: Record<Weight, { mb: number, cores: number, runs?: number }> = WEIGHT_DEFAULTS) => WEIGHTS.map((w) => {
+  const e = est[w]
+  return `${w} ≈ ${(e.mb / 1024).toFixed(1)} GB, ${e.cores} ${e.cores > 1 ? 'cores' : 'core'} (${e.runs ? `from ${e.runs} runs` : 'default'})`
 }).join(' · ')
