@@ -360,9 +360,14 @@ its question last; anything else opens the sheet on **To do**. The sheet stays
 one tap away: *Open the task* in the card's menu, or the small icon at the end
 of the entry. An agent that is not on screen here opens the sheet instead.
 
-- **A visual change to merge**: its screenshots large (swipe between them, tap
-  one to zoom; each is labelled phone or desktop), the review's verdict, then
+- **A visual change to merge**: the **Worker's note** (its closing report: what
+  was done, why it is done, what was tested) and the **Reviewer's note** (the
+  verdict, what it sent back and was fixed during the rounds, what it left as
+  minor), each in Markdown, folded to a few lines with *Show more*, side by
+  side on a wide screen; then its screenshots large (swipe between them, tap
+  one to zoom; each is labelled phone or desktop), then
   *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
+  A step you end (*Deployed*, …) shows the same two notes under its badge.
   When the agent reworks the task after its review (new commits since the
   review), its new screenshots replace the shown ones, marked *after rework*;
   the earlier set stays in the Plan tab under *Earlier screenshots*. The merge
