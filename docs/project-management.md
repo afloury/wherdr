@@ -323,7 +323,23 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   and its button.
 - **An agent's question or permission**: its text, and a button to open that agent.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
-  can do (try again, start it, open its agent).
+  can do (start it, open its agent). A failed action step (a merge GitHub
+  refused) has *Try again* at the top of the sheet, which runs it again.
+
+### Report a problem
+
+Something is wrong with a task waiting for you (the screenshots miss the asked
+feature, a part is missing, a bug)? Tap *Report a problem* in its sheet, or in
+its card's menu. Say what is wrong, tap the screenshots it is about, and keep
+*Block the merge until fixed* on if the merge must wait. It goes to the
+project's coordinator (started if it does not run), not to the task's agent,
+with the task, its step, your text, the screenshots, the PR and the review: the
+coordinator decides whether to tell the agent what to fix, send the step back to
+the worker, or add a follow-up task. You never relay it yourself.
+
+The report goes to the task's log, the card says *Problem reported 20:15*, and
+the task stays under *Your turn* until the coordinator acts (`wherdr pm report
+back` or `report close`), you send the step back, or you *Withdraw* it.
 
 While a merge waits for you, wherdr watches its PR. When the PR starts to
 conflict with its base, or falls behind it under a branch rule that wants it up
