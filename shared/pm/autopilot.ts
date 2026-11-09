@@ -2,6 +2,7 @@
 // limits, stored with the coordinator. Only the user changes it (Settings, the
 // passkey session); the coordinator reads it with `wherdr pm autopilot show`.
 import type { Run, Task } from './run'
+import type { PlannedStep } from './steps'
 import { chainState } from './advance'
 import { parseSchedule } from './schedule'
 import type { PaceVerdict } from './pacing'
@@ -17,7 +18,7 @@ export interface Autopilot {
   at?: string // fixed times (daily 08:00, mon,thu 09:00, a cron): a wake with the goal, too
   events: AutopilotEvent[]
   perDay: number // tasks started per day
-  atOnce: number // tasks working at once (waiting and ready ones take no slot)
+  atOnce: number | null // tasks working at once (waiting and ready ones take no slot); null: Auto, as many as the machines take
   hours?: { from: number, to: number } // local hours, to excluded; from > to spans midnight
   lookForWork?: true // keep the scheduled wakes when there is nothing to do (goals that add their own tasks)
   lookPerDay?: number // with lookForWork: tasks those wakes may add a day (LOOK_PER_DAY when unset)
@@ -25,7 +26,9 @@ export interface Autopilot {
 
 export const LOOK_PER_DAY = 3
 
+// A project with no saved autopilot (one added before Auto) keeps 2 at once; a new one is saved with Auto.
 export const DEFAULT_AUTOPILOT: Autopilot = { on: false, goal: '', events: ['done', 'stuck'], perDay: 10, atOnce: 2 }
+export const NEW_AUTOPILOT: Autopilot = { ...DEFAULT_AUTOPILOT, atOnce: null }
 
 // The user's settings, checked. Unknown fields dropped.
 export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error: string } {
@@ -39,8 +42,8 @@ export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error
   if (s && ('error' in s || 'every' in s)) return { error: 'at: fixed times like daily 08:00, mon,thu 09:00 or a cron' }
   const events = Array.isArray(o.events) ? o.events : []
   if (!events.every(e => (AUTOPILOT_EVENTS as readonly unknown[]).includes(e))) return { error: `events: ${AUTOPILOT_EVENTS.join(', ')}` }
-  const perDay = int(o.perDay, 100), atOnce = int(o.atOnce, 20)
-  if (perDay === null || atOnce === null) return { error: 'perDay (0-100) and atOnce (0-20) are whole numbers' }
+  const perDay = int(o.perDay, 100), atOnce = o.atOnce === null ? null : int(o.atOnce, 20)
+  if (perDay === null || (atOnce === null && o.atOnce !== null)) return { error: 'perDay (0-100) and atOnce (0-20, or null for Auto) are whole numbers' }
   const lookPerDay = o.lookPerDay === undefined ? undefined : int(o.lookPerDay, 20)
   if (lookPerDay === null) return { error: 'lookPerDay: a whole number, 0-20' }
   const h = o.hours as { from?: unknown, to?: unknown } | undefined
@@ -64,28 +67,37 @@ export function inHours(hours: Autopilot['hours'], d: Date) {
 }
 
 // Where a task stands for the autopilot.
-export type TaskStatus = 'todo' | 'working' | 'waiting' | 'ready' | 'done'
+// stalled: working, nothing moves (blocked.ts); it still holds its slot.
+export type TaskStatus = 'todo' | 'working' | 'stalled' | 'waiting' | 'ready' | 'done'
 export const taskStatus = (t: Task): TaskStatus =>
-  t.step?.done ? 'done' : t.state === 'waiting' ? 'waiting' : t.step?.yourTurn ? 'ready' : t.state
+  t.step?.done ? 'done' : t.state === 'waiting' ? 'waiting' : t.step?.yourTurn ? 'ready' : t.state === 'working' && t.stall ? 'stalled' : t.state
+
+// A working task whose step holds no agent (a PR or merge waiting for checks
+// or the queue, a user step) takes no slot, unless the engine handed its
+// worker work on its own (a catch-up, red CI). Without its plan: it holds one.
+export const holdsSlot = (t: Task, plan?: Pick<PlannedStep, 'holder'>[]) =>
+  !plan || !t.step || !!t.step.agent || (plan[t.step.at]?.holder ?? 'none') !== 'none'
+export type SlotOf = (t: Task) => boolean
 
 // What is left of today's limits. Started today: tasks whose first worker run
-// started since local midnight. Working: only tasks that hold a slot.
-export function limitsLeft(ap: Autopilot, tasks: Task[], runs: Run[], now: number) {
+// started since local midnight. Working: only tasks that hold a slot (holds:
+// holdsSlot with each task's plan).
+export function limitsLeft(ap: Autopilot, tasks: Task[], runs: Run[], now: number, holds: SlotOf = () => true) {
   const midnight = new Date(now).setHours(0, 0, 0, 0)
   const ids = new Set(tasks.map(t => t.id))
   const first = new Map<string, number>()
   for (const r of runs) if (ids.has(r.task) && r.role === 'worker') first.set(r.task, Math.min(first.get(r.task) ?? Infinity, r.startedAt))
   const started = [...first.values()].filter(at => at >= midnight).length
-  const working = tasks.filter(t => taskStatus(t) === 'working').length
-  return { started, perDay: ap.perDay, startLeft: Math.max(0, Math.min(ap.perDay - started, ap.atOnce - working)), working, atOnce: ap.atOnce }
+  const working = tasks.filter(t => ['working', 'stalled'].includes(taskStatus(t)) && holds(t)).length
+  return { started, perDay: ap.perDay, startLeft: Math.max(0, Math.min(ap.perDay - started, (ap.atOnce ?? Infinity) - working)), working, atOnce: ap.atOnce }
 }
 
 // Why the autopilot may not start one more task now, or undefined. `pace`:
 // the verdict of the worker's account, given only for automatic work.
-export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: number, pace?: PaceVerdict): string | undefined {
-  const l = limitsLeft(ap, tasks, runs, now)
+export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: number, pace?: PaceVerdict, holds?: SlotOf): string | undefined {
+  const l = limitsLeft(ap, tasks, runs, now, holds)
   if (l.started >= l.perDay) return `Today's limit is reached (${l.perDay} tasks started)`
-  if (l.working >= l.atOnce) return `${l.working} tasks already work at once (limit ${l.atOnce})`
+  if (l.atOnce !== null && l.working >= l.atOnce) return `${l.working} tasks already work at once (limit ${l.atOnce})`
   if (!inHours(ap.hours, new Date(now))) return 'Outside the autopilot\'s hours'
   return paceRefusal(pace)
 }
@@ -99,7 +111,7 @@ export const WAKE_RETRIES = 2
 // too, from its step; in a wake only while it has had few worker runs.
 // `pace`: the worker's account verdict, held to only for automatic work
 // (pacedStart); `engine`: the engine starts it, after its chain.
-export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, tasks: Task[], runs: Run[], now: number, wake: boolean, { pace, engine }: { pace?: PaceVerdict, engine?: boolean } = {}): string | undefined {
+export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, tasks: Task[], runs: Run[], now: number, wake: boolean, { pace, engine, holds }: { pace?: PaceVerdict, engine?: boolean, holds?: SlotOf } = {}): string | undefined {
   const stopped = task.state === 'waiting' && !task.waitKind && !task.step?.done
   if (task.state !== 'todo' && !stopped) return `${task.id} is not to do (${taskStatus(task)})`
   // Starts, not attempts: an agent that exits at once gets a second run in the same start.
@@ -109,7 +121,7 @@ export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, t
   if (chain !== 'go') return chain?.wait ?? `${task.id} starts after ${task.after}, which is not done`
   if (wake && !ap?.on) return 'In a wake, a task starts only with the autopilot on'
   const paced = pacedStart(task, engine ? 'engine' : wake ? 'wake' : 'user')
-  return startRefusal(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now, paced ? pace : undefined)
+  return startRefusal(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now, paced ? pace : undefined, holds)
 }
 
 // The coordinator's last wake: when, and where its tasks stood then.
@@ -154,15 +166,18 @@ export const lookAddRefusal = (ap: Autopilot | undefined, added: number) => {
   return added >= max ? `Today's limit of new work is reached (${max} tasks added by look-for-new-work wakes): back to sleep until tomorrow` : undefined
 }
 
-// The events since the last tick: tasks added, done, stuck (waiting) or
-// ready, among those the autopilot wakes for. `seen`: each task's last status.
-// A stopped task is not stuck: someone chose to stop it.
+// The events since the last tick: tasks added, done, stuck (waiting, stalled,
+// an action refused or failing) or ready, among those the autopilot wakes for.
+// `seen`: each task's last status. A stopped task is not stuck: someone chose to stop it.
 export function autopilotEvents(ap: Autopilot, tasks: Task[], seen: Record<string, TaskStatus>) {
   const now: Record<string, TaskStatus> = {}, reasons: string[] = []
   for (const t of tasks) {
     const s = now[t.id] = taskStatus(t)
-    const ev: AutopilotEvent | undefined = !(t.id in seen) ? 'added' : seen[t.id] === s ? undefined : s === 'waiting' ? (t.stopped ? undefined : 'stuck') : s === 'done' || s === 'ready' ? s : undefined
-    if (ev && ap.events.includes(ev)) reasons.push(`${t.id} (${t.title}): ${ev}${ev === 'stuck' && t.waiting ? `: ${t.waiting.split('\n')[0]}` : ''}`)
+    const failed = s === 'ready' && t.step?.yourTurn?.reason === 'action'
+    const ev: AutopilotEvent | undefined = !(t.id in seen) ? 'added' : seen[t.id] === s ? undefined
+      : s === 'waiting' || s === 'stalled' || failed ? (t.stopped ? undefined : 'stuck') : s === 'done' || s === 'ready' ? s : undefined
+    const why = s === 'stalled' ? t.stall?.reason : failed ? t.step?.yourTurn?.badge : t.waiting
+    if (ev && ap.events.includes(ev)) reasons.push(`${t.id} (${t.title}): ${ev}${ev === 'stuck' && why ? `: ${why.split('\n')[0]}` : ''}`)
   }
   return { seen: now, reasons }
 }
@@ -182,9 +197,36 @@ export const USER_ONLY: Record<string, string> = {
 export const addRefusal = (ap: Autopilot | undefined, wake: boolean) =>
   wake && !ap?.on ? 'In a wake, a task is added only with the autopilot on' : undefined
 
-// `tell <task>`: in a wake, only to answer an agent's question; a permission
-// request always stays the user's.
-export function tellRefusal(task: Pick<Task, 'state' | 'waitKind'>, wake: boolean): string | undefined {
+// What a wake may fix with `tell --fix`: a mechanical block, never a decision.
+export const FIX_KINDS = ['base', 'ci', 'machine', 'stall'] as const
+export type FixKind = typeof FIX_KINDS[number]
+export const FIX_TEXT: Record<FixKind, string> = {
+  base: 'merge the base into the branch and solve the conflict',
+  ci: 'fix a red CI',
+  machine: 'retry after a machine problem (disk, memory)',
+  stall: 'restart a stalled agent',
+}
+// Fixes a wake may make per task and step; past them, the block is the user's.
+export const FIXES_PER_STEP = 2
+// The task's step, as `fixes` counts it: a new step starts a new count.
+const stepKey = (t: Pick<Task, 'step'>) => `${t.step?.at ?? 0}:${t.step?.since ?? 0}`
+export const fixesInStep = (t: Pick<Task, 'step' | 'fixes'>) => t.fixes?.step === stepKey(t) ? t.fixes.n : 0
+export const countFix = (t: Pick<Task, 'step' | 'fixes'>) => ({ step: stepKey(t), n: fixesInStep(t) + 1 })
+
+// `tell <task>`: in a wake, only to answer an agent's question, or with
+// `fix` (a project coordinator, its autopilot on) to unblock a mechanical
+// block, twice per task and step. A permission request stays the user's.
+export function tellRefusal(task: Pick<Task, 'state' | 'waitKind' | 'step' | 'fixes' | 'stopped'>, wake: boolean, fix?: { autopilot?: Autopilot, main: boolean }): string | undefined {
   if (task.waitKind === 'permission') return 'A permission request is the user\'s to answer'
-  if (wake && !(task.state === 'waiting' && task.waitKind === 'question')) return 'In a wake, tell only answers an agent\'s question'
+  if (!wake) return
+  if (fix) {
+    if (fix.main) return 'In a wake, only the project\'s coordinator fixes its tasks\' blocks'
+    if (!fix.autopilot?.on) return 'In a wake, a block is fixed only with the autopilot on'
+    // Going on after a stop is `task start`'s, with its checks; a finished task has nothing to fix.
+    if (task.stopped) return 'The task was stopped: --fix does not start it again (use task start)'
+    if (task.step?.done) return 'The task is done: nothing to fix'
+    if (fixesInStep(task) >= FIXES_PER_STEP) return `Already fixed ${FIXES_PER_STEP} times in this step: this block is the user's now, tell them`
+    return
+  }
+  if (!(task.state === 'waiting' && task.waitKind === 'question')) return 'In a wake, tell only answers an agent\'s question, or fixes a mechanical block with --fix'
 }
