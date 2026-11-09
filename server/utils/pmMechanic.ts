@@ -24,6 +24,8 @@ import { busyNext, busyQueue, coordinatorStartRefusal } from '../../shared/pm/au
 import { originOf, pacedStart, paceRefusal } from '../../shared/pm/pace'
 import { paceOf, placeFor, slotsOf } from './pmPlace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
+import { isResumeWait, resumeWait } from '../../shared/pm/recovery'
+import { resumeInterrupted } from './pmRecovery'
 import { advanceTick } from './pmAdvance'
 import { forgetMemory } from './pmMemory'
 import { samplePeaks } from './pmPeaks'
@@ -85,10 +87,14 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
   const tasks = await store.tasks(), runs = await store.runs(), started: string[] = []
   for (const t of tasks.filter(x => x.after && !x.step?.started)) {
     const c = chainState(t, tasks)
-    const held = c && c !== 'go' ? c.wait : undefined
+    const held = c && c !== 'go' && 'wait' in c ? c.wait : undefined
+    // One before it is resumed by the engine after an incident: it waits quietly, still to do.
+    const quiet = c && c !== 'go' && 'resumes' in c ? resumeWait(c.resumes) : undefined
     if (t.state === 'todo' && held) await store.logTask({ ...t, state: 'waiting', waiting: held }, 'engine', held)
     // Held by its chain, and the task before it goes on again: to do, the engine starts it once that one is done.
-    else if (t.state === 'waiting' && !held && t.waiting?.includes(CHAIN_WAIT)) await store.logTask({ ...t, state: 'todo', waiting: undefined }, 'engine', 'to do again: the tasks before it go on')
+    else if (t.state === 'waiting' && !held && t.waiting?.includes(CHAIN_WAIT)) await store.logTask({ ...t, state: 'todo', waiting: undefined, held: quiet }, 'engine', 'to do again: the tasks before it go on')
+    else if (t.state === 'todo' && quiet && t.held !== quiet) await store.logTask({ ...t, held: quiet }, 'engine', quiet)
+    else if (t.state === 'todo' && !quiet && isResumeWait(t.held)) await store.saveTask({ ...t, held: undefined })
   }
   const machines = new Set<string>() // one start per machine and tick: the next reading counts the new agent
   for (const p of await store.projects()) {
@@ -214,6 +220,8 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   if (!(await store.enabled())) return []
   await syncWaits(deps).catch(() => {})
   await advanceTick(deps, now).catch(() => {})
+  // Before the chain: a resumed task's followers then see it working.
+  await resumeInterrupted(deps, now).catch(() => {})
   await releaseIdle(deps, now).catch(() => {})
   await startChained(deps, now).catch(() => {})
   await startHeld(deps, now).catch(() => {})

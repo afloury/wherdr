@@ -15,6 +15,7 @@ import { sameFilesText } from './files'
 import { MERGE_REFUSED, ordinal } from './mergeQueue'
 import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
 import { retriesAction } from './release'
+import { recovering } from './incident'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -96,7 +97,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
   const queueOut = queue ? task.queueOut : undefined
   // A refused merge out of line is the user's: the engine does not try it again at that commit.
   const queued = (queue ?? 0) > 1 || (!!queueOut && !queueOut.startsWith(MERGE_REFUSED))
-  const yourTurn = s?.done ? undefined : (queued && s?.yourTurn?.reason === 'action' ? undefined : s?.yourTurn?.badge) || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
+  const yourTurn = s?.done ? undefined : (queued && s?.yourTurn?.reason === 'action' ? undefined : s?.yourTurn?.badge) || (task.state === 'waiting' && !recovering(task) ? task.waiting || 'Waiting' : undefined)
     || (stall && now - stall.since >= HANDLE_AFTER_MS ? stallTurn(stall) : undefined)
   return {
     id: task.id, shown: task.id, project: task.project, title: task.title, description: task.description,
@@ -119,7 +120,8 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(s ? { state: s } : {}),
     ...(task.stopped ? { stopped: task.stopped } : {}),
     ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '' } } : {}),
-    ...(task.held && task.state === 'todo' ? { held: task.held } : {}),
+    // Waiting for the engine to resume it after an incident: shown as a wait, not the user's turn.
+    ...(task.held && task.state === 'todo' ? { held: task.held } : recovering(task) ? { held: task.held || task.waiting || 'Waiting' } : {}),
     ...(task.sameFiles && task.state === 'todo' ? { sameFiles: task.sameFiles } : {}),
     ...(task.report ? { report: task.report } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),

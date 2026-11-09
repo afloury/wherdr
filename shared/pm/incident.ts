@@ -28,6 +28,14 @@ export interface Incident {
   runs: string[]
 }
 
+// A task whose agent an incident took (recovery.ts): waits (the engine resumes
+// it once the cause is gone) while `run` is still its run; n: times in a row
+// for this cause; resumedAt: the engine's last resume.
+export interface Recovery { incident: string, cause: Cause, machine: string, label: string, run?: string, at: number, n: number, waits?: true, resumedAt?: number }
+// Waiting for the engine to resume it, not for the user.
+export const recovering = (t: Pick<Task, 'state' | 'run' | 'recovery' | 'stopped' | 'waitKind'>) =>
+  t.state === 'waiting' && !t.waitKind && !t.stopped && !!t.recovery?.waits && t.recovery.run === t.run
+
 export const CAUSE_TEXT: Record<Cause, string> = {
   'offline': 'the machine is offline or unreachable (its herdr-core does not answer)',
   'restart': 'herdr-core or wherdr restarted (or the machine rebooted)',

@@ -663,12 +663,42 @@ engine decides the cause from facts it reads, never a guess:
 Each one is recorded as an **incident**, per machine: when, the cause, the
 facts used, the tasks and agents hit. The task waits with the cause (*The
 agent's terminal is gone: …*), after a restart as while wherdr runs, and its
-Log names the incident. An incident is open until its tasks run again (started
+Log names the incident; wherdr then resumes it by itself
+([The engine resumes the work](#the-engine-resumes-the-work)). An incident is open until its tasks run again (started
 again, a new agent): what they wait for later is not this incident.
 
 The coordinator lists them with `wherdr pm incidents [--since 2h|3d|<date>]`
 (the last 7 days by default), and `wherdr pm autopilot show` gives the last
 open one, so it tells you the cause the engine found.
+
+### The engine resumes the work
+
+A task an incident stopped waits for wherdr, not for you: it is not in Your
+turn, its card says why it waits (*… wherdr resumes it once host-b is back*).
+Once the cause is gone, the engine resumes it by itself, every minute:
+
+- **when**: a restart, a crash or an unknown cause at once; a machine offline
+  once it is back (still offline, its tasks keep waiting); an account limit
+  once the account's reading says it reset;
+- **how**: its worker starts again in its worktree. A Claude worker takes its
+  conversation up again (`--resume`, its session id kept from its start) with
+  *You were interrupted (…): check git status and continue*; Codex, or a
+  conversation that cannot be resumed, gets a new agent that reads its
+  instructions with a handover note saying the same. A task stopped at the
+  review gets its reviewer again;
+- **in order**: the tasks before it (`after`) first. A task that starts after
+  one being resumed stays to do and *Waits for WEB-1 to resume*, never
+  *stopped*; it starts once that one is done;
+- **within the rules**: on its own machine when that machine has room and its
+  account's pace lets it ([Machines](machines.md#manage-machines)), one start per machine and
+  minute, never a second worker on the task;
+- **once in a row**: stopped again for the same cause within an hour of the
+  engine's resume, it is not resumed again. The project's coordinator and the
+  main one are woken once, with the incident; the task waits in Your turn
+  until it is started again.
+
+Its Log says *resumed after incident …*, and a stall or a step past its time
+limit from the outage leaves Tasks to handle once the task works again.
 
 ### A task's temporary files
 

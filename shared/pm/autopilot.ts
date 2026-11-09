@@ -4,6 +4,7 @@
 import type { Run, Task } from './run'
 import type { PlannedStep } from './steps'
 import { chainState } from './advance'
+import { resumeWait } from './recovery'
 import { parseSchedule } from './schedule'
 import type { PaceVerdict } from './pacing'
 import { pacedStart, paceRefusal } from './pace'
@@ -164,7 +165,7 @@ export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, t
   const tries = runs.filter(r => r.task === task.id && r.role === 'worker' && r.attempt === 1).length
   if (stopped && wake && tries >= WAKE_RETRIES) return `${task.id} already ran ${tries} times: starting it again is the user's call`
   const chain = task.after ? chainState(task, tasks) : 'go'
-  if (chain !== 'go') return chain?.wait ?? `${task.id} starts after ${task.after}, which is not done`
+  if (chain !== 'go') return chain && 'wait' in chain ? chain.wait : chain ? resumeWait(chain.resumes) : `${task.id} starts after ${task.after}, which is not done`
   if (wake && !ap?.on) return 'In a wake, a task starts only with the autopilot on'
   if (!wake && !engine) return
   const paced = pacedStart(task, engine ? 'engine' : 'wake')
