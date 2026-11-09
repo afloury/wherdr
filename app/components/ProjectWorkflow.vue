@@ -9,7 +9,7 @@ import { planSteps } from '#shared/pm/steps'
 import { templateDiff } from '#shared/pm/coordinator'
 import { parseTemplateText, type LogEntry } from '#shared/pm/templateText'
 import { actionField, actionLabel, describeStep, endHint, holderHint } from '#shared/pm/describe'
-import { ACTIONS, ENDS, HOLDERS, MERGE_METHODS, SHOT_MODES, startOverFrom, type ActionKind, type ShotMode, type Step, type StepAction, type Template } from '#shared/pm/workflow'
+import { ACTIONS, ENDS, HOLDERS, MERGE_METHODS, SHOT_MODES, isPrMerge, startOverFrom, type ActionKind, type ShotMode, type Step, type StepAction, type Template } from '#shared/pm/workflow'
 import type { Project, TemplateInfo } from '#shared/pm/project'
 
 const props = defineProps<{ project: Project, workflow: Template | null, log: LogEntry[], templates: TemplateInfo[] }>()
@@ -66,7 +66,7 @@ const setAction = (i: number, kind: string) => edit((list) => {
   const a: StepAction = { kind: kind as ActionKind }
   const f = actionField(a.kind)
   if (f && branch) a[f] = branch
-  if (a.kind === 'github.merge') Object.assign(a, old?.method ? { method: old.method } : {}, old?.checks ? { checks: old.checks } : {})
+  if (isPrMerge(a.kind)) Object.assign(a, old?.method ? { method: old.method } : {}, old?.checks ? { checks: old.checks } : {})
   s.action = a
 })
 const setActionField = (i: number, key: 'target' | 'base' | 'method' | 'checks', v: string) => edit((list) => {
@@ -198,7 +198,7 @@ defineExpose({ menu })
             <template v-if="s.ends === 'action' || s.ends === 'user'">
               <USelect :model-value="orNone(s.action?.kind)" :items="actionItems(s)" size="lg" class="tpl-pair" :aria-label="tl('Action', 'Action')" data-testid="tpl-action" @update:model-value="v => setAction(i, fromNone(v))" />
               <UInput v-if="s.action && actionField(s.action.kind)" size="xl" class="mono" :model-value="s.action[actionField(s.action.kind)!] ?? ''" :placeholder="actionField(s.action.kind) === 'base' ? tl('PR base branch', 'Branche de base de la PR') : tl('Branch to merge into', 'Branche où fusionner')" :aria-label="actionField(s.action.kind) === 'base' ? tl('PR base branch', 'Branche de base de la PR') : tl('Branch to merge into', 'Branche où fusionner')" data-testid="tpl-action-branch" @update:model-value="v => setActionField(i, actionField(s.action!.kind)!, String(v))" />
-              <template v-if="s.action?.kind === 'github.merge'">
+              <template v-if="isPrMerge(s.action?.kind)">
                 <USelect :model-value="orNone(s.action.method)" :items="methodItems" size="lg" :aria-label="tl('Merge method', 'Méthode de fusion')" data-testid="tpl-action-method" @update:model-value="v => setActionField(i, 'method', fromNone(v))" />
                 <UInput size="xl" class="mono" :model-value="(s.action.checks ?? []).join(', ')" :placeholder="tl('Checks that must be green', 'Checks à avoir au vert')" :aria-label="tl('Checks that must be green', 'Checks à avoir au vert')" data-testid="tpl-action-checks" @change="setActionField(i, 'checks', field($event))" />
               </template>

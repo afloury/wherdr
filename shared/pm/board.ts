@@ -209,7 +209,7 @@ export function statusText(s: CardStatus, when: (at: number) => string, dated = 
   const approval = s.approved === undefined ? '' : `Approved${dated ? ` on ${when(s.approved)}` : ''}, merges by itself`
   return [approval, s.at ? `${s.text} ${when(s.at)}` : s.text].filter(Boolean).join(' · ')
 }
-const MERGES = ['github.merge', 'git.verify-merged']
+const MERGES = ['github.merge', 'bitbucket.merge', 'git.verify-merged']
 const bad = (text: string): CardStatus => ({ text, tone: 'bad' })
 // A refused action in plain words; waiting, not bad, once the agent took it on.
 const refused = (error: string, told?: Told): CardStatus => {

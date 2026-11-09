@@ -23,6 +23,7 @@ export interface Autopilot {
   hours?: { from: number, to: number } // local hours, to excluded; from > to spans midnight
   lookForWork?: true // keep the scheduled wakes when there is nothing to do (goals that add their own tasks)
   lookPerDay?: number // with lookForWork: tasks those wakes may add a day (LOOK_PER_DAY when unset)
+  keepBusy?: false // Keep the board busy, on unless turned off: the engine starts the next to-do task itself (busyQueue)
 }
 
 export const LOOK_PER_DAY = 3
@@ -61,8 +62,18 @@ export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error
     ...(at ? { at } : {}),
     ...(h ? { hours: { from: h.from as number, to: h.to as number } } : {}),
     ...(o.lookForWork === true ? { lookForWork: true as const, lookPerDay: lookPerDay ?? LOOK_PER_DAY } : {}),
+    ...(o.keepBusy === false ? { keepBusy: false as const } : {}),
   } }
 }
+
+// Keep the board busy: with the autopilot on, unless the user turned it off.
+export const keepsBusy = (ap: Autopilot | undefined) => !!ap?.on && ap.keepBusy !== false
+
+// The to-do tasks the engine starts by itself to keep the board busy, in
+// board order (oldest first). A chained task is startChained's (it waits for
+// its 'after'), a start held for room startHeld's.
+export const busyQueue = (tasks: Task[]) =>
+  tasks.filter(t => t.state === 'todo' && !t.after && !t.held && !t.step?.started).sort((a, b) => a.createdAt - b.createdAt)
 
 // The goal as a sentence in a wake's text: one final period, never two.
 export const sentence = (s: string) => (/[.!?…]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`)
@@ -110,9 +121,9 @@ function limitHit(ap: Autopilot, tasks: Task[], runs: Run[], now: number, holds?
 
 // Why the autopilot may not start one more task now, or undefined. `pace`:
 // the verdict of the worker's account, given only for automatic work; while
-// its account burns, the burn's tasks at once replace the autopilot's.
+// its account burns, tasks at once are Auto (the machines' room decides).
 export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: number, pace?: PaceVerdict, holds?: SlotOf): string | undefined {
-  return limitHit(pace?.go && pace.atOnce !== undefined ? { ...ap, atOnce: pace.atOnce } : ap, tasks, runs, now, holds)?.refusal ?? paceRefusal(pace)
+  return limitHit(pace?.go && pace.burning ? { ...ap, atOnce: null } : ap, tasks, runs, now, holds)?.refusal ?? paceRefusal(pace)
 }
 
 // A start the user asked for goes past the autopilot's limits: the word its
@@ -143,6 +154,17 @@ export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, t
   if (!wake && !engine) return
   const paced = pacedStart(task, engine ? 'engine' : 'wake')
   return startRefusal(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now, paced ? pace : undefined, holds)
+}
+
+// What keeping the board busy starts next in a project (its tasks): the
+// next to-do task, or why none starts now (off, nothing to do, a limit, the
+// hours, the pace). Room on a machine is placement's, checked by the engine.
+export function busyNext(ap: Autopilot | undefined, tasks: Task[], runs: Run[], now: number, { pace, holds }: { pace?: PaceVerdict, holds?: SlotOf } = {}): { task: Task } | { why: string } {
+  if (!keepsBusy(ap)) return { why: ap?.on ? 'Keep the board busy is off' : 'The autopilot is off' }
+  const task = busyQueue(tasks)[0]
+  if (!task) return { why: 'No task to do' }
+  const why = coordinatorStartRefusal(ap, task, tasks, runs, now, true, { pace, holds })
+  return why ? { why } : { task }
 }
 
 // The coordinator's last wake: when, and where its tasks stood then.

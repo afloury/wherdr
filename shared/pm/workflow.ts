@@ -13,7 +13,9 @@ export type Evidence = typeof EVIDENCE[number]
 // What screenshots evidence asks for: the result only, or before and after the change.
 export const SHOT_MODES = ['after', 'before-after'] as const
 export type ShotMode = typeof SHOT_MODES[number]
-export const ACTIONS = ['git.land', 'git.push', 'github.pr', 'github.merge', 'git.verify-merged', 'pipeline.watch'] as const
+export const ACTIONS = ['git.land', 'git.push', 'github.pr', 'github.merge', 'bitbucket.merge', 'git.verify-merged', 'pipeline.watch'] as const
+// The PR merges: they take a method and required checks.
+export const isPrMerge = (k?: string) => k === 'github.merge' || k === 'bitbucket.merge'
 export type ActionKind = typeof ACTIONS[number]
 // Who may merge: only the user, or the engine too. Ordered loosest first.
 export const MERGE_BY = ['engine', 'user'] as const
@@ -27,6 +29,7 @@ export type Weight = typeof WEIGHTS[number]
 export const isWeight = (v: unknown): v is Weight => (WEIGHTS as readonly unknown[]).includes(v)
 // github.merge: method (default: the first the repo allows) and checks, the
 // names that must be there and green (a PR whose CI has not started yet has none).
+// bitbucket.merge: the same; its default method is a merge commit.
 // pipeline.watch: the engine polls a pipeline every `every` (default 1m) until
 // `timeout` (default 30m). source github (default): the GitHub Actions runs of
 // `branch`'s latest commit, else of the task's commit, `workflow` only when
@@ -168,7 +171,7 @@ function checkStep(s: unknown, path: string, earlier: string[], errs: WorkflowEr
   if (!isObj(s.action) || !ACTIONS.includes(s.action.kind as ActionKind)) return err('action.kind', `must be one of ${ACTIONS.join(', ')}`)
   checkKeys(s.action, ['kind', 'target', 'base', 'method', 'checks', ...WATCH_KEYS], `${path}.action`, errs)
   checkWatch(s.action, s, err)
-  if (s.action.kind !== 'github.merge') for (const k of ['method', 'checks']) if (s.action[k] !== undefined) err(`action.${k}`, 'only for github.merge')
+  if (!isPrMerge(s.action.kind as string)) for (const k of ['method', 'checks']) if (s.action[k] !== undefined) err(`action.${k}`, 'only for github.merge or bitbucket.merge')
   if (s.action.method !== undefined && !MERGE_METHODS.includes(s.action.method as MergeMethod)) err('action.method', `must be one of ${MERGE_METHODS.join(', ')}`)
   if (s.action.checks !== undefined && !(Array.isArray(s.action.checks) && s.action.checks.every(isStr))) err('action.checks', 'must be a list of check names')
   const field = actionField(s.action.kind as ActionKind)
