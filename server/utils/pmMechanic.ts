@@ -22,6 +22,7 @@ import { forgetMemory } from './pmMemory'
 import { releaseIdle, reviveWorker } from './pmRelease'
 import { agentBack, handToAgent, wasReleased } from '../../shared/pm/release'
 import { noteBack, noteStall } from './pmStall'
+import { askedQuestion } from './pmRead'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -55,7 +56,9 @@ export async function syncWaits(deps: PmLaunchDeps) {
     const kind = waitOf(term)
     // What herdr-core says is asked ("approve Bash: npm test"), else the kind.
     const msg = typeof term.status === 'object' ? term.status?.msg?.trim().slice(0, 300) : undefined
-    if (task.state === 'working' && kind) await store.saveTask({ ...task, state: 'waiting', waiting: (kind === 'permission' && msg) || WAITS[kind], waitKind: kind })
+    // A question carries its text, for the board and the coordinator's wake.
+    const asked = kind === 'question' && task.state === 'working' ? await askedQuestion(deps, run!.terminal!) : undefined
+    if (task.state === 'working' && kind) await store.saveTask({ ...task, state: 'waiting', waiting: (kind === 'permission' && msg) || (asked ? `${WAITS.question}: ${asked}` : WAITS[kind]), waitKind: kind })
     else if (task.state === 'waiting' && (task.waitKind === 'question' || task.waitKind === 'permission') && !kind)
       await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined })
   }
