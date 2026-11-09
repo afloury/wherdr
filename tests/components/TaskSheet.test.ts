@@ -55,7 +55,7 @@ const cases: [string, Card, string, string[]][] = [
   ['a stopped task', waiting({ yourTurn: 'Stopped by the user: wrong way', stopped: { by: 'the user', why: 'wrong way', at: 1 }, state: at(1) }), 'stopped', []],
   ['a step the user ends', waiting({ yourTurn: 'Deploy it', userLabel: 'Deployed', state: at(4, { yourTurn: { reason: 'user', badge: 'Deploy it' } }) }), 'step', ['step-user']],
   ['an agent question', waiting({ yourTurn: 'Which port?', asks: { kind: 'question', text: 'Which port?' }, state: at(1) }), 'ask', []],
-  ['a refused merge', waiting({ yourTurn: 'Merge: merge: 2 check(s) failed', state: at(4, { yourTurn: { reason: 'action', badge: 'Merge: merge: 2 check(s) failed' } }) }), 'refused', ['step-user']],
+  ['a refused merge', waiting({ yourTurn: 'Merge: merge: 2 check(s) failed', state: at(4, { yourTurn: { reason: 'action', badge: 'Merge: merge: 2 check(s) failed' } }) }), 'refused', ['task-retry', 'task-report-start']],
   ['a blocked task', waiting({ yourTurn: 'WHR-2, which this task starts after, failed', phase: 'todo', state: undefined }), 'blocked', ['task-start']],
 ]
 

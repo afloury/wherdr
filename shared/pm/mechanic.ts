@@ -5,8 +5,9 @@
 // each move has its guard here; server/utils/pmMechanic.ts gathers the facts
 // and carries the move out. A move is made once per key (task.mech).
 import { isTransient, prReady, type PrInfo } from './actions'
-import { isProtected, mayMerge, type ResolvedGuards } from './guards'
-import { DEFAULT_ROUNDS, type PlannedStep } from './steps'
+import { isProtected, type ResolvedGuards } from './guards'
+import { mergeGoesOn } from './mergeQueue'
+import { DEFAULT_ROUNDS, waitsToMerge, type PlannedStep } from './steps'
 import type { Task } from './run'
 
 export interface PrState extends PrInfo { mergeStateStatus?: string }
@@ -19,6 +20,9 @@ export interface MechFacts {
   head?: string // the task's commit
   pr?: PrState // its open PR, else its merged one (merged: true)
   loggedIn?: boolean // the agent's program answers its login status again
+  queue?: number // its place in the merge queue (mergeQueue.ts): past the first, it waits its turn
+  behind?: boolean // the first in the queue lacks its base's last commits
+  now?: number
 }
 
 export type Move =
@@ -34,6 +38,13 @@ const RETRIED = ['git.push', 'github.pr', 'git.land']
 // Conclusions that say nothing of the code: run again once.
 const INFRA = ['CANCELLED', 'TIMED_OUT', 'STARTUP_FAILURE', 'STALE']
 const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
+// An update with the base that failed (a passing git error) is tried again,
+// spaced out, a few times per commit; past them it gives up the merge queue's front.
+export const CATCH_UP_TRIES = 3
+const CATCH_UP_GAP_MS = 2 * 60_000
+const catchUps = (task: Task, head: string) =>
+  Object.entries(task.mech ?? {}).filter(([k]) => k === `catch-up:${head}` || k.startsWith(`catch-up:${head}:`)).map(([, at]) => at)
+export const catchUpGaveUp = (task: Task, head?: string) => !!head && catchUps(task, head).length >= CATCH_UP_TRIES
 
 const checkName = (c: { name?: string, context?: string }) => c.name || c.context || 'a check'
 
@@ -52,7 +63,7 @@ export const ciOf = (pr: PrState | undefined, head: string | undefined): NonNull
 // The next mechanical move for a task and its key, or undefined.
 export function nextMove(f: MechFacts): { move: Move, key: string } | undefined {
   const { task, plan, guards, pr, head } = f
-  const s = task.step, done = (key: string) => !!task.mech?.[key]
+  const s = task.step, done = (key: string) => task.mech?.[key] != null
   const pick = (key: string, move: Move) => (done(key) ? undefined : { move, key })
   // A task stopped on a login: started again once the login is back.
   if (task.state === 'waiting' && task.waitKind === 'auth') return f.loggedIn ? pick(`restart:${task.run ?? ''}`, { kind: 'restart' }) : undefined
@@ -68,7 +79,12 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   const base = prStep?.action?.base
   if (!pr || !head || !base) return
   // The guards decide, a protected branch too (merge.protected: engine).
-  const engineMerges = step.action?.kind === 'github.merge' && step.ends === 'action' && !step.guarded && mayMerge(guards, pr.baseRefName, 'engine')
+  // A merge step waiting for the user: watched while it waits; once the user
+  // approved it, the engine merges it when ready, under the user's approval.
+  const waits = waitsToMerge(step) && !s.acting
+  // In the merge queue past the first: neither updated nor merged until its turn.
+  const held = (f.queue ?? 1) > 1
+  const engineMerges = mergeGoesOn(step, s, guards, pr.baseRefName) && !(waits && s.catchUp) && !held
   // One per commit and merge attempt: a head reviewed again is merged on the step's next attempt.
   const n = s.tries?.[step.id] ?? 0
   const mergeKey = `merge:${head}${n > 1 ? `:${n}` : ''}`
@@ -76,14 +92,27 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
     ? pick(mergeKey, { kind: 'merge', url: pr.url, base: pr.baseRefName })
     : undefined)
   // Merged on GitHub already, whatever its head: nothing to fix on it, the merge
-  // step records it, even after an attempt of its own that was refused.
-  if (pr.merged) return engineMerges ? pick(`merged:${pr.url}`, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
+  // step records it, even after an attempt of its own that was refused, and
+  // even when the guard keeps that branch for the user (they merged it, or approved it).
+  const mergeStep = step.action?.kind === 'github.merge' && (step.ends === 'action' || (waits && !!s.approved))
+  if (pr.merged) return mergeStep ? pick(`merged:${pr.url}`, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
+  // One catch-up at a time: run again once the agent committed its conflict resolution (a new head).
+  if (waits && s.catchUp) return f.agentBusy ? undefined : pick(`catch-up:${head}`, { kind: 'catch-up', base: s.catchUp.base })
   // The PR head is not the task's commit (a CI fix not pushed, a push from
   // elsewhere): the merge step pushes it and has it reviewed again, or says why not.
   if (pr.headRefOid !== head) return engineMerges && !f.agentBusy ? pick(mergeKey, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
   if (pr.baseRefName !== base) return pick(`base:${head}`, { kind: 'fix-base', base })
   if (f.agentBusy) return
-  if (['BEHIND', 'DIRTY'].includes(pr.mergeStateStatus ?? '') && !isProtected(guards, f.branch)) return pick(`catch-up:${head}`, { kind: 'catch-up', base })
+  if (!held && (['BEHIND', 'DIRTY'].includes(pr.mergeStateStatus ?? '') || f.behind) && !isProtected(guards, f.branch)) {
+    const tries = catchUps(task, head)
+    if (!tries.length) return pick(`catch-up:${head}`, { kind: 'catch-up', base })
+    // Tried already at this commit: again unless its agent holds a conflict, spaced out.
+    if (tries.length < CATCH_UP_TRIES) {
+      return s.agent || (f.now ?? Date.now()) - Math.max(...tries) < CATCH_UP_GAP_MS ? undefined
+        : pick(`catch-up:${head}:${tries.length + 1}`, { kind: 'catch-up', base })
+    }
+    // Past its tries: what GitHub allows goes on below.
+  }
   const red = redChecks(pr)
   if (red.length && red.every(c => INFRA.includes(c.conclusion || ''))) return pick(`rerun:${head}`, { kind: 'rerun-ci', checks: red.map(checkName) })
   if (red.length) {
