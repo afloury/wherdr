@@ -3,7 +3,8 @@
 // (also written in Alfred's AGENTS.md) and the "show, then do" text; the
 // server (server/utils/alfredCli.ts) reads and writes.
 import type { SyncedSetting } from '../settings'
-import { MERGE_BY, type MergeBy } from './workflow'
+import { MERGE_BY, type MergeBy, type Template } from './workflow'
+import { sameGuards, type Turn } from './coordinator'
 import { READY_SORTS } from '../spaces'
 import { THEMES } from '../../app/utils/themes'
 import { FOCUS_BORDERS } from '../../app/utils/focusBorder'
@@ -27,9 +28,15 @@ export type AlfredCommand =
   | { name: 'help' | 'projects' | 'templates' | 'machines' | 'coordinators' | 'settings' }
   | { name: 'project', key: string }
   | { name: 'coordinator open', key: string }
+  | { name: 'last', key: string }
+  // Delegation: a message to the project's coordinator (started if needed).
+  | { name: 'tell', key: string, text: string }
+  // A proposal the user answers in wherdr (the workflow JSON comes as the call's input).
+  | { name: 'project workflow edit', key: string }
   // Changes: a dry run unless apply.
   | { name: 'project add', apply: boolean, input: { key: string, machine: string, path: string, name?: string, template?: string } }
   | { name: 'project template', apply: boolean, key: string, template: string } // '' clears it
+  | { name: 'project workflow', apply: boolean, key: string, from: string } // a template id, or example:<id>
   | { name: 'coordinator start', apply: boolean, key: string, program?: 'claude' | 'codex' }
   // No change given: the project's guards are shown.
   | { name: 'project guards', apply: boolean, key: string, change: { protect?: string[], mergeProtected?: MergeBy, mergeOthers?: MergeBy, contributorPrs?: 'off' | 'others' | 'all' } }
@@ -39,13 +46,17 @@ export type AlfredCommand =
 export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'projects', does: 'whether projects are on, and each project (key, name, machine, folder, template)' },
   { usage: 'project <KEY>', does: 'one project, its coordinator and its tasks by state' },
-  { usage: 'templates', does: 'the saved templates' },
+  { usage: 'templates', does: 'the saved templates, and the examples a workflow can start from' },
   { usage: 'machines', does: 'the machines herdr-core knows (key, label, status); the key "" is this machine' },
   { usage: 'coordinators', does: 'each coordinator: its agent and whether it runs' },
   { usage: 'coordinator open <KEY>', does: 'the link that opens a running project coordinator, to give the user' },
+  { usage: 'tell <KEY> "<text>"', does: 'send a message to the project\'s coordinator, as from Alfred (started first when it does not run); written to the project\'s log' },
+  { usage: 'last <KEY>', does: 'the last reply of the project\'s coordinator, and whether it is still working' },
   { usage: 'settings', does: 'the synced settings, their values, and the values each one Alfred may change accepts (1 = on, 0 = off)' },
   { usage: 'project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]', does: 'add a project: a git folder on a machine' },
   { usage: 'project template <KEY> <id|none>', does: 'give the project a template, or none' },
+  { usage: 'project workflow <KEY> --from <template|example:id>', does: 'start the project\'s workflow as a copy of a saved template or an example (see templates); a workflow it already has is replaced, its guards kept' },
+  { usage: 'project workflow edit <KEY> < workflow.json', does: 'propose a new workflow for the project (the whole JSON on stdin, guards unchanged): the user accepts or refuses it in wherdr, like a coordinator\'s proposal. Only in a turn that comes from the user' },
   { usage: 'project guards <KEY> [--protect <branch,branch|none>] [--merge-protected user|engine] [--merge-others user|engine] [--contributor-prs off|others|all]', does: 'the project\'s guards: protected branches, who merges into them and into the others (user: the user, engine: wherdr), and whether its coordinator may merge an outside contributor\'s PR after the user\'s yes (others: not into a branch reserved for the user; all: into any); without an option, shown only. A project coordinator never changes them' },
   { usage: 'coordinator start <KEY> [--program claude|codex]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one)' },
   { usage: 'setting set <key> <value>', does: 'change a setting to one of the values `settings` lists for it' },
@@ -56,10 +67,11 @@ const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/
 const FLAGS: Record<string, string[]> = {
   'project add': ['machine', 'path', 'name', 'template'],
   'coordinator start': ['program'],
+  'project workflow': ['from'],
   'project guards': ['protect', 'merge-protected', 'merge-others', 'contributor-prs'],
 }
 
-export const CHANGES = ['project add', 'project template', 'project guards', 'coordinator start', 'setting set']
+export const CHANGES = ['project add', 'project template', 'project workflow', 'project guards', 'coordinator start', 'setting set']
 const usage = (verb: string) => ({ error: `usage: wherdr alfred ${ALFRED_COMMANDS.find(c => c.usage.startsWith(verb))!.usage}${CHANGES.includes(verb) ? ' [--apply]' : ''}` })
 
 // argv after `wherdr alfred` → a command, or the reason it is not one.
@@ -81,12 +93,19 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
   const verb = `${w0} ${w1}`
   const extra = Object.keys(flags).find(f => !(FLAGS[verb] ?? []).includes(f))
   if (extra) return { error: `unknown option --${extra}` }
-  if (apply && !CHANGES.includes(verb)) return { error: '--apply is for a change only' }
+  if (apply && (!CHANGES.includes(verb) || (verb === 'project workflow' && w2 === 'edit'))) return { error: '--apply is for a change only' }
   const key = (k: string | undefined) => (k && KEY_RE.test(k) ? k.toUpperCase() : '')
 
   if (['help', 'projects', 'templates', 'machines', 'coordinators', 'settings'].includes(w0) && !w1)
     return { name: w0 as 'help' }
-  if (w0 === 'project' && words.length === 2 && !['add', 'template', 'guards'].includes(w1)) return key(w1) ? { name: 'project', key: key(w1) } : usage('project <KEY>')
+  if (w0 === 'last') return key(w1) && !w2 ? { name: 'last', key: key(w1) } : usage('last')
+  if (w0 === 'tell') {
+    const text = words.slice(2).join(' ').trim()
+    if (!key(w1) || !text) return usage('tell')
+    if (text.length > 4000) return { error: 'The message is over 4000 characters' }
+    return { name: 'tell', key: key(w1), text }
+  }
+  if (w0 === 'project' && words.length === 2 && !['add', 'template', 'workflow', 'guards'].includes(w1)) return key(w1) ? { name: 'project', key: key(w1) } : usage('project <KEY>')
   if (verb === 'coordinator open') return key(w2) && !w3 ? { name: verb, key: key(w2) } : usage(verb)
   if (verb === 'project add') {
     const { machine, path, name, template } = flags
@@ -98,6 +117,16 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
     if (!key(w2) || !w3 || rest.length) return usage(verb)
     if (w3 !== 'none' && !ID_RE.test(w3)) return { error: 'The template is a template id, or none' }
     return { name: verb, apply, key: key(w2), template: w3 === 'none' ? '' : w3 }
+  }
+  if (verb === 'project workflow' && w2 === 'edit') {
+    if (!key(w3) || rest.length || 'from' in flags) return usage('project workflow edit')
+    return { name: 'project workflow edit', key: key(w3) }
+  }
+  if (verb === 'project workflow') {
+    const { from } = flags
+    if (!key(w2) || w3 || !from) return usage(verb)
+    if (!ID_RE.test(from.replace(/^example:/, ''))) return { error: '--from is a template id or example:<id> (see wherdr alfred templates)' }
+    return { name: verb, apply, key: key(w2), from }
   }
   if (verb === 'project guards') {
     const { protect, 'merge-protected': mp, 'merge-others': mo, 'contributor-prs': cp } = flags
@@ -135,4 +164,11 @@ export function dryRun(argv: string[], plan: AlfredPlan) {
 }
 const quoteWord = (w: string) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`)
 
-export const alfredCommandList = () => ALFRED_COMMANDS.map(c => `- \`wherdr alfred ${c.usage}${CHANGES.some(v => c.usage.startsWith(v)) ? ' [--apply]' : ''}\`: ${c.does}`)
+export const alfredCommandList = () => ALFRED_COMMANDS.map(c => `- \`wherdr alfred ${c.usage}${CHANGES.some(v => c.usage.startsWith(`${v} <`)) ? ' [--apply]' : ''}\`: ${c.does}`)
+
+// Why Alfred may not propose `next` as project `key`'s workflow.
+export function workflowEditRefusal(old: Template | null, next: Template, turn: Turn, key: string): string | undefined {
+  if (turn !== 'user') return 'project workflow edit is only for a turn that comes from the user, never a wake: tell the user what you would change'
+  if (!old) return `Project ${key} has no workflow: start one with wherdr alfred project workflow ${key} --from <template|example:id>`
+  if (!sameGuards(old, next)) return `Guards are not changed in a workflow edit: use wherdr alfred project guards ${key}, after the user's yes`
+}

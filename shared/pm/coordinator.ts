@@ -38,8 +38,9 @@ export const sameAgent = (a?: CoordinatorAgent, b?: CoordinatorAgent) => !!a && 
 
 // A template change the coordinator proposed: the user accepts or refuses it
 // in the interface; only an accepted one is saved and goes to the template's log.
-// base: the template version its diff was made against.
-export interface Proposal { template: Template, diff: string, at: number, base: number, said?: string }
+// base: the template version its diff was made against. by: who proposed it
+// when not the project's coordinator (Alfred).
+export interface Proposal { template: Template, diff: string, at: number, base: number, said?: string, by?: string }
 // What became of the last one, for the coordinator's `template show`.
 export type ProposalOutcome = 'accepted' | 'refused' | 'outdated: the template changed since, propose again'
 
@@ -263,7 +264,7 @@ b64() { base64 | tr -d '\\n'; }
 body='{"argv64":[' sep=
 for a in "$@"; do body="$body$sep\\"$(printf %s "$a" | b64)\\"" sep=,; done
 body="$body]"
-[ "$route $1 $2" = "pm/cli template edit" ] && body="$body,\\"input64\\":\\"$(b64)\\""
+case "$route $1 $2 $3" in "pm/cli template edit"*|"alfred/cli project workflow edit") body="$body,\\"input64\\":\\"$(b64)\\"" ;; esac
 out=$(mktemp) hdr=$(mktemp) || exit 1
 code=$(printf '%s}' "$body" | curl -sS -D "$hdr" -o "$out" -w '%{http_code}' -X POST --data-binary @- \\
   -H 'content-type: application/json' -H "origin: $WHERDR_URL" -H "authorization: Bearer $tok" "$WHERDR_URL/api/$route")

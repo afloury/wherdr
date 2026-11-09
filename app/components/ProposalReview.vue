@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The review of a project coordinator's proposed workflow change: the user's
+// The review of a proposed workflow change (by the project's coordinator, or Alfred): the user's
 // sentence it followed, the diff, Refuse or Accept. An outdated proposal
 // (the workflow changed since) is refused by the server: its reason shows here.
 import type { CoordinatorView } from '#shared/pm/coordinator'
@@ -29,7 +29,7 @@ async function answer(accept: boolean) {
 <template>
   <AppSheet v-model:open="open" :title="tl('Workflow change proposed')" tall wide top hide-close>
     <div class="review" data-testid="proposal-review">
-      <span class="mono-label muted">{{ tl(`Coordinator ${c.project}`) }}<template v-if="c.proposal"> · {{ new Date(c.proposal.at).toLocaleString() }}</template></span>
+      <span class="mono-label muted">{{ c.proposal?.by ?? tl(`Coordinator ${c.project}`) }}<template v-if="c.proposal"> · {{ new Date(c.proposal.at).toLocaleString() }}</template></span>
       <template v-if="c.proposal">
         <p v-if="c.proposal.said" class="review-said">{{ tl('After your message') }}: “{{ c.proposal.said }}”</p>
         <pre class="review-diff" data-testid="proposal-diff"><span v-for="(d, i) in lines" :key="i" :class="d.k">{{ d.l }}

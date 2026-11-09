@@ -165,7 +165,7 @@ async function remove() {
         </form>
         <button v-if="tab === 'workflow' && coordinator?.proposal" type="button" class="settings-card pm-proposal" data-testid="workflow-proposal" @click="reviewOpen = true">
           <span class="card-state blocked" aria-hidden="true"><i /></span>
-          <span class="pm-proposal-text">{{ tl('Change proposed by the coordinator') }}</span>
+          <span class="pm-proposal-text">{{ coordinator.proposal.by ? tl(`Change proposed by ${coordinator.proposal.by}`) : tl('Change proposed by the coordinator') }}</span>
           <span class="mono-label">{{ tl('Review') }}</span>
           <UIcon name="i-lucide-chevron-right" />
         </button>

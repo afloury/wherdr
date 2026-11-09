@@ -84,7 +84,9 @@ your request), a square marks the project's row (*1 to review*) and the
 the review: your sentence it followed, the diff, *Refuse* or *Accept*. A
 proposal made before the workflow changed again is refused, and the review says
 so: ask the coordinator to propose again. The coordinator's window and the
-*Decisions* view link to this review.
+*Decisions* view link to this review. [Alfred](alfred.md) can propose a change
+too, on your request in its chat: the row then reads *Change proposed by Alfred*,
+and you answer it in the same review.
 
 ### Guards
 

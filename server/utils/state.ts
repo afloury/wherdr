@@ -41,6 +41,7 @@ const corePreviews = () => coreSubtitles ||= createCorePreviews({
 export const transcripts = {
   chat: (p: TranscriptPane, o: Parameters<CoreTranscripts['chat']>[1] = {}) => coreTranscriptsOf().chat(p, o),
   preview: (p: TranscriptPane) => coreTranscriptsOf().preview(p),
+  latestReply: (p: TranscriptPane) => coreTranscriptsOf().latestReply(p),
   image: (p: TranscriptPane, file: string | null, ref: string | null, i: number) => coreTranscriptsOf().image(p, file, ref, i),
   model: (p: TranscriptPane) => coreTranscriptsOf().model(p),
   locate: (p: TranscriptPane) => coreTranscriptsOf().locate(p),
