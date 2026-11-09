@@ -210,7 +210,7 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
 .pace-line { display: grid; grid-template-columns: 64px 1fr auto; gap: 10px; align-items: center; }
 .pace-bar { position: relative; height: 6px; background: var(--line); }
 .pace-bar i { display: block; height: 100%; background: var(--teal); }
-.pace-bar b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--text); }
+.pace-bar b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--text); } /* overflow-safe: centres a 2px marker inside the bar */
 .pace-num { font: 500 13px var(--font-mono); white-space: nowrap; }
 /* Phone: the numbers go under the bar, which keeps its full width. */
 @media (max-width: 599px) {
