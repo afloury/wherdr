@@ -84,6 +84,22 @@ describe('autopilot events', () => {
     expect(r.seen).toEqual({ 'CO-1': 'waiting', 'CO-2': 'done', 'CO-3': 'todo' })
     expect(autopilotEvents({ ...ap, events: [...ap.events] }, tasks, r.seen).reasons).toEqual([])
   })
+
+  it('wakes for a task added by someone else than this coordinator only', () => {
+    const ap = { ...DEFAULT_AUTOPILOT, events: ['added' as const] }
+    const self = { key: 'CO', by: 'coordinator CO' }
+    const log = (by: string) => ({ log: [{ at: 0, by, text: 'added the task' }] })
+    const tasks = [
+      task(1, { state: 'todo', origin: 'user', addedBy: 'user' }), // the user, in wherdr
+      task(2, { state: 'todo', origin: 'user', addedBy: 'CO' }), // this coordinator, in a user turn
+      task(3, { state: 'todo', origin: 'coordinator', addedBy: '_main' }), // another coordinator
+      task(4, { state: 'todo', origin: 'automation', addedBy: 'automation' }),
+      task(5, { state: 'todo', ...log('coordinator CO') }), // made before addedBy: its log
+      task(6, { state: 'todo', ...log('main coordinator') }),
+    ]
+    expect(autopilotEvents(ap, tasks, {}, self).reasons).toEqual(['CO-1 (T1): added', 'CO-3 (T3): added', 'CO-4 (T4): added', 'CO-6 (T6): added'])
+    expect(autopilotEvents(ap, tasks, {}, { key: '_main', by: 'main coordinator' }).reasons).toEqual(['CO-1 (T1): added', 'CO-2 (T2): added', 'CO-4 (T4): added', 'CO-5 (T5): added'])
+  })
 })
 
 describe('nothing to do: scheduled wakes skipped', () => {

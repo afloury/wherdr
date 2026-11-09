@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Finds a wherdr v2 install and imports what wherdr v3 can use from it: the
-// herdr-projects board's projects and open tasks, Herdr's SSH machines (as
+// herdr-projects board's projects and open tasks (as candidates Alfred offers), Herdr's SSH machines (as
 // herdr-core machines), the synced settings. Never writes anything of v2: every
 // v2 file is only read. Writes v3's DATA_DIR and DATA_DIR/migration-report.md.
 //
@@ -184,27 +184,6 @@ function keyFor(name, wanted, taken) {
 // Flattened setting paths of a repo: { merge: { by: 'x' } } → ['merge.by'].
 const flat = (o, pre = '') => Object.entries(o || {}).flatMap(([k, v]) => (isObj(v) ? flat(v, `${pre}${k}.`) : [`${pre}${k}`]))
 
-// Board repos → v3 projects (machine '' = this host). `existing`: v3's projects.
-export function mapProjects(board, existing = [], exists = p => fs.existsSync(p)) {
-  const projects = [], skipped = [], byRepo = {}
-  const taken = new Set(existing.map(p => p.key))
-  for (const [name, folder] of Object.entries(board.repos).sort(([a], [b]) => a.localeCompare(b))) {
-    const s = board.settings[name] || {}
-    const same = existing.find(p => p.machine === '' && p.path === folder)
-    if (same) { byRepo[name] = same.key; skipped.push({ name, path: folder, reason: `already in v3 as ${same.key}` }); continue }
-    if (typeof folder !== 'string' || !folder.startsWith('/')) { skipped.push({ name, path: String(folder), reason: 'not an absolute path' }); continue }
-    if (!exists(folder)) { skipped.push({ name, path: folder, reason: 'folder missing' }); continue }
-    const key = keyFor(name, String(s.repo?.key || '').toUpperCase(), taken)
-    taken.add(key)
-    const from = s.workspace?.from
-    const base = typeof from === 'string' && BRANCH_RE.test(from) ? from : undefined
-    const left = flat(s).filter(k => k !== 'repo.key' && !(k === 'workspace.from' && base))
-    projects.push({ key, name: String(name).slice(0, 80), machine: '', path: folder, ...(base ? { base } : {}), addedAt: 0, left })
-    byRepo[name] = key
-  }
-  return { projects, skipped, byRepo }
-}
-
 // How v2 showed a board task: KEY-n with the repo's key (WHR-37), else its id (app/1).
 export function v2TaskName(board, t) {
   const key = String(board.settings?.[t.repo]?.repo?.key || '').toUpperCase()
@@ -212,44 +191,27 @@ export function v2TaskName(board, t) {
   return KEY_RE.test(key) && Number.isInteger(n) && n > 0 ? `${key}-${n}` : String(t.id || `${t.repo}/${t.n}`)
 }
 
-// Open board tasks → v3 tasks to do. `imported`: board id → v3 id already made.
-// A task keeps its v2 number when it is free in v3; else it takes the next free
-// one and its description says which v2 task it was.
-export function mapTasks(board, byRepo, existingTasks = [], imported = {}, now = Date.now()) {
-  const listed = [], open = []
-  for (const t of board.tasks) {
-    const id = String(t.id || `${t.repo}/${t.n}`)
-    const stage = String(t.stage || 'todo')
-    if (t.archivedAt || DONE_STAGES.has(stage)) continue
-    if (imported[id]) { listed.push({ id, title: t.title, reason: `already imported as ${imported[id]}` }); continue }
-    const key = byRepo[t.repo]
-    if (!key) { listed.push({ id, title: t.title, reason: `its project ${t.repo} was not imported` }); continue }
-    open.push({ t, id, stage, key })
+// Board repos → candidates for v3 projects. None is added here: Alfred offers
+// them to the user (`wherdr alfred v2`). Each: a suggested key (free in v3),
+// its folder on this machine and whether it is there, its base branch, the v2
+// settings to redo in its template, and its open tasks.
+export function mapCandidates(board, existing = [], exists = p => fs.existsSync(p)) {
+  const projects = [], skipped = []
+  const taken = new Set(existing.map(p => p.key))
+  for (const [name, folder] of Object.entries(board.repos).sort(([a], [b]) => a.localeCompare(b))) {
+    if (typeof folder !== 'string' || !folder.startsWith('/')) { skipped.push({ name, path: String(folder), reason: 'not an absolute path' }); continue }
+    const s = board.settings[name] || {}
+    const key = keyFor(name, String(s.repo?.key || '').toUpperCase(), taken)
+    taken.add(key)
+    const from = s.workspace?.from
+    const base = typeof from === 'string' && BRANCH_RE.test(from) ? from : undefined
+    const left = flat(s).filter(k => k !== 'repo.key' && !(k === 'workspace.from' && base))
+    const tasks = board.tasks
+      .filter(t => t.repo === name && !t.archivedAt && !DONE_STAGES.has(String(t.stage || 'todo')))
+      .map(t => ({ v2: v2TaskName(board, t), stage: String(t.stage || 'todo'), title: String(t.title || '').trim().slice(0, 200) || `Task ${v2TaskName(board, t)}`, description: String(t.description || '').slice(0, 20000) }))
+    projects.push({ key, name: String(name).slice(0, 80), path: folder, here: exists(folder), ...(base ? { base } : {}), left, tasks })
   }
-  const used = new Set(existingTasks.map(x => String(x.id)))
-  const numbers = key => [...used].filter(i => i.startsWith(`${key}-`)).map(i => Number(i.slice(key.length + 1)) || 0)
-  // First the tasks whose number is free, so a renumbered one never takes a number another keeps.
-  for (const x of open) {
-    const n = Number(x.t.n)
-    if (Number.isInteger(n) && n > 0 && !used.has(`${x.key}-${n}`)) { x.newId = `${x.key}-${n}`; used.add(x.newId) }
-  }
-  for (const x of open) if (!x.newId) { x.newId = `${x.key}-${1 + Math.max(0, ...numbers(x.key))}`; used.add(x.newId) }
-  const tasks = open.map(({ t, id, stage, key, newId }) => {
-    const v2 = v2TaskName(board, t)
-    const renamed = newId !== v2
-    const title = String(t.title || '').trim().slice(0, 200) || `Task ${id}`
-    const text = String(t.description || '')
-    return {
-      from: id, v2, stage, renamed,
-      task: {
-        id: newId, project: key, title,
-        description: (renamed ? `From v2 ${v2}.${text ? `\n\n${text}` : ''}` : text).slice(0, 20000),
-        type: 'task', state: 'todo', origin: 'user', createdAt: Number(t.created) || now, tags: ['from v2'],
-        log: [{ at: now, by: 'import', text: `Imported from v2 ${v2}${v2 === id ? '' : ` (herdr-projects ${id})`}, stage ${stage}` }],
-      },
-    }
-  })
-  return { tasks, listed }
+  return { projects, skipped }
 }
 
 // ---- settings ------------------------------------------------------------
@@ -355,6 +317,9 @@ function writeJsonFile(file, data) {
   fs.renameSync(temp, file)
 }
 
+// The candidates file, in v3's dataDir (server/utils/alfredCli.ts reads it).
+export const V2_PROJECTS = 'migration/v2-projects.json'
+
 // Imports into v3's dataDir. dryRun: computes everything, writes nothing.
 export function runImport(o) {
   const run = o.run || defaultRun
@@ -365,14 +330,11 @@ export function runImport(o) {
   const state = readJson(path.join(data, 'migration', 'imported.json')) || {}
   const res = { at: new Date(now).toISOString(), dryRun: !!o.dryRun, v2: { dir: v2.dir, dataDir: v2.dataDir, unit: v2.unit, port: v2.port, board: v2.board }, dataDir: data }
 
-  // Projects and tasks.
+  // Projects, with their open tasks: candidates Alfred offers, never added here.
   const existing = readJson(path.join(pmDir, 'projects.json'))?.projects || []
-  const existingTasks = (() => { try { return fs.readdirSync(path.join(pmDir, 'tasks')) } catch { return [] } })().map(n => ({ id: n.replace(/\.json$/, ''), project: n.replace(/-\d+\.json$/, '') }))
   const board = v2.board ? readBoard(v2.board) : { repos: {}, settings: {}, tasks: [] }
-  const p = mapProjects(board, existing, o.exists)
-  const t = mapTasks(board, p.byRepo, existingTasks, state.tasks || {}, now)
-  res.projects = { added: p.projects.map(({ left, ...x }) => ({ ...x, left })), skipped: p.skipped, board: v2.board }
-  res.tasks = { added: t.tasks.map(x => ({ id: x.task.id, from: x.from, v2: x.v2, renamed: x.renamed, stage: x.stage, title: x.task.title })), listed: t.listed }
+  const p = mapCandidates(board, existing, o.exists)
+  res.projects = { candidates: p.projects, skipped: p.skipped, board: v2.board }
 
   // Settings and the small files v3 reads the same way.
   const v3Settings = readJson(path.join(data, 'settings.json'))?.settings || {}
@@ -419,17 +381,14 @@ export function runImport(o) {
 
   if (!o.dryRun) {
     if (p.projects.length) {
-      writeJsonFile(path.join(pmDir, 'projects.json'), { v: 1, projects: [...existing, ...p.projects.map(({ left, ...x }) => ({ ...x, addedAt: now }))] })
+      writeJsonFile(path.join(data, V2_PROJECTS), { v: 1, at: res.at, projects: p.projects })
       const pm = readJson(path.join(pmDir, 'pm.json')) || {}
       if (pm.enabled !== true) { writeJsonFile(path.join(pmDir, 'pm.json'), { ...pm, v: 1, enabled: true }); res.projects.switchedOn = true }
     }
-    for (const x of t.tasks) writeJsonFile(path.join(pmDir, 'tasks', `${x.task.id}.json`), x.task)
     if (s.carried.length) writeJsonFile(path.join(data, 'settings.json'), { v: 1, settings: { ...v3Settings, ...s.patch } })
     for (const f of copies) { fs.mkdirSync(data, { recursive: true }); fs.writeFileSync(path.join(data, f), fs.readFileSync(path.join(v2.dataDir, f)), { mode: 0o600 }) }
     if (copyDirs) writeJsonFile(path.join(data, 'dirs.json'), { dirs: dirs.dirs })
-    writeJsonFile(path.join(data, 'migration', 'imported.json'), {
-      v: 1, at: res.at, tasks: { ...(state.tasks || {}), ...Object.fromEntries(t.tasks.map(x => [x.from, x.task.id])) },
-    })
+    writeJsonFile(path.join(data, 'migration', 'imported.json'), { v: 1, at: res.at })
     res.report = path.join(data, 'migration-report.md')
     // The report of an earlier run is kept: it lists what that run imported.
     if (fs.existsSync(res.report)) fs.renameSync(res.report, path.join(data, 'migration', `report-${String(state.at || now).replace(/[:.]/g, '-')}.md`))
@@ -459,19 +418,15 @@ export function renderReport(r) {
   const row = (...c) => L.push(`| ${c.map(x => String(x ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ')).join(' | ')} |`)
   L.push('# wherdr v2 → v3 migration report', '', `${r.dryRun ? 'Dry run (nothing written), ' : ''}${r.at}. v2 was only read: ${r.v2.dir} (data ${r.v2.dataDir}, port ${r.v2.port}). v3 data: ${r.dataDir}.`, '')
   L.push('## Projects', '')
-  if (!r.projects.board) L.push('No herdr-projects board found: no project imported.', '')
-  if (r.projects.added.length) {
-    L.push(`Imported as v3 projects${r.projects.switchedOn ? ' (Projects switched on)' : ''}. Each needs a template before its tasks can start (Settings › Projects).`, '')
-    row('Key', 'Name', 'Folder', 'Base branch', 'v2 settings to redo in the template'); row('---', '---', '---', '---', '---')
-    for (const p of r.projects.added) row(p.key, p.name, p.path, p.base || '', p.left.join(', '))
+  if (!r.projects.board) L.push('No herdr-projects board found: no project to set up.', '')
+  if (r.projects.candidates.length) {
+    L.push(`Not added: Alfred offers to set them up with you in its first message (machine, template, coordinator, open tasks)${r.projects.switchedOn ? '; Projects switched on' : ''}. Done and archived tasks are left out.`, '')
+    row('Key', 'Name', 'Folder', 'Base branch', 'Open tasks', 'v2 settings to redo in the template'); row('---', '---', '---', '---', '---', '---')
+    for (const p of r.projects.candidates) row(p.key, p.name, `${p.path}${p.here ? '' : ' (not on this machine)'}`, p.base || '', p.tasks.length, p.left.join(', '))
     L.push('')
   }
-  if (r.projects.skipped.length) { L.push('Not imported this time:', ''); for (const s of r.projects.skipped) L.push(`- ${s.name} (${s.path}): ${s.reason}`); L.push('') }
-  L.push('## Tasks', '')
-  L.push(r.tasks.added.length ? 'Open board tasks imported as v3 tasks to do (type `task`; pick their type once the project has a template). They keep their v2 number when it is free in v3; a renumbered task says "From v2 …" at the top of its description. Done and archived tasks were not imported.' : 'No open board task imported. Done and archived tasks are never imported.', '')
-  for (const t of r.tasks.added) L.push(`- ${t.id} ← v2 ${t.v2} (${t.stage}): ${t.title}`)
-  if (r.tasks.listed.length) { L.push('', 'Open tasks not imported this time:', ''); for (const t of r.tasks.listed) L.push(`- ${t.id}: ${t.title || ''} (${t.reason})`) }
-  L.push('', '## Machines', '')
+  if (r.projects.skipped.length) { L.push('Left out:', ''); for (const s of r.projects.skipped) L.push(`- ${s.name} (${s.path}): ${s.reason}`); L.push('') }
+  L.push('## Machines', '')
   if (!r.machines.added.length && !r.machines.missing.length && !r.machines.have.length) L.push('No SSH machine in Herdr.')
   // hc names are 1-32 of a-z 0-9 - _ . : say when the v2 name was changed.
   const named = m => (m.label && m.label !== m.name ? `${m.name} (v2 name ${m.label} → ${m.name})` : m.name)
