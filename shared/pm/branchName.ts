@@ -56,8 +56,10 @@ export function reportedBranch(note: string): string | undefined {
 }
 
 // The branch a worker's report moves the task to, or undefined: the one it
-// says it pushed, else the one it checked out in the worktree.
-export function followedBranch(current: string, r: { note: string, branch?: string }): string | undefined {
-  const b = reportedBranch(r.note) ?? (r.branch && isBranch(r.branch) ? r.branch : undefined)
+// says it pushed, else one it checked out in the worktree. The worktree still
+// on the branch it was made on (start) says nothing: a branch pushed without
+// a checkout stays followed.
+export function followedBranch(current: string, r: { note: string, branch?: string }, start: string): string | undefined {
+  const b = reportedBranch(r.note) ?? (r.branch && r.branch !== start && isBranch(r.branch) ? r.branch : undefined)
   return b && b !== current ? b : undefined
 }

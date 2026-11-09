@@ -36,6 +36,7 @@ export interface Task {
   step?: StepState // where the step engine has it
   base?: string // the project's working branch when it started ('' none): a later change leaves it alone
   branch?: string // its branch, named at its first start (branchName.ts), or the one its worker said it pushed
+  branchStart?: string // the branch its worktree was made on (none: task/<id>)
   prefs?: Prefs
   tags?: string[] // short texts, shown on the card
   links?: { label: string, url: string }[] // the PR, the ticket…

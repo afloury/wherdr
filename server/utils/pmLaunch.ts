@@ -185,7 +185,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now() }
   for (;;) {
     await store.saveRun(run) // the receipt, before the terminal exists
-    await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, run: run.id, step, base, branch: paths.branch, ...(shotToken ? { shotToken } : {}) })
+    await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, run: run.id, step, base, branch: paths.branch, branchStart: task.branchStart ?? paths.branch, ...(shotToken ? { shotToken } : {}) })
     let address: string
     try {
       address = (await deps.call<{ address: string }>('terminal.run', {

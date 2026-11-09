@@ -42,8 +42,11 @@ describe('the branch the worker pushed', () => {
     expect(reportedBranch('Done.\nBranch: `feature/PROJ-1-x`\nhttps://example.com/pr/1')).toBe('feature/PROJ-1-x')
     expect(reportedBranch('PR: https://bitbucket.org/example-org/example-repo/pull-requests/new?source=feature%2FPROJ-1-x&t=1')).toBe('feature/PROJ-1-x')
     expect(reportedBranch('Branch: not a branch')).toBeUndefined()
-    expect(followedBranch('task/WHR-1', { note: 'done', branch: 'feature/PROJ-1' })).toBe('feature/PROJ-1')
-    expect(followedBranch('task/WHR-1', { note: 'Branch: bugfix/PROJ-2', branch: 'task/WHR-1' })).toBe('bugfix/PROJ-2')
-    expect(followedBranch('task/WHR-1', { note: 'done', branch: 'task/WHR-1' })).toBeUndefined()
+    const start = 'task/WHR-1'
+    expect(followedBranch(start, { note: 'done', branch: 'feature/PROJ-1' }, start)).toBe('feature/PROJ-1')
+    expect(followedBranch(start, { note: 'done', branch: start }, start)).toBeUndefined()
+    // Pushed without a checkout: followed, and a later report without the line keeps it.
+    expect(followedBranch(start, { note: 'Branch: bugfix/PROJ-2', branch: start }, start)).toBe('bugfix/PROJ-2')
+    expect(followedBranch('bugfix/PROJ-2', { note: 'Fixed the findings.', branch: start }, start)).toBeUndefined()
   })
 })

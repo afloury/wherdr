@@ -74,7 +74,7 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   const r = await exec(deps, c.on, SIGNAL_READ_SCRIPT, [run.worktree, run.branch, files.note, files.verdict])
   const read = parseRead(r.out)
   const ev = signalEvent(step, run.role, read)
-  const moved = ev && 'kind' in ev && ev.kind === 'report' ? followedBranch(run.branch, read) : undefined
+  const moved = ev && 'kind' in ev && ev.kind === 'report' ? followedBranch(run.branch, read, c.task.branchStart ?? `task/${c.task.id}`) : undefined
   if (moved) await follow(deps, c, run, moved)
   // The worker reports the work the engine handed it (a catch-up, red CI): the step's Your turn, if any, comes back.
   const work = c.task.step!.agent
