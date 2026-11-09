@@ -38,6 +38,12 @@ export const canRunCoordinator = (program: unknown, key: string): program is Coo
   key === MAIN ? isCoordinatorProgram(program) : (GUARDED_PROGRAMS as readonly unknown[]).includes(program)
 // Each harness's own instructions file, pointing to AGENTS.md.
 export const ROLE_POINTERS: Record<string, string> = { 'CLAUDE.md': '@AGENTS.md\n', 'GEMINI.md': '@AGENTS.md\n', 'QWEN.md': '@AGENTS.md\n' }
+
+// A coordinator's memory (Alfred's too): its own file, created when missing and
+// never overwritten, so it outlives restarts and a change of program.
+export const MEMORY_CAP = 4000
+export const MEMORY_FILE = `# Memory\n\n<!-- The user's decisions and preferences, and what you learn about their setup, one fact per line. Under ${MEMORY_CAP} characters. -->\n`
+export const OWN_ROLE_FILES: Record<string, string> = { 'memory.md': MEMORY_FILE }
 // The main coordinator: one for all projects, kept under this reserved key
 // (never a project key: those start with a letter).
 export const MAIN = '_main'
@@ -405,7 +411,8 @@ const stepLine = (s: PlannedStep) => `- ${s.id} (${s.column ?? s.id}): ${[
 
 export const commandList = (t?: Template | null) => COMMANDS.filter(c => !c.usage.startsWith(GUARDED_COMMAND) || t?.guards?.contributorPrs).map(c => `- \`wherdr pm ${c.usage}\`: ${c.does}`)
 
-// The files of the coordinator's folder, path → text. Nothing outside it.
+// The files of the coordinator's folder wherdr rewrites, path → text (its own
+// files: OWN_ROLE_FILES). Nothing outside it.
 // docs: wherdr's docs folder, when the coordinator runs on wherdr's machine.
 export function roleFiles(p: Project, t: Template | null, examples: Template[], docs?: string): Record<string, string> {
   // A folder without git: no task worktree, the coordinator does the work there itself.
@@ -422,6 +429,8 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     '- "Step check: <task> (<step>)": a step you hold, at its start, recheck or timeout; it comes even with the autopilot off;',
     '- "Engine:": the engine gave up on a block after failed fixes, with what it tried;',
     '- "Health check:": wherdr\'s health check found something to look at.', '',
+    '## Your memory', '',
+    `\`memory.md\` in your folder is yours: wherdr creates it once and never rewrites it, so it outlives a restart and a change of program. Read it first, at each start, and follow it: the user's decisions and preferences there come before your defaults. Note there, as you go, each decision or preference the user gives you, one fact per line; nothing a command or the board already says. Keep it clean: merge duplicates, drop stale lines, stay under ${MEMORY_CAP} characters.`, '',
     '## Commands (your token: this project only)', '', ...commandList(t), '',
     'Every change you make is written to the task\'s or the workflow\'s log with your name.',
     `Quote a file as inline code with its absolute path (\`${p.path.replace(/\/$/, '')}/README.md\`): the user's interface makes it a link.`, '',
