@@ -78,10 +78,11 @@ describe('after the worker, with each example template', () => {
     expect(w.tell()).toBeUndefined()
     w.on({ kind: 'user' })
     w.on({ kind: 'action-result', ok: true })
-    // The deploy step is the coordinator's (pmWakes tells it), not an agent's.
+    // The engine watches the deploy: no agent is told.
     expect(w.step().id).toBe('deploy')
     expect(w.tell()).toBeUndefined()
-    w.on({ kind: 'report', from: 'coordinator' })
+    expect(runsNow(w.step(), w.s)).toBe(true)
+    w.on({ kind: 'action-result', ok: true })
     expect(w.s.done).toBe(true)
   })
 

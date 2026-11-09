@@ -2,7 +2,7 @@
 // for each holder and end, and one sentence saying what happens at a step.
 // The one place for these texts, shared by the template editor and the board.
 // Pure: the caller passes its own tl(en, fr) for the language.
-import { actionField, type End, type Holder, type Step, type StepAction } from './workflow'
+import { WATCH, actionField, type End, type Holder, type Step, type StepAction } from './workflow'
 import { shotMode } from './shots'
 import { DEFAULT_ROUNDS, stepLabels } from './steps'
 
@@ -23,6 +23,7 @@ export function actionLabel(a: Pick<StepAction, 'kind' | 'target' | 'base'>, tl:
     case 'github.merge': return tl('Merge the GitHub PR', 'Fusionner la PR GitHub')
     case 'bitbucket.merge': return tl('Merge the Bitbucket PR', 'Fusionner la PR Bitbucket')
     case 'git.verify-merged': return tl(`Check it is merged into ${b}`, `Vérifier que c’est fusionné dans ${b}`)
+    case 'pipeline.watch': return 'Watch the pipeline'
   }
 }
 
@@ -82,6 +83,10 @@ function engineDoes(a: StepAction, guarded: boolean, tl: Tl): string {
     }
     case 'git.verify-merged': return tl(`The engine checks the branch is merged into ${b}; if not, it waits for you.`,
       `Le moteur vérifie que la branche est fusionnée dans ${b} ; sinon, il t’attend.`)
+    case 'pipeline.watch': {
+      const what = a.source === 'command' ? `runs \`${a.command}\`` : `follows the GitHub Actions runs of ${a.branch ? `${a.branch}’s latest commit` : 'the task’s commit'}`
+      return `The engine ${what} every ${a.every ?? WATCH.every}, up to ${a.timeout ?? WATCH.timeout}. A failure is said to the coordinator and ${a.onFail === 'worker' ? 'goes back to the agent' : 'comes to you'}.`
+    }
   }
 }
 

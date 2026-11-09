@@ -133,6 +133,17 @@ if [ "$(git rev-parse HEAD)" = "$p" ]; then echo same; elif git merge-base --is-
   // Runs again the failed or cancelled workflow runs of a commit.
   rerun: `${IN} ids=$(gh run list --commit "$1" --json databaseId,conclusion -q '.[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .conclusion != "") | .databaseId' 2>&1) || { echo "$ids"; exit 1; }
 for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
+  // pipeline.watch, github: the runs of branch $1's tip now (asked of the
+  // remote: a run listed by branch may be the previous commit's, its own not
+  // registered yet), else of the task's commit; only workflow $2 when named.
+  ghRuns: `${IN} if [ -n "$1" ]; then v=$(git ls-remote -q origin "refs/heads/$1" 2>&1) || { echo "$v"; exit 1; }; v=\${v%%[[:space:]]*}
+  [ -n "$v" ] || { echo "no branch $1 on origin"; exit 1; }; else v=$(git rev-parse HEAD) || exit 1; fi
+gh run list --commit "$v" \${2:+--workflow "$2"} --limit 30 --json databaseId,workflowName,status,conclusion,headSha,url 2>&1`,
+  // The failed jobs of run $1, then the tail of their logs.
+  ghFailed: `${IN} gh run view "$1" --json jobs -q '.jobs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral") | .name' 2>&1 | head -5 | paste -sd ',' -
+gh run view "$1" --log-failed 2>&1 | tail -n 20`,
+  // pipeline.watch, command: the step's command, in the worktree; its exit code is the answer.
+  watchCommand: `${IN} sh -c "$1" 2>&1`,
   // The failed jobs' log at the commit, for a red-CI nudge (blocked.ts): its last lines.
   failedLog: `${IN} for i in $(gh run list --commit "$1" --json databaseId,conclusion -q '.[] | select(.conclusion == "failure") | .databaseId' 2>/dev/null); do gh run view "$i" --log-failed 2>/dev/null | tail -n 400; done`,
   // Did the task's own interface change move from commit $2 to $3? Each one's
@@ -185,6 +196,27 @@ export function prReady(pr: PrInfo | undefined, head: string, required: string[]
   return { ok: true }
 }
 
+// pipeline.watch, github: where the runs of one commit stand. None yet (CI
+// not started) or one not completed: running. Each green: done. Else the first
+// that failed. All are of one commit (ghRuns); a stray other is left out.
+export interface GhRun { databaseId: number, workflowName?: string, status: string, conclusion: string, headSha: string, url: string }
+const RUN_OK = ['success', 'skipped', 'neutral']
+export function runsState(all: GhRun[]): { state: 'running' } | { state: 'done', link: string } | { state: 'failed', run: GhRun } {
+  const runs = all.filter(r => r.headSha === all[0]?.headSha)
+  if (!runs.length || runs.some(r => r.status !== 'completed')) return { state: 'running' }
+  const bad = runs.find(r => !RUN_OK.includes(r.conclusion))
+  return bad ? { state: 'failed', run: bad } : { state: 'done', link: runs[0]!.url }
+}
+
+// pipeline.watch, command: exit 0 done, 1 failed, 2 still running; the output
+// is the proof. Timed out (code null): still running, the step's timeout decides.
+export function commandState(code: number | null, out: string): ActionResult {
+  const tail = out.trim().split('\n').slice(-20).join('\n').slice(-2000)
+  if (code === 0) return { ok: true, report: tail || 'done' }
+  if (code === 2 || code === null) return { ok: false, later: true }
+  return { ok: false, error: `pipeline: the command failed${code === 1 ? '' : ` (exit code ${code})`}`, ...(tail ? { detail: tail } : {}) }
+}
+
 // Bitbucket Cloud: the merge strategy of a method, a merge commit by default
 // (a squash makes a new commit, which git.verify-merged would not find).
 export const BB_STRATEGY = { merge: 'merge_commit', squash: 'squash', rebase: 'rebase_merge' } as const
@@ -225,7 +257,9 @@ export function leaks(g: ResolvedGuards, remoteBranches: string[], allowed: stri
 // asks GitHub first (merged, closed, open), and is run again up to twice (resumes).
 // note: a line for the task's log.
 // review: new commits since the reviewed one, to review before the merge.
+// later: a pipeline still running, polled again. report: a watch's output, its
+// proof. detail: what a failed watch printed, for the log and the coordinator.
 // catchUp: the PR's base, when the merge is refused because the PR conflicts with or is behind it.
-export interface ActionResult { ok: boolean, error?: string, toAgent?: boolean, review?: { since: string, head: string }, catchUp?: string, unapproved?: true, link?: string, commit?: string, alert?: string, note?: string }
+export interface ActionResult { ok: boolean, later?: boolean, report?: string, detail?: string, error?: string, toAgent?: boolean, review?: { since: string, head: string }, catchUp?: string, unapproved?: true, link?: string, commit?: string, alert?: string, note?: string }
 export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain', result?: ActionResult, at: number, by?: MergeBy, resumes?: number }
 export const receiptId = (task: string, step: string, attempt: number) => `${task}.${attempt}.${encodeURIComponent(step)}`

@@ -13,7 +13,7 @@ export type Evidence = typeof EVIDENCE[number]
 // What screenshots evidence asks for: the result only, or before and after the change.
 export const SHOT_MODES = ['after', 'before-after'] as const
 export type ShotMode = typeof SHOT_MODES[number]
-export const ACTIONS = ['git.land', 'git.push', 'github.pr', 'github.merge', 'bitbucket.merge', 'git.verify-merged'] as const
+export const ACTIONS = ['git.land', 'git.push', 'github.pr', 'github.merge', 'bitbucket.merge', 'git.verify-merged', 'pipeline.watch'] as const
 // The PR merges: they take a method and required checks.
 export const isPrMerge = (k?: string) => k === 'github.merge' || k === 'bitbucket.merge'
 export type ActionKind = typeof ACTIONS[number]
@@ -30,7 +30,17 @@ export const isWeight = (v: unknown): v is Weight => (WEIGHTS as readonly unknow
 // github.merge: method (default: the first the repo allows) and checks, the
 // names that must be there and green (a PR whose CI has not started yet has none).
 // bitbucket.merge: the same; its default method is a merge commit.
-export interface StepAction { kind: ActionKind, target?: string, base?: string, method?: MergeMethod, checks?: string[] }
+// pipeline.watch: the engine polls a pipeline every `every` (default 1m) until
+// `timeout` (default 30m). source github (default): the GitHub Actions runs of
+// `branch`'s latest commit, else of the task's commit, `workflow` only when
+// named. source command: `command`, run in the worktree, exits 0 done, 1
+// failed, 2 still running. onFail worker: a failure goes back to the worker.
+export const WATCH_SOURCES = ['github', 'command'] as const
+export const WATCH = { every: '1m', timeout: '30m' } as const
+export interface StepAction {
+  kind: ActionKind, target?: string, base?: string, method?: MergeMethod, checks?: string[]
+  source?: typeof WATCH_SOURCES[number], branch?: string, workflow?: string, command?: string, every?: string, timeout?: string, onFail?: 'worker' | 'user'
+}
 
 // What the action's branch field holds: a branch to merge into, or the PR's
 // base. Left out, the project's working branch fills it (withBase in steps.ts).
@@ -159,13 +169,27 @@ function checkStep(s: unknown, path: string, earlier: string[], errs: WorkflowEr
   if (s.ends === 'action' && s.action === undefined) err('action', 'is required for a step that ends with action')
   if (s.action === undefined) return
   if (!isObj(s.action) || !ACTIONS.includes(s.action.kind as ActionKind)) return err('action.kind', `must be one of ${ACTIONS.join(', ')}`)
-  checkKeys(s.action, ['kind', 'target', 'base', 'method', 'checks'], `${path}.action`, errs)
+  checkKeys(s.action, ['kind', 'target', 'base', 'method', 'checks', ...WATCH_KEYS], `${path}.action`, errs)
+  checkWatch(s.action, s, err)
   if (!isPrMerge(s.action.kind as string)) for (const k of ['method', 'checks']) if (s.action[k] !== undefined) err(`action.${k}`, 'only for github.merge or bitbucket.merge')
   if (s.action.method !== undefined && !MERGE_METHODS.includes(s.action.method as MergeMethod)) err('action.method', `must be one of ${MERGE_METHODS.join(', ')}`)
   if (s.action.checks !== undefined && !(Array.isArray(s.action.checks) && s.action.checks.every(isStr))) err('action.checks', 'must be a list of check names')
   const field = actionField(s.action.kind as ActionKind)
   if (field && s.action[field] !== undefined && !isStr(s.action[field])) err(`action.${field}`, 'must be a branch name')
   if (s.ends !== 'action' && s.ends !== 'user') err('action', 'only for a step that ends with action or user')
+}
+
+const WATCH_KEYS = ['source', 'branch', 'workflow', 'command', 'every', 'timeout', 'onFail']
+function checkWatch(a: Record<string, unknown>, s: Record<string, unknown>, err: (field: string, message: string) => void) {
+  if (a.kind !== 'pipeline.watch') return WATCH_KEYS.forEach(k => a[k] !== undefined && err(`action.${k}`, 'only for pipeline.watch'))
+  if (a.source !== undefined && !WATCH_SOURCES.includes(a.source as never)) err('action.source', `must be one of ${WATCH_SOURCES.join(', ')}`)
+  if (a.source === 'command' ? !isStr(a.command) : a.command !== undefined) err('action.command', 'is required for source command, and only for it')
+  if (a.source === 'command') for (const k of ['branch', 'workflow']) if (a[k] !== undefined) err(`action.${k}`, 'only for source github')
+  for (const k of ['branch', 'workflow']) if (a[k] !== undefined && !isStr(a[k])) err(`action.${k}`, 'must be text')
+  for (const k of ['every', 'timeout']) if (a[k] !== undefined && !(typeof a[k] === 'string' && DURATION.test(a[k]))) err(`action.${k}`, 'must be a duration like 30s, 5m, 2h or 1d')
+  if (a.onFail !== undefined && a.onFail !== 'worker' && a.onFail !== 'user') err('action.onFail', 'must be worker or user')
+  if (s.ends !== 'action') err('ends', 'pipeline.watch runs only in a step that ends with action')
+  if (s.holder !== undefined && s.holder !== 'none') err('holder', 'the engine watches the pipeline: leave the holder out')
 }
 
 // Start over: template `source` copied as a project's workflow. The project's

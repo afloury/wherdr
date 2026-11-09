@@ -395,14 +395,15 @@ export function templateDiff(old: Template | null, next: Template): string {
 
 // What the engine tells the coordinator on a tick: its step's instructions
 // once when the step starts, then each recheck. `told` marks the step start
-// already announced.
+// already announced. A watched pipeline that failed is said once (`notify`).
 export function coordinatorWake(plan: PlannedStep[], state: StepState, now: number): { state: StepState, texts: string[] } {
   if (!state.started || state.done) return { state, texts: [] }
-  const r = onEvent(plan, state, { kind: 'tick' }, now)
+  const notify = state.notify ? [`Pipeline watch failed at ${state.notify}`] : []
+  const r = onEvent(plan, { ...state, notify: undefined }, { kind: 'tick' }, now)
   const texts = r.effects.flatMap(e => (e.kind === 'instruct' && e.holder === 'coordinator' ? [e.text] : []))
   const step = currentStep(plan, r.state)
-  if (step?.holder !== 'coordinator' || state.told === state.since) return { state: r.state, texts }
-  return { state: { ...r.state, told: state.since }, texts: texts.length ? texts : [step.text] }
+  if (step?.holder !== 'coordinator' || state.told === state.since) return { state: r.state, texts: [...notify, ...texts] }
+  return { state: { ...r.state, told: state.since }, texts: [...notify, ...(texts.length ? texts : [step.text])] }
 }
 
 const stepLine = (s: PlannedStep) => `- ${s.id} (${s.column ?? s.id}): ${[

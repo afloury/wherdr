@@ -82,9 +82,10 @@ export function dueText(plan: PlannedStep[], s: StepState | undefined): { holder
 
 // An engine action the advance pass runs at once. A merge the engine may do
 // waits for its PR's checks (pmMechanic's merge move); a guarded one runs so
-// its guard refuses it and hands it to the user's step.
-export const runsNow = (step: PlannedStep | undefined, s: StepState | undefined) =>
-  !!step && !!s?.acting && step.ends === 'action' && !(step.action?.kind === 'github.merge' && !step.guarded)
+// its guard refuses it and hands it to the user's step. A watched pipeline is
+// polled once its next poll is due.
+export const runsNow = (step: PlannedStep | undefined, s: StepState | undefined, now = Date.now()) =>
+  !!step && !!s?.acting && step.ends === 'action' && !(step.action?.kind === 'github.merge' && !step.guarded) && !(s.watch && s.watch.next > now)
 
 // The tasks a task waits for: `after: A-1,A-2`.
 export const afterIds = (t: Pick<Task, 'after'>) => (t.after ?? '').split(',').map(s => s.trim()).filter(Boolean)

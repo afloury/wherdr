@@ -130,7 +130,34 @@ The project's own workflow: its task types, and the steps of each. Each step
 has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
 action, what it does: land on a branch, push, open a PR, merge a GitHub or
-Bitbucket PR, or check that a branch was merged, with its branch, merge method and required checks.
+Bitbucket PR, check that a branch was merged, or watch a pipeline, with its
+branch, merge method and required checks.
+
+A **pipeline watch** (`pipeline.watch`) has the engine follow CI or a deploy
+by itself, so no agent is woken only to read *still running*. It checks every
+`every` (default `1m`) until `timeout` (default `30m`). Its `source`:
+
+- `github` (default): the GitHub Actions runs of the task's commit, or of
+  `branch`'s commit on origin now (no run yet: still running, so an earlier
+  commit's green run never counts); `workflow` keeps one workflow only.
+- `command`: `command`, run in the task's worktree on the project's machine,
+  exits `0` done, `1` failed, `2` still running: a CircleCI or Bitbucket
+  check, a `helm` or `kubectl` status, a health URL. Its output is the step's
+  proof.
+
+Green: the step ends, and the coordinator is not woken. Failed (which run and
+job, and the tail of the output) or past its timeout: the task's log and the
+coordinator get it once, and the step comes to you, or goes back to the worker
+with `"onFail": "worker"` (a timeout always comes to you). A step that had the
+coordinator watch the deploy with a recheck becomes, in *Edit as JSON*:
+
+```json
+{ "id": "deploy", "column": "Deploy", "ends": "action",
+  "action": { "kind": "pipeline.watch", "branch": "develop", "every": "2m", "timeout": "90m" } }
+```
+
+or, outside GitHub, `"source": "command", "command": "./scripts/ci-status.sh develop"`.
+
 A merge that first pushes the task's last commits waits up to a minute for
 GitHub to show them on the PR.
 In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
