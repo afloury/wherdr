@@ -19,7 +19,7 @@ import type { PmLaunchDeps } from './pmLaunch'
 // another account): the verdict the project's limits see (home's when it goes,
 // else the first machine's that goes) and the machines whose account waits,
 // which placement skips.
-export async function paceOf(store: PmStore, p: Project, task: Pick<Task, 'type' | 'prefs'>, now = Date.now()) {
+export async function paceOf(store: PmStore, p: Project, task?: Pick<Task, 'type' | 'prefs'>, now = Date.now()) {
   const all = await Promise.all(allowedMachines(p).map(async m => [m, (await projectPace(store, p.key, task, now, false, m))?.verdict] as const))
   const waits: Record<string, string> = {}
   for (const [m, v] of all) if (v && !v.go) waits[m] = `paced: ${paceWait(v)}`
@@ -60,15 +60,16 @@ export const goesTo = (placed: Placement) =>
   'machine' in placed ? { on: placed.machine } : { on: placed.best, short: placed.hold }
 
 // The project's allowed machines for `autopilot show`, one line each
-// (machineLine). Readiness is the last check's, never run from here.
-export async function machineLines(deps: PmLaunchDeps, p: Project): Promise<string[]> {
-  const settings = await readMemorySettings()
+// (machineLine). Readiness is the last check's, never run from here; pace is
+// each machine's account, for a task of the workflow's first type (paceOf).
+export async function machineLines(deps: PmLaunchDeps, p: Project, now = Date.now()): Promise<string[]> {
+  const [settings, { waits }] = await Promise.all([readMemorySettings(), paceOf(deps.store, p, undefined, now).catch(() => ({ waits: {} as Record<string, string> }))])
   return Promise.all(allowedMachines(p).map(async (key) => {
     const m = deps.machines().find(x => x.key === key)
     const online = !!m && (m.local || m.status === 'online')
     const home = key === p.machine, ready = home ? '' : lastReadiness(p.key, key)
     return machineLine({
-      key, label: m?.label ?? key, online, home, ...(ready ? { wait: `not ready (${ready})` } : {}), ...(ready === undefined ? { unchecked: true } : {}),
+      key, label: m?.label ?? key, online, home, ...(waits[key] ? { wait: waits[key] } : ready ? { wait: `not ready (${ready})` } : {}), ...(ready === undefined ? { unchecked: true } : {}),
       settings: settings[key] ?? DEFAULT_MEMORY, capacity: online ? await machineCapacity(deps, key) : null, running: online ? await atWork(deps.store, key) : [],
     })
   }))

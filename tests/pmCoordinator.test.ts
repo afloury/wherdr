@@ -734,6 +734,12 @@ describe('commands of lot 10', () => {
     await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { on: true, goal: 'Ship', events: [], perDay: 4, atOnce: 2 } })
     await store.saveTask({ ...(await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })), state: 'working' })
     expect(await cli(['autopilot', 'show'])).toMatchObject({ autopilot: { goal: 'Ship' }, today: { started: 0, perDay: 4, working: 1, atOnce: 2, startLeft: 1 } })
+ 
+    // A machine whose account is ahead of its pace takes nothing, as placement skips it.
+    const now = Date.now()
+    quotas.q = { codex: null, claude: { at: now, five: { used: 90, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
+    const here = { ...deps(), machines: () => [{ key: '', label: 'machine-a', local: true }] } as never
+    expect((await runCommand(here, token, { argv: ['autopilot', 'show'] })).machines).toEqual([expect.stringMatching(/^machine-a \(home\): .* · takes nothing now: paced: /)])
   })
 
   it('task add: a task to do, chained with --after, with --weight; show gives its weight; in a wake only with the autopilot on', async () => {
