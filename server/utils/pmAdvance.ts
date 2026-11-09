@@ -20,6 +20,8 @@ import { isPublic, leakText, scanDiff } from '../../shared/pm/visibility'
 import type { Project } from '../../shared/pm/project'
 import { agentBack, retriesAction, wasReleased } from '../../shared/pm/release'
 import { reviveWorker } from './pmRelease'
+import { recordGone, type CoreList } from './pmIncidents'
+import { incidentLine, type Incident } from '../../shared/pm/incident'
 
 // The task's commit, its diff size since the branch started, the worker's note, the verdict file.
 export const SIGNAL_READ_SCRIPT = `wt=$1 b=$2
@@ -55,15 +57,19 @@ const waitFor = async (deps: PmLaunchDeps, id: string, reason: string) =>
 
 export async function advanceTick(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
-  const { terminals } = await deps.call<{ terminals: LabelledTerminal[] }>('terminal.list', { all: true, labels: { [LABEL.install]: await store.install() } }, 8000)
+  const list = await deps.call<CoreList>('terminal.list', { all: true, labels: { [LABEL.install]: await store.install() } }, 8000)
+  const { terminals } = list
   const alive = (r?: Run) => (r?.terminal && r.state !== 'ended' ? terminals.find(x => x.address === r.terminal && x.state !== 'finished') : undefined)
   await endDuplicates(deps, terminals).catch(() => {})
+  // An agent killed, crashed or gone with its machine while wherdr runs: an incident (an agent that exited with 0 ended on its own).
+  const gone = (await store.runs()).filter(r => r.terminal && r.state !== 'ended' && !alive(r) && terminals.find(x => x.address === r.terminal)?.exit_code !== 0)
+  const why = gone.length ? await recordGone(deps, gone, list, now).catch(() => new Map<string, Incident>()) : new Map<string, Incident>()
   for (const run of await store.runs()) {
     if (alive(run)?.labels?.[LABEL.report] !== 'done') continue
     // Cleared once handled; a failure leaves it for the next tick.
     if (await signal(deps, run, now).then(() => true, () => false)) await clearSignal(deps, run.terminal!)
   }
-  for (const task of await store.tasks()) await advance(deps, task.id, alive).catch(() => {})
+  for (const task of await store.tasks()) await advance(deps, task.id, alive, why).catch(() => {})
 }
 
 // A run said it is done: the engine's event for the current step.
@@ -129,7 +135,7 @@ async function endDuplicates(deps: PmLaunchDeps, terminals: LabelledTerminal[]) 
 }
 
 // The task's current step, carried on: its action run, its holder told, or its agents stopped.
-async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => LabelledTerminal | undefined) {
+async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => LabelledTerminal | undefined, why = new Map<string, Incident>()) {
   const c = await context(deps, id)
   if (!c) return
   const { task, plan } = c, s = task.step!
@@ -156,7 +162,7 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
   const worker = latest(runs, id, 'worker')
   // Released while the task waited for the user: started again, the handover gives the step.
   if (!alive(worker) && wasReleased(worker)) return void await reviveWorker(deps, id, `${plan[s.at]!.id} needs it`)
-  if (!alive(worker)) return void (task.state !== 'waiting' && await waitFor(deps, id, 'The worker\'s agent is not running: start the task again to go on'))
+  if (!alive(worker)) return void (task.state !== 'waiting' && await waitFor(deps, id, why.has(worker?.id ?? '') ? `${incidentLine(why.get(worker!.id)!)}: start the task again to go on` : 'The worker\'s agent is not running: start the task again to go on'))
   await clearSignal(deps, worker!.terminal!)
   // A new note for this step: the last one's link must not pass as this step's proof.
   await exec(deps, c.on, 'rm -f "$1"', [runFiles(worker!.instructions).note])
