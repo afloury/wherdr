@@ -347,6 +347,9 @@ export interface AppConfig {
   push: { enabled: boolean, key: string | null, devices: number }
   // WHERDR_TRUSTED_NETWORKS=any: wherdr accepts every network (warning banner).
   openNetwork?: boolean
+  // Publicly reachable (every network accepted, or Tailscale Funnel): the
+  // safer default for files shown from conversations (shared/chatFiles.ts).
+  publicExposure?: boolean
 }
 
 export interface DirEntry { name: string, path: string, git: boolean }

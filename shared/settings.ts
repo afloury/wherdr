@@ -22,6 +22,8 @@ export const SYNCED_SETTINGS = [
   'boardGrouping', 'boardDone', 'boardFolds',
   // Files
   'wherdr.files.hidden', 'wherdr.files.md',
+  // Security: files shown from conversations (shared/chatFiles.ts), read by the server
+  'chatFilesLevel', 'chatFilesProtected',
 ] as const
 
 export type SyncedSetting = typeof SYNCED_SETTINGS[number]
