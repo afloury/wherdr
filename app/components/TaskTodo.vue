@@ -2,7 +2,7 @@
 // The task sheet's "To do" tab: what a task waiting for the user needs from
 // them, and the buttons for it, nothing else (taskTodo picks the case). A
 // visual merge shows its screenshots large (swipe between them, tap to zoom),
-// the worker's and the reviewer's notes (folded, Markdown), then Merge or Send
+// the worker's and the reviewer's notes (full width, folded, Markdown), then Merge or Send
 // back with a note. A step the user ends shows the two notes too. A step to merge
 // or a refused one has Open the PR when a link proof is a pull request (any host).
 import { adviceChoices } from '#shared/pm/decisions'
@@ -46,10 +46,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
   <div class="todo" :data-todo="kind" data-testid="task-todo">
     <template v-if="kind === 'merge'">
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
-      <div v-if="notes.worker || notes.review" class="todo-notes">
-        <TaskNote v-if="notes.worker" :label="tl('Worker\'s note')" :text="notes.worker" data-testid="todo-worker-note" />
-        <TaskNote v-if="notes.review" :label="tl('Reviewer\'s note')" :text="notes.review" data-testid="todo-review-note" />
-      </div>
+      <TaskNotes v-if="notes.worker || notes.review" :worker="notes.worker" :review="notes.review" />
       <span v-if="reworked" class="mono-label muted" data-testid="todo-rework">{{ tl('Screenshots after rework') }}</span>
       <ul class="todo-shots" data-testid="todo-shots">
         <li v-for="(src, i) in shots" :key="src">
@@ -76,10 +73,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
 
     <template v-else-if="!refused">
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
-      <div v-if="notes.worker || notes.review" class="todo-notes">
-        <TaskNote v-if="notes.worker" :label="tl('Worker\'s note')" :text="notes.worker" data-testid="todo-worker-note" />
-        <TaskNote v-if="notes.review" :label="tl('Reviewer\'s note')" :text="notes.review" data-testid="todo-review-note" />
-      </div>
+      <TaskNotes v-if="notes.worker || notes.review" :worker="notes.worker" :review="notes.review" />
     </template>
 
     <div class="todo-actions">
@@ -137,8 +131,6 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
   .todo-shot img { max-height: 26vh; }
   .todo-actions:has(> .todo-buttons:not(:empty)) { position: sticky; bottom: 0; z-index: 1; padding: 10px 0; background: var(--bg); border-top: 1px solid var(--line-soft); }
 }
-/* Side by side on a wide sheet, one above the other on the phone. */
-.todo-notes { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); align-items: start; }
 .todo-back { display: grid; gap: 8px; }
 .todo-back > button { justify-self: start; }
 </style>

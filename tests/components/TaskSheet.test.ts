@@ -124,7 +124,7 @@ it('renders the description as Markdown, with no raw HTML', async () => {
   w.unmount()
 })
 
-it('a merge step shows the worker\'s and the reviewer\'s notes, folded, with Show more', async () => {
+it('a merge step shows the worker\'s and the reviewer\'s notes, full width, folded, with Show more, as tabs on the phone', async () => {
   const report = 'Added the **notes**.\n\n- Done when: both notes show\n- Tested: `npx vitest related`\n\nMore lines\n\nAnd more'
   const fixed = { id: 'cut', severity: 'major' as const, title: 'Button cut on the phone', where: 'app/x.vue:3', proof: 'shot' }
   const c = waiting({
@@ -146,6 +146,13 @@ it('a merge step shows the worker\'s and the reviewer\'s notes, folded, with Sho
   }
   await worker.get('.msg-fold-btn').trigger('click')
   expect(worker.find('.msg-fold').classes()).not.toContain('folded')
+  // Full width, stacked; on the phone (CSS) Worker / Reviewer tabs pick the one shown.
+  const notes = w.get('[data-testid="todo-notes"]')
+  expect(notes.findAll('[role="tab"]').map(t => t.text())).toEqual(['Worker', 'Reviewer'])
+  expect(notes.attributes('data-shown')).toBe('worker')
+  await notes.get('[data-note="review"]').trigger('click')
+  expect(notes.attributes('data-shown')).toBe('review')
+  expect(notes.get('[data-note="review"]').attributes('aria-selected')).toBe('true')
   tall.mockRestore()
   w.unmount()
 })

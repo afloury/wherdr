@@ -494,8 +494,9 @@ of the entry. An agent that is not on screen here opens the sheet instead.
 - **A visual change to merge**: the **Worker's note** (its closing report: what
   was done, why it is done, what was tested) and the **Reviewer's note** (the
   verdict, what it sent back and was fixed during the rounds, what it left as
-  minor), each in Markdown, folded to a few lines with *Show more*, side by
-  side on a wide screen; then its screenshots large (swipe between them, tap
+  minor), each in Markdown, folded to a few lines with *Show more*, full
+  width, one above the other (on a phone, *Worker* / *Reviewer* tabs above
+  one note); then its screenshots large (swipe between them, tap
   one to zoom; each is labelled phone or desktop), then
   *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
   A step you end (*Deployed*, …) shows the same two notes under its badge.
