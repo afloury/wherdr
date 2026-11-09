@@ -6,8 +6,7 @@
 // (right click, or long press on a touch screen) restarts it with another
 // program: the same Alfred (home folder, identity, memory), the old session
 // stopped. As a banner (the board's All projects): the same one tap, no menu.
-// In the list it is a card of its own: its emblem, what it is, its live state,
-// and an Ask field that opens its conversation with the text in its draft.
+// In the list it is a card of its own: its emblem, what it is, its live state.
 import { MAIN } from '#shared/pm/coordinator'
 import type { AlfredProgram } from '#shared/pm/alfred'
 
@@ -16,9 +15,6 @@ const busy = ref(false)
 const error = ref('')
 const sheet = ref(false)
 const pick = ref('')
-const question = ref('')
-// Text from the Ask field, put in its draft once its conversation exists.
-let asked = ''
 
 const name = computed(() => alfred.value?.name || 'Alfred')
 const current = computed(() => (alfredPane.value ? alfred.value?.ran : undefined) ?? alfred.value?.program)
@@ -51,32 +47,19 @@ async function start(program: AlfredProgram) {
   try {
     const p = await launchCoordinator(MAIN, { program })
     await loadAlfred()
-    if (p) await go(p.id)
+    if (p) await navigateTo(panePath(p.id))
   }
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = false }
 }
-function go(id: string) {
-  // Added after what its composer already holds, never over it.
-  if (asked) { const d = useDraft(id); d.text = [d.text.trim(), asked].filter(Boolean).join('\n') }
-  asked = ''
-  return navigateTo(panePath(id))
-}
 // One tap: its conversation, else a start with its agent (chosen first, the first time).
 async function open() {
   if (rowMenu.swallowClick()) return
-  if (alfredPane.value) return go(alfredPane.value.id)
+  if (alfredPane.value) return navigateTo(panePath(alfredPane.value.id))
   // Its program unchecked in Settings since: pick another.
   if (!alfred.value?.program || !choices.value.includes(alfred.value.program)) return choose()
   await start(alfred.value.program)
 }
-// Ask field: the typed text waits in its composer, not sent.
-function ask() {
-  asked = question.value.trim()
-  question.value = ''
-  return open()
-}
-watch(sheet, (o) => { if (!o && !busy.value) asked = '' })
 const picked = () => choices.value.find(p => p === pick.value)
 
 let timer: ReturnType<typeof setInterval> | undefined
@@ -102,9 +85,6 @@ onUnmounted(() => clearInterval(timer))
     </button>
   </div>
   </UContextMenu>
-  <form v-if="!banner" class="alfred-ask" @submit.prevent="ask">
-    <input v-model="question" type="text" enterkeyhint="go" :placeholder="tl(`Ask ${name}…`, `Demander à ${name}…`)" :aria-label="tl(`Ask ${name}`, `Demander à ${name}`)" :disabled="busy" data-testid="alfred-ask">
-  </form>
   </div>
   <p v-if="error" class="error alfred-error">{{ error }}</p>
 
@@ -157,11 +137,6 @@ onUnmounted(() => clearInterval(timer))
 .alfred-sub.pill { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .alfred-go { flex: none; color: var(--dim); }
 .alfred-start { flex: none; color: var(--mauve); font: 500 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
-.alfred-ask { border-top: 1px solid var(--line-soft); }
-.alfred-ask input { display: block; width: 100%; min-height: 44px; padding: 0 12px 0 64px; border: 0; background: transparent; color: var(--text); font: 14px/1.4 var(--sans); outline: none; }
-@media (pointer: coarse) { .alfred-ask input { font-size: 16px; } }
-.alfred-ask input::placeholder { color: var(--muted); }
-.alfred-ask input:focus-visible { box-shadow: inset 0 0 0 1px var(--mauve); }
 .alfred-error { margin: -14px 0 14px; }
 .alfred-card.banner + .alfred-error { margin: 8px 16px; }
 .alfred-note { margin: 0 2px 14px; color: var(--text-2); font-size: 14px; }
