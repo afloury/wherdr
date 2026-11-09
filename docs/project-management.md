@@ -351,8 +351,8 @@ question, or, with the autopilot on, to unblock a mechanical block of a task of
 its project: `wherdr pm tell <task> "<what to do>" --fix <kind> --reason "<one
 sentence>"`, where the kind is `base` (merge the base and solve a conflict),
 `ci` (fix a red CI), `machine` (retry after a disk or memory problem) or
-`stall` (restart a stalled agent). A worker that was ended starts again with
-the message. Each fix is written to the task's log with its reason, at most
+`stall` (restart a stalled agent). A worker that was let go or ended on its
+own starts again with the message; a stopped or finished task is never fixed. Each fix is written to the task's log with its reason, at most
 twice per task and step; after that the block is yours, and the coordinator
 tells you. Each wake's text lists these fixes. A permission request, a merge,
 an approval, guards, settings and limits stay yours.

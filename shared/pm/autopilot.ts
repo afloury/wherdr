@@ -205,12 +205,15 @@ export const countFix = (t: Pick<Task, 'step' | 'fixes'>) => ({ step: stepKey(t)
 // `tell <task>`: in a wake, only to answer an agent's question, or with
 // `fix` (a project coordinator, its autopilot on) to unblock a mechanical
 // block, twice per task and step. A permission request stays the user's.
-export function tellRefusal(task: Pick<Task, 'state' | 'waitKind' | 'step' | 'fixes'>, wake: boolean, fix?: { autopilot?: Autopilot, main: boolean }): string | undefined {
+export function tellRefusal(task: Pick<Task, 'state' | 'waitKind' | 'step' | 'fixes' | 'stopped'>, wake: boolean, fix?: { autopilot?: Autopilot, main: boolean }): string | undefined {
   if (task.waitKind === 'permission') return 'A permission request is the user\'s to answer'
   if (!wake) return
   if (fix) {
     if (fix.main) return 'In a wake, only the project\'s coordinator fixes its tasks\' blocks'
     if (!fix.autopilot?.on) return 'In a wake, a block is fixed only with the autopilot on'
+    // Going on after a stop is `task start`'s, with its checks; a finished task has nothing to fix.
+    if (task.stopped) return 'The task was stopped: --fix does not start it again (use task start)'
+    if (task.step?.done) return 'The task is done: nothing to fix'
     if (fixesInStep(task) >= FIXES_PER_STEP) return `Already fixed ${FIXES_PER_STEP} times in this step: this block is the user's now, tell them`
     return
   }

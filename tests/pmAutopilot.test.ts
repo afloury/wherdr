@@ -121,6 +121,8 @@ describe('tell', () => {
     expect(tellRefusal({ state: 'working' }, true, { ...on, autopilot: DEFAULT_AUTOPILOT })).toMatch(/only with the autopilot on/)
     expect(tellRefusal({ state: 'working' }, true, { ...on, main: true })).toMatch(/only the project's coordinator/)
     expect(tellRefusal({ state: 'waiting', waitKind: 'permission' }, true, on)).toMatch(/permission request is the user's/)
+    expect(tellRefusal({ state: 'waiting', stopped: { by: 'the user', why: 'x', at: 1 } }, true, on)).toMatch(/was stopped: --fix does not start it again/)
+    expect(tellRefusal({ state: 'working', step: { ...step, done: true } }, true, on)).toMatch(/task is done/)
     const twice = countFix({ step, fixes: countFix({ step }) })
     expect(twice).toEqual({ step: '2:50', n: 2 })
     expect(tellRefusal({ state: 'working', step, fixes: twice }, true, on)).toMatch(/Already fixed 2 times in this step/)
