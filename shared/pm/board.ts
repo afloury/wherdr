@@ -128,10 +128,10 @@ export function handleLabel(c: Pick<Card, 'stopped' | 'asks' | 'state' | 'stall'
 }
 
 // A task waiting for the user, as the sidebar's Tasks to handle lists it (GET /api/pm/handle).
-// terminal: the agent that asks (a question, a permission, a login), whose conversation a tap opens.
-export interface ToHandle { id: string, shown: string, color?: string, title: string, action: string, label: string, terminal?: string }
+// project: the task's project (its fixed key); terminal: the agent that asks (a question, a permission, a login), whose conversation a tap opens.
+export interface ToHandle { id: string, shown: string, project: string, color?: string, title: string, action: string, label: string, terminal?: string }
 export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn)
-  .map(c => ({ id: c.id, shown: c.shown, ...(c.color ? { color: c.color } : {}), title: c.title, action: c.yourTurn!.split('\n')[0]!, label: handleLabel(c), ...(asker(c) ? { terminal: asker(c) } : {}) }))
+  .map(c => ({ id: c.id, shown: c.shown, project: c.project, ...(c.color ? { color: c.color } : {}), title: c.title, action: c.yourTurn!.split('\n')[0]!, label: handleLabel(c), ...(asker(c) ? { terminal: asker(c) } : {}) }))
 // The agent a task waits on, when what it waits for is that agent's question or permission.
 export const asker = (c: Pick<Card, 'asks' | 'stopped' | 'terminal'>) => (c.asks && !c.stopped ? c.terminal : undefined)
 
