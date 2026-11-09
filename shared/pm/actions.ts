@@ -31,6 +31,8 @@ const IN = 'cd "$1" || exit 1; shift;'
 // Does merged PR head $p hold HEAD ($h)? A head pushed from elsewhere is fetched first.
 const HOLDS = `{ [ "$p" = "$h" ] || { git cat-file -e "$p^{commit}" 2>/dev/null || git fetch -q origin "$p" 2>/dev/null; git merge-base --is-ancestor "$h" "$p" 2>/dev/null; }; }`
 const CLEAN = `[ -z "$(git status --porcelain)" ] || { echo "uncommitted changes: commit them, then say you are done"; exit ${CODE.SEND_BACK}; };`
+// The files that change the interface, at any depth (app/components, pages…).
+const UI_FILES = ['components', 'assets', 'pages', 'layouts'].map(d => `':(glob)**/${d}/**'`).join(' ')
 export const SCRIPT = {
   // Catch up with the target, then push the task branch onto it.
   land: `${IN} ${CLEAN} t=$1
@@ -126,6 +128,14 @@ if [ "$(git rev-parse HEAD)" = "$p" ]; then echo same; elif git merge-base --is-
 for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
   // The failed jobs' log at the commit, for a red-CI nudge (blocked.ts): its last lines.
   failedLog: `${IN} for i in $(gh run list --commit "$1" --json databaseId,conclusion -q '.[] | select(.conclusion == "failure") | .databaseId' 2>/dev/null); do gh run view "$i" --log-failed 2>/dev/null | tail -n 400; done`,
+  // Did the task's own interface change move from commit $2 to $3? Each one's
+  // diff from where it left base $1, interface files only, line numbers left
+  // out: what a merge of the base brought does not count. "same" or "changed".
+  uiChanged: `${IN} git fetch -q origin "$1" 2>/dev/null; b="origin/$1"
+for c in "$2" "$3"; do git cat-file -e "$c^{commit}" 2>/dev/null || git fetch -q origin "$c" 2>/dev/null; done
+own() { m=$(git merge-base "$b" "$1") && git diff -U0 --no-color --no-ext-diff "$m" "$1" -- ${UI_FILES} | sed '/^index /d; /^@@/d'; }
+x=$(own "$2") && y=$(own "$3") || exit 1
+[ "$x" = "$y" ] && echo same || echo changed`,
   // Remote branches holding the task's commit, for the protected-branch alert.
   contains: `${IN} git fetch -q origin 2>&1 || exit 1; git branch -r --contains HEAD --format='%(refname:short)'`,
 }
@@ -177,6 +187,6 @@ export function leaks(g: ResolvedGuards, remoteBranches: string[], allowed: stri
 // note: a line for the task's log.
 // review: new commits since the reviewed one, to review before the merge.
 // catchUp: the PR's base, when the merge is refused because the PR conflicts with or is behind it.
-export interface ActionResult { ok: boolean, error?: string, toAgent?: boolean, review?: { since: string, head: string }, catchUp?: string, link?: string, commit?: string, alert?: string, note?: string }
+export interface ActionResult { ok: boolean, error?: string, toAgent?: boolean, review?: { since: string, head: string }, catchUp?: string, unapproved?: true, link?: string, commit?: string, alert?: string, note?: string }
 export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain', result?: ActionResult, at: number }
 export const receiptId = (task: string, step: string, attempt: number) => `${task}.${attempt}.${encodeURIComponent(step)}`
