@@ -1,6 +1,7 @@
 // Start a task by hand, stop it and take a stopped one up again, from the
 // board, the task sheet and Decisions (server/utils/pmStop.ts). Archive asks
 // first: the task ends. Delete asks first too: a task never started leaves the board.
+// A task whose PR was closed without a merge is archived the same way.
 import type { Resume } from '#shared/pm/stop'
 import type { Task } from '#shared/pm/run'
 
@@ -34,9 +35,20 @@ export async function removeTaskApi(id: string) {
   return true
 }
 
+const askArchive = () => askConfirm(tl('Archive this task? Its agent stays stopped; its worktree is removed, its branch is kept.', 'Archiver cette tâche ? Son agent reste arrêté ; son worktree est supprimé, sa branche est gardée.'), tl('Archive', 'Archiver'))
+
 // false: the user cancelled the archive.
 export async function resumeTaskApi(id: string, how: Resume) {
-  if (how === 'archive' && !(await askConfirm(tl('Archive this task? Its agent stays stopped; its worktree is removed, its branch is kept.', 'Archiver cette tâche ? Son agent reste arrêté ; son worktree est supprimé, sa branche est gardée.'), tl('Archive', 'Archiver')))) return false
+  if (how === 'archive' && !(await askArchive())) return false
   await api('/api/pm/task-resume', { id, how })
+  return true
+}
+
+// A task whose PR was closed without a merge (Check on GitHub): stopped, then
+// archived, once confirmed. false: the user cancelled.
+export async function archiveClosedApi(id: string, stopped: boolean) {
+  if (!(await askArchive())) return false
+  if (!stopped) await stopTaskApi(id, 'its PR was closed without a merge')
+  await api('/api/pm/task-resume', { id, how: 'archive' })
   return true
 }

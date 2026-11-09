@@ -10,9 +10,9 @@
 // One row per agent terminal (individualAgentRows), as in v2.5; rows without
 // a status (plain shells) list as Ready.
 import type { MachineInfo, Pane } from '#shared/types'
-import { type ReadySort, type Row, createRowReuse, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
+import { type ReadySort, type Row, createRowReuse, readyLists, rowGroup, sortReady, spaceRows, urgency } from '#shared/spaces'
 import { coreRowCounts } from '#shared/coreState'
-import { claudeApiShown, claudeSuggestion, machineQuotaRows, quotaRows, tabQuotaRows } from '~/utils/quotas'
+import { claudeApiShown, claudeSuggestion, machineQuotaRows, quotaBlocks, quotaRows, tabQuotaRows } from '~/utils/quotas'
 import { longPress } from '~/utils/longPress'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
 import { headerFold } from '~/utils/headerFold'
@@ -23,6 +23,7 @@ import { stateMachines } from '~/utils/homeGrouping'
 import { BAR_ALL } from '~/utils/machineBar'
 import { individualAgentRows, individualAgentTitle, isIndividualAgentRow } from '~/utils/homeAgentRows'
 import { boardEntry } from '~/utils/boardEntry'
+import { groupTaskAgents } from '~/utils/taskAgentRow'
 import type { PmOverview } from '#shared/pm/project'
 const emit = defineEmits<{ search: [] }>()
 onMounted(loadUpdate)
@@ -47,6 +48,7 @@ const HomePollers = defineComponent({
   name: 'HomePollers',
   setup() {
     useQuotaLoader()
+    useTaskAgentsLoader()
     return () => null
   },
 })
@@ -61,9 +63,9 @@ const counts = computed(() => {
 
 const conn = computed(() => {
   if (offlineView.value) return { ok: false, text: t('offline'), idle: false }
-  if (!eventsOpen.value) return { ok: false, text: everOpen.value ? t('offline — reconnecting…') : t('connecting…'), idle: !everOpen.value }
+  if (!linkShown.value) return { ok: false, text: everOpen.value ? t('offline — reconnecting…') : t('connecting…'), idle: !everOpen.value }
   if (!st.value.ok) return { ok: false, text: t('herdr-core unavailable'), idle: false }
-  return { ok: true, text: 'wherdr v3 · herdr-core', idle: false }
+  return { ok: true, text: 'wherdr v3', idle: false }
 })
 
 // "Dashboard"-style counters: always all three, zeros dimmed. Rows without a
@@ -84,7 +86,7 @@ function groupsOf(list: Row[], rawGroup = rowGroup) {
     { key: 'ready', title: tl('Ready', 'Prêts'), list: list.filter(r => group(r) === 'ready') },
   ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value).map(l => sortReady(l, readySort.value, rowTitle)) : [g.list] }))
 }
-const rowTitle = (r: Row) => isIndividualAgentRow(r) ? individualAgentTitle(r.lead) : homeTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
+const rowTitle = (r: Row) => isIndividualAgentRow(r) ? paneTaskTitle(r.lead) || individualAgentTitle(r.lead) : homeTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
 // Same row object for a card whose row did not change: it does not re-render.
 const reuseRows = createRowReuse()
 // Coordinators (Alfred and each project's) have their own rows above the list.
@@ -140,8 +142,13 @@ const stateAway = computed(() => stateShown.value.away.map(m => ({
 const mixed = computed(() => stateShown.value.online.length > 1)
 const stateCards = computed(() => stateShown.value.online.flatMap(m =>
   standaloneRows(spaceRows(st.value, m.key)).map(row => ({ row, machine: mixed.value ? machineName(m.key) || m.label : undefined }))))
-const stateCardByKey = computed(() => new Map(stateCards.value.map(c => [c.row.key, c])))
-const stateGroups = computed(() => groupsOf(stateCards.value.map(c => c.row)))
+// Agents of the same task share one row, in the group of the most urgent one.
+const stateEntries = computed(() => groupTaskAgents(stateCards.value, c => (isIndividualAgentRow(c.row) ? taskAgentOf(c.row.lead)?.task : undefined), c => urgency(c.row.lead)))
+const stateCardByKey = computed(() => new Map(stateEntries.value.map(e => [e.lead.row.key, {
+  machine: e.lead.machine,
+  agents: e.agents.length > 1 ? e.agents.map(c => ({ pane: c.row.lead, machine: c.machine })) : undefined,
+}])))
+const stateGroups = computed(() => groupsOf(stateEntries.value.map(e => e.lead.row)))
 // Machine bar: "All", then each machine (a named session counts as its machine),
 // with its state and the number of agents the list counts.
 // A tab counts the rows of the list, not the terminals.
@@ -210,6 +217,8 @@ const headerMachine = computed(() => {
 const oneChip = computed(() => (stateMachineChips.value.length === 1 ? stateMachineChips.value[0]! : null))
 const listQuotas = computed(() => (oneChip.value ? tabQuotaRows(topQuotas.value, oneChip.value.quotas) : topQuotas.value))
 const listApi = computed(() => topApi.value || Boolean(oneChip.value?.api))
+// Several online machines: their quotas grouped by account.
+const machineQuotaBlocks = computed(() => quotaBlocks(stateMachineChips.value.map(c => ({ key: c.m.key, name: c.name, quotas: c.quotas, api: c.api }))))
 const homeRoot = ref<HTMLElement | null>(null)
 const homeScroll = ref<HTMLElement | null>(null)
 const swipeDirection = useHomeSwipe(homeRoot, () => barEntries.value.map(b => b.id), () => machineBarPick.value, id => pickBar(id))
@@ -248,6 +257,7 @@ function machineMenuItems(m: MachineInfo): MenuItem[] {
       newAgentMachine.value = m.key
       newAgentOpen.value = true
     } })
+    items.push({ label: t('Keep awake'), desc: awakeLabel(awakeByMachine.value[baseKeyOf(m)]) || undefined, icon: 'i-lucide-sun', run: () => openAwake({ key: baseKeyOf(m), label: m.label }) })
   }
   else if (!m.local) {
     items.push({ label: t('Reconnect'), icon: 'i-lucide-plug', run: async () => {
@@ -435,7 +445,7 @@ function resetListWidth() {
         <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
       </UTooltip>
       <UTooltip :text="t('New')" :kbds="shortcutKbds('new-space')" :content="{ side: 'right' }">
-        <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="!eventsOpen || offlineView" @click="newAgent" />
+        <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="!linkShown || offlineView" @click="newAgent" />
       </UTooltip>
       <UTooltip :text="tl('Board', 'Tableau')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Board', 'Tableau')" @click="openBoard" />
@@ -506,7 +516,7 @@ function resetListWidth() {
     <Transition :name="swipeDirection < 0 ? 'home-next' : 'home-prev'" @before-leave="retireHomeContent">
     <div :key="machineBarPick ?? BAR_ALL" ref="homeScroll" class="scroll">
       <OfflineNote v-if="(offlineView && cachedAt) || netDown" class="home-offline" :label="offlineView && cachedAt ? t('Last known state') : undefined" :at="cachedAt" date-style="medium" />
-      <div v-if="eventsOpen && !st.ok" class="notice">
+      <div v-if="linkShown && !st.ok" class="notice">
         {{ t('herdr-core is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
         {{ t('Run hc server start for the configured core session.') }}
       </div>
@@ -517,14 +527,7 @@ function resetListWidth() {
         </div>
       </div>
       <QuotaStrip :rows="listQuotas" :api="listApi" :class="{ 'after-stats': showCounters && agents.length }" />
-      <template v-if="!oneChip">
-        <template v-for="c in stateMachineChips" :key="`q-${c.m.key}`">
-          <div v-if="c.quotas.length || c.api" class="state-machine-quotas">
-            <p class="state-machine-quotas-label">{{ c.name }}</p>
-            <QuotaStrip :rows="c.quotas" :api="c.api" class="machine-quotas" />
-          </div>
-        </template>
-      </template>
+      <MachineQuotaBlocks v-if="!oneChip" :blocks="machineQuotaBlocks" />
 
       <AlfredRow v-if="st.ok" />
       <CoordinatorsSection v-if="st.ok" />
@@ -557,7 +560,7 @@ function resetListWidth() {
         <template v-for="(cards, i) in g.lists" :key="i">
           <p v-if="g.key === 'ready' && g.lists.length > 1" class="ready-subgroup-label">{{ t(i === 0 ? 'Unread' : 'Read') }}</p>
           <div class="card-list">
-            <AgentCard v-for="r in cards" :key="r.key" :pane="r.lead" :row="r" :machine-badge="stateCardByKey.get(r.key)?.machine" />
+            <AgentCard v-for="r in cards" :key="r.key" :pane="r.lead" :row="r" :machine-badge="stateCardByKey.get(r.key)?.machine" :agents="stateCardByKey.get(r.key)?.agents" />
           </div>
         </template>
       </section>
@@ -587,7 +590,7 @@ function resetListWidth() {
     </div>
 
     <div class="fab-wrap">
-      <UButton class="fab hw-cta" icon="i-lucide-plus" color="primary" variant="solid" size="xl" :disabled="!eventsOpen || offlineView" @click="newAgent">
+      <UButton class="fab hw-cta" icon="i-lucide-plus" color="primary" variant="solid" size="xl" :disabled="!linkShown || offlineView" @click="newAgent">
         {{ t('New') }}
       </UButton>
     </div>
