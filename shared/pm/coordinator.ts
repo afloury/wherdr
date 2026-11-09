@@ -70,6 +70,7 @@ export type Command =
   | { name: 'task decide', task: string, choice: Choice, reason: string }
   | { name: 'ack', wakes: string[] } | { name: 'automation show', id: string }
   | { name: 'tell', task: string, text: string }
+  | { name: 'read', task: string, to?: 'worker' | 'reviewer', lines?: number }
   | { name: 'task start', task: string, on?: string }
   | { name: 'task stop', task: string, reason: string }
   | { name: 'task remove', task: string, reason: string }
@@ -97,6 +98,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
   { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done' },
   { usage: 'tell <task> "<text>"', does: 'a message to the task\'s agent; in a wake, only to answer its question (a permission request is the user\'s)' },
+  { usage: 'read <task> [--to worker|reviewer] [--lines N]', does: 'what the task\'s agent last said (its question, its answer to your tell), on whichever machine it runs: the last message of its conversation, else the bottom of its screen; its current agent by default, --to names one; --lines 1 to 200 (default 40)' },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
 ]
@@ -134,7 +136,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description'], 'task start': ['on'] }[verb] ?? []))
+  const extra = known('project', ...(w0 === 'read' ? ['to', 'lines'] : { 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description'], 'task start': ['on'] }[verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (verb === 'autopilot show' || verb === 'automation list') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
@@ -142,6 +144,13 @@ function parseWords(argv: unknown): Command | { error: string } {
   if (w0 === 'tell') {
     const text = words.slice(2).join(' ').trim()
     return w1 && TASK_RE.test(w1) && text && text.length <= 4000 ? { name: 'tell', task: w1, text } : usage('tell')
+  }
+  if (w0 === 'read') {
+    const to = flags.to as 'worker' | 'reviewer' | undefined, lines = flags.lines === undefined ? undefined : Number(flags.lines)
+    if (!w1 || !TASK_RE.test(w1) || w2) return usage('read')
+    if (to !== undefined && to !== 'worker' && to !== 'reviewer') return { error: '--to is worker or reviewer' }
+    if (lines !== undefined && !(Number.isInteger(lines) && lines >= 1 && lines <= 200)) return { error: '--lines is a number from 1 to 200' }
+    return { name: 'read', task: w1, ...(to ? { to } : {}), ...(lines ? { lines } : {}) }
   }
   if (w0 === 'help' || w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0 }
   if (w0 === 'show') return w1 && TASK_RE.test(w1) && !w2 ? { name: 'show', task: w1 } : usage('show')

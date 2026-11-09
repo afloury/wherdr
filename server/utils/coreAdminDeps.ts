@@ -1,5 +1,5 @@
 import { coreInputDeps } from './coreInput'
-import { getState, poll } from './state'
+import { getState, poll, transcripts } from './state'
 import { staleCoreDocs } from './readCoreState'
 import { recentDirs, rememberDir } from './actions'
 import type { CoreAdminDeps } from './coreCreate'
@@ -17,5 +17,6 @@ export function coreAdminDeps(): CoreAdminDeps {
     settle: () => { staleCoreDocs(); return poll() },
     recent: m => recentDirs({ local: m.local, key: m.key, profileId: null }),
     remember: (dir, m) => rememberDir(dir, { local: m.local, key: m.key, profileId: null }),
+    chat: async pane => (await transcripts.chat(pane)).items ?? null,
   }
 }

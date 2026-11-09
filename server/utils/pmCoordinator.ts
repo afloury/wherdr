@@ -27,6 +27,7 @@ import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from
 import { userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
 import { removeTask, resumeTask, stopTask } from './pmStop'
+import { READ_LINES, lastWords } from './pmRead'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
 import { memoryHold, memoryState } from './pmMemory'
@@ -230,6 +231,16 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       await deps.call('terminal.send', { terminal: run.terminal, text: `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}` }, 30000)
       const saved = await store.logTask(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task, by, `told the agent: ${cmd.text.slice(0, 300)}`)
       return { task: saved }
+    }
+    case 'read': {
+      const task = await taskOf(cmd.task)
+      // Its current agent, else the latest one (of the role asked).
+      const runs = (await store.runs()).filter(r => r.task === task.id && r.terminal && (!cmd.to || r.role === cmd.to)).sort((a, b) => b.startedAt - a.startedAt)
+      const run = runs.find(r => r.id === task.run) ?? runs[0]
+      if (!run) throw new HerdrError('not_found', `The task has no ${cmd.to ?? 'agent'} yet`)
+      const said = await lastWords(deps, run.terminal!, cmd.lines ?? READ_LINES)
+      if (!said) throw new HerdrError('unreachable', `Nothing to read from the task's ${run.role}: its conversation and its terminal are out of reach`)
+      return { task: p ? shownTaskId([p], task.id) : task.id, agent: run.role, running: run.state !== 'ended', ...(task.state === 'waiting' && task.waitKind ? { waits: task.waitKind } : {}), ...said }
     }
     case 'task start': {
       const task = await taskOf(cmd.task)

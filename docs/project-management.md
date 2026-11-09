@@ -150,6 +150,16 @@ Automatic work (the autopilot, automations) waits while an account is ahead of
 its [pace](quotas.md#pace) or a machine is short on memory
 ([Machines](machines.md#manage-machines)); your own starts never wait.
 
+### What a task's agent said
+
+A coordinator reads a task's agent with `wherdr pm read <task>`, on whichever
+machine it runs: the last message of its conversation, or the bottom of its
+screen when the conversation can't be read. It reads the task's current agent;
+`--to worker` or `--to reviewer` names one, and `--lines N` (1 to 200, default
+40) sets how much. A project's coordinator reads its own project's tasks only.
+When an agent asks a question, its task's waiting line and the coordinator's
+*Task stuck* wake carry the question itself, and `wherdr pm tell` answers it.
+
 ## Board
 
 The header has **Decisions** (with a count when some wait), **Add task**, the
