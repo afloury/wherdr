@@ -83,6 +83,12 @@ its folder, branches and task worktrees stay on the machine.
   [Board](#board)) and shows *Ready* or what is missing. ✕ removes a machine:
   new tasks no longer start there, tasks already there stay. Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
+  **Placement** chooses how new tasks spread over these machines: *Heavy to the
+  strongest* (the default: light and standard work at home when it fits, heavy
+  work on the machine with most room), *Balance the load* (each task on the
+  machine with the largest share of memory and cores left after it) or *Home
+  first* (other machines only once home is full). A task that waits for room
+  names it, and so does the coordinator's `autopilot show`.
 
 ### Workflow
 
