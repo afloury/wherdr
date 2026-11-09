@@ -17,7 +17,7 @@ export interface Autopilot {
   at?: string // fixed times (daily 08:00, mon,thu 09:00, a cron): a wake with the goal, too
   events: AutopilotEvent[]
   perDay: number // tasks started per day
-  atOnce: number // tasks working at once (waiting and ready ones take no slot)
+  atOnce: number | null // tasks working at once (waiting and ready ones take no slot); null: Auto, as many as the machines take
   hours?: { from: number, to: number } // local hours, to excluded; from > to spans midnight
   lookForWork?: true // keep the scheduled wakes when there is nothing to do (goals that add their own tasks)
   lookPerDay?: number // with lookForWork: tasks those wakes may add a day (LOOK_PER_DAY when unset)
@@ -25,7 +25,9 @@ export interface Autopilot {
 
 export const LOOK_PER_DAY = 3
 
+// A project with no saved autopilot (one added before Auto) keeps 2 at once; a new one is saved with Auto.
 export const DEFAULT_AUTOPILOT: Autopilot = { on: false, goal: '', events: ['done', 'stuck'], perDay: 10, atOnce: 2 }
+export const NEW_AUTOPILOT: Autopilot = { ...DEFAULT_AUTOPILOT, atOnce: null }
 
 // The user's settings, checked. Unknown fields dropped.
 export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error: string } {
@@ -39,8 +41,8 @@ export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error
   if (s && ('error' in s || 'every' in s)) return { error: 'at: fixed times like daily 08:00, mon,thu 09:00 or a cron' }
   const events = Array.isArray(o.events) ? o.events : []
   if (!events.every(e => (AUTOPILOT_EVENTS as readonly unknown[]).includes(e))) return { error: `events: ${AUTOPILOT_EVENTS.join(', ')}` }
-  const perDay = int(o.perDay, 100), atOnce = int(o.atOnce, 20)
-  if (perDay === null || atOnce === null) return { error: 'perDay (0-100) and atOnce (0-20) are whole numbers' }
+  const perDay = int(o.perDay, 100), atOnce = o.atOnce === null ? null : int(o.atOnce, 20)
+  if (perDay === null || (atOnce === null && o.atOnce !== null)) return { error: 'perDay (0-100) and atOnce (0-20, or null for Auto) are whole numbers' }
   const lookPerDay = o.lookPerDay === undefined ? undefined : int(o.lookPerDay, 20)
   if (lookPerDay === null) return { error: 'lookPerDay: a whole number, 0-20' }
   const h = o.hours as { from?: unknown, to?: unknown } | undefined
@@ -78,7 +80,7 @@ export function limitsLeft(ap: Autopilot, tasks: Task[], runs: Run[], now: numbe
   for (const r of runs) if (ids.has(r.task) && r.role === 'worker') first.set(r.task, Math.min(first.get(r.task) ?? Infinity, r.startedAt))
   const started = [...first.values()].filter(at => at >= midnight).length
   const working = tasks.filter(t => ['working', 'stalled'].includes(taskStatus(t))).length
-  return { started, perDay: ap.perDay, startLeft: Math.max(0, Math.min(ap.perDay - started, ap.atOnce - working)), working, atOnce: ap.atOnce }
+  return { started, perDay: ap.perDay, startLeft: Math.max(0, Math.min(ap.perDay - started, (ap.atOnce ?? Infinity) - working)), working, atOnce: ap.atOnce }
 }
 
 // Why the autopilot may not start one more task now, or undefined. `pace`:
@@ -86,7 +88,7 @@ export function limitsLeft(ap: Autopilot, tasks: Task[], runs: Run[], now: numbe
 export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: number, pace?: PaceVerdict): string | undefined {
   const l = limitsLeft(ap, tasks, runs, now)
   if (l.started >= l.perDay) return `Today's limit is reached (${l.perDay} tasks started)`
-  if (l.working >= l.atOnce) return `${l.working} tasks already work at once (limit ${l.atOnce})`
+  if (l.atOnce !== null && l.working >= l.atOnce) return `${l.working} tasks already work at once (limit ${l.atOnce})`
   if (!inHours(ap.hours, new Date(now))) return 'Outside the autopilot\'s hours'
   return paceRefusal(pace)
 }

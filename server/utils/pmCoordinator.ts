@@ -33,7 +33,8 @@ import { noteBack } from './pmStall'
 import { reviveWorker } from './pmRelease'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
-import { memoryHold, memoryState } from './pmMemory'
+import { forgetMemory, memoryState } from './pmMemory'
+import { goesTo, paceOf, placeFor } from './pmPlace'
 import { projectPace } from './pmPace'
 import type { CoordinatorRecord, PmStore } from './pmStore'
 import { OWN_FILES, alfredFiles, alfredName, isAlfredProgram, startPrompt } from '../../shared/pm/alfred'
@@ -217,7 +218,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
         pacing: key ? await line(key) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await line(x.key)]))),
         memory: key ? await mem(p!.machine) : await Promise.all([...new Set(projects.map(x => x.machine))].map(mem)),
         today: { ...limitsLeft(ap, mine, await store.runs(), now), skippedWakes: today(rec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(rec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
-        note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. Memory holds automatic starts too, on a machine short on memory or at its cap of agents (all projects together): such a task waits and starts by itself once memory is back',
+        note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. The engine places each start on one of the project\'s allowed machines (heavy work on the strongest, light and standard work at home when it fits; --on picks one); automatic starts wait while no machine has room (memory, cores, its cap of agents, all projects together) and start by themselves once one has. atOnce null is Auto: as many tasks as the machines take',
       }
     }
     case 'automation list': return { automations: (await store.automations(needProject().key)).automations.map(automationLine), note: 'Only the user adds or changes automations, in wherdr' }
@@ -260,19 +261,20 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if (placed && 'refused' in placed) throw new HerdrError('refused', placed.refused)
       const mine = await mineOf()
       const wake = turn !== 'user', who = { who: 'coordinator' as const, wake }, now = Date.now()
-      const pace = pacedStart(task, wake ? 'wake' : 'user') ? (await projectPace(store, key, task, now))?.verdict : undefined
+      const pace = pacedStart(task, wake ? 'wake' : 'user') ? await paceOf(store, p!, task, now) : undefined
       const why = (task.stopped ? resumeRefusal(task, 'continue', who, undefined) : undefined)
-        ?? coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), now, wake, { pace })
+        ?? coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), now, wake, { pace: pace?.verdict })
       if (why) throw new HerdrError('refused', why)
-      // Short on memory: a wake's start waits for it (the engine starts it then); the user's goes, with a word.
-      const short = await memoryHold(deps, key)
+      // No room on any allowed machine: a wake's start waits for it (the engine starts it then); the user's goes, with a word.
+      const { on, short } = goesTo(await placeFor(deps, task, { asked: placed?.machine, waits: pace?.waits }))
       // A failed task a wake starts again goes back to do, where the engine starts held tasks.
-      if (short && wake && !task.stopped) return { task: await store.logTask({ ...task, state: 'todo', waiting: undefined, waitKind: undefined, autopilot: true, held: short }, by, short), held: `${short}. It starts by itself once memory is back` }
+      if (short && wake && !task.stopped) return { task: await store.logTask({ ...task, state: 'todo', waiting: undefined, waitKind: undefined, autopilot: true, held: short }, by, short), held: `${short}. It starts by itself once there is room` }
       // Started in a wake: the autopilot's own task, which it may stop in a wake.
       if (wake && !task.autopilot) await store.saveTask({ ...task, autopilot: true })
       const memory = short ? { memory: `${short}: started anyway, as the user asked` } : {}
       if (task.stopped) return { task: await resumeTask(deps, task.id, 'continue', who, by), ...memory }
-      const started = await startTask(deps, task.id, { by, ...(placed ? { on: placed.machine } : {}) })
+      if (on !== undefined) forgetMemory(on)
+      const started = await startTask(deps, task.id, { by, ...(on !== undefined ? { on } : {}) })
       return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`), ...memory }
     }
     case 'task stop': {
