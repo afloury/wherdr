@@ -19,6 +19,16 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   reference instances. Incomplete, unsupported or unsafe diagrams stay readable code. Scripts,
   foreign HTML, animation and external resources are rejected; raw inline SVG is not inserted
   into the page. Other fence languages and file-explorer document fences remain code.
+- **Live status cards**: a code fence labelled `wherdr` whose lines are all `status …` shows one
+  card per line, read from wherdr's own data, never from what the agent wrote:
+  `status machine:<key or name>` (online or offline, free memory, load, agents),
+  `status quota:claude` or `status quota:codex` (5-hour and week windows left),
+  `status pr:<KEY>#<n>` (the PR of a task of project KEY, as the engine last read it) and
+  `status op:<task id>` (the step the task's engine runs now, such as a watched pipeline, and
+  since when). Up to 8 lines. Cards refresh every 15 s while they are on screen; a source that
+  is gone (machine removed, no quota read, unknown task or PR) shows **unavailable**. A PR or
+  operation card opens its task. On a phone the cards stack, one per line. A block with any
+  other line stays code; file documents never show cards.
 - **Links into wherdr**: an agent sending you somewhere in wherdr gives its in-app address, as a
   Markdown link (`[Phone](#/settings?section=phone)`) or as inline code that is only the address
   (`` `#/board?task=KEY-12` ``). Either opens the place in the app, on a computer and a phone,
