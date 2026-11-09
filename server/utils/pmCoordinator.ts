@@ -29,6 +29,7 @@ import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from
 import { userEvent, userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
 import { removeTask, resumeTask, stopTask } from './pmStop'
+import { noteBack } from './pmStall'
 import { reviveWorker } from './pmRelease'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
@@ -235,7 +236,8 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
         if (why) throw new HerdrError('refused', why)
         const started = await reviveWorker(deps, task.id, 'a message of the coordinator', said)
         if (started?.state !== 'working') throw new HerdrError('refused', 'The task\'s worker was let go while the task waited and could not start again now (short on memory?): try again later')
-        return { task: await store.logTask(started, by, `told the worker, started again: ${cmd.text.slice(0, 300)}`), sentTo: 'worker (started again with your message)' }
+        const told = await store.logTask(started, by, `told the worker, started again: ${cmd.text.slice(0, 300)}`)
+        return { task: t ? await noteBack(store, told, planOf(t, told, p), by, `the ${by} told the worker`) : told, sentTo: 'worker (started again with your message)' }
       }
       if (!run?.terminal) throw new HerdrError('not_found', `The task's ${role} is not running${cmd.to ? '' : ` (--to ${role === 'worker' ? 'reviewer' : 'worker'} picks the other agent)`}`)
       // What the agent waits for now, from its terminal: a permission prompt is never typed into.
@@ -244,7 +246,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if (why) throw new HerdrError('refused', why)
       await deps.call('terminal.send', { terminal: run.terminal, text: said }, 30000)
       const saved = await store.logTask(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task, by, `told the ${role}: ${cmd.text.slice(0, 300)}`)
-      return { task: saved, sentTo: role }
+      return { task: t ? await noteBack(store, saved, planOf(t, saved, p), by, `the ${by} told the ${role}`) : saved, sentTo: role }
     }
     case 'task start': {
       const task = await taskOf(cmd.task)
@@ -266,7 +268,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if (wake && !task.autopilot) await store.saveTask({ ...task, autopilot: true })
       const memory = short ? { memory: `${short}: started anyway, as the user asked` } : {}
       if (task.stopped) return { task: await resumeTask(deps, task.id, 'continue', who, by), ...memory }
-      const started = await startTask(deps, task.id, placed ? { on: placed.machine } : {})
+      const started = await startTask(deps, task.id, { by, ...(placed ? { on: placed.machine } : {}) })
       return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`), ...memory }
     }
     case 'task stop': {

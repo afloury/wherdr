@@ -32,8 +32,11 @@ test('project settings: added from an example, a branch protected, a proposal ac
   try {
     await core.open(page, '/#/settings?section=projects')
     await expect(page.getByTestId('pm-empty')).toBeVisible()
-    // What the New sheet sends for a git folder and the example "vibe".
-    expect(await api(page, '/api/pm/project', { key: 'WEB', name: 'Web', machine: '', path: '/workspace/web', template: 'example:vibe', plain: true })).toMatchObject({ project: { key: 'WEB', from: { template: 'vibe' } } })
+    // What the New sheet sends for a git folder and the example "vibe". Tried
+    // again until the server has read its machines from the core (else
+    // "unknown machine"); a refused add changes nothing.
+    await expect.poll(() => api(page, '/api/pm/project', { key: 'WEB', name: 'Web', machine: '', path: '/workspace/web', template: 'example:vibe', plain: true }))
+      .toMatchObject({ project: { key: 'WEB', from: { template: 'vibe' } } })
     await sheet('general')
     await expect(page.getByTestId('pm-from')).toContainText('Based on: vibe v1')
 

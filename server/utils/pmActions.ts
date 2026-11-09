@@ -42,6 +42,8 @@ export const actionShell = (deps: Pick<CoreAdminDeps, 'call'>, on: string | unde
 const CONFLICT = /not mergeable|merge conflict|cannot be cleanly created/i
 const lastLine = (out: string) => out.trim().split('\n').pop()?.trim().slice(0, 300) || ''
 const pause = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+// After a push, how long to wait for GitHub to show the new PR head: about a minute.
+const LAG_MS = [2_000, 4_000, 8_000, 15_000, 15_000, 15_000]
 
 export async function runAction(deps: ActionDeps, job: ActionJob): Promise<ActionResult> {
   const { store } = deps
@@ -98,8 +100,9 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
       return r.code === 0 ? { ok: true, link: lastLine(r.out) } : fail(r)
     }
     case 'github.merge': {
-      let pushed = false
-      for (let i = 0; ; i++) {
+      // lag: waits for GitHub to show a fresh push; ci: waits for its checks. Counted apart.
+      let pushed = false, lag = 0, ci = 0
+      for (;;) {
         const r = await run(deps, SCRIPT.prInfo, [wt, branch])
         if (r.code !== 0) return fail(r)
         const lines = r.out.split('\n'), head = lines[0] ?? ''
@@ -127,7 +130,15 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
           // The head moved after the review (catch-up, conflict, CI fix): reviewed again first.
           if (job.reviewed && job.reviewed !== h) return { ok: false, error: `merge: new commits since the review (${job.reviewed.slice(0, 7)}..${h.slice(0, 7)})`, review: { since: job.reviewed, head: h }, commit: h }
           if (where === 'behind') {
-            if (pushed) return { ok: false, error: 'merge: the push did not move the PR head' }
+            if (pushed) {
+              // GitHub's API can lag a fresh push: the remote branch is the truth.
+              const rb = await run(deps, SCRIPT.remoteHead, [wt, branch])
+              if (rb.code !== 0) return fail(rb)
+              const remote = lastLine(rb.out)
+              if (remote !== h) return { ok: false, error: `merge: the push did not move origin/${branch} (at ${remote.slice(0, 7) || 'nothing'}, the task at ${h.slice(0, 7)}): push the branch by hand, then try the step again` }
+              if (lag < LAG_MS.length) { await (deps.sleep ?? pause)(LAG_MS[lag++]!); continue }
+              return { ok: false, error: `merge: GitHub still shows the PR head at ${pr.headRefOid.slice(0, 7)} a minute after origin/${branch} moved to ${h.slice(0, 7)}: try the step again in a few minutes` }
+            }
             const no = guardAction(job.guards, { kind: 'git.push' }, { branch, by: job.by })
             if (no) return { ok: false, error: no }
             const up = await run(deps, SCRIPT.push, [wt, branch])
@@ -137,7 +148,7 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
           }
         }
         const ready = prReady(pr, head.trim(), a.checks)
-        if (!ready.ok && ready.later && i < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[i]!); continue }
+        if (!ready.ok && ready.later && ci < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[ci++]!); continue }
         if (!ready.ok) return { ok: false, error: `merge: ${ready.why}` }
         if (await job.halted?.()) return { ok: false, error: 'merge: the task was stopped' }
         const m = await run(deps, SCRIPT.merge, [wt, pr!.url, head.trim(), a.method ?? ''])

@@ -88,6 +88,8 @@ has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
 action, what it does: land on a branch, push, open a PR, merge a PR, or check
 that a branch was merged, with its branch, merge method and required checks.
+A merge that first pushes the task's last commits waits up to a minute for
+GitHub to show them on the PR.
 In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
 *Add task* under [Board](#board)). Under the form, the plan of the chosen task type. *Save* checks the workflow
 and shows each problem with its line.
@@ -306,6 +308,15 @@ shows the reason, and wherdr:
 The task's **Log** lists each of these: the stall, the nudge, the hand-over to
 you and the notification.
 
+A step that runs past its time limit (*Check work: over 3h*, *Check review:
+over 45m*) or a stall leaves *Your turn* and **Tasks to handle** once the task
+is back to work: the coordinator tells its agent something (`wherdr pm tell`),
+you or the coordinator start it again, or the step's agent, idle, is seen
+working again. The step's time limit and the stall's 30 minutes start again
+from then, so the task comes back if its agent stops again. The Log says
+*back to work* and who sent it back. What only you can do (a merge, an answer,
+a permission, a decision) stays until you do it.
+
 ### Agents of a task that waits for you
 
 Needs: [A task waiting for you](#a-task-waiting-for-you).
@@ -318,6 +329,13 @@ agent again (you send it back, a merge finds a conflict, CI goes red, new
 commits need a review), wherdr starts the worker or the reviewer again in the
 same worktree, with a note on where the work stands. The task's log says when
 its agents were ended and started again.
+
+When wherdr hands the worker work of its own (a catch-up with the base branch,
+a CI fix), the task leaves *Your turn* and its card says *the agent is
+updating the PR*: its agents are never ended while wherdr waits for that work.
+The task is yours again once the worker pushes or says it is done. Before it
+ends a task's agents, wherdr pushes the commits the branch has not pushed yet;
+if the push fails, the agents stay and the log says why.
 
 A message from the coordinator (`wherdr pm tell <task>`) goes to the agent
 that holds the task's current step; at a step held by nobody (the PR, the

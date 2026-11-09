@@ -15,7 +15,7 @@ import { cleanTask } from './pmCleanup'
 import { readLeakCheck } from './pmVisibility'
 import { isPublic, leakText, scanDiff } from '../../shared/pm/visibility'
 import type { Project } from '../../shared/pm/project'
-import { wasReleased } from '../../shared/pm/release'
+import { agentBack, wasReleased } from '../../shared/pm/release'
 import { reviveWorker } from './pmRelease'
 
 // The task's commit, its diff size since the branch started, the worker's note, the verdict file.
@@ -67,6 +67,9 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   const files = runFiles(latest(await deps.store.runs(), run.task, 'worker')?.instructions ?? run.instructions)
   const r = await exec(deps, c.on, SIGNAL_READ_SCRIPT, [run.worktree, run.branch, files.note, files.verdict])
   const ev = signalEvent(step, run.role, parseRead(r.out))
+  // The worker reports the work the engine handed it (a catch-up, red CI): the step's Your turn, if any, comes back.
+  const work = c.task.step!.agent
+  if (!ev && work && run.role === 'worker') return void await deps.store.logTask({ ...c.task, step: agentBack(c.task.step!) }, 'engine', `${work.kind}: the worker says it is done`)
   if (!ev) return
   const tell = (text: string) => deps.call('terminal.send', { terminal: run.terminal, text }, 30000)
   if ('fix' in ev) return void await tell(ev.fix)
