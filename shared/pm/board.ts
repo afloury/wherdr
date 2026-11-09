@@ -51,6 +51,7 @@ export interface Card {
   queueOut?: string // why it stepped out of the queue's line
   asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
   report?: Report // a problem the user reported, open (report.ts)
+  summary?: string // how it went, in a few lines (summary.ts)
   times?: Times // time per step, waits for the user, rounds, CI fixes (times.ts), once started
 }
 
@@ -124,6 +125,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(task.held && task.state === 'todo' ? { held: task.held } : recovering(task) ? { held: task.held || task.waiting || 'Waiting' } : {}),
     ...(task.sameFiles && task.state === 'todo' ? { sameFiles: task.sameFiles } : {}),
     ...(task.report ? { report: task.report } : {}),
+    ...(task.summary?.text ? { summary: task.summary.text } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
     ...(task.after ? { after: afterIds(task) } : {}),
     ...(s?.started ? { times: timesOf(task, plan, runs, now) } : {}),
