@@ -11,7 +11,7 @@ import { DATA_DIR } from './env'
 
 export const PACING_FILE = path.join(DATA_DIR, 'pacing.json')
 
-// A stored 'this week only' burn whose reset has passed is dropped.
+// A stored burn whose reset has passed is dropped.
 export async function readPolicies(file = PACING_FILE, now = Date.now()): Promise<Record<string, PacePolicy>> {
   try {
     const raw = JSON.parse(await fs.readFile(file, 'utf8'))?.policies
