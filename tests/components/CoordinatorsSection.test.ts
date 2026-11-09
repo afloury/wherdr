@@ -8,6 +8,7 @@ import { nextTick } from 'vue'
 import { appConfig, coarse, curPane, desk, herdrState } from '~/composables/useHerdr'
 import { alfred, coordinators, paneCoordinatorName } from '~/composables/useCoordinators'
 import { menuState } from '~/composables/useUi'
+import { machineBarSaved, machineGroups } from '~/composables/useMachineBar'
 import { MAIN, type CoordinatorView } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
 
@@ -52,6 +53,21 @@ it('shows the coordinator whose conversation is open as selected, one at a time,
     await nextTick()
     expect(current()).toEqual([[false, undefined], [false, undefined]])
   } finally { curPane.value = null }
+})
+
+it('follows the home tab: a personal tab hides a work project, All shows all (WHR-152)', async () => {
+  herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p1', 'host/t1'), pane('w:p2', 'host/t2')] }
+  views = [view('HOME', { terminal: 'host/t1', machines: ['laptop'] }), view('WORK', { terminal: 'host/t2', machines: ['office'] })]
+  machineGroups.value = [{ id: '*group:personal', name: 'Personal', machines: ['laptop'] }, { id: '*group:work', name: 'Work', machines: ['office'] }]
+  try {
+    machineBarSaved.value = '*group:personal'
+    w = await mountSuspended(CoordinatorsSection)
+    const shown = () => w!.findAll('[data-testid="coordinator-row"]').map(r => r.text())
+    await vi.waitFor(() => expect(shown()).toHaveLength(1))
+    expect(shown()[0]).toContain('HOME coordinator')
+    machineBarSaved.value = '*'
+    await vi.waitFor(() => expect(shown()).toHaveLength(2))
+  } finally { machineGroups.value = []; machineBarSaved.value = null }
 })
 
 it('is hidden while project management is off', async () => {
