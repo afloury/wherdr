@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import type { HerdrState } from '../shared/types'
-import type { MachineLinks } from '../shared/boardLinks'
 import { conversationIn, machineConversation, readConversationMemory } from '../app/utils/machineConversation'
 
 const s = {
@@ -11,10 +10,9 @@ const s = {
   tabs: [{ id: 'review-tab', workspace: 'review' }],
 } as HerdrState
 const groups = [{ id: '*group:work', name: 'Work', machines: ['away', 'remote', ''] }, { id: '*group:empty', name: 'Empty', machines: [] }]
-const links = [{ machine: 'remote', coordinators: [{ level: 'machine', pane: 'coord' }], tasks: [] }] as unknown as MachineLinks[]
 const local = { pane: 'local-agent' }
 const remote = { pane: 'remote-agent' }
-const choose = (pick: string, memory = {}, current = local) => machineConversation(s, pick, groups, memory, current, links)
+const choose = (pick: string, memory = {}, current = local) => machineConversation(s, pick, groups, memory, current)
 
 describe('conversation selection on the machine bar', () => {
   it('keeps All and a conversation that belongs to the new selection', () => {
@@ -29,17 +27,13 @@ describe('conversation selection on the machine bar', () => {
     expect(choose('*group:work', memory, { pane: 'missing' })).toEqual({ tab: 'review-tab' })
     expect(choose('', memory, remote)).toEqual(local)
   })
-  it('falls back to the machine coordinator for missing, deleted or moved history', () => {
-    expect(choose('remote')).toEqual({ pane: 'coord' })
-    expect(choose('remote', { remote: { pane: 'deleted' } })).toEqual({ pane: 'coord' })
-    expect(choose('remote', { remote: local })).toEqual({ pane: 'coord' })
-  })
-  it('uses the first online machine in group order and otherwise the empty state', () => {
-    expect(choose('*group:work', {}, { pane: 'missing' })).toEqual({ pane: 'coord' })
+  it('opens the empty state for missing, deleted or moved history', () => {
+    expect(choose('remote')).toBeNull()
+    expect(choose('remote', { remote: { pane: 'deleted' } })).toBeNull()
+    expect(choose('remote', { remote: local })).toBeNull()
+    expect(choose('*group:work', {}, { pane: 'missing' })).toBeNull()
     expect(choose('*group:empty')).toBeNull()
     expect(choose('away')).toBeNull()
-    const firstLocal = [{ ...groups[0]!, machines: ['', 'remote'] }]
-    expect(machineConversation(s, '*group:work', firstLocal, {}, null, links)).toBeNull()
   })
   it('includes named sessions by the workspace base machine, including tab plans', () => {
     expect(conversationIn(s, { pane: 'review-agent' }, 'remote', groups)).toBe(true)
