@@ -17,9 +17,21 @@ const error = ref('')
 // shared/appLinks.ts), read again when the board is already open.
 const route = useRoute()
 const queried = (v: unknown) => (typeof v === 'string' ? v : '')
-const project = ref(queried(route.query.project).toUpperCase()) // '' = all projects
+// The project picker: Follow machine tab (the projects the home tab picked
+// shows, projectOnBar), All projects, or one project. The user's pick follows
+// them across devices; never picked, it is Follow once machine groups exist.
+// A link's project shows without replacing it.
+const linked = ref(queried(route.query.project).toUpperCase())
+watch(() => queried(route.query.project), (p) => { linked.value = p.toUpperCase() })
+const known = (key: string) => !data.value || data.value.projects.some(p => p.key === key)
+const boardPick = computed(() => {
+  const saved = linked.value || boardProject.value
+  return saved && (saved === BOARD_FOLLOW || saved === BOARD_ALL || known(saved)) ? saved : machineGroups.value.length ? BOARD_FOLLOW : BOARD_ALL
+})
+const project = computed(() => (boardPick.value === BOARD_FOLLOW || boardPick.value === BOARD_ALL ? '' : boardPick.value)) // '' = several projects
+const shownProject = (key: string) => (project.value ? key === project.value : boardPick.value !== BOARD_FOLLOW || projectOnBar(key))
+const projectPick = computed({ get: () => boardPick.value, set: (v: string) => { linked.value = ''; boardProject.value = v } })
 const tag = ref(queried(route.query.tag)) // '' = every tag
-watch(() => queried(route.query.project), (p) => { project.value = p.toUpperCase() })
 watch(() => queried(route.query.tag), (g) => { tag.value = g })
 // The task to show, also from Decisions' "Open task" (/board?task=CO-1).
 const open = ref<string | null>(typeof route.query.task === 'string' ? route.query.task : null)
@@ -39,13 +51,12 @@ watch(taskSheetTick, load) // an action in a task's sheet, also read by Tasks to
 // An agent asking a question or a permission puts its card in Your turn too.
 const waitsForYou = (c: Card) => { const p = paneOf(c); return !!p && hasAgent(c) && statusKey(p) === 'blocked' }
 const cards = computed(() => (data.value?.cards ?? [])
-  .filter(c => (!project.value || c.project === project.value) && (!tag.value || c.tags.includes(tag.value)))
+  .filter(c => shownProject(c.project) && (!tag.value || c.tags.includes(tag.value)))
   .map(c => (!c.yourTurn && waitsForYou(c) ? { ...c, yourTurn: tl('Answer the agent', 'Réponds à l’agent') } : c)))
-const projectPick = noneModel(project)
 const tagPick = noneModel(tag)
-const projectItems = computed(() => [{ label: tl('All projects', 'Tous les projets'), value: NONE }, ...(data.value?.projects ?? []).map(p => ({ label: p.name, value: p.key }))])
+const projectItems = computed(() => [{ label: tl('Follow machine tab'), value: BOARD_FOLLOW }, { label: tl('All projects', 'Tous les projets'), value: BOARD_ALL }, ...(data.value?.projects ?? []).map(p => ({ label: p.name, value: p.key }))])
 const tagItems = computed(() => [{ label: tl('Tags', 'Étiquettes'), value: NONE }, ...tags.value.map(x => ({ label: x, value: x }))])
-const tags = computed(() => boardTags((data.value?.cards ?? []).filter(c => !project.value || c.project === project.value)))
+const tags = computed(() => boardTags((data.value?.cards ?? []).filter(c => shownProject(c.project))))
 // The header's coordinator button: the project's; none on All projects (Alfred has no autopilot).
 const coordinator = computed(() => (project.value ? coordinators.value.find(c => c.project === project.value) : undefined))
 const columns = computed(() => (project.value ? data.value?.projects.find(p => p.key === project.value)?.columns ?? [] : null))

@@ -82,7 +82,8 @@ shows only in its own row, never again among the agents.
 Coordinators and **Tasks to handle** follow the [machine tab](#machines-as-tabs): a tab shows the
 projects whose allowed machines it holds (a project on machines of several groups shows on each
 of those tabs), **All** shows every project, and Alfred shows on every tab. An open coordinator
-conversation stays open on the tabs that show its project. Notifications and the board stay
+conversation stays open on the tabs that show its project. The board follows the tab too when
+its picker is on *Follow machine tab* ([Board](project-management.md#board)); notifications stay
 global.
 
 ### Offered agents
@@ -117,7 +118,7 @@ A project's coordinator and its tasks to handle show on the tabs holding one of 
 (**All** shows every project); a machine paused for the project counts only while one of its
 tasks still runs there. The project sheet's **Shown in** (General tab) keeps it on one
 group or on all tabs instead ([General](project-management.md#general)). Push notifications are
-not filtered by tab, and the board stays the same on every tab.
+not filtered by tab; the board is, when its picker follows the machine tab.
 
 ### New agents and tabs
 

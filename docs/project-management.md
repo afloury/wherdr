@@ -377,8 +377,13 @@ wake (*question*) carry the question itself, and `wherdr pm tell` answers it.
 ## Board
 
 The header has **Decisions** (with a count when some wait), **Add task**, the
-project picker (*All projects* or one), a tag filter when tasks have tags, and,
-with one project picked, its [Autopilot](#autopilot) button. The first column is **Your turn**, then the
+project picker, a tag filter when tasks have tags, and,
+with one project picked, its [Autopilot](#autopilot) button. The picker offers
+*Follow machine tab* (the projects the [home tab](home.md#machines-as-tabs) picked
+shows; **All** shows every one, and changing the tab updates the board in place),
+*All projects*, or one project. Your pick is kept and follows you across devices;
+until you pick, it is *Follow machine tab* once machine groups exist, else *All
+projects*. The first column is **Your turn**, then the
 project's columns, or *To do*, *Working* and *Done* for all projects. A done
 or archived task is never under Your turn.
 
