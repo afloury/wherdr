@@ -27,7 +27,8 @@ export interface Task {
   queue?: number // its place in its project's merge queue (mergeQueue.ts), 1: merging now
   idle?: number // since when the agent holding its step sits idle, its report still due (blocked.ts)
   stall?: { cause: string, reason: string, since: number } // its stall as the engine last saw it (blocked.ts)
-  stalls?: Record<string, { since: number, nudged?: number, handled?: number, back?: number }> // each cause seen: when it began, its one nudge and hand-over, when its agent went back to work
+  stalls?: Record<string, { since: number, nudged?: number, restarted?: number, handled?: number, back?: number }> // each cause seen: when it began, its one nudge, restart and hand-over, when its agent went back to work
+  selfFix?: { step: string, block: string, tried: string[], at: number, woke?: number } // the engine's tries on a block in this step (selfFix.ts)
   fixes?: { step: string, n: number } // mechanical fixes the coordinator's wakes made in this step (tell --fix)
   run?: string // the current run
   weight?: Weight // light, standard or heavy, set by the user or the coordinator (weight.ts); else from its type
@@ -216,5 +217,28 @@ export function reconcile(runs: Run[], terminals: LabelledTerminal[], install: s
     const t = terminals.find(x => x.labels?.[LABEL.install] === install && x.labels?.[LABEL.run] === run.id)
     if (!t) return { run, state: 'lost' }
     return t.state === 'finished' ? { run, state: 'exit' } : { run, terminal: t.address, state: 'running' }
+  })
+}
+
+// Two live agents of one role on a task (two starts that raced): the one the
+// engine tracks stays (the task's run, else its newest unended run), the others end.
+export function duplicateAgents(terminals: LabelledTerminal[], runs: Run[], tasks: Pick<Task, 'id' | 'run'>[], install: string) {
+  const groups = new Map<string, LabelledTerminal[]>()
+  for (const x of terminals) {
+    const l = x.labels
+    if (x.state === 'finished' || l?.[LABEL.install] !== install || !l[LABEL.task] || !l[LABEL.role]) continue
+    const k = `${l[LABEL.task]}\u0000${l[LABEL.role]}`
+    groups.set(k, [...(groups.get(k) ?? []), x])
+  }
+  return [...groups.values()].filter(g => g.length > 1).map(g => {
+    const task = g[0]!.labels![LABEL.task]!, role = g[0]!.labels![LABEL.role]! as Run['role']
+    const tracked = tasks.find(t => t.id === task)?.run
+    const rank = (x: LabelledTerminal) => {
+      const id = x.labels![LABEL.run]
+      if (id === tracked) return Infinity
+      return runs.find(r => r.id === id && r.state !== 'ended')?.startedAt ?? -1
+    }
+    const keep = g.reduce((a, b) => (rank(b) > rank(a) ? b : a))
+    return { task, role, keep, end: g.filter(x => x !== keep) }
   })
 }

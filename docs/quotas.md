@@ -35,8 +35,7 @@ reading without an account key) keeps a block of its own, titled with the machin
 
   The app offers the same thing in **Settings › Agents › Claude quotas**: each machine with
   Claude, its state (set up, installed, update available, not set up), **Install** or **Update**
-  (on a core machine, through `machine.exec`, the installer on its stdin) and **Copy command**. The home list only adds **Set up Claude quotas** and **Don’t
-  suggest again** to the machine's **…** menu, never a banner. Skipped or declined, it is no
+  (on a core machine, through `machine.exec`, the installer on its stdin) and **Copy command**. The home list never suggests it: no banner, no menu item. Skipped or declined, it is no
   longer suggested on any device (`data/claude-quotas.json`); Settings still offers it. A machine
   whose quotas show from an older status line reads **Update available**, never "not set up".
   Quotas show after the next exchange with a Claude agent. The status line stores the limits in `~/.cache/herdr-web/claude-status.json`
