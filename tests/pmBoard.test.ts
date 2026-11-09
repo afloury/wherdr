@@ -65,7 +65,7 @@ it('the card says where its PR and merge stand: waiting for checks, merging, fai
   expect(cardStatus({ ...at(3, { acting: true }), prNow: 'ready to merge' })).toEqual({ text: 'merging', tone: 'wait' })
   const failed = (error: string) => at(3, { yourTurn: { reason: 'action', badge: `merge: ${error}`, error } })
   expect(cardStatus(failed('merge: 1 check(s) failed'))).toEqual({ text: 'checks failed', tone: 'bad' })
-  expect(cardStatus(failed('merge: the PR head is not the task\'s commit'))).toEqual({ text: 'blocked: the PR head is not the task\'s commit', tone: 'bad' })
+  expect(cardStatus(failed('merge: the PR head is not the task\'s commit'))).toEqual({ text: 'The PR is not at the task\'s latest commit', tone: 'bad' })
   expect(cardStatus({ ...at(3), stopped: { by: 'user', why: '', at: 1 } })).toBeUndefined()
   const done = { plan, state: { at: plan.length - 1, started: true, done: true, since: 5, proofs: { merge: { link: pr.url, commit: 'abc' } }, rounds: {} } }
   expect(cardStatus(done)).toEqual({ text: 'merged', tone: 'ok', at: 5 })

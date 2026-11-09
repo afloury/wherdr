@@ -61,7 +61,7 @@ let dir = '', n = 0
 beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-launch-')) })
 afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 
-async function setup(opts: { installed?: string[], exits?: (number | null)[], template?: Template, screen?: string } = {}) {
+async function setup(opts: { installed?: string[], exits?: (number | null)[], template?: Template, screen?: string, tmpFreeKb?: number } = {}) {
   const store: PmStore = createPmStore(dir)
   await store.setEnabled(true)
   await store.saveTemplate(opts.template ?? template)
@@ -76,6 +76,7 @@ async function setup(opts: { installed?: string[], exits?: (number | null)[], te
       const [, , script, , ...args] = p.argv as string[]
       if (script!.includes('command -v')) return { code: 0, stdout: Buffer.from(args.filter(a => (opts.installed ?? ['claude']).includes(a)).join('\n')).toString('base64') }
       if (script!.includes('$HOME')) return { code: 0, stdout: Buffer.from('/home/u').toString('base64') }
+      if (script!.includes('df -Pk /tmp')) return { code: 0, stdout: Buffer.from(String(opts.tmpFreeKb ?? 9e6)).toString('base64') }
       if (p.input) files[args[0]!] = Buffer.from(p.input as string, 'base64').toString()
       return { code: 0, stdout: '' }
     }
@@ -100,7 +101,7 @@ describe('startTask', () => {
     expect(runs).toHaveLength(1)
     const install = await store.install()
     expect(runs[0]).toMatchObject({
-      cwd: '/home/u/.wherdr/pm/worktrees/WEB-1', env: { DISABLE_AUTOUPDATER: '1' }, no_parent: true,
+      cwd: '/home/u/.wherdr/pm/worktrees/WEB-1', env: { DISABLE_AUTOUPDATER: '1', TMPDIR: '/home/u/.wherdr/pm/worktrees/WEB-1/.wherdr-tmp' }, no_parent: true,
       labels: { 'wherdr.install': install, 'wherdr.task': 'WEB-1', 'wherdr.run': t.run, 'wherdr.role': 'worker' },
     })
     expect(runs[0]!.line).toContain(`exec claude '--model' 'opus' 'Read /home/u/.wherdr/pm/tasks/WEB-1/instructions.md and follow it.'`)
@@ -142,6 +143,12 @@ describe('startTask', () => {
     expect(wherdrBase('', 'https://b.example', 'https://a.example/', '7683')).toBe('http://127.0.0.1:7683')
     expect(wherdrBase('m1', 'https://b.example', 'https://a.example/', '7683')).toBe('https://a.example')
     expect(wherdrBase('m1', 'https://b.example', '', '7683')).toBe('https://b.example')
+  })
+
+  it('a nearly full /tmp on the machine: waiting with the reason, no terminal', async () => {
+    const { deps, runs } = await setup({ tmpFreeKb: 100 * 1024 })
+    expect(await startTask(deps, 'WEB-1')).toMatchObject({ state: 'waiting', waiting: expect.stringMatching(/\/tmp .* only 100 MB free/) })
+    expect(runs).toHaveLength(0)
   })
 
   it('a missing program: waiting with the reason, no terminal', async () => {

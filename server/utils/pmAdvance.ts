@@ -7,15 +7,15 @@
 import { randomUUID } from 'node:crypto'
 import { DONE_CMD, READ_SEP, dueText, parseRead, reviewFile, runFiles, runsNow, signalEvent } from '../../shared/pm/advance'
 import { onEvent, type PlannedStep } from '../../shared/pm/steps'
-import { LABEL, agentLine, reviewerPlan, runLabels, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, agentEnv, agentLine, reviewerPlan, runLabels, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP, launchFailure } from './coreCreate'
-import { WRITE_SCRIPT, exec, runOn, type PmLaunchDeps } from './pmLaunch'
+import { WRITE_SCRIPT, exec, prepareTmp, runOn, type PmLaunchDeps } from './pmLaunch'
 import { stepAction } from './pmBoard'
 import { cleanTask } from './pmCleanup'
 import { readLeakCheck } from './pmVisibility'
 import { isPublic, leakText, scanDiff } from '../../shared/pm/visibility'
 import type { Project } from '../../shared/pm/project'
-import { wasReleased } from '../../shared/pm/release'
+import { agentBack, wasReleased } from '../../shared/pm/release'
 import { reviveWorker } from './pmRelease'
 
 // The task's commit, its diff size since the branch started, the worker's note, the verdict file.
@@ -67,6 +67,9 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   const files = runFiles(latest(await deps.store.runs(), run.task, 'worker')?.instructions ?? run.instructions)
   const r = await exec(deps, c.on, SIGNAL_READ_SCRIPT, [run.worktree, run.branch, files.note, files.verdict])
   const ev = signalEvent(step, run.role, parseRead(r.out))
+  // The worker reports the work the engine handed it (a catch-up, red CI): the step's Your turn, if any, comes back.
+  const work = c.task.step!.agent
+  if (!ev && work && run.role === 'worker') return void await deps.store.logTask({ ...c.task, step: agentBack(c.task.step!) }, 'engine', `${work.kind}: the worker says it is done`)
   if (!ev) return
   const tell = (text: string) => deps.call('terminal.send', { terminal: run.terminal, text }, 30000)
   if ('fix' in ev) return void await tell(ev.fix)
@@ -132,13 +135,15 @@ async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: strin
     await deps.call('terminal.send', { terminal: live.terminal, text: `Review again: read ${files.review} and follow it.` }, 30000)
     return void await store.logTask({ ...task, step: told, run: live.id }, 'engine', 'review: sent to the reviewer')
   }
+  const tmpWhy = await prepareTmp(deps, on, worker.worktree)
+  if (tmpWhy) return void await waitFor(deps, task.id, `The reviewer was not started: ${tmpWhy}`)
   let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'reviewer', ...plan, machine: worker.machine, worktree: worker.worktree, branch: worker.branch, instructions: files.review, attempt: 1, state: 'starting', startedAt: Date.now() }
   // The receipt first: an unconfirmed start is found again by its labels, never started twice.
   await store.saveRun(run)
   const again = wasReleased(latest(await store.runs(), task.id, 'reviewer')) ? ' again in its worktree' : ''
   await store.logTask({ ...task, step: told, run: run.id }, 'engine', `review: started the reviewer${again} (${plan.program} ${plan.model})`)
   const { address } = await deps.call<{ address: string }>('terminal.run', {
-    cwd: worker.worktree, ...(on ? { on } : {}), no_parent: true, wait: false, env: { DISABLE_AUTOUPDATER: '1' },
+    cwd: worker.worktree, ...(on ? { on } : {}), no_parent: true, wait: false, env: agentEnv(worker.worktree),
     labels: runLabels(await store.install(), run), line: `${PATH_SETUP}; ${agentLine(plan.program, plan.model, files.review)}`,
   }, 30000)
   run = { ...run, terminal: address, state: 'running', startedAt: Date.now() }
