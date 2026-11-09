@@ -2817,6 +2817,14 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 .msg-quote:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); border-left-color: var(--accent); }
 .msg-quote-time { flex: none; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; color: var(--dim); }
 .msg-quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A wake's sender (Autopilot, Step check, Engine, Health check), above its bubble. */
+.msg-wake {
+  align-self: flex-end; padding: 2px 6px; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-2); border: 1px solid var(--line); border-left: 2px solid var(--wake, var(--accent));
+}
+.msg-wake[data-kind="step"] { --wake: var(--working); }
+.msg-wake[data-kind="engine"] { --wake: var(--blocked); }
+.msg-wake[data-kind="health"] { --wake: var(--done); }
 /* Floating "Reply" button near a selected passage. */
 .sel-reply {
   position: fixed; z-index: 60; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
