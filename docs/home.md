@@ -36,10 +36,13 @@
 Alfred, wherdr's assistant, is always the first row of the agent list, even
 with no agent and projects off. It helps you get started and, with projects
 on, coordinates all of them. The first *Start* asks which agent (Claude,
-Codex, OMP…, those offered in Settings › Agents) runs it; the choice is kept. It runs with that agent's default
+Codex, OMP…, those offered in Settings › Agents) runs it; the choice is kept, and wherdr
+never changes it on its own: if that agent is no longer offered, Alfred's
+[Autopilot](project-management.md#autopilot) window says so and you pick another. The same window
+changes Alfred's agent for its next conversation. It runs with that agent's default
 model: change the model inside Alfred. Its menu (right click, or long press on a touch
 screen), *Restart with…*, moves it
-to another agent (when an account runs out of tokens, for instance): the old session
+to another agent at once (when an account runs out of tokens, for instance): the old session
 stops and the new one carries on from the same home folder, `alfred/` in
 wherdr's data folder. There, `AGENTS.md` (and `CLAUDE.md`, `GEMINI.md`,
 `QWEN.md`, which point to it) is wherdr's and rewritten at each start; `identity.md` (its name and tone) and `memory.md` (what it learns about
