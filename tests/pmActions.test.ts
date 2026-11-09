@@ -540,4 +540,18 @@ describe('pipeline.watch', () => {
     expect(calls).toEqual([['/wt', 'develop', ''], ['/wt', '7']])
     expect(await watch({ sh: async () => ({ code: 1, out: 'HTTP 502: Bad Gateway' }) }, job)).toEqual({ ok: false, later: true })
   })
+
+  it('watches a branch at its tip on origin: a run of the previous commit never passes for the merge\'s', async () => {
+    const dir = path.join(tmp, 'watch'), origin = path.join(dir, 'origin.git'), wt = path.join(dir, 'wt'), bin = path.join(dir, 'bin')
+    fs.mkdirSync(bin, { recursive: true }); git(dir, 'init', '-q', '--bare', '-b', 'main', origin); git(dir, 'clone', '-q', origin, wt)
+    const commit = (m: string) => { fs.writeFileSync(path.join(wt, 'a.txt'), m); git(wt, 'add', '.'); git(wt, 'commit', '-qm', m); return git(wt, 'rev-parse', 'HEAD') }
+    const old = commit('old'); git(wt, 'push', '-q', 'origin', 'HEAD:develop')
+    commit('merged'); git(wt, 'push', '-q', 'origin', 'HEAD:develop'); git(wt, 'reset', '-q', '--hard', old)
+    // GitHub has registered only the old commit's green run, also the newest listed by branch.
+    fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\ncase "$*" in *"--commit ${old}"*|*"--branch develop"*) echo '${JSON.stringify([run({ headSha: old })])}';; *) echo '[]';; esac\n`, { mode: 0o755 })
+    const sh: ActionDeps['sh'] = (script, args) => localSh(`PATH="${bin}:$PATH"\n${script}`, args)
+    expect(await watch({ sh }, { action: { kind: 'pipeline.watch', branch: 'develop' }, worktree: wt })).toEqual({ ok: false, later: true })
+    expect((await sh(SCRIPT.ghRuns, [wt, 'develop', ''])).code).toBe(0)
+    expect(await watch({ sh }, { action: { kind: 'pipeline.watch', branch: 'nope' }, worktree: wt })).toEqual({ ok: false, error: 'pipeline: no branch nope on origin' })
+  })
 })

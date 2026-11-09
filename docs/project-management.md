@@ -137,8 +137,9 @@ A **pipeline watch** (`pipeline.watch`) has the engine follow CI or a deploy
 by itself, so no agent is woken only to read *still running*. It checks every
 `every` (default `1m`) until `timeout` (default `30m`). Its `source`:
 
-- `github` (default): the GitHub Actions runs of the task's commit, or of the
-  latest commit of `branch`; `workflow` keeps one workflow only.
+- `github` (default): the GitHub Actions runs of the task's commit, or of
+  `branch`'s commit on origin now (no run yet: still running, so an earlier
+  commit's green run never counts); `workflow` keeps one workflow only.
 - `command`: `command`, run in the task's worktree on the project's machine,
   exits `0` done, `1` failed, `2` still running: a CircleCI or Bitbucket
   check, a `helm` or `kubectl` status, a health URL. Its output is the step's
