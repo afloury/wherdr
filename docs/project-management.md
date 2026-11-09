@@ -33,7 +33,7 @@ is done and has a button that takes you there.
    the Board and press *Start*: the coordinator is the agent you talk to about
    the project. It adds tasks and follows them on the board. Alfred, wherdr's
    assistant at the top of the agent list, coordinates all projects at once
-   (see [Home](home.md#alfred)).
+   when you ask it (see [Home](home.md#alfred)); it has no autopilot.
 
 Then ask the coordinator for tasks, and answer what shows under *Your turn* and
 *Decisions*.
@@ -131,8 +131,9 @@ to the [pace](quotas.md#pace) of every account.
 
 ## Autopilot
 
-On the board and in a coordinator's conversation, the **Autopilot** button in
-the header shows the autopilot's state (green square: on; hollow: asleep) and a
+Each project has its own autopilot, run by its coordinator; Alfred has none and
+acts only when you ask it. On the board with a project picked, and in a project
+coordinator's conversation, the **Autopilot** button in the header shows the autopilot's state (green square: on; hollow: asleep) and a
 count of what waits for you: a workflow change the coordinator proposed, or a
 kept conversation that ran with another agent. A tap opens its window:
 
@@ -153,8 +154,8 @@ its [pace](quotas.md#pace) or a machine is short on memory
 ## Board
 
 The header has **Decisions** (with a count when some wait), **Add task**, the
-project picker (*All projects* or one), a tag filter when tasks have tags, and
-the [Autopilot](#autopilot) button. The first column is **Your turn**, then the
+project picker (*All projects* or one), a tag filter when tasks have tags, and,
+with one project picked, its [Autopilot](#autopilot) button. The first column is **Your turn**, then the
 project's columns, or *To do*, *Working* and *Done* for all projects.
 
 A card shows the task's title, its id and step, how long it has been in that

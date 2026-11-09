@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// The coordinator window's content (CoordinatorButton): which agent answers a project
-// coordinator (its default changed in one gesture; Alfred's program changes from its
-// row's "Restart with…"), a warning when its kept conversation ran with another agent,
+// The coordinator window's content (CoordinatorButton; a project coordinator's only,
+// Alfred has no autopilot): which agent answers it (its default changed in one
+// gesture), a warning when its kept conversation ran with another agent,
 // a line for the workflow change it proposed (reviewed in the project's sheet,
 // ProposalReview), and its autopilot.
 // On the board (`open`), also the button that opens or starts it.
@@ -27,17 +27,15 @@ async function act(fn: () => Promise<unknown>) {
 }
 const agentItems = computed(() => offerCoordinators(undefined, props.c.project).map(p => ({ label: kindLabel(p), value: p })))
 const setDefault = (program: string) => act(() => api('/api/pm/coordinator-agent', { project: props.c.project, program }))
-const fresh = () => act(async () => { const p = await launchCoordinator(props.c.project, agent.value); if (props.c.main) await loadAlfred(); if (p) await navigateTo(panePath(p.id)) })
+const fresh = () => act(async () => { const p = await launchCoordinator(props.c.project, agent.value); if (p) await navigateTo(panePath(p.id)) })
 const resume = () => { resumeCoordinator(props.c.terminal!); if (props.open && pane.value) navigateTo(panePath(pane.value.id)) }
 const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh())
 </script>
 
 <template>
   <div class="coord" data-testid="coordinator-panel">
-    <!-- Alfred on the board: its row (one tap opens or starts it, its program asked the first time). -->
-    <AlfredRow v-if="open && c.main" banner />
-    <div v-else-if="!c.main || (open && !other)" class="coord-head">
-      <div v-if="!c.main" class="coord-field">
+    <div class="coord-head">
+      <div class="coord-field">
         <span class="field-label">{{ tl('Answering agent', 'Agent qui répond') }}</span>
         <USelect :model-value="agent?.program" :items="agentItems" size="lg" class="coord-agent w-full" :disabled="busy" :aria-label="tl('Default agent', 'Agent par défaut')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
       </div>

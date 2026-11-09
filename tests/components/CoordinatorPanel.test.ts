@@ -32,11 +32,6 @@ it('says which agent answers, and changes the default in one gesture', async () 
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: 'CO', program: 'codex' } }]))
 })
 
-it('in Alfred\'s conversation: no agent select (its row\'s "Restart with…" changes it)', async () => {
-  const b = await mount(view({ project: '_main', name: 'Jarvis', main: true }))
-  expect(b.find('[data-testid="coordinator-agent"]').exists()).toBe(false)
-})
-
 it('header button: the autopilot\'s state, a count of what waits for the user, and a tap opens the window', async () => {
   w = await mountSuspended(CoordinatorButton, { attachTo: document.body, props: { c: view({ autopilot: { on: true, goal: '', events: [], perDay: 1, atOnce: 1 }, asleep: 'idle', proposal: { diff: '+ x', at: 1 } }) } })
   const btn = w.get('[data-testid="coordinator-button"]')

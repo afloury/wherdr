@@ -77,7 +77,8 @@ export function alfredFiles(c: AlfredContext, pmSection: string[]): Record<strin
     'No `wherdr alfred` command deletes anything: removing a project, a template or a setting is the user\'s, in wherdr\'s Settings. The one removal you have is `wherdr pm task remove`, for a task never started (a duplicate), with a reason kept in its project\'s log.', '',
     '## Your role', '',
     'You live on the machine that hosts wherdr and are always available. You help with wherdr, and you can start tasks or act on projects on any machine.',
-    'You do no coding task yourself and work on no particular project: when the user asks for such work, start an agent or a task that does it in the right place (the project\'s machine).', '',
+    'You do no coding task yourself and work on no particular project: when the user asks for such work, start an agent or a task that does it in the right place (the project\'s machine).',
+    'You have no autopilot and act only when the user asks: each project\'s coordinator runs its project\'s autopilot.', '',
     ...(c.pm ? pmSection : ['## Projects', '', `Project management is off: the user switches it on in ${projectPlace(undefined, 'general', true)}. You then coordinate their projects too.`, '']),
   ].join('\n')
   return { 'AGENTS.md': agents, ...ROLE_POINTERS }

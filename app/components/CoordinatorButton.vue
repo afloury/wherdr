@@ -12,7 +12,7 @@ const state = computed(() => (!on.value ? 'inactive' : props.c.asleep ? 'idle' :
 const stateText = computed(() => (!on.value ? tl('Off', 'Arrêté') : props.c.asleep ? tl('Asleep', 'Endormi') : tl('On', 'Actif')))
 const pending = computed(() => Number(!!props.c.proposal) + Number(coordinatorMismatch(props.c)))
 const label = computed(() => `${tl('Autopilot', 'Autopilote')}: ${stateText.value}${pending.value ? ` · ${tl(`${pending.value} to review`, `${pending.value} à voir`)}` : ''}`)
-const title = computed(() => `${tl('Autopilot', 'Autopilote')} · ${props.c.main ? props.c.name || 'Alfred' : props.c.project}`)
+const title = computed(() => `${tl('Autopilot', 'Autopilote')} · ${props.c.project}`)
 </script>
 
 <template>

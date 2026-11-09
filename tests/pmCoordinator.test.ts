@@ -95,6 +95,29 @@ describe('the main coordinator (WHR-398)', () => {
     expect(parseCommand(['show', 'CO-1', '--project', 'CO'])).toEqual({ error: expect.stringContaining('--project is for') })
   })
 
+  it('has no autopilot (WHR-51): no wake, none in its view, the route refuses it, a wake turn starts or adds nothing', async () => {
+    const main = await issueToken(store, MAIN)
+    const st = await store.addTask({ project: 'ST', title: 'Study', type: 'study' })
+    // An autopilot saved before: turned off and ignored.
+    await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, terminal: 'host/t1', ranAt: 0, autopilot: { ...DEFAULT_AUTOPILOT, on: true, goal: 'Ship', every: '30m' } })
+    const sent: unknown[] = []
+    const call = async (method: string, params: unknown) => { if (method === 'terminal.send') sent.push(params); return method === 'terminal.get' ? { status: 'idle' } : {} }
+    expect(await wakeTick({ store, call } as unknown as Parameters<typeof wakeTick>[0], 3_600_000)).toEqual([])
+    expect(sent).toEqual([])
+    expect((await store.coordinator(MAIN))!.autopilot!.on).toBe(false)
+    const [alfred] = await coordinatorsView(store)
+    expect(alfred).toMatchObject({ main: true })
+    expect(alfred).not.toHaveProperty('autopilot')
+    await noteTurn(store, MAIN, 'wake')
+    await refused(cli(['task', 'start', st.id], undefined, main), 'its own autopilot')
+    await refused(cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST'], undefined, main), 'its own autopilot')
+    vi.stubGlobal('defineApi', (h: unknown) => h)
+    const route = (await import('../server/api/pm/autopilot.post')).default as unknown as (e: unknown, b: unknown) => Promise<unknown>
+    await refused(route({}, { project: MAIN, autopilot: { on: true } }), 'Alfred has no autopilot')
+    await refused(route({}, { project: MAIN, runNow: true }), 'Alfred has no autopilot')
+    vi.unstubAllGlobals()
+  })
+
   it('is Alfred: starts in its home in the data dir, greets once, keeps its own files and the agent picked', async () => {
     const runs: Record<string, unknown>[] = [], killed: unknown[] = []
     const call = async (method: string, params: Record<string, unknown>) => {

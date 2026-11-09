@@ -49,8 +49,8 @@ onUnmounted(() => {
 })
 
 const pane = computed(() => herdrState.value.panes.find(p => p.id === props.paneId))
-// herdr-core: a coordinator's pane shows its header button (autopilot, agent, template change).
-const coord = computed(() => coordinatorOf(pane.value))
+// herdr-core: a project coordinator's pane shows its header button (autopilot, agent, template change); Alfred's none.
+const coord = computed(() => { const c = coordinatorOf(pane.value); return c?.main ? undefined : c })
 let coordTimer: ReturnType<typeof setInterval> | undefined
 // Not read yet (failed while the app woke up): asked again, and as soon as the server is back.
 onMounted(() => { if (core) { loadCoordinators(); coordTimer = setInterval(() => { if (coord.value || !coordinatorsLoaded.value) loadCoordinators() }, 15_000) } })

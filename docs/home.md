@@ -35,7 +35,8 @@
 
 Alfred, wherdr's assistant, is always the first row of the agent list, even
 with no agent and projects off. It helps you get started and, with projects
-on, coordinates all of them. The first *Start* asks which agent (Claude,
+on, coordinates all of them when you ask it: it has no autopilot, each
+project's coordinator runs its own. The first *Start* asks which agent (Claude,
 Codex, OMP…, those offered in Settings › Agents) runs it; the choice is kept. It runs with that agent's default
 model: change the model inside Alfred. Its menu (right click, or long press on a touch
 screen), *Restart with…*, moves it
