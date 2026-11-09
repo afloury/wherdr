@@ -83,7 +83,7 @@ it('a link proof that is a PR shows Open the PR at the merge step and on the car
   const url = 'https://bitbucket.org/example-org/example-repo/pull-requests/12'
   const task: Task = {
     id: 'WHR-1', project: 'WHR', title: 'A task', description: '', type: 'feature', state: 'working',
-    step: { ...initialState(), started: true, at: 4, proofs: { pr: { link: url } }, yourTurn: { reason: 'user', badge: 'Merge the PR' } },
+    step: { ...initialState(), started: true, at: 4, proofs: { pr: { link: url } }, yourTurn: { reason: 'user', badge: 'Merge the PR on Bitbucket' } },
   }
   const c = cardOf(task, planSteps(company, { type: 'feature' }), [])
   expect(mainLink(c)).toEqual({ label: 'PR', url })
@@ -91,7 +91,7 @@ it('a link proof that is a PR shows Open the PR at the merge step and on the car
   const w = await mountSuspended(TaskSheet, { props: { card: c }, global: { stubs } })
   expect(w.get('[data-testid="task-todo"]').attributes('data-todo')).toBe('step')
   expect(w.get('[data-testid="todo-pr"]').attributes('href')).toBe(url)
-  expect(w.get('[data-testid="step-user"]').text()).toBe('Merged')
+  expect(w.get('[data-testid="step-user"]').text()).toBe('I merged it')
   w.unmount()
   // A proof stored with the note's closing period is still the PR.
   const dotted = cardOf({ ...task, step: { ...task.step!, proofs: { pr: { link: `${url}.` } } } }, planSteps(company, { type: 'feature' }), [])
