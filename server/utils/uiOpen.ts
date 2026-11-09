@@ -14,7 +14,8 @@ export interface UiOpenDeps { store: PmStore, panes: () => Pane[], clients: () =
 // scope: the token's (MAIN or a project key); by: the name the app shows.
 export async function openUi(deps: UiOpenDeps, o: { scope: string, main: boolean, raw: unknown, turn: Turn, by: string }) {
   const link = uiLink(o.raw)
-  const why = uiOpenRefusal(link, o.turn, o.scope, o.main)
+  const own = (o.main ? null : await deps.store.project(o.scope)) ?? { key: o.scope }
+  const why = uiOpenRefusal(link, o.turn, own, o.main)
   if (why) throw new HerdrError('refused', why)
   const terminal = (await deps.store.coordinator(o.scope))?.terminal
   const pane = terminal ? deps.panes().find(p => p.coreAddress === terminal) : undefined

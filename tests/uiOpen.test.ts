@@ -6,11 +6,15 @@ import { uiPlaceLabel } from '../shared/uiOpen'
 import type { Pane } from '../shared/types'
 
 // Alfred (_main) runs in pane p1, the WEB coordinator in p2.
+// WEB was renamed: it shows WB and was once WW.
 function setup(viewing: (string | null)[]) {
   const got: { pane: string | null, msgs: string[] }[] = viewing.map(pane => ({ pane, msgs: [] }))
   const terminals: Record<string, string> = { _main: 't-alfred', WEB: 't-web' }
   const deps: UiOpenDeps = {
-    store: { coordinator: async (k: string) => (terminals[k] ? { project: k, tokenHash: '', terminal: terminals[k] } : null) } as unknown as UiOpenDeps['store'],
+    store: {
+      project: async (k: string) => (k === 'WEB' ? { key: 'WEB', label: 'WB', aliases: ['WW'] } : undefined),
+      coordinator: async (k: string) => (terminals[k] ? { project: k, tokenHash: '', terminal: terminals[k] } : null),
+    } as unknown as UiOpenDeps['store'],
     panes: () => [{ id: 'p1', coreAddress: 't-alfred' }, { id: 'p2', coreAddress: 't-web' }] as Pane[],
     clients: () => got.map(g => ({ pane: g.pane, send: (d: string) => g.msgs.push(d) })),
   }
@@ -37,8 +41,9 @@ describe('ui open', () => {
   it('keeps a coordinator to its project\'s places and the global settings', async () => {
     const { deps } = setup(['p2'])
     for (const raw of ['#/settings?section=projects&project=APP', '#/board?task=APP-3', '#/board?project=APP', '#/decisions', '#/'])
-      await expect(openUi(deps, { ...web, raw, turn: 'user' })).rejects.toThrow(/project WEB's places/)
-    for (const raw of ['#/board?task=WEB-3', '#/board?project=web', '#/settings?section=phone'])
+      await expect(openUi(deps, { ...web, raw, turn: 'user' })).rejects.toThrow(/project WB's places/)
+    // Its shown key and former keys name it too.
+    for (const raw of ['#/board?task=WEB-3', '#/board?task=WB-9', '#/board?task=ww-2', '#/board?project=web', '#/board?project=WB', '#/settings?section=projects&project=WB', '#/settings?section=phone'])
       await expect(openUi(deps, { ...web, raw, turn: 'user' })).resolves.toMatchObject({ clients: 1 })
     // Alfred opens any place.
     const alfred = setup(['p1'])
