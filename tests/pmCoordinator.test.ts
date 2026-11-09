@@ -25,7 +25,7 @@ vi.mock('../server/utils/quotas', async orig => ({ ...(await orig<object>()), re
 afterEach(() => { quotas.q = null })
 
 let dir = '', store: ReturnType<typeof createPmStore>, token = ''
-const deps = () => ({ store }) as unknown as CoreAdminDeps & { store: typeof store }
+const deps = () => ({ store, machines: () => [] }) as unknown as CoreAdminDeps & { store: typeof store }
 const cli = (argv: string[], input?: string, tk = token) => runCommand(deps(), tk, { argv, ...(input !== undefined ? { input } : {}) })
 const refused = (p: Promise<unknown>, message: RegExp | string) => expect(p).rejects.toThrow(message)
 const state = (at: number, more: Partial<StepState> = {}): StepState => ({ at, started: true, proofs: {}, rounds: {}, ...more })
@@ -734,6 +734,12 @@ describe('commands of lot 10', () => {
     await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { on: true, goal: 'Ship', events: [], perDay: 4, atOnce: 2 } })
     await store.saveTask({ ...(await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })), state: 'working' })
     expect(await cli(['autopilot', 'show'])).toMatchObject({ autopilot: { goal: 'Ship' }, today: { started: 0, perDay: 4, working: 1, atOnce: 2, startLeft: 1 } })
+ 
+    // A machine whose account is ahead of its pace takes nothing, as placement skips it.
+    const now = Date.now()
+    quotas.q = { codex: null, claude: { at: now, five: { used: 90, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
+    const here = { ...deps(), machines: () => [{ key: '', label: 'machine-a', local: true }] } as never
+    expect((await runCommand(here, token, { argv: ['autopilot', 'show'] })).machines).toEqual([expect.stringMatching(/^machine-a \(home\): .* · takes nothing now: paced: /)])
   })
 
   it('task add: a task to do, chained with --after, with --weight; show gives its weight; in a wake only with the autopilot on', async () => {
@@ -744,7 +750,7 @@ describe('commands of lot 10', () => {
     await noteTurn(store, 'CO', 'user', 'add two tasks')
     const first = (await cli(['task', 'add', 'Tidy the docs', '--type', 'feature', '--description', 'One typo.'])).task
     expect(first).toMatchObject({ id: 'CO-1', state: 'todo', description: 'One typo.', log: [{ by: 'coordinator CO', text: 'added the task' }] })
-    expect((await cli(['show', 'CO-1'])).task.weight).toBe('standard (its steps)')
+    expect((await cli(['show', 'CO-1'])).task).toMatchObject({ weight: 'standard (its steps)', machine: expect.stringMatching(/^not started/) })
     const heavy = (await cli(['task', 'add', 'Run e2e', '--type', 'feature', '--weight', 'heavy'])).task
     expect((await cli(['show', heavy.id])).task.weight).toBe('heavy (set on the task)')
     await refused(cli(['task', 'add', 'X', '--type', 'study']), 'No task type "study": feature')

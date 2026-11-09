@@ -42,7 +42,10 @@ new project.
 folder (created at start, `git init` offered), or any folder without git (a
 folder of several projects, for instance). A folder without git needs no
 workflow: it has no tasks (a task needs git for its own worktree), and its
-coordinator does the work in it directly.
+coordinator does the work in it directly. A folder typed, chosen with
+**Browse** or picked in the repository list fills the name and key the same
+way, and one under the machine's home shows as `~/…`. On a computer the sheet
+is wider, with a taller repository list.
 
 Then ask the coordinator for tasks, and answer what shows under *Your turn* and
 *Decisions*.
@@ -83,6 +86,19 @@ its folder, branches and task worktrees stay on the machine.
   [Board](#board)) and shows *Ready* or what is missing. ✕ removes a machine:
   new tasks no longer start there, tasks already there stay. Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
+  **Placement** chooses how new tasks spread over these machines: *Heavy to the
+  strongest* (the default: light and standard work at home when it fits, heavy
+  work on the machine with most room), *Balance the load* (each task on the
+  machine with the largest share of memory and cores left after it) or *Home
+  first* (other machines only once home is full). A machine fits a task when
+  its free memory covers the task's estimate plus the machine's reserve
+  (Settings › Machines). A task that waits for room names it, and so does the
+  coordinator's `autopilot show`. A task too big for every machine it may use
+  (their RAM less the reserve is under its estimate) runs on the best one
+  instead of waiting forever, and its log says so once. A worker started
+  again in its worktree (a catch-up, red CI, a send-back, the step it is woken
+  for) is weighed by what it does, not by its type: heavy only while its step
+  still lacks its screenshots, standard otherwise.
 
 ### Workflow
 
@@ -188,7 +204,9 @@ kept conversation that ran with another agent. A tap opens its window:
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*, *At once*: empty is *Auto*, as many as the project's
-  machines have room for, the default for a new project), the events it wakes on (*Task added*, *Task
+  machines have room for, the default for a new project; a task whose step
+  holds no agent, such as a PR or merge waiting for checks or the queue, or a
+  step of yours, takes no slot), the events it wakes on (*Task added*, *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
   even with nothing to do, with its own *New tasks / day*). The form says
   *Unsaved changes* until you save;
@@ -198,6 +216,15 @@ Automatic work (the autopilot, automations) waits while an account is ahead of
 its [pace](quotas.md#pace) (a machine whose account waits is skipped) or no
 machine the project allows has room for the task
 ([Machines](machines.md#manage-machines)); your own starts never wait.
+
+The coordinator sees the same with `wherdr pm autopilot show`: the project's
+placement strategy, one line per machine the project allows (memory, cores and load, its agents at work by
+weight, and the heaviest weight it takes now, or why none: full, not ready,
+paced, offline), and what each weight counts (*light* ≈ 0.7 GB, *standard* ≈
+1.8 GB, *heavy* ≈ 3.9 GB) with the weight of each task type. `show <task>`
+gives the machine a started task runs on. Its instructions say the engine
+places tasks, `task start --on` picks a machine and `task add --weight` sets a
+weight that differs from the task type's.
 
 ## Board
 
@@ -299,14 +326,36 @@ says *updating with* the base and leaves *Your turn* until the PR is clean
 again; an agent's conflict resolution gets a short re-review first. One update
 runs at a time per task.
 
-Clicking *Merge* is an approval that stays: the log records who approved, when
-and at which commit. If the merge is refused because the PR conflicts or is
-behind, wherdr updates it the same way, and the card shows *Approved, merging
-when ready*. Once the PR is clean, its checks are green and the re-review of the
-commits since your approval finds nothing major, wherdr merges by itself, even
-on a branch only you may merge into, and the log says so. The task comes back
-to you only if the re-review finds something major, or says the new commits
-change behaviour or the interface beyond resolving conflicts, with why.
+Clicking *Merge* is an approval of the task's screenshots that stays: the log
+records who approved, when and at which commit. Later updates keep it: the base
+merged in, a conflict resolved, red CI fixed. The card shows *Approved, merges
+by itself*, and the task sheet *Approved on* its date. Once the PR is clean and
+its checks are green, wherdr merges by itself, even on a branch only you may
+merge into, and the log says so. The task comes back to *Your turn* (*Look
+again, then merge*) only when its agent uploads new screenshots, or when the
+task's own changes to interface files (`components`, `assets`, `pages` and
+`layouts` folders) differ from those you approved; what a merge of the base
+brought does not count.
+
+#### The merge queue
+
+Each project has a **merge queue**: every task whose merge may go on without
+you (a merge the guards give to wherdr, or one you approved) enters it, and
+wherdr merges them one at a time. The first in the queue is updated with its
+base: wherdr merges the base into the branch and pushes it when that merges
+cleanly, even when GitHub does not flag the branch as behind; on a conflict it
+hands the conflicting files to the task's agent (started again if it was
+ended), and the task keeps its place. An update that fails (a network error)
+is tried again twice, a few minutes apart; past that, the task goes to the end
+of the queue so the others go on. wherdr then waits for the required
+checks on the updated PR and merges it, and the next task comes up. Checks that
+fail after an update go back to the agent as red CI, not to you, and that task
+goes to the end of the queue meanwhile. The others wait their turn and are not
+updated before it: PRs that touch no file another queued PR touches come first,
+then smaller changes. A PR already ready when it reaches its merge step merges
+at once. The card shows the place (*2nd in merge queue*), a refused merge
+waiting its turn stays off *Your turn*, and the log says when a task enters
+the queue and when it comes first.
 
 ### A stalled task
 

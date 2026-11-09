@@ -11,6 +11,7 @@ import { allowedMachines, type Project } from '../../shared/pm/project'
 import type { MachineInfo } from '../../shared/types'
 import { lastReadiness } from './pmReady'
 import { shownTaskId } from '../../shared/pm/projectKey'
+import { taskAgents, type TaskAgent } from '../../shared/pm/taskAgents'
 import { CHOICES, type Choice } from '../../shared/pm/verdict'
 import { actionShell, runAction } from './pmActions'
 import type { CoreAdminDeps } from './coreCreate'
@@ -56,6 +57,13 @@ export async function board(store: PmStore, known: MachineInfo[] = []): Promise<
   }
 }
 
+// The running agents of tasks, by herdr-core address: their task and role (sidebar rows).
+export async function boardAgents(store: PmStore): Promise<Record<string, TaskAgent>> {
+  if (!await store.enabled()) return {}
+  const [projects, templates, tasks, runs] = [await store.projects(), await templatesOf(store), await store.tasks(), await store.runs()]
+  return taskAgents(tasks, runs, t => planOf(templates.get(t.project) ?? null, t, projects.find(p => p.key === t.project)), id => shownTaskId(projects, id))
+}
+
 // The step's userLabel button: the same 'user' event as "it is merged" said
 // by the user. A step with an action (git.verify-merged) runs it at once,
 // started by the user, and its result moves the task on or back to Your turn.
@@ -98,13 +106,13 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     const result: ActionResult = run
       ? await runAction({ store, sh: actionShell(deps, runOn(deps, run)) }, {
           task, step: act.step, attempt: act.attempt, action: act.action, by: approved ? 'user' : by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
-          reviewed: reviewedCommit(plan, state),
+          reviewed: reviewedCommit(plan, state), ...(approved && state.approved!.commit ? { approved: state.approved!.commit } : {}),
           halted: async () => !!(await store.task(task.id))?.stopped,
         }).catch((e: Error) => ({ ok: false, error: e.message }))
       : { ok: false, error: 'No worktree: the task never started' }
     const evidence = { ...(result.link ? { link: result.link } : {}), ...(result.commit ? { commit: result.commit } : {}) }
     const catchUp = result.catchUp && result.commit ? { catchUp: { base: result.catchUp, head: result.commit } } : {}
-    const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), ...catchUp, evidence }, Date.now())
+    const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), ...(result.unapproved ? { unapproved: true as const } : {}), ...catchUp, evidence }, Date.now())
     state = back.state
     const log = back.effects.find(e => e.kind === 'log')
     if (log?.kind === 'log') return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', log.text)
@@ -157,7 +165,8 @@ export async function uploadShot(store: PmStore, id: unknown, phase: unknown, da
   await store.addShot(task.id, shot.file, data, (fresh) => {
     const r = addShot(plan, fresh.step, shot)
     if ('refused' in r) throw new HerdrError('refused', r.refused)
-    return { ...fresh, step: r.state }
+    const dropped = fresh.step?.approved ? [{ at: shot.at, by: 'engine', text: 'approval dropped: new screenshots, the user looks again before the merge' }] : []
+    return { ...fresh, step: r.state, ...(dropped.length ? { log: [...(fresh.log ?? []), ...dropped] } : {}) }
   })
   return shot
 }

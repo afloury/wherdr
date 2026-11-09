@@ -3,8 +3,10 @@
 // run on. Home is the project's own (read only); each other one has its clone
 // of the repo, and is added (among herdr-core's connected machines) or removed
 // through project-update. After an add, that machine's readiness check runs
-// (project-machine-check) and its result shows under it.
+// (project-machine-check) and its result shows under it. Placement: how its
+// tasks spread over these machines (shared/pm/placement.ts), saved at once.
 import { allowedMachines, type Project } from '#shared/pm/project'
+import { STRATEGIES, STRATEGY_LABELS, type Strategy } from '#shared/pm/placement'
 
 const props = defineProps<{ project: Project }>()
 const emit = defineEmits<{ changed: [] }>()
@@ -40,6 +42,14 @@ const add = () => run('add', async () => {
   try { checks[k] = { refused: (await api<{ refused?: string }>('/api/pm/project-machine-check', { key: p.value.key, machine: k })).refused ?? '' } }
   catch (e) { checks[k] = { refused: (e as Error).message } }
 })
+const strategies = STRATEGIES.map(s => ({ label: tl(STRATEGY_LABELS[s]), value: s }))
+const strategy = computed({
+  get: () => p.value.placement ?? 'strongest',
+  set: (placement: Strategy) => run('placement', async () => {
+    await api('/api/pm/project-update', { key: p.value.key, placement })
+    emit('changed')
+  }),
+})
 const remove = (k: string) => run(`rm:${k}`, async () => {
   await save(others.value.filter(x => x !== k))
   delete checks[k]
@@ -67,6 +77,11 @@ const remove = (k: string) => run(`rm:${k}`, async () => {
       <UButton type="submit" size="lg" color="neutral" variant="soft" :loading="busy === 'add'" :disabled="!form.machine || !form.clone.trim() || busy !== ''" data-testid="pm-machine-add">{{ tl('Add') }}</UButton>
     </form>
     <small class="muted">{{ tl('Tasks may start on these machines, each in its own clone of the repository.') }}</small>
+    <label class="pm-placement">
+      <span>{{ tl('Placement') }}</span>
+      <USelect v-model="strategy" :items="strategies" size="lg" :disabled="busy !== ''" :aria-label="tl('Placement strategy')" data-testid="pm-placement" />
+    </label>
+    <small class="muted">{{ tl('Heavy to the strongest: light work at home, heavy work on the machine with most room. Balance the load: each task on the machine with most room left. Home first: other machines only once home is full.') }}</small>
     <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
   </div>
 </template>
@@ -77,6 +92,7 @@ const remove = (k: string) => run(`rm:${k}`, async () => {
 .pm-clone { color: var(--muted); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; overflow-wrap: anywhere; }
 .pm-ready { grid-column: 1 / -1; color: var(--muted); overflow-wrap: anywhere; }
 .pm-ready.bad { color: var(--blocked); }
+.pm-placement { display: flex; align-items: center; gap: 10px; }
 .pm-machine-add { display: grid; grid-template-columns: minmax(0, 160px) minmax(0, 1fr) auto; gap: 8px; }
 @media (max-width: 520px) { .pm-machine-add { grid-template-columns: minmax(0, 1fr) auto; } .pm-machine-add > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; } }
 </style>

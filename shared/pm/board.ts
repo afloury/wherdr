@@ -10,6 +10,7 @@ import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
 import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
 import { timesOf, type Times } from './times'
+import { ordinal } from './mergeQueue'
 import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
 
 export type Phase = 'todo' | 'working' | 'done'
@@ -40,6 +41,7 @@ export interface Card {
   after?: string[] // tasks of the same project it starts after
   prNow?: string // its PR as the engine last read it (prNow)
   held?: string // waits for memory on its machine
+  queue?: number // its place in its project's merge queue, past the first (mergeQueue.ts)
   asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
   times?: Times // time per step, waits for the user, rounds, CI fixes (times.ts), once started
 }
@@ -82,7 +84,9 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     : undefined
   const stall = stallOf(task, plan, now)
   // A done task (merged, archived) is never the user's turn.
-  const yourTurn = s?.done ? undefined : s?.yourTurn?.badge || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
+  // Waiting its turn in the merge queue: a refused merge is the queue's, not the user's.
+  const queue = task.queue && task.queue > 1 && !s?.done ? task.queue : undefined
+  const yourTurn = s?.done ? undefined : (queue && s?.yourTurn?.reason === 'action' ? undefined : s?.yourTurn?.badge) || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
     || (stall && now - stall.since >= HANDLE_AFTER_MS ? stallTurn(stall) : undefined)
   return {
     id: task.id, shown: task.id, project: task.project, title: task.title, description: task.description,
@@ -93,6 +97,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(run?.terminal ? { terminal: run.terminal } : {}),
     ...(yourTurn ? { yourTurn } : {}),
     ...(stall ? { stall } : {}),
+    ...(queue ? { queue } : {}),
     ...(step?.ends === 'user' && started && !s?.done ? { userLabel: step.userLabel || 'Done' } : {}),
     tags: task.tags ?? [],
     // Then the links steps gave as their proof (the PR), labelled by step; each address once.
@@ -175,7 +180,14 @@ export function prNow(pr: (PrInfo & { mergeStateStatus?: string }) | undefined, 
 // The checks the task's merge step waits for.
 export const requiredChecks = (plan: PlannedStep[]) => plan.flatMap(p => (p.action?.kind === 'github.merge' ? p.action.checks ?? [] : []))
 
-export interface CardStatus { text: string, tone: 'wait' | 'bad' | 'ok', at?: number }
+// approved: when the user approved the merge (it merges by itself), said before the text.
+export interface CardStatus { text: string, tone: 'wait' | 'bad' | 'ok', at?: number, approved?: number }
+
+// The status line: the approval first (its date on the sheet), then the text and its time.
+export function statusText(s: CardStatus, when: (at: number) => string, dated = false): string {
+  const approval = s.approved === undefined ? '' : `Approved${dated ? ` on ${when(s.approved)}` : ''}, merges by itself`
+  return [approval, s.at ? `${s.text} ${when(s.at)}` : s.text].filter(Boolean).join(' · ')
+}
 const MERGES = ['github.merge', 'git.verify-merged']
 const bad = (text: string): CardStatus => ({ text, tone: 'bad' })
 // A refused action in plain words; waiting, not bad, once the agent took it on.
@@ -190,7 +202,7 @@ const ofPr = (pr: string): CardStatus => (pr === 'merged'
 // Where a task's PR and merge stand, in one short line: from its step state
 // and what the engine last read of its PR. None before a PR, or once stopped.
 // A done task merged by a step: 'merged', at the time it was done.
-export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' | 'held'> & { log?: Card['log'] }): CardStatus | undefined {
+export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' | 'held' | 'queue'> & { log?: Card['log'] }): CardStatus | undefined {
   const s = c.state
   if (c.held) return { text: c.held, tone: 'wait' }
   if (!s?.started || c.stopped) return
@@ -203,11 +215,12 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
   const failed = s.yourTurn?.reason === 'action' ? s.yourTurn.error ?? '' : undefined
   if (kind === 'github.pr') return s.acting ? { text: 'opening the PR', tone: 'wait' } : failed !== undefined ? refused(failed) : undefined
   const pr = c.plan.slice(0, s.at).some(p => p.action?.kind === 'github.pr') ? c.prNow : undefined
+  const approval = s.approved && !s.acting ? { approved: s.approved.at } : {}
+  if (c.queue && !pr?.startsWith('checks failed')) return { text: `${ordinal(c.queue)} in merge queue`, tone: 'wait', ...approval }
   if (failed !== undefined) return pr?.startsWith('checks failed') ? ofPr(pr) : refused(failed, agentCatchingUp(c))
   // A merge waiting for the user, updated with its base; once approved, it merges by itself.
-  const approved = s.approved && !s.acting ? 'Approved, merging when ready' : undefined
-  if (s.catchUp) return { text: [approved, `updating with ${s.catchUp.base}`].filter(Boolean).join(' · '), tone: 'wait' }
-  if (approved) return { text: pr?.startsWith('checks failed') ? `${approved} · ${pr}` : approved, tone: 'wait' }
+  if (s.catchUp) return { text: `updating with ${s.catchUp.base}`, tone: 'wait', ...approval }
+  if (s.approved && !s.acting) return { text: pr?.startsWith('checks failed') ? pr : '', tone: 'wait', ...approval }
   // The merge runs: it waits for the checks, then merges.
   if (s.acting && kind && MERGES.includes(kind)) return pr && pr !== 'ready to merge' && kind === 'github.merge' ? ofPr(pr) : { text: 'merging', tone: 'wait' }
   return pr ? ofPr(pr) : undefined

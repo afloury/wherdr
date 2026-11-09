@@ -35,6 +35,10 @@ describe('the memory hold', () => {
     expect(mergeMemory(DEFAULT_MEMORY, { minFreeGb: 4, maxAgents: 6 })).toEqual({ minFreeMb: 4 * GB, maxAgents: 6 })
     expect(mergeMemory({ minFreeMb: GB, maxAgents: 6 }, { minFreeGb: -1, maxAgents: null })).toEqual({ minFreeMb: GB })
     expect(mergeMemory(DEFAULT_MEMORY, { maxAgents: 0 })).toEqual(DEFAULT_MEMORY)
+    const hours = { days: 'weekdays', from: '09:00', to: '19:00' } as const
+    expect(mergeMemory(DEFAULT_MEMORY, { hours })).toEqual({ ...DEFAULT_MEMORY, hours })
+    expect(mergeMemory({ ...DEFAULT_MEMORY, hours }, { hours: { ...hours, to: '25:00' } }).hours).toEqual(hours)
+    expect(mergeMemory({ ...DEFAULT_MEMORY, hours }, { hours: null })).toEqual(DEFAULT_MEMORY)
   })
 
   it('counts the agents of every project on the machine against its cap', async () => {
@@ -55,7 +59,7 @@ describe('the memory hold', () => {
       const deps = { store, call, machines: () => [{ key: 'm1', local: false, label: 'box', status: 'online' }] } as unknown as Parameters<typeof placeFor>[0]
       const next = await store.addTask({ project: 'BB', title: 'Next', type: 'simple' })
       const memoryHold = async () => { const r = await placeFor(deps, next); return 'hold' in r ? r.hold : undefined }
-      expect(await memoryHold()).toBe('Waits for room: standard (≈1.8 GB) fits nowhere — box: 2 agents take ≈3.5 GB of 6.0 GB')
+      expect(await memoryHold()).toBe('Waits for room (Heavy to the strongest): standard (≈1.8 GB) fits nowhere — box: 2 agents take ≈3.5 GB of 6.0 GB')
       // A task waiting for the user (Your turn) does not count its agent.
       const aa = (await store.task('AA-1'))!
       await store.saveTask({ ...aa, step: { ...aa.step!, yourTurn: { reason: 'user', badge: 'Check it' } } })
@@ -64,6 +68,9 @@ describe('the memory hold', () => {
       expect(await memoryHold()).toBeDefined()
       await store.saveRun({ ...(await store.runs()).find(r => r.id === 'r1')!, state: 'ended' })
       expect(await memoryHold()).toBeUndefined()
+      // herdr-core says it went offline since the last reading: nothing starts there.
+      const gone = { ...deps, call: async (m: string) => (m === 'machine.list' ? { machines: [{ name: 'box', state: 'disconnected' }] } : call(m)) }
+      expect(await placeFor(gone as never, next)).toMatchObject({ hold: expect.stringContaining('box: offline') })
 
       // Memory back, a wake's held task still holds to its autopilot: over atOnce it waits, with why; off, the hold goes.
       const held = await store.saveTask({ ...(await store.addTask({ project: 'BB', title: 'Held', type: 'simple' })), autopilot: true, held: 'Waits for memory on box' })

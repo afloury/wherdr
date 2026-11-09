@@ -4,7 +4,7 @@
 // card's indicator is the live state of the agent holding its step.
 import { canCheckGithub } from '#shared/pm/ghCheck'
 import { turnText } from '#shared/pm/refusal'
-import { boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, waitsFor, type Board, type BoardMachine, type Card } from '#shared/pm/board'
+import { boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, statusText, waitsFor, type Board, type BoardMachine, type Card } from '#shared/pm/board'
 import type { Task } from '#shared/pm/run'
 import { RESUMES } from '#shared/pm/stop'
 import { cardTime } from '#shared/pm/times'
@@ -47,7 +47,7 @@ const lanes = computed(() => boardLanes(cards.value, columns.value))
 const PHASE_LABEL: Record<string, string> = { 'your-turn': 'Your turn', 'todo': 'To do', 'working': 'Working', 'done': 'Done' }
 const laneLabel = (id: string) => (columns.value && id !== 'your-turn' ? id : t(PHASE_LABEL[id]!))
 // Where its PR and merge stand, one line: 'PR open · waiting for checks (smoke)', 'merged 14:05'.
-const statusOf = (c: Card) => { const s = cardStatus(c); return s && { ...s, text: s.at ? `${s.text} ${fmtWhen(new Date(s.at).toISOString())}` : s.text } }
+const statusOf = (c: Card) => { const s = cardStatus(c); return s && { ...s, text: statusText(s, at => fmtWhen(new Date(at).toISOString())) } }
 const showStep = (c: Card, lane: string) => c.step && (!columns.value || lane === 'your-turn')
 // '12 min in review' while it works (the step in it), '42 min' from start to done.
 const timeOf = (c: Card) => cardTime(c, Date.now())

@@ -11,6 +11,8 @@ import { menuState } from '~/composables/useUi'
 
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigate)
+// The list reads its task agents: none here.
+registerEndpoint('/api/pm/agents', () => ({}))
 
 
 const machine = (key: string, label: string, status: MachineInfo['status'] = 'online'): MachineInfo =>
