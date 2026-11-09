@@ -59,8 +59,8 @@ it('space menu: close space, except on a coordinator\'s or a task agent\'s space
   expect(labels(workspaceItems('s1'))).toEqual(['New tab', '—', 'Close space'])
   // An agent's row: its "Space" group.
   expect(labels(paneWorkspaceItems(pane('p1', 't1'))).slice(1)).toEqual(['New tab', 'Close space'])
-  for (const pm of ['task', 'coordinator'] as const) {
-    setState([pane('p1', 't1'), pane('p2', 't2', { pm })])
+  for (const pm of [{ task: 'demo-1' }, { coordinator: true as const }]) {
+    setState([pane('p1', 't1'), pane('p2', 't2', pm)])
     expect(labels(workspaceItems('s1'))).toEqual(['New tab'])
     expect(labels(paneWorkspaceItems(pane('p1', 't1'))).slice(1)).toEqual(['New tab'])
   }

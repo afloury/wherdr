@@ -13,7 +13,7 @@ import { SHEET_DRAG_SLOP, sheetDragCloses, sheetDragOffset } from '~/utils/sheet
 const open = defineModel<boolean>('open', { default: false })
 const props = defineProps<{ hideClose?: boolean, title?: string, tall?: boolean, wide?: boolean, full?: boolean, screen?: boolean, top?: boolean }>()
 const emit = defineEmits<{ closed: [] }>()
-const slots = defineSlots<{ default?: () => unknown, footer?: () => unknown }>()
+const slots = defineSlots<{ default?: () => unknown, footer?: () => unknown, lead?: () => unknown }>()
 watch(open, (v, old) => { if (old && !v) emit('closed') })
 const ui = computed(() => ({
   overlay: `hw-scrim${props.screen ? ' screen' : ''}${props.top ? ' top' : ''}`,
@@ -83,6 +83,7 @@ function dragEnd(e: TouchEvent) {
         v-if="title" data-slot="header" class="hw-sheet-head"
         @touchstart.passive="dragStart($event, true)" @touchmove="dragMove" @touchend="dragEnd" @touchcancel="dragEnd"
       >
+        <span v-if="slots.lead" class="hw-sheet-lead"><slot name="lead" /></span>
         <span class="hw-sheet-title" aria-hidden="true">{{ title }}</span>
         <UButton v-if="!hideClose" icon="i-lucide-x" color="neutral" variant="ghost" data-slot="close" class="hw-sheet-close" :aria-label="tl('Close', 'Fermer')" @click="open = false" />
       </div>

@@ -117,7 +117,7 @@ export function currentTabItems(tabId: string, overview?: MenuItem): MenuItem[] 
 }
 // A project coordinator's or a task agent's space is not closed from here: its
 // project manages it.
-const managed = (p: Pane) => Boolean(p.pm || coordinatorOf(p) || (p.coreAddress && p.coreAddress === alfred.value?.terminal))
+const managed = (p: Pane) => Boolean(p.task || p.coordinator || coordinatorOf(p) || (p.coreAddress && p.coreAddress === alfred.value?.terminal))
 function closeSpaceItems(id: string): MenuItem[] {
   const panes = herdrState.value.panes.filter(p => p.workspace === id)
   if (!panes.length || panes.some(managed)) return []

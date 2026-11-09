@@ -127,6 +127,8 @@ export interface Pane {
   agent: string | null
   name: string | null
   label: string | null
+  // herdr-core: the task this agent works on (its stored id, WHR-52), from its wherdr.task label.
+  task?: string
   // Agent name shown by Herdr (`display_agent`), if it says more than the agent kind.
   displayAgent?: string
   // Pane without an agent: foreground command ("pnpm dev"), missing at the shell prompt.
@@ -135,12 +137,14 @@ export interface Pane {
   title: string | null
   cwd: string | null
   agentSession: string | null
-  // herdr-core: started by wherdr's projects (its labels wherdr.task, wherdr.coordinator).
-  pm?: 'task' | 'coordinator'
+  // herdr-core: a project coordinator's terminal (its wherdr.coordinator label).
+  coordinator?: true
   bornAt?: number
   // Number of the agent's last state change (Herdr's `state_change_seq`,
   // increasing on a machine): "recent" sort of Ready.
   stateSeq?: number
+  // herdr-core: when its status or turn last changed (ms), for the row's duration.
+  since?: number
   pendingPrompt?: boolean
   queued?: QueuedMessage[]
   prompt?: Choices
