@@ -30,6 +30,14 @@ export interface ActionJob {
   halted?: () => Promise<boolean> // the task was stopped meanwhile: no merge
 }
 
+// A merge cut by a restart (wherdr reloading after a merge, an update) asks
+// GitHub where its PR stands, at most this many times, then goes to the user.
+export const MERGE_RESUMES = 2
+// The merges running now: a shutdown waits for them (server/plugins/pm.ts).
+const merging = new Set<Promise<unknown>>()
+export const mergesSettled = (ms: number) =>
+  Promise.race([Promise.allSettled([...merging]), pause(ms)]).then(() => merging.size === 0)
+
 // The shell of a project's machine, through herdr-core. stderr is kept: a
 // transient error is often only there.
 export const actionShell = (deps: Pick<CoreAdminDeps, 'call'>, on: string | undefined): Shell =>
@@ -47,14 +55,22 @@ export async function runAction(deps: ActionDeps, job: ActionJob): Promise<Actio
   const base = { id, task: job.task.id, step: job.step, action: job.action }
   const prev = await store.receipt(id)
   if (prev?.state === 'done') return prev.result!
-  if (prev) {
+  const merge = job.action.kind === 'github.merge'
+  const resumes = prev ? (prev.resumes ?? 0) + 1 : 0
+  if (prev && (!merge || prev.state !== 'pending' || resumes > MERGE_RESUMES)) {
     await store.saveReceipt({ ...prev, state: 'uncertain' })
-    return { ok: false, error: `${job.action.kind} was interrupted before its result was known: check by hand, then try again` }
+    const why = merge ? `interrupted ${MERGE_RESUMES + 1} times` : 'interrupted before its result was known'
+    return { ok: false, error: `${job.action.kind} was ${why}: check by hand, then try again` }
   }
+  // Resumed, it keeps who started it: your gesture still counts for the guards.
+  if (prev?.by) job = { ...job, by: prev.by }
   const refused = guardAction(job.guards, job.action, { branch: job.branch, by: job.by, project: job.task.project })
   if (refused) return finish({ ok: false, error: refused })
-  await store.saveReceipt({ ...base, state: 'pending', at: Date.now() })
-  return finish(await perform(deps, job))
+  await store.saveReceipt({ ...base, by: job.by, state: 'pending', at: Date.now(), ...(resumes ? { resumes } : {}) })
+  const running = perform(deps, job, resumes > 0)
+  if (!merge) return finish(await running)
+  merging.add(running)
+  try { return await finish(await running) } finally { merging.delete(running) }
 
   async function finish({ reached, ...result }: Done) {
     if (result.ok) {
@@ -78,7 +94,8 @@ async function run(deps: ActionDeps, script: string, args: string[], input?: str
 // reached: the protected branch a guarded merge put the commit on.
 type Done = ActionResult & { reached?: string[] }
 
-async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
+// resumed: an interrupted merge run again, which first finds where GitHub left its PR.
+async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promise<Done> {
   const { action: a, worktree: wt, branch } = job
   const name = a.kind.split('.')[1]
   const fail = (r: { code: number | null, out: string }): ActionResult =>
@@ -109,7 +126,7 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
         // a protected branch merged outside your gesture still raises the alert.
         if (pr?.merged) {
           const reached = mayMerge(job.guards, pr.baseRefName, job.by) ? [pr.baseRefName] : []
-          if (!pr.stray) return { ok: true, link: pr.url, commit: head.trim(), reached, note: 'already merged on GitHub' }
+          if (!pr.stray) return { ok: true, link: pr.url, commit: head.trim(), reached, note: resumed ? 'merged before the restart' : 'already merged on GitHub' }
           // Merged at a head without the task's commit: what GitHub merged is recorded, and what it left out is said.
           const h = head.trim().slice(0, 7), m = pr.headRefOid.slice(0, 7)
           return { ok: true, link: pr.url, commit: pr.headRefOid, reached, note: `already merged on GitHub at ${m}, without the task's commit ${h}`,
@@ -133,6 +150,11 @@ async function perform(deps: ActionDeps, job: ActionJob): Promise<Done> {
             pushed = true
             continue
           }
+        }
+        if (!pr) {
+          const c = await run(deps, SCRIPT.prClosed, [wt, branch])
+          const url = c.code === 0 ? lastLine(c.out) : ''
+          if (url) return { ok: false, error: `merge: the PR was closed without being merged (${url}): reopen it, or open a new one` }
         }
         const ready = prReady(pr, head.trim(), a.checks)
         if (!ready.ok && ready.later && i < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[i]!); continue }

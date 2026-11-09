@@ -106,6 +106,18 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
   return store.saveTask({ ...(await store.task(task.id) ?? task), step: state })
 }
 
+// After a restart: a merge step still marked running was cut by it. The engine
+// runs it again, and runAction asks GitHub where its PR stands first.
+export async function resumeMerges(deps: CoreAdminDeps & { store: PmStore }) {
+  const projects = await deps.store.projects()
+  for (const task of await deps.store.tasks()) {
+    if (!task.step?.acting || task.step.done || task.stopped) continue
+    const p = projects.find(x => x.key === task.project)
+    const step = planOf(p ? await deps.store.workflow(p.key) : null, task, p)[task.step.at]
+    if (step?.action?.kind === 'github.merge') await stepAction(deps, task.id, 'engine').catch(() => {})
+  }
+}
+
 // The user's choice on a review the after-N rule handed to them (Decisions):
 // any choice, like the coordinator's `task decide` but not limited to its options.
 export async function userDecide(store: PmStore, id: unknown, choice: unknown) {

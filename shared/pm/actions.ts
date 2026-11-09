@@ -78,6 +78,8 @@ EOF
   if [ "$j" = "[]" ] && [ -n "$pj" ]; then j="[$(echo "\${pj#* }" | sed 's/}$/,"stray":true}/')]"; fi
 fi
 echo "$j"`,
+  // The branch's latest PR closed without a merge (--state closed lists merged ones too): its link.
+  prClosed: `${IN} gh pr list --head "$1" --state closed --json url,state -q '[.[] | select(.state == "CLOSED")][0].url // empty' 2>&1`,
   // The step's method ($3), else the first the repo allows: merge commit, squash, rebase.
   merge: `${IN} m=$3; [ -n "$m" ] || m=$(gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed -q 'if .mergeCommitAllowed then "merge" elif .squashMergeAllowed then "squash" else "rebase" end' 2>&1) || { echo "$m"; exit 1; }
 gh pr merge "$1" "--$m" --match-head-commit "$2" 2>&1 || exit 1; echo "$1"`,
@@ -167,9 +169,10 @@ export function leaks(g: ResolvedGuards, remoteBranches: string[], allowed: stri
 
 // Written before an action runs, completed after. One per attempt: an action
 // is never run twice for one receipt, and one found 'pending' after a restart
-// becomes 'uncertain' instead of being run again blindly.
+// becomes 'uncertain' instead of being run again blindly. Except a merge: it
+// asks GitHub first (merged, closed, open), and is run again up to twice (resumes).
 // note: a line for the task's log.
 // review: new commits since the reviewed one, to review before the merge.
 export interface ActionResult { ok: boolean, error?: string, toAgent?: boolean, review?: { since: string, head: string }, link?: string, commit?: string, alert?: string, note?: string }
-export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain', result?: ActionResult, at: number }
+export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain', result?: ActionResult, at: number, by?: MergeBy, resumes?: number }
 export const receiptId = (task: string, step: string, attempt: number) => `${task}.${attempt}.${encodeURIComponent(step)}`
