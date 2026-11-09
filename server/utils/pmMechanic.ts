@@ -1,9 +1,15 @@
 // The engine's mechanical moves, every minute (server/plugins/pm.ts): for each
 // working or waiting task, the facts (its PR and checks, its agent busy or not,
 // a login back), then at most one move (shared/pm/mechanic.ts). A move is
-// noted on the task before it runs, so it is never made twice.
+// noted on the task before it runs, so it is never made twice. A move that
+// tries to fix a block counts (shared/pm/selfFix.ts): past its tries, or with
+// nothing left to try, the coordinator is woken once, with what was tried.
+import { randomUUID } from 'node:crypto'
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
-import { CATCH_UP_TRIES, catchUpGaveUp, ciOf, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
+import { CATCH_UP_TRIES, catchUpGaveUp, ciOf, infraLog, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
+import { FIX_MOVE, blockOf, escalation, fixOf, mayTry, noteFix } from '../../shared/pm/selfFix'
+import { enqueue, wakesFor } from '../../shared/pm/wakes'
+import { MAIN } from '../../shared/pm/coordinator'
 import { inMergeQueue, mergeOrder, ordinal } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
 import { onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
@@ -207,6 +213,9 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       const st = run.terminal ? await deps.call<{ status?: string | { state?: string } }>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null) : null
       const s = typeof st?.status === 'string' ? st.status : st?.status?.state
       facts.agentBusy = s === 'working' || s === 'blocked'
+      // Red, neither re-run nor sent back yet: its log says whether the code failed or the infrastructure.
+      if (ci?.red && !facts.agentBusy && !task.mech?.[`rerun:${ci.head}`] && !task.mech?.[`red:${ci.head}`])
+        facts.infra = infraLog((await sh(SCRIPT.failedLog, [run.worktree, ci.head]).catch(() => null))?.out ?? '')
     }
     // A stall: the coordinator's wake, one nudge, then the user's (pmStall.ts).
     facts.task = task = await noteStall(deps, task, plan, runs, run.worktree, sh, now).catch(() => task)
@@ -214,10 +223,15 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   }
   await queueTick(deps, seen)
   for (const { facts, run, sh } of seen) {
-    const task = facts.task
-    const next = nextMove(facts)
-    if (!next) continue
-    const noted = await store.saveTask({ ...task, mech: { ...task.mech, [next.key]: now } })
+    let task = facts.task
+    const block = blockOf(task)
+    if (block && !fixOf(task, block)) task = await store.saveTask({ ...task, selfFix: noteFix(task, block, now) })
+    const next = nextMove({ ...facts, task })
+    const fix = block && next && FIX_MOVE[block] === next.move.kind ? block : undefined
+    // No move, or past its tries: the coordinator's, once.
+    if (!next || (fix && !mayTry(task, fix))) { await escalate(deps, task, now); continue }
+    const tried = fix && { selfFix: noteFix(task, fix, now, TRY_TEXT[next.move.kind]) }
+    const noted = await store.saveTask({ ...task, mech: { ...task.mech, [next.key]: now }, ...tried })
     const text = await perform(deps, noted, run, next.move, facts, sh).catch((e: Error) => `failed: ${e.message}`)
     // Not delivered (the agent's terminal is gone): tried again on a later tick.
     if (text === null) {
@@ -229,6 +243,27 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
     made.push({ task: task.id, move: next.move.kind })
   }
   return made
+}
+
+// What a try on a block is, in the coordinator's wake.
+const TRY_TEXT: Partial<Record<Move['kind'], string>> = {
+  'catch-up': 'an update with the base (a conflict goes to the worker)',
+  'sync-push': 'a sync of the branch with its remote, then the push again',
+  'retry-action': 'the action again',
+}
+
+// The engine gives up on a block: the project's coordinator and the main one
+// woken once with what was tried, each whose autopilot wakes it for stuck
+// tasks (as its 'stuck' event would have); else the user's (Your turn).
+async function escalate(deps: PmLaunchDeps, task: Task, now: number) {
+  const why = escalation(task, now)
+  if (!why) return
+  const { store } = deps
+  const coords = new Map([[task.project, await store.coordinator(task.project)], [MAIN, await store.coordinator(MAIN)]])
+  const keys = wakesFor([task.project, MAIN], k => coords.get(k) ?? undefined, now)
+  for (const key of keys) await store.saveWakes([enqueue(await store.wakes(), key, [why], now, randomUUID().replace(/-/g, '').slice(0, 8))])
+  const woken = keys.map(k => (k === MAIN ? 'the main coordinator' : 'the project\'s coordinator'))
+  await store.logTask({ ...task, selfFix: { ...task.selfFix!, woke: now } }, 'engine', `gave up: ${why}${woken.length ? ` Woke ${woken.join(' and ')}.` : ''}`)
 }
 
 async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: MechFacts, sh: ReturnType<typeof actionShell>): Promise<string | null> {
@@ -254,6 +289,13 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
       return `the login is back; ${(await startTask(deps, task.id)).state}`
     case 'retry-action': case 'merge':
       return `step ${(await stepAction(deps, task.id, 'engine')).step?.yourTurn?.badge ?? 'went on'}`
+    case 'sync-push': {
+      // The remote's commits in the worktree, then the push again; a conflict is the worker's.
+      const r = await sh(SCRIPT.sync, [run.worktree, run.branch])
+      if (r.code === CODE.SEND_BACK) return hand(`${lastLine(r.out)}. Merge origin/${run.branch} into your branch, resolve the conflicts, commit, then say you are done.`)
+      if (r.code !== 0) return lastLine(r.out)
+      return `${lastLine(r.out)}; step ${(await stepAction(deps, task.id, 'engine')).step?.yourTurn?.badge ?? 'went on'}`
+    }
     case 'fix-base': {
       const refused = guardAction(f.guards, { kind: 'github.pr', base: move.base }, { branch: run.branch, by: 'engine' })
       if (refused) return refused

@@ -1,9 +1,9 @@
 // The board's data, and the user's button on a step that waits for them.
 import { boardColumns, cardOf, type Board, type BoardMachine, type Card } from '../../shared/pm/board'
-import { initialState, onEvent, planSteps, reviewedCommit, waitsToMerge, type StepEvent } from '../../shared/pm/steps'
+import { initialState, onEvent, planSteps, reviewedCommit, reworkSince, waitsToMerge, type StepEvent } from '../../shared/pm/steps'
 import { taskGuards, type ActionResult } from '../../shared/pm/actions'
 import type { MergeBy, Template } from '../../shared/pm/workflow'
-import { addShot, isImage, SHOT_TYPES, type Shot } from '../../shared/pm/shots'
+import { addShot, isImage, needsShots, SHOT_TYPES, type Shot } from '../../shared/pm/shots'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { taskPlan, type Task } from '../../shared/pm/run'
 import { weightOf, weightText } from '../../shared/pm/weight'
@@ -104,7 +104,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
   const act = r.effects.find(e => e.kind === 'action')
   if (act?.kind === 'action') {
     await store.saveTask({ ...task, step: state }) // checking, before the action runs
-    const run = (await store.runs()).filter(x => x.task === task.id && x.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
+    const run = await workerRun(store, task.id)
     const result: ActionResult = run
       ? await runAction({ store, sh: actionShell(deps, runOn(deps, run)) }, {
           task, step: act.step, attempt: act.attempt, action: act.action, by: approved ? 'user' : by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
@@ -123,6 +123,18 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     if (said) return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', `${act.step}: ${said}`)
   }
   return store.saveTask({ ...(await store.task(task.id) ?? task), step: state })
+}
+
+const workerRun = async (store: PmStore, id: string) =>
+  (await store.runs()).filter(x => x.task === id && x.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
+
+// The commit the task's worktree is at, on its machine; undefined when unknown.
+export async function worktreeHead(deps: CoreAdminDeps, store: PmStore, task: Task) {
+  const run = await workerRun(store, task.id)
+  if (!run) return
+  const r = await actionShell(deps, runOn(deps, run))('git -C "$1" rev-parse HEAD', [run.worktree]).catch(() => undefined)
+  const head = r?.code === 0 ? r.out.trim().split('\n')[0] : ''
+  return /^[0-9a-f]{40,64}$/.test(head ?? '') ? head : undefined
 }
 
 // After a restart: a merge step still marked running was cut by it. The engine
@@ -167,7 +179,9 @@ const sameKey = (a: string | undefined, b: unknown) =>
 
 // An agent's screenshot for its current step (POST /api/pm/shot), kept with
 // the task's data. `token`: the task's key, written in the agent's instructions file.
-export async function uploadShot(store: PmStore, id: unknown, phase: unknown, data: Buffer, ctype: string, token: unknown): Promise<Shot> {
+// head: reads the task's commit, asked only on a step that takes no screenshots:
+// new commits since the review let the worker replace its screenshots (addShot).
+export async function uploadShot(store: PmStore, id: unknown, phase: unknown, data: Buffer, ctype: string, token: unknown, head?: (task: Task) => Promise<string | undefined>): Promise<Shot> {
   const task = await store.task(id)
   // An unknown task and a wrong key answer the same.
   if (!task || !sameKey(task.shotToken, token)) throw new HerdrError('forbidden', 'Unknown task or wrong screenshot key')
@@ -176,12 +190,16 @@ export async function uploadShot(store: PmStore, id: unknown, phase: unknown, da
   if (phase !== 'before' && phase !== 'after') throw new HerdrError('bad_input', 'phase: before or after')
   const p = (await store.projects()).find(x => x.key === task.project)
   const plan = planOf(p ? await store.workflow(p.key) : null, task, p)
+  const open = task.step && plan[task.step.at]
+  const now = open && !needsShots(open) && head ? await head(task) : undefined
   const shot: Shot = { file: `${randomUUID().replace(/-/g, '').slice(0, 12)}.${ext}`, phase, at: Date.now() }
+  let kept = shot
   await store.addShot(task.id, shot.file, data, (fresh) => {
-    const r = addShot(plan, fresh.step, shot)
+    const r = addShot(plan, fresh.step, shot, fresh.step && reworkSince(plan, fresh.step, now))
     if ('refused' in r) throw new HerdrError('refused', r.refused)
+    kept = Object.values(r.state.shots ?? {}).flat().find(s => s.file === shot.file) ?? shot
     const dropped = fresh.step?.approved ? [{ at: shot.at, by: 'engine', text: 'approval dropped: new screenshots, the user looks again before the merge' }] : []
     return { ...fresh, step: r.state, ...(dropped.length ? { log: [...(fresh.log ?? []), ...dropped] } : {}) }
   })
-  return shot
+  return kept
 }

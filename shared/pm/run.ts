@@ -27,7 +27,8 @@ export interface Task {
   queue?: number // its place in its project's merge queue (mergeQueue.ts), 1: merging now
   idle?: number // since when the agent holding its step sits idle, its report still due (blocked.ts)
   stall?: { cause: string, reason: string, since: number } // its stall as the engine last saw it (blocked.ts)
-  stalls?: Record<string, { since: number, nudged?: number, handled?: number, back?: number }> // each cause seen: when it began, its one nudge and hand-over, when its agent went back to work
+  stalls?: Record<string, { since: number, nudged?: number, restarted?: number, handled?: number, back?: number }> // each cause seen: when it began, its one nudge, restart and hand-over, when its agent went back to work
+  selfFix?: { step: string, block: string, tried: string[], at: number, woke?: number } // the engine's tries on a block in this step (selfFix.ts)
   fixes?: { step: string, n: number } // mechanical fixes the coordinator's wakes made in this step (tell --fix)
   run?: string // the current run
   weight?: Weight // light, standard or heavy, set by the user or the coordinator (weight.ts); else from its type
