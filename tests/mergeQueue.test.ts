@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { inMergeQueue, mergeOrder, ordinal } from '../shared/pm/mergeQueue'
 import { catchUpGaveUp, nextMove, type MechFacts, type PrState } from '../shared/pm/mechanic'
 import { combineGuards } from '../shared/pm/guards'
-import { cardStatus } from '../shared/pm/board'
+import { cardStatus, statusText } from '../shared/pm/board'
 import type { PlannedStep, StepState } from '../shared/pm/steps'
 import type { Task } from '../shared/pm/run'
 
@@ -73,6 +73,6 @@ describe('merge queue', () => {
   it('shows its place on the card, and a refused merge waiting its turn is not the user\'s', () => {
     const refused = step({ yourTurn: { reason: 'action', badge: 'merge: the PR conflicts with v3', error: 'merge: the PR conflicts with v3' } })
     expect(cardStatus({ plan, state: refused, prNow: 'conflict', queue: 2 })?.text).toBe('2nd in merge queue')
-    expect(cardStatus({ plan, state: step({ approved: { by: 'user', at: 1 } }), queue: 3 })?.text).toBe('Approved · 3rd in merge queue')
+    expect(statusText(cardStatus({ plan, state: step({ approved: { by: 'user', at: 1 } }), queue: 3 })!, String)).toBe('Approved, merges by itself · 3rd in merge queue')
   })
 })

@@ -120,6 +120,11 @@ describe('runAction', () => {
     // GitHub's conflict ends with the commands to fix it: the error keeps none of them.
     const x = fakeDeps([info('COMPLETED'), { code: 0, out: 'same' }, { code: 1, out: 'X Pull request #505 is not mergeable: the merge commit cannot be cleanly created.\nRun the following to resolve the merge conflicts locally:\n  gh pr checkout 505 && git fetch origin dev && git merge origin/dev' }])
     expect(await runAction(x.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toMatchObject({ ok: false, error: 'merge: the PR conflicts with dev', catchUp: 'dev' })
+    // Approved at an earlier commit: it merges only while the task's own interface is the same.
+    const ui = (out: string) => fakeDeps([info('COMPLETED'), same, { code: 0, out }, { code: 0, out: 'https://pr/1' }]).deps
+    const approved = job({ step: 'merge', action: { kind: 'github.merge' }, approved: 'old' })
+    expect(await runAction(ui('changed'), approved)).toMatchObject({ ok: false, unapproved: true })
+    expect(await runAction(ui('same'), approved)).toMatchObject({ ok: true, commit: 'abc' })
   })
 })
 
@@ -155,6 +160,23 @@ const localSh: ActionDeps['sh'] = async (script, args, input) => {
 }
 
 describe('on a real repo', () => {
+  it('tells a change of the task\'s own interface from what a merge of its base brought', async () => {
+    const dir = path.join(tmp, 'ui'), origin = path.join(dir, 'origin.git'), repo = path.join(dir, 'repo'), wt = path.join(dir, 'wt')
+    const put = (at: string, file: string, text: string) => { fs.mkdirSync(path.dirname(path.join(at, file)), { recursive: true }); fs.writeFileSync(path.join(at, file), text); git(at, 'add', '.'); git(at, 'commit', '-qm', file); return git(at, 'rev-parse', 'HEAD') }
+    fs.mkdirSync(dir); git(dir, 'init', '-q', '--bare', '-b', 'main', origin); git(dir, 'clone', '-q', origin, repo)
+    put(repo, 'app/components/A.vue', '1\n2\n3\n4\n5\n6\n7\n8\n'); git(repo, 'push', '-q', 'origin', 'main:dev')
+    git(repo, 'worktree', 'add', '-q', '-b', 'task/A-1', wt, 'origin/dev')
+    const approved = put(wt, 'app/components/A.vue', '1\n2\nmine\n4\n5\n6\n7\n8\n')
+    const changed = async (to: string) => (await localSh(SCRIPT.uiChanged, [wt, 'dev', approved, to])).out
+    // The base changes the same file elsewhere and another screen; merged in, the task's own change is the same.
+    git(repo, 'checkout', '-q', '-B', 'other', 'origin/dev'); put(repo, 'app/components/A.vue', '0\n1\n2\n3\n4\n5\n6\n7\ntheirs\n'); put(repo, 'pages/b.vue', 'b\n'); git(repo, 'push', '-q', 'origin', 'HEAD:dev')
+    git(wt, 'fetch', '-q'); git(wt, 'merge', '-q', '--no-edit', 'origin/dev')
+    expect(await changed(git(wt, 'rev-parse', 'HEAD'))).toBe('same')
+    // A CI fix outside the interface keeps it; a change to a screen does not.
+    expect(await changed(put(wt, 'server/x.ts', 'fix\n'))).toBe('same')
+    expect(await changed(put(wt, 'app/layouts/default.vue', 'new\n'))).toBe('changed')
+  })
+
   it('lands a task on dev, refuses main, sends a conflict back and verifies the merge', async () => {
     const origin = path.join(tmp, 'origin.git'), repo = path.join(tmp, 'repo'), wt = path.join(tmp, 'wt')
     git(tmp, 'init', '-q', '--bare', '-b', 'main', origin)
