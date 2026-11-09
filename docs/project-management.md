@@ -332,6 +332,10 @@ of the entry. An agent that is not on screen here opens the sheet instead.
 - **A visual change to merge**: its screenshots large (swipe between them, tap
   one to zoom; each is labelled phone or desktop), the review's verdict, the PR,
   then *Merge*, or *Send back* with a note: the agent gets your note as what to fix.
+  When the agent reworks the task after its review (new commits since the
+  review), its new screenshots replace the shown ones, marked *after rework*;
+  the earlier set stays in the Plan tab under *Earlier screenshots*. The merge
+  step then sends the task back to review, which sees the new set.
 - **A review to settle** after several send-backs: each choice the engine offers,
   with what it does.
 - **A stopped task**: who stopped it and why, then *Continue*, *Take it as it is*
