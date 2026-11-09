@@ -17,8 +17,7 @@ const pick = ref('')
 
 const name = computed(() => alfred.value?.name || 'Alfred')
 const current = computed(() => (alfredPane.value ? alfred.value?.ran : undefined) ?? alfred.value?.program)
-// The offered agents installed on wherdr's own machine that can carry Alfred.
-const choices = computed(() => offerCoordinators(appConfig.value.machines?.find(m => m.local)?.kinds ?? appConfig.value.kinds))
+const choices = alfredPrograms
 // Its conversation is the one open: the same selected style as agent cards.
 const selected = computed(() => !props.banner && !!alfredPane.value && alfredPane.value.id === curPane.value)
 const sub = computed(() => {

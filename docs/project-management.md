@@ -157,7 +157,13 @@ In the **Guards** tab:
   protected branch too). A task already waiting for you at a merge that a
   change gives to wherdr goes on at once: the engine runs the step again,
   and the task's log says why. A merge left to you that you do on GitHub
-  ends the step as merged within a minute: the task goes to *Done*.
+  ends the step as merged within a minute: the task goes to *Done*. A merge
+  cut by a restart of wherdr (an update, a new build) goes on by itself:
+  wherdr asks GitHub where the PR stands.
+  Merged, the task goes on (its log says *merged before the restart*); closed
+  without a merge, it waits for you with that reason; still open, the merge
+  runs again, at most twice, then waits for you. A restart waits up to 20 s
+  for a merge that runs.
 - **Effect**: what each task type adds and, for each step that merges, whether
   it is left to you. It follows your changes before you save.
 
@@ -199,8 +205,9 @@ the header shows the autopilot's state (green square: on; hollow: asleep) and a
 count of what waits for you: a workflow change the coordinator proposed, or a
 kept conversation that ran with another agent. A tap opens its window:
 
-- the agent that answers the coordinator, and a warning when its conversation
-  ran with another one; on the board, *Open* opens or starts it;
+- the agent that answers the coordinator (Alfred's too), and a warning when its conversation
+  ran with another one: *New conversation* with the default, or *Resume* the one kept (for
+  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it;
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's
@@ -479,6 +486,14 @@ updating the PR*: its agents are never ended while wherdr waits for that work.
 The task is yours again once the worker pushes or says it is done. Before it
 ends a task's agents, wherdr pushes the commits the branch has not pushed yet;
 if the push fails, the agents stay and the log says why.
+
+A task has one worker and one reviewer at most. Two starts at the same time
+(yours, the coordinator's, the engine's when the task before it is done, a
+start held for room) start one agent: the other is refused as *already
+starting*, and a start held for room is dropped once the task started another
+way. A task whose worker still runs (waiting for your answer, say) is not
+started again: stop it first. Should two agents of one role ever run on a
+task, wherdr keeps the one it tracks, ends the other and says so in the log.
 
 A message from the coordinator (`wherdr pm tell <task>`) goes to the agent
 that holds the task's current step; at a step held by nobody (the PR, the
