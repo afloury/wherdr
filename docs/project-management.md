@@ -329,7 +329,10 @@ action), standard otherwise. The coordinator does the same with `task add
 
 ## Task sheet
 
-A card opens the task's sheet: its id badge by the title (a tap copies it) and step, a note when it waits or was
+A card opens the task's sheet. Tasks to handle, Decisions' *Open task* and a task
+link in the chat (`#/board?task=ID`) open it over the page you are on (a bottom
+sheet on a phone), with `?task=ID` added to that page's address, so it survives a
+reload and can be shared; closing it leaves the page as it was. The sheet shows its id badge by the title (a tap copies it) and step, a note when it waits or was
 stopped, the time it spent in each step with the time it waited for you apart,
 its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
 waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
