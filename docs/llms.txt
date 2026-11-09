@@ -73,7 +73,7 @@
 - [Task sheet](docs/project-management.md#task-sheet): time per step, waits for you, review rounds and CI fixes, the task's buttons and its Description, Plan and Log tabs.
 - [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back and other answers; a waiting PR kept up to date with its base, and an approved merge that goes on by itself once ready.
 - [A stalled task](docs/project-management.md#a-stalled-task): red CI or an idle agent: the coordinator woken, one nudge, then Tasks to handle and a notification after 30 min.
-- [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again; which agent a coordinator's `tell` reaches (--to worker|reviewer).
+- [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again; kept while the worker updates the PR (a catch-up, a CI fix), unpushed commits pushed first; which agent a coordinator's `tell` reaches (--to worker|reviewer).
 - [Alfred's command](docs/alfred.md): `wherdr alfred`, what Alfred reads and changes after your yes (projects, their machines, guards, coordinators, settings).
 - [After an update](docs/alfred.md#after-an-update): new instructions for Alfred and coordinators, and the one-line notice on their next command.
 

@@ -17,6 +17,10 @@ export interface PlannedStep extends Step { text: string, guarded?: true }
 // error: what the failed engine action said (reason 'action').
 export interface YourTurn { reason: 'user' | 'timeout' | 'rounds' | 'action', badge: string, advice?: Advice, error?: string }
 
+// Work the engine handed the worker on its own (a catch-up, red CI): the step's
+// Your turn (`was`) waits until the PR head moves from `head` or the worker reports.
+export interface AgentWork { kind: string, head: string, at: number, was?: YourTurn }
+
 export interface StepState {
   at: number // index of the current step
   started: boolean
@@ -28,6 +32,7 @@ export interface StepState {
   rereview?: Rereview // the PR head moved after the review: only that change is reviewed again
   acting?: boolean // an engine action is running
   yourTurn?: YourTurn
+  agent?: AgentWork
   proofs: Record<string, Partial<Record<Evidence, string>>> // per step id
   shots?: Record<string, Shot[]> // the screenshots uploaded per step id (shots.ts)
   rounds: Record<string, number> // send-backs per verdict step id
@@ -156,7 +161,7 @@ function act(s: StepState, step: PlannedStep, effects: Effect[]): StepState {
 // Enters step i: a step with no end is passed through (the last one is done).
 function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, effects: Effect[]): StepState {
   const step = plan[i]
-  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, recheckAt: undefined, acting: undefined, yourTurn: undefined, fix: undefined, rereview: undefined, catchUp: undefined }
+  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, recheckAt: undefined, acting: undefined, yourTurn: undefined, agent: undefined, fix: undefined, rereview: undefined, catchUp: undefined }
   if (!step) return effects.push({ kind: 'done' }), { ...s, done: true }
   if (!step.ends) return i === plan.length - 1 ? (effects.push({ kind: 'done' }), { ...s, done: true }) : enter(plan, s, i + 1, now, effects)
   if (step.timeout) s.deadline = now + durationMs(step.timeout)
