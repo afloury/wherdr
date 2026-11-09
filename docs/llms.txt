@@ -18,7 +18,7 @@
 - [Requirements](docs/installation.md#requirements): hc, Linux or macOS, Node.js 22 and Git.
 - [Installation](docs/installation.md#installation): install v3 and run it as a service.
 - [Keep it running](docs/installation.md#keep-it-running): run wherdr as a service (a systemd --user unit, a macOS LaunchAgent).
-- [On-device dictation files](docs/installation.md#on-device-dictation-files): where the dictation models are fetched and kept.
+- [On-device dictation files](docs/installation.md#on-device-dictation-files): where the dictation models and read-aloud voices are fetched and kept.
 - [Updating](docs/installation.md#updating): update v3 by hand; there is no update banner.
 - [Install with an agent](docs/install-with-an-agent.md): ready-to-paste prompts for an agent that installs or updates wherdr.
 - [Migrate from v2](docs/migrate-from-v2.md): install v3 beside v2 and import its machines and settings; its projects are listed for Alfred.
@@ -106,7 +106,7 @@
 
 - [Development and tests](docs/development.md): run from source and test.
 - [Design rules](docs/design.md): the interface styling reference, sheets included (where focus goes on open).
-- [Dictation design](docs/dictation.md): the dictation engines and how to add one; why a server-side model install fails (bzip2 missing, disk full); read aloud and its voices (iOS gives web apps only its standard voices).
+- [Dictation design](docs/dictation.md): the dictation engines and how to add one; why a server-side model install fails (bzip2 missing, disk full); read aloud and its voices (iOS gives web apps only its standard voices); the neural voice catalog (Siwis, Cori, MLS).
 
 ## v2 only
 

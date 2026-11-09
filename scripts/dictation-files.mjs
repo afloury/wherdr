@@ -1,12 +1,13 @@
 // On-device dictation files: the pinned sets (WASM runtimes, models from the
-// catalog app/utils/dictation/models.json) and their checked, resumable
+// catalogs app/utils/dictation/models.json and app/utils/speech/voices.json)
+// and their checked, resumable
 // download into DATA_DIR/models. Used by scripts/fetch-dictation-files.mjs and
 // bundled into the server (server/utils/dictationServerFiles.ts), so this
 // module has no CLI: importing it never starts a download. Every file is
 // pinned (exact URL) and checked against its sha256 before it is moved into
 // place; files already in place are kept, an interrupted download resumes.
-// Model sets come from the catalog (`set`, `source`, `dir`, `files`): a model
-// is added there, not here. Based on followcat's scripts/fetch-asr-models.sh (MIT).
+// Model and voice sets come from the catalogs (`set`, `source`, `dir`, and
+// `files` or `members`): a model or a voice is added there, not here. Based on followcat's scripts/fetch-asr-models.sh (MIT).
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
@@ -15,11 +16,15 @@ import path from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import CATALOG from '../app/utils/dictation/models.json' with { type: 'json' }
+import VOICES from '../app/utils/speech/voices.json' with { type: 'json' }
 
 // sherpa-onnx's combined WASM build with followcat's ASR bindings (his
 // branch mobile, commit 679ff70; no official release ships this build).
 const SHERPA = 'https://raw.githubusercontent.com/followcat/wherdr/679ff70f98d0a296477776a7d3fb2344a0c8a1d5/public/wasm/'
 const ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/'
+// sherpa-onnx's TTS binding for that build: the same file from v1.12.34 to
+// v1.12.40, the releases whose ASR config the build above matches.
+const SHERPA_TTS = 'https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/21473b6bd2f3ed317426b05f27bab09fd160d0a0/wasm/tts/sherpa-onnx-tts.js'
 
 // A file: { url, sha256, to } with `to` relative to DATA_DIR/models.
 // An archive: { url, sha256, dir, members }, its members extracted into `dir`.
@@ -29,7 +34,9 @@ export const SETS = {
     ['sherpa-onnx-wasm-combined.wasm', 'cc726f48a62ceba05541c195b7155482da7232d9300405fb5a4a7ddce6110705'],
     ['sherpa-onnx-core.js', '7913d88d173bc2140d52085cc9d62bf3c8a9b95e53842704329007fa0e37b879'],
     ['sherpa-onnx-asr.js', 'a83eb0f88258864453e3c910fb1954f8f78c2cca071ebac06329fcfa25c8b88d'],
-  ].map(([name, sha256]) => ({ url: SHERPA + name, sha256, to: `runtime/sherpa-onnx-679ff70/${name}` })),
+  ].map(([name, sha256]) => ({ url: SHERPA + name, sha256, to: `runtime/sherpa-onnx-679ff70/${name}` })).concat(
+    { url: SHERPA_TTS, sha256: 'c330199603f74785db93d3b272afee15a3572c7a222b382361298d4e58716c13', to: 'runtime/sherpa-onnx-679ff70/sherpa-onnx-tts.js' },
+  ),
   ort: [
     ['ort.webgpu.min.js', 'c94f5bb9c17bd37168e9b4220facb2b6fc1dd125a5e91b7a680171840a27f254'],
     ['ort.wasm.min.js', 'c6bc9f8e1d0ecc3983a57910e6a30b2230a512bcd2e0207cd64306459c3de7b4'],
@@ -40,9 +47,16 @@ export const SETS = {
     ['ort-wasm-simd-threaded.asyncify.wasm', 'babec0bbddb6d3082623b99b7e1391b75e0729bcca076ff8424d7753af97fada'],
   ].map(([name, sha256]) => ({ url: ORT + name, sha256, to: `runtime/onnxruntime-web-1.23.2/${name}` })),
 }
-export { CATALOG }
+export { CATALOG, VOICES }
 for (const m of CATALOG.models) {
   SETS[m.set] = [{ url: m.source.url, sha256: m.source.sha256, dir: m.dir, members: m.files.map(f => f.path) }]
+}
+// A voice comes from an archive (its members extracted), or as loose files
+// under `source.base`, each with its own sha256 (no archive is published).
+for (const v of VOICES.voices) {
+  SETS[v.set] = v.source.url
+    ? [{ url: v.source.url, sha256: v.source.sha256, dir: v.dir, members: v.members.map(f => f.path) }]
+    : v.members.map(f => ({ url: v.source.base + f.path, sha256: f.sha256, to: `${v.dir}/${f.path}` }))
 }
 export const DEFAULT_SETS = ['runtime', CATALOG.models[0].set]
 
