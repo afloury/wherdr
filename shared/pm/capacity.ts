@@ -6,14 +6,27 @@
 // pressure: macOS only (its swap grows on demand, so its share used says little).
 export interface MachineCapacity { cores: number, total: number, available: number, swapTotal: number, swapFree: number, load1: number, pressure?: Pressure }
 export type Pressure = 'normal' | 'warn' | 'critical'
-// kern.memorystatus_vm_pressure_level's values.
-const PRESSURE: Record<string, Pressure> = { 1: 'normal', 2: 'warn', 4: 'critical' }
+// macOS pressure from kern.memorystatus_level, the system-wide free memory
+// percentage `memory_pressure -Q` prints: under WARN_FREE % warn, under
+// CRITICAL_FREE % critical. The kernel's own level
+// (kern.memorystatus_vm_pressure_level: 1, 2, 4) often says warn on a Mac with
+// plenty free, so it counts only when critical, or when the percentage is missing.
+export const WARN_FREE = 20
+export const CRITICAL_FREE = 10
+const LEVEL: Record<string, Pressure> = { 1: 'normal', 2: 'warn', 4: 'critical' }
+export function pressureOf(freePercent: number | null, level: string | undefined): Pressure | undefined {
+  const kernel = LEVEL[level ?? '']
+  if (freePercent === null) return kernel
+  if (kernel === 'critical' || freePercent < CRITICAL_FREE) return 'critical'
+  return freePercent < WARN_FREE ? 'warn' : 'normal'
+}
 
-// Linux: nproc, /proc/loadavg, /proc/meminfo. macOS: sysctl (memory pressure level) and vm_stat.
+// Linux: nproc, /proc/loadavg, /proc/meminfo. macOS: sysctl (memory free percentage, pressure level) and vm_stat.
 export const CAPACITY_SCRIPT = `if [ "$(uname -s)" = Darwin ]; then
   echo "cores: $(sysctl -n hw.ncpu)"
   echo "memsize: $(sysctl -n hw.memsize)"
   echo "loadavg: $(sysctl -n vm.loadavg)"
+  echo "memfree: $(sysctl -n kern.memorystatus_level 2>/dev/null)"
   echo "pressure: $(sysctl -n kern.memorystatus_vm_pressure_level 2>/dev/null)"
   vm_stat
 else
@@ -36,13 +49,13 @@ export function parseLinux(text: string): MachineCapacity | null {
 
 // macOS: available = (free + inactive + speculative + purgeable pages) × page
 // size, close to Activity Monitor's figure but not exact (minFree is the margin).
-// No swap figures: the pressure level stands for them (unset when unreadable).
+// No swap figures: the pressure (pressureOf) stands for them (unset when unreadable).
 export function parseMacos(text: string): MachineCapacity | null {
   const bytes = num(field(text, 'memsize'))
   const page = num(/page size of (\d+) bytes/.exec(text)?.[1])
   const pages = (k: string) => num(field(text, `Pages ${k}`)) ?? 0
   if (bytes === null || page === null || field(text, 'Pages free') === undefined) return null
-  const pressure = PRESSURE[field(text, 'pressure') ?? '']
+  const pressure = pressureOf(num(field(text, 'memfree')), field(text, 'pressure'))
   const available = (pages('free') + pages('inactive') + pages('speculative') + pages('purgeable')) * page
   return { ...head(text), total: Math.round(bytes / 2 ** 20), available: Math.round(available / 2 ** 20), swapTotal: 0, swapFree: 0, ...(pressure ? { pressure } : {}) }
 }

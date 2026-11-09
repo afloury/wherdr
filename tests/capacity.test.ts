@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseCapacity } from '../shared/pm/capacity'
+import { parseCapacity, pressureOf } from '../shared/pm/capacity'
 import { DEFAULT_MEMORY, memoryLine } from '../shared/pm/memory'
 
 // CAPACITY_SCRIPT's output on each OS (trimmed real samples).
@@ -14,7 +14,8 @@ SwapFree:        2031616 kB`
 const macos = `cores: 10
 memsize: 17179869184
 loadavg: { 3.42 2.97 2.71 }
-pressure: 1
+memfree: 45
+pressure: 2
 Mach Virtual Memory Statistics: (page size of 16384 bytes)
 Pages free:                               65536.
 Pages active:                            300000.
@@ -35,9 +36,11 @@ describe('machine capacity', () => {
     expect(memoryLine(parseCapacity(macos), DEFAULT_MEMORY, 1)).toBe('4.0 GB free of 16.0 GB · 10 cores, load 3.4 · pressure normal · 1 of 10 agents · go')
   })
 
-  it('reads the macOS pressure level: 2 warn, 4 critical, unset when unreadable', () => {
-    const at = (level: string) => parseCapacity(macos.replace('pressure: 1', `pressure: ${level}`))?.pressure
-    expect([at('2'), at('4'), at('')]).toEqual(['warn', 'critical', undefined])
+  it('reads the macOS pressure from the free percentage; the kernel level counts when critical or alone', () => {
+    // A healthy Mac whose kernel level says warn (2) at 45 % free: normal.
+    expect([pressureOf(45, '2'), pressureOf(15, '1'), pressureOf(5, '1'), pressureOf(45, '4')]).toEqual(['normal', 'warn', 'critical', 'critical'])
+    expect([pressureOf(null, '2'), pressureOf(null, '')]).toEqual(['warn', undefined])
+    expect(parseCapacity(macos.replace('memfree: 45\n', ''))?.pressure).toBe('warn')
   })
 
   it('is unknown when the memory cannot be read', () => {
