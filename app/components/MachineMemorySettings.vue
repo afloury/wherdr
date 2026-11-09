@@ -1,77 +1,25 @@
 <script setup lang="ts">
-// Each machine's memory and agents at once (all projects), and whether
-// automatic starts may go there now. `edit`: also its settings (Settings ›
-// Machines); Settings › Pace shows the state only.
-import type { Hours, MemorySettings } from '#shared/pm/memory'
-import type { MachineCapacity } from '#shared/pm/capacity'
-
-defineProps<{ edit?: boolean }>()
-interface Row { key: string, label: string, mem: MachineCapacity | null, settings: MemorySettings, agents: number, cap?: number, line: string, short?: string }
-const rows = ref<Row[] | null>(null)
-const error = ref('')
-const load = () => api<{ machines: Row[] }>('/api/machine/memory').then((v) => { rows.value = v.machines }, (e: Error) => { error.value = e.message })
-onMounted(load)
-
-// An emptied cap goes back to the default (one agent per 1.5 GB of RAM).
-async function save(r: Row, field: 'minFreeGb' | 'maxAgents', e: Event) {
-  const v = (e.target as HTMLInputElement).value.trim()
-  error.value = ''
-  try { rows.value = (await api<{ machines: Row[] }>('/api/machine/memory', { key: r.key, [field]: v === '' && field === 'maxAgents' ? null : Number(v) })).machines }
-  catch (err) { error.value = (err as Error).message }
-}
-const gb = (mb: number) => Math.round(mb / 102.4) / 10
-
-// Availability hours: Always clears them; a new choice starts at 09:00-19:00.
-async function saveHours(r: Row, patch: Partial<Hours> | null) {
-  const hours = patch && { days: 'weekdays' as const, from: '09:00', to: '19:00', ...r.settings.hours, ...patch }
-  error.value = ''
-  try { rows.value = (await api<{ machines: Row[] }>('/api/machine/memory', { key: r.key, hours })).machines }
-  catch (err) { error.value = (err as Error).message }
-}
-const pick = (r: Row, e: Event) => {
-  const v = (e.target as HTMLSelectElement).value
-  return saveHours(r, v === 'always' ? null : { days: v as Hours['days'] })
-}
-const time = (r: Row, field: 'from' | 'to', e: Event) => saveHours(r, { [field]: (e.target as HTMLInputElement).value })
+// Settings › Pace: each machine's memory and agents at once (all projects), and
+// whether automatic starts may go there now. Its settings are on the machine
+// cards of Settings › Machines.
+onMounted(loadMemory)
 </script>
 
 <template>
   <div class="settings-card memory-card" data-testid="machine-memory">
-    <div v-for="r in rows ?? []" :key="r.key" class="memory-row">
+    <div v-for="r in memoryRows ?? []" :key="r.key" class="memory-row">
       <span class="memory-head"><b>{{ r.label }}</b><span class="mono-label" :class="{ wait: r.short }" data-testid="memory-line">{{ r.line }}</span></span>
-      <div v-if="edit" class="memory-form">
-        <label>{{ t('Automatic starts wait under (GB free)') }}
-          <input class="pm-select" type="number" min="0" max="256" step="0.5" :value="gb(r.settings.minFreeMb)" data-testid="memory-min" @change="save(r, 'minFreeGb', $event)">
-        </label>
-        <label>{{ t('Agents at once, all projects') }}
-          <input class="pm-select" type="number" min="1" max="50" :value="r.settings.maxAgents ?? ''" :placeholder="r.cap ? String(r.cap) : ''" data-testid="memory-cap" @change="save(r, 'maxAgents', $event)">
-        </label>
-        <label>{{ t('Available') }}
-          <select class="pm-select" :value="r.settings.hours?.days ?? 'always'" data-testid="memory-hours" @change="pick(r, $event)">
-            <option value="always">{{ t('Always') }}</option>
-            <option value="weekdays">{{ t('Weekdays') }}</option>
-            <option value="all">{{ t('Every day') }}</option>
-          </select>
-        </label>
-        <template v-if="r.settings.hours">
-          <label>{{ t('From') }}<input class="pm-select" type="time" :value="r.settings.hours.from" @change="time(r, 'from', $event)"></label>
-          <label>{{ t('To') }}<input class="pm-select" type="time" :value="r.settings.hours.to" @change="time(r, 'to', $event)"></label>
-        </template>
-      </div>
     </div>
-    <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-    <p class="muted settings-hint">{{ t('Automatic starts (autopilot, chains, automations) wait while a machine is short on memory, its swap is over 90 % used or it runs its cap of agents; they start by themselves once memory is back. Outside a machine\'s available hours (this server\'s time) they skip it, and heavy work skips it in its last 2 hours. Your own starts still go.') }}</p>
+    <p v-if="memoryError" class="form-error" role="alert">{{ memoryError }}</p>
+    <p class="muted settings-hint">{{ memoryHint() }}</p>
   </div>
 </template>
 
 <style scoped>
 .memory-card { padding: 0 16px; margin-top: 12px; }
-.memory-row { display: flex; flex-direction: column; gap: 8px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+.memory-row { padding: 13px 0; border-bottom: 1px solid var(--line); }
 .memory-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; justify-content: space-between; }
 .memory-head .mono-label { color: var(--green); overflow-wrap: anywhere; }
 .memory-head .mono-label.wait { color: var(--ochre); }
-.memory-form { display: flex; flex-wrap: wrap; gap: 12px; }
-.memory-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-2); }
-.memory-form input { width: 120px; }
 .memory-card .settings-hint { padding: 12px 0; margin: 0; }
 </style>
