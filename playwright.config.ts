@@ -22,6 +22,6 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium-phone', use: { ...devices['iPhone 13'], browserName: 'chromium' } },
-    { name: 'webkit-phone', use: { ...devices['iPhone 13'] }, testMatch: 'core-smoke.spec.ts' },
+    { name: 'webkit-phone', use: { ...devices['iPhone 13'] }, testMatch: ['core-smoke.spec.ts', 'tts-worker.spec.ts'] },
   ],
 })

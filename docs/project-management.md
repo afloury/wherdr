@@ -95,7 +95,8 @@ its folder, branches and task worktrees stay on the machine.
   own (*Home*, its folder), read only. *Add a machine* picks one of the connected
   machines and takes the path of the repository's clone there (`~/project`); once
   saved, wherdr runs that machine's readiness check (see *Start on…* under
-  [Board](#board)) and shows *Ready* or what is missing. ✕ removes a machine:
+  [Board](#board)) and shows *Ready* or what is missing. Each machine shows its
+  last check (*Not checked yet* before the first); ↻ runs it again. ✕ removes a machine:
   new tasks no longer start there, tasks already there stay. Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
   **Placement** chooses how new tasks spread over these machines: *Heavy to the
@@ -111,6 +112,13 @@ its folder, branches and task worktrees stay on the machine.
   again in its worktree (a catch-up, red CI, a send-back, the step it is woken
   for) is weighed by what it does, not by its type: heavy only while its step
   still lacks its screenshots, standard otherwise.
+- **Shown in**: the home tab that shows the project's coordinator and its tasks
+  to handle, saved at once. *Automatic* (the default, with the groups it means
+  in brackets): every tab holding one of its machines, so a project whose
+  machines are in several groups shows on each of them. Or one machine group,
+  or *All tabs*. Without a machine group the sheet points to Settings ›
+  Appearance › Machine tabs; deleting a group puts the projects shown in it
+  back to Automatic ([Machines as tabs](home.md#machines-as-tabs)).
 
 ### Workflow
 
@@ -235,7 +243,10 @@ kept conversation that ran with another agent. A tap opens its window:
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
   even with nothing to do, with its own *New tasks / day*). The form says
   *Unsaved changes* until you save;
-- its wakes, each created, delivered and acknowledged, and *Run now*.
+- its wakes and *Run now*: one line for the last wake (*Last wake 15:44*, its
+  reason, *handled* or how it ended), a highlighted line for each other wake not
+  handled (waiting, no answer, timed out, coordinator gone), and *History* folds
+  the full list, each wake with its id, created, delivered and acknowledged times.
 
 Automatic work (the autopilot, automations) waits while an account is ahead of
 its [pace](quotas.md#pace) (a machine whose account waits is skipped) or no
@@ -274,7 +285,8 @@ project's columns, or *To do*, *Working* and *Done* for all projects. A done
 or archived task is never under Your turn.
 
 A card shows the task's title, its id (a badge in the project's color: a tap
-copies it, *Copied*, without opening the task) and step, how long it has been in that
+copies it, *Copied*, without opening the task), the machine it runs on when its
+project allows several (*machine-b*), its step, how long it has been in that
 step (*12 min in review*) or, once done, how long it took from start to done
 (*42 min*), a dot with its agent's state (worker or reviewer), where its PR stands (*PR open · waiting for checks*,
 *checks failed*, *merging*, *The PR conflicts with v3*, *merged …*), what you have to do under
