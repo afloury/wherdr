@@ -191,11 +191,11 @@ describe('the machine bar on the home list', () => {
     // A machine off the bar still shows under All.
     expect(w.findAll('.state-group .card-origin').map(b => b.text())).toContain('Server')
     expect(w.find('.state-machines').exists()).toBe(false)
-    // Turned off: each machine's menu moves to its chip.
+    // Turned off: still no machine chips.
     machineBarOn.value = false
     await nextTick()
     expect(w.find('.machine-bar').exists()).toBe(false)
-    expect(w.findAll('.state-machine').map(c => c.attributes('data-machine'))).toEqual(['local', 'laptop'])
+    expect(w.find('.state-machines').exists()).toBe(false)
   })
 
 })

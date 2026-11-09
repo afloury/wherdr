@@ -1,7 +1,8 @@
 // A stalled task, on each engine pass (pm/blocked.ts): its stall saved on the
-// task (the autopilot's 'stuck' wake reads it), the agent nudged once per
-// cause, then handed to the user once (Tasks to handle, a 'needs-you'
-// notification). Each step goes to the task's log.
+// task, the agent nudged once per cause, restarted once if that did not do,
+// then handed to the user once (Tasks to handle, a 'needs-you' notification).
+// The nudge and the restart are the engine's tries (selfFix.ts): the
+// coordinator is woken only once both failed. Each step goes to the task's log.
 import { SCRIPT } from '../../shared/pm/actions'
 import { backToWork, failingTests, nudgeText, stallMoves, stallOf, type Stall } from '../../shared/pm/blocked'
 import type { PlannedStep } from '../../shared/pm/steps'
@@ -11,6 +12,8 @@ import type { PmLaunchDeps } from './pmLaunch'
 import type { PmStore } from './pmStore'
 import { notificationAllowed } from './notificationRules'
 import { pushSend } from './push'
+import { reviveWorker } from './pmRelease'
+import { noteFix } from '../../shared/pm/selfFix'
 
 export type StallNotify = (task: Task, s: Stall) => Promise<number>
 
@@ -34,26 +37,48 @@ export async function noteStall(deps: PmLaunchDeps, task: Task, plan: PlannedSte
     return store.logTask({ ...task, stall: undefined }, 'engine', `stall over: ${task.stall.reason}`)
   }
   const moves = stallMoves(task, s, now)
+  const tests = async (st: Stall) => st.cause.startsWith('red:') ? failingTests((await sh(SCRIPT.failedLog, [worktree, st.cause.slice(4)]).catch(() => null))?.out ?? '') : []
   const seen = task.stalls?.[s.cause] ?? { since: s.since }
   // Noted before anything is sent: one nudge and one hand-over per cause, whatever fails.
-  const keep = Object.entries({ ...task.stalls, [s.cause]: { ...seen, ...(moves.nudge ? { nudged: now } : {}), ...(moves.handle ? { handled: now } : {}) } }).slice(-10)
-  const next = { ...task, stall: s, stalls: Object.fromEntries(keep) }
-  if (task.stall?.cause === s.cause && !moves.nudge && !moves.handle) return task.stall.since === s.since ? task : store.saveTask(next)
+  const keep = Object.entries({ ...task.stalls, [s.cause]: { ...seen, ...(moves.nudge ? { nudged: now } : {}), ...(moves.restart ? { restarted: now } : {}), ...(moves.handle ? { handled: now } : {}) } }).slice(-10)
+  const tried = moves.nudge ? 'a nudge of the agent' : moves.restart ? 'a restart of the agent' : undefined
+  const next = { ...task, stall: s, stalls: Object.fromEntries(keep), selfFix: noteFix(task, 'stall', now, tried) }
+  if (task.stall?.cause === s.cause && !moves.nudge && !moves.restart && !moves.handle) return task.stall.since === s.since ? task : store.saveTask(next)
   let out = task.stall?.cause === s.cause ? await store.saveTask(next) : await store.logTask(next, 'engine', `stalled: ${s.reason}`)
   if (moves.nudge) {
     const agent = agentOf(task, plan, runs, s)
-    const tests = s.cause.startsWith('red:') ? failingTests((await sh(SCRIPT.failedLog, [worktree, s.cause.slice(4)]).catch(() => null))?.out ?? '') : []
-    const sent = agent && await deps.call('terminal.send', { terminal: agent.terminal, text: nudgeText(s, tests) }, 30000).then(() => true, () => false)
+    const failing = await tests(s)
+    const sent = agent && await deps.call('terminal.send', { terminal: agent.terminal, text: nudgeText(s, failing) }, 30000).then(() => true, () => false)
     out = await store.logTask(out, 'engine', sent
-      ? `nudged the ${agent.role}${tests.length ? ` with the failing tests: ${tests.join('; ')}` : ''}`
+      ? `nudged the ${agent.role}${failing.length ? ` with the failing tests: ${failing.join('; ')}` : ''}`
       : 'could not nudge the agent: its terminal is gone')
   }
+  if (moves.restart) out = await restart(deps, out, plan, agentOf(task, plan, runs, s), s, () => tests(s))
   if (moves.handle) {
     out = await store.logTask(out, 'engine', `still stalled after 30 min: in Tasks to handle (${s.reason})`)
     const n = await notify(out, s).catch(() => 0)
     out = await store.logTask(out, 'engine', n ? `notified the user (${n} device${n > 1 ? 's' : ''})` : 'no notification sent (none allowed or no device)')
   }
   return out
+}
+
+// Still stalled after its nudge: the agent is ended and started again. A red
+// CI's worker starts again in its worktree with the nudge; the holder of an
+// idle step is told its step again by the next advance pass (pmAdvance.ts),
+// which starts a new one.
+async function restart(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], agent: Run | undefined, s: Stall, tests: () => Promise<string[]>): Promise<Task> {
+  const { store } = deps
+  if (agent) {
+    await deps.call('terminal.kill', { terminal: agent.terminal }, 15000).catch(() => {})
+    await store.saveRun({ ...agent, state: 'ended', endedBy: 'released' })
+  }
+  const role = agent?.role ?? (s.cause.startsWith('red:') ? 'worker' : plan[task.step!.at]?.holder)
+  if (s.cause.startsWith('red:')) {
+    const t = await reviveWorker(deps, task.id, 'restarted: stalled after its nudge', nudgeText(s, await tests()))
+    return t ?? store.logTask((await store.task(task.id))!, 'engine', 'could not restart the worker now: no room, tried again later')
+  }
+  const { told: _, ...step } = task.step!
+  return store.logTask({ ...task, step }, 'engine', `restarted the ${role}: still stalled 10 min after its nudge`)
 }
 
 // The task's agent is back to work (pm/blocked.ts backToWork): saved, with a

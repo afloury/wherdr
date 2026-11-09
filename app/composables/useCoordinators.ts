@@ -1,7 +1,7 @@
 // The coordinators (GET /api/pm/coordinators: Alfred's, then each
 // project's), shared by the sidebar, the board and the conversation view,
 // which shows its coordinator bar on their panes.
-import { sameAgent, type CoordinatorAgent, type CoordinatorView } from '#shared/pm/coordinator'
+import { MAIN, sameAgent, type CoordinatorAgent, type CoordinatorView } from '#shared/pm/coordinator'
 import type { AlfredProgram } from '#shared/pm/alfred'
 import type { Pane } from '#shared/types'
 
@@ -58,6 +58,20 @@ export function paneBadge(p?: Pane | null): { text: string, color?: string, coor
 export function paneCoordinatorName(p?: Pane | null) {
   if (p?.coreAddress && p.coreAddress === alfred.value?.terminal) return alfred.value.name || 'Alfred'
   const c = coordinatorOf(p)
+  return c ? coordinatorName(c) : ''
+}
+// The coordinator (its project key, MAIN for Alfred) running in this
+// herdr-core terminal, if any, and its name as the sidebar shows it.
+export function coordinatorAtAddress(address?: string | null): { project: string, name: string } | undefined {
+  if (!address) return undefined
+  if (address === alfred.value?.terminal) return { project: MAIN, name: alfred.value.name || 'Alfred' }
+  const c = coordinators.value.find(x => x.terminal === address)
+  return c ? { project: c.project, name: coordinatorName(c) } : undefined
+}
+// A coordinator's current name by its project key (MAIN: Alfred), '' when unknown.
+export function coordinatorNameOf(project: string) {
+  if (project === MAIN) return alfred.value?.name || coordinators.value.find(c => c.main)?.name || 'Alfred'
+  const c = coordinators.value.find(x => x.project === project)
   return c ? coordinatorName(c) : ''
 }
 // The pane of a coordinator's kept conversation, while it runs.
