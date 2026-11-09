@@ -73,7 +73,7 @@ describe('after the worker, with each example template', () => {
     expect(w.s.proofs.pr?.link).toBe('https://github.com/o/r/pull/7')
     // The template asks for the user's gesture here, and only here.
     expect(w.step().id).toBe('merge')
-    expect(w.s.yourTurn).toMatchObject({ reason: 'user', badge: 'Merge the PR' })
+    expect(w.s.yourTurn).toMatchObject({ reason: 'user', badge: 'Merge the PR on GitHub' })
     expect(runsNow(w.step(), w.s)).toBe(false)
     expect(w.tell()).toBeUndefined()
     w.on({ kind: 'user' })

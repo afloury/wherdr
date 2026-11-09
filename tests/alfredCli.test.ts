@@ -7,7 +7,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { dryRun, parseAlfredCommand } from '../shared/pm/alfredCli'
 import { runAlfredCommand } from '../server/utils/alfredCli'
-import { ALFRED_TOKEN_FILE, issueAlfredToken } from '../server/utils/pmCoordinator'
+import { ALFRED_TOKEN_FILE, answerProposal, issueAlfredToken } from '../server/utils/pmCoordinator'
+import { MAIN } from '../shared/pm/coordinator'
 import { createPmStore } from '../server/utils/pmStore'
 import { cliTokenCall } from '../server/utils/network'
 import { common } from '../shared/pm/examples'
@@ -48,6 +49,15 @@ describe('parseAlfredCommand', () => {
     expect(parseAlfredCommand(['setting', 'set', 'hiddenAgents', '[]'])).toMatchObject({ error: /^hiddenAgents is not a setting Alfred changes/ })
     expect(parseAlfredCommand(['project', 'remove', 'WEB'])).toMatchObject({ error: /^unknown command: project remove WEB/ })
     expect(parseAlfredCommand('projects')).toEqual({ error: 'argv must be a list of words' })
+  })
+
+  it('reads the workflow and delegation commands', () => {
+    expect(parseAlfredCommand(['project', 'workflow', 'edit', 'WEB'])).toEqual({ name: 'project workflow edit', key: 'WEB' })
+    expect(parseAlfredCommand(['project', 'workflow', 'edit', 'WEB', '--apply'])).toEqual({ error: '--apply is for a change only' })
+    expect(parseAlfredCommand(['project', 'workflow', 'edit'])).toEqual({ error: 'usage: wherdr alfred project workflow edit <KEY> < workflow.json' })
+    expect(parseAlfredCommand(['tell', 'web', 'propose a workflow'])).toEqual({ name: 'tell', key: 'WEB', text: 'propose a workflow' })
+    expect(parseAlfredCommand(['tell', 'WEB'])).toMatchObject({ error: /^usage: wherdr alfred tell/ })
+    expect(parseAlfredCommand(['last', 'WEB'])).toEqual({ name: 'last', key: 'WEB' })
   })
 })
 
@@ -170,6 +180,69 @@ describe('runAlfredCommand', () => {
     expect(await run('coordinators')).toMatchObject({ coordinators: [{ project: '_main' }, { project: 'WEB', agent: 'codex' }] })
     expect(await run('coordinator', 'start', 'WEB', '--program', 'claude')).toMatchObject({ change: ['start the coordinator of WEB with claude on this machine'] })
     await expect(run('coordinator', 'start', 'WEB', '--program', 'codex', '--model', 'gpt-6')).rejects.toThrow()
+  })
+})
+
+describe('Alfred and a project\'s workflow and coordinator', () => {
+  let dir = '', store: ReturnType<typeof createPmStore>, token = ''
+  const sent: unknown[] = []
+  let panes: { id: string, coreAddress: string, status: string }[] = []
+  const deps = () => ({
+    store, machines: () => [{ key: '', label: 'this', local: true, status: 'online' }], panes: () => panes, urls: { local: 'http://127.0.0.1:7690' },
+    settingsFile: path.join(dir, 'settings.json'), check: async (_m: string, f: string) => f, chat: async () => [{ role: 'assistant', text: 'Proposed: see the review', ts: null }],
+    call: async (m: string, p: unknown) => { sent.push([m, p]); return {} },
+  }) as unknown as Parameters<typeof runAlfredCommand>[0]
+  const run = (argv: string[], input?: string) => runAlfredCommand(deps(), token, { argv, input })
+  const turn = async (kind: 'user' | 'wake', said?: string) => store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind, at: Date.now(), ...(said ? { said } : {}) } })
+
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'alfred-wf-'))
+    store = createPmStore(path.join(dir, 'pm'))
+    await store.setEnabled(true)
+    await issueAlfredToken(store, dir)
+    token = (await fs.readFile(path.join(dir, ALFRED_TOKEN_FILE), 'utf8')).trim()
+    await run(['project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--apply'])
+    sent.length = 0
+    panes = []
+  })
+  afterEach(() => fs.rm(dir, { recursive: true, force: true }))
+
+  it('proposes a workflow change only in the user\'s turn; the user accepts it in the same review', async () => {
+    await expect(run(['project', 'workflow', 'edit', 'WEB'], '{}')).rejects.toThrow('only for a turn that comes from the user')
+    await turn('user', 'add a docs step')
+    await expect(run(['project', 'workflow', 'edit', 'WEB'], '{}')).rejects.toThrow('Project WEB has no workflow')
+    await run(['project', 'template', 'WEB', 'example:company', '--apply'])
+    const wf = (await store.workflow('WEB'))!
+    await expect(run(['project', 'workflow', 'edit', 'NOPE'], JSON.stringify(wf))).rejects.toThrow('Unknown project NOPE')
+    await expect(run(['project', 'workflow', 'edit', 'WEB'], 'not json')).rejects.toThrow('not valid JSON')
+    await expect(run(['project', 'workflow', 'edit', 'WEB'], JSON.stringify({ ...wf, taskTypes: 3 }))).rejects.toThrow('taskTypes')
+    await expect(run(['project', 'workflow', 'edit', 'WEB'], JSON.stringify({ ...wf, guards: { protected: ['x'] } }))).rejects.toThrow('use wherdr alfred project guards WEB')
+    await turn('wake')
+    await expect(run(['project', 'workflow', 'edit', 'WEB'], JSON.stringify({ ...wf, instructions: 'Docs too.' }))).rejects.toThrow('never a wake')
+    await turn('user', 'add a docs step')
+    expect(await run(['project', 'workflow', 'edit', 'WEB'], JSON.stringify({ ...wf, instructions: 'Docs too.' }))).toMatchObject({ proposed: true })
+    expect(await store.workflow('WEB')).toEqual(wf)
+    expect((await store.coordinator('WEB'))!.proposal).toMatchObject({ by: 'main', said: 'add a docs step', saidAt: expect.any(Number), base: wf.version ?? 1 })
+    expect(await answerProposal(deps(), 'WEB', true)).toEqual({ accepted: true })
+    expect((await store.workflow('WEB'))!.instructions).toBe('Docs too.')
+    expect((await store.workflowLog('WEB')).at(-1)).toMatchObject({ by: 'main coordinator', said: 'add a docs step' })
+  })
+
+  it('tells a running coordinator, logged as from Alfred, and reads its last reply', async () => {
+    await expect(run(['tell', 'NOPE', 'hi'])).rejects.toThrow('Unknown project NOPE')
+    await expect(run(['last', 'WEB'])).rejects.toThrow('The coordinator of WEB is not running')
+    await store.saveCoordinator({ project: 'WEB', tokenHash: '', terminal: 't-web' })
+    panes = [{ id: 'p1', coreAddress: 't-web', status: 'idle' }]
+    await turn('user', 'ask WEB for a workflow')
+    expect(await run(['tell', 'WEB', 'propose a workflow'])).toMatchObject({ told: 'WEB' })
+    expect(sent).toEqual([['terminal.send', { terminal: 't-web', text: 'From Alfred: propose a workflow' }]])
+    expect((await store.coordinator('WEB'))!.turn).toMatchObject({ kind: 'user', said: 'ask WEB for a workflow' })
+    expect((await store.projectLog('WEB')).at(-1)).toMatchObject({ by: 'Alfred', text: 'told the coordinator: propose a workflow' })
+    // In Alfred's wake, the coordinator's turn is a wake too.
+    await turn('wake')
+    await run(['tell', 'WEB', 'anything blocked?'])
+    expect((await store.coordinator('WEB'))!.turn).toMatchObject({ kind: 'wake' })
+    expect(await run(['last', 'WEB'])).toEqual({ project: 'WEB', working: false, from: 'conversation', text: 'Proposed: see the review', at: null })
   })
 })
 
