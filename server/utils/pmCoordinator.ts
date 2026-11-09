@@ -6,7 +6,7 @@ import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
-import { MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
+import { MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
@@ -22,7 +22,7 @@ import { projectOf, shownKey, shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
-import { WRITE_SCRIPT, exec, startTask } from './pmLaunch'
+import { CREATE_SCRIPT, WRITE_SCRIPT, exec, startTask } from './pmLaunch'
 import { actionShell } from './pmActions'
 import { SCRIPT } from '../../shared/pm/actions'
 import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from '../../shared/pm/contributorPr'
@@ -485,6 +485,8 @@ export async function writeRoleFiles(deps: Deps, key: string) {
   const folder = `${home}/.wherdr/pm/coordinators/${key}`
   for (const [file, text] of Object.entries(roleFiles(p, t, EXAMPLES, m.local ? docsDir() : undefined)))
     if ((await exec(deps, on, WRITE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not write ${file}`)
+  for (const [file, text] of Object.entries(OWN_ROLE_FILES))
+    if ((await exec(deps, on, CREATE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not create ${file}`)
   await exec(deps, on, 'chmod 755 "$1"', [`${folder}/bin/wherdr`])
   return { p, local: !!m.local, on, folder, first: false, v2: false }
 }
