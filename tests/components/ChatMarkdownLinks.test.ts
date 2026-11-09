@@ -13,13 +13,14 @@ describe('ChatMarkdown in-app links', () => {
     md('')
     const html = marked.parse('Open [Phone](#/settings?section=phone), then `#/board?project=CO&tag=ui`, not `npm test`.', { breaks: true, gfm: true, async: false }) as string
     const w = await mountSuspended(ChatMarkdown, { props: { typing: null, html } })
-    const router = useRouter()
+    const push = vi.spyOn(useRouter(), 'push').mockResolvedValue(undefined)
     const [phone, board] = w.findAll('a').map(a => a.element as HTMLAnchorElement)
     expect(w.findAll('code').filter(c => !c.element.closest('a')).map(c => c.text())).toEqual(['npm test'])
-    phone!.click()
-    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/settings?section=phone'), { timeout: 15000 })
-    board!.click()
-    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/board?project=CO&tag=ui'), { timeout: 15000 })
+    const click = (a: HTMLAnchorElement) => { const e = new MouseEvent('click', { bubbles: true, cancelable: true }); a.dispatchEvent(e); return e.defaultPrevented }
+    expect(click(phone!)).toBe(true) // no reload
+    expect(click(board!)).toBe(true)
+    expect(push.mock.calls).toEqual([['/settings?section=phone'], ['/board?project=CO&tag=ui']])
+    push.mockRestore()
     w.unmount()
   }, 40000)
 })
