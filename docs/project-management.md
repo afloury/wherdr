@@ -199,6 +199,15 @@ its [pace](quotas.md#pace) (a machine whose account waits is skipped) or no
 machine the project allows has room for the task
 ([Machines](machines.md#manage-machines)); your own starts never wait.
 
+The coordinator sees the same with `wherdr pm autopilot show`: one line per
+machine the project allows (memory, cores and load, its agents at work by
+weight, and the heaviest weight it takes now, or why none: full, not ready,
+paced, offline), and what each weight counts (*light* ≈ 0.7 GB, *standard* ≈
+1.8 GB, *heavy* ≈ 3.9 GB) with the weight of each task type. `show <task>`
+gives the machine a started task runs on. Its instructions say the engine
+places tasks, `task start --on` picks a machine and `task add --weight` sets a
+weight that differs from the task type's.
+
 ## Board
 
 The header has **Decisions** (with a count when some wait), **Add task**, the

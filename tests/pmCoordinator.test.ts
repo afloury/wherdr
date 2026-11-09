@@ -25,7 +25,7 @@ vi.mock('../server/utils/quotas', async orig => ({ ...(await orig<object>()), re
 afterEach(() => { quotas.q = null })
 
 let dir = '', store: ReturnType<typeof createPmStore>, token = ''
-const deps = () => ({ store }) as unknown as CoreAdminDeps & { store: typeof store }
+const deps = () => ({ store, machines: () => [] }) as unknown as CoreAdminDeps & { store: typeof store }
 const cli = (argv: string[], input?: string, tk = token) => runCommand(deps(), tk, { argv, ...(input !== undefined ? { input } : {}) })
 const refused = (p: Promise<unknown>, message: RegExp | string) => expect(p).rejects.toThrow(message)
 const state = (at: number, more: Partial<StepState> = {}): StepState => ({ at, started: true, proofs: {}, rounds: {}, ...more })
@@ -744,7 +744,7 @@ describe('commands of lot 10', () => {
     await noteTurn(store, 'CO', 'user', 'add two tasks')
     const first = (await cli(['task', 'add', 'Tidy the docs', '--type', 'feature', '--description', 'One typo.'])).task
     expect(first).toMatchObject({ id: 'CO-1', state: 'todo', description: 'One typo.', log: [{ by: 'coordinator CO', text: 'added the task' }] })
-    expect((await cli(['show', 'CO-1'])).task.weight).toBe('standard (its steps)')
+    expect((await cli(['show', 'CO-1'])).task).toMatchObject({ weight: 'standard (its steps)', machine: expect.stringMatching(/^not started/) })
     const heavy = (await cli(['task', 'add', 'Run e2e', '--type', 'feature', '--weight', 'heavy'])).task
     expect((await cli(['show', heavy.id])).task.weight).toBe('heavy (set on the task)')
     await refused(cli(['task', 'add', 'X', '--type', 'study']), 'No task type "study": feature')

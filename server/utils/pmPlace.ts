@@ -3,7 +3,7 @@
 // then placeTask picks one or holds the start with each machine's reason.
 import { HerdrError } from './herdr'
 import { allowedMachines, taskMachine, type Project } from '../../shared/pm/project'
-import { placeTask, type Candidate, type Placement } from '../../shared/pm/placement'
+import { machineLine, placeTask, type Candidate, type Placement } from '../../shared/pm/placement'
 import { DEFAULT_MEMORY } from '../../shared/pm/memory'
 import { weightOf } from '../../shared/pm/weight'
 import { paceWait } from '../../shared/pm/pace'
@@ -11,7 +11,7 @@ import type { PaceVerdict } from '../../shared/pm/pacing'
 import type { Task } from '../../shared/pm/run'
 import type { PmStore } from './pmStore'
 import { atWork, machineCapacity, readMemorySettings } from './pmMemory'
-import { readiness } from './pmReady'
+import { lastReadiness, readiness } from './pmReady'
 import { projectPace } from './pmPace'
 import type { PmLaunchDeps } from './pmLaunch'
 
@@ -58,3 +58,18 @@ export async function placeFor(deps: PmLaunchDeps, task: Task, { asked, waits = 
 // The machine a start that must go (the user's) takes, and the hold it goes past.
 export const goesTo = (placed: Placement) =>
   'machine' in placed ? { on: placed.machine } : { on: placed.best, short: placed.hold }
+
+// The project's allowed machines for `autopilot show`, one line each
+// (machineLine). Readiness is the last check's, never run from here.
+export async function machineLines(deps: PmLaunchDeps, p: Project): Promise<string[]> {
+  const settings = await readMemorySettings()
+  return Promise.all(allowedMachines(p).map(async (key) => {
+    const m = deps.machines().find(x => x.key === key)
+    const online = !!m && (m.local || m.status === 'online')
+    const home = key === p.machine, ready = home ? '' : lastReadiness(p.key, key)
+    return machineLine({
+      key, label: m?.label ?? key, online, home, ...(ready ? { wait: `not ready (${ready})` } : {}), ...(ready === undefined ? { unchecked: true } : {}),
+      settings: settings[key] ?? DEFAULT_MEMORY, capacity: online ? await machineCapacity(deps, key) : null, running: online ? await atWork(deps.store, key) : [],
+    })
+  }))
+}

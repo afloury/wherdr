@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { placeTask, type Candidate } from '../shared/pm/placement'
-import { WEIGHT_DEFAULTS, type Weight } from '../shared/pm/weight'
+import { machineLine, placeTask, type Candidate } from '../shared/pm/placement'
+import { WEIGHT_DEFAULTS, weightsLine, type Weight } from '../shared/pm/weight'
 import { DEFAULT_MEMORY } from '../shared/pm/memory'
 
 const GB = 1024
 // A machine with `totalGb` of RAM, `freeGb` free and `cores` cores, running these agents.
 const machine = (key: string, totalGb: number, freeGb: number, cores: number, running: Weight[] = [], more: Partial<Candidate> = {}): Candidate => ({
-  key, label: key, online: true, settings: DEFAULT_MEMORY, running: running.map(w => WEIGHT_DEFAULTS[w]),
+  key, label: key, online: true, settings: DEFAULT_MEMORY, running: running.map(w => ({ ...WEIGHT_DEFAULTS[w], weight: w })),
   capacity: { cores, total: totalGb * GB, available: freeGb * GB, swapTotal: 0, swapFree: 0, load1: 0 }, ...more,
 })
 const place = (weight: Weight, candidates: Candidate[], pinned?: string) => placeTask({ weight, home: 'machine-a', pinned, candidates })
@@ -61,5 +61,17 @@ describe('placing a task', () => {
     const two = fill([machine('machine-a', 16, 14, 8), machine('machine-b', 16, 14, 8)])
     expect(one).toBe(7)
     expect(two).toBe(14)
+  })
+})
+
+describe('the coordinator\'s view of machines', () => {
+  it('gives each machine\'s reading, its agents by weight and the heaviest weight it takes now, or why none', () => {
+    const view = (c: Candidate, more = {}) => machineLine({ home: false, ...c, running: c.running as never, ...more })
+    expect(view(machine('machine-a', 32, 9.1, 8, ['heavy', 'light']), { home: true })).toBe('machine-a (home): 9.1 GB free of 32.0 GB · 8 cores, load 0.0 · 2 of 21 agents · running 1 heavy, 1 light · fits heavy')
+    expect(view(machine('machine-b', 8, 4.5, 4), { unchecked: true })).toBe('machine-b: 4.5 GB free of 8.0 GB · 4 cores, load 0.0 · 0 of 5 agents · fits standard (readiness checked before its first task)')
+    expect(view(machine('machine-b', 16, 12, 8, [], { wait: 'not ready (node missing)' }))).toBe('machine-b: 12.0 GB free of 16.0 GB · 8 cores, load 0.0 · 0 of 10 agents · takes nothing now: not ready (node missing)')
+    expect(view(machine('machine-b', 16, 2, 8))).toMatch(/ · takes nothing now: 2\.0 GB free$/)
+    expect(view(machine('machine-c', 16, 12, 8, [], { online: false }))).toBe('machine-c: offline')
+    expect(weightsLine()).toBe('light ≈ 0.7 GB, 0.25 core · standard ≈ 1.8 GB, 1 core · heavy ≈ 3.9 GB, 2 cores')
   })
 })
