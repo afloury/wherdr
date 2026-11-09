@@ -921,12 +921,14 @@ body.short-bottom { --safe-bottom: 0px; }
 /* A Herdr client may send a wider frame: scrolling, without distorting the glyphs. */
 #term .xterm { box-sizing: border-box; width: 100%; overflow-x: auto; overflow-y: hidden; }
 
+/* The keys scroll inside the bar; the keyboard toggle stays pinned at its end. */
 .keybar {
-  display: flex; gap: 0; overflow-x: auto; flex: none;
-  margin: 0; padding: 6px 8px; scrollbar-width: none;
+  display: flex; align-items: center; flex: none; min-width: 0;
+  margin: 0; padding: 6px 12px;
   border-top: 1px solid var(--line-soft); background: var(--bg);
 }
-.keybar::-webkit-scrollbar { display: none; }
+.keybar-keys { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+.keybar-keys::-webkit-scrollbar { display: none; }
 .keybar button {
   flex: none; min-width: 42px; height: 36px; padding: 0 10px;
   background: var(--bg-2); border: 1px solid var(--line); margin-left: -1px;
@@ -2731,7 +2733,8 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
     height: 100%; padding: 8px 10px 0;
     background: var(--bg); box-shadow: -1px 0 0 var(--line), 1px 0 0 var(--line);
   }
-  .keybar { justify-content: center; }
+  /* Same width and side margins as the message field below. */
+  .keybar { padding-left: max(12px, calc((100% - var(--read)) / 2 + 12px)); padding-right: max(12px, calc((100% - var(--read)) / 2 + 12px)); }
   .search-bar { max-width: calc(var(--read) - 24px); margin: 10px auto 0; width: calc(100% - 24px); }
 
   /* Side-by-side cells: full width, without reading column or grid. */
@@ -2744,8 +2747,8 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
      a cell keeps a solid background, without the column lines. */
   .cell-view .chat, .cell-view .composer,
   html[data-backdrop='wherdr'] .cell-view :is(.chat, .composer) { background-color: var(--bg); background-image: none; }
-  /* Narrow cell: from the left, so the first keys stay reachable when it scrolls. */
-  .cell-view .keybar { background-image: none; border-top: 1px solid var(--line-soft); justify-content: flex-start; }
+  /* Narrow cell: no reading column, the margins of its composer. */
+  .cell-view .keybar { background-image: none; border-top: 1px solid var(--line-soft); padding-left: 10px; padding-right: 10px; }
   .cell-view .keybar::before { content: none; }
   .cell-view .search-bar { max-width: none; }
   /* The terminal of the focused cell takes the whole cell (no reading column). */
