@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { causeGone, interrupted, resumeOrder } from '../shared/pm/recovery'
 import { recovering, type Incident } from '../shared/pm/incident'
 import { chainState } from '../shared/pm/advance'
-import { coordinatorStartRefusal } from '../shared/pm/autopilot'
-import { cardOf } from '../shared/pm/board'
+import { autopilotEvents, coordinatorStartRefusal } from '../shared/pm/autopilot'
+import { healthSummary } from '../shared/pm/health'
+import { cardOf, cardStatus } from '../shared/pm/board'
 import { initialState } from '../shared/pm/steps'
 import { agentLine, type Task } from '../shared/pm/run'
 
@@ -19,8 +20,11 @@ describe('crash recovery: the engine resumes the work by itself', () => {
     const b = interrupted(task('CO-2', { after: 'CO-1' }), incident('restart'), NOW).task
     expect(a).toMatchObject({ state: 'waiting', waiting: expect.stringMatching(/restarted.*wherdr resumes it now$/) })
     expect(recovering(a)).toBe(true)
-    // Waiting for the engine, not the user: no Your turn.
+    // Waiting for the engine, not the user: no Your turn, the reason on its card; not stuck, not the user's.
     expect(cardOf(a, [], []).yourTurn).toBeUndefined()
+    expect(cardStatus(cardOf(a, [], []))?.text).toBe(a.waiting)
+    expect(autopilotEvents({ on: true, events: ['stuck', 'done'] } as never, [a], { 'CO-1': 'working' }).reasons).toEqual([])
+    expect(healthSummary([a], { 'CO-1': 'working' }, NOW, []).join('\n')).not.toMatch(/CO-1/)
     expect(resumeOrder([b, a]).map(t => t.id)).toEqual(['CO-1'])
     expect(resumeOrder([b, resumed(a)]).map(t => t.id)).toEqual(['CO-2'])
     expect(causeGone(a.recovery!, { online: true, limited: false })).toBe(true)
@@ -31,6 +35,8 @@ describe('crash recovery: the engine resumes the work by itself', () => {
     const next = task('CO-3', { state: 'todo', after: 'CO-1', run: undefined, step: undefined })
     expect(chainState(next, [a, next])).toEqual({ resumes: 'CO-1' })
     expect(coordinatorStartRefusal(undefined, next, [a, next], [], NOW, false, { engine: true })).toBe('Waits for CO-1 to resume')
+    // The engine keeps that wait on the to-do task: its card shows it.
+    expect(cardStatus(cardOf({ ...next, held: 'Waits for CO-1 to resume' }, [], []))?.text).toBe('Waits for CO-1 to resume')
     expect(chainState(next, [resumed(a), next])).toBeUndefined()
     expect(chainState(next, [{ ...resumed(a), step: { ...a.step!, done: true } }, next])).toBe('go')
   })
@@ -52,6 +58,8 @@ describe('crash recovery: the engine resumes the work by itself', () => {
     expect(again.task.waiting).toMatch(/the coordinator was told/)
     expect(recovering(again.task)).toBe(false)
     expect(resumeOrder([again.task])).toEqual([])
+    // The engine's wake only: no second one as 'stuck'.
+    expect(autopilotEvents({ on: true, events: ['stuck'] } as never, [again.task], { 'CO-1': 'working' }).reasons).toEqual([])
     // Another cause, or hours later: resumed again.
     expect(interrupted(resumed(first.task), incident('restart'), NOW + 60_000).escalate).toBeUndefined()
     expect(interrupted(resumed(first.task), incident('killed'), NOW + 2 * 3_600_000).escalate).toBeUndefined()

@@ -674,7 +674,8 @@ open one, so it tells you the cause the engine found.
 ### The engine resumes the work
 
 A task an incident stopped waits for wherdr, not for you: it is not in Your
-turn, its card says why it waits (*… wherdr resumes it once host-b is back*).
+turn, the coordinator sees it as working (never stuck, nor waiting for you in
+its health check), its card says why it waits (*… wherdr resumes it once host-b is back*).
 Once the cause is gone, the engine resumes it by itself, every minute:
 
 - **when**: a restart, a crash or an unknown cause at once; a machine offline

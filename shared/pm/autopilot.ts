@@ -5,6 +5,7 @@ import type { Run, Task } from './run'
 import type { PlannedStep } from './steps'
 import { chainState } from './advance'
 import { resumeWait } from './recovery'
+import { escalated, recovering } from './incident'
 import { parseSchedule } from './schedule'
 import type { PaceVerdict } from './pacing'
 import { pacedStart, paceRefusal } from './pace'
@@ -102,9 +103,10 @@ export function inHours(hours: Autopilot['hours'], d: Date) {
 
 // Where a task stands for the autopilot.
 // stalled: working, nothing moves (blocked.ts); it still holds its slot.
+// One the engine resumes after an incident (recovery.ts) is working: not stuck, not the user's.
 export type TaskStatus = 'todo' | 'working' | 'stalled' | 'waiting' | 'ready' | 'done'
 export const taskStatus = (t: Task): TaskStatus =>
-  t.step?.done ? 'done' : t.state === 'waiting' ? 'waiting' : t.step?.yourTurn ? 'ready' : t.state === 'working' && t.stall ? 'stalled' : t.state
+  t.step?.done ? 'done' : recovering(t) ? 'working' : t.state === 'waiting' ? 'waiting' : t.step?.yourTurn ? 'ready' : t.state === 'working' && t.stall ? 'stalled' : t.state
 
 // A working task whose step holds no agent (a PR or merge waiting for checks
 // or the queue, a user step) takes no slot, unless the engine handed its
@@ -235,7 +237,8 @@ export const addedBySelf = (t: Pick<Task, 'addedBy' | 'log'>, key: string, by: s
 // failing) or ready, among those the autopilot wakes for; and, always, an
 // agent's question or a choice after N send-backs (JudgmentEvent).
 // `seen`: each task's last status. A stopped task is not stuck: someone chose to stop it.
-// Nor is a block the engine fixes itself (selfFix.ts): it wakes the coordinator once it gives up.
+// Nor is a block the engine fixes itself (selfFix.ts): it wakes the coordinator once it gives up;
+// nor a task stopped again right after the engine resumed it: the engine woke the coordinator for it (recovery.ts).
 export function autopilotEvents(ap: Autopilot, tasks: Task[], seen: Record<string, TaskStatus>, self?: { key: string, by: string }) {
   const now: Record<string, TaskStatus> = {}, reasons: string[] = []
   for (const t of tasks) {
@@ -245,7 +248,7 @@ export function autopilotEvents(ap: Autopilot, tasks: Task[], seen: Record<strin
     const judgment: JudgmentEvent | undefined = !moved || t.stopped ? undefined
       : s === 'waiting' && t.waitKind === 'question' ? 'question' : s === 'ready' && t.step?.yourTurn?.reason === 'rounds' ? 'decide' : undefined
     const ev: AutopilotEvent | undefined = !(t.id in seen) ? (self && addedBySelf(t, self.key, self.by) ? undefined : 'added') : !moved || judgment ? undefined
-      : s === 'waiting' || s === 'stalled' || failed ? (t.stopped || engineOwns(t) ? undefined : 'stuck') : s === 'done' || s === 'ready' ? s : undefined
+      : s === 'waiting' || s === 'stalled' || failed ? (t.stopped || engineOwns(t) || escalated(t) ? undefined : 'stuck') : s === 'done' || s === 'ready' ? s : undefined
     const why = s === 'stalled' ? t.stall?.reason : failed || judgment === 'decide' ? t.step?.yourTurn?.badge : t.waiting
     const kind = judgment ?? (ev && ap.events.includes(ev) ? ev : undefined)
     if (kind) reasons.push(`${t.id} (${t.title}): ${kind}${kind !== 'added' && kind !== 'done' && kind !== 'ready' && why ? `: ${why.split('\n')[0]}` : ''}`)

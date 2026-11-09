@@ -36,6 +36,10 @@ export interface Recovery { incident: string, cause: Cause, machine: string, lab
 export const recovering = (t: Pick<Task, 'state' | 'run' | 'recovery' | 'stopped' | 'waitKind'>) =>
   t.state === 'waiting' && !t.waitKind && !t.stopped && !!t.recovery?.waits && t.recovery.run === t.run
 
+// Stopped again right after the engine resumed it: the engine wakes the coordinator itself, once.
+export const escalated = (t: Pick<Task, 'state' | 'run' | 'recovery'>) =>
+  t.state === 'waiting' && !!t.recovery && !t.recovery.waits && t.recovery.n > 1 && t.recovery.run === t.run
+
 export const CAUSE_TEXT: Record<Cause, string> = {
   'offline': 'the machine is offline or unreachable (its herdr-core does not answer)',
   'restart': 'herdr-core or wherdr restarted (or the machine rebooted)',
