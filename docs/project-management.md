@@ -277,6 +277,22 @@ gives the machine a started task runs on. Its instructions say the engine
 places tasks, `task start --on` picks a machine and `task add --weight` sets a
 weight that differs from the task type's.
 
+### Who sends a wake
+
+A wake is a message wherdr sends the coordinator; its first line names who
+sends it, and the conversation shows a small label of that kind above it:
+
+- **Autopilot**: the autopilot's scheduled wakes, its events and *Run now*;
+- **Step check** (`Step check: CO-1 (deploy)`): a step the coordinator holds,
+  such as *watch the deploy*, at its start, each `recheck` and its timeout. It
+  comes even with the autopilot off;
+- **Engine**: wherdr gave up on a block after failed fixes
+  ([What wherdr fixes on its own](#what-wherdr-fixes-on-its-own));
+- **Health check**: wherdr's health check found something to look at.
+
+Each kind is its own wake, sent one after the other. Every wake ends with
+`wherdr pm ack <id>`, whatever its kind.
+
 ### What a task's agent said
 
 A coordinator reads a task's agent with `wherdr pm read <task>`, on whichever

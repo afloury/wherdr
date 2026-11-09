@@ -56,7 +56,7 @@
 - [Conversations on hc](docs/core.md#conversations): which agents open on their transcript and how it is read, and text left unsent in Claude's input box (never shown as read, never glued to the next message).
 - [Terminal](docs/terminal.md): the real terminal, shared viewers and taking control.
 - [Files](docs/files.md): browse an agent's folder, preview text, Markdown, images, PDFs and videos, download; which files a path in a conversation may open.
-- [On a computer](docs/devices.md#on-a-computer): layout and keyboard shortcuts.
+- [On a computer](docs/devices.md#on-a-computer): layout, terminal key bar and keyboard shortcuts.
 - [On a phone](docs/devices.md#on-a-phone): touch controls and the phone keybar.
 - [On an iPad](docs/devices.md#on-an-ipad): the iPad layout.
 
@@ -70,6 +70,8 @@
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
 - [Template library](docs/project-management.md#template-library): saved templates and examples, read, rename and delete; projects keep their own copy.
 - [Autopilot](docs/project-management.md#autopilot): each project's own (Alfred has none), the header button and its window, goal, wakes and limits (new projects: Tasks / day unlimited and At once Auto, pace and machine room still hold automatic work; a hint on the older 10 / 2; Task added wakes only for tasks added by someone else than this coordinator); the coordinator's view of machines and weights (`autopilot show`; weights learned from measured memory peaks after 3 runs; `show <task>`, `--on`, `--weight`).
+- [Autopilot](docs/project-management.md#autopilot): each project's own (Alfred has none), the header button and its window, goal, wakes and limits (new projects: Tasks / day unlimited and At once Auto, pace and machine room still hold automatic work; a hint on the older 10 / 2; Task added wakes only for tasks added by someone else than this coordinator); the coordinator's view of machines and weights (`autopilot show`, `show <task>`, `--on`, `--weight`).
+- [Who sends a wake](docs/project-management.md#who-sends-a-wake): each wake's first line and chat label name its source: Autopilot, Step check (a held step's start, recheck or timeout, even with the autopilot off), Engine (a block given up after failed fixes), Health check; one kind per wake, the same ack.
 - [Autopilot](docs/project-management.md#autopilot): each project's own (Alfred has none), the header button and its window, goal, wakes and limits (new projects: Tasks / day unlimited and At once Auto, pace and machine room still hold automatic work; limits and hours hold automatic work only: a start you ask for goes past them, with a word, and still counts; a hint on the older 10 / 2; Task added wakes only for tasks added by someone else than this coordinator); the coordinator's view of machines and weights (`autopilot show`, `show <task>`, `--on`, `--weight`).
 - [Autopilot](docs/project-management.md#autopilot): each project's own (Alfred has none), the header button and its window, goal, wakes (the last on one line, the ones not handled highlighted, the full list under History) and limits (new projects: Tasks / day unlimited and At once Auto, pace and machine room still hold automatic work; a hint on the older 10 / 2; Task added wakes only for tasks added by someone else than this coordinator); the coordinator's view of machines and weights (`autopilot show`, `show <task>`, `--on`, `--weight`).
 - [What a task's agent said](docs/project-management.md#what-a-tasks-agent-said): `wherdr pm read`, an agent's last message or question from any machine, and the question in the wake.
@@ -108,7 +110,7 @@
 
 - [Development and tests](docs/development.md): run from source and test.
 - [Design rules](docs/design.md): the interface styling reference, sheets included (where focus goes on open).
-- [Dictation design](docs/dictation.md): the dictation engines and how to add one; why a server-side model install fails (bzip2 missing, disk full); read aloud and its voices (iOS gives web apps only its standard voices); the neural voice catalog (Siwis, Cori, MLS) and its engine (streamed WebAudio playback, fallback to the device's voices).
+- [Dictation design](docs/dictation.md): the dictation engines and how to add one; the on-device model cards (each model's best languages and their quality, the device's language marked); why a server-side model install fails (bzip2 missing, disk full); read aloud and its voices (iOS gives web apps only its standard voices); the neural voice catalog (Siwis, Cori, MLS) and its engine (streamed WebAudio playback, fallback to the device's voices).
 
 ## v2 only
 
