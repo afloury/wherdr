@@ -36,7 +36,9 @@
   the base branch). Only an agent other than Claude keeps its small icon. Several agents of the
   same task (the worker and its reviewer) share one row, in the group of the most urgent: the
   title line, then one line per agent with its own state, which opens that agent; the row's menu
-  lists each agent's actions under its role. A reviewer kept between rounds shows dimmed.
+  lists each agent's actions under its role. A reviewer kept between rounds shows dimmed. A
+  row keeps its task look after a restart of wherdr or herdr-core: an agent is found by its
+  task and role, even when it was resumed or its terminal re-attached.
 - **Order**: the header (logo, version, Search, Board, Settings), the counters, the quotas (a
   machine's own quotas under them), Alfred, the [coordinators](#coordinators), then the agents of
   the machines shown, by state (Your turn, Working, Ready). When the list mixes several machines,

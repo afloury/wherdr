@@ -70,7 +70,7 @@ its folder, branches and task worktrees stay on the machine.
 - **Name**, **Key** and **Color**. Task ids start with the key. Change it and every task,
   old ones too, shows the new key: on the board, and in what wherdr writes for you
   and its agents (wakes, notifications, task logs, PR titles, `wherdr pm` outputs,
-  branches of tasks started from then on). Links and commands with a former key still work.
+  branches of tasks started from then on); texts written before the change read the new key too. Links and commands with a former key still work.
   The color, picked from a small palette, is the project's key badge everywhere:
   its coordinator row and conversation header, board cards, the task sheet, its
   task agents' headers and *Tasks to handle*.

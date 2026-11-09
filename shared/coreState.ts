@@ -57,7 +57,7 @@ export function coreState(terminals: CoreTerminal[], machines: CoreMachine[], do
     const status = (state === 'idle' || state === 'done') && terminal.labels?.[SEEN_LABEL] !== undefined ? (coreUnread(terminal) ? 'done' : 'idle') : state
     const pane: Pane = { id: `${workspace}:p${id}`, coreAddress: terminal.address, machine, workspace, tab, tabLabel: result.tabs!.find(t => t.id === tab)!.label,
       agent, name: addressOnly(terminal.name, terminal.address) ? null : terminal.name ?? null, label: ownTitle(terminal), title: terminal.title == null ? null : cleanTitle(terminal.title), cwd, agentSession: null,
-      status, interaction: 'unknown', ...(terminal.labels?.[LABEL.task] ? { task: terminal.labels[LABEL.task] } : {}),
+      status, interaction: 'unknown', ...(terminal.labels?.[LABEL.task] ? { task: terminal.labels[LABEL.task], ...(terminal.labels[LABEL.role] ? { role: terminal.labels[LABEL.role] } : {}) } : {}),
       ...(terminal.labels?.['wherdr.coordinator'] !== undefined ? { coordinator: true } : {}),
       ...(typeof terminal.status_ms === 'number' ? { stateSeq: terminal.status_ms, since: terminal.status_ms } : terminal.turn ? { stateSeq: terminal.turn } : {}) }
     result.panes.push(pane)
