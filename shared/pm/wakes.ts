@@ -7,7 +7,7 @@
 // is open until the coordinator acks it, stays idle 2 min, quits, or 1 h
 // passes; no other wake goes while one is open, except the user's "run now".
 // Not acked within 15 min (and its turn over): delivered once more, then the user is told.
-import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT } from './autopilot'
+import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, inHours, type Autopilot } from './autopilot'
 
 export interface Wake {
   id: string
@@ -36,6 +36,15 @@ export function enqueue(q: Wake[], coordinator: string, reasons: string[], now: 
   if (p) return { ...p, reasons: add(p.reasons), ...(runNow ? { now: true as const } : {}) }
   return { id, coordinator, reasons: add([]), createdAt: now, tries: 0, ...(runNow ? { now: true as const } : {}) }
 }
+
+// The coordinators (keys: the task's project, the main one) that get the
+// engine's give-up on a block (selfFix.ts): each running with its autopilot
+// on, waking for stuck tasks, in its hours, as its 'stuck' event would have.
+export const wakesFor = (keys: string[], coordinator: (key: string) => { terminal?: string, autopilot?: Autopilot } | undefined, now: number) =>
+  keys.filter((key) => {
+    const c = coordinator(key), ap = c?.autopilot
+    return !!c?.terminal && !!ap?.on && ap.events.includes('stuck') && inHours(ap.hours, new Date(now))
+  })
 
 // What a wake may do beyond answering a question: a project coordinator's, its autopilot on.
 export const FIX_LINE = `In this wake you may unblock a task of your project when the block is mechanical, with \`wherdr pm tell <task> "<what to do>" --fix <kind> --reason "<one sentence>"\`: ${FIX_KINDS.map(k => `${k} (${FIX_TEXT[k]})`).join(', ')}. A worker that was let go or has ended starts again with your message. At most ${FIXES_PER_STEP} times per task and step; then tell the user. A permission request, merging, approving, guards, settings and limits stay the user's.`
