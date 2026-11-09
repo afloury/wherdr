@@ -177,9 +177,16 @@ it('Wide computer: Settings open beside the conversation, on the linked section,
     // Another section stays in the panel.
     await w.findAll('.settings-nav-item').find(b => b.attributes('title') === 'Terminal')!.trigger('click')
     await vi.waitFor(() => expect(path()).toBe('/a/w1:p1?section=terminal'))
-    // Escape closes it.
-    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-    await vi.waitFor(() => expect(path()).toBe('/a/w1:p1'))
+    // Escape closes it first, before the conversation's own Escape (Stop on a working agent,
+    // registered earlier); the listener sits nearer the target so it would run first otherwise.
+    let conversationGotEscape = false
+    const stop = (e: KeyboardEvent) => { conversationGotEscape = true; e.preventDefault() }
+    document.body.addEventListener('keydown', stop)
+    try {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await vi.waitFor(() => expect(path()).toBe('/a/w1:p1'))
+      expect(conversationGotEscape).toBe(false)
+    } finally { document.body.removeEventListener('keydown', stop) }
     // The gear (a plain /settings) opens it again; the close button closes it.
     await router.push('/settings')
     await vi.waitFor(() => expect(path()).toBe('/a/w1:p1?section=appearance'))

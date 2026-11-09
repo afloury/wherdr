@@ -90,17 +90,23 @@ function openFullPage() {
   fullSettingsOnce.value = true
   navigateTo({ path: '/settings', query: route.query })
 }
-// Escape closes the panel, unless a window is open or the key is typing
-// in the conversation (message field, terminal).
+// Escape closes the panel first, unless a window or menu is open or the key is
+// typed in the conversation (message field, terminal). Capture phase: the
+// conversation's own Escape (Stop, the Your turn card) waits for the next press.
 function onPanelKey(e: KeyboardEvent) {
-  if (e.key !== 'Escape' || e.defaultPrevented || anySheetOpen.value || document.querySelector('[role="dialog"]')) return
+  if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented) return
+  if (anySheetOpen.value || document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+  // HeaderMenu closes its menu with a fake Escape sent to the document: not for us.
   const el = e.target instanceof Element ? e.target : null
-  if (el && !el.closest('#settings') && (el.closest('.xterm') || el.matches('input, textarea, [contenteditable="true"]'))) return
+  if (!el || el.closest('[role="menu"], [role="listbox"]')) return
+  if (!el.closest('#settings') && (el.closest('.xterm') || el.matches('input, textarea, [contenteditable="true"]'))) return
+  e.preventDefault()
+  e.stopPropagation()
   closePanel()
 }
 if (props.panel) {
-  onMounted(() => document.addEventListener('keydown', onPanelKey))
-  onBeforeUnmount(() => document.removeEventListener('keydown', onPanelKey))
+  onMounted(() => document.addEventListener('keydown', onPanelKey, true))
+  onBeforeUnmount(() => document.removeEventListener('keydown', onPanelKey, true))
 }
 function back() {
   const to = settingsBack({ desk: desk.value, section: section.value, historyBack: (history.state as { back?: unknown } | null)?.back })
