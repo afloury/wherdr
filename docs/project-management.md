@@ -292,6 +292,15 @@ shows the reason, and wherdr:
 The task's **Log** lists each of these: the stall, the nudge, the hand-over to
 you and the notification.
 
+A step that runs past its time limit (*Check work: over 3h*, *Check review:
+over 45m*) or a stall leaves *Your turn* and **Tasks to handle** once the task
+is back to work: the coordinator tells its agent something (`wherdr pm tell`),
+you or the coordinator start it again, or the step's agent, idle, is seen
+working again. The step's time limit and the stall's 30 minutes start again
+from then, so the task comes back if its agent stops again. The Log says
+*back to work* and who sent it back. What only you can do (a merge, an answer,
+a permission, a decision) stays until you do it.
+
 ### Agents of a task that waits for you
 
 Needs: [A task waiting for you](#a-task-waiting-for-you).
