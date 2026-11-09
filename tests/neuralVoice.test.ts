@@ -2,7 +2,7 @@
 // worker that speaks the TTS worker's protocol and a fake WebAudio clock.
 import { afterEach, describe, expect, it } from 'vitest'
 import { DEVICE_CACHE } from '../app/utils/dictation/deviceModels'
-import { LOOKAHEAD, VOICES, createNeuralVoice, defaultVoice, heapEstimate, replyLanguage } from '../app/utils/speech/neuralVoice'
+import { LOOKAHEAD, VOICES, createNeuralVoice, defaultVoice, heapEstimate, heapNeeded, replyLanguage } from '../app/utils/speech/neuralVoice'
 import { fakeCaches } from './fakeModelCache'
 
 const siwis = VOICES.find(v => v.id === 'siwis-medium')!
@@ -16,11 +16,11 @@ class FakeWorker {
   constructor() { FakeWorker.made.push(this) }
   postMessage(m: { t: string, id?: string }) {
     this.got.push(m)
-    if (m.t === 'load') this.send({ t: 'ready', heap: 1, sampleRate: 10 })
+    if (m.t === 'load') this.send({ t: 'ready', heap: 1, ms: 800, sampleRate: 10 })
   }
   send(data: unknown) { if (!this.terminated) this.onmessage?.({ data }) }
   // The audio of a sentence asked for: `n` samples at 10 Hz.
-  answer(id: string, n = 10) { this.send({ t: 'audio', id, pcm: new Float32Array(n).buffer, sampleRate: 10 }) }
+  answer(id: string, n = 10, ms = 0, heap = 0) { this.send({ t: 'audio', id, pcm: new Float32Array(n).buffer, sampleRate: 10, ms, heap }) }
   asked() { return this.got.filter(m => m.t === 'speak').map(m => m.id!) }
   terminate() { this.terminated = true }
 }
@@ -152,6 +152,21 @@ describe('the neural voice', () => {
     expect(small.speak(reply(['One.']).opts)).toBe(false)
     expect(FakeWorker.made).toHaveLength(0)
     expect(FakeAudio.made).toHaveLength(0)
+  })
+
+  it('measures the reply: load, first sentence, generation time against speech length, largest heap', async () => {
+    const voice = await make()
+    voice.speak(reply(['One.', 'Two.']).opts)
+    const w = FakeWorker.made[0]!
+    w.answer('1.0', 10, 200, 5) // 1 s of speech in 200 ms
+    w.answer('1.1', 20, 300, 3)
+    expect(voice.stats()).toMatchObject({ voice: siwis.id, loadMs: 800, genMs: 500, audioMs: 3000, heap: 5 })
+    expect(voice.stats()!.firstMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('checks the budget against the measured heap when the catalog has one, else the estimate', () => {
+    expect(heapNeeded(siwis)).toBe(siwis.memory ? Math.max(siwis.memory.heap, siwis.memory.speaking ?? 0) : heapEstimate(siwis))
+    expect(heapNeeded({ ...siwis, memory: { heap: 100, speaking: 150, basis: 'test' } })).toBe(150)
   })
 
   it('stops the reply with the error when the worker fails', async () => {
