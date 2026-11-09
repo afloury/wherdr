@@ -19,7 +19,9 @@ import { ensureVisibility, readLeakCheck } from './pmVisibility'
 import { DEPS_SCRIPT, depsNote } from './pmDeps'
 import { ensureReady } from './pmReady'
 import { branchFor } from '../../shared/pm/branchName'
-import { LABEL, TMP_DIR, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, TMP_DIR, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type Run, type Task } from '../../shared/pm/run'
+import { incidentLine, type Incident } from '../../shared/pm/incident'
+import { recordGone, type CoreList } from './pmIncidents'
 
 // Reuses the worktree of an earlier attempt; else a new branch from the base,
 // origin's as fetched now when origin has it (a local one may be stale: a
@@ -215,13 +217,16 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
 }
 
 // After a restart: unfinished runs find their terminal by wherdr.run. Found =
-// it goes on; ended or gone while wherdr was stopped = the task waits, with why.
+// it goes on; ended or gone while wherdr was stopped = an incident (pmIncidents.ts)
+// and the task waits, with its cause.
 export async function reconcileRuns(deps: PmLaunchDeps) {
   const { store } = deps
   if (!(await store.enabled())) return []
   const install = await store.install()
-  const { terminals } = await deps.call<{ terminals: LabelledTerminal[] }>('terminal.list', { all: true, labels: { [LABEL.install]: install } }, 8000)
-  const found = reconcile(await store.runs(), terminals, install)
+  const list = await deps.call<CoreList>('terminal.list', { all: true, labels: { [LABEL.install]: install } }, 8000)
+  const found = reconcile(await store.runs(), list.terminals, install)
+  // Why each agent is gone, from facts: recorded as incidents, the task waits with it.
+  const why = await recordGone(deps, found.filter(f => f.state !== 'running').map(f => f.run), list).catch(() => new Map<string, Incident>())
   for (const f of found) {
     const task = await store.task(f.run.task)
     if (f.state === 'running') {
@@ -231,7 +236,7 @@ export async function reconcileRuns(deps: PmLaunchDeps) {
     }
     await store.saveRun({ ...f.run, state: 'ended', endedBy: f.state })
     if (task?.run === f.run.id && task.state === 'working')
-      await wait(store, task, f.state === 'exit' ? 'The agent ended while wherdr was stopped' : 'The agent\'s terminal is gone (not found after a restart)')
+      await wait(store, task, why.has(f.run.id) ? incidentLine(why.get(f.run.id)!) : f.state === 'exit' ? 'The agent ended while wherdr was stopped' : 'The agent\'s terminal is gone (not found after a restart)')
   }
   return found
 }

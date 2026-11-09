@@ -237,5 +237,7 @@ describe('reconcileRuns after a restart', () => {
     await reconcileRuns(list([]))
     expect(await restarted.task('WEB-1')).toMatchObject({ state: 'waiting', waiting: expect.stringContaining('gone') })
     expect((await restarted.runs())[0]).toMatchObject({ state: 'ended', endedBy: 'lost' })
+    // Recorded as an incident, with the facts it used.
+    expect(await restarted.incidents()).toMatchObject([{ tasks: ['WEB-1'], runs: [t.run], evidence: [expect.stringContaining('terminal not found')] }])
   })
 })

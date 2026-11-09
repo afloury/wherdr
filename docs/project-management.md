@@ -499,6 +499,31 @@ from then, so the task comes back if its agent stops again. The Log says
 *back to work* and who sent it back. What only you can do (a merge, an answer,
 a permission, a decision) stays until you do it.
 
+### Why agents are gone
+
+When a task's agents are gone (after a restart, or while wherdr runs), the
+engine decides the cause from facts it reads, never a guess:
+
+- **machine offline or unreachable**: its herdr-core does not answer;
+- **herdr-core or wherdr restarted** (or the machine rebooted): every agent's
+  terminal of a machine gone at once, herdr-core started after the agents, or
+  herdr-core ended them itself (a stop, a restart, the host shutting down);
+- **agent killed or crashed**: its terminal ended with an exit code or a
+  signal; **out of memory** when its last output says so;
+- **account limit reached**: only when the account's reading at that time
+  says it was at its limit ([Quotas](quotas.md));
+- **unknown**, said as such, when the facts do not decide (an agent that
+  exited with 0, a terminal missing on a core older than it).
+
+Each one is recorded as an **incident**, per machine: when, the cause, the
+facts used, the tasks and agents hit. The task waits with the cause (*The
+agent's terminal is gone: …*) and its Log names the incident. An incident is
+open while one of its tasks is not working again.
+
+The coordinator lists them with `wherdr pm incidents [--since 2h|3d|<date>]`
+(the last 7 days by default), and `wherdr pm autopilot show` gives the last
+open one, so it tells you the cause the engine found.
+
 ### A task's temporary files
 
 A task's worker and reviewer keep their temporary files in the task's

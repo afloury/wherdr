@@ -5,7 +5,8 @@
 // shots/<KEY>-<n>/<file> (a task's screenshots),
 // coordinators/<KEY>.json (the hash of the coordinator's token, its current turn, its autopilot),
 // wakes.jsonl (the coordinators' wake queue, append-only: the last line of an id wins),
-// automations/<KEY>.json (the project's automations and where its tasks stood at the last tick).
+// automations/<KEY>.json (the project's automations and where its tasks stood at the last tick),
+// incidents.json (why agents were gone, newest last: shared/pm/incident.ts).
 // Atomic writes (temp file + rename), one at a time. Switched off, every
 // write is refused except turning it back on.
 import fs from 'node:fs/promises'
@@ -24,6 +25,7 @@ import { withMark } from '../../shared/pm/times'
 import { HerdrError } from './herdr'
 import type { FolderOptions } from '../../shared/pm/newProject'
 import { MAIN, type CoordinatorAgent, type Proposal, type ProposalAnswer } from '../../shared/pm/coordinator'
+import type { Incident } from '../../shared/pm/incident'
 import { NEW_AUTOPILOT, type Autopilot, type DayCount, type LastWake, type TaskStatus } from '../../shared/pm/autopilot'
 import { readQueue, type Wake } from '../../shared/pm/wakes'
 import type { Automation, Mark } from '../../shared/pm/automations'
@@ -89,6 +91,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     tasks: path.join(dir, 'tasks'), runs: path.join(dir, 'runs'), receipts: path.join(dir, 'receipts'), shots: path.join(dir, 'shots'),
     workflows: path.join(dir, 'workflows'), workflowLog: path.join(dir, 'workflow-log'),
     coordinators: path.join(dir, 'coordinators'), wakes: path.join(dir, 'wakes.jsonl'), automations: path.join(dir, 'automations'),
+    incidents: path.join(dir, 'incidents.json'),
   }
   let queue: Promise<unknown> = Promise.resolve()
   const serial = <T>(fn: () => Promise<T>): Promise<T> => {
@@ -290,6 +293,14 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const temp = `${files.wakes}.${randomUUID()}.tmp`
       await fs.writeFile(temp, keep.map(w => JSON.stringify(w) + '\n').join(''), { mode: 0o600 })
       await fs.rename(temp, files.wakes)
+    }),
+    incidents: async () => (await readJson<{ incidents?: Incident[] }>(files.incidents))?.incidents ?? [],
+    addIncidents: (list: Omit<Incident, 'id'>[]) => write(async () => {
+      if (!list.length) return []
+      const added = list.map(i => ({ id: randomUUID().slice(0, 8), ...i }))
+      const old = (await readJson<{ incidents?: Incident[] }>(files.incidents))?.incidents ?? []
+      await writeJson(files.incidents, { v: 1, incidents: [...old, ...added].slice(-200) })
+      return added
     }),
     automations: async (key: string): Promise<AutomationsFile> =>
       ({ automations: [], ...(TASK_ID_RE.test(`${key}-1`) ? await readJson<AutomationsFile>(path.join(files.automations, `${key}.json`)) : null) }),

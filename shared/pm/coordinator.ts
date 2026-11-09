@@ -79,7 +79,7 @@ export type Turn = 'user' | 'wake' | 'none'
 
 export type Command =
   | { name: 'help' } | { name: 'list' } | { name: 'plan' } | { name: 'template show' } | { name: 'autopilot show' }
-  | { name: 'automation list' }
+  | { name: 'automation list' } | { name: 'incidents', since?: number }
   | { name: 'show', task: string }
   | { name: 'template edit' } // the new template comes as the call's input (JSON)
   | { name: 'task tag', task: string, text: string }
@@ -110,7 +110,8 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'step done <task> --user-said "<their words>"', does: 'end a step that waits for the user, with the user\'s own words; only in a turn that comes from the user' },
   { usage: 'task decide <task> <choice> --reason "<one sentence>"', does: 'after N send-backs, pick one of the engine\'s options' },
   { usage: 'ack <wake> [<wake>…]', does: 'say you handled an Autopilot wake (each wake ends with its id); unacked, it comes back once, then the user is told' },
-  { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, whether it looks for new work (and how many tasks those wakes may still add today), the scheduled wakes skipped today (nothing to do, or ahead of the pace), what is left of today\'s limits, the pacing of your worker\'s account (go, or what automatic work waits for), each machine the project allows (online or offline, its available hours, memory, cores and load, its agents at work by weight, the heaviest weight it takes now or why none) and the weights (what each counts, the weight of each task type)' },
+  { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, whether it looks for new work (and how many tasks those wakes may still add today), the scheduled wakes skipped today (nothing to do, or ahead of the pace), what is left of today\'s limits, the pacing of your worker\'s account (go, or what automatic work waits for), each machine the project allows (online or offline, its available hours, memory, cores and load, its agents at work by weight, the heaviest weight it takes now or why none), the weights (what each counts, the weight of each task type) and the last open incident (why agents were gone, see incidents)' },
+  { usage: 'incidents [--since 2h|3d|<ISO date>]', does: 'why agents were gone, as the engine diagnosed it from facts (machine offline or unreachable, herdr-core or wherdr restarted, agent killed or crashed, out of memory, account limit, or unknown): when, the machine, the cause, the facts it used, the tasks and agents hit, open while one of those tasks is not working again; newest first, the last 7 days by default. Tell the user this cause, never a guess' },
   { usage: 'automation list', does: 'the project\'s automations: on or off, schedule or event, last firing' },
   { usage: 'automation show <automation>', does: 'one automation, its prompt and its last firings; only the user adds or changes them, in wherdr' },
   { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there; while it is offline the task goes to another allowed machine that fits, else waits for it. A started task always goes back to its own machine' },
@@ -147,7 +148,7 @@ export function tellTarget(runs: Run[], task: string, holder: Holder | undefined
 const TASK_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 // The main coordinator names the project with --project <KEY>; a task names its own.
-const PROJECT_VERBS = ['list', 'plan', 'template show', 'autopilot show', 'automation list', 'automation show', 'task add']
+const PROJECT_VERBS = ['list', 'plan', 'template show', 'autopilot show', 'incidents', 'automation list', 'automation show', 'task add']
 const URL_RE = /^https?:\/\/\S{1,2000}$/
 
 // argv after `wherdr pm` → a command, or the reason it is not one.
@@ -158,6 +159,14 @@ export function parseCommand(argv: unknown): (Command & { project?: string }) | 
   if (project === undefined) return r
   if (!PROJECT_VERBS.includes(r.name)) return { error: `--project is for ${PROJECT_VERBS.join(', ')}` }
   return KEY_RE.test(project) ? { ...r, project } : { error: '--project is a project key: 2 to 10 letters or digits' }
+}
+
+// "2h", "3d", "30m" before now, or a date.
+export function sinceTime(v: string, now: number): number | null {
+  const m = /^(\d{1,4})([mhd])$/.exec(v.trim())
+  if (m) return now - Number(m[1]) * { m: 60_000, h: 3_600_000, d: 86_400_000 }[m[2] as 'm' | 'h' | 'd']
+  const t = /^\d{4}-\d{2}-\d{2}/.test(v) ? Date.parse(v) : NaN
+  return Number.isFinite(t) ? t : null
 }
 
 function parseWords(argv: unknown): Command | { error: string } {
@@ -175,9 +184,15 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight'], 'task start': ['on'] }[w0 === 'tell' || w0 === 'read' ? w0 : verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight'], 'task start': ['on'], 'incidents': ['since'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' ? w0 : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
+  if (w0 === 'incidents') {
+    if (w1) return { error: `unexpected argument: ${w1}` }
+    if (flags.since === undefined) return { name: w0 }
+    const since = sinceTime(flags.since, Date.now())
+    return since === null ? { error: '--since is a duration (30m, 2h, 3d) or a date (2026-01-31)' } : { name: w0, since }
+  }
   if (verb === 'autopilot show' || verb === 'automation list') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
   if (verb === 'automation show') return w2 && /^[a-z0-9][a-z0-9-]{0,39}$/.test(w2) && !w3 ? { name: verb, id: w2 } : usage(verb)
   if (w0 === 'tell') {

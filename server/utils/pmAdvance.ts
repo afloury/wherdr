@@ -19,6 +19,7 @@ import { isPublic, leakText, scanDiff } from '../../shared/pm/visibility'
 import type { Project } from '../../shared/pm/project'
 import { agentBack, retriesAction, wasReleased } from '../../shared/pm/release'
 import { reviveWorker } from './pmRelease'
+import { recordGone, type CoreList } from './pmIncidents'
 
 // The task's commit, its diff size since the branch started, the worker's note, the verdict file.
 export const SIGNAL_READ_SCRIPT = `wt=$1 b=$2
@@ -54,9 +55,13 @@ const waitFor = async (deps: PmLaunchDeps, id: string, reason: string) =>
 
 export async function advanceTick(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
-  const { terminals } = await deps.call<{ terminals: LabelledTerminal[] }>('terminal.list', { all: true, labels: { [LABEL.install]: await store.install() } }, 8000)
+  const list = await deps.call<CoreList>('terminal.list', { all: true, labels: { [LABEL.install]: await store.install() } }, 8000)
+  const { terminals } = list
   const alive = (r?: Run) => (r?.terminal && r.state !== 'ended' ? terminals.find(x => x.address === r.terminal && x.state !== 'finished') : undefined)
   await endDuplicates(deps, terminals).catch(() => {})
+  // An agent killed, crashed or gone with its machine while wherdr runs: an incident (an agent that exited with 0 ended on its own).
+  const gone = (await store.runs()).filter(r => r.terminal && r.state !== 'ended' && !alive(r) && terminals.find(x => x.address === r.terminal)?.exit_code !== 0)
+  if (gone.length) await recordGone(deps, gone, list, now).catch(() => {})
   for (const run of await store.runs()) {
     if (alive(run)?.labels?.[LABEL.report] !== 'done') continue
     // Cleared once handled; a failure leaves it for the next tick.
