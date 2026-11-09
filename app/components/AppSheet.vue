@@ -19,6 +19,14 @@ const ui = computed(() => ({
   overlay: `hw-scrim${props.screen ? ' screen' : ''}${props.top ? ' top' : ''}`,
   content: `hw-sheet${props.tall ? ' tall' : ''}${props.wide ? ' wide' : ''}${props.full ? ' full' : ''}${props.screen ? ' screen' : ''}${props.top ? ' top' : ''}`,
 }))
+// On open, focus goes to the window itself (screen readers announce its
+// title), not to its first button: the phone's full-width handle would get
+// the browser's focus outline across the top. Tab then reaches the buttons,
+// which keep their keyboard focus ring.
+function focusSheet(e: Event) {
+  e.preventDefault()
+  ;(e.target as HTMLElement).focus({ preventScroll: true })
+}
 
 // The content, or a part of it that scrolls on its own (a task sheet's tab),
 // is scrolled down: the swipe scrolls it back up, it does not close the sheet.
@@ -73,7 +81,7 @@ function dragEnd(e: TouchEvent) {
 
 <template>
   <!-- The image viewer opened from the sheet: its taps and Escape are its own. -->
-  <UModal v-model:open="open" :title="title" :ui="ui" :dismissible="!lightboxSrc">
+  <UModal v-model:open="open" :title="title" :ui="ui" :content="{ onOpenAutoFocus: focusSheet }" :dismissible="!lightboxSrc">
     <template #content>
       <button
         v-if="!screen" type="button" class="hw-sheet-handle" :aria-label="tl('Close', 'Fermer')"
