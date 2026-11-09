@@ -6,7 +6,8 @@
 // every 30 s, the coordinators' wake queue ticks (pmWakes.ts), and every
 // minute the engine makes its mechanical moves (pmMechanic.ts). Every 30 s,
 // one grouped push for new Decisions (pmDecisions.ts), and the projects'
-// automations fire (pmAutomations.ts). A merge cut by the last restart goes on
+// automations fire (pmAutomations.ts). Every minute, one task's summary is
+// made again after a new report or verdict (pmSummary.ts). A merge cut by the last restart goes on
 // (resumeMerges), and a shutdown first waits a little for a merge that runs.
 import { coreAdminDeps } from '../utils/coreAdminDeps'
 import { reconcileRuns } from '../utils/pmLaunch'
@@ -20,6 +21,7 @@ import { decisionsTick } from '../utils/pmDecisions'
 import { automationTick } from '../utils/pmAutomations'
 import { resumeMerges } from '../utils/pmBoard'
 import { mergesSettled } from '../utils/pmActions'
+import { summaryTick } from '../utils/pmSummary'
 
 // Under Nitro's 30 s shutdown and the updater's wait before it kills the server.
 const MERGE_WAIT_MS = 20_000
@@ -50,8 +52,9 @@ export default defineNitroPlugin((nitroApp) => {
   const mechanic = every(60_000, () => mechanicTick({ ...coreAdminDeps(), store: pmStore() }))
   const decisions = every(30_000, () => decisionsTick(pmStore()))
   const automations = every(30_000, () => automationTick({ ...coreAdminDeps(), store: pmStore() }))
+  const summaries = every(60_000, () => summaryTick({ store: pmStore() }))
   nitroApp.hooks.hook('close', async () => {
-    clearInterval(timer); clearInterval(wakes); clearInterval(mechanic); clearInterval(decisions); clearInterval(automations)
+    clearInterval(timer); clearInterval(wakes); clearInterval(mechanic); clearInterval(decisions); clearInterval(automations); clearInterval(summaries)
     await mergesSettled(MERGE_WAIT_MS)
   })
 })

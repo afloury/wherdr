@@ -6,6 +6,7 @@ import { fillBase, planSteps, type StepState } from './steps'
 import { needsShots, shotMode } from './shots'
 import type { Stopped } from './stop'
 import type { Report } from './report'
+import type { TaskSummary } from './summary'
 import type { Mark } from './times'
 import { isPublic, publicWorkerSection } from './visibility'
 import type { Recovery } from './incident'
@@ -57,6 +58,7 @@ export interface Task {
   sameFiles?: string // the started task its start waits behind: same files (files.ts)
   cleanup?: { done?: true, skipped?: string } // its worktree removed, or why it stays (cleanup.ts)
   report?: Report // a problem the user reported, open until the coordinator acts (report.ts)
+  summary?: TaskSummary // a cheap model's few lines on how it went, per round (summary.ts)
   recovery?: Recovery // its agent gone with an incident: the engine resumes it (recovery.ts)
   createdAt: number
 }
