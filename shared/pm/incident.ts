@@ -10,7 +10,8 @@ export type Cause = 'offline' | 'restart' | 'killed' | 'out-of-memory' | 'limit'
 export interface TerminalFacts { state?: string, exit_code?: number | null, signal?: number | null, reason?: string | null, finished_ms?: number | null, lastLines?: string }
 // A machine as herdr-core sees it: state from terminal.list's machines (the
 // local one is always 'connected'), coreStartedAt only when known (the local core).
-export interface MachineFacts { key: string, label: string, state: string, since?: number | null, why?: string | null, coreStartedAt?: number }
+// live: wherdr's agents still running there (terminal.list), when known.
+export interface MachineFacts { key: string, label: string, state: string, since?: number | null, why?: string | null, coreStartedAt?: number, live?: number }
 // An unended run whose agent is not running: terminal undefined = not found.
 export interface GoneAgent { run: Pick<Run, 'id' | 'task' | 'role' | 'program' | 'machine' | 'startedAt'>, terminal?: TerminalFacts }
 // The account's limit data at a time: what it says when the account was at its limit, else null.
@@ -46,7 +47,7 @@ function one(g: GoneAgent, m: MachineFacts, allGone: boolean, limitAt: LimitAt):
   if (!t) {
     if (m.coreStartedAt && m.coreStartedAt > g.run.startedAt)
       return { cause: 'restart', fact: `${who}: terminal not found; herdr-core on ${m.label} started at ${iso(m.coreStartedAt)}, after the agent (${iso(g.run.startedAt)})` }
-    if (allGone) return { cause: 'restart', fact: `${who}: terminal not found, like every other agent's on ${m.label}` }
+    if (allGone) return { cause: 'restart', fact: `${who}: terminal not found, like every other agent's on ${m.label} (none of wherdr's agents runs there now)` }
     return { cause: 'unknown', fact: `${who}: terminal not found${m.coreStartedAt ? `, herdr-core on ${m.label} running since before the agent started` : ''}` }
   }
   const end = t.finished_ms ?? Date.now()
@@ -72,7 +73,8 @@ export function diagnose(gone: GoneAgent[], machines: MachineFacts[], limitAt: L
       add('offline', mine, [`herdr-core on ${m.label} does not answer: ${m.state}${m.since ? ` since ${iso(m.since)}` : ''}${m.why ? ` (${m.why})` : ''}`])
       continue
     }
-    const allGone = mine.length > 1 && mine.every(g => !g.terminal)
+    // Every agent's terminal of the machine gone at once: none missing found, and none still running there.
+    const allGone = mine.length > 1 && mine.every(g => !g.terminal) && m.live === 0
     const each = mine.map(g => ({ g, ...one(g, m, allGone, limitAt) }))
     for (const cause of [...new Set(each.map(e => e.cause))]) {
       const these = each.filter(e => e.cause === cause)
@@ -92,10 +94,11 @@ export function limitText(q: { at: number, limited?: { resetsAt: number | null }
   return null
 }
 
-// Open: some task it hit is still on the board, not done and not working again.
-type TaskState = Pick<Task, 'id' | 'state' | 'step'>
+// Open: some task it hit is still on the board, not done, and still on a run the incident took
+// (once started again it has a new run: closed for good, whatever it waits for later).
+type TaskState = Pick<Task, 'id' | 'state' | 'step' | 'run'>
 export const isOpen = (i: Incident, tasks: TaskState[]) =>
-  i.tasks.some((id) => { const t = tasks.find(x => x.id === id); return !!t && !t.step?.done && t.state !== 'working' })
+  i.tasks.some((id) => { const t = tasks.find(x => x.id === id); return !!t && !t.step?.done && !!t.run && i.runs.includes(t.run) })
 
 // The line a task waits with.
 export const incidentLine = (i: Pick<Incident, 'cause' | 'label'>) => `The agent's terminal is gone: ${CAUSE_TEXT[i.cause]} (${i.label})`

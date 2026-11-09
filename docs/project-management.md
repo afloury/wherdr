@@ -650,7 +650,8 @@ engine decides the cause from facts it reads, never a guess:
 
 - **machine offline or unreachable**: its herdr-core does not answer;
 - **herdr-core or wherdr restarted** (or the machine rebooted): every agent's
-  terminal of a machine gone at once, herdr-core started after the agents, or
+  terminal of a machine gone at once (none still running there), herdr-core
+  started after the agents, or
   herdr-core ended them itself (a stop, a restart, the host shutting down);
 - **agent killed or crashed**: its terminal ended with an exit code or a
   signal; **out of memory** when its last output says so;
@@ -661,8 +662,9 @@ engine decides the cause from facts it reads, never a guess:
 
 Each one is recorded as an **incident**, per machine: when, the cause, the
 facts used, the tasks and agents hit. The task waits with the cause (*The
-agent's terminal is gone: …*) and its Log names the incident. An incident is
-open while one of its tasks is not working again.
+agent's terminal is gone: …*), after a restart as while wherdr runs, and its
+Log names the incident. An incident is open until its tasks run again (started
+again, a new agent): what they wait for later is not this incident.
 
 The coordinator lists them with `wherdr pm incidents [--since 2h|3d|<date>]`
 (the last 7 days by default), and `wherdr pm autopilot show` gives the last

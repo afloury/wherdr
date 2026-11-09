@@ -6,7 +6,7 @@ const NOW = Date.parse('2026-01-10T12:00:00Z')
 const agent = (id: string, over: Partial<GoneAgent['run']> = {}, terminal?: GoneAgent['terminal']): GoneAgent =>
   ({ run: { id, task: `WEB-${id}`, role: 'worker', program: 'claude', machine: '', startedAt: NOW - 3_600_000, ...over }, ...(terminal ? { terminal } : {}) })
 const host: MachineFacts = { key: '', label: 'host-a', state: 'connected', coreStartedAt: NOW - 7_200_000 }
-const remote: MachineFacts = { key: 'b', label: 'host-b', state: 'connected' }
+const remote: MachineFacts = { key: 'b', label: 'host-b', state: 'connected', live: 0 }
 const noLimit = () => null
 const causes = (gone: GoneAgent[], machines = [host, remote], limit = noLimit) => diagnose(gone, machines, limit, NOW).map(i => [i.machine, i.cause, i.tasks])
 
@@ -21,6 +21,12 @@ describe('diagnose: why agents are gone', () => {
     expect(causes([agent('1')], [{ ...host, coreStartedAt: NOW - 60_000 }])).toEqual([['', 'restart', ['WEB-1']]])
     expect(causes([agent('1', { machine: 'b' }), agent('2', { machine: 'b' })])).toEqual([['b', 'restart', ['WEB-1', 'WEB-2']]])
     expect(causes([agent('1', {}, { state: 'finished', reason: 'host_shutdown', exit_code: null })])).toEqual([['', 'restart', ['WEB-1']]])
+  })
+
+  it('two agents lost while others still run on the machine, or nothing known of the others: no restart', () => {
+    const two = [agent('1', { machine: 'b' }), agent('2', { machine: 'b' })]
+    expect(causes(two, [host, { ...remote, live: 1 }])).toEqual([['b', 'unknown', ['WEB-1', 'WEB-2']]])
+    expect(causes(two, [host, { ...remote, live: undefined }])).toEqual([['b', 'unknown', ['WEB-1', 'WEB-2']]])
   })
 
   it('killed or crashed: an exit code or a signal; out of memory only when its output says so', () => {
@@ -43,12 +49,13 @@ describe('diagnose: why agents are gone', () => {
     expect(causes([agent('1', {}, { state: 'finished', reason: 'exited', exit_code: 0 })])).toEqual([['', 'unknown', ['WEB-1']]])
   })
 
-  it('one incident per machine and cause; open while a task it hit is not working again', () => {
+  it('one incident per machine and cause; open until a task it hit runs again', () => {
     const list = diagnose([agent('1', {}, { state: 'finished', exit_code: 2 }), agent('2'), agent('3', { machine: 'b' })], [host, { ...remote, state: 'needs_login' }], noLimit, NOW)
     expect(list.map(i => i.cause)).toEqual(['killed', 'unknown', 'offline'])
     const i = { ...list[0]!, id: 'x' }
-    expect(isOpen(i, [{ id: 'WEB-1', state: 'waiting' }])).toBe(true)
-    expect(isOpen(i, [{ id: 'WEB-1', state: 'working' }])).toBe(false)
+    expect(isOpen(i, [{ id: 'WEB-1', state: 'waiting', run: '1' }])).toBe(true)
+    // Started again (a new run), then waiting for a merge: closed.
+    expect(isOpen(i, [{ id: 'WEB-1', state: 'waiting', run: '9' }])).toBe(false)
   })
 
   it('wherdr pm incidents [--since]', () => {
