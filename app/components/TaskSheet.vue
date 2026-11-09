@@ -31,6 +31,8 @@ const proofs = (id: string) => Object.entries(props.card.state?.proofs[id] ?? {}
 const rounds = (id: string) => props.card.state?.rounds[id] ?? 0
 // The steps that have screenshots, to look at before the push, the PR or the merge.
 const shots = (id: string) => props.card.state?.shots?.[id] ?? []
+// The sets a rework after the review replaced.
+const earlier = (id: string) => props.card.state?.earlierShots?.[id] ?? []
 // Where its PR and merge stand (the card's line), with the full time.
 const status = computed(() => { const s = cardStatus(props.card); return s && { ...s, text: s.at ? `${s.text} ${fmtDateTime(s.at)}` : s.text } })
 
@@ -135,6 +137,10 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
             </details>
             <small v-for="[k, v] in proofs(s.id)" :key="k" class="muted">{{ k }}: <a v-if="/^https?:\/\//.test(v)" :href="v" target="_blank" rel="noopener">{{ v }}</a><template v-else>{{ v }}</template></small>
             <TaskShots v-if="shots(s.id).length" :task="card.id" :shots="shots(s.id)" :mode="shotMode(s)" />
+            <details v-if="earlier(s.id).length" data-testid="shots-earlier">
+              <summary>{{ tl('Earlier screenshots') }}</summary>
+              <TaskShots :task="card.id" :shots="earlier(s.id)" :mode="shotMode(s)" />
+            </details>
           </li>
         </ol>
 
