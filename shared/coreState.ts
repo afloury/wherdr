@@ -4,6 +4,7 @@ import { type CoreDocs, SPACE_LABEL, TAB_LABEL, rootTerminals, SEEN_LABEL } from
 import { addressOnly, coreActivity, coreTitle, coreUnread, ownTitle } from './coreInventory'
 import type { HerdrState, MachineInfo, Pane } from './types'
 import { cleanTitle } from './paneTitle'
+import { LABEL } from './pm/run'
 
 export interface CoreMachine { name: string; state: string; why?: string }
 // Lossless encoding keeps IDs stable across inventory order and core restarts.
@@ -56,7 +57,7 @@ export function coreState(terminals: CoreTerminal[], machines: CoreMachine[], do
     const status = (state === 'idle' || state === 'done') && terminal.labels?.[SEEN_LABEL] !== undefined ? (coreUnread(terminal) ? 'done' : 'idle') : state
     const pane: Pane = { id: `${workspace}:p${id}`, coreAddress: terminal.address, machine, workspace, tab, tabLabel: result.tabs!.find(t => t.id === tab)!.label,
       agent, name: addressOnly(terminal.name, terminal.address) ? null : terminal.name ?? null, label: ownTitle(terminal), title: terminal.title == null ? null : cleanTitle(terminal.title), cwd, agentSession: null,
-      status, interaction: 'unknown',
+      status, interaction: 'unknown', ...(terminal.labels?.[LABEL.task] ? { task: terminal.labels[LABEL.task] } : {}),
       ...(typeof terminal.status_ms === 'number' ? { stateSeq: terminal.status_ms, since: terminal.status_ms } : terminal.turn ? { stateSeq: terminal.turn } : {}) }
     result.panes.push(pane)
   }

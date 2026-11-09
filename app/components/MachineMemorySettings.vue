@@ -2,10 +2,11 @@
 // Each machine's memory and agents at once (all projects), and whether
 // automatic starts may go there now. `edit`: also its settings (Settings ›
 // Machines); Settings › Pace shows the state only.
-import type { MachineMemory, MemorySettings } from '#shared/pm/memory'
+import type { MemorySettings } from '#shared/pm/memory'
+import type { MachineCapacity } from '#shared/pm/capacity'
 
 defineProps<{ edit?: boolean }>()
-interface Row { key: string, label: string, mem: MachineMemory | null, settings: MemorySettings, agents: number, cap?: number, line: string, short?: string }
+interface Row { key: string, label: string, mem: MachineCapacity | null, settings: MemorySettings, agents: number, cap?: number, line: string, short?: string }
 const rows = ref<Row[] | null>(null)
 const error = ref('')
 const load = () => api<{ machines: Row[] }>('/api/machine/memory').then((v) => { rows.value = v.machines }, (e: Error) => { error.value = e.message })

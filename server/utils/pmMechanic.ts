@@ -19,8 +19,8 @@ import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { advanceTick } from './pmAdvance'
 import { forgetMemory, memoryHold } from './pmMemory'
 import { releaseIdle, reviveWorker } from './pmRelease'
-import { wasReleased } from '../../shared/pm/release'
-import { noteStall } from './pmStall'
+import { agentBack, handToAgent, wasReleased } from '../../shared/pm/release'
+import { noteBack, noteStall } from './pmStall'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -121,9 +121,11 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
 }
 
 // Kept for the board: since when the agent holding the step sits idle while
-// the step waits for its report (pm/blocked.ts). Unread status: unchanged.
+// the step waits for its report (pm/blocked.ts), also past its timeout. Unread
+// status: unchanged. Idle, then seen working: back to work (backToWork).
 async function noteIdle(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], runs: Run[], now: number): Promise<Task> {
-  const step = awaitsHolder(task, plan) ? plan[task.step!.at] : undefined
+  const open = task.step?.yourTurn?.reason === 'timeout' ? { ...task, step: { ...task.step, yourTurn: undefined } } : task
+  const step = awaitsHolder(open, plan) ? plan[task.step!.at] : undefined
   const holder = step && runs.filter(r => r.task === task.id && r.role === step.holder && r.state !== 'ended' && r.terminal).sort((a, b) => b.startedAt - a.startedAt)[0]
   let idle: number | undefined
   if (holder) {
@@ -131,6 +133,10 @@ async function noteIdle(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], run
     if (!st) return task
     const s = typeof st.status === 'string' ? st.status : st.status?.state
     idle = s === 'idle' || s === 'done' ? task.idle ?? now : undefined
+    if (task.idle !== undefined && s === 'working') {
+      const saved = await deps.store.saveTask({ ...task, idle })
+      return noteBack(deps.store, saved, plan, 'engine', `the ${step!.holder} is working again`, now)
+    }
   }
   return idle === task.idle ? task : deps.store.saveTask({ ...task, idle })
 }
@@ -166,6 +172,10 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       const lines = r.out.split('\n')
       try { facts.pr = (JSON.parse(lines.at(-1) || '[]') as PrInfo[])[0] } catch { continue }
       facts.head = lines[0]?.trim()
+      // The worker pushed the work the engine handed it: the step's Your turn, if any, comes back.
+      const work = task.step?.agent
+      if (work && facts.pr && facts.pr.headRefOid !== work.head)
+        facts.task = task = await store.logTask({ ...task, step: agentBack(task.step!) }, 'engine', `${work.kind}: the worker pushed it`)
       // Kept for the board: a task is stalled only while its CI is still red (pm/blocked.ts).
       const ci = ciOf(facts.pr, facts.head)
       if (ci && (ci.head !== task.ci?.head || ci.red !== task.ci?.red)) facts.task = task = await store.saveTask({ ...task, ci })
@@ -201,6 +211,13 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
     : wasReleased(run)
       ? reviveWorker(deps, task.id, move.kind, text).then(t => (t ? (t.state === 'working' ? 'started the worker again with it' : 'could not start the worker again') : null))
       : Promise.resolve(null)
+  // Work handed to the worker: the task leaves Your turn, its agents stay, until a push or its report.
+  const hand = async (text: string) => {
+    const r = await tell(text)
+    const t = r && !r.startsWith('could not') ? await deps.store.task(task.id) : undefined
+    if (t?.step) await deps.store.saveTask({ ...t, step: handToAgent(t.step, move.kind, f.pr?.headRefOid ?? f.head!, Date.now()) })
+    return r
+  }
   switch (move.kind) {
     case 'restart':
       // The agent stopped on its login may still sit in its terminal: one agent per task.
@@ -218,13 +235,13 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
     }
     case 'catch-up': {
       const r = await sh(SCRIPT.catchUp, [run.worktree, move.base, run.branch])
-      if (r.code === CODE.SEND_BACK) return tell(`${lastLine(r.out)}. Merge origin/${move.base} into your branch, fix it, commit, then say you are done.`)
+      if (r.code === CODE.SEND_BACK) return hand(`${lastLine(r.out)}. Merge origin/${move.base} into your branch, fix it, commit, then say you are done.`)
       return r.code === 0 ? `caught up with ${move.base}` : lastLine(r.out)
     }
     case 'rerun-ci': {
       const r = await sh(SCRIPT.rerun, [run.worktree, f.head!])
       return r.code === 0 ? `ran ${move.checks.join(', ')} again` : lastLine(r.out)
     }
-    case 'ci-to-agent': return tell(redCiText(move.checks, f.head!))
+    case 'ci-to-agent': return hand(redCiText(move.checks, f.head!))
   }
 }

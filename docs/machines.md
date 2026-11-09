@@ -8,7 +8,7 @@ Other machines are **core machines**: herdr-core (hc) reaches them over SSH and 
 terminals there, as `hc machine add` does. wherdr shows what `machine.list` returns; it opens no
 SSH connection of its own.
 
-- **On the home screen**, each machine is a tab of the machine bar, online or offline, with its
+- **On the home screen**, each machine is one of the machine tabs, online or offline, with its
   count of rows ([Machines as tabs](home.md#machines-as-tabs)). When a machine goes offline, its
   last terminals stay visible, marked offline, until core reaches it again.
 - **New** starts a terminal or an agent on any online machine (`terminal.run` with `on`). Home,
@@ -42,7 +42,8 @@ machine with its state (connected, connecting…, offline) and last error:
   changes; links that use the old name stop working.
 - **Forget** (`machine.rm`): this core drops the machine, but its terminals keep running there,
   and the machine can be added again later.
-- **Memory**: each machine's free memory and its agents at once (all projects), with two
+- **Memory**: each machine's free memory, cores and load (read on Linux and macOS; on macOS the
+  free figure is close to Activity Monitor's, not exact) and its agents at once (all projects), with two
   settings: **Agents at once, all projects** (empty: one agent per 1.5 GB of RAM) and
   **Automatic starts wait under (GB free)**. Automatic starts (autopilot, chains, automations)
   wait while a machine is short on memory, its swap is over 90 % used or it runs its cap of

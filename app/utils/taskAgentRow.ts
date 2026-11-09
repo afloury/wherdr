@@ -4,11 +4,11 @@ import type { TaskAgent } from '../../shared/pm/taskAgents'
 
 const MAX_TITLE = 60
 
-// '<KEY-n> <task title>', cut at 60 characters; '' when the user renamed the
-// pane (its own name stays) or the pane is no task's.
-export function taskAgentTitle(pane: Pick<Pane, 'label'>, agent?: TaskAgent): string {
+// '<KEY-n> <task title>' (without the key when a badge shows it), cut at 60
+// characters; '' when the user renamed the pane (its own name stays) or the pane is no task's.
+export function taskAgentTitle(pane: Pick<Pane, 'label'>, agent?: TaskAgent, withKey = true): string {
   if (!agent || pane.label?.trim()) return ''
-  const title = `${agent.shown} ${agent.title.trim()}`.trim()
+  const title = (withKey ? `${agent.shown} ${agent.title.trim()}` : agent.title.trim()).trim()
   return title.length > MAX_TITLE ? `${title.slice(0, MAX_TITLE - 1).trimEnd()}…` : title
 }
 

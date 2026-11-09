@@ -46,7 +46,9 @@ const branch = computed(() => ws.value?.branch || null)
 // unless renamed, with its role and how long it has been in its state. A
 // reviewer kept between rounds shows dimmed; its status and group stay core's.
 const task = computed(() => (isIndividualAgentRow(props.row) ? taskAgentOf(props.pane) : undefined))
-const title = computed(() => isIndividualAgentRow(props.row) ? paneTaskTitle(props.pane) || individualAgentTitle(props.pane) : homeTitle(props.pane, ws.value))
+// Its task id in the project's colored key badge; the title then leaves the key out.
+const badge = computed(() => (task.value ? { text: task.value.shown, color: paneBadge({ ...props.pane, task: task.value.task })?.color } : null))
+const title = computed(() => isIndividualAgentRow(props.row) ? paneTaskTitle(props.pane, !badge.value) || individualAgentTitle(props.pane) : homeTitle(props.pane, ws.value))
 const roleTitle = computed(() => !task.value ? '' : task.value.reserve
   ? tl('Reviewer kept for the next round')
   : { 'dev': tl('Working on the task'), 'review': tl('Reviewing'), 'fix': tl('Fixing what was sent back'), 'catch-up': tl('Merging the base branch') }[task.value.role])
@@ -205,6 +207,7 @@ onUnmounted(list.unmount)
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
       <AgentAvatar :agent="pane.agent" />
+      <ProjectBadge v-if="badge" class="card-key" :text="badge.text" :color="badge.color" />
       <span class="card-title">{{ title }}</span>
       <span v-if="task" class="card-tag card-role" :class="task.role" :title="roleTitle" data-testid="agent-role">{{ tl(task.role) }}</span>
       <span v-if="machineBadge" class="card-tag card-origin" :title="machineBadge">{{ machineBadge }}</span>
@@ -250,6 +253,7 @@ onUnmounted(list.unmount)
 .card.compact .quota-limit { color: var(--ochre); border-color: currentColor; }
 .card.compact .card-role { color: var(--muted); }
 .card.compact .card-role.fix, .card.compact .card-role.catch-up { color: var(--ochre); border-color: currentColor; }
+.card-key { flex: none; }
 .card-age { flex: none; font: 500 10px/1 var(--mono); color: var(--dim); }
 /* A reviewer kept between rounds: dimmed, not mistaken for an active agent. */
 .card.task-reserve .card-title, .card.task-reserve .avatar, .card.task-reserve .card-state { opacity: .5; }

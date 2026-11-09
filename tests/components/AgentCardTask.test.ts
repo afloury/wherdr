@@ -12,13 +12,14 @@ afterEach(() => {
   herdrState.value = { ok: false, panes: [], workspaces: [] }
 })
 
-it('a task agent\'s row: its task title, role badge and duration; a reviewer in reserve is dimmed', async () => {
+it('a task agent\'s row: its key badge, task title, role badge and duration; a reviewer in reserve is dimmed', async () => {
   herdrState.value = { ok: true, panes: [pane], workspaces: [] }
   taskAgentsNow.value = 8 * 60_000
   taskAgents.value = { t1: { task: 'CO-1', shown: 'AC-1', title: 'Fix the login', role: 'review', reserve: true } }
   const w = await mountSuspended(AgentCard, { props: { pane, row } })
   try {
-    expect(w.find('.card-title').text()).toBe('AC-1 Fix the login')
+    expect(w.find('[data-testid="project-badge"]').text()).toBe('AC-1')
+    expect(w.find('.card-title').text()).toBe('Fix the login')
     expect(w.find('[data-testid="agent-role"]').text()).toBe('review')
     expect(w.find('.card-age').text()).toBe('8 min')
     // Dimmed only: its herdr-core status stays.

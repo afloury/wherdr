@@ -2,10 +2,11 @@
 // (every minute, from the mechanic's pass), and its worker starts again in the
 // same worktree when the task needs it: a send-back, a conflict, red CI. The
 // rules are in shared/pm/release.ts.
-import { LABEL, type LabelledTerminal, type Task } from '../../shared/pm/run'
-import { RELEASED_WHY, idleSince, releaseDue } from '../../shared/pm/release'
+import { LABEL, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { PUSH_LEFT_SCRIPT, RELEASED_WHY, idleSince, releaseDue } from '../../shared/pm/release'
 import { handoverText } from '../../shared/pm/stop'
-import { startTask, type PmLaunchDeps } from './pmLaunch'
+import { runOn, startTask, type PmLaunchDeps } from './pmLaunch'
+import { actionShell } from './pmActions'
 import { endAgents, load } from './pmStop'
 import { forgetMemory, memoryHold } from './pmMemory'
 
@@ -18,13 +19,22 @@ const busyNow = (t?: StatusTerminal) => {
 // Task id → since when its agents are idle while it waits for the user. In
 // memory: a restart starts the 10 minutes again.
 const idle = new Map<string, number>()
+const unpushedLogged = new Set<string>()
+
+// The task branch's commits not on origin yet, pushed before its agents go:
+// pushed, nothing to push, or why not.
+async function pushLeft(deps: PmLaunchDeps, run: Run): Promise<{ error?: string, pushed?: true }> {
+  const r = await Promise.resolve().then(() => actionShell(deps, runOn(deps, run))(PUSH_LEFT_SCRIPT, [run.worktree, run.branch])).catch((e: Error) => ({ code: 1, out: e.message }))
+  const last = r.out.trim().split('\n').pop()?.trim().slice(0, 300) ?? ''
+  return r.code === 0 ? (last === 'pushed' ? { pushed: true } : {}) : { error: last || 'git push failed' }
+}
 
 export async function releaseIdle(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
   const { terminals } = await deps.call<{ terminals: StatusTerminal[] }>('terminal.list', { all: true, labels: { [LABEL.install]: await store.install() } }, 8000)
   const runs = (await store.runs()).filter(r => r.state !== 'ended')
   const released: string[] = []
-  for (const task of await store.tasks()) {
+  for (let task of await store.tasks()) {
     const mine = runs.filter(r => r.task === task.id)
     // A run still starting has no terminal yet: busy.
     const busy = mine.some(r => !r.terminal || busyNow(terminals.find(x => x.address === r.terminal)))
@@ -32,7 +42,18 @@ export async function releaseIdle(deps: PmLaunchDeps, now = Date.now()) {
     if (since === undefined) { idle.delete(task.id); continue }
     idle.set(task.id, since)
     if (!releaseDue(since, now)) continue
+    // Committed work is never left unpushed: pushed first, or its agents stay (tried again in 10 minutes).
+    const worker = mine.filter(r => r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
+    const push = worker ? await pushLeft(deps, worker) : {}
+    if (push.error) {
+      idle.set(task.id, now)
+      if (!unpushedLogged.has(task.id)) await store.logTask(task, 'engine', `kept its agents: could not push the branch's unpushed commits (${push.error})`)
+      unpushedLogged.add(task.id)
+      continue
+    }
+    unpushedLogged.delete(task.id)
     idle.delete(task.id)
+    if (push.pushed) task = await store.logTask(task, 'engine', 'pushed the branch\'s unpushed commits before releasing its agents')
     const t = await store.logTask(task, 'engine', 'released its agents: idle for 10 minutes while the task waits for you; they start again when it needs them')
     await endAgents(deps, t, 'released', ' to free memory')
     released.push(task.id)

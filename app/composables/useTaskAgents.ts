@@ -12,8 +12,8 @@ export const loadTaskAgents = () => api<Record<string, TaskAgent>>('/api/pm/agen
   .finally(() => { taskAgentsNow.value = Date.now() })
 
 export const taskAgentOf = (p?: Pane | null) => (p?.coreAddress ? taskAgents.value[p.coreAddress] : undefined)
-// The pane's task title, '' for a renamed pane or one that is no task's.
-export const paneTaskTitle = (p?: Pane | null) => (p ? taskAgentTitle(p, taskAgentOf(p)) : '')
+// The pane's task title (without its key when a badge shows it), '' for a renamed pane or one that is no task's.
+export const paneTaskTitle = (p?: Pane | null, withKey = true) => (p ? taskAgentTitle(p, taskAgentOf(p), withKey) : '')
 
 // While the list is on screen: read now, then every 30 s while the page shows.
 export function useTaskAgentsLoader() {

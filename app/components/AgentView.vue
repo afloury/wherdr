@@ -92,7 +92,8 @@ const ownTitle = computed(() => Boolean(props.cell || (tabEnt.value && tabEnt.va
 // A coordinator's conversation is titled by its name, a task agent's by its task
 // (read once here when the list never showed); the session title stays the subtitle.
 onMounted(() => { if (!Object.keys(taskAgents.value).length) loadTaskAgents() })
-const headTitle = computed(() => (pane.value ? paneCoordinatorName(pane.value) || paneTaskTitle(pane.value) || desktopHeaderTitle(pane.value, workspace.value, ownTitle.value) : herdrState.value.ok ? '—' : ''))
+const badge = computed(() => paneBadge(pane.value))
+const headTitle = computed(() => (pane.value ? paneCoordinatorName(pane.value) || paneTaskTitle(pane.value, !badge.value) || desktopHeaderTitle(pane.value, workspace.value, ownTitle.value) : herdrState.value.ok ? '—' : ''))
 const subtitle = computed(() => {
   const s = pane.value ? conversationSubtitle(pane.value, workspace.value) : ''
   return s && s !== headTitle.value ? s : ''
@@ -544,7 +545,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         />
         <PhoneIdentity v-if="compactPhone && pane" :pane="pane" :workspace="workspace" @overview="openPlan" />
         <div v-else class="agent-head">
-          <div class="agent-title">{{ headTitle }} <UIcon v-if="pane && paneNotificationsMuted(pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
+          <div class="agent-title"><ProjectBadge v-if="badge" class="head-badge" :text="badge.text" :color="badge.color" />{{ badge?.coordinator ? tl('coordinator') : headTitle }} <UIcon v-if="pane && paneNotificationsMuted(pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
           <div class="agent-meta">
             <!-- No state known yet (startup): nothing rather than "closed". -->
             <StatusPill v-if="pane || herdrState.ok" :pane="pane" kind />
@@ -653,4 +654,5 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
 .dismissible-transcript-note > span { flex: 1; padding: 7px 0; }
 .dismissible-transcript-note > button { flex: none; align-self: stretch; min-width: 40px; min-height: 40px; color: var(--muted); font: 22px/1 var(--sans); border-radius: 6px; touch-action: manipulation; }
 .dismissible-transcript-note > button:hover, .dismissible-transcript-note > button:focus-visible { color: var(--text); background: var(--line-soft); }
+.head-badge { margin-right: 8px; }
 </style>

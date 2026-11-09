@@ -6,13 +6,14 @@ import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
-import { MAIN, canRunCoordinator, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
+import { MAIN, canRunCoordinator, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
 import { validateTemplate } from '../../shared/pm/workflow'
+import { weightOf, weightText } from '../../shared/pm/weight'
 import { EXAMPLES } from '../../shared/pm/examples'
-import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, coordinatorStartRefusal, limitsLeft, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, coordinatorStartRefusal, countFix, limitsLeft, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
 import { ackWakes } from '../../shared/pm/wakes'
 import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
@@ -28,6 +29,8 @@ import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from
 import { userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
 import { removeTask, resumeTask, stopTask } from './pmStop'
+import { noteBack } from './pmStall'
+import { reviveWorker } from './pmRelease'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
 import { memoryHold, memoryState } from './pmMemory'
@@ -151,7 +154,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const ts = new Map(await Promise.all(projects.map(async x => [x.key, x ? await store.workflow(x.key) : null] as const)))
       return { tasks: (await store.tasks()).filter(x => !key || x.project === key).map(x => summary(ts.get(x.project) ?? null, x, projects.find(y => y.key === x.project))) }
     }
-    case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task, p), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task, p) : [] } }
+    case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task, p), weight: weightText(weightOf(t, task)), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task, p) : [] } }
     case 'plan': return { template: t && { id: t.id, version: t.version }, workingBranch: workingBranch(p), plans: Object.fromEntries(Object.keys(needPlan().taskTypes).map(type => [type, planSteps(t!, { type }, p?.base)])) }
     case 'template show': return {
       template: needPlan(),
@@ -225,15 +228,29 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
     }
     case 'tell': {
       const task = await taskOf(cmd.task)
-      const run = task.run ? (await store.runs()).find(r => r.id === task.run) : undefined
-      if (!run?.terminal || run.state === 'ended') throw new HerdrError('not_found', 'The task\'s agent is not running')
+      const holder = t && !task.step?.done ? currentStep(planOf(t, task, p), task.step ?? initialState())?.holder : undefined
+      const { role, run, released } = tellTarget(await store.runs(), task.id, holder, cmd.to, !!cmd.fix)
+      const said = `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}`
+      const wake = turn !== 'user', fix = cmd.fix && { autopilot: rec?.autopilot, main }
+      // A wake's fix counts against the step's; the log keeps its kind and reason.
+      const fixed = (x: Task) => (cmd.fix && wake ? { ...x, fixes: countFix(task) } : x)
+      const fixNote = cmd.fix ? ` (fix ${cmd.fix}: ${cmd.reason})` : ''
+      if (released) {
+        const why = tellRefusal(task, wake, fix)
+        if (why) throw new HerdrError('refused', why)
+        const started = await reviveWorker(deps, task.id, cmd.fix ? `a fix of the coordinator: ${cmd.reason}` : 'a message of the coordinator', said)
+        if (started?.state !== 'working') throw new HerdrError('refused', 'The task\'s worker could not start again now (short on memory?): try again later')
+        const told = await store.logTask(fixed(started), by, `told the worker, started again${fixNote}: ${cmd.text.slice(0, 300)}`)
+        return { task: t ? await noteBack(store, told, planOf(t, told, p), by, `the ${by} told the worker`) : told, sentTo: 'worker (started again with your message)' }
+      }
+      if (!run?.terminal) throw new HerdrError('not_found', `The task's ${role} is not running${cmd.to ? '' : ` (--to ${role === 'worker' ? 'reviewer' : 'worker'} picks the other agent)`}`)
       // What the agent waits for now, from its terminal: a permission prompt is never typed into.
       const live = waitOf(await deps.call<Parameters<typeof waitOf>[0]>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null))
-      const why = tellRefusal({ state: live ? 'waiting' : task.state, waitKind: live ?? task.waitKind }, turn !== 'user')
+      const why = tellRefusal({ ...task, state: live ? 'waiting' : task.state, waitKind: live ?? task.waitKind }, wake, fix)
       if (why) throw new HerdrError('refused', why)
-      await deps.call('terminal.send', { terminal: run.terminal, text: `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}` }, 30000)
-      const saved = await store.logTask(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task, by, `told the agent: ${cmd.text.slice(0, 300)}`)
-      return { task: saved }
+      await deps.call('terminal.send', { terminal: run.terminal, text: said }, 30000)
+      const saved = await store.logTask(fixed(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task), by, `told the ${role}${fixNote}: ${cmd.text.slice(0, 300)}`)
+      return { task: t ? await noteBack(store, saved, planOf(t, saved, p), by, `the ${by} told the ${role}`) : saved, sentTo: role }
     }
     case 'task start': {
       const task = await taskOf(cmd.task)
@@ -255,7 +272,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if (wake && !task.autopilot) await store.saveTask({ ...task, autopilot: true })
       const memory = short ? { memory: `${short}: started anyway, as the user asked` } : {}
       if (task.stopped) return { task: await resumeTask(deps, task.id, 'continue', who, by), ...memory }
-      const started = await startTask(deps, task.id, placed ? { on: placed.machine } : {})
+      const started = await startTask(deps, task.id, { by, ...(placed ? { on: placed.machine } : {}) })
       return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`), ...memory }
     }
     case 'task stop': {
@@ -272,7 +289,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
       // Added in the user's turn: their request, never held by the pace.
-      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', origin: turn === 'user' ? 'user' : 'coordinator' })
+      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', ...(cmd.weight ? { weight: cmd.weight } : {}), origin: turn === 'user' ? 'user' : 'coordinator' })
       const task = turn !== 'user' ? { ...added, autopilot: true as const } : added
       if (look) await store.saveCoordinator({ ...rec!, lookAdded: bump(rec!.lookAdded, Date.now()) })
       return { task: await store.logTask(task, by, `added the task${cmd.after ? `, after ${cmd.after}` : ''}`) }

@@ -2,10 +2,14 @@
 // rights checked on each, and the role files written in its own folder. Pure:
 // the server (server/utils/pmCoordinator.ts) reads and writes.
 import type { Project } from './project'
-import type { Template } from './workflow'
+import { WEIGHTS, isWeight, type Holder, type Template, type Weight } from './workflow'
+import type { Run } from './run'
+import { wasReleased } from './release'
+
+type AgentRole = Run['role']
 import type { WorkflowChanges } from './workflowChanges'
 import type { ProjectColor } from './projectKey'
-import type { Autopilot, limitsLeft } from './autopilot'
+import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, type Autopilot, type FixKind, type limitsLeft } from './autopilot'
 import type { Wake } from './wakes'
 import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
@@ -79,11 +83,11 @@ export type Command =
   | { name: 'step done', task: string, userSaid?: string, link?: string }
   | { name: 'task decide', task: string, choice: Choice, reason: string }
   | { name: 'ack', wakes: string[] } | { name: 'automation show', id: string }
-  | { name: 'tell', task: string, text: string }
+  | { name: 'tell', task: string, text: string, to?: AgentRole, fix?: FixKind, reason?: string }
   | { name: 'task start', task: string, on?: string }
   | { name: 'task stop', task: string, reason: string }
   | { name: 'task remove', task: string, reason: string }
-  | { name: 'task add', title: string, type: string, after?: string, description?: string }
+  | { name: 'task add', title: string, type: string, after?: string, description?: string, weight?: Weight }
   | { name: 'pr merge', pr: number, userSaid: string, method?: MergeMethod }
 
 // One table for the parser, the skill and the role file.
@@ -105,13 +109,29 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there. A started task always goes back to its own machine' },
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
-  { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done' },
-  { usage: 'tell <task> "<text>"', does: 'a message to the task\'s agent; in a wake, only to answer its question (a permission request is the user\'s)' },
+  { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"] [--weight light|standard|heavy]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done. --weight says what it needs of a machine (light: docs, a study; standard: tests and typecheck; heavy: a build, e2e, screenshots); left out, it comes from its task type and steps (show gives it)' },
+  { usage: 'tell <task> "<text>" [--to worker|reviewer] [--fix base|ci|machine|stall --reason "<one sentence>"]', does: `a message to one of the task\'s agents: the one that holds its current step, else (a step held by nobody or by you: pr, merge, a user step) its worker; --to picks it. The answer says which agent got it. In a wake, only to answer its question, or with --fix to unblock a mechanical block (${FIX_KINDS.map(k => `${k}: ${FIX_TEXT[k]}`).join('; ')}): a worker that was let go or has ended starts again with your message; with the autopilot on, a task of your project, at most ${FIXES_PER_STEP} times per task and step, written to its log with the reason; past that, tell the user. A permission request is always the user\'s` },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
 ]
 // Listed only where the project's guard allows it.
 const GUARDED_COMMAND = 'pr merge'
+
+const AGENT_ROLES: AgentRole[] = ['worker', 'reviewer']
+// Which of a task's agents `tell` reaches: --to, else the holder of its current
+// step when that is an agent, else its worker (a step held by nobody or by the
+// coordinator: pr, merge, a user step; the latest agent there is often the
+// reviewer, who has nothing to change). run: its latest run of that role, if
+// still running; released: a worker the engine let go while the task waited
+// for the user (release.ts), started again with the message.
+// fix: a mechanical fix also starts again a worker that ended on its own (a
+// crash, a machine problem), never one a stop ended.
+export function tellTarget(runs: Run[], task: string, holder: Holder | undefined, to?: AgentRole, fix = false) {
+  const role = to ?? (holder === 'reviewer' ? 'reviewer' : 'worker')
+  const last = runs.filter(r => r.task === task && r.role === role).sort((a, b) => b.startedAt - a.startedAt)[0]
+  const run = last?.state !== 'ended' && last?.terminal ? last : undefined
+  return { role, run, released: !run && role === 'worker' && !!last && (wasReleased(last) || (fix && last.endedBy !== 'stopped')) }
+}
 
 const TASK_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
@@ -144,14 +164,19 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description'], 'task start': ['on'] }[verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight'], 'task start': ['on'] }[w0 === 'tell' ? 'tell' : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (verb === 'autopilot show' || verb === 'automation list') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
   if (verb === 'automation show') return w2 && /^[a-z0-9][a-z0-9-]{0,39}$/.test(w2) && !w3 ? { name: verb, id: w2 } : usage(verb)
   if (w0 === 'tell') {
     const text = words.slice(2).join(' ').trim()
-    return w1 && TASK_RE.test(w1) && text && text.length <= 4000 ? { name: 'tell', task: w1, text } : usage('tell')
+    const to = flags.to
+    if (to !== undefined && !AGENT_ROLES.includes(to as AgentRole)) return { error: `--to is one of ${AGENT_ROLES.join(', ')}` }
+    const { fix, reason } = flags
+    if (fix !== undefined && !FIX_KINDS.includes(fix as FixKind)) return { error: `--fix is one of ${FIX_KINDS.join(', ')}` }
+    if ((fix === undefined) !== (reason === undefined) || (reason !== undefined && !reason.trim())) return { error: '--fix and --reason "<one sentence>" go together' }
+    return w1 && TASK_RE.test(w1) && text && text.length <= 4000 ? { name: 'tell', task: w1, text, ...(to ? { to: to as AgentRole } : {}), ...(fix ? { fix: fix as FixKind, reason: reason!.trim().slice(0, 500) } : {}) } : usage('tell')
   }
   if (w0 === 'help' || w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0 }
   if (w0 === 'show') return w1 && TASK_RE.test(w1) && !w2 ? { name: 'show', task: w1 } : usage('show')
@@ -162,7 +187,9 @@ function parseWords(argv: unknown): Command | { error: string } {
     if (after !== undefined && !after.split(',').every(a => TASK_RE.test(a.trim()))) return { error: '--after is a list of tasks: A-1,A-2' }
     const description = flags.description?.trim()
     if (description && description.length > 20000) return { error: '--description is 20000 characters at most' }
-    return { name: verb, title, type, ...(after ? { after } : {}), ...(description ? { description } : {}) }
+    const weight = flags.weight?.trim()
+    if (weight !== undefined && !isWeight(weight)) return { error: `--weight is one of ${WEIGHTS.join(', ')}` }
+    return { name: verb, title, type, ...(after ? { after } : {}), ...(description ? { description } : {}), ...(weight ? { weight } : {}) }
   }
   if (verb === 'pr merge') {
     const said = flags['user-said']?.trim(), method = flags.method as MergeMethod | undefined
@@ -377,6 +404,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     ...(isPublic(p) ? ['## Public repository', '', PUBLIC_RULE,
       'This holds for what you write too: each task description you write (`task add --description`) says the repository is public and repeats this rule. wherdr gives every task\'s worker and reviewer the rule as well.', ''] : []),
     'Each Autopilot wake ends with its id: once you have handled it, run `wherdr pm ack <id>`. The engine already fixes PR bases, re-runs CI, retries pushes, catches up branches, sends red CI back and merges what the branch rule allows: leave those to it.',
+    `What it cannot fix, a wake may unblock with \`tell --fix\` when the block is mechanical: ${FIX_KINDS.map(k => FIX_TEXT[k]).join(', ')}. With the autopilot on, at most ${FIXES_PER_STEP} times per task and step; then the block is the user's: tell them.`,
     ...(plain ? [''] : ['The engine also moves each started task through its steps: when the worker says it is done, it runs the next step (a PR, a reviewer of another model, a merge the branch rule allows) and sends a review\'s findings back to the worker. It starts a task with "after" once those tasks are done, and makes it wait for the user when one of them failed. It starts no other task: add the tasks your goal needs with `task add` (chain a follow-up with `--after`), and start the next one with `task start`.', '',
     '## Plans of this project\'s task types', '', `Workflow: ${t ? `v${t.version ?? 1}${p.from ? `, copied from template ${p.from.template} v${p.from.version} (the template library never changes it)` : ''}` : 'none'}`, `Working branch: ${p.base || 'none set'}`, '', ...plans]),
     '## Turning a workflow request into steps', '',

@@ -6,7 +6,7 @@ import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
 import { alfredView, answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, takeUpdateNotice, userMessageTo } from '../server/utils/pmCoordinator'
 import { REMOTE_SCRIPT } from '../server/utils/pmVisibility'
-import { MAIN, parseCommand, roleFiles, coordinatorArgs, updateNotice } from '../shared/pm/coordinator'
+import { MAIN, parseCommand, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
 import pkg from '../package.json'
 import { EXAMPLES, common, company } from '../shared/pm/examples'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
@@ -298,6 +298,26 @@ describe('arbitration after N send-backs', () => {
     expect(parseCommand(['task', 'decide', 'CO-1', 'maybe', '--reason', 'x'])).toMatchObject({ error: expect.stringContaining('choice') })
   })
 })
+
+it('tell goes to the step\'s agent, else the worker; --to picks one', () => {
+  expect(parseCommand(['tell', 'CO-1', 'rework', 'it', '--to', 'worker'])).toEqual({ name: 'tell', task: 'CO-1', text: 'rework it', to: 'worker' })
+  expect(parseCommand(['tell', 'CO-1', 'hi', '--to', 'coordinator'])).toEqual({ error: '--to is one of worker, reviewer' })
+  expect(parseCommand(['tell', 'CO-1', 'retry', '--fix', 'machine', '--reason', ' Disk full. '])).toEqual({ name: 'tell', task: 'CO-1', text: 'retry', fix: 'machine', reason: 'Disk full.' })
+  expect(parseCommand(['tell', 'CO-1', 'retry', '--fix', 'approve', '--reason', 'x'])).toEqual({ error: '--fix is one of base, ci, machine, stall' })
+  expect(parseCommand(['tell', 'CO-1', 'retry', '--fix', 'ci'])).toEqual({ error: '--fix and --reason "<one sentence>" go together' })
+  const run = (id: string, role: 'worker' | 'reviewer', startedAt: number, more = {}) => ({ id, task: 'CO-1', role, program: 'claude', model: 'opus', machine: '', worktree: '/w', branch: 'b', instructions: '', terminal: `host/${id}`, attempt: 1, state: 'running' as const, startedAt, ...more })
+  const runs = [run('w', 'worker', 1), run('r', 'reviewer', 2)] // the reviewer is the latest
+  for (const holder of ['none', 'coordinator', 'worker', undefined] as const) expect(tellTarget(runs, 'CO-1', holder)).toMatchObject({ role: 'worker', run: { id: 'w' } })
+  expect(tellTarget(runs, 'CO-1', 'reviewer')).toMatchObject({ role: 'reviewer', run: { id: 'r' } })
+  expect(tellTarget(runs, 'CO-1', 'none', 'reviewer')).toMatchObject({ role: 'reviewer', run: { id: 'r' } })
+  // A worker let go while the task waited is started again; one that exited is not running.
+  expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'released' })], 'CO-1', 'none')).toEqual({ role: 'worker', run: undefined, released: true })
+  expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'exit' })], 'CO-1', 'none')).toEqual({ role: 'worker', run: undefined, released: false })
+  // A fix starts again a worker that ended, not only one let go.
+  expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'exit' })], 'CO-1', 'none', undefined, true)).toEqual({ role: 'worker', run: undefined, released: true })
+  expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'stopped' })], 'CO-1', 'none', undefined, true)).toEqual({ role: 'worker', run: undefined, released: false })
+})
+
 
 describe('role files', () => {
   // A fake herdr-core: the machine's home is /h; files written; terminals started.
@@ -716,19 +736,23 @@ describe('commands of lot 10', () => {
     expect(await cli(['autopilot', 'show'])).toMatchObject({ autopilot: { goal: 'Ship' }, today: { started: 0, perDay: 4, working: 1, atOnce: 2, startLeft: 1 } })
   })
 
-  it('task add: a task to do, chained with --after; in a wake only with the autopilot on', async () => {
+  it('task add: a task to do, chained with --after, with --weight; show gives its weight; in a wake only with the autopilot on', async () => {
     expect(parseCommand(['task', 'add', 'Fix', 'the', 'docs', '--type', 'feature', '--after', 'CO-1'])).toEqual({ name: 'task add', title: 'Fix the docs', type: 'feature', after: 'CO-1' })
     expect(parseCommand(['task', 'add', 'Fix'])).toMatchObject({ error: expect.stringMatching(/^usage: wherdr pm task add/) })
     expect(parseCommand(['task', 'add', 'Fix', '--type', 'feature', '--after', 'next'])).toEqual({ error: '--after is a list of tasks: A-1,A-2' })
+    expect(parseCommand(['task', 'add', 'Fix', '--type', 'feature', '--weight', 'huge'])).toEqual({ error: '--weight is one of light, standard, heavy' })
     await noteTurn(store, 'CO', 'user', 'add two tasks')
     const first = (await cli(['task', 'add', 'Tidy the docs', '--type', 'feature', '--description', 'One typo.'])).task
     expect(first).toMatchObject({ id: 'CO-1', state: 'todo', description: 'One typo.', log: [{ by: 'coordinator CO', text: 'added the task' }] })
+    expect((await cli(['show', 'CO-1'])).task.weight).toBe('standard (its steps)')
+    const heavy = (await cli(['task', 'add', 'Run e2e', '--type', 'feature', '--weight', 'heavy'])).task
+    expect((await cli(['show', heavy.id])).task.weight).toBe('heavy (set on the task)')
     await refused(cli(['task', 'add', 'X', '--type', 'study']), 'No task type "study": feature')
     await refused(cli(['task', 'add', 'X', '--type', 'feature', '--after', 'ST-1']), 'after: tasks of the same project')
     await noteTurn(store, 'CO', 'wake')
     await refused(cli(['task', 'add', 'Next', '--type', 'feature']), 'only with the autopilot on')
     await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { ...DEFAULT_AUTOPILOT, on: true } })
-    expect((await cli(['task', 'add', 'Next', '--type', 'feature', '--after', 'CO-1'])).task).toMatchObject({ id: 'CO-2', after: 'CO-1' })
+    expect((await cli(['task', 'add', 'Next', '--type', 'feature', '--after', 'CO-1'])).task).toMatchObject({ id: 'CO-3', after: 'CO-1' })
   })
 
   it('task remove: a task never started, with a reason in the project\'s log; in a wake only the autopilot\'s own', async () => {
@@ -763,8 +787,16 @@ describe('commands of lot 10', () => {
     await tell(['tell', task.id, 'Postgres,', 'as in the README'])
     expect(sent).toEqual(['From the project coordinator: Postgres, as in the README'])
     const told = (await store.task(task.id))!
-    expect([told.state, told.waitKind, told.log?.at(-1)?.text]).toEqual(['working', undefined, 'told the agent: Postgres, as in the README'])
+    expect([told.state, told.waitKind, told.log?.at(-1)?.text]).toEqual(['working', undefined, 'told the worker: Postgres, as in the README'])
     await refused(tell(['tell', task.id, 'and also…']), 'only answers an agent\'s question')
+    // A mechanical fix: with the autopilot on, twice per step, logged with its reason.
+    const fix = ['tell', task.id, 'Merge', 'the', 'base', '--fix', 'base', '--reason', 'The PR conflicts with v3.']
+    await refused(tell(fix), 'only with the autopilot on')
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { ...DEFAULT_AUTOPILOT, on: true } })
+    await tell(fix)
+    await tell(fix)
+    expect((await store.task(task.id))!.log?.at(-1)?.text).toBe('told the worker (fix base: The PR conflicts with v3.): Merge the base')
+    await refused(tell(fix), 'Already fixed 2 times in this step')
     // A permission prompt on its screen, even in the user's turn: never typed into.
     await noteTurn(store, 'CO', 'user', 'tell it')
     const blocked = async (method: string, p: { text: string }) => (method === 'terminal.get' ? { status: { state: 'blocked' } } : call(method, p))

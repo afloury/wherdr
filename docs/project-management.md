@@ -8,43 +8,51 @@ you turn it on.
 
 ## Getting started
 
-The same four steps show in the app, on the **Board** while nothing is set up,
-and from **Settings › Projects › Getting started**. Each step shows whether it
-is done and has a button that takes you there.
+A setup window walks you through six steps for one project, one per screen,
+with Back and Next. Each step does the thing in place; Next waits until it is
+done. While no project went through every step, the **Board** header shows
+*Finish setup (2/6)*, which opens it at the first step left; once one project
+is set up, the button is gone. **Settings › Projects › Set up a project** opens
+it too, on the first project with a step left, and *Add project* opens it on a
+new project.
 
-1. **Turn on project management.** In Settings › Projects, switch on
-   *Project management*. Off, wherdr changes nothing.
-2. **Pick a template.** A template is a list of steps a task goes through, and
-   who does each one (an agent, you, or wherdr itself). Start from an example,
-   such as `vibe` (commit straight to a dev branch, no review), or from a
-   template you saved from another project ([Workflow](#workflow)). The
-   step's button opens the [template library](#template-library).
-3. **Give each project a workflow.** *Add project* (Settings › Projects, or
-   **New › Project**) adds a git folder on a machine herdr-core reaches, and
-   copies the template you pick into the project: that copy is the project's
-   own workflow. Projects imported from v2 ([Migrate from v2](migrate-from-v2.md))
-   have none, and their tasks cannot start without it: open the project, then
-   *Workflow › ⋯ › Start over from a template*.
-   **New › Project** also opens a project's coordinator, or adds a new or empty
-   folder (created at start, `git init` offered), or any folder without git (a
-   folder of several projects, for instance). A folder without git needs no
-   template: it has no tasks (a task needs git for its own worktree), and its
-   coordinator does the work in it directly.
-4. **Open the board and start the project coordinator.** Pick the project on
-   the Board and press *Start*: the coordinator is the agent you talk to about
-   the project. It adds tasks and follows them on the board. Alfred, wherdr's
-   assistant at the top of the agent list, coordinates all projects at once
-   (see [Home](home.md#alfred)).
+1. **Turn on project management.** Off, wherdr changes nothing. This first
+   screen also offers *Let Alfred guide me*: it opens Alfred's conversation
+   (see [Home](home.md#alfred)) and asks it to walk you through the setup.
+2. **Add a project.** Pick the machine, then a git repository found there or
+   any folder (a new or empty one offers `git init`); name, key and color
+   follow the folder and can be changed. Once added, wherdr checks whether the
+   repository is public; correct it if the check is wrong. With several
+   projects, pick the one to set up, or add another.
+3. **Choose its workflow.** The examples, each with its steps in one line, such
+   as `vibe` (commit straight to a dev branch, no review). The one you choose is
+   copied into the project: that copy is the project's own workflow, changed
+   later in its [Workflow](#workflow) tab. Projects imported from v2
+   ([Migrate from v2](migrate-from-v2.md)) have none, and their tasks cannot
+   start without it.
+4. **Check its guards.** The protected branches and who merges, as the
+   workflow set them ([Guards](#guards)). Change and save them, or keep the
+   defaults with Next.
+5. **Start its coordinator.** Pick the agent and start it: the coordinator is
+   the agent you talk to about the project. It adds tasks and follows them on
+   the board. Its [autopilot](#autopilot) can be set under it (optional).
+6. **Add a first task.** A title and, with several, its type.
+
+**New › Project** also opens a project's coordinator, or adds a new or empty
+folder (created at start, `git init` offered), or any folder without git (a
+folder of several projects, for instance). A folder without git needs no
+workflow: it has no tasks (a task needs git for its own worktree), and its
+coordinator does the work in it directly.
 
 Then ask the coordinator for tasks, and answer what shows under *Your turn* and
 *Decisions*.
 
 ## Projects
 
-**Settings › Projects** holds the *Project management* switch, *Getting started*,
+**Settings › Projects** holds the *Project management* switch, *Set up a project*,
 the project list and the [template library](#template-library): each row shows
 the name (with a **Public** badge for a public repository), the key, the machine
-and the folder. *Add project* opens the New sheet on a new project; *Open the
+and the folder. *Add project* opens the setup window on a new project; *Open the
 board* goes to the board. A row opens the
 project's sheet, with five tabs: General, Workflow, Guards, Automations and
 Autopilot. Its ⋯ menu removes the project from wherdr, after a confirmation:
@@ -52,8 +60,11 @@ its folder, branches and task worktrees stay on the machine.
 
 ### General
 
-- **Name** and **Key**. Task ids start with the key. Change it and every task,
+- **Name**, **Key** and **Color**. Task ids start with the key. Change it and every task,
   old ones too, shows the new key; links and commands with a former key still work.
+  The color, picked from a small palette, is the project's key badge everywhere:
+  its coordinator row and conversation header, board cards, the task sheet, its
+  task agents' headers and *Tasks to handle*.
 - **Base branch**: the project's working branch. New tasks start their worktree
   from it, and a step that names no branch opens its PR to it or merges into it.
   Pick one of the repository's branches or type a name; unset, the repository's
@@ -80,7 +91,10 @@ has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
 action, what it does: land on a branch, push, open a PR, merge a PR, or check
 that a branch was merged, with its branch, merge method and required checks.
-Under the form, the plan of the chosen task type. *Save* checks the workflow
+A merge that first pushes the task's last commits waits up to a minute for
+GitHub to show them on the PR.
+In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
+*Add task* under [Board](#board)). Under the form, the plan of the chosen task type. *Save* checks the workflow
 and shows each problem with its line.
 
 The ⋯ menu adds *Edit as JSON*, *Change log*, *Save as template* (copies the
@@ -191,11 +205,17 @@ the [Autopilot](#autopilot) button. The first column is **Your turn**, then the
 project's columns, or *To do*, *Working* and *Done* for all projects. A done
 or archived task is never under Your turn.
 
-A card shows the task's title, its id and step, how long it has been in that
+A card shows the task's title, its id (a badge in the project's color: a tap
+copies it, *Copied*, without opening the task) and step, how long it has been in that
 step (*12 min in review*) or, once done, how long it took from start to done
 (*42 min*), a dot with its agent's state (worker or reviewer), where its PR stands (*PR open · waiting for checks*,
-*checks failed*, *merging*, *blocked: …*, *merged …*), what you have to do under
-Your turn, the tasks it waits for, its first tags and its PR link. Its menu (right
+*checks failed*, *merging*, *The PR conflicts with v3*, *merged …*), what you have to do under
+Your turn, the tasks it waits for, its first tags and its PR link. A refused
+step is said in plain words, never as a command: the commands go to the agent.
+When the engine has already asked the agent to bring a conflicting PR up to
+date, the card says *The PR conflicts with v3: the agent is updating it* and
+leaves Your turn while the PR is still in conflict; once it is not, it is back
+under Your turn: *The agent brought the PR up to date with v3*, press again. Its menu (right
 click, long press, or ••• when it has more than *Open*) offers:
 
 - **Start**, on a task to do that waits for no other task;
@@ -219,11 +239,18 @@ click, long press, or ••• when it has more than *Open*) offers:
   other tasks wait for cannot be deleted; its number is never given again.
 
 **Add task** opens a sheet: the project, a title, the task type (with its steps
-in one line), a Markdown description, the tasks it waits for, and *Start now*.
+in one line), its weight, a Markdown description, the tasks it waits for, and
+*Start now*. The weight says what the task needs of a machine: *Light* (docs, a
+study), *Standard* (tests and typecheck) or *Heavy* (a build, e2e,
+screenshots). *Auto* shows what it would be (*Auto: heavy (screenshots)*): the
+task type's `weight` when the workflow sets one, else heavy when a worker step
+asks for screenshots, light when the type lands no code (no commit, link or git
+action), standard otherwise. The coordinator does the same with `task add
+--weight`, and `show <task>` gives it.
 
 ## Task sheet
 
-A card opens the task's sheet: its id and step, a note when it waits or was
+A card opens the task's sheet: its id badge by the title (a tap copies it) and step, a note when it waits or was
 stopped, the time it spent in each step with the time it waited for you apart,
 its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
 waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
@@ -269,6 +296,30 @@ shows the reason, and wherdr:
 The task's **Log** lists each of these: the stall, the nudge, the hand-over to
 you and the notification.
 
+A step that runs past its time limit (*Check work: over 3h*, *Check review:
+over 45m*) or a stall leaves *Your turn* and **Tasks to handle** once the task
+is back to work: the coordinator tells its agent something (`wherdr pm tell`),
+you or the coordinator start it again, or the step's agent, idle, is seen
+working again. The step's time limit and the stall's 30 minutes start again
+from then, so the task comes back if its agent stops again. The Log says
+*back to work* and who sent it back. What only you can do (a merge, an answer,
+a permission, a decision) stays until you do it.
+
+### A task's temporary files
+
+A task's worker and reviewer keep their temporary files in the task's
+worktree, in `.wherdr-tmp` (`~/.wherdr/pm/worktrees/<task>/.wherdr-tmp`), not
+in the machine's `/tmp`, which is often small and shared by every agent:
+wherdr sets `TMPDIR`, `CLAUDE_CODE_TMPDIR` and `NODE_COMPILE_CACHE` to it for
+Claude Code and Codex alike. git ignores the folder (through the repository's
+`.git/info/exclude`), so it is never committed and never keeps a worktree from
+being removed. It goes with the worktree when the task ends (done, archived);
+it stays when wherdr ends idle agents, for the ones started again later.
+
+Before it starts an agent, wherdr checks the machine's `/tmp`: with less than
+500 MB free, the agent is not started and the task waits with the reason
+(free some space, then start it again).
+
 ### Agents of a task that waits for you
 
 Needs: [A task waiting for you](#a-task-waiting-for-you).
@@ -281,6 +332,30 @@ agent again (you send it back, a merge finds a conflict, CI goes red, new
 commits need a review), wherdr starts the worker or the reviewer again in the
 same worktree, with a note on where the work stands. The task's log says when
 its agents were ended and started again.
+
+When wherdr hands the worker work of its own (a catch-up with the base branch,
+a CI fix), the task leaves *Your turn* and its card says *the agent is
+updating the PR*: its agents are never ended while wherdr waits for that work.
+The task is yours again once the worker pushes or says it is done. Before it
+ends a task's agents, wherdr pushes the commits the branch has not pushed yet;
+if the push fails, the agents stay and the log says why.
+
+A message from the coordinator (`wherdr pm tell <task>`) goes to the agent
+that holds the task's current step; at a step held by nobody (the PR, the
+merge, a step you end) it goes to the worker, started again if it was ended.
+The coordinator can pick one with `--to worker` or `--to reviewer`, and its
+answer says which agent got the message.
+
+In a wake, the coordinator may tell an agent something only to answer its
+question, or, with the autopilot on, to unblock a mechanical block of a task of
+its project: `wherdr pm tell <task> "<what to do>" --fix <kind> --reason "<one
+sentence>"`, where the kind is `base` (merge the base and solve a conflict),
+`ci` (fix a red CI), `machine` (retry after a disk or memory problem) or
+`stall` (restart a stalled agent). A worker that was let go or ended on its
+own starts again with the message; a stopped or finished task is never fixed. Each fix is written to the task's log with its reason, at most
+twice per task and step; after that the block is yours, and the coordinator
+tells you. Each wake's text lists these fixes. A permission request, a merge,
+an approval, guards, settings and limits stay yours.
 
 A machine's cap of agents (Settings › Machines) counts only the agents working
 on a step: not those of a task that waits for you, and not the coordinators.

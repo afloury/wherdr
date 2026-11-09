@@ -56,7 +56,8 @@ change first and makes it only after your yes.
 
 ### Coordinators
 
-Under Alfred, while project management is on, one row per running project coordinator
+Under Alfred, while project management is on, one row per running project coordinator, its
+project's key badge in the project's color (*[WHR] coordinator*)
 ([Project management](project-management.md)). A tap opens its conversation, shown as selected
 while it is open; its menu (right click or long press), *Restart with…*, picks another agent,
 which becomes its default: its folder and memory stay, the current session stops. A coordinator
@@ -75,15 +76,15 @@ can keep out of the project's repository (a deny rule for Claude, the sandbox fo
 
 ### Machines as tabs
 
-The **machine bar** at the top of the list has **All**, then one tab per machine (this core and
+The **machine tabs** at the top of the list are **All**, then one tab per machine (this core and
 each core machine, online or offline) with its count of rows. A tap shows that machine alone,
 with its Claude and Codex quotas at the top; an offline or reconnecting machine says so there.
-The bar hides when it would show a single machine. A machine's actions (New agent here,
+The tabs hide when they would show a single machine. A machine's actions (New agent here,
 Reconnect, Machine settings, Claude quota setup) open on a right click or long press of its
-tab; with the bar hidden and several machines, on its chip above the list; offline machines are
+tab; with the tabs hidden and several machines, on its chip above the list; offline machines are
 listed at the bottom, with **Reconnect**.
-Settings › Appearance › Home screen › **Machine bar** orders its items, hides some of them, or
-hides the bar. In **Groups**, create a named selection of machines; groups follow you across
+Settings › Appearance › Home screen › **Machine tabs** orders the tabs, hides some of them, or
+hides them all. In **Groups**, create a named selection of machines; groups follow you across
 devices. Machines themselves are managed in [Settings › Machines](machines.md#manage-machines).
 
 ### New agents and tabs
