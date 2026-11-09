@@ -70,6 +70,16 @@ function broadcastState() {
   }
 }
 
+// The server is stopping (a restart for an update): open pages keep what they
+// show until it is back, instead of switching to their offline look.
+export function announceRestart() {
+  const msg = JSON.stringify({ type: 'restarting' })
+  for (const c of eventClients.values()) {
+    try { c.send(msg) }
+    catch { /* client gone */ }
+  }
+}
+
 export function isViewed(paneId: string) {
   for (const v of eventClients.values()) if (v.pane === paneId && v.visible) return true
   return false

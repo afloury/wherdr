@@ -65,6 +65,41 @@ describe('server restart for an update', () => {
     expect(offlineView.value).toBe(false)
   })
 
+  // Stopped for 10 s, then the starting state for 3 s. Each attempt meanwhile is refused.
+  it.each([true, false])('a restart longer than the grace keeps the live look (announced=%s)', async (announced) => {
+    const steady = () => {
+      expect(linkShown.value).toBe(true)
+      expect(offlineView.value).toBe(false)
+      expect(netDown.value).toBe(false)
+      expect(herdrState.value.panes.map(p => p.id)).toEqual(['w1:p1'])
+    }
+    if (announced) sockets[0]!.push({ type: 'restarting' } as unknown as HerdrState)
+    sockets[0]!.onclose!()
+    await flushPromises()
+    if (!announced) {
+      // Unannounced (a crash): back within the grace, with only the starting state.
+      vi.advanceTimersByTime(600)
+      sockets.at(-1)!.open()
+      sockets.at(-1)!.push(startingState())
+      sockets.at(-1)!.onclose!()
+      await flushPromises()
+    }
+    for (let t = 0; t < 10; t++) {
+      vi.advanceTimersByTime(1000)
+      const s = sockets.at(-1)!
+      if (s.readyState === 0) { s.readyState = 3; s.onclose!(); await flushPromises() }
+      steady()
+    }
+    vi.advanceTimersByTime(1000)
+    sockets.at(-1)!.open()
+    sockets.at(-1)!.push(startingState())
+    vi.advanceTimersByTime(3000)
+    steady()
+    sockets.at(-1)!.push(live)
+    vi.advanceTimersByTime(5000)
+    steady()
+  })
+
   it('a longer cut shows the last known state, offline', async () => {
     sockets[0]!.onclose!()
     await flushPromises()

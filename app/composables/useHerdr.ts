@@ -426,13 +426,28 @@ let netTimer: ReturnType<typeof setTimeout> | undefined
 const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
 
 // "Connection lost" banner and the last known state: shown if the server stays
-// unreachable for more than 2.5 s (a lightning reconnection does not flicker).
+// unreachable for more than 2.5 s (a lightning reconnection does not flicker),
+// or, while it restarts, for more than RESTART_HOLD_MS.
+const NET_GRACE_MS = 2500
+// A server restart (an update), announced before it stops or seen in the
+// starting state it sends back: the page holds what it shows meanwhile.
+const RESTART_HOLD_MS = 60000
+let restartUntil = 0
+const restarting = () => Date.now() < restartUntil
+function noteRestart() {
+  restartUntil = Date.now() + RESTART_HOLD_MS
+  if (!netTimer) return
+  clearTimeout(netTimer)
+  netTimer = undefined
+  setNetDown(true)
+}
 function setNetDown(down: boolean) {
   if (!down) {
     clearTimeout(netTimer)
     netTimer = undefined
     netDown.value = false
     linkGrace.value = false
+    restartUntil = 0
     return
   }
   // Already shown or about to be: the following attempts do not push the delay back.
@@ -442,7 +457,7 @@ function setNetDown(down: boolean) {
     netDown.value = true
     linkGrace.value = false
     if (herdrState.value.ok && lastStateAt) cachedAt.value = lastStateAt
-  }, 2500)
+  }, Math.max(NET_GRACE_MS, restartUntil - Date.now()))
 }
 
 function normalize(s: HerdrState): HerdrState {
@@ -548,6 +563,7 @@ export function connectEvents() {
       if (data?.type === 'pong') { eventProbe.pong(ws); return }
       // Real traffic (state or settings): the socket proved itself live.
       clearTimeout(evFirst)
+      if (data?.type === 'restarting') { noteRestart(); return }
       if (data?.type === 'settings') { settingsSync.receive(data.settings || {}); return }
       // Lock turned off: the server dropped every push subscription, this device posts its own again.
       if (data?.type === 'push-resubscribe') { syncPushLanguage().catch(() => {}); return }
@@ -555,7 +571,7 @@ export function connectEvents() {
       // Server just restarted, state still partial: we keep the whole
       // display, the "reconnecting" banner stays in place.
       const state = settleState(lastStateAt ? fullState : null, got, Date.now() < settleUntil)
-      if (!state) return
+      if (!state) { if (got.ready === false) noteRestart(); return }
       setNetDown(false)
       fullState = state
       allSessionsState.value = fullState
@@ -578,7 +594,8 @@ export function connectEvents() {
     confirmLock()
     if (locked.value) return
     setNetDown(true)
-    evTimer = setTimeout(connectEvents, Math.min(8000, 500 * 2 ** evRetry++))
+    // A restarting server is retried every half second, to be back as soon as it is.
+    evTimer = setTimeout(connectEvents, restarting() ? 500 : Math.min(8000, 500 * 2 ** evRetry++))
   }
 }
 export function retryEvents() {
