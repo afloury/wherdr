@@ -740,6 +740,28 @@ Before it starts an agent, wherdr checks the machine's `/tmp`: with less than
 500 MB free, the agent is not started and the task waits with the reason
 (free some space, then start it again).
 
+### Processes an agent leaves behind
+
+When wherdr ends an agent (the task is done, stopped, released or restarted),
+it ends every process the agent started, not only its terminal: the
+terminal's process tree and each process group in it (a test runner's shells
+keep their group even once re-parented), with TERM, then KILL after 3 seconds,
+on Linux and macOS alike.
+
+At start and every 5 minutes, wherdr also looks on each machine for
+processes whose folder is in a task's worktree (its `.wherdr-tmp` included)
+while that task has no live agent, or no longer exists, and that no terminal
+or app holds any more (re-parented to `launchd`, `init` or `systemd --user`).
+It kills them, with what they started, and says so in the task's log
+(*killed 7 leftover processes, 6 h old*). Your own shell or editor open in a
+worktree is never touched, nor the processes of a task whose agent runs. The
+machine's line in Settings › Machines then says *n leftover processes killed*
+(since wherdr started).
+
+The wherdr template tells its workers to run a test command that could hang
+with a timeout (`timeout 600 …`) and to leave no background job running when
+they report done.
+
 ### Agents of a task that waits for you
 
 Needs: [A task waiting for you](#a-task-waiting-for-you).

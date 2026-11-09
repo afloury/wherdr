@@ -23,6 +23,7 @@ import { reviveWorker } from './pmRelease'
 import { recordGone, type CoreList } from './pmIncidents'
 import type { Incident } from '../../shared/pm/incident'
 import { interruptTask } from './pmRecovery'
+import { killTerminal } from './pmProcs'
 
 // The task's commit, its diff size since the branch started, the worker's note, the verdict file.
 export const SIGNAL_READ_SCRIPT = `wt=$1 b=$2
@@ -125,7 +126,7 @@ async function endDuplicates(deps: PmLaunchDeps, terminals: LabelledTerminal[]) 
   const runs = await store.runs()
   for (const d of duplicateAgents(terminals, runs, await store.tasks(), await store.install())) {
     for (const x of d.end) {
-      await deps.call('terminal.kill', { terminal: x.address }, 15000).catch(() => {})
+      await killTerminal(deps, x.address).catch(() => {})
       x.state = 'finished'
       const r = runs.find(y => y.id === x.labels?.[LABEL.run])
       if (r && r.state !== 'ended') await store.saveRun({ ...r, state: 'ended', endedBy: 'stopped' })
@@ -143,7 +144,7 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
   const runs = await deps.store.runs()
   if (s.done) {
     for (const r of runs.filter(x => x.task === id && x.state !== 'ended')) {
-      if (alive(r)) await deps.call('terminal.kill', { terminal: r.terminal }, 15000).catch(() => {})
+      if (alive(r)) await killTerminal(deps, r.terminal!).catch(() => {})
       await deps.store.saveRun({ ...r, state: 'ended', endedBy: 'exit' })
     }
     // Its agents ended: its worktree (and, merged, its local branch) goes, once tried.
