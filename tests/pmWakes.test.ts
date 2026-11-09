@@ -22,6 +22,9 @@ describe('wake queue', () => {
     const r = tick(q, 'idle', 2 * MIN)
     expect(r.deliver).toMatchObject({ id: 'w1', reasons: ['CO-1: done', 'CO-2: stuck'], tries: 1 })
     expect(wakeText(r.deliver!)).toMatch(/^Autopilot: wake w1\n\nCO-1: done\n\nCO-2: stuck\n\nWhen you have handled this, run: wherdr pm ack w1$/)
+    // With the autopilot on, it says which mechanical fixes it allows, and what stays the user's.
+    expect(wakeText(r.deliver!, true)).toContain('CO-2: stuck\n\nIn this wake you may unblock a task of your project')
+    expect(wakeText(r.deliver!, true)).toMatch(/--fix <kind>.*base \(merge the base.*stall \(restart a stalled agent\).*At most 2 times per task and step.*A permission request, merging, approving, guards, settings and limits stay the user's/)
     // Once delivered, new reasons start a new wake.
     expect(enqueue(r.q, 'CO', ['CO-3: added'], 3 * MIN, 'w3').id).toBe('w3')
   })

@@ -2,8 +2,14 @@
 // rights checked on each, and the role files written in its own folder. Pure:
 // the server (server/utils/pmCoordinator.ts) reads and writes.
 import type { Project } from './project'
-import type { Template } from './workflow'
-import type { Autopilot, limitsLeft } from './autopilot'
+import { WEIGHTS, isWeight, type Holder, type Template, type Weight } from './workflow'
+import type { Run } from './run'
+import { wasReleased } from './release'
+
+type AgentRole = Run['role']
+import type { WorkflowChanges } from './workflowChanges'
+import type { ProjectColor } from './projectKey'
+import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, type Autopilot, type FixKind, type limitsLeft } from './autopilot'
 import type { Wake } from './wakes'
 import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
@@ -37,18 +43,26 @@ export const MAIN = '_main'
 export const sameAgent = (a?: CoordinatorAgent, b?: CoordinatorAgent) => !!a && !!b && a.program === b.program
 
 // A template change the coordinator proposed: the user accepts or refuses it
-// in the interface; only an accepted one is saved and goes to the template's log.
+// in the interface; only an accepted one is saved and goes to the project's workflow log.
 // base: the template version its diff was made against.
-export interface Proposal { template: Template, diff: string, at: number, base: number, said?: string }
+// by: who proposed it, the project's key or 'main' (Alfred); said, saidAt:
+// the user's message it follows and when they sent it.
+export interface Proposal { template: Template, diff: string, at: number, base: number, by?: string, said?: string, saidAt?: number }
 // What became of the last one, for the coordinator's `template show`.
 export type ProposalOutcome = 'accepted' | 'refused' | 'outdated: the template changed since, propose again'
+// The last answer, kept for the card in the coordinator's conversation:
+// proposedAt places it, summary says what it changed.
+export interface ProposalAnswer { outcome: ProposalOutcome, at: number, by?: string, proposedAt?: number, summary?: string[] }
 
 // GET /api/pm/coordinators: one per project.
 export interface CoordinatorView {
   // main: the main coordinator (project is MAIN).
   // agent: the default the user set for it, if any (else the first of their agents).
   // git: false: a folder without git, its coordinator works in it (no template needed).
-  project: string, name: string, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string, proposal?: Omit<Proposal, 'template' | 'base'>
+  // label, color: the project's shown key and its badge's color.
+  project: string, name: string, label?: string, color?: ProjectColor, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string
+  // proposal: the change waiting for the user, as a person reads it too; answered: the last answer.
+  proposal?: Omit<Proposal, 'template' | 'base'> & { changes?: WorkflowChanges }, answered?: ProposalAnswer
   // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
   autopilot?: Autopilot, limits?: ReturnType<typeof limitsLeft>, wakes?: Wake[]
   // Nothing to do: its scheduled wakes are skipped (asleep), since its last wake.
@@ -69,18 +83,18 @@ export type Command =
   | { name: 'step done', task: string, userSaid?: string, link?: string }
   | { name: 'task decide', task: string, choice: Choice, reason: string }
   | { name: 'ack', wakes: string[] } | { name: 'automation show', id: string }
-  | { name: 'tell', task: string, text: string }
-  | { name: 'read', task: string, to?: 'worker' | 'reviewer', lines?: number }
+  | { name: 'tell', task: string, text: string, to?: AgentRole, fix?: FixKind, reason?: string }
+  | { name: 'read', task: string, to?: AgentRole, lines?: number }
   | { name: 'task start', task: string, on?: string }
   | { name: 'task stop', task: string, reason: string }
   | { name: 'task remove', task: string, reason: string }
-  | { name: 'task add', title: string, type: string, after?: string, description?: string }
+  | { name: 'task add', title: string, type: string, after?: string, description?: string, weight?: Weight }
   | { name: 'pr merge', pr: number, userSaid: string, method?: MergeMethod }
 
 // One table for the parser, the skill and the role file.
 export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'list', does: 'the project\'s tasks, their step and what waits for the user' },
-  { usage: 'show <task>', does: 'one task, its plan and its log' },
+  { usage: 'show <task>', does: 'one task, its weight, the machine it runs on, its plan and its log' },
   { usage: 'plan', does: 'the resolved plan of each task type' },
   { usage: 'template show', does: 'the project\'s own workflow (JSON), copied from a template when the project started' },
   { usage: 'template edit < template.json', does: 'propose a new workflow for the project; only in a turn that comes from the user, guards unchanged; the user accepts or refuses its diff in wherdr' },
@@ -90,20 +104,36 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'step done <task> --user-said "<their words>"', does: 'end a step that waits for the user, with the user\'s own words; only in a turn that comes from the user' },
   { usage: 'task decide <task> <choice> --reason "<one sentence>"', does: 'after N send-backs, pick one of the engine\'s options' },
   { usage: 'ack <wake> [<wake>…]', does: 'say you handled an Autopilot wake (each wake ends with its id); unacked, it comes back once, then the user is told' },
-  { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, whether it looks for new work (and how many tasks those wakes may still add today), the scheduled wakes skipped today (nothing to do, or ahead of the pace), what is left of today\'s limits, and the pacing of your worker\'s account (go, or what automatic work waits for)' },
+  { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, whether it looks for new work (and how many tasks those wakes may still add today), the scheduled wakes skipped today (nothing to do, or ahead of the pace), what is left of today\'s limits, the pacing of your worker\'s account (go, or what automatic work waits for), each machine the project allows (online or offline, its available hours, memory, cores and load, its agents at work by weight, the heaviest weight it takes now or why none) and the weights (what each counts, the weight of each task type)' },
   { usage: 'automation list', does: 'the project\'s automations: on or off, schedule or event, last firing' },
   { usage: 'automation show <automation>', does: 'one automation, its prompt and its last firings; only the user adds or changes them, in wherdr' },
-  { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there. A started task always goes back to its own machine' },
+  { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there; while it is offline the task goes to another allowed machine that fits, else waits for it. A started task always goes back to its own machine' },
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
-  { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done' },
-  { usage: 'tell <task> "<text>"', does: 'a message to the task\'s agent; in a wake, only to answer its question (a permission request is the user\'s)' },
-  { usage: 'read <task> [--to worker|reviewer] [--lines N]', does: 'what the task\'s agent last said (its question, its answer to your tell), on whichever machine it runs: the last message of its conversation, else the bottom of its screen; its current agent by default, --to names one; --lines 1 to 200 (default 40)' },
+  { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"] [--weight light|standard|heavy]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done. --weight says what it needs of a machine (light: docs, a study; standard: tests and typecheck; heavy: a build, e2e, screenshots); left out, it comes from its task type and steps (show gives it)' },
+  { usage: 'tell <task> "<text>" [--to worker|reviewer] [--fix base|ci|machine|stall --reason "<one sentence>"]', does: `a message to one of the task\'s agents: the one that holds its current step, else (a step held by nobody or by you: pr, merge, a user step) its worker; --to picks it. The answer says which agent got it. In a wake, only to answer its question, or with --fix to unblock a mechanical block (${FIX_KINDS.map(k => `${k}: ${FIX_TEXT[k]}`).join('; ')}): a worker that was let go or has ended starts again with your message; with the autopilot on, a task of your project, at most ${FIXES_PER_STEP} times per task and step, written to its log with the reason; past that, tell the user. A permission request is always the user\'s` },
+  { usage: 'read <task> [--to worker|reviewer] [--lines N]', does: 'what the task\'s agent last said (its question, its answer to your tell), on whichever machine it runs: the last message of its conversation, else the bottom of its screen; the agent tell reaches by default, --to picks it; --lines 1 to 200 (default 40)' },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
 ]
 // Listed only where the project's guard allows it.
 const GUARDED_COMMAND = 'pr merge'
+
+const AGENT_ROLES: AgentRole[] = ['worker', 'reviewer']
+// Which of a task's agents `tell` reaches: --to, else the holder of its current
+// step when that is an agent, else its worker (a step held by nobody or by the
+// coordinator: pr, merge, a user step; the latest agent there is often the
+// reviewer, who has nothing to change). run: its latest run of that role, if
+// still running; released: a worker the engine let go while the task waited
+// for the user (release.ts), started again with the message.
+// fix: a mechanical fix also starts again a worker that ended on its own (a
+// crash, a machine problem), never one a stop ended.
+export function tellTarget(runs: Run[], task: string, holder: Holder | undefined, to?: AgentRole, fix = false) {
+  const role = to ?? (holder === 'reviewer' ? 'reviewer' : 'worker')
+  const last = runs.filter(r => r.task === task && r.role === role).sort((a, b) => b.startedAt - a.startedAt)[0]
+  const run = last?.state !== 'ended' && last?.terminal ? last : undefined
+  return { role, run, released: !run && role === 'worker' && !!last && (wasReleased(last) || (fix && last.endedBy !== 'stopped')) }
+}
 
 const TASK_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
@@ -136,19 +166,24 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...(w0 === 'read' ? ['to', 'lines'] : { 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description'], 'task start': ['on'] }[verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight'], 'task start': ['on'] }[w0 === 'tell' || w0 === 'read' ? w0 : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (verb === 'autopilot show' || verb === 'automation list') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
   if (verb === 'automation show') return w2 && /^[a-z0-9][a-z0-9-]{0,39}$/.test(w2) && !w3 ? { name: verb, id: w2 } : usage(verb)
   if (w0 === 'tell') {
     const text = words.slice(2).join(' ').trim()
-    return w1 && TASK_RE.test(w1) && text && text.length <= 4000 ? { name: 'tell', task: w1, text } : usage('tell')
+    const to = flags.to
+    if (to !== undefined && !AGENT_ROLES.includes(to as AgentRole)) return { error: `--to is one of ${AGENT_ROLES.join(', ')}` }
+    const { fix, reason } = flags
+    if (fix !== undefined && !FIX_KINDS.includes(fix as FixKind)) return { error: `--fix is one of ${FIX_KINDS.join(', ')}` }
+    if ((fix === undefined) !== (reason === undefined) || (reason !== undefined && !reason.trim())) return { error: '--fix and --reason "<one sentence>" go together' }
+    return w1 && TASK_RE.test(w1) && text && text.length <= 4000 ? { name: 'tell', task: w1, text, ...(to ? { to: to as AgentRole } : {}), ...(fix ? { fix: fix as FixKind, reason: reason!.trim().slice(0, 500) } : {}) } : usage('tell')
   }
   if (w0 === 'read') {
-    const to = flags.to as 'worker' | 'reviewer' | undefined, lines = flags.lines === undefined ? undefined : Number(flags.lines)
+    const to = flags.to as AgentRole | undefined, lines = flags.lines === undefined ? undefined : Number(flags.lines)
     if (!w1 || !TASK_RE.test(w1) || w2) return usage('read')
-    if (to !== undefined && to !== 'worker' && to !== 'reviewer') return { error: '--to is worker or reviewer' }
+    if (to !== undefined && !AGENT_ROLES.includes(to)) return { error: `--to is one of ${AGENT_ROLES.join(', ')}` }
     if (lines !== undefined && !(Number.isInteger(lines) && lines >= 1 && lines <= 200)) return { error: '--lines is a number from 1 to 200' }
     return { name: 'read', task: w1, ...(to ? { to } : {}), ...(lines ? { lines } : {}) }
   }
@@ -161,7 +196,9 @@ function parseWords(argv: unknown): Command | { error: string } {
     if (after !== undefined && !after.split(',').every(a => TASK_RE.test(a.trim()))) return { error: '--after is a list of tasks: A-1,A-2' }
     const description = flags.description?.trim()
     if (description && description.length > 20000) return { error: '--description is 20000 characters at most' }
-    return { name: verb, title, type, ...(after ? { after } : {}), ...(description ? { description } : {}) }
+    const weight = flags.weight?.trim()
+    if (weight !== undefined && !isWeight(weight)) return { error: `--weight is one of ${WEIGHTS.join(', ')}` }
+    return { name: verb, title, type, ...(after ? { after } : {}), ...(description ? { description } : {}), ...(weight ? { weight } : {}) }
   }
   if (verb === 'pr merge') {
     const said = flags['user-said']?.trim(), method = flags.method as MergeMethod | undefined
@@ -302,6 +339,22 @@ export function updateNotice(c: { version?: string, told?: string } | null | und
   return `wherdr was updated to ${running} since your session started: re-read AGENTS.md and check docs/llms.txt before relying on what you knew`
 }
 
+// The changed lines only, in order (longest common subsequence), each
+// with "- " or "+ "; with `all`, the kept lines too, with "  ".
+export function lineDiff(a: string[], b: string[], all = false): string[] {
+  const n = a.length, m = b.length
+  const keep = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1))
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) keep[i]![j] = a[i] === b[j] ? keep[i + 1]![j + 1]! + 1 : Math.max(keep[i + 1]![j]!, keep[i]![j + 1]!)
+  const out: string[] = []
+  let i = 0, j = 0
+  while (i < n || j < m) {
+    if (i < n && j < m && a[i] === b[j]) { if (all) out.push(`  ${a[i]}`); i++; j++ }
+    else if (i < n && (j === m || keep[i + 1]![j]! >= keep[i]![j + 1]!)) out.push(`- ${a[i++]}`)
+    else out.push(`+ ${b[j++]}`)
+  }
+  return out
+}
+
 // The changed lines of two templates, as JSON: what the coordinator shows the user.
 export function templateDiff(old: Template | null, next: Template): string {
   // One key order (the version is the store's): a key that only moved is no change.
@@ -310,19 +363,7 @@ export function templateDiff(old: Template | null, next: Template): string {
     const e = Object.entries(t ?? {}).filter(([k]) => k !== 'version').sort(([x], [y]) => (ORDER.indexOf(x) + 1 || 99) - (ORDER.indexOf(y) + 1 || 99))
     return JSON.stringify(Object.fromEntries(e), null, 2).split('\n')
   }
-  const a = lines(old), b = lines(next)
-  // The changed lines only, in order (longest common subsequence): what stays never shows.
-  const n = a.length, m = b.length
-  const keep = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1))
-  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) keep[i]![j] = a[i] === b[j] ? keep[i + 1]![j + 1]! + 1 : Math.max(keep[i + 1]![j]!, keep[i]![j + 1]!)
-  const out: string[] = []
-  let i = 0, j = 0
-  while (i < n || j < m) {
-    if (i < n && j < m && a[i] === b[j]) { i++; j++ }
-    else if (i < n && (j === m || keep[i + 1]![j]! >= keep[i]![j + 1]!)) out.push(`- ${a[i++]}`)
-    else out.push(`+ ${b[j++]}`)
-  }
-  return out.join('\n')
+  return lineDiff(lines(old), lines(next)).join('\n')
 }
 
 // What the engine tells the coordinator on a tick: its step's instructions
@@ -359,32 +400,36 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
       : `You coordinate project ${p.key} only. Its repository is ${p.path}: read it, never change it; task agents do the work in their own worktrees.`,
     'Messages that start with "Autopilot:" are wakes sent by the engine; the others come from the user. The server knows which, and refuses what a wake may not do.', '',
     '## Commands (your token: this project only)', '', ...commandList(t), '',
-    'Every change you make is written to the task\'s or the template\'s log with your name.',
+    'Every change you make is written to the task\'s or the workflow\'s log with your name.',
     `Quote a file as inline code with its absolute path (\`${p.path.replace(/\/$/, '')}/README.md\`): the user's interface makes it a link.`, '',
     ...docsRule(docs, '`wherdr pm help`'),
     '## What you never do', '',
     `- change a guard (protected branches, who merges): the user does it in ${projectPlace(p.key, 'guards', true)};`,
     '- end a step that waits for the user unless they just told you so (`--user-said` with their words);',
-    '- edit the template on your own: only the user\'s request starts a proposal, and only their yes in wherdr saves it;',
+    '- edit the workflow on your own: only the user\'s request starts a proposal, and only their yes in wherdr saves it;',
     '- pass a critical finding with proof, or a send-back whose next step is a guarded merge: those go to the user;',
     `- approve, merge${t?.guards?.contributorPrs ? ' (but a contributor\'s PR, below)' : ''}, change settings or your autopilot\'s limits; answer a permission request: those are the user\'s.`,
     ...(contributorPrsLine(t?.guards) ? ['', '## What you may do on the user\'s yes', '', contributorPrsLine(t?.guards)!] : []), '',
     ...(isPublic(p) ? ['## Public repository', '', PUBLIC_RULE,
       'This holds for what you write too: each task description you write (`task add --description`) says the repository is public and repeats this rule. wherdr gives every task\'s worker and reviewer the rule as well.', ''] : []),
     'Each Autopilot wake ends with its id: once you have handled it, run `wherdr pm ack <id>`. The engine already fixes PR bases, re-runs CI, retries pushes, catches up branches, sends red CI back and merges what the branch rule allows: leave those to it.',
+    `What it cannot fix, a wake may unblock with \`tell --fix\` when the block is mechanical: ${FIX_KINDS.map(k => FIX_TEXT[k]).join(', ')}. With the autopilot on, at most ${FIXES_PER_STEP} times per task and step; then the block is the user's: tell them.`,
     ...(plain ? [''] : ['The engine also moves each started task through its steps: when the worker says it is done, it runs the next step (a PR, a reviewer of another model, a merge the branch rule allows) and sends a review\'s findings back to the worker. It starts a task with "after" once those tasks are done, and makes it wait for the user when one of them failed. It starts no other task: add the tasks your goal needs with `task add` (chain a follow-up with `--after`), and start the next one with `task start`.', '',
-    '## Plans of this project\'s task types', '', `Template: ${t ? `${t.id} v${t.version ?? 1}` : 'none'}`, `Working branch: ${p.base || 'none set'}`, '', ...plans]),
+    '## Machines', '',
+    'The engine places each start on one of the machines the project allows (the user allows them in its settings), by the project\'s placement strategy, which the user sets (by default heavy work on the strongest that has room, light and standard work on the project\'s own machine when it has room). `autopilot show` gives the strategy, each machine and what it takes now. Leave placement to the engine; `task start <task> --on <machine>` picks one by its name when the user asks or a task needs that machine. A started task always stays on its machine (`show` gives it).',
+    'A task\'s weight says what it needs of a machine: light (docs, a study), standard (tests and typecheck), heavy (a build, e2e, screenshots). It comes from its task type and steps; set `task add --weight` only when the task differs from its type (a docs-only change in a type that takes screenshots: light).', '',
+    '## Plans of this project\'s task types', '', `Workflow: ${t ? `v${t.version ?? 1}${p.from ? `, copied from template ${p.from.template} v${p.from.version} (the template library never changes it)` : ''}` : 'none'}`, `Working branch: ${p.base || 'none set'}`, '', ...plans]),
     '## Turning a workflow request into steps', '',
     'wherdr imposes no workflow: it knows ordered steps, who holds each (worker, reviewer, coordinator, none), how it ends (report, verdict, user, action), the proofs it needs (evidence) and the user\'s guards. What an agent must do is plain text in `instructions`.',
-    `The project's working branch (set by the user in ${projectPlace(p.key, 'general', true)}) is where tasks start; a \`github.pr\`, \`git.land\` or \`git.verify-merged\` step without its own branch uses it, and \`{base}\` in any instructions becomes its name. Prefer these to a branch written in the template.`,
+    `The project's working branch (set by the user in ${projectPlace(p.key, 'general', true)}) is where tasks start; a \`github.pr\`, \`git.land\` or \`git.verify-merged\` step without its own branch uses it, and \`{base}\` in any instructions becomes its name. Prefer these to a branch written in the workflow.`,
     'When the user says "after each task, create the PR with my Bitbucket tool, then wait until I say it is merged", write a worker step with that instruction and `evidence: ["link"]`, then a step `{ holder: "none", ends: "user", userLabel: "Merged", action: { kind: "git.verify-merged", target } }`. "Watch the deploy" is a step you hold: `holder: "coordinator", ends: "report", recheck: "5m"`.',
-    'Read the template, write the new one and run `template edit`: wherdr shows the user its diff, to accept or refuse; `template show` tells you which. Examples to copy from:', '',
+    'Read the project\'s workflow (`template show`), write the new one and run `template edit`: wherdr shows the user its diff, to accept or refuse; `template show` tells you which. Examples to copy from:', '',
     ...examples.map(e => `\`\`\`json\n${JSON.stringify(e)}\n\`\`\``), '',
     '## After N send-backs', '',
     'The engine sorts what is left and gives options. Pick one with `task decide` and one sentence of reason. When it gives no option, the choice is the user\'s: tell them.', '',
     '## The user\'s instructions', '', ...(own.length ? own : ['(none yet)']), '',
   ].join('\n')
-  const skill = ['---', 'name: wherdr-pm', `description: Act on project ${p.key}'s board with the wherdr pm command (tasks, steps, tags, links, template).`, '---', '',
+  const skill = ['---', 'name: wherdr-pm', `description: Act on project ${p.key}'s board with the wherdr pm command (tasks, steps, tags, links, workflow).`, '---', '',
     '# wherdr pm', '', 'Your token is in WHERDR_PM_TOKEN; the server checks every right.', '', ...commandList(t), ''].join('\n')
   // Claude's Edit rule covers every file-writing tool.
   const deny = plain ? [] : [`Edit(/${p.path.replace(/\/$/, '')}/**)`]
@@ -400,19 +445,20 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
 // The main coordinator's part of Alfred's home (shared/pm/alfred.ts): every
 // project, through the board only. Its AGENTS.md is a section of Alfred's.
 export function mainRoleFiles(projects: Pick<Project, 'key' | 'name' | 'path' | 'from'>[]): Record<string, string> {
-  const list = projects.length ? projects.map(p => `- ${p.key}: ${p.name} (repository ${p.path}, template ${p.from?.template || 'none'})`) : ['(no project yet)']
+  const list = projects.length ? projects.map(p => `- ${p.key}: ${p.name} (repository ${p.path}, ${p.from ? `workflow copied from template ${p.from.template}` : 'no workflow yet'})`) : ['(no project yet)']
   const agents = [
     '## Coordinating the projects', '',
     'You are also the main coordinator: you coordinate every project of the user\'s board, and answer the user about all of them. You change no repository: task agents do the work in their own worktrees.',
     'Messages that start with "Autopilot:" are wakes sent by the engine; the others come from the user. The server knows which, and refuses what a wake may not do.', '',
     '### Projects', '', ...list, '',
     '### Commands (your token: every project)', '', ...commandList(), '',
-    'A task names its project (`WHR-12` is project WHR). `list` alone shows every project\'s tasks; `list`, `plan`, `template show`, `automation list`, `automation show` and `task add` take `--project <KEY>` for one project (`task add` needs it). `template edit` is not yours: the project\'s coordinator or the user changes a template.',
+    'A task names its project (`WHR-12` is project WHR). `list` alone shows every project\'s tasks; `list`, `plan`, `template show`, `automation list`, `automation show` and `task add` take `--project <KEY>` for one project (`task add` needs it). `template edit` is not yours: the project\'s coordinator proposes a change to its workflow, the user accepts it. Guards are changed by the user in Settings › Projects, or by you with `wherdr alfred project guards` after their yes.',
     'Every change you make is written to the task\'s log as the main coordinator\'s.', '',
     '### Project coordinators', '',
     'Each project may have its own coordinator. You reach it only through the board: add a task, a tag or a link it will see. There is no other channel, and you never type into its terminal.', '',
     '### What you never do', '',
-    '- approve, merge, change guards or your autopilot\'s limits; answer a permission request: those are the user\'s;',
+    '- approve, merge, change your autopilot\'s limits; answer a permission request: those are the user\'s;',
+    '- change guards other than through `wherdr alfred project guards`, after the user\'s yes;',
     '- change a setting other than through `wherdr alfred`, shown first and made after the user\'s yes;',
     '- end a step that waits for the user unless they just told you so (`--user-said` with their words);',
     '- do the work yourself: work goes to tasks.',

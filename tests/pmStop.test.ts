@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { startTask, type PmLaunchDeps } from '../server/utils/pmLaunch'
 import { resumeTask, stopTask } from '../server/utils/pmStop'
-import { handoverText, removeRefusal, resumeRefusal, stopRefusal, stoppedTask } from '../shared/pm/stop'
+import { archivedStep, doneTurnRepair, handoverText, removeRefusal, resumeRefusal, stopRefusal, stoppedTask } from '../shared/pm/stop'
 import { chainState, dueText } from '../shared/pm/advance'
 import { decisionsOf } from '../shared/pm/decisions'
 import { canStop, cardOf } from '../shared/pm/board'
@@ -115,6 +115,24 @@ describe('a stopped task', () => {
   it('wherdr pm task stop needs a reason', () => {
     expect(parseCommand(['task', 'stop', 'WH-1', '--reason', 'it loops'])).toEqual({ name: 'task stop', task: 'WH-1', reason: 'it loops' })
     expect(parseCommand(['task', 'stop', 'WH-1'])).toMatchObject({ error: expect.stringContaining('--reason') })
+  })
+})
+
+describe('an archived task', () => {
+  // Its merge step refused by the guard, then the PR merged by hand and the task archived.
+  const refused = working({ step: { ...initialState(), started: true, at: 4, since: 5, yourTurn: { reason: 'action', badge: 'merge: main is protected: only you may merge into it' } } })
+
+  it('leaves Your turn', () => {
+    const archived = { ...refused, step: archivedStep(refused.step!) }
+    expect(archived.step).toMatchObject({ done: true, abandoned: true })
+    expect(archived.step.yourTurn).toBeUndefined()
+    expect(cardOf(archived, plan, []).yourTurn).toBeUndefined()
+    // Archived before this fix: the card ignores the leftover badge, and the start repair clears it.
+    const old = { ...refused, step: { ...refused.step!, done: true, abandoned: true } }
+    expect(cardOf(old, plan, []).yourTurn).toBeUndefined()
+    expect(doneTurnRepair(old)?.step?.yourTurn).toBeUndefined()
+    expect(doneTurnRepair(archived)).toBeUndefined()
+    expect(doneTurnRepair(refused)).toBeUndefined()
   })
 })
 
