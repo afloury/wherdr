@@ -7,6 +7,8 @@ import { adviceChoices } from '#shared/pm/decisions'
 import { canStart, linkLabel, mainLink, type Card } from '#shared/pm/board'
 import { RESUMES, stoppedText, type Resume } from '#shared/pm/stop'
 import { shotUrl } from '#shared/pm/shots'
+import { reviewLine } from '#shared/pm/report'
+import { agentCatchingUp } from '#shared/pm/refusal'
 import type { Choice } from '#shared/pm/verdict'
 import type { Pane } from '#shared/types'
 import type { WaitKind } from '#shared/pm/run'
@@ -15,7 +17,9 @@ import type { TodoKind } from '~/utils/taskTodo'
 const props = defineProps<{ card: Card, kind: TodoKind, pane?: Pane, busy: boolean, pressing: boolean, refused: string, waitsFor?: string[] }>()
 const emit = defineEmits<{ press: [], start: [], resume: [how: Resume], decide: [choice: Choice], back: [note: string] }>()
 
-const badge = computed(() => stepRefusalText(props.card.yourTurn ?? ''))
+// Where the engine's catch-up of a conflict stands: the agent on it, or done.
+const told = computed(() => agentCatchingUp(props.card))
+const badge = computed(() => stepRefusalText(props.card.yourTurn ?? '', told.value))
 const advice = computed(() => props.card.state?.yourTurn?.advice)
 const choices = computed(() => (advice.value ? adviceChoices(advice.value) : { options: [] }))
 
@@ -26,13 +30,7 @@ const reworked = computed(() => latest.value.some(x => x.rework))
 // Phone or desktop, from the image's shape once loaded.
 const shape = ref<Record<string, 'phone' | 'desktop'>>({})
 const loaded = (src: string, e: Event) => { const i = e.target as HTMLImageElement; shape.value = { ...shape.value, [src]: i.naturalWidth < i.naturalHeight ? 'phone' : 'desktop' } }
-const verdict = computed(() => {
-  const at = props.card.state?.at ?? 0
-  const review = props.card.plan.slice(0, at).findLast(s => s.ends === 'verdict')
-  if (!review) return ''
-  const n = props.card.state?.rounds[review.id] ?? 0
-  return n ? tl(`Review passed, ${n} send-back${n > 1 ? 's' : ''}`) : tl('Review passed')
-})
+const verdict = computed(() => { const v = reviewLine(props.card.plan, props.card.state?.at ?? 0, props.card.state?.rounds ?? {}); return v ? tl(v) : '' })
 const pr = computed(() => { const l = mainLink(props.card); return l && /\/pull\/\d+/.test(l.url) ? l : undefined })
 const note = ref('')
 
@@ -89,7 +87,8 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
         </div>
       </template>
       <div v-else class="task-sheet-actions">
-        <UButton v-if="card.userLabel || kind === 'refused'" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="emit('press')">{{ card.userLabel || tl('Try again', 'Réessayer') }}</UButton>
+        <!-- A refused action is tried again from the sheet's top (Try again). -->
+        <UButton v-if="card.userLabel && kind !== 'refused'" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="emit('press')">{{ card.userLabel }}</UButton>
         <UButton v-if="kind === 'blocked' && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="emit('start')">{{ tl('Start', 'Lancer') }}</UButton>
         <UButton v-if="pane && kind !== 'merge' && kind !== 'step'" :color="kind === 'ask' ? 'primary' : 'neutral'" :variant="kind === 'ask' ? 'solid' : 'outline'" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)" data-testid="todo-agent">
           {{ card.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent') }}
@@ -97,7 +96,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       </div>
     </div>
     <p v-if="pressing" class="muted" role="status" data-testid="step-user-busy">{{ tl('Running this step… A merge waits for the PR\'s checks, which can take a few minutes.', 'Étape en cours… Une fusion attend les vérifications de la PR, ce qui peut prendre quelques minutes.') }}</p>
-    <p v-else-if="refused" class="error" role="alert" :title="refused" data-testid="step-user-refused">{{ stepRefusalText(refused) }}</p>
+    <p v-else-if="refused" class="error" role="alert" :title="refused" data-testid="step-user-refused">{{ stepRefusalText(refused, told) }}</p>
 
     <form v-if="kind === 'merge'" class="todo-back" data-testid="todo-back" @submit.prevent="emit('back', note.trim())">
       <UTextarea v-model="note" :rows="2" autoresize maxlength="2000" size="xl" :placeholder="tl('What to change')" data-testid="todo-back-note" />

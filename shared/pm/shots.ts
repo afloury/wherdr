@@ -53,7 +53,8 @@ export function shotRows(shots: Shot[], mode: ShotMode): { before?: Shot, after?
 // open and held by an agent, asks for one of this phase. since: the commit the
 // review passed, when the task's head moved after it (reworkSince): a step that
 // takes no screenshots (the merge, the re-review) lets the worker's screenshot
-// step before it take the new set, which replaces the shown one.
+// step before it take the new set, which replaces the shown one. It drops the
+// user's approval of the merge: they approved the screens they saw, not this one.
 export function addShot(plan: PlannedStep[], state: StepState | undefined, shot: Shot, since?: string): { state: StepState } | { refused: string } {
   const open = state?.started && !state.done ? plan[state.at] : undefined
   if (!state || !open) return { refused: 'The task has no open step' }
@@ -71,5 +72,5 @@ export function addShot(plan: PlannedStep[], state: StepState | undefined, shot:
     }
   }
   if (list.length >= MAX_SHOTS) return { refused: `Step "${step.id}" has ${MAX_SHOTS} screenshots already` }
-  return { state: { ...state, shots: { ...state.shots, [step.id]: [...list, shot] }, ...(earlier ? { earlierShots: earlier } : {}) } }
+  return { state: { ...state, shots: { ...state.shots, [step.id]: [...list, shot] }, ...(earlier ? { earlierShots: earlier } : {}), approved: undefined } }
 }

@@ -6,7 +6,9 @@ import { createPmStore } from '../server/utils/pmStore'
 import { startTask, type PmLaunchDeps } from '../server/utils/pmLaunch'
 import { releaseIdle } from '../server/utils/pmRelease'
 import { advanceTick } from '../server/utils/pmAdvance'
-import { RELEASE_IDLE_MS, agentsAtWork, idleSince, releaseDue } from '../shared/pm/release'
+import { mechanicTick } from '../server/utils/pmMechanic'
+import { RELEASE_IDLE_MS, agentBack, agentsAtWork, handToAgent, idleSince, releaseDue } from '../shared/pm/release'
+import { cardStatus } from '../shared/pm/board'
 import { initialState } from '../shared/pm/steps'
 import { wherdr } from '../shared/pm/examples'
 import type { Run, Task } from '../shared/pm/run'
@@ -32,13 +34,21 @@ describe('the release rules', () => {
     expect(releaseDue(10, 10 + RELEASE_IDLE_MS)).toBe(true)
   })
 
+  it('work handed to the agent takes the task out of Your turn until it is in', () => {
+    const sent = { ...yourTurn(), step: handToAgent(yourTurn().step!, 'catch-up', 'abc', 7) }
+    expect(sent.step.yourTurn).toBeUndefined()
+    expect(idleSince(10, sent, false, 99)).toBeUndefined() // never released while the engine waits for it
+    expect(cardStatus({ plan: [], state: sent.step })).toEqual({ text: 'the agent is updating the PR', tone: 'wait' })
+    expect(agentBack(sent.step)).toEqual(yourTurn().step) // pushed or reported: the merge is the user's again
+  })
+
   it('the machine cap counts only agents holding a step under way', () => {
     const run = (id: string, t: string, role: Run['role'] = 'worker'): Run => ({ id, task: t, role, program: 'claude', model: 'm', machine: 'm1', worktree: '/w', branch: 'b', instructions: '/i', attempt: 1, state: 'running', startedAt: 1 })
     const tasks = [task(), yourTurn(task({ id: 'WH-2' })), task({ id: 'WH-3', step: { ...task().step!, at: 3 } })]
     const holder = (t: Task) => (t.step!.at === 3 ? 'reviewer' : 'worker')
     // WH-1's worker works; WH-2 waits for the user; WH-3 is in review: its idle worker does not count.
     const runs = [run('a', 'WH-1'), run('b', 'WH-2'), run('c', 'WH-2', 'reviewer'), run('d', 'WH-3'), run('e', 'WH-3', 'reviewer'), { ...run('f', 'WH-1'), machine: 'm2' }]
-    expect(agentsAtWork(runs, tasks, 'm1', holder)).toBe(2)
+    expect(agentsAtWork(runs, tasks, 'm1', holder)).toHaveLength(2)
   })
 })
 
@@ -95,5 +105,85 @@ describe('release and restart on the server', () => {
     expect(back.step).toMatchObject({ at: 1, told: 50 }) // the handover gave it: not sent again
     expect(back.log!.at(-1)!.text).toBe('started the worker again in its worktree: work needs it')
     expect(calls.some(c => c[0] === 'terminal.send')).toBe(false)
+  })
+})
+
+describe('work the engine handed the worker', () => {
+  let dir = ''
+  beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-handed-')) })
+  afterEach(() => fs.rm(dir, { recursive: true, force: true }))
+
+  // A visual task at its merge step, the user's turn, its PR at prHead and in conflict with v3.
+  async function setup() {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await store.saveTemplate(wherdr)
+    await store.addProject({ key: 'WH', machine: 'm1', path: '/home/u/wh', template: 'wherdr' }, async (_m, p) => p)
+    await store.addTask({ project: 'WH', title: 'Fix it', type: 'visual' })
+    const env = { head: 'abc1234', prHead: 'abc1234', merge: { code: 3, out: 'conflict with v3 in a.ts' }, push: { code: 0, out: '' }, calls: [] as [string, Record<string, unknown>][] }
+    const out = (code: number, text: string) => ({ code, stdout: Buffer.from(text).toString('base64') })
+    const call = async (method: string, p: Record<string, unknown>) => {
+      env.calls.push([method, p])
+      if (method === 'machine.exec') {
+        const script = (p.argv as string[])[2]!
+        if (script.includes('gh pr list --head')) return out(0, `${env.head}\n${JSON.stringify([{ url: 'https://github.com/o/r/pull/9', baseRefName: 'v3', headRefOid: env.prHead, mergeStateStatus: 'DIRTY', statusCheckRollup: [] }])}`)
+        if (script.includes('merge -q --no-edit')) return out(env.merge.code, env.merge.out)
+        if (script.includes('ls-remote')) return out(env.push.code, env.push.out)
+        if (script.includes('command -v')) return out(0, 'claude')
+        if (script.includes('$HOME')) return out(0, '/home/u')
+        return out(0, '')
+      }
+      if (method === 'terminal.run') return { address: `m1/t${env.calls.filter(c => c[0] === 'terminal.run').length}` }
+      if (method === 'terminal.list') return { terminals: [{ address: 'm1/t1', labels: {}, state: 'running', status: { state: 'idle' } }] }
+      return { state: 'running' }
+    }
+    const deps = { call, store, machines: () => [{ key: 'm1', label: 'm1', local: false, status: 'online' }], launchWatchMs: 0 } as unknown as PmLaunchDeps
+    await startTask(deps, 'WH-1')
+    const t = (await store.task('WH-1'))!, plan = (await store.workflow('WH'))!.taskTypes.visual!.steps
+    const at = plan.findIndex(x => typeof x !== 'string' && x.id === 'merge')
+    await store.saveTask({ ...t, step: { ...t.step!, at, since: 5, told: 5, yourTurn: { reason: 'user', badge: 'Look at the screenshots, then merge' } } })
+    return { store, deps, env, log: async () => (await store.task('WH-1'))!.log!.map(e => e.text) }
+  }
+
+  it('a catch-up sent to the agent keeps its agents, then the pushed resolution is checked and reviewed again', async () => {
+    const { store, deps, env, log } = await setup()
+    await mechanicTick(deps, 0)
+    expect(env.calls.some(c => c[0] === 'terminal.send' && /Merge origin\/v3/.test(String(c[1].text)))).toBe(true)
+    const sent = (await store.task('WH-1'))!.step!
+    expect(sent.yourTurn).toBeUndefined()
+    expect(sent.agent).toMatchObject({ kind: 'catch-up', head: 'abc1234' })
+    expect(await releaseIdle(deps, 3 * RELEASE_IDLE_MS)).toEqual([])
+    // Pushed: the engine checks the PR again; clean now, the resolution is reviewed before the user's turn.
+    env.head = env.prHead = 'def5678'
+    env.merge = { code: 0, out: 'def5678' }
+    await mechanicTick(deps, 4 * RELEASE_IDLE_MS)
+    const t = (await store.task('WH-1'))!
+    expect(t.step!.agent).toBeUndefined()
+    expect(t.step!.catchUp).toBeUndefined()
+    expect(t.step!.rereview).toEqual({ since: 'abc1234', head: 'def5678' })
+    expect(await log()).toContain('catch-up: the worker pushed it')
+  })
+
+  it('pushes committed work before releasing, keeps the agents when it cannot, and restarts the worker on a catch-up', async () => {
+    const { store, deps, env, log } = await setup()
+    env.prHead = 'def5678' // no catch-up yet: the PR head is not the task's commit
+    env.push = { code: 1, out: 'rejected: fetch first' }
+    expect(await releaseIdle(deps, 0)).toEqual([])
+    expect(await releaseIdle(deps, RELEASE_IDLE_MS)).toEqual([])
+    expect(await log()).toContain('kept its agents: could not push the branch\'s unpushed commits (rejected: fetch first)')
+    expect(env.calls.some(c => c[0] === 'terminal.kill')).toBe(false)
+    env.push = { code: 0, out: 'pushed' }
+    expect(await releaseIdle(deps, 2 * RELEASE_IDLE_MS)).toEqual(['WH-1'])
+    expect((await log()).slice(-3, -1)).toEqual(['pushed the branch\'s unpushed commits before releasing its agents', 'released its agents: idle for 10 minutes while the task waits for you; they start again when it needs them'])
+
+    // The engine needs the worker again: started in its worktree, told what to do, the board says it updates the PR.
+    env.prHead = 'abc1234'
+    await mechanicTick(deps, 3 * RELEASE_IDLE_MS)
+    expect(env.calls.filter(c => c[0] === 'terminal.run')).toHaveLength(2)
+    const t = (await store.task('WH-1'))!
+    expect(t.step!.yourTurn).toBeUndefined()
+    expect(t.step!.agent).toMatchObject({ kind: 'catch-up' })
+    expect(await log()).toContain('catch-up: started the worker again with it')
+    expect(cardStatus({ plan: [], state: t.step })?.text).toBe('the agent is updating the PR')
   })
 })

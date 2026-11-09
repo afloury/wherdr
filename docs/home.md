@@ -26,6 +26,16 @@
 - **Compact list**: Settings › Appearance › Home screen › **Compact list** shows one line per
   card; Normal adds the current activity on a second line. It follows you across devices.
   Every agent terminal is its own row, with its pane or tab label.
+- **Task agents**: an agent the [project engine](project-management.md) started for a task keeps
+  its own status, but its row is named after its task: the state square, the task id badge, the
+  task title (cut when long; a pane you renamed keeps your name, in the conversation header and
+  search too) and how long it has been in its state (`8 min`, `2 h`). A second line gives its
+  role, then its machine (when the list mixes several) and its last message: **DEV** (working on
+  the task), **REVIEW**, **FIX** (sent back by the review, red CI or you) or **CATCH-UP** (merging
+  the base branch). Only an agent other than Claude keeps its small icon. Several agents of the
+  same task (the worker and its reviewer) share one row, in the group of the most urgent: the
+  title line, then one line per agent with its own state, which opens that agent; the row's menu
+  lists each agent's actions under its role. A reviewer kept between rounds shows dimmed.
 - **Order**: the header (logo, version, Search, Board, Settings), the counters, the quotas (a
   machine's own quotas under them), Alfred, the [coordinators](#coordinators), then the agents of
   the machines shown, by state (Your turn, Working, Ready). When the list mixes several machines,
@@ -50,7 +60,8 @@ change first and makes it only after your yes.
 
 ### Coordinators
 
-Under Alfred, while project management is on, one row per running project coordinator
+Under Alfred, while project management is on, one row per running project coordinator, its
+project's key badge in the project's color (*[WHR] coordinator*)
 ([Project management](project-management.md)). A tap opens its conversation, shown as selected
 while it is open; its menu (right click or long press), *Restart with…*, picks another agent,
 which becomes its default: its folder and memory stay, the current session stops. A coordinator
@@ -69,15 +80,15 @@ can keep out of the project's repository (a deny rule for Claude, the sandbox fo
 
 ### Machines as tabs
 
-The **machine bar** at the top of the list has **All**, then one tab per machine (this core and
+The **machine tabs** at the top of the list are **All**, then one tab per machine (this core and
 each core machine, online or offline) with its count of rows. A tap shows that machine alone,
 with its Claude and Codex quotas at the top; an offline or reconnecting machine says so there.
-The bar hides when it would show a single machine. A machine's actions (New agent here,
+The tabs hide when they would show a single machine. A machine's actions (New agent here, Keep awake,
 Reconnect, Machine settings, Claude quota setup) open on a right click or long press of its
-tab; with the bar hidden and several machines, on its chip above the list; offline machines are
+tab; with the tabs hidden and several machines, on its chip above the list; offline machines are
 listed at the bottom, with **Reconnect**.
-Settings › Appearance › Home screen › **Machine bar** orders its items, hides some of them, or
-hides the bar. In **Groups**, create a named selection of machines; groups follow you across
+Settings › Appearance › Home screen › **Machine tabs** orders the tabs, hides some of them, or
+hides them all. In **Groups**, create a named selection of machines; groups follow you across
 devices. Machines themselves are managed in [Settings › Machines](machines.md#manage-machines).
 
 ### New agents and tabs
@@ -88,10 +99,19 @@ devices. Machines themselves are managed in [Settings › Machines](machines.md#
   name, **resume** the last conversation, and an optional first message. The terminal is started
   by core in that folder; it joins the space whose folder holds it, else a new space.
 - **+** in a space's tab row starts at once a terminal like the space's current one (same kind,
-  same folder) in a new tab of that space; **New tab…** in the tab menu opens the sheet. The new
-  terminal carries the space's labels, so it also appears in herdr-app.
-- Rename, close, split and move of spaces and tabs stay in herdr-app. Closing an agent's pane
-  from wherdr ends its program.
+  same folder) in a new tab of that space. The new terminal carries the space's labels, so it
+  also appears in herdr-app.
+- A tab's menu (right click, or long press on its chip) has **New tab like this one** (same kind
+  and folder as that tab, when its folder is known), **New tab…** (opens the sheet), **Rename
+  tab** (a tab of one terminal not named in herdr-app's layout: the name is stored as that
+  terminal's name in core) and **Close tab**.
+- A space's menu (right click, or long press on its card; on an agent's row, its Space group)
+  has **Close space**, except for a project coordinator's or a task agent's space: its project
+  manages it.
+- Close tab and Close space first say how many terminals stop and how many agents are
+  interrupted, then close each terminal as **Close this terminal** does; one that could not be
+  closed is named, the others close all the same. Closing an agent's pane ends its program.
+- Split and move of tabs stay in herdr-app.
 - Worktrees are v2 only.
 
 ### Search
