@@ -17,7 +17,7 @@ import { cleanTask } from './pmCleanup'
 import { readLeakCheck } from './pmVisibility'
 import { isPublic, leakText, scanDiff } from '../../shared/pm/visibility'
 import type { Project } from '../../shared/pm/project'
-import { agentBack, wasReleased } from '../../shared/pm/release'
+import { agentBack, retriesAction, wasReleased } from '../../shared/pm/release'
 import { reviveWorker } from './pmRelease'
 
 // The task's commit, its diff size since the branch started, the worker's note, the verdict file.
@@ -78,7 +78,13 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   if (moved) await follow(deps, c, run, moved)
   // The worker reports the work the engine handed it (a catch-up, red CI): the step's Your turn, if any, comes back.
   const work = c.task.step!.agent
-  if (!ev && work && run.role === 'worker') return void await deps.store.logTask({ ...c.task, step: agentBack(c.task.step!) }, 'engine', `${work.kind}: the worker says it is done`)
+  if (!ev && work && run.role === 'worker') {
+    const retry = retriesAction(c.plan, c.task.step!)
+    await deps.store.logTask({ ...c.task, step: agentBack(c.task.step!) }, 'engine', `${work.kind}: the worker says it is done${retry ? `, ${step!.id} is tried again` : ''}`)
+    // A failed action it fixed: tried again now; failing again, it is back in Your turn with the new error.
+    if (retry) await stepAction(deps, run.task, 'engine').catch(() => {})
+    return
+  }
   if (!ev) return
   const tell = (text: string) => deps.call('terminal.send', { terminal: run.terminal, text }, 30000)
   if ('fix' in ev) return void await tell(ev.fix)

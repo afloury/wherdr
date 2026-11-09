@@ -17,9 +17,11 @@ export interface PlannedStep extends Step { text: string, guarded?: true }
 // error: what the failed engine action said (reason 'action').
 export interface YourTurn { reason: 'user' | 'timeout' | 'rounds' | 'action', badge: string, advice?: Advice, error?: string }
 
-// Work the engine handed the worker on its own (a catch-up, red CI): the step's
-// Your turn (`was`) waits until the PR head moves from `head` or the worker reports.
-export interface AgentWork { kind: string, head: string, at: number, was?: YourTurn }
+// Work handed to the worker (a catch-up, red CI, a coordinator's fix): the
+// step's Your turn (`was`) waits until the PR head moves from `head` or the
+// worker reports. A failed action is then tried again (release.ts retriesAction);
+// idle: since when its agent sits idle, its report not in (fixWatch).
+export interface AgentWork { kind: string, head?: string, at: number, was?: YourTurn, idle?: number }
 
 export interface StepState {
   at: number // index of the current step
