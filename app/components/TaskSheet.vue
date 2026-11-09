@@ -10,7 +10,7 @@
 // segmented style) for the rest, only the open one scrolling: Description (the
 // text, tags and links, the PR among them), Plan (each step with its
 // screenshots), Log.
-import { canStart, canStop, cardStatus, linkLabel, type Card } from '#shared/pm/board'
+import { canStart, canStop, cardStatus, linkLabel, statusText, type Card } from '#shared/pm/board'
 import type { Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
 import type { Task } from '#shared/pm/run'
@@ -31,8 +31,8 @@ const proofs = (id: string) => Object.entries(props.card.state?.proofs[id] ?? {}
 const rounds = (id: string) => props.card.state?.rounds[id] ?? 0
 // The steps that have screenshots, to look at before the push, the PR or the merge.
 const shots = (id: string) => props.card.state?.shots?.[id] ?? []
-// Where its PR and merge stand (the card's line), with the full time.
-const status = computed(() => { const s = cardStatus(props.card); return s && { ...s, text: s.at ? `${s.text} ${fmtDateTime(s.at)}` : s.text } })
+// Where its PR and merge stand (the card's line), with the full time and the approval's date.
+const status = computed(() => { const s = cardStatus(props.card); return s && { ...s, text: statusText(s, fmtDateTime, true) } })
 
 // Time per step, the waits for the user apart, review rounds and CI fixes, in one line.
 const times = computed(() => (props.card.times ? timesText(props.card.times) : ''))
@@ -84,9 +84,10 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 
 <template>
   <AppSheet v-model:open="open" :title="card.title" tall hide-close @closed="emit('closed')">
+    <template #lead><ProjectBadge :text="card.shown" :color="card.color" copy /></template>
     <div class="task-sheet" data-testid="task-sheet">
       <div class="task-sheet-top">
-        <p class="mono-label">{{ card.shown }}<template v-if="card.step"> · {{ card.step }}</template></p>
+        <p v-if="card.step" class="mono-label">{{ card.step }}</p>
         <p v-if="status" class="task-status" :class="status.tone" data-testid="task-status">{{ status.text }}</p>
         <p v-if="times" class="task-times" data-testid="task-times">{{ times }}</p>
         <div class="task-sheet-actions">

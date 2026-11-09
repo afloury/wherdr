@@ -72,7 +72,7 @@ onUnmounted(() => clearInterval(timer))
       :disabled="!!busy" data-testid="coordinator-row" v-on="rowMenu.on(menu(c), coordinatorName(c))" @click="open(c)"
     >
       <i class="coord-dot" aria-hidden="true" />
-      <span class="coord-text"><b>{{ coordinatorName(c) }}</b><small>{{ busy === c.project ? tl('Starting…', 'Lancement…') : sub(c) }}</small></span>
+      <span class="coord-text"><b v-if="c.main">{{ coordinatorName(c) }}</b><b v-else><ProjectBadge :text="c.label ?? c.project" :color="c.color" /> {{ tl('coordinator') }}</b><small>{{ busy === c.project ? tl('Starting…', 'Lancement…') : sub(c) }}</small></span>
       <UIcon :name="coordinatorPane(c) ? 'i-lucide-chevron-right' : 'i-lucide-play'" class="coord-go" />
     </button>
     </UContextMenu>

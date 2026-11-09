@@ -482,10 +482,10 @@ export function renderReport(r) {
   L.push(r.settings.carried.length ? `Carried over: ${r.settings.carried.join(', ')}.` : 'No synced setting carried over.')
   if (r.settings.files.length) L.push('', `Copied: ${r.settings.files.join(', ')}.`)
   if (r.settings.machines?.length) {
-    L.push('', 'Machines named in the machine bar and groups, turned into the v3 machines made from them (same SSH target):', '')
+    L.push('', 'Machines named in the machine tabs and groups, turned into the v3 machines made from them (same SSH target):', '')
     for (const c of r.settings.machines) {
       const v2 = `${c.label ? `${c.label} ` : ''}(v2 ${c.from})`
-      L.push(`- ${c.setting}${c.group ? `, group ${c.group}` : ''}: ${c.to ? `${v2} → ${c.to}` : `${v2} dropped: no v3 machine was made from it (once you add it, put it back in Settings › Appearance › Machine bar)`}`)
+      L.push(`- ${c.setting}${c.group ? `, group ${c.group}` : ''}: ${c.to ? `${v2} → ${c.to}` : `${v2} dropped: no v3 machine was made from it (once you add it, put it back in Settings › Appearance › Machine tabs)`}`)
     }
   }
   if (r.settings.skipped.length) { L.push('', 'Not carried over this time:', ''); for (const s of r.settings.skipped) L.push(`- ${s.key}: ${s.reason}`) }
