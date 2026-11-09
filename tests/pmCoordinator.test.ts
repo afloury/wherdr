@@ -129,6 +129,8 @@ describe('the main coordinator (WHR-398)', () => {
     const view = await coordinatorsView(store)
     expect(view.map(c => c.project)).toEqual([MAIN, 'CO', 'ST'])
     expect(view[0]).toMatchObject({ main: true, terminal: 'host/t3' })
+    expect(view[0]!.machines).toBeUndefined()
+    expect(view[1]!.machines).toEqual([''])
   })
 
   it('runs Alfred with OMP too: started bare in its home, its greeting typed once it is ready', async () => {
