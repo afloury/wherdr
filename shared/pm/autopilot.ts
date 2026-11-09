@@ -23,6 +23,7 @@ export interface Autopilot {
   hours?: { from: number, to: number } // local hours, to excluded; from > to spans midnight
   lookForWork?: true // keep the scheduled wakes when there is nothing to do (goals that add their own tasks)
   lookPerDay?: number // with lookForWork: tasks those wakes may add a day (LOOK_PER_DAY when unset)
+  keepBusy?: false // Keep the board busy, on unless turned off: the engine starts the next to-do task itself (busyQueue)
 }
 
 export const LOOK_PER_DAY = 3
@@ -61,8 +62,18 @@ export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error
     ...(at ? { at } : {}),
     ...(h ? { hours: { from: h.from as number, to: h.to as number } } : {}),
     ...(o.lookForWork === true ? { lookForWork: true as const, lookPerDay: lookPerDay ?? LOOK_PER_DAY } : {}),
+    ...(o.keepBusy === false ? { keepBusy: false as const } : {}),
   } }
 }
+
+// Keep the board busy: with the autopilot on, unless the user turned it off.
+export const keepsBusy = (ap: Autopilot | undefined) => !!ap?.on && ap.keepBusy !== false
+
+// The to-do tasks the engine starts by itself to keep the board busy, in
+// board order (oldest first). A chained task is startChained's (it waits for
+// its 'after'), a start held for room startHeld's.
+export const busyQueue = (tasks: Task[]) =>
+  tasks.filter(t => t.state === 'todo' && !t.after && !t.held && !t.step?.started).sort((a, b) => a.createdAt - b.createdAt)
 
 // The goal as a sentence in a wake's text: one final period, never two.
 export const sentence = (s: string) => (/[.!?…]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`)
@@ -99,23 +110,35 @@ export function limitsLeft(ap: Autopilot, tasks: Task[], runs: Run[], now: numbe
   return { started, perDay: ap.perDay, startLeft: Math.max(0, Math.min((ap.perDay ?? Infinity) - started, (ap.atOnce ?? Infinity) - working)), working, atOnce: ap.atOnce }
 }
 
+// The autopilot limit one more start goes past now, if any: its refusal, and
+// the word a user's start gets for going on anyway.
+function limitHit(ap: Autopilot, tasks: Task[], runs: Run[], now: number, holds?: SlotOf) {
+  const l = limitsLeft(ap, tasks, runs, now, holds)
+  if (l.perDay !== null && l.started >= l.perDay) return { refusal: `Today's limit is reached (${l.perDay} tasks started)`, past: `past the autopilot's limit of ${l.perDay} tasks a day` }
+  if (l.atOnce !== null && l.working >= l.atOnce) return { refusal: `${l.working} tasks already work at once (limit ${l.atOnce})`, past: `past the autopilot's limit of ${l.atOnce} at once` }
+  if (!inHours(ap.hours, new Date(now))) return { refusal: 'Outside the autopilot\'s hours', past: 'outside the autopilot\'s hours' }
+}
+
 // Why the autopilot may not start one more task now, or undefined. `pace`:
 // the verdict of the worker's account, given only for automatic work; while
-// its account burns, the burn's tasks at once replace the autopilot's.
+// its account burns, tasks at once are Auto (the machines' room decides).
 export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: number, pace?: PaceVerdict, holds?: SlotOf): string | undefined {
-  const l = limitsLeft(pace?.go && pace.atOnce !== undefined ? { ...ap, atOnce: pace.atOnce } : ap, tasks, runs, now, holds)
-  if (l.perDay !== null && l.started >= l.perDay) return `Today's limit is reached (${l.perDay} tasks started)`
-  if (l.atOnce !== null && l.working >= l.atOnce) return `${l.working} tasks already work at once (limit ${l.atOnce})`
-  if (!inHours(ap.hours, new Date(now))) return 'Outside the autopilot\'s hours'
-  return paceRefusal(pace)
+  return limitHit(pace?.go && pace.burning ? { ...ap, atOnce: null } : ap, tasks, runs, now, holds)?.refusal ?? paceRefusal(pace)
 }
+
+// A start the user asked for goes past the autopilot's limits: the word its
+// output gives ('past the autopilot's limit of 3 at once'), or undefined.
+// It still counts in the day's starts and at once, so automatic work sees it.
+export const pastLimit = (ap: Autopilot | undefined, tasks: Task[], runs: Run[], now: number, holds?: SlotOf) =>
+  limitHit(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now, holds)?.past
 
 // Starts a stopped task may have had for a wake to start it again.
 export const WAKE_RETRIES = 2
 
 // Why the coordinator (or the engine, for a chained task) may not start
-// `task` now, or undefined. In a wake, only with the autopilot on; its limits
-// and hours hold whatever the turn. A task stopped on a failure starts again
+// `task` now, or undefined. In a wake, only with the autopilot on, within its
+// limits and hours; the user's turn goes past them (pastLimit says so), the
+// engine's chained start does not. A task stopped on a failure starts again
 // too, from its step; in a wake only while it has had few worker runs.
 // `pace`: the worker's account verdict, held to only for automatic work
 // (pacedStart); `engine`: the engine starts it, after its chain.
@@ -128,8 +151,20 @@ export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, t
   const chain = task.after ? chainState(task, tasks) : 'go'
   if (chain !== 'go') return chain?.wait ?? `${task.id} starts after ${task.after}, which is not done`
   if (wake && !ap?.on) return 'In a wake, a task starts only with the autopilot on'
-  const paced = pacedStart(task, engine ? 'engine' : wake ? 'wake' : 'user')
+  if (!wake && !engine) return
+  const paced = pacedStart(task, engine ? 'engine' : 'wake')
   return startRefusal(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now, paced ? pace : undefined, holds)
+}
+
+// What keeping the board busy starts next in a project (its tasks): the
+// next to-do task, or why none starts now (off, nothing to do, a limit, the
+// hours, the pace). Room on a machine is placement's, checked by the engine.
+export function busyNext(ap: Autopilot | undefined, tasks: Task[], runs: Run[], now: number, { pace, holds }: { pace?: PaceVerdict, holds?: SlotOf } = {}): { task: Task } | { why: string } {
+  if (!keepsBusy(ap)) return { why: ap?.on ? 'Keep the board busy is off' : 'The autopilot is off' }
+  const task = busyQueue(tasks)[0]
+  if (!task) return { why: 'No task to do' }
+  const why = coordinatorStartRefusal(ap, task, tasks, runs, now, true, { pace, holds })
+  return why ? { why } : { task }
 }
 
 // The coordinator's last wake: when, and where its tasks stood then.

@@ -34,6 +34,7 @@ async function load() {
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { load(); timer = setInterval(load, 10_000) })
 onBeforeUnmount(() => clearInterval(timer))
+watch(taskSheetTick, load) // an action in a task's sheet, also read by Tasks to handle
 
 // An agent asking a question or a permission puts its card in Your turn too.
 const waitsForYou = (c: Card) => { const p = paneOf(c); return !!p && hasAgent(c) && statusKey(p) === 'blocked' }
@@ -166,7 +167,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
     </div>
     </div>
     <AddTaskSheet v-if="adding && data" v-model:open="adding" :projects="data.projects" :cards="data.cards" :project="project" @added="added" />
-    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}:${checking}:${reporting}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" :checking="checking" :reporting="reporting" @closed="open = null; stopping = false; checking = false; reporting = false" @changed="load" />
+    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}:${checking}:${reporting}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" :checking="checking" :reporting="reporting" @closed="open = null; stopping = false; checking = false; reporting = false; closeTaskSheet()" @changed="taskChanged" />
   </section>
 </template>
 

@@ -8,10 +8,10 @@ import { randomUUID } from 'node:crypto'
 import { MAIN, coordinatorBy, coordinatorWake } from '../../shared/pm/coordinator'
 import { LOOK_REASON, autopilotEvents, bump, inHours, scheduledWake, sentence, skippedWake, today } from '../../shared/pm/autopilot'
 import { projectPace } from './pmPace'
-import { durationMs } from '../../shared/pm/steps'
+import { currentStep, durationMs } from '../../shared/pm/steps'
 import { taskPlan } from '../../shared/pm/run'
 import { due as isDue, parseSchedule } from '../../shared/pm/schedule'
-import { enqueue, tickWakes, wakeText, type CoordStatus } from '../../shared/pm/wakes'
+import { enqueue, tickWakes, wakeText, type CoordStatus, type Wake } from '../../shared/pm/wakes'
 import type { Template } from '../../shared/pm/workflow'
 import type { CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
@@ -39,20 +39,28 @@ async function statusOf(deps: WakeDeps, terminal: string | undefined): Promise<C
 // Reasons of this tick, per project.
 async function gather(deps: WakeDeps, now: number) {
   const { store } = deps
-  const reasons = new Map<string, string[]>()
-  const add = (k: string, r: string[]) => r.length && reasons.set(k, [...(reasons.get(k) ?? []), ...r])
+  // One entry per project and source: a step check is its own wake, per task and step.
+  const reasons: { key: string, reasons: string[], from: Pick<Wake, 'kind' | 'about'> }[] = []
+  const add = (key: string, r: string[], from: Pick<Wake, 'kind' | 'about'> = { kind: 'autopilot' }) => {
+    if (!r.length) return
+    const e = reasons.find(x => x.key === key && x.from.kind === from.kind && x.from.about === from.about)
+    if (e) e.reasons.push(...r)
+    else reasons.push({ key, reasons: [...r], from })
+  }
   const projects = await store.projects(), tasks = await store.tasks()
   const templates = new Map<string, Template | null>()
   for (const p of projects) templates.set(p.key, p ? await store.workflow(p.key) : null)
   for (const task of tasks) {
     const t = templates.get(task.project)
     if (!task.step?.started || task.step.done || !t) continue
-    const w = coordinatorWake(taskPlan(t, task, projects.find(p => p.key === task.project)), task.step, now)
+    const plan = taskPlan(t, task, projects.find(p => p.key === task.project))
+    const w = coordinatorWake(plan, task.step, now)
     if (JSON.stringify(w.state) === JSON.stringify(task.step)) continue
     // No coordinator: the tick still counts (timeouts), the step start stays to announce.
     const has = !!(await store.coordinator(task.project))?.terminal
     await store.saveTask({ ...task, step: has ? w.state : { ...w.state, told: task.step.told } })
-    if (has) add(task.project, w.texts.map(x => `${task.id} (${task.title}): ${x}`))
+    const step = currentStep(plan, task.step)
+    if (has) add(task.project, w.texts.map(x => `${task.id} (${task.title}): ${x}`), { kind: 'step', about: `${task.id} (${step?.id ?? 'step'})` })
   }
   // The main coordinator (Alfred) has no autopilot: one saved before is turned off.
   const main = await store.coordinator(MAIN)
@@ -77,7 +85,7 @@ async function gather(deps: WakeDeps, now: number) {
     if (kind === 'send' || kind === 'look') kind = scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now), (await projectPace(store, p.key, undefined, now))?.verdict)
     const skip = skippedWake(kind)
     if (kind && !skip) add(p.key, [`Scheduled wake (${due ? `every ${ap!.every}` : ap!.at}). ${kind === 'look' ? `${LOOK_REASON} ` : ''}${goal}`])
-    const woke = !!reasons.get(p.key)?.length
+    const woke = reasons.some(x => x.key === p.key)
     if (due || atDue || woke || JSON.stringify(ev.seen) !== JSON.stringify(c.seen ?? null)) {
       await store.saveCoordinator({
         ...c, seen: ev.seen, ...(due ? { ranAt: now } : {}), ...(atDue ? { atRan: now } : {}),
@@ -106,7 +114,7 @@ export async function wakeTick(deps: WakeDeps, now = Date.now()) {
   if (!(await store.enabled())) return []
   const reasons = await gather(deps, now)
   let queue = await store.wakes()
-  const fresh = [...reasons].map(([k, r]) => enqueue(queue, k, r, now, newId()))
+  const fresh = reasons.map(r => enqueue(queue, r.key, r.reasons, now, newId(), false, r.from))
   if (fresh.length) { await store.saveWakes(fresh); queue = await store.wakes() }
   const sent: string[] = [], projects = await store.projects()
   const shown = (k: string) => { const p = projectOf(projects, k); return p ? shownKey(p) : k }
