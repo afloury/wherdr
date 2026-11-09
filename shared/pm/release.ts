@@ -5,7 +5,7 @@
 // needs it. Only agents that hold a step under way count against a machine's
 // cap. Pure: server/utils/pmRelease.ts reads the terminals and ends the agents.
 import type { Run, Task } from './run'
-import type { StepState } from './steps'
+import type { PlannedStep, StepState } from './steps'
 
 export const RELEASE_IDLE_MS = 10 * 60_000
 
@@ -48,11 +48,44 @@ export function agentsAtWork(runs: Run[], tasks: Task[], machine: string, holder
 
 // The engine hands the worker work of its own (a catch-up, red CI) at the PR
 // head `head`: the step leaves Your turn until a push or the worker's report.
-export const handToAgent = (s: StepState, kind: string, head: string, now: number): StepState =>
-  ({ ...s, yourTurn: undefined, agent: { kind, head, at: now, ...(s.yourTurn ?? s.agent?.was ? { was: s.yourTurn ?? s.agent?.was } : {}) } })
+// No head (a fix handed by a `tell --fix`): only its report, or its silence, ends it.
+export const handToAgent = (s: StepState, kind: string, head: string | undefined, now: number): StepState =>
+  ({ ...s, yourTurn: undefined, agent: { kind, ...(head ? { head } : {}), at: now, ...(s.yourTurn ?? s.agent?.was ? { was: s.yourTurn ?? s.agent?.was } : {}) } })
 
 // That work is in: the step's Your turn, if it had one, comes back.
 export const agentBack = ({ agent, ...s }: StepState): StepState => ({ ...s, ...(agent?.was ? { yourTurn: agent.was } : {}) })
+
+// A failed engine action (a push refused, a PR not opened) handed to the
+// agent with a fix: once that work is in, the engine tries the action again
+// itself instead of handing the user its Try again.
+export const retriesAction = (plan: PlannedStep[], s: StepState) =>
+  !!s.agent && s.agent.was?.reason === 'action' && plan[s.at]?.ends === 'action'
+
+// `tell --fix` on a task whose step action failed: the agent is fixing it,
+// the step leaves Your turn (retriesAction). Undefined: no failed action.
+export function handFix(plan: PlannedStep[], s: StepState | undefined, kind: string, now: number): StepState | undefined {
+  if (!s?.started || s.done || s.acting || plan[s.at]?.ends !== 'action' || s.yourTurn?.reason !== 'action') return
+  return handToAgent(s, `fix ${kind}`, undefined, now)
+}
+
+// How long the agent fixing a failed action may sit idle, its report not in,
+// before the step goes back to the user.
+export const FIX_QUIET_MS = 3 * 60_000
+
+// The agent fixing a failed action, as the engine sees it this pass (its
+// terminal's status; 'gone': ended): the step as it is, the agent's quiet
+// time noted, or back to Your turn with the new reason once it stopped
+// without a report. Undefined: nothing to change.
+export function fixWatch(plan: PlannedStep[], s: StepState, status: 'working' | 'idle' | 'gone' | undefined, now: number): StepState | undefined {
+  const work = s.agent
+  if (!work || !retriesAction(plan, s) || status === undefined) return
+  if (status === 'working') return work.idle === undefined ? undefined : { ...s, agent: { ...work, idle: undefined } }
+  if (status === 'idle' && now - (work.idle ?? now) < FIX_QUIET_MS) return work.idle === undefined ? { ...s, agent: { ...work, idle: now } } : undefined
+  const step = plan[s.at]!
+  const error = `${work.kind}: the agent ${status === 'gone' ? 'ended' : 'stopped'} without saying it is done`
+  const { agent: _, ...rest } = s
+  return { ...rest, yourTurn: { reason: 'action', badge: `${step.badge || step.userLabel || step.id}: ${error}`, error } }
+}
 
 // Before its agents are released, the task branch's committed work goes to
 // origin. A branch never pushed keeps its commits in the worktree, which stays.

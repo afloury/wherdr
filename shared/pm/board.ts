@@ -13,6 +13,7 @@ import type { Report } from './report'
 import { timesOf, type Times } from './times'
 import { ordinal } from './mergeQueue'
 import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
+import { retriesAction } from './release'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -230,7 +231,7 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
   }
   // In the merge queue: its place in line, or why it stepped out.
   if (c.queueOut) return { text: `in merge queue, out of line: ${c.queueOut}`, tone: c.queueOut === 'checks failed' ? 'bad' : 'wait', ...(s.approved && !s.acting ? { approved: s.approved.at } : {}) }
-  if (s.agent) return { text: 'the agent is updating the PR', tone: 'wait' }
+  if (s.agent) return { text: retriesAction(c.plan, s) ? 'the agent is fixing it' : 'the agent is updating the PR', tone: 'wait' }
   const kind = c.plan[s.at]?.action?.kind
   const failed = s.yourTurn?.reason === 'action' ? s.yourTurn.error ?? '' : undefined
   if (kind === 'github.pr') return s.acting ? { text: 'opening the PR', tone: 'wait' } : failed !== undefined ? refused(failed) : undefined

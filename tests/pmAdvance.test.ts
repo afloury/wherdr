@@ -221,7 +221,7 @@ describe('advanceTick (store and a fake herdr-core)', () => {
     } finally { await fs.rm(dir, { recursive: true, force: true }) }
   })
 
-  it('turns the worker\'s done into the PR, starts the reviewer of another model, then reads its verdict', async () => {
+  it('turns the worker\'s done into the PR on the branch it checked out, starts the reviewer of another model, then reads its verdict', async () => {
     const { createPmStore } = await import('../server/utils/pmStore')
     const { advanceTick } = await import('../server/utils/pmAdvance')
     const { startChained } = await import('../server/utils/pmMechanic')
@@ -248,7 +248,8 @@ describe('advanceTick (store and a fake herdr-core)', () => {
         if (method === 'terminal.get') return { state: 'running' }
         if (method !== 'machine.exec') return {}
         const script = (p.argv as string[])[2]!
-        const out = script.includes(READ_SEP) ? ['abc1234', '5', '', verdict].join(`\n${READ_SEP}\n`)
+        // The worker checked out its own branch: the engine follows it.
+        const out = script.includes(READ_SEP) ? ['abc1234', '5', '', verdict, 'feature/CO-1-fix'].join(`\n${READ_SEP}\n`)
           : script.includes('gh pr create') ? 'https://github.com/o/r/pull/9'
             : script.includes('command -v') ? 'claude' : script.includes('$HOME') ? '/h' : ''
         return { code: script.includes('--contains') ? 1 : 0, stdout: Buffer.from(out).toString('base64') }
@@ -262,6 +263,11 @@ describe('advanceTick (store and a fake herdr-core)', () => {
       expect(task.step!.proofs.pr?.link).toBe('https://github.com/o/r/pull/9')
       expect(terms['h/t1']!['wherdr.report']).toBe('')
       expect(task.log?.map(l => l.text)).toContain('work: done')
+      expect(task.branch).toBe('feature/CO-1-fix')
+      expect((await store.runs()).find(r => r.id === 'r1')!.branch).toBe('feature/CO-1-fix')
+      const pr = calls.find(([m, p]) => m === 'machine.exec' && (p.argv as string[])[2]!.includes('gh pr create'))![1].argv as string[]
+      expect(pr).toContain('feature/CO-1-fix')
+      expect(pr).not.toContain('task/CO-1')
 
       await advanceTick(deps)
       task = (await store.task(t.id))!

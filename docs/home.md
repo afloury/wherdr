@@ -14,7 +14,8 @@
 - **States**: three only: **Your turn** (blocked: a question or a permission), **Working** and
   **Ready** (idle or done; an agent that reports no status also counts as Ready, as in v2.5).
   A space with several terminals follows its most urgent one. Three counters at the top (your
-  turn, working, ready) count the same rows as the headings. When core does not answer, the last
+  turn, working, ready) count what the tab lists: the same rows as the headings, plus Alfred and
+  the tab's running coordinators (one waiting for your answer counts in your turn). When core does not answer, the last
   list stays visible, marked offline, and the home says **herdr-core is not responding**.
   An omp card also shows its context usage as a thin line along its bottom edge (green, ochre
   from 60 %, rose from 85 %; paler when it is the last reading); the figures are in the
@@ -47,10 +48,11 @@
 
 Alfred, wherdr's assistant, is always the first row of the agent list, even
 with no agent and projects off. It helps you get started and, with projects
-on, coordinates all of them. The first *Start* asks which agent (Claude,
+on, coordinates all of them when you ask it: it has no autopilot, each
+project's coordinator runs its own. The first *Start* asks which agent (Claude,
 Codex, OMP…, those offered in Settings › Agents) runs it; the choice is kept, and wherdr
-never changes it on its own: if that agent is no longer offered, Alfred's
-[Autopilot](project-management.md#autopilot) window says so and you pick another. The same window
+never changes it on its own: if that agent is no longer offered, the **Agent**
+button in Alfred's conversation opens a window that says so, and you pick another there. The same window
 changes Alfred's agent for its next conversation. It runs with that agent's default
 model: change the model inside Alfred. Its menu (right click, or long press on a touch
 screen), *Restart with…*, moves it
@@ -86,7 +88,8 @@ can keep out of the project's repository (a deny rule for Claude, the sandbox fo
 ### Machines as tabs
 
 The **machine tabs** at the top of the list are **All**, then one tab per machine (this core and
-each core machine, online or offline) with its count of rows. A tap shows that machine alone,
+each core machine, online or offline) with its count: the total of its counters (its rows,
+Alfred and its coordinators). A tap shows that machine alone,
 with its Claude and Codex quotas at the top; an offline or reconnecting machine says so there.
 The tabs hide when they would show a single machine. A machine's actions (New agent here, Keep awake,
 Reconnect, Machine settings) open on a right click or long press of its tab. With the tabs hidden,
