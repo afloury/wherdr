@@ -10,6 +10,7 @@ import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
 import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
 import { timesOf, type Times } from './times'
+import { sameFilesText } from './files'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -38,6 +39,7 @@ export interface Card {
   after?: string[] // tasks of the same project it starts after
   prNow?: string // its PR as the engine last read it (prNow)
   held?: string // waits for memory on its machine
+  sameFiles?: string // to do behind this started task, which touches its files (files.ts)
   asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
   times?: Times // time per step, waits for the user, rounds, CI fixes (times.ts), once started
 }
@@ -100,6 +102,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(task.stopped ? { stopped: task.stopped } : {}),
     ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '' } } : {}),
     ...(task.held && task.state === 'todo' ? { held: task.held } : {}),
+    ...(task.sameFiles && task.state === 'todo' ? { sameFiles: task.sameFiles } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
     ...(task.after ? { after: afterIds(task) } : {}),
     ...(s?.started ? { times: timesOf(task, plan, runs, now) } : {}),
@@ -182,9 +185,10 @@ const ofPr = (pr: string): CardStatus => (pr === 'merged'
 // Where a task's PR and merge stand, in one short line: from its step state
 // and what the engine last read of its PR. None before a PR, or once stopped.
 // A done task merged by a step: 'merged', at the time it was done.
-export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' | 'held'>): CardStatus | undefined {
+export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' | 'held' | 'sameFiles'>): CardStatus | undefined {
   const s = c.state
   if (c.held) return { text: c.held, tone: 'wait' }
+  if (c.sameFiles) return { text: sameFilesText(c.sameFiles), tone: 'wait' }
   if (!s?.started || c.stopped) return
   if (s.done) {
     const merged = c.plan.some(p => p.action && MERGES.includes(p.action.kind) && s.proofs[p.id] && Object.keys(s.proofs[p.id]!).length)

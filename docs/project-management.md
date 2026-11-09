@@ -187,6 +187,26 @@ click, long press, or ••• when it has more than *Open*) offers:
 **Add task** opens a sheet: the project, a title, the task type (with its steps
 in one line), a Markdown description, the tasks it waits for, and *Start now*.
 
+### Tasks that touch the same files
+
+Tasks that change the same files do not run at the same time. At the start of
+its work, the worker writes the files or folders it plans to change to
+`files.txt` beside its instructions file (a folder covers what is in it); the
+coordinator can name them ahead with `task add … --files app,docs/board.md`.
+Every 5 minutes wherdr reads, for each started task not done yet (running,
+waiting for you or for its merge, or stopped), those declared paths and the
+files its branch changed (`git diff` since the branch started, new files
+included).
+
+When a task starts for the first time (by you, the coordinator or an *after*
+chain), and its declared paths overlap what such a task declared or changed, it
+stays to do and its card says *Waits for WHR-12, same files*. It starts by
+itself once that task is done or no longer touches them. **Start anyway**, on
+its card's menu or in its sheet, starts it at once. A task with no declared
+paths never waits. A worker that changes files beyond its declared ones adds
+them to `files.txt` and says which in its closing note; the task's log notes
+them too.
+
 ## Task sheet
 
 A card opens the task's sheet: its id and step, a note when it waits or was

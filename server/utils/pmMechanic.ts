@@ -20,6 +20,7 @@ import { advanceTick } from './pmAdvance'
 import { forgetMemory, memoryHold } from './pmMemory'
 import { releaseIdle, reviveWorker } from './pmRelease'
 import { wasReleased } from '../../shared/pm/release'
+import { startFileWaits, syncFiles } from './pmFiles'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -77,7 +78,7 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
     const mine = (await store.tasks()).filter(t => t.project === p.key)
     // A chain the coordinator or an automation made is automatic work: held by the pace.
     let next: typeof mine[number] | undefined
-    for (const t of mine.filter(x => x.after && x.state === 'todo')) {
+    for (const t of mine.filter(x => x.after && x.state === 'todo' && !x.sameFiles)) {
       const pace = pacedStart(t, 'engine') ? (await projectPace(store, p.key, t, now))?.verdict : undefined
       if (!coordinatorStartRefusal(ap, t, mine, runs, now, false, { pace, engine: true })) { next = t; break }
     }
@@ -87,7 +88,7 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
     if (held) { if (next.held !== held) await store.logTask({ ...next, held }, 'engine', held); continue }
     forgetMemory(p.machine)
     const r = await startTask(deps, next.id).catch((e: Error) => ({ ...next, state: 'waiting' as const, waiting: e.message }))
-    await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} done` : `could not start after ${next.after}: ${r.waiting ?? ''}`)
+    if (!r.sameFiles) await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} done` : `could not start after ${next.after}: ${r.waiting ?? ''}`)
     started.push(next.id)
   }
   return started
@@ -101,7 +102,7 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
 export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
   const projects = await store.projects(), runs = await store.runs(), started: string[] = [], machines = new Set<string>()
-  for (const t of (await store.tasks()).filter(x => x.held && x.state === 'todo' && !x.after)) {
+  for (const t of (await store.tasks()).filter(x => x.held && x.state === 'todo' && !x.after && !x.sameFiles)) {
     const p = projects.find(x => x.key === t.project)
     if (!p || machines.has(p.machine)) continue
     const pace = pacedStart(t, 'wake') ? (await projectPace(store, p.key, t, now))?.verdict : undefined
@@ -113,7 +114,7 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
     machines.add(p.machine)
     forgetMemory(p.machine)
     const r = await startTask(deps, t.id).catch((e: Error) => ({ ...t, state: 'waiting' as const, waiting: e.message }))
-    await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? 'started: memory is back' : `could not start: ${r.waiting ?? ''}`)
+    if (!r.sameFiles) await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? 'started: memory is back' : `could not start: ${r.waiting ?? ''}`)
     started.push(t.id)
   }
   return started
@@ -142,6 +143,8 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   await releaseIdle(deps, now).catch(() => {})
   await startChained(deps, now).catch(() => {})
   await startHeld(deps, now).catch(() => {})
+  await syncFiles(deps, now).catch(() => {})
+  await startFileWaits(deps).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
   for (let task of await store.tasks()) {

@@ -74,7 +74,7 @@ watch(() => props.card.yourTurn, (b) => { if (b !== refused.value) refused.value
 const confirmStop = ref(!!props.stopping)
 const why = ref('')
 const stop = () => run(async () => { await stopTaskApi(props.card.id, why.value); confirmStop.value = false })
-const start = () => run(() => startTaskApi(props.card.id))
+const start = () => run(() => startTaskApi(props.card.id, undefined, props.card.sameFiles ? true : undefined))
 const resume = (how: Resume) => run(() => resumeTaskApi(props.card.id, how))
 const decide = (choice: Choice) => run(() => api('/api/pm/decide', { id: props.card.id, choice }))
 const sendBack = (note: string) => run(() => api('/api/pm/step-back', { id: props.card.id, note }))
@@ -90,7 +90,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
         <p v-if="status" class="task-status" :class="status.tone" data-testid="task-status">{{ status.text }}</p>
         <p v-if="times" class="task-times" data-testid="task-times">{{ times }}</p>
         <div class="task-sheet-actions">
-          <UButton v-if="!todo && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ tl('Start', 'Lancer') }}</UButton>
+          <UButton v-if="!todo && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ card.sameFiles ? tl('Start anyway') : tl('Start', 'Lancer') }}</UButton>
           <UButton v-if="!todo && pane" color="neutral" variant="outline" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)">
             {{ card.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent') }}
           </UButton>

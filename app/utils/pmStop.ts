@@ -19,8 +19,9 @@ export const RESUME_MEANING: Record<Resume, string> = {
 // The server's refusal (a limit, no template, no machine…) comes back as a
 // task waiting with its reason: thrown here, so it is said like an error.
 // machine: a key the project allows (Start on…), for a task never started.
-export async function startTaskApi(id: string, machine?: string) {
-  const { task } = await api<{ task: Task }>('/api/pm/task-start', { id, ...(machine !== undefined ? { machine } : {}) })
+// anyway: start it beside the started task that touches the same files (card.sameFiles).
+export async function startTaskApi(id: string, machine?: string, anyway?: true) {
+  const { task } = await api<{ task: Task }>('/api/pm/task-start', { id, ...(machine !== undefined ? { machine } : {}), ...(anyway ? { anyway } : {}) })
   if (task.state === 'waiting') throw new Error(task.waiting || tl('The task could not start', 'La tâche n’a pas pu démarrer'))
   return task
 }

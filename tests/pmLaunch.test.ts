@@ -10,6 +10,7 @@ import type { Template } from '../shared/pm/workflow'
 import { wherdr } from '../shared/pm/examples'
 import { planSteps } from '../shared/pm/steps'
 import { dueText } from '../shared/pm/advance'
+import { startFileWaits } from '../server/utils/pmFiles'
 
 const template: Template = {
   id: 'vibe', instructions: 'Small commits.', prefs: { agent: 'claude', model: 'opus' },
@@ -107,6 +108,26 @@ describe('startTask', () => {
     expect(files['/home/u/.wherdr/pm/tasks/WEB-1/instructions.md']).toMatch(/# WEB-1: Fix it[\s\S]*Small commits\.\nRun the tests\./)
     expect((await store.runs())[0]).toMatchObject({ id: t.run, state: 'running', terminal: expect.stringMatching(/\/t1$/) })
     await expect(startTask(deps, 'WEB-1')).rejects.toMatchObject({ code: 'busy' })
+  })
+
+  it('a start waits behind a started task that touches the same files, unless the user starts it anyway; the engine starts it once they are free', async () => {
+    const { store, deps, runs, files } = await setup()
+    const first = { ...(await store.task('WEB-1'))!, state: 'working' as const, step: { at: 1, started: true, since: 1, proofs: {}, rounds: {} }, changed: ['app/x.vue'] }
+    await store.saveTask(first)
+    await store.addTask({ project: 'WEB', title: 'Other', type: 'simple', files: ['app/'] })
+    expect(await startTask(deps, 'WEB-2')).toMatchObject({ state: 'todo', sameFiles: 'WEB-1' })
+    expect(runs).toHaveLength(0)
+    // Still behind it: nothing starts.
+    expect(await startFileWaits(deps)).toEqual([])
+    await store.saveTask({ ...first, step: { ...first.step, done: true } })
+    expect(await startFileWaits(deps)).toEqual(['WEB-2'])
+    expect(await store.task('WEB-2')).toMatchObject({ state: 'working' })
+    expect((await store.task('WEB-2'))!.sameFiles).toBeUndefined()
+    expect(files['/home/u/.wherdr/pm/tasks/WEB-2/instructions.md']).toContain('to /home/u/.wherdr/pm/tasks/WEB-2/files.txt, one per line (a folder covers what is in it). Planned so far: app.')
+    // The user's "Start anyway" goes beside it.
+    await store.saveTask({ ...first, id: 'WEB-1', step: first.step })
+    await store.addTask({ project: 'WEB', title: 'Third', type: 'simple', files: ['app/x.vue'] })
+    expect(await startTask(deps, 'WEB-3', { anyway: true })).toMatchObject({ state: 'working' })
   })
 
   it('a task stopped at its review starts no new worker: the review is told again by the next advance pass', async () => {

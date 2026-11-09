@@ -40,6 +40,9 @@ export interface Task {
   auto?: string // the automation that added it
   origin?: TaskOrigin // who made it: only automatic work is held by the pace (pace.ts)
   held?: string // an automatic start waits for memory on its machine (memory.ts): the engine starts it once memory is back
+  files?: string[] // the files or folders it plans to change (files.ts)
+  changed?: string[] // what it changed since its branch started, as the engine last read it
+  sameFiles?: string // the started task its start waits behind: same files (files.ts)
   cleanup?: { done?: true, skipped?: string } // its worktree removed, or why it stays (cleanup.ts)
   createdAt: number
 }

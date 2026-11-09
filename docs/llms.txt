@@ -69,6 +69,7 @@
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
 - [Autopilot](docs/project-management.md#autopilot): the header button and its window, goal, wakes and limits.
 - [Board](docs/project-management.md#board): columns, cards, time in the step and total time, Add task, Start, Start on another machine (its readiness check), Stop, Delete.
+- [Tasks that touch the same files](docs/project-management.md#tasks-that-touch-the-same-files): declared files (files.txt, task add --files), the start that waits behind a task with the same files, Start anyway.
 - [Task sheet](docs/project-management.md#task-sheet): time per step, waits for you, review rounds and CI fixes, the task's buttons and its Description, Plan and Log tabs.
 - [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back and other answers.
 - [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again.
