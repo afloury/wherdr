@@ -146,6 +146,7 @@ const counters = computed(() => props.c.limits
           {{ tl(...EVENT_LABEL[e]) }}
         </UButton>
       </div>
+      <p class="muted" data-testid="autopilot-added-hint">{{ tl('Task added: added by someone else than this coordinator (you, another coordinator, an automation).') }}</p>
       <p v-if="fieldError('events')" class="error" role="alert" data-testid="autopilot-error-events">{{ fieldError('events') }}</p>
       <USwitch v-model="form.lookForWork" size="lg" :label="tl('Look for new work', 'Chercher du travail')" data-testid="autopilot-look-for-work"
         :description="tl('Keep the scheduled wakes when there is nothing to do, for a goal that adds its own tasks.', 'Garder les réveils programmés quand il n’y a rien à faire, pour un objectif qui crée ses propres tâches.')" />
