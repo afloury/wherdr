@@ -63,7 +63,7 @@
 
 - [Getting started](docs/project-management.md#getting-started): the setup window, six steps from turning projects on to a first task; Finish setup on the board; New › Project (a typed, browsed or listed folder fills name and key, shown as ~/…; a wider sheet on a computer).
 - [Projects](docs/project-management.md#projects): Settings › Projects, the project list and the project sheet's tabs.
-- [General tab](docs/project-management.md#general): name, key and its badge color, base (working) branch, agents, repository visibility, allowed machines and their clone paths (with a readiness check), placement (Heavy to the strongest, Balance the load, Home first).
+- [General tab](docs/project-management.md#general): name, key and its badge color, base (working) branch, agents, repository visibility, allowed machines and their clone paths (with a readiness check), placement (Heavy to the strongest, Balance the load, Home first; a task too big for every machine runs on the best one; a worker started again is heavy only while its step takes screenshots).
 - [Workflow tab](docs/project-management.md#workflow): task types (with an optional weight) and steps (a merge that pushes first waits up to a minute for GitHub), Edit as JSON, Save as template, Start over, review of the coordinator's proposed change (one-line summary, who proposed it, your full request with a link back to it, readable or JSON), and its card in the coordinator's conversation.
 - [Guards](docs/project-management.md#guards): protected branches, who may merge (a waiting merge goes on once wherdr may do it; one you merge on GitHub ends as merged), contributor PRs, the project sheet's in-app addresses.
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
@@ -82,7 +82,7 @@
 
 - [Several machines](docs/machines.md#several-machines-ssh): machines reached by hc over SSH.
 - [Before adding a machine](docs/machines.md#before-adding-a-machine): what a machine needs first.
-- [Manage machines](docs/machines.md#manage-machines): Settings › Machines, add, reconnect, rename, forget, keep awake (until a time or turned off, laptop battery and lid warning), capacity (memory, cores, load on Linux and macOS), memory limits, and where each start goes (placement across a project's machines).
+- [Manage machines](docs/machines.md#manage-machines): Settings › Machines, add, reconnect, rename, forget, keep awake (until a time or turned off, laptop battery and lid warning), capacity (memory, cores, load on Linux and macOS), memory limits, available hours and offline machines, and where each start goes (placement across a project's machines).
 - [Machines on hc](docs/core.md#creating-terminals-and-agents-machines): how hc reaches core machines.
 - [Claude and Codex quotas](docs/quotas.md#claude-and-codex-quotas): remaining usage on every machine and its setup.
 - [Pace](docs/quotas.md#pace): Settings › Agents › Pace, when automatic work may start.

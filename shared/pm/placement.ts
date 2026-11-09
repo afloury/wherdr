@@ -2,7 +2,7 @@
 // fits now, or a hold that names each machine's reason. Pure: the server reads
 // each machine (capacity, settings, agents at work, readiness, pace) and asks.
 import type { MachineCapacity } from './capacity'
-import { SWAP_MAX, agentCap, capacityParts, type MemorySettings } from './memory'
+import { SWAP_MAX, agentCap, capacityParts, hoursLabel, hoursWait, type MemorySettings } from './memory'
 import { WEIGHTS, WEIGHT_DEFAULTS, type Weight } from './weight'
 
 export interface Estimate { mb: number, cores: number }
@@ -27,7 +27,9 @@ export const STRATEGY_LABELS: Record<Strategy, string> = { strongest: 'Heavy to 
 export const isStrategy = (s: unknown): s is Strategy => STRATEGIES.includes(s as Strategy)
 
 // best: where a start that must go (the user's) goes when nothing fits.
-export type Placement = { machine: string } | { hold: string, best?: string }
+// anyway: the task fits no allowed machine even with all its agents gone, so
+// waiting cannot help: it goes to the best one, and this says why.
+export type Placement = { machine: string, anyway?: string } | { hold: string, best?: string }
 
 const HEAVY_LOAD = 0.8 // heavy work waits while the 1-minute load per core is over this
 const gb = (mb: number) => `${(mb / 1024).toFixed(1)} GB`
@@ -42,19 +44,26 @@ export function roomOf(c: Candidate) {
   return Math.min(m.available, m.total - sum(c.running, 'mb')) - c.settings.minFreeMb
 }
 
+// Too small for the task even empty: its RAM less its reserve under the
+// estimate. Unknown when it cannot be read.
+const tooSmall = (c: Candidate, e: Estimate) => !!c.capacity && c.capacity.total - c.settings.minFreeMb < e.mb
+
 // Why the task does not fit the machine now, or undefined. Two checks: the live
 // reading (catches what wherdr does not track) and the bookkeeping of the
 // agents' estimates (an agent started seconds ago has not reached its peak).
-export function misfit(c: Candidate, weight: Weight, e: Estimate): string | undefined {
+// Outside its availability hours, or heavy work just before it leaves: it waits too.
+export function misfit(c: Candidate, weight: Weight, e: Estimate, now = new Date()): string | undefined {
   if (!c.online) return 'offline'
   if (c.wait) return c.wait
+  const away = hoursWait(c.settings.hours, weight === 'heavy', now)
+  if (away) return away
   const m = c.capacity
   const agents = c.running.length
   // The user's cap, else one agent per 1.5 GB of RAM (as Settings › Machines shows it).
   const cap = agentCap(c.settings, m)
   if (cap !== undefined && agents >= cap) return `${agents} agents (cap ${cap})`
   if (!m) return undefined
-  if (m.available - e.mb < c.settings.minFreeMb) return `${gb(m.available)} free`
+  if (m.available - e.mb < c.settings.minFreeMb) return `${gb(m.available)} free, needs ${gb(e.mb + c.settings.minFreeMb)} with its reserve`
   if (m.swapTotal && (m.swapTotal - m.swapFree) / m.swapTotal > SWAP_MAX) return `swap ${Math.round((m.swapTotal - m.swapFree) / m.swapTotal * 100)} % used`
   if (sum(c.running, 'mb') + e.mb > m.total - c.settings.minFreeMb) return `${agents} agents take ≈${gb(sum(c.running, 'mb'))} of ${gb(m.total)}`
   if (m.cores && sum(c.running, 'cores') + e.cores > m.cores) return `${agents} agents take its ${m.cores} cores`
@@ -77,14 +86,24 @@ function leftShare(c: Candidate, e: Estimate) {
 const roomier = (e: Estimate) => (a: Candidate, b: Candidate) =>
   leftShare(b, e) - leftShare(a, e) || a.running.length - b.running.length
 
-// pinned: the machine the task must go to (its own once started, or the one
-// asked for); otherwise the candidates are the project's allowed machines.
-// strategy: the project's (STRATEGIES), which the hold names.
-export function placeTask({ weight, estimate = WEIGHT_DEFAULTS[weight], home, pinned, candidates, strategy = 'strongest' }: {
-  weight: Weight, estimate?: Estimate, home: string, pinned?: string, candidates: Candidate[], strategy?: Strategy
+const label = (c: Candidate) => c.label || 'this host'
+
+// pinned: the machine the task must go to (its own once started); otherwise
+// the candidates are the project's allowed machines. prefer: the one asked for
+// a new task; while it is offline, the task goes to another that fits, else
+// waits for it. strategy: the project's (STRATEGIES), which the hold names.
+export function placeTask(args: {
+  weight: Weight, estimate?: Estimate, home: string, pinned?: string, prefer?: string, candidates: Candidate[], strategy?: Strategy, now?: Date
 }): Placement {
+  const { weight, estimate = WEIGHT_DEFAULTS[weight], home, pinned, prefer, candidates, strategy = 'strongest', now = new Date() } = args
+  if (prefer !== undefined) {
+    const own = candidates.find(c => c.key === prefer)
+    if (own?.online) return placeTask({ ...args, prefer: undefined, pinned: prefer })
+    const other = placeTask({ ...args, prefer: undefined, candidates: candidates.filter(c => c.key !== prefer) })
+    return 'machine' in other ? other : { hold: `Waits for ${own ? label(own) : prefer} (offline)`, ...(other.best !== undefined ? { best: other.best } : {}) }
+  }
   const pool = pinned === undefined ? candidates : candidates.filter(c => c.key === pinned)
-  const why = new Map(pool.map(c => [c.key, misfit(c, weight, estimate)]))
+  const why = new Map(pool.map(c => [c.key, misfit(c, weight, estimate, now)]))
   const fits = pool.filter(c => !why.get(c.key))
   const homeFirst = strategy === 'home' || (strategy === 'strongest' && weight !== 'heavy')
   const pick = (homeFirst && fits.find(c => c.key === home)) || [...fits].sort(strategy === 'balance' ? roomier(estimate) : stronger)[0]
@@ -93,8 +112,11 @@ export function placeTask({ weight, estimate = WEIGHT_DEFAULTS[weight], home, pi
   const usable = pool.filter(c => c.online && !c.wait).sort(stronger)
   const top = usable[0], h = usable.find(c => c.key === home)
   const best = pinned ?? (h && top && roomOf(h) >= roomOf(top) ? h.key : top?.key)
-  const label = (c: Candidate) => c.label || 'this host'
   if (pinned !== undefined && !pool[0]?.online) return { hold: `Waits for ${pool[0] ? label(pool[0]) : pinned} (offline)`, best }
+  // Every machine it may use now is too small for it: waiting would last forever.
+  const at = usable.find(c => c.key === best)
+  if (at && usable.every(c => tooSmall(c, estimate)))
+    return { machine: at.key, anyway: `${weight} (≈${gb(estimate.mb)}) is more than any allowed machine can take: runs on ${label(at)} (${gb(at.capacity!.total)}) instead of waiting` }
   const reasons = pool.map(c => `${label(c)}: ${why.get(c.key)}`).join('; ')
   return { hold: `Waits for room (${STRATEGY_LABELS[strategy]}): ${weight} (≈${gb(estimate.mb)}) fits nowhere — ${reasons}`, ...(best !== undefined ? { best } : {}) }
 }
@@ -109,11 +131,13 @@ export type MachineView = Omit<Candidate, 'running'> & { home: boolean, running:
 // else why it takes nothing (full, not ready, paced).
 export function machineLine(c: MachineView): string {
   const name = `${c.label || 'this host'}${c.home ? ' (home)' : ''}`
-  if (!c.online) return `${name}: offline`
+  const hours = c.settings.hours ? [`available ${hoursLabel(c.settings.hours)}`] : []
+  if (!c.online) return [`${name}: offline`, ...hours].join(' · ')
   const count = WEIGHTS.slice().reverse().map(w => [w, c.running.filter(r => r.weight === w).length] as const).filter(([, n]) => n)
   const fits = WEIGHTS.slice().reverse().find(w => !misfit(c, w, WEIGHT_DEFAULTS[w]))
   return `${name}: ${[
     ...capacityParts(c.capacity, c.settings, c.running.length),
+    ...hours,
     ...(count.length ? [`running ${count.map(([w, n]) => `${n} ${w}`).join(', ')}`] : []),
     fits ? `fits ${fits}${c.unchecked ? ' (readiness checked before its first task)' : ''}` : `takes nothing now: ${misfit(c, 'light', WEIGHT_DEFAULTS.light)}`,
   ].join(' · ')}`
