@@ -13,10 +13,15 @@ import type { Pane } from '#shared/types'
 
 const data = ref<Board | null>(null)
 const error = ref('')
-const project = ref('') // '' = all projects
-const tag = ref('') // '' = every tag
-// The task to show, also from Decisions' "Open task" (/board?task=CO-1).
+// The filters, also from an in-app link (/board?project=CO&tag=ui,
+// shared/appLinks.ts), read again when the board is already open.
 const route = useRoute()
+const queried = (v: unknown) => (typeof v === 'string' ? v : '')
+const project = ref(queried(route.query.project).toUpperCase()) // '' = all projects
+const tag = ref(queried(route.query.tag)) // '' = every tag
+watch(() => queried(route.query.project), (p) => { project.value = p.toUpperCase() })
+watch(() => queried(route.query.tag), (g) => { tag.value = g })
+// The task to show, also from Decisions' "Open task" (/board?task=CO-1).
 const open = ref<string | null>(typeof route.query.task === 'string' ? route.query.task : null)
 // Also when the board is already open (the sidebar's Tasks to handle).
 watch(() => route.query.task, (id) => { if (typeof id === 'string') open.value = id })
@@ -40,8 +45,8 @@ const tagPick = noneModel(tag)
 const projectItems = computed(() => [{ label: tl('All projects', 'Tous les projets'), value: NONE }, ...(data.value?.projects ?? []).map(p => ({ label: p.name, value: p.key }))])
 const tagItems = computed(() => [{ label: tl('Tags', 'Étiquettes'), value: NONE }, ...tags.value.map(x => ({ label: x, value: x }))])
 const tags = computed(() => boardTags((data.value?.cards ?? []).filter(c => !project.value || c.project === project.value)))
-// The header's coordinator button: the project's, or Alfred's on All projects.
-const coordinator = computed(() => coordinators.value.find(c => (project.value ? c.project === project.value : c.main)))
+// The header's coordinator button: the project's; none on All projects (Alfred has no autopilot).
+const coordinator = computed(() => (project.value ? coordinators.value.find(c => c.project === project.value) : undefined))
 const columns = computed(() => (project.value ? data.value?.projects.find(p => p.key === project.value)?.columns ?? [] : null))
 const lanes = computed(() => boardLanes(cards.value, columns.value))
 const PHASE_LABEL: Record<string, string> = { 'your-turn': 'Your turn', 'todo': 'To do', 'working': 'Working', 'done': 'Done' }

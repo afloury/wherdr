@@ -10,6 +10,7 @@ import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
 import { ENGINES } from '~/utils/dictation/registry'
 import { DEFAULT_MAX_SESSION_DAYS, MAX_SESSION_DAYS, type MaxSessionDays } from '#shared/sessionLimit'
 import { APP_START_DEFAULT, readAppStart, writeAppStart, type AppStart } from '#shared/appStart'
+import { chatFilesLevel, type ChatFilesLevel } from '#shared/chatFiles'
 
 const router = useRouter()
 // v3's own version (shared/v3Version.ts), also in /api/health.
@@ -271,6 +272,21 @@ const deadlineText = computed(() => {
     .toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
   return tl(`This device asks for the passkey again at the first opening after ${when}.`, `Cet appareil redemandera la clé d’accès à la première ouverture après le ${when}.`)
 })
+
+// Files shown from conversations (shared/chatFiles.ts): applied by the server.
+// Picking the default saves nothing, so it keeps following the exposure.
+const publicExposure = computed(() => Boolean(appConfig.value.publicExposure))
+const chatFilesSaved = syncedRef<string | null>('chatFilesLevel', raw => raw, v => v)
+const chatFiles = computed({
+  get: () => chatFilesLevel(chatFilesSaved.value, publicExposure.value),
+  set: (v: ChatFilesLevel) => { chatFilesSaved.value = v === chatFilesLevel(null, publicExposure.value) ? null : v },
+})
+const chatFilesItems = computed(() => [
+  { label: t('Everything my user can read'), description: publicExposure.value ? t('Not recommended: wherdr is reachable from the Internet.') : t('Default while wherdr answers only this computer and your tailnet.'), value: 'all' },
+  { label: t('Home and the agents’ temporary folders'), description: publicExposure.value ? t('Default while wherdr is reachable from the Internet.') : t('Your home folder, /tmp, /var/tmp and /var/folders.'), value: 'temp' },
+  { label: t('Home only'), description: t('Only files in your home folder.'), value: 'home' },
+])
+const chatFilesProtected = syncedRef('chatFilesProtected', flag.read(false), flag.write)
 
 // How this device opens the app (shared/appStart.ts): kept where the service
 // worker reads it, nothing on the server.
@@ -544,6 +560,16 @@ onMounted(() => {
             <OpenNetworkBanner />
             <p v-if="!appConfig.openNetwork" class="muted settings-hint">{{ tl('wherdr only answers this computer (localhost) and your own tailnet devices. A device on another network (a Wi-Fi, a LAN, the Internet) is refused, even with the address and the port, and so are other people\'s devices on your tailnet. A proxy or tunnel you run on this computer counts as this computer.', 'wherdr ne répond qu’à cet ordinateur (localhost) et à tes propres appareils du tailnet. Un appareil sur un autre réseau (un Wi-Fi, un réseau local, Internet) est refusé, même avec l’adresse et le port, comme les appareils des autres personnes de ton tailnet. Un proxy ou un tunnel que tu fais tourner sur cet ordinateur compte comme cet ordinateur.') }}</p>
             <NetworkTips />
+          </div>
+          <div class="settings-group">
+            <h3>{{ t('Files shown from conversations') }}</h3>
+            <URadioGroup v-model="chatFiles" :items="chatFilesItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <p v-if="chatFiles === 'all' && publicExposure" class="settings-hint settings-warning" role="alert">{{ t('wherdr is reachable from the Internet: anyone who gets in can open every file your user can read.') }}</p>
+            <p class="muted settings-hint">{{ t('Previews and downloads of a path an agent writes in a conversation. wherdr runs as your user: files it cannot read stay closed, and a symlink counts where it leads.') }}</p>
+            <label class="settings-toggle">
+              <span><b>{{ t('Also show protected files') }}</b><small>{{ t('SSH keys, wherdr’s own data and settings, ~/.config/herdr. Off by default.') }}</small></span>
+              <USwitch v-model="chatFilesProtected" color="success" size="xl" />
+            </label>
           </div>
           <div class="settings-group">
             <h3>{{ tl('Passkey · optional', 'Passkey · facultative') }}</h3>

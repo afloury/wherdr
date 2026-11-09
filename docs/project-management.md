@@ -72,6 +72,18 @@ its folder, branches and task worktrees stay on the machine.
   from it, and a step that names no branch opens its PR to it or merges into it.
   Pick one of the repository's branches or type a name; unset, the repository's
   current branch. A running task keeps the branch it started with.
+- **Branch name**: the template each new task's branch is named from, for
+  repositories that require names such as `feature/PROJ-12-fix-login`. Fields:
+  `{id}` (the task id), `{tag}` (the card's ticket key, such as `PROJ-12`, else
+  its first tag, else the task id), `{type}` (`bugfix` for a task type whose name
+  has *bug* or *fix*, else `feature`) and `{slug}` (the title in lower case, cut
+  to 40 characters). Example: `{type}/{tag}-{slug}`. It needs `{id}` or `{tag}`;
+  characters git refuses are dropped. Empty: `task/{id}`. The name is set at the
+  task's first start: a later title, tag or template change leaves it alone.
+  When the worker pushes to another branch (it checks one out, or its note has a
+  `Branch: <name>` line or a link with `?source=<branch>`, as a Bitbucket pull
+  request link), wherdr follows that branch: its pushes, PR and merge checks
+  use it, never the old one.
 - **Agents**: the worker and the reviewer its tasks start with, each with an
   optional model (empty: the agent's default).
 - **Repository**: public or private, as wherdr found it (*Check again*) or as
@@ -200,8 +212,10 @@ template*.
 
 ## Autopilot
 
-On the board and in a coordinator's conversation, the **Autopilot** button in
-the header shows the autopilot's state (green square: on; hollow: asleep) and a
+Each project has its own autopilot, run by its coordinator; Alfred has none and
+acts only when you ask it (in Alfred's conversation, the header's **Agent**
+button only picks its agent). On the board with a project picked, and in a
+project coordinator's conversation, the **Autopilot** button in the header shows the autopilot's state (green square: on; hollow: asleep) and a
 count of what waits for you: a workflow change the coordinator proposed, or a
 kept conversation that ran with another agent. A tap opens its window:
 
@@ -214,7 +228,9 @@ kept conversation that ran with another agent. A tap opens its window:
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's
-  machines have room for, the default for a new project; a task whose step
+  machines have room for; both empty for a new project, while a project that
+  kept the older defaults (10 a day, 2 at once) keeps them, with the hint *Older
+  defaults: clear the fields for unlimited and Auto*; a task whose step
   holds no agent, such as a PR or merge waiting for checks or the queue, or a
   step of yours, takes no slot), the events it wakes on (*Task added*: by someone else than this
   coordinator, such as you, another coordinator or an automation; *Task
@@ -226,7 +242,8 @@ kept conversation that ran with another agent. A tap opens its window:
 Automatic work (the autopilot, automations) waits while an account is ahead of
 its [pace](quotas.md#pace) (a machine whose account waits is skipped) or no
 machine the project allows has room for the task
-([Machines](machines.md#manage-machines)); your own starts never wait.
+([Machines](machines.md#manage-machines)), whatever the task counts; your own
+starts never wait.
 
 The coordinator sees the same with `wherdr pm autopilot show`: the project's
 placement strategy, one line per machine the project allows (memory, cores and load, its agents at work by
@@ -250,8 +267,8 @@ When an agent asks a question, its task's waiting line and the coordinator's
 ## Board
 
 The header has **Decisions** (with a count when some wait), **Add task**, the
-project picker (*All projects* or one), a tag filter when tasks have tags, and
-the [Autopilot](#autopilot) button. The first column is **Your turn**, then the
+project picker (*All projects* or one), a tag filter when tasks have tags, and,
+with one project picked, its [Autopilot](#autopilot) button. The first column is **Your turn**, then the
 project's columns, or *To do*, *Working* and *Done* for all projects. A done
 or archived task is never under Your turn.
 
@@ -334,8 +351,8 @@ one tap away: *Open the task* in the card's menu, or the small icon at the end
 of the entry. An agent that is not on screen here opens the sheet instead.
 
 - **A visual change to merge**: its screenshots large (swipe between them, tap
-  one to zoom; each is labelled phone or desktop), the review's verdict, the PR,
-  then *Merge*, or *Send back* with a note: the agent gets your note as what to fix.
+  one to zoom; each is labelled phone or desktop), the review's verdict, then
+  *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
   When the agent reworks the task after its review (new commits since the
   review), its new screenshots replace the shown ones, marked *after rework*;
   the earlier set stays in the Plan tab under *Earlier screenshots*. The merge
@@ -345,7 +362,12 @@ of the entry. An agent that is not on screen here opens the sheet instead.
 - **A stopped task**: who stopped it and why, then *Continue*, *Take it as it is*
   or *Archive*, each with what it does.
 - **A step that ends with you** (*Merged*, or the step's own button): what to do,
-  and its button.
+  and its button, with *Open the PR* when the task has one.
+- **The PR** is any link a step gave as its proof (`evidence: ["link"]`, such as
+  a PR the worker opened with its own Bitbucket or GitLab tool) or the one the
+  engine's `github.pr` opened. A pull request address from GitHub, Bitbucket,
+  GitLab or Azure DevOps is added to the card's links as *PR #12*, and opens
+  from *Open the PR* at the merge step, or after a refused merge.
 - **An agent's question or permission**: its text, and a button to open that agent.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (start it, open its agent). A failed action step (a merge GitHub
@@ -424,8 +446,7 @@ the mechanical blocks itself and wakes it only when that fails:
 - **a stalled agent** (below): nudged, then restarted once.
 
 These blocks do not wake the coordinator. After 2 failed tries on the same
-step (or 15 minutes with nothing left to try), wherdr wakes it once (and the
-main coordinator, when its autopilot wakes it for stuck tasks), as the
+step (or 15 minutes with nothing left to try), wherdr wakes it once, as the
 autopilot's *Task stuck* event, and says what it tried. Every try, and giving
 up, is written to the task's **Log**. Any other failure (a refused merge, a
 check that waits for you) wakes the coordinator at once, as before.
@@ -520,6 +541,17 @@ own starts again with the message; a stopped or finished task is never fixed. Ea
 twice per task and step; after that the block is yours, and the coordinator
 tells you. Each wake's text lists these fixes. A permission request, a merge,
 an approval, guards, settings and limits stay yours.
+
+A step whose action failed (a push refused, a PR not opened) and that the
+coordinator, or you, hand to the worker with `--fix` leaves *Your turn* and
+**Tasks to handle** while the worker fixes it: the card says *the agent is
+fixing it*, with no **Try again** in the middle of the fix, and the
+message asks the worker to say when it is done. A failed action
+wherdr hands the worker on its own (a catch-up, a CI fix) works the same way.
+Once the worker says it is done (or pushes, for wherdr's own hand-off), wherdr
+tries the action again itself. If that fails again, or the worker stops for 3
+minutes, or ends, without saying it is done, the task is back in **Tasks to
+handle** with the new reason. The Log says each of these.
 
 A machine's cap of agents (Settings › Machines) counts only the agents working
 on a step: not those of a task that waits for you, and not the coordinators.

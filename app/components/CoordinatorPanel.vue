@@ -3,7 +3,7 @@
 // coordinator, Alfred included (its default changed in one gesture), a warning when
 // its kept conversation ran with another agent (resuming it makes that agent the default),
 // a line for the workflow change it proposed (reviewed in the project's sheet,
-// ProposalReview), and its autopilot.
+// ProposalReview), and a project coordinator's autopilot (Alfred has none).
 // On the board (`open`), also the button that opens or starts it; a stopped
 // conversation (its terminal ended) can be resumed instead.
 import type { CoordinatorView } from '#shared/pm/coordinator'
@@ -44,9 +44,7 @@ const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh()
 
 <template>
   <div class="coord" data-testid="coordinator-panel">
-    <!-- Alfred on the board: its row (one tap opens or starts it, its program asked the first time). -->
-    <AlfredRow v-if="open && c.main" banner />
-    <div v-else class="coord-head">
+    <div class="coord-head">
       <div class="coord-field">
         <span class="field-label">{{ c.main ? tl(`${coordinatorName(c)}’s agent`) : tl('Answering agent', 'Agent qui répond') }}</span>
         <USelect :model-value="agent?.program" :items="agentItems" size="lg" class="coord-agent w-full" :disabled="busy" :aria-label="tl('Default agent', 'Agent par défaut')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
@@ -70,7 +68,7 @@ const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh()
       <UButton color="primary" size="lg" :to="proposalReviewPath(c.project)" data-testid="proposal-review-link">{{ tl('Review') }}</UButton>
     </div>
     <p v-if="error" class="error coord-error">{{ error }}</p>
-    <CoordinatorAutopilot :c="c" />
+    <CoordinatorAutopilot v-if="!c.main" :c="c" />
   </div>
 </template>
 
