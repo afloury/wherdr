@@ -20,7 +20,7 @@ import { advanceTick } from './pmAdvance'
 import { forgetMemory, memoryHold } from './pmMemory'
 import { releaseIdle, reviveWorker } from './pmRelease'
 import { agentBack, handToAgent, wasReleased } from '../../shared/pm/release'
-import { noteStall } from './pmStall'
+import { noteBack, noteStall } from './pmStall'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -121,9 +121,11 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
 }
 
 // Kept for the board: since when the agent holding the step sits idle while
-// the step waits for its report (pm/blocked.ts). Unread status: unchanged.
+// the step waits for its report (pm/blocked.ts), also past its timeout. Unread
+// status: unchanged. Idle, then seen working: back to work (backToWork).
 async function noteIdle(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], runs: Run[], now: number): Promise<Task> {
-  const step = awaitsHolder(task, plan) ? plan[task.step!.at] : undefined
+  const open = task.step?.yourTurn?.reason === 'timeout' ? { ...task, step: { ...task.step, yourTurn: undefined } } : task
+  const step = awaitsHolder(open, plan) ? plan[task.step!.at] : undefined
   const holder = step && runs.filter(r => r.task === task.id && r.role === step.holder && r.state !== 'ended' && r.terminal).sort((a, b) => b.startedAt - a.startedAt)[0]
   let idle: number | undefined
   if (holder) {
@@ -131,6 +133,10 @@ async function noteIdle(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], run
     if (!st) return task
     const s = typeof st.status === 'string' ? st.status : st.status?.state
     idle = s === 'idle' || s === 'done' ? task.idle ?? now : undefined
+    if (task.idle !== undefined && s === 'working') {
+      const saved = await deps.store.saveTask({ ...task, idle })
+      return noteBack(deps.store, saved, plan, 'engine', `the ${step!.holder} is working again`, now)
+    }
   }
   return idle === task.idle ? task : deps.store.saveTask({ ...task, idle })
 }

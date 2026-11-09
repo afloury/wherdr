@@ -52,7 +52,7 @@ export const ciOf = (pr: PrState | undefined, head: string | undefined): NonNull
 // The next mechanical move for a task and its key, or undefined.
 export function nextMove(f: MechFacts): { move: Move, key: string } | undefined {
   const { task, plan, guards, pr, head } = f
-  const s = task.step, done = (key: string) => !!task.mech?.[key]
+  const s = task.step, done = (key: string) => task.mech?.[key] != null
   const pick = (key: string, move: Move) => (done(key) ? undefined : { move, key })
   // A task stopped on a login: started again once the login is back.
   if (task.state === 'waiting' && task.waitKind === 'auth') return f.loggedIn ? pick(`restart:${task.run ?? ''}`, { kind: 'restart' }) : undefined

@@ -49,7 +49,10 @@ export async function board(store: PmStore, known: MachineInfo[] = []): Promise<
       const plans = t ? Object.keys(t.taskTypes).map(type => ({ id: type, steps: planSteps(t, { type }, p.base) })) : []
       return { key: p.key, ...(p.label ? { label: p.label } : {}), ...(p.aliases ? { aliases: p.aliases } : {}), ...(p.color ? { color: p.color } : {}), name: p.name, columns: boardColumns(plans.map(x => x.steps)), types: plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → '), weight: weightText(weightOf(t, { type: x.id })) })), ...(machines ? { machines } : {}) }
     }),
-    cards: tasks.map(task => withPr({ ...cardOf(task, planOf(templates.get(task.project) ?? null, task, projects.find(p => p.key === task.project)), runs), shown: shownTaskId(projects, task.id) })),
+    cards: tasks.map((task) => {
+      const p = projects.find(x => x.key === task.project)
+      return withPr({ ...cardOf(task, planOf(templates.get(task.project) ?? null, task, p), runs), shown: shownTaskId(projects, task.id), ...(p?.color ? { color: p.color } : {}) })
+    }),
   }
 }
 

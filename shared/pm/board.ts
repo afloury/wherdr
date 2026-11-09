@@ -18,6 +18,7 @@ export const PHASES: Phase[] = ['todo', 'working', 'done']
 export interface Card {
   id: string
   shown: string // the id as the user sees it, with the project's current key (projectKey.ts)
+  color?: string // its project's badge color
   project: string
   title: string
   description: string
@@ -122,9 +123,9 @@ export function handleLabel(c: Pick<Card, 'stopped' | 'asks' | 'state' | 'stall'
 }
 
 // A task waiting for the user, as the sidebar's Tasks to handle lists it (GET /api/pm/handle).
-export interface ToHandle { id: string, shown: string, title: string, action: string, label: string }
+export interface ToHandle { id: string, shown: string, color?: string, title: string, action: string, label: string }
 export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn)
-  .map(c => ({ id: c.id, shown: c.shown, title: c.title, action: c.yourTurn!.split('\n')[0]!, label: handleLabel(c) }))
+  .map(c => ({ id: c.id, shown: c.shown, ...(c.color ? { color: c.color } : {}), title: c.title, action: c.yourTurn!.split('\n')[0]!, label: handleLabel(c) }))
 
 // The card's one-tap link: its PR when it has one, else its first link.
 // A task the user may stop: started, not done, not stopped already.
