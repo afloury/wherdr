@@ -92,9 +92,10 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 
 <template>
   <AppSheet v-model:open="open" :title="card.title" tall hide-close @closed="emit('closed')">
+    <template #lead><ProjectBadge :text="card.shown" :color="card.color" copy /></template>
     <div class="task-sheet" data-testid="task-sheet">
       <div class="task-sheet-top">
-        <p class="mono-label">{{ card.shown }}<template v-if="card.step"> · {{ card.step }}</template></p>
+        <p v-if="card.step" class="mono-label">{{ card.step }}</p>
         <p v-if="status" class="task-status" :class="status.tone" data-testid="task-status">{{ status.text }}</p>
         <p v-if="times" class="task-times" data-testid="task-times">{{ times }}</p>
         <div class="task-sheet-actions">

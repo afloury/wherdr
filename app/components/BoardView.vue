@@ -129,7 +129,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
             <span v-if="hasAgent(c)" class="card-state" :class="live(c).key" role="img" :aria-label="live(c).label" :title="live(c).label" data-testid="holder-state"><i /></span>
             <b>{{ c.title }}</b>
           </span>
-          <small class="mono-label">{{ c.shown }}<template v-if="timeOf(c)"> · <span data-testid="board-time">{{ timeOf(c) }}</span></template><template v-else-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
+          <small class="mono-label board-card-id"><ProjectBadge :text="c.shown" :color="c.color" copy /><template v-if="timeOf(c)"> · <span data-testid="board-time">{{ timeOf(c) }}</span></template><template v-else-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
           <small v-if="statusOf(c)" class="board-status" :class="statusOf(c)!.tone" :title="statusOf(c)!.text" data-testid="board-status">{{ statusOf(c)!.text }}</small>
           <span v-if="turnText(c)" class="board-badge" data-testid="board-badge">{{ turnText(c) }}</span>
           <small v-else-if="waiting(c).length" class="muted" data-testid="board-waits">{{ tl('Waits for', 'Attend') }} {{ waiting(c).map(id => shownTaskId(data?.projects ?? [], id)).join(', ') }}</small>
