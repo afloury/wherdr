@@ -23,6 +23,16 @@ function resetLabel(w: QuotaWindow) {
   const s = resetText(w, now.value, language)
   return s === null ? t('reset') : s || '—'
 }
+// Codex hit its usage limit: no gauges, the reset time from its message.
+function limitedLabel(resetsAt: number | null) {
+  let text = ''
+  if (resetsAt) {
+    const d = new Date(resetsAt)
+    const time = d.toLocaleTimeString(language, { hour: 'numeric', minute: '2-digit' })
+    text = resetsAt - now.value < 86400000 ? time : `${d.toLocaleDateString(language, { weekday: 'short' })} ${time}`
+  }
+  return text ? tl(`Limit reached · resets ${text}`, `Limite atteinte · réinitialisation ${text}`) : tl('Limit reached', 'Limite atteinte')
+}
 // Short age of the reading, under each row's logo ("3 min", "2 h").
 function agoShort(at: number) {
   const m = Math.round((now.value - at) / 60000)
@@ -48,11 +58,13 @@ function ago(at: number) {
       </div>
       <p class="quota-api-label">{{ tl('Claude · API usage, no quota', 'Claude · usage API, pas de quota') }}</p>
     </div>
-    <div v-for="r in rows" :key="r.key" class="quota-row" :class="{ stale: stale(r) }">
+    <div v-for="r in rows" :key="r.key" class="quota-row" :class="{ stale: stale(r), 'quota-api': r.q.limited }">
       <div class="quota-who" :title="`${kindLabel(r.agent)} · ${t('updated')} ${ago(r.q.at)}`">
         <AgentAvatar :agent="r.agent" />
         <small><UIcon v-if="stale(r)" name="i-lucide-clock-alert" />{{ agoShort(r.q.at) }}</small>
       </div>
+      <p v-if="r.q.limited" class="quota-api-label quota-limited" data-testid="quota-limited">{{ limitedLabel(r.q.limited.resetsAt) }}</p>
+      <template v-else>
       <template v-for="(w, k) in { five: r.q.five, week: r.q.week }" :key="k">
         <div v-if="w" class="quota" :class="[level(w), { guessed: w.resetsAt && w.resetsAt <= now }]">
           <div class="quota-top">
@@ -63,6 +75,7 @@ function ago(at: number) {
           <div class="quota-reset"><UIcon name="i-lucide-rotate-cw" />{{ resetLabel(w) }}</div>
         </div>
         <div v-else class="quota empty" />
+      </template>
       </template>
     </div>
   </section>

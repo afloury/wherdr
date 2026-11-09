@@ -3,7 +3,7 @@
 // agent that pushed its question opens its line on the answers; one tap
 // answers without opening the conversation, the agent goes back to work, then
 // is done (unread: green line, bold name). Same PHONE clock as NotifyDemo.
-import { OPTIONS, PICKED, QUESTION, SHOP } from '~/utils/heroDemo'
+import { OPTIONS, PICKED, QUESTION } from '~/utils/heroDemo'
 import { PHONE } from '~/utils/storyDemos'
 import type { DemoAgent } from '~/utils/demoScript'
 
@@ -34,7 +34,6 @@ const choices = OPTIONS.map(o => o.title)
         <h3 class="home-title">Agents</h3>
         <div class="home-actions">
           <span class="icon-btn"><UIcon name="i-lucide-search" /></span>
-          <span class="icon-btn"><UIcon name="i-lucide-square-kanban" /></span>
           <span class="icon-btn"><UIcon name="i-lucide-settings-2" /></span>
         </div>
       </div>
@@ -42,7 +41,7 @@ const choices = OPTIONS.map(o => o.title)
     <div class="scroll">
       <div class="session-row"><span><UIcon name="i-lucide-layers" />devbox</span><b>default<UIcon name="i-lucide-chevron-right" /></b></div>
       <DemoList
-        :agents="agents" :project="SHOP" choices-for="acme-api"
+        :agents="agents" choices-for="acme-api"
         :choices="step >= 1 && step < 3 ? choices : undefined" :hit="step >= 2 ? PICKED : undefined"
       />
     </div>
