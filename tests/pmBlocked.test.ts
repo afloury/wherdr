@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { github, wherdr } from '../shared/pm/examples'
 import { durationMs, onEvent, planSteps, type StepState } from '../shared/pm/steps'
-import { awaitsHolder, backToWork, failingTests, HANDLE_AFTER_MS, IDLE_WAIT_MS, RED_CI_WAIT_MS, stallMoves, stallOf } from '../shared/pm/blocked'
+import { awaitsHolder, backToWork, failingTests, HANDLE_AFTER_MS, IDLE_WAIT_MS, RED_CI_WAIT_MS, RESTART_AFTER_MS, stallMoves, stallOf } from '../shared/pm/blocked'
 import { DEFAULT_AUTOPILOT, autopilotEvents } from '../shared/pm/autopilot'
 import { cardOf, handleLabel, toHandle } from '../shared/pm/board'
 import { ciOf } from '../shared/pm/mechanic'
@@ -93,13 +93,16 @@ it('back to work: a working agent clears a stall from Tasks to handle, its clock
   expect(stallMoves(again, stallOf(again, plan, now + HANDLE_AFTER_MS)!, now + HANDLE_AFTER_MS).handle).toBe(true)
 })
 
-it('one nudge per cause at once, one hand-over to the user 30 min after the stall began', () => {
+it('one nudge per cause at once, one restart 10 min later, one hand-over to the user 30 min after the stall began', () => {
   const s = { cause: 'red:abc', reason: 'CI red', since: 1000 }
-  expect(stallMoves({}, s, 1000)).toEqual({ nudge: true, handle: false })
+  expect(stallMoves({}, s, 1000)).toEqual({ nudge: true, restart: false, handle: false })
   const nudged = { stalls: { 'red:abc': { since: 1000, nudged: 1000 } } }
-  expect(stallMoves(nudged, s, 1000 + HANDLE_AFTER_MS - 1)).toEqual({ nudge: false, handle: false })
-  expect(stallMoves(nudged, s, 1000 + HANDLE_AFTER_MS)).toEqual({ nudge: false, handle: true })
-  expect(stallMoves({ stalls: { 'red:abc': { ...nudged.stalls['red:abc'], handled: 2e6 } } }, s, 1e9)).toEqual({ nudge: false, handle: false })
+  expect(stallMoves(nudged, s, 1000 + RESTART_AFTER_MS - 1).restart).toBe(false)
+  expect(stallMoves(nudged, s, 1000 + RESTART_AFTER_MS).restart).toBe(true)
+  const restarted = { stalls: { 'red:abc': { ...nudged.stalls['red:abc'], restarted: 1000 + RESTART_AFTER_MS } } }
+  expect(stallMoves(restarted, s, 1000 + HANDLE_AFTER_MS - 1)).toEqual({ nudge: false, restart: false, handle: false })
+  expect(stallMoves(restarted, s, 1000 + HANDLE_AFTER_MS)).toEqual({ nudge: false, restart: false, handle: true })
+  expect(stallMoves({ stalls: { 'red:abc': { ...restarted.stalls['red:abc'], handled: 2e6 } } }, s, 1e9)).toEqual({ nudge: false, restart: false, handle: false })
   // A new commit red again is a new cause: one more nudge.
   expect(stallMoves(nudged, { ...s, cause: 'red:def' }, 1000).nudge).toBe(true)
 })
@@ -114,10 +117,12 @@ it('the failing tests are read from gh run view --log-failed', () => {
   expect(failingTests(log)).toEqual(['tests/a.test.ts > adds', 'tests/b.test.ts > keeps'])
 })
 
-it('a stall, or an action refused, wakes the coordinator as stuck with its reason', () => {
+it('an action refused wakes the coordinator as stuck with its reason; a stall only once the engine gave up on it', () => {
   const ap = { ...DEFAULT_AUTOPILOT, events: ['stuck' as const] }
   const stalled = task(at(4), { stall: { cause: 'red:abc', reason: 'CI red, no new push for 10 min', since: 1 } })
-  expect(autopilotEvents(ap, [stalled], { 'CO-1': 'working' }).reasons).toEqual(['CO-1 (T): stuck: CI red, no new push for 10 min'])
+  expect(autopilotEvents(ap, [stalled], { 'CO-1': 'working' }).reasons).toEqual([])
+  const gaveUp = { ...stalled, selfFix: { step: '4:1000', block: 'stall', tried: ['a nudge', 'a restart'], at: 1, woke: 2 } }
+  expect(autopilotEvents(ap, [gaveUp], { 'CO-1': 'working' }).reasons).toEqual(['CO-1 (T): stuck: CI red, no new push for 10 min'])
   expect(autopilotEvents(ap, [stalled], { 'CO-1': 'stalled' }).reasons).toEqual([])
   const refused = task(at(4, { yourTurn: { reason: 'action', badge: 'merge: head moved' } }))
   expect(autopilotEvents(ap, [refused], { 'CO-1': 'working' }).reasons).toEqual(['CO-1 (T): stuck: merge: head moved'])

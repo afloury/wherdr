@@ -114,6 +114,13 @@ echo "$why"; exit ${CODE.NOT_MERGED}`,
 if ! git merge -q --no-edit "origin/$1" >/dev/null 2>&1; then
   f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict with $1 in $f"; exit ${CODE.SEND_BACK}; fi
 git push -q origin "HEAD:refs/heads/$2" 2>&1 || exit 1; git rev-parse HEAD`,
+  // A push refused because the task branch ($1) is behind its remote: the
+  // worktree takes the remote's commits (a fast-forward, else a merge), to push again.
+  sync: `${IN} ${CLEAN} git fetch -q origin "$1" 2>&1 || exit 1
+if git merge-base --is-ancestor HEAD FETCH_HEAD; then git merge -q --ff-only FETCH_HEAD 2>&1 || exit 1; echo "fast-forwarded to origin/$1"; exit 0; fi
+if ! git merge -q --no-edit FETCH_HEAD >/dev/null 2>&1; then
+  f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict with origin/$1 in $f"; exit ${CODE.SEND_BACK}; fi
+echo "merged origin/$1"`,
   // "behind" when the branch lacks its base's last commits (GitHub says so only when the branch must be up to date).
   behind: `${IN} git fetch -q origin "$1" 2>&1 || exit 1; git merge-base --is-ancestor "origin/$1" HEAD || echo behind`,
   // Where the PR head ($1) stands against the task's commit: same; behind (in
@@ -167,7 +174,7 @@ export function prReady(pr: PrInfo | undefined, head: string, required: string[]
 const TRANSIENT = [
   /commit_refs/i, /base branch policy prohibits the merge/i, /HTTP 5\d\d/, /\b50[234]\b/, /bad gateway|service unavailable/i,
   /could not resolve host/i, /connection (reset|refused|timed out)/i, /operation timed out/i, /remote end hung up/i,
-  /RPC failed|early EOF/i, /cannot lock ref/i, /\(fetch first\)/i, /rate limit/i,
+  /RPC failed|early EOF/i, /cannot lock ref/i, /rate limit/i,
 ]
 // code null = the command timed out. A send-back or not-merged answer is
 // final, whatever its text (a file named 502.vue).

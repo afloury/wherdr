@@ -1,7 +1,9 @@
 // What the engine does alone, without waking the coordinator: restart a task
-// once its agent's login is back, retry a failed push, fix a PR's base, catch
-// up the target branch, re-run CI that failed for infrastructure reasons,
-// send red CI back to the agent, merge what the branch rule allows. Pure:
+// once its agent's login is back, retry a failed push (synced with its remote
+// first when refused as behind it), run again an interrupted action, fix a
+// PR's base, catch up the target branch, re-run CI that failed for
+// infrastructure reasons (its conclusion or its log), send red CI back to the
+// agent, merge what the branch rule allows (selfFix.ts counts the tries). Pure:
 // each move has its guard here; server/utils/pmMechanic.ts gathers the facts
 // and carries the move out. A move is made once per key (task.mech).
 import { isTransient, prReady, type PrInfo } from './actions'
@@ -9,6 +11,7 @@ import { isProtected, type ResolvedGuards } from './guards'
 import { mergeGoesOn } from './mergeQueue'
 import { DEFAULT_ROUNDS, waitsToMerge, type PlannedStep } from './steps'
 import type { Task } from './run'
+import { blockOf } from './selfFix'
 
 export interface PrState extends PrInfo { mergeStateStatus?: string }
 export interface MechFacts {
@@ -22,12 +25,14 @@ export interface MechFacts {
   loggedIn?: boolean // the agent's program answers its login status again
   queue?: number // its place in the merge queue (mergeQueue.ts): past the first, it waits its turn
   behind?: boolean // the first in the queue lacks its base's last commits
+  infra?: boolean // the failed jobs' log shows an infrastructure error (infraLog)
   now?: number
 }
 
 export type Move =
   | { kind: 'restart' }
   | { kind: 'retry-action', step: string }
+  | { kind: 'sync-push', step: string }
   | { kind: 'fix-base', base: string }
   | { kind: 'catch-up', base: string }
   | { kind: 'rerun-ci', checks: string[] }
@@ -38,6 +43,14 @@ const RETRIED = ['git.push', 'github.pr', 'git.land']
 // Conclusions that say nothing of the code: run again once.
 const INFRA = ['CANCELLED', 'TIMED_OUT', 'STARTUP_FAILURE', 'STALE']
 const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
+// A failed job's log that says nothing of the code: a server error, a download
+// that timed out, the runner lost.
+const INFRA_LOG = [
+  /\bHTTP\/?[\d.]* ?(error )?5\d\d\b/i, /returned error: 5\d\d\b/i, /\b50[234] (Bad Gateway|Service Unavailable|Gateway Time-?out)/i,
+  /(download|fetch)\w*\b.{0,80}\b(timed out|timeout)/i, /\b(timed out|timeout)\b.{0,80}\bdownload/i,
+  /runner .{0,60}(lost|shutdown signal)|lost communication with the server/i,
+]
+export const infraLog = (log: string) => INFRA_LOG.some(r => r.test(log))
 // An update with the base that failed (a passing git error) is tried again,
 // spaced out, a few times per commit; past them it gives up the merge queue's front.
 export const CATCH_UP_TRIES = 3
@@ -70,6 +83,14 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   if (!s?.started || s.done || task.state !== 'working') return
   const step = plan[s.at]
   if (!step) return
+  const n = s.tries?.[step.id] ?? 0
+  const failed = step.action && !s.acting && s.yourTurn?.reason === 'action'
+  // Refused as behind its remote: the worktree takes the remote's commits, then pushes again.
+  if (failed && step.ends === 'action' && RETRIED.includes(step.action!.kind) && !step.guarded && blockOf(task) === 'push')
+    return pick(`sync:${step.id}:${n}`, { kind: 'sync-push', step: step.id })
+  // Interrupted by a restart: run again (a merge done meanwhile is recorded as merged).
+  if (failed && blockOf(task) === 'interrupted' && (step.ends === 'action' ? !step.guarded : waitsToMerge(step) && !!s.approved))
+    return pick(`again:${step.id}:${n}`, { kind: 'retry-action', step: step.id })
   // A push, PR or landing that failed on a passing error, outside a guarded merge.
   if (step.ends === 'action' && !s.acting && s.yourTurn?.reason === 'action' && RETRIED.includes(step.action!.kind) && !step.guarded
     && isTransient(1, s.yourTurn.badge) && (s.tries?.[step.id] ?? 0) < 3)
@@ -86,7 +107,6 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   const held = (f.queue ?? 1) > 1
   const engineMerges = mergeGoesOn(step, s, guards, pr.baseRefName) && !(waits && s.catchUp) && !held
   // One per commit and merge attempt: a head reviewed again is merged on the step's next attempt.
-  const n = s.tries?.[step.id] ?? 0
   const mergeKey = `merge:${head}${n > 1 ? `:${n}` : ''}`
   const mergeMove = () => (engineMerges && (pr.merged || prReady(pr, head, step.action!.checks).ok)
     ? pick(mergeKey, { kind: 'merge', url: pr.url, base: pr.baseRefName })
@@ -114,7 +134,8 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
     // Past its tries: what GitHub allows goes on below.
   }
   const red = redChecks(pr)
-  if (red.length && red.every(c => INFRA.includes(c.conclusion || ''))) return pick(`rerun:${head}`, { kind: 'rerun-ci', checks: red.map(checkName) })
+  // Run again once; red again after that, it goes to the agent.
+  if (red.length && (red.every(c => INFRA.includes(c.conclusion || '')) || f.infra) && !done(`rerun:${head}`)) return pick(`rerun:${head}`, { kind: 'rerun-ci', checks: red.map(checkName) })
   if (red.length) {
     // One send per commit, within the send-back rounds; past them, the user's.
     const sent = Object.keys(task.mech ?? {}).filter(k => k.startsWith('red:')).length
