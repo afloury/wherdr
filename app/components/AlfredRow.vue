@@ -57,7 +57,8 @@ async function start(program: AlfredProgram) {
   finally { busy.value = false }
 }
 function go(id: string) {
-  if (asked) useDraft(id).text = asked
+  // Added after what its composer already holds, never over it.
+  if (asked) { const d = useDraft(id); d.text = [d.text.trim(), asked].filter(Boolean).join('\n') }
   asked = ''
   return navigateTo(panePath(id))
 }

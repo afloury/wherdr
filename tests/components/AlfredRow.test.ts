@@ -133,6 +133,10 @@ it('Ask field: the typed text waits in its composer, its conversation opened (st
   expect(useDraft('w:p1').text).toBe('What is waiting for me?')
   expect((w!.find('[data-testid="alfred-ask"]').element as HTMLInputElement).value).toBe('')
   expect(posts).toEqual([])
+  // A draft already in its composer stays: the asked text goes after it.
+  await w!.find('[data-testid="alfred-ask"]').setValue('And the board?')
+  await w!.find('form').trigger('submit')
+  await vi.waitFor(() => expect(useDraft('w:p1').text).toBe('What is waiting for me?\nAnd the board?'))
   w!.unmount()
   // Not started: started with its agent, then the same.
   herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p9', 'host/t9')] }
