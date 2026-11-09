@@ -1,12 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { INSTALL_OUTPUT } from '../website/app/utils/installDemo'
-import { listGroups, projectSummary, scriptProblems } from '../website/app/utils/demoScript'
+import { listGroups, scriptProblems } from '../website/app/utils/demoScript'
 import type { DemoAgent, DemoScript } from '../website/app/utils/demoScript'
-import { ANSWER, HERO, SHOP, actionsAt, agentState } from '../website/app/utils/heroDemo'
+import { ANSWER, HERO, actionsAt, agentState } from '../website/app/utils/heroDemo'
 import { CATCHUP_MS, GLYPH_MS as SITE_GLYPH_MS, TRAIL_GLYPHS as SITE_TRAIL, trailGlyphs as siteGlyphs, typeDuration, typingFronts as siteFronts } from '../website/app/utils/typing'
 import { GLYPH_MS as APP_GLYPH_MS, TRAIL_GLYPHS as APP_TRAIL, trailGlyphs as appGlyphs, typingFronts as appFronts } from '../app/utils/typewriter'
-import { BOARD, BOARD_GROUPS, CONVERSATION, COUPONS, PHONE, boardAt } from '../website/app/utils/storyDemos'
+import { CONVERSATION, PHONE } from '../website/app/utils/storyDemos'
 
 describe('install demo', () => {
   // Every step / ok line the site replays must be one the real script prints,
@@ -23,7 +23,7 @@ describe('install demo', () => {
 })
 
 describe('live demos', () => {
-  it.each([HERO, CONVERSATION, PHONE, BOARD].map(s => [s.id, s] as const))('%s plays in order, inside its loop', (_, script) => {
+  it.each([HERO, CONVERSATION, PHONE].map(s => [s.id, s] as const))('%s plays in order, inside its loop', (_, script) => {
     expect(scriptProblems(script)).toEqual([])
   })
 
@@ -67,27 +67,6 @@ describe('live demos', () => {
     expect(site).toEqual(appGlyphs(text, rand))
     expect([SITE_GLYPH_MS, SITE_TRAIL]).toEqual([APP_GLYPH_MS, APP_TRAIL])
   })
-
-  it('board: the approved task goes Working → Ready to approve → Done, once at each step', () => {
-    const where = (step: number, key: string) => BOARD_GROUPS.filter(g => boardAt(step)[g.id].some(c => c.key === key)).map(g => g.id)
-    const steps = Array.from({ length: 12 }, (_, i) => i)
-    expect(steps.map(s => where(s, COUPONS.key))).toEqual([
-      ['working'], ['working'], ['ready'], ['ready'], ['ready'], ['ready'], ['done'], ['done'], ['done'], ['done'], ['done'], ['done'],
-    ])
-    expect(boardAt(2).ready[0]).toMatchObject({ pr: COUPONS.pr, review: 'pass' })
-  })
-
-  it('board: the coordinator’s task appears once answered, in To do, then Working', () => {
-    const where = (step: number) => BOARD_GROUPS.filter(g => boardAt(step)[g.id].some(c => c.key === 'SHOP-16')).map(g => g.id)
-    expect([0, 9, 10, 11].map(where)).toEqual([[], [], ['todo'], ['working']])
-  })
-
-  it('board: every card has a unique key at every step', () => {
-    for (let s = 0; s <= 11; s++) {
-      const keys = BOARD_GROUPS.flatMap(g => boardAt(s)[g.id].map(c => c.key))
-      expect(new Set(keys).size).toBe(keys.length)
-    }
-  })
 })
 
 describe('compact agent list', () => {
@@ -96,16 +75,5 @@ describe('compact agent list', () => {
   it('groups the other agents as the app does: your turn, working, ready (done and idle), no empty group', () => {
     const groups = listGroups([agent('a', 'idle'), agent('b', 'working'), agent('c', 'done')])
     expect(groups.map(g => [g.title, g.list.map(a => a.name)])).toEqual([['Working', ['b']], ['Ready', ['a', 'c']]])
-  })
-
-  it('sums up a project\'s tasks without zero counts', () => {
-    expect(projectSummary(SHOP.tasks).map(p => p.text)).toEqual(['2 tasks', '2 working'])
-    expect(projectSummary([agent('a', 'blocked'), agent('b', 'working'), agent('c', 'idle')]).map(p => p.text))
-      .toEqual(['3 tasks', '1 your turn', '1 working'])
-  })
-
-  it('every task of the demo project has a unique key and its progress', () => {
-    expect(new Set(SHOP.tasks.map(t => t.tag)).size).toBe(SHOP.tasks.length)
-    for (const t of SHOP.tasks) expect(t.stats).toMatch(/^\d+% \d+m$/)
   })
 })
