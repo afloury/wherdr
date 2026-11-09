@@ -10,7 +10,7 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { access, constants, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -60,6 +60,7 @@ const exists = file => stat(file).then(s => s.isFile(), () => false)
 export async function download(url, sha256, file, { fetchImpl = fetch, tries = 5, retryMs = 1000, log = () => {}, onBytes } = {}) {
   const part = `${file}.part`
   await mkdir(path.dirname(file), { recursive: true })
+  let reached = 0
   for (let attempt = 1; ; attempt++) {
     try {
       const have = await stat(part).then(s => s.size, () => 0)
@@ -72,7 +73,7 @@ export async function download(url, sha256, file, { fetchImpl = fetch, tries = 5
         let got = append ? have : 0
         const size = Number(res.headers.get('content-length')) || 0
         const total = size ? got + size : 0
-        const count = new Transform({ transform(chunk, _enc, done) { got += chunk.length; onBytes?.(got, total); done(null, chunk) } })
+        const count = new Transform({ transform(chunk, _enc, done) { got += chunk.length; reached = got; onBytes?.(got, total); done(null, chunk) } })
         await pipeline(Readable.fromWeb(res.body), count, createWriteStream(part, { flags: append ? 'a' : 'w' }))
       } else {
         await res.body?.cancel()
@@ -81,24 +82,93 @@ export async function download(url, sha256, file, { fetchImpl = fetch, tries = 5
       const got = await sha256Of(part)
       if (got !== sha256) {
         await rm(part, { force: true })
-        throw new Error(`sha256 mismatch: expected ${sha256}, got ${got}`)
+        throw new Error(`the downloaded file is not the pinned one (sha256 mismatch: expected ${sha256}, got ${got})`)
       }
       await rename(part, file)
       return
     } catch (err) {
-      if (attempt >= tries) throw new Error(`${url}: ${err.message}`)
+      if (attempt >= tries) {
+        // Said in plain words: how far a cut download got (its part is kept to resume).
+        const why = /^HTTP |sha256 mismatch/.test(err.message) ? err.message : reached ? `the download was cut at ${mb(reached)}: ${err.message}` : `the download failed: ${err.message}`
+        throw new Error(`${why} (${url})`)
+      }
       log(`retry ${attempt}: ${err.message}`)
       await new Promise(r => setTimeout(r, Math.min(30_000, retryMs * 2 ** attempt)))
     }
   }
 }
 
-function run(cmd, args) {
+const mb = n => `${Math.round(n / 1e6)} MB`
+
+// The archive formats tar unpacks: its flag and the program GNU tar runs for it.
+const FORMATS = [
+  { ext: '.tar.bz2', flags: ['-j'], program: 'bzip2' },
+  { ext: '.tbz2', flags: ['-j'], program: 'bzip2' },
+  { ext: '.tar.gz', flags: ['-z'], program: 'gzip' },
+  { ext: '.tgz', flags: ['-z'], program: 'gzip' },
+  { ext: '.tar.xz', flags: ['-J'], program: 'xz' },
+  { ext: '.tar.zst', flags: ['--zstd'], program: 'zstd' },
+  { ext: '.tar', flags: [], program: '' },
+]
+
+// The tar command that extracts `members` of an archive (all under its top
+// folder, named as the archive) straight into `dir`.
+export function extractCommand(archive, dir, members) {
+  const name = path.basename(archive)
+  const format = FORMATS.find(f => name.endsWith(f.ext))
+  if (!format) throw new Error(`unknown archive format: ${name}`)
+  const top = name.slice(0, -format.ext.length)
+  const args = ['-x', ...format.flags, '-f', archive, '-C', dir, '--strip-components=1', ...members.map(m => `${top}/${m}`)]
+  return { args, program: format.program }
+}
+
+// tar's error output in plain words; `program` is the archive's decompressor.
+export function tarFailure(stderr, code, program) {
+  const missing = [...stderr.matchAll(/([^\s:]+): Not found in archive/g)].map(m => m[1].split('/').pop())
+  if (/Cannot exec|Can't initialize filter|unrecognized option|Unsupported compression|not supported/i.test(stderr)) {
+    return `this archive format needs ${program || 'a newer tar'} on the server: install it, then try again`
+  }
+  if (/No space left on device/i.test(stderr)) return 'the server ran out of disk space while unpacking the model'
+  if (/Permission denied|Read-only file system/i.test(stderr)) return 'the server cannot write to its models folder (permission denied)'
+  if (/Unexpected EOF|ends unexpectedly|truncated/i.test(stderr)) return 'the archive is incomplete: it ends before its last file'
+  if (missing.length) return `the archive lacks the files ${missing.join(', ')}`
+  const last = stderr.trim().split('\n').filter(l => !/not recoverable|Child returned/.test(l)).pop()
+  return `tar exited with ${code}${last ? `: ${last}` : ''}`
+}
+
+// Can this server unpack the format? bsdtar (macOS) has the decompressors
+// built in; GNU tar runs `program`, which must be on the PATH. Checked before
+// a download of hundreds of MB.
+async function canUnpack(program) {
+  if (!program) return true
+  const version = await runTar(['--version']).then(r => r.out, () => '')
+  if (/bsdtar/.test(version)) return true
+  for (const d of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
+    if (await access(path.join(d, program), constants.X_OK).then(() => true, () => false)) return true
+  }
+  return false
+}
+
+function runTar(args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: 'inherit' })
-    child.on('error', reject)
-    child.on('close', code => (code === 0 ? resolve() : reject(new Error(`${cmd} exited with ${code}`))))
+    const child = spawn('tar', args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    let out = ''
+    let err = ''
+    child.stdout.on('data', (b) => { out += b })
+    child.stderr.on('data', (b) => { err += b })
+    child.on('error', e => reject(new Error(e.code === 'ENOENT' ? 'the server has no tar command' : e.message)))
+    child.on('close', code => resolve({ code, out, err }))
   })
+}
+
+// Extracts the archive's members into `dir`. On failure, the archive and the
+// members it left half written are removed and the error says why.
+export async function unpack(archive, dir, members) {
+  const { args, program } = extractCommand(archive, dir, members)
+  const { code, err } = await runTar(args)
+  if (code === 0) return
+  await Promise.all([archive, ...members.map(m => path.join(dir, m))].map(f => rm(f, { force: true })))
+  throw new Error(tarFailure(err, code, program))
 }
 
 // One entry of a set, skipped when already in place. `onUnpack` is called
@@ -116,11 +186,12 @@ export async function fetchEntry(modelsDir, entry, opts = {}) {
   const stamp = path.join(dir, '.complete')
   if ((await readFile(stamp, 'utf8').catch(() => '')).trim() === entry.sha256) return log(`have ${entry.dir}`)
   const archive = path.join(dir, path.basename(new URL(entry.url).pathname))
+  const { program } = extractCommand(archive, dir, entry.members)
+  if (!(await canUnpack(program))) throw new Error(`this archive format needs ${program} on the server: install it, then try again`)
   log(`fetch ${entry.url}`)
   await download(entry.url, entry.sha256, archive, opts)
   opts.onUnpack?.()
-  const top = path.basename(archive).replace(/\.tar\.bz2$/, '')
-  await run('tar', ['-xjf', archive, '-C', dir, '--strip-components=1', ...entry.members.map(m => `${top}/${m}`)])
+  await unpack(archive, dir, entry.members)
   await rm(archive, { force: true })
   await writeFile(stamp, `${entry.sha256}\n`)
 }
