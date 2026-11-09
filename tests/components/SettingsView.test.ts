@@ -157,3 +157,25 @@ it('Machines has its own section; Agents holds Pace, which ?section=pacing still
     expect(shown(agents)).toBe(false)
   } finally { w.unmount() }
 })
+
+it('Conversation: tabs split Display, Dictation and Read aloud, the tab kept in the URL', async () => {
+  desk.value = true
+  coarse.value = false
+  const router = useRouter()
+  const w = await mountSuspended(SettingsView, { route: '/settings?section=conversation&tab=dictation', global })
+  try {
+    const shown = (sel: string) => (w.get(sel).element as HTMLElement).style.display !== 'none'
+    const panels = () => ['#conversation-panel-display', '#conversation-panel-dictation', '#conversation-panel-read-aloud'].filter(shown)
+    const tabs = () => w.findAll('[role="tab"]').filter(b => b.attributes('id')?.startsWith('conversation-tab-'))
+    expect(tabs().map(b => b.text())).toEqual(['Display', 'Dictation', 'Read aloud'])
+    expect(panels()).toEqual(['#conversation-panel-dictation'])
+    expect(tabs()[1]!.attributes('aria-selected')).toBe('true')
+    await tabs()[2]!.trigger('click')
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/settings?section=conversation&tab=read-aloud'))
+    await vi.waitFor(() => expect(panels()).toEqual(['#conversation-panel-read-aloud']))
+    // No tab, or an unknown one: Display.
+    await router.replace('/settings?section=conversation&tab=nope')
+    await vi.waitFor(() => expect(panels()).toEqual(['#conversation-panel-display']))
+    expect(w.get('#conversation-panel-display').text()).toContain('Default pane view')
+  } finally { w.unmount() }
+})

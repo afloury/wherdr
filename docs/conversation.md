@@ -24,8 +24,9 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   (`` `#/board?task=KEY-12` ``). Either opens the place in the app, on a computer and a phone,
   without reloading; Back returns to the conversation. Other links open in a new tab, other
   inline code stays plain. The addresses: `#/`, `#/decisions`, `#/board` (with `?project=KEY`,
-  `?tag=TAG` or `?task=ID`), `#/settings?section=<section>` and a project's sheet
-  `#/settings?section=projects&project=KEY&tab=<tab>`; Alfred and coordinators get the list in
+  `?tag=TAG` or `?task=ID`), `#/settings?section=<section>`, a tab of Settings › Conversation
+  `#/settings?section=conversation&tab=<tab>` (`display`, `dictation`, `read-aloud`) and a
+  project's sheet `#/settings?section=projects&project=KEY&tab=<tab>`; Alfred and coordinators get the list in
   their instructions.
 - **Questions and permissions**: native questions, approvals and menus show their options; a tap
   answers. wherdr reads the screen again right before answering and refuses the answer if the
@@ -54,7 +55,7 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   available; typing in it takes control of the terminal's size ([Terminal](terminal.md)).
 - The model and effort pickers, the slash-command list and Codex update cards are v2 only.
 
-**Settings › Conversation › Reply style** chooses how an agent's reply offers to be quoted in
+**Settings › Conversation › Display › Reply style** chooses how an agent's reply offers to be quoted in
 the field, question by question and point by point (a list item or a paragraph that asks
 nothing), so that one message answers them all:
 
@@ -105,7 +106,7 @@ No
 - In the conversation, each reference of a sent message shows as a quote; tap it to see the
   message it names. Messages sent earlier with `> ` lines still show as quotes.
 
-**Settings › Conversation › Quoted replies** chooses how the field shows these lines: **Tokens,
+**Settings › Conversation › Display › Quoted replies** chooses how the field shows these lines: **Tokens,
 native field** (default) draws each one as a token in the usual field, **Plain text** shows the
 same lines as text, a fallback if the tokens misbehave. The message sent is the same.
 
@@ -140,3 +141,17 @@ by **OK to all**; when the message asks one thing only, any words you type answe
 goes when everything is answered and when you send, and it never shows for earlier messages,
 while the agent is working, or while it waits on a prompt. It hangs from the top edge of the
 field, so nothing moves when it comes or goes.
+
+## Settings
+
+**Settings › Conversation** has three tabs, each kept in the address so a link opens it:
+
+- **Display** (`#/settings?section=conversation&tab=display`, the default): default pane view,
+  typewriter, reply style and quoted replies.
+- **Dictation** (`#/settings?section=conversation&tab=dictation`): off, on this device (its
+  models), online, and the rewrite pass ([Dictation design](dictation.md)). A dictation error's
+  **Settings** button opens this tab.
+- **Read aloud** (`#/settings?section=conversation&tab=read-aloud`): off or a voice, the voice
+  list and Test.
+
+Each setting says whether it is saved on this device or follows you on every device.
