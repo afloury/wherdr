@@ -44,6 +44,8 @@ export const alfredPane = computed(() => (alfred.value?.terminal ? herdrState.va
 export const coordinatorOf = (p?: Pane | null) => (p?.coreAddress ? coordinators.value.find(c => c.terminal === p.coreAddress) : undefined)
 // A coordinator's name, as the sidebar shows it: Alfred's current name for the main one.
 export const coordinatorName = (c: CoordinatorView) => (c.main ? alfred.value?.name || 'Alfred' : tl(`${c.label ?? c.project} coordinator`))
+// Alfred's own pane: its header shows its emblem.
+export const isAlfredPane = (p?: Pane | null) => Boolean(p?.coreAddress && p.coreAddress === alfred.value?.terminal)
 // A pane's project key badge, in its header: a project coordinator's key (its
 // title then reads "coordinator"), or a task agent's task id (shown key, WD-5).
 export function paneBadge(p?: Pane | null): { text: string, color?: string, coordinator?: true } | null {

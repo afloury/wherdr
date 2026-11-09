@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { WAKE, ackWakes, enqueue, inWake, readQueue, tickWakes, wakeText, type Wake } from '../shared/pm/wakes'
+import { WAKE, ackWakes, enqueue, inWake, readQueue, tickWakes, wakeKindOf, wakeText, type Wake } from '../shared/pm/wakes'
 import { createPmStore } from '../server/utils/pmStore'
 
 const MIN = 60_000
@@ -27,6 +27,23 @@ describe('wake queue', () => {
     expect(wakeText(r.deliver!, true)).toMatch(/--fix <kind>.*base \(merge the base.*stall \(restart a stalled agent\).*At most 2 times per task and step.*A permission request, merging, approving, guards, settings and limits stay the user's/)
     // Once delivered, new reasons start a new wake.
     expect(enqueue(r.q, 'CO', ['CO-3: added'], 3 * MIN, 'w3').id).toBe('w3')
+  })
+
+  it('names its source on the first line, one source per wake', () => {
+    let q = queued(['CO-1: done'])
+    q = apply(q, [enqueue(q, 'CO', ['CO-2 (Ship): Check again'], 0, 'w2', false, { kind: 'step', about: 'CO-2 (deploy)' })])
+    q = apply(q, [enqueue(q, 'CO', ['CO-3: gave up'], 0, 'w3', false, { kind: 'engine' })])
+    q = apply(q, [enqueue(q, 'CO', ['Disk almost full'], 0, 'w4', false, { kind: 'health' })])
+    expect(q.map(w => w.reasons)).toEqual([['CO-1: done'], ['CO-2 (Ship): Check again'], ['CO-3: gave up'], ['Disk almost full']])
+    const heads = q.map(w => wakeText(w).split('\n')[0])
+    expect(heads).toEqual(['Autopilot: wake w1', 'Step check: CO-2 (deploy), wake w2', 'Engine: wake w3', 'Health check: wake w4'])
+    expect(heads.map(wakeKindOf)).toEqual(['autopilot', 'step', 'engine', 'health'])
+    expect(wakeKindOf('Autopilot: please look')).toBeNull()
+    // An old wake without a kind is the autopilot's; the ack line is the same for all.
+    expect(wakeText({ ...q[0]!, kind: undefined })).toMatch(/^Autopilot: wake w1\n[\s\S]*run: wherdr pm ack w1$/)
+    expect(wakeText(q[1]!)).toMatch(/run: wherdr pm ack w2$/)
+    // Delivered one after the other.
+    expect(tick(q, 'idle', 2 * MIN).deliver).toMatchObject({ id: 'w1' })
   })
 
   it('is never delivered in the middle of a turn', () => {
