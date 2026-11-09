@@ -1,192 +1,234 @@
 <script setup lang="ts">
-// A coordinator's Autopilot switch: its state as herdr-projects reads it, and a
-// sheet to turn it on (with its goal, frequency and limits) or off.
-import type { CoordinatorTarget } from '#shared/projectsTasks'
-import { autopilotId, type AutopilotDefaults, type AutopilotDetails, type AutopilotStatus } from '#shared/autopilot'
-import { api } from '~/composables/useHerdr'
-import { useAutopilot } from '~/composables/useAutopilot'
-import { coordinatorLabel } from '~/utils/coordinators'
+// A coordinator's autopilot: its switch, whether it is active or asleep
+// (nothing to do: its scheduled wakes are skipped), today's counters against
+// the limits, its goal, interval, fixed times, events and limits (saved by the user
+// only), its last wake on one line, the wakes not handled, the full history folded
+// and "run now". In the coordinator window and the project sheet's Autopilot tab.
+import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, LOOK_PER_DAY, MAX_PER_DAY, oldDefaults, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
+import type { CoordinatorView } from '#shared/pm/coordinator'
+import type { Wake } from '#shared/pm/wakes'
 
-const props = defineProps<{ machine: string, to: CoordinatorTarget, disabled?: boolean, compact?: boolean }>()
-const { machines, load, put } = useAutopilot()
-const id = computed(() => autopilotId(props.to))
-const here = computed(() => machines.value[props.machine])
-// undefined: not read yet, or herdr-projects could not say.
-const status = computed<AutopilotStatus | undefined>(() => {
-  const s = here.value?.statuses
-  return s ? s[id.value] ?? { on: false, goal: '', next: '', state: '', couldNot: '' } : undefined
-})
-const tooOld = computed(() => here.value?.code === 'projects_too_old')
-
-const open = ref(false)
+const props = defineProps<{ c: CoordinatorView }>()
+const ap = computed<Autopilot>(() => props.c.autopilot ?? DEFAULT_AUTOPILOT)
 const busy = ref(false)
-const reading = ref(false)
 const error = ref('')
-const goal = ref('')
-const every = ref('')
-const tasksPerDay = ref('')
-const tasksAtOnce = ref('')
-const defaults = ref<AutopilotDefaults>({ every: '', tasksPerDay: '', tasksAtOnce: '' })
-
-const nextLabel = computed(() => {
-  const next = status.value?.next || ''
-  if (next.startsWith('next in ')) return tl(`Next wake in ${next.slice(8)}`, `Prochain réveil dans ${next.slice(8)}`)
-  if (next === 'waits for its hours') return tl('Waiting for its active hours', 'En attente de ses heures actives')
-  return next
+const sent = ref(false)
+// The form's fields, from a saved autopilot. Empty: Tasks / day has no limit, At once is Auto.
+type Form = { goal: string, every: string, at: string, events: AutopilotEvent[], perDay: string, atOnce: string, lookForWork: boolean, lookPerDay: number }
+const text = (n: number | null) => (n === null ? '' : String(n))
+const formOf = (a: Autopilot): Form => ({ goal: a.goal, every: a.every ?? '', at: a.at ?? '', events: [...a.events], perDay: text(a.perDay), atOnce: text(a.atOnce), lookForWork: !!a.lookForWork, lookPerDay: a.lookPerDay ?? LOOK_PER_DAY })
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+// A field as it would be saved: numbers as numbers (empty: null), times trimmed.
+const orNull = (v: unknown) => (v === '' || v === null || v === undefined ? null : Number(v))
+const norm = (k: keyof Form, v: unknown) => (k === 'perDay' || k === 'atOnce' ? orNull(v) : typeof v === 'number' || k === 'lookPerDay' ? Number(v) : k === 'every' || k === 'at' ? String(v).trim() : v)
+const KEYS = Object.keys(formOf(DEFAULT_AUTOPILOT)) as (keyof Form)[]
+const form = reactive<Form>(formOf(ap.value))
+// What the form was last filled with: the saved values it shows.
+const base = ref<Form>(formOf(ap.value))
+const edited = (k: keyof Form) => !same(norm(k, form[k]), norm(k, base.value[k]))
+// The coordinators are read again every few seconds, each time a new object:
+// refill only when the saved values change, and never over a field the user edited.
+watch(() => JSON.stringify(formOf(ap.value)), () => {
+  const next = formOf(ap.value)
+  for (const k of KEYS) if (!edited(k)) (form as Record<string, unknown>)[k] = next[k]
+  base.value = next
 })
-const stateLabel = computed(() => !status.value ? '…' : status.value.on ? tl('On', 'Actif') : tl('Off', 'Arrêté'))
-const title = computed(() => `Autopilot · ${coordinatorLabel(props.to, '')}`)
-const hint = computed(() => [title.value, stateLabel.value, nextLabel.value].filter(Boolean).join(' · '))
+const dirty = computed(() => KEYS.some(edited))
+const saved = ref(false)
+watch(dirty, d => { if (d) saved.value = false })
 
-const refresh = (force = false) => props.disabled ? Promise.resolve() : load(props.machine, force)
+const EVENT_LABEL: Record<AutopilotEvent, [string, string]> = {
+  added: ['Task added', 'Tâche ajoutée'], done: ['Task done', 'Tâche finie'], stuck: ['Task stuck', 'Tâche bloquée'], ready: ['Ready for you', 'Prête pour toi'],
+}
+const toggleEvent = (e: AutopilotEvent) => { form.events = form.events.includes(e) ? form.events.filter(x => x !== e) : [...form.events, e] }
 
-// The sheet reads the coordinator again: its real state, saved goal and defaults.
-async function show() {
-  open.value = true
-  error.value = ''
-  every.value = tasksPerDay.value = tasksAtOnce.value = ''
-  goal.value = status.value?.goal || ''
-  reading.value = true
-  try {
-    const d = await api<AutopilotDetails>(`/api/tasks/autopilot?${query()}`)
-    take(d)
-    goal.value = d.goal
-  } catch (e) {
-    error.value = (e as Error).message
-    await refresh(true)
-  } finally { reading.value = false }
-}
-function query() {
-  return new URLSearchParams({ machine: props.machine, kind: props.to.kind, ...(props.to.kind === 'project' ? { repo: props.to.repo } : {}) })
-}
-function take(d: AutopilotDetails, acted = false) {
-  const { defaults: dv, ...s } = d
-  defaults.value = dv
-  put(props.machine, id.value, s, acted)
-}
-
-const canSubmit = computed(() => !busy.value && !reading.value && Boolean(status.value) && (status.value!.on || Boolean(goal.value.trim())))
-async function submit() {
-  if (!canSubmit.value) return
-  const on = !status.value!.on
+async function act(fn: () => Promise<unknown>) {
   busy.value = true
   error.value = ''
-  try {
-    take(await api<AutopilotDetails>('/api/tasks/autopilot', {
-      machine: props.machine, to: props.to, action: on ? 'on' : 'off',
-      ...(on ? { goal: goal.value, every: every.value, tasksPerDay: tasksPerDay.value, tasksAtOnce: tasksAtOnce.value } : {}),
-    }), true)
-    open.value = false
-  } catch (e) {
-    // The board's own reason. The command may have run before a later read
-    // failed: read the state again rather than assume it.
-    error.value = (e as Error).message
-    await refresh(true)
-  } finally { busy.value = false }
+  try { await fn(); await loadCoordinators() }
+  catch (e) { error.value = (e as Error).message }
+  finally { busy.value = false }
 }
+// The server's refusal names its field ("every: a duration like 30m or 2h"): shown under it.
+const FIELD: Record<string, keyof Form> = { goal: 'goal', every: 'every', at: 'at', events: 'events', perDay: 'perDay', atOnce: 'atOnce', lookPerDay: 'lookPerDay' }
+const saveError = ref('')
+const errorField = computed(() => FIELD[/^(\w+)/.exec(saveError.value)?.[1] ?? ''])
+const fieldError = (k: keyof Form) => (errorField.value === k ? saveError.value : '')
+// Applies at once, on or off: the switch is kept as it is.
+async function save() {
+  saveError.value = ''
+  await act(async () => {
+    const { lookForWork: _, lookPerDay: __, ...kept } = ap.value
+    try {
+      const r = await api<{ autopilot: Autopilot }>('/api/pm/autopilot', {
+        project: props.c.project,
+        autopilot: { ...kept, goal: form.goal, every: form.every.trim(), at: form.at.trim(), events: form.events, perDay: orNull(form.perDay), atOnce: orNull(form.atOnce), ...(form.lookForWork ? { lookForWork: true, lookPerDay: Number(form.lookPerDay) } : {}) },
+      })
+      // The form takes the saved values (the goal trimmed…).
+      if (r?.autopilot) { base.value = formOf(r.autopilot); Object.assign(form, formOf(r.autopilot)) }
+      saved.value = true
+    } catch (e) {
+      saveError.value = (e as Error).message
+      if (errorField.value) return
+      throw e
+    }
+  })
+}
+// The switch keeps the saved settings: only what Save sent counts.
+const setOn = (on: boolean) => act(() => api('/api/pm/autopilot', { project: props.c.project, autopilot: { ...ap.value, on } }))
+const runNow = () => act(async () => { await api('/api/pm/autopilot', { project: props.c.project, runNow: true }); sent.value = true })
 
-watch(() => [props.machine, props.disabled], () => { void refresh() })
-let timer: ReturnType<typeof setInterval> | undefined
-onMounted(() => {
-  void refresh()
-  timer = setInterval(() => { if (!busy.value && !open.value && document.visibilityState === 'visible') void refresh() }, 60_000)
+const time = (at?: number) => (at ? new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—')
+// Its last wake: the time today, else the day too.
+const when = (at: number) => (new Date(at).toDateString() === new Date().toDateString() ? time(at) : new Date(at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))
+const stateText = computed(() => {
+  if (!ap.value.on) return tl('Off', 'Arrêté')
+  if (!props.c.asleep) return tl('Active', 'Actif')
+  const woke = props.c.wokeAt ? tl(` · woke ${when(props.c.wokeAt)}`, ` · réveillé ${when(props.c.wokeAt)}`) : ''
+  return props.c.asleep === 'limit'
+    ? tl(`Asleep · new work limit reached until tomorrow${woke}`, `Endormi · limite de travail nouveau atteinte jusqu’à demain${woke}`)
+    : tl(`Asleep · nothing to do${woke}`, `Endormi · rien à faire${woke}`)
 })
-onBeforeUnmount(() => clearInterval(timer))
+const ENDED: Record<NonNullable<Wake['ended']>, [string, string]> = {
+  ack: ['Acked', 'Accusé'], idle: ['Ended idle', 'Fini inactif'], quit: ['Coordinator quit', 'Coordinateur parti'], timeout: ['Timed out', 'Expiré'],
+  unanswered: ['No answer', 'Sans réponse'], merged: ['Merged into the next', 'Fusionné au suivant'],
+}
+// The wake's state: waiting, delivered (its turn), acked, or how it ended.
+const wakeState = (w: Wake) => (w.ackedAt ? 'ack' : w.ended ?? (w.deliveredAt ? 'delivered' : 'pending'))
+const stateLabel = (w: Wake) => {
+  const s = wakeState(w)
+  return s === 'pending' ? tl('Waiting', 'En attente') : s === 'delivered' ? tl('Delivered', 'Livré') : tl(...ENDED[s as keyof typeof ENDED])
+}
+// The compact view: the last wake on one line, then each older wake that was not handled
+// (waiting, no answer, timed out, coordinator gone); ids and times only in the history.
+const PROBLEM = new Set(['pending', 'unanswered', 'timeout', 'quit'])
+const unhandled = (w: Wake) => PROBLEM.has(wakeState(w))
+const last = computed(() => props.c.wakes?.[0])
+const problems = computed(() => (props.c.wakes ?? []).slice(1).filter(unhandled))
+const reasonLine = (w: Wake) => `${w.reasons[0] ?? ''}${w.reasons.length > 1 ? ` (+${w.reasons.length - 1})` : ''}`
+const outcome = (w: Wake) => (wakeState(w) === 'ack' ? tl('handled') : stateLabel(w).toLowerCase())
+const counters = computed(() => props.c.limits
+  ? tl(`${props.c.limits.started}${props.c.limits.perDay === null ? '' : `/${props.c.limits.perDay}`} today · ${props.c.limits.working}/${props.c.limits.atOnce ?? 'Auto'} at once`)
+  : '')
 </script>
 
 <template>
-  <span v-if="!(compact && tooOld)" class="autopilot" :class="{ compact }">
-    <button
-      type="button" role="switch" class="autopilot-switch" :class="{ on: status?.on }" :aria-checked="status?.on ? 'true' : 'false'"
-      :aria-label="title" :aria-description="hint" :title="hint" :disabled="disabled || busy" @click="show"
-    >
-      <i class="autopilot-dot" aria-hidden="true" />
-      <span class="autopilot-name">Autopilot</span>
-      <span v-if="!compact || status?.on" class="autopilot-state">{{ stateLabel }}</span>
-      <span v-if="!compact && status?.on && nextLabel" class="autopilot-next">{{ nextLabel }}</span>
-    </button>
-    <AppSheet v-model:open="open" :title="title" top>
-      <form class="sheet-form autopilot-form" @submit.prevent="submit">
-        <p class="autopilot-now">
-          <span class="field-label">{{ tl('State', 'État') }}</span>
-          <b :class="{ on: status?.on }">{{ reading && !status ? '…' : stateLabel }}</b>
-          <span v-if="status?.on && nextLabel"> · {{ nextLabel }}</span>
-        </p>
-        <p v-if="status?.couldNot" class="autopilot-could-not">{{ status.couldNot }}</p>
-
-        <template v-if="status?.on">
-          <template v-if="status.goal">
-            <span class="field-label">{{ tl('Goal', 'Objectif') }}</span>
-            <p class="autopilot-goal">{{ status.goal }}</p>
-          </template>
-          <p class="autopilot-ask">{{ tl('Stop Autopilot? The coordinator stays, it just is no longer woken up.', 'Arrêter Autopilot ? Le coordinateur reste là, il n’est simplement plus réveillé.') }}</p>
-        </template>
-        <template v-else-if="status">
-          <label class="field-label" :for="`ap-goal-${id}`">{{ tl('Goal', 'Objectif') }}</label>
-          <UTextarea
-            :id="`ap-goal-${id}`" v-model="goal" :rows="3" autoresize :maxrows="8" size="xl" class="w-full" :maxlength="16000" :disabled="busy || reading"
-            :placeholder="tl('What it works toward, e.g. Ship 2.1: the small fixes first', 'Ce vers quoi il travaille, ex. Sortir la 2.1 : les petites corrections d’abord')"
-          />
-          <div class="autopilot-limits">
-            <div>
-              <label class="field-label" :for="`ap-every-${id}`">{{ tl('Every', 'Fréquence') }} <span class="muted">{{ t('(optional)') }}</span></label>
-              <UInput :id="`ap-every-${id}`" v-model="every" size="xl" class="w-full mono" :placeholder="defaults.every || '2h'" maxlength="20" autocapitalize="none" autocorrect="off" :spellcheck="false" :disabled="busy" />
-            </div>
-            <div>
-              <label class="field-label" :for="`ap-day-${id}`">{{ tl('Tasks / day', 'Tâches / jour') }} <span class="muted">{{ t('(optional)') }}</span></label>
-              <UInput :id="`ap-day-${id}`" v-model="tasksPerDay" size="xl" class="w-full mono" :placeholder="defaults.tasksPerDay" inputmode="numeric" maxlength="6" :disabled="busy" />
-            </div>
-            <div>
-              <label class="field-label" :for="`ap-once-${id}`">{{ tl('At once', 'En parallèle') }} <span class="muted">{{ t('(optional)') }}</span></label>
-              <UInput :id="`ap-once-${id}`" v-model="tasksAtOnce" size="xl" class="w-full mono" :placeholder="defaults.tasksAtOnce" inputmode="numeric" maxlength="6" :disabled="busy" />
-            </div>
-          </div>
-          <p class="autopilot-note">{{ tl('Empty values keep the coordinator’s settings. Values given here are for this time only.', 'Les valeurs vides gardent les réglages du coordinateur. Celles données ici valent pour cette fois seulement.') }}</p>
-        </template>
-        <p v-if="error || (!status && here?.error)" class="form-error" role="alert">{{ error || here?.error }}</p>
-        <button type="submit" hidden />
-      </form>
-      <template #footer>
-        <div class="sheet-form autopilot-actions">
-          <UButton
-            v-if="status" block size="xl" class="sheet-btn" :color="status.on ? 'error' : 'primary'" :variant="status.on ? 'outline' : 'solid'"
-            :icon="status.on ? 'i-lucide-square' : 'i-lucide-play'" :loading="busy" :disabled="!canSubmit" @click="submit"
-          >
-            {{ status.on ? tl('Stop Autopilot', 'Arrêter Autopilot') : tl('Turn on Autopilot', 'Activer Autopilot') }}
-          </UButton>
-          <UButton v-else block size="xl" color="neutral" variant="outline" class="sheet-btn" icon="i-lucide-refresh-cw" :loading="reading" @click="show">
-            {{ tl('Retry', 'Réessayer') }}
-          </UButton>
+  <section class="ap" data-testid="coordinator-autopilot">
+    <div class="ap-head">
+      <USwitch :model-value="ap.on" color="success" size="lg" :disabled="busy" :aria-label="tl('Autopilot', 'Autopilote')" data-testid="autopilot-on" @update:model-value="setOn" />
+      <span class="mono-label" data-testid="autopilot-state" :data-asleep="ap.on && c.asleep ? '' : undefined">{{ tl('Autopilot', 'Autopilote') }} · {{ stateText }}</span>
+      <span class="ap-count mono-label" data-testid="autopilot-counters">{{ counters }}</span>
+    </div>
+    <form class="ap-form" @submit.prevent="save()">
+      <label class="field-label" :for="`ap-goal-${c.project}`">{{ tl('Goal', 'Objectif') }}</label>
+      <UTextarea :id="`ap-goal-${c.project}`" v-model="form.goal" :rows="2" autoresize :maxrows="6" size="xl" class="w-full" :maxlength="2000" data-testid="autopilot-goal"
+        :placeholder="tl('What it works toward, e.g. Ship the small fixes first', 'Ce vers quoi il travaille, ex. Les petites corrections d’abord')" />
+      <p v-if="fieldError('goal')" class="error" role="alert" data-testid="autopilot-error-goal">{{ fieldError('goal') }}</p>
+      <div class="ap-grid">
+        <div>
+          <label class="field-label" :for="`ap-every-${c.project}`">{{ tl('Every', 'Fréquence') }}</label>
+          <UInput :id="`ap-every-${c.project}`" v-model="form.every" size="xl" class="w-full mono" placeholder="2h" maxlength="5" autocapitalize="none" autocorrect="off" :spellcheck="false" data-testid="autopilot-every" />
+          <p v-if="fieldError('every')" class="error" role="alert" data-testid="autopilot-error-every">{{ fieldError('every') }}</p>
         </div>
+        <div>
+          <label class="field-label" :for="`ap-at-${c.project}`">{{ tl('At', 'À') }}</label>
+          <UInput :id="`ap-at-${c.project}`" v-model="form.at" size="xl" class="w-full mono" placeholder="daily 08:00" maxlength="60" autocapitalize="none" autocorrect="off" :spellcheck="false" data-testid="autopilot-at" />
+          <p v-if="fieldError('at')" class="error" role="alert" data-testid="autopilot-error-at">{{ fieldError('at') }}</p>
+        </div>
+        <div>
+          <label class="field-label" :for="`ap-day-${c.project}`">{{ tl('Tasks / day', 'Tâches / jour') }}</label>
+          <UInput :id="`ap-day-${c.project}`" v-model="form.perDay" type="number" min="0" :max="MAX_PER_DAY" inputmode="numeric" :placeholder="tl('No limit')" size="xl" class="w-full mono" data-testid="autopilot-per-day" />
+          <p v-if="fieldError('perDay')" class="error" role="alert" data-testid="autopilot-error-perDay">{{ fieldError('perDay') }}</p>
+        </div>
+        <div>
+          <label class="field-label" :for="`ap-once-${c.project}`">{{ tl('At once', 'En parallèle') }}</label>
+          <UInput :id="`ap-once-${c.project}`" v-model="form.atOnce" type="number" min="0" max="20" inputmode="numeric" size="xl" class="w-full mono" :placeholder="tl('Auto')" data-testid="autopilot-at-once" />
+          <p class="muted">{{ tl('Empty: Auto, as many as the project\'s machines have room for.') }}</p>
+          <p v-if="fieldError('atOnce')" class="error" role="alert" data-testid="autopilot-error-atOnce">{{ fieldError('atOnce') }}</p>
+        </div>
+      </div>
+      <p v-if="oldDefaults(ap)" class="muted" data-testid="autopilot-old-defaults">{{ tl('Older defaults: clear the fields for unlimited and Auto') }}</p>
+      <span class="field-label">{{ tl('Wakes on', 'Réveillé quand') }}</span>
+      <div class="ap-events" role="group">
+        <UButton v-for="e in AUTOPILOT_EVENTS" :key="e" type="button" size="lg" :color="form.events.includes(e) ? 'primary' : 'neutral'" :variant="form.events.includes(e) ? 'solid' : 'outline'"
+          :aria-pressed="form.events.includes(e)" :data-testid="`autopilot-event-${e}`" @click="toggleEvent(e)">
+          {{ tl(...EVENT_LABEL[e]) }}
+        </UButton>
+      </div>
+      <p class="muted" data-testid="autopilot-added-hint">{{ tl('Task added: added by someone else than this coordinator (you, another coordinator, an automation).') }}</p>
+      <p v-if="fieldError('events')" class="error" role="alert" data-testid="autopilot-error-events">{{ fieldError('events') }}</p>
+      <USwitch v-model="form.lookForWork" size="lg" :label="tl('Look for new work', 'Chercher du travail')" data-testid="autopilot-look-for-work"
+        :description="tl('Keep the scheduled wakes when there is nothing to do, for a goal that adds its own tasks.', 'Garder les réveils programmés quand il n’y a rien à faire, pour un objectif qui crée ses propres tâches.')" />
+      <div v-if="form.lookForWork" class="ap-grid">
+        <div>
+          <label class="field-label" :for="`ap-look-${c.project}`">{{ tl('New tasks / day', 'Tâches nouvelles / jour') }}</label>
+          <UInput :id="`ap-look-${c.project}`" v-model="form.lookPerDay" type="number" min="0" max="20" inputmode="numeric" size="xl" class="w-full mono" data-testid="autopilot-look-per-day" />
+          <p v-if="fieldError('lookPerDay')" class="error" role="alert" data-testid="autopilot-error-lookPerDay">{{ fieldError('lookPerDay') }}</p>
+        </div>
+        <p class="muted ap-look-note">{{ tl('Added by those wakes; once reached, it sleeps until tomorrow.', 'Ajoutées par ces réveils ; une fois atteint, il dort jusqu’à demain.') }}</p>
+      </div>
+      <div class="ap-actions">
+        <UButton type="submit" color="primary" size="lg" :loading="busy" data-testid="autopilot-save">{{ t('Save') }}</UButton>
+        <span v-if="dirty" class="mono-label ap-unsaved" data-testid="autopilot-unsaved">{{ tl('Unsaved changes', 'Modifications non enregistrées') }}</span>
+        <span v-else-if="saved" class="mono-label ap-saved" role="status" data-testid="autopilot-saved">{{ tl('Saved', 'Enregistré') }}</span>
+      </div>
+
+      <div class="ap-actions">
+        <span class="mono-label">{{ tl('Wakes', 'Réveils') }}</span>
+        <UButton type="button" color="neutral" variant="outline" size="lg" icon="i-lucide-play" :disabled="busy || !c.terminal" data-testid="autopilot-run-now" @click="runNow">{{ tl('Run now', 'Lancer maintenant') }}</UButton>
+      </div>
+      <p v-if="!c.terminal" class="muted">{{ tl('Start the coordinator to wake it.', 'Lance le coordinateur pour le réveiller.') }}</p>
+      <p v-else-if="sent" class="muted" role="status">{{ tl('Queued: it goes as soon as the coordinator is idle.', 'En file : il part dès que le coordinateur est inactif.') }}</p>
+      <template v-if="last">
+        <p class="ap-line" :class="{ problem: unhandled(last) }" :data-state="wakeState(last)" data-testid="autopilot-last-wake">
+          <span class="mono-label">{{ tl('Last wake') }} {{ when(last.createdAt) }}</span><span class="ap-line-reason">{{ reasonLine(last) }}</span><span class="ap-state" :class="wakeState(last)">{{ outcome(last) }}</span>
+        </p>
+        <p v-for="w in problems" :key="w.id" class="ap-line problem" :data-state="wakeState(w)" data-testid="autopilot-wake-problem">
+          <span class="mono-label">{{ when(w.createdAt) }}</span><span class="ap-line-reason">{{ reasonLine(w) }}</span><span class="ap-state" :class="wakeState(w)">{{ outcome(w) }}</span>
+        </p>
+        <details class="ap-history" data-testid="autopilot-history">
+          <summary class="mono-label">{{ tl('History') }} ({{ c.wakes!.length }})</summary>
+          <ol class="ap-wakes" data-testid="autopilot-wakes">
+            <li v-for="w in c.wakes" :key="w.id" :data-state="wakeState(w)" data-testid="autopilot-wake">
+              <span class="ap-wake-head"><b class="mono-label">{{ w.id }}</b><span class="ap-state" :class="wakeState(w)">{{ stateLabel(w) }}</span></span>
+              <small class="mono-label muted">{{ tl('Created', 'Créé') }} {{ time(w.createdAt) }} · {{ tl('Delivered', 'Livré') }} {{ time(w.deliveredAt) }} · {{ tl('Acked', 'Accusé') }} {{ time(w.ackedAt) }}<template v-if="w.tries > 1"> · ×{{ w.tries }}</template></small>
+              <span class="ap-reason">{{ w.reasons[0] }}<template v-if="w.reasons.length > 1"> (+{{ w.reasons.length - 1 }})</template></span>
+            </li>
+          </ol>
+        </details>
       </template>
-    </AppSheet>
-  </span>
+      <p v-else class="muted">{{ tl('No wake yet.', 'Aucun réveil pour l’instant.') }}</p>
+    </form>
+    <p v-if="error" class="error" role="alert">{{ error }}</p>
+  </section>
 </template>
 
 <style scoped>
-.autopilot { display: inline-flex; min-width: 0; max-width: 100%; }
-.autopilot-switch {
-  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 32px; max-width: 100%; padding: 6px 10px;
-  border: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--muted); cursor: pointer;
-  font: 600 10.5px/1.1 var(--mono); letter-spacing: .1em; text-transform: uppercase; text-align: left;
-}
-.autopilot-switch:hover:not(:disabled) { color: var(--text); border-color: var(--line-strong); }
-.autopilot-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.autopilot-switch:disabled { opacity: .5; cursor: default; }
-.autopilot-switch.on { color: var(--text); border-color: color-mix(in srgb, var(--green) 55%, var(--line)); }
-.autopilot-dot { flex: none; width: 8px; height: 8px; border: 1px solid currentColor; }
-.autopilot-switch.on .autopilot-dot { background: var(--green); border-color: var(--green); }
-.autopilot-state { color: var(--text-3); }
-.autopilot-switch.on .autopilot-state { color: var(--green); }
-.autopilot-next { flex-basis: 100%; padding-left: 16px; color: var(--muted); letter-spacing: .04em; text-transform: none; font-weight: 500; }
-.compact .autopilot-switch { min-height: 0; height: 28px; padding: 0 8px; flex-wrap: nowrap; }
-.autopilot-now { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 6px 2px 0; font: 500 13px/1.4 var(--mono); color: var(--muted); }
-.autopilot-now .field-label { margin: 0 6px 0 0; }
-.autopilot-now b { color: var(--text); text-transform: uppercase; letter-spacing: .1em; }
-.autopilot-now b.on { color: var(--green); }
-.autopilot-could-not { margin: 10px 2px 0; padding: 8px 10px; border-left: 2px solid var(--ochre); background: var(--surface-2); font-size: 13px; color: var(--text-2); }
-.autopilot-goal { margin: 0 2px; padding: 10px 12px; border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; color: var(--text-2); }
-.autopilot-ask { margin: 18px 2px 0; font-size: 14px; color: var(--text); }
-.autopilot-limits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 8px; }
-.autopilot-note { margin: 10px 2px 0; font-size: 12.5px; color: var(--muted); }
+.ap { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.ap p { margin: 0; overflow-wrap: anywhere; }
+.ap-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ap-head > .mono-label:not(.ap-count) { color: var(--text); }
+.ap-count { flex: 1; color: var(--muted); white-space: nowrap; }
+.ap-look-note { align-self: end; }
+.ap-actions .ap-unsaved { color: var(--ochre); }
+.ap-actions .ap-saved { color: var(--green); }
+.ap-form { display: grid; gap: 6px; }
+.ap-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ap-events, .ap-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ap-actions .mono-label { flex: 1; color: var(--muted); }
+.ap-wakes { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.ap-wakes li { display: grid; gap: 2px; padding: 6px 0; border-bottom: 1px solid var(--line-soft); }
+.ap-wake-head { display: flex; justify-content: space-between; gap: 8px; }
+.ap-state { font: 12px/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: .08em; padding: 0 6px; border: 1px solid var(--line); }
+.ap-state.ack { color: var(--green); }
+.ap-state.delivered { color: var(--accent); }
+.ap-state.unanswered, .ap-state.timeout { color: var(--rose); }
+.ap-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding: 4px 0; }
+.ap-line > .mono-label { flex: none; color: var(--muted); }
+.ap-line-reason { flex: 1; min-width: 0; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ap-line .ap-state { flex: none; }
+.ap-line.problem { padding: 4px 8px; border-left: 2px solid var(--rose); background: color-mix(in srgb, var(--rose) 8%, transparent); }
+.ap-line.problem .ap-state { color: var(--rose); }
+.ap-history summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--muted); }
+.ap-reason { color: var(--text-2); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 </style>
