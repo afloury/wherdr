@@ -96,7 +96,7 @@
 - [Manage machines](docs/machines.md#manage-machines): Settings › Machines (one card per machine: name, state, actions, keep awake, memory), add, reconnect, rename, forget, keep awake (until a time or turned off, laptop battery and lid warning), capacity (memory, cores, load on Linux and macOS; swap on Linux, memory pressure on macOS), memory limits, available hours and offline machines, and where each start goes (placement across a project's machines).
 - [Machines on hc](docs/core.md#creating-terminals-and-agents-machines): how hc reaches core machines.
 - [Claude and Codex quotas](docs/quotas.md#claude-and-codex-quotas): remaining usage per account, with the machines sharing it, and its setup.
-- [Pace](docs/quotas.md#pace): Settings › Agents › Pace, its modes (Free, the default, stops only at the account's own limit), when automatic work may start, and the end-of-week burn.
+- [Pace](docs/quotas.md#pace): Settings › Agents › Pace, its modes (Free, the default, stops only at the account's own limit), when automatic work may start, and the end-of-week burn (one switch: no pace limit until the weekly reset, then off).
 - [Notifications](docs/notifications.md#notifications): Web Push and Do not disturb.
 - [A default and exceptions](docs/notifications.md#a-default-and-exceptions): one synced policy: a default and its exceptions, a coordinator's kept across restarts.
 - [Notifications on hc](docs/core.md#notifications): when v3 sends a push, from hc's events.

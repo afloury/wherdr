@@ -110,9 +110,9 @@ function limitHit(ap: Autopilot, tasks: Task[], runs: Run[], now: number, holds?
 
 // Why the autopilot may not start one more task now, or undefined. `pace`:
 // the verdict of the worker's account, given only for automatic work; while
-// its account burns, the burn's tasks at once replace the autopilot's.
+// its account burns, tasks at once are Auto (the machines' room decides).
 export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: number, pace?: PaceVerdict, holds?: SlotOf): string | undefined {
-  return limitHit(pace?.go && pace.atOnce !== undefined ? { ...ap, atOnce: pace.atOnce } : ap, tasks, runs, now, holds)?.refusal ?? paceRefusal(pace)
+  return limitHit(pace?.go && pace.burning ? { ...ap, atOnce: null } : ap, tasks, runs, now, holds)?.refusal ?? paceRefusal(pace)
 }
 
 // A start the user asked for goes past the autopilot's limits: the word its
