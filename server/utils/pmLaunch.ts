@@ -124,8 +124,6 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   if (!asRead) throw new HerdrError('not_found', 'Unknown task')
   let task = asRead
   if (task.state === 'working' && !revive) throw new HerdrError('busy', 'This task is already working')
-  const live = await liveWorker(deps, task.id)
-  if (live) throw new HerdrError('busy', `This task's worker is still running (${live.program} ${live.model}): stop the task first`)
   const found = (await store.projects()).find(x => x.key === asRead.project)
   if (!found) throw new HerdrError('not_found', 'Unknown project')
   const placed = taskMachine(task, found, asked)
@@ -145,6 +143,9 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
     const saved = await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, step })
     return noteBack(store, saved, taskPlan(t, saved, p), by, `started again by the ${by}`)
   }
+  // Only where a worker is launched: a running one would share its worktree.
+  const live = await liveWorker(deps, task.id)
+  if (live) throw new HerdrError('busy', `This task's worker is still running (${live.program} ${live.model}): stop the task first`)
   const { machine } = placed
   let on: string | undefined, label = ''
   try { ({ on, m: { label } } = machineOn(deps, machine)) } catch (e) { return wait(store, task, (e as Error).message) }

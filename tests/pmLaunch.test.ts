@@ -128,7 +128,9 @@ describe('startTask', () => {
     const { store, deps, runs } = await setup({ template: { ...wherdr, id: 'vibe' } })
     const stopped = { ...(await store.task('WEB-1'))!, state: 'waiting' as const, waiting: 'The reviewer (claude) stopped right after starting', step: { at: 3, started: true, since: 5, told: 5, proofs: {}, rounds: {} } }
     await store.saveTask(stopped)
-    const t = await startTask(deps, 'WEB-1')
+    // Its worker still runs (kept until idle): no worker is started, so nothing to refuse.
+    await store.saveRun(run('w1', { terminal: 'm/t0' }))
+    const t = await startTask(deps, 'WEB-1', { by: 'user' })
     expect(runs).toHaveLength(0)
     expect(t).toMatchObject({ state: 'working', waiting: undefined, step: { at: 3 } })
     expect(t.step!.told).toBeUndefined()
