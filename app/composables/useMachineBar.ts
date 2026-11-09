@@ -3,6 +3,8 @@
 import { flag, syncedRef } from './useSyncedSettings'
 import { readProjectTabs } from '#shared/settings'
 import { BAR_ALL, groupedBarItems, barMachineSelection, barPick, readBarList, readBarPick, readMachineGroups } from '~/utils/machineBar'
+import { projectOnTab, projectTabMachines } from '~/utils/projectTabs'
+import { projectCoordinators } from './useCoordinators'
 
 const store = {
   get(k: string) { try { return localStorage.getItem(k) } catch { return null } },
@@ -48,3 +50,16 @@ export function resetMachineBar() {
 
 // Which home tab shows each project (utils/projectTabs.ts): fixed project key -> group id or '*'.
 export const projectTabs = syncedRef('projectTabs', readProjectTabs, v => JSON.stringify(v), { deep: true })
+
+// Each project's tab machines (utils/projectTabs.ts), by its fixed key.
+// Alfred is not in it: it shows on every tab.
+export const projectTabPlaces = computed(() => new Map(projectCoordinators.value.map(c =>
+  [c.project, projectTabMachines({ machines: c.machines ?? [] }, projectTabs.value[c.project], machineGroups.value)])))
+// The home tab picked shows this project (a project not loaded yet shows).
+export const projectOnBar = (project: string) => {
+  const m = projectTabPlaces.value.get(project)
+  return m === undefined || projectOnTab(m, machineBarSelection.value)
+}
+// Where each running coordinator's conversation belongs (machineConversation.ts).
+export const coordinatorPlaces = computed(() => projectCoordinators.value.flatMap(c =>
+  c.terminal ? [{ terminal: c.terminal, tabMachines: projectTabPlaces.value.get(c.project) ?? null }] : []))

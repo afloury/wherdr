@@ -35,6 +35,8 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   them, else held by wherdr and sent when the turn ends; never sent twice), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), up to **8 MB per file** (core's `terminal.put`).
+  A sent file shows as a chip (icon and original name) in the message and its history, also in
+  conversations from v2; a tap opens or downloads it.
   Slash commands typed in the field (`/compact`, `/clear`…) are sent as text. **Stop** (or `Esc`
   in the empty field) interrupts the agent and says what core observed. When Claude Code
   suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,
