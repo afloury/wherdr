@@ -86,3 +86,19 @@ it('a visual merge is sent back with a note', async () => {
   await vi.waitFor(() => expect(sentBack).toEqual({ id: 'WHR-1', note: 'The button is cut on the phone' }))
   w.unmount()
 })
+
+it('renders the description as Markdown, with no raw HTML', async () => {
+  const description = 'Intro with **bold** and `npm test`.\n\n- one\n- two\n\n<img src=x onerror="alert(1)"><script>alert(2)</script><b style="color:red">raw</b>'
+  const w = await mountSuspended(TaskSheet, { props: { card: { ...card, yourTurn: undefined, description } }, global: { stubs } })
+  await w.get('[data-tab="description"]').trigger('click')
+  const desc = w.get('[data-testid="task-description"]')
+  expect(desc.find('strong').text()).toBe('bold')
+  expect(desc.find('code').text()).toBe('npm test')
+  expect(desc.find('code').attributes('role')).toBeUndefined() // not a chat control here
+  expect(desc.findAll('li').map(li => li.text())).toEqual(['one', 'two'])
+  expect(desc.find('script').exists()).toBe(false)
+  expect(desc.find('[onerror]').exists()).toBe(false)
+  expect(desc.find('[style]').exists()).toBe(false)
+  expect(desc.text()).toContain('<script>alert(2)</script>') // shown as text
+  w.unmount()
+})

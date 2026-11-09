@@ -894,14 +894,7 @@ function onListClick(e: MouseEvent) {
   // A shell command is copied without its prompts ("! ", "$ ") nor output.
   const text = block?.dataset.cmd ?? block?.querySelector('pre')?.textContent
   if (text == null) return
-  navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = t('Copied')
-    btn.classList.add('done')
-    setTimeout(() => {
-      btn.textContent = t('Copy')
-      btn.classList.remove('done')
-    }, 1400)
-  }).catch(() => toast(t('Copy failed'), true))
+  copyCodeBlock(btn, text)
 }
 
 // ------------------------------------------------------------ commands
