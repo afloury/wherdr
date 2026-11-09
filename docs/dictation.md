@@ -469,8 +469,8 @@ memory reported in the pull request; a device without WebGPU or `shader-f16` get
 ## Read aloud
 
 The other direction: **Play** under each agent reply reads it aloud, chosen in **Settings ›
-Conversation › Read aloud** (per device: Off, or the device's voices; on by default where the
-browser has `speechSynthesis`).
+Conversation › Read aloud** (per device: Off, the device's voices, or **Voice of wherdr (on this
+device)**; the device's voices by default where the browser has `speechSynthesis`).
 
 | File | Role |
 | --- | --- |
@@ -480,6 +480,7 @@ browser has `speechSynthesis`).
 | `app/utils/speech/voicePicker.ts` | Voice quality (Premium, Enhanced, Standard, Online, Low quality, from the name or Apple's voiceURI) and the language and quality filters of the voice list |
 | `app/utils/speech/lowQualityVoices.ts` | Names of Apple's novelty, MacinTalk and Eloquence voices, hidden by default |
 | `app/components/ReadAloudButton.vue`, `ReadAloudSettings.vue` | Play / Stop under a reply; the settings (language filter, hide low-quality voices, voice search in sections, Test) |
+| `app/components/ReadAloudNeuralVoices.vue` | The Voice of wherdr settings: one row per language voice (name, size, attribution, Install / progress / Cancel / Delete, Test) |
 
 Every piece is queued in the tap itself: iOS only speaks from a user gesture. iOS may stop
 speech when the screen locks or the app goes to the background, without an `end` event; a check
@@ -488,8 +489,7 @@ every 1.5 s puts the button back to Play. Leaving the pane stops its reply. Voic
 Enhanced voices downloaded in iOS Settings are kept for native apps: Safari and home-screen web
 apps only list the standard ones, and the settings say so under the voice list.
 
-Neural voices that run on the phone (sherpa-onnx with Piper models, as for dictation) are being
-added. Their catalog is `app/utils/speech/voices.json`: Siwis (French, default), Cori (English,
+Neural voices run on the phone (sherpa-onnx with Piper models, as for dictation). Their catalog is `app/utils/speech/voices.json`: Siwis (French, default), Cori (English,
 UK, default) and MLS (French, fallback), each with its files (the model, `tokens.txt`, and
 espeak-ng data trimmed to French and English, about 0.9 MB), its source pinned by sha256, its
 licence and the attribution to show (Siwis: CC BY 4.0). Each voice is a fetch set
@@ -506,7 +506,13 @@ models), is not used and the reply goes to the device's voices instead. A reply 
 so Stop never waits behind a long queue; the pieces play back to back through WebAudio, whose
 `AudioContext` is resumed inside the tap (iOS). Audio that arrives for a stopped reply is
 dropped. The worker and the `AudioContext` are released after 60 s without speech and on
-`pagehide`. `tests/neuralVoice.test.ts` covers it with a fake worker. An OpenRouter engine
+`pagehide`. `tests/neuralVoice.test.ts` covers it with a fake worker.
+
+With **Voice of wherdr** chosen, the settings list one voice per language, Siwis (French) and
+Cori (English), each with its size and attribution and its own Install, Cancel, Delete and Test.
+Each reply is read by the voice of its language: `replyLanguage()` guesses French or English from
+common short words and French accents. A reply whose voice is not installed is read by the
+device's voices. An OpenRouter engine
 (`POST /api/v1/audio/speech`, relayed by the server like dictation) is a planned follow-up.
 
 ## Known limits

@@ -2,7 +2,7 @@
 // worker that speaks the TTS worker's protocol and a fake WebAudio clock.
 import { afterEach, describe, expect, it } from 'vitest'
 import { DEVICE_CACHE } from '../app/utils/dictation/deviceModels'
-import { LOOKAHEAD, VOICES, createNeuralVoice, defaultVoice, heapEstimate } from '../app/utils/speech/neuralVoice'
+import { LOOKAHEAD, VOICES, createNeuralVoice, defaultVoice, heapEstimate, replyLanguage } from '../app/utils/speech/neuralVoice'
 import { fakeCaches } from './fakeModelCache'
 
 const siwis = VOICES.find(v => v.id === 'siwis-medium')!
@@ -164,8 +164,10 @@ describe('the neural voice', () => {
     expect(FakeWorker.made[0]!.terminated).toBe(true)
   })
 
-  it('picks the default voice of the first device language it speaks, else English', () => {
+  it('picks the default voice of the first device language it speaks, else English, and guesses a reply’s language', () => {
     expect(defaultVoice(['de-DE', 'fr-FR']).id).toBe('siwis-medium')
     expect(defaultVoice(['de-DE']).id).toBe('cori-medium')
+    expect(replyLanguage('Le build est passé, je relance les tests.')).toBe('fr')
+    expect(replyLanguage('The build passed; I rerun the tests and push the fix.')).toBe('en')
   })
 })
