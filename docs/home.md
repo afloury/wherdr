@@ -116,7 +116,8 @@ devices; deleting a group puts the projects shown in it back to Automatic.
 Machines themselves are managed in [Settings › Machines](machines.md#manage-machines).
 
 A project's coordinator and its tasks to handle show on the tabs holding one of its machines
-(**All** shows every project). The project sheet's **Shown in** (General tab) keeps it on one
+(**All** shows every project); a machine paused for the project counts only while one of its
+tasks still runs there. The project sheet's **Shown in** (General tab) keeps it on one
 group or on all tabs instead ([General](project-management.md#general)). Push notifications are
 not filtered by tab, and the board stays the same on every tab.
 

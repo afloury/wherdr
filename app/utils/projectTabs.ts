@@ -8,13 +8,15 @@ export const projectTab = (q: unknown): ProjectTab => (PROJECT_TABS as readonly 
 // Which home tab (machine bar) shows a project: its coordinator and its tasks
 // to handle. A project has tab machines: those of the group it is pinned to,
 // every machine (null) when pinned to all tabs, or by default (no pin, or the
-// group was deleted) its allowed machines. A tab shows it when they meet.
-// project.machines: its allowed machines (CoordinatorView.machines); override:
-// its entry in the projectTabs setting (readProjectTabs), undefined = automatic.
-export function projectTabMachines(project: { machines: readonly string[] }, override: string | undefined, groups: readonly MachineGroup[]): string[] | null {
+// group was deleted) its allowed machines but those paused for it, unless one
+// of its tasks still runs there. A tab shows it when they meet.
+// project: its allowed machines, paused ones and paused ones still at work
+// (CoordinatorView); override: its entry in the projectTabs setting
+// (readProjectTabs), undefined = automatic.
+export function projectTabMachines(project: { machines: readonly string[], paused?: readonly string[], busy?: readonly string[] }, override: string | undefined, groups: readonly MachineGroup[]): string[] | null {
   if (override === BAR_ALL) return null
   const group = override ? groups.find(g => g.id === override) : undefined
-  return [...(group?.machines ?? project.machines)]
+  return group ? [...group.machines] : project.machines.filter(m => !project.paused?.includes(m) || !!project.busy?.includes(m))
 }
 
 // selection: the tab's machines (barMachineSelection), null = the All tab.
