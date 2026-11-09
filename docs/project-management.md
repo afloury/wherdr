@@ -36,6 +36,10 @@ new project.
 5. **Start its coordinator.** Pick the agent and start it: the coordinator is
    the agent you talk to about the project. It adds tasks and follows them on
    the board. Its [autopilot](#autopilot) can be set under it (optional).
+   It keeps a memory of its own, `memory.md` in its folder: your decisions
+   and preferences, read at each start. wherdr never rewrites it, so the
+   coordinator remembers them after a restart or a change of agent (Claude,
+   Codex…).
 6. **Add a first task.** A title and, with several, its type.
 
 **New › Project** also opens a project's coordinator, or adds a new or empty
@@ -395,6 +399,10 @@ of the entry. An agent that is not on screen here opens the sheet instead.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (start it, open its agent). A failed action step (a merge GitHub
   refused) has *Try again* at the top of the sheet, which runs it again.
+
+On a phone, the To do buttons (*Merge*, the step's button, *Open the PR*,
+*Start*, *Open the agent*) stay pinned at the bottom of the tab while its
+content scrolls, so they are always in reach above the home bar.
 
 ### Report a problem
 

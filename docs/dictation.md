@@ -309,13 +309,20 @@ family is added there without code; the app needs a rebuild to ship it. An entry
 | `requires` | `[]`, `['webgpu']` or `['webgpu', 'shader-f16']`: Settings hides the model when the browser lacks it |
 | `set`, `source` | The fetch script's set name and its pinned archive (`url`, `sha256`) |
 | `dir`, `files` | Folder under `/models/` and its files, each with its exact `bytes` (checked against the server's on download) |
-| `languages`, `punctuation` | ISO 639-1 codes; punctuation and capitals |
+| `languages`, `punctuation` | ISO 639-1 codes (639-3 when there is none: `yue`); punctuation and capitals |
+| `ranked` | The same languages, best first, from the model's own published figures (sources in the `RANKING SOURCES` comment of `deviceModels.ts`) |
 | `autoDetect` | `false` when the model does not detect the language (Canary): the worker is given the first of the device's languages it speaks, else English |
 | `textCase` | `"upper"` when the model writes in capitals (SenseVoice, even with inverse text normalization on): the app puts its text in sentence case |
 | `memory` | Measured `{ heap, peak, basis }`: WASM heap after load, and the page's peak memory. `heap` is what the device budget checks |
-| `quality` | Raw published WER per language: `{ lang, dataset, wer, source }` |
+| `quality` | Raw published error rate per language: `{ lang, dataset, wer, source }`, plus `metric: "CER"` for a character error rate (Chinese, Cantonese, Japanese, Korean) |
 | `speed` | `{ estimate: 1–5, basis, source }`, absent when there is no source |
 | `license` | `{ id, url }` |
+
+**Each card shows what the model is good at, not a fixed pair of languages.** The language line
+gives the first three of `ranked` and how many more (`ZH · YUE · EN · +2`); a model of 10
+languages or more shows its best two and `Multi (25)`. Only languages the model speaks are
+listed. The quality bars follow the two best languages, then the device's own language when the
+model speaks it, marked "yours" (never forced first).
 
 **Ratings are computed, never typed by hand.** Quality: the WER for the language, FLEURS first,
 else MLS, else Common Voice; ≤ 5 → 5 dots, ≤ 7 → 4, ≤ 10 → 3, ≤ 15 → 2, above → 1, no figure →
