@@ -19,6 +19,14 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   reference instances. Incomplete, unsupported or unsafe diagrams stay readable code. Scripts,
   foreign HTML, animation and external resources are rejected; raw inline SVG is not inserted
   into the page. Other fence languages and file-explorer document fences remain code.
+- **Links into wherdr**: an agent sending you somewhere in wherdr gives its in-app address, as a
+  Markdown link (`[Phone](#/settings?section=phone)`) or as inline code that is only the address
+  (`` `#/board?task=KEY-12` ``). Either opens the place in the app, on a computer and a phone,
+  without reloading; Back returns to the conversation. Other links open in a new tab, other
+  inline code stays plain. The addresses: `#/`, `#/decisions`, `#/board` (with `?project=KEY`,
+  `?tag=TAG` or `?task=ID`), `#/settings?section=<section>` and a project's sheet
+  `#/settings?section=projects&project=KEY&tab=<tab>`; Alfred and coordinators get the list in
+  their instructions.
 - **Questions and permissions**: native questions, approvals and menus show their options; a tap
   answers. wherdr reads the screen again right before answering and refuses the answer if the
   question changed meanwhile. A free answer selects its option, waits for the field, then types
@@ -27,6 +35,8 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   them, else held by wherdr and sent when the turn ends; never sent twice), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), up to **8 MB per file** (core's `terminal.put`).
+  A sent file shows as a chip (icon and original name) in the message and its history, also in
+  conversations from v2; a tap opens or downloads it.
   Slash commands typed in the field (`/compact`, `/clear`…) are sent as text. **Stop** (or `Esc`
   in the empty field) interrupts the agent and says what core observed. When Claude Code
   suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,

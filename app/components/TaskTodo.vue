@@ -2,11 +2,14 @@
 // The task sheet's "To do" tab: what a task waiting for the user needs from
 // them, and the buttons for it, nothing else (taskTodo picks the case). A
 // visual merge shows its screenshots large (swipe between them, tap to zoom),
-// the review's verdict and the PR, then Merge or Send back with a note.
+// the review's verdict, then Merge or Send back with a note. A step to merge
+// or a refused one has Open the PR when a link proof is a pull request (any host).
 import { adviceChoices } from '#shared/pm/decisions'
-import { canStart, linkLabel, mainLink, type Card } from '#shared/pm/board'
+import { canStart, prLink, type Card } from '#shared/pm/board'
 import { RESUMES, stoppedText, type Resume } from '#shared/pm/stop'
 import { shotUrl } from '#shared/pm/shots'
+import { reviewLine } from '#shared/pm/report'
+import { agentCatchingUp } from '#shared/pm/refusal'
 import type { Choice } from '#shared/pm/verdict'
 import type { Pane } from '#shared/types'
 import type { WaitKind } from '#shared/pm/run'
@@ -15,26 +18,21 @@ import type { TodoKind } from '~/utils/taskTodo'
 const props = defineProps<{ card: Card, kind: TodoKind, pane?: Pane, busy: boolean, pressing: boolean, refused: string, waitsFor?: string[] }>()
 const emit = defineEmits<{ press: [], start: [], resume: [how: Resume], decide: [choice: Choice], back: [note: string] }>()
 
-const badge = computed(() => stepRefusalText(props.card.yourTurn ?? ''))
+// Where the engine's catch-up of a conflict stands: the agent on it, or done.
+const told = computed(() => agentCatchingUp(props.card))
+const badge = computed(() => stepRefusalText(props.card.yourTurn ?? '', told.value))
 const advice = computed(() => props.card.state?.yourTurn?.advice)
 const choices = computed(() => (advice.value ? adviceChoices(advice.value) : { options: [] }))
 
-// Visual merge: the newest step's screenshots of the result.
-const shots = computed(() => {
-  const s = shotSteps(props.card)[0]
-  return s ? props.card.state!.shots![s.id]!.filter(x => x.phase === 'after').map(x => shotUrl(props.card.id, x.file)) : []
-})
+// Visual merge: the newest step's screenshots of the result (after a rework, its new set).
+const latest = computed(() => { const s = shotSteps(props.card)[0]; return s ? props.card.state!.shots![s.id]!.filter(x => x.phase === 'after') : [] })
+const shots = computed(() => latest.value.map(x => shotUrl(props.card.id, x.file)))
+const reworked = computed(() => latest.value.some(x => x.rework))
 // Phone or desktop, from the image's shape once loaded.
 const shape = ref<Record<string, 'phone' | 'desktop'>>({})
 const loaded = (src: string, e: Event) => { const i = e.target as HTMLImageElement; shape.value = { ...shape.value, [src]: i.naturalWidth < i.naturalHeight ? 'phone' : 'desktop' } }
-const verdict = computed(() => {
-  const at = props.card.state?.at ?? 0
-  const review = props.card.plan.slice(0, at).findLast(s => s.ends === 'verdict')
-  if (!review) return ''
-  const n = props.card.state?.rounds[review.id] ?? 0
-  return n ? tl(`Review passed, ${n} send-back${n > 1 ? 's' : ''}`) : tl('Review passed')
-})
-const pr = computed(() => { const l = mainLink(props.card); return l && /\/pull\/\d+/.test(l.url) ? l : undefined })
+const verdict = computed(() => { const v = reviewLine(props.card.plan, props.card.state?.at ?? 0, props.card.state?.rounds ?? {}); return v ? tl(v) : '' })
+const pr = computed(() => (props.kind === 'merge' || props.kind === 'step' || props.kind === 'refused' ? prLink(props.card) : undefined))
 const note = ref('')
 
 const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent asks a question', 'Son agent pose une question'], permission: ['Its agent asks for a permission', 'Son agent demande une autorisation'], auth: ['Its agent needs its login again', 'Son agent doit se reconnecter'] }
@@ -44,6 +42,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
   <div class="todo" :data-todo="kind" data-testid="task-todo">
     <template v-if="kind === 'merge'">
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
+      <span v-if="reworked" class="mono-label muted" data-testid="todo-rework">{{ tl('Screenshots after rework') }}</span>
       <ul class="todo-shots" data-testid="todo-shots">
         <li v-for="(src, i) in shots" :key="src">
           <button type="button" class="todo-shot" :aria-label="tl(`Screenshot ${i + 1}, full size`)" data-testid="shot" @click="openLightbox(shots, i)">
@@ -52,10 +51,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
           <span v-if="shape[src]" class="mono-label muted">{{ shape[src] === 'phone' ? tl('Phone', 'Téléphone') : tl('Desktop', 'Ordinateur') }}</span>
         </li>
       </ul>
-      <div v-if="verdict || pr" class="todo-review">
-        <span v-if="verdict" class="muted" data-testid="todo-verdict">{{ verdict }}</span>
-        <a v-if="pr" :href="pr.url" target="_blank" rel="noopener" class="board-chip todo-pr" data-testid="todo-pr">{{ linkLabel(pr) }}</a>
-      </div>
+      <p v-if="verdict" class="muted" data-testid="todo-verdict">{{ verdict }}</p>
     </template>
 
     <template v-else-if="kind === 'decide' && advice">
@@ -89,7 +85,9 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
         </div>
       </template>
       <div v-else class="task-sheet-actions">
-        <UButton v-if="card.userLabel || kind === 'refused'" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="emit('press')">{{ card.userLabel || tl('Try again', 'Réessayer') }}</UButton>
+        <!-- A refused action is tried again from the sheet's top (Try again). -->
+        <UButton v-if="card.userLabel && kind !== 'refused'" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="emit('press')">{{ card.userLabel }}</UButton>
+        <UButton v-if="pr" color="neutral" variant="outline" size="xl" icon="i-lucide-square-arrow-out-up-right" :to="pr.url" target="_blank" data-testid="todo-pr">{{ tl('Open the PR') }}</UButton>
         <UButton v-if="kind === 'blocked' && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="emit('start')">{{ tl('Start', 'Lancer') }}</UButton>
         <UButton v-if="pane && kind !== 'merge' && kind !== 'step'" :color="kind === 'ask' ? 'primary' : 'neutral'" :variant="kind === 'ask' ? 'solid' : 'outline'" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)" data-testid="todo-agent">
           {{ card.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent') }}
@@ -97,7 +95,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       </div>
     </div>
     <p v-if="pressing" class="muted" role="status" data-testid="step-user-busy">{{ tl('Running this step… A merge waits for the PR\'s checks, which can take a few minutes.', 'Étape en cours… Une fusion attend les vérifications de la PR, ce qui peut prendre quelques minutes.') }}</p>
-    <p v-else-if="refused" class="error" role="alert" :title="refused" data-testid="step-user-refused">{{ stepRefusalText(refused) }}</p>
+    <p v-else-if="refused" class="error" role="alert" :title="refused" data-testid="step-user-refused">{{ stepRefusalText(refused, told) }}</p>
 
     <form v-if="kind === 'merge'" class="todo-back" data-testid="todo-back" @submit.prevent="emit('back', note.trim())">
       <UTextarea v-model="note" :rows="2" autoresize maxlength="2000" size="xl" :placeholder="tl('What to change')" data-testid="todo-back-note" />
@@ -112,6 +110,8 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
 .todo-say { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
 .todo-actions { display: flex; flex-direction: column; gap: 10px; }
 .todo-choice { display: grid; gap: 4px; justify-items: start; }
+/* The step's button beside Open the PR: one row, wrapping on the phone. */
+.todo-actions .task-sheet-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 /* The screenshots large, one per screen width on the phone: swipe between
    them (a thin bar under the row). On a computer they wrap as a grid. */
 .todo-shots { display: flex; gap: 12px; margin: 0; padding: 0 0 6px; list-style: none; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }

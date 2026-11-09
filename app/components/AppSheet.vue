@@ -13,12 +13,20 @@ import { SHEET_DRAG_SLOP, sheetDragCloses, sheetDragOffset } from '~/utils/sheet
 const open = defineModel<boolean>('open', { default: false })
 const props = defineProps<{ hideClose?: boolean, title?: string, tall?: boolean, wide?: boolean, full?: boolean, screen?: boolean, top?: boolean }>()
 const emit = defineEmits<{ closed: [] }>()
-const slots = defineSlots<{ default?: () => unknown, footer?: () => unknown }>()
+const slots = defineSlots<{ default?: () => unknown, footer?: () => unknown, lead?: () => unknown }>()
 watch(open, (v, old) => { if (old && !v) emit('closed') })
 const ui = computed(() => ({
   overlay: `hw-scrim${props.screen ? ' screen' : ''}${props.top ? ' top' : ''}`,
   content: `hw-sheet${props.tall ? ' tall' : ''}${props.wide ? ' wide' : ''}${props.full ? ' full' : ''}${props.screen ? ' screen' : ''}${props.top ? ' top' : ''}`,
 }))
+// On open, focus goes to the window itself (screen readers announce its
+// title), not to its first button: the phone's full-width handle would get
+// the browser's focus outline across the top. Tab then reaches the buttons,
+// which keep their keyboard focus ring.
+function focusSheet(e: Event) {
+  e.preventDefault()
+  ;(e.target as HTMLElement).focus({ preventScroll: true })
+}
 
 // The content, or a part of it that scrolls on its own,
 // is scrolled down: the swipe scrolls it back up, it does not close the sheet.
@@ -73,7 +81,7 @@ function dragEnd(e: TouchEvent) {
 
 <template>
   <!-- The image viewer opened from the sheet: its taps and Escape are its own. -->
-  <UModal v-model:open="open" :title="title" :ui="ui" :dismissible="!lightboxSrc">
+  <UModal v-model:open="open" :title="title" :ui="ui" :content="{ onOpenAutoFocus: focusSheet }" :dismissible="!lightboxSrc">
     <template #content>
       <button
         v-if="!screen" type="button" class="hw-sheet-handle" :aria-label="tl('Close', 'Fermer')"
@@ -83,6 +91,7 @@ function dragEnd(e: TouchEvent) {
         v-if="title" data-slot="header" class="hw-sheet-head"
         @touchstart.passive="dragStart($event, true)" @touchmove="dragMove" @touchend="dragEnd" @touchcancel="dragEnd"
       >
+        <span v-if="slots.lead" class="hw-sheet-lead"><slot name="lead" /></span>
         <span class="hw-sheet-title" aria-hidden="true">{{ title }}</span>
         <UButton v-if="!hideClose" icon="i-lucide-x" color="neutral" variant="ghost" data-slot="close" class="hw-sheet-close" :aria-label="tl('Close', 'Fermer')" @click="open = false" />
       </div>

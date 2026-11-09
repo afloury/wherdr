@@ -6,6 +6,7 @@ import type { Task, WaitKind } from './run'
 import type { Wake } from './wakes'
 import { CHOICES, type Advice, type Choice } from './verdict'
 import { stoppedText } from './stop'
+import { turnText } from './refusal'
 
 // agent: a permission, question or login an agent waits on. arbitrate: the
 // after-N rule hands a review to the user. proposal: a template change of the
@@ -63,7 +64,10 @@ export function decisionsOf({ cards, tasks, coordinators, wakes }: DecisionsInpu
       const { options, recommend } = adviceChoices(y.advice)
       out.push({ ...base, id, group: 'arbitrate', text: `${y.badge}: ${y.advice.why}`, options, ...(recommend ? { recommend } : {}) })
     } else if (y.reason === 'timeout') out.push({ ...base, id, group: 'overdue', text: y.badge, ...(c.userLabel ? { label: c.userLabel } : {}) })
-    else out.push({ ...base, id, group: 'step', text: y.badge, label: c.userLabel || 'Try again' })
+    else {
+      const text = turnText({ ...c, yourTurn: y.badge }) // none while the agent fixes a refused merge
+      if (text) out.push({ ...base, id, group: 'step', text, label: c.userLabel || 'Try again' })
+    }
   }
   for (const c of coordinators)
     if (c.proposal) out.push({ id: `proposal:${c.project}:${c.proposal.at}`, group: 'proposal', project: c.project, title: c.name, text: c.proposal.said ? `After your message: “${c.proposal.said}”` : 'Template change proposed', at: c.proposal.at })

@@ -356,7 +356,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     ]
     if (!o.skipImport && v2.found) {
       const r = runImport({ ...o, v2, run, dataDir: path.join(o.dir, 'data'), hcSession: o.hcSession, hcBin: hc, dryRun: true, hcReachable: hcUp })
-      plan.splice(4, 0, `  projects: ${r.projects.added.map(p => `${p.key} (${p.path})`).join(', ') || 'none'}; open tasks: ${r.tasks.added.length}; settings: ${r.settings.carried.length}`,
+      plan.splice(4, 0, `  projects for Alfred to offer: ${r.projects.candidates.map(p => `${p.key} (${p.path})`).join(', ') || 'none'}; settings: ${r.settings.carried.length}`,
         `  machines to add: ${r.machines.added.map(x => `${x.name} (${x.target})`).join(', ') || 'none'}${r.machines.missing.length ? `; not reachable: ${r.machines.missing.map(x => `${x.target} (${x.reason})`).join(', ')}` : ''}`)
     }
     summary.plan = plan
@@ -414,8 +414,8 @@ export async function main(argv = process.argv.slice(2), io = {}) {
       const r = runImport({ ...o, v2, run, dataDir: path.join(o.dir, 'data'), hcSession: o.hcSession, hcBin: hc })
       for (const x of r.machines.added) if (!m.machines.includes(x.name)) m.machines.push(x.name)
       save(m)
-      summary.import = { report: r.report, projects: r.projects.added.map(p => p.key), tasks: r.tasks.added.length, machines: r.machines.added.map(x => x.name), machinesMissing: r.machines.missing.map(x => `${x.target}: ${x.reason}`), settings: r.settings.carried }
-      step('OK', `imported ${r.projects.added.length} projects, ${r.tasks.added.length} tasks, ${r.machines.added.length} machines, ${r.settings.carried.length} settings; report ${r.report}`)
+      summary.import = { report: r.report, projects: r.projects.candidates.map(p => p.key), machines: r.machines.added.map(x => x.name), machinesMissing: r.machines.missing.map(x => `${x.target}: ${x.reason}`), settings: r.settings.carried }
+      step('OK', `listed ${r.projects.candidates.length} projects for Alfred, imported ${r.machines.added.length} machines, ${r.settings.carried.length} settings; report ${r.report}`)
       for (const x of r.machines.missing) next(`machine ${x.target}: ${x.reason}`)
       if (r.machines.missing.length) leftForUser = true
     }

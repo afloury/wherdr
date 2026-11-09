@@ -6,15 +6,18 @@
 // midnight of each chosen day up to `cap` at the weekly reset; 'free' keeps a
 // weekly reserve of `reservePerDay` per day left before the reset. A burn
 // (one-shot, before a reset) replaces the usual mode from its start to the
-// reset. Every mode keeps the 5-hour reserve.
+// reset. Every mode keeps the 5-hour reserve, except 'unlimited' (shown as
+// 'Free'): no line, no reserve, no burn; automatic work stops only when the
+// account itself hits its limit.
 import type { Quota, QuotaWindow } from '../types'
 
-export type PaceMode = 'workdays' | 'everyday' | 'free'
+export type PaceMode = 'unlimited' | 'workdays' | 'everyday' | 'free'
 
 export interface BurnSettings {
   cap: number // weekly % the burn may reach
-  start?: number // ms; unset: 24 h before the weekly reset
-  atOnce: number // tasks at once while burning (read by the burn loop)
+  hours?: number // starts this many hours before each weekly reset; unset: 24
+  until?: number // ms, 'this week only': the reset it ends at; unset: every week
+  atOnce: number // tasks at once while burning: replaces the autopilot's limit for automatic starts
   reserve5h: number // 5-hour reserve while burning
 }
 
@@ -30,7 +33,7 @@ export interface PacePolicy {
 }
 
 export const DEFAULT_PACE: PacePolicy = {
-  mode: 'free', days: [1, 2, 3, 4, 5], cap: 90, reserve5h: 25, reservePerDay: 10, margin: 2,
+  mode: 'unlimited', days: [1, 2, 3, 4, 5], cap: 90, reserve5h: 25, reservePerDay: 10, margin: 2,
   stale: { minutes: 30, margin: 5 },
 }
 export const DEFAULT_BURN: BurnSettings = { cap: 95, atOnce: 3, reserve5h: 10 }
@@ -41,10 +44,23 @@ export const DEFAULT_BURN: BurnSettings = { cap: 95, atOnce: 3, reserve5h: 10 }
 export type PaceReason = 'limited' | 'ahead' | 'reserveWeek' | 'reserve5h' | 'burnCap' | 'stale'
 export type PaceIntent = 'auto' | 'user'
 export type PaceVerdict =
-  | { go: true, warn?: PaceReason, unknown?: true } // unknown: no reading, only the task-count limits apply
+  | { go: true, warn?: PaceReason, unknown?: true, atOnce?: number } // unknown: no reading, only the task-count limits apply; atOnce: burning, the burn's tasks at once
   | { go: false, reason: PaceReason, until: number | null } // until: ms, null = on the next reading
 
-const DAY = 86_400_000
+const HOUR = 3_600_000
+const DAY = 24 * HOUR
+
+// When the burn starts before the weekly reset `resetsAt`; null: no burn, or a
+// 'this week only' burn whose reset has passed. Every-week burns start again
+// from each new reset.
+export function burnStart(b: BurnSettings | undefined, resetsAt: number, now: number): number | null {
+  if (!b || (b.until !== undefined && (now >= b.until || resetsAt > b.until + HOUR))) return null
+  return resetsAt - (b.hours ?? 24) * HOUR
+}
+export const burning = (b: BurnSettings | undefined, resetsAt: number, now: number) => {
+  const start = burnStart(b, resetsAt, now)
+  return start !== null && now >= start
+}
 
 const nextMidnight = (t: number) => {
   const d = new Date(t)
@@ -92,8 +108,7 @@ interface Check { reason: PaceReason, room: number, until: number | null } // ro
 // Weekly check of the mode in force.
 function weekCheck(p: PacePolicy, w: { used: number, resetsAt: number }, now: number): Check {
   const R = w.resetsAt
-  const burn = p.burn
-  if (burn && now >= (burn.start ?? R - DAY)) return { reason: 'burnCap', room: burn.cap - w.used, until: R }
+  if (burning(p.burn, R, now)) return { reason: 'burnCap', room: p.burn!.cap - w.used, until: R }
   if (p.mode === 'free') {
     const left = Math.ceil((R - now) / DAY)
     const limit = (n: number) => 100 - p.reservePerDay * n
@@ -114,6 +129,7 @@ export function paceVerdict(policy: PacePolicy, quota: Quota | null, now: number
     intent === 'user' ? { go: true, warn: reason } : { go: false, reason, until }
   if (!quota) return { go: true, unknown: true }
   if (quota.limited && (quota.limited.resetsAt === null || quota.limited.resetsAt > now)) return refuse('limited', quota.limited.resetsAt)
+  if (policy.mode === 'unlimited') return { go: true }
 
   const week = current(quota.week, now), five = current(quota.five, now)
   if (!week?.resetsAt && !five) return { go: true, unknown: true }
@@ -135,15 +151,16 @@ export function paceVerdict(policy: PacePolicy, quota: Quota | null, now: number
   if (intent === 'auto' && now - quota.at > policy.stale.minutes * 60_000 && checks.some(c => c.room < policy.stale.margin)) {
     return { go: false, reason: 'stale', until: null }
   }
-  return { go: true }
+  return intent === 'auto' && checks[0]?.reason === 'burnCap' ? { go: true, atOnce: policy.burn!.atOnce } : { go: true }
 }
 
-const PACE_MODES: PaceMode[] = ['workdays', 'everyday', 'free']
+const PACE_MODES: PaceMode[] = ['unlimited', 'workdays', 'everyday', 'free']
 const pctIn = (v: unknown, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : undefined)
 
 // The user's changes to a policy (Settings › Pace), checked field by field over
-// `base`: unknown or invalid fields keep the base value. The burn stays as it is.
-export function mergePolicy(base: PacePolicy, patch: unknown): PacePolicy {
+// `base`: unknown or invalid fields keep the base value. `burn`: null turns it
+// off, an object changes it field by field over the base's (or the default) burn.
+export function mergePolicy(base: PacePolicy, patch: unknown, now = Date.now()): PacePolicy {
   const p = (patch && typeof patch === 'object' ? patch : {}) as Record<string, unknown>
   const out: PacePolicy = { ...base, days: [...base.days], stale: { ...base.stale } }
   if (PACE_MODES.includes(p.mode as PaceMode)) out.mode = p.mode as PaceMode
@@ -152,5 +169,26 @@ export function mergePolicy(base: PacePolicy, patch: unknown): PacePolicy {
   out.cap = pctIn(p.cap, 10, 100) ?? out.cap
   out.reserve5h = pctIn(p.reserve5h, 0, 90) ?? out.reserve5h
   out.reservePerDay = pctIn(p.reservePerDay, 0, 14) ?? out.reservePerDay
+  if (p.burn === null) delete out.burn
+  else if (p.burn && typeof p.burn === 'object') {
+    const burn = mergeBurn(base.burn ?? DEFAULT_BURN, p.burn as Record<string, unknown>, now)
+    if (burn) out.burn = burn
+  }
+  return out
+}
+
+// A 'this week only' burn ends at a reset within the next 8 days; any other
+// `until` refuses the change (the base burn stays). null: every week.
+function mergeBurn(base: BurnSettings, b: Record<string, unknown>, now: number): BurnSettings | null {
+  const out: BurnSettings = { ...base }
+  out.cap = pctIn(b.cap, 10, 100) ?? out.cap
+  out.reserve5h = pctIn(b.reserve5h, 0, 90) ?? out.reserve5h
+  out.atOnce = pctIn(b.atOnce, 1, 10) ?? out.atOnce
+  out.hours = pctIn(b.hours, 1, 168) ?? out.hours
+  if (b.until === null) delete out.until
+  else if (b.until !== undefined) {
+    if (typeof b.until !== 'number' || !(b.until > now && b.until <= now + 8 * DAY)) return null
+    out.until = b.until
+  }
   return out
 }

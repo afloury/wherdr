@@ -69,7 +69,7 @@ describe('automations', () => {
     expect(firesOn({ ...a, filter: undefined }, ev(task('CO-1', { auto: 'other' })))).toBe(false)
     expect(firesOn({ ...a, event: 'failed' }, ev(task('CO-1', { title: 'Docs' })))).toBe(false)
     expect(firingTask(auto({ type: 'study' }), 'CO', 'feature', at(5, 4, 17), 'CO-1 (Fix): merged'))
-      .toEqual({ project: 'CO', title: 'A · 2026-11-05 04:17', type: 'study', auto: 'a', origin: 'automation', description: 'Do it\n\nTriggered by CO-1 (Fix): merged.' })
+      .toEqual({ project: 'CO', title: 'A · 2026-11-05 04:17', type: 'study', auto: 'a', origin: 'automation', addedBy: 'automation', description: 'Do it\n\nTriggered by CO-1 (Fix): merged.' })
   })
 })
 

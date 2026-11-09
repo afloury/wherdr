@@ -2,9 +2,10 @@ import { expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import TaskSheet from '~/components/TaskSheet.vue'
 import { initialState, planSteps, type StepState } from '#shared/pm/steps'
-import { wherdr } from '#shared/pm/examples'
+import { company, wherdr } from '#shared/pm/examples'
 import { readBody } from 'h3'
-import type { Card } from '#shared/pm/board'
+import { cardOf, linkLabel, mainLink, type Card } from '#shared/pm/board'
+import type { Task } from '#shared/pm/run'
 
 const badge = 'Look at the screenshots, then merge: merge: the PR head is not the task\'s commit'
 let release: () => void = () => {}
@@ -55,7 +56,7 @@ const cases: [string, Card, string, string[]][] = [
   ['a stopped task', waiting({ yourTurn: 'Stopped by the user: wrong way', stopped: { by: 'the user', why: 'wrong way', at: 1 }, state: at(1) }), 'stopped', []],
   ['a step the user ends', waiting({ yourTurn: 'Deploy it', userLabel: 'Deployed', state: at(4, { yourTurn: { reason: 'user', badge: 'Deploy it' } }) }), 'step', ['step-user']],
   ['an agent question', waiting({ yourTurn: 'Which port?', asks: { kind: 'question', text: 'Which port?' }, state: at(1) }), 'ask', []],
-  ['a refused merge', waiting({ yourTurn: 'Merge: merge: 2 check(s) failed', state: at(4, { yourTurn: { reason: 'action', badge: 'Merge: merge: 2 check(s) failed' } }) }), 'refused', ['step-user']],
+  ['a refused merge', waiting({ yourTurn: 'Merge: merge: 2 check(s) failed', state: at(4, { yourTurn: { reason: 'action', badge: 'Merge: merge: 2 check(s) failed' } }) }), 'refused', ['task-retry', 'task-report-start']],
   ['a blocked task', waiting({ yourTurn: 'WHR-2, which this task starts after, failed', phase: 'todo', state: undefined }), 'blocked', ['task-start']],
 ]
 
@@ -77,6 +78,26 @@ it('a task not waiting for the user opens as before, on its description', async 
   w.unmount()
 })
 
+// A PR the worker opened with its own tool (Bitbucket here), given as the pr step's link proof.
+it('a link proof that is a PR shows Open the PR at the merge step and on the card', async () => {
+  const url = 'https://bitbucket.org/example-org/example-repo/pull-requests/12'
+  const task: Task = {
+    id: 'WHR-1', project: 'WHR', title: 'A task', description: '', type: 'feature', state: 'working',
+    step: { ...initialState(), started: true, at: 4, proofs: { pr: { link: url } }, yourTurn: { reason: 'user', badge: 'Merge the PR on Bitbucket' } },
+  }
+  const c = cardOf(task, planSteps(company, { type: 'feature' }), [])
+  expect(mainLink(c)).toEqual({ label: 'PR', url })
+  expect(linkLabel(mainLink(c)!)).toBe('PR #12')
+  const w = await mountSuspended(TaskSheet, { props: { card: c }, global: { stubs } })
+  expect(w.get('[data-testid="task-todo"]').attributes('data-todo')).toBe('step')
+  expect(w.get('[data-testid="todo-pr"]').attributes('href')).toBe(url)
+  expect(w.get('[data-testid="step-user"]').text()).toBe('I merged it')
+  w.unmount()
+  // A proof stored with the note's closing period is still the PR.
+  const dotted = cardOf({ ...task, step: { ...task.step!, proofs: { pr: { link: `${url}.` } } } }, planSteps(company, { type: 'feature' }), [])
+  expect(linkLabel(mainLink(dotted)!)).toBe('PR #12')
+})
+
 let sentBack: unknown
 registerEndpoint('/api/pm/step-back', { method: 'POST', handler: async (e) => { sentBack = await readBody(e); return { task: {} } } })
 it('a visual merge is sent back with a note', async () => {
@@ -84,5 +105,21 @@ it('a visual merge is sent back with a note', async () => {
   await w.get('textarea[data-testid="todo-back-note"]').setValue('The button is cut on the phone')
   await w.get('[data-testid="todo-back"]').trigger('submit')
   await vi.waitFor(() => expect(sentBack).toEqual({ id: 'WHR-1', note: 'The button is cut on the phone' }))
+  w.unmount()
+})
+
+it('renders the description as Markdown, with no raw HTML', async () => {
+  const description = 'Intro with **bold** and `npm test`.\n\n- one\n- two\n\n<img src=x onerror="alert(1)"><script>alert(2)</script><b style="color:red">raw</b>'
+  const w = await mountSuspended(TaskSheet, { props: { card: { ...card, yourTurn: undefined, description } }, global: { stubs } })
+  await w.get('[data-tab="description"]').trigger('click')
+  const desc = w.get('[data-testid="task-description"]')
+  expect(desc.find('strong').text()).toBe('bold')
+  expect(desc.find('code').text()).toBe('npm test')
+  expect(desc.find('code').attributes('role')).toBeUndefined() // not a chat control here
+  expect(desc.findAll('li').map(li => li.text())).toEqual(['one', 'two'])
+  expect(desc.find('script').exists()).toBe(false)
+  expect(desc.find('[onerror]').exists()).toBe(false)
+  expect(desc.find('[style]').exists()).toBe(false)
+  expect(desc.text()).toContain('<script>alert(2)</script>') // shown as text
   w.unmount()
 })
