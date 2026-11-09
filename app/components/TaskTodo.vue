@@ -84,7 +84,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
           <small class="muted">{{ tl(RESUME_MEANING[how]) }}</small>
         </div>
       </template>
-      <div v-else class="task-sheet-actions">
+      <div v-else class="task-sheet-actions todo-buttons">
         <!-- A refused action is tried again from the sheet's top (Try again). -->
         <UButton v-if="card.userLabel && kind !== 'refused'" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="emit('press')">{{ card.userLabel }}</UButton>
         <UButton v-if="pr" color="neutral" variant="outline" size="xl" icon="i-lucide-square-arrow-out-up-right" :to="pr.url" target="_blank" data-testid="todo-pr">{{ tl('Open the PR') }}</UButton>
@@ -118,14 +118,18 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
 .todo-shots li { flex: 0 0 auto; max-width: 100%; display: grid; gap: 4px; align-content: start; scroll-snap-align: start; }
 .todo-shot { display: block; max-width: 100%; padding: 0; border: 1px solid var(--line); background: var(--surface); cursor: zoom-in; }
 /* Large, yet leaving Merge in view. */
-.todo-shot img { display: block; height: auto; max-height: 26vh; max-width: 100%; width: auto; }
+.todo-shot img { display: block; height: auto; max-height: min(40vh, 420px); max-width: 100%; width: auto; }
+/* On the phone the step's buttons (Merge…) stay pinned at the bottom of the
+   sheet while its content scrolls: always in reach, never under the sheet's edge. */
+@media (max-width: 699px) {
+  .todo-shot img { max-height: 26vh; }
+  .todo-actions:has(> .todo-buttons:not(:empty)) { position: sticky; bottom: 0; z-index: 1; padding: 10px 0; background: var(--bg); border-top: 1px solid var(--line-soft); }
+}
+/* On a computer the screenshots wrap as a grid. */
 @media (min-width: 700px) {
   .todo-shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); overflow: visible; padding: 0; }
   .todo-shots li { min-width: 0; justify-items: start; }
-  .todo-shot img { max-height: min(40vh, 420px); }
 }
-.todo-review { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
-.todo-pr { min-height: 44px; display: inline-flex; align-items: center; }
 .todo-back { display: grid; gap: 8px; }
 .todo-back > button { justify-self: start; }
 </style>
