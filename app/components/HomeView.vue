@@ -65,7 +65,7 @@ const conn = computed(() => {
   if (offlineView.value) return { ok: false, text: t('offline'), idle: false }
   if (!eventsOpen.value) return { ok: false, text: everOpen.value ? t('offline — reconnecting…') : t('connecting…'), idle: !everOpen.value }
   if (!st.value.ok) return { ok: false, text: t('herdr-core unavailable'), idle: false }
-  return { ok: true, text: 'wherdr v3 · herdr-core', idle: false }
+  return { ok: true, text: 'wherdr v3', idle: false }
 })
 
 // "Dashboard"-style counters: always all three, zeros dimmed. Rows without a
