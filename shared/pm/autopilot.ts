@@ -16,7 +16,7 @@ export interface Autopilot {
   every?: string // duration (30m, 2h): a wake with the goal, in hours
   at?: string // fixed times (daily 08:00, mon,thu 09:00, a cron): a wake with the goal, too
   events: AutopilotEvent[]
-  perDay: number // tasks started per day
+  perDay?: number // tasks started per day; absent: no daily limit
   atOnce: number // tasks working at once (waiting and ready ones take no slot)
   hours?: { from: number, to: number } // local hours, to excluded; from > to spans midnight
   lookForWork?: true // keep the scheduled wakes when there is nothing to do (goals that add their own tasks)
@@ -24,6 +24,7 @@ export interface Autopilot {
 }
 
 export const LOOK_PER_DAY = 3
+export const MAX_PER_DAY = 1000
 
 export const DEFAULT_AUTOPILOT: Autopilot = { on: false, goal: '', events: ['done', 'stuck'], perDay: 10, atOnce: 2 }
 
@@ -39,14 +40,16 @@ export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error
   if (s && ('error' in s || 'every' in s)) return { error: 'at: fixed times like daily 08:00, mon,thu 09:00 or a cron' }
   const events = Array.isArray(o.events) ? o.events : []
   if (!events.every(e => (AUTOPILOT_EVENTS as readonly unknown[]).includes(e))) return { error: `events: ${AUTOPILOT_EVENTS.join(', ')}` }
-  const perDay = int(o.perDay, 100), atOnce = int(o.atOnce, 20)
-  if (perDay === null || atOnce === null) return { error: 'perDay (0-100) and atOnce (0-20) are whole numbers' }
+  // Tasks / day left empty: no daily limit.
+  const noCap = o.perDay === undefined || o.perDay === null || o.perDay === ''
+  const perDay = noCap ? undefined : int(o.perDay, MAX_PER_DAY), atOnce = int(o.atOnce, 20)
+  if (perDay === null || atOnce === null) return { error: `perDay (0-${MAX_PER_DAY}, or empty for no limit) and atOnce (0-20) are whole numbers` }
   const lookPerDay = o.lookPerDay === undefined ? undefined : int(o.lookPerDay, 20)
   if (lookPerDay === null) return { error: 'lookPerDay: a whole number, 0-20' }
   const h = o.hours as { from?: unknown, to?: unknown } | undefined
   if (h !== undefined && h !== null && (int(h.from, 23) === null || int(h.to, 24) === null || h.from === h.to)) return { error: 'hours: from 0-23, to 0-24, not equal' }
   return { autopilot: {
-    on: o.on === true, goal, events: [...new Set(events as AutopilotEvent[])], perDay, atOnce,
+    on: o.on === true, goal, events: [...new Set(events as AutopilotEvent[])], ...(perDay === undefined ? {} : { perDay }), atOnce,
     ...(typeof o.every === 'string' && o.every ? { every: o.every } : {}),
     ...(at ? { at } : {}),
     ...(h ? { hours: { from: h.from as number, to: h.to as number } } : {}),
@@ -77,14 +80,15 @@ export function limitsLeft(ap: Autopilot, tasks: Task[], runs: Run[], now: numbe
   for (const r of runs) if (ids.has(r.task) && r.role === 'worker') first.set(r.task, Math.min(first.get(r.task) ?? Infinity, r.startedAt))
   const started = [...first.values()].filter(at => at >= midnight).length
   const working = tasks.filter(t => taskStatus(t) === 'working').length
-  return { started, perDay: ap.perDay, startLeft: Math.max(0, Math.min(ap.perDay - started, ap.atOnce - working)), working, atOnce: ap.atOnce }
+  const dayLeft = ap.perDay === undefined ? Infinity : ap.perDay - started
+  return { started, perDay: ap.perDay, startLeft: Math.max(0, Math.min(dayLeft, ap.atOnce - working)), working, atOnce: ap.atOnce }
 }
 
 // Why the autopilot may not start one more task now, or undefined. `pace`:
 // the verdict of the worker's account, given only for automatic work.
 export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: number, pace?: PaceVerdict): string | undefined {
   const l = limitsLeft(ap, tasks, runs, now)
-  if (l.started >= l.perDay) return `Today's limit is reached (${l.perDay} tasks started)`
+  if (l.perDay !== undefined && l.started >= l.perDay) return `Today's limit is reached (${l.perDay} tasks started)`
   if (l.working >= l.atOnce) return `${l.working} tasks already work at once (limit ${l.atOnce})`
   if (!inHours(ap.hours, new Date(now))) return 'Outside the autopilot\'s hours'
   return paceRefusal(pace)

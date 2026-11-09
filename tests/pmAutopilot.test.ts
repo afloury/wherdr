@@ -17,7 +17,10 @@ describe('autopilot settings', () => {
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, at: ' daily 08:00 ' })).toMatchObject({ autopilot: { at: 'daily 08:00' } })
     for (const at of ['every 2h', 'soon']) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, at })).toEqual({ error: expect.stringMatching(/^at:/) })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, events: ['merged'] })).toEqual({ error: expect.stringMatching(/events/) })
-    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay: 1000 })).toEqual({ error: expect.stringMatching(/perDay/) })
+    // Tasks / day: empty is no daily limit, up to 1000 otherwise.
+    for (const perDay of ['', null, undefined]) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay })).toEqual({ autopilot: { on: false, goal: '', events: ['done', 'stuck'], atOnce: 2 } })
+    for (const perDay of [0, 250]) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay })).toMatchObject({ autopilot: { perDay } })
+    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay: 2000 })).toEqual({ error: expect.stringMatching(/perDay/) })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, hours: { from: 8, to: 8 } })).toEqual({ error: expect.stringMatching(/hours/) })
   })
 
@@ -44,6 +47,15 @@ describe('autopilot limits', () => {
     // A task first started yesterday does not count today.
     expect(startRefusal(ap, [...tasks, task(4, { state: 'waiting' })], [...runs, run(3, at(4)), run(4, at(4))], at(12))).toMatch(/Today's limit is reached \(3/)
     expect(startRefusal({ ...ap, hours: { from: 22, to: 6 } }, [], [], at(12))).toMatch(/hours/)
+  })
+
+  it('has no daily limit without Tasks / day: only At once holds', () => {
+    const { perDay: _, ...noCap } = ap
+    const runs = [1, 2, 3, 4].map(n => run(n, at(n)))
+    const tasks = [1, 2, 3, 4].map(n => task(n, { state: 'waiting' }))
+    expect(limitsLeft(noCap, tasks, runs, at(12))).toMatchObject({ started: 4, perDay: undefined, startLeft: 2 })
+    expect(startRefusal(noCap, tasks, runs, at(12))).toBeUndefined()
+    expect(startRefusal(noCap, [...tasks, task(5), task(6)], runs, at(12))).toMatch(/at once/)
   })
 })
 

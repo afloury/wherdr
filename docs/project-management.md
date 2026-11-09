@@ -140,7 +140,7 @@ kept conversation that ran with another agent. A tap opens its window:
   ran with another one; on the board, *Open* opens or starts it;
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
-  limits (*Tasks / day*, *At once*), the events it wakes on (*Task added*, *Task
+  limits (*Tasks / day*, up to 1000, left empty for no daily limit; *At once*), the events it wakes on (*Task added*, *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
   even with nothing to do, with its own *New tasks / day*). The form says
   *Unsaved changes* until you save;
