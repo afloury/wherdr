@@ -73,7 +73,7 @@ export function signalEvent(step: PlannedStep | undefined, role: Run['role'], r:
 export function dueText(plan: PlannedStep[], s: StepState | undefined): { holder: 'worker' | 'reviewer', text: string } | undefined {
   const step = s?.started && !s.done ? plan[s.at] : undefined
   if (!step || s!.told === s!.since || (step.holder !== 'worker' && step.holder !== 'reviewer') || s!.yourTurn) return
-  if (step.holder === 'reviewer') return { holder: 'reviewer', text: s!.rereview ? rereviewText(s!.rereview) : reviewText(step.text, s!.reviews?.[step.id]?.at(-1)) }
+  if (step.holder === 'reviewer') return { holder: 'reviewer', text: s!.rereview ? rereviewText(s!.rereview, !!s!.approved) : reviewText(step.text, s!.reviews?.[step.id]?.at(-1)) }
   const back = s!.backFrom ? s!.reviews?.[s!.backFrom]?.at(-1) : undefined
   const text = s!.fix ?? (back ? sendBackText(s!.backFrom!, back.findings) : step.text)
   return { holder: 'worker', text: `${text}\n\nWhen done: ${DONE_CMD}` }
