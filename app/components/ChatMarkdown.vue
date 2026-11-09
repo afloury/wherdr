@@ -16,6 +16,8 @@ import { appRoute, isAppLink, linkedTask } from '#shared/appLinks'
 // prop to false, which would switch the encrypted text off everywhere.
 const props = withDefaults(defineProps<{ html: string, typing: number | null, speed?: TypingSpeed, cipher?: boolean }>(), { speed: undefined, cipher: undefined })
 const emit = defineEmits<{ done: [] }>()
+// Two roots (the task cards' teleports): a class given to this component goes on the body.
+defineOptions({ inheritAttrs: false })
 const el = ref<HTMLElement | null>(null)
 
 let plan: RevealPlan | null = null
@@ -23,7 +25,7 @@ let raf = 0
 // Reveal the SVG card atomically so typing never rewrites its source or controls.
 const atomic = (n: RevealNode) => {
   const classes = (n as unknown as Element).classList
-  return Boolean(classes?.contains('code-head') || classes?.contains('svg-block'))
+  return Boolean(classes?.contains('code-head') || classes?.contains('svg-block') || classes?.contains('wd-block'))
 }
 const keep = (n: RevealNode) => /^T[DH]$/.test((n as unknown as Element).tagName || '')
 
@@ -176,6 +178,14 @@ function onAppLink(event: MouseEvent) {
   if (task) openTaskSheet(task)
   else router.push(appRoute(href))
 }
+// A `wherdr` block's task lines (utils/markdown.ts): each placeholder shows
+// its live card (ChatTaskCard.vue) in place of the link it holds.
+const taskSlots = shallowRef<{ to: HTMLElement, id: string }[]>([])
+function fillTaskSlots() {
+  const found = Array.from(el.value?.querySelectorAll<HTMLElement>('.wd-task[data-task]') ?? [])
+  for (const to of found) to.replaceChildren()
+  taskSlots.value = found.map(to => ({ to, id: to.dataset.task! }))
+}
 function onClick() {
   if (plan) {
     stop()
@@ -185,6 +195,7 @@ function onClick() {
 
 // First state applied before display: no flash of the full text.
 onMounted(() => {
+  fillTaskSlots()
   syncSvgTheme(true)
   if (props.typing !== null) start(props.typing)
 })
@@ -200,7 +211,7 @@ watch(() => props.html, () => {
   plan = null
   emit('done')
 }, { flush: 'pre' })
-watch(() => props.html, () => syncSvgTheme(true), { flush: 'post' })
+watch(() => props.html, () => { fillTaskSlots(); syncSvgTheme(true) }, { flush: 'post' })
 onBeforeUnmount(() => {
   themeObserver?.disconnect()
   cancelAnimationFrame(raf)
@@ -211,7 +222,10 @@ onBeforeUnmount(() => {
 
 <template>
   <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
-  <div ref="el" class="md-body" :class="{ typing: typing !== null }" @click.capture="onClick" @click="onAppLink($event); onSvgToggle($event)" @keydown="onKey" @error.capture="onImageError" v-html="html" />
+  <div ref="el" v-bind="$attrs" class="md-body" :class="{ typing: typing !== null }" @click.capture="onClick" @click="onAppLink($event); onSvgToggle($event)" @keydown="onKey" @error.capture="onImageError" v-html="html" />
+  <Teleport v-for="(s, i) in taskSlots" :key="`${i}:${s.id}`" :to="s.to">
+    <ChatTaskCard :id="s.id" />
+  </Teleport>
 </template>
 
 <style scoped>

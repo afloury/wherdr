@@ -378,7 +378,8 @@ export function docsRule(docs: string | undefined, help: string, open: { cmd: st
     '## Links into wherdr', '',
     'Whenever you send the user somewhere in wherdr ("open Settings › Phone"), give the in-app link too, as inline code (`#/settings?section=phone`) or a Markdown link ([Phone settings](#/settings?section=phone)): the chat opens it in place. Only these addresses (KEY: a project key, TAG: a tag, ID: a task id):',
     ...appLinkList(),
-    `To show the user ${open.places} at once, beside your conversation in their open wherdr (a card on a phone): \`${open.cmd} '#/settings?section=phone'\`, the address quoted (an unquoted # starts a shell comment). Only when the user asks to see it, in their turn (refused in a wake), and only to an app showing your conversation; otherwise give the link. It opens the place and changes nothing.`, '']
+    `To show the user ${open.places} at once, beside your conversation in their open wherdr (a card on a phone): \`${open.cmd} '#/settings?section=phone'\`, the address quoted (an unquoted # starts a shell comment). Only when the user asks to see it, in their turn (refused in a wake), and only to an app showing your conversation; otherwise give the link. It opens the place and changes nothing.`,
+    'To show a task where it stands, write a fenced code block in the language `wherdr`, one line `task ID` per task: the chat shows each task\'s live card from the board (never what you wrote about it), and a tap opens its sheet.', '']
 }
 
 // The line a coordinator's next command starts with once wherdr was updated

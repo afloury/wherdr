@@ -160,8 +160,14 @@ export function shownTexts(projects: Parameters<typeof showIds>[0], c: Card): Ca
 }
 
 export interface ToHandle { id: string, shown: string, project: string, color?: string, title: string, action: string, label: string, terminal?: string }
-export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn)
-  .map(c => ({ id: c.id, shown: c.shown, project: c.project, ...(c.color ? { color: c.color } : {}), title: c.title, action: c.yourTurn!.split('\n')[0]!, label: handleLabel(c), ...(asker(c) ? { terminal: asker(c) } : {}) }))
+export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn).map(taskRow)
+// Any task as that row (a `task <ID>` block in a chat, ChatTaskCard.vue): in
+// Your turn, what to do and its short action; else where it stands and its column.
+export function taskRow(c: Card): ToHandle {
+  const turn = c.yourTurn?.split('\n')[0]
+  const action = turn ?? (c.stopped ? `Stopped: ${c.stopped.why}` : c.held || c.sameFiles || (c.phase === 'done' ? 'Finished' : c.phase === 'todo' ? 'Not started yet' : c.holder === 'reviewer' ? 'Being reviewed' : 'Being worked on'))
+  return { id: c.id, shown: c.shown, project: c.project, ...(c.color ? { color: c.color } : {}), title: c.title, action, label: turn ? handleLabel(c) : c.column, ...(asker(c) ? { terminal: asker(c) } : {}) }
+}
 // The agent a task waits on, when what it waits for is that agent's question or permission.
 export const asker = (c: Pick<Card, 'asks' | 'stopped' | 'terminal'>) => (c.asks && !c.stopped ? c.terminal : undefined)
 

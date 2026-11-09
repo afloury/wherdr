@@ -3,13 +3,14 @@
 // conversation is re-read every 1.5 s), within a budget (see MD_CACHE_CHARS).
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { isAppLink } from '../../shared/appLinks'
+import { boardLink, isAppLink } from '../../shared/appLinks'
 import { pathCandidate } from '../../shared/filePaths'
 import { codeKind } from './codeKind'
 import { highlightCode } from './codeHighlight'
 import { createRenderCache, createSupersedeTracker } from './renderCache'
 import { blockCommand, inlineCommand } from './shellCommand'
 import { svgPreview } from './svgPreview'
+import { parseWherdrBlock } from './wherdrBlock'
 
 let hooked = false
 // Budget of the cache, in characters of text + HTML: about 4 MB of strings
@@ -72,6 +73,13 @@ export function md(text: string, options: MdOptions = {}): string {
                 ? `<img class="svg-preview" src="${escHtml(src)}" alt="${escHtml(t('SVG preview'))}" role="button" tabindex="0" aria-label="${escHtml(t('Enlarge SVG preview'))}">${source}`
                 : `<p class="svg-note">${escHtml(t('SVG preview unavailable. Source shown below.'))}</p>${source}`)
               + '</div>'
+          }
+          // A `wherdr` block (utils/wherdrBlock.ts) in a conversation: each
+          // element a placeholder that ChatMarkdown.vue fills live; until then
+          // (and outside the chat) a task is a link to its sheet.
+          const block = !plainNow && l === 'wherdr' ? parseWherdrBlock(text) : null
+          if (block) {
+            return `<div class="wd-block">${block.map(e => `<div class="wd-task" data-task="${escHtml(e.id)}"><a href="${escHtml(boardLink({ task: e.id }))}"><code>${escHtml(e.id)}</code></a></div>`).join('')}</div>`
           }
           if (docNow) {
             return `<div class="code-block"><div class="code-head"><span>${l || 'code'}</span>`
