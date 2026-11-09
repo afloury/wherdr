@@ -39,7 +39,9 @@
 - **Order**: the header (logo, version, Search, Board, Settings), the counters, the quotas (a
   machine's own quotas under them), Alfred, the [coordinators](#coordinators), then the agents of
   the machines shown, by state (Your turn, Working, Ready). When the list mixes several machines,
-  each card carries its machine's name. There is no section per machine.
+  each card carries its machine's name. There is no section per machine. The list never scrolls
+  sideways: long titles and badges are cut with an ellipsis, and its scrollbar stays thin, shown
+  while the pointer is over the list.
 
 ### Alfred
 
