@@ -670,8 +670,8 @@ describe('wakes', () => {
       await store.saveTask({ ...task, state: 'waiting', step: state(5) })
       await store.saveCoordinator({ ...(await store.coordinator('CO'))!, seen: { 'CO-1': 'waiting' } })
       const now = day(2, 8, 1)
-      // The 5-hour window at 90 %: past the 25 % reserve.
-      quotas.q = { codex: null, claude: { at: now, five: { used: 90, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
+      // The account hit its 5-hour limit (the default pace, Free, waits only for that).
+      quotas.q = { codex: null, claude: { at: now, limited: { resetsAt: now + 3_600_000 }, five: { used: 100, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
       expect(await deliver('idle', now).run()).toEqual([])
       expect(await scheduled()).toBe(0)
       expect((await store.coordinator('CO'))!).toMatchObject({ ranAt: now, atRan: now, skipped: { n: 1 } })
@@ -763,7 +763,7 @@ describe('commands of lot 10', () => {
  
     // A machine whose account is ahead of its pace takes nothing, as placement skips it.
     const now = Date.now()
-    quotas.q = { codex: null, claude: { at: now, five: { used: 90, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
+    quotas.q = { codex: null, claude: { at: now, limited: { resetsAt: now + 3_600_000 }, five: { used: 100, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
     const here = { ...deps(), machines: () => [{ key: '', label: 'machine-a', local: true }] } as never
     expect((await runCommand(here, token, { argv: ['autopilot', 'show'] })).machines).toEqual([expect.stringMatching(/^machine-a \(home\): .* · takes nothing now: paced: /)])
   })
