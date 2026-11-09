@@ -155,6 +155,17 @@
   --rose: #ff4757;
   --blue: #1fb2ff;
   --teal: #00dbe4;
+  /* Project colors (shared/pm/projectKey.ts): fixed and distinct in every theme
+     (theme colors coincide in some, lav = blue…), mid-tones that read on dark and
+     light backgrounds; the badge mixes its text with --text-strong (ProjectBadge.vue). */
+  --project-violet: #8b5cf6;
+  --project-blue: #3b82f6;
+  --project-teal: #14b8a6;
+  --project-green: #22c55e;
+  --project-amber: #f59e0b;
+  --project-orange: #f97316;
+  --project-red: #ef4444;
+  --project-pink: #ec4899;
 
   --working: #a98bff;
   --blocked: #ffb347;
@@ -1821,6 +1832,9 @@ body.kb .composer { padding-bottom: 8px; }
 .hw-sheet > [data-slot="body"] { padding: 0; order: 2; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; scroll-padding-bottom: 16px; }
 .hw-sheet-title { min-width: 0; font: 850 24px/1 var(--display); letter-spacing: -.035em; word-spacing: .06em; color: var(--text); overflow-wrap: anywhere; }
 .hw-sheet [data-slot="close"] { position: static; inset: auto; }
+/* Before the title (a task's id badge): the title follows it. */
+.hw-sheet-lead { flex: none; align-self: flex-start; margin: 3px 10px 0 0; }
+.hw-sheet-lead + .hw-sheet-title { flex: 1; }
 /* Handle at the top of the sheet, on the phone: tap or swipe down to close.
    The bar is drawn small; the button around it is a 44 px touch target. */
 .hw-sheet-handle {

@@ -50,7 +50,8 @@ change first and makes it only after your yes.
 
 ### Coordinators
 
-Under Alfred, while project management is on, one row per running project coordinator
+Under Alfred, while project management is on, one row per running project coordinator, its
+project's key badge in the project's color (*[WHR] coordinator*)
 ([Project management](project-management.md)). A tap opens its conversation, shown as selected
 while it is open; its menu (right click or long press), *Restart with…*, picks another agent,
 which becomes its default: its folder and memory stay, the current session stops. A coordinator
