@@ -3,6 +3,10 @@
 import { shotStep, typeSteps, type Task } from './run'
 import type { Template, Weight } from './workflow'
 
+import { WEIGHTS } from './workflow'
+import { shotsMissing } from './shots'
+import type { PlannedStep } from './steps'
+
 export { WEIGHTS, isWeight, type Weight } from './workflow'
 
 // Starting estimates (memory in MB, cores) until measured peaks replace them.
@@ -30,6 +34,22 @@ export function weightOf(t: Template | null | undefined, task: Pick<Task, 'type'
   return code ? { weight: 'standard', from: 'steps' } : { weight: 'light', from: 'no code' }
 }
 
+// A worker started again in its worktree (a catch-up, red CI, a send-back, the
+// step it is woken for) is weighed by what it does, not by its type: only a
+// step that still lacks its screenshots takes them (the task's own weight);
+// any other merges the base, fixes and runs related tests: standard at most.
+export function reviveWeight(task: Weight, step: PlannedStep | undefined, shots: StepShots): Weight {
+  if (step && shotsMissing(step, shots?.[step.id]).length) return task
+  return task === 'light' ? 'light' : 'standard'
+}
+type StepShots = NonNullable<Task['step']>['shots']
+
 const FROM_TEXT: Record<WeightFrom, string> = { 'task': 'set on the task', 'type': 'its task type', 'screenshots': 'screenshots', 'no code': 'no code', 'steps': 'its steps' }
 // "heavy (screenshots)": what task show and the Add task sheet say.
 export const weightText = (w: { weight: Weight, from: WeightFrom }) => `${w.weight} (${FROM_TEXT[w.from]})`
+
+// "light ≈ 0.7 GB, 0.25 core · standard ≈ 1.8 GB, 1 core · heavy ≈ 3.9 GB, 2 cores": what placement counts per weight.
+export const weightsLine = () => WEIGHTS.map(w => {
+  const e = WEIGHT_DEFAULTS[w]
+  return `${w} ≈ ${(e.mb / 1024).toFixed(1)} GB, ${e.cores} ${e.cores > 1 ? 'cores' : 'core'}`
+}).join(' · ')

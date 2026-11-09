@@ -141,6 +141,8 @@ export interface Pane {
   // Number of the agent's last state change (Herdr's `state_change_seq`,
   // increasing on a machine): "recent" sort of Ready.
   stateSeq?: number
+  // herdr-core: when its status or turn last changed (ms), for the row's duration.
+  since?: number
   pendingPrompt?: boolean
   queued?: QueuedMessage[]
   prompt?: Choices

@@ -2746,6 +2746,8 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .hw-sheet.tall { height: auto; max-height: 86vh; }
   /* A task's sheet: wider, and one height whatever its open tab (TaskSheet.vue). */
   .hw-sheet:has(.task-sheet) { width: min(780px, 92vw); height: min(820px, 86vh); }
+  /* New › Project: room for folder paths and the repository list (NewProjectForm.vue). */
+  .hw-sheet:has(.coord-new) { width: min(760px, 92vw); }
   .hw-sheet.full { width: min(1100px, 92vw); height: 86vh; max-height: 86vh; padding-top: 20px; }
   :root[data-content-width="full"] .hw-sheet.full { width: calc(100vw - 48px); }
   /* On-screen keyboard (iPad): the window is centered in the visible area

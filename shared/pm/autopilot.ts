@@ -2,6 +2,7 @@
 // limits, stored with the coordinator. Only the user changes it (Settings, the
 // passkey session); the coordinator reads it with `wherdr pm autopilot show`.
 import type { Run, Task } from './run'
+import type { PlannedStep } from './steps'
 import { chainState } from './advance'
 import { parseSchedule } from './schedule'
 import type { PaceVerdict } from './pacing'
@@ -71,22 +72,30 @@ export type TaskStatus = 'todo' | 'working' | 'stalled' | 'waiting' | 'ready' | 
 export const taskStatus = (t: Task): TaskStatus =>
   t.step?.done ? 'done' : t.state === 'waiting' ? 'waiting' : t.step?.yourTurn ? 'ready' : t.state === 'working' && t.stall ? 'stalled' : t.state
 
+// A working task whose step holds no agent (a PR or merge waiting for checks
+// or the queue, a user step) takes no slot, unless the engine handed its
+// worker work on its own (a catch-up, red CI). Without its plan: it holds one.
+export const holdsSlot = (t: Task, plan?: Pick<PlannedStep, 'holder'>[]) =>
+  !plan || !t.step || !!t.step.agent || (plan[t.step.at]?.holder ?? 'none') !== 'none'
+export type SlotOf = (t: Task) => boolean
+
 // What is left of today's limits. Started today: tasks whose first worker run
-// started since local midnight. Working: only tasks that hold a slot.
-export function limitsLeft(ap: Autopilot, tasks: Task[], runs: Run[], now: number) {
+// started since local midnight. Working: only tasks that hold a slot (holds:
+// holdsSlot with each task's plan).
+export function limitsLeft(ap: Autopilot, tasks: Task[], runs: Run[], now: number, holds: SlotOf = () => true) {
   const midnight = new Date(now).setHours(0, 0, 0, 0)
   const ids = new Set(tasks.map(t => t.id))
   const first = new Map<string, number>()
   for (const r of runs) if (ids.has(r.task) && r.role === 'worker') first.set(r.task, Math.min(first.get(r.task) ?? Infinity, r.startedAt))
   const started = [...first.values()].filter(at => at >= midnight).length
-  const working = tasks.filter(t => ['working', 'stalled'].includes(taskStatus(t))).length
+  const working = tasks.filter(t => ['working', 'stalled'].includes(taskStatus(t)) && holds(t)).length
   return { started, perDay: ap.perDay, startLeft: Math.max(0, Math.min(ap.perDay - started, (ap.atOnce ?? Infinity) - working)), working, atOnce: ap.atOnce }
 }
 
 // Why the autopilot may not start one more task now, or undefined. `pace`:
 // the verdict of the worker's account, given only for automatic work.
-export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: number, pace?: PaceVerdict): string | undefined {
-  const l = limitsLeft(ap, tasks, runs, now)
+export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: number, pace?: PaceVerdict, holds?: SlotOf): string | undefined {
+  const l = limitsLeft(ap, tasks, runs, now, holds)
   if (l.started >= l.perDay) return `Today's limit is reached (${l.perDay} tasks started)`
   if (l.atOnce !== null && l.working >= l.atOnce) return `${l.working} tasks already work at once (limit ${l.atOnce})`
   if (!inHours(ap.hours, new Date(now))) return 'Outside the autopilot\'s hours'
@@ -102,7 +111,7 @@ export const WAKE_RETRIES = 2
 // too, from its step; in a wake only while it has had few worker runs.
 // `pace`: the worker's account verdict, held to only for automatic work
 // (pacedStart); `engine`: the engine starts it, after its chain.
-export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, tasks: Task[], runs: Run[], now: number, wake: boolean, { pace, engine }: { pace?: PaceVerdict, engine?: boolean } = {}): string | undefined {
+export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, tasks: Task[], runs: Run[], now: number, wake: boolean, { pace, engine, holds }: { pace?: PaceVerdict, engine?: boolean, holds?: SlotOf } = {}): string | undefined {
   const stopped = task.state === 'waiting' && !task.waitKind && !task.step?.done
   if (task.state !== 'todo' && !stopped) return `${task.id} is not to do (${taskStatus(task)})`
   // Starts, not attempts: an agent that exits at once gets a second run in the same start.
@@ -112,7 +121,7 @@ export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, t
   if (chain !== 'go') return chain?.wait ?? `${task.id} starts after ${task.after}, which is not done`
   if (wake && !ap?.on) return 'In a wake, a task starts only with the autopilot on'
   const paced = pacedStart(task, engine ? 'engine' : wake ? 'wake' : 'user')
-  return startRefusal(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now, paced ? pace : undefined)
+  return startRefusal(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now, paced ? pace : undefined, holds)
 }
 
 // The coordinator's last wake: when, and where its tasks stood then.
