@@ -390,22 +390,33 @@ brought does not count.
 #### The merge queue
 
 Each project has a **merge queue**: every task whose merge may go on without
-you (a merge the guards give to wherdr, or one you approved) enters it, and
-wherdr merges them one at a time. The first in the queue is updated with its
-base: wherdr merges the base into the branch and pushes it when that merges
-cleanly, even when GitHub does not flag the branch as behind; on a conflict it
-hands the conflicting files to the task's agent (started again if it was
-ended), and the task keeps its place. An update that fails (a network error)
-is tried again twice, a few minutes apart; past that, the task goes to the end
-of the queue so the others go on. wherdr then waits for the required
-checks on the updated PR and merges it, and the next task comes up. Checks that
-fail after an update go back to the agent as red CI, not to you, and that task
-goes to the end of the queue meanwhile. The others wait their turn and are not
-updated before it: PRs that touch no file another queued PR touches come first,
-then smaller changes. A PR already ready when it reaches its merge step merges
-at once. The card shows the place (*2nd in merge queue*), a refused merge
-waiting its turn stays off *Your turn*, and the log says when a task enters
-the queue and when it comes first.
+you (a merge the guards give to wherdr, or one you approved) enters it. Only
+PRs ready to merge now stand in line: no conflict, no update required, the
+task's last commit on the PR and its checks green. The first in line merges,
+then the next one, a minute apart; PRs that touch no file another queued PR
+touches come first, then smaller changes.
+
+A PR that needs work steps out of line until it is ready again, so it never
+holds up the others: a conflict with its base, checks still running or red,
+work handed to its agent. A ready PR merges as it is, without first being
+updated with its base, unless GitHub requires it: wherdr updates a branch only
+when GitHub reports a conflict, or reports it behind because the branch rules
+want branches up to date. When the base moves, every queued PR that needs an
+update gets it in the same pass, and their checks run side by side. An update
+that merges cleanly is pushed by wherdr alone; a conflict goes to the task's
+agent (started again if it was ended). An update that fails (a network error)
+is tried again twice, a few minutes apart. Checks that fail go back to the
+agent as red CI, not to you.
+
+A task waiting in the queue with no work handed to its agent lets its agents
+go once they are idle for 10 minutes, as for [a task that waits for
+you](#agents-of-a-task-that-waits-for-you); wherdr starts the worker again
+only if the queue hands it work.
+
+The card shows the place (*2nd in merge queue*) or why the PR stepped out
+(*in merge queue, out of line: conflict with its base*); a refused merge in the
+queue stays off *Your turn*, and the log says when a task enters the queue and
+when it comes first.
 
 ### What wherdr fixes on its own
 
