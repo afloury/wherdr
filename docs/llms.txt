@@ -103,7 +103,7 @@
 
 - [Development and tests](docs/development.md): run from source and test.
 - [Design rules](docs/design.md): the interface styling reference.
-- [Dictation design](docs/dictation.md): the dictation engines and how to add one; read aloud and its voices (iOS gives web apps only its standard voices).
+- [Dictation design](docs/dictation.md): the dictation engines and how to add one; why a server-side model install fails (bzip2 missing, disk full); read aloud and its voices (iOS gives web apps only its standard voices).
 
 ## v2 only
 
