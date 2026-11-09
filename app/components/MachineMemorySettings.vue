@@ -2,7 +2,7 @@
 // Each machine's memory and agents at once (all projects), and whether
 // automatic starts may go there now. `edit`: also its settings (Settings ›
 // Machines); Settings › Pace shows the state only.
-import type { MemorySettings } from '#shared/pm/memory'
+import type { Hours, MemorySettings } from '#shared/pm/memory'
 import type { MachineCapacity } from '#shared/pm/capacity'
 
 defineProps<{ edit?: boolean }>()
@@ -20,6 +20,19 @@ async function save(r: Row, field: 'minFreeGb' | 'maxAgents', e: Event) {
   catch (err) { error.value = (err as Error).message }
 }
 const gb = (mb: number) => Math.round(mb / 102.4) / 10
+
+// Availability hours: Always clears them; a new choice starts at 09:00-19:00.
+async function saveHours(r: Row, patch: Partial<Hours> | null) {
+  const hours = patch && { days: 'weekdays' as const, from: '09:00', to: '19:00', ...r.settings.hours, ...patch }
+  error.value = ''
+  try { rows.value = (await api<{ machines: Row[] }>('/api/machine/memory', { key: r.key, hours })).machines }
+  catch (err) { error.value = (err as Error).message }
+}
+const pick = (r: Row, e: Event) => {
+  const v = (e.target as HTMLSelectElement).value
+  return saveHours(r, v === 'always' ? null : { days: v as Hours['days'] })
+}
+const time = (r: Row, field: 'from' | 'to', e: Event) => saveHours(r, { [field]: (e.target as HTMLInputElement).value })
 </script>
 
 <template>
@@ -33,10 +46,21 @@ const gb = (mb: number) => Math.round(mb / 102.4) / 10
         <label>{{ t('Agents at once, all projects') }}
           <input class="pm-select" type="number" min="1" max="50" :value="r.settings.maxAgents ?? ''" :placeholder="r.cap ? String(r.cap) : ''" data-testid="memory-cap" @change="save(r, 'maxAgents', $event)">
         </label>
+        <label>{{ t('Available') }}
+          <select class="pm-select" :value="r.settings.hours?.days ?? 'always'" data-testid="memory-hours" @change="pick(r, $event)">
+            <option value="always">{{ t('Always') }}</option>
+            <option value="weekdays">{{ t('Weekdays') }}</option>
+            <option value="all">{{ t('Every day') }}</option>
+          </select>
+        </label>
+        <template v-if="r.settings.hours">
+          <label>{{ t('From') }}<input class="pm-select" type="time" :value="r.settings.hours.from" @change="time(r, 'from', $event)"></label>
+          <label>{{ t('To') }}<input class="pm-select" type="time" :value="r.settings.hours.to" @change="time(r, 'to', $event)"></label>
+        </template>
       </div>
     </div>
     <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-    <p class="muted settings-hint">{{ t('Automatic starts (autopilot, chains, automations) wait while a machine is short on memory, its swap is over 90 % used or it runs its cap of agents; they start by themselves once memory is back. Your own starts still go.') }}</p>
+    <p class="muted settings-hint">{{ t('Automatic starts (autopilot, chains, automations) wait while a machine is short on memory, its swap is over 90 % used or it runs its cap of agents; they start by themselves once memory is back. Outside a machine\'s available hours (this server\'s time) they skip it, and heavy work skips it in its last 2 hours. Your own starts still go.') }}</p>
   </div>
 </template>
 
