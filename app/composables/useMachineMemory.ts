@@ -26,4 +26,4 @@ export function saveHours(r: MemoryRow, patch: Partial<Hours> | null) {
   return send({ key: r.key, hours })
 }
 
-export const memoryHint = () => t('Automatic starts (autopilot, chains, automations) wait while a machine is short on memory, its swap is over 90 % used or it runs its cap of agents; they start by themselves once memory is back. Outside a machine\'s available hours (this server\'s time) they skip it, and heavy work skips it in its last 2 hours. Your own starts still go.')
+export const memoryHint = () => t('Automatic starts (autopilot, chains, automations) wait while a machine is short on memory, its swap is over 90 % used (on macOS: its memory pressure is critical, or warn for all but light work) or it runs its cap of agents; they start by themselves once memory is back. Outside a machine\'s available hours (this server\'s time) they skip it, and heavy work skips it in its last 2 hours. Your own starts still go.')
