@@ -27,6 +27,17 @@ export const imageTagCount = (text: string) => (String(text || '').match(IMAGE_T
 // Only image tags (a photos-only message in Claude's queue or on its screen).
 export const onlyImageTags = (text: string) => imageTagCount(text) > 0 && !String(text || '').replace(IMAGE_TAG, '').trim()
 
+// Claude's input field holds this message, not sent yet: the field shows each
+// of its photo lines as "[Image #N]" (the number grows with the session), and
+// wraps it (spaces aside). `exact`: the field holds it and nothing else;
+// otherwise it starts with it (more text may follow).
+const fieldForm = (t: string) => String(t || '').replace(IMAGE_TAG, '[Image]').replace(/\s+/g, '')
+export function fieldHolds(field: string | null | undefined, text: string, exact = false): boolean {
+  const f = fieldForm(field || '')
+  const m = fieldForm(String(text || '').split('\n').map(l => (isUploadLine(l) ? '[Image]' : l)).join('\n'))
+  return Boolean(f && m) && (exact ? f === m : f.startsWith(m))
+}
+
 // A photos-only message taken by the agent: a user message showing one of its
 // photos (path kept as text), or carrying images (Claude may group it with
 // other queued messages into one turn, so text of its own does not rule it out).

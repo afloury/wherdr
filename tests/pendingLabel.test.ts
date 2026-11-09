@@ -1,7 +1,7 @@
 // A message sent while Claude works is held in Claude's own queue until it
 // takes it (next step or end of turn): it must not read "read by the agent".
 import { describe, expect, it } from 'vitest'
-import { pendingLabel, pendingQueue } from '../app/utils/pendingQueue'
+import { inputShown, pendingLabel, pendingQueue } from '../app/utils/pendingQueue'
 import type { ClaudeScreen } from '../shared/types'
 
 const ONE = 'first queued note, please answer with ONE'
@@ -62,5 +62,35 @@ describe('label of a waiting message', () => {
     [{ phase: 'sent' as const, state: null, inAgentQueue: true }, 'working', { kind: 'agent-queue', agent: 'claude' }],
   ] as const)('%o while %s', (q, waitFor, label) => {
     expect(pendingLabel(q, waitFor, 'claude')).toEqual(label)
+  })
+})
+
+describe('message left in Claude\'s input field', () => {
+  const PHOTO = '/home/user/.cache/herdr-web/uploads/a.jpg'
+  const MSG = `${PHOTO}\nwhat is wrong here?`
+  // Claude Code shows the photo line as "[Image #N]".
+  const FIELD = '[Image #120] what is wrong here?'
+  const sent = { id: 'w-a', text: MSG, at: 1000, settledAt: 1100 }
+
+  it('waiting there: one bubble, never "read", even once the agent is idle', () => {
+    const list = pendingQueue({ mine: [sent], claude: [], items: [], screen: null, idle: true, input: FIELD })
+    expect(list.map(q => [q.phase, q.inInput])).toEqual([['queued', true]])
+    expect(pendingLabel(list[0]!, 'sending', 'claude')).toEqual({ kind: 'input' })
+    // The field's own "Not sent" bubble is not shown a second time.
+    expect(inputShown(list, FIELD)).toBe(true)
+  })
+
+  it('delivered: the field is empty, read by the agent', () => {
+    const list = pendingQueue({ mine: [sent], claude: [], items: [], screen: null, idle: true, input: null })
+    expect(list.map(q => [q.phase, q.inInput])).toEqual([['sent', undefined]])
+  })
+
+  it('a second message while the first waits there: refused, not merged; the field bubble stays for the rest', () => {
+    // The server refuses to type it into the busy field (see coreSend): "Not sent" here.
+    const second = { id: 'w-b', text: 'and this?', at: 2000, state: 'failed' as const, local: true }
+    const list = pendingQueue({ mine: [sent, second], claude: [], items: [], screen: null, idle: true, input: FIELD })
+    expect(list.map(q => [q.id, q.phase, q.inInput, q.state])).toEqual([['w-a', 'queued', true, null], ['w-b', 'queued', undefined, 'failed']])
+    // Someone else's text glued after ours in the field: the field keeps its own bubble.
+    expect(inputShown(list, `${FIELD} and more`)).toBe(false)
   })
 })

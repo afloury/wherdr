@@ -10,7 +10,7 @@ import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { restoreDraft } from '~/utils/queuedCancel'
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
-import { type PendingMessage, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
+import { type PendingMessage, inputShown, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
 import { CHAT_READ_MS, createFlipGuard, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
@@ -1021,7 +1021,7 @@ function queuedNow() {
   const replies = blocks.value.filter(b => b.k === 'assistant')
   // Agent idle, nothing holding it: Claude's own queue is empty by now.
   const idle = waitFor.value === 'sending'
-  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle }).map((q) => {
+  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle, input: props.pane.draft?.text }).map((q) => {
     const lines = q.raw.split('\n')
     const text = lines.filter(l => !isUploadLine(l) && !isAttachmentLine(l)).join('\n').trim()
     const parsed = parseReply(text)
@@ -1058,10 +1058,11 @@ async function retryQueued(q: { id: string }) {
     retrying.value = null
   }
 }
-function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue'>) {
+function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' | 'inInput'>) {
   const l = pendingLabel(q, waitFor.value, props.pane.agent)
   switch (l.kind) {
     case 'read': return t('Read by the agent')
+    case 'input': return t('Not sent yet · waiting in the agent’s input')
     case 'stopped': return t('Queued · ') + t('agent stopped')
     case 'question': return t('Queued · ') + t('after you answer the question')
     case 'agent-queue':
@@ -1643,7 +1644,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             </div>
           </div>
           <!-- herdr-core: text left unsent in Claude's own input box, Claude's queue. -->
-          <UnsentInput v-if="!readOnly && hasDraft" :pane="unsentPane" />
+          <UnsentInput v-if="!readOnly && hasDraft" :pane="unsentPane" :shown="inputShown(queuedList, pane.draft?.text)" />
         </div>
 
         <ChatStatusLine :get="readStatus" />
