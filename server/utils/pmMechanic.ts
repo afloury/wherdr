@@ -9,6 +9,7 @@ import { awaitsHolder } from '../../shared/pm/blocked'
 import { onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
 import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP } from './coreCreate'
+import { HerdrError } from './herdr'
 import { actionShell } from './pmActions'
 import { prSeen, stepAction } from './pmBoard'
 import { prNow, requiredChecks } from '../../shared/pm/board'
@@ -64,6 +65,9 @@ export async function syncWaits(deps: PmLaunchDeps) {
 // A task with "after" starts once those tasks are done, within its
 // coordinator's autopilot limits and hours (one per tick and project): the
 // order is the user's. One of them failed or stopped: it waits for the user, with why.
+// Started another way meanwhile (the user, the coordinator): the engine's own start is dropped, not logged as a failure.
+const startedElsewhere = (e: Error) => e instanceof HerdrError && e.code === 'busy'
+
 export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
   const tasks = await store.tasks(), runs = await store.runs(), started: string[] = []
@@ -91,7 +95,8 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
     if (machines.has(placed.machine)) continue
     machines.add(placed.machine)
     forgetMemory(placed.machine)
-    const r = await startTask(deps, next.id, { on: placed.machine }).catch((e: Error) => ({ ...next, state: 'waiting' as const, waiting: e.message }))
+    const r = await startTask(deps, next.id, { on: placed.machine }).catch((e: Error) => startedElsewhere(e) ? null : ({ ...next, state: 'waiting' as const, waiting: e.message }))
+    if (!r) continue
     await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} done` : `could not start after ${next.after}: ${r.waiting ?? ''}`)
     started.push(next.id)
   }
@@ -118,7 +123,8 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
     if (machines.has(placed.machine)) continue
     machines.add(placed.machine)
     forgetMemory(placed.machine)
-    const r = await startTask(deps, t.id, { on: placed.machine }).catch((e: Error) => ({ ...t, state: 'waiting' as const, waiting: e.message }))
+    const r = await startTask(deps, t.id, { on: placed.machine }).catch((e: Error) => startedElsewhere(e) ? null : ({ ...t, state: 'waiting' as const, waiting: e.message }))
+    if (!r) continue
     await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? 'started: there is room' : `could not start: ${r.waiting ?? ''}`)
     started.push(t.id)
   }

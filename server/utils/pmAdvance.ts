@@ -7,9 +7,10 @@
 import { randomUUID } from 'node:crypto'
 import { DONE_CMD, READ_SEP, dueText, parseRead, reviewFile, runFiles, runsNow, signalEvent } from '../../shared/pm/advance'
 import { onEvent, type PlannedStep } from '../../shared/pm/steps'
-import { LABEL, agentEnv, agentLine, reviewerPlan, runLabels, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, agentEnv, agentLine, duplicateAgents, reviewerPlan, runLabels, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP, launchFailure } from './coreCreate'
-import { WRITE_SCRIPT, exec, prepareTmp, runOn, type PmLaunchDeps } from './pmLaunch'
+import { WRITE_SCRIPT, exec, oneStart, prepareTmp, runOn, type PmLaunchDeps } from './pmLaunch'
+import { HerdrError } from './herdr'
 import { stepAction } from './pmBoard'
 import { cleanTask } from './pmCleanup'
 import { readLeakCheck } from './pmVisibility'
@@ -51,6 +52,7 @@ export async function advanceTick(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
   const { terminals } = await deps.call<{ terminals: LabelledTerminal[] }>('terminal.list', { all: true, labels: { [LABEL.install]: await store.install() } }, 8000)
   const alive = (r?: Run) => (r?.terminal && r.state !== 'ended' ? terminals.find(x => x.address === r.terminal && x.state !== 'finished') : undefined)
+  await endDuplicates(deps, terminals).catch(() => {})
   for (const run of await store.runs()) {
     if (alive(run)?.labels?.[LABEL.report] !== 'done') continue
     // Cleared once handled; a failure leaves it for the next tick.
@@ -86,6 +88,23 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   await deps.store.logTask({ ...(await deps.store.task(run.task))!, step: res.state }, `${run.role} ${run.program} ${run.model}`, `${step!.id}: ${what}`)
 }
 
+// Two live agents of one role on a task: the tracked one stays, the others
+// end (terminal killed, run ended), each with a line in the task's log.
+async function endDuplicates(deps: PmLaunchDeps, terminals: LabelledTerminal[]) {
+  const { store } = deps
+  const runs = await store.runs()
+  for (const d of duplicateAgents(terminals, runs, await store.tasks(), await store.install())) {
+    for (const x of d.end) {
+      await deps.call('terminal.kill', { terminal: x.address }, 15000).catch(() => {})
+      x.state = 'finished'
+      const r = runs.find(y => y.id === x.labels?.[LABEL.run])
+      if (r && r.state !== 'ended') await store.saveRun({ ...r, state: 'ended', endedBy: 'stopped' })
+      const task = await store.task(d.task)
+      if (task) await store.logTask(task, 'engine', `ended a second ${d.role} (run ${x.labels?.[LABEL.run] ?? '?'}): one ${d.role} per task, run ${d.keep.labels?.[LABEL.run] ?? '?'} goes on`)
+    }
+  }
+}
+
 // The task's current step, carried on: its action run, its holder told, or its agents stopped.
 async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => LabelledTerminal | undefined) {
   const c = await context(deps, id)
@@ -107,7 +126,10 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
   const due = dueText(plan, s)
   if (!due) return
   const told = { ...s, told: s.since }
-  if (due.holder === 'reviewer') return reviewer(deps, c, due.text, alive(latest(runs, id, 'reviewer')) && latest(runs, id, 'reviewer'))
+  if (due.holder === 'reviewer') {
+    return oneStart(id, 'reviewer', () => reviewer(deps, c, due.text, alive(latest(runs, id, 'reviewer')) && latest(runs, id, 'reviewer')))
+      .catch((e: Error) => { if (!(e instanceof HerdrError && e.code === 'busy')) throw e })
+  }
   const worker = latest(runs, id, 'worker')
   // Released while the task waited for the user: started again, the handover gives the step.
   if (!alive(worker) && wasReleased(worker)) return void await reviveWorker(deps, id, `${plan[s.at]!.id} needs it`)
