@@ -14,7 +14,7 @@
 import catalog from './voices.json'
 import { OUT_OF_MEMORY } from '../dictation/device'
 import { DEVICE_CACHE, DEVICE_RUNTIME, checkCrash, crashedModels, markLoading, markTooLarge, memoryBudget } from '../dictation/deviceModels'
-import { CHUNK, installModel, storedBytes } from '../dictation/modelStore'
+import { CHUNK, deleteModel, installModel, storedBytes } from '../dictation/modelStore'
 import type { Progress, StoredModel } from '../dictation/modelStore'
 
 export interface Voice {
@@ -35,8 +35,8 @@ export const TTS_WORKER_URL = '/workers/tts-worker.js'
 export const IDLE_MS = 60_000
 export const LOOKAHEAD = 2
 
-const asStored = (v: Voice): StoredModel => ({ id: v.id, dir: v.dir, set: v.set, files: v.members })
-const voiceBytes = (v: Voice) => v.members.reduce((n, m) => n + m.bytes, 0)
+export const asStored = (v: Voice): StoredModel => ({ id: v.id, dir: v.dir, set: v.set, files: v.members })
+export const voiceBytes = (v: Voice) => v.members.reduce((n, m) => n + m.bytes, 0)
 // WASM heap a voice needs, until measured on a phone: its weights, the ONNX
 // runtime's copy of them and the working buffers.
 export const heapEstimate = (v: Voice) => 3 * voiceBytes(v)
@@ -45,6 +45,16 @@ export const heapEstimate = (v: Voice) => 3 * voiceBytes(v)
 export function defaultVoice(langs: readonly string[] = globalThis.navigator?.languages ?? []): Voice {
   const has = (l: string) => VOICES.find(v => v.default && v.lang === l)
   return langs.map(l => has(l.slice(0, 2).toLowerCase())).find(Boolean) ?? has('en')!
+}
+
+// A cheap guess of a reply's language, French or English: common short words
+// and French accents. A reply is read by the voice of its language.
+const FR_WORDS = /\b(le|la|les|des|une?|est|et|pas|que|qui|pour|dans|avec|sur|ce|je|tu|vous|nous|il|elle|du|au|mais|ou)\b/gi
+const EN_WORDS = /\b(the|and|is|are|to|of|that|it|for|with|this|you|we|not|be|was|have|but|or)\b/gi
+const FR_ACCENTS = /[éèêàçùâîôûœ]/gi
+export function replyLanguage(text: string): 'fr' | 'en' {
+  const fr = (text.match(FR_WORDS)?.length ?? 0) + (text.match(FR_ACCENTS)?.length ?? 0) / 2
+  return fr > (text.match(EN_WORDS)?.length ?? 0) ? 'fr' : 'en'
 }
 
 export interface SpeakOptions {
@@ -112,6 +122,12 @@ export function createNeuralVoice(deps: NeuralVoiceDeps = {}) {
   async function install(v: Voice, onProgress?: (p: Progress) => void) {
     await installModel(asStored(v), onProgress, store)
     installed.add(v.id)
+  }
+
+  async function remove(v: Voice) {
+    installed.delete(v.id)
+    if (loaded?.id === v.id) release()
+    await deleteModel(asStored(v), store)
   }
 
   function stop() {
@@ -244,7 +260,7 @@ export function createNeuralVoice(deps: NeuralVoiceDeps = {}) {
 
   globalThis.addEventListener?.('pagehide', release)
 
-  return { speak, stop, release, refresh, install, usable }
+  return { speak, stop, release, refresh, install, remove, usable, fits }
 }
 
 export type NeuralVoice = ReturnType<typeof createNeuralVoice>
