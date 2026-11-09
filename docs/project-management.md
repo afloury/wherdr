@@ -157,7 +157,13 @@ In the **Guards** tab:
   protected branch too). A task already waiting for you at a merge that a
   change gives to wherdr goes on at once: the engine runs the step again,
   and the task's log says why. A merge left to you that you do on GitHub
-  ends the step as merged within a minute: the task goes to *Done*.
+  ends the step as merged within a minute: the task goes to *Done*. A merge
+  cut by a restart of wherdr (an update, a new build) goes on by itself:
+  wherdr asks GitHub where the PR stands.
+  Merged, the task goes on (its log says *merged before the restart*); closed
+  without a merge, it waits for you with that reason; still open, the merge
+  runs again, at most twice, then waits for you. A restart waits up to 20 s
+  for a merge that runs.
 - **Effect**: what each task type adds and, for each step that merges, whether
   it is left to you. It follows your changes before you save.
 
