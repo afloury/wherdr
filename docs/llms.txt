@@ -38,7 +38,7 @@
 
 ## Agent list
 
-- [Agents on herdr-core](docs/home.md#agents-on-herdr-core): the live list, states, quick answers, the sidebar's order, and task agents named after their task with a role badge and a duration.
+- [Agents on herdr-core](docs/home.md#agents-on-herdr-core): the live list, states, quick answers, the sidebar's order, and task agents named after their task, one row per task with a line per agent (role, machine, last message).
 - [Alfred](docs/home.md#alfred): wherdr's assistant, its agent, home folder and memory.
 - [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred, with the project's colored key badge, and their menu.
 - [Offered agents](docs/home.md#offered-agents): Settings › Agents, which programs every picker offers and in which order.
