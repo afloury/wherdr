@@ -6,7 +6,7 @@ import type { PmLaunchDeps } from '../server/utils/pmLaunch'
 const ROOT = '/home/user/.wherdr/pm/worktrees'
 const p = (pid: number, ppid: number, pgid: number, comm = 'sh', tmp?: string, age = 60): Proc => ({ pid, ppid, pgid, age, comm, ...(tmp ? { tmp } : {}) })
 // What PROCS_SCRIPT prints for these processes.
-const text = (procs: Proc[]) => procs.map(x => [`p${x.pid}`, `P${x.ppid}`, `g${x.pgid}`, `t${x.age}`, `c${x.comm}`, ...(x.tmp ? [`e${x.tmp}`] : [])].join('\n')).join('\n')
+const text = (procs: Proc[]) => procs.map(x => [`p${x.pid}`, `P${x.ppid}`, `g${x.pgid}`, `t${x.age}`, `c${x.comm}`, ...(x.tmp ? [`e${x.tmp}`] : []), ...(x.unread ? ['u'] : []), ...(x.cwd ? [`n${x.cwd}`] : [])].join('\n')).join('\n')
 
 describe('reading ps', () => {
   it('reads each field, ps\'s elapsed time and the agent mark', () => {
@@ -61,6 +61,24 @@ describe('the orphan sweep', () => {
       { task: 'WH-1', pids: [100, 101, 110], age: 21_600 },
       { task: 'WH-9', pids: [120], age: 60 },
     ])
+  })
+  // macOS hides the environment of its own binaries: no mark on sh, zsh, sleep.
+  const hidden = (x: Proc, cwd?: string): Proc => ({ ...x, unread: true, ...(cwd ? { cwd } : {}) })
+  it('macOS: an unmarked sh goes with the marked leftover it is under or beside, or alone once re-parented in a finished worktree', () => {
+    const wt = `${ROOT}/WH-1`
+    const mac = [
+      p(1, 0, 1, '/sbin/launchd'),
+      p(100, 1, 100, 'node', mark('WH-1')), hidden(p(101, 100, 100, '/bin/sh')), hidden(p(102, 101, 100, '/bin/sleep')), // under a marked one
+      hidden(p(105, 1, 100, '/bin/sh')), // re-parented, in its group
+      hidden(p(110, 1, 110, '/bin/sh', undefined, 21_600), `${wt}/.wherdr-tmp/v`), hidden(p(111, 110, 110, '/bin/cat')), // the incident: alone, in the worktree
+      hidden(p(200, 1, 200, '/bin/sh'), `${ROOT}/WH-2`), // a live task's
+      p(300, 1, 300, 'Terminal'), hidden(p(301, 300, 301, '/bin/zsh'), wt), // the user's shell there
+      p(400, 1, 400, '/Applications/Tailscale.app/Contents/MacOS/Tailscale', undefined), // an app, its environment readable: no mark
+      { ...p(401, 1, 401, 'tmux'), cwd: wt }, // the user's tmux server there
+      hidden(p(500, 1, 500, '/bin/sh'), '/home/user/project'), // elsewhere
+      hidden(p(600, 1, 600, '/Applications/Some.app/Contents/MacOS/Some'), `${ROOT}/WH-1`), // an app whose environment is hidden: not a system binary
+    ]
+    expect(orphanTargets(mac, ROOT, id => id === 'WH-2')).toEqual([{ task: 'WH-1', pids: [100, 101, 102, 105, 110, 111], age: 21_600 }])
   })
   it('logs the kill on the task and counts it for the machine', async () => {
     const logs: string[] = [], kills: string[][] = []

@@ -775,8 +775,11 @@ At start and every 5 minutes, wherdr also looks on each machine for the
 processes an agent started that are still there while their task has no live
 agent, or no longer exists. It knows them by the temporary folder they
 inherited from the agent (`CLAUDE_CODE_TMPDIR`, set to the task's
-`.wherdr-tmp`), wherever they run, never by their folder alone. It kills them
-and says so in the task's log (*killed 7 leftover processes, 6 h old*). Your
+`.wherdr-tmp`), wherever they run, never by their folder alone. macOS hides
+that from its own programs (`sh`, `zsh`, `sleep`): those go with the marked
+process they run under or share a process group with, or, once re-parented to
+`launchd` with their folder in that task's worktree, on their own. It kills
+them and says so in the task's log (*killed 7 leftover processes, 6 h old*). Your
 own shell, editor, apps and daemons are never touched, even when they run in a
 worktree, nor the processes of a task whose agent runs. The machine's line in
 Settings › Machines then says *n leftover processes killed*
