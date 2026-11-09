@@ -150,8 +150,8 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 </template>
 
 <style scoped>
-/* The whole sheet's height: the top stays, only the tab's panel scrolls. */
-.task-sheet { display: flex; flex-direction: column; gap: 12px; height: 100%; padding: 0 16px 16px; }
+/* The whole sheet's body (a flex column, main.css): the top stays, only the tab's panel scrolls. */
+.task-sheet { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; padding: 0 16px 16px; }
 .task-sheet-top { display: flex; flex-direction: column; gap: 10px; flex: none; }
 .task-sheet p { margin: 0; }
 .task-tabs { flex: none; }

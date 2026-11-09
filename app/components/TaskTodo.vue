@@ -88,7 +88,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
           <small class="muted">{{ tl(RESUME_MEANING[how]) }}</small>
         </div>
       </template>
-      <div v-else class="task-sheet-actions">
+      <div v-else class="task-sheet-actions todo-buttons">
         <UButton v-if="card.userLabel || kind === 'refused'" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="emit('press')">{{ card.userLabel || tl('Try again', 'Réessayer') }}</UButton>
         <UButton v-if="kind === 'blocked' && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="emit('start')">{{ tl('Start', 'Lancer') }}</UButton>
         <UButton v-if="pane && kind !== 'merge' && kind !== 'step'" :color="kind === 'ask' ? 'primary' : 'neutral'" :variant="kind === 'ask' ? 'solid' : 'outline'" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)" data-testid="todo-agent">
@@ -118,7 +118,12 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
 .todo-shot { display: block; max-width: 100%; padding: 0; border: 1px solid var(--line); background: var(--surface); cursor: zoom-in; }
 /* Large, yet leaving Merge in view. */
 .todo-shot img { display: block; height: auto; max-height: min(40vh, 420px); max-width: 100%; width: auto; }
-@media (max-width: 699px) { .todo-shot img { max-height: 26vh; } }
+/* On the phone the step's buttons (Merge…) stay pinned at the bottom of the
+   tab while its content scrolls: always in reach, never under the sheet's edge. */
+@media (max-width: 699px) {
+  .todo-shot img { max-height: 26vh; }
+  .todo-actions:has(> .todo-buttons:not(:empty)) { position: sticky; bottom: 0; z-index: 1; padding: 10px 0; background: var(--bg); border-top: 1px solid var(--line-soft); }
+}
 .todo-review { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .todo-pr { min-height: 44px; display: inline-flex; align-items: center; }
 .todo-back { display: grid; gap: 8px; }

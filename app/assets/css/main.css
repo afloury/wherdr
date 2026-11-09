@@ -1813,12 +1813,18 @@ body.kb .composer { padding-bottom: 8px; }
     bottom: 0; max-height: calc((100% - var(--safe-top)) * .85);
     background: var(--bg); box-shadow: 0 -20px 50px var(--shadow), 0 160px 0 var(--bg);
   }
+  /* A tall sheet (a task's) takes that whole height, from the same layout
+     viewport as its bottom edge, so it is never clamped: its last element
+     ends above the home bar with the usual gap. */
+  .hw-sheet.tall:not(.screen) { height: calc((100% - var(--safe-top)) * .85); }
   body.kb .hw-sheet:not(.screen) { bottom: var(--vv-bottom, 0px); max-height: calc(var(--vv-h) - var(--safe-top) - 8px); padding-bottom: 12px; }
 }
 .hw-sheet > * { border-top: 0 !important; border-bottom: 0 !important; }
 /* Keep wrapped titles above the scrolling body when the sheet reaches its height limit. */
 .hw-sheet > [data-slot="header"] { padding: 4px 0 10px; min-height: 0; flex: none; border: 0; order: 1; display: flex; align-items: center; justify-content: space-between; }
 .hw-sheet > [data-slot="body"] { padding: 0; order: 2; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; scroll-padding-bottom: 16px; }
+/* A body that lays its content out on the sheet's height (a task's tabs). */
+.hw-sheet > [data-slot="body"]:has(> .task-sheet) { display: flex; flex-direction: column; }
 .hw-sheet-title { min-width: 0; font: 850 24px/1 var(--display); letter-spacing: -.035em; word-spacing: .06em; color: var(--text); overflow-wrap: anywhere; }
 .hw-sheet [data-slot="close"] { position: static; inset: auto; }
 /* Handle at the top of the sheet, on the phone: tap or swipe down to close.

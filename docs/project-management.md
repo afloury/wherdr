@@ -216,6 +216,10 @@ needs from you and the buttons for it, before its Description, Plan and Log.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (try again, start it, open its agent).
 
+On a phone, the To do buttons (*Merge*, the step's button, *Try again*, *Start*,
+*Open the agent*) stay pinned at the bottom of the tab while its content
+scrolls, so they are always in reach above the home bar.
+
 ### Agents of a task that waits for you
 
 Needs: [A task waiting for you](#a-task-waiting-for-you).
