@@ -56,6 +56,11 @@ export const eventsOpen = ref(false)
 export const netDown = ref(false)
 export const cachedAt = ref<number | null>(null)
 export const offlineView = computed(() => cachedAt.value !== null)
+// The live connection as views show it: a cut shorter than the "Connection
+// lost" delay (a server restart for an update) leaves every view as it was,
+// with no offline placeholder in between.
+const linkGrace = ref(false)
+export const linkShown = computed(() => eventsOpen.value || linkGrace.value)
 export const locked = ref(false)
 export const appConfig = ref<AppConfig>({ kinds: ['claude', 'codex'], home: '', dirs: [], push: { enabled: false, key: null, devices: 0 } })
 // Machine name (HOST_LABEL on the server): "<name> · herdr", otherwise "herdr".
@@ -420,13 +425,29 @@ let evTimer: ReturnType<typeof setTimeout> | undefined
 let netTimer: ReturnType<typeof setTimeout> | undefined
 const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
 
-// "Connection lost" banner: shown if the server stays unreachable for more than
-// 2.5 s (a lightning reconnection does not flicker).
+// "Connection lost" banner and the last known state: shown if the server stays
+// unreachable for more than 2.5 s (a lightning reconnection does not flicker),
+// or, while it restarts, for more than RESTART_HOLD_MS.
+const NET_GRACE_MS = 2500
+// A server restart (an update), announced before it stops or seen in the
+// starting state it sends back: the page holds what it shows meanwhile.
+const RESTART_HOLD_MS = 60000
+let restartUntil = 0
+const restarting = () => Date.now() < restartUntil
+function noteRestart() {
+  restartUntil = Date.now() + RESTART_HOLD_MS
+  if (!netTimer) return
+  clearTimeout(netTimer)
+  netTimer = undefined
+  setNetDown(true)
+}
 function setNetDown(down: boolean) {
   if (!down) {
     clearTimeout(netTimer)
     netTimer = undefined
     netDown.value = false
+    linkGrace.value = false
+    restartUntil = 0
     return
   }
   // Already shown or about to be: the following attempts do not push the delay back.
@@ -434,7 +455,9 @@ function setNetDown(down: boolean) {
   netTimer = setTimeout(() => {
     netTimer = undefined
     netDown.value = true
-  }, 2500)
+    linkGrace.value = false
+    if (herdrState.value.ok && lastStateAt) cachedAt.value = lastStateAt
+  }, Math.max(NET_GRACE_MS, restartUntil - Date.now()))
 }
 
 function normalize(s: HerdrState): HerdrState {
@@ -540,6 +563,7 @@ export function connectEvents() {
       if (data?.type === 'pong') { eventProbe.pong(ws); return }
       // Real traffic (state or settings): the socket proved itself live.
       clearTimeout(evFirst)
+      if (data?.type === 'restarting') { noteRestart(); return }
       if (data?.type === 'settings') { settingsSync.receive(data.settings || {}); return }
       // Lock turned off: the server dropped every push subscription, this device posts its own again.
       if (data?.type === 'push-resubscribe') { syncPushLanguage().catch(() => {}); return }
@@ -547,7 +571,7 @@ export function connectEvents() {
       // Server just restarted, state still partial: we keep the whole
       // display, the "reconnecting" banner stays in place.
       const state = settleState(lastStateAt ? fullState : null, got, Date.now() < settleUntil)
-      if (!state) return
+      if (!state) { if (got.ready === false) noteRestart(); return }
       setNetDown(false)
       fullState = state
       allSessionsState.value = fullState
@@ -563,14 +587,15 @@ export function connectEvents() {
     clearTimeout(evHandshake)
     clearTimeout(evFirst)
     evWs = null
+    if (eventsOpen.value && !netDown.value) linkGrace.value = true
     eventsOpen.value = false
     eventProbe.cancel()
-    if (herdrState.value.ok && lastStateAt) cachedAt.value = lastStateAt
     // Refused because of the lock (session expired) rather than a network cut?
     confirmLock()
     if (locked.value) return
     setNetDown(true)
-    evTimer = setTimeout(connectEvents, Math.min(8000, 500 * 2 ** evRetry++))
+    // A restarting server is retried every half second, to be back as soon as it is.
+    evTimer = setTimeout(connectEvents, restarting() ? 500 : Math.min(8000, 500 * 2 ** evRetry++))
   }
 }
 export function retryEvents() {
