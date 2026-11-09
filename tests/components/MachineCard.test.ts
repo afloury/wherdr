@@ -40,6 +40,15 @@ describe('machine card', () => {
     await min.setValue('3')
     await vi.waitFor(() => expect(sent).toEqual([{ key: 'machine-b', minFreeGb: 3 }]))
   })
+  it('empty memory fields are Auto: the placeholder shows the pick, emptying one sends null', async () => {
+    const w = await mount({ machine: remote, memory: { ...memory, settings: {}, autoReserve: 1229, cap: 6 } })
+    const min = w.find('[data-testid="memory-min"]'), cap = w.find('[data-testid="memory-cap"]')
+    expect([(min.element as HTMLInputElement).value, min.attributes('placeholder')]).toEqual(['', 'Auto (≈1.2 GB)'])
+    expect([(cap.element as HTMLInputElement).value, cap.attributes('placeholder')]).toEqual(['', 'Auto (6)'])
+    expect(w.find('[data-testid="memory-auto-hint"]').exists()).toBe(true)
+    await cap.setValue('')
+    await vi.waitFor(() => expect(sent).toEqual([{ key: 'machine-b', maxAgents: null }]))
+  })
   it('an offline machine keeps the keep-awake slot empty and offers Reconnect', async () => {
     const w = await mount({ machine: { ...remote, status: 'offline', error: 'unreachable' } })
     expect(w.find('[data-testid="machine-state"]').text()).toBe('Offline')

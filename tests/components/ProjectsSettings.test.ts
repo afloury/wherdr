@@ -25,15 +25,16 @@ const post = (url: string, fn: (b: Record<string, unknown>) => unknown) => regis
 })
 const edit = (b: Record<string, unknown>, change: Partial<Project>) => {
   state = { ...state, projects: state.projects.map(p => p.key === b.key ? { ...p, ...change } : p) }
-  return { project: {} }
+  return { project: state.projects.find(p => p.key === b.key) }
 }
 registerEndpoint('/api/pm/overview', () => state)
 registerEndpoint('/api/pm/project', () => ({ project: state.projects[0], workflow: { id: 'web', steps: [], taskTypes: {}, guards: { protected: ['main'] }, prefs: { agent: 'claude', model: 'sonnet' } }, log: [] }))
 post('/api/pm/enabled', (b) => { state = { ...state, enabled: b.enabled as boolean }; return state })
-post('/api/pm/project-update', b => edit(b, { name: b.name as string, base: b.base as string }))
+post('/api/pm/project-update', b => edit(b, { name: b.name as string, base: b.base as string, ...(b.newKey ? { label: b.newKey as string } : {}) }))
 post('/api/pm/project-guards', () => ({}))
 let coordinators: { project: string, name: string, proposal?: { diff: string, at: number, said?: string } }[] = []
-registerEndpoint('/api/pm/coordinators', () => coordinators)
+let coordinatorReads = 0
+registerEndpoint('/api/pm/coordinators', () => { coordinatorReads++; return coordinators })
 let outdated = false
 registerEndpoint('/api/pm/template-proposal', { method: 'POST', handler: async (event) => {
   calls.push({ url: '/api/pm/template-proposal', body: await readBody(event) })
@@ -112,4 +113,22 @@ it('a coordinator\'s proposal: badge on the row and on Workflow, the URL opens i
     mounted = null
   }
   outdated = false
+})
+
+it('a saved key stays in the field and the badge, and the shared coordinators are read again', async () => {
+  state = { ...state, enabled: true, projects: [web()] }
+  const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=general' })
+  mounted = w
+  await vi.waitFor(() => expect(inSheet('pm-save')!.hasAttribute('disabled')).toBe(false))
+  const key = inSheet('pm-key')!.querySelector('input') ?? inSheet('pm-key') as HTMLInputElement
+  ;(key as HTMLInputElement).value = 'site'
+  key.dispatchEvent(new Event('input'))
+  await nextTick()
+  const reads = coordinatorReads
+  inSheet('pm-save')!.closest('form')!.dispatchEvent(new Event('submit'))
+  await vi.waitFor(() => expect(calls.at(-1)?.body.newKey).toBe('SITE'))
+  await vi.waitFor(() => expect(inSheet('pm-save')!.hasAttribute('disabled')).toBe(false))
+  expect((key as HTMLInputElement).value).toBe('SITE')
+  expect(document.body.querySelector('.pm-key-row .project-badge')?.textContent?.trim()).toBe('SITE')
+  expect(coordinatorReads).toBeGreaterThan(reads)
 })

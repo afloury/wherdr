@@ -78,6 +78,8 @@ export async function stepAction(deps: CoreAdminDeps & { store: PmStore }, id: u
   const task = await store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
   if (task.stopped) throw new HerdrError('refused', 'The task is stopped: continue it first')
+  // A reported problem that blocks the merge: no step action, the engine's neither.
+  if (task.report?.block) { if (by === 'user') throw new HerdrError('refused', 'A problem you reported blocks the merge: withdraw it, or wait for the coordinator'); return task }
   if (running.has(task.id)) throw new HerdrError('busy', 'Already checking')
   running.add(task.id)
   try { return await stepActionOf(deps, task, by) } finally { running.delete(task.id) }
@@ -123,6 +125,18 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
   return store.saveTask({ ...(await store.task(task.id) ?? task), step: state })
 }
 
+// After a restart: a merge step still marked running was cut by it. The engine
+// runs it again, and runAction asks GitHub where its PR stands first.
+export async function resumeMerges(deps: CoreAdminDeps & { store: PmStore }) {
+  const projects = await deps.store.projects()
+  for (const task of await deps.store.tasks()) {
+    if (!task.step?.acting || task.step.done || task.stopped) continue
+    const p = projects.find(x => x.key === task.project)
+    const step = planOf(p ? await deps.store.workflow(p.key) : null, task, p)[task.step.at]
+    if (step?.action?.kind === 'github.merge') await stepAction(deps, task.id, 'engine').catch(() => {})
+  }
+}
+
 // The user's choice on a review the after-N rule handed to them (Decisions):
 // any choice, like the coordinator's `task decide` but not limited to its options.
 export async function userDecide(store: PmStore, id: unknown, choice: unknown) {
@@ -136,7 +150,7 @@ export async function userSendBack(store: PmStore, id: unknown, note: unknown) {
   return userEvent(store, id, { kind: 'back', note })
 }
 
-async function userEvent(store: PmStore, id: unknown, ev: StepEvent) {
+export async function userEvent(store: PmStore, id: unknown, ev: StepEvent, by = 'user') {
   const task = await store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
   const p = (await store.projects()).find(x => x.key === task.project)
@@ -144,7 +158,8 @@ async function userEvent(store: PmStore, id: unknown, ev: StepEvent) {
   if (!t) throw new HerdrError('not_found', 'The project has no template')
   const r = onEvent(planOf(t, task, p), task.step ?? initialState(), ev, Date.now())
   if (r.refused) throw new HerdrError('refused', r.refused)
-  return store.logTask({ ...task, step: r.state }, 'user', r.effects.flatMap(e => (e.kind === 'log' ? [e.text] : [])).join('; '))
+  // The step sent back answers a reported problem.
+  return store.logTask({ ...task, step: r.state, ...(ev.kind === 'back' ? { report: undefined } : {}) }, by, r.effects.flatMap(e => (e.kind === 'log' ? [e.text] : [])).join('; '))
 }
 
 const sameKey = (a: string | undefined, b: unknown) =>

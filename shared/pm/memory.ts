@@ -7,7 +7,7 @@ import type { MachineCapacity } from './capacity'
 
 // The user's settings for one machine (Settings › Machines).
 export interface MemorySettings {
-  minFreeMb: number // automatic starts wait while less memory than this is available
+  minFreeMb?: number // automatic starts wait while less memory than this is available; unset: autoReserve of its RAM
   maxAgents?: number // agents at once on the machine; unset: one per MB_PER_AGENT of its RAM
   hours?: Hours // when it is there for automatic starts; unset: always
 }
@@ -34,9 +34,18 @@ export function hoursWait(h: Hours | undefined, heavy: boolean, now: Date): stri
   if (heavy && span - since < HEAVY_BEFORE_MIN) return `leaves at ${h.to}: too late for heavy work`
 }
 
-export const DEFAULT_MEMORY: MemorySettings = { minFreeMb: 2048 }
+export const DEFAULT_MEMORY: MemorySettings = {}
 export const SWAP_MAX = 0.9 // automatic starts wait while more of the swap than this is used
 export const MB_PER_AGENT = 1536
+
+// The Auto memory reserve: 15 % of the machine's RAM, at least 1 GB, at most
+// 4 GB (8 GB: 1.2 GB, 18 GB: 2.7 GB, 32 GB and more: 4 GB).
+export const RESERVE_SHARE = 0.15
+export const autoReserve = (totalMb: number) => Math.min(4096, Math.max(1024, Math.round(totalMb * RESERVE_SHARE)))
+// The memory automatic starts leave free: the user's, else the Auto reserve
+// (0 while the machine cannot be read: nothing to hold by then).
+export const reserveOf = (s: MemorySettings, mem: Pick<MachineCapacity, 'total'> | null) =>
+  s.minFreeMb ?? (mem ? autoReserve(mem.total) : 0)
 
 // The machine's cap: the user's, else one agent per MB_PER_AGENT of RAM (at least one).
 export const agentCap = (s: MemorySettings, mem: MachineCapacity | null) =>
@@ -45,22 +54,33 @@ export const agentCap = (s: MemorySettings, mem: MachineCapacity | null) =>
 const gb = (mb: number) => `${(mb / 1024).toFixed(1)} GB`
 const swapUsed = (m: MachineCapacity) => (m.swapTotal ? (m.swapTotal - m.swapFree) / m.swapTotal : 0)
 
+// Why the machine's memory takes no more work beyond its free figure, or
+// undefined. macOS: its pressure (normal: the free rule alone; warn: light
+// work only; critical: nothing). Linux: swap over SWAP_MAX.
+export function memoryStrain(m: MachineCapacity, light: boolean): string | undefined {
+  if (m.pressure === 'critical') return 'memory pressure critical'
+  if (m.pressure === 'warn') return light ? undefined : 'memory pressure warn: light work only'
+  if (swapUsed(m) > SWAP_MAX) return `swap ${Math.round(swapUsed(m) * 100)} % used`
+}
+
 // Why the machine is short for one more agent, or undefined. `agents`: the
 // agents running on it now, all projects together. An unknown reading holds
 // only by the user's cap.
 export function memoryShort(mem: MachineCapacity | null, s: MemorySettings, agents: number): string | undefined {
-  if (mem && mem.available < s.minFreeMb) return `${gb(mem.available)} free, under ${gb(s.minFreeMb)}`
-  if (mem && swapUsed(mem) > SWAP_MAX) return `swap ${Math.round(swapUsed(mem) * 100)} % used`
+  if (mem && mem.available < reserveOf(s, mem)) return `${gb(mem.available)} free, under ${gb(reserveOf(s, mem))}`
+  const strain = mem && memoryStrain(mem, false)
+  if (strain) return strain
   const cap = agentCap(s, mem)
   if (cap !== undefined && agents >= cap) return `${agents} agents already run on it (cap ${cap})`
 }
 
-// The reading's parts: "5.2 GB free of 16.0 GB", "8 cores, load 2.1", "swap 3 %", "2 of 10 agents".
+// The reading's parts: "5.2 GB free of 16.0 GB", "8 cores, load 2.1", "swap 3 %" (macOS: "pressure normal"), "2 of 10 agents".
 export function capacityParts(mem: MachineCapacity | null, s: MemorySettings, agents: number): string[] {
   const cap = agentCap(s, mem)
   return [
     mem ? `${gb(mem.available)} free of ${gb(mem.total)}` : 'memory unknown',
     ...(mem?.cores ? [`${mem.cores} cores, load ${mem.load1.toFixed(1)}`] : []),
+    ...(mem?.pressure ? [`pressure ${mem.pressure}`] : []),
     ...(mem?.swapTotal ? [`swap ${Math.round(swapUsed(mem) * 100)} %`] : []),
     cap !== undefined ? `${agents} of ${cap} agents` : `${agents} agents`,
   ]
@@ -77,11 +97,13 @@ export function availabilityLine(online: boolean, h: Hours | undefined, now = ne
   return [online ? 'online' : 'offline', ...(h ? [`${hoursLabel(h)}${hoursWait(h, false, now) ? ', away now' : ''}`] : [])].join(' · ')
 }
 
-// The user's changes, checked over `base`: minFreeGb 0-256 (GB), maxAgents 1-50 or null (back to the default), hours.
+// The user's changes, checked over `base`: minFreeGb 0-256 (GB, 0 turns the
+// guard off) and maxAgents 1-50, each null to go back to Auto; hours.
 export function mergeMemory(base: MemorySettings, patch: unknown): MemorySettings {
   const p = (patch && typeof patch === 'object' ? patch : {}) as Record<string, unknown>
   const out = { ...base }
-  if (typeof p.minFreeGb === 'number' && p.minFreeGb >= 0 && p.minFreeGb <= 256) out.minFreeMb = Math.round(p.minFreeGb * 1024)
+  if (p.minFreeGb === null) delete out.minFreeMb
+  else if (typeof p.minFreeGb === 'number' && p.minFreeGb >= 0 && p.minFreeGb <= 256) out.minFreeMb = Math.round(p.minFreeGb * 1024)
   if (p.maxAgents === null) delete out.maxAgents
   else if (Number.isInteger(p.maxAgents) && (p.maxAgents as number) >= 1 && (p.maxAgents as number) <= 50) out.maxAgents = p.maxAgents as number
   // hours: null (always there) or { days: 'weekdays' | 'all', from, to: 'HH:MM' }, from ≠ to.

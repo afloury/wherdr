@@ -12,7 +12,7 @@
 import type { MachineInfo, Pane } from '#shared/types'
 import { type ReadySort, type Row, createRowReuse, readyLists, rowGroup, sortReady, spaceRows, urgency } from '#shared/spaces'
 import { coreRowCounts } from '#shared/coreState'
-import { claudeApiShown, claudeSuggestion, machineQuotaRows, quotaRows, tabQuotaRows } from '~/utils/quotas'
+import { claudeApiShown, claudeSuggestion, machineQuotaRows, quotaBlocks, quotaRows, tabQuotaRows } from '~/utils/quotas'
 import { longPress } from '~/utils/longPress'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
 import { headerFold } from '~/utils/headerFold'
@@ -63,9 +63,9 @@ const counts = computed(() => {
 
 const conn = computed(() => {
   if (offlineView.value) return { ok: false, text: t('offline'), idle: false }
-  if (!eventsOpen.value) return { ok: false, text: everOpen.value ? t('offline — reconnecting…') : t('connecting…'), idle: !everOpen.value }
+  if (!linkShown.value) return { ok: false, text: everOpen.value ? t('offline — reconnecting…') : t('connecting…'), idle: !everOpen.value }
   if (!st.value.ok) return { ok: false, text: t('herdr-core unavailable'), idle: false }
-  return { ok: true, text: 'wherdr v3 · herdr-core', idle: false }
+  return { ok: true, text: 'wherdr v3', idle: false }
 })
 
 // "Dashboard"-style counters: always all three, zeros dimmed. Rows without a
@@ -217,6 +217,8 @@ const headerMachine = computed(() => {
 const oneChip = computed(() => (stateMachineChips.value.length === 1 ? stateMachineChips.value[0]! : null))
 const listQuotas = computed(() => (oneChip.value ? tabQuotaRows(topQuotas.value, oneChip.value.quotas) : topQuotas.value))
 const listApi = computed(() => topApi.value || Boolean(oneChip.value?.api))
+// Several online machines: their quotas grouped by account.
+const machineQuotaBlocks = computed(() => quotaBlocks(stateMachineChips.value.map(c => ({ key: c.m.key, name: c.name, quotas: c.quotas, api: c.api }))))
 const homeRoot = ref<HTMLElement | null>(null)
 const homeScroll = ref<HTMLElement | null>(null)
 const swipeDirection = useHomeSwipe(homeRoot, () => barEntries.value.map(b => b.id), () => machineBarPick.value, id => pickBar(id))
@@ -443,7 +445,7 @@ function resetListWidth() {
         <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
       </UTooltip>
       <UTooltip :text="t('New')" :kbds="shortcutKbds('new-space')" :content="{ side: 'right' }">
-        <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="!eventsOpen || offlineView" @click="newAgent" />
+        <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="!linkShown || offlineView" @click="newAgent" />
       </UTooltip>
       <UTooltip :text="tl('Board', 'Tableau')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Board', 'Tableau')" @click="openBoard" />
@@ -514,7 +516,7 @@ function resetListWidth() {
     <Transition :name="swipeDirection < 0 ? 'home-next' : 'home-prev'" @before-leave="retireHomeContent">
     <div :key="machineBarPick ?? BAR_ALL" ref="homeScroll" class="scroll">
       <OfflineNote v-if="(offlineView && cachedAt) || netDown" class="home-offline" :label="offlineView && cachedAt ? t('Last known state') : undefined" :at="cachedAt" date-style="medium" />
-      <div v-if="eventsOpen && !st.ok" class="notice">
+      <div v-if="linkShown && !st.ok" class="notice">
         {{ t('herdr-core is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
         {{ t('Run hc server start for the configured core session.') }}
       </div>
@@ -525,14 +527,7 @@ function resetListWidth() {
         </div>
       </div>
       <QuotaStrip :rows="listQuotas" :api="listApi" :class="{ 'after-stats': showCounters && agents.length }" />
-      <template v-if="!oneChip">
-        <template v-for="c in stateMachineChips" :key="`q-${c.m.key}`">
-          <div v-if="c.quotas.length || c.api" class="state-machine-quotas">
-            <p class="state-machine-quotas-label">{{ c.name }}</p>
-            <QuotaStrip :rows="c.quotas" :api="c.api" class="machine-quotas" />
-          </div>
-        </template>
-      </template>
+      <MachineQuotaBlocks v-if="!oneChip" :blocks="machineQuotaBlocks" />
 
       <AlfredRow v-if="st.ok" />
       <CoordinatorsSection v-if="st.ok" />
@@ -595,7 +590,7 @@ function resetListWidth() {
     </div>
 
     <div class="fab-wrap">
-      <UButton class="fab hw-cta" icon="i-lucide-plus" color="primary" variant="solid" size="xl" :disabled="!eventsOpen || offlineView" @click="newAgent">
+      <UButton class="fab hw-cta" icon="i-lucide-plus" color="primary" variant="solid" size="xl" :disabled="!linkShown || offlineView" @click="newAgent">
         {{ t('New') }}
       </UButton>
     </div>

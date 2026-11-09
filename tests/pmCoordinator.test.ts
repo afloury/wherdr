@@ -818,4 +818,29 @@ describe('commands of lot 10', () => {
     const blocked = async (method: string, p: { text: string }) => (method === 'terminal.get' ? { status: { state: 'blocked' } } : call(method, p))
     await refused(runCommand({ store, call: blocked } as unknown as Parameters<typeof runCommand>[0], token, { argv: ['tell', task.id, 'yes'] }), 'permission request is the user\'s')
   })
+
+  it('read: what the task\'s agent last said, its conversation else its screen, on its project only', async () => {
+    expect(parseCommand(['read', 'CO-1', '--to', 'reviewer', '--lines', '5'])).toEqual({ name: 'read', task: 'CO-1', to: 'reviewer', lines: 5 })
+    expect(parseCommand(['read', 'CO-1', '--lines', '0'])).toEqual({ error: '--lines is a number from 1 to 200' })
+    expect(parseCommand(['read', 'CO-1', '--to', 'coordinator'])).toEqual({ error: '--to is one of worker, reviewer' })
+    const reads: unknown[] = []
+    const call = async (method: string, p: unknown) => { reads.push([method, p]); return { text: 'screen line 1\nscreen line 2\n\n' } }
+    const panes = () => [{ id: 'w1:p1', coreAddress: 'm2/t4' }]
+    const chat = async () => [{ role: 'assistant', text: 'Done.', ts: null }, { role: 'user', text: 'go', ts: null }, { role: 'assistant', text: 'Step 1\nStep 2\nWhich DB, Postgres or SQLite?', ts: 't9' }, { role: 'tool', text: 'x', ts: null }]
+    const read = (argv: string[], tk = token) => runCommand({ store, call, panes, chat } as unknown as Parameters<typeof runCommand>[0], tk, { argv })
+    const task = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
+    await refused(read(['read', task.id]), 'The task has no worker yet')
+    const run = { task: task.id, program: 'claude', model: 'opus', machine: 'm2', worktree: '/w', branch: 'b', instructions: '', attempt: 1, state: 'running' as const }
+    await store.saveRun({ ...run, id: 'r1', role: 'worker', terminal: 'm2/t4', startedAt: 1 })
+    await store.saveRun({ ...run, id: 'r2', role: 'reviewer', terminal: 'm2/t5', startedAt: 2 })
+    await store.saveTask({ ...task, run: 'r1', state: 'waiting', waiting: 'The agent asks a question', waitKind: 'question' })
+    // The current agent's conversation, on another machine: its last message, its last lines.
+    expect(await read(['read', task.id, '--lines', '2'])).toEqual({ task: 'CO-1', agent: 'worker', running: true, waits: 'question', from: 'conversation', text: 'Step 2\nWhich DB, Postgres or SQLite?', at: 't9' })
+    // The reviewer has no readable conversation: the bottom of its screen.
+    expect(await read(['read', task.id, '--to', 'reviewer'])).toMatchObject({ agent: 'reviewer', from: 'screen', text: 'screen line 1\nscreen line 2' })
+    expect(reads).toEqual([['terminal.read', { terminal: 'm2/t5', lines: 40 }]])
+    // Another project's task reads as unknown.
+    await store.addTask({ project: 'ST', title: 'Other', type: 'study' })
+    await refused(read(['read', 'ST-1']), 'Unknown task')
+  })
 })

@@ -5,7 +5,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { DEFAULT_MEMORY, agentCap, availabilityLine, mergeMemory, memoryLine, memoryShort, type MemorySettings } from '../../shared/pm/memory'
+import { DEFAULT_MEMORY, agentCap, autoReserve, availabilityLine, mergeMemory, memoryLine, memoryShort, type MemorySettings } from '../../shared/pm/memory'
 import { CAPACITY_SCRIPT, parseCapacity, type MachineCapacity } from '../../shared/pm/capacity'
 import { machineOn, type CoreAdminDeps } from './coreCreate'
 import { exec } from './pmLaunch'
@@ -21,7 +21,7 @@ export const MEMORY_FILE = path.join(DATA_DIR, 'machine-memory.json')
 export async function readMemorySettings(file = MEMORY_FILE): Promise<Record<string, MemorySettings>> {
   try {
     const raw = JSON.parse(await fs.readFile(file, 'utf8'))?.machines
-    return Object.fromEntries(Object.entries(raw && typeof raw === 'object' ? raw : {}).map(([k, v]) => [k, mergeMemory(DEFAULT_MEMORY, v && typeof v === 'object' ? { minFreeGb: (v as MemorySettings).minFreeMb / 1024, maxAgents: (v as MemorySettings).maxAgents, hours: (v as MemorySettings).hours } : {})]))
+    return Object.fromEntries(Object.entries(raw && typeof raw === 'object' ? raw : {}).map(([k, v]) => [k, mergeMemory(DEFAULT_MEMORY, v && typeof v === 'object' ? { ...(typeof (v as MemorySettings).minFreeMb === 'number' ? { minFreeGb: (v as MemorySettings).minFreeMb! / 1024 } : {}), maxAgents: (v as MemorySettings).maxAgents, hours: (v as MemorySettings).hours } : {})]))
   } catch { return {} }
 }
 
@@ -58,7 +58,7 @@ export async function machineCapacity(deps: CoreAdminDeps, machine: string, now 
   return mem
 }
 
-export interface MemoryState { key: string, label: string, online: boolean, mem: MachineCapacity | null, settings: MemorySettings, agents: number, cap?: number, line: string, short?: string }
+export interface MemoryState { key: string, label: string, online: boolean, mem: MachineCapacity | null, settings: MemorySettings, agents: number, cap?: number, autoReserve?: number, line: string, short?: string }
 
 // The agents at work on a machine, every project: those that hold their task's
 // step under way (agentsAtWork), not those of a task that waits for the user.
@@ -84,7 +84,7 @@ export async function memoryState(deps: CoreAdminDeps & { store: PmStore }, mach
   const short = memoryShort(mem, settings, agents)
   const cap = agentCap(settings, mem)
   const there = availabilityLine(online, settings.hours)
-  return { key: machine, label, online, mem, settings, agents, ...(cap !== undefined ? { cap } : {}), line: online ? `${there} · ${memoryLine(mem, settings, agents)}` : there, ...(short ? { short } : {}) }
+  return { key: machine, label, online, mem, settings, agents, ...(cap !== undefined ? { cap } : {}), ...(mem ? { autoReserve: autoReserve(mem.total) } : {}), line: online ? `${there} · ${memoryLine(mem, settings, agents)}` : there, ...(short ? { short } : {}) }
 }
 
 // Settings › Machines and › Pace: every machine wherdr knows, offline ones too (their hours can be set).

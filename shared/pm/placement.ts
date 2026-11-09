@@ -2,7 +2,7 @@
 // fits now, or a hold that names each machine's reason. Pure: the server reads
 // each machine (capacity, settings, agents at work, readiness, pace) and asks.
 import type { MachineCapacity } from './capacity'
-import { SWAP_MAX, agentCap, capacityParts, hoursLabel, hoursWait, type MemorySettings } from './memory'
+import { agentCap, memoryStrain, reserveOf, capacityParts, hoursLabel, hoursWait, type MemorySettings } from './memory'
 import { WEIGHTS, WEIGHT_DEFAULTS, type Weight } from './weight'
 
 export interface Estimate { mb: number, cores: number }
@@ -41,12 +41,12 @@ const sum = (xs: Estimate[], k: keyof Estimate) => xs.reduce((n, x) => n + x[k],
 export function roomOf(c: Candidate) {
   const m = c.capacity
   if (!m) return Infinity
-  return Math.min(m.available, m.total - sum(c.running, 'mb')) - c.settings.minFreeMb
+  return Math.min(m.available, m.total - sum(c.running, 'mb')) - reserveOf(c.settings, m)
 }
 
 // Too small for the task even empty: its RAM less its reserve under the
 // estimate. Unknown when it cannot be read.
-const tooSmall = (c: Candidate, e: Estimate) => !!c.capacity && c.capacity.total - c.settings.minFreeMb < e.mb
+const tooSmall = (c: Candidate, e: Estimate) => !!c.capacity && c.capacity.total - reserveOf(c.settings, c.capacity) < e.mb
 
 // Why the task does not fit the machine now, or undefined. Two checks: the live
 // reading (catches what wherdr does not track) and the bookkeeping of the
@@ -63,9 +63,11 @@ export function misfit(c: Candidate, weight: Weight, e: Estimate, now = new Date
   const cap = agentCap(c.settings, m)
   if (cap !== undefined && agents >= cap) return `${agents} agents (cap ${cap})`
   if (!m) return undefined
-  if (m.available - e.mb < c.settings.minFreeMb) return `${gb(m.available)} free, needs ${gb(e.mb + c.settings.minFreeMb)} with its reserve`
-  if (m.swapTotal && (m.swapTotal - m.swapFree) / m.swapTotal > SWAP_MAX) return `swap ${Math.round((m.swapTotal - m.swapFree) / m.swapTotal * 100)} % used`
-  if (sum(c.running, 'mb') + e.mb > m.total - c.settings.minFreeMb) return `${agents} agents take ≈${gb(sum(c.running, 'mb'))} of ${gb(m.total)}`
+  const reserve = reserveOf(c.settings, m)
+  if (m.available - e.mb < reserve) return `${gb(m.available)} free, needs ${gb(e.mb + reserve)} with its reserve`
+  const strain = memoryStrain(m, weight === 'light')
+  if (strain) return strain
+  if (sum(c.running, 'mb') + e.mb > m.total - reserve) return `${agents} agents take ≈${gb(sum(c.running, 'mb'))} of ${gb(m.total)}`
   if (m.cores && sum(c.running, 'cores') + e.cores > m.cores) return `${agents} agents take its ${m.cores} cores`
   if (weight === 'heavy' && m.cores && m.load1 / m.cores > HEAVY_LOAD) return `load ${m.load1.toFixed(1)} on ${m.cores} cores`
 }

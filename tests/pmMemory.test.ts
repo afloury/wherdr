@@ -7,7 +7,7 @@ import { DEFAULT_AUTOPILOT } from '../shared/pm/autopilot'
 import { createPmStore } from '../server/utils/pmStore'
 import { placeFor } from '../server/utils/pmPlace'
 import { startHeld } from '../server/utils/pmMechanic'
-import { DEFAULT_MEMORY, agentCap, memoryShort, mergeMemory } from '../shared/pm/memory'
+import { DEFAULT_MEMORY, agentCap, autoReserve, memoryShort, mergeMemory, reserveOf } from '../shared/pm/memory'
 import { parseLinux } from '../shared/pm/capacity'
 
 const GB = 1024
@@ -18,7 +18,7 @@ describe('the memory hold', () => {
   it('holds under the free memory threshold, over 90 % of swap, or at the cap', () => {
     const mem = (free: number, swapFree = 4) => parseLinux(meminfo(16, free, 4, swapFree))
     expect(memoryShort(mem(8), DEFAULT_MEMORY, 0)).toBeUndefined()
-    expect(memoryShort(mem(1.5), DEFAULT_MEMORY, 0)).toBe('1.5 GB free, under 2.0 GB')
+    expect(memoryShort(mem(1.5), DEFAULT_MEMORY, 0)).toBe('1.5 GB free, under 2.4 GB')
     expect(memoryShort(mem(8), { minFreeMb: 10 * GB }, 0)).toBe('8.0 GB free, under 10.0 GB')
     expect(memoryShort(mem(8, 0.2), DEFAULT_MEMORY, 0)).toBe('swap 95 % used')
     // Default cap: one agent per 1.5 GB of RAM (16 GB: 10).
@@ -31,10 +31,19 @@ describe('the memory hold', () => {
     expect(memoryShort(null, { ...DEFAULT_MEMORY, maxAgents: 2 }, 2)).toBeDefined()
   })
 
+  it('picks the Auto reserve from the RAM: 15 %, 1 to 4 GB; a saved one, 0 included, wins', () => {
+    expect([4, 8, 18, 64].map(g => autoReserve(g * GB))).toEqual([1024, 1229, 2765, 4096])
+    expect(reserveOf(DEFAULT_MEMORY, { total: 8 * GB })).toBe(1229)
+    expect(reserveOf({ minFreeMb: 0 }, { total: 8 * GB })).toBe(0)
+    expect(reserveOf(DEFAULT_MEMORY, null)).toBe(0)
+  })
+
   it('checks the user\'s settings', () => {
     expect(mergeMemory(DEFAULT_MEMORY, { minFreeGb: 4, maxAgents: 6 })).toEqual({ minFreeMb: 4 * GB, maxAgents: 6 })
     expect(mergeMemory({ minFreeMb: GB, maxAgents: 6 }, { minFreeGb: -1, maxAgents: null })).toEqual({ minFreeMb: GB })
     expect(mergeMemory(DEFAULT_MEMORY, { maxAgents: 0 })).toEqual(DEFAULT_MEMORY)
+    // An emptied field (null) goes back to Auto; an absent one keeps its value.
+    expect(mergeMemory({ minFreeMb: 0, maxAgents: 6 }, { minFreeGb: null })).toEqual({ maxAgents: 6 })
     const hours = { days: 'weekdays', from: '09:00', to: '19:00' } as const
     expect(mergeMemory(DEFAULT_MEMORY, { hours })).toEqual({ ...DEFAULT_MEMORY, hours })
     expect(mergeMemory({ ...DEFAULT_MEMORY, hours }, { hours: { ...hours, to: '25:00' } }).hours).toEqual(hours)
