@@ -1,0 +1,12 @@
+❯ Run the test suite
+
+⏺ Bash(npm test)
+  ⎿  Running…
+
+✢ Simmering… (1m 4s · ↑ 2.1k tokens)
+  ⎿  Tip: Use /btw to ask a quick side question without interrupting Claude's current work
+
+────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on · ← for agents
