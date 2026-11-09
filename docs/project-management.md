@@ -36,6 +36,10 @@ new project.
 5. **Start its coordinator.** Pick the agent and start it: the coordinator is
    the agent you talk to about the project. It adds tasks and follows them on
    the board. Its [autopilot](#autopilot) can be set under it (optional).
+   It keeps a memory of its own, `memory.md` in its folder: your decisions
+   and preferences, read at each start. wherdr never rewrites it, so the
+   coordinator remembers them after a restart or a change of agent (Claude,
+   Codex…).
 6. **Add a first task.** A title and, with several, its type.
 
 **New › Project** also opens a project's coordinator, or adds a new or empty
@@ -264,10 +268,30 @@ The coordinator sees the same with `wherdr pm autopilot show`: the project's
 placement strategy, one line per machine the project allows (memory, cores and load, its agents at work by
 weight, and the heaviest weight it takes now, or why none: full, not ready,
 paced, offline), and what each weight counts (*light* ≈ 0.7 GB, *standard* ≈
-1.8 GB, *heavy* ≈ 3.9 GB) with the weight of each task type. `show <task>`
+1.8 GB, *heavy* ≈ 3.9 GB at first) with the weight of each task type. While a
+task runs, the engine measures the memory its worktree's processes take (the
+agent, builds, tests, the dev server and its browser). Once 3 runs of a weight
+have a measured peak in the project, that weight counts the largest of its
+last 5 peaks plus 15 %, for example `heavy ≈ 2.7 GB, 2 cores (from 5 runs)`. `show <task>`
 gives the machine a started task runs on. Its instructions say the engine
 places tasks, `task start --on` picks a machine and `task add --weight` sets a
 weight that differs from the task type's.
+
+### Who sends a wake
+
+A wake is a message wherdr sends the coordinator; its first line names who
+sends it, and the conversation shows a small label of that kind above it:
+
+- **Autopilot**: the autopilot's scheduled wakes, its events and *Run now*;
+- **Step check** (`Step check: CO-1 (deploy)`): a step the coordinator holds,
+  such as *watch the deploy*, at its start, each `recheck` and its timeout. It
+  comes even with the autopilot off;
+- **Engine**: wherdr gave up on a block after failed fixes
+  ([What wherdr fixes on its own](#what-wherdr-fixes-on-its-own));
+- **Health check**: wherdr's health check found something to look at.
+
+Each kind is its own wake, sent one after the other. Every wake ends with
+`wherdr pm ack <id>`, whatever its kind.
 
 ### What a task's agent said
 
@@ -335,7 +359,10 @@ action), standard otherwise. The coordinator does the same with `task add
 
 ## Task sheet
 
-A card opens the task's sheet: its id badge by the title (a tap copies it) and step, a note when it waits or was
+A card opens the task's sheet. Tasks to handle, Decisions' *Open task* and a task
+link in the chat (`#/board?task=ID`) open it over the page you are on (a bottom
+sheet on a phone), with `?task=ID` added to that page's address, so it survives a
+reload and can be shared; closing it leaves the page as it was. The sheet shows its id badge by the title (a tap copies it) and step, a note when it waits or was
 stopped, the time it spent in each step with the time it waited for you apart,
 its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
 waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
@@ -442,22 +469,34 @@ brought does not count.
 #### The merge queue
 
 Each project has a **merge queue**: every task whose merge may go on without
-you (a merge the guards give to wherdr, or one you approved) enters it, and
-wherdr merges them one at a time. The first in the queue is updated with its
-base: wherdr merges the base into the branch and pushes it when that merges
-cleanly, even when GitHub does not flag the branch as behind; on a conflict it
-hands the conflicting files to the task's agent (started again if it was
-ended), and the task keeps its place. An update that fails (a network error)
-is tried again twice, a few minutes apart; past that, the task goes to the end
-of the queue so the others go on. wherdr then waits for the required
-checks on the updated PR and merges it, and the next task comes up. Checks that
-fail after an update go back to the agent as red CI, not to you, and that task
-goes to the end of the queue meanwhile. The others wait their turn and are not
-updated before it: PRs that touch no file another queued PR touches come first,
-then smaller changes. A PR already ready when it reaches its merge step merges
-at once. The card shows the place (*2nd in merge queue*), a refused merge
-waiting its turn stays off *Your turn*, and the log says when a task enters
-the queue and when it comes first.
+you (a merge the guards give to wherdr, or one you approved) enters it. Only
+PRs ready to merge now stand in line: no conflict, no update required, the
+task's last commit on the PR and its checks green. The first in line merges,
+then the next one, a minute apart; PRs that touch no file another queued PR
+touches come first, then smaller changes.
+
+A PR that needs work steps out of line until it is ready again, so it never
+holds up the others: a conflict with its base, checks still running or red,
+work handed to its agent, a merge GitHub blocks (a required review) or
+refused (that one is yours, under *Your turn*, until a new commit). A ready PR merges as it is, without first being
+updated with its base, unless GitHub requires it: wherdr updates a branch only
+when GitHub reports a conflict, or reports it behind because the branch rules
+want branches up to date. When the base moves, every queued PR that needs an
+update gets it in the same pass, and their checks run side by side. An update
+that merges cleanly is pushed by wherdr alone; a conflict goes to the task's
+agent (started again if it was ended). An update that fails (a network error)
+is tried again twice, a few minutes apart. Checks that fail go back to the
+agent as red CI, not to you.
+
+A task waiting in the queue with no work handed to its agent lets its agents
+go once they are idle for 10 minutes, as for [a task that waits for
+you](#agents-of-a-task-that-waits-for-you); wherdr starts the worker again
+only if the queue hands it work.
+
+The card shows the place (*2nd in merge queue*) or why the PR stepped out
+(*in merge queue, out of line: conflict with its base*); a refused merge in the
+queue stays off *Your turn*, and the log says when a task enters the queue and
+when it comes first.
 
 ### What wherdr fixes on its own
 

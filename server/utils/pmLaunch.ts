@@ -51,6 +51,9 @@ if ! grep -qxF "/$name/" "$x" 2>/dev/null; then
 fi
 df -Pk /tmp | awk 'NR==2 {print $4}'`
 export const WRITE_SCRIPT = 'mkdir -p "$(dirname "$1")" && cat > "$1"'
+// The same, only when the file is missing: an agent's own file is never overwritten.
+// An existing file still reads its input, so the writer never hits a closed pipe.
+export const CREATE_SCRIPT = `if [ -e "$1" ]; then cat > /dev/null; else ${WRITE_SCRIPT}; fi`
 // Makes the temp folder: why the agent may not start, or undefined.
 export async function prepareTmp(deps: Pick<CoreAdminDeps, 'call'>, on: string | undefined, worktree: string) {
   const r = await exec(deps, on, TMP_SCRIPT, [worktree, TMP_DIR])

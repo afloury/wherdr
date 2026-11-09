@@ -62,7 +62,7 @@ function tabStatus(e: typeof tabs.value[number]) {
 <template>
   <button type="button" class="phone-identity" :aria-label="label" aria-haspopup="dialog" :aria-expanded="open" @click="open = true">
     <span class="phone-identity-copy" aria-hidden="true">
-      <span class="phone-identity-title"><ProjectBadge v-if="badge" class="head-badge" :text="badge.text" :color="badge.color" />{{ title }}</span>
+      <span class="phone-identity-title"><AlfredEmblem v-if="isAlfredPane(pane)" class="head-emblem" /><ProjectBadge v-if="badge" class="head-badge" :text="badge.text" :color="badge.color" />{{ title }}</span>
       <span class="phone-identity-meta"><span v-if="stateLabel" class="pill" :class="tone"><i />{{ stateLabel }}</span><template v-if="showKind && !context"><span>·</span><span class="phone-identity-kind">{{ kind }}</span></template><template v-if="context"><span>·</span><OmpContext :pane="pane" variant="text" /></template></span>
     </span>
     <UIcon v-if="paneNotificationsMuted(pane)" name="i-lucide-bell-off" mode="svg" class="phone-identity-muted" aria-hidden="true" />
@@ -107,6 +107,7 @@ function tabStatus(e: typeof tabs.value[number]) {
 .phone-identity:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .phone-identity-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .head-badge { margin-right: 6px; }
+.head-emblem { display: inline-block; width: 16px; margin-right: 6px; vertical-align: -1px; }
 .phone-identity-title { font-size: 14px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .phone-identity-meta { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; color: var(--muted); font: 500 11px/1.2 var(--mono); white-space: nowrap; }
 /* omp's context percentage takes the kind's place (still in the panel and the label) and stays

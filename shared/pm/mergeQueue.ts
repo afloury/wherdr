@@ -1,9 +1,15 @@
 // A project's merge queue: the tasks whose merge may go on (the engine merges
-// it, or the user approved it) merge one at a time. The first is updated with
-// its base, waits for its checks and merges; the others wait their turn, and
-// are not updated meanwhile. Pure: server/utils/pmMechanic.ts keeps each
-// task's place (task.queue) and carries out the first one's moves.
+// it, or the user approved it). Only PRs ready to merge now stand in line, and
+// the first merges; a PR that needs work (a conflict, an update GitHub
+// requires, checks running or red, work handed to its agent) steps out until
+// it is ready again, so it never holds up the others. Each queued PR is
+// updated with its base on its own, whatever its place, and only when GitHub
+// reports a conflict or requires it (BEHIND: the branch rules want it up to
+// date). Pure: server/utils/pmMechanic.ts keeps each task's place (task.queue)
+// and why it stepped out (task.queueOut), and carries out the moves.
+import { prReady } from './actions'
 import { mayMerge, type ResolvedGuards } from './guards'
+import type { MechFacts } from './mechanic'
 import { waitsToMerge, type PlannedStep, type StepState } from './steps'
 import type { Task } from './run'
 
@@ -20,25 +26,46 @@ export function inMergeQueue(task: Task, plan: PlannedStep[], guards: ResolvedGu
   return mergeGoesOn(plan[s.at], s, guards, pr.baseRefName)
 }
 
+// Why a queued PR is out of line, or undefined when it may merge now: GitHub
+// reports no conflict, no required update and no other block, its head is the
+// task's commit, its checks are green and no merge was refused at that commit.
+export function queueOut(f: Pick<MechFacts, 'task' | 'plan' | 'pr' | 'head' | 'agentBusy'>): string | undefined {
+  const { task, plan, pr, head } = f
+  const s = task.step!
+  if (s.agent) return s.agent.kind === 'catch-up' ? 'its agent resolves a conflict with the base' : 'its agent fixes the PR'
+  if (s.catchUp) return `updating with ${s.catchUp.base}`
+  if (f.agentBusy) return 'its agent is working'
+  if (!pr || !head || pr.headRefOid !== head) return 'its new commits are not on the PR yet'
+  if (pr.mergeStateStatus === 'DIRTY') return 'conflict with its base'
+  if (pr.mergeStateStatus === 'BEHIND') return `updating with ${pr.baseRefName}`
+  // Its merge tried at this commit and refused: the user's (Try again, Merge), out of line meanwhile.
+  if (s.yourTurn?.reason === 'action' && Object.keys(task.mech ?? {}).some(k => k === `merge:${head}` || k.startsWith(`merge:${head}:`)))
+    return `${MERGE_REFUSED}${s.yourTurn.error ?? s.yourTurn.badge}`
+  const ready = prReady(pr, head, plan[s.at]?.action?.checks)
+  if (!ready.ok) return ready.later ? 'waiting for its checks' : 'checks failed'
+  // Green, yet GitHub refuses it (a required review, a required check the step does not list).
+  return pr.mergeStateStatus === 'BLOCKED' ? 'blocked by the branch rules' : undefined
+}
+
+// The start of queueOut's reason for a refused merge: that one stays on Your turn.
+export const MERGE_REFUSED = 'merge refused: '
+
 export interface QueueEntry {
   id: string
   files: string[] // the files its PR changes
   size: number // lines added and deleted
-  first?: boolean // first already (its update runs, its agent resolves a conflict): it keeps its place
-  red?: boolean // its checks failed: back to its worker, after the others
+  out?: string // why it stepped out of line (queueOut)
 }
 
-// The queue's order, by id. The first keeps its place unless its checks are
-// red; then PRs that touch no file another queued PR touches, then smaller diffs.
+// The queue's order, by id: the PRs in line first, then those that stepped
+// out; in each, PRs that touch no file another queued PR touches, then smaller diffs.
 export function mergeOrder(entries: QueueEntry[]): string[] {
-  const first = entries.find(e => e.first && !e.red)
   const shares = (e: QueueEntry) => entries.some(o => o !== e && o.files.some(f => e.files.includes(f)))
-  const rank = (e: QueueEntry) => [e.red ? 1 : 0, shares(e) ? 1 : 0, e.size] as const
-  const rest = entries.filter(e => e !== first).sort((a, b) => {
+  const rank = (e: QueueEntry) => [e.out ? 1 : 0, shares(e) ? 1 : 0, e.size] as const
+  return [...entries].sort((a, b) => {
     const x = rank(a), y = rank(b)
     return x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || a.id.localeCompare(b.id)
-  })
-  return [...(first ? [first] : []), ...rest].map(e => e.id)
+  }).map(e => e.id)
 }
 
 // "1st", "2nd", "3rd", "11th"…

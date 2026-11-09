@@ -142,6 +142,6 @@ describe('the coordinator\'s view of machines', () => {
     expect(mac('normal')).toBe('machine-m: 5.0 GB free of 18.0 GB · 8 cores, load 0.0 · pressure normal · 1 of 12 agents · running 1 standard · fits standard')
     expect(mac('warn')).toMatch(/ · fits light$/)
     expect(mac('critical')).toMatch(/ · takes nothing now: memory pressure critical$/)
-    expect(weightsLine()).toBe('light ≈ 0.7 GB, 0.25 core · standard ≈ 1.8 GB, 1 core · heavy ≈ 3.9 GB, 2 cores')
+    expect(weightsLine()).toBe('light ≈ 0.7 GB, 0.25 core (default) · standard ≈ 1.8 GB, 1 core (default) · heavy ≈ 3.9 GB, 2 cores (default)')
   })
 })
