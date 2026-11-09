@@ -10,7 +10,7 @@
 // buttons, with the PR and, for a PR closed unmerged, Archive), and Delete for
 // a task never started (confirmed). Those stay at the top; below, tabs (the app's
 // segmented style) for the rest, only the open one scrolling: Description (the
-// text, tags and links, the PR among them), Plan (each step with its
+// text in Markdown, the chat's safe renderer, no raw HTML; tags and links, the PR among them), Plan (each step with its
 // screenshots), Log.
 import { canStart, canStop, cardStatus, linkLabel, statusText, type Card } from '#shared/pm/board'
 import { canCheckGithub, type GhCheck } from '#shared/pm/ghCheck'
@@ -43,6 +43,12 @@ const status = computed(() => { const s = cardStatus(props.card); return s && { 
 const times = computed(() => (props.card.times ? timesText(props.card.times) : ''))
 
 const todo = computed(() => taskTodo(props.card))
+const descHtml = computed(() => (props.card.description ? md(props.card.description, { plain: true }) : ''))
+function onDescClick(e: MouseEvent) {
+  const btn = (e.target as HTMLElement).closest?.('.code-copy') as HTMLElement | null
+  const text = btn?.closest('.code-block')?.querySelector('pre')?.textContent
+  if (btn && text != null) copyCodeBlock(btn, text)
+}
 type Tab = 'todo' | 'description' | 'plan' | 'log'
 const TAB_LABEL: Record<Tab, [string, string]> = { todo: ['To do', 'À faire'], description: ['Description', 'Description'], plan: ['Plan', 'Plan'], log: ['Log', 'Journal'] }
 const tabs = computed<Tab[]>(() => [
@@ -152,7 +158,8 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
         <TaskTodo v-if="tab === 'todo' && todo" :card="card" :kind="todo" :pane="pane" :busy="busy" :pressing="pressing" :refused="refused" :waits-for="waitsFor"
           @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" />
         <template v-else-if="tab === 'description'">
-          <p v-if="card.description" class="task-desc">{{ card.description }}</p>
+          <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
+          <div v-if="descHtml" class="md-body task-md" data-testid="task-description" @click="onDescClick" v-html="descHtml" />
           <div v-if="card.tags.length || card.links.length" class="board-tags">
             <span v-for="tag in card.tags" :key="tag" class="board-chip">{{ tag }}</span>
             <a v-for="l in card.links" :key="l.url" :href="l.url" target="_blank" rel="noopener" class="board-chip">{{ linkLabel(l) }}</a>
@@ -196,6 +203,10 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-times { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .task-panel { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; }
 .task-desc { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
+/* Headings shown small: a description is not a document. */
+.task-md { flex: none; overflow-wrap: anywhere; color: var(--text-2); }
+.task-md :deep(:is(h1, h2, h3, h4, h5, h6)) { font-size: 15px; margin: 1em 0 .4em; }
+.task-sheet .task-md :deep(p) { margin: 0 0 .75em; }
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-sheet-actions:empty { display: none; }
 .task-report-open { display: grid; gap: 6px; justify-items: start; padding: 10px 12px; border: 1px solid var(--working); }

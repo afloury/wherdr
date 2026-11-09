@@ -296,7 +296,7 @@ stopped, the time it spent in each step with the time it waited for you apart,
 its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
 waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
 *Open the agent* or *Open the reviewer*, *Stop*, *Delete…*). Step times start
-with this version: an older task shows only its total. Below, tabs: **Description** (text, tags, links and the PR),
+with this version: an older task shows only its total. Below, tabs: **Description** (the text rendered as Markdown, as in the chat but with no raw HTML; tags, links and the PR),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
 and screenshots) and **Log**. A refused merge says why under its button.
 
