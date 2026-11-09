@@ -1,6 +1,6 @@
 // The project sheet's Machines block: home read only, an added machine saved
 // with its clone through project-update, then its readiness check shown; each
-// machine's last check, run again with Check; remove.
+// machine's last check, run again with Check; remove; its switch pauses it.
 import { afterEach, expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
@@ -45,4 +45,9 @@ it('adds a connected machine with its clone, shows its check, and removes one', 
   expect(posts[2]).toEqual(['check', { key: 'WEB', machine: 'a' }])
   await b.findAll('[data-testid="pm-machine-remove"]')[0]!.trigger('click')
   await vi.waitFor(() => expect(posts[3]).toEqual(['update', { key: 'WEB', machines: ['b'], clones: {} }]))
+  // Its switch off: paused for the project, its clone kept.
+  await b.findAll('[data-testid="pm-machine-on"]')[2]!.trigger('click')
+  await vi.waitFor(() => expect(posts[4]).toEqual(['update', { key: 'WEB', paused: ['b'] }]))
+  await b.setProps({ project: { ...project, machines: ['', 'a', 'b'], clones: { a: '~/web', b: '~/project' }, paused: ['b'] } })
+  expect(b.findAll('[data-testid="pm-machine-paused"]').map(x => x.text())).toEqual(['Paused for this project: no new task starts here'])
 })

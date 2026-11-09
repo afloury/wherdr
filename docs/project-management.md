@@ -103,7 +103,8 @@ its folder, branches and task worktrees stay on the machine.
   saved, wherdr runs that machine's readiness check (see *Start on…* under
   [Board](#board)) and shows *Ready* or what is missing. Each machine shows its
   last check (*Not checked yet* before the first); ↻ runs it again. ✕ removes a machine:
-  new tasks no longer start there, tasks already there stay. Alfred does the
+  new tasks no longer start there, tasks already there stay. Its switch off pauses it
+  for the project instead, its clone kept ([Pause a machine for a project](machines.md#pause-a-machine-for-a-project)). Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
   **Placement** chooses how new tasks spread over these machines: *Heavy to the
   strongest* (the default: light and standard work at home when it fits, heavy
@@ -458,7 +459,16 @@ waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
 *Open the agent* or *Open the reviewer*, *Stop*, *Delete…*). Step times start
 with this version: an older task shows only its total. Below, tabs: **Description** (the text rendered as Markdown, as in the chat but with no raw HTML; tags, links and the PR),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
-and screenshots) and **Log**. A refused merge says why under its button.
+and screenshots), **History** and **Log**. A refused merge says why under its button.
+
+**History** reads the task as a conversation, oldest first: the worker's *Done*
+(its closing report on its last one), the reviewer's *Sent back* (the findings,
+with their weight) or *Passed* (what it left as minor), the worker's *Fixed*
+(and the findings it contested), wherdr's catch-ups and CI fixes, the
+coordinator's and your actions. Each entry says who, when and, for an agent,
+its program and model; its text is Markdown, folded past a few lines with
+*Show more*. Only the worker's last report is kept, so an earlier *Done* says
+just that. **Log** keeps the raw lines, newest first.
 
 **Check on GitHub** shows on a task with a PR at its merge step, or archived:
 wherdr reads the PR now, for a merge stuck after a guard refusal, a PR merged
@@ -485,8 +495,9 @@ of the entry. An agent that is not on screen here opens the sheet instead.
 - **A visual change to merge**: the **Worker's note** (its closing report: what
   was done, why it is done, what was tested) and the **Reviewer's note** (the
   verdict, what it sent back and was fixed during the rounds, what it left as
-  minor), each in Markdown, folded to a few lines with *Show more*, side by
-  side on a wide screen; then its screenshots large (swipe between them, tap
+  minor), each in Markdown, folded to a few lines with *Show more*, full
+  width, one above the other (on a phone, *Worker* / *Reviewer* tabs above
+  one note); then its screenshots large (swipe between them, tap
   one to zoom; each is labelled phone or desktop), then
   *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
   A step you end (*Deployed*, …) shows the same two notes under its badge.

@@ -16,6 +16,7 @@ import { agentsAtWork } from '../../shared/pm/release'
 import { taskPlan } from '../../shared/pm/run'
 import { weightOf, type Weight } from '../../shared/pm/weight'
 import { learnedEstimates } from '../../shared/pm/peaks'
+import { pausedEverywhere } from '../../shared/pm/project'
 import type { Estimate } from '../../shared/pm/placement'
 
 export const MEMORY_FILE = path.join(DATA_DIR, 'machine-memory.json')
@@ -97,5 +98,8 @@ export async function memoryState(deps: CoreAdminDeps & { store: PmStore }, mach
 }
 
 // Settings › Machines and › Pace: every machine wherdr knows, offline ones too (their hours can be set).
-export const memoryView = async (deps: CoreAdminDeps & { store: PmStore }) =>
-  ({ machines: await Promise.all(deps.machines().map(m => memoryState(deps, m.key))) })
+// pausedAll: some project allows it, and every one that does has it paused.
+export async function memoryView(deps: CoreAdminDeps & { store: PmStore }) {
+  const projects = await deps.store.projects()
+  return { machines: await Promise.all(deps.machines().map(async m => ({ ...(await memoryState(deps, m.key)), ...(pausedEverywhere(projects, m.key) ? { pausedAll: true } : {}) }))) }
+}

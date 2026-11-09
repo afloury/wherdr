@@ -40,7 +40,8 @@ export function workerNote(plan: Planned[], s: { at: number, proofs: Record<stri
   return plan.slice(0, s.at).filter(p => p.holder === 'worker' && p.ends === 'report').map(p => s.proofs[p.id]?.report?.trim()).findLast(Boolean)
 }
 
-const item = (f: Finding, sev = true) => `- ${sev ? `[${weight(f)}] ` : ''}${f.title}${f.where ? ` (\`${f.where}\`)` : ''}`
+// A finding as a Markdown list item: its weight, title and where.
+export const findingLine = (f: Finding, sev = true) => `- ${sev ? `[${weight(f)}] ` : ''}${f.title}${f.where ? ` (\`${f.where}\`)` : ''}`
 
 // The review before the current step, in Markdown: its verdict, what it sent
 // back (fixed during the rounds, each finding once) and what it left as minor.
@@ -52,8 +53,8 @@ export function reviewNote(plan: Planned[], s: { at: number, rounds: Record<stri
   const minor = s.minor?.[id] ?? []
   return [
     `${line}.`,
-    ...(fixed.length ? ['', '**Fixed during the rounds**', ...fixed.map(f => item(f))] : []),
-    ...(minor.length ? ['', '**Left as minor**', ...minor.map(f => item(f, false))] : []),
+    ...(fixed.length ? ['', '**Fixed during the rounds**', ...fixed.map(f => findingLine(f))] : []),
+    ...(minor.length ? ['', '**Left as minor**', ...minor.map(f => findingLine(f, false))] : []),
     ...(!fixed.length && !minor.length && s.minor?.[id] ? ['', 'No finding.'] : []),
   ].join('\n')
 }
