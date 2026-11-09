@@ -55,7 +55,7 @@ describe('the memory hold', () => {
       const deps = { store, call, machines: () => [{ key: 'm1', local: false, label: 'box', status: 'online' }] } as unknown as Parameters<typeof placeFor>[0]
       const next = await store.addTask({ project: 'BB', title: 'Next', type: 'simple' })
       const memoryHold = async () => { const r = await placeFor(deps, next); return 'hold' in r ? r.hold : undefined }
-      expect(await memoryHold()).toBe('Waits for room: standard (≈1.8 GB) fits nowhere — box: 2 agents take ≈3.5 GB of 6.0 GB')
+      expect(await memoryHold()).toBe('Waits for room (Heavy to the strongest): standard (≈1.8 GB) fits nowhere — box: 2 agents take ≈3.5 GB of 6.0 GB')
       // A task waiting for the user (Your turn) does not count its agent.
       const aa = (await store.task('AA-1'))!
       await store.saveTask({ ...aa, step: { ...aa.step!, yourTurn: { reason: 'user', badge: 'Check it' } } })
