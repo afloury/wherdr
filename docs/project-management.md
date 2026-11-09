@@ -277,6 +277,23 @@ needs from you and the buttons for it, before its Description, Plan and Log.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (try again, start it, open its agent).
 
+While a merge waits for you, wherdr watches its PR. When the PR starts to
+conflict with its base, or falls behind it under a branch rule that wants it up
+to date, wherdr merges the base into the branch at once (or asks the task's
+agent to resolve the conflicts, starting it again if it was ended). The card
+says *updating with* the base and leaves *Your turn* until the PR is clean
+again; an agent's conflict resolution gets a short re-review first. One update
+runs at a time per task.
+
+Clicking *Merge* is an approval that stays: the log records who approved, when
+and at which commit. If the merge is refused because the PR conflicts or is
+behind, wherdr updates it the same way, and the card shows *Approved, merging
+when ready*. Once the PR is clean, its checks are green and the re-review of the
+commits since your approval finds nothing major, wherdr merges by itself, even
+on a branch only you may merge into, and the log says so. The task comes back
+to you only if the re-review finds something major, or says the new commits
+change behaviour or the interface beyond resolving conflicts, with why.
+
 ### A stalled task
 
 A working task is **stalled** when nothing moves: its CI is still red 10 minutes

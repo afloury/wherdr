@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { nextMove, redCiText, type MechFacts, type PrState } from '../shared/pm/mechanic'
 import { combineGuards } from '../shared/pm/guards'
-import type { PlannedStep, StepState } from '../shared/pm/steps'
+import { onEvent, type PlannedStep, type StepState } from '../shared/pm/steps'
+import { cardStatus } from '../shared/pm/board'
 import type { Task } from '../shared/pm/run'
 
 const plan: PlannedStep[] = [
@@ -63,6 +64,60 @@ describe('mechanical moves', () => {
     expect(nextMove(facts({ pr: behind }))).toEqual({ key: 'catch-up:abc1234', move: { kind: 'catch-up', base: 'v3' } })
     expect(nextMove(facts({ pr: behind, agentBusy: true }))).toBeUndefined()
     expect(nextMove(facts({ pr: behind, branch: 'main' }))?.move.kind).not.toBe('catch-up')
+  })
+
+  describe('a merge step waiting for the user', () => {
+    const visual: PlannedStep[] = [
+      { id: 'work', holder: 'worker', ends: 'report', text: '' },
+      { id: 'pr', ends: 'action', action: { kind: 'github.pr', base: 'v3' }, text: '' },
+      { id: 'review', holder: 'reviewer', ends: 'verdict', sendBack: 'work', text: '' },
+      { id: 'merge', ends: 'user', userLabel: 'Merge', badge: 'Look, then merge', action: { kind: 'github.merge' }, text: '', guarded: true },
+    ]
+    const waiting = step(3, { proofs: { review: { commit: 'abc1234' } }, yourTurn: { reason: 'user', badge: 'Look, then merge' } })
+    const at = (st: StepState, more: Partial<MechFacts> = {}) => facts({ plan: visual, task: task({ step: st }), ...more })
+    const status = (st: StepState) => cardStatus({ plan: visual, state: st, prNow: 'ready to merge' })?.text
+
+    it('catches up a conflicting PR at once, one at a time, then hands it back to the user', () => {
+      expect(nextMove(at(waiting))).toBeUndefined()
+      const dirty = pr({ mergeStateStatus: 'DIRTY' })
+      expect(nextMove(at(waiting, { pr: dirty }))).toEqual({ key: 'catch-up:abc1234', move: { kind: 'catch-up', base: 'v3' } })
+      const up = onEvent(visual, waiting, { kind: 'catch-up', base: 'v3', head: 'abc1234' }, 5).state
+      expect(up.yourTurn).toBeUndefined()
+      expect(status(up)).toBe('updating with v3')
+      // A second catch-up is refused while one runs; the conflict sent to the agent waits for its commit.
+      expect(onEvent(visual, up, { kind: 'catch-up', base: 'v3', head: 'abc1234' }, 6).refused).toBeTruthy()
+      const sent = { mech: { 'catch-up:abc1234': 1 } }
+      expect(nextMove(at(up, { pr: dirty, task: task({ step: up, ...sent }) }))).toBeUndefined()
+      expect(nextMove(at(up, { head: 'def5678', agentBusy: true, task: task({ step: up, ...sent }) }))).toBeUndefined()
+      expect(nextMove(at(up, { head: 'def5678', task: task({ step: up, ...sent }) }))?.key).toBe('catch-up:def5678')
+      // The agent's resolution is reviewed again; a clean merge of the base is not, and the user's turn comes back.
+      expect(onEvent(visual, up, { kind: 'caught-up', head: 'fff0000', review: { since: 'abc1234', head: 'fff0000' } }, 7).state).toMatchObject({ at: 2, rereview: { since: 'abc1234' } })
+      const clean = onEvent(visual, up, { kind: 'caught-up', head: 'fff0000' }, 7).state
+      expect(clean).toMatchObject({ at: 3, yourTurn: { reason: 'user' }, proofs: { review: { commit: 'fff0000' } } })
+      expect(clean.catchUp).toBeUndefined()
+    })
+
+    it('keeps the user\'s approval through a refused merge, then merges by itself once ready', () => {
+      const clicked = onEvent(visual, waiting, { kind: 'user' }, 10).state
+      expect(clicked.approved).toEqual({ by: 'user', at: 10, commit: 'abc1234' })
+      // The engine running the step again is no approval.
+      expect(onEvent(visual, waiting, { kind: 'user', engine: true }, 10).state.approved).toBeUndefined()
+      const refused = onEvent(visual, clicked, { kind: 'action-result', ok: false, error: 'merge: the PR conflicts with v3', catchUp: { base: 'v3', head: 'abc1234' } }, 11).state
+      expect(refused).toMatchObject({ acting: undefined, yourTurn: undefined, catchUp: { base: 'v3', from: 'abc1234' } })
+      expect(status(refused)).toBe('Approved, merging when ready · updating with v3')
+      const clean = onEvent(visual, refused, { kind: 'caught-up', head: 'fff0000' }, 12).state
+      expect(clean.yourTurn).toBeUndefined()
+      expect(nextMove(at(clean, { head: 'fff0000', pr: pr({ headRefOid: 'fff0000' }) }))).toEqual({ key: 'merge:fff0000', move: { kind: 'merge', url: 'https://gh/pr/7', base: 'v3' } })
+      // A re-review that says the new commits do more than resolve conflicts hands it back, with why.
+      const review = { ...onEvent(visual, refused, { kind: 'caught-up', head: 'fff0000', review: { since: 'abc1234', head: 'fff0000' } }, 12).state }
+      const back = onEvent(visual, review, { kind: 'verdict', from: 'reviewer', findings: [{ id: 'beyond-conflicts', severity: 'minor', title: 'the header changes' }] }, 13).state
+      expect(back).toMatchObject({ at: 3, approved: undefined, yourTurn: { reason: 'user', badge: 'Look again, then merge: the header changes' } })
+      // A Send back after the click drops the approval: the reworked task waits for the user again.
+      const failed = onEvent(visual, clicked, { kind: 'action-result', ok: false, error: 'merge: 1 check(s) failed' }, 14).state
+      const sentBack = onEvent(visual, failed, { kind: 'back', note: 'make the button blue' }, 15)
+      expect(sentBack.state).toMatchObject({ at: 0, approved: undefined })
+      expect(sentBack.effects).toContainEqual({ kind: 'log', text: 'merge: sent back by the user, approval dropped. make the button blue' })
+    })
   })
 
   it('re-runs CI once when it failed for infrastructure reasons', () => {

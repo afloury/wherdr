@@ -6,7 +6,7 @@
 // and carries the move out. A move is made once per key (task.mech).
 import { isTransient, prReady, type PrInfo } from './actions'
 import { isProtected, mayMerge, type ResolvedGuards } from './guards'
-import { DEFAULT_ROUNDS, type PlannedStep } from './steps'
+import { DEFAULT_ROUNDS, waitsToMerge, type PlannedStep } from './steps'
 import type { Task } from './run'
 
 export interface PrState extends PrInfo { mergeStateStatus?: string }
@@ -52,7 +52,7 @@ export const ciOf = (pr: PrState | undefined, head: string | undefined): NonNull
 // The next mechanical move for a task and its key, or undefined.
 export function nextMove(f: MechFacts): { move: Move, key: string } | undefined {
   const { task, plan, guards, pr, head } = f
-  const s = task.step, done = (key: string) => !!task.mech?.[key]
+  const s = task.step, done = (key: string) => task.mech?.[key] != null
   const pick = (key: string, move: Move) => (done(key) ? undefined : { move, key })
   // A task stopped on a login: started again once the login is back.
   if (task.state === 'waiting' && task.waitKind === 'auth') return f.loggedIn ? pick(`restart:${task.run ?? ''}`, { kind: 'restart' }) : undefined
@@ -68,7 +68,11 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   const base = prStep?.action?.base
   if (!pr || !head || !base) return
   // The guards decide, a protected branch too (merge.protected: engine).
-  const engineMerges = step.action?.kind === 'github.merge' && step.ends === 'action' && !step.guarded && mayMerge(guards, pr.baseRefName, 'engine')
+  // A merge step waiting for the user: watched while it waits; once the user
+  // approved it, the engine merges it when ready, under the user's approval.
+  const waits = waitsToMerge(step) && !s.acting
+  const engineMerges = (step.action?.kind === 'github.merge' && step.ends === 'action' && !step.guarded && mayMerge(guards, pr.baseRefName, 'engine'))
+    || (waits && !!s.approved && !s.catchUp)
   // One per commit and merge attempt: a head reviewed again is merged on the step's next attempt.
   const n = s.tries?.[step.id] ?? 0
   const mergeKey = `merge:${head}${n > 1 ? `:${n}` : ''}`
@@ -77,9 +81,11 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
     : undefined)
   // Merged on GitHub already, whatever its head: nothing to fix on it, the merge
   // step records it, even after an attempt of its own that was refused, and
-  // even when the guard keeps that branch for the user (they merged it).
-  const mergeStep = step.action?.kind === 'github.merge' && step.ends === 'action'
+  // even when the guard keeps that branch for the user (they merged it, or approved it).
+  const mergeStep = step.action?.kind === 'github.merge' && (step.ends === 'action' || (waits && !!s.approved))
   if (pr.merged) return mergeStep ? pick(`merged:${pr.url}`, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
+  // One catch-up at a time: run again once the agent committed its conflict resolution (a new head).
+  if (waits && s.catchUp) return f.agentBusy ? undefined : pick(`catch-up:${head}`, { kind: 'catch-up', base: s.catchUp.base })
   // The PR head is not the task's commit (a CI fix not pushed, a push from
   // elsewhere): the merge step pushes it and has it reviewed again, or says why not.
   if (pr.headRefOid !== head) return engineMerges && !f.agentBusy ? pick(mergeKey, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
