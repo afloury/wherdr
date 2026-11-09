@@ -141,7 +141,8 @@ removed or changed marked, and each changed field before → after (holder, ends
 action, merge rule, guards; instructions as a text diff). *JSON* shows the raw
 diff. A proposal made before the workflow changed again is refused, and the
 review says so: ask the coordinator to propose again. The coordinator's window
-and the *Decisions* view link to this review.
+and the *Decisions* view link to this review. [Alfred](alfred.md) can propose
+a change too, on your request in its chat: you answer it in the same review.
 
 In the coordinator's conversation, a card follows the message that made the
 proposal: what changes in one line, who proposed it, your request with its
@@ -358,13 +359,20 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   with what it does.
 - **A stopped task**: who stopped it and why, then *Continue*, *Take it as it is*
   or *Archive*, each with what it does.
-- **A step that ends with you** (*Merged*, or the step's own button): what to do,
+- **A step that ends with you** (*Done*, or the step's own button): what to do,
   and its button, with *Open the PR* when the task has one.
 - **The PR** is any link a step gave as its proof (`evidence: ["link"]`, such as
   a PR the worker opened with its own Bitbucket or GitLab tool) or the one the
   engine's `github.pr` opened. A pull request address from GitHub, Bitbucket,
   GitLab or Azure DevOps is added to the card's links as *PR #12*, and opens
   from *Open the PR* at the merge step, or after a refused merge.
+- **A PR to merge on your Git host** (a step you end that checks the merge,
+  `git.verify-merged`): wherdr does not merge it, you do. Its badge says
+  *Merge the PR on GitHub* (or Bitbucket, GitLab, Azure DevOps, *your Git
+  host*, from the PR link), and its button *I merged it* checks that the branch
+  is in its target; the step's own badge and button text win. Not merged yet:
+  *The PR is not merged into develop yet: merge it on Bitbucket (PR link), then
+  press “I merged it” again*.
 - **An agent's question or permission**: its text, and a button to open that agent.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (start it, open its agent). A failed action step (a merge GitHub
