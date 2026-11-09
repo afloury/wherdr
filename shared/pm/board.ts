@@ -3,7 +3,7 @@
 // that holds that step (none for holder: none); anything waiting for the user
 // puts it in Your turn, whatever its step, with a badge saying what to do.
 import type { Holder } from './workflow'
-import type { PlannedStep, StepState } from './steps'
+import { stepLabels, type PlannedStep, type StepState } from './steps'
 import type { Run, Task, WaitKind } from './run'
 import { notStarted, type Stopped } from './stop'
 import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
@@ -89,7 +89,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(run?.terminal ? { terminal: run.terminal } : {}),
     ...(yourTurn ? { yourTurn } : {}),
     ...(stall ? { stall } : {}),
-    ...(step?.ends === 'user' && started && !s?.done ? { userLabel: step.userLabel || 'Done' } : {}),
+    ...(step?.ends === 'user' && started && !s?.done ? { userLabel: stepLabels(step).button } : {}),
     tags: task.tags ?? [],
     // Then the links steps gave as their proof (the PR), labelled by step; each address once.
     links: [...task.links ?? [], ...plan.flatMap(p => (s?.proofs[p.id]?.link ? [{ label: p.id, url: s.proofs[p.id]!.link! }] : []))]

@@ -104,6 +104,36 @@ export function withBase(a: StepAction, base?: string): StepAction {
 // {base} in instructions: the working branch, or plain words when none is set.
 export const fillBase = (text: string, base?: string) => text.replaceAll('{base}', base || 'the base branch')
 
+// The Git host of a link, named for people.
+export function gitHost(url?: string): string {
+  const h = (url && /^https?:\/\/([^/]+)/i.exec(url)?.[1]?.toLowerCase()) || ''
+  return h.includes('github') ? 'GitHub' : h.includes('bitbucket') ? 'Bitbucket' : h.includes('gitlab') ? 'GitLab' : 'your Git host'
+}
+
+// The link the latest earlier step gave as its proof: the PR.
+export const prLink = (plan: Step[], s: Pick<StepState, 'at' | 'proofs'>) =>
+  plan.slice(0, s.at).map(p => s.proofs[p.id]?.link).findLast(Boolean)
+
+// A step's badge and button. A step you end with git.verify-merged only
+// checks: you merge on the host, then say so. A workflow's own text wins.
+export function stepLabels(step: Step, link?: string): { badge: string, button: string } {
+  const verify = step.ends === 'user' && step.action?.kind === 'git.verify-merged'
+  return {
+    badge: step.badge || (verify ? `Merge the PR on ${gitHost(link)}` : step.userLabel || step.id),
+    button: step.userLabel || (verify ? 'I merged it' : 'Done'),
+  }
+}
+
+// What a failed action says in the badge. git.verify-merged that finds the
+// commit not in its target yet says what to do next, with the PR link.
+function failureText(step: Step, error: string | undefined, link?: string): string {
+  const l = stepLabels(step, link)
+  const m = step.action?.kind === 'git.verify-merged' && error?.match(/^verify-merged: commit \S+ is not in \S+(.*)$/)
+  if (!m) return `${l.badge}: ${error || `${step.action!.kind} failed`}`
+  const pr = link ? ` (${link})` : ''
+  return `The PR is not merged into ${step.action!.target} yet: merge it on ${gitHost(link)}${pr}, then press “${l.button}” again${m[1]}`
+}
+
 // The steps of a task type, shared steps resolved, each with the text its
 // holder gets: every level's instructions, broadest first, then the proofs.
 // base: the project's working branch (withBase, fillBase).
@@ -145,7 +175,7 @@ function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, eff
   if (step.recheck) s.recheckAt = now + durationMs(step.recheck)
   const text = step.ends === 'verdict' ? reviewText(step.text, s.reviews?.[step.id]?.at(-1)) : step.text
   if (hasAgent(step)) effects.push({ kind: 'instruct', step: step.id, holder: step.holder!, text })
-  if (step.ends === 'user') s.yourTurn = { reason: 'user', badge: step.badge || step.userLabel || step.id }
+  if (step.ends === 'user') s.yourTurn = { reason: 'user', badge: stepLabels(step, prLink(plan, s)).badge }
   return step.ends === 'action' ? act(s, step, effects) : s
 }
 
@@ -264,7 +294,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
         return { state: { ...enter(plan, { ...state, proofs }, back, now, []), fix }, effects }
       }
       // The step stays open; the badge says what went wrong.
-      const badge = `${step.badge || step.userLabel || step.id}: ${ev.error || `${step.action!.kind} failed`}`
+      const badge = failureText(step, ev.error, prLink(plan, state))
       return { state: { ...state, acting: undefined, yourTurn: { reason: 'action', badge, ...(ev.error ? { error: ev.error } : {}) } }, effects }
     }
     case 'back': {

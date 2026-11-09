@@ -210,8 +210,15 @@ needs from you and the buttons for it, before its Description, Plan and Log.
   with what it does.
 - **A stopped task**: who stopped it and why, then *Continue*, *Take it as it is*
   or *Archive*, each with what it does.
-- **A step that ends with you** (*Merged*, or the step's own button): what to do,
+- **A step that ends with you** (*Done*, or the step's own button): what to do,
   and its button.
+- **A PR to merge on your Git host** (a step you end that checks the merge,
+  `git.verify-merged`): wherdr does not merge it, you do. Its badge says
+  *Merge the PR on GitHub* (or Bitbucket, GitLab, *your Git host*, from the PR
+  link), and its button *I merged it* checks that the branch is in its target;
+  the step's own badge and button text win. Not merged yet: *The PR is not
+  merged into develop yet: merge it on Bitbucket (PR link), then press “I
+  merged it” again*.
 - **An agent's question or permission**: its text, and a button to open that agent.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (try again, start it, open its agent).
