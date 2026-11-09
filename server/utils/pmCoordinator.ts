@@ -405,7 +405,7 @@ export async function answerProposal(deps: Deps, key: unknown, accept: unknown) 
   // The project's own workflow (a proposal made before workflows names the template it was copied from).
   const next = t ? { ...proposal.template, id: t.id } : proposal.template
   editRefusal(t, next, 'user', rec.project)
-  await store.saveWorkflow(rec.project, next, { by: `coordinator ${rec.project}`, said: proposal.said })
+  await store.saveWorkflow(rec.project, next, { by: coordinatorBy(proposal.by === 'main' ? MAIN : rec.project), said: proposal.said })
   await done('accepted')
   await writeRoleFiles(deps, rec.project).catch(() => {})
   return { accepted: true }
