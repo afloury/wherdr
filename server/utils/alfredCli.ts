@@ -48,6 +48,9 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
     const own = (await coordinatorsView(store)).find(x => x.project === key)?.agent
     return own && offered.includes(own.program) ? own : { program: offered[0] ?? 'claude' }
   }
+  // Its conversation runs: its terminal is a live pane. stopped: it ended (its
+  // machine restarted, say), and `coordinator start --resume` takes it up again.
+  const runState = (terminal?: string) => (!terminal ? { running: false } : deps.panes().some(p => p.coreAddress === terminal) ? { running: true } : { running: false, stopped: true })
   // A change: its plan, then (with --apply) the change itself.
   const change = async (plan: AlfredPlan, make: () => Promise<unknown>) => ('apply' in cmd && cmd.apply ? { applied: true, change: plan.change, result: await make() } : dryRun(argv as string[], plan))
 
@@ -59,11 +62,11 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       const c = (await coordinatorsView(store)).find(x => x.project === p.key)
       const tasks: Record<string, number> = {}
       for (const t of await store.tasks()) if (t.project === p.key) tasks[t.state] = (tasks[t.state] ?? 0) + 1
-      return { project: { ...p, machineName: machineName(p.machine) }, coordinator: c && { agent: (await projectAgent(p.key)).program, running: !!c.terminal }, tasks }
+      return { project: { ...p, machineName: machineName(p.machine) }, coordinator: c && { agent: (await projectAgent(p.key)).program, ...runState(c.terminal) }, tasks }
     }
     case 'templates': return { templates: (await store.overview()).templates }
     case 'machines': return { machines: machines.map(m => ({ key: m.key, label: m.label, local: m.local, status: m.status })) }
-    case 'coordinators': return { coordinators: await Promise.all((await coordinatorsView(store)).map(async c => ({ project: c.project, name: c.name, agent: c.main ? c.agent?.program : (await projectAgent(c.project)).program, running: !!c.terminal }))) }
+    case 'coordinators': return { coordinators: await Promise.all((await coordinatorsView(store)).map(async c => ({ project: c.project, name: c.name, agent: c.main ? c.agent?.program : (await projectAgent(c.project)).program, ...runState(c.terminal) }))) }
     case 'coordinator open': {
       const c = (await coordinatorsView(store)).find(x => x.project === (findProject(projects, cmd.key)?.key ?? cmd.key))
       const pane = c?.terminal ? deps.panes().find(p => p.coreAddress === c.terminal) : undefined
@@ -149,11 +152,15 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       await needPm()
       const p = projectOf(cmd.key)
       const rec = await store.coordinator(p.key)
-      const agent = cmd.program ? { program: cmd.program } : await projectAgent(p.key)
+      if (cmd.resume && !rec?.ran) throw new HerdrError('bad_input', `The coordinator of ${p.key} has no conversation to resume: start a new one without --resume`)
+      const agent = cmd.resume ? rec!.ran! : cmd.program ? { program: cmd.program } : await projectAgent(p.key)
+      const running = runState(rec?.terminal).running
       return change({
-        change: [`start the coordinator of ${p.key} with ${agent.program} on ${machineName(p.machine)}`, ...(rec?.terminal ? ['its running conversation is stopped and replaced by a new one'] : [])],
+        change: cmd.resume
+          ? [`resume the last conversation of the coordinator of ${p.key} with ${agent.program} on ${machineName(p.machine)}`, ...(running ? ['its running terminal is stopped and replaced'] : [])]
+          : [`start the coordinator of ${p.key} with ${agent.program} on ${machineName(p.machine)}`, ...(running ? ['its running conversation is stopped and replaced by a new one'] : [])],
         remote: remoteOf(p.machine),
-      }, () => startCoordinator(deps, p.key, agent, deps.urls))
+      }, () => startCoordinator(deps, p.key, cmd.resume ? { resume: true } : agent, deps.urls))
     }
   }
 }

@@ -1,22 +1,40 @@
 <script setup lang="ts">
 // The COORDINATORS section under Alfred (AlfredRow, which coordinates all projects) at
-// the top of the agent list: the project coordinators that run. One tap opens
-// its conversation; its menu (right click, or long press on a touch screen)
+// the top of the agent list: the project coordinators that run, or whose
+// conversation stopped (its terminal ended). One tap opens its conversation, or
+// asks whether to resume the stopped one or start a new one; its menu (right click, or long press on a touch screen)
 // restarts it with another agent, which becomes its default. Hidden while
 // project management is off.
 import type { CoordinatorView } from '#shared/pm/coordinator'
 
 const busy = ref('')
 const error = ref('')
-const rows = computed(() => projectCoordinators.value.filter(c => coordinatorPane(c)))
+const rows = computed(() => projectCoordinators.value.filter(c => coordinatorPane(c) || coordinatorStopped(c)))
 
-async function open(c: CoordinatorView) {
-  if (busy.value || rowMenu.swallowClick()) return
+async function run(c: CoordinatorView, fn: () => Promise<unknown>) {
   busy.value = c.project
   error.value = ''
-  try { await openCoordinator(c) }
+  try { await fn() }
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = '' }
+}
+function open(c: CoordinatorView) {
+  if (busy.value || rowMenu.swallowClick()) return
+  if (coordinatorStopped(c)) { stopped.value = c; return }
+  void run(c, () => openCoordinator(c))
+}
+
+// A stopped conversation: resume it (with the agent that ran it), or a new one.
+const stopped = ref<CoordinatorView | null>(null)
+const stoppedOpen = computed({ get: () => !!stopped.value, set: (v) => { if (!v) stopped.value = null } })
+function restartStopped(how: 'resume' | 'new') {
+  const c = stopped.value
+  if (!c || busy.value) return
+  stopped.value = null
+  void run(c, async () => {
+    const p = await launchCoordinator(c.project, how === 'resume' ? 'resume' : coordinatorAgent(c))
+    if (p) await navigateTo(panePath(p.id))
+  })
 }
 
 // Its conversation is the one open: the same selected style as agent cards.
@@ -25,6 +43,7 @@ const sub = (c: CoordinatorView) => {
   const p = coordinatorPane(c)
   const program = kindLabel((c.ran ?? coordinatorAgent(c))?.program)
   if (p) return `${program} · ${statusLabel(p)}`
+  if (coordinatorStopped(c)) return `${program} · ${tl('Stopped')}`
   return tl(`Start with ${program}`, `Lancer avec ${program}`)
 }
 
@@ -79,6 +98,14 @@ onUnmounted(() => clearInterval(timer))
     <p v-if="error" class="error coord-error">{{ error }}</p>
   </section>
 
+  <AppSheet v-model:open="stoppedOpen" :title="stopped ? coordinatorName(stopped) : ''">
+    <div class="sheet-form coord-stopped" data-testid="coordinator-stopped">
+      <p class="coord-note">{{ tl('Its conversation stopped (its terminal ended, for example when its machine restarted).') }}</p>
+      <UButton block size="xl" color="primary" icon="i-lucide-history" data-testid="coordinator-stopped-resume" @click="restartStopped('resume')">{{ tl('Resume the conversation') }}</UButton>
+      <UButton block size="xl" color="neutral" variant="outline" icon="i-lucide-plus" data-testid="coordinator-stopped-new" @click="restartStopped('new')">{{ tl('New conversation') }}</UButton>
+    </div>
+  </AppSheet>
+
   <AppSheet v-model:open="sheetOpen" :title="restarting ? tl(`Restart ${coordinatorName(restarting)} with…`, `Relancer ${coordinatorName(restarting)} avec…`) : ''">
     <div class="sheet-form" data-testid="coordinator-sheet">
       <p class="coord-note">{{ tl('Its folder and memory stay; the current session stops. The agent you pick becomes its default.', 'Son dossier et sa mémoire restent ; la session en cours s’arrête. L’agent choisi devient son défaut.') }}</p>
@@ -112,5 +139,7 @@ onUnmounted(() => clearInterval(timer))
 .coord-text small { overflow: hidden; color: var(--muted); font: 12px/1.4 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .coord-go { flex: none; color: var(--dim); }
 .coord-error { margin: 6px 0 0; }
+.coord-stopped { display: grid; gap: 10px; }
+.coord-stopped .coord-note { margin-bottom: 4px; }
 .coord-note { margin: 0 2px 14px; color: var(--text-2); font-size: 14px; }
 </style>

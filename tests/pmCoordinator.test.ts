@@ -374,6 +374,21 @@ describe('role files', () => {
     await refused(setCoordinatorAgent(store, 'NOPE', { program: 'claude', model: 'opus' }), 'Unknown project')
   })
 
+  it('resume its last conversation in its folder, with the agent that ran it and the same options', async () => {
+    const { runs, deps } = fakeCore()
+    await refused(startCoordinator(deps, 'CO', { resume: true }, urls), 'No conversation to resume')
+    await startCoordinator(deps, 'CO', { program: 'codex' }, urls)
+    await setCoordinatorAgent(store, 'CO', { program: 'claude' })
+    await startCoordinator(deps, 'CO', { resume: true }, urls, ['A task was reported'])
+    expect(runs[1]).toMatchObject({ cwd: '/h/.wherdr/pm/coordinators/CO', labels: { 'wherdr.coordinator': 'CO' } })
+    // Its message is typed once it is ready: a word after `resume --last` would be read as a session.
+    expect(runs[1]!.line).toMatch(/exec 'codex' '-C' '\/h\/\.wherdr\/pm\/coordinators\/CO' .*'permissions\.wherdr\.network\.enabled=true' 'resume' '--last'$/)
+    expect(await store.coordinator('CO')).toMatchObject({ ran: { program: 'codex' }, agent: { program: 'claude' }, terminal: 'host/t6' })
+    await startCoordinator(deps, 'CO', {}, urls)
+    await startCoordinator(deps, 'CO', { resume: true }, urls)
+    expect(runs.filter(r => r.method === 'terminal.run').at(-1)!.line).toMatch(/exec 'claude' '--continue' '--add-dir' '\/src\/co'$/)
+  })
+
   it('on another machine, the coordinator gets wherdr\'s published address, never loopback', async () => {
     const remote = fakeCore(false)
     await startCoordinator(remote.deps, 'CO', { program: 'codex', model: 'gpt-5' }, urls)

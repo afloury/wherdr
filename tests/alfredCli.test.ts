@@ -30,6 +30,8 @@ describe('parseAlfredCommand', () => {
     })
     expect(parseAlfredCommand(['project', 'template', 'WEB', 'none', '--apply'])).toEqual({ name: 'project template', apply: true, key: 'WEB', template: '' })
     expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'codex'])).toEqual({ name: 'coordinator start', apply: false, key: 'WEB', program: 'codex' })
+    expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--resume', '--apply'])).toEqual({ name: 'coordinator start', apply: true, key: 'WEB', resume: true })
+    expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--resume', '--program', 'codex'])).toEqual({ error: expect.stringContaining('no --program') })
     expect(parseAlfredCommand(['setting', 'set', 'theme', 'catppuccin-latte', '--apply'])).toEqual({ name: 'setting set', apply: true, key: 'theme', value: 'catppuccin-latte' })
     expect(parseAlfredCommand(['project', 'machine', 'add', 'web', 'Mac', '--clone', '~/project'])).toEqual({ name: 'project machine', apply: false, key: 'WEB', action: 'add', machine: 'Mac', clone: '~/project' })
     expect(parseAlfredCommand(['project', 'machine', 'remove', 'WEB', 'mac', '--apply'])).toEqual({ name: 'project machine', apply: true, key: 'WEB', action: 'remove', machine: 'mac' })

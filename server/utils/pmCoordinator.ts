@@ -6,7 +6,7 @@ import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
-import { MAIN, canRunCoordinator, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
+import { MAIN, canResume, canRunCoordinator, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, parseCommand, roleFiles, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
@@ -534,32 +534,39 @@ export function coordinatorUrls(here: URL): CoordinatorUrls {
 }
 
 // When a project coordinator starts: its files, a new token, how to start it.
-export async function prepareCoordinator(deps: Deps, key: string, program: CoordinatorProgram, urls: CoordinatorUrls) {
+export async function prepareCoordinator(deps: Deps, key: string, program: CoordinatorProgram, urls: CoordinatorUrls, resume = false) {
   const { p, local, on, folder, first } = await writeRoleFiles(deps, key)
   const url = local ? urls.local : urls.remote
   if (!url) throw new HerdrError('unreachable', 'The project\'s machine cannot reach this wherdr: publish it on your tailnet first (Settings › Phone)')
   const token = await issueToken(deps.store, key)
   if (key === MAIN) await issueAlfredToken(deps.store, folder!)
-  // Alfred starts with its greeting (startPrompt).
-  const prompt = key === MAIN ? [startPrompt(first, await readAlfredName(deps))] : []
-  return { on, folder, argv: coordinatorArgs(program, folder, p?.path, p?.git === false), prompt, env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
+  // Alfred starts with its greeting (startPrompt); a resumed conversation had it already.
+  const prompt = key === MAIN && !resume ? [startPrompt(first, await readAlfredName(deps))] : []
+  return { on, folder, argv: coordinatorArgs(program, folder, p?.path, p?.git === false, resume), prompt, env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
 }
 
 // Starts the coordinator in its folder, its harness's default model, token in its environment,
 // its folder's bin/ (the `wherdr` script) first in its PATH.
 // first: messages it gets once ready, after its own start prompt.
-export async function startCoordinator(deps: Deps, key: unknown, agent: { program?: unknown }, urls: CoordinatorUrls, first: string[] = []) {
+// resume: its last conversation again (after its machine restarted, say), with
+// the agent that ran it, instead of a new one.
+export async function startCoordinator(deps: Deps, key: unknown, agent: { program?: unknown, resume?: unknown }, urls: CoordinatorUrls, first: string[] = []) {
   if (typeof key !== 'string') throw new HerdrError('not_found', 'Unknown project')
+  const before = await deps.store.coordinator(key)
+  const resume = agent.resume === true
+  if (resume && !before?.ran) throw new HerdrError('bad_input', 'No conversation to resume: start a new one')
   // No agent given: the project's default. Alfred: a program only, with its own default model.
-  const a = key === MAIN ? alfredAgent(agent.program ?? (await deps.store.coordinator(key))?.agent?.program)
-    : agentOf(agent.program === undefined ? (await deps.store.coordinator(key))?.agent ?? FALLBACK : agent)
+  const a = resume ? agentOf(before!.ran!) : key === MAIN ? alfredAgent(agent.program ?? before?.agent?.program)
+    : agentOf(agent.program === undefined ? before?.agent ?? FALLBACK : agent)
   if (!a) throw new HerdrError('bad_input', BAD_AGENT)
   if (!canRunCoordinator(a.program, key)) throw new HerdrError('bad_input', BAD_PROJECT_AGENT)
   const { program } = a
-  const before = await deps.store.coordinator(key)
-  const c = await prepareCoordinator(deps, key, program, urls)
+  if (resume && !canResume(program)) throw new HerdrError('bad_input', 'Only a Claude or Codex conversation can be resumed: start a new one')
+  const c = await prepareCoordinator(deps, key, program, urls, resume)
   const prompt = [...c.prompt, ...first]
-  const argv = [...c.argv, ...(promptAsArg(program) ? prompt : [])]
+  // A resumed Codex reads a word after `resume --last` as a session: its messages are typed.
+  const asArg = promptAsArg(program) && !resume
+  const argv = [...c.argv, ...(asArg ? prompt : [])]
   const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
   const { address } = await deps.call<{ address: string }>('terminal.run', {
     cwd: c.folder, ...(c.on ? { on: c.on } : {}), no_parent: true, wait: false, env: c.env,
@@ -567,12 +574,12 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
     line: `${PATH_SETUP}; export PATH=${quote(`${c.folder}/bin`)}:"$PATH"; exec ${argv.map(quote).join(' ')}`,
   }, 30000)
   // Typed once the program is ready (in the background: it may wait on a dialog).
-  if (!promptAsArg(program)) for (const text of prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
+  if (!asArg) for (const text of prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
   // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
   // version: what this session knows (takeUpdateNotice tells it of an update).
   const { told: _told, ...rec } = (await deps.store.coordinator(key))!
   await deps.store.saveCoordinator({ ...rec, terminal: address, ran: { program }, version: pkg.version, ...(key === MAIN ? { agent: a } : {}) })
-  // A new conversation replaces the one before (another agent's, or ended).
+  // This conversation replaces the one before (another agent's, or ended).
   if (before?.terminal && before.terminal !== address) await deps.call('terminal.kill', { terminal: before.terminal }, 15000).catch(() => {})
   return { terminal: address, folder: c.folder }
 }
