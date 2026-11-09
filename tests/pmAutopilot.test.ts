@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_AUTOPILOT, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, scheduledWake, startRefusal, today, tellRefusal, countFix } from '../shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, holdsSlot, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, scheduledWake, startRefusal, today, tellRefusal, countFix } from '../shared/pm/autopilot'
 import type { Run, Task } from '../shared/pm/run'
 import { accountQuota, pacedStart, paceLine } from '../shared/pm/pace'
 import { DEFAULT_PACE, type PaceVerdict } from '../shared/pm/pacing'
@@ -17,7 +17,10 @@ describe('autopilot settings', () => {
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, at: ' daily 08:00 ' })).toMatchObject({ autopilot: { at: 'daily 08:00' } })
     for (const at of ['every 2h', 'soon']) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, at })).toEqual({ error: expect.stringMatching(/^at:/) })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, events: ['merged'] })).toEqual({ error: expect.stringMatching(/events/) })
-    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay: 1000 })).toEqual({ error: expect.stringMatching(/perDay/) })
+    // Tasks / day: empty is no daily limit, up to 1000 otherwise.
+    for (const perDay of ['', null]) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay })).toEqual({ autopilot: { on: false, goal: '', events: ['done', 'stuck'], perDay: null, atOnce: 2 } })
+    for (const perDay of [0, 250]) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay })).toMatchObject({ autopilot: { perDay } })
+    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay: 2000 })).toEqual({ error: expect.stringMatching(/perDay/) })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, hours: { from: 8, to: 8 } })).toEqual({ error: expect.stringMatching(/hours/) })
   })
 
@@ -41,6 +44,17 @@ describe('autopilot limits', () => {
     expect(limitsLeft({ ...ap, atOnce: null }, tasks, [], at(12))).toMatchObject({ startLeft: 3, atOnce: null })
   })
 
+  it('a working task whose step holds no agent takes no slot, unless the engine handed its worker work', () => {
+    const plan = [{ holder: 'worker' as const }, { holder: 'none' as const }]
+    const step = (at: number, more = {}) => ({ step: { at, started: true, proofs: {}, rounds: {}, ...more } })
+    const tasks = [task(1, step(0)), task(2, step(1)), task(3, step(1, { agent: { kind: 'catch-up', head: 'abc', at: 0 } }))]
+    const holds = (t: Task) => holdsSlot(t, plan)
+    expect(limitsLeft(ap, tasks, [], at(12), holds)).toMatchObject({ working: 2, startLeft: 0 })
+    expect(startRefusal(ap, tasks.slice(0, 2), [], at(12), undefined, holds)).toBeUndefined()
+    // Without its plan, a task holds its slot.
+    expect(holdsSlot(tasks[1]!)).toBe(true)
+  })
+
   it('counts the tasks started since midnight, a task once', () => {
     const tasks = [1, 2, 3].map(n => task(n, { state: 'waiting' }))
     const runs = [run(1, at(1)), run(1, at(2)), run(2, at(3)), run(3, at(3) - 86_400_000)]
@@ -48,6 +62,15 @@ describe('autopilot limits', () => {
     // A task first started yesterday does not count today.
     expect(startRefusal(ap, [...tasks, task(4, { state: 'waiting' })], [...runs, run(3, at(4)), run(4, at(4))], at(12))).toMatch(/Today's limit is reached \(3/)
     expect(startRefusal({ ...ap, hours: { from: 22, to: 6 } }, [], [], at(12))).toMatch(/hours/)
+  })
+
+  it('has no daily limit without Tasks / day: only At once holds', () => {
+    const noCap = { ...ap, perDay: null }
+    const runs = [1, 2, 3, 4].map(n => run(n, at(n)))
+    const tasks = [1, 2, 3, 4].map(n => task(n, { state: 'waiting' }))
+    expect(limitsLeft(noCap, tasks, runs, at(12))).toMatchObject({ started: 4, perDay: null, startLeft: 2 })
+    expect(startRefusal(noCap, tasks, runs, at(12))).toBeUndefined()
+    expect(startRefusal(noCap, [...tasks, task(5), task(6)], runs, at(12))).toMatch(/at once/)
   })
 })
 

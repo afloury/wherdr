@@ -42,7 +42,9 @@ such placement are grouped by machine and cwd, one tab and pane per terminal.
 "+" in a space's tab row (or header) starts at once a terminal like the space's current one (same kind, same folder; "New tab…" in the tab menu opens the sheet to choose). The header map button lists the space's terminals to switch between. The new terminal carries that
 space's `herdr.space`, a new `herdr.tab` and `herdr.seen=0`, so it also appears in
 herdr-app. Terminals made from the "New" sheet get the space whose folder holds
-their cwd, else a new one. Rename, close, split and move stay in herdr-app.
+their cwd, else a new one. A tab of one terminal not named in herdr-app's layout is renamed
+through that terminal's `herdr.title`; closing a tab or a space kills each of its terminals.
+Split, move and renaming a tab named in the layout stay in herdr-app.
 Each pane preserves its full core address behind a stable interface identifier.
 Agent identity uses core's `agent` field when supplied, otherwise recognised
 application/template/command names. Identity does not gate status: OSC 7501

@@ -90,8 +90,15 @@ its folder, branches and task worktrees stay on the machine.
   strongest* (the default: light and standard work at home when it fits, heavy
   work on the machine with most room), *Balance the load* (each task on the
   machine with the largest share of memory and cores left after it) or *Home
-  first* (other machines only once home is full). A task that waits for room
-  names it, and so does the coordinator's `autopilot show`.
+  first* (other machines only once home is full). A machine fits a task when
+  its free memory covers the task's estimate plus the machine's reserve
+  (Settings › Machines). A task that waits for room names it, and so does the
+  coordinator's `autopilot show`. A task too big for every machine it may use
+  (their RAM less the reserve is under its estimate) runs on the best one
+  instead of waiting forever, and its log says so once. A worker started
+  again in its worktree (a catch-up, red CI, a send-back, the step it is woken
+  for) is weighed by what it does, not by its type: heavy only while its step
+  still lacks its screenshots, standard otherwise.
 
 ### Workflow
 
@@ -150,7 +157,13 @@ In the **Guards** tab:
   protected branch too). A task already waiting for you at a merge that a
   change gives to wherdr goes on at once: the engine runs the step again,
   and the task's log says why. A merge left to you that you do on GitHub
-  ends the step as merged within a minute: the task goes to *Done*.
+  ends the step as merged within a minute: the task goes to *Done*. A merge
+  cut by a restart of wherdr (an update, a new build) goes on by itself:
+  wherdr asks GitHub where the PR stands.
+  Merged, the task goes on (its log says *merged before the restart*); closed
+  without a merge, it waits for you with that reason; still open, the merge
+  runs again, at most twice, then waits for you. A restart waits up to 20 s
+  for a merge that runs.
 - **Effect**: what each task type adds and, for each step that merges, whether
   it is left to you. It follows your changes before you save.
 
@@ -192,12 +205,15 @@ the header shows the autopilot's state (green square: on; hollow: asleep) and a
 count of what waits for you: a workflow change the coordinator proposed, or a
 kept conversation that ran with another agent. A tap opens its window:
 
-- the agent that answers the coordinator, and a warning when its conversation
-  ran with another one; on the board, *Open* opens or starts it;
+- the agent that answers the coordinator (Alfred's too), and a warning when its conversation
+  ran with another one: *New conversation* with the default, or *Resume* the one kept (for
+  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it;
 - the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
 - the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
-  limits (*Tasks / day*, *At once*: empty is *Auto*, as many as the project's
-  machines have room for, the default for a new project), the events it wakes on (*Task added*, *Task
+  limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's
+  machines have room for, the default for a new project; a task whose step
+  holds no agent, such as a PR or merge waiting for checks or the queue, or a
+  step of yours, takes no slot), the events it wakes on (*Task added*, *Task
   done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
   even with nothing to do, with its own *New tasks / day*). The form says
   *Unsaved changes* until you save;
@@ -216,6 +232,16 @@ paced, offline), and what each weight counts (*light* ≈ 0.7 GB, *standard* ≈
 gives the machine a started task runs on. Its instructions say the engine
 places tasks, `task start --on` picks a machine and `task add --weight` sets a
 weight that differs from the task type's.
+
+### What a task's agent said
+
+A coordinator reads a task's agent with `wherdr pm read <task>`, on whichever
+machine it runs: the last message of its conversation, or the bottom of its
+screen when the conversation can't be read. It reads the agent `tell` reaches
+(the one that holds the current step, else the worker); `--to worker` or `--to
+reviewer` picks one, and `--lines N` (1 to 200, default 40) sets how much. A project's coordinator reads its own project's tasks only.
+When an agent asks a question, its task's waiting line and the coordinator's
+*Task stuck* wake carry the question itself, and `wherdr pm tell` answers it.
 
 ## Board
 
@@ -255,6 +281,8 @@ click, long press, or ••• when it has more than *Open*) offers:
 - **Stop…**, on a running task: its agent ends, the worktree, branch and work
   stay, and nothing is merged;
 - **Continue**, **Take it as it is** or **Archive**, on a stopped task;
+- **Check on GitHub**, on a task at its merge step or archived with a PR: its
+  sheet opens with what wherdr found (see [Task sheet](#task-sheet));
 - **Delete…**, on a task never started (no agent, worktree or branch). A task
   other tasks wait for cannot be deleted; its number is never given again.
 
@@ -275,14 +303,31 @@ stopped, the time it spent in each step with the time it waited for you apart,
 its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
 waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
 *Open the agent* or *Open the reviewer*, *Stop*, *Delete…*). Step times start
-with this version: an older task shows only its total. Below, tabs: **Description** (text, tags, links and the PR),
+with this version: an older task shows only its total. Below, tabs: **Description** (the text rendered as Markdown, as in the chat but with no raw HTML; tags, links and the PR),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
 and screenshots) and **Log**. A refused merge says why under its button.
+
+**Check on GitHub** shows on a task with a PR at its merge step, or archived:
+wherdr reads the PR now, for a merge stuck after a guard refusal, a PR merged
+by hand on GitHub, or GitHub slow to see a push. Merged: the merge step ends as
+merged and the task goes on (next step or Done), out of Your turn; an archived
+task ends as merged. Still open: why it waits (its checks, a review, a branch
+only you may merge into), with a link to the PR; a merge wherdr may do is tried
+again within a minute. Closed without a merge: said, with **Archive…**. The
+coordinator and Alfred run the same check with `wherdr pm task check <task>`
+when you ask them to unblock a task.
 
 ### A task waiting for you
 
 Open a task under *Your turn* and its sheet starts on **To do**: what the task
 needs from you and the buttons for it, before its Description, Plan and Log.
+
+A tap on a card under *Your turn*, or on an entry of the home's **Tasks to
+handle**, goes where you act: when the task's agent (worker or reviewer, on any
+machine) asks a question or a permission, it opens that agent's conversation,
+its question last; anything else opens the sheet on **To do**. The sheet stays
+one tap away: *Open the task* in the card's menu, or the small icon at the end
+of the entry. An agent that is not on screen here opens the sheet instead.
 
 - **A visual change to merge**: its screenshots large (swipe between them, tap
   one to zoom; each is labelled phone or desktop), the review's verdict, the PR,
@@ -295,7 +340,23 @@ needs from you and the buttons for it, before its Description, Plan and Log.
   and its button.
 - **An agent's question or permission**: its text, and a button to open that agent.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
-  can do (try again, start it, open its agent).
+  can do (start it, open its agent). A failed action step (a merge GitHub
+  refused) has *Try again* at the top of the sheet, which runs it again.
+
+### Report a problem
+
+Something is wrong with a task waiting for you (the screenshots miss the asked
+feature, a part is missing, a bug)? Tap *Report a problem* in its sheet, or in
+its card's menu. Say what is wrong, tap the screenshots it is about, and keep
+*Block the merge until fixed* on if the merge must wait. It goes to the
+project's coordinator (started if it does not run), not to the task's agent,
+with the task, its step, your text, the screenshots, the PR and the review: the
+coordinator decides whether to tell the agent what to fix, send the step back to
+the worker, or add a follow-up task. You never relay it yourself.
+
+The report goes to the task's log, the card says *Problem reported 20:15*, and
+the task stays under *Your turn* until the coordinator acts (`wherdr pm report
+back` or `report close`), you send the step back, or you *Withdraw* it.
 
 While a merge waits for you, wherdr watches its PR. When the PR starts to
 conflict with its base, or falls behind it under a branch rule that wants it up
@@ -398,6 +459,14 @@ updating the PR*: its agents are never ended while wherdr waits for that work.
 The task is yours again once the worker pushes or says it is done. Before it
 ends a task's agents, wherdr pushes the commits the branch has not pushed yet;
 if the push fails, the agents stay and the log says why.
+
+A task has one worker and one reviewer at most. Two starts at the same time
+(yours, the coordinator's, the engine's when the task before it is done, a
+start held for room) start one agent: the other is refused as *already
+starting*, and a start held for room is dropped once the task started another
+way. A task whose worker still runs (waiting for your answer, say) is not
+started again: stop it first. Should two agents of one role ever run on a
+task, wherdr keeps the one it tracks, ends the other and says so in the log.
 
 A message from the coordinator (`wherdr pm tell <task>`) goes to the agent
 that holds the task's current step; at a step held by nobody (the PR, the

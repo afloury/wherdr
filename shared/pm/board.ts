@@ -9,6 +9,7 @@ import { notStarted, type Stopped } from './stop'
 import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
 import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
+import type { Report } from './report'
 import { timesOf, type Times } from './times'
 import { ordinal } from './mergeQueue'
 import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
@@ -43,6 +44,7 @@ export interface Card {
   held?: string // waits for memory on its machine
   queue?: number // its place in its project's merge queue, past the first (mergeQueue.ts)
   asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
+  report?: Report // a problem the user reported, open (report.ts)
   times?: Times // time per step, waits for the user, rounds, CI fixes (times.ts), once started
 }
 
@@ -109,6 +111,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(task.stopped ? { stopped: task.stopped } : {}),
     ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '' } } : {}),
     ...(task.held && task.state === 'todo' ? { held: task.held } : {}),
+    ...(task.report ? { report: task.report } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
     ...(task.after ? { after: afterIds(task) } : {}),
     ...(s?.started ? { times: timesOf(task, plan, runs, now) } : {}),
@@ -128,9 +131,12 @@ export function handleLabel(c: Pick<Card, 'stopped' | 'asks' | 'state' | 'stall'
 }
 
 // A task waiting for the user, as the sidebar's Tasks to handle lists it (GET /api/pm/handle).
-export interface ToHandle { id: string, shown: string, color?: string, title: string, action: string, label: string }
+// terminal: the agent that asks (a question, a permission, a login), whose conversation a tap opens.
+export interface ToHandle { id: string, shown: string, color?: string, title: string, action: string, label: string, terminal?: string }
 export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn)
-  .map(c => ({ id: c.id, shown: c.shown, ...(c.color ? { color: c.color } : {}), title: c.title, action: c.yourTurn!.split('\n')[0]!, label: handleLabel(c) }))
+  .map(c => ({ id: c.id, shown: c.shown, ...(c.color ? { color: c.color } : {}), title: c.title, action: c.yourTurn!.split('\n')[0]!, label: handleLabel(c), ...(asker(c) ? { terminal: asker(c) } : {}) }))
+// The agent a task waits on, when what it waits for is that agent's question or permission.
+export const asker = (c: Pick<Card, 'asks' | 'stopped' | 'terminal'>) => (c.asks && !c.stopped ? c.terminal : undefined)
 
 // The card's one-tap link: its PR when it has one, else its first link.
 // A task the user may stop: started, not done, not stopped already.

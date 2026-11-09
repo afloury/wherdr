@@ -5,10 +5,11 @@ import { HerdrError } from './herdr'
 import { allowedMachines, taskMachine, type Project } from '../../shared/pm/project'
 import { machineLine, placeTask, type Candidate, type Placement } from '../../shared/pm/placement'
 import { DEFAULT_MEMORY } from '../../shared/pm/memory'
-import { weightOf } from '../../shared/pm/weight'
+import { weightOf, type Weight } from '../../shared/pm/weight'
 import { paceWait } from '../../shared/pm/pace'
 import type { PaceVerdict } from '../../shared/pm/pacing'
-import type { Task } from '../../shared/pm/run'
+import { taskPlan, type Task } from '../../shared/pm/run'
+import { holdsSlot, type SlotOf } from '../../shared/pm/autopilot'
 import type { PmStore } from './pmStore'
 import { atWork, machineCapacity, readMemorySettings } from './pmMemory'
 import { lastReadiness, readiness } from './pmReady'
@@ -28,10 +29,14 @@ export async function paceOf(store: PmStore, p: Project, task?: Pick<Task, 'type
   return { verdict, waits }
 }
 
+const anywayLogged = new Set<string>()
 // asked: the machine the user or the coordinator named (refused when the
 // project does not allow it, or the task started elsewhere); offline, a new task goes elsewhere. waits: machines
-// that take nothing now (paceOf). A started task only ever goes back to its own.
-export async function placeFor(deps: PmLaunchDeps, task: Task, { asked, waits = {} }: { asked?: string, waits?: Record<string, string> } = {}): Promise<Placement> {
+// that take nothing now (paceOf). weight: what this start does, when it is not
+// the task's (a worker started again: reviveWeight). A started task only ever
+// goes back to its own. A task too big for every machine goes anyway, said
+// once in its log.
+export async function placeFor(deps: PmLaunchDeps, task: Task, { asked, waits = {}, weight }: { asked?: string, waits?: Record<string, string>, weight?: Weight } = {}): Promise<Placement> {
   const p = (await deps.store.projects()).find(x => x.key === task.project)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
   const fixed = taskMachine(task, p, asked)
@@ -55,7 +60,12 @@ export async function placeFor(deps: PmLaunchDeps, task: Task, { asked, waits = 
     }
   })).catch(() => null)
   if (!candidates) return { machine: fixed.machine }
-  return placeTask({ weight: weightOf(t, task).weight, home: p.machine, pinned, ...(fresh && asked !== undefined ? { prefer: asked } : {}), candidates, strategy: p.placement })
+  const placed = placeTask({ weight: weight ?? weightOf(t, task).weight, home: p.machine, pinned, ...(fresh && asked !== undefined ? { prefer: asked } : {}), candidates, strategy: p.placement })
+  if ('anyway' in placed && placed.anyway && !anywayLogged.has(task.id)) {
+    anywayLogged.add(task.id)
+    await deps.store.logTask((await deps.store.task(task.id)) ?? task, 'engine', placed.anyway)
+  }
+  return placed
 }
 
 // The machine a start that must go (the user's) takes, and the hold it goes past.
@@ -76,4 +86,13 @@ export async function machineLines(deps: PmLaunchDeps, p: Project, now = Date.no
       settings: settings[key] ?? DEFAULT_MEMORY, capacity: online ? await machineCapacity(deps, key) : null, running: online ? await atWork(deps.store, key) : [],
     })
   }))
+}
+
+// Which tasks of these projects take a tasks-at-once slot (holdsSlot), by their plan.
+export async function slotsOf(store: PmStore, projects: Project[]): Promise<SlotOf> {
+  const tpl = new Map(await Promise.all(projects.map(async p => [p.key, { p, t: await store.workflow(p.key).catch(() => null) }] as const)))
+  return (task) => {
+    const x = tpl.get(task.project)
+    return holdsSlot(task, x?.t ? taskPlan(x.t, task, x.p) : undefined)
+  }
 }

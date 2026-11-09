@@ -30,7 +30,9 @@ export function onMdDropped(fn: (html: string) => void) { dropListeners.add(fn) 
 // `plain`: Markdown from a file kept on disk (a project's memory), shown
 // outside a conversation. Its raw HTML must not restyle the app or draw
 // controls over it: no `<style>`, no `style` attribute, no form or field. A
-// task list's own checkbox (`- [ ]`, disabled) is kept.
+// task list's own checkbox (`- [ ]`, disabled) is kept. Code is never a
+// control there (no path menu, no Run): only a code block's Copy. Raw HTML
+// shows as text (a task's description), except in `doc`, sanitized as above.
 // `doc`: a whole Markdown document read in the file explorer (implies
 // `plain`). Line breaks follow Markdown (a single newline is a space), code
 // blocks get light syntax colours and only Copy, inline code is never a
@@ -76,11 +78,14 @@ export function md(text: string, options: MdOptions = {}): string {
               + `<span class="code-tools"><button type="button" class="code-copy">${escHtml(t('Copy'))}</button></span></div>`
               + `<pre><code${l ? ` class="language-${l}"` : ''}>${highlightCode(text, l)}</code></pre></div>`
           }
-          const cmd = blockCommand(text, lang)
+          const cmd = plainNow ? null : blockCommand(text, lang)
           const run = cmd === null ? '' : `<button type="button" class="code-run">${escHtml(tl('Run', 'Lancer'))}</button>`
           return `<div class="code-block"${cmd === null ? '' : ` data-cmd="${escHtml(cmd)}"`}><div class="code-head"><span>${l || 'code'}</span>`
             + `<span class="code-tools">${run}<button type="button" class="code-copy">${escHtml(t('Copy'))}</button></span></div>`
             + `<pre><code${l ? ` class="language-${l}"` : ''}>${escHtml(text)}</code></pre></div>`
+        },
+        html({ text }) {
+          return plainNow && !docNow ? escHtml(text) : text
         },
         // Inline code that is exactly an in-app address (`#/board?task=X`): a
         // link that opens it in the app, like a Markdown link to it.
@@ -90,7 +95,7 @@ export function md(text: string, options: MdOptions = {}): string {
         // (utils/codeKind.ts) for the terminal-style tints.
         codespan({ text }) {
           const code = escHtml(text)
-          if (docNow) {
+          if (plainNow) {
             const kind = codeKind(text)
             return `<code${kind ? ` data-k="${kind}"` : ''}>${code}</code>`
           }

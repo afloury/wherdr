@@ -85,11 +85,14 @@ export type Command =
   | { name: 'task decide', task: string, choice: Choice, reason: string }
   | { name: 'ack', wakes: string[] } | { name: 'automation show', id: string }
   | { name: 'tell', task: string, text: string, to?: AgentRole, fix?: FixKind, reason?: string }
+  | { name: 'read', task: string, to?: AgentRole, lines?: number }
   | { name: 'task start', task: string, on?: string }
+  | { name: 'task check', task: string }
   | { name: 'task stop', task: string, reason: string }
   | { name: 'task remove', task: string, reason: string }
   | { name: 'task add', title: string, type: string, after?: string, description?: string, weight?: Weight }
   | { name: 'pr merge', pr: number, userSaid: string, method?: MergeMethod }
+  | { name: 'report back' | 'report close', task: string, text: string }
 
 // One table for the parser, the skill and the role file.
 export const COMMANDS: { usage: string, does: string }[] = [
@@ -108,10 +111,14 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'automation list', does: 'the project\'s automations: on or off, schedule or event, last firing' },
   { usage: 'automation show <automation>', does: 'one automation, its prompt and its last firings; only the user adds or changes them, in wherdr' },
   { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there; while it is offline the task goes to another allowed machine that fits, else waits for it. A started task always goes back to its own machine' },
+  { usage: 'task check <task>', does: 'read the task\'s PR on GitHub now, for a task at its merge step or archived with a PR: merged, its merge step ends as merged and the task goes on; open, why it waits; closed without a merge, said (the user may archive it). At any time, when the user asks to unblock a task' },
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
   { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"] [--weight light|standard|heavy]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done. --weight says what it needs of a machine (light: docs, a study; standard: tests and typecheck; heavy: a build, e2e, screenshots); left out, it comes from its task type and steps (show gives it)' },
+  { usage: 'report back <task> "<what to fix>"', does: 'on a problem the user reported: send their step back to the worker with precise fixes, and close the report' },
+  { usage: 'report close <task> "<what you did>"', does: 'close a problem the user reported once handled (you told the agent, added a follow-up task, or it is fine); the merge it blocked is free again' },
   { usage: 'tell <task> "<text>" [--to worker|reviewer] [--fix base|ci|machine|stall --reason "<one sentence>"]', does: `a message to one of the task\'s agents: the one that holds its current step, else (a step held by nobody or by you: pr, merge, a user step) its worker; --to picks it. The answer says which agent got it. In a wake, only to answer its question, or with --fix to unblock a mechanical block (${FIX_KINDS.map(k => `${k}: ${FIX_TEXT[k]}`).join('; ')}): a worker that was let go or has ended starts again with your message; with the autopilot on, a task of your project, at most ${FIXES_PER_STEP} times per task and step, written to its log with the reason; past that, tell the user. A permission request is always the user\'s` },
+  { usage: 'read <task> [--to worker|reviewer] [--lines N]', does: 'what the task\'s agent last said (its question, its answer to your tell), on whichever machine it runs: the last message of its conversation, else the bottom of its screen; the agent tell reaches by default, --to picks it; --lines 1 to 200 (default 40)' },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
 ]
@@ -165,7 +172,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight'], 'task start': ['on'] }[w0 === 'tell' ? 'tell' : verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight'], 'task start': ['on'] }[w0 === 'tell' || w0 === 'read' ? w0 : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (verb === 'autopilot show' || verb === 'automation list') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
@@ -178,6 +185,17 @@ function parseWords(argv: unknown): Command | { error: string } {
     if (fix !== undefined && !FIX_KINDS.includes(fix as FixKind)) return { error: `--fix is one of ${FIX_KINDS.join(', ')}` }
     if ((fix === undefined) !== (reason === undefined) || (reason !== undefined && !reason.trim())) return { error: '--fix and --reason "<one sentence>" go together' }
     return w1 && TASK_RE.test(w1) && text && text.length <= 4000 ? { name: 'tell', task: w1, text, ...(to ? { to: to as AgentRole } : {}), ...(fix ? { fix: fix as FixKind, reason: reason!.trim().slice(0, 500) } : {}) } : usage('tell')
+  }
+  if (w0 === 'read') {
+    const to = flags.to as AgentRole | undefined, lines = flags.lines === undefined ? undefined : Number(flags.lines)
+    if (!w1 || !TASK_RE.test(w1) || w2) return usage('read')
+    if (to !== undefined && !AGENT_ROLES.includes(to)) return { error: `--to is one of ${AGENT_ROLES.join(', ')}` }
+    if (lines !== undefined && !(Number.isInteger(lines) && lines >= 1 && lines <= 200)) return { error: '--lines is a number from 1 to 200' }
+    return { name: 'read', task: w1, ...(to ? { to } : {}), ...(lines ? { lines } : {}) }
+  }
+  if (verb === 'report back' || verb === 'report close') {
+    const text = words.slice(3).join(' ').trim()
+    return TASK_RE.test(task) && text && text.length <= 2000 ? { name: verb, task, text } : usage(verb)
   }
   if (w0 === 'help' || w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0 }
   if (w0 === 'show') return w1 && TASK_RE.test(w1) && !w2 ? { name: 'show', task: w1 } : usage('show')
@@ -204,6 +222,7 @@ function parseWords(argv: unknown): Command | { error: string } {
     if (flags.on !== undefined && !on) return { error: '--on needs a machine\'s name' }
     return TASK_RE.test(task) && !w3 ? { name: verb, task, ...(on ? { on } : {}) } : usage(verb)
   }
+  if (verb === 'task check') return TASK_RE.test(task) && !w3 ? { name: verb, task } : usage(verb)
   if (verb === 'task stop' || verb === 'task remove') {
     const reason = (flags.reason ?? '').trim()
     if (!TASK_RE.test(task) || w3 || !reason) return usage(verb)
@@ -419,6 +438,8 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     'When the user says "after each task, create the PR with my Bitbucket tool, then wait until I say it is merged", write a worker step with that instruction and `evidence: ["link"]`, then a step `{ holder: "none", ends: "user", userLabel: "Merged", action: { kind: "git.verify-merged", target } }`. "Watch the deploy" is a step you hold: `holder: "coordinator", ends: "report", recheck: "5m"`.',
     'Read the project\'s workflow (`template show`), write the new one and run `template edit`: wherdr shows the user its diff, to accept or refuse; `template show` tells you which. Examples to copy from:', '',
     ...examples.map(e => `\`\`\`json\n${JSON.stringify(e)}\n\`\`\``), '',
+    '## A problem the user reports', '',
+    'A message that starts with "The user reports a problem on task" comes from the user, from the task\'s sheet: their text, the screenshots concerned (open them), the PR and the review. Decide yourself: `tell` the agent precise fixes, `report back` to send the step back to the worker, or add a follow-up task; then `report close` with what you did. Never ask the user to pass it on to the agent: you act on it. While it is open, the task stays in Your turn, and its merge is blocked when the user said so.', '',
     '## After N send-backs', '',
     'The engine sorts what is left and gives options. Pick one with `task decide` and one sentence of reason. When it gives no option, the choice is the user\'s: tell them.', '',
     '## The user\'s instructions', '', ...(own.length ? own : ['(none yet)']), '',

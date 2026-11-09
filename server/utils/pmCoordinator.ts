@@ -26,15 +26,17 @@ import { WRITE_SCRIPT, exec, startTask } from './pmLaunch'
 import { actionShell } from './pmActions'
 import { SCRIPT } from '../../shared/pm/actions'
 import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from '../../shared/pm/contributorPr'
-import { userStep } from './pmBoard'
+import { userEvent, userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
 import { removeTask, resumeTask, stopTask } from './pmStop'
+import { checkOnGithub } from './pmGhCheck'
 import { noteBack } from './pmStall'
 import { reviveWorker } from './pmRelease'
+import { READ_LINES, lastWords } from './pmRead'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
 import { forgetMemory } from './pmMemory'
-import { goesTo, machineLines, paceOf, placeFor } from './pmPlace'
+import { goesTo, machineLines, paceOf, placeFor, slotsOf } from './pmPlace'
 import { STRATEGY_LABELS } from '../../shared/pm/placement'
 import { projectPace } from './pmPace'
 import type { CoordinatorRecord, PmStore } from './pmStore'
@@ -227,7 +229,7 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
         pacing: key ? await line(key) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await line(x.key)]))),
         machines: key ? await lines(p!) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await lines(x)]))),
         weights: key ? weights(p!, t) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, weights(x, await store.workflow(x.key))]))),
-        today: { ...limitsLeft(ap, mine, await store.runs(), now), skippedWakes: today(rec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(rec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
+        today: { ...limitsLeft(ap, mine, await store.runs(), now, await slotsOf(store, p ? [p] : projects)), skippedWakes: today(rec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(rec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
         note: 'Only the user changes these, in wherdr. With nothing to do and lookForWork off, scheduled wakes are skipped. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. The engine places each start on one of the project\'s allowed machines by its placement strategy (Heavy to the strongest: heavy work on the strongest, light and standard work at home when it fits; Balance the load: each task on the machine with most room; Home first: home until it is full; --on picks one); automatic starts wait while no machine has room (memory, cores, its cap of agents, all projects together) and start by themselves once one has. atOnce null is Auto: as many tasks as the machines take. machines: each allowed machine, its agents at work by weight, its available hours (automatic starts skip it outside them, heavy work in its last 2 hours) and the heaviest weight it takes now (or why none: offline, away, full…); weights: what placement counts per weight, and the weight each task type gets',
       }
     }
@@ -263,6 +265,18 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const saved = await store.logTask(fixed(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task), by, `told the ${role}${fixNote}: ${cmd.text.slice(0, 300)}`)
       return { task: t ? await noteBack(store, saved, planOf(t, saved, p), by, `the ${by} told the ${role}`) : saved, sentTo: role }
     }
+    case 'read': {
+      const task = await taskOf(cmd.task)
+      // The agent tell reaches (or the one asked), its latest run, ended or not.
+      const runs = await store.runs()
+      const holder = t && !task.step?.done ? currentStep(planOf(t, task, p), task.step ?? initialState())?.holder : undefined
+      const { role } = tellTarget(runs, task.id, holder, cmd.to)
+      const run = runs.filter(r => r.task === task.id && r.role === role && r.terminal).sort((a, b) => b.startedAt - a.startedAt)[0]
+      if (!run) throw new HerdrError('not_found', `The task has no ${role} yet`)
+      const said = await lastWords(deps, run.terminal!, cmd.lines ?? READ_LINES)
+      if (!said) throw new HerdrError('unreachable', `Nothing to read from the task's ${run.role}: its conversation and its terminal are out of reach`)
+      return { task: p ? shownTaskId([p], task.id) : task.id, agent: run.role, running: run.state !== 'ended', ...(task.state === 'waiting' && task.waitKind ? { waits: task.waitKind } : {}), ...said }
+    }
     case 'task start': {
       const task = await taskOf(cmd.task)
       // --on: a machine the project allows, for a task never started (a started one stays on its own).
@@ -273,20 +287,21 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       const wake = turn !== 'user', who = { who: 'coordinator' as const, wake }, now = Date.now()
       const pace = pacedStart(task, wake ? 'wake' : 'user') ? await paceOf(store, p!, task, now) : undefined
       const why = (task.stopped ? resumeRefusal(task, 'continue', who, undefined) : undefined)
-        ?? coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), now, wake, { pace: pace?.verdict })
+        ?? coordinatorStartRefusal(rec?.autopilot, task, mine, await store.runs(), now, wake, { pace: pace?.verdict, holds: await slotsOf(store, p ? [p] : projects) })
       if (why) throw new HerdrError('refused', why)
       // No room on any allowed machine: a wake's start waits for it (the engine starts it then); the user's goes, with a word.
       const { on, short } = goesTo(await placeFor(deps, task, { asked: placed?.machine, waits: pace?.waits }))
       // A failed task a wake starts again goes back to do, where the engine starts held tasks.
       if (short && wake && !task.stopped) return { task: await store.logTask({ ...task, state: 'todo', waiting: undefined, waitKind: undefined, autopilot: true, held: short }, by, short), held: `${short}. It starts by itself once there is room` }
       // Started in a wake: the autopilot's own task, which it may stop in a wake.
-      if (wake && !task.autopilot) await store.saveTask({ ...task, autopilot: true })
+      if (wake && !task.autopilot) await store.saveTask({ ...(await store.task(task.id) ?? task), autopilot: true })
       const memory = short ? { memory: `${short}: started anyway, as the user asked` } : {}
       if (task.stopped) return { task: await resumeTask(deps, task.id, 'continue', who, by), ...memory }
       if (on !== undefined) forgetMemory(on)
       const started = await startTask(deps, task.id, { by, ...(on !== undefined ? { on } : {}) })
       return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`), ...memory }
     }
+    case 'task check': return checkOnGithub(deps, (await taskOf(cmd.task)).id, by)
     case 'task stop': {
       const task = await taskOf(cmd.task)
       return { task: await stopTask(deps, task.id, { who: 'coordinator', wake: turn !== 'user' }, cmd.reason, by) }
@@ -326,6 +341,12 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       if (m.code !== 0) throw new HerdrError('failed', `gh pr merge: ${m.out.trim().split('\n').pop() ?? ''}`)
       await store.logProject(proj.key, { by, pr: pr!.number, text: `merged contributor PR #${pr!.number} into ${pr!.baseRefName}${cmd.method ? ` (${cmd.method})` : ''} on the user's yes: "${cmd.userSaid}"`, ...(rec?.turn?.said ? { said: rec.turn.said } : {}) })
       return { merged: pr!.url, into: pr!.baseRefName }
+    }
+    case 'report back': case 'report close': {
+      const task = await taskOf(cmd.task)
+      if (!task.report) throw new HerdrError('refused', 'No open report on this task: the user withdrew it, or it is closed')
+      if (cmd.name === 'report back') return { task: await userEvent(store, task.id, { kind: 'back', note: cmd.text }, by) }
+      return { task: await store.logTask({ ...task, report: undefined }, by, `closed the reported problem: ${cmd.text.slice(0, 300)}`) }
     }
     case 'task decide': {
       const task = await taskOf(cmd.task)
@@ -403,6 +424,7 @@ function asleepOf(ap: Autopilot, tasks: Task[], c: CoordinatorRecord | null | un
 export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[]> {
   if (!(await store.enabled())) return []
   const [tasks, runs, wakes, now] = [await store.tasks(), await store.runs(), await store.wakes(), Date.now()]
+  const holds = await slotsOf(store, await store.projects())
   // The main coordinator first: every project's tasks are its own.
   return Promise.all([{ key: MAIN, name: await readAlfredName({}) }, ...await store.projects()].map(async (p) => {
     const c = await store.coordinator(p.key)
@@ -410,7 +432,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
     const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => p.key === MAIN || t.project === p.key)
     return {
       ...(p.key === MAIN ? { main: true } : {}),
-      autopilot, limits: limitsLeft(autopilot, mine, runs, now),
+      autopilot, limits: limitsLeft(autopilot, mine, runs, now, holds),
       ...asleepOf(autopilot, mine, c, now), skippedToday: today(c?.skipped, now),
       ...(c?.woke?.at ? { wokeAt: c.woke.at } : {}),
       wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
@@ -525,7 +547,8 @@ export async function prepareCoordinator(deps: Deps, key: string, program: Coord
 
 // Starts the coordinator in its folder, its harness's default model, token in its environment,
 // its folder's bin/ (the `wherdr` script) first in its PATH.
-export async function startCoordinator(deps: Deps, key: unknown, agent: { program?: unknown }, urls: CoordinatorUrls) {
+// first: messages it gets once ready, after its own start prompt.
+export async function startCoordinator(deps: Deps, key: unknown, agent: { program?: unknown }, urls: CoordinatorUrls, first: string[] = []) {
   if (typeof key !== 'string') throw new HerdrError('not_found', 'Unknown project')
   // No agent given: the project's default. Alfred: a program only, with its own default model.
   const a = key === MAIN ? alfredAgent(agent.program ?? (await deps.store.coordinator(key))?.agent?.program)
@@ -535,7 +558,8 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   const { program } = a
   const before = await deps.store.coordinator(key)
   const c = await prepareCoordinator(deps, key, program, urls)
-  const argv = [...c.argv, ...(promptAsArg(program) ? c.prompt : [])]
+  const prompt = [...c.prompt, ...first]
+  const argv = [...c.argv, ...(promptAsArg(program) ? prompt : [])]
   const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
   const { address } = await deps.call<{ address: string }>('terminal.run', {
     cwd: c.folder, ...(c.on ? { on: c.on } : {}), no_parent: true, wait: false, env: c.env,
@@ -543,7 +567,7 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
     line: `${PATH_SETUP}; export PATH=${quote(`${c.folder}/bin`)}:"$PATH"; exec ${argv.map(quote).join(' ')}`,
   }, 30000)
   // Typed once the program is ready (in the background: it may wait on a dialog).
-  if (!promptAsArg(program)) for (const text of c.prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
+  if (!promptAsArg(program)) for (const text of prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
   // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
   // version: what this session knows (takeUpdateNotice tells it of an update).
   const { told: _told, ...rec } = (await deps.store.coordinator(key))!

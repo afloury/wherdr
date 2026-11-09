@@ -49,7 +49,7 @@ export function coreState(terminals: CoreTerminal[], machines: CoreMachine[], do
     const commands = [terminal.template, terminal.status?.app, ...(terminal.foreground?.argv ?? []), ...(terminal.argv ?? [])]
     const agent = terminal.agent || (commands.map(c => c?.split('/').pop()?.replace(/^claude-code$/, 'claude').replace(/^gemini-cli$/, 'gemini')).find(c => c && ['claude', 'codex', 'omp', 'devin', 'opencode', 'gemini', 'aider'].includes(c)) ?? null)
     if (!result.tabs!.some(t => t.id === tab)) {
-      result.tabs!.push({ id: tab, workspace, machine, label: docTab?.name || coreTitle(terminal), number: result.tabs!.length + 1, layout: null })
+      result.tabs!.push({ id: tab, workspace, machine, label: docTab?.name || coreTitle(terminal), ...(docTab?.name ? { docName: true as const } : {}), number: result.tabs!.length + 1, layout: null })
       if (docTab) order.set(tab, space!.tabs!.indexOf(docTab))
     }
     const state = activity === 'error' ? 'blocked' : activity
@@ -58,6 +58,7 @@ export function coreState(terminals: CoreTerminal[], machines: CoreMachine[], do
     const pane: Pane = { id: `${workspace}:p${id}`, coreAddress: terminal.address, machine, workspace, tab, tabLabel: result.tabs!.find(t => t.id === tab)!.label,
       agent, name: addressOnly(terminal.name, terminal.address) ? null : terminal.name ?? null, label: ownTitle(terminal), title: terminal.title == null ? null : cleanTitle(terminal.title), cwd, agentSession: null,
       status, interaction: 'unknown', ...(terminal.labels?.[LABEL.task] ? { task: terminal.labels[LABEL.task] } : {}),
+      ...(terminal.labels?.['wherdr.coordinator'] !== undefined ? { coordinator: true } : {}),
       ...(typeof terminal.status_ms === 'number' ? { stateSeq: terminal.status_ms, since: terminal.status_ms } : terminal.turn ? { stateSeq: terminal.turn } : {}) }
     result.panes.push(pane)
   }
