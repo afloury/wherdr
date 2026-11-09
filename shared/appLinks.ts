@@ -13,6 +13,10 @@ export type SettingsSection = typeof SETTINGS_SECTIONS[number]
 export const SETTINGS_ALIASES: Record<string, { section: SettingsSection, anchor: string }> = {
   pacing: { section: 'agents', anchor: 'settings-pace' },
 }
+// Settings › Conversation's tabs, by their ?tab= key: Display by default.
+export const CONVERSATION_TABS = ['display', 'dictation', 'read-aloud'] as const
+export type ConversationTab = typeof CONVERSATION_TABS[number]
+export const conversationTab = (q: unknown): ConversationTab => (CONVERSATION_TABS as readonly unknown[]).includes(q) ? q as ConversationTab : 'display'
 
 const query = (q: Record<string, string | undefined>) => {
   const s = new URLSearchParams(Object.entries(q).filter((e): e is [string, string] => !!e[1])).toString()
@@ -31,7 +35,7 @@ export function appLinkList(): string[] {
   return [
     `- Home: \`#/\`; Decisions (what waits for the user's choice): \`${DECISIONS_LINK}\`.`,
     `- The board: \`${boardLink()}\`; one project: \`${boardLink({ project: 'KEY' })}\`; one tag: \`${boardLink({ tag: 'TAG' })}\`; a task's sheet: \`${boardLink({ task: 'ID' })}\`.`,
-    `- A Settings section: \`#/settings?section=<section>\`, section one of ${SETTINGS_SECTIONS.join(', ')}; the agents' Pace group: \`${settingsLink('pacing')}\`.`,
+    `- A Settings section: \`#/settings?section=<section>\`, section one of ${SETTINGS_SECTIONS.join(', ')}; the agents' Pace group: \`${settingsLink('pacing')}\`; a Conversation tab: \`#/settings?section=conversation&tab=<tab>\`, tab one of ${CONVERSATION_TABS.join(', ')}.`,
     `- A project's sheet: \`#/settings?section=projects&project=KEY&tab=<tab>\`, tab one of ${PROJECT_TABS.join(', ')} (autopilot: its coordinator's autopilot).`,
   ]
 }
