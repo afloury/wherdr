@@ -31,6 +31,13 @@ it('the Merged button runs the step\'s check, and a failed check stays in Your t
   expect(projects[0]!.columns).toEqual(['To do', 'Working', 'Review', 'Deploy', 'Done'])
   expect(projects[0]!.types.find(x => x.id === 'feature')?.plan).toMatch(/ → review → /)
   expect(cards[0]).toMatchObject({ column: 'Review', step: 'merge', holder: 'none', userLabel: 'I merged it', yourTurn: 'Merge the PR on your Git host: No worktree: the task never started' })
+  expect(cards[0]!.machine).toBeUndefined() // one machine: no need to name it
+
+  // A project that allows several machines: the card names the one its task went to.
+  await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [{ key: 'CO', name: 'Company', machine: '', path: '/src/co', template: 'company', addedAt: 1, machines: ['', 'b'], clones: { b: '~/project' } }] }))
+  await store.saveTask({ ...(await store.task(task.id))!, machine: 'b' })
+  const known = [{ key: 'b', label: 'machine-b', local: false, status: 'online', error: null }] as unknown as Parameters<typeof board>[1]
+  expect((await board(store, known)).cards[0]!.machine).toBe('machine-b')
 })
 
 it('a working task with no recorded step shows in its worker\'s step with its agent, and a proof link is the card\'s link', () => {
