@@ -35,6 +35,7 @@ export interface StepState {
   agent?: AgentWork
   proofs: Record<string, Partial<Record<Evidence, string>>> // per step id
   shots?: Record<string, Shot[]> // the screenshots uploaded per step id (shots.ts)
+  earlierShots?: Record<string, Shot[]> // the sets a rework after the review replaced, oldest first
   rounds: Record<string, number> // send-backs per verdict step id
   tries?: Record<string, number> // engine actions started per step id: one receipt each
   reviews?: Record<string, Round[]> // the send-backs of each verdict step
@@ -94,6 +95,13 @@ export interface Rereview { since: string, head: string }
 export function reviewedCommit(plan: PlannedStep[], s: StepState): string | undefined {
   const r = plan.slice(0, s.at).findLast(p => p.ends === 'verdict')
   return r && s.proofs[r.id]?.commit
+}
+
+// The commit the review passed, when the task's head has moved since: the
+// worker reworked the task after its review (the merge step sends it back to review).
+export function reworkSince(plan: PlannedStep[], s: StepState, head?: string): string | undefined {
+  const since = s.rereview?.since ?? reviewedCommit(plan, s)
+  return since && head && head !== since ? since : undefined
 }
 
 // The reviewer's text for a short re-review of what came after its pass.
