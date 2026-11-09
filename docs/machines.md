@@ -8,7 +8,7 @@ Other machines are **core machines**: herdr-core (hc) reaches them over SSH and 
 terminals there, as `hc machine add` does. wherdr shows what `machine.list` returns; it opens no
 SSH connection of its own.
 
-- **On the home screen**, each machine is a tab of the machine bar, online or offline, with its
+- **On the home screen**, each machine is one of the machine tabs, online or offline, with its
   count of rows ([Machines as tabs](home.md#machines-as-tabs)). When a machine goes offline, its
   last terminals stay visible, marked offline, until core reaches it again.
 - **New** starts a terminal or an agent on any online machine (`terminal.run` with `on`). Home,
@@ -42,8 +42,23 @@ machine with its state (connected, connecting…, offline) and last error:
   changes; links that use the old name stop working.
 - **Forget** (`machine.rm`): this core drops the machine, but its terminals keep running there,
   and the machine can be added again later.
-- **Memory**: each machine's free memory and its agents at once (all projects), with two
+- **Memory**: each machine's free memory, cores and load (read on Linux and macOS; on macOS the
+  free figure is close to Activity Monitor's, not exact) and its agents at once (all projects), with two
   settings: **Agents at once, all projects** (empty: one agent per 1.5 GB of RAM) and
-  **Automatic starts wait under (GB free)**. Automatic starts (autopilot, chains, automations)
-  wait while a machine is short on memory, its swap is over 90 % used or it runs its cap of
-  agents, and start by themselves once it is back. Your own starts still go.
+  **Automatic starts wait under (GB free)**. Each start goes to a machine its project allows
+  where the task fits, by the project's **Placement** ([project sheet](project-management.md#general)):
+  by default heavy work to the strongest one, light and standard work to the project's
+  own machine when it fits; or *Balance the load*, or *Home first*. A task fits when the machine keeps its minimum free after the task's
+  estimate (light ≈ 0.7 GB, standard ≈ 1.8 GB, heavy ≈ 3.9 GB), counting the agents just started,
+  its swap is under 90 % used, its cores are not all taken, it runs fewer agents than its cap (yours,
+  else one per 1.5 GB of RAM), and for heavy work its load is under 0.8 per core. When no machine fits, automatic
+  starts (autopilot, chains, automations) wait, with each machine's reason on the card, and start
+  by themselves once one has room. Your own starts still go. A task that started stays on its machine.
+- **Online or offline, and available hours**: each machine, offline ones too, shows whether
+  herdr-core reaches it now. Placement asks herdr-core again at each start, so a machine that just
+  went offline takes nothing. A new task asked for an offline machine starts on another machine its
+  project allows when one fits, else waits with *Waits for … (offline)*. **Available** (Always,
+  Weekdays, Every day, with **From** and **To**, in the wherdr server's time; *To* before *From*
+  runs over midnight) keeps automatic starts off a machine outside its hours, and heavy work off it
+  in its last 2 hours, so a laptop that leaves at 19:00 is not handed a long build at 18:30. The
+  coordinator sees the same in `autopilot show` (`machines`).

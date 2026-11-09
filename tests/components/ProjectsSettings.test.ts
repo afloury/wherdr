@@ -48,7 +48,7 @@ const inSheet = (id: string) => document.body.querySelector<HTMLElement>(`[data-
 let mounted: { unmount: () => void } | null = null
 afterEach(() => { mounted?.unmount(); mounted = null; reset(); newAgentOpen.value = false })
 
-it('switches project management on; Add project opens the New sheet on a new project', async () => {
+it('switches project management on; Add project opens the setup window on a new project', async () => {
   const w = await mountSuspended(ProjectsSettings, { props: { active: true } })
   mounted = w
   await vi.waitFor(() => expect(w.find('[data-testid="pm-switch"]').attributes('disabled')).toBeUndefined())
@@ -57,7 +57,10 @@ it('switches project management on; Add project opens the New sheet on a new pro
   await w.find('[data-testid="pm-switch"]').trigger('click')
   await vi.waitFor(() => expect(w.find('[data-testid="pm-empty"]').exists()).toBe(true))
   await w.find('[data-testid="pm-add"]').trigger('click')
-  expect([newAgentOpen.value, newProjectOpen.value]).toEqual([true, true])
+  await vi.waitFor(() => expect(inSheet('setup-project-form')).toBeTruthy())
+  expect(w.get('[data-testid="pm-library"]').text()).toContain('1 saved · 4 examples')
+  await w.get('[data-testid="pm-library"]').trigger('click')
+  await vi.waitFor(() => expect(inSheet('library-saved')?.dataset.id).toBe('vibe'))
 })
 
 it('opens the project sheet on the URL\'s tab; Guards saves a branch added; General saves the name and base, and the visibility', async () => {
@@ -96,7 +99,7 @@ it('a coordinator\'s proposal: badge on the row and on Workflow, the URL opens i
     coordinators = [{ project: 'WEB', name: 'Web', proposal: { diff: '-   "instructions": "a",\n+   "instructions": "b",', at: 1, said: 'Use b' } }]
     const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=workflow&review=1' })
     mounted = w
-    await vi.waitFor(() => expect(inSheet('proposal-review')?.textContent).toContain('“Use b”'))
+    await vi.waitFor(() => expect(inSheet('proposal-said')?.textContent).toBe('Use b'))
     expect(w.find('[data-testid="pm-review"]').exists()).toBe(true)
     expect(inSheet('workflow-badge')).not.toBeNull()
     expect([...inSheet('proposal-diff')!.querySelectorAll('.add')].map(x => x.textContent?.trim())).toEqual(['+   "instructions": "b",'])
