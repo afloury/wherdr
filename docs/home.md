@@ -48,8 +48,8 @@ with no agent and projects off. It helps you get started and, with projects
 on, coordinates all of them when you ask it: it has no autopilot, each
 project's coordinator runs its own. The first *Start* asks which agent (Claude,
 Codex, OMP…, those offered in Settings › Agents) runs it; the choice is kept, and wherdr
-never changes it on its own: if that agent is no longer offered, Alfred's
-[Autopilot](project-management.md#autopilot) window says so and you pick another. The same window
+never changes it on its own: if that agent is no longer offered, the **Agent**
+button in Alfred's conversation opens a window that says so, and you pick another there. The same window
 changes Alfred's agent for its next conversation. It runs with that agent's default
 model: change the model inside Alfred. Its menu (right click, or long press on a touch
 screen), *Restart with…*, moves it

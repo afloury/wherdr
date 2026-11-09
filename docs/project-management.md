@@ -423,8 +423,7 @@ the mechanical blocks itself and wakes it only when that fails:
 - **a stalled agent** (below): nudged, then restarted once.
 
 These blocks do not wake the coordinator. After 2 failed tries on the same
-step (or 15 minutes with nothing left to try), wherdr wakes it once (and the
-main coordinator, when its autopilot wakes it for stuck tasks), as the
+step (or 15 minutes with nothing left to try), wherdr wakes it once, as the
 autopilot's *Task stuck* event, and says what it tried. Every try, and giving
 up, is written to the task's **Log**. Any other failure (a refused merge, a
 check that waits for you) wakes the coordinator at once, as before.
