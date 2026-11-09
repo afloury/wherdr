@@ -70,6 +70,35 @@ describe('placing a task', () => {
     expect(place('standard', [{ ...b, online: false }], 'machine-b')).toEqual({ hold: 'Waits for machine-b (offline)', best: 'machine-b' })
   })
 
+  it('starts a new task elsewhere while the machine asked for is offline, else waits for it', () => {
+    const a = machine('machine-a', 16, 8, 4), b = machine('machine-b', 64, 40, 16, [], { online: false })
+    const prefer = (candidates: Candidate[]) => placeTask({ weight: 'standard', home: 'machine-a', prefer: 'machine-b', candidates })
+    expect(prefer([a, b])).toEqual({ machine: 'machine-a' })
+    expect(prefer([machine('machine-a', 16, 2.5, 4), b])).toEqual({ hold: 'Waits for machine-b (offline)', best: 'machine-a' })
+    // Online again: it goes there.
+    expect(prefer([a, { ...b, online: true }])).toEqual({ machine: 'machine-b' })
+  })
+
+  it('keeps automatic starts within each machine\'s available hours', () => {
+    const hours = { days: 'weekdays', from: '09:00', to: '19:00' } as const
+    const at = (iso: string, weight: Weight = 'standard') => placeTask({ weight, home: 'machine-a', now: new Date(iso), candidates: [
+      machine('machine-a', 16, 8, 4), machine('machine-b', 64, 40, 16, [], { settings: { ...DEFAULT_MEMORY, hours } }),
+    ] })
+    // A Monday at noon: heavy work goes to the strongest; at 18:00 it leaves in an hour, too late for heavy work.
+    expect(at('2026-11-09T12:00:00')).toEqual({ machine: 'machine-a' })
+    expect(at('2026-11-09T12:00:00', 'heavy')).toEqual({ machine: 'machine-b' })
+    expect(at('2026-11-09T18:00:00', 'heavy')).toEqual({ machine: 'machine-a' })
+    // Saturday, or a weekday night: away.
+    const alone = (iso: string) => placeTask({ weight: 'light', home: 'machine-b', now: new Date(iso), candidates: [machine('machine-b', 64, 40, 16, [], { settings: { ...DEFAULT_MEMORY, hours } })] })
+    expect(alone('2026-11-14T12:00:00')).toMatchObject({ hold: expect.stringContaining('machine-b: away (weekdays 09:00-19:00)') })
+    expect(alone('2026-11-09T20:00:00')).toMatchObject({ hold: expect.stringContaining('away') })
+    // Over midnight: Friday 22:00 to 06:00 covers Saturday 02:00, not Saturday 22:00.
+    const night = { days: 'weekdays', from: '22:00', to: '06:00' } as const
+    const n = (iso: string) => placeTask({ weight: 'light', home: 'm', now: new Date(iso), candidates: [machine('m', 64, 40, 16, [], { settings: { ...DEFAULT_MEMORY, hours: night } })] })
+    expect(n('2026-11-14T02:00:00')).toEqual({ machine: 'm' })
+    expect(n('2026-11-14T22:00:00')).toMatchObject({ hold: expect.stringContaining('away') })
+  })
+
   it('runs more tasks on two machines than on one', () => {
     // Starts until nothing fits, each start counted on its machine.
     const fill = (candidates: Candidate[]) => {
