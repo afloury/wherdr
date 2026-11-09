@@ -64,7 +64,7 @@
 - [Getting started](docs/project-management.md#getting-started): the setup window, six steps from turning projects on to a first task; Finish setup on the board.
 - [Projects](docs/project-management.md#projects): Settings › Projects, the project list and the project sheet's tabs.
 - [General tab](docs/project-management.md#general): name, key, base (working) branch, agents, repository visibility, allowed machines and their clone paths (with a readiness check).
-- [Workflow tab](docs/project-management.md#workflow): task types (with an optional weight) and steps, Edit as JSON, Save as template, Start over, review of the coordinator's proposed change (one-line summary, who proposed it, your full request with a link back to it, readable or JSON), and its card in the coordinator's conversation.
+- [Workflow tab](docs/project-management.md#workflow): task types (with an optional weight) and steps (a merge that pushes first waits up to a minute for GitHub), Edit as JSON, Save as template, Start over, review of the coordinator's proposed change (one-line summary, who proposed it, your full request with a link back to it, readable or JSON), and its card in the coordinator's conversation.
 - [Guards](docs/project-management.md#guards): protected branches, who may merge (a waiting merge goes on once wherdr may do it; one you merge on GitHub ends as merged), contributor PRs, the project sheet's in-app addresses.
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
 - [Template library](docs/project-management.md#template-library): saved templates and examples, read, rename and delete; projects keep their own copy.
@@ -73,7 +73,7 @@
 - [Task sheet](docs/project-management.md#task-sheet): time per step, waits for you, review rounds and CI fixes, the task's buttons and its Description, Plan and Log tabs.
 - [A task waiting for you](docs/project-management.md#a-task-waiting-for-you): the To do tab, Merge, Send back and other answers.
 - [A stalled task](docs/project-management.md#a-stalled-task): red CI or an idle agent: the coordinator woken, one nudge, then Tasks to handle and a notification after 30 min.
-- [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again; which agent a coordinator's `tell` reaches (--to worker|reviewer).
+- [Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you): idle agents ended and started again; kept while the worker updates the PR (a catch-up, a CI fix), unpushed commits pushed first; which agent a coordinator's `tell` reaches (--to worker|reviewer).
 - [Alfred's command](docs/alfred.md): `wherdr alfred`, what Alfred reads and changes after your yes (projects, their machines, guards, coordinators, settings).
 - [After an update](docs/alfred.md#after-an-update): new instructions for Alfred and coordinators, and the one-line notice on their next command.
 

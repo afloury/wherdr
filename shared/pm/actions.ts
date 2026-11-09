@@ -117,6 +117,8 @@ git push -q origin "HEAD:refs/heads/$2" 2>&1 || exit 1; git rev-parse HEAD`,
   // commit the task's worktree never had: pushed from elsewhere).
   headOf: `${IN} p=$1; git cat-file -e "$p^{commit}" 2>/dev/null || git fetch -q origin "$p" 2>/dev/null
 if [ "$(git rev-parse HEAD)" = "$p" ]; then echo same; elif git merge-base --is-ancestor "$p" HEAD 2>/dev/null; then echo behind; else echo foreign; fi`,
+  // The remote task branch's tip ($1), as origin has it now: empty when it has none.
+  remoteHead: `${IN} r=$(git ls-remote origin "refs/heads/$1" 2>&1) || { echo "$r"; exit 1; }; echo "$r" | cut -f1`,
   // Runs again the failed or cancelled workflow runs of a commit.
   rerun: `${IN} ids=$(gh run list --commit "$1" --json databaseId,conclusion -q '.[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .conclusion != "") | .databaseId' 2>&1) || { echo "$ids"; exit 1; }
 for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
