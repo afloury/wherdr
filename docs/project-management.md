@@ -42,7 +42,10 @@ new project.
 folder (created at start, `git init` offered), or any folder without git (a
 folder of several projects, for instance). A folder without git needs no
 workflow: it has no tasks (a task needs git for its own worktree), and its
-coordinator does the work in it directly.
+coordinator does the work in it directly. A folder typed, chosen with
+**Browse** or picked in the repository list fills the name and key the same
+way, and one under the machine's home shows as `~/…`. On a computer the sheet
+is wider, with a taller repository list.
 
 Then ask the coordinator for tasks, and answer what shows under *Your turn* and
 *Decisions*.
