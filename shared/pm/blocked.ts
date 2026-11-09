@@ -14,6 +14,8 @@ import type { Task } from './run'
 export const RED_CI_WAIT_MS = 10 * 60_000
 // The agent holding the step idle after its instructions were delivered.
 export const IDLE_WAIT_MS = 5 * 60_000
+// Still stalled this long after its nudge: its agent is restarted, once.
+export const RESTART_AFTER_MS = 10 * 60_000
 // A stall still there this long after it began: the user's.
 export const HANDLE_AFTER_MS = 30 * 60_000
 
@@ -75,11 +77,16 @@ export function backToWork(task: Task, plan: PlannedStep[], now: number): Task |
 }
 
 // What the engine does for a stall this pass: nudge the agent, once per
-// cause; hand it to the user (Tasks to handle, a notification), once, when
-// still there HANDLE_AFTER_MS after it began.
+// cause; restart it, once, RESTART_AFTER_MS after the nudge; hand it to the
+// user (Tasks to handle, a notification), once, when still there
+// HANDLE_AFTER_MS after it began.
 export function stallMoves(task: Pick<Task, 'stalls'>, s: Stall, now: number) {
   const seen = task.stalls?.[s.cause]
-  return { nudge: !seen?.nudged, handle: now - s.since >= HANDLE_AFTER_MS && !seen?.handled }
+  return {
+    nudge: !seen?.nudged,
+    restart: !!seen?.nudged && !seen.restarted && now - seen.nudged >= RESTART_AFTER_MS,
+    handle: now - s.since >= HANDLE_AFTER_MS && !seen?.handled,
+  }
 }
 
 // The failing tests named in a job's log (gh run view --log-failed): Vitest's
