@@ -32,6 +32,7 @@ import { removeTask, resumeTask, stopTask } from './pmStop'
 import { checkOnGithub } from './pmGhCheck'
 import { noteBack } from './pmStall'
 import { reviveWorker } from './pmRelease'
+import { READ_LINES, lastWords } from './pmRead'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
 import { forgetMemory } from './pmMemory'
@@ -264,6 +265,18 @@ export async function runCommand(deps: Deps, token: unknown, body: { argv?: unkn
       await deps.call('terminal.send', { terminal: run.terminal, text: said }, 30000)
       const saved = await store.logTask(fixed(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task), by, `told the ${role}${fixNote}: ${cmd.text.slice(0, 300)}`)
       return { task: t ? await noteBack(store, saved, planOf(t, saved, p), by, `the ${by} told the ${role}`) : saved, sentTo: role }
+    }
+    case 'read': {
+      const task = await taskOf(cmd.task)
+      // The agent tell reaches (or the one asked), its latest run, ended or not.
+      const runs = await store.runs()
+      const holder = t && !task.step?.done ? currentStep(planOf(t, task, p), task.step ?? initialState())?.holder : undefined
+      const { role } = tellTarget(runs, task.id, holder, cmd.to)
+      const run = runs.filter(r => r.task === task.id && r.role === role && r.terminal).sort((a, b) => b.startedAt - a.startedAt)[0]
+      if (!run) throw new HerdrError('not_found', `The task has no ${role} yet`)
+      const said = await lastWords(deps, run.terminal!, cmd.lines ?? READ_LINES)
+      if (!said) throw new HerdrError('unreachable', `Nothing to read from the task's ${run.role}: its conversation and its terminal are out of reach`)
+      return { task: p ? shownTaskId([p], task.id) : task.id, agent: run.role, running: run.state !== 'ended', ...(task.state === 'waiting' && task.waitKind ? { waits: task.waitKind } : {}), ...said }
     }
     case 'task start': {
       const task = await taskOf(cmd.task)

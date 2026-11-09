@@ -221,3 +221,26 @@ export function reconcile(runs: Run[], terminals: LabelledTerminal[], install: s
     return t.state === 'finished' ? { run, state: 'exit' } : { run, terminal: t.address, state: 'running' }
   })
 }
+
+// Two live agents of one role on a task (two starts that raced): the one the
+// engine tracks stays (the task's run, else its newest unended run), the others end.
+export function duplicateAgents(terminals: LabelledTerminal[], runs: Run[], tasks: Pick<Task, 'id' | 'run'>[], install: string) {
+  const groups = new Map<string, LabelledTerminal[]>()
+  for (const x of terminals) {
+    const l = x.labels
+    if (x.state === 'finished' || l?.[LABEL.install] !== install || !l[LABEL.task] || !l[LABEL.role]) continue
+    const k = `${l[LABEL.task]}\u0000${l[LABEL.role]}`
+    groups.set(k, [...(groups.get(k) ?? []), x])
+  }
+  return [...groups.values()].filter(g => g.length > 1).map(g => {
+    const task = g[0]!.labels![LABEL.task]!, role = g[0]!.labels![LABEL.role]! as Run['role']
+    const tracked = tasks.find(t => t.id === task)?.run
+    const rank = (x: LabelledTerminal) => {
+      const id = x.labels![LABEL.run]
+      if (id === tracked) return Infinity
+      return runs.find(r => r.id === id && r.state !== 'ended')?.startedAt ?? -1
+    }
+    const keep = g.reduce((a, b) => (rank(b) > rank(a) ? b : a))
+    return { task, role, keep, end: g.filter(x => x !== keep) }
+  })
+}

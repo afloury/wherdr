@@ -8,6 +8,7 @@
 import { beyond, fileConflict, parseFiles } from '../../shared/pm/files'
 import { runFiles } from '../../shared/pm/advance'
 import type { Task } from '../../shared/pm/run'
+import { HerdrError } from './herdr'
 import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
 
 const SEP = '--wherdr-files--'
@@ -66,7 +67,9 @@ export async function startFileWaits(deps: PmLaunchDeps) {
     const free = await store.logTask({ ...t, sameFiles: undefined }, 'engine', `no longer waits for ${t.sameFiles}: its files are free`)
     if (!own) continue
     projects.add(free.project)
-    const r = await startTask(deps, free.id).catch((e: Error) => ({ ...free, state: 'waiting' as const, waiting: e.message }))
+    // Already starting from elsewhere (busy): that start goes on.
+    const r = await startTask(deps, free.id).catch((e: Error) => e instanceof HerdrError && e.code === 'busy' ? null : ({ ...free, state: 'waiting' as const, waiting: e.message }))
+    if (!r) continue
     await store.logTask((await store.task(free.id))!, 'engine', r.state === 'working' ? 'started: its files are free' : `could not start: ${r.waiting ?? ''}`)
     started.push(free.id)
   }

@@ -46,10 +46,13 @@
 Alfred, wherdr's assistant, is always the first row of the agent list, even
 with no agent and projects off. It helps you get started and, with projects
 on, coordinates all of them. The first *Start* asks which agent (Claude,
-Codex, OMP…, those offered in Settings › Agents) runs it; the choice is kept. It runs with that agent's default
+Codex, OMP…, those offered in Settings › Agents) runs it; the choice is kept, and wherdr
+never changes it on its own: if that agent is no longer offered, Alfred's
+[Autopilot](project-management.md#autopilot) window says so and you pick another. The same window
+changes Alfred's agent for its next conversation. It runs with that agent's default
 model: change the model inside Alfred. Its menu (right click, or long press on a touch
 screen), *Restart with…*, moves it
-to another agent (when an account runs out of tokens, for instance): the old session
+to another agent at once (when an account runs out of tokens, for instance): the old session
 stops and the new one carries on from the same home folder, `alfred/` in
 wherdr's data folder. There, `AGENTS.md` (and `CLAUDE.md`, `GEMINI.md`,
 `QWEN.md`, which point to it) is wherdr's and rewritten at each start; `identity.md` (its name and tone) and `memory.md` (what it learns about
@@ -99,10 +102,19 @@ devices. Machines themselves are managed in [Settings › Machines](machines.md#
   name, **resume** the last conversation, and an optional first message. The terminal is started
   by core in that folder; it joins the space whose folder holds it, else a new space.
 - **+** in a space's tab row starts at once a terminal like the space's current one (same kind,
-  same folder) in a new tab of that space; **New tab…** in the tab menu opens the sheet. The new
-  terminal carries the space's labels, so it also appears in herdr-app.
-- Rename, close, split and move of spaces and tabs stay in herdr-app. Closing an agent's pane
-  from wherdr ends its program.
+  same folder) in a new tab of that space. The new terminal carries the space's labels, so it
+  also appears in herdr-app.
+- A tab's menu (right click, or long press on its chip) has **New tab like this one** (same kind
+  and folder as that tab, when its folder is known), **New tab…** (opens the sheet), **Rename
+  tab** (a tab of one terminal not named in herdr-app's layout: the name is stored as that
+  terminal's name in core) and **Close tab**.
+- A space's menu (right click, or long press on its card; on an agent's row, its Space group)
+  has **Close space**, except for a project coordinator's or a task agent's space: its project
+  manages it.
+- Close tab and Close space first say how many terminals stop and how many agents are
+  interrupted, then close each terminal as **Close this terminal** does; one that could not be
+  closed is named, the others close all the same. Closing an agent's pane ends its program.
+- Split and move of tabs stay in herdr-app.
 - Worktrees are v2 only.
 
 ### Search

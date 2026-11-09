@@ -128,6 +128,45 @@ describe('runAction', () => {
   })
 })
 
+describe('a merge interrupted by a restart', () => {
+  const merge = { kind: 'github.merge' } as const
+  const pr = (over: object = {}) => ({ code: 0, out: `abc\n${JSON.stringify([{ url: 'https://pr/1', baseRefName: 'dev', headRefOid: 'abc', statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'SUCCESS' }], ...over }])}` })
+  const cut = (replies: { code: number | null, out: string }[], over: Partial<Receipt> = {}) => {
+    const f = fakeDeps(replies)
+    f.receipts.set('A-1.1.merge', { id: 'A-1.1.merge', task: 'A-1', step: 'merge', action: merge, state: 'pending', at: 0, ...over })
+    return { ...f, go: () => runAction(f.deps, job({ step: 'merge', action: merge })) }
+  }
+
+  it('ends merged when GitHub merged it meanwhile', async () => {
+    const f = cut([pr({ merged: true }), { code: 0, out: 'origin/dev' }])
+    expect(await f.go()).toEqual({ ok: true, link: 'https://pr/1', commit: 'abc', note: 'merged before the restart' })
+    expect(f.receipts.get('A-1.1.merge')?.state).toBe('done')
+  })
+
+  it('goes to the user when the PR was closed without a merge', async () => {
+    const f = cut([{ code: 0, out: 'abc\n[]' }, { code: 0, out: 'https://pr/1' }])
+    expect(await f.go()).toEqual({ ok: false, error: 'merge: the PR was closed without being merged (https://pr/1): reopen it, or open a new one' })
+  })
+
+  it('merges an open PR again, with the gesture of whoever started it', async () => {
+    // Started by the user into protected main: resumed by the engine, still theirs.
+    const f = cut([pr({ baseRefName: 'main' }), { code: 0, out: 'same' }, { code: 0, out: 'https://pr/1' }, { code: 0, out: 'origin/main' }], { by: 'user' })
+    expect(await f.go()).toEqual({ ok: true, link: 'https://pr/1', commit: 'abc' })
+    expect(f.calls[2]).toEqual(['/w', 'https://pr/1', 'abc', ''])
+  })
+
+  it('is run again twice at most, then goes to the user', async () => {
+    const once = cut([], { resumes: 1 })
+    once.deps.sh = async () => { throw new Error('restarted') }
+    await expect(once.go()).rejects.toThrow('restarted')
+    expect(once.receipts.get('A-1.1.merge')).toMatchObject({ state: 'pending', resumes: 2 })
+    const f = cut([], { resumes: 2 })
+    expect(await f.go()).toEqual({ ok: false, error: 'github.merge was interrupted 3 times: check by hand, then try again' })
+    expect(f.receipts.get('A-1.1.merge')?.state).toBe('uncertain')
+    expect(f.calls).toEqual([])
+  })
+})
+
 describe('step engine and action results', () => {
   const vibe: Template = { id: 'v', taskTypes: { s: { steps: [
     { id: 'todo' }, { id: 'work', holder: 'worker', ends: 'report' }, { id: 'land', ends: 'action', action: { kind: 'git.land', target: 'dev' } }, { id: 'done' },
