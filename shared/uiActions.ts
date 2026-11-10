@@ -4,17 +4,25 @@
 // Pure: the card, its stamp (what must still hold at the click) and its block.
 import type { Task } from './pm/run'
 import { stepLabels, type PlannedStep } from './pm/steps'
+import type { SyncedSetting } from './settings'
+import type { UiTargetId } from './uiTargets'
 
 export const UI_ACTIONS = ['resume', 'step', 'open'] as const
 export type UiAction = typeof UI_ACTIONS[number]
 export const isUiAction = (v: unknown): v is UiAction => (UI_ACTIONS as readonly unknown[]).includes(v)
 
-// open: waits for a click; done: the click ran it; stale: what it was for has
-// changed (or 24 h passed); the card then runs nothing.
-export type UiCardState = 'open' | 'done' | 'stale'
+// open: waits for a click; done: the click ran it; dismissed: the user's
+// Cancel; stale: what it was for has changed (or 24 h passed); the card then
+// runs nothing.
+export type UiCardState = 'open' | 'done' | 'dismissed' | 'stale'
+// A proposed setting change (`wherdr alfred setting set … --propose`): before
+// (undefined: the default) → after, and the user's message behind it.
+// target: the element "Show me" highlights (shared/uiTargets.ts), if it has one.
+export interface SettingChange { key: SyncedSetting, before?: string, after: string, said?: string, target?: UiTargetId }
 export interface UiCard {
-  id: string, by: string, at: number, kind: UiAction, task: string, shown: string
+  id: string, by: string, at: number, kind: UiAction | 'setting', task: string, shown: string
   label: string, stamp: string, state: UiCardState, outcome?: { text: string, at: number }
+  setting?: SettingChange // kind 'setting' only (task and shown are '')
   refused?: string // the click's answer only, never stored: why the step's action was refused
 }
 export const UI_CARD_MS = 24 * 3600_000
@@ -61,10 +69,17 @@ export function outcomeText(card: Pick<UiCard, 'kind' | 'label'>, after?: Pick<T
   return waits ? `${card.label}: approved by you, merges once ready` : `${card.label}: done by you`
 }
 
+// A setting card holds while the setting still has the value it was proposed
+// over: changed since (in Settings, on another device), it runs nothing.
+export const settingStamp = (key: string, value: string | undefined) => `setting:${key}:${value ?? ''}`
+
+// What the card is about: one card per task and action, or per setting.
+const cardAbout = (c: UiCard) => (c.setting ? `setting:${c.setting.key}` : `${c.kind}:${c.task}`)
+
 // The cards a coordinator keeps: the new one first, one per task and action
 // (a new one replaces the older), the newest UI_CARDS_MAX of the last day.
 export function keepCards(cards: UiCard[], card: UiCard, now: number): UiCard[] {
-  const rest = cards.filter(c => !(c.task === card.task && c.kind === card.kind) && now - c.at <= UI_CARD_MS)
+  const rest = cards.filter(c => cardAbout(c) !== cardAbout(card) && now - c.at <= UI_CARD_MS)
   return [card, ...rest].slice(0, UI_CARDS_MAX)
 }
 

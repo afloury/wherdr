@@ -4,6 +4,7 @@
 // server (server/utils/alfredCli.ts) reads and writes.
 import { uiOpenArgs } from '../uiOpen'
 import type { SyncedSetting } from '../settings'
+import type { UiTargetId } from '../uiTargets'
 import { MERGE_BY, type MergeBy, type Template } from './workflow'
 import { sameGuards, type Turn } from './coordinator'
 import { READY_SORTS } from '../spaces'
@@ -22,6 +23,14 @@ export const SETTING_VALUES: Partial<Record<SyncedSetting, readonly string[]>> =
   'autoReorderReady': ON_OFF, 'readySort': READY_SORTS,
   'typewriterSpeed': ['off', 'fast', 'medium', 'slow'], 'encryptedText': ON_OFF, 'replyStyle': ['icon', 'text', 'list'], 'defaultViewMode': ['chat', 'term'],
   'wherdr.files.hidden': ON_OFF, 'wherdr.files.md': ['rendered', 'source'],
+}
+// Where each one is in Settings: "Show me" on its proposal card highlights it.
+export const SETTING_TARGETS: Partial<Record<SyncedSetting, UiTargetId>> = {
+  theme: 'appearance.theme', machineBar: 'appearance.home-screen', compactListV2: 'appearance.home-screen',
+  showShells: 'appearance.home-screen', showCounters: 'appearance.home-screen', showQuotas: 'appearance.home-screen',
+  autoReorderReady: 'appearance.home-screen', quotaDisplay: 'appearance.quotas',
+  typewriterSpeed: 'conversation.typewriter', encryptedText: 'conversation.typewriter',
+  replyStyle: 'conversation.reply-style', defaultViewMode: 'conversation.default-pane',
 }
 const settable = (k: string): k is SyncedSetting => Object.hasOwn(SETTING_VALUES, k)
 
@@ -43,7 +52,8 @@ export type AlfredCommand =
   | { name: 'coordinator start', apply: boolean, key: string, program?: 'claude' | 'codex', resume?: true }
   // No change given: the project's guards are shown.
   | { name: 'project guards', apply: boolean, key: string, change: { protect?: string[], mergeProtected?: MergeBy, mergeOthers?: MergeBy, contributorPrs?: 'off' | 'others' | 'all' } }
-  | { name: 'setting set', apply: boolean, key: SyncedSetting, value: string }
+  // Proposal only: --propose puts a card in the reply, the user clicks Apply.
+  | { name: 'setting set', propose: boolean, key: SyncedSetting, value: string }
   // Another machine its tasks may run on (by key or label), with its clone; or no longer.
   | { name: 'project machine', apply: boolean, key: string, machine: string } & ({ action: 'add', clone: string } | { action: 'remove' })
 
@@ -68,7 +78,7 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'project machine add <KEY> <machine> --clone <folder>', does: 'let the project\'s tasks run on another machine (its key or label), in its clone of the repo there; once applied, the machine\'s readiness check runs and its result is in the answer' },
   { usage: 'project machine remove <KEY> <machine>', does: 'the project\'s tasks no longer start on that machine (tasks already there stay)' },
   { usage: 'coordinator start <KEY> [--program claude|codex] [--resume]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one); --resume takes up its last conversation again, with the agent that ran it' },
-  { usage: 'setting set <key> <value>', does: 'change a setting to one of the values `settings` lists for it' },
+  { usage: 'setting set <key> <value> [--propose]', does: 'propose a setting change, to one of the values `settings` lists for it: without --propose it only shows the change; with it, a card in your reply (before → after, Show me, Cancel, Apply) the user applies. Only in a turn that comes from the user; you never apply it yourself' },
 ]
 
 const KEY_RE = /^[A-Za-z][A-Za-z0-9]{1,9}$/
@@ -81,7 +91,7 @@ const FLAGS: Record<string, string[]> = {
   'ui open': ['target'],
 }
 
-export const CHANGES = ['project add', 'project template', 'project guards', 'project machine', 'coordinator start', 'setting set']
+export const CHANGES = ['project add', 'project template', 'project guards', 'project machine', 'coordinator start']
 const usage = (verb: string) => ({ error: `usage: wherdr alfred ${ALFRED_COMMANDS.filter(c => c.usage.startsWith(verb)).map(c => c.usage).join(' | ')}${CHANGES.some(v => verb.startsWith(v)) ? ' [--apply]' : ''}` })
 
 // argv after `wherdr alfred` → a command, or the reason it is not one.
@@ -90,10 +100,11 @@ const usage = (verb: string) => ({ error: `usage: wherdr alfred ${ALFRED_COMMAND
 export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: string } {
   if (!Array.isArray(argv) || !argv.every(a => typeof a === 'string')) return { error: 'argv must be a list of words' }
   const words: string[] = [], flags: Record<string, string> = {}
-  let apply = false, resume = false
+  let apply = false, resume = false, propose = false
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i] as string
     if (a === '--apply') { apply = true; continue }
+    if (a === '--propose') { propose = true; continue }
     if (a === '--resume') { resume = true; continue }
     if (!a.startsWith('--')) { words.push(a); continue }
     const v = argv[i + 1] as string | undefined
@@ -105,7 +116,9 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
   const verb = `${w0} ${w1}`
   const extra = Object.keys(flags).find(f => !(FLAGS[verb] ?? []).includes(f))
   if (extra) return { error: `unknown option --${extra}` }
+  if (apply && verb === 'setting set') return { error: 'A setting is never changed by Alfred: setting set --propose puts a card the user applies' }
   if (apply && !CHANGES.includes(verb)) return { error: '--apply is for a change only' }
+  if (propose && verb !== 'setting set') return { error: '--propose is for setting set only' }
   if (resume && verb !== 'coordinator start') return { error: '--resume is for coordinator start only' }
   const key = (k: string | undefined) => (k && KEY_RE.test(k) ? k.toUpperCase() : '')
 
@@ -163,7 +176,7 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
     if (!w2 || w3 === undefined || rest.length) return usage(verb)
     if (!settable(w2)) return { error: `${w2} is not a setting Alfred changes: one of ${Object.keys(SETTING_VALUES).join(', ')}; the others are changed in wherdr's Settings` }
     if (!SETTING_VALUES[w2]!.includes(w3)) return { error: `${w3} is not a value of ${w2}: one of ${SETTING_VALUES[w2]!.join(', ')}` }
-    return { name: verb, apply, key: w2, value: w3 }
+    return { name: verb, propose, key: w2, value: w3 }
   }
   return { error: `unknown command: ${words.join(' ') || '(none)'} (see wherdr alfred help)` }
 }

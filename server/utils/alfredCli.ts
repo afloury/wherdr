@@ -3,7 +3,7 @@
 // A change is only described unless the call says --apply; Alfred applies it
 // after the user's yes. Nothing here removes data.
 import path from 'node:path'
-import { CHANGES, SETTING_VALUES, alfredCommandList, dryRun, parseAlfredCommand, workflowEditRefusal, type AlfredPlan } from '../../shared/pm/alfredCli'
+import { CHANGES, SETTING_TARGETS, SETTING_VALUES, alfredCommandList, dryRun, parseAlfredCommand, workflowEditRefusal, type AlfredPlan } from '../../shared/pm/alfredCli'
 import { GUARDED_PROGRAMS, MAIN, templateDiff, type CoordinatorAgent } from '../../shared/pm/coordinator'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges } from '../../shared/pm/templateText'
@@ -16,7 +16,9 @@ import { alfredTokenOk, coordinatorsView, noteTurn, readV2Projects, startCoordin
 import { sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
 import { lastWords } from './pmRead'
 import type { FolderCheck, PmStore } from './pmStore'
-import { patchSettings, readSettings } from './settings'
+import { readSettings } from './settings'
+import { addSettingCard } from './uiActions'
+import { UI_TARGETS } from '../../shared/uiTargets'
 import { saveProjectGuards } from './pmProject'
 import { checkMachine } from './pmReady'
 import { projectPlace } from '../../shared/pm/places'
@@ -112,8 +114,10 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
     case 'setting set': {
       const old = (await readSettings(deps.settingsFile))[cmd.key]
       if (old === cmd.value) return { unchanged: true, [cmd.key]: old }
-      return change({ change: [`setting ${cmd.key}: ${old === undefined ? '(default)' : JSON.stringify(old)} → ${JSON.stringify(cmd.value)}`] },
-        async () => ({ [cmd.key]: (await patchSettings({ [cmd.key]: cmd.value }, { file: deps.settingsFile }))[cmd.key] }))
+      const line = `setting ${cmd.key}: ${old === undefined ? '(default)' : JSON.stringify(old)} → ${JSON.stringify(cmd.value)}`
+      if (!cmd.propose) return { dryRun: true, change: [line], next: `To propose it, run the same command with --propose: the user applies it from the card in your reply` }
+      const turn = await alfredTurn(), target = SETTING_TARGETS[cmd.key]
+      return addSettingCard(store, { turn: turn?.kind ?? 'none', by: ALFRED, label: target ? UI_TARGETS[target].label : cmd.key, change: { key: cmd.key, ...(old === undefined ? {} : { before: old }), after: cmd.value, ...(turn?.said ? { said: turn.said } : {}), ...(target ? { target } : {}) } })
     }
     case 'project add': {
       await needPm()
