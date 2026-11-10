@@ -1,7 +1,7 @@
 // Tasks and the agent runs that work on them. A run's terminal carries
 // wherdr.* labels on herdr-core, so the engine finds it again after a restart.
 import type { Project } from './project'
-import type { Prefs, Step, Template, Weight } from './workflow'
+import { MODEL_RE, PROGRAMS, reviewerCheck, type Prefs, type Step, type Template, type Weight } from './workflow'
 import { fillBase, planSteps, type StepState } from './steps'
 import { needsShots, shotMode } from './shots'
 import type { Stopped } from './stop'
@@ -120,11 +120,7 @@ export const trustPrompt = (screen: string, worktree: string) =>
   /Yes, I trust this folder/.test(screen) && screen.includes(worktree)
 // An agent that stopped because it is not logged in.
 export const isAuthFailure = (text: string) => /not logged in|log ?in again|please (run )?\/?login|authenticat|unauthori[sz]ed|invalid api key|\b401\b/i.test(text)
-// Agents the engine knows how to start with a pinned model and a first message.
-export const PROGRAMS = ['claude', 'codex'] as const
-// reviewModel: the worker's own model, in a new session.
-export const SAME_MODEL = 'same'
-const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:[\]/-]{0,63}$/
+export { PROGRAMS, SAME_MODEL } from './workflow'
 
 export const runLabels = (install: string, run: Run) =>
   ({ [LABEL.install]: install, [LABEL.task]: run.task, [LABEL.run]: run.id, [LABEL.role]: run.role })
@@ -190,19 +186,34 @@ export function workerPlan(t: Template, task: Task): { program: string, model: s
 // Program and model of the reviewer: reviewAgent and reviewModel, nearest
 // level first. The reviewer is of another model than the worker, unless the
 // template says reviewModel "same": a fresh session of the worker's model.
-export function reviewerPlan(t: Template, task: Task): { program: string, model: string } | { reason: string } {
+// out: why the review agent cannot take this review now (its account at its
+// limit). With reviewFallbackAgent and reviewFallbackModel set, the fallback
+// takes it (`switched` says why); without, nothing changes.
+export function reviewerPlan(t: Template, task: Task, out?: string): { program: string, model: string, switched?: string } | { reason: string } {
   const worker = workerPlan(t, task)
   if ('reason' in worker) return worker
   if (!typeSteps(t, task.type).some(s => s.holder === 'reviewer')) return { reason: `Task type "${task.type}" has no reviewer step` }
-  const tt = t.taskTypes[task.type]
-  const pick = (k: 'reviewAgent' | 'reviewModel') => task.prefs?.[k] || tt?.prefs?.[k] || t.prefs?.[k] || ''
-  const program = pick('reviewAgent') || worker.program, asked = pick('reviewModel')
-  const same = asked === SAME_MODEL, model = same ? worker.model : asked
-  if (!(PROGRAMS as readonly string[]).includes(program)) return { reason: `The engine cannot start "${program}": claude or codex` }
-  if (same && program !== worker.program) return { reason: `reviewModel "${SAME_MODEL}" needs the worker's agent (${worker.program})` }
-  if (!MODEL_RE.test(model)) return { reason: model ? `Invalid review model "${model}"` : 'No review model set: add prefs.reviewModel to the template' }
-  if (!same && model === worker.model) return { reason: `The reviewer must use another model than the worker (${model}), or set reviewModel to "${SAME_MODEL}"` }
-  return { program, model }
+  const pick = (k: keyof Prefs) => prefOf(t, task, k)
+  const main = reviewerCheck(worker, pick('reviewAgent') || worker.program, pick('reviewModel'), 'reviewModel')
+  const agent = pick('reviewFallbackAgent'), model = pick('reviewFallbackModel')
+  if (!out || (!agent && !model) || 'reason' in main) return main
+  if (!agent || !model) return { reason: 'reviewFallbackAgent and reviewFallbackModel go together' }
+  const fallback = reviewerCheck(worker, agent, model, 'reviewFallbackModel')
+  return 'reason' in fallback ? fallback : { ...fallback, switched: out }
+}
+
+// A pref of a task: the nearest level that sets it (task, task type, template).
+export const prefOf = (t: Template, task: Pick<Task, 'type' | 'prefs'>, k: keyof Prefs) =>
+  task.prefs?.[k] || t.taskTypes[task.type]?.prefs?.[k] || t.prefs?.[k] || ''
+
+// Why the review agent cannot take a review: its account at its limit until `until` (local time).
+export const programName = (program: string) => `${program.charAt(0).toUpperCase()}${program.slice(1)}`
+export const quotaOut = (program: string, until: number) => `${programName(program)} out of quota until ${new Date(until).toTimeString().slice(0, 5)}`
+
+// The last reviewer start in a task's log, when the fallback took it: why, and by whom.
+export function reviewSwitch(log: { text: string }[]) {
+  const last = [...log].reverse().find(e => /^review: (started the reviewer|.+, reviewed by )/.test(e.text))
+  return last && !last.text.startsWith('review: started') ? last.text.slice('review: '.length) : undefined
 }
 
 // The worker's step that asks for screenshots, if any.
