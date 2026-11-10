@@ -70,7 +70,9 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   sits in the reply (a ```wherdr block of `action <id>` lines). Only your click runs it, through
   the same action as the task sheet, and only if the task still waits the same way: if it moved
   on since, the card says *This changed since* and runs nothing, with a button to open the task.
-  After the click it shows the outcome (*Merge: done by you · 14:02*). The agent can add one only
+  After the click it shows the outcome (*Merge: done by you · 14:02*, or *approved by you, merges
+  once ready* for a merge waiting in the queue); a refused step action (a PR in conflict, red
+  checks) keeps the button, with the reason under it, as the task sheet does. The agent can add one only
   in a turn that follows your message, never in an Autopilot wake, and a coordinator only for its
   own project's tasks. A button lasts a day, and a new one for the same task and action replaces
   the older one. An agent's token cannot click (`/api/ui/act` refuses it); without a passkey,

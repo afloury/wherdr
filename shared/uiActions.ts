@@ -15,6 +15,7 @@ export type UiCardState = 'open' | 'done' | 'stale'
 export interface UiCard {
   id: string, by: string, at: number, kind: UiAction, task: string, shown: string
   label: string, stamp: string, state: UiCardState, outcome?: { text: string, at: number }
+  refused?: string // the click's answer only, never stored: why the step's action was refused
 }
 export const UI_CARD_MS = 24 * 3600_000
 export const UI_CARDS_MAX = 20
@@ -51,7 +52,11 @@ export function cardNow(card: UiCard, stampNow: string | null, now: number): UiC
   return stampNow !== card.stamp || now - card.at > UI_CARD_MS ? { ...card, state: 'stale' } : card
 }
 
-export const outcomeText = (card: Pick<UiCard, 'kind' | 'label'>) => card.kind === 'resume' ? 'Resumed by you' : `${card.label}: done by you`
+// after: the task the handler returned; an approved merge in the queue has not merged yet.
+export function outcomeText(card: Pick<UiCard, 'kind' | 'label'>, after?: Pick<Task, 'queue' | 'step'>): string {
+  if (card.kind === 'resume') return 'Resumed by you'
+  return after?.queue && !after.step?.done ? `${card.label}: approved by you, merges once ready` : `${card.label}: done by you`
+}
 
 // The cards a coordinator keeps: the new one first, one per task and action
 // (a new one replaces the older), the newest UI_CARDS_MAX of the last day.

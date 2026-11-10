@@ -51,8 +51,11 @@ async function find(store: PmStore, id: unknown) {
 export async function readCard(store: PmStore, id: unknown): Promise<UiCard | null> {
   const hit = await find(store, id)
   if (!hit) return null
-  const { stamp } = await stampOf(store, hit.card.kind, await store.task(hit.card.task))
-  return cardNow(hit.card, stamp, Date.now())
+  const task = await store.task(hit.card.task)
+  const { stamp } = await stampOf(store, hit.card.kind, task)
+  const card = cardNow(hit.card, stamp, Date.now()), turn = task?.step?.yourTurn
+  // Its step's action refused at an earlier click: still said after a reload.
+  return card.state === 'open' && card.kind === 'step' && turn?.reason === 'action' ? { ...card, refused: turn.badge } : card
 }
 
 // The user's click. A CLI token never clicks: only the app's own session.
@@ -62,9 +65,12 @@ export async function actOnCard(deps: PmLaunchDeps, id: unknown, authorization: 
   const card = await readCard(deps.store, id)
   if (!card) throw new HerdrError('not_found', 'Unknown action')
   if (card.state !== 'open' || card.kind === 'open') return card
-  if (card.kind === 'resume') await resumeTask(deps, card.task, 'continue', { who: 'user' }, 'user')
-  else await userStep(deps, card.task)
-  const done: UiCard = { ...card, state: 'done', outcome: { text: outcomeText(card), at: Date.now() } }
+  const task = card.kind === 'resume' ? await resumeTask(deps, card.task, 'continue', { who: 'user' }, 'user') : await userStep(deps, card.task)
+  // The step's action refused (a merge on a PR in conflict, red checks): the
+  // card stays open with its reason, as the task sheet shows it, for a retry.
+  const turn = task.step?.yourTurn
+  if (card.kind === 'step' && turn?.reason === 'action') return { ...card, refused: turn.badge }
+  const done: UiCard = { ...card, state: 'done', outcome: { text: outcomeText(card, task), at: Date.now() } }
   const hit = await find(deps.store, card.id)
   if (hit) await deps.store.saveCoordinator({ ...hit.rec, cards: hit.rec.cards!.map(c => (c.id === card.id ? done : c)) })
   return done

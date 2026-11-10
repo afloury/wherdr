@@ -86,6 +86,18 @@ describe('ui action: the click', () => {
     expect(userStep).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the card open on a refused merge, and says a queued one has not merged', async () => {
+    const { s, rec } = store(atMerge)
+    await addAction(s, { scope: 'WEB', turn: 'user', by: 'WEB coordinator', kind: 'step', task: atMerge })
+    const id = rec.cards![0]!.id
+    const refused = { ...atMerge, step: { ...atMerge.step!, yourTurn: { reason: 'action', badge: 'Merge: the PR has conflicts' } } }
+    userStep.mockResolvedValueOnce(refused as never)
+    expect(await actOnCard({ store: s } as never, id, undefined)).toMatchObject({ state: 'open', refused: 'Merge: the PR has conflicts' })
+    expect(rec.cards![0]!.state).toBe('open')
+    userStep.mockResolvedValueOnce({ ...atMerge, queue: 2 } as never)
+    expect(await actOnCard({ store: s } as never, id, undefined)).toMatchObject({ state: 'done', outcome: { text: 'Merge: approved by you, merges once ready' } })
+  })
+
   it('runs nothing once the step changed', async () => {
     const { s, rec } = store(atMerge)
     await addAction(s, { scope: 'WEB', turn: 'user', by: 'WEB coordinator', kind: 'step', task: atMerge })

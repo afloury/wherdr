@@ -41,7 +41,7 @@ async function act() {
         <span class="action-task">{{ card.shown }}</span>
         <UButton color="primary" size="lg" :loading="busy" :disabled="busy" data-testid="action-card-run" @click="act">{{ card.label }}</UButton>
       </div>
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <p v-if="error || card.refused" class="form-error" role="alert" data-testid="action-refused">{{ error || card.refused }}</p>
     </template>
     <p v-else-if="card.state === 'done'" class="action-outcome" :title="fmtDateTime(card.outcome?.at ?? card.at)" data-testid="action-outcome">
       <UIcon name="i-lucide-check" />{{ card.outcome?.text ?? t('Done by you') }} · {{ fmtTime(card.outcome?.at ?? card.at) }}
