@@ -11,7 +11,7 @@ import type { Template } from '#shared/pm/workflow'
 import { EXAMPLES } from '#shared/pm/examples'
 import { needsRemote, type FolderProbe } from '#shared/pm/newProject'
 import { isCoordinatorProgram } from '#shared/pm/coordinator'
-import { SETUP_STEPS, setupDone, setupProject, setupResume, workflowLine, type SetupStepId } from '#shared/pm/setup'
+import { SETUP_STEPS, coordinatorStart, setupDone, setupProject, setupResume, workflowLine, type SetupStepId } from '#shared/pm/setup'
 
 const open = defineModel<boolean>('open', { default: false })
 const props = defineProps<{ project?: string, adding?: boolean }>()
@@ -25,11 +25,12 @@ const index = ref(0)
 const busy = ref(false)
 const error = ref('')
 
-const done = computed(() => setupDone(data.value, key.value, coordinators.value))
+const done = computed(() => setupDone(data.value, key.value, coordinators.value, started.value))
 const step = computed<SetupStepId | undefined>(() => SETUP_STEPS[index.value])
 const p = computed(() => data.value?.projects.find(x => x.key === key.value))
 const coord = computed(() => coordinators.value.find(c => c.project === key.value))
-const running = computed(() => !!coord.value && !!coordinatorPane(coord.value))
+const pane = computed(() => (coord.value ? coordinatorPane(coord.value) : undefined))
+const started = computed(() => coordinatorStart(pane.value))
 
 async function load() {
   const [o] = await Promise.all([api<PmOverview>('/api/pm/overview'), loadCoordinators()])
@@ -84,6 +85,12 @@ const agents = computed(() => offerCoordinators(undefined, key.value))
 const agent = ref('')
 watch(agents, a => { if (!a.some(x => x === agent.value)) agent.value = a[0] ?? '' }, { immediate: true })
 const startCoordinator = () => run(async () => { if (isCoordinatorProgram(agent.value)) await launchCoordinator(key.value!, { program: agent.value }) })
+// It waits on a question (a login, a dialog): its conversation, to answer it.
+function openPane() {
+  if (!pane.value) return
+  open.value = false
+  navigateTo(panePath(pane.value.id))
+}
 
 // 6. A first task, of one of its types.
 const task = reactive({ title: '', type: '' })
@@ -168,10 +175,15 @@ const BODY: Record<SetupStepId, string> = {
       <ProjectGuards v-else-if="step === 'guards' && p && workflow" :project="p" :workflow="workflow" @changed="run(async () => {})" />
 
       <template v-else-if="step === 'coordinator'">
-        <template v-if="!running">
+        <template v-if="started === 'none'">
           <AgentPicker v-if="agents.length" v-model="agent" :programs="agents" />
           <p v-else class="muted" data-testid="setup-no-agent">{{ tl('No offered agent can coordinate: check Settings › Agents.') }}</p>
           <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-play" :loading="busy" :disabled="!agent" data-testid="setup-start" @click="startCoordinator">{{ agent ? tl(`Start with ${kindLabel(agent)}`) : tl('Start') }}</UButton>
+        </template>
+        <p v-else-if="started === 'starting'" class="muted" data-testid="setup-starting">{{ tl('Its coordinator is starting…') }}</p>
+        <template v-else-if="started === 'asks'">
+          <p class="setup-ok" data-testid="setup-asks">{{ tl('Its coordinator asks a question before it starts: answer it in its conversation.') }}</p>
+          <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-message-circle" data-testid="setup-open" @click="openPane">{{ tl('Answer its question') }}</UButton>
         </template>
         <template v-else-if="coord">
           <p class="setup-ok" data-testid="setup-ok">{{ tl('Its coordinator runs.') }}</p>

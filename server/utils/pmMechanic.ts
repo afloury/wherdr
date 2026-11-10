@@ -12,7 +12,7 @@ import { MAIN } from '../../shared/pm/coordinator'
 import { inMergeQueue, mergeOrder, ordinal, queueOut } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
 import { onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
-import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, taskPlan, trustKeys, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP } from './coreCreate'
 import { HerdrError } from './herdr'
 import { CoreError } from './core'
@@ -60,9 +60,10 @@ export async function syncWaits(deps: PmLaunchDeps) {
     const term = terminals.find(x => x.address === run.terminal)
     if (!term || term.state === 'finished' || term.status?.state || trusted.has(run.id)) continue
     const screen = String((await deps.call<{ text?: string }>('terminal.read', { terminal: run.terminal, lines: 30 }, 3000).catch(() => null))?.text || '')
-    if (!trustPrompt(screen, run.worktree)) continue
+    const keys = trustKeys(screen, run.worktree)
+    if (!keys) continue
     trusted.add(run.id)
-    await deps.call('terminal.keys', { terminal: run.terminal, keys: ['down', 'enter'] }, 10000).catch(() => {})
+    await deps.call('terminal.keys', { terminal: run.terminal, keys }, 10000).catch(() => {})
     const task = await store.task(run.task)
     if (task) await store.logTask(task, 'engine', `trusted the task's worktree for the ${run.role} (${run.worktree})`)
   }
