@@ -11,6 +11,11 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   timestamps, search and infinite scroll back to the first message. Reading a conversation never
   touches the terminal, so it never resizes it. A command the agent proposes (shell code block,
   or inline `! command`) can be copied without its prompt.
+- **Following new messages**: a new or growing reply (typed in as it arrives, or shown at once)
+  keeps the view at the bottom only if you were at the bottom. Scroll up (wheel, touch, keyboard
+  or scrollbar) and the view stays where you are until you scroll back to the bottom or tap the
+  **↓** button; content above that changes height (images, folding) does not move it. A
+  conversation still opens at its last message.
 - **SVG diagrams**: complete code fences labelled `svg` render as isolated, theme-aware images.
   **Source / Preview**, beside **Copy** in the card header, switches the same card between the
   diagram and its original markup; **Copy** always copies that markup. Click or use Enter/Space
