@@ -3,11 +3,13 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
+import WorkflowChart from '~/components/WorkflowChart.vue'
 import { herdrState } from '~/composables/useHerdr'
 import { coordinators } from '~/composables/useCoordinators'
 import { panePath } from '~/composables/useWorkspaces'
 import { useDraft } from '~/composables/useDraft'
-import { wherdr } from '#shared/pm/examples'
+import { company, github, wherdr } from '#shared/pm/examples'
+import type { Guards } from '#shared/pm/workflow'
 import type { Project } from '#shared/pm/project'
 import type { Pane } from '#shared/types'
 
@@ -76,4 +78,14 @@ it('"Ask the coordinator" opens its conversation with a first message to complet
   await w.find('[data-testid="wf-ask"]').trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith(panePath('w1:p7')))
   expect(useDraft('w1:p7').text).toBe('I would like to change the workflow of WEB (task type visual): ')
+})
+
+it('shows the user step\'s real button, and branch protection apart from who merges', async () => {
+  const chart = (workflow: typeof github, type: string) => mountSuspended(WorkflowChart, { props: { workflow, type } })
+  const c = await chart(company, 'feature')
+  expect(c.find('[data-step="merge"] [data-testid="wf-ends"]').text()).toContain('Your button “I merged it”')
+  const guard = async (guards: Guards) => (await chart({ ...github, guards }, 'simple')).find('[data-step="merge"] [data-testid="wf-guard"]').text()
+  expect(await guard({ protected: ['next'], merge: { protected: 'engine', others: 'engine' } })).toBe('next is protected: the engine merges')
+  expect(await guard({ protected: ['main'], merge: { protected: 'user', others: 'user' } })).toBe('next is not protected: you merge')
+  expect(await guard({ protected: ['next'], merge: { protected: 'user', others: 'engine' } })).toBe('next is protected: you merge')
 })

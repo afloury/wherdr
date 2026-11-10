@@ -4,7 +4,9 @@
 // timeout and proofs, the guard where a merge happens, and one sentence
 // (describeStep). Coloured arrows: the path, the send-back loops, the steps
 // that wait for the user, the ones the engine runs. A square travels the path.
-import { planSteps, type PlannedStep } from '#shared/pm/steps'
+import { planSteps, stepLabels, type PlannedStep } from '#shared/pm/steps'
+import { taskGuards } from '#shared/pm/actions'
+import { isProtected, mayMerge } from '#shared/pm/guards'
 import { reviewerPlan, workerPlan, type Task } from '#shared/pm/run'
 import { actionLabel, describeStep } from '#shared/pm/describe'
 import { DEFAULT_ROUNDS } from '#shared/pm/steps'
@@ -16,6 +18,7 @@ type Kind = 'agent' | 'engine' | 'you' | 'edge'
 const PROOF: Record<Evidence, string> = { 'link': 'Link', 'commit': 'Commit', 'report': 'Report', 'proposed-tasks': 'Proposed tasks', 'screenshots': 'Screenshots' }
 
 const plan = computed(() => planSteps(props.workflow, { type: props.type }, props.base))
+const guards = computed(() => taskGuards(props.workflow, props.type))
 const agentOf = (r: { program: string, model: string } | { reason: string }) =>
   'reason' in r ? tl('not set') : `${kindLabel(r.program)} · ${r.model}`
 const agents = computed(() => {
@@ -41,11 +44,12 @@ const nodes = computed(() => plan.value.map((s, i, all) => {
   const act = a ? actionLabel(a, tl) + (a.method ? ` · ${a.method}` : '') + (a.checks?.length ? ` · ${tl(`once ${a.checks.join(', ')} green`)}` : '') : ''
   const ends = s.ends === 'report' ? tl('Its report')
     : s.ends === 'verdict' ? tl('A verdict: pass or send back')
-    : s.ends === 'user' ? tl(`Your button “${s.userLabel || s.id}”`) + (act ? ` → ${act}` : '')
+    : s.ends === 'user' ? tl(`Your button “${stepLabels(s).button}”`) + (act ? ` → ${act}` : '')
     : s.ends === 'action' ? act : ''
   const into = intoOf(all, i)
-  const guard = s.guarded ? tl(`${into || 'The working branch'} is protected: you merge`)
-    : into && (a?.kind === 'git.land' || isPrMerge(a?.kind)) ? tl(`${into} is not protected: the engine merges`) : ''
+  // Two facts: is the branch protected, and may the engine merge into it.
+  const merges = into && (a?.kind === 'git.land' || isPrMerge(a?.kind))
+  const guard = merges ? tl(`${into} is ${isProtected(guards.value, into) ? 'protected' : 'not protected'}: ${mayMerge(guards.value, into, 'engine') ? 'the engine merges' : 'you merge'}`) : ''
   const facts = [
     ...(s.evidence ?? []).map(e => (e === 'screenshots' && s.screenshots === 'before-after' ? tl('Screenshots before and after') : tl(PROOF[e]))),
     ...(s.timeout ? [tl(`Timeout ${s.timeout}`)] : []),
