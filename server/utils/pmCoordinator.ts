@@ -6,7 +6,7 @@ import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
-import { MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, specChangeRefusal, specChangedText, specDiff, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
+import { MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
@@ -440,11 +440,18 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
       return { task: await store.logTask({ ...task, report: undefined }, by, `closed the reported problem: ${cmd.text.slice(0, 300)}`) }
     }
     case 'task decide': {
-      const task = await taskOf(cmd.task)
-      const r = onEvent(planOf(needPlan(), task, p), task.step ?? initialState(), { kind: 'decide', by: 'coordinator', choice: cmd.choice, note: cmd.reason }, Date.now())
+      const task = await taskOf(cmd.task), now = Date.now()
+      // A pass the engine does not offer: only on a spec change its reason cites.
+      const y = task.step?.yourTurn, onSpec = cmd.choice === 'pass' && y?.reason === 'rounds' && !y.advice?.options.includes('pass')
+      const cited = onSpec ? citedSpecChange(task, cmd.reason) : undefined
+      if (cited && 'refused' in cited) throw new HerdrError('refused', cited.refused)
+      const plan = planOf(needPlan(), task, p), state = task.step ?? initialState(), step = currentStep(plan, state)?.id ?? ''
+      const r = onEvent(plan, state, { kind: 'decide', by: 'coordinator', choice: cmd.choice, note: cmd.reason, ...(cited ? { spec: true as const } : {}) }, now)
       if (r.refused) throw new HerdrError('refused', r.refused)
       const line = r.effects.flatMap(e => (e.kind === 'log' ? [e.text] : [])).join('; ')
-      return { task: await store.logTask({ ...task, step: r.state }, by, line), effects: r.effects.filter(e => e.kind !== 'log') }
+      const next = { ...task, step: r.state, ...(cited ? { specPass: { at: now, step, reason: cmd.reason } } : {}) }
+      return { task: await store.logTask(next, by, line), effects: r.effects.filter(e => e.kind !== 'log'),
+        ...(cited ? { tellUser: `In your next message, tell the user you passed ${step} of ${task.id} on the spec change of ${new Date(cited.at).toISOString().slice(0, 10)}: ${cmd.reason}` } : {}) }
     }
   }
 }
