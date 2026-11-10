@@ -105,6 +105,8 @@ export interface Tab {
   machine?: string
   workspace: string
   label: string
+  // herdr-core: the name comes from herdr-app's layout document (wherdr does not write it).
+  docName?: true
   number: number
   // Missing if Herdr did not give it: the app then stacks the panes.
   layout: TabLayout | null
@@ -127,6 +129,10 @@ export interface Pane {
   agent: string | null
   name: string | null
   label: string | null
+  // herdr-core: the task this agent works on (its stored id, WHR-52), from its wherdr.task label.
+  task?: string
+  // Its role on that task ('worker', 'reviewer'), from its wherdr.role label.
+  role?: string
   // Agent name shown by Herdr (`display_agent`), if it says more than the agent kind.
   displayAgent?: string
   // Pane without an agent: foreground command ("pnpm dev"), missing at the shell prompt.
@@ -135,10 +141,14 @@ export interface Pane {
   title: string | null
   cwd: string | null
   agentSession: string | null
+  // herdr-core: a project coordinator's terminal (its wherdr.coordinator label).
+  coordinator?: true
   bornAt?: number
   // Number of the agent's last state change (Herdr's `state_change_seq`,
   // increasing on a machine): "recent" sort of Ready.
   stateSeq?: number
+  // herdr-core: when its status or turn last changed (ms), for the row's duration.
+  since?: number
   pendingPrompt?: boolean
   queued?: QueuedMessage[]
   prompt?: Choices
@@ -347,6 +357,9 @@ export interface AppConfig {
   push: { enabled: boolean, key: string | null, devices: number }
   // WHERDR_TRUSTED_NETWORKS=any: wherdr accepts every network (warning banner).
   openNetwork?: boolean
+  // Publicly reachable (every network accepted, or Tailscale Funnel): the
+  // safer default for files shown from conversations (shared/chatFiles.ts).
+  publicExposure?: boolean
 }
 
 export interface DirEntry { name: string, path: string, git: boolean }
@@ -378,7 +391,10 @@ export interface QuotaWindow {
 }
 // `limited`: the account hit its usage limit (Codex writes no numbers then);
 // both windows are null and `resetsAt` (ms) is the reset time if known.
-export interface Quota { five: QuotaWindow | null, week: QuotaWindow | null, at: number, limited?: { resetsAt: number | null } }
+// Whether it still holds: shared/quotaLimit.ts. `credits`: the account has
+// credits (Codex): `balance` null when Codex gives no number.
+export interface QuotaCredits { unlimited: boolean, balance: number | null }
+export interface Quota { five: QuotaWindow | null, week: QuotaWindow | null, at: number, limited?: { resetsAt: number | null }, credits?: QuotaCredits }
 // Quotas of an account and machines using it (key '' = local, displayed name).
 // `key`: stable account key (shared/quotaAccount.ts), `name`: the user's name for it.
 export interface AccountQuota extends Quota { machines: { key: string, label: string }[], key: string, name?: string }

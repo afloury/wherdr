@@ -3,8 +3,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { SCRIPT, guardAction, isTransient, leaks, prReady, taskGuards, type Receipt } from '../shared/pm/actions'
-import { runAction, type ActionDeps, type ActionJob } from '../server/utils/pmActions'
+import { RETRY_MS, SCRIPT, commandState, guardAction, isTransient, leaks, prReady, runsState, taskGuards, type Receipt } from '../shared/pm/actions'
+import { runAction, watch, type ActionDeps, type ActionJob } from '../server/utils/pmActions'
 import { WORKTREE_SCRIPT } from '../server/utils/pmLaunch'
 import { initialState, onEvent, planSteps, reviewedCommit } from '../shared/pm/steps'
 import { dueText } from '../shared/pm/advance'
@@ -107,6 +107,63 @@ describe('runAction', () => {
     const h = fakeDeps([info('QUEUED'), { code: 0, out: 'same' }, info('COMPLETED'), { code: 0, out: 'same' }])
     expect(await runAction(h.deps, job({ step: 'merge', action: { kind: 'github.merge' }, halted: async () => true }))).toEqual({ ok: false, error: 'merge: the task was stopped' })
     expect(h.calls.length).toBe(4)
+    // Pushed, but the remote branch did not move: refused at once, no wait.
+    const stale = { code: 0, out: `abc\n${JSON.stringify([{ url: 'https://pr/1', baseRefName: 'dev', headRefOid: 'old' }])}` }, behind = { code: 0, out: 'behind' }
+    const n = fakeDeps([stale, behind, { code: 0, out: 'abc' }, stale, behind, { code: 0, out: 'old' }])
+    expect(await runAction(n.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toEqual({ ok: false, error: 'merge: the push did not move origin/task/A-1 (at old, the task at abc): push the branch by hand, then try the step again' })
+    expect(n.sleeps).toEqual([])
+    // GitHub's lag, then checks running at the new head: the lag waits take none of the CI waits.
+    const fresh = (state: string) => ({ code: 0, out: `abc\n${JSON.stringify([{ url: 'https://pr/1', baseRefName: 'dev', headRefOid: 'abc', statusCheckRollup: [{ status: state, conclusion: 'SUCCESS' }] }])}` }), same = { code: 0, out: 'same' }
+    const l = fakeDeps([stale, behind, { code: 0, out: 'abc' }, ...[1, 2, 3].flatMap(() => [stale, behind, { code: 0, out: 'abc' }]), fresh('IN_PROGRESS'), same, fresh('IN_PROGRESS'), same, fresh('COMPLETED'), same, { code: 0, out: 'https://pr/1' }])
+    expect(await runAction(l.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toMatchObject({ ok: true, commit: 'abc' })
+    expect(l.sleeps).toEqual([2_000, 4_000, 8_000, ...RETRY_MS.slice(0, 2)])
+    // GitHub's conflict ends with the commands to fix it: the error keeps none of them.
+    const x = fakeDeps([info('COMPLETED'), { code: 0, out: 'same' }, { code: 1, out: 'X Pull request #505 is not mergeable: the merge commit cannot be cleanly created.\nRun the following to resolve the merge conflicts locally:\n  gh pr checkout 505 && git fetch origin dev && git merge origin/dev' }])
+    expect(await runAction(x.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toMatchObject({ ok: false, error: 'merge: the PR conflicts with dev', catchUp: 'dev' })
+    // Approved at an earlier commit: it merges only while the task's own interface is the same.
+    const ui = (out: string) => fakeDeps([info('COMPLETED'), same, { code: 0, out }, { code: 0, out: 'https://pr/1' }]).deps
+    const approved = job({ step: 'merge', action: { kind: 'github.merge' }, approved: 'old' })
+    expect(await runAction(ui('changed'), approved)).toMatchObject({ ok: false, unapproved: true })
+    expect(await runAction(ui('same'), approved)).toMatchObject({ ok: true, commit: 'abc' })
+  })
+})
+
+describe('a merge interrupted by a restart', () => {
+  const merge = { kind: 'github.merge' } as const
+  const pr = (over: object = {}) => ({ code: 0, out: `abc\n${JSON.stringify([{ url: 'https://pr/1', baseRefName: 'dev', headRefOid: 'abc', statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'SUCCESS' }], ...over }])}` })
+  const cut = (replies: { code: number | null, out: string }[], over: Partial<Receipt> = {}) => {
+    const f = fakeDeps(replies)
+    f.receipts.set('A-1.1.merge', { id: 'A-1.1.merge', task: 'A-1', step: 'merge', action: merge, state: 'pending', at: 0, ...over })
+    return { ...f, go: () => runAction(f.deps, job({ step: 'merge', action: merge })) }
+  }
+
+  it('ends merged when GitHub merged it meanwhile', async () => {
+    const f = cut([pr({ merged: true }), { code: 0, out: 'origin/dev' }])
+    expect(await f.go()).toEqual({ ok: true, link: 'https://pr/1', commit: 'abc', note: 'merged before the restart' })
+    expect(f.receipts.get('A-1.1.merge')?.state).toBe('done')
+  })
+
+  it('goes to the user when the PR was closed without a merge', async () => {
+    const f = cut([{ code: 0, out: 'abc\n[]' }, { code: 0, out: 'https://pr/1' }])
+    expect(await f.go()).toEqual({ ok: false, error: 'merge: the PR was closed without being merged (https://pr/1): reopen it, or open a new one' })
+  })
+
+  it('merges an open PR again, with the gesture of whoever started it', async () => {
+    // Started by the user into protected main: resumed by the engine, still theirs.
+    const f = cut([pr({ baseRefName: 'main' }), { code: 0, out: 'same' }, { code: 0, out: 'https://pr/1' }, { code: 0, out: 'origin/main' }], { by: 'user' })
+    expect(await f.go()).toEqual({ ok: true, link: 'https://pr/1', commit: 'abc' })
+    expect(f.calls[2]).toEqual(['/w', 'https://pr/1', 'abc', ''])
+  })
+
+  it('is run again twice at most, then goes to the user', async () => {
+    const once = cut([], { resumes: 1 })
+    once.deps.sh = async () => { throw new Error('restarted') }
+    await expect(once.go()).rejects.toThrow('restarted')
+    expect(once.receipts.get('A-1.1.merge')).toMatchObject({ state: 'pending', resumes: 2 })
+    const f = cut([], { resumes: 2 })
+    expect(await f.go()).toEqual({ ok: false, error: 'github.merge was interrupted 3 times: check by hand, then try again' })
+    expect(f.receipts.get('A-1.1.merge')?.state).toBe('uncertain')
+    expect(f.calls).toEqual([])
   })
 })
 
@@ -142,6 +199,23 @@ const localSh: ActionDeps['sh'] = async (script, args, input) => {
 }
 
 describe('on a real repo', () => {
+  it('tells a change of the task\'s own interface from what a merge of its base brought', async () => {
+    const dir = path.join(tmp, 'ui'), origin = path.join(dir, 'origin.git'), repo = path.join(dir, 'repo'), wt = path.join(dir, 'wt')
+    const put = (at: string, file: string, text: string) => { fs.mkdirSync(path.dirname(path.join(at, file)), { recursive: true }); fs.writeFileSync(path.join(at, file), text); git(at, 'add', '.'); git(at, 'commit', '-qm', file); return git(at, 'rev-parse', 'HEAD') }
+    fs.mkdirSync(dir); git(dir, 'init', '-q', '--bare', '-b', 'main', origin); git(dir, 'clone', '-q', origin, repo)
+    put(repo, 'app/components/A.vue', '1\n2\n3\n4\n5\n6\n7\n8\n'); git(repo, 'push', '-q', 'origin', 'main:dev')
+    git(repo, 'worktree', 'add', '-q', '-b', 'task/A-1', wt, 'origin/dev')
+    const approved = put(wt, 'app/components/A.vue', '1\n2\nmine\n4\n5\n6\n7\n8\n')
+    const changed = async (to: string) => (await localSh(SCRIPT.uiChanged, [wt, 'dev', approved, to])).out
+    // The base changes the same file elsewhere and another screen; merged in, the task's own change is the same.
+    git(repo, 'checkout', '-q', '-B', 'other', 'origin/dev'); put(repo, 'app/components/A.vue', '0\n1\n2\n3\n4\n5\n6\n7\ntheirs\n'); put(repo, 'pages/b.vue', 'b\n'); git(repo, 'push', '-q', 'origin', 'HEAD:dev')
+    git(wt, 'fetch', '-q'); git(wt, 'merge', '-q', '--no-edit', 'origin/dev')
+    expect(await changed(git(wt, 'rev-parse', 'HEAD'))).toBe('same')
+    // A CI fix outside the interface keeps it; a change to a screen does not.
+    expect(await changed(put(wt, 'server/x.ts', 'fix\n'))).toBe('same')
+    expect(await changed(put(wt, 'app/layouts/default.vue', 'new\n'))).toBe('changed')
+  })
+
   it('lands a task on dev, refuses main, sends a conflict back and verifies the merge', async () => {
     const origin = path.join(tmp, 'origin.git'), repo = path.join(tmp, 'repo'), wt = path.join(tmp, 'wt')
     git(tmp, 'init', '-q', '--bare', '-b', 'main', origin)
@@ -389,7 +463,10 @@ describe('a PR head that moved after the review', () => {
     fs.mkdirSync(bin, { recursive: true })
     fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
 case "$*" in
-  *"--state open"*) echo "[{\\"url\\":\\"https://pr/1\\",\\"baseRefName\\":\\"dev\\",\\"headRefOid\\":\\"$(git --git-dir "${origin}" rev-parse task/A-1)\\"}]";;
+  *"--state open"*) h=$(git --git-dir "${origin}" rev-parse task/A-1)
+    # lag: how many more reads answer the stale head, as GitHub's API right after a push.
+    n=$(cat "${bin}/lag" 2>/dev/null || echo 0); if [ "$n" -gt 0 ]; then echo $((n-1)) > "${bin}/lag"; h=$(cat "${bin}/stale"); fi
+    echo "[{\\"url\\":\\"https://pr/1\\",\\"baseRefName\\":\\"dev\\",\\"headRefOid\\":\\"$h\\"}]";;
   "pr merge"*) ;;
   *) echo "unexpected gh $*" >&2; exit 1;;
 esac
@@ -405,7 +482,8 @@ esac
       git(tmp, 'clone', '-q', origin, other); git(other, 'checkout', '-q', ref)
       git(other, 'commit', '-q', '--allow-empty', '-m', msg); git(other, 'push', '-q', 'origin', `HEAD:${ref}`)
     }
-    return { repo, origin, sh, merge, elsewhere, head: () => git(repo, 'rev-parse', 'HEAD') }
+    const lagging = (reads: number) => { fs.writeFileSync(path.join(bin, 'stale'), git(repo, 'rev-parse', 'HEAD')); fs.writeFileSync(path.join(bin, 'lag'), `${reads}`) }
+    return { repo, origin, sh, f, merge, elsewhere, lagging, head: () => git(repo, 'rev-parse', 'HEAD') }
   }
 
   it('after a catch-up push, goes back to review for the new head, then merges it', async () => {
@@ -426,6 +504,19 @@ esac
     expect(git(s.repo, '--git-dir', s.origin, 'rev-parse', 'task/A-1')).toBe(fix)
   })
 
+  it('waits for GitHub to show a fresh push, up to about a minute', async () => {
+    const s = setup('moved-lag')
+    s.lagging(3) // the read before the push, then two stale reads after it
+    git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'fix CI')
+    const fix = s.head()
+    expect(await s.merge(1, fix)).toEqual({ ok: true, link: 'https://pr/1', commit: fix })
+    expect(s.f.sleeps).toEqual([2_000, 4_000])
+    s.lagging(99)
+    git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'again')
+    const again = s.head()
+    expect(await s.merge(2, again)).toEqual({ ok: false, error: `merge: GitHub still shows the PR head at ${fix.slice(0, 7)} a minute after origin/task/A-1 moved to ${again.slice(0, 7)}: try the step again in a few minutes` })
+  })
+
   it('refuses a head pushed from outside the task\'s worktree', async () => {
     const s = setup('moved-foreign'), reviewed = s.head()
     s.elsewhere('foreign', 'task/A-1')
@@ -443,5 +534,49 @@ esac
     expect(dueText(plan, s)?.text).toMatch(/^Short re-review: .*r1 → h2.*git log --oneline r1\.\.h2.*--remerge-diff/s)
     s = onEvent(plan, s, { kind: 'verdict', from: 'reviewer', findings: [], head: 'h2' }, 2).state
     expect([plan[s.at]!.id, s.acting, s.rereview, reviewedCommit(plan, s), s.rounds.review]).toEqual(['merge', true, undefined, 'h2', undefined])
+  })
+})
+
+describe('pipeline.watch', () => {
+  const run = (o: object) => ({ databaseId: 1, workflowName: 'CI', status: 'completed', conclusion: 'success', headSha: 'h2', url: 'https://ci.example/run/1', ...o })
+
+  it('reads the runs of the latest commit and the command\'s exit code', () => {
+    expect(runsState([])).toEqual({ state: 'running' })
+    expect(runsState([run({ status: 'in_progress', conclusion: '' })])).toEqual({ state: 'running' })
+    // An older commit's failed run does not count.
+    expect(runsState([run({}), run({ databaseId: 2, conclusion: 'skipped' }), run({ headSha: 'h1', conclusion: 'failure' })])).toEqual({ state: 'done', link: 'https://ci.example/run/1' })
+    expect(runsState([run({}), run({ databaseId: 2, conclusion: 'failure' })])).toMatchObject({ state: 'failed', run: { databaseId: 2 } })
+    expect(commandState(0, 'deployed 1.2.3')).toEqual({ ok: true, report: 'deployed 1.2.3' })
+    expect(commandState(2, 'pending')).toEqual({ ok: false, later: true })
+    expect(commandState(null, '')).toEqual({ ok: false, later: true })
+    expect(commandState(1, 'job test: red')).toEqual({ ok: false, error: 'pipeline: the command failed', detail: 'job test: red' })
+    expect(commandState(127, 'not found')).toMatchObject({ error: 'pipeline: the command failed (exit code 127)' })
+  })
+
+  it('polls GitHub without a receipt and says which job failed, with the log tail', async () => {
+    const calls: string[][] = []
+    const sh: ActionDeps['sh'] = async (script, args) => {
+      calls.push(args)
+      if (script === SCRIPT.ghRuns) return { code: 0, out: JSON.stringify([run({ databaseId: 7, conclusion: 'failure', url: 'https://ci.example/run/7' })]) }
+      return { code: 0, out: 'unit, e2e\nunit\tnpm test\tFAIL a.test.ts' }
+    }
+    const job = { action: { kind: 'pipeline.watch' as const, branch: 'develop' }, worktree: '/wt' }
+    expect(await watch({ sh }, job)).toEqual({ ok: false, error: 'pipeline: CI failed (unit, e2e): https://ci.example/run/7', detail: 'unit\tnpm test\tFAIL a.test.ts' })
+    expect(calls).toEqual([['/wt', 'develop', ''], ['/wt', '7']])
+    expect(await watch({ sh: async () => ({ code: 1, out: 'HTTP 502: Bad Gateway' }) }, job)).toEqual({ ok: false, later: true })
+  })
+
+  it('watches a branch at its tip on origin: a run of the previous commit never passes for the merge\'s', async () => {
+    const dir = path.join(tmp, 'watch'), origin = path.join(dir, 'origin.git'), wt = path.join(dir, 'wt'), bin = path.join(dir, 'bin')
+    fs.mkdirSync(bin, { recursive: true }); git(dir, 'init', '-q', '--bare', '-b', 'main', origin); git(dir, 'clone', '-q', origin, wt)
+    const commit = (m: string) => { fs.writeFileSync(path.join(wt, 'a.txt'), m); git(wt, 'add', '.'); git(wt, 'commit', '-qm', m); return git(wt, 'rev-parse', 'HEAD') }
+    const old = commit('old'); git(wt, 'push', '-q', 'origin', 'HEAD:develop')
+    commit('merged'); git(wt, 'push', '-q', 'origin', 'HEAD:develop'); git(wt, 'reset', '-q', '--hard', old)
+    // GitHub has registered only the old commit's green run, also the newest listed by branch.
+    fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\ncase "$*" in *"--commit ${old}"*|*"--branch develop"*) echo '${JSON.stringify([run({ headSha: old })])}';; *) echo '[]';; esac\n`, { mode: 0o755 })
+    const sh: ActionDeps['sh'] = (script, args) => localSh(`PATH="${bin}:$PATH"\n${script}`, args)
+    expect(await watch({ sh }, { action: { kind: 'pipeline.watch', branch: 'develop' }, worktree: wt })).toEqual({ ok: false, later: true })
+    expect((await sh(SCRIPT.ghRuns, [wt, 'develop', ''])).code).toBe(0)
+    expect(await watch({ sh }, { action: { kind: 'pipeline.watch', branch: 'nope' }, worktree: wt })).toEqual({ ok: false, error: 'pipeline: no branch nope on origin' })
   })
 })

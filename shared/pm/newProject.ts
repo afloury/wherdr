@@ -15,6 +15,13 @@ export const folderKind = (p: FolderProbe): FolderKind => (!p.exists ? 'new' : p
 // Only a new or empty folder offers `git init`: a folder with files stays as it is.
 export const canGitInit = (k: FolderKind) => k === 'new' || k === 'empty'
 
+// A folder under the machine's home as ~/…, as the repository list shows it:
+// a typed, browsed or listed folder then reads the same. Others stay as they are.
+export const shortHome = (path: string, home: string) => {
+  const h = home.replace(/\/+$/, '')
+  return h && (path === h || path.startsWith(`${h}/`)) ? `~${path.slice(h.length)}` : path
+}
+
 // The folder's own name: "~/src/my-web/" → "my-web".
 export const proposeName = (folder: string) => folder.replace(/\/+$/, '').split('/').pop()?.trim().slice(0, 80) || ''
 

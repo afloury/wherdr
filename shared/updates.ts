@@ -41,6 +41,16 @@ export function compareVersions(a: string, b: string): number {
   return 0
 }
 
+// Is this release one to offer to the running version? Only within its major
+// (v3 never offers a 2.x, nor a 4.0), and a release counts as newer than its
+// own pre-release ("3.0.0" after "3.0.0-dev").
+export function isNewerRelease(release: string, current: string): boolean {
+  const r = parseVersion(release), c = parseVersion(current)
+  if (!r || !c || r[0] !== c[0]) return false
+  const diff = compareVersions(release, current)
+  return diff > 0 || (diff === 0 && /^v?\d+\.\d+\.\d+-/.test(current.trim()) && !/-/.test(release))
+}
+
 const MODES: InstallMode[] = ['npm', 'npm-global', 'brew']
 export function installMode(env: string | undefined): InstallMode {
   return MODES.find(m => m === env) ?? 'native'

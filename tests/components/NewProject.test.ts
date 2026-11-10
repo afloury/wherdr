@@ -43,7 +43,11 @@ for (const url of ['/api/pm/template', '/api/pm/project']) {
   } })
 }
 
-const stubs = { AppSheet: { template: '<section><slot /><slot name="footer" /></section>' } }
+const stubs = {
+  AppSheet: { template: '<section><slot /><slot name="footer" /></section>' },
+  // The folder browser: chooses a folder of the machine at once.
+  DirBrowser: { emits: ['choose'], template: '<button data-testid="browse-choose" @click="$emit(\'choose\', \'/repos/clients\')" />' },
+}
 const running = { id: 'w1:p1', coreAddress: 'host/t1', status: 'idle', agent: 'codex', workspace: 'w1', tab: 't' } as Pane
 async function openSheet(v: CoordinatorView[], panes: Pane[] = []) {
   views = v
@@ -158,13 +162,26 @@ it('adds a project from a git repository, a new folder or a folder without git, 
   await w.get('[data-testid="project-use-vibe"]').trigger('click')
   expect(w.find('[data-testid="project-needs-remote"]').exists()).toBe(false)
   expect(w.get('[data-testid="project-template"]').text()).toContain('vibe (example)')
-  expect(w.text()).toContain('Settings › Projects › Templates')
+  expect(w.text()).toContain('Settings › Projects › Template library')
   await w.get('[data-testid="project-start"]').trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w2%3Ap1'))
   // The example is copied into the project's workflow, not saved into the library.
   expect(posts.map(p => p.url)).toEqual(['/api/pm/project', '/api/pm/coordinator-start'])
   expect(posts[0]!.body).toEqual({ key: 'NA', name: 'Shop', machine: '', path: '/repos/new-app', template: 'example:vibe', plain: true, create: true, gitInit: true })
   expect(posts[1]!.body).toEqual({ project: 'NA', program: 'claude' })
+  w.unmount()
+})
+
+it('a browsed folder fills name and key, shows as ~/…, is probed and can start', async () => {
+  const w = await openSheet([{ project: '_main', name: 'Main coordinator', main: true, agent: opus }])
+  await w.get('[data-testid="project-add"]').trigger('click')
+  await w.get('[aria-label="Browse"]').trigger('click')
+  await w.get('[data-testid="browse-choose"]').trigger('click')
+  await vi.waitFor(() => expect(w.find('[data-testid="project-folder"]').attributes('data-folder')).toBe('plain'), { timeout: 2000 })
+  expect((w.get('#projectPath').element as HTMLInputElement).value).toBe('~/clients')
+  expect((w.get('#projectName').element as HTMLInputElement).value).toBe('clients')
+  expect((w.get('#projectKey').element as HTMLInputElement).value).toBe('CLN')
+  expect(w.get('[data-testid="project-start"]').attributes('disabled')).toBeUndefined()
   w.unmount()
 })
 

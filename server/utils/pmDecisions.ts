@@ -4,6 +4,7 @@ import { decisionsOf, decisionsPush } from '../../shared/pm/decisions'
 import { board } from './pmBoard'
 import type { PmStore } from './pmStore'
 import { pushSend } from './push'
+import { showIds } from '../../shared/pm/projectKey'
 
 export async function decisions(store: PmStore) {
   if (!(await store.enabled())) return []
@@ -25,7 +26,7 @@ export async function decisionsTick(store: PmStore, notify: Notify = pushNotify)
   const ds = await decisions(store)
   const p = told && decisionsPush(ds, told)
   told = new Set(ds.map(d => d.id))
-  if (p) await notify(p, ds.length).catch(() => {})
+  if (p) await notify(showIds(await store.projects(), p), ds.length).catch(() => {})
   return p
 }
 export const resetDecisionsTold = () => { told = null }

@@ -29,15 +29,15 @@ Without `--yes` (or with `--dry-run`) nothing changes, and every missing prerequ
 is listed at once. Running it again is safe: what is already done is kept, and the clone it made
 moves to the latest `v3` (the plan always shows the commit it builds). `--help` lists the options: `--dir` (default `~/wherdr-v3`), `--name` (`wherdr-v3`),
 `--port` (`7684`), `--https-port` (the first port from `8104` that `tailscale serve` does not use), `--hc-session` (`default`), `--no-tailscale`,
-`--skip-import`, and `--v2-dir`, `--v2-unit`, `--herdr-projects`, `--herdr-bin` when v2 is not
-where the installer looks.
+`--skip-import`, and `--v2-dir`, `--v2-unit`, `--herdr-bin` when v2 is not
+where the installer looks (`--herdr-projects` is ignored: the install reads nothing of herdr-projects).
 
 What it does:
 
 1. **Finds v2** and prints it: the `wherdr.service` user unit (or the unit running v2's launcher),
-   `~/wherdr` and `wherdr.env`, its `DATA_DIR` and port, its `tailscale serve` entry, the
-   herdr-projects board (`~/.herdr-projects`) and Herdr's SSH machines (`herdr machine list`).
-   All of it is only read.
+   `~/wherdr` and `wherdr.env`, its `DATA_DIR` and port, its `tailscale serve` entry and
+   Herdr's SSH machines (`herdr machine list`). All of it is only read. The herdr-projects
+   board (`~/.herdr-projects`) is not read: [Alfred](#set-up-your-v2-projects-with-alfred) reads it later.
 2. **Checks** Node.js 22+, git, npm, `systemctl --user`, `hc` (it never installs it: its official
    installer is `curl -fsSL https://releases.herdr.dev/core/install.sh | sh`, into `~/.local/bin`), and that the port, folder,
    service names and HTTPS port are free.
@@ -68,10 +68,9 @@ done or plan printed, `2` bad option, `3` missing prerequisite, `4` conflict, `5
 
 | From v2 | In v3 |
 | --- | --- |
-| herdr-projects repos | Projects (Settings › Projects): name, folder, key, and `workspace.from` as the base branch. Each needs a workflow, started from a template, before its tasks can start; the report lists the board settings to redo in it (reviewer, merge, worker…). Folders that no longer exist are skipped. |
-| Open board tasks (to do, under way, waiting) | Tasks to do in their project, with title, description and creation date. A task keeps its v2 number (WHR-37 stays WHR-37) when that number is free in v3; otherwise it takes the next free one and its description starts with "From v2 WHR-37.". Done and archived tasks are not imported. |
+| herdr-projects repos, with their open tasks (to do, under way, waiting) | Nothing: the import does not read `~/.herdr-projects`. [Alfred](#set-up-your-v2-projects-with-alfred) reads the board when you set up your projects with it. |
 | Herdr SSH machines | herdr-core machines (`hc machine add` with the same target) when SSH logs in there without a password; otherwise the report says what is missing. The name is made valid for hc (1-32 of a-z 0-9 - _ ., unique), and the report shows a change (`Beast → beast`). hc is looked for on the PATH, in `~/.local/bin` and in `/opt/homebrew/bin`; when it is not seen there, `hc machine add` is still tried and its own error is reported. |
-| Synced settings (appearance, home, conversation, files, notification rules), Do not disturb, this machine's name, recent folders | The same settings in v3. A setting already set in v3 is never replaced. The machine bar's order, hidden items and groups name each v2 machine by its v2 id: the import turns each into the v3 machine made from it (same SSH target) and drops those with none; the report lists both. |
+| Synced settings (appearance, home, conversation, files, notification rules), Do not disturb, this machine's name, recent folders | The same settings in v3. A setting already set in v3 is never replaced. Recent folders leave out herdr-projects' own folders (under `~/.herdr-projects`, or `HERDR_PROJECTS_HOME`) and the app folders of wherdr v2, v3 and herdr-web; **New agent** never offers a herdr-projects folder an earlier import copied. The machine tabs' order, hidden items and groups name each v2 machine by its v2 id: the import turns each into the v3 machine made from it (same SSH target) and drops those with none; the report lists both. |
 
 Not moved, to do again in v3: **passkeys** (add one in v3 on each device), **devices and push
 notifications** (install the app from v3's address and turn notifications on), per-device settings
@@ -89,6 +88,26 @@ node ~/wherdr-v3/src/scripts/v2-import.mjs import --data-dir ~/wherdr-v3/data
 ```
 
 It skips what is already imported. `detect` instead of `import` only prints what it finds of v2.
+
+## Set up your v2 projects with Alfred
+
+The import brings none of your v2 projects: you choose which ones come over, and how. In its first
+message, [Alfred](home.md#alfred) sees that this machine has a herdr-projects board with projects and offers
+to set them up with you, one project at a time. It reads the board then (`wherdr alfred v2`, read
+only): each project's suggested key, folder (and whether it is on this machine), `workspace.from`
+as the base branch, its open tasks (done and archived ones are left out), and the board settings
+to redo in its template (reviewer, merge, worker…). Alfred asks you to switch Projects on first when they are off.
+
+- which projects to bring over (none or some is fine);
+- the machine its repository is on, and its folder there when that is not the machine v2 ran on;
+- its template, starting from a saved template or an example, with the v2 settings to redo in mind;
+- whether to start its coordinator;
+- which of its open v2 tasks to add again (each description starts with "From v2 WHR-37.");
+- its guards and the other machines its tasks may run on, when its v2 settings call for them.
+
+Alfred shows each change before making it, and makes it only after your yes. You can also ask it
+later; `wherdr alfred v2` lists the v2 projects, as the board has them now, and the v3 project made from each. A user who
+does not come from v2 sees none of this.
 
 ## Auto-deploy from a build machine
 
@@ -141,6 +160,12 @@ v2 is never touched. Once on, re-runs of the installer keep it.
 
 Nothing changes for v2: keep using its address (for example `https://<machine>.<tailnet>.ts.net:8103`).
 To stop v3 for a while: `systemctl --user stop wherdr-v3`; `start` brings it back.
+
+v3 is not a Herdr plugin and never replaces the v2 plugin. On a v3 commit, `herdr plugin install`
+and `herdr plugin update` of wherdr fail at the build, before changing anything: Herdr keeps the
+v2 plugin it had, and the build output says how to install v3. `herdr plugin install` with
+`--ref 2.x` installs v2 from its branch. The `curl … | sh` installer of the v3 tree installs
+nothing either: it prints the commands of [By hand](#by-hand).
 
 ## Uninstall v3
 

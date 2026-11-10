@@ -32,6 +32,7 @@ import v from './coreRoutes/v'
 import w from './coreRoutes/w'
 import x from './coreRoutes/x'
 import y from './coreRoutes/y'
+import z from './coreRoutes/z'
 
 const BASE = [
   'auth/status', 'auth/lock', 'auth/lock-all', 'auth/disable', 'auth/max-session',
@@ -44,9 +45,11 @@ const BASE = [
   'upload', 'attach', 'file', 'keep',
   'dictation/status', 'dictation/key', 'dictation/transcribe', 'dictation/prepare', 'GET dictation/models',
   'dictation/rewrite', 'GET dictation/text-models',
+  // Action buttons an agent puts in its reply (shared/uiActions.ts).
+  'GET ui/card', 'ui/act',
 ]
 
-export const CORE_ROUTES = [...BASE, ...a, ...b, ...c, ...d, ...e, ...f, ...g, ...h, ...i, ...j, ...k, ...l, ...m, ...n, ...o, ...p, ...q, ...r, ...s, ...t, ...u, ...v, ...w, ...x, ...y]
+export const CORE_ROUTES = [...BASE, ...a, ...b, ...c, ...d, ...e, ...f, ...g, ...h, ...i, ...j, ...k, ...l, ...m, ...n, ...o, ...p, ...q, ...r, ...s, ...t, ...u, ...v, ...w, ...x, ...y, ...z]
 const readOnly = CORE_ROUTES.filter(r => r.startsWith('GET ')).map(r => r.slice(4))
 const open = CORE_ROUTES.filter(r => !r.startsWith('GET '))
 const exact = new Set(open.filter(r => !r.includes(':')))
