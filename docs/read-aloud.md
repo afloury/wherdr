@@ -53,23 +53,29 @@ The catalog keeps what a voice was measured to take on a phone, as dictation mod
 
 **Memory budget.** A voice is used only when it fits: `heapNeeded()` (`neuralVoice.ts`) takes
 the larger of the measured `memory.heap` and `memory.speaking`, and, until a voice is measured,
-an estimate of three times its files (about 190 MB for Siwis or Cori). It is checked against
+an estimate of three times its files (about 230 MB for MLS). It is checked against
 the device budget of dictation, `memoryBudget()`: 640 MiB of heap on iOS and iPadOS, a quarter
 of `navigator.deviceMemory` elsewhere. A voice over it shows **Too large for this device** and
 its replies use the device's voices. The worker also reports its real heap once loaded, and a
 voice that goes over the budget then is stopped and marked too large.
 
-**Not measured yet.** No voice has phone figures in the catalog yet. The study's figures for an
-iPhone 13 (Siwis, fp32) are **estimates**, not measurements:
+**Measured on an iPhone 13** (iOS Safari, home-screen app, **Test** in Settings › Conversation ›
+Read aloud, 2026-11-10, cold start; both voices were already installed, so no download time):
 
-| What | Estimate, iPhone 13 |
-| --- | --- |
-| Download | about 64 MB |
-| First load (runtime, files, model) | about 0.7 to 1.5 s |
-| First sentence (after the load) | about 0.3 to 0.5 s |
-| Real-time factor | about 0.15 to 0.25 |
-| Memory while speaking | about 150 to 250 MB |
-| Memory after release | about 0 (the worker is closed, its heap goes back to the system) |
+| What | Siwis (French) | Cori (English) |
+| --- | --- | --- |
+| Download | 64 MB | 64 MB |
+| Load (runtime, files, model) | 1.6 s | 2.1 s |
+| First sentence (tap to first audio) | 2.1 s | 2.7 s |
+| Real-time factor | 0.16 | 0.17 |
+| Heap | 537 MB | 537 MB |
+
+**What Heap means.** Test's Heap is the size of the worker's WASM memory, not what the voice
+itself uses: both voices show the same 537 MB (512 MiB), the memory the sherpa-onnx runtime
+reserves, which the voice fits inside. The catalog keeps it as `memory.heap`, so the budget
+check is cautious: 512 MiB fits the 640 MiB budget of iOS, and elsewhere needs a device that
+reports at least 2 GB. The page's memory while speaking and after release is not measured yet
+(step 3 below). MLS has no phone figures yet and keeps the estimate.
 
 ### How to measure
 
@@ -82,4 +88,4 @@ iPhone 13 (Siwis, fp32) are **estimates**, not measurements:
    last speech), use Safari's Web Inspector (Timelines › Memory) with the phone plugged into a
    Mac.
 4. Record the figures in the voice's `memory` and `speed` in `voices.json`, with a `basis` that
-   names the device and the date, and replace the estimates above.
+   names the device and the date, and update the table above.

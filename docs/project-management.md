@@ -389,8 +389,9 @@ A wake is a message wherdr sends the coordinator; its first line names who
 sends it. The conversation shows it apart from your messages, as a compact
 muted row across the column: the kind as a small coloured tag, its first
 reason (*Scheduled wake*, *WHR-9: stuck: …*) and its time; a tap opens the
-full text and the coordinator's whole turn. Once that turn is over, the
-coordinator's last answer sits under the row, smaller and muted, two lines at
+full text and the coordinator's whole turn. That turn ends at its own end,
+or at your next message or `!`/`/` command, which show as usual below it.
+Once that turn is over, the coordinator's last answer in it sits under the row, smaller and muted, two lines at
 most. Consecutive routine wakes (no incident, nothing changed: no file edit
 nor `wherdr pm` command beyond `ack`, `read`, `list`, `show`, `incidents`,
 `help`; an answer that asks nothing) fold into one row, *3 routine checks,
@@ -634,7 +635,7 @@ its question last; anything else opens the sheet on **To do**. The sheet stays
 one tap away: *Open the task* in the card's menu, or the small icon at the end
 of the entry. An agent that is not on screen here opens the sheet instead.
 
-- **A visual change to merge**: the **Worker's note** (its closing report: what
+- <a id="notes-on-a-task-waiting-for-you"></a>**A visual change to merge**: the **Worker's note** (its closing report: what
   was done, why it is done, what was tested) and the **Reviewer's note** (the
   verdict, what it sent back and was fixed during the rounds, what it left as
   minor), each in Markdown, folded to a few lines with *Show more* (the

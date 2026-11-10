@@ -473,7 +473,8 @@ type Block = ({ k: 'day', key: string, label: string }
   | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean, ms?: number }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
-  | { k: 'system', key: string, text: string, full?: string }
+  // `cmd`: a local '/' command the user ran.
+  | { k: 'system', key: string, text: string, full?: string, cmd?: boolean }
   | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean, scheduled?: boolean }
   // The agent's turn failed (omp: usage limit, credit balance, stalled stream…).
   | { k: 'error', key: string, text: string, long: boolean }
@@ -700,7 +701,7 @@ const blocks = computed<Block[]>(() => {
       const full = it.role === 'cmd' ? [it.err, it.out].filter(Boolean).join('\n') : ''
       out.push({ k: 'system', key, text: effort
         ? tl(`Effort: ${effort[1]} (this session)`, `Effort : ${effort[1]} (cette session)`)
-        : it.role === 'system' ? t(it.text) : it.text, ...(full ? { full } : {}) })
+        : it.role === 'system' ? t(it.text) : it.text, ...(full ? { full } : {}), ...(it.role === 'cmd' ? { cmd: true } : {}) })
     }
   })
   flush()
@@ -737,6 +738,8 @@ const READ_ONLY_PM = /\bwherdr pm (ack|help|incidents|list|read|show)\b/
 const changes = (it: ChatItem) => /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(it.name || '') || (/\bwherdr pm \w/.test(it.text) && !READ_ONLY_PM.test(it.text))
 // Its answer asks the user: a question line, or questions the reply bar offers.
 const asks = (b: Block & { k: 'assistant' }) => /\?\s*$/m.test(b.text) || replyTargets(b.html).questions.length > 0
+// A block the user started: it ends a wake's turn.
+const fromUser = (b: Block) => b.k === 'user' || b.k === 'shell' || b.k === 'ompRun' || (b.k === 'notice' && !!b.scheduled) || (b.k === 'system' && !!b.cmd)
 const plainLine = (text: string) => text.replace(/[*_`#>]+/g, '').replace(/\s+/g, ' ').trim()
 
 // A wake (shared/pm/wakes.ts) is not the user's: a compact row with its kind,
@@ -759,11 +762,13 @@ function foldWakes(out: Block[]): Block[] {
   for (let i = 0; i < out.length; i++) {
     const b = out[i]!
     if (b.k !== 'user' || !b.wake) { endRun(); res.push(b); continue }
+    // Its turn: up to its own end of turn, or to the first block that comes
+    // from the user (a message, a "!" or "/" command, a scheduled prompt).
     let j = i + 1
-    while (j < out.length && out[j]!.k !== 'user' && out[j]!.k !== 'day') j++
+    while (j < out.length && !fromUser(out[j]!) && out[j]!.k !== 'day' && out[j - 1]!.k !== 'turn') j++
     const turn = out.slice(i + 1, j)
     const last = turn.findLast(x => x.k === 'assistant')
-    const done = j < out.length || turn.some(x => x.k === 'turn')
+    const done = j < out.length || turn.at(-1)?.k === 'turn'
     const asked = !!last && asks(last)
     const fold = done && !!last && !asked
     const changed = turn.some(x => x.k === 'tools' && x.list.some(changes))

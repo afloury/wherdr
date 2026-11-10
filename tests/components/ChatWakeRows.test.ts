@@ -73,4 +73,31 @@ describe('wakes in a conversation', () => {
       expect(w.find('.wake-text').text()).toContain('wherdr pm ack a1')
     } finally { w.unmount() }
   })
+
+  it('ends a wake\'s turn at its own end or at the user\'s next input', async () => {
+    herdrState.value = { ok: true, workspaces: [], panes: [pane] }
+    items = [
+      ...wake('Incident: wake i1', 'WHR-9: stuck: the core is unreachable', 'Restarted the worker.', 8),
+      { role: 'bash', text: 'npm install -g some-tool', out: 'added 1 package', ts: at(8, 5) },
+      { role: 'assistant', text: 'The tool is installed.', ts: at(8, 6) },
+      // A message the user sends while the wake's turn still runs.
+      ...wake('Autopilot: wake a1', 'Scheduled wake', 'Checking the board.', 9),
+      { role: 'user', text: 'Also look at WHR-7.', ts: at(9, 2) },
+      { role: 'assistant', text: 'WHR-7 is moving again.', ts: at(9, 3) },
+    ]
+    const w = await mountSuspended(ChatView, { props: { pane, localQueued: [] }, global: { stubs: { UTooltip: { template: '<slot />' } } } })
+    try {
+      await expect.poll(() => w.findAll('[data-testid="wake"]').length).toBe(2)
+      const [incident, routine] = w.findAll('[data-testid="wake"]')
+      // The folded answer is the wake turn's own, not a later reply.
+      expect(incident!.find('.wake-answer').text()).toBe('Restarted the worker.')
+      expect(routine!.find('.wake-answer').text()).toBe('Checking the board.')
+      // The "!" command, the user's message and the replies after them show outside.
+      const chat = w.find('.chat').text()
+      expect(chat).toContain('npm install -g some-tool')
+      expect(chat).toContain('The tool is installed.')
+      expect(w.find('.msg-user').text()).toContain('Also look at WHR-7.')
+      expect(chat).toContain('WHR-7 is moving again.')
+    } finally { w.unmount() }
+  })
 })
