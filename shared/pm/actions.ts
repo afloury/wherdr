@@ -85,7 +85,7 @@ echo "\${cur#* }"`,
   // else its latest merged one, marked stray too: the step ends merged, saying
   // the task's commit is not in it.
   prInfo: `${IN} h=$(git rev-parse HEAD) || exit 1; echo "$h"
-j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup,files,additions,deletions,commits -q 'map(.commits |= map({oid}))' 2>&1) || { echo "$j"; exit 1; }
+j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup,files,additions,deletions,commits 2>&1) || { echo "$j"; exit 1; }
 j=$(echo "$j" | tail -1)
 if [ "$j" = "[]" ]; then
   m=$(gh pr list --head "$1" --state merged --json url,baseRefName,headRefOid -q '.[] | .headRefOid+" "+(. + {merged: true} | tojson)' 2>&1) || { echo "$m"; exit 1; }
