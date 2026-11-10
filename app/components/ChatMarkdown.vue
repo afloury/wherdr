@@ -13,6 +13,7 @@ import type { SvgColors } from '~/utils/svgPreview'
 import { appRoute, isAppLink, linkedTask } from '#shared/appLinks'
 import type { StatusKind } from '#shared/statusBlock'
 import StatusCard from './StatusCard.vue'
+import UiOpenCard from './UiOpenCard.vue'
 import { h, render } from 'vue'
 
 // `cipher` must default to undefined, not false: Vue casts a missing Boolean
@@ -203,6 +204,14 @@ function mountCards() {
     render(card, slot)
     slots.push(slot)
   }
+  // An agent's `ui open` card, kept in its reply: no ×, it opens the place.
+  for (const slot of el.value?.querySelectorAll<HTMLElement>('.open-slot') ?? []) {
+    const card = h(UiOpenCard, { event: { type: 'ui-open', pane: '', link: slot.dataset.link ?? '', by: '' }, kept: true })
+    card.appContext = app
+    slot.textContent = ''
+    render(card, slot)
+    slots.push(slot)
+  }
 }
 
 // First state applied before display: no flash of the full text.
@@ -240,6 +249,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .md-body :deep(.svg-block) { background: transparent; }
+.md-body :deep(.wherdr-block .ui-open-card) { margin: 0; }
 .md-body :deep(.wherdr-block) { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 8px; margin: 8px 0; }
 .md-body :deep(img.svg-preview) {
   display: block; width: 100%; max-width: 100%; max-height: 65dvh;

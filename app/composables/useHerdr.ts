@@ -577,7 +577,7 @@ export function connectEvents() {
       clearTimeout(evFirst)
       if (data?.type === 'restarting') { noteRestart(); return }
       if (data?.type === 'settings') { settingsSync.receive(data.settings || {}); return }
-      if (data?.type === 'ui-open') { if (typeof data.pane === 'string' && typeof data.by === 'string' && isAppLink(data.link)) uiOpenRequest.value = data; return }
+      if (data?.type === 'ui-open') { if (typeof data.pane === 'string' && (data.show === undefined || data.show === 'card' || data.show === 'panel') && typeof data.by === 'string' && isAppLink(data.link)) uiOpenRequest.value = data; return }
       // Lock turned off: the server dropped every push subscription, this device posts its own again.
       if (data?.type === 'push-resubscribe') { syncPushLanguage().catch(() => {}); return }
       const got = paneReuse.reuse(normalize(data) as HerdrState)
@@ -629,7 +629,7 @@ export function sendViewing() {
   notificationLastSentAt = Date.now()
   const visible = pageVisible.value && document.hasFocus() && Date.now() - notificationActivityAt < 120_000
   notificationLastVisible = visible
-  if (evWs && evWs.readyState === 1) evWs.send(JSON.stringify({ type: 'viewing', pane: curPane.value, visible }))
+  if (evWs && evWs.readyState === 1) evWs.send(JSON.stringify({ type: 'viewing', pane: curPane.value, visible, device: desk.value ? 'computer' : 'phone', idle: Date.now() - notificationActivityAt }))
 }
 watch(curPane, sendViewing)
 
