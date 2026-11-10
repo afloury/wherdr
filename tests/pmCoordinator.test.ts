@@ -117,8 +117,8 @@ describe('the main coordinator (WHR-398)', () => {
     expect(alfred).toMatchObject({ main: true })
     expect(alfred).not.toHaveProperty('autopilot')
     await noteTurn(store, MAIN, 'wake')
-    await refused(cli(['task', 'start', st.id], undefined, main), 'its own autopilot')
-    await refused(cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST'], undefined, main), 'its own autopilot')
+    await refused(cli(['task', 'start', st.id], undefined, main), 'only on a request from the user, sent from wherdr')
+    await refused(cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST'], undefined, main), 'only on a request from the user, sent from wherdr')
     vi.stubGlobal('defineApi', (h: unknown) => h)
     const route = (await import('../server/api/pm/autopilot.post')).default as unknown as (e: unknown, b: unknown) => Promise<unknown>
     await refused(route({}, { project: MAIN, autopilot: { on: true } }), 'Alfred has no autopilot')
@@ -183,10 +183,15 @@ describe('the main coordinator (WHR-398)', () => {
   it('runs Alfred with projects off: its record is saved, its instructions say how to switch them on', async () => {
     await store.setEnabled(false)
     const home = path.join(dir, 'alfred')
+    // .output/server/index.mjs started directly, no port set: Nitro listens on 3000 (WHR-244).
+    vi.stubEnv('NITRO_PORT', '')
+    vi.stubEnv('PORT', '')
     const d = { store, call: async () => ({ address: 'host/t1' }), machines: () => [], alfredHome: home } as never
     await startCoordinator(d, MAIN, { program: 'claude', model: 'opus' }, { local: 'http://127.0.0.1:7690' })
     expect(await alfredView(d)).toMatchObject({ name: 'Alfred', program: 'claude', terminal: 'host/t1' })
-    expect(await fs.readFile(path.join(home, 'AGENTS.md'), 'utf8')).toContain('Project management is off')
+    const agents = await fs.readFile(path.join(home, 'AGENTS.md'), 'utf8')
+    expect(agents).toContain('Project management is off')
+    expect(agents).toContain('This wherdr answers at http://127.0.0.1:3000 on its machine')
     await expect(store.saveCoordinator({ project: 'CO', tokenHash: '' })).rejects.toThrow('switched off')
   })
 })
@@ -870,7 +875,7 @@ describe('commands of lot 10', () => {
     await refused(cli(['task', 'add', 'X', '--type', 'study']), 'No task type "study": feature')
     await refused(cli(['task', 'add', 'X', '--type', 'feature', '--after', 'ST-1']), 'after: tasks of the same project')
     await noteTurn(store, 'CO', 'wake')
-    await refused(cli(['task', 'add', 'Next', '--type', 'feature']), 'only with the autopilot on')
+    await refused(cli(['task', 'add', 'Next', '--type', 'feature']), 'a request from the user, sent from wherdr')
     await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { ...DEFAULT_AUTOPILOT, on: true } })
     expect((await cli(['task', 'add', 'Next', '--type', 'feature', '--after', 'CO-1'])).task).toMatchObject({ id: 'CO-3', after: 'CO-1' })
   })

@@ -11,10 +11,10 @@ import { projectPace } from './pmPace'
 import { currentStep, durationMs } from '../../shared/pm/steps'
 import { taskPlan } from '../../shared/pm/run'
 import { due as isDue, parseSchedule } from '../../shared/pm/schedule'
-import { addSkip, enqueue, tickWakes, wakeText, type CoordStatus, type Wake, type WakeSkip } from '../../shared/pm/wakes'
+import { addSkip, enqueue, tickWakes, wakesFor, wakeText, type CoordStatus, type Wake, type WakeSkip } from '../../shared/pm/wakes'
 import { healthEvery, healthRepeats, healthSummary } from '../../shared/pm/health'
 import { allowedMachines, type Project } from '../../shared/pm/project'
-import type { Run } from '../../shared/pm/run'
+import type { Run, Task } from '../../shared/pm/run'
 import type { Template } from '../../shared/pm/workflow'
 import type { CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
@@ -165,4 +165,13 @@ export async function wakeTick(deps: WakeDeps, now = Date.now()) {
     if (r.notify) await (deps.notify ?? pushNotify)(`${shown(key)}: the coordinator is not answering`, showIds(projects, `Wake ${r.notify.id} got no ack after two tries: ${r.notify.reasons[0]?.slice(0, 120) ?? ''}`), key).catch(() => {})
   }
   return sent
+}
+
+// The task's coordinators whose autopilot wakes them for stuck tasks, woken with why; who was woken.
+export async function wakeCoordinators(deps: { store: PmStore }, task: Pick<Task, 'project'>, why: string, now: number) {
+  const { store } = deps
+  const coords = new Map([[task.project, await store.coordinator(task.project)], [MAIN, await store.coordinator(MAIN)]])
+  const keys = wakesFor([task.project, MAIN], k => coords.get(k) ?? undefined, now)
+  for (const key of keys) await store.saveWakes([enqueue(await store.wakes(), key, [why], now, randomUUID().replace(/-/g, '').slice(0, 8), false, { kind: 'engine' })])
+  return keys.map(k => (k === MAIN ? 'the main coordinator' : 'the project\'s coordinator'))
 }

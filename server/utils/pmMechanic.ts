@@ -4,11 +4,10 @@
 // noted on the task before it runs, so it is never made twice. A move that
 // tries to fix a block counts (shared/pm/selfFix.ts): past its tries, or with
 // nothing left to try, the coordinator is woken once, with what was tried.
-import { randomUUID } from 'node:crypto'
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { CATCH_UP_TRIES, catchUpGaveUp, ciOf, infraLog, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
 import { FIX_MOVE, blockOf, escalation, fixOf, mayTry, noteFix } from '../../shared/pm/selfFix'
-import { addSkip, enqueue, wakesFor } from '../../shared/pm/wakes'
+import { addSkip, wakesFor } from '../../shared/pm/wakes'
 import { MAIN } from '../../shared/pm/coordinator'
 import { inMergeQueue, mergeOrder, ordinal, queueOut } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
@@ -17,7 +16,7 @@ import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, 
 import { PATH_SETUP } from './coreCreate'
 import { HerdrError } from './herdr'
 import { CoreError } from './core'
-import { actionShell } from './pmActions'
+import { actionShell, takeUpdate } from './pmActions'
 import { prSeen, stepAction } from './pmBoard'
 import { prNow, requiredChecks } from '../../shared/pm/board'
 import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
@@ -39,6 +38,7 @@ import { noteBack, noteStall } from './pmStall'
 import { askedQuestion } from './pmRead'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
 import { killTerminal } from './pmProcs'
+import { wakeCoordinators } from './pmWakes'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -410,15 +410,6 @@ async function escalate(deps: PmLaunchDeps, task: Task, run: Run, now: number) {
   await deps.store.logTask({ ...task, selfFix: { ...task.selfFix!, woke: now } }, 'engine', `gave up: ${why}${woken.length ? ` Woke ${woken.join(' and ')}.` : ''}`)
 }
 
-// The task's coordinators whose autopilot wakes them for stuck tasks, woken with why; who was woken.
-async function wakeCoordinators(deps: PmLaunchDeps, task: Task, why: string, now: number) {
-  const { store } = deps
-  const coords = new Map([[task.project, await store.coordinator(task.project)], [MAIN, await store.coordinator(MAIN)]])
-  const keys = wakesFor([task.project, MAIN], k => coords.get(k) ?? undefined, now)
-  for (const key of keys) await store.saveWakes([enqueue(await store.wakes(), key, [why], now, randomUUID().replace(/-/g, '').slice(0, 8), false, { kind: 'engine' })])
-  return keys.map(k => (k === MAIN ? 'the main coordinator' : 'the project\'s coordinator'))
-}
-
 async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: MechFacts, sh: ReturnType<typeof actionShell>): Promise<string | null> {
   // A worker that ended (released, or on its own) starts again with it; no
   // room on its machine: handed all the same, waiting with why (null: not delivered, tried again later).
@@ -486,6 +477,19 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
       }
       if (r.code === 0) return `caught up with ${move.base}`
       return catchUpGaveUp(task, f.head) ? `${lastLine(r.out)} (failed ${CATCH_UP_TRIES} times: wherdr stops updating this commit)` : lastLine(r.out)
+    }
+    case 'take-update': {
+      const at = await sh(SCRIPT.headOf, [run.worktree, f.pr!.headRefOid, f.pr!.baseRefName])
+      if (at.code !== 0 || lastLine(at.out) !== 'update') return 'the PR head is not a GitHub update: left as it is'
+      const u = await takeUpdate(sh, run.worktree, run.branch, f.guards, 'engine')
+      if (!u.ok && u.toAgent) return hand(`${u.error}. Merge origin/${run.branch} into your branch, resolve the conflicts, commit, then say you are done.`)
+      if (!u.ok) return u.error
+      // A merge step waiting for the user: recorded as a clean update with its base, the reviewed commit moving with it.
+      if (waitsToMerge(f.plan[task.step!.at]) && !task.step!.catchUp) {
+        await stepEvent(deps, task.id, f.plan, { kind: 'catch-up', base: f.pr!.baseRefName, head: f.head! })
+        await stepEvent(deps, task.id, f.plan, { kind: 'caught-up', head: u.head })
+      }
+      return `took GitHub's update of the PR in, fixed and pushed at ${u.head.slice(0, 7)}`
     }
     case 'rerun-ci': {
       const r = await sh(SCRIPT.rerun, [run.worktree, f.head!])

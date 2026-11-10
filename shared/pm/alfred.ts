@@ -42,6 +42,8 @@ export const startPrompt = (first: boolean, name: string, v2 = false, none = fal
 
 export interface AlfredContext {
   home: string, version: string, docs: string, docFiles: string[], pm: boolean
+  // Where this wherdr answers: on its machine, and its published address (tailnet), if any.
+  address: { local: string, remote?: string }
   v2?: boolean // wherdr v2's herdr-projects board on this machine has projects for Alfred to offer
   projects: Pick<Project, 'key' | 'name' | 'path' | 'from'>[]
 }
@@ -55,7 +57,7 @@ const V2_SECTION = [
   '2. The machine its repository is on (`wherdr alfred machines`). Its folder is the one on the machine v2 ran on (this one; `here` says whether it is there): on another machine, ask for its path there. Then `project add`, with the suggested key and name unless the user wants others.',
   '3. Its template: show the saved templates and the examples (`wherdr alfred templates`), suggest the one that fits best, taking into account its v2 settings to redo (`left`: reviewer, merge…), and say the user can change it later in Settings › Projects. Then `project template`.',
   '4. Whether to start its coordinator (`coordinator start`).',
-  '5. Its open v2 tasks, if any: list them and ask which to add again, then add each with `wherdr pm task add --project <KEY>`, its description starting with "From v2 <its v2 id>.".',
+  '5. Its open v2 tasks, if any: list them with their stage and ask which to add again, then add each with `wherdr pm task add --project <KEY>`, its description starting with its `intro` ("From v2 <its v2 id>.", then the branch and PR an under-way or waiting task continues), and `--from-branch <its branch>` when it has one: its worker continues that branch and its PR when the remote still has it, else starts from the base and says so.',
   '6. Anything else its v2 settings call for: protected branches and who merges (`project guards`), other machines its tasks may run on (`project machine add`).',
   'End with what was set up, and what is left to do by hand: the migration report (`report` in the answer) lists it (machines it could not add, settings to redo), and the v2 settings each project had are in `left`.', '',
 ]
@@ -91,7 +93,9 @@ export function alfredFiles(c: AlfredContext, pmSection: string[]): Record<strin
     '## wherdr', '',
     'wherdr is the web and phone interface of herdr: it lists the agents (Claude, Codex…) running in terminals on the user\'s machines, shows their conversations, and notifies when one needs the user.',
     `Its documentation, for this version (${c.version}), is in \`${c.docs}\`. Pages: ${c.docFiles.join(', ') || '(none found)'}.`,
-    `Quote a file as inline code with its absolute path (\`${c.docs}/overview.md\`): the user's interface makes it a link.`, '',
+    `Quote a file as inline code with its absolute path (\`${c.docs}/overview.md\`): the user's interface makes it a link.`,
+    `This wherdr answers at ${c.address.local} on its machine${c.address.remote ? ` and at ${c.address.remote} from the user's other devices` : ''}. When the user asks for its address or port, give these, never the defaults the docs quote.`,
+    'Commands for the wherdr server itself (an update, a restart, a `git pull` of its install) would run in your home if you ran them: never run them, and give them to the user as text to copy, in a ```text block that names the folder they run in, never in a shell block (its *Run* button would run it here).', '',
     ...docsRule(c.docs, '`wherdr alfred help`, and `wherdr pm help` for the board', { cmd: 'wherdr alfred ui open', places: 'one of these places' }, uiGuide('alfred', { pm: c.pm })),
     '## What you may do', '',
     '- Read the docs, files and settings, and run commands that only read, to answer.',
