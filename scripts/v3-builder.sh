@@ -15,11 +15,14 @@
 set -euo pipefail
 
 ROOT="${WHERDR_V3_BUILDER_DIR:-$HOME/wherdr-v3-builder}"
+PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/package.json"
 # Default: the clone's remote, else the repository of the checkout this script is in.
 REPO="${WHERDR_V3_REPO:-$(git -C "$ROOT/src" remote get-url origin 2>/dev/null \
-  || node -p "require('$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/package.json').repository.url.replace(/^git\\+/, '')" 2>/dev/null || true)}"
+  || node -p "require('$PKG').repository.url.replace(/^git\\+/, '')" 2>/dev/null || true)}"
 [ -n "$REPO" ] || { echo "v3-builder: set WHERDR_V3_REPO (the repository to clone)" >&2; exit 2; }
-BRANCH=v3
+# The branch v3 is built from: package.json's config.branch, the one place that names it.
+BRANCH="$(node -p "require('$PKG').config?.branch ?? ''" 2>/dev/null || true)"
+[ -n "$BRANCH" ] || { echo "v3-builder: package.json has no config.branch" >&2; exit 2; }
 PORT="${WHERDR_V3_BUILDER_PORT:-8110}"
 KEEP="${WHERDR_V3_KEEP:-5}"
 LOCK="${WHERDR_HEAVY_LOCK:-/tmp/wherdr-heavy.lock}"
