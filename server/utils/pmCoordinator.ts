@@ -673,8 +673,12 @@ export async function alfredView(deps: { store: PmStore, alfredHome?: string }) 
 export interface CoordinatorUrls { local: string, remote?: string }
 const LOOPBACK = /^(localhost|127\.|\[::1\])/
 // here: the address the request came to (used when wherdr has no published one).
+// The port this server listens on, as Nitro's node server picks it: 3000
+// when nothing sets it (.output/server/index.mjs started directly; the
+// wherdr command and npm start always set PORT).
+export const serverPort = (env: NodeJS.ProcessEnv = process.env) => env.NITRO_PORT || env.PORT || '3000'
 export function coordinatorUrls(here: URL): CoordinatorUrls {
-  const port = process.env.NITRO_PORT || process.env.PORT || '7683'
+  const port = serverPort()
   let published = ''
   try { published = JSON.parse(fsSync.readFileSync(APP_URL_FILE, 'utf8'))?.url || '' } catch {}
   const remote = published || ENV_APP_URL || (LOOPBACK.test(here.hostname) ? '' : here.origin)

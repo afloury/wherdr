@@ -183,10 +183,15 @@ describe('the main coordinator (WHR-398)', () => {
   it('runs Alfred with projects off: its record is saved, its instructions say how to switch them on', async () => {
     await store.setEnabled(false)
     const home = path.join(dir, 'alfred')
+    // .output/server/index.mjs started directly, no port set: Nitro listens on 3000 (WHR-244).
+    vi.stubEnv('NITRO_PORT', '')
+    vi.stubEnv('PORT', '')
     const d = { store, call: async () => ({ address: 'host/t1' }), machines: () => [], alfredHome: home } as never
     await startCoordinator(d, MAIN, { program: 'claude', model: 'opus' }, { local: 'http://127.0.0.1:7690' })
     expect(await alfredView(d)).toMatchObject({ name: 'Alfred', program: 'claude', terminal: 'host/t1' })
-    expect(await fs.readFile(path.join(home, 'AGENTS.md'), 'utf8')).toContain('Project management is off')
+    const agents = await fs.readFile(path.join(home, 'AGENTS.md'), 'utf8')
+    expect(agents).toContain('Project management is off')
+    expect(agents).toContain('This wherdr answers at http://127.0.0.1:3000 on its machine')
     await expect(store.saveCoordinator({ project: 'CO', tokenHash: '' })).rejects.toThrow('switched off')
   })
 })
