@@ -367,6 +367,24 @@ in *Tasks to handle*.
 Each kind is its own wake, sent one after the other. Every wake ends with
 `wherdr pm ack <id>`, whatever its kind.
 
+**Wakes that would change nothing are not sent:**
+
+- a **scheduled wake** while nothing the coordinator could act on changed since
+  its last wake: every task where it stood then, no task it could start now
+  (each to-do one waits for its *after* tasks, its files, room or a machine),
+  no new block, no answer, no message of yours. It counts in the day's skipped
+  wakes, as one with nothing to do;
+- an **Engine** wake for a block whose only cause is an offline or paused
+  machine: the incident already said so, and the engine goes on once the machine
+  is back. It wakes the coordinator only if that resume fails;
+- a second wake for an agent's **question** the coordinator already answered
+  with `tell`, while the agent's question is still showing;
+- a **health check** whose lines are all in the last one sent; it comes again
+  after 12 hours at most.
+
+Each one skipped is listed by `wherdr pm autopilot show` (*skippedWakes*: when,
+what and why), never in the conversation.
+
 ### What a task's agent said
 
 A coordinator reads a task's agent with `wherdr pm read <task>`, on whichever

@@ -2,7 +2,8 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { WAKE, ackWakes, enqueue, inWake, readQueue, tickWakes, wakeKindOf, wakeText, type Wake } from '../shared/pm/wakes'
+import { WAKE, ackWakes, addSkip, enqueue, inWake, readQueue, tickWakes, wakeKindOf, wakeText, type Wake } from '../shared/pm/wakes'
+import { HEALTH_REPEAT_MS, healthRepeats } from '../shared/pm/health'
 import { createPmStore } from '../server/utils/pmStore'
 
 const MIN = 60_000
@@ -13,6 +14,23 @@ const tick = (q: Wake[], status: 'idle' | 'working' | 'gone', now: number, lastU
   return { ...r, q: apply(q, r.changed) }
 }
 const queued = (reasons: string[], now = 0, id = 'w1') => [enqueue([], 'CO', reasons, now, id)]
+
+describe('wakes not sent', () => {
+  it('a health check repeating the last one\'s lines is skipped, for 12 h at most', () => {
+    const sent = { lines: ['Waiting for the user: CO-1 (Fix)', 'ack'], at: 0 }
+    expect(healthRepeats(['Waiting for the user: CO-1 (Fix)', 'ack'], sent, 3 * 3_600_000)).toBe(true)
+    expect(healthRepeats(['Waiting for the user: CO-1 (Fix); CO-2 (New)', 'ack'], sent, 3 * 3_600_000)).toBe(false)
+    expect(healthRepeats(sent.lines, sent, HEALTH_REPEAT_MS)).toBe(false)
+    expect(healthRepeats(sent.lines, undefined, 0)).toBe(false)
+  })
+  it('notes each skip once in 12 h, the last 20 kept', () => {
+    const s = { at: 0, what: 'engine' as const, why: 'CO-1: offline' }
+    const one = addSkip(undefined, s)!
+    expect(addSkip(one, { ...s, at: 3_600_000 })).toBeUndefined()
+    expect(addSkip(one, { ...s, at: HEALTH_REPEAT_MS })).toHaveLength(2)
+    expect(Array.from({ length: 25 }, (_, i) => i).reduce((l, i) => addSkip(l, { ...s, why: `${i}` })!, one)).toHaveLength(20)
+  })
+})
 
 describe('wake queue', () => {
   it('merges pending reasons into one Autopilot message, without repeats', () => {
