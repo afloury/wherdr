@@ -44,7 +44,7 @@ and About. **Settings** holds display preferences such as theme, typing effect a
 home screen shows; these follow you across devices through `settings.json`. Notifications, terminal text size and renderer remain device-specific. The passkey lock is
 managed under Settings › Security.
 
-On a computer window at least 1280 px wide, **Settings** opened from a conversation (the
+<a id="settings-beside-the-conversation"></a>On a computer window at least 1280 px wide, **Settings** opened from a conversation (the
 gear, ⌘ , or a `#/settings?section=…` link) open as a panel on the right of the
 conversation, on the linked section; the conversation stays readable and you can keep
 typing. Escape or the close button shuts the panel, **Open full page** shows today's full

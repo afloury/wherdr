@@ -32,6 +32,13 @@ describe('docs/llms.txt', () => {
     expect(lines.filter((l, i) => lines.indexOf(l) !== i)).toEqual([])
   })
 
+  // Two tasks that both edit one entry's line leave both versions after a union merge.
+  it('keeps one line per entry', () => {
+    const targets = index.split('\n').map(l => /^- \[[^\]]+\]\(([^)]+)\)/.exec(l)?.[1]).filter(t => t)
+    const twice = [...new Set(targets.filter((t, i) => targets.indexOf(t) !== i))]
+    expect(twice, `${twice.join(', ')} listed more than once: keep one line per entry`).toEqual([])
+  })
+
   it('merges two appended lines without a conflict', () => {
     const dir = mkdtempSync(join(tmpdir(), 'llms-union-'))
     try {
