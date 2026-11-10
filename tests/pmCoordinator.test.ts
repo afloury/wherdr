@@ -8,6 +8,8 @@ import { alfredView, answerProposal, coordinatorsView, issueToken, noteTurn, run
 import { REMOTE_SCRIPT } from '../server/utils/pmVisibility'
 import { CREATE_SCRIPT } from '../server/utils/pmLaunch'
 import { execFileSync } from 'node:child_process'
+import { trustKeys } from '../shared/pm/run'
+import { coordinatorStart } from '../shared/pm/setup'
 import { MAIN, parseCommand, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
 import pkg from '../package.json'
 import { EXAMPLES, common, company as example, github } from '../shared/pm/examples'
@@ -130,6 +132,7 @@ describe('the main coordinator (WHR-398)', () => {
     const runs: Record<string, unknown>[] = [], killed: unknown[] = []
     const call = async (method: string, params: Record<string, unknown>) => {
       if (method === 'terminal.kill') return killed.push(params.terminal), {}
+      if (method !== 'terminal.run') return {}
       runs.push(params)
       return { address: `host/t${runs.length}` }
     }
@@ -392,6 +395,7 @@ describe('role files', () => {
       // The repository's remote and gh's answer: a public GitHub repository.
       if (method === 'machine.exec' && argv?.[2] === REMOTE_SCRIPT) return { code: 0, stdout: Buffer.from('git@github.com:o/co.git\n{"visibility":"PUBLIC"}').toString('base64') }
       if (method === 'machine.exec') return written.push(argv![4]!), scripts.set(argv![4]!, argv![2]!), { code: 0, stdout: '' }
+      if (method === 'terminal.get' || method === 'terminal.read') return {} // no terminal to watch for a trust dialog
       runs.push({ method, ...params })
       return { address: `host/t${runs.length + 4}` }
     }
@@ -416,6 +420,32 @@ describe('role files', () => {
     expect((await store.coordinator('CO'))!).toMatchObject({ terminal: 'host/t5', version: pkg.version })
     // Its repository's visibility, checked once at its first start.
     expect((await store.projects()).find(p => p.key === 'CO')!.visibility).toMatchObject({ value: 'public', by: 'check' })
+  })
+
+  it('answer the trust dialog of the coordinator\'s own new folder at its first start, and no other screen', async () => {
+    const { deps } = fakeCore()
+    const fixture = (name: string) => fs.readFile(new URL(`./fixtures/${name}.txt`, import.meta.url), 'utf8')
+    const folder = '/h/.wherdr/pm/coordinators/CO'
+    let screen = (await fixture('claude-trust-folder')).replace('/home/user/projects/new-folder', folder)
+    const keys: unknown[] = []
+    const call = deps.call as (m: string, p: Record<string, unknown>) => Promise<unknown>
+    const d = { ...deps, pollMs: 1, call: async (m: string, p: Record<string, unknown>) => {
+      if (m === 'terminal.get') return { state: 'live', status: null }
+      if (m === 'terminal.read') return { text: screen }
+      if (m === 'terminal.keys') return keys.push(p.keys), {}
+      return call(m, p)
+    } } as typeof deps
+    await startCoordinator(d, 'CO', { program: 'claude' }, urls)
+    await vi.waitFor(() => expect(keys).toEqual([['down', 'enter']]))
+    // Whatever order or wording the dialog has (Claude's older one, Codex's); never a folder of the user's own.
+    expect(trustKeys((await fixture('claude-trust')).replace('/home/user/code/example', folder), folder)).toEqual(['enter'])
+    expect(trustKeys((await fixture('codex-trust-folder')).replace('/home/user/code/example', folder), folder)).toEqual(['enter'])
+    expect(trustKeys(await fixture('claude-trust-folder'), folder)).toBeUndefined()
+    expect(trustKeys(`${folder}\n❯ 1. Yes\n  2. No`, folder)).toBeUndefined()
+    // Step 5 follows the agent: starting, asking (the dialog left unanswered), then running.
+    expect([undefined, { status: null }, { status: 'blocked' }, { status: null, screen: {} }, { status: 'idle' }].map(x => coordinatorStart(x as never)))
+      .toEqual(['none', 'starting', 'asks', 'asks', 'runs'])
+    screen = ''
   })
 
   it('start with the project\'s default agent, remember the agent that ran, and a new conversation replaces the old one', async () => {

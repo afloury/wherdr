@@ -1,6 +1,7 @@
 // The setup wizard of project management: six steps for one project, each done
 // or not from what the server reports. Pure, so the board, the settings and the
 // tests read the same answer.
+import type { Pane } from '../types'
 import type { PmOverview } from './project'
 import type { Template } from './workflow'
 
@@ -25,6 +26,15 @@ export function setupDone(o: Overview | null, key: string | undefined, coords: C
     coordinator: flow && coords.some(c => c.project === p!.key && !!c.terminal),
     task: flow && !!o?.tasks?.some(t => t.project === p!.key),
   }
+}
+
+// Step 5 from its coordinator's pane: not started, starting (no state yet),
+// asking something before it can work (a dialog, a login), or running.
+export type CoordinatorStart = 'none' | 'starting' | 'asks' | 'runs'
+export function coordinatorStart(pane?: Pick<Pane, 'status' | 'prompt' | 'screen'>): CoordinatorStart {
+  if (!pane) return 'none'
+  if (pane.status === 'blocked' || pane.prompt || pane.screen) return 'asks'
+  return pane.status ? 'runs' : 'starting'
 }
 
 export const setupCount = (d: SetupDone) => SETUP_STEPS.filter(s => d[s]).length

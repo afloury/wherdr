@@ -35,7 +35,12 @@ new project.
    defaults with Next.
 5. **Start its coordinator.** Pick the agent and start it: the coordinator is
    the agent you talk to about the project. It adds tasks and follows them on
-   the board. Its [autopilot](#autopilot) can be set under it (optional).
+   the board. Its folder is new at its first start: wherdr answers the agent's
+   "trust this folder?" question for it (that folder only, never yours), as for
+   Alfred's. The step says *starting* until the agent is ready, then that it
+   runs; if the agent still asks something (a login, say), *Answer its
+   question* opens its conversation. Its [autopilot](#autopilot) can be set
+   under it (optional).
    It keeps a memory of its own, `memory.md` in its folder: your decisions
    and preferences, read at each start. wherdr never rewrites it, so the
    coordinator remembers them after a restart or a change of agent (Claude,

@@ -117,10 +117,18 @@ export function waitOf(t: { labels?: Record<string, string>, status?: string | {
   const s = typeof t?.status === 'string' ? t.status : t?.status?.state
   if (s === 'blocked') return 'permission'
 }
-// Claude's "Do you trust this folder?" dialog on the worktree the engine made
-// for the task from the user's own project: the engine answers it, once.
-export const trustPrompt = (screen: string, worktree: string) =>
-  /Yes, I trust this folder/.test(screen) && screen.includes(worktree)
+// The folder trust dialog (Claude's or Codex's) on a folder wherdr made itself
+// (a task's worktree, a coordinator's or Alfred's folder): the keys that pick
+// its "trust" option from where the cursor is, then confirm; none for any other screen.
+const TRUST_OPTION = /^\s*(?:[❯›>]\s*)?(?:\d+\.\s+)?(Yes, I trust this folder|Yes, proceed|Yes, continue|Trust and continue|No, exit|No, quit|Back to\b)/
+export function trustKeys(screen: string, folder: string): string[] | undefined {
+  if (!/trust/i.test(screen) || !screen.includes(folder)) return undefined
+  const options = screen.split('\n').filter(l => TRUST_OPTION.test(l))
+  const yes = options.findIndex(l => !/^(No|Back)\b/.test(TRUST_OPTION.exec(l)![1]!))
+  if (yes < 0 || options.length < 2) return undefined
+  const at = Math.max(0, options.findIndex(l => /^\s*[❯›>]/.test(l)))
+  return [...Array<string>(Math.abs(yes - at)).fill(yes > at ? 'down' : 'up'), 'enter']
+}
 // An agent that stopped because it is not logged in.
 export const isAuthFailure = (text: string) => /not logged in|log ?in again|please (run )?\/?login|authenticat|unauthori[sz]ed|invalid api key|\b401\b/i.test(text)
 export { PROGRAMS, SAME_MODEL } from './workflow'
