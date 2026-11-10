@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanProjectInput } from '../shared/pm/project'
-import { detectV2, keptDirs, mapMachines, mapSettings, parseArgs as importArgs, parseEnvFile, parseUnit, remapMachineSettings, runImport, sshProblem, v3MachineKey } from '../scripts/v2-import.mjs'
+import { detectV2, keptDirs, v3AppDir, mapMachines, mapSettings, parseArgs as importArgs, parseEnvFile, parseUnit, remapMachineSettings, runImport, sshProblem, v3MachineKey } from '../scripts/v2-import.mjs'
 import { mapCandidates, readBoard } from '../server/utils/v2Board'
 import { EXIT, buildCommand, buildTuning, deployUnits, hcTarget, hcUnit, main, parseArgs, pickHttpsPort, unitProtections, updateScript, v3Unit } from '../scripts/install-v3-beside-v2.mjs'
 
@@ -153,7 +153,13 @@ describe('runImport', () => {
     // Recent folders: herdr-projects' folders, herdr-web's and v3's own are left out.
     expect(JSON.parse(fs.readFileSync(path.join(data, 'dirs.json'), 'utf8'))).toEqual({ dirs: ['/home/user/code/app'] })
     expect(importArgs(['detect', '--herdr-projects', '/x'])).toEqual({ command: 'detect', notes: [expect.stringMatching(/^--herdr-projects is ignored/)] })
-    expect(keptDirs(['/srv/hp/main', '/opt/v2/x', '/opt/v2x', 'rel'], { home: '/home/user', env: { HERDR_PROJECTS_HOME: '/srv/hp' }, apps: ['/opt/v2'] })).toEqual(['/opt/v2x'])
+    // With another herdr-projects home, its default one still counts; v3's folder when the import runs alone.
+    expect(keptDirs(['/srv/hp/main', '/home/user/.herdr-projects/data/main', '/opt/v2/x', '/opt/v2x', 'rel'], { home: '/home/user', env: { HERDR_PROJECTS_HOME: '/srv/hp' }, apps: ['/opt/v2'] })).toEqual(['/opt/v2x'])
+    expect(v3AppDir('/opt/v3/data', '/home/user', '/opt/v3/src')).toBe('/opt/v3')
+    expect(v3AppDir('/home/user/data', '/home/user', '/home/user/wherdr/src')).toBe('/home/user/wherdr/src')
+    const alone = tmp()
+    runImport({ v2, dataDir: alone, run: fakeRun().run, home: '/home/user', env: {}, hcSession: 'test', hcReachable: true })
+    expect(JSON.parse(fs.readFileSync(path.join(alone, 'dirs.json'), 'utf8'))).toEqual({ dirs: ['/home/user/code/app'] })
     expect(fs.existsSync(path.join(data, 'auth.json'))).toBe(false)
     expect(calls).toContain('hc machine add user@laptop --name laptop --json')
     expect(r.machines.missing).toMatchObject([{ target: 'vps', reason: expect.stringMatching(/unreachable/), note: expect.stringMatching(/session was work/) }])

@@ -64,10 +64,11 @@ export function projectsDataDir(env = process.env, home = os.homedir()) {
 }
 
 // A folder of herdr-projects' own (its board, a coordinator's chat folder):
-// never a folder of the user's to start an agent in.
+// never a folder of the user's to start an agent in. The default home counts
+// too when another one is set (folders an earlier setup left there).
 export function inProjectsHome(dir, env = process.env, home = os.homedir()) {
   const d = path.resolve(String(dir || ''))
-  return [projectsHome(env, home), projectsDataDir(env, home)].some(h => d === path.resolve(h) || d.startsWith(path.resolve(h) + path.sep))
+  return [path.join(home, '.herdr-projects'), projectsHome(env, home), projectsDataDir(env, home)].some(h => d === path.resolve(h) || d.startsWith(path.resolve(h) + path.sep))
 }
 
 // The PATH herdr-projects recorded from a login shell, '' when there is none.

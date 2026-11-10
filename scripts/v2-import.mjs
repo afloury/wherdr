@@ -154,10 +154,18 @@ export function detectV2(o = {}) {
 
 // The recent folders worth keeping: the user's own, not herdr-projects' (its
 // board, a coordinator's chat folder) nor the app folders of wherdr or
-// herdr-web (`apps`: v2's folder, v3's when known).
+// herdr-web (`apps`: v2's and v3's folders; the installer's default v3 folder
+// always counts).
 export function keptDirs(dirs, { home, env = {}, apps = [] }) {
-  const app = d => [...apps, path.join(home, 'herdr-web')].some(a => d === a || d.startsWith(`${a}/`))
+  const app = d => [...apps, path.join(home, 'herdr-web'), path.join(home, 'wherdr-v3')].some(a => d === a || d.startsWith(`${a}/`))
   return dirs.filter(d => typeof d === 'string' && d.startsWith('/') && !inProjectsHome(d, env, home) && !app(d))
+}
+
+// v3's app folder when the import runs on its own: the folder holding both this
+// source and the data folder (~/wherdr-v3 with src/ and data/), else this source.
+export function v3AppDir(dataDir, home, src = fileURLToPath(new URL('..', import.meta.url))) {
+  const root = path.resolve(src), parent = path.dirname(path.resolve(dataDir))
+  return parent !== path.resolve(home) && parent !== '/' && root.startsWith(`${parent}/`) ? parent : root
 }
 
 // ---- settings ------------------------------------------------------------
@@ -280,7 +288,7 @@ export function runImport(o) {
     if (fs.existsSync(path.join(v2.dataDir, f)) && !fs.existsSync(path.join(data, f))) copies.push(f)
   }
   const v2Dirs = readJson(path.join(v2.dataDir, 'dirs.json'))?.dirs
-  const dirs = keptDirs(Array.isArray(v2Dirs) ? v2Dirs : [], { home: o.home || os.homedir(), env: o.env || process.env, apps: [v2.dir, ...(o.appDir ? [o.appDir] : [])] })
+  const dirs = keptDirs(Array.isArray(v2Dirs) ? v2Dirs : [], { home: o.home || os.homedir(), env: o.env || process.env, apps: [v2.dir, o.appDir || v3AppDir(data, o.home || os.homedir())] })
   const copyDirs = dirs.length && !fs.existsSync(path.join(data, 'dirs.json'))
   res.settings = { carried: s.carried, skipped: s.skipped, files: [...copies, ...(copyDirs ? ['dirs.json (this machine\'s recent folders)'] : [])] }
 
