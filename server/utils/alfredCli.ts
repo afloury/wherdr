@@ -89,8 +89,10 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       // repository, not already a project): read-only, so run before the
       // user's yes on this machine; on another, only once the user asked.
       const remote = remoteOf(project.machine)
-      const folder = remote ? project.path : await deps.check(project.machine, project.path)
-      if (projects.some(p => p.machine === project.machine && p.path === folder)) throw new HerdrError('exists', 'This folder is already a project')
+      const checked = remote ? project.path : await deps.check(project.machine, project.path)
+      const folder = typeof checked === 'string' ? checked : checked.path
+      const same = projects.find(p => p.machine === project.machine && p.path === folder)
+      if (same) throw new HerdrError('exists', `This folder is already a project: ${shownKey(same)}`)
       return change({
         change: [`add project ${project.key} "${project.name}"`,
           remote ? `folder ${folder} on ${machineName(project.machine)} (checked when applied: inside the home folder, a git repository, not already a project)` : `folder ${folder} on ${machineName(project.machine)} (checked: a git repository)`,

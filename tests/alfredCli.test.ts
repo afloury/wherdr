@@ -63,7 +63,7 @@ describe('runAlfredCommand', () => {
   let failCheck = false
   const deps = () => ({
     store, machines: () => machines, panes: () => [], urls: { local: 'http://127.0.0.1:7690' }, settingsFile: path.join(dir, 'settings.json'),
-    check: async (m: string, f: string) => { if (failCheck) throw new Error('path: a folder inside the home folder'); checked.push(`${m}:${f}`); return f },
+    check: async (m: string, f: string) => { if (failCheck) throw new Error('path: a folder inside the home folder'); checked.push(`${m}:${f}`); return { path: f.replace(/^~/, '/home/user'), git: true } },
   }) as unknown as Parameters<typeof runAlfredCommand>[0]
   const run = (...argv: string[]) => runAlfredCommand(deps(), token, { argv })
 
@@ -110,10 +110,10 @@ describe('runAlfredCommand', () => {
   })
 
   it('makes the folder checks of --apply in the dry run on this machine', async () => {
-    expect(await run('project', 'add', 'APP', '--machine', '', '--path', '/src/app')).toMatchObject({ dryRun: true, change: ['add project APP "APP"', 'folder /src/app on this machine (checked: a git repository)', 'template none'] })
-    expect(checked).toEqual([':/src/app'])
-    await run('project', 'add', 'APP', '--machine', '', '--path', '/src/app', '--apply')
-    await expect(run('project', 'add', 'APP2', '--machine', '', '--path', '/src/app')).rejects.toThrow('This folder is already a project')
+    expect(await run('project', 'add', 'APP', '--machine', '', '--path', '~/app')).toMatchObject({ dryRun: true, change: ['add project APP "APP"', 'folder /home/user/app on this machine (checked: a git repository)', 'template none'] })
+    expect(checked).toEqual([':~/app'])
+    await run('project', 'add', 'APP', '--machine', '', '--path', '~/app', '--apply')
+    await expect(run('project', 'add', 'APP2', '--machine', '', '--path', '/home/user/app')).rejects.toThrow('This folder is already a project: APP')
     failCheck = true
     await expect(run('project', 'add', 'OUT', '--machine', '', '--path', '/opt/x')).rejects.toThrow('path: a folder inside the home folder')
   })

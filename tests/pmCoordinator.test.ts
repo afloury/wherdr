@@ -725,7 +725,7 @@ describe('commands of lot 10', () => {
     await refused(cli(['task', 'add', 'X', '--type', 'study']), 'No task type "study": feature')
     await refused(cli(['task', 'add', 'X', '--type', 'feature', '--after', 'ST-1']), 'after: tasks of the same project')
     await noteTurn(store, 'CO', 'wake')
-    await refused(cli(['task', 'add', 'Next', '--type', 'feature']), 'only with the autopilot on')
+    await refused(cli(['task', 'add', 'Next', '--type', 'feature']), 'a request from the user, sent from wherdr')
     await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { ...DEFAULT_AUTOPILOT, on: true } })
     expect((await cli(['task', 'add', 'Next', '--type', 'feature', '--after', 'CO-1'])).task).toMatchObject({ id: 'CO-2', after: 'CO-1' })
   })

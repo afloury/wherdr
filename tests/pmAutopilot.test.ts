@@ -123,7 +123,7 @@ describe('starting a task (coordinator, or the engine for a chained one)', () =>
 
   it('in a wake only with the autopilot on, within its limits; a user turn keeps the limits', () => {
     expect(coordinatorStartRefusal(ap, todo(2), [todo(2)], [], at(12), true)).toBeUndefined()
-    expect(coordinatorStartRefusal({ ...ap, on: false }, todo(2), [todo(2)], [], at(12), true)).toBe('In a wake, a task starts only with the autopilot on')
+    expect(coordinatorStartRefusal({ ...ap, on: false }, todo(2), [todo(2)], [], at(12), true)).toBe('A task starts only on a request from the user, sent from wherdr, or in a wake with the autopilot on')
     expect(coordinatorStartRefusal({ ...ap, on: false }, todo(2), [todo(2)], [], at(12), false)).toBeUndefined()
     expect(coordinatorStartRefusal(ap, todo(2), [task(3), todo(2)], [], at(12), false)).toMatch(/already work at once/)
     const finished = (n: number) => task(n, { step: { at: 3, started: true, done: true, proofs: {}, rounds: {} } })

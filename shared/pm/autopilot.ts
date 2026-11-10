@@ -107,7 +107,7 @@ export function coordinatorStartRefusal(ap: Autopilot | undefined, task: Task, t
   if (stopped && wake && tries >= WAKE_RETRIES) return `${task.id} already ran ${tries} times: starting it again is the user's call`
   const chain = task.after ? chainState(task, tasks) : 'go'
   if (chain !== 'go') return chain?.wait ?? `${task.id} starts after ${task.after}, which is not done`
-  if (wake && !ap?.on) return 'In a wake, a task starts only with the autopilot on'
+  if (wake && !ap?.on) return 'A task starts only on a request from the user, sent from wherdr, or in a wake with the autopilot on'
   const paced = pacedStart(task, engine ? 'engine' : wake ? 'wake' : 'user')
   return startRefusal(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now, paced ? pace : undefined)
 }
@@ -178,9 +178,9 @@ export const USER_ONLY: Record<string, string> = {
   ...Object.fromEntries(['add', 'set', 'edit', 'remove', 'on', 'off', 'run'].map(v => [`automation ${v}`, 'Automations are added, changed and run only in wherdr, by the user'])),
 }
 
-// `task add`: in a wake, only with the autopilot on (the user's own turn may always).
+// `task add`: on the user's request sent from wherdr, or in a wake with the autopilot on.
 export const addRefusal = (ap: Autopilot | undefined, wake: boolean) =>
-  wake && !ap?.on ? 'In a wake, a task is added only with the autopilot on' : undefined
+  wake && !ap?.on ? 'A task is added only on a request from the user, sent from wherdr, or in a wake with the autopilot on' : undefined
 
 // `tell <task>`: in a wake, only to answer an agent's question; a permission
 // request always stays the user's.
