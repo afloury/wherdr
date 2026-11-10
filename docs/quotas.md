@@ -94,6 +94,22 @@ limit still stops it (**Limit reached**), and so does a machine with no room. Th
 switch, and the row, say until when it burns (**Burning until Sun 19:00**); it turns itself off at the
 reset. It needs a quota reading, which gives the reset.
 
+## Codex updates
+
+wherdr starts Codex (new agents, task agents, coordinators) with its update check off
+(`codex -c check_for_update_on_startup=false`, Codex's own setting for that launch only:
+`~/.codex` is never changed), so that an update never ends a fresh conversation. Update Codex
+yourself, in a terminal, when no conversation needs it.
+
+- **A message sent while Codex installs or updates itself** is never typed into it: it waits
+  as **Queued · sent when Codex is ready** and is typed once Codex is ready. If Codex exits
+  instead, it comes back into the message field.
+- **If Codex still updates itself and exits** (a new version once it has stopped), the space
+  stays open: its terminal becomes a plain `sh`, and the conversation shows a **Your turn**
+  card with **Resume conversation** (the same session; Codex's picker when wherdr cannot
+  identify it) or **Start fresh**. A message sent meanwhile is refused (**Not sent**): restart
+  Codex first. A plain exit of Codex still ends its terminal.
+
 ## v2 only: Codex updates and restarts
 
 The Codex **Update** and **Restart Codex** cards below belong to wherdr v2 on Herdr.

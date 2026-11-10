@@ -56,3 +56,14 @@ it('lists three agents of one folder as three rows counted 1/1/1', async () => {
 it('recognizes a Devin command when core supplies no agent field', () => {
   expect(coreState([terminal('t1', { argv: ['/opt/bin/devin', '-r', 'session-a'] })], []).panes[0]?.agent).toBe('devin')
 })
+
+it('keeps a Codex stopped by its update as a Codex waiting for a restart, and tells an installing one', () => {
+  const state = coreState([
+    terminal('t1', { labels: { 'wherdr.codex-updated': '1' } }),
+    terminal('t2', { template: 'codex', title: 'Installing Codex 0.167.0', status: { state: 'idle' } }),
+    terminal('t3', { agent: 'codex', labels: { 'wherdr.codex-updated': '1' }, status: { state: 'idle' } }),
+  ], [])
+  expect(state.panes.map(p => [p.agent, p.status, p.stopped?.reason ?? null, p.installing ?? false])).toEqual([
+    ['codex', 'blocked', 'update', false], ['codex', 'idle', null, true], ['codex', 'idle', null, false],
+  ])
+})

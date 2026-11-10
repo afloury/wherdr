@@ -154,7 +154,7 @@ describe('the main coordinator (WHR-398)', () => {
     expect(await alfredView(d)).toEqual({ name: 'Jeeves', program: 'codex', ran: 'codex', terminal: 'host/t2' })
     // No program given: the one picked last.
     await startCoordinator(d, MAIN, {}, { local: 'http://127.0.0.1:7690' })
-    expect(runs[2]!.line).toMatch(/exec 'codex' '-C'/)
+    expect(runs[2]!.line).toMatch(/exec 'codex' '-c' 'check_for_update_on_startup=false' '-C'/)
     await expect(startCoordinator(d, MAIN, { program: 'cline' }, { local: 'http://127.0.0.1:7690' })).rejects.toThrow('program')
     const view = await coordinatorsView(store)
     expect(view.map(c => c.project)).toEqual([MAIN, 'CO', 'ST'])
@@ -431,7 +431,7 @@ describe('role files', () => {
     await startCoordinator(deps, 'CO', { resume: true }, urls, ['A task was reported'])
     expect(runs[1]).toMatchObject({ cwd: '/h/.wherdr/pm/coordinators/CO', labels: { 'wherdr.coordinator': 'CO' } })
     // Its message is typed once it is ready: a word after `resume --last` would be read as a session.
-    expect(runs[1]!.line).toMatch(/exec 'codex' '-C' '\/h\/\.wherdr\/pm\/coordinators\/CO' .*'permissions\.wherdr\.network\.enabled=true' 'resume' '--last'$/)
+    expect(runs[1]!.line).toMatch(/exec 'codex' '-c' 'check_for_update_on_startup=false' '-C' '\/h\/\.wherdr\/pm\/coordinators\/CO' .*'permissions\.wherdr\.network\.enabled=true' 'resume' '--last'$/)
     expect(await store.coordinator('CO')).toMatchObject({ ran: { program: 'codex' }, agent: { program: 'claude' }, terminal: 'host/t6' })
     await startCoordinator(deps, 'CO', {}, urls)
     await startCoordinator(deps, 'CO', { resume: true }, urls)

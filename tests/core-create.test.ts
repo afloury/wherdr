@@ -188,7 +188,8 @@ describe('resume and first message', () => {
     expect(t.runs()[0]![1].line).toMatch(/exec claude --continue$/)
     t = setup(() => ({ address: 't3' }))
     await coreCreate(t.deps, { kind: 'codex', cwd: '/home/u', resume: true })
-    expect(t.runs()[0]![1].line).toMatch(/exec codex resume --last$/)
+    // Codex: its update check off, and a line that keeps the terminal when an update ends it.
+    expect(t.runs()[0]![1].line).toContain(`'codex' '-c' 'check_for_update_on_startup=false' 'resume' '--last'; s=$?;`)
     t = setup(() => ({ address: 't3' }))
     await coreCreate(t.deps, { kind: 'claude', cwd: '/home/u' })
     expect(t.runs()[0]![1].line).toMatch(/exec claude$/)

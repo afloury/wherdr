@@ -35,7 +35,7 @@ describe('worker plan and command line', () => {
   })
 
   it('quotes everything after the program', () => {
-    expect(agentLine('codex', 'gpt-5', "/h/it's.md")).toBe(`exec codex '--model' 'gpt-5' 'Read /h/it'\\''s.md and follow it.'`)
+    expect(agentLine('codex', 'gpt-5', "/h/it's.md")).toBe(`exec codex '-c' 'check_for_update_on_startup=false' '--model' 'gpt-5' 'Read /h/it'\\''s.md and follow it.'`)
   })
 })
 

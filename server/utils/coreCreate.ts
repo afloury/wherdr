@@ -14,6 +14,7 @@ import { toAgentName } from '../../shared/ids'
 import { cleanLabel } from '../../shared/spaceActions'
 import { fmt } from '../../shared/message'
 import { placementLabels } from '../../shared/coreLayout'
+import { codexInstalling, codexLine } from '../../shared/codexLaunch'
 import { coreCapabilities, hasPort, type CoreCapabilities } from '../../shared/coreCapabilities'
 import type { ChatItem, DirEntry, DirListing, MachineConfig, MachineInfo, Pane, Workspace } from '../../shared/types'
 
@@ -115,7 +116,7 @@ export async function coreMachineConfigs(deps: CoreAdminDeps): Promise<MachineCo
   }))
 }
 
-interface CoreFacts { state?: string, exit_code?: number | null, signal?: string | null, reason?: string }
+interface CoreFacts { state?: string, exit_code?: number | null, signal?: string | null, reason?: string, title?: string }
 
 // An agent that ends with a failure within a couple of seconds did not start: say so with
 // the exit code and the last lines it printed, rather than leaving a dead entry to find.
@@ -157,7 +158,8 @@ export async function sendFirstMessage(deps: CoreAdminDeps, address: string, tex
     if (state === 'blocked') return 'dialog'
     if (state) sawStatus = true
     const screen = String((await deps.call<{ text?: string }>('terminal.read', { terminal: address, lines: 40 }, 3000).catch(() => null))?.text || '')
-    if (DIALOG_RE.test(screen)) return 'dialog'
+    // Codex installing or updating itself: the message waits like behind a dialog.
+    if (DIALOG_RE.test(screen) || codexInstalling(screen, t.title)) return 'dialog'
     stable = screen.trim() && screen === last ? stable + 1 : 0
     last = screen
     if (state === 'idle' ? stable >= 2 : !sawStatus && stable >= STILL_POLLS) {
@@ -179,6 +181,9 @@ export async function sendAfterDialog(deps: CoreAdminDeps, address: string, text
   }
   return 'skipped'
 }
+
+// Codex runs in a line that keeps its terminal when an update ends it (shared/codexLaunch.ts).
+const launchLine = (kind: string, args: string[]) => (kind === 'codex' ? codexLine(args) : `exec ${[kind, ...args].join(' ')}`)
 
 export interface CreateBody { kind?: unknown, machine?: unknown, cwd?: unknown, name?: unknown, workspace?: unknown, prompt?: unknown, resume?: unknown }
 
@@ -213,7 +218,7 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
   const request = crypto.randomBytes(8).toString('hex')
   const params = {
     cwd, ...(on ? { on } : {}), ...(name ? { name } : {}), no_parent: true, wait: false,
-    labels: { [REQUEST_LABEL]: request, ...creationLabels(deps, m, cwd, body.workspace) }, ...(kind === 'shell' ? {} : { line: `${PATH_SETUP}; exec ${[kind, ...(body.resume === true ? RESUME_ARGS[kind] || [] : [])].join(' ')}` }),
+    labels: { [REQUEST_LABEL]: request, ...creationLabels(deps, m, cwd, body.workspace) }, ...(kind === 'shell' ? {} : { line: `${PATH_SETUP}; ${launchLine(kind, body.resume === true ? RESUME_ARGS[kind] || [] : [])}` }),
   }
   let address: string
   try {

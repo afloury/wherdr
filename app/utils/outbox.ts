@@ -74,6 +74,15 @@ export function prune(list: OutboxItem[], server: QueuedMessage[], now: number, 
   return out
 }
 
+// Codex gone (exited, or stopped by its update) while messages waited on the
+// server for it (coreHeld.ts): the server drops them. Those it no longer lists
+// leave the outbox and come back as texts, for the message field.
+export function returnHeld(list: OutboxItem[], server: QueuedMessage[]): { kept: OutboxItem[], back: string[] } {
+  const known = new Set(server.map(q => q.id))
+  const back = list.filter(q => q.state === 'held' && !q.local && !known.has(q.id))
+  return { kept: list.filter(q => !back.includes(q)), back: back.map(q => q.text) }
+}
+
 // What the conversation shows: the server's records (its state wins), then the
 // app's bubbles it does not list yet.
 export function withOutbox(server: QueuedMessage[], local: OutboxItem[]): OutboxItem[] {
