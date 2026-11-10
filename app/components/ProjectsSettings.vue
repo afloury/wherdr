@@ -40,6 +40,8 @@ async function toggle(on: boolean) {
   finally { busy.value = false }
 }
 const setupAdding = ref(false)
+// Alfred's `ui open --target projects.setup`: the setup window opens too, not only its button's halo.
+watch(() => props.active && route.query.target === 'projects.setup', (go) => { if (go) { setupAdding.value = false; setupOpen.value = true } }, { immediate: true })
 function addProject() {
   setupAdding.value = true
   setupOpen.value = true

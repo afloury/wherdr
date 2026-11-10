@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody, type H3Event } from 'h3'
 import HomeSetupHint from '~/components/HomeSetupHint.vue'
+import HomeView from '~/components/HomeView.vue'
 import { herdrState } from '~/composables/useHerdr'
 import { ALFRED_SETUP_PROMPT } from '~/composables/useCoordinators'
 import type { Pane } from '#shared/types'
@@ -43,4 +44,16 @@ it('with a project: nothing', async () => {
   w = await mountSuspended(HomeSetupHint)
   await flush()
   expect(w.find('[data-testid="home-setup"]').exists()).toBe(false)
+})
+
+// On Home: Alfred's pane alone (it has its own row, no agent row) still shows the hint.
+it('on Home, with only Alfred running: the hint shows', async () => {
+  herdrState.value = { ok: true, workspaces: [{ id: 'w', number: 1, label: 's', focused: false, machine: '' }], machines: [{ key: '', label: 'Local', local: true, status: 'online', error: null, session: 'default' }],
+    panes: [{ id: 'p9', coreAddress: 'host/t9', status: 'idle', agent: 'claude', workspace: 'w', tab: 't', machine: '' } as Pane] } as never
+  projects = []
+  const pass = { template: '<div><slot /></div>' }
+  w = await mountSuspended(HomeView, { global: { stubs: { UContextMenu: pass, UTooltip: pass } } })
+  await vi.waitFor(() => expect(w!.find('[data-testid="home-setup-alfred"]').exists()).toBe(true))
+  expect(w.findAll('[data-testid="home-setup"]')).toHaveLength(1)
+  herdrState.value = { ok: false, workspaces: [], panes: [] }
 })
