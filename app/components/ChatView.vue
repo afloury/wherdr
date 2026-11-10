@@ -22,6 +22,8 @@ import { findReplyOrigin, parseReply, type ReplyTarget } from '#shared/replyQuot
 import { messageId, messageOf, messageRef, pointRef, refLine, refsIn, sameRef, type Reference } from '#shared/reference'
 import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { WAKE_LABEL, wakeKindOf, type WakeKind } from '#shared/pm/wakes'
+import type { ProposalAnswer } from '#shared/pm/coordinator'
+import { proposalSpot, type PlacedBlock } from '~/utils/proposalPlace'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
 import { keepIfSame, keyedMemo, weakMemo } from '~/utils/keepIfSame'
 import { duplicateImages } from '#shared/imageDupes'
@@ -226,15 +228,23 @@ const MORE_BLOCKS = 10
 const shown = ref(Infinity)
 const hiddenBlocks = computed(() => Math.max(0, blocks.value.length - shown.value))
 const visibleBlocks = computed(() => (hiddenBlocks.value ? blocks.value.slice(hiddenBlocks.value) : blocks.value))
-// A coordinator's proposed workflow change: its card (ProposalCard) follows
-// the agent's first message since the proposal; none yet, the conversation's end
-// (an answered one without its message in view shows nowhere).
+// A coordinator's workflow changes: each card (ProposalCard) under the last
+// reply of the turn that proposed it (utils/proposalPlace.ts), the one waiting
+// last; its turn with no reply yet, the conversation's end (one not in view
+// shows nowhere). Keyed by that reply ('' for the end).
 const coord = computed(() => coordinatorOf(props.pane))
-const proposalKey = computed(() => {
-  const at = coord.value?.proposal?.at ?? coord.value?.answered?.proposedAt
-  if (at === undefined) return null
-  return blocks.value.find(b => b.k === 'assistant' && (b.ms ?? 0) >= at)?.key ?? (coord.value?.proposal ? '' : null)
+const turnOpens = (b: PlacedBlock) => fromUser(b as Block) || b.k === 'wake'
+const proposalCards = computed(() => {
+  const c = coord.value, cards = new Map<string, { key: string, answer?: ProposalAnswer }[]>()
+  const place = (at: number | undefined, key: string, answer?: ProposalAnswer) => {
+    const spot = at === undefined ? null : proposalSpot(blocks.value, at, turnOpens)
+    if (spot !== null) cards.set(spot, [...cards.get(spot) ?? [], { key, ...(answer ? { answer } : {}) }])
+  }
+  c?.answers?.forEach((a, i) => place(a.proposedAt, `a${i}:${a.proposedAt}`, a))
+  if (c?.proposal) place(c.proposal.at, 'pending')
+  return cards
 })
+const proposalKey = computed(() => [...proposalCards.value].find(([, l]) => l.some(x => !x.answer))?.[0] ?? null)
 // The user's request it follows: the last message they sent before the card.
 const proposalSaidKey = computed(() => {
   if (proposalKey.value === null || !coord.value?.proposal?.said) return null
@@ -468,7 +478,7 @@ const UPLOAD_RE = /\/\.cache\/herdr-web\/uploads\/\S+/g
 // `in`: the folds (a wake, a run of routine wakes) that must be open for it to show.
 type Block = ({ k: 'day', key: string, label: string }
   | { k: 'who', key: string }
-  | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null, wake: WakeKind | null }
+  | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null, wake: WakeKind | null, ms?: number }
   // `rid`: its code in the references to it (shared/reference.ts messageId).
   | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean, ms?: number }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
@@ -483,7 +493,7 @@ type Block = ({ k: 'day', key: string, label: string }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
   | { k: 'turn', key: string, text: string, copy: string | null, reply: string | null }
   // A wake: one compact row, the coordinator's answer under it (see foldWakes).
-  | { k: 'wake', key: string, kind: WakeKind, head: string, text: string, time: string | null, at: string | null, answer: string | null, loud: boolean }
+  | { k: 'wake', key: string, kind: WakeKind, head: string, text: string, time: string | null, at: string | null, answer: string | null, loud: boolean, ms?: number }
   | { k: 'wakes', key: string, n: number, from: string | null, to: string | null }) & { in?: string[] }
 
 // Images of a transcript item (a user message, or what a tool returned),
@@ -669,7 +679,7 @@ const blocks = computed<Block[]>(() => {
       // Reply to a specific message: the marker becomes a quote linking to the original.
       const parsed = parseReply(text)
       const origin = parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null
-      out.push({ k: 'user', key, text: parsed ? parsed.body : text, pasted: it.pasted, srcs, files, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, reply: parsed?.reply || null, origin, wake: wakeKindOf(text) })
+      out.push({ k: 'user', key, text: parsed ? parsed.body : text, pasted: it.pasted, srcs, files, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, reply: parsed?.reply || null, origin, wake: wakeKindOf(text), ...(it.ts ? { ms: new Date(it.ts).getTime() } : {}) })
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
@@ -775,7 +785,7 @@ function foldWakes(out: Block[]): Block[] {
     const routine = fold && b.wake !== 'incident' && !changed
     if (!routine) endRun()
     else if (!run.length) runAt = res.length
-    const w: Block & { k: 'wake' } = { k: 'wake', key: b.key, kind: b.wake, head: wakeLine(b.text), text: b.text, time: b.time, at: b.at, answer: fold && last ? plainLine(last.text) : null, loud: b.wake === 'incident' || asked }
+    const w: Block & { k: 'wake' } = { k: 'wake', key: b.key, kind: b.wake, head: wakeLine(b.text), text: b.text, time: b.time, at: b.at, answer: fold && last ? plainLine(last.text) : null, loud: b.wake === 'incident' || asked, ...(b.ms ? { ms: b.ms } : {}) }
     if (routine) run.push(w)
     res.push(w)
     for (const x of turn) {
@@ -1601,7 +1611,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   </button>
                   <ReadAloudButton :id="`${paneId}:${b.key}`" :text="b.text" />
                 </div>
-                <ProposalCard v-if="coord && b.key === proposalKey" :c="coord" :can-goto="!!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" />
+                <template v-if="coord"><ProposalCard v-for="p in proposalCards.get(b.key)" :key="p.key" :c="coord" :answer="p.answer" :can-goto="!p.answer && !!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" /></template>
               </template>
 
               <UChatReasoning v-else-if="b.k === 'thinking'" class="omp-thinking" :text="b.text"
@@ -1737,7 +1747,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />
               <p>{{ t('No messages yet.') }}</p>
             </div>
-            <ProposalCard v-if="coord && proposalKey === ''" :c="coord" :can-goto="!!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" />
+            <template v-if="coord"><ProposalCard v-for="p in proposalCards.get('')" :key="p.key" :c="coord" :answer="p.answer" :can-goto="!p.answer && !!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" /></template>
             <div v-if="loadError" class="chat-empty"><p>{{ loadError }}</p></div>
           </template>
         </div>

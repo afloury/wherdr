@@ -259,6 +259,20 @@ describe('template edit', () => {
     await refused(answerProposal(deps(), 'CO', true), 'No template change waits for you')
   })
 
+  it('each answer sums up its own proposal only; one replaced before an answer says so', async () => {
+    // The user changed a reviewer pref in the interface before.
+    await store.saveWorkflow('CO', { ...structuredClone(company), prefs: { reviewModel: 'gpt-x' } })
+    await noteTurn(store, 'CO', 'user', 'add a v2 type')
+    const withV2 = (instructions?: string) => { const t = structuredClone(company); t.prefs = { reviewModel: 'gpt-x' }; t.taskTypes.v2 = { steps: [{ id: 'todo' }, { id: 'done' }] }; if (instructions) t.instructions = instructions; return JSON.stringify(t) }
+    await cli(['template', 'edit'], withV2('First try.'))
+    await cli(['template', 'edit'], withV2())
+    expect((await coordinatorsView(store)).find(c => c.project === 'CO')!.answers).toEqual([expect.objectContaining({ outcome: 'replaced', by: 'coordinator CO', summary: ['all types: instructions edited', '+ type v2 (2 steps)'] })])
+    await answerProposal(deps(), 'CO', true)
+    const answers = (await coordinatorsView(store)).find(c => c.project === 'CO')!.answers!
+    expect(answers.map(a => a.outcome)).toEqual(['replaced', 'accepted'])
+    expect(answers[1]!.summary).toEqual(['+ type v2 (2 steps)'])
+  })
+
   it('never changes a guard with the token, even in a user turn', async () => {
     await noteTurn(store, 'CO', 'user', 'let the engine merge develop')
     const loosen = edited((t) => { t.guards = { protected: ['main'], merge: { protected: 'user', others: 'engine' } } })
