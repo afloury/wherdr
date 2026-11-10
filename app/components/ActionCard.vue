@@ -4,11 +4,21 @@
 // server (never what the agent wrote); only this click runs it, through
 // POST /api/ui/act, which checks again that the task still waits the same way.
 // After: the outcome line; changed since: nothing runs, the task opens instead.
+// A proposed setting change (kind 'setting'): before → after and the user's
+// message behind it, Show me (highlights the setting), Cancel and Apply.
 import type { UiCard } from '#shared/uiActions'
+import { appRoute } from '#shared/appLinks'
+import { uiTargetLink } from '#shared/uiTargets'
 
 const props = defineProps<{ id: string }>()
 const card = ref<UiCard | null | undefined>(undefined)
-const busy = ref(false)
+const busy = ref<'' | 'run' | 'cancel'>('')
+const router = useRouter()
+const value = (v?: string) => (v === undefined ? t('default') : v === '1' ? t('on') : v === '0' ? t('off') : v)
+function showMe() {
+  const target = card.value?.setting?.target
+  router.push(appRoute(target ? uiTargetLink(target) : '#/settings'))
+}
 const error = ref('')
 
 async function load() {
@@ -19,27 +29,46 @@ const onShow = () => { if (!document.hidden && card.value?.state === 'open') loa
 onMounted(() => { load(); document.addEventListener('visibilitychange', onShow) })
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', onShow))
 
-async function act() {
+async function act(cancel = false) {
   const c = card.value
   if (!c || busy.value) return
   if (c.kind === 'open') return openTaskSheet(c.shown)
-  busy.value = true
+  busy.value = cancel ? 'cancel' : 'run'
   error.value = ''
-  try { card.value = (await api<{ card: UiCard }>('/api/ui/act', { id: c.id })).card; taskChanged() }
+  try {
+    card.value = (await api<{ card: UiCard }>('/api/ui/act', { id: c.id, ...(cancel ? { cancel } : {}) })).card
+    if (!c.setting) taskChanged()
+  }
   catch (e) { error.value = (e as Error).message; load() }
-  finally { busy.value = false }
+  finally { busy.value = '' }
 }
 </script>
 
 <template>
   <div class="action-card" :class="card?.state ?? 'off'" data-testid="action-card">
-    <span class="action-by">{{ card ? tl(`${card.by} suggests`) : t('Action') }}</span>
+    <span class="action-by">{{ !card ? t('Action') : card.setting ? tl(`Setting change proposed · by ${card.by}`) : tl(`${card.by} suggests`) }}</span>
     <p v-if="card === undefined" class="action-line">{{ t('Loading…') }}</p>
     <p v-else-if="!card" class="action-line">{{ t('This action is no longer available') }}</p>
+    <template v-else-if="card.setting">
+      <span class="action-task">{{ card.label }}</span>
+      <p class="action-change" data-testid="setting-change"><span>{{ value(card.setting.before) }}</span><UIcon name="i-lucide-arrow-right" /><b>{{ value(card.setting.after) }}</b></p>
+      <p v-if="card.setting.said" class="action-line">{{ t('After your message:') }} “{{ card.setting.said }}”</p>
+      <div v-if="card.state === 'open'" class="action-row">
+        <UButton color="neutral" variant="ghost" size="lg" icon="i-lucide-locate-fixed" data-testid="setting-show" @click="showMe">{{ t('Show me') }}</UButton>
+        <span class="action-gap" />
+        <UButton color="neutral" variant="outline" size="lg" :loading="busy === 'cancel'" :disabled="busy !== ''" data-testid="setting-cancel" @click="act(true)">{{ t('Cancel') }}</UButton>
+        <UButton color="primary" size="lg" :loading="busy === 'run'" :disabled="busy !== ''" data-testid="setting-apply" @click="act()">{{ t('Apply') }}</UButton>
+      </div>
+      <p v-else-if="card.state === 'stale'" class="action-line" data-testid="action-stale">{{ t('This setting changed since: nothing was applied') }}</p>
+      <p v-else class="action-outcome" :class="{ no: card.state === 'dismissed' }" :title="fmtDateTime(card.outcome?.at ?? card.at)" data-testid="action-outcome">
+        <UIcon :name="card.state === 'done' ? 'i-lucide-check' : 'i-lucide-x'" />{{ card.outcome?.text }} · {{ fmtTime(card.outcome?.at ?? card.at) }}
+      </p>
+      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+    </template>
     <template v-else-if="card.state === 'open'">
       <div class="action-row">
         <span class="action-task">{{ card.shown }}</span>
-        <UButton color="primary" size="lg" :loading="busy" :disabled="busy" data-testid="action-card-run" @click="act">{{ card.label }}</UButton>
+        <UButton color="primary" size="lg" :loading="busy !== ''" :disabled="busy !== ''" data-testid="action-card-run" @click="act()">{{ card.label }}</UButton>
       </div>
       <p v-if="error || card.refused" class="form-error" role="alert" data-testid="action-refused">{{ error || card.refused }}</p>
     </template>
@@ -60,6 +89,10 @@ async function act() {
 .action-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .action-task { font: 600 14px/1.4 var(--font-mono); overflow-wrap: anywhere; }
 .action-line { margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
+.action-change { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font: 13px/1.4 var(--font-mono); overflow-wrap: anywhere; }
+.action-change > span { color: var(--text-2); }
+.action-gap { flex: 1 1 0; }
+.action-outcome.no { color: var(--muted); }
 .action-outcome { display: flex; align-items: center; gap: 6px; margin: 0; font: 12px/1.4 var(--font-mono); color: var(--green); overflow-wrap: anywhere; }
-@media (max-width: 599px) { .action-row > :deep(button) { flex: 1 1 auto; } }
+@media (max-width: 599px) { .action-row > :deep(button) { flex: 1 1 auto; } .action-gap { display: none; } }
 </style>
