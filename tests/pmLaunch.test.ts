@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore, type PmStore } from '../server/utils/pmStore'
-import { reconcileRuns, startTask, wherdrBase, type PmLaunchDeps } from '../server/utils/pmLaunch'
+import { FETCH_BRANCH_SCRIPT, WORKTREE_SCRIPT, reconcileRuns, startTask, wherdrBase, type PmLaunchDeps } from '../server/utils/pmLaunch'
 import { uploadShot } from '../server/utils/pmBoard'
 import { agentLine, duplicateAgents, publicTask, reconcile, workerPlan, type Run, type Task } from '../shared/pm/run'
 import type { Template } from '../shared/pm/workflow'
@@ -76,19 +76,22 @@ let dir = '', n = 0
 beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-launch-')) })
 afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 
-async function setup(opts: { installed?: string[], exits?: (number | null)[], template?: Template, screen?: string, tmpFreeKb?: number, exec?: (script: string) => string | undefined } = {}) {
+async function setup(opts: { installed?: string[], exits?: (number | null)[], template?: Template, screen?: string, tmpFreeKb?: number, exec?: (script: string) => string | undefined, fails?: (script: string) => number | undefined } = {}) {
   const store: PmStore = createPmStore(dir)
   await store.setEnabled(true)
   await store.saveTemplate(opts.template ?? template)
   const machine = `m${++n}`
   await store.addProject({ key: 'WEB', machine, path: '/home/u/web', template: 'vibe' }, async (_m, p) => p)
   await store.addTask({ project: 'WEB', title: 'Fix it', type: 'simple' })
-  const runs: Record<string, unknown>[] = [], files: Record<string, string> = {}
+  const runs: Record<string, unknown>[] = [], files: Record<string, string> = {}, execs: { script: string, args: string[] }[] = []
   const exits = [...(opts.exits ?? [])]
   const states: Record<string, number | null | undefined> = {}
   const call = async (method: string, p: Record<string, unknown>) => {
     if (method === 'machine.exec') {
       const [, , script, , ...args] = p.argv as string[]
+      execs.push({ script: script!, args })
+      const failed = opts.fails?.(script!)
+      if (failed) return { code: failed, stdout: '' }
       if (script!.includes('command -v')) return { code: 0, stdout: Buffer.from(args.filter(a => (opts.installed ?? ['claude']).includes(a)).join('\n')).toString('base64') }
       if (script!.includes('$HOME')) return { code: 0, stdout: Buffer.from('/home/u').toString('base64') }
       if (script!.includes('df -Pk /tmp')) return { code: 0, stdout: Buffer.from(String(opts.tmpFreeKb ?? 9e6)).toString('base64') }
@@ -104,7 +107,7 @@ async function setup(opts: { installed?: string[], exits?: (number | null)[], te
     call, store, machines: () => [{ key: machine, label: machine, local: false, status: 'online' }],
     panes: () => [], workspaces: () => [], settle: async () => {}, recent: async () => [], remember: async () => {}, launchWatchMs: 0,
   } as unknown as PmLaunchDeps
-  return { store, deps, runs, files, machine }
+  return { store, deps, runs, files, machine, execs }
 }
 
 describe('startTask', () => {
@@ -180,6 +183,33 @@ describe('startTask', () => {
     expect(wherdrBase('', 'https://b.example', 'https://a.example/', '7683')).toBe('http://127.0.0.1:7683')
     expect(wherdrBase('m1', 'https://b.example', 'https://a.example/', '7683')).toBe('https://a.example')
     expect(wherdrBase('m1', 'https://b.example', '', '7683')).toBe('https://b.example')
+  })
+
+  it.each([false, true])('a task that continues a branch starts from it when the remote has it, else from the base, saying so (gone: %s)', async (gone) => {
+    const worktree = (execs: { script: string, args: string[] }[]) => execs.find(e => e.script === WORKTREE_SCRIPT)!.args.slice(1)
+    const { store, deps, files, execs } = await setup({ fails: s => gone && s === FETCH_BRANCH_SCRIPT ? 2 : undefined })
+    await store.addTask({ project: 'WEB', title: 'Dark mode', type: 'simple', fromBranch: 'work/2-dark-mode' })
+    const t = await startTask(deps, 'WEB-2')
+    expect(execs.find(e => e.script === FETCH_BRANCH_SCRIPT)!.args).toEqual(['/home/u/web', 'work/2-dark-mode'])
+    const text = files['/home/u/.wherdr/pm/tasks/WEB-2/instructions.md']!
+    if (!gone) {
+      expect(t.branch).toBe('work/2-dark-mode')
+      expect(worktree(execs)).toEqual(['/home/u/.wherdr/pm/worktrees/WEB-2', 'work/2-dark-mode', '', 'origin/work/2-dark-mode'])
+      expect(text).not.toMatch(/no longer on the remote/)
+    } else {
+      expect(t.branch).not.toBe('work/2-dark-mode')
+      expect(worktree(execs)).toEqual(['/home/u/.wherdr/pm/worktrees/WEB-2', t.branch, '', ''])
+      const line = 'Branch `work/2-dark-mode` is no longer on the remote: this task starts from the base branch instead.'
+      expect(text).toContain(line)
+      expect(t.log!.map(l => l.text)).toContain(line)
+    }
+  })
+
+  it('a task whose branch to continue cannot be fetched (remote unreachable) waits, without a worktree', async () => {
+    const { store, deps, execs } = await setup({ fails: s => s === FETCH_BRANCH_SCRIPT ? 1 : undefined })
+    await store.addTask({ project: 'WEB', title: 'Dark mode', type: 'simple', fromBranch: 'feature/c++' })
+    expect(await startTask(deps, 'WEB-2')).toMatchObject({ state: 'waiting', waiting: expect.stringMatching(/Could not fetch branch `feature\/c\+\+`/) })
+    expect(execs.some(e => e.script === WORKTREE_SCRIPT)).toBe(false)
   })
 
   it('a nearly full /tmp on the machine: waiting with the reason, no terminal', async () => {

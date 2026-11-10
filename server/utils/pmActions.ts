@@ -49,6 +49,20 @@ export const actionShell = (deps: Pick<CoreAdminDeps, 'call'>, on: string | unde
     return { code: r.code, out: [r.out, r.err].filter(Boolean).join('\n') }
   }
 
+// A PR head made by GitHub's Update branch (SCRIPT.headOf says update): taken
+// into the worktree, where the project's after-merge fix runs, then pushed at
+// once so the PR does not keep the unfixed merge.
+export async function takeUpdate(sh: Shell, wt: string, branch: string, guards: ResolvedGuards, by: MergeBy):
+Promise<{ ok: true, head: string } | { ok: false, error: string, toAgent?: boolean }> {
+  const failed = (r: { code: number | null, out: string }) => ({ ok: false as const, error: lastLine(r.out) || `exit code ${r.code}`, ...(r.code === CODE.SEND_BACK ? { toAgent: true } : {}) })
+  const y = await sh(SCRIPT.sync, [wt, branch])
+  if (y.code !== 0) return failed(y)
+  const no = guardAction(guards, { kind: 'git.push' }, { branch, by })
+  if (no) return { ok: false, error: no }
+  const up = await sh(SCRIPT.push, [wt, branch])
+  return up.code === 0 ? { ok: true, head: lastLine(up.out) } : failed(up)
+}
+
 // GitHub's words for a PR in conflict with its base.
 const CONFLICT = /not mergeable|merge conflict|cannot be cleanly created/i
 const lastLine = (out: string) => out.trim().split('\n').pop()?.trim().slice(0, 300) || ''
@@ -123,7 +137,7 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
     }
     case 'github.merge': {
       // lag: waits for GitHub to show a fresh push; ci: waits for its checks. Counted apart.
-      let pushed = false, lag = 0, ci = 0
+      let pushed = false, synced = false, lag = 0, ci = 0
       for (;;) {
         const r = await run(deps, SCRIPT.prInfo, [wt, branch])
         if (r.code !== 0) return fail(r)
@@ -145,9 +159,16 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
         const refused = pr && guardAction(job.guards, a, { branch, by: job.by, base: pr.baseRefName })
         if (refused) return { ok: false, error: refused }
         if (pr) {
-          const h = head.trim(), at = await run(deps, SCRIPT.headOf, [wt, pr.headRefOid])
+          const h = head.trim(), at = await run(deps, SCRIPT.headOf, [wt, pr.headRefOid, pr.baseRefName])
           if (at.code !== 0) return fail(at)
           const where = lastLine(at.out)
+          // Updated on GitHub (Update branch): fixed in the worktree and pushed, then looked at again.
+          if (where === 'update' && !synced) {
+            synced = true
+            const u = await takeUpdate((sc, ar, i) => run(deps, sc, ar, i), wt, branch, job.guards, job.by)
+            if (!u.ok) return { ok: false, error: `merge: ${u.error}`, ...(u.toAgent ? { toAgent: true } : {}) }
+            continue
+          }
           if (where === 'foreign') return { ok: false, error: `merge: the PR head ${pr.headRefOid.slice(0, 7)} has commits the task's worktree never had (pushed from elsewhere): bring them into the worktree, or merge by hand` }
           // The head moved after the review (catch-up, conflict, CI fix): reviewed again first.
           if (job.reviewed && job.reviewed !== h) return { ok: false, error: `merge: new commits since the review (${job.reviewed.slice(0, 7)}..${h.slice(0, 7)})`, review: { since: job.reviewed, head: h }, commit: h }

@@ -58,10 +58,13 @@ and the machine's memory settings (side by side on a computer, stacked on a phon
   A sleeping machine cannot be woken remotely. While a machine is awake and online, placement
   counts on it like any online machine.
 - **Memory**: each machine's free memory, swap (Linux) or memory pressure (macOS), cores and load (read on Linux and macOS; on macOS the
-  free figure is close to Activity Monitor's, not exact) and its agents at once (all projects), with two
+  room is macOS's own available estimate: its memory free percentage, as `memory_pressure -Q` prints it,
+  times the RAM, which counts what macOS can reclaim or compress, not free and inactive pages alone;
+  the line says *pressure normal, ≈8.3 GB available of 18.0 GB*) and its agents at once (all projects), with two
   settings, both **Auto** when left empty (the grey placeholder shows wherdr's pick):
   **Agents at once, all projects** (Auto: one agent per 1.5 GB of RAM) and **Automatic
-  starts wait under (GB free)** (Auto: 15 % of the machine's RAM, at least 1 GB, at most 4 GB;
+  starts wait under (GB free)** (Auto: 15 % of the machine's RAM, at least 1 GB, at most 4 GB; on macOS 10 %, as its available figure
+  already leaves out what macOS keeps back;
   0 turns this guard off). Emptying a field goes back to Auto; a saved value stays yours. Each start goes to a machine its project allows
   where the task fits, by the project's **Placement** ([project sheet](project-management.md#general)):
   by default heavy work to the strongest one, light and standard work to the project's
@@ -71,7 +74,7 @@ and the machine's memory settings (side by side on a computer, stacked on a phon
   under its minimum free: the minimum only holds its second task and beyond, and its line says *go*),
   its swap is under 90 % used (on macOS, where the swap grows on demand: its memory pressure is normal:
   20 % or more of its memory free by `kern.memorystatus_level`, as `memory_pressure -Q` prints it;
-  under 20 % (warn) it takes light work only, under 10 % or at the kernel's critical level nothing; the line shows *pressure normal* instead of the swap), its cores are not all taken, it runs fewer agents than its cap (yours,
+  under 20 % (warn) it takes light work only, under 10 % or at the kernel's critical level nothing; the line shows the pressure instead of the swap), its cores are not all taken, it runs fewer agents than its cap (yours,
   else one per 1.5 GB of RAM), and for heavy work its load is under 0.8 per core. When no machine fits, automatic
   starts (autopilot, chains, automations) wait, with each machine's reason on the card, and start
   by themselves once one has room. Your own starts still go. A task that started stays on its machine.
