@@ -341,7 +341,23 @@ A message that sends you to a tab of the project sheet names it as
 Each automation adds a task and starts it at once, on a **schedule** (`every 2h`,
 `daily 09:00`, `mon,thu 09:00` or a cron, in this machine's time) or on an
 **event**, with an optional filter on the task's title. Each has its prompt (the
-task's description), its task type, a switch, its last firings and *Run now*.
+task's description) and its task type.
+
+You don't write automations in a form: ask the project's coordinator (or Alfred).
+The tab says so, with a button that opens that conversation. The coordinator
+proposes a new automation, a change or a removal with
+`wherdr pm automation propose`, only in a turn that comes from you. A card shows
+what the automation does, when it fires and its prompt, with *Accept* and
+*Refuse*. You see it in the conversation and at the top of the tab. A new
+automation you accept starts switched on, and a change keeps the switch and the
+past firings. The coordinator reads your answer with `wherdr pm automation list`.
+
+The tab lists each automation with its switch (only you turn it on or off), what
+triggers it in words (*every weekday at 9:00*, *when a task is merged · docs\**),
+its next firing and *Run now*. Its last five results form a short timeline,
+newest first: *Fired* with the task it added, *Waits for room*, *Skipped* (the
+[pace](quotas.md#pace) held it) or *Failed* with the reason. *What it does*
+opens the prompt.
 
 ### Autopilot tab
 

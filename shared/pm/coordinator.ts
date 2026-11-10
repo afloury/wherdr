@@ -12,6 +12,7 @@ import type { ProjectColor } from './projectKey'
 import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, type Autopilot, type FixKind, type limitsLeft } from './autopilot'
 import type { Wake } from './wakes'
 import type { ProposalFlow } from './flow'
+import type { AutomationProposal } from './automations'
 import { CAUSE_RULE } from './incidentWake'
 import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
@@ -88,6 +89,8 @@ export interface CoordinatorView {
   // proposal: the change waiting for the user, as a person reads it too (flow: the steps of
   // the first changed task type, before and after); answers: the last ones, oldest first.
   proposal?: Omit<Proposal, 'template' | 'base'> & { flow?: ProposalFlow }, answers?: ProposalAnswer[]
+  // The automation changes it proposed (`automation propose`), waiting or answered.
+  automationProposals?: AutomationProposal[]
   // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
   autopilot?: Autopilot, limits?: ReturnType<typeof limitsLeft>, wakes?: Wake[]
   // Nothing to do: its scheduled wakes are skipped (asleep), since its last wake.
@@ -110,6 +113,7 @@ export type Command =
   | { name: 'step done', task: string, userSaid?: string, link?: string }
   | { name: 'task decide', task: string, choice: Choice, reason: string }
   | { name: 'ack', wakes: string[] } | { name: 'automation show', id: string }
+  | { name: 'automation propose', id?: string, remove?: true } // a new or changed one comes as the call's input (JSON)
   | { name: 'tell', task: string, text: string, to?: AgentRole, fix?: FixKind, reason?: string, spec?: true }
   | { name: 'task edit', task: string, title?: string, description?: string, reason: string }
   | { name: 'task note', task: string, text: string }
@@ -146,7 +150,8 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, whether it looks for new work (and how many tasks those wakes may still add today), the scheduled wakes skipped today (nothing to do, or ahead of the pace), what is left of today\'s limits, the pacing of your worker\'s account (go, or what automatic work waits for), each machine the project allows (online or offline, its available hours, memory, cores and load, its agents at work by weight, the heaviest weight it takes now or why none) the weights (what each counts, the weight of each task type) and the last open incident (why agents were gone, see incidents)' },
   { usage: 'incidents [--since 2h|3d|<ISO date>]', does: 'why agents were gone, as the engine diagnosed it from facts (machine offline or unreachable, herdr-core or wherdr restarted, agent killed or crashed, out of memory, account limit, or unknown): when, the machine, the cause, the facts it used, the tasks and agents hit, open until those tasks run again; newest first, the last 7 days by default. Tell the user this cause, never a guess' },
   { usage: 'automation list', does: 'the project\'s automations: on or off, schedule or event, last firing' },
-  { usage: 'automation show <automation>', does: 'one automation, its prompt and its last firings; only the user adds or changes them, in wherdr' },
+  { usage: 'automation show <automation>', does: 'one automation, its prompt and its last firings' },
+  { usage: 'automation propose [<automation>] [--remove] < automation.json', does: 'propose a new automation (no id), a change to one (its id) or its removal (--remove, no input); only in a turn that comes from the user. The JSON: {"name", "prompt" (the task\'s description), "type"? (a task type, else the first), "schedule" (every 2h, daily 09:00, mon,thu 09:00 or a cron) or "event" (added, approval, review-failed, failed, needs-you, merged) with "filter"? (a title glob: docs*)}. The user accepts or refuses it from a card in your reply and in the project\'s Automations tab; an accepted new one starts switched on, and the user alone switches one on or off' },
   { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, past the autopilot\'s limits and hours (the output says when: "started; past the autopilot\'s limit of 3 at once"; the start still counts in them), in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there; while it is offline the task goes to another allowed machine that fits, else waits for it. A started task always goes back to its own machine' },
   { usage: 'task check <task>', does: 'read the task\'s PR on GitHub now, for a task at its merge step or archived with a PR: merged, its merge step ends as merged and the task goes on; open, why it waits; closed without a merge, said (the user may archive it). At any time, when the user asks to unblock a task' },
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
@@ -188,7 +193,7 @@ export function tellTarget(runs: Run[], task: string, holder: Holder | undefined
 const TASK_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 // The main coordinator names the project with --project <KEY>; a task names its own.
-const PROJECT_VERBS = ['list', 'plan', 'template show', 'autopilot show', 'incidents', 'automation list', 'automation show', 'task add']
+const PROJECT_VERBS = ['list', 'plan', 'template show', 'autopilot show', 'incidents', 'automation list', 'automation show', 'automation propose', 'task add']
 const URL_RE = /^https?:\/\/\S{1,2000}$/
 
 // argv after `wherdr pm` → a command, or the reason it is not one.
@@ -216,7 +221,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i] as string
     if (!a.startsWith('--')) { words.push(a); continue }
-    if (a === '--spec' || a === '--archived') { flags[a.slice(2)] = 'yes'; continue } // the options without a value
+    if (a === '--spec' || a === '--archived' || a === '--remove') { flags[a.slice(2)] = 'yes'; continue } // the options without a value
     const v = argv[i + 1] as string | undefined
     if (v === undefined) return { error: `${a} needs a value` }
     flags[a.slice(2)] = v
@@ -226,7 +231,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files', 'from-branch'], 'task start': ['on'], 'list': ['archived'], 'incidents': ['since'], 'ui open': ['target'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' || w0 === 'list' ? w0 : verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files', 'from-branch'], 'task start': ['on'], 'list': ['archived'], 'automation propose': ['remove'], 'incidents': ['since'], 'ui open': ['target'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' || w0 === 'list' ? w0 : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (w0 === 'incidents') {
@@ -237,6 +242,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   }
   if (verb === 'autopilot show' || verb === 'automation list') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
   if (verb === 'automation show') return w2 && /^[a-z0-9][a-z0-9-]{0,39}$/.test(w2) && !w3 ? { name: verb, id: w2 } : usage(verb)
+  if (verb === 'automation propose') return (!w2 || /^[a-z0-9][a-z0-9-]{0,39}$/.test(w2)) && !w3 && (w2 || !flags.remove) ? { name: verb, ...(w2 ? { id: w2 } : {}), ...(flags.remove ? { remove: true as const } : {}) } : usage(verb)
   if (w0 === 'tell') {
     const text = words.slice(2).join(' ').trim()
     const to = flags.to
@@ -453,7 +459,7 @@ b64() { base64 | tr -d '\\n'; }
 body='{"argv64":[' sep=
 for a in "$@"; do body="$body$sep\\"$(printf %s "$a" | b64)\\"" sep=,; done
 body="$body]"
-case "$route $1 $2 $3" in "pm/cli template edit"*|"alfred/cli project workflow edit") body="$body,\\"input64\\":\\"$(b64)\\"" ;; esac
+case "$route $1 $2 $3 $4" in "pm/cli template edit"*|"alfred/cli project workflow edit"*|"pm/cli automation propose"*) case " $* " in *" --remove "*) ;; *) body="$body,\\"input64\\":\\"$(b64)\\"" ;; esac ;; esac
 out=$(mktemp) hdr=$(mktemp) || exit 1
 code=$(printf '%s}' "$body" | curl -sS -D "$hdr" -o "$out" -w '%{http_code}' -X POST --data-binary @- \\
   -H 'content-type: application/json' -H "origin: $WHERDR_URL" -H "authorization: Bearer $tok" "$WHERDR_URL/api/$route")
@@ -568,7 +574,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     '## What you never do', '',
     `- change a guard (protected branches, who merges): the user does it in ${projectPlace(p.key, 'guards', true)};`,
     '- end a step that waits for the user unless they just told you so (`--user-said` with their words);',
-    '- edit the workflow on your own: only the user\'s request starts a proposal, and only their yes in wherdr saves it;',
+    '- edit the workflow or an automation on your own: only the user\'s request starts a proposal (`template edit`, `automation propose`), and only their yes in wherdr saves it;',
     '- pass a critical finding with proof, or a send-back whose next step is a guarded merge: those go to the user;',
     `- approve, merge${t?.guards?.contributorPrs ? ' (but a contributor\'s PR, below)' : ''}, change settings or your autopilot\'s limits; answer a permission request: those are the user\'s.`,
     ...(contributorPrsLine(t?.guards) ? ['', '## What you may do on the user\'s yes', '', contributorPrsLine(t?.guards)!] : []), '',
@@ -617,7 +623,7 @@ export function mainRoleFiles(projects: Pick<Project, 'key' | 'name' | 'path' | 
     'You act when the user asks you: you start or add a task only in their turn.', '',
     '### Projects', '', ...list, '',
     '### Commands (your token: every project)', '', ...commandList(), '',
-    'A task names its project (`WHR-12` is project WHR). `list` alone shows every project\'s tasks; `list`, `plan`, `template show`, `automation list`, `automation show` and `task add` take `--project <KEY>` for one project (`task add` needs it). `template edit` is not yours: the project\'s coordinator proposes a change to its workflow, the user accepts it. Guards are changed by the user in Settings › Projects, or by you with `wherdr alfred project guards` after their yes.',
+    'A task names its project (`WHR-12` is project WHR). `list` alone shows every project\'s tasks; `list`, `plan`, `template show`, `automation list`, `automation show` and `task add` take `--project <KEY>` for one project (`task add` needs it). `template edit` is not yours: the project\'s coordinator proposes a change to its workflow, the user accepts it. When the user asks for an automation (a task added on a schedule or an event), propose it with `automation propose --project <KEY>`: the user accepts or refuses it. Guards are changed by the user in Settings › Projects, or by you with `wherdr alfred project guards` after their yes.',
     'Every change you make is written to the task\'s log as the main coordinator\'s.', '',
     '### Project coordinators', '',
     'Each project may have its own coordinator. You reach it only through the board: add a task, a tag or a link it will see. There is no other channel, and you never type into its terminal.', '',

@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanAutomation, firesOn, firingTask, globMatch, taskEvents, type Automation } from '../shared/pm/automations'
+import { cleanAutomation, firesOn, firingTask, globMatch, scheduleWords, taskEvents, type Automation } from '../shared/pm/automations'
 import type { Task } from '../shared/pm/run'
 import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
@@ -22,7 +22,7 @@ vi.mock('../server/utils/pmLaunch', async orig => ({
 // The quota readings the pace reads; none by default (quota unknown).
 const quotas = vi.hoisted(() => ({ q: null as Quotas | null }))
 vi.mock('../server/utils/quotas', async orig => ({ ...(await orig<object>()), readQuotas: async () => quotas.q ?? { claude: null, codex: null } }))
-const { automationTick, fireAutomation } = await import('../server/utils/pmAutomations')
+const { answerAutomationProposal, automationTick, fireAutomation } = await import('../server/utils/pmAutomations')
 
 const at = (d: number, h = 0, mi = 0) => new Date(2026, 10, d, h, mi).getTime()
 const task = (id: string, more: Partial<Task> = {}): Task => ({ id, project: 'CO', title: 'Fix', description: '', type: 'feature', state: 'working', createdAt: 0, ...more })
@@ -135,6 +135,38 @@ describe('the engine', () => {
     expect(await cli(['automation', 'list'])).toMatchObject({ automations: ['off  clean  daily 04:17  Clean'] })
     expect(await cli(['automation', 'show', 'clean'])).toMatchObject({ automation: { prompt: 'Do it' } })
     await expect(cli(['automation', 'show', 'nope'])).rejects.toThrow('Unknown automation')
-    for (const verb of ['add', 'on', 'run', 'remove']) await expect(cli(['automation', verb, 'clean'])).rejects.toThrow(/only in wherdr, by the user/)
+    for (const verb of ['add', 'on', 'run', 'remove']) await expect(cli(['automation', verb, 'clean'])).rejects.toThrow(/Only the user switches/)
+  })
+
+  it('automation propose: refused in a wake; accepted, it applies; refused, nothing changes', async () => {
+    const token = await issueToken(store, 'CO')
+    const turn = async (kind: 'user' | 'wake') => store.saveCoordinator({ ...(await store.coordinator('CO'))!, turn: { kind, at: Date.now(), said: 'Clean the tests every weekday' } })
+    const propose = (argv: string[], input?: object) => runCommand(deps(), token, { argv: ['automation', 'propose', ...argv], ...(input ? { input: JSON.stringify(input) } : {}) })
+    const answer = async (accept: boolean) => answerAutomationProposal(deps(), 'CO', (await store.automations('CO')).proposals!.find(p => !p.outcome)!.id, accept)
+    await save([auto({ id: 'clean', name: 'Clean', schedule: 'daily 04:17', on: false, firings: [{ at: 1, by: 'user', task: 'CO-1' }] })])
+    await turn('wake')
+    await expect(propose([], { name: 'Docs', prompt: 'Check', event: 'merged' })).rejects.toThrow(/only in a turn that comes from the user/)
+    await turn('user')
+    await expect(propose([], { name: 'Docs', prompt: 'Check', type: 'nope', event: 'merged' })).rejects.toThrow(/type: one of/)
+    // New: accepted, it is added switched on.
+    expect(await propose([], { name: 'Docs check', prompt: 'Check the docs', event: 'merged', filter: 'docs*', on: false })).toMatchObject({ proposed: { action: 'add', by: 'CO', said: 'Clean the tests every weekday' } })
+    expect((await store.automations('CO')).automations).toHaveLength(1)
+    await answer(true)
+    expect((await store.automations('CO')).automations[1]).toMatchObject({ id: 'docs-check', on: true, event: 'merged', filter: 'docs*' })
+    // A change: refused, nothing changes; accepted, it keeps its switch and firings.
+    await propose(['clean'], { name: 'Clean', prompt: 'Remove dead tests', schedule: '0 9 * * 1-5' })
+    await answer(false)
+    expect((await store.automations('CO')).automations[0]).toMatchObject({ prompt: 'Do it', schedule: 'daily 04:17' })
+    await propose(['clean'], { name: 'Clean', prompt: 'Remove dead tests', schedule: '0 9 * * 1-5' })
+    await answer(true)
+    expect((await store.automations('CO')).automations[0]).toMatchObject({ prompt: 'Remove dead tests', on: false, firings: [{ task: 'CO-1' }] })
+    expect(scheduleWords('0 9 * * 1-5')).toBe('every weekday at 9:00')
+    // A removal; the outcomes stay for automation list.
+    await propose(['docs-check', '--remove'])
+    await answer(true)
+    expect((await store.automations('CO')).automations.map(a => a.id)).toEqual(['clean'])
+    await expect(answer(true)).rejects.toThrow()
+    expect((await runCommand(deps(), token, { argv: ['automation', 'list'] }) as { proposals: string[] }).proposals.map(l => l.split('  ').slice(0, 2).join(' ')))
+      .toEqual(['accepted add docs-check', 'refused change clean', 'accepted change clean', 'accepted remove docs-check'])
   })
 })
