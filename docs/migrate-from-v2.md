@@ -158,6 +158,12 @@ v2 is never touched. Once on, re-runs of the installer keep it.
 Nothing changes for v2: keep using its address (for example `https://<machine>.<tailnet>.ts.net:8103`).
 To stop v3 for a while: `systemctl --user stop wherdr-v3`; `start` brings it back.
 
+v3 is not a Herdr plugin and never replaces the v2 plugin. On a v3 commit, `herdr plugin install`
+and `herdr plugin update` of wherdr fail at the build, before changing anything: Herdr keeps the
+v2 plugin it had, and the build output says how to install v3. `herdr plugin install` with
+`--ref 2.x` installs v2 from its branch. The `curl … | sh` installer of the v3 tree installs
+nothing either: it prints the commands of [By hand](#by-hand).
+
 ## Uninstall v3
 
 ```sh
