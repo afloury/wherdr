@@ -2,8 +2,9 @@
 // A task type's workflow as a diagram, read only: each step a node with its
 // column, who holds it (agent and model from the prefs), how it ends, its
 // timeout and proofs, the guard where a merge happens, and one sentence
-// (describeStep). Coloured arrows: the path, the send-back loops, the steps
-// that wait for the user, the ones the engine runs. A square travels the path.
+// (describeStep). The cards snake across rows (one column on a phone); an SVG
+// layer behind them draws the arrows, coloured by who acts next, the send-back
+// loops, and a square travelling the path. Above them, the type's route in one line.
 import { planSteps, stepLabels, type PlannedStep } from '#shared/pm/steps'
 import { taskGuards } from '#shared/pm/actions'
 import { isProtected, mayMerge } from '#shared/pm/guards'
@@ -56,27 +57,102 @@ const nodes = computed(() => plan.value.map((s, i, all) => {
     ...(s.recheck ? [tl(`Checks again every ${s.recheck}`)] : []),
   ]
   const loop = s.ends === 'verdict' ? tl(`Sends back to ${s.sendBack}, up to ${s.rounds ?? DEFAULT_ROUNDS} rounds, then you decide`) : ''
-  return { s, kind, who, ends, guard, facts, loop, say: describeStep(s, tl, { first: i === 0, last }) }
+  // The step in a few words, for the route line; start and finish are left out.
+  const proofs = (s.evidence ?? []).map(e => tl(PROOF[e]).toLowerCase())
+  const short = s.holder === 'reviewer' && s.ends === 'verdict' ? tl(`Reviewer, up to ${s.rounds ?? DEFAULT_ROUNDS} rounds`)
+    : kind === 'agent' ? who[0] + (proofs.length ? tl(`, with ${proofs.join(', ')}`) : '')
+    : s.ends === 'user' ? tl(`You press “${stepLabels(s).button}”`)
+    : kind === 'engine' || kind === 'you' ? (a ? actionLabel(a, tl) : '') : ''
+  return { s, kind, who, ends, guard, facts, loop, short, say: describeStep(s, tl, { first: i === 0, last }) }
 }))
-// The send-back loops: from the verdict step back to its sendBack step, each in its own lane.
+// The send-back loops: from the verdict step (to) back to its sendBack step (from).
 const loops = computed(() => plan.value.flatMap((s, to) => {
   const from = s.ends === 'verdict' ? plan.value.findIndex(p => p.id === s.sendBack) : -1
   return from >= 0 && from < to ? [{ from, to }] : []
 }))
 const LEGEND: [Kind | 'loop', string][] = [['agent', 'An agent works'], ['engine', 'The engine acts'], ['you', 'Waits for you'], ['loop', 'Sent back'], ['edge', 'Start or finish']]
+const about = computed(() => props.workflow.taskTypes[props.type]?.instructions?.trim() ?? '')
+
+// Layout: as many columns as the width allows, the rows snaking (the second
+// one right to left), so each arrow goes to a neighbouring card.
+const board = ref<HTMLElement>()
+const width = ref(0)
+const cols = computed(() => Math.min(width.value >= 760 ? 3 : width.value >= 520 ? 2 : 1, Math.max(nodes.value.length, 1)))
+const rowOf = (i: number) => Math.floor(i / cols.value)
+const cell = (i: number) => {
+  const c = cols.value, r = rowOf(i), at = i % c
+  return { gridRow: r + 1, gridColumn: (r % 2 ? c - 1 - at : at) + 1 }
+}
+// Room for a loop drawn above the first row, or along the right side.
+const padTop = computed(() => cols.value > 1 && loops.value.some(l => rowOf(l.from) === 0 && rowOf(l.to) === 0))
+const padSide = computed(() => loops.value.some(l => rowOf(l.to) - rowOf(l.from) > 1))
+
+// The arrows, measured once the cards are laid out. They meet a card on its
+// title line (side arrows) or the middle of its edge (arrows down).
+const edges = ref<{ d: string, kind: Kind }[]>([])
+const backs = ref<string[]>([])
+const TITLE = 30
+function draw() {
+  const el = board.value
+  if (!el) return
+  const b = [...el.querySelectorAll<HTMLElement>('.wf-card')].map(c => ({ x: c.offsetLeft, y: c.offsetTop, w: c.offsetWidth, h: c.offsetHeight }))
+  if (b.length !== nodes.value.length) return
+  edges.value = b.slice(1).map((t, k) => {
+    const f = b[k]!
+    const d = Math.abs(f.y - t.y) < 2
+      ? (t.x > f.x ? `M${f.x + f.w} ${f.y + TITLE}H${t.x - 3}` : `M${f.x} ${f.y + TITLE}H${t.x + t.w + 3}`)
+      : `M${f.x + f.w / 2} ${f.y + f.h}V${t.y - 3}`
+    return { d, kind: nodes.value[k + 1]!.kind }
+  })
+  backs.value = loops.value.map(({ from, to }, n) => {
+    const v = b[to]!, t = b[from]!
+    if (rowOf(to) - rowOf(from) > 1) { // along the right side
+      const x = el.clientWidth - 8 - n * 8
+      return `M${v.x + v.w} ${v.y + TITLE + 10}H${x}V${t.y + TITLE + 10}H${t.x + t.w + 3}`
+    }
+    const vx = v.x + v.w * 0.3, tx = t.x + t.w * 0.3
+    if (rowOf(to) === rowOf(from)) { const y = Math.min(v.y, t.y) - 16 - n * 6; return `M${vx} ${v.y}V${y}H${tx}V${t.y - 3}` }
+    const y = (t.y + t.h + v.y) / 2 + n * 6 // through the gap between the two rows
+    return `M${vx} ${v.y}V${y}H${tx}V${t.y + t.h + 3}`
+  })
+}
+// The path of the travelling square: every arrow, one after the other.
+const trail = computed(() => edges.value.map(e => e.d).join(''))
+let ro: ResizeObserver | undefined
+onMounted(() => {
+  if (!board.value || typeof ResizeObserver === 'undefined') return
+  ro = new ResizeObserver(() => { width.value = board.value?.clientWidth ?? 0; draw() })
+  ro.observe(board.value)
+})
+onBeforeUnmount(() => ro?.disconnect())
+watch([nodes, cols], () => nextTick(draw))
+const uid = useId()
+const KINDS: Kind[] = ['agent', 'engine', 'you', 'edge']
 </script>
 
 <template>
   <div class="wf" data-testid="wf-diagram">
+    <p v-if="nodes.length" class="wf-route" data-testid="wf-route">
+      <template v-for="(n, i) in nodes.filter(x => x.short)" :key="n.s.id"><span v-if="i" class="wf-to" aria-hidden="true">→</span><span :class="`k-${n.kind}`">{{ n.short }}</span></template>
+    </p>
+    <p v-if="about" class="wf-about">{{ about }}</p>
     <ul class="wf-legend" :aria-label="tl('Legend')">
       <li v-for="[k, label] in LEGEND" :key="k" :class="`k-${k}`"><i aria-hidden="true" />{{ tl(label) }}</li>
     </ul>
-    <div class="wf-grid" :style="{ '--lanes': loops.length }">
+    <div ref="board" class="wf-board" :class="{ 'pad-top': padTop, 'pad-side': padSide, 'one-col': cols === 1 }" :style="{ '--cols': cols }">
+      <svg class="wf-lines" aria-hidden="true">
+        <defs>
+          <marker v-for="k in [...KINDS, 'loop']" :id="`${uid}-${k}`" :key="k" :class="`k-${k}`" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" /></marker>
+        </defs>
+        <path v-for="(e, i) in edges" :key="`e${i}`" :d="e.d" class="wf-edge" :class="`k-${e.kind}`" :marker-end="`url(#${uid}-${e.kind})`" />
+        <path v-for="(l, n) in loops" :key="`b${n}`" :d="backs[n] || ''" class="wf-back k-loop" :marker-end="`url(#${uid}-loop)`" />
+        <rect v-if="trail" class="wf-pulse" x="-4" y="-4" width="8" height="8"><animateMotion :dur="`${edges.length * 1.1}s`" repeatCount="indefinite" :path="trail" /></rect>
+      </svg>
       <ol class="wf-steps">
-        <li v-for="(n, i) in nodes" :key="n.s.id" class="wf-node" :class="`k-${n.kind}`" :style="{ '--row': i + 1 }" :data-step="n.s.id" data-testid="wf-node">
-          <span class="wf-rail" aria-hidden="true"><i /></span>
-          <div class="wf-card">
+        <li v-for="(n, i) in nodes" :key="n.s.id" class="wf-node" :class="`k-${n.kind}`" :data-step="n.s.id" data-testid="wf-node">
+          <div class="wf-card" :style="cell(i)">
             <div class="wf-head">
+              <span class="wf-n mono">{{ String(i + 1).padStart(2, '0') }}</span>
               <b class="mono">{{ n.s.id }}</b>
               <small class="mono-label">{{ n.s.column || n.s.id }}</small>
             </div>
@@ -91,40 +167,49 @@ const LEGEND: [Kind | 'loop', string][] = [['agent', 'An agent works'], ['engine
           </div>
         </li>
       </ol>
-      <span class="wf-pulse" :style="{ gridRow: `1 / ${nodes.length + 1}` }" aria-hidden="true"><i /></span>
-      <span v-for="(l, n) in loops" :key="n" class="wf-back" :style="{ gridRow: `${l.from + 1} / ${l.to + 1}`, gridColumn: 3 + n }" aria-hidden="true"><i /></span>
     </div>
   </div>
 </template>
 
 <style scoped>
-.wf { display: grid; gap: 12px; min-width: 0; }
-.wf-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; font: 11px/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-.wf-legend li { display: flex; align-items: center; gap: 6px; }
-.wf-legend i { width: 14px; height: 0; border-top: 2px solid var(--k); }
-.wf-legend .k-loop i { border-top-style: dashed; }
+.wf { display: grid; gap: 14px; min-width: 0; }
 .k-agent { --k: var(--working); }
 .k-engine { --k: var(--accent); }
 .k-you { --k: var(--blocked); }
 .k-edge { --k: var(--line-strong); }
 .k-loop { --k: var(--rose); }
 
-.wf-grid { display: grid; grid-template-columns: 28px minmax(0, 1fr) repeat(var(--lanes), 22px); position: relative; }
-.wf-steps { display: contents; }
-.wf-node { display: contents; }
-/* The arrow into each step, in its colour, ending on the step's square. */
-.wf-rail { grid-column: 1; grid-row: var(--row); position: relative; }
-.wf-rail::before { content: ''; position: absolute; left: 13px; top: 0; height: 16px; border-left: 2px solid var(--k); }
-.wf-rail::after { content: ''; position: absolute; left: 9px; top: 12px; border: 5px solid transparent; border-top-color: var(--k); }
-.wf-node:first-child .wf-rail::before, .wf-node:first-child .wf-rail::after { display: none; }
-.wf-rail i { position: absolute; left: 7px; top: 22px; width: 14px; height: 14px; border: 2px solid var(--k); background: var(--bg); }
-.wf-node.k-agent .wf-rail i, .wf-node.k-you .wf-rail i, .wf-node.k-engine .wf-rail i { background: var(--k); }
-.wf-rail { background: linear-gradient(var(--line), var(--line)) 13px 36px / 2px calc(100% - 36px) no-repeat; }
-.wf-node:last-child .wf-rail { background: none; }
-.wf-card { grid-column: 2; grid-row: var(--row); min-width: 0; margin: 0 0 14px 6px; padding: 10px 14px 12px; border: 1px solid var(--line); border-left: 3px solid var(--k); background: var(--bg-2); display: grid; gap: 6px; }
+/* The route: the steps in one line, each in its colour. */
+.wf-route { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0; padding: 12px 14px; border: 1px solid var(--line); background: var(--bg-2); font-size: 15px; line-height: 1.4; }
+.wf-route > span:not(.wf-to) { color: var(--text-strong); box-shadow: inset 0 -2px 0 var(--k); }
+.wf-to { color: var(--dim); font-family: var(--font-mono); }
+.wf-about { margin: 0; font-size: 14px; color: var(--text-2); }
+.wf-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; font: 11px/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.wf-legend li { display: flex; align-items: center; gap: 6px; }
+.wf-legend i { width: 14px; height: 0; border-top: 2px solid var(--k); }
+.wf-legend .k-loop i { border-top-style: dashed; }
+
+/* The board: a grid of cards over the arrows' layer. */
+.wf-board { position: relative; display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 44px 48px; min-width: 0; }
+.wf-board.one-col { gap: 30px; }
+.wf-board.pad-top { padding-top: 26px; }
+.wf-board.pad-side { padding-right: 26px; }
+.wf-steps, .wf-node { display: contents; }
+.wf-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 0; }
+.wf-lines marker path { fill: var(--k); }
+.wf-edge, .wf-back { fill: none; stroke: var(--k); stroke-width: 2; }
+.wf-back { stroke-dasharray: 6 5; animation: wf-flow 1.2s linear infinite; }
+.wf-pulse { fill: var(--accent); }
+@keyframes wf-flow { to { stroke-dashoffset: -22; } }
+@media (prefers-reduced-motion: reduce) { .wf-pulse { display: none; } .wf-back { animation: none; } }
+
+.wf-card { position: relative; z-index: 1; min-width: 0; padding: 10px 14px 12px; border: 1px solid var(--line); border-top: 3px solid var(--k); background: var(--bg-2); display: flex; flex-direction: column; gap: 6px; }
+/* Start and finish: compact, not stretched to their row's height. */
+.k-edge .wf-card { align-self: start; }
 .wf-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.wf-n { font-size: 11px; color: var(--k); }
 .wf-head b { font-size: 15px; color: var(--text-strong); }
-.wf-who { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 0; color: var(--k); }
+.wf-who { display: flex; flex-wrap: wrap; gap: 2px 10px; margin: 0; color: var(--k); }
 .wf-who .mono { font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
 .wf-ends { margin: 0; font-size: 14px; color: var(--text-2); overflow-wrap: anywhere; }
 .wf-ends .mono-label { margin-right: 4px; color: var(--muted); }
@@ -133,18 +218,5 @@ const LEGEND: [Kind | 'loop', string][] = [['agent', 'An agent works'], ['engine
 .wf-guard { color: var(--blocked); }
 .k-engine .wf-guard { color: var(--accent); }
 .wf-facts .wf-loop-fact { color: var(--rose); border-color: color-mix(in srgb, var(--rose) 50%, var(--line)); }
-.wf-say { margin: 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
-
-/* The send-back loop: from the verdict step's square up to the step it sends back to. */
-.wf-back { position: relative; --k: var(--rose); }
-.wf-back i { position: absolute; inset: 29px 8px -29px 0; border: 2px dashed var(--k); border-left: 0; }
-.wf-back i::before { content: ''; position: absolute; top: -6px; left: -2px; border: 5px solid transparent; border-right-color: var(--k); transform: translateX(-100%); }
-.wf-back::after { content: ''; position: absolute; right: 5px; width: 6px; height: 6px; background: var(--k); animation: wf-up 2.4s linear infinite; }
-
-/* A square travelling down the path, step after step. */
-.wf-pulse { grid-column: 1; position: relative; pointer-events: none; }
-.wf-pulse i { position: absolute; left: 10px; width: 8px; height: 8px; background: var(--accent); animation: wf-down 6s linear infinite; }
-@keyframes wf-down { from { top: 22px; opacity: 1; } 92% { opacity: 1; } to { top: calc(100% - 20px); opacity: 0; } }
-@keyframes wf-up { from { bottom: -26px; } to { bottom: calc(100% - 32px); } }
-@media (prefers-reduced-motion: reduce) { .wf-pulse, .wf-back::after { display: none; } }
+.wf-say { margin: auto 0 0; padding-top: 2px; font-size: 13px; line-height: 1.45; color: var(--muted); }
 </style>

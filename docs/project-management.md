@@ -171,7 +171,11 @@ starts with that line and a link to the Autopilot tab (who starts tasks and
 when).
 
 The project's own workflow, read only: pick a task type and its diagram shows
-how a task of that type runs. Each step is a node with its id, its board
+how a task of that type runs. A line on top gives its route in a few words
+(for example *Worker, with screenshots → Open a GitHub PR to v3 → Reviewer, up
+to 3 rounds → You press “Merge”*), so two types compare at a glance. The steps
+are cards laid out in rows that snake across the width (three per row on a
+computer, one column on a phone). Each step is a card with its id, its board
 column, who holds it (worker, reviewer or coordinator, with the agent and model
 from the project's agents; the engine; or you), how it ends (a report, a
 verdict, your button, or an action such as *Open a GitHub PR to v3* or *Merge

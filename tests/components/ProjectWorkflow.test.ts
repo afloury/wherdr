@@ -44,6 +44,8 @@ it('draws every step of each task type with its holder, agent and ending, the se
   ])
   expect(w.find('[data-testid="wf-loop"]').text()).toBe('Sends back to work, up to 3 rounds, then you decide')
   expect(w.findAll('.wf-back')).toHaveLength(1)
+  // The route line says how the types differ.
+  expect(w.find('[data-testid="wf-route"]').text()).toBe('Worker→Open a GitHub PR to v3→Reviewer, up to 3 rounds→Merge the GitHub PR')
   expect(w.find('[data-testid="wf-guard"]').text()).toBe('v3 is not protected: the engine merges')
 
   await w.find('[data-type="visual"]').trigger('click')
@@ -51,6 +53,7 @@ it('draws every step of each task type with its holder, agent and ending, the se
   expect(visual.map(n => n.id)).toEqual(['todo', 'work', 'pr', 'review', 'merge', 'done'])
   expect(visual[4]).toEqual({ id: 'merge', kind: 'k-you', who: 'You', ends: 'Ends Your button “Merge” → Merge the GitHub PR · squash · once smoke green' })
   expect(w.find('[data-step="work"]').text()).toContain('Screenshots')
+  expect(w.find('[data-testid="wf-route"]').text()).toBe('Worker, with screenshots→Open a GitHub PR to v3→Reviewer, up to 3 rounds→You press “Merge”')
 
   await w.find('[data-type="study"]').trigger('click')
   expect(nodes(w).map(n => n.id)).toEqual(['todo', 'work', 'done'])
