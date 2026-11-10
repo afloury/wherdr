@@ -31,8 +31,12 @@ else grep -a -z -o -m1 '^${MARK}.*' /proc/[0-9]*/environ 2>/dev/null | tr '\\0' 
   [ -n "$2" ] && for c in /proc/[0-9]*/cwd; do t=$(readlink "$c" 2>/dev/null) || continue; case "$t" in "$2"/*) c=\${c#/proc/}; printf 'p%s\\nn%s\\n' "\${c%/cwd}" "\${t% (deleted)}" ;; esac; done; fi`
 
 // TERM, then KILL for those still there after 3 s; fails when one is still
-// there after that (by ps: kill -0 fails on another user's; a zombie is gone).
-const KILL_FN = `alive() { s=$(ps -o stat= -p "$1" 2>/dev/null) || return 1; case "$s" in ''|*Z*) return 1 ;; esac; }
+// there after that. Gone only when kill says so (ESRCH) or ps shows a
+// zombie; any other answer (another user's, ps failing) counts as running.
+const KILL_FN = `alive() {
+e=$(LC_ALL=C kill -0 "$1" 2>&1) || case "$e" in *"No such process"*) return 1 ;; esac
+case "$(ps -o stat= -p "$1" 2>/dev/null)" in *Z*) return 1 ;; esac; return 0
+}
 kill_all() {
 kill -TERM "$@" 2>/dev/null
 for i in 1 2 3 4 5 6; do a=; for p; do alive "$p" && a=1; done; [ -z "$a" ] && return 0; sleep 0.5; done
@@ -47,9 +51,10 @@ kill_all "$@"`
 // Exit 3 when the folders could not be read or one is still running.
 export const KILL_UNDER = `${KILL_FN}
 d=$(cd "$dir" 2>/dev/null && pwd -P) || d=$dir
-if [ "$(uname -s)" = Darwin ]; then cwds=$(lsof -a -d cwd -Fpn 2>/dev/null)
-else cwds=$(for c in /proc/[0-9]*/cwd; do t=$(readlink "$c" 2>/dev/null) && c=\${c#/proc/} && printf 'p%s\\nn%s\\n' "\${c%/cwd}" "$t"; done); fi
-# This shell's own folder is always there: none read, nothing known.
+cwds=
+if [ "$(uname -s)" = Darwin ]; then cwds=$(lsof -a -d cwd -Fpn 2>/dev/null) || cwds=
+else [ -d /proc/self ] && cwds=$(for c in /proc/[0-9]*/cwd; do t=$(readlink "$c" 2>/dev/null) && c=\${c#/proc/} && printf 'p%s\\nn%s\\n' "\${c%/cwd}" "$t"; done); fi
+# This shell's own folder is always there: lsof failed or none read, nothing known.
 [ -n "$cwds" ] || { echo "the processes working in it could not be listed"; exit 3; }
 pids=$(printf '%s\\n' "$cwds" | awk -v d="$d" -v me=$$ '/^p/ {p=substr($0,2)} /^n/ {n=substr($0,2); sub(/ \\(deleted\\)$/,"",n); if ((n==d || index(n,d"/")==1) && p!=me) print p}')
 if [ -n "$pids" ]; then

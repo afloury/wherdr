@@ -158,10 +158,11 @@ describe('the orphan sweep', () => {
 
 // Before a worktree goes: macOS's lsof stood in for (uname, lsof on PATH).
 describe('the kill before a worktree is removed', () => {
-  const run = (lsof: string, prelude = '') => {
+  const run = (lsof: string, prelude = '', lsofCode = 0, ps = '') => {
     const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-kill-'))
     fs.writeFileSync(path.join(bin, 'uname'), '#!/bin/sh\necho Darwin\n', { mode: 0o755 })
-    fs.writeFileSync(path.join(bin, 'lsof'), `#!/bin/sh\nprintf '%s' '${lsof}'\n`, { mode: 0o755 })
+    fs.writeFileSync(path.join(bin, 'lsof'), `#!/bin/sh\nprintf '%s' '${lsof}'\nexit ${lsofCode}\n`, { mode: 0o755 })
+    if (ps) fs.writeFileSync(path.join(bin, 'ps'), `#!/bin/sh\n${ps}\n`, { mode: 0o755 })
     try {
       execFileSync('sh', ['-c', `${prelude}dir=/x/WH-1\n${KILL_UNDER}`], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8', timeout: 10_000 })
       return { code: 0 }
@@ -169,11 +170,16 @@ describe('the kill before a worktree is removed', () => {
     finally { fs.rmSync(bin, { recursive: true, force: true }) }
   }
   it('stops when the folders cannot be read, or a process there survives', () => {
-    expect(run('')).toEqual({ code: 3, out: 'the processes working in it could not be listed\n' })
+    const unlisted = { code: 3, out: 'the processes working in it could not be listed\n' }
+    expect(run('')).toEqual(unlisted)
+    expect(run('p1\nfcwd\nn/\n', '', 2)).toEqual(unlisted) // lsof failed after one record
     const stuck = spawn('sleep', ['30'], { stdio: 'ignore' })
     try {
       // kill does nothing: the process survives, nothing counted as killed.
-      expect(run(`p${stuck.pid}\nfcwd\nn/x/WH-1/src\n`, 'kill() { :; }\n')).toEqual({ code: 3, out: 'a process working in it could not be killed\n' })
+      const survived = { code: 3, out: 'a process working in it could not be killed\n' }
+      expect(run(`p${stuck.pid}\nfcwd\nn/x/WH-1/src\n`, 'kill() { :; }\n')).toEqual(survived)
+      // Signals refused and ps failing: unknown, so still running.
+      expect(run(`p${stuck.pid}\nfcwd\nn/x/WH-1/src\n`, 'kill() { echo "kill: Operation not permitted" >&2; return 1; }\n', 0, 'exit 2')).toEqual(survived)
     } finally { stuck.kill('SIGKILL') }
-  })
+  }, 20_000) // each survivor waits out TERM then KILL (~3.5 s)
 })
