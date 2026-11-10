@@ -106,6 +106,9 @@ DATA_DIR=/path/to/data node scripts/fetch-dictation-files.mjs
 | `canary` | 207 MB | Canary 180M, the iPhone's default: French, English, German, Spanish (the device's language, not detected) |
 | `sensevoice` | 237 MB | SenseVoice, lighter, no French (Chinese, English, Japanese, Korean, Cantonese) |
 | `ort` | 59 MB | onnxruntime-web 1.23.2, in `models/runtime/`, for WebGPU models only |
+| `tts-siwis-medium` | 64 MB | Siwis, the French neural read-aloud voice (preparation for an on-device voice) |
+| `tts-cori-medium` | 64 MB | Cori, the English (UK) neural read-aloud voice |
+| `tts-mls-medium` | 78 MB | MLS, a fallback French voice |
 
 Name sets to choose (`… fetch-dictation-files.mjs runtime ort`), or `all`. Every file has a fixed
 URL and a sha256: a file that does not match is never kept. Run it again after an interruption:
@@ -115,8 +118,11 @@ survives updates; delete it to free the space. Dictation through a cloud service
 
 ## Updating
 
-v3 has no update check, banner or one-tap update (Settings › About shows `v3 · herdr-core`). To
-update, in the checkout:
+Settings › About shows the version that runs, with the commit it was built from
+(`wherdr 3.0.0+1a2b3c4 · herdr-core`). Once a day wherdr checks GitHub for a newer 3.x release and
+the home screen shows a banner when there is one: never a 2.x release (v2 keeps its own updates),
+nor the next major version. `WHERDR_UPDATE_CHECK=off` turns the check off. There is no one-tap
+update: to update, in the checkout:
 
 ```sh
 git pull

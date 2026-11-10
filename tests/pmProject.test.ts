@@ -10,7 +10,7 @@ import { guardsAuthor, saveProjectGuards, saveProjectWorkflow, templateFromProje
 import { common, company, vibe } from '../shared/pm/examples'
 import { templateDiff } from '../shared/pm/coordinator'
 import { startOverFrom } from '../shared/pm/workflow'
-import { machineNamed } from '../shared/pm/project'
+import { machineNamed, machinesOf, pausedEverywhere, taskMachine } from '../shared/pm/project'
 
 let dir = '', store: ReturnType<typeof createPmStore>
 const guards = { protected: ['main', 'release'], merge: { protected: 'user' as const, others: 'user' as const } }
@@ -30,6 +30,22 @@ describe('machineNamed', () => {
     const p = { machine: '', machines: ['b'] }, known = [{ key: '', label: 'machine-a' }, { key: 'b', label: 'machine-b' }, { key: 'c', label: 'machine-c' }]
     expect([machineNamed(p, known, 'Machine-B'), machineNamed(p, known, 'b')]).toEqual([{ machine: 'b' }, { machine: 'b' }])
     expect(machineNamed(p, known, 'machine-c')).toEqual({ refused: 'No machine named machine-c among the project\'s: machine-a, machine-b' })
+  })
+})
+
+describe('a machine paused for a project', () => {
+  const p = { machine: '', machines: ['b', 'c'], paused: ['', 'b'] }
+  it('takes no new task: placement skips it, a start on it is refused with why, a task started there goes on', () => {
+    expect(taskMachine({}, p)).toEqual({ machine: 'c' })
+    expect(taskMachine({}, p, 'b')).toEqual({ refused: 'This machine is paused for this project: switch it on in the project\'s settings' })
+    expect(taskMachine({ machine: 'b' }, p)).toEqual({ machine: 'b' })
+    expect(taskMachine({}, { ...p, paused: ['', 'b', 'c'] })).toEqual({ refused: 'Every machine of the project is paused for this project: switch one on in the project\'s settings' })
+  })
+  it('stays paused while allowed, and shows as paused everywhere only when every project allowing it has it paused', () => {
+    expect(machinesOf({ ...p, clones: { b: '~/b', c: '~/c' } }, { machines: ['c'] }).paused).toEqual([''])
+    expect(pausedEverywhere([p, { machine: 'x' }], 'b')).toBe(true)
+    expect(pausedEverywhere([p, { machine: 'x', machines: ['b'] }], 'b')).toBe(false)
+    expect(pausedEverywhere([p], 'z')).toBe(false)
   })
 })
 
@@ -70,6 +86,14 @@ describe('project settings', () => {
   it('changes the name, base and agents', async () => {
     expect(await updateProject(store, 'CO', { name: 'Co', base: 'develop', prefs: { agent: 'codex', model: '' } })).toMatchObject({ project: { name: 'Co', base: 'develop' } })
     expect((await store.workflow('CO'))!.prefs).toEqual({ agent: 'codex' })
+    // The worktree setup: empty fields dropped, all empty removes it, a bad path refused.
+    await updateProject(store, 'CO', { worktree: { copy: ['.env'], share: [], command: 'npm ci', timeout: '' } })
+    expect((await store.workflow('CO'))!.worktree).toEqual({ copy: ['.env'], share: [], command: 'npm ci' }) // share [] kept: none
+    await updateProject(store, 'CO', { worktree: { copy: [], command: 'npm ci' } })
+    expect((await store.workflow('CO'))!.worktree).toEqual({ command: 'npm ci' }) // no share: node_modules
+    await expect(updateProject(store, 'CO', { worktree: { copy: ['../secret'] } })).rejects.toThrow(/worktree\.copy/)
+    await updateProject(store, 'CO', { worktree: { copy: [], command: '' } })
+    expect((await store.workflow('CO'))!.worktree).toBeUndefined()
     expect((await updateProject(store, 'CO', { base: '' })).project).not.toHaveProperty('base')
     await expect(updateProject(store, 'CO', { base: 'a..b' })).rejects.toThrow('base: invalid branch name')
   })
@@ -92,12 +116,13 @@ describe('project settings', () => {
     await expect(templateFromProject(store, 'CO', 'common')).rejects.toThrow('A template already has this id')
   })
 
-  it('previews a start over: the kept guards are not in the diff, only what changes', () => {
-    const own = { ...company, id: 'co', guards }
+  it('previews a start over: the kept guards and worktree setup are not in the diff, only what changes', () => {
+    const own = { ...company, id: 'co', guards, worktree: { copy: ['.env'] } }
     const next = { ...startOverFrom(vibe, own), id: 'co' }
     expect(next.guards).toEqual(guards)
+    expect(next.worktree).toEqual(own.worktree)
     const diff = templateDiff(own, next).split('\n')
-    expect(diff.some(l => l.includes('"release"') || l.includes('"guards"'))).toBe(false)
+    expect(diff.some(l => l.includes('"release"') || l.includes('"guards"') || l.includes('"worktree"'))).toBe(false)
     expect(diff).toContain('-   "instructions": "Base branch is develop.",')
     expect(diff.every(l => /^[-+] /.test(l))).toBe(true)
     expect(diff.some(l => l.includes('"prefs"'))).toBe(false) // same prefs, another key order

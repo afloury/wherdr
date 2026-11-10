@@ -2,6 +2,7 @@
 // projects, four agents and a dev server. Everything here is fiction, in
 // English, with no real path, machine, person or conversation.
 import type { ChatItem, ModelInfo, OmpToolView, Pane, Quotas, Tab, Workspace } from '#shared/types'
+import type { TaskAgent } from '#shared/pm/taskAgents'
 
 export const HOME = '/Users/demo'
 const REPO = `${HOME}/code/acme-api`
@@ -55,12 +56,19 @@ const pane = (p: Partial<Pane> & Pick<Pane, 'id' | 'workspace' | 'agent' | 'cwd'
 export function panes(now: number): Pane[] {
   return [
     pane({ id: COORD, workspace: 'w1', agent: 'claude', cwd: `${HOME}/.herdr-projects/data/coordinator/default/chat`, status: 'idle', model: MODELS.claude, stateSeq: 4, bornAt: now - 3600_000, preview: 'ACME-API-12 and ACME-API-13 are under way. I will tell you when one is ready to review.' }),
-    pane({ id: CODEX, workspace: 'w2', agent: 'codex', cwd: `${WT}/acme-api-12-rate-limits`, status: 'working', model: MODELS.codex, stateSeq: 7, bornAt: now - 1800_000 }),
-    pane({ id: OMP, workspace: 'w3', agent: 'omp', cwd: `${WT}/acme-api-13-flaky-export`, status: 'blocked', model: MODELS.omp, stateSeq: 9, bornAt: now - 1500_000, prompt: approval('npm test -- export.spec.ts --repeat 20') }),
+    pane({ id: CODEX, workspace: 'w2', agent: 'codex', cwd: `${WT}/acme-api-12-rate-limits`, status: 'working', model: MODELS.codex, stateSeq: 7, bornAt: now - 1800_000, coreAddress: 'demo/codex', since: now - 8 * 60_000 }),
+    pane({ id: OMP, workspace: 'w3', agent: 'omp', cwd: `${WT}/acme-api-13-flaky-export`, status: 'blocked', model: MODELS.omp, stateSeq: 9, bornAt: now - 1500_000, coreAddress: 'demo/omp', task: 'ACME-API-13', role: 'worker', since: now - 2 * 60_000, prompt: approval('npm test -- export.spec.ts --repeat 20') }),
     pane({ id: CLAUDE_WEB, workspace: 'w4', agent: 'claude', cwd: WEB, status: 'done', model: MODELS.claude, stateSeq: 8, bornAt: now - 2400_000 }),
     pane({ id: DEV_SERVER, workspace: 'w4', agent: null, cwd: WEB, command: 'npm run dev', status: null, agentSession: null }),
   ]
 }
+
+// The task agents' rows (GET /api/pm/agents): Codex on its task (by address),
+// omp fixing red CI (by its task and role labels, as after a restart).
+export const taskAgents = (): Record<string, TaskAgent> => ({
+  'demo/codex': { task: 'ACME-API-12', shown: 'ACME-API-12', title: 'Per-key rate limits on the public API', role: 'dev' },
+  'ACME-API-13#worker': { task: 'ACME-API-13', shown: 'ACME-API-13', title: 'Fix the flaky CSV export test', role: 'fix' },
+})
 
 // omp's tool approval dialog, as wherdr reads it from the screen.
 export function approval(command: string): NonNullable<Pane['prompt']> {

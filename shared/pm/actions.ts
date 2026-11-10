@@ -3,14 +3,14 @@
 // Pure: the server runs the scripts on the project's machine (pmActions.ts).
 import { combineGuards, isProtected, mayMerge, type ResolvedGuards } from './guards'
 import { projectPlace } from './places'
-import { actionField, type MergeBy, type StepAction, type Template } from './workflow'
+import { actionField, isPrMerge, type MergeBy, type StepAction, type Template } from './workflow'
 
 // The guards of a task: the project's, hardened by its task type.
 export const taskGuards = (t: Template, type: string) =>
   combineGuards([{ source: 'project', guards: t.guards }, { source: 'task-type', guards: t.taskTypes[type]?.guards }])
 
 // Why the action may not run, or undefined. `by`: 'user' when the user's
-// gesture started it, else 'engine'. `base`: the PR's base, for github.merge.
+// gesture started it, else 'engine'. `base`: the PR's base, for a PR merge.
 // `project`: the task's, for where its working branch is set.
 export function guardAction(g: ResolvedGuards, a: StepAction, ctx: { branch: string, by: MergeBy, base?: string, project?: string }): string | undefined {
   const onlyYou = (b: string) => `${b} is protected: only you may merge into it`
@@ -18,7 +18,7 @@ export function guardAction(g: ResolvedGuards, a: StepAction, ctx: { branch: str
   if (f && !a[f]) return `${a.kind} has no branch: name one in the step, or set the project's working branch in ${projectPlace(ctx.project)}`
   if (a.kind === 'git.land' && !mayMerge(g, a.target!, ctx.by)) return onlyYou(a.target!)
   if ((a.kind === 'git.push' || a.kind === 'github.pr') && isProtected(g, ctx.branch)) return `${ctx.branch} is protected: the engine never pushes to it`
-  if (a.kind === 'github.merge' && ctx.base !== undefined && !mayMerge(g, ctx.base, ctx.by)) return onlyYou(ctx.base)
+  if (isPrMerge(a.kind) && ctx.base !== undefined && !mayMerge(g, ctx.base, ctx.by)) return onlyYou(ctx.base)
 }
 
 // Exit codes the scripts use. SEND_BACK: the agent has to fix it (conflict,
@@ -31,6 +31,8 @@ const IN = 'cd "$1" || exit 1; shift;'
 // Does merged PR head $p hold HEAD ($h)? A head pushed from elsewhere is fetched first.
 const HOLDS = `{ [ "$p" = "$h" ] || { git cat-file -e "$p^{commit}" 2>/dev/null || git fetch -q origin "$p" 2>/dev/null; git merge-base --is-ancestor "$h" "$p" 2>/dev/null; }; }`
 const CLEAN = `[ -z "$(git status --porcelain)" ] || { echo "uncommitted changes: commit them, then say you are done"; exit ${CODE.SEND_BACK}; };`
+// The files that change the interface, at any depth (app/components, pages…).
+const UI_FILES = ['components', 'assets', 'pages', 'layouts'].map(d => `':(glob)**/${d}/**'`).join(' ')
 export const SCRIPT = {
   // Catch up with the target, then push the task branch onto it.
   land: `${IN} ${CLEAN} t=$1
@@ -67,7 +69,7 @@ echo "\${cur#* }"`,
   // else its latest merged one, marked stray too: the step ends merged, saying
   // the task's commit is not in it.
   prInfo: `${IN} h=$(git rev-parse HEAD) || exit 1; echo "$h"
-j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup 2>&1) || { echo "$j"; exit 1; }
+j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup,files,additions,deletions 2>&1) || { echo "$j"; exit 1; }
 j=$(echo "$j" | tail -1)
 if [ "$j" = "[]" ]; then
   m=$(gh pr list --head "$1" --state merged --json url,baseRefName,headRefOid -q '.[] | .headRefOid+" "+(. + {merged: true} | tojson)' 2>&1) || { echo "$m"; exit 1; }
@@ -78,6 +80,8 @@ EOF
   if [ "$j" = "[]" ] && [ -n "$pj" ]; then j="[$(echo "\${pj#* }" | sed 's/}$/,"stray":true}/')]"; fi
 fi
 echo "$j"`,
+  // The branch's latest PR closed without a merge (--state closed lists merged ones too): its link.
+  prClosed: `${IN} gh pr list --head "$1" --state closed --json url,state -q '[.[] | select(.state == "CLOSED")][0].url // empty' 2>&1`,
   // The step's method ($3), else the first the repo allows: merge commit, squash, rebase.
   merge: `${IN} m=$3; [ -n "$m" ] || m=$(gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed -q 'if .mergeCommitAllowed then "merge" elif .squashMergeAllowed then "squash" else "rebase" end' 2>&1) || { echo "$m"; exit 1; }
 gh pr merge "$1" "--$m" --match-head-commit "$2" 2>&1 || exit 1; echo "$1"`,
@@ -112,14 +116,60 @@ echo "$why"; exit ${CODE.NOT_MERGED}`,
 if ! git merge -q --no-edit "origin/$1" >/dev/null 2>&1; then
   f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict with $1 in $f"; exit ${CODE.SEND_BACK}; fi
 git push -q origin "HEAD:refs/heads/$2" 2>&1 || exit 1; git rev-parse HEAD`,
+  // A push refused because the task branch ($1) is behind its remote: the
+  // worktree takes the remote's commits (a fast-forward, else a merge), to push again.
+  sync: `${IN} ${CLEAN} git fetch -q origin "$1" 2>&1 || exit 1
+if git merge-base --is-ancestor HEAD FETCH_HEAD; then git merge -q --ff-only FETCH_HEAD 2>&1 || exit 1; echo "fast-forwarded to origin/$1"; exit 0; fi
+if ! git merge -q --no-edit FETCH_HEAD >/dev/null 2>&1; then
+  f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict with origin/$1 in $f"; exit ${CODE.SEND_BACK}; fi
+echo "merged origin/$1"`,
   // Where the PR head ($1) stands against the task's commit: same; behind (in
   // its history: the task's later commits are not pushed yet); or foreign (a
   // commit the task's worktree never had: pushed from elsewhere).
   headOf: `${IN} p=$1; git cat-file -e "$p^{commit}" 2>/dev/null || git fetch -q origin "$p" 2>/dev/null
 if [ "$(git rev-parse HEAD)" = "$p" ]; then echo same; elif git merge-base --is-ancestor "$p" HEAD 2>/dev/null; then echo behind; else echo foreign; fi`,
+  // The remote task branch's tip ($1), as origin has it now: empty when it has none.
+  remoteHead: `${IN} r=$(git ls-remote origin "refs/heads/$1" 2>&1) || { echo "$r"; exit 1; }; echo "$r" | cut -f1`,
   // Runs again the failed or cancelled workflow runs of a commit.
   rerun: `${IN} ids=$(gh run list --commit "$1" --json databaseId,conclusion -q '.[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .conclusion != "") | .databaseId' 2>&1) || { echo "$ids"; exit 1; }
 for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
+  // pipeline.watch, github: the runs of branch $1's tip now (asked of the
+  // remote: a run listed by branch may be the previous commit's, its own not
+  // registered yet), else of the task's commit; only workflow $2 when named.
+  ghRuns: `${IN} if [ -n "$1" ]; then v=$(git ls-remote -q origin "refs/heads/$1" 2>&1) || { echo "$v"; exit 1; }; v=\${v%%[[:space:]]*}
+  [ -n "$v" ] || { echo "no branch $1 on origin"; exit 1; }; else v=$(git rev-parse HEAD) || exit 1; fi
+gh run list --commit "$v" \${2:+--workflow "$2"} --limit 30 --json databaseId,workflowName,status,conclusion,headSha,url 2>&1`,
+  // The failed jobs of run $1, then the tail of their logs.
+  ghFailed: `${IN} gh run view "$1" --json jobs -q '.jobs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral") | .name' 2>&1 | head -5 | paste -sd ',' -
+gh run view "$1" --log-failed 2>&1 | tail -n 20`,
+  // pipeline.watch, command: the step's command, in the worktree; its exit code is the answer.
+  watchCommand: `${IN} sh -c "$1" 2>&1`,
+  // The failed jobs' log at the commit, for a red-CI nudge (blocked.ts): its last lines.
+  failedLog: `${IN} for i in $(gh run list --commit "$1" --json databaseId,conclusion -q '.[] | select(.conclusion == "failure") | .databaseId' 2>/dev/null); do gh run view "$i" --log-failed 2>/dev/null | tail -n 400; done`,
+  // Did the task's own interface change move from commit $2 to $3? Each one's
+  // diff from where it left base $1, interface files only, line numbers left
+  // out: what a merge of the base brought does not count. "same" or "changed".
+  uiChanged: `${IN} git fetch -q origin "$1" 2>/dev/null; b="origin/$1"
+for c in "$2" "$3"; do git cat-file -e "$c^{commit}" 2>/dev/null || git fetch -q origin "$c" 2>/dev/null; done
+own() { m=$(git merge-base "$b" "$1") && git diff -U0 --no-color --no-ext-diff "$m" "$1" -- ${UI_FILES} | sed '/^index /d; /^@@/d'; }
+x=$(own "$2") && y=$(own "$3") || exit 1
+[ "$x" = "$y" ] && echo same || echo changed`,
+  head: `${IN} git rev-parse HEAD`,
+  // One Bitbucket Cloud API call on origin's repository: method ($1), path
+  // ($2), then a query (GET) or a JSON body. Credentials from the machine's
+  // environment, passed to curl on stdin (never on its command line). Prints
+  // the body, then the HTTP status; a server error or rate limit fails, to be
+  // tried again.
+  bitbucket: `${IN} r=$(git remote get-url origin | sed -nE 's#^.*bitbucket\\.org[:/]([^/]+/[^/]+)$#\\1#p' | sed 's/\\.git$//')
+[ -n "$r" ] || { echo "origin is not a Bitbucket Cloud repository"; exit 1; }
+if [ -n "$BITBUCKET_USERNAME" ]; then auth="user = \\"$BITBUCKET_USERNAME:\${BITBUCKET_APP_PASSWORD:-$BITBUCKET_TOKEN}\\""
+elif [ -n "$BITBUCKET_TOKEN" ]; then auth="header = \\"Authorization: Bearer $BITBUCKET_TOKEN\\""
+else echo "no Bitbucket credentials: set BITBUCKET_TOKEN, or BITBUCKET_USERNAME and BITBUCKET_APP_PASSWORD, on this machine"; exit 1; fi
+if [ "$1" = GET ]; then g=-G; d=--data-urlencode; else g=; d=--data; fi
+o=$(printf '%s\\n' "$auth" | curl -sS -K - -X "$1" $g -H 'Content-Type: application/json' "$d" "$3" -w '\\n%{http_code}' "\${BITBUCKET_API:-https://api.bitbucket.org/2.0}/repositories/$r$2" 2>&1) || { printf '%s\\n' "$o"; exit 1; }
+c=$(printf '%s\\n' "$o" | tail -1)
+case $c in 429) echo "rate limit"; exit 1;; 5*) echo "HTTP $c"; exit 1;; esac
+printf '%s\\n' "$o"`,
   // Remote branches holding the task's commit, for the protected-branch alert.
   contains: `${IN} git fetch -q origin 2>&1 || exit 1; git branch -r --contains HEAD --format='%(refname:short)'`,
 }
@@ -127,7 +177,7 @@ for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
 export interface Check { name?: string, context?: string, status?: string, conclusion?: string, state?: string }
 // merged: no PR open, this one of the branch is merged already and holds the
 // task's commit; stray: merged, but at a head without the task's commit.
-export interface PrInfo { url: string, baseRefName: string, headRefOid: string, statusCheckRollup?: Check[], merged?: boolean, stray?: boolean }
+export interface PrInfo { url: string, baseRefName: string, headRefOid: string, mergeStateStatus?: string, statusCheckRollup?: Check[], merged?: boolean, stray?: boolean, files?: { path: string }[], additions?: number, deletions?: number }
 
 export const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
 // May the open PR be merged now? Its head must be the task's commit, every
@@ -146,12 +196,48 @@ export function prReady(pr: PrInfo | undefined, head: string, required: string[]
   return { ok: true }
 }
 
+// pipeline.watch, github: where the runs of one commit stand. None yet (CI
+// not started) or one not completed: running. Each green: done. Else the first
+// that failed. All are of one commit (ghRuns); a stray other is left out.
+export interface GhRun { databaseId: number, workflowName?: string, status: string, conclusion: string, headSha: string, url: string }
+const RUN_OK = ['success', 'skipped', 'neutral']
+export function runsState(all: GhRun[]): { state: 'running' } | { state: 'done', link: string } | { state: 'failed', run: GhRun } {
+  const runs = all.filter(r => r.headSha === all[0]?.headSha)
+  if (!runs.length || runs.some(r => r.status !== 'completed')) return { state: 'running' }
+  const bad = runs.find(r => !RUN_OK.includes(r.conclusion))
+  return bad ? { state: 'failed', run: bad } : { state: 'done', link: runs[0]!.url }
+}
+
+// pipeline.watch, command: exit 0 done, 1 failed, 2 still running; the output
+// is the proof. Timed out (code null): still running, the step's timeout decides.
+export function commandState(code: number | null, out: string): ActionResult {
+  const tail = out.trim().split('\n').slice(-20).join('\n').slice(-2000)
+  if (code === 0) return { ok: true, report: tail || 'done' }
+  if (code === 2 || code === null) return { ok: false, later: true }
+  return { ok: false, error: `pipeline: the command failed${code === 1 ? '' : ` (exit code ${code})`}`, ...(tail ? { detail: tail } : {}) }
+}
+
+// Bitbucket Cloud: the merge strategy of a method, a merge commit by default
+// (a squash makes a new commit, which git.verify-merged would not find).
+export const BB_STRATEGY = { merge: 'merge_commit', squash: 'squash', rebase: 'rebase_merge' } as const
+export interface BbStatus { key?: string, name?: string, state?: string }
+// May the PR be merged, from its commit's build statuses? As prReady: every
+// one green, each required one (by name or key) there; running means later.
+export function bbReady(statuses: BbStatus[], required: string[] = []): { ok: true } | { ok: false, later?: boolean, why: string } {
+  const absent = required.filter(n => !statuses.some(c => c.name === n || c.key === n))
+  if (absent.length) return { ok: false, later: true, why: `waiting for check ${absent.join(', ')}` }
+  if (statuses.some(c => c.state === 'INPROGRESS')) return { ok: false, later: true, why: 'checks still running' }
+  const red = statuses.filter(c => c.state !== 'SUCCESSFUL')
+  if (red.length) return { ok: false, why: `${red.length} check(s) failed` }
+  return { ok: true }
+}
+
 // Errors that pass by themselves: a git host refusing a push for a while,
 // a branch policy not yet updated, a server error, the network.
 const TRANSIENT = [
   /commit_refs/i, /base branch policy prohibits the merge/i, /HTTP 5\d\d/, /\b50[234]\b/, /bad gateway|service unavailable/i,
   /could not resolve host/i, /connection (reset|refused|timed out)/i, /operation timed out/i, /remote end hung up/i,
-  /RPC failed|early EOF/i, /cannot lock ref/i, /\(fetch first\)/i, /rate limit/i,
+  /RPC failed|early EOF/i, /cannot lock ref/i, /rate limit/i,
 ]
 // code null = the command timed out. A send-back or not-merged answer is
 // final, whatever its text (a file named 502.vue).
@@ -167,9 +253,13 @@ export function leaks(g: ResolvedGuards, remoteBranches: string[], allowed: stri
 
 // Written before an action runs, completed after. One per attempt: an action
 // is never run twice for one receipt, and one found 'pending' after a restart
-// becomes 'uncertain' instead of being run again blindly.
+// becomes 'uncertain' instead of being run again blindly. Except a merge: it
+// asks GitHub first (merged, closed, open), and is run again up to twice (resumes).
 // note: a line for the task's log.
 // review: new commits since the reviewed one, to review before the merge.
-export interface ActionResult { ok: boolean, error?: string, toAgent?: boolean, review?: { since: string, head: string }, link?: string, commit?: string, alert?: string, note?: string }
-export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain', result?: ActionResult, at: number }
+// later: a pipeline still running, polled again. report: a watch's output, its
+// proof. detail: what a failed watch printed, for the log and the coordinator.
+// catchUp: the PR's base, when the merge is refused because the PR conflicts with or is behind it.
+export interface ActionResult { ok: boolean, later?: boolean, report?: string, detail?: string, error?: string, toAgent?: boolean, review?: { since: string, head: string }, catchUp?: string, unapproved?: true, link?: string, commit?: string, alert?: string, note?: string }
+export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain', result?: ActionResult, at: number, by?: MergeBy, resumes?: number }
 export const receiptId = (task: string, step: string, attempt: number) => `${task}.${attempt}.${encodeURIComponent(step)}`

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The project sheet's Workflow tab, read only: a task type picked, its
-// diagram (WorkflowDiagram), the JSON to read and copy, and the way to change
+// chart (WorkflowChart), the JSON to read and copy, and the way to change
 // it: ask the project's coordinator, whose proposal the user accepts or
 // refuses (ProposalReview). The ⋯ menu (menu(), shown by the sheet) holds the
 // change log and Save as template. A project without a workflow starts from a
@@ -88,7 +88,7 @@ defineExpose({ menu })
         <span v-else class="mono-label">{{ tl(`Task type ${type}`) }}</span>
         <UButton size="lg" color="neutral" variant="outline" icon="i-lucide-braces" data-testid="wf-json-open" @click="dialog = 'json'">{{ tl('JSON') }}</UButton>
       </div>
-      <WorkflowDiagram v-if="type" :workflow="workflow" :type="type" :base="project.base" :coordinator="coordinator && coordinatorAgent(coordinator)?.program" />
+      <WorkflowChart v-if="type" :workflow="workflow" :type="type" :base="project.base" :coordinator="coordinator && coordinatorAgent(coordinator)?.program" />
       <div class="settings-card wf-ask">
         <p>{{ tl('To create or change a workflow, ask the project’s coordinator (or Alfred). You accept or refuse its proposal here.') }}</p>
         <UButton size="lg" color="primary" icon="i-lucide-message-square" :loading="busy === 'ask'" :disabled="!coordinator || busy !== ''" data-testid="wf-ask" @click="ask">{{ tl('Ask the coordinator') }}</UButton>
