@@ -8,6 +8,7 @@ import { PROJECT_TABS, projectPlace as projectSheet, type ProjectTab } from './p
 import type { Turn } from './pm/coordinator'
 import { projectOf, shownKey, storedTaskId } from './pm/projectKey'
 import type { Project } from './pm/project'
+import { UI_TARGETS, uiTarget as settingTarget } from './uiTargets'
 
 // The coordinator's project: its fixed key, the key it shows, its former keys.
 export type OwnProject = Pick<Project, 'key'> & { label?: string, aliases?: string[] }
@@ -95,7 +96,8 @@ export function uiOpenRefusal(link: string | null, turn: Turn, own: OwnProject, 
   return null
 }
 
-// What the card names: "Settings › Phone", "Task WHR-12", "Board › WHR › ui".
+// What the card names: "Settings › Phone", "Settings › Phone › App start"
+// (a target), "Task WHR-12", "Board › WHR › ui".
 // A chat's in-app link shows it too, after "Open" (utils/markdown.ts).
 export function uiPlaceLabel(link: string): string {
   const [path, qs = ''] = link.slice(1).split('?')
@@ -103,6 +105,8 @@ export function uiPlaceLabel(link: string): string {
   const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1).replace(/-/g, ' ')
   if (path === '/settings') {
     const section = q.get('section') ?? '', project = q.get('project'), tab = q.get('tab') ?? ''
+    const target = settingTarget(q.get('target'))
+    if (target) return `Settings › ${UI_TARGETS[target].label}`
     if (section === 'projects') return projectSheet(project ?? undefined, (PROJECT_TABS as readonly string[]).includes(tab) ? tab as ProjectTab : 'general')
     if (section === 'pacing') return 'Settings › Agents › Pace'
     return section ? `Settings › ${cap(section)}${section === 'conversation' && tab ? ` › ${cap(tab)}` : ''}` : 'Settings'

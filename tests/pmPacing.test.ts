@@ -132,6 +132,15 @@ describe('readings', () => {
     expect(paceVerdict(workdays, q, now)).toEqual({ go: false, reason: 'limited', until: now + 3_600_000 })
     expect(paceVerdict(workdays, q, now + 3_600_000)).toEqual({ go: true, unknown: true })
   })
+
+  it('an expired limit or one covered by credits holds nothing', () => {
+    // Read 3 days ago, its reset long passed; no reset known: over 5 h after the reading.
+    expect(paceVerdict(workdays, quota(null, null, now - 3 * DAY, { limited: { resetsAt: now - 2 * DAY } }), now)).toEqual({ go: true, unknown: true })
+    expect(paceVerdict(workdays, quota(null, null, now - 6 * 3_600_000, { limited: { resetsAt: null } }), now)).toEqual({ go: true, unknown: true })
+    expect(paceVerdict(workdays, quota(null, null, now - 3_600_000, { limited: { resetsAt: null } }), now)).toEqual({ go: false, reason: 'limited', until: now + 4 * 3_600_000 })
+    const credits = quota(null, null, now, { limited: { resetsAt: now + 3_600_000 }, credits: { unlimited: false, balance: 120 } })
+    expect(paceVerdict(workdays, credits, now)).toEqual({ go: true, unknown: true })
+  })
 })
 
 describe('user requests', () => {
