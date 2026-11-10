@@ -1,7 +1,6 @@
 <script setup lang="ts">
-// "wherdr X.Y.Z is available" banner: link to the release notes, and either
-// the Update button (one-tap update, when this installation and this session
-// allow it) or the update command for the installation mode.
+// "wherdr X.Y.Z is available" banner: link to the release notes and the
+// update command for the installation mode.
 import type { UpdateInfo } from '#shared/updates'
 
 const props = defineProps<{ info: UpdateInfo, dismissible?: boolean }>()
@@ -12,11 +11,6 @@ async function copy() {
     await navigator.clipboard.writeText(props.info.command)
     toast(t('Command copied: paste it into a terminal on the server, in the wherdr folder.'))
   } catch { toast(t('Copy failed'), true) }
-}
-
-function update() {
-  haptic()
-  runSelfUpdate(props.info)
 }
 </script>
 
@@ -30,16 +24,13 @@ function update() {
         </template></small>
         <small v-if="info.missed && info.missed.length > 1">{{ tl(`Other newer releases: ${info.missed.slice(1).join(', ')}`, `Autres versions plus récentes : ${info.missed.slice(1).join(', ')}`) }}</small>
       </p>
-      <template v-if="!info.oneTap">
-        <code>{{ info.command }}</code>
-        <small v-if="info.mode === 'native'">{{ t('Then restart wherdr.') }}</small>
-        <small v-else-if="info.mode === 'npm'">{{ t('Stop wherdr first, then run this command.') }}</small>
-      </template>
+      <code>{{ info.command }}</code>
+      <small v-if="info.mode === 'native'">{{ t('Then restart wherdr.') }}</small>
+      <small v-else-if="info.mode === 'npm'">{{ t('Stop wherdr first, then run this command.') }}</small>
     </div>
     <div class="update-banner-actions">
-      <UButton v-if="info.oneTap" size="sm" color="primary" variant="solid" icon="i-lucide-download" @click="update">{{ t('Update') }}</UButton>
       <UButton v-if="info.url" size="sm" color="neutral" variant="ghost" icon="i-lucide-external-link" :to="info.url" target="_blank" rel="noopener noreferrer">{{ t('Release notes') }}</UButton>
-      <UButton v-if="!info.oneTap" size="sm" color="neutral" variant="ghost" icon="i-lucide-copy" @click="copy">{{ t('Copy command') }}</UButton>
+      <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-copy" @click="copy">{{ t('Copy command') }}</UButton>
       <UButton v-if="dismissible" size="sm" color="neutral" variant="ghost" icon="i-lucide-x" :aria-label="t('Hide until the next version')" @click="dismissUpdate" />
     </div>
   </div>
