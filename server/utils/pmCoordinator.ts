@@ -53,6 +53,13 @@ import pkg from '../../package.json'
 import { openUi, showUi, uiTargetsList, type UiOpenDeps } from './uiOpen'
 import { addAction } from './uiActions'
 
+// The running build's version (shared/v3Version.ts: package version plus commit),
+// so the update notice fires between two builds of one version. Outside Nitro
+// (unit tests) there is no runtime config: the package version alone.
+function wherdrVersion(): string {
+  try { return String(useRuntimeConfig().public.version) } catch { return pkg.version }
+}
+
 // A project's incidents (all of them with no project named), oldest first.
 const projectIncidents = (list: Incident[], tasks: Task[], key: string) =>
   key ? list.filter(i => i.tasks.some(id => tasks.find(t => t.id === id)?.project === key)) : list
@@ -199,7 +206,9 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
     case 'ui open': return openUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope, main, raw: cmd.link, turn, by: main ? ALFRED : `${scope} coordinator` })
     case 'list': {
       const ts = new Map(await Promise.all(projects.map(async x => [x.key, x ? await store.workflow(x.key) : null] as const)))
-      return { tasks: boardOrder(await store.tasks()).filter(x => !key || x.project === key).map(x => summary(ts.get(x.project) ?? null, x, projects.find(y => y.key === x.project))) }
+      // Archived tasks only with --archived, newest archived first.
+      const tasks = (await store.tasks()).filter(x => (!key || x.project === key) && !!x.archived === !!cmd.archived)
+      return { tasks: (cmd.archived ? tasks.sort((a, b) => b.archived! - a.archived!) : boardOrder(tasks)).map(x => summary(ts.get(x.project) ?? null, x, projects.find(y => y.key === x.project))) }
     }
     case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task, p), weight: weightText(weightOf(t, task)), machine: machineOf(task, p, deps.machines()), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task, p) : [] } }
     case 'plan': return { template: t && { id: t.id, version: t.version }, workingBranch: workingBranch(p), plans: Object.fromEntries(Object.keys(needPlan().taskTypes).map(type => [type, planSteps(t!, { type }, p?.base)])) }
@@ -611,8 +620,8 @@ export async function rewriteRoleFiles(deps: Deps) {
 // updated since its session started; then it counts as told.
 export async function takeUpdateNotice(store: PmStore, key: string | null) {
   const rec = key ? await store.coordinator(key) : null
-  const line = updateNotice(rec, pkg.version)
-  if (line) await store.saveCoordinator({ ...rec!, told: pkg.version })
+  const line = updateNotice(rec, wherdrVersion())
+  if (line) await store.saveCoordinator({ ...rec!, told: wherdrVersion() })
   return line
 }
 
@@ -637,7 +646,7 @@ export async function writeAlfredHome(deps: Deps) {
   const docFiles = (await fs.readdir(docs).catch(() => [] as string[])).filter(n => n.endsWith('.md')).sort()
   const main = mainRoleFiles(projects)
   const v2 = (await readV2Projects()).length > 0
-  const files = { ...main, ...alfredFiles({ home: folder, version: pkg.version, docs, docFiles, pm: await deps.store.enabled(), projects, v2 }, main['AGENTS.md']!.split('\n')) }
+  const files = { ...main, ...alfredFiles({ home: folder, version: wherdrVersion(), docs, docFiles, pm: await deps.store.enabled(), projects, v2 }, main['AGENTS.md']!.split('\n')) }
   for (const [file, text] of Object.entries(files)) {
     await fs.mkdir(path.dirname(path.join(folder, file)), { recursive: true, mode: 0o700 })
     await fs.writeFile(path.join(folder, file), text, { mode: 0o600 })
@@ -716,7 +725,7 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
   // version: what this session knows (takeUpdateNotice tells it of an update).
   const { told: _told, ...rec } = (await deps.store.coordinator(key))!
-  await deps.store.saveCoordinator({ ...rec, terminal: address, ran: { program }, version: pkg.version, ...(key === MAIN ? { agent: a } : {}) })
+  await deps.store.saveCoordinator({ ...rec, terminal: address, ran: { program }, version: wherdrVersion(), ...(key === MAIN ? { agent: a } : {}) })
   // This conversation replaces the one before (another agent's, or ended).
   if (before?.terminal && before.terminal !== address) await deps.call('terminal.kill', { terminal: before.terminal }, 15000).catch(() => {})
   return { terminal: address, folder: c.folder }

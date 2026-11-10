@@ -91,6 +91,10 @@ its folder, branches and task worktrees stay on the machine.
   `Branch: <name>` line or a link with `?source=<branch>`, as a Bitbucket pull
   request link), wherdr follows that branch: its pushes, PR and merge checks
   use it, never the old one.
+- **Archive done tasks after**: 1, 3, 7 (the default), 14 or 30 days, or
+  *Never*. A done task stays in the Done column that long, then the engine
+  archives it (see [Archived tasks](#archived-tasks)). A shorter delay archives
+  at once the done tasks it now covers.
 - **Agents**: the worker and the reviewer its tasks start with, each with an
   optional model (empty: the agent's default), and the reviewer's optional
   **Fallback** (see [Reviewer fallback](#reviewer-fallback)).
@@ -561,6 +565,21 @@ task type's `weight` when the workflow sets one, else heavy when a worker step
 asks for screenshots, light when the type lands no code (no commit, link or git
 action), standard otherwise. The coordinator does the same with `task add
 --weight`, and `show <task>` gives it.
+
+### Archived tasks
+
+A done task leaves the board some time after it is done: 7 days by default, set
+per project in [General](#general). The engine checks at start and every 6 hours
+and writes *archived after 7 days done* in the task's log. An archived task keeps
+everything: its description, history, log, PR link, number and `wherdr pm show`;
+its branch and PR are left alone. The Done column shows only done tasks not
+archived, newest done first; at its bottom, a muted line, **142 archived · show**, opens the list
+of the shown projects' archived tasks, newest first, with a search on title, id
+or tag and *Show more* for the next page. A tap opens the task's sheet, which says
+*Archived* with the date and has **Unarchive**: the task is back in Done, and its
+delay starts again. `wherdr pm list` leaves archived tasks out; `wherdr pm list
+--archived` lists only them. Check on GitHub still works on an archived task
+with a PR.
 
 ### Board order
 

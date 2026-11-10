@@ -50,6 +50,16 @@ describe('release check', () => {
     expect(u).toEqual({ current: '1.1.0', latest: '1.2.0', url: 'https://example.test/releases/v1.2.0', checked: true, mode: 'native', command: 'git pull && npm ci && npm run build', oneTap: false, behind: 1, missed: ['1.2.0'], behindAtLeast: false })
   })
 
+  it('offers only newer releases of the running major', async () => {
+    const releases = (...tags: string[]) => vi.fn(async (_url: string) => ({ ok: true, json: async () => tags.map(tag => ({ tag_name: tag, html_url: '' })) }))
+    // v3 before its release: the last v2 release is not offered, 3.0.0 is.
+    const v2 = await createUpdateChecker({ current: '3.0.0-dev', env: {}, fetch: releases('v2.6.0', 'v2.5.0') })()
+    expect(v2).toMatchObject({ latest: null, checked: true, behind: 0 })
+    expect((await createUpdateChecker({ current: '3.0.0-dev', env: {}, fetch: releases('v3.0.0', 'v2.6.0') })()).latest).toBe('3.0.0')
+    const u = await createUpdateChecker({ current: '3.0.0', env: {}, fetch: releases('v2.7.0', 'v4.0.0', 'v3.1.0', 'v3.0.1') })()
+    expect(u).toMatchObject({ latest: '3.1.0', behind: 2, missed: ['3.1.0', '3.0.1'] })
+  })
+
   it('says nothing when up to date or ahead', async () => {
     expect((await createUpdateChecker({ current: '1.2.0', env: {}, fetch: release('v1.2.0') })()).latest).toBeNull()
     const u = await createUpdateChecker({ current: '1.3.0', env: {}, fetch: release('v1.2.0') })()

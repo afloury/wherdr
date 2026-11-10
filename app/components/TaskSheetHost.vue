@@ -20,11 +20,14 @@ watch(taskSheetTick, () => { if (id.value) load() })
 onBeforeUnmount(() => clearInterval(timer))
 
 // By any key its project had (a link may name a former key).
-const card = computed(() => {
+const onBoard = computed(() => {
   const b = data.value
   const want = b && id.value ? storedTaskId(b.projects, id.value) ?? id.value : null
   return b?.cards.find(c => c.id === want) ?? null
 })
+// An archived task is not among the board's cards: read on its own.
+const archived = useArchivedCard(() => id.value, () => !!data.value && !onBoard.value)
+const card = computed(() => onBoard.value ?? archived.value)
 const pane = computed(() => (card.value?.terminal ? herdrState.value?.panes.find(p => p.coreAddress === card.value!.terminal) : undefined))
 const waits = computed(() => (card.value?.phase === 'todo' ? waitsFor(card.value, data.value!.cards) : []))
 </script>

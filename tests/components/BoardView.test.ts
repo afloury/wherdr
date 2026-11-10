@@ -1,10 +1,11 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
-import { readBody } from 'h3'
+import { getQuery, readBody } from 'h3'
 import BoardView from '~/components/BoardView.vue'
 import { herdrState } from '~/composables/useHerdr'
 import { answerConfirm, confirmState, menuState } from '~/composables/useUi'
 import { boardColumns, cardOf, type Board } from '#shared/pm/board'
+import { archivedMatch } from '#shared/pm/archive'
 import { initialState, planSteps, type StepState } from '#shared/pm/steps'
 import { company, vibe, wherdr } from '#shared/pm/examples'
 import type { Run, Task } from '#shared/pm/run'
@@ -371,4 +372,28 @@ it('an approved merge stays in Your turn with Merge loading and what it waits fo
   w = await mount()
   expect(laneOf(w, 'CO-2')).not.toBe('your-turn')
   expect(card(w, 'CO-2').find('[data-testid="board-merging"]').exists()).toBe(false)
+})
+
+// The archived tasks the Done column's footer lists, and the searches asked.
+const archived: ReturnType<typeof coTask>[] = [], asked: string[] = []
+registerEndpoint('/api/pm/archived', (e) => {
+  const q = String(getQuery(e).q ?? ''), cards = archived.filter(c => archivedMatch(c, q))
+  asked.push(q)
+  return { cards, total: cards.length }
+})
+
+it('the Done column\'s footer counts archived tasks and opens their sheet, which a search filters', async () => {
+  archived.push(coTask(task('CO-7', at(4, { done: true }), { title: 'Old login fix', archived: 2 })), coTask(task('CO-8', at(4, { done: true }), { title: 'Docs pass', tags: ['docs'], archived: 1 })))
+  board.archived = { CO: 2 }
+  const w = await mount()
+  const footer = w.find('[data-lane="done"] [data-testid="board-archived"]')
+  expect(footer.text()).toBe('2 archived · show')
+  await footer.trigger('click')
+  const rows = () => [...document.body.querySelectorAll('[data-testid="archived-row"]')].map(r => r.getAttribute('data-task'))
+  await vi.waitFor(() => expect(rows()).toEqual(['CO-7', 'CO-8']))
+  const search = document.body.querySelector<HTMLInputElement>('[data-testid="archived-search"] input, input[data-testid="archived-search"]')!
+  search.value = 'docs'
+  search.dispatchEvent(new Event('input'))
+  await vi.waitFor(() => expect(rows()).toEqual(['CO-8']))
+  expect(asked.at(-1)).toBe('docs')
 })

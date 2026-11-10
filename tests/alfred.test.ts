@@ -29,7 +29,7 @@ describe('alfredFiles', () => {
     expect(a).toContain('`/opt/wherdr/docs`')
     expect(a).toContain('overview.md, quick-start.md')
     expect(a).toContain('only after the user\'s yes')
-    expect(a).toContain('`wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>] [--apply]`')
+    expect(a).toContain('`wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>] [--apply|--propose]`')
     expect(a).toContain('with `--apply` only after their yes in this chat')
     expect(a).toContain('No `wherdr alfred` command deletes anything')
     expect(a).toContain('The one removal you have is `wherdr pm task remove`')

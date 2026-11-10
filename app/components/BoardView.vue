@@ -121,7 +121,16 @@ function added(task: Task, refused?: string) {
 // By any key its project had, in any case (a link may name a former key: /board?task=WHR-5 after WHR became WD).
 const openId = computed(() => storedTaskId(data.value?.projects ?? [], open.value) ?? open.value)
 const isOpen = (c: Card) => c.id === openId.value
-const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.find(isOpen) ?? null)
+const onBoard = computed(() => cards.value.find(isOpen) ?? data.value?.cards.find(isOpen) ?? null)
+// An archived task (the archived sheet, a link /board?task=ID): not among the board's cards, read on its own.
+const archived = useArchivedCard(() => open.value, () => !!data.value && !onBoard.value)
+const selected = computed(() => onBoard.value ?? archived.value)
+// The Done column's footer: how many tasks of the shown projects are archived; it opens their list.
+const doneLane = computed(() => (columns.value ? columns.value.at(-1) : 'done'))
+const shownKeys = computed(() => (data.value?.projects ?? []).map(p => p.key).filter(shownProject))
+const archivedCount = computed(() => shownKeys.value.reduce((n, k) => n + (data.value?.archived?.[k] ?? 0), 0))
+const archiveOpen = ref(false)
+const openArchived = (c: Card) => { keepArchivedCard(c); show(c.id) }
 </script>
 
 <template>
@@ -176,9 +185,13 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
         <UButton v-else icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn board-card-menu" :aria-label="tl('Task menu', 'Menu de la tâche')" data-testid="card-menu" @click="openMenu(menuOf(c), c.title)" />
         </template>
         </div>
+        <button v-if="l.id === doneLane && archivedCount" type="button" class="board-archived muted" data-testid="board-archived" @click="archiveOpen = true">
+          {{ archivedCount }} {{ tl('archived') }} · <span>{{ tl('show') }}</span>
+        </button>
       </section>
     </div>
     </div>
+    <ArchivedSheet v-if="archiveOpen" :projects="shownKeys" @pick="openArchived" @closed="archiveOpen = false" />
     <AddTaskSheet v-if="adding && data" v-model:open="adding" :projects="data.projects" :cards="data.cards" :project="project" @added="added" />
     <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}:${checking}:${reporting}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" :checking="checking" :reporting="reporting" @closed="open = null; stopping = false; checking = false; reporting = false; closeTaskSheet()" @changed="taskChanged" />
   </section>
@@ -206,6 +219,8 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
 .board-card-wrap { position: relative; display: flex; flex-direction: column; }
 .board-card-menu { position: absolute; top: 0; right: 0; }
 .board-card-wrap.has-menu .board-card-head { padding-right: 36px; }
+.board-archived { align-self: flex-start; min-height: 44px; padding: 0; border: 0; background: none; font-size: 12px; text-align: left; cursor: pointer; }
+.board-archived span { text-decoration: underline; text-underline-offset: 3px; }
 .board-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 12px; min-height: 44px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
 .board-card:active { background: var(--surface-2); }
 .board-card-head { display: flex; align-items: center; gap: 8px; }

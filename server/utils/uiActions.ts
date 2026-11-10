@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto'
 import type { Turn } from '../../shared/pm/coordinator'
 import { shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, type Task } from '../../shared/pm/run'
-import { actionBlock, actionLabel, actionRefusal, actionStamp, cardNow, keepCards, outcomeText, settingStamp, type SettingChange, type UiAction, type UiCard } from '../../shared/uiActions'
+import { actionBlock, actionLabel, actionRefusal, actionStamp, cardNow, changeStamp, keepCards, outcomeText, settingStamp, type ProjectChange, type SettingChange, type UiAction, type UiCard } from '../../shared/uiActions'
 import { MAIN } from '../../shared/pm/coordinator'
 import { HerdrError } from './herdr'
 import { userStep } from './pmBoard'
@@ -52,6 +52,18 @@ export async function addSettingCard(store: PmStore, o: { turn: Turn, by: string
   return { proposed: true, note: `Nothing changed: the user clicks Apply. End your reply with this block, after the sentence that explains it:\n${actionBlock(card.id)}` }
 }
 
+// `wherdr alfred <change> --propose` (project add, template, guards…): a card
+// in Alfred's reply; only the user's Apply makes the change.
+export async function addChangeCard(store: PmStore, o: { turn: Turn, by: string, change: ProjectChange, label: string }) {
+  if (o.turn !== 'user') throw new HerdrError('refused', '--propose is only for a turn that comes from the user, never in a wake')
+  const rec = await store.coordinator(MAIN)
+  if (!rec) throw new HerdrError('not_found', 'No Alfred record')
+  const now = Date.now()
+  const card: UiCard = { id: randomBytes(8).toString('hex'), by: o.by, at: now, kind: 'change', task: '', shown: '', label: o.label, change: o.change, stamp: changeStamp(o.change.lines), state: 'open' }
+  await store.saveCoordinator({ ...rec, cards: keepCards(rec.cards ?? [], card, now) })
+  return { proposed: true, change: o.change.lines, note: `Nothing changed: the user clicks Apply. End your reply with this block, after the sentence that explains it:\n${actionBlock(card.id)}` }
+}
+
 async function find(store: PmStore, id: unknown) {
   if (typeof id !== 'string') return null
   for (const rec of await store.coordinators()) {
@@ -67,6 +79,8 @@ export async function readCard(store: PmStore, id: unknown, settingsFile?: strin
   if (!hit) return null
   const s = hit.card.setting
   if (s) return cardNow(hit.card, settingStamp(s.key, (await readSettings(settingsFile))[s.key]), Date.now())
+  // A project change is checked again at the click (its dry run): here, its age only.
+  if (hit.card.change) return cardNow(hit.card, hit.card.stamp, Date.now())
   const task = await store.task(hit.card.task)
   const { stamp } = await stampOf(store, hit.card.kind as UiAction, task)
   const card = cardNow(hit.card, stamp, Date.now()), turn = task?.step?.yourTurn
@@ -77,7 +91,10 @@ export async function readCard(store: PmStore, id: unknown, settingsFile?: strin
 // The user's click. A CLI token never clicks: only the app's own session.
 // Not open (done, stale): nothing runs, the card says why.
 // cancel: the user's Cancel, the card runs nothing more.
-export async function actOnCard(deps: PmLaunchDeps & { settingsFile?: string }, id: unknown, authorization: unknown, cancel = false): Promise<UiCard> {
+// applyChange: makes a project change while its dry run still shows `lines`
+// (false: it no longer does), server/utils/alfredCli.ts.
+export type ApplyChange = (argv: string[], lines: string[]) => Promise<boolean>
+export async function actOnCard(deps: PmLaunchDeps & { settingsFile?: string, applyChange?: ApplyChange }, id: unknown, authorization: unknown, cancel = false): Promise<UiCard> {
   if (authorization) throw new HerdrError('forbidden', 'Only the user\'s click in wherdr runs an action, never a token')
   const card = await readCard(deps.store, id, deps.settingsFile)
   if (!card) throw new HerdrError('not_found', 'Unknown action')
@@ -87,6 +104,12 @@ export async function actOnCard(deps: PmLaunchDeps & { settingsFile?: string }, 
   if (s) {
     await patchSettings({ [s.key]: s.after }, { file: deps.settingsFile })
     return save(deps.store, { ...card, state: 'done', outcome: { text: 'Applied by you', at: Date.now() } })
+  }
+  const c = card.change
+  if (c) {
+    if (!deps.applyChange) throw new HerdrError('unavailable', 'Project changes are not applied here')
+    const made = await deps.applyChange(c.argv, c.lines)
+    return save(deps.store, made ? { ...card, state: 'done', outcome: { text: 'Applied by you', at: Date.now() } } : { ...card, state: 'stale' })
   }
   if (card.kind === 'open') return card
   const task = card.kind === 'resume' ? await resumeTask(deps, card.task, 'continue', { who: 'user' }, 'user') : await userStep(deps, card.task)
