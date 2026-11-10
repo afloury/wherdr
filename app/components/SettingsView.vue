@@ -375,6 +375,7 @@ onMounted(() => {
 
 <template>
   <section id="settings" data-wherdr="settings" class="view settings-view" :class="{ 'settings-panel': panel }" :aria-label="panel ? t('Settings') : undefined">
+    <SidePanelHandle v-if="panel" />
     <header class="top bar settings-top">
       <UButton v-if="!panel" icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Back')" @click="back" />
       <h2>{{ desk ? t('Settings') : activeLabel }}<span v-if="openedBy" class="settings-opened-by">{{ tl(`Opened by ${openedBy}`) }}</span></h2>
