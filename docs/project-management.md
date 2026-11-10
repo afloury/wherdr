@@ -853,6 +853,15 @@ the mechanical blocks itself and wakes it only when that fails:
 - **a push refused because the branch is behind its remote**: wherdr brings the
   remote's commits into the task's worktree (a fast-forward, else a merge; a
   conflict goes to the worker), then pushes again;
+- **a merge a file's own merge driver did not handle** (GitHub's *Update
+  branch* runs none): when the clone's git config sets `wherdr.afterMerge`, a
+  command, wherdr runs it at the worktree's root after each merge it makes or
+  brings in (a catch-up, a sync, a landing) and commits what it changed before
+  pushing. wherdr's own repository sets it with `npm install`, so
+  `docs/llms.txt` keeps one line per entry. A PR updated on GitHub is taken
+  into the worktree, fixed and pushed at once, also while its merge waits for
+  you or for its turn in the queue; as after a catch-up, a merge the engine
+  makes has the new head reviewed again;
 - **an action interrupted** by a restart of wherdr: run again (a merge done
   meanwhile is recorded as merged);
 - **a stalled agent** (below): nudged, then restarted once.
