@@ -532,6 +532,8 @@ function resetListWidth() {
         </div>
       </div>
       <p v-else-if="onlineMachines.length && !stateGroups.length" class="machine-empty state-empty">{{ t('No agents yet.') }}</p>
+      <!-- No agent row (Alfred and coordinators have their own): the first project's setup, while there is none. -->
+      <HomeSetupHint v-if="st.ok && !stateGroups.length" />
       <div v-if="stateAway.length" class="state-away" role="group" :aria-label="tl('Machines not connected', 'Machines non connectées')">
         <div v-for="a in stateAway" :key="a.m.key" class="state-away-item" :class="a.m.status" :data-machine="a.m.key || 'local'"
           :title="[`${a.name} · ${a.state}`, a.known ? tl(`${a.known} known agents`, `${a.known} agents connus`) : '', a.m.error ? t(a.m.error) : ''].filter(Boolean).join(' — ')"

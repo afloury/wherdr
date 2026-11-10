@@ -45,6 +45,11 @@ describe('alfredFiles', () => {
     // The guided setup of v2 projects: only for a user who comes from v2.
     expect(a).not.toContain('## Coming from wherdr v2')
     expect(alfredFiles({ ...ctx, v2: true }, [])['AGENTS.md']).toContain('## Coming from wherdr v2')
+    // WHR-243: the first project's setup, only while there is none and not from v2.
+    expect(a).toContain('## The first project')
+    expect(a).toContain('`wherdr alfred ui open --target projects.setup`')
+    expect(alfredFiles({ ...ctx, v2: true }, [])['AGENTS.md']).not.toContain('## The first project')
+    expect(alfredFiles({ ...ctx, projects: [{ key: 'WEB', name: 'Web', path: '~/web' }] }, [])['AGENTS.md']).not.toContain('## The first project')
   })
   it('never ships its own files: those are created once', () => {
     expect(Object.keys(alfredFiles(ctx, []))).not.toContain('identity.md')
@@ -59,5 +64,16 @@ it('greets with the rename question on the first start only', () => {
   expect(startPrompt(true, ALFRED)).not.toContain('v2')
   expect(startPrompt(true, ALFRED, true)).toMatch(new RegExp(`run \`wherdr alfred v2\` and say exactly: "${FIRST_MESSAGE.replace(/[?]/g, '\\?')}" .*set up those projects`))
   expect(startPrompt(false, 'Jeeves', true)).not.toContain('v2')
+})
+
+// WHR-243: a new user with no project is offered the first one's setup.
+it('offers to set up the first project when there is none, the v2 offer first', () => {
+  const offer = /no project yet.*set up the first one.*setup window/
+  expect(startPrompt(true, ALFRED, false, true)).toContain(FIRST_MESSAGE)
+  expect(startPrompt(true, ALFRED, false, true)).toMatch(offer)
+  expect(startPrompt(true, ALFRED, false, false)).not.toMatch(offer)
+  expect(startPrompt(true, ALFRED, true, true)).not.toMatch(offer)
+  expect(startPrompt(true, ALFRED, true, true)).toContain('set up those projects')
+  expect(startPrompt(false, 'Jeeves', false, true)).not.toMatch(offer)
 })
 
