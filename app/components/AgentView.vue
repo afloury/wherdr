@@ -35,15 +35,16 @@ const core = useRuntimeConfig().public.core
 const paneChat = (p: Pane | null | undefined) => hasChat(p)
 const route = useRoute()
 const router = useRouter()
-// An agent's `ui open` for this conversation (shared/uiOpen.ts): Settings
-// beside it on a wide computer, else a card above the message field. It never
+// An agent's `ui open` for this conversation (shared/uiOpen.ts), sent to this
+// device only when the user uses it: Settings beside it on a computer
+// (`show: 'panel'`, when the window has room), else a card above the message field. It never
 // moves the user away: the card waits for their tap.
 const uiCard = ref<UiOpenEvent | null>(null)
 watch(uiOpenRequest, (e) => {
   if (!e || e.pane !== props.paneId) return
   uiOpenRequest.value = null
   const to = appRoute(e.link)
-  if (!sidePanelRoom.value || !to.startsWith('/settings?')) { uiCard.value = e; return }
+  if (e.show === 'card' || !sidePanelRoom.value || !to.startsWith('/settings?')) { uiCard.value = e; return }
   uiCard.value = null
   uiOpenedBy.value = { by: e.by, section: new URLSearchParams(to.split('?')[1]).get('section') ?? '' }
   router.push(to)

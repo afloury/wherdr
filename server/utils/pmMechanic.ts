@@ -16,6 +16,7 @@ import { onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent
 import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP } from './coreCreate'
 import { HerdrError } from './herdr'
+import { CoreError } from './core'
 import { actionShell } from './pmActions'
 import { prSeen, stepAction } from './pmBoard'
 import { prNow, requiredChecks } from '../../shared/pm/board'
@@ -30,8 +31,10 @@ import { advanceTick } from './pmAdvance'
 import { forgetMemory } from './pmMemory'
 import { samplePeaks } from './pmPeaks'
 import { releaseIdle, reviveWorker } from './pmRelease'
+import { watchAgents } from './pmWatchdog'
 import { startFileWaits, syncFiles } from './pmFiles'
-import { agentBack, fixWatch, handToAgent, retriesAction, wasReleased } from '../../shared/pm/release'
+import { agentBack, agentWaits, fixWatch, handToAgent, handedWatch, MACHINE_OFFLINE, MACHINE_PAUSED, retriesAction, type WorkerNow } from '../../shared/pm/release'
+import { isPaused } from '../../shared/pm/project'
 import { noteBack, noteStall } from './pmStall'
 import { askedQuestion } from './pmRead'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
@@ -165,6 +168,53 @@ async function noteFixWork(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], 
   return step.yourTurn ? deps.store.logTask({ ...task, step }, 'engine', step.yourTurn.badge) : deps.store.saveTask({ ...task, step })
 }
 
+// The task's worker as this pass sees it; undefined: unknown (unread, still
+// starting, stopped by the user). Ended on a machine paused for its project: 'paused'.
+async function workerNow(deps: PmLaunchDeps, run: Run): Promise<WorkerNow | undefined> {
+  const gone = async () => {
+    const project = (await deps.store.task(run.task))?.project
+    const p = (await deps.store.projects()).find(x => x.key === project)
+    return p && isPaused(p, run.machine) ? 'paused' as const : 'gone' as const
+  }
+  if (run.state === 'ended') return run.endedBy === 'stopped' ? undefined : gone()
+  const m = deps.machines().find(x => x.key === run.machine)
+  if (m && !m.local && m.status !== 'online') return 'offline'
+  if (!run.terminal) return
+  const st = await deps.call<{ state?: string }>('terminal.get', { terminal: run.terminal }, 3000)
+    .catch((e: unknown) => (e instanceof CoreError && e.kind === 'not_found' ? { state: 'finished' } : null))
+  return !st ? undefined : st.state === 'finished' ? gone() : 'alive'
+}
+
+// Work the engine handed the worker (handedWatch): its worker ended, started
+// again with it; it cannot be, the step says why it waits and the
+// coordinator is woken once (none: it is the user's).
+async function noteHandedWork(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], run: Run, now: number): Promise<Task> {
+  const s = task.step
+  if (!s?.agent || task.state !== 'working' || s.done) return task
+  const todo = handedWatch(plan, s, await workerNow(deps, run))
+  if (!todo) return task
+  if ('back' in todo) return deps.store.logTask({ ...task, step: agentWaits(s, undefined) }, 'engine', `${s.agent.kind}: the worker is back on it`)
+  if ('waits' in todo) return handedWaits(deps, task, todo.waits, now)
+  if (run.state !== 'ended') await deps.store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
+  let hold: string | undefined
+  await reviveWorker(deps, task.id, `${s.agent.kind}: its agent ended`, s.agent.text, h => { hold = h })
+  const fresh = (await deps.store.task(task.id))!
+  if (hold) return handedWaits(deps, fresh, hold, now)
+  if (!fresh.step?.agent) return fresh
+  // Started (or not: the task waits with why): never started again for this work.
+  const step = agentWaits(fresh.step, undefined)
+  return deps.store.saveTask({ ...fresh, step: { ...step, agent: { ...step.agent!, revived: now } } })
+}
+
+// The handed work waits for `why`: said on the step, the coordinator woken once (none: the user's).
+async function handedWaits(deps: PmLaunchDeps, task: Task, why: string, now: number): Promise<Task> {
+  const work = task.step!.agent!
+  if (work.waits === why) return task
+  const told = work.told ?? ((await wakeCoordinators(deps, task, showIds(await deps.store.projects(), `${task.id} (${task.title}): ${work.kind} was handed to its worker, which cannot do it: ${why}. \`wherdr pm tell ${task.id} "<what to do>" --fix ${work.kind === 'catch-up' ? 'base' : 'ci'} --reason "<why>"\` starts it again with it.`), now)).length ? 'coordinator' : 'user')
+  const woke = work.told ? '' : told === 'coordinator' ? ' Woke its coordinator.' : ' In Your turn.'
+  return deps.store.logTask({ ...task, step: agentWaits(task.step!, why, told) }, 'engine', `${work.kind}: ${why}.${woke}`)
+}
+
 // Keep the board busy (shared/pm/autopilot.ts busyNext): each project's next
 // to-do task starts by itself while a machine it allows has room, within its
 // autopilot's limits, hours and pace; no coordinator wake for it. One per
@@ -231,6 +281,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   await startFileWaits(deps).catch(() => {})
   await startNext(deps, now).catch(() => {})
   await samplePeaks(deps).catch(() => {})
+  await watchAgents(deps, (task, why) => wakeCoordinators(deps, task, why, now), now).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
   const seen: Seen[] = []
@@ -245,10 +296,12 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
     if (!p || !t) continue
     const run = runs.filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
     if (!run) continue
+    const plan = taskPlan(t, task, p)
+    // Before the machine is reached: work handed to a worker on a machine gone offline says so.
+    task = await noteHandedWork(deps, task, plan, run, now)
     let on: string | undefined
     try { on = runOn(deps, run) } catch { continue }
     const sh = actionShell(deps, on)
-    const plan = taskPlan(t, task, p)
     task = await noteIdle(deps, task, plan, runs, now)
     task = await noteFixWork(deps, task, plan, run, now)
     const facts: MechFacts = { task, plan, guards: taskGuards(t, task.type), branch: run.branch, agentBusy: false, now }
@@ -321,27 +374,43 @@ const TRY_TEXT: Partial<Record<Move['kind'], string>> = {
 async function escalate(deps: PmLaunchDeps, task: Task, now: number) {
   const why = showIds(await deps.store.projects(), escalation(task, now))
   if (!why) return
+  const woken = await wakeCoordinators(deps, task, why, now)
+  await deps.store.logTask({ ...task, selfFix: { ...task.selfFix!, woke: now } }, 'engine', `gave up: ${why}${woken.length ? ` Woke ${woken.join(' and ')}.` : ''}`)
+}
+
+// The task's coordinators whose autopilot wakes them for stuck tasks, woken with why; who was woken.
+async function wakeCoordinators(deps: PmLaunchDeps, task: Task, why: string, now: number) {
   const { store } = deps
   const coords = new Map([[task.project, await store.coordinator(task.project)], [MAIN, await store.coordinator(MAIN)]])
   const keys = wakesFor([task.project, MAIN], k => coords.get(k) ?? undefined, now)
   for (const key of keys) await store.saveWakes([enqueue(await store.wakes(), key, [why], now, randomUUID().replace(/-/g, '').slice(0, 8), false, { kind: 'engine' })])
-  const woken = keys.map(k => (k === MAIN ? 'the main coordinator' : 'the project\'s coordinator'))
-  await store.logTask({ ...task, selfFix: { ...task.selfFix!, woke: now } }, 'engine', `gave up: ${why}${woken.length ? ` Woke ${woken.join(' and ')}.` : ''}`)
+  return keys.map(k => (k === MAIN ? 'the main coordinator' : 'the project\'s coordinator'))
 }
 
 async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: MechFacts, sh: ReturnType<typeof actionShell>): Promise<string | null> {
-  // A worker released while the task waited for the user starts again with it (null: not now, short on memory).
-  const tell = async (text: string) => run.terminal && run.state !== 'ended'
-    ? deps.call('terminal.send', { terminal: run.terminal, text: showIds(await deps.store.projects(), text) }, 30000).then(() => 'sent to the agent', () => null)
-    : wasReleased(run)
-      ? reviveWorker(deps, task.id, move.kind, text).then(t => (t ? (t.state === 'working' ? 'started the worker again with it' : 'could not start the worker again') : null))
-      : Promise.resolve(null)
+  // A worker that ended (released, or on its own) starts again with it; no
+  // room on its machine: handed all the same, waiting with why (null: not delivered, tried again later).
+  const tell = async (text: string): Promise<string | { hold: string } | null> => {
+    const now = await workerNow(deps, run)
+    if (now === 'alive') return deps.call('terminal.send', { terminal: run.terminal, text: showIds(await deps.store.projects(), text) }, 30000).then(() => 'sent to the agent', () => null)
+    if (now !== 'gone') return now === 'offline' ? { hold: MACHINE_OFFLINE } : now === 'paused' ? { hold: MACHINE_PAUSED } : null
+    if (run.state !== 'ended') await deps.store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
+    let hold: string | undefined
+    const t = await reviveWorker(deps, task.id, move.kind, text, h => { hold = h })
+    return hold ? { hold } : t ? (t.state === 'working' ? 'started the worker again with it' : 'could not start the worker again') : null
+  }
   // Work handed to the worker: the task leaves Your turn, its agents stay, until a push or its report.
   const hand = async (text: string) => {
     const r = await tell(text)
-    const t = r && !r.startsWith('could not') ? await deps.store.task(task.id) : undefined
-    if (t?.step) await deps.store.saveTask({ ...t, step: handToAgent(t.step, move.kind, f.pr?.headRefOid ?? f.head!, Date.now()) })
-    return r
+    if (!r || (typeof r === 'string' && r.startsWith('could not'))) return r
+    const t = (await deps.store.task(task.id))!
+    if (!t.step) return typeof r === 'string' ? r : r.hold
+    const step = handToAgent(t.step, move.kind, f.pr?.headRefOid ?? f.head!, Date.now(), text)
+    const revived = r === 'started the worker again with it' ? { ...step, agent: { ...step.agent!, revived: Date.now() } } : step
+    const saved = await deps.store.saveTask({ ...t, step: revived })
+    if (typeof r === 'string') return r
+    await handedWaits(deps, saved, r.hold, Date.now())
+    return `handed to the worker, which waits: ${r.hold}`
   }
   switch (move.kind) {
     case 'restart':
@@ -404,7 +473,7 @@ async function queueTick(deps: PmLaunchDeps, seen: Seen[]) {
     const mine = queued.filter(x => x.facts.task.project === project)
     for (const x of mine) x.facts.queueOut = queueOut(x.facts)
     const order = mergeOrder(mine.map(({ facts: { task, pr, queueOut: out } }) => ({
-      id: task.id, files: (pr!.files ?? []).map(f => f.path), size: (pr!.additions ?? 0) + (pr!.deletions ?? 0), out,
+      id: task.id, files: (pr!.files ?? []).map(f => f.path), size: (pr!.additions ?? 0) + (pr!.deletions ?? 0), out, order: task.order,
     })))
     for (const x of mine) {
       const place = order.indexOf(x.facts.task.id) + 1, out = x.facts.queueOut
