@@ -8,11 +8,10 @@
 // right panel (`aside` slot). Laid out for a window `width` CSS pixels wide
 // (1440 by default; smaller = larger text); sets `--u` = one of those pixels.
 import { KIND_LABEL } from '~/utils/demoScript'
-import type { DemoAgent, DemoProject } from '~/utils/demoScript'
+import type { DemoAgent } from '~/utils/demoScript'
 
 const props = defineProps<{
   agents: readonly DemoAgent[]
-  project?: DemoProject
   active: string
   /** The agent whose line offers `choices`, and the answer tapped. */
   choicesFor?: string
@@ -25,7 +24,7 @@ const props = defineProps<{
   width?: number
 }>()
 // The open agent, wherever it is in the list.
-const open = computed(() => [...props.agents, ...(props.project?.tasks ?? [])].find(a => a.name === props.active))
+const open = computed(() => props.agents.find(a => a.name === props.active))
 </script>
 
 <template>
@@ -36,13 +35,12 @@ const open = computed(() => [...props.agents, ...(props.project?.tasks ?? [])].f
         <h3 class="home-title">Agents</h3>
         <div class="home-actions">
           <span class="icon-btn"><UIcon name="i-lucide-search" /></span>
-          <span class="icon-btn"><UIcon name="i-lucide-square-kanban" /></span>
           <span class="icon-btn"><UIcon name="i-lucide-settings-2" /></span>
           <span class="icon-btn"><UIcon name="i-lucide-panel-left-close" /></span>
         </div>
       </div>
       <div class="session-row"><span><UIcon name="i-lucide-layers" />devbox</span><b>default<UIcon name="i-lucide-chevron-right" /></b></div>
-      <DemoList :agents="agents" :project="project" :active="active" :choices-for="choicesFor" :choices="choices" :hit="hit" />
+      <DemoList :agents="agents" :active="active" :choices-for="choicesFor" :choices="choices" :hit="hit" />
       <span class="new-btn"><UIcon name="i-lucide-plus" />New</span>
     </aside>
 
