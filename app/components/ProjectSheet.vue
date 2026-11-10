@@ -21,6 +21,8 @@ import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
 import { workflowFlow } from '#shared/pm/flow'
 import type { RepoVisibility } from '#shared/pm/visibility'
 import { PROJECT_TABS, PROJECT_TAB_LABEL as TAB_LABEL, type ProjectTab } from '~/utils/projectTabs'
+import { projectTarget, uiTarget } from '#shared/uiTargets'
+import { showHalo, waitForElement } from '~/utils/uiHalo'
 
 const props = defineProps<{ project: Project, tab: ProjectTab, templates: TemplateInfo[], review?: boolean }>()
 const emit = defineEmits<{ tab: [tab: ProjectTab], close: [], changed: [] }>()
@@ -107,6 +109,19 @@ const workflowTab = ref<InstanceType<typeof ProjectWorkflow>>()
 
 const coordinator = computed(() => projectCoordinators.value.find(c => c.project === p.value.key))
 const reviewOpen = ref(!!props.review)
+// A project target (`&target=project.guards`, shared/uiTargets.ts): its tab's
+// part, highlighted once shown (utils/uiHalo.ts).
+const route = useRoute()
+const sheet = ref<HTMLElement | null>(null)
+let endHalo = () => {}
+watch(() => `${props.tab}|${route.query.target}|${!!sheet.value}`, async () => {
+  endHalo()
+  const id = uiTarget(route.query.target)
+  if (!id || !projectTarget(id) || !sheet.value) return
+  const el = await waitForElement(sheet.value, `[data-ui-target="${id}"]`)
+  if (el && uiTarget(route.query.target) === id) { el.scrollIntoView({ block: 'nearest' }); endHalo = showHalo(el) }
+}, { immediate: true })
+onBeforeUnmount(() => endHalo())
 const reviewed = (accepted: boolean) => { if (accepted) workflowChanged() }
 const menu = (): MenuItem[] => [
   ...(props.tab === 'workflow' && workflowTab.value ? [...workflowTab.value.menu(), { kind: 'separator' as const }] : []),
@@ -121,7 +136,7 @@ async function remove() {
 
 <template>
   <AppSheet v-model:open="open" :title="p.name" tall wide hide-close @closed="emit('close')">
-    <div class="project-sheet" data-testid="project-sheet">
+    <div ref="sheet" class="project-sheet" data-testid="project-sheet">
       <div class="project-head">
         <span class="pm-id"><small class="mono-label">{{ shownKey(p) }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
         <SpaceMenu :items="menu" :title="p.name" :label="tl(`Options of ${p.name}`)" />
@@ -225,15 +240,15 @@ async function remove() {
           <span class="mono-label">{{ tl('Review') }}</span>
           <UIcon name="i-lucide-chevron-right" />
         </button>
-        <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" @templates="emit('changed')" />
+        <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" data-ui-target="project.workflow" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" @templates="emit('changed')" />
         <template v-else-if="tab === 'guards' && loaded">
-          <ProjectGuards v-if="workflow" :project="p" :workflow="workflow" @changed="workflowChanged" />
+          <ProjectGuards v-if="workflow" data-ui-target="project.guards" :project="p" :workflow="workflow" @changed="workflowChanged" />
           <p v-else class="muted settings-hint">{{ tl('No workflow yet: tasks cannot start until the project starts from a template.') }}</p>
         </template>
         <ProjectAutomations v-else-if="tab === 'automations'" :project="p.key" :name="p.name" />
         <template v-else-if="tab === 'autopilot'">
           <PartHead part="autopilot" :project="p.key" class="pm-part" />
-          <CoordinatorAutopilot v-if="coordinator" :c="coordinator" />
+          <CoordinatorAutopilot v-if="coordinator" data-ui-target="project.autopilot" :c="coordinator" />
           <p v-else-if="coordinatorsLoaded" class="muted settings-hint">{{ tl('This project has no coordinator yet.') }}</p>
           <UButton to="/settings?section=pacing" color="neutral" variant="ghost" size="lg" icon="i-lucide-gauge">{{ tl('Pace of every account') }}</UButton>
         </template>
