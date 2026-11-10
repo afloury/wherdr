@@ -156,3 +156,37 @@ it('a merge step shows the worker\'s and the reviewer\'s notes, full width, fold
   tall.mockRestore()
   w.unmount()
 })
+
+// An approved merge, from the task the server keeps: the same on any device and after a reload.
+const approvedCard = (step: Partial<StepState>, more: Partial<Task> = {}) => cardOf({
+  id: 'WHR-3', project: 'WHR', title: 'Approved', description: '', type: 'visual', state: 'working', createdAt: 1,
+  step: at(4, { approved: { by: 'user', at: 1 }, shots: { work: [{ file: 'aaaaaaaaaaaa.png', phase: 'after', at: 1 }] }, ...step }), ...more,
+}, plan, [])
+
+it('an approved merge keeps Merge loading with what it waits for, until it merges or fails', async () => {
+  // Second in the merge queue, its last try refused by the queue (not the user's): loading, no Try again.
+  const queued = approvedCard({ yourTurn: { reason: 'action', badge: 'Merge: merge: checks still running', error: 'merge: checks still running' } }, { queue: 2 })
+  for (let reload = 0; reload < 2; reload++) {
+    const w = await mountSuspended(TaskSheet, { props: { card: queued }, global: { stubs } })
+    expect(w.get('[data-testid="task-todo"]').attributes('data-todo')).toBe('merge')
+    expect(w.get('[data-testid="step-user"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="step-user-waits"]').text()).toBe('Waiting: 2nd in merge queue')
+    expect(w.find('[data-testid="task-retry"]').exists()).toBe(false)
+    w.unmount()
+  }
+  // Its machine offline: said under the button.
+  const offline = await mountSuspended(TaskSheet, { props: { card: { ...approvedCard({}), held: 'its machine is offline' } }, global: { stubs } })
+  expect(offline.get('[data-testid="step-user-waits"]').text()).toBe('Waiting: its machine is offline')
+  offline.unmount()
+  // Merged: no longer Your turn, no button.
+  const merged = await mountSuspended(TaskSheet, { props: { card: approvedCard({ done: true }) }, global: { stubs } })
+  expect(merged.find('[data-testid="task-todo"]').exists()).toBe(false)
+  expect(merged.find('[data-testid="step-user"]').exists()).toBe(false)
+  merged.unmount()
+  // Failed, out of the queue: the user's again, Try again enabled with the reason in plain words.
+  const failed = await mountSuspended(TaskSheet, { props: { card: approvedCard({ yourTurn: { reason: 'action', badge: 'Merge: merge: 2 check(s) failed', error: 'merge: 2 check(s) failed' } }) }, global: { stubs } })
+  expect(failed.get('[data-testid="task-retry"]').attributes('disabled')).toBeUndefined()
+  expect(failed.get('[data-testid="task-badge"]').text()).toContain('2 check(s) failed')
+  expect(failed.find('[data-testid="step-user-waits"]').exists()).toBe(false)
+  failed.unmount()
+})

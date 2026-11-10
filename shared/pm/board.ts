@@ -3,7 +3,7 @@
 // that holds that step (none for holder: none); anything waiting for the user
 // puts it in Your turn, whatever its step, with a badge saying what to do.
 import type { Holder } from './workflow'
-import { stepLabels, type PlannedStep, type StepState } from './steps'
+import { stepLabels, waitsToMerge, type PlannedStep, type StepState } from './steps'
 import type { Run, Task, WaitKind } from './run'
 import { notStarted, type Stopped } from './stop'
 import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
@@ -195,10 +195,11 @@ export const boardTags = (cards: Pick<Card, 'tags'>[]) => [...new Set(cards.flat
 // The columns shown: Your turn first, then the project's columns (or To do /
 // Working / Done for all projects). A card in Your turn is in no other column.
 export function boardLanes(cards: Card[], columns: string[] | null): { id: string, cards: Card[] }[] {
+  const mine = (c: Card) => !!turnText(c) || mergeWaits(c) !== undefined
   const lane = (c: Card) => (columns ? c.column : c.phase)
   return [
-    { id: 'your-turn', cards: cards.filter(c => turnText(c)) },
-    ...(columns ?? PHASES).map(id => ({ id, cards: cards.filter(c => !turnText(c) && lane(c) === id) })),
+    { id: 'your-turn', cards: cards.filter(mine) },
+    ...(columns ?? PHASES).map(id => ({ id, cards: cards.filter(c => !mine(c) && lane(c) === id) })),
   ]
 }
 
@@ -265,8 +266,19 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
   if (failed !== undefined) return pr?.startsWith('checks failed') ? ofPr(pr) : refused(failed, agentCatchingUp(c))
   // A merge waiting for the user, updated with its base; once approved, it merges by itself.
   if (s.catchUp) return { text: `updating with ${s.catchUp.base}`, tone: 'wait', ...approval }
-  if (s.approved && !s.acting) return { text: pr?.startsWith('checks failed') ? pr : '', tone: 'wait', ...approval }
+  if (s.approved && !s.acting) return { text: pr && pr !== 'ready to merge' ? pr : '', tone: 'wait', ...approval }
   // The merge runs: it waits for the checks, then merges.
   if (s.acting && kind && MERGES.includes(kind)) return pr && pr !== 'ready to merge' && kind === 'github.merge' ? ofPr(pr) : { text: 'merging', tone: 'wait' }
   return pr ? ofPr(pr) : undefined
+}
+
+// An approved merge on its way: what it waits for, in a few words (its place
+// in the merge queue, its checks, its machine back online…), from the task's
+// approval kept on the server. undefined once it merged, failed or was
+// refused (the user's turn again), or when no merge was approved.
+export function mergeWaits(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'yourTurn' | 'prNow' | 'held' | 'queue' | 'queueOut' | 'sameFiles'>): string | undefined {
+  const s = c.state
+  if (!s?.approved || s.done || c.stopped || c.yourTurn || !waitsToMerge(c.plan[s.at])) return
+  const pr = c.prNow && c.prNow !== 'ready to merge' && c.prNow !== 'merged' ? c.prNow : undefined
+  return cardStatus(c)?.text || pr || 'waiting for its turn to merge'
 }
