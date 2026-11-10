@@ -47,6 +47,7 @@ export interface Task {
   shotToken?: string // the agent's key for POST /api/pm/shot (never sent to the browser)
   log?: TaskLogEntry[] // who changed what, newest last
   specNotes?: SpecNote[] // spec changes added after its description (task note, tell --spec), newest last
+  specPass?: { at: number, step: string, reason: string } // the coordinator's last pass on a spec change, shown in Decisions for a day
   marks?: Mark[] // when its step or turn changed, added by the store (times.ts)
   after?: string // tasks of the same project, comma-separated: this one starts once they are done
   stopped?: Stopped // who stopped it and why (stop.ts): it waits for the user

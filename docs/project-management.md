@@ -465,6 +465,16 @@ the next ones read it from their step or review round. The task sheet's
 Description tab shows the spec changes under the description. The coordinator
 makes these changes only in a turn that comes from you, never in a wake.
 
+When a review still fails after several send-backs on findings that
+contradict a spec change, the coordinator may pass it, even in a wake and even
+when the engine does not offer *pass*: `wherdr pm task decide <task> pass
+--reason "<one sentence>"`, the reason citing the spec change (its date,
+`YYYY-MM-DD`, or its words). wherdr refuses it when the task has no spec
+change or the reason cites none, and then the choice stays yours. It only ends
+the review loop: a merge only you may do still waits for you. The pass is
+written to the task's log, the coordinator tells you in its next message, and
+*Decisions* shows it for a day under *Passed on a spec change*.
+
 ### Tasks that touch the same files
 
 Tasks that change the same files do not run at the same time. At the start of

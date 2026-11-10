@@ -110,6 +110,8 @@ describe('verdict steps in the engine', () => {
     expect(r.state.yourTurn).toMatchObject({ reason: 'rounds', advice: { outcome: 'arbitrate', options: ['worker', 'reviewer'] } })
     const { plan, state } = r
     expect(onEvent(plan, state, { kind: 'decide', by: 'coordinator', choice: 'pass', note: 'nitpick' }, 0).refused).toBe('The coordinator may only choose worker or reviewer')
+    // A pass on a spec change (cited, checked by the server) ends the loop outside the options.
+    expect(onEvent(plan, state, { kind: 'decide', by: 'coordinator', choice: 'pass', note: 'Spec change of 2026-11-10.', spec: true }, 0).effects[0]).toMatchObject({ text: expect.stringMatching(/^review: coordinator chose pass on a spec change/) })
     expect(onEvent(plan, state, { kind: 'decide', by: 'coordinator', choice: 'worker' }, 0).refused).toBe('Give the reason of the choice')
     const ok = onEvent(plan, state, { kind: 'decide', by: 'coordinator', choice: 'worker', note: 'The test was wrong' }, 0)
     expect(ok.effects[0]).toEqual({ kind: 'log', text: 'review: coordinator chose worker (advice: arbitrate, Sent back again and contested by the agent: bug title). The test was wrong' })
@@ -149,6 +151,7 @@ describe('verdict steps in the engine', () => {
     const r = play(guarded, 'simple', [{ kind: 'start' }, report, ok, verdict(bug), report, ok, verdict(bug), report, ok, verdict(bug)])
     expect(r.state.yourTurn?.advice).toMatchObject({ outcome: 'your-turn', why: 'The next step is a merge only you may do' })
     expect(onEvent(r.plan, r.state, { kind: 'decide', by: 'coordinator', choice: 'pass', note: 'x' }, 0).refused).toBe('This one is for the user')
+    expect(onEvent(r.plan, r.state, { kind: 'decide', by: 'coordinator', choice: 'pass', note: 'x', spec: true }, 0).refused).toBe('The next step is a merge only the user may do: this one is for the user')
   })
 })
 

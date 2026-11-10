@@ -122,7 +122,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task link <task> <url> --label <label>', does: 'a link on the card (PR, ticket, pipeline)' },
   { usage: 'step done <task> [--link <url>]', does: 'end the task\'s current step when you hold it (holder: coordinator)' },
   { usage: 'step done <task> --user-said "<their words>"', does: 'end a step that waits for the user, with the user\'s own words; only in a turn that comes from the user' },
-  { usage: 'task decide <task> <choice> --reason "<one sentence>"', does: 'after N send-backs, pick one of the engine\'s options' },
+  { usage: 'task decide <task> <choice> --reason "<one sentence>"', does: 'after N send-backs, pick one of the engine\'s options. Also pass when each remaining finding contradicts a spec change recorded on the task (task edit, task note, tell --spec), the reason citing it (its date YYYY-MM-DD or its words); never before a merge only the user may do. Written to the task\'s log and shown in the user\'s Decisions: tell the user in your next message' },
   { usage: 'ack <wake> [<wake>…]', does: 'say you handled a wake (each wake ends with its id); unacked, it comes back once, then the user is told' },
   { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, whether it looks for new work (and how many tasks those wakes may still add today), the scheduled wakes skipped today (nothing to do, or ahead of the pace), what is left of today\'s limits, the pacing of your worker\'s account (go, or what automatic work waits for), each machine the project allows (online or offline, its available hours, memory, cores and load, its agents at work by weight, the heaviest weight it takes now or why none) the weights (what each counts, the weight of each task type) and the last open incident (why agents were gone, see incidents)' },
   { usage: 'incidents [--since 2h|3d|<ISO date>]', does: 'why agents were gone, as the engine diagnosed it from facts (machine offline or unreachable, herdr-core or wherdr restarted, agent killed or crashed, out of memory, account limit, or unknown): when, the machine, the cause, the facts it used, the tasks and agents hit, open until those tasks run again; newest first, the last 7 days by default. Tell the user this cause, never a guess' },
@@ -360,6 +360,31 @@ export function specDiff(old: Pick<Task, 'title' | 'description'>, next: Pick<Ta
   return out.join('\n') || '(no change)'
 }
 
+// The task's spec changes, oldest first: its notes (task note, tell --spec)
+// and its description edits (task edit, kept in its log with reason and diff).
+export function specChanges(task: Pick<Task, 'specNotes' | 'log'>) {
+  const edits = (task.log ?? []).filter(e => e.text.startsWith('edited the spec (')).map(e => ({ at: e.at, text: e.text.slice('edited the spec '.length) }))
+  return [...(task.specNotes ?? []), ...edits].sort((a, b) => a.at - b.at)
+}
+
+// A pass after N send-backs outside the engine's options: only when the reason
+// cites one of the task's spec changes, by its date (YYYY-MM-DD) or its words
+// (the whole text, or 20 characters of it in a row). The cited change, or why
+// not; none when the task has no spec change (the engine's refusal, as before).
+export function citedSpecChange(task: Pick<Task, 'specNotes' | 'log'>, reason: string): { at: number, text: string } | { refused: string } | undefined {
+  const changes = specChanges(task)
+  if (!changes.length) return undefined
+  const norm = (x: string) => x.toLowerCase().replace(/\s+/g, ' ').trim()
+  const r = norm(reason)
+  const cites = (c: { at: number, text: string }) => {
+    const t = norm(c.text), n = Math.min(20, t.length)
+    if (r.includes(new Date(c.at).toISOString().slice(0, 10))) return true
+    for (let i = 0; i + n <= t.length; i++) if (r.includes(t.slice(i, i + n))) return true
+    return false
+  }
+  return changes.findLast(cites) ?? { refused: 'A pass outside the engine\'s options needs a --reason that cites the spec change each remaining finding contradicts: its date (YYYY-MM-DD) or its words' }
+}
+
 // What a running agent of the task reads at once when its spec changed.
 export const specChangedText = (what: string) => `The task's spec changed: ${what}\n\n${SPEC_RULE} Follow the new spec from now on.`
 
@@ -535,7 +560,8 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     '## A problem the user reports', '',
     'A message that starts with "The user reports a problem on task" comes from the user, from the task\'s sheet: their text, the screenshots concerned (open them), the PR and the review. Decide yourself: `tell` the agent precise fixes, `report back` to send the step back to the worker, or add a follow-up task; then `report close` with what you did. Never ask the user to pass it on to the agent: you act on it. While it is open, the task stays in Your turn, and its merge is blocked when the user said so.', '',
     '## After N send-backs', '',
-    'The engine sorts what is left and gives options. Pick one with `task decide` and one sentence of reason. When it gives no option, the choice is the user\'s: tell them.', '',
+    'The engine sorts what is left and gives options. Pick one with `task decide` and one sentence of reason. When it gives no option, the choice is the user\'s: tell them.',
+    'One exception: when each remaining finding contradicts a spec change recorded on the task (the reviewer missed the new direction), `task decide <task> pass` with a reason that cites that change (its date or its words) ends the review loop. A merge only the user may do still waits for them. Tell the user in your next message: the task, the change you cited and why.', '',
     '## The user\'s instructions', '', ...(own.length ? own : ['(none yet)']), '',
   ].join('\n')
   const skill = ['---', 'name: wherdr-pm', `description: Act on project ${p.key}'s board with the wherdr pm command (tasks, steps, tags, links, workflow).`, '---', '',

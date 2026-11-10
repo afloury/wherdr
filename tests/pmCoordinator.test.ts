@@ -317,6 +317,20 @@ describe('arbitration after N send-backs', () => {
     expect((await store.task(id))!.log!.at(-1)!.text).toContain('The finding is real and small.')
   })
 
+  it('passes outside the options in a wake only on a spec change its reason cites', async () => {
+    const id = await atReview([[f('a')], [f('a')], [f('b')]])
+    await noteTurn(store, 'CO', 'wake')
+    await refused(decide(id, 'pass', 'The finding asks for the toggle the user dropped.'), 'may only choose round or split')
+    const at = Date.UTC(2026, 10, 9, 12)
+    await store.saveTask({ ...(await store.task(id))!, specNotes: [{ at, by: 'coordinator CO', text: 'No toggle in Settings: follow the system theme.' }] })
+    await refused(decide(id, 'pass', 'The finding contradicts what the user wants now.'), 'cites the spec change')
+    const r = await decide(id, 'pass', 'Finding b asks for a toggle: no toggle in settings, per the spec change.') as { tellUser: string }
+    expect(r.tellUser).toContain('on the spec change of 2026-11-09')
+    const saved = (await store.task(id))!
+    expect(saved.specPass).toMatchObject({ step: 'review', reason: expect.stringContaining('no toggle') })
+    expect(saved.log!.at(-1)!.text).toContain('coordinator chose pass on a spec change')
+  })
+
   it('never passes a critical with proof', async () => {
     const id = await atReview([[f('a')], [f('a')], [f('c', { severity: 'critical' })]])
     for (const choice of ['pass', 'worker', 'split']) await refused(decide(id, choice), 'This one is for the user')
