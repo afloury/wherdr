@@ -185,6 +185,23 @@ describe('runImport', () => {
     expect(hashTree(FIX)).toBe(before)
   })
 
+  it('maps the Herdr profile aimed at this machine to v3\'s local machine, in the tabs and groups, and never adds it', () => {
+    const v2 = { ...detectV2({ ...v2Opts, run: fakeRun().run, hostname: 'host-a' }), dataDir: path.join(FIX, 'wherdr/data') }
+    expect(v2.self).toContain('host-a')
+    const { run, calls } = fakeRun()
+    const data = tmp()
+    // Laptop's target names this machine, as its tailnet name did in v2.
+    const r = runImport({ v2: { ...v2, self: [...v2.self, 'laptop.example.ts.net'] }, dataDir: data, run, env: {}, hcSession: 'test', hcReachable: true })
+    expect(calls.filter(c => c.includes('user@laptop'))).toEqual([])
+    expect(r.machines.local).toMatchObject([{ label: 'Laptop', target: 'user@laptop' }])
+    const settings = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).settings
+    expect(JSON.parse(settings.machineGroups)[0].machines).toEqual([''])
+    expect(JSON.parse(settings.machineBarOrder)).toEqual(['*', '*group:perso', ''])
+    const report = fs.readFileSync(path.join(data, 'migration-report.md'), 'utf8')
+    expect(report).toContain('- Laptop (user@laptop): this machine, v3\'s Local')
+    expect(report).toContain('- machineBarOrder: Laptop (v2 23108ee8) → Local')
+  })
+
   it('never calls hc when its session is not running (hc would start one)', () => {
     const v2 = { ...detectV2({ ...v2Opts, run: fakeRun().run }), dataDir: path.join(FIX, 'wherdr/data') }
     const { run, calls } = fakeRun()
