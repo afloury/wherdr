@@ -52,7 +52,8 @@ export function useMachineConversation() {
     const destination = machineConversation(herdrState.value, machineBarPick.value, machineGroups.value, memory, viewed(), coordinatorPlaces.value)
     // Phones keep the list first; restore only when history reopens a view
     // outside the new filter, leaving explicit conversation choices alone.
-    if (desk.value) open(destination)
+    // The board stays: it follows the tab itself (BoardView.vue).
+    if (desk.value && !route.path.startsWith('/board')) open(destination)
     else { reopen = true; historyTarget = null }
     remember()
   }
