@@ -120,7 +120,9 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   the text. Unrecognized blocking screens offer the real terminal.
 - **Composer**: send messages while the agent works (queued: the agent's own queue when it takes
   them, else held by wherdr and sent when the turn ends; never sent twice; a message sent while
-  wherdr types a wake or another of its own messages into the agent waits for it, then goes), attach or paste
+  wherdr types a wake or another of its own messages into the agent waits for it, then goes;
+  while Codex installs or updates itself, a message waits as **Queued · sent when Codex is ready**,
+  and comes back into the field if Codex exits instead, see [Codex updates](quotas.md#codex-updates)), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), up to **8 MB per file** (core's `terminal.put`).
   A sent file shows as a chip (icon and original name) in the message and its history, also in

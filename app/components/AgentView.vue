@@ -268,7 +268,7 @@ function onSent(q: QueuedMessage | null) {
 }
 // As soon as the server lists them, the server state wins; once taken, they stay
 // until the transcript is read again (see utils/outbox.ts prune).
-watch(pane, p => outboxPrune(props.paneId, p?.queued || []))
+watch(pane, p => outboxSync(props.paneId, p, herdrState.value.ok))
 
 const prompt = computed(() => (pane.value && pane.value.status === 'blocked' && pane.value.prompt && pane.value.prompt.options ? pane.value.prompt : null))
 watch(() => JSON.stringify(prompt.value), () => nextTick(() => chatRef.value?.scrollToEnd(false)))

@@ -267,7 +267,7 @@ describe('advanceTick (store and a fake herdr-core)', () => {
       await round()
       await advanceTick(deps)
       expect(calls.filter(([m, p]) => m === 'terminal.send' && p.terminal === 'h/t3')).toHaveLength(1)
-      expect(calls.filter(([m]) => m === 'terminal.run').map(([, p]) => p.line as string)).toEqual([expect.stringContaining(`exec codex '--model' 'gpt-6.1-sol'`)])
+      expect(calls.filter(([m]) => m === 'terminal.run').map(([, p]) => p.line as string)).toEqual([expect.stringContaining(`exec codex '-c' 'check_for_update_on_startup=false' '--model' 'gpt-6.1-sol'`)])
       expect((await store.runs()).find(r => r.id === 'r3')).toMatchObject({ state: 'ended', endedBy: 'stopped' })
       expect((await store.task(t.id))!.log?.map(l => l.text)).toEqual(expect.arrayContaining(['review: Codex has quota again, the fallback reviewer (claude sonnet) ends', 'review: started the reviewer (codex gpt-6.1-sol)']))
     }
