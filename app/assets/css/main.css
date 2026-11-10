@@ -911,6 +911,12 @@ body.short-bottom { --safe-bottom: 0px; }
 .ui-open-place .iconify { flex: none; color: var(--accent); }
 .ui-open-x { display: grid; place-items: center; width: 44px; flex: none; border-left: 1px solid var(--line); color: var(--muted); cursor: pointer; }
 .ui-open-x:hover { color: var(--text); }
+/* The "questions unanswered" chip floats above the message field: room for it under the card. */
+.ui-open-card:has(+ .composer .composer-ask-anchor) { margin-bottom: 36px; }
+.ui-show-top { display: flex; align-items: stretch; flex: none; min-height: 56px; border-bottom: 1px solid var(--line); }
+.ui-show-head { display: flex; flex-direction: column; justify-content: center; gap: 3px; flex: 1; min-width: 0; padding: 8px 16px; }
+.ui-show-head h2 { font: 700 16px/1.2 var(--sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-show-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 
 /* ---------- Terminal ---------- */
 #termWrap { position: relative; flex: 1; min-height: 0; padding: 6px 4px 0 6px; background: var(--bg); }
@@ -2640,6 +2646,9 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   #settings.settings-panel { left: auto; right: 0; width: var(--settings-panel); border-left: 1px solid var(--line); z-index: 4; }
   body:has(#settings.settings-panel) :is(#agent, #placeholder, #tabview) { right: var(--settings-panel); }
   .settings-panel .settings-top h2 { flex: 1; }
+  /* What an agent showed with `ui show` (UiShowPanel.vue): the same column, in place of Settings. */
+  #ui-show { position: fixed; top: 0; bottom: 0; right: 0; width: var(--settings-panel); display: flex; flex-direction: column; background: var(--bg); border-left: 1px solid var(--line); z-index: 4; }
+  body:has(#ui-show) :is(#agent, #placeholder, #tabview) { right: var(--settings-panel); }
   .settings-panel .settings-nav { width: 57px; padding: 16px 6px; }
   .settings-panel .settings-nav-item { justify-content: center; padding: 0; }
   .settings-panel .settings-nav-item span:not(.iconify) { display: none; }

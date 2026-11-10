@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { openUi, type UiOpenDeps } from '../server/utils/uiOpen'
+import { openUi, showUi, type UiOpenDeps } from '../server/utils/uiOpen'
 import { parseAlfredCommand } from '../shared/pm/alfredCli'
 import { parseCommand } from '../shared/pm/coordinator'
 import { parseOpenLine, uiPlaceLabel, usedAt, type UiDevice } from '../shared/uiOpen'
 import type { Pane } from '../shared/types'
+import type { Task } from '../shared/pm/run'
+import { folderPath, parseShowLine } from '../shared/uiShow'
 
 // Alfred (_main) runs in pane p1, the WEB coordinator in p2.
 // WEB was renamed: it shows WB and was once WW.
@@ -117,5 +119,38 @@ describe('ui open', () => {
       '#/board', '#/board?project=WEB', '#/board?tag=ui', '#/board?project=WEB&tag=ui', '#/board?task=WEB-3', '#/decisions', '#/'].map(uiPlaceLabel)
     expect(names).toEqual(['Settings', 'Settings › Phone', 'Settings › Agents › Pace', 'Settings › Projects', 'Settings › Projects › WEB › General',
       'Board', 'Board › WEB', 'Board › ui', 'Board › WEB › ui', 'Task WEB-3', 'Decisions', 'Home'])
+  })
+})
+
+describe('ui show', () => {
+  it('shows a file of the agent\'s folder only, on the device the user is on', async () => {
+    const { deps, got } = setup([{ pane: 'p2', device: 'computer', ago: 1 }])
+    deps.panes = () => [{ id: 'p2', coreAddress: 't-web', cwd: '/w/web' }] as Pane[]
+    const out = await showUi(deps, { ...web, turn: 'user', what: 'file', path: '/w/web/docs/plan.md' })
+    expect(JSON.parse(got[0]!.msgs[0]!)).toEqual({ type: 'ui-show', pane: 'p2', what: 'file', arg: 'docs/plan.md', by: 'WEB coordinator' })
+    expect(out.note).toContain('```wherdr\nshow file docs/plan.md\n```')
+    for (const path of ['../x', '~/.ssh/id', '/etc/hosts', 'a/../../b'])
+      await expect(showUi(deps, { ...web, turn: 'user', what: 'file', path })).rejects.toThrow(/your own folder/)
+    await expect(showUi(deps, { ...web, turn: 'wake', what: 'file', path: 'a.md' })).rejects.toThrow(/never in a wake/)
+  })
+
+  it('shows a task\'s screenshots once it has some, and approves nothing', async () => {
+    const { deps, got } = setup([{ pane: 'p2', device: 'phone', ago: 1 }])
+    deps.store.projects = async () => [{ key: 'WEB', label: 'WB' }] as never
+    const task = { id: 'WEB-3', project: 'WEB', step: { shots: { work: [{ file: 'a.png', phase: 'after', at: 1 }] } } } as unknown as Task
+    const out = await showUi(deps, { ...web, turn: 'user', what: 'shots', task })
+    expect(JSON.parse(got[0]!.msgs[0]!)).toMatchObject({ what: 'shots', arg: 'WB-3' })
+    expect(out.note).toContain('ui action step WB-3')
+    await expect(showUi(deps, { ...web, turn: 'user', what: 'shots', task: { ...task, step: undefined } })).rejects.toThrow(/no screenshots/)
+  })
+
+  it('parses the command and the kept block', () => {
+    expect(parseCommand(['ui', 'show', 'file', 'docs/a b.md'])).toEqual({ name: 'ui show', what: 'file', path: 'docs/a b.md' })
+    expect(parseCommand(['ui', 'show', 'shots', 'WEB-3'])).toEqual({ name: 'ui show', what: 'shots', task: 'WEB-3' })
+    expect(parseCommand(['ui', 'show', 'shots'])).toHaveProperty('error')
+    expect(folderPath('./a.md')).toBe('a.md')
+    expect(parseShowLine('show file docs/a.md')).toEqual({ what: 'file', arg: 'docs/a.md' })
+    expect(parseShowLine('show file /etc/hosts')).toBeNull()
+    expect(parseShowLine('show shots web-3')).toBeNull()
   })
 })

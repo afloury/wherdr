@@ -50,7 +50,7 @@ import type { CoordinatorRecord, PmStore } from './pmStore'
 import { ALFRED, OWN_FILES, alfredFiles, alfredName, isAlfredProgram, startPrompt } from '../../shared/pm/alfred'
 import { APP_URL_FILE, DATA_DIR, ENV_APP_URL } from './env'
 import pkg from '../../package.json'
-import { openUi, uiTargetsList, type UiOpenDeps } from './uiOpen'
+import { openUi, showUi, uiTargetsList, type UiOpenDeps } from './uiOpen'
 import { addAction } from './uiActions'
 
 // A project's incidents (all of them with no project named), oldest first.
@@ -195,6 +195,7 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
     case 'help': return { commands: commandList(t) }
     case 'ui targets': return uiTargetsList()
     case 'ui action': return addAction(store, { scope, turn, by: main ? ALFRED : `${shownKey(p ?? { key: scope })} coordinator`, kind: cmd.action, task: await taskOf(cmd.task) })
+    case 'ui show': return showUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope, turn, by: main ? ALFRED : `${shownKey(p ?? { key: scope })} coordinator`, ...(cmd.what === 'file' ? { what: cmd.what, path: cmd.path } : { what: cmd.what, task: await taskOf(cmd.task) }) })
     case 'ui open': return openUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope, main, raw: cmd.link, turn, by: main ? ALFRED : `${scope} coordinator` })
     case 'list': {
       const ts = new Map(await Promise.all(projects.map(async x => [x.key, x ? await store.workflow(x.key) : null] as const)))

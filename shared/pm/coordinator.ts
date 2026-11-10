@@ -19,6 +19,7 @@ import { PUBLIC_RULE, isPublic } from './visibility'
 import { appLinkList } from '../appLinks'
 import { uiOpenArgs } from '../uiOpen'
 import { isUiAction, type UiAction } from '../uiActions'
+import { uiShowArgs, type UiShowCommand } from '../uiShow'
 import { uiTargetList } from '../uiTargets'
 import { projectPlace } from './places'
 import { parseFiles } from './files'
@@ -120,6 +121,8 @@ export type Command =
   | { name: 'ui targets' }
   // A button in the reply that only the user's click runs (shared/uiActions.ts).
   | { name: 'ui action', action: UiAction, task: string }
+  // A file of its folder or a task's screenshots beside it (shared/uiShow.ts).
+  | UiShowCommand
 
 // One table for the parser, the skill and the role file.
 export const COMMANDS: { usage: string, does: string }[] = [
@@ -153,6 +156,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'ui open \'<in-app link>\' | --target <id>', does: 'show one of your project\'s places (its board, a task, its sheet) or a global Settings section (or one setting of it highlighted: --target) in the user\'s open wherdr, beside your conversation (a card on a phone), quoted; only in a turn that comes from the user, only to the wherdr the user is on now (the answer says which: phone or computer). It changes nothing' },
   { usage: 'ui targets', does: 'the settings ui open --target can highlight: id and where it is' },
   { usage: 'ui action resume|step|open <task>', does: 'a button in your reply that the user clicks: resume (continue a stopped task), step (the button of the step that waits for the user: "Merge", "Approve screenshots"), open (its sheet); only in a turn that comes from the user. Only their click runs it, through the task sheet\'s own action, and only if the task still waits the same way; end your reply with the block the answer gives, and never say it is done before the card shows it' },
+  { usage: 'ui show file <path> | shots <task>', does: 'show a file of your folder (a path relative to it), or a task\'s screenshots (before and after side by side, toggled on a phone), beside your conversation (a card on a phone); only in a turn that comes from the user. It only shows: for the user\'s approval, add ui action step <task>; end your reply with the block the answer gives' },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
 ]
@@ -248,6 +252,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   }
   if (verb === 'ui open') return uiOpenArgs(w2, w3, flags.target, usage(verb))
   if (verb === 'ui targets') return w2 ? usage(verb) : { name: verb }
+  if (verb === 'ui show') return uiShowArgs(w2, w3 === undefined ? [] : [w3, ...rest], TASK_RE, usage(verb))
   if (verb === 'ui action') return isUiAction(w2) && w3 && TASK_RE.test(w3) && !rest.length ? { name: verb, action: w2, task: w3 } : usage(verb)
   if (w0 === 'help' || w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0 }
   if (w0 === 'show') return w1 && TASK_RE.test(w1) && !w2 ? { name: 'show', task: w1 } : usage('show')

@@ -14,6 +14,7 @@ import { svgPreview } from './svgPreview'
 import { parseStatusBlock, STATUS_MAX } from '../../shared/statusBlock'
 import { parseOpenLine } from '../../shared/uiOpen'
 import { parseActionLine } from '../../shared/uiActions'
+import { parseShowLine } from '../../shared/uiShow'
 
 let hooked = false
 // Budget of the cache, in characters of text + HTML: about 4 MB of strings
@@ -125,6 +126,11 @@ export function md(text: string, options: MdOptions = {}): string {
           const links = opens.length && opens.length <= STATUS_MAX ? opens.map(parseOpenLine) : []
           if (links.length && links.every(Boolean)) {
             return `<div class="wherdr-block">${links.map(k => `<div class="open-slot" data-link="${escHtml(k!)}">open ${escHtml(k!)}</div>`).join('')}</div>`
+          }
+          // `show file|shots <arg>` lines: what an agent showed with `ui show` (shared/uiShow.ts).
+          const shows = opens.length && opens.length <= STATUS_MAX ? opens.map(parseShowLine) : []
+          if (shows.length && shows.every(Boolean)) {
+            return `<div class="wherdr-block">${shows.map(x => `<div class="show-slot" data-what="${x!.what}" data-arg="${escHtml(x!.arg)}">show ${x!.what} ${escHtml(x!.arg)}</div>`).join('')}</div>`
           }
           // `action <id>` lines: an agent's `ui action` buttons (shared/uiActions.ts).
           const actions = opens.length && opens.length <= STATUS_MAX ? opens.map(parseActionLine) : []
