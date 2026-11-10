@@ -22,11 +22,10 @@
 - [Updating](docs/installation.md#updating): update v3 by hand; there is no update banner.
 - [Install with an agent](docs/install-with-an-agent.md): ready-to-paste prompts for an agent that installs or updates wherdr.
 - [Migrate from v2](docs/migrate-from-v2.md): install v3 beside v2 and import its machines and settings; its projects are listed for Alfred.
-- [Fall back to v2](docs/migrate-from-v2.md#fall-back-to-v2): v2 keeps running; on v3, `herdr plugin install|update` and the `curl … | sh` installer change nothing and say how to install v3.
 - [What is imported](docs/migrate-from-v2.md#what-is-imported): what the v2 import brings over, and what to redo.
 - [Set up your v2 projects with Alfred](docs/migrate-from-v2.md#set-up-your-v2-projects-with-alfred): Alfred's first message offers to bring v2 projects over (machine, template, coordinator, open tasks).
 - [Auto-deploy from a build machine](docs/migrate-from-v2.md#auto-deploy-from-a-build-machine): build elsewhere and deploy to the server.
-- [Fall back to v2](docs/migrate-from-v2.md#fall-back-to-v2): go back to v2, and [uninstall v3](docs/migrate-from-v2.md#uninstall-v3).
+- [Fall back to v2](docs/migrate-from-v2.md#fall-back-to-v2): go back to v2, and [uninstall v3](docs/migrate-from-v2.md#uninstall-v3); on v3, `herdr plugin install|update` and the `curl … | sh` installer change nothing and say how to install v3.
 - [Install as an app](docs/phone.md#install-it-as-an-app): add wherdr to a phone's home screen or a desktop browser.
 - [App start](docs/phone.md#app-start): Settings › Phone › App start, network first or saved copy first; after an update, a Reload banner and no reload by itself.
 
