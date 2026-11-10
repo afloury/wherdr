@@ -59,7 +59,7 @@ export function machineView(rows: MachineRow[] | null, arg: string): StatusView 
     title: r.label,
     state: 'online',
     tone: m.pressure === 'critical' ? 'bad' : m.pressure === 'warn' ? 'wait' : 'ok',
-    lines: [`RAM ${gb(m.available)} free of ${gb(m.total)}${load === null ? '' : ` · load ${load} %`}`, agents],
+    lines: [`RAM ${m.pressure ? '≈' : ''}${gb(m.available)} ${m.pressure ? 'available' : 'free'} of ${gb(m.total)}${load === null ? '' : ` · load ${load} %`}`, agents],
   }
 }
 

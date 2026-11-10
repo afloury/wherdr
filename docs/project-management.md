@@ -145,7 +145,9 @@ its folder, branches and task worktrees stay on the machine.
   machines and takes the path of the repository's clone there (`~/project`); once
   saved, wherdr runs that machine's readiness check (see *Start on…* under
   [Board](#board)) and shows *Ready* or what is missing. Each machine shows its
-  last check (*Not checked yet* before the first); ↻ runs it again. ✕ removes a machine:
+  last check (*Not checked yet* before the first); ↻ runs it again. Each machine also
+  shows its memory as placement reads it: *5.2 GB free of 16.0 GB*, on macOS
+  *pressure normal, ≈8.3 GB available of 18.0 GB*. ✕ removes a machine:
   new tasks no longer start there, tasks already there stay. Its switch off pauses it
   for the project instead, its clone kept ([Pause a machine for a project](machines.md#pause-a-machine-for-a-project)). Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
@@ -155,7 +157,8 @@ its folder, branches and task worktrees stay on the machine.
   machine with the largest share of memory and cores left after it) or *Home
   first* (other machines only once home is full). A machine fits a task when
   its free memory covers the task's estimate plus the machine's reserve
-  (Settings › Machines). An idle machine (no wherdr agent at work there) always
+  (Settings › Machines; on macOS the memory macOS reports available, its free
+  percentage of the RAM, which counts what it can reclaim or compress). An idle machine (no wherdr agent at work there) always
   takes one task its RAM can hold, even with less free memory than that: the
   reserve only holds its second task and beyond; on macOS a *critical* memory
   pressure still holds every task. A task that waits for room names it, and so does the
@@ -1004,12 +1007,23 @@ inherited from the agent (`CLAUDE_CODE_TMPDIR`, set to the task's
 `.wherdr-tmp`), wherever they run, never by their folder alone. macOS hides
 that from its own programs (`sh`, `zsh`, `sleep`): those go with the marked
 process they run under or share a process group with, or, once re-parented to
-`launchd` with their folder in that task's worktree, on their own. It kills
-them and says so in the task's log (*killed 7 leftover processes, 6 h old*). Your
-own shell, editor, apps and daemons are never touched, even when they run in a
-worktree, nor the processes of a task whose agent runs. The machine's line in
-Settings › Machines then says *n leftover processes killed*
-(since wherdr started).
+`launchd` with their folder in that task's worktree (or in a worktree removed
+since), on their own. It kills them and says so in the task's log (*killed 2
+leftover processes, 4 h old, 90 % CPU*). Your own shell, editor, apps and
+daemons are left alone by this sweep, even when they run in a worktree, and so
+are the processes of a task whose agent runs.
+
+Before removing a task's worktree, wherdr kills every process still working in
+it, yours included, so nothing runs on in a deleted folder; the task's log
+says how many.
+
+A CPU guard watches the processes of a task (marked, or working in its
+worktree): one above 80 % CPU for more than 20 minutes after the task's agent
+ended is killed and logged on the task; while the agent runs, its coordinator
+is told once instead.
+
+The machine's line in Settings › Machines says *n leftover processes killed*
+(since wherdr started), all three counted.
 
 The wherdr template tells its workers to run a test command that could hang
 with a timeout (`timeout 600 …`) and to leave no background job running when

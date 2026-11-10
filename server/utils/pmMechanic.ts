@@ -4,11 +4,10 @@
 // noted on the task before it runs, so it is never made twice. A move that
 // tries to fix a block counts (shared/pm/selfFix.ts): past its tries, or with
 // nothing left to try, the coordinator is woken once, with what was tried.
-import { randomUUID } from 'node:crypto'
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { CATCH_UP_TRIES, catchUpGaveUp, ciOf, infraLog, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
 import { FIX_MOVE, blockOf, escalation, fixOf, mayTry, noteFix } from '../../shared/pm/selfFix'
-import { addSkip, enqueue, wakesFor } from '../../shared/pm/wakes'
+import { addSkip, wakesFor } from '../../shared/pm/wakes'
 import { MAIN } from '../../shared/pm/coordinator'
 import { inMergeQueue, mergeOrder, ordinal, queueOut } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
@@ -39,6 +38,7 @@ import { noteBack, noteStall } from './pmStall'
 import { askedQuestion } from './pmRead'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
 import { killTerminal } from './pmProcs'
+import { wakeCoordinators } from './pmWakes'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -409,15 +409,6 @@ async function escalate(deps: PmLaunchDeps, task: Task, run: Run, now: number) {
   if (down) { await skipWake(deps, task, `${why} Not sent: it ${down.toLowerCase()}.`, now); return }
   const woken = await wakeCoordinators(deps, task, why, now)
   await deps.store.logTask({ ...task, selfFix: { ...task.selfFix!, woke: now } }, 'engine', `gave up: ${why}${woken.length ? ` Woke ${woken.join(' and ')}.` : ''}`)
-}
-
-// The task's coordinators whose autopilot wakes them for stuck tasks, woken with why; who was woken.
-async function wakeCoordinators(deps: PmLaunchDeps, task: Task, why: string, now: number) {
-  const { store } = deps
-  const coords = new Map([[task.project, await store.coordinator(task.project)], [MAIN, await store.coordinator(MAIN)]])
-  const keys = wakesFor([task.project, MAIN], k => coords.get(k) ?? undefined, now)
-  for (const key of keys) await store.saveWakes([enqueue(await store.wakes(), key, [why], now, randomUUID().replace(/-/g, '').slice(0, 8), false, { kind: 'engine' })])
-  return keys.map(k => (k === MAIN ? 'the main coordinator' : 'the project\'s coordinator'))
 }
 
 async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: MechFacts, sh: ReturnType<typeof actionShell>): Promise<string | null> {
