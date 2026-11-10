@@ -85,6 +85,16 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   it. The card then says *Applied by you · 14:02* or *Cancelled by you*. If the setting changed
   since (in Settings, on another device), it says so and applies nothing. Only in a turn that
   follows your message, never in a wake; a new proposal for the same setting replaces the older.
+- **Files and screenshots beside the conversation**: an agent can show you a file of its own
+  folder (`wherdr pm ui show file docs/plan.md`, a path relative to its folder: never `~`, `..`
+  or a path outside it) or a task's screenshots (`wherdr pm ui show shots WHR-12`, once the task
+  has some). On a wide computer they open in the side panel, in place of Settings: the file
+  read-only as in Files, the screenshots by step, before and after side by side, with a button
+  to open the task. On a phone a card shows above the message field, and a tap opens a sheet
+  (before and after toggled). The card also stays in the reply (a ```wherdr block of
+  `show file|shots …` lines), and a tap shows it again. Showing approves nothing: the agent adds
+  the step's button (*Approve screenshots*) with `ui action step`. Only in a turn that follows
+  your message, and a coordinator shows its own project's tasks only.
 - **Wakes**: in a coordinator's conversation, a wake (Autopilot, Health check, Engine, Incident,
   Step check) is a compact muted row, not one of your bubbles, with the coordinator's answer under
   it; routine runs fold into one row. See
