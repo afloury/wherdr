@@ -21,7 +21,9 @@ export interface YourTurn { reason: 'user' | 'timeout' | 'rounds' | 'action', ba
 // step's Your turn (`was`) waits until the PR head moves from `head` or the
 // worker reports. A failed action is then tried again (release.ts retriesAction);
 // idle: since when its agent sits idle, its report not in (fixWatch).
-export interface AgentWork { kind: string, head?: string, at: number, was?: YourTurn, idle?: number }
+// text: what the worker was told, to start it again with it; waits: why it cannot do it now (release.ts handedWatch);
+// revived: when the engine started it again for it; told: who was told it waits (the coordinator's wake, else the user).
+export interface AgentWork { kind: string, head?: string, at: number, was?: YourTurn, idle?: number, text?: string, waits?: string, revived?: number, told?: 'coordinator' | 'user' }
 
 export interface StepState {
   at: number // index of the current step

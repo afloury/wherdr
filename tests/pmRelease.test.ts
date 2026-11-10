@@ -150,13 +150,14 @@ describe('work the engine handed the worker', () => {
     await store.saveTemplate(wherdr)
     await store.addProject({ key: 'WH', machine: 'm1', path: '/home/u/wh', template: 'wherdr' }, async (_m, p) => p)
     await store.addTask({ project: 'WH', title: 'Fix it', type: 'visual' })
-    const env = { head: 'abc1234', prHead: 'abc1234', merge: { code: 3, out: 'conflict with v3 in a.ts' }, push: { code: 0, out: '' }, calls: [] as [string, Record<string, unknown>][] }
+    const env = { head: 'abc1234', prHead: 'abc1234', merge: { code: 3, out: 'conflict with v3 in a.ts' }, push: { code: 0, out: '' }, calls: [] as [string, Record<string, unknown>][],
+      pr: { mergeStateStatus: 'DIRTY', statusCheckRollup: [] as unknown[] }, online: true, finished: [] as string[] }
     const out = (code: number, text: string) => ({ code, stdout: Buffer.from(text).toString('base64') })
     const call = async (method: string, p: Record<string, unknown>) => {
       env.calls.push([method, p])
       if (method === 'machine.exec') {
         const script = (p.argv as string[])[2]!
-        if (script.includes('gh pr list --head')) return out(0, `${env.head}\n${JSON.stringify([{ url: 'https://github.com/o/r/pull/9', baseRefName: 'v3', headRefOid: env.prHead, mergeStateStatus: 'DIRTY', statusCheckRollup: [] }])}`)
+        if (script.includes('gh pr list --head')) return out(0, `${env.head}\n${JSON.stringify([{ url: 'https://github.com/o/r/pull/9', baseRefName: 'v3', headRefOid: env.prHead, ...env.pr }])}`)
         if (script.includes('merge -q --no-edit')) return out(env.merge.code, env.merge.out)
         if (script.includes('ls-remote')) return out(env.push.code, env.push.out)
         if (script.includes('command -v')) return out(0, 'claude')
@@ -165,9 +166,9 @@ describe('work the engine handed the worker', () => {
       }
       if (method === 'terminal.run') return { address: `m1/t${env.calls.filter(c => c[0] === 'terminal.run').length}` }
       if (method === 'terminal.list') return { terminals: [{ address: 'm1/t1', labels: {}, state: 'running', status: { state: 'idle' } }] }
-      return { state: 'running' }
+      return { state: env.finished.includes(String(p.terminal)) ? 'finished' : 'running' }
     }
-    const deps = { call, store, machines: () => [{ key: 'm1', label: 'm1', local: false, status: 'online' }], launchWatchMs: 0 } as unknown as PmLaunchDeps
+    const deps = { call, store, machines: () => [{ key: 'm1', label: 'm1', local: false, status: env.online ? 'online' : 'offline' }], launchWatchMs: 0 } as unknown as PmLaunchDeps
     await startTask(deps, 'WH-1')
     const t = (await store.task('WH-1'))!, plan = (await store.workflow('WH'))!.taskTypes.visual!.steps
     const at = plan.findIndex(x => typeof x !== 'string' && x.id === 'merge')
@@ -215,5 +216,61 @@ describe('work the engine handed the worker', () => {
     expect(t.step!.agent).toMatchObject({ kind: 'catch-up' })
     expect(await log()).toContain('catch-up: started the worker again with it')
     expect(cardStatus({ plan: [], state: t.step })?.text).toBe('the agent is updating the PR')
+  })
+  // Its PR clean but its smoke check red: the fix goes to the worker.
+  const redSmoke = (env: Awaited<ReturnType<typeof setup>>['env']) => { env.pr = { mergeStateStatus: 'CLEAN', statusCheckRollup: [{ name: 'smoke', status: 'COMPLETED', conclusion: 'FAILURE' }] } }
+  const sentTexts = (env: Awaited<ReturnType<typeof setup>>['env']) => env.calls.filter(c => c[0] === 'terminal.send').map(c => String(c[1].text))
+
+  it('a CI fix sent to a worker that ended starts it again with that fix', async () => {
+    const { store, deps, env, log } = await setup()
+    redSmoke(env)
+    await store.saveRun({ ...(await store.runs())[0]!, state: 'ended', endedBy: 'exit' }) // its session ended
+    await mechanicTick(deps, 0)
+    expect(env.calls.filter(c => c[0] === 'terminal.run')).toHaveLength(2)
+    expect(sentTexts(env)).toEqual([])
+    expect(await log()).toContain('ci-to-agent: started the worker again with it')
+    const t = (await store.task('WH-1'))!
+    expect(t.step!.agent).toMatchObject({ kind: 'ci-to-agent', text: expect.stringContaining('CI failed on smoke') })
+    expect(cardStatus({ plan: [], state: t.step })?.text).toBe('the agent is updating the PR')
+  })
+
+  it('a worker whose machine goes offline: the status says why, the coordinator is woken; back online and ended, it starts again', async () => {
+    const { store, deps, env, log } = await setup()
+    await store.saveCoordinator({ project: 'WH', tokenHash: '', terminal: 'm1/c', autopilot: { on: true, goal: '', events: ['stuck'], perDay: null, atOnce: null } })
+    redSmoke(env)
+    await mechanicTick(deps, 0)
+    expect(sentTexts(env).some(x => x.includes('CI failed on smoke'))).toBe(true)
+    // Its machine offline: the task says it waits for it, and its coordinator is woken once.
+    env.online = false
+    await mechanicTick(deps, 60_000)
+    await mechanicTick(deps, 120_000)
+    let t = (await store.task('WH-1'))!
+    expect(cardStatus({ plan: [], state: t.step })).toEqual({ text: 'Waits for its machine (offline)', tone: 'bad' })
+    expect(await log()).toContain('ci-to-agent: Waits for its machine (offline). Woke its coordinator.')
+    const wakes = (await store.wakes()).filter(w => w.reasons.some(r => r.includes('Waits for its machine')))
+    expect(wakes).toHaveLength(1)
+    // Back online, its agent gone: started again with the fix, the status clears.
+    env.online = true
+    env.finished.push('m1/t1')
+    await mechanicTick(deps, 180_000)
+    t = (await store.task('WH-1'))!
+    expect(env.calls.filter(c => c[0] === 'terminal.run')).toHaveLength(2)
+    expect(t.step!.agent).toMatchObject({ kind: 'ci-to-agent', revived: 180_000 })
+    expect(t.step!.agent!.waits).toBeUndefined()
+    expect(cardStatus({ plan: [], state: t.step })?.text).toBe('the agent is updating the PR')
+  })
+  it('a CI fix for a worker that ended on a machine paused for the project: it waits for its machine, the coordinator is woken', async () => {
+    const { store, deps, env, log } = await setup()
+    await store.saveCoordinator({ project: 'WH', tokenHash: '', terminal: 'm1/c', autopilot: { on: true, goal: '', events: ['stuck'], perDay: null, atOnce: null } })
+    redSmoke(env)
+    await store.updateProject('WH', { paused: ['m1'] })
+    await store.saveRun({ ...(await store.runs())[0]!, state: 'ended', endedBy: 'exit' })
+    await mechanicTick(deps, 0)
+    await mechanicTick(deps, 60_000)
+    expect(env.calls.filter(c => c[0] === 'terminal.run')).toHaveLength(1) // never started there again
+    const t = (await store.task('WH-1'))!
+    expect(cardStatus({ plan: [], state: t.step })).toEqual({ text: 'Waits for its machine (paused)', tone: 'bad' })
+    expect(await log()).toContain('ci-to-agent: Waits for its machine (paused). Woke its coordinator.')
+    expect((await store.wakes()).filter(w => w.reasons.some(r => r.includes('(paused)')))).toHaveLength(1)
   })
 })
