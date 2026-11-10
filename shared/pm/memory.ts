@@ -65,9 +65,9 @@ export function memoryStrain(m: MachineCapacity, light: boolean): string | undef
 
 // Why the machine is short for one more agent, or undefined. `agents`: the
 // agents running on it now, all projects together. An unknown reading holds
-// only by the user's cap.
+// only by the user's cap; an idle one is not held by its reserve (placement.ts).
 export function memoryShort(mem: MachineCapacity | null, s: MemorySettings, agents: number): string | undefined {
-  if (mem && mem.available < reserveOf(s, mem)) return `${gb(mem.available)} free, under ${gb(reserveOf(s, mem))}`
+  if (agents && mem && mem.available < reserveOf(s, mem)) return `${gb(mem.available)} free, under ${gb(reserveOf(s, mem))}`
   const strain = mem && memoryStrain(mem, false)
   if (strain) return strain
   const cap = agentCap(s, mem)

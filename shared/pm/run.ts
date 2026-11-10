@@ -28,6 +28,7 @@ export interface Task {
   ci?: { head: string, red: boolean } // its PR's CI at the task's commit, as the engine last read it
   queue?: number // its place in its project's merge queue (mergeQueue.ts), 1: merging now
   queueOut?: string // why it stepped out of the queue's line (a conflict, its checks, its agent's work)
+  order?: number // its place on the board, set by the coordinator's `task order` (boardOrder.ts): lower first
   idle?: number // since when the agent holding its step sits idle, its report still due (blocked.ts)
   stall?: { cause: string, reason: string, since: number } // its stall as the engine last saw it (blocked.ts)
   stalls?: Record<string, { since: number, nudged?: number, restarted?: number, handled?: number, back?: number }> // each cause seen: when it began, its one nudge, restart and hand-over, when its agent went back to work
@@ -45,6 +46,8 @@ export interface Task {
   links?: { label: string, url: string }[] // the PR, the ticket…
   shotToken?: string // the agent's key for POST /api/pm/shot (never sent to the browser)
   log?: TaskLogEntry[] // who changed what, newest last
+  specNotes?: SpecNote[] // spec changes added after its description (task note, tell --spec), newest last
+  specPass?: { at: number, step: string, reason: string } // the coordinator's last pass on a spec change, shown in Decisions for a day
   marks?: Mark[] // when its step or turn changed, added by the store (times.ts)
   after?: string // tasks of the same project, comma-separated: this one starts once they are done
   stopped?: Stopped // who stopped it and why (stop.ts): it waits for the user
@@ -67,6 +70,18 @@ export interface Task {
 export const publicTask = ({ shotToken: _, ...t }: Task): Task => t
 
 export interface TaskLogEntry { at: number, by: string, text: string }
+export type SpecNote = TaskLogEntry
+
+// The rule the worker and the reviewer follow when the spec changed.
+export const SPEC_RULE = 'The latest note overrides the description where they disagree.'
+// The task's description, then its spec changes, newest last, as the worker's
+// and the reviewer's instructions give them.
+export function specText(task: Pick<Task, 'description' | 'specNotes'>) {
+  const notes = task.specNotes ?? []
+  return [task.description.trim() || '(no description)', ...(notes.length
+    ? ['', '## Spec changes', '', SPEC_RULE, '', ...notes.map(n => `- Spec change (${new Date(n.at).toISOString().slice(0, 10)}): ${n.text}`)]
+    : [])].join('\n')
+}
 
 export interface Run {
   id: string
@@ -216,7 +231,7 @@ export function instructionsText(p: Project, t: Template, task: Task, run: Pick<
   const parts = [t.instructions, t.taskTypes[task.type]?.instructions, step?.instructions].map(s => s?.trim()).filter(Boolean).map(s => fillBase(s!, taskBase(task, p)))
   const visual = shotStep(t, task.type)
   return [
-    `# ${task.id}: ${task.title}`, '', task.description.trim() || '(no description)', '',
+    `# ${task.id}: ${task.title}`, '', specText(task), '',
     '## Instructions', '', ...(parts.length ? parts : ['(none)']), '',
     ...(visual && shots ? shotsSection(visual, task, shots) : []),
     ...(isPublic(p) ? publicWorkerSection(leakCheck) : []),

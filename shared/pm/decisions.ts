@@ -13,7 +13,8 @@ import { turnText } from './refusal'
 // coordinator. step: a step that ends with the user's button (Merged), or an
 // action that failed. overdue: a step over its timeout. coordinator: a wake
 // it never acked. stopped: a task stopped by the user or the coordinator.
-export const DECISION_GROUPS = ['agent', 'stopped', 'arbitrate', 'proposal', 'step', 'overdue', 'coordinator'] as const
+// passed: for a day, a review the coordinator passed on a spec change (to know, nothing to answer).
+export const DECISION_GROUPS = ['agent', 'stopped', 'arbitrate', 'proposal', 'step', 'overdue', 'coordinator', 'passed'] as const
 export type DecisionGroup = typeof DECISION_GROUPS[number]
 
 export interface Decision {
@@ -33,10 +34,12 @@ export interface Decision {
 
 export interface DecisionsInput {
   cards: Card[]
-  tasks: Pick<Task, 'id' | 'state' | 'waiting' | 'waitKind' | 'stopped'>[]
+  tasks: Pick<Task, 'id' | 'state' | 'waiting' | 'waitKind' | 'stopped' | 'specPass'>[]
   coordinators: { project: string, name: string, proposal?: { at: number, said?: string } }[]
   wakes: Wake[]
+  now?: number
 }
+const PASSED_FOR_MS = 24 * 3600_000
 
 // The choices offered on an advice, recommended first: the coordinator's
 // options when it has some, else any choice (the user may choose any).
@@ -48,11 +51,13 @@ export function adviceChoices(a: Advice): { options: Choice[], recommend?: Choic
 
 const KIND_TEXT: Record<WaitKind, string> = { permission: 'Asks for a permission', question: 'Asks a question', auth: 'Needs its login again' }
 
-export function decisionsOf({ cards, tasks, coordinators, wakes }: DecisionsInput): Decision[] {
+export function decisionsOf({ cards, tasks, coordinators, wakes, now = Date.now() }: DecisionsInput): Decision[] {
   const out: Decision[] = []
   for (const c of cards) {
     const t = tasks.find(x => x.id === c.id)
     const base = { project: c.project, task: c.id, title: c.title, at: c.state?.since ?? 0, ...(c.terminal ? { terminal: c.terminal } : {}) }
+    const sp = t?.specPass
+    if (sp && now - sp.at < PASSED_FOR_MS) out.push({ ...base, id: `passed:${c.id}:${sp.at}`, group: 'passed', text: `The coordinator passed ${sp.step} on a spec change: ${sp.reason}`, at: sp.at })
     // Stopped: how to go on is the only thing asked.
     if (t?.stopped) { out.push({ ...base, id: `stopped:${c.id}:${t.stopped.at}`, group: 'stopped', text: stoppedText(t.stopped), at: t.stopped.at }); continue }
     if (t?.state === 'waiting' && t.waitKind)
@@ -89,6 +94,7 @@ export const decisionGroups = (ds: Decision[]) =>
 // One push for what is new since the last one; null when nothing is new.
 // The same tag replaces the previous push on the phone.
 export function decisionsPush(ds: Decision[], told: Set<string>): { title: string, titleFr: string, body: string } | null {
+  ds = ds.filter(d => d.group !== 'passed') // nothing to answer: no push
   const fresh = ds.filter(d => !told.has(d.id))
   if (!fresh.length) return null
   const n = ds.length

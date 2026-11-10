@@ -33,7 +33,7 @@ import { flag, settingsSync, syncedRef } from './useSyncedSettings'
 import type { SettingsMap } from '#shared/settings'
 import type { QuotaDisplay } from '~/utils/quotas'
 import type { ContentWidth } from '~/utils/contentWidth'
-import { PHONE_KEY_ORDER_KEY, readKeyOrder, writeKeyOrder, type PhoneKeyId } from '~/utils/keybarOrder'
+import { PHONE_KEY_HIDDEN_KEY, PHONE_KEY_ORDER_KEY, readHiddenKeys, readKeyOrder, writeHiddenKeys, writeKeyOrder, type PhoneKeyId } from '~/utils/keybarOrder'
 
 const ls = {
   get(k: string) {
@@ -161,6 +161,13 @@ watch(phoneKeyOrder, (v) => {
   if (raw === null) ls.remove(PHONE_KEY_ORDER_KEY)
   else ls.set(PHONE_KEY_ORDER_KEY, raw)
 })
+// Keys hidden from that bar, kept on this device like the order.
+export const phoneKeyHidden = ref<PhoneKeyId[]>(readHiddenKeys(ls.get(PHONE_KEY_HIDDEN_KEY)))
+watch(phoneKeyHidden, (v) => {
+  const raw = writeHiddenKeys(v)
+  if (raw === null) ls.remove(PHONE_KEY_HIDDEN_KEY)
+  else ls.set(PHONE_KEY_HIDDEN_KEY, raw)
+})
 // The engine actually loaded in xterm; kept after the terminal view
 // is closed so Settings can show the last observed result.
 export const terminalRenderStatus = ref<ActiveTerminalRenderer | null>(null)
@@ -188,6 +195,7 @@ if (import.meta.client) {
   window.addEventListener('storage', (event) => {
     if (event.key === 'smoothTouchScrolling') smoothTouchScrolling.value = event.newValue === '1'
     if (event.key === PHONE_KEY_ORDER_KEY) phoneKeyOrder.value = readKeyOrder(event.newValue)
+    if (event.key === PHONE_KEY_HIDDEN_KEY) phoneKeyHidden.value = readHiddenKeys(event.newValue)
     if (event.key === 'terminalRenderer') {
       terminalRenderer.value = parseTerminalRenderer(event.newValue)
       refreshTerminalRenderStatus()
@@ -577,7 +585,7 @@ export function connectEvents() {
       clearTimeout(evFirst)
       if (data?.type === 'restarting') { noteRestart(); return }
       if (data?.type === 'settings') { settingsSync.receive(data.settings || {}); return }
-      if (data?.type === 'ui-open') { if (typeof data.pane === 'string' && typeof data.by === 'string' && isAppLink(data.link)) uiOpenRequest.value = data; return }
+      if (data?.type === 'ui-open') { if (typeof data.pane === 'string' && (data.show === undefined || data.show === 'card' || data.show === 'panel') && typeof data.by === 'string' && isAppLink(data.link)) uiOpenRequest.value = data; return }
       // Lock turned off: the server dropped every push subscription, this device posts its own again.
       if (data?.type === 'push-resubscribe') { syncPushLanguage().catch(() => {}); return }
       const got = paneReuse.reuse(normalize(data) as HerdrState)
@@ -629,7 +637,7 @@ export function sendViewing() {
   notificationLastSentAt = Date.now()
   const visible = pageVisible.value && document.hasFocus() && Date.now() - notificationActivityAt < 120_000
   notificationLastVisible = visible
-  if (evWs && evWs.readyState === 1) evWs.send(JSON.stringify({ type: 'viewing', pane: curPane.value, visible }))
+  if (evWs && evWs.readyState === 1) evWs.send(JSON.stringify({ type: 'viewing', pane: curPane.value, visible, device: desk.value ? 'computer' : 'phone', idle: Date.now() - notificationActivityAt }))
 }
 watch(curPane, sendViewing)
 
