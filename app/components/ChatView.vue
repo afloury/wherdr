@@ -658,12 +658,9 @@ const blocks = computed<Block[]>(() => {
     const key = keys[i]!
     if (it.role === 'user') {
       // Attached files (PDF, text…): a chip each; their line and photo paths leave the text.
-      const { text, photos, files } = userMessageParts(it.text)
       // Images re-read from the transcript (ref = position of the message in the
-      // file), or photos stored on the server whose path stayed as text (the
-      // agent turned none into an image: one picture each, never two).
-      const images = itemImageSrcs(it)
-      const srcs = [...images, ...photos.slice(images.length).map(uploadSrc)]
+      // file), then photos stored on the server whose path stayed as text.
+      const { text, srcs, files } = userMessageParts(it.text, itemImageSrcs(it))
       // Reply to a specific message: the marker becomes a quote linking to the original.
       const parsed = parseReply(text)
       const origin = parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null
