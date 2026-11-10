@@ -133,6 +133,12 @@ its folder, branches and task worktrees stay on the machine.
 
 ### Workflow
 
+The **Workflow** is *how each task runs, step by step*; the
+[Autopilot](#autopilot) is *when the project works without you*. The tab
+starts with that line and a link to the Autopilot tab (who starts tasks and
+when), then draws the first task type's steps as a row of linked boxes (for
+example work → pr → review → merge), each with who holds it.
+
 The project's own workflow: its task types, and the steps of each. Each step
 has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
@@ -200,12 +206,13 @@ or *Accept*. The review opens on *Readable*: per task type, its steps with the o
 removed or changed marked, and each changed field before → after (holder, ends,
 action, merge rule, guards; instructions as a text diff). *JSON* shows the raw
 diff. A proposal made before the workflow changed again is refused, and the
-review says so: ask the coordinator to propose again. The coordinator's window
-and the *Decisions* view link to this review. [Alfred](alfred.md) can propose
+review says so: ask the coordinator to propose again. The *Decisions* view links to this review. [Alfred](alfred.md) can propose
 a change too, on your request in its chat: you answer it in the same review.
 
-In the coordinator's conversation, a card follows the message that made the
-proposal: what changes in one line, who proposed it, your request with its
+In the coordinator's conversation, a *Workflow change* card follows the message
+that made the proposal: what changes in one line, the steps of the first
+changed task type before and after (the steps added or handed to someone else
+are outlined), who proposed it, your request with its
 time and *Go to message* (back to it in the conversation), *Accept*, *Refuse*
 and *See all changes* (the review). Once answered, the card shows the outcome, by whom and
 when.
@@ -257,8 +264,10 @@ task's description), its task type, a switch, its last firings and *Run now*.
 
 ### Autopilot tab
 
-The project coordinator's [autopilot](#autopilot), as in its window, and a link
-to the [pace](quotas.md#pace) of every account.
+The project coordinator's [autopilot](#autopilot), as in its window, under its
+line (*when the project works without you*) and a link to the Workflow tab
+(the tasks it starts follow it), and a link to the [pace](quotas.md#pace) of
+every account.
 
 ### Template library
 
@@ -276,9 +285,12 @@ template*.
 Each project has its own autopilot, run by its coordinator; Alfred has none and
 acts only when you ask it (in Alfred's conversation, the header's **Agent**
 button only picks its agent). On the board with a project picked, and in a
-project coordinator's conversation, the **Autopilot** button in the header shows the autopilot's state (green square: on; hollow: asleep) and a
-count of what waits for you: a workflow change the coordinator proposed, or a
-kept conversation that ran with another agent. A tap opens its window:
+project coordinator's conversation, the **Autopilot** button in the header (a
+clock) shows the autopilot's state (green square: on; hollow: asleep) and a
+count when the kept conversation ran with another agent. It is only about the
+autopilot: a workflow change the coordinator proposed is a *Workflow change*
+card in its conversation (see [Workflow](#workflow)). A tap opens its window,
+under the autopilot's line and a link to the project's Workflow tab:
 
 - the agent that answers the coordinator (Alfred's too), and a warning when its conversation
   ran with another one: *New conversation* with the default, or *Resume* the one kept (for
@@ -286,8 +298,7 @@ kept conversation that ran with another agent. A tap opens its window:
   conversation stopped (its terminal ended, for example when its machine
   restarted), *Resume the conversation* takes it up again with the agent that
   ran it, and *New conversation* starts a new one;
-- the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
-- the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
+- the autopilot: its state and next wake, a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's
   machines have room for; both empty for a new project, while a project that
   kept the older defaults (10 a day, 2 at once) keeps them, with the hint *Older
@@ -391,8 +402,13 @@ wake (*question*) carry the question itself, and `wherdr pm tell` answers it.
 ## Board
 
 The header has **Decisions** (with a count when some wait), **Add task**, the
-project picker (*All projects* or one), a tag filter when tasks have tags, and,
-with one project picked, its [Autopilot](#autopilot) button. The first column is **Your turn**, then the
+project picker, a tag filter when tasks have tags, and,
+with one project picked, its [Autopilot](#autopilot) button. The picker offers
+*Follow machine tab* (the projects the [home tab](home.md#machines-as-tabs) picked
+shows; **All** shows every one, and changing the tab updates the board in place),
+*All projects*, or one project. Your pick is kept and follows you across devices;
+until you pick, it is *Follow machine tab* once machine groups exist, else *All
+projects*. The first column is **Your turn**, then the
 project's columns, or *To do*, *Working* and *Done* for all projects. A done
 or archived task is never under Your turn.
 

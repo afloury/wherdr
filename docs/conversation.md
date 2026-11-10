@@ -36,7 +36,10 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   other line stays code; file documents never show cards.
 - **Links into wherdr**: an agent sending you somewhere in wherdr gives its in-app address, as a
   Markdown link (`[Phone](#/settings?section=phone)`) or as inline code that is only the address
-  (`` `#/board?task=KEY-12` ``). Either opens the place in the app, on a computer and a phone,
+  (`` `#/board?task=KEY-12` ``). Either shows as an action button with an icon and a readable
+  label instead of the address: the link's text, or the place's name for inline code (*Open
+  Settings › Projects › KEY › Guards*, *Open Task KEY-12*, *Open Board › KEY › ui*). A tap opens
+  the place in the app, on a computer and a phone,
   without reloading; Back returns to the conversation. Other links open in a new tab, other
   inline code stays plain. The addresses: `#/`, `#/decisions`, `#/board` (with `?project=KEY`,
   `?tag=TAG` or `?task=ID`), `#/settings?section=<section>`, a tab of Settings › Conversation

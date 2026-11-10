@@ -21,7 +21,7 @@ export const SYNCED_SETTINGS = [
   // Conversation
   'typewriterSpeed', 'encryptedText', 'replyStyle', 'defaultViewMode',
   // Board
-  'boardGrouping', 'boardDone', 'boardFolds',
+  'boardGrouping', 'boardDone', 'boardFolds', 'boardProject',
   // Files
   'wherdr.files.hidden', 'wherdr.files.md',
   // Security: files shown from conversations (shared/chatFiles.ts), read by the server

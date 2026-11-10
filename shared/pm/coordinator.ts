@@ -11,6 +11,7 @@ import type { WorkflowChanges } from './workflowChanges'
 import type { ProjectColor } from './projectKey'
 import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, type Autopilot, type FixKind, type limitsLeft } from './autopilot'
 import type { Wake } from './wakes'
+import type { ProposalFlow } from './flow'
 import { CAUSE_RULE } from './incidentWake'
 import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
@@ -74,12 +75,15 @@ export interface CoordinatorView {
   // machines: the project's allowed machines, home first (none for the main coordinator);
   // paused: those paused for it; busy: the paused ones where one of its tasks still runs.
   project: string, machines?: string[], paused?: string[], busy?: string[], name: string, label?: string, color?: ProjectColor, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string
-  // proposal: the change waiting for the user, as a person reads it too; answered: the last answer.
-  proposal?: Omit<Proposal, 'template' | 'base'> & { changes?: WorkflowChanges }, answered?: ProposalAnswer
+  // proposal: the change waiting for the user, as a person reads it too (flow: the steps of
+  // the first changed task type, before and after); answered: the last answer.
+  proposal?: Omit<Proposal, 'template' | 'base'> & { changes?: WorkflowChanges, flow?: ProposalFlow }, answered?: ProposalAnswer
   // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
   autopilot?: Autopilot, limits?: ReturnType<typeof limitsLeft>, wakes?: Wake[]
   // Nothing to do: its scheduled wakes are skipped (asleep), since its last wake.
   asleep?: 'idle' | 'limit', wokeAt?: number, skippedToday?: number
+  // When its autopilot wakes next (interval or fixed times), if on.
+  nextWake?: number
 }
 
 // Where the coordinator's current turn comes from: a message the user sent
