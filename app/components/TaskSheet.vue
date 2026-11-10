@@ -8,7 +8,7 @@
 // reason, confirmed here), how a stopped task goes on, Check on GitHub for a
 // task at its merge step or archived with a PR (what it found said under the
 // buttons, with the PR and, for a PR closed unmerged, Archive), and Delete for
-// a task never started (confirmed). Those stay at the top; below, tabs (the app's
+// a task never started (confirmed), Unarchive for an archived one. Those stay at the top; below, tabs (the app's
 // segmented style) for the rest, in the sheet's one scroll: Description (the
 // text in Markdown, the chat's safe renderer, no raw HTML; tags and links, the PR among them), Plan (each step with its
 // screenshots), History (the hand-offs between its agents and the user,
@@ -107,6 +107,8 @@ const check = ref<GhCheck>()
 const checkGithub = () => run(async () => { check.value = (await api<{ check: GhCheck }>('/api/pm/task-check', { id: props.card.id })).check })
 const archiveClosed = () => run(async () => { const yes = await archiveClosedApi(props.card.id, !!props.card.stopped); if (yes) check.value = undefined; return yes })
 onMounted(() => { if (props.checking) checkGithub() })
+// Archived (off the board, done for its project's delay): back in Done.
+const unarchive = () => run(() => api('/api/pm/task-unarchive', { id: props.card.id }))
 // Removed: the sheet closes, the board reloads without it.
 const remove = () => run(async () => { const yes = await removeTaskApi(props.card.id); if (yes) open.value = false; return yes })
 </script>
@@ -119,6 +121,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
         <p v-if="card.step" class="mono-label">{{ card.step }}</p>
         <p v-if="status" class="task-status" :class="status.tone" data-testid="task-status">{{ status.text }}</p>
         <p v-if="times" class="task-times" data-testid="task-times">{{ times }}</p>
+        <p v-if="card.archived" class="muted" data-testid="task-archived">{{ tl('Archived') }} {{ fmtWhen(new Date(card.archived).toISOString()) }}</p>
         <div class="task-sheet-actions">
           <UButton v-if="!todo && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ card.sameFiles ? tl('Start anyway') : tl('Start', 'Lancer') }}</UButton>
           <UButton v-if="!todo && pane" color="neutral" variant="outline" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)">
@@ -128,6 +131,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
           <UButton v-if="canReport && !reportOpen" color="neutral" variant="outline" size="xl" icon="i-lucide-flag" data-testid="task-report-start" @click="reportOpen = true">{{ tl('Report a problem') }}</UButton>
           <UButton v-if="canStop(card) && !confirmStop" color="error" variant="outline" size="xl" icon="i-lucide-square" data-testid="task-stop" @click="confirmStop = true">{{ tl('Stop', 'Arrêter') }}</UButton>
           <UButton v-if="canCheckGithub(card)" color="neutral" variant="outline" size="xl" icon="i-lucide-refresh-cw" :loading="busy" data-testid="task-check" @click="checkGithub">{{ tl('Check on GitHub') }}</UButton>
+          <UButton v-if="card.archived" color="neutral" variant="outline" size="xl" icon="i-lucide-archive-restore" :loading="busy" data-testid="task-unarchive" @click="unarchive">{{ tl('Unarchive') }}</UButton>
           <UButton v-if="card.removable" color="error" variant="outline" size="xl" icon="i-lucide-trash-2" :loading="busy" data-testid="task-remove" @click="remove">{{ tl('Delete…', 'Supprimer…') }}</UButton>
         </div>
         <p v-if="canStart(card) && waitsFor?.length" class="muted" data-testid="task-waits">{{ tl(`Starts once ${waitsFor.join(', ')} ${waitsFor.length > 1 ? 'are' : 'is'} done.`, `Démarre une fois ${waitsFor.join(', ')} terminée${waitsFor.length > 1 ? 's' : ''}.`) }}</p>
