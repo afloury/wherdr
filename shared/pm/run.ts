@@ -10,6 +10,7 @@ import type { TaskSummary } from './summary'
 import type { Mark } from './times'
 import { isPublic, publicWorkerSection } from './visibility'
 import type { Recovery } from './incident'
+import { uiGuide } from './uiGuide'
 
 // Who made a task: the user (the board, their turn), the coordinator in a
 // wake, an automation, a mission.
@@ -248,6 +249,7 @@ export function instructionsText(p: Project, t: Template, task: Task, run: Pick<
     `# ${task.id}: ${task.title}`, '', specText(task), '',
     '## Instructions', '', ...(parts.length ? parts : ['(none)']), '',
     ...(visual && shots ? shotsSection(visual, task, shots) : []),
+    ...uiGuide('task', { key: p.key }),
     ...(isPublic(p) ? publicWorkerSection(leakCheck) : []),
     `You work in ${run.worktree} on branch ${run.branch} of project ${p.name}. If you push your work to another branch, add a line \`Branch: <its name>\` to your note: the engine then follows that branch.`, '',
   ].join('\n')

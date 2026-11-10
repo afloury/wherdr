@@ -456,6 +456,27 @@ reviewer` picks one, and `--lines N` (1 to 200, default 40) sets how much. A pro
 When an agent asks a question, its task's waiting line and the coordinator's
 wake (*question*) carry the question itself, and `wherdr pm tell` answers it.
 
+### What agents show in the chat
+
+Every agent's instructions include a short *Showing instead of telling*
+section: a table of situations, each with the tool to use and an example, so
+agents show you things rather than describe them.
+
+- Every agent: a `wherdr` block with `choices "A" | "B"` when it needs one
+  choice from you, and `task <ID>` for a task's live card when its state matters.
+- Alfred and coordinators also: a setting highlighted (`ui open --target`), a
+  live `status` card, and buttons you click (`ui action step|resume|open`),
+  screenshots beside the chat (`ui show shots`). Alfred proposes a setting
+  change as a card you apply (`setting set … --propose`); it never applies it
+  itself.
+- Task agents only write blocks: they have no `ui` command.
+
+The same rules hold for everyone: one card or button group per message, after
+the sentence that explains it; in a wake, blocks only (a `ui` command is
+refused there); after a refusal, the in-app link in text, never a retry; and
+never "I merged it" before the card shows the outcome, since only your click
+acts.
+
 ## Board
 
 The header has **Decisions** (with a count when some wait), **Add task**, the

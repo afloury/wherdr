@@ -7,6 +7,7 @@ import { projectPlace } from './places'
 import type { Project } from './project'
 import { MEMORY_CAP, MEMORY_FILE, ROLE_POINTERS, docsRule, isCoordinatorProgram, type CoordinatorProgram } from './coordinator'
 import { alfredCommandList } from './alfredCli'
+import { uiGuide } from './uiGuide'
 
 export const ALFRED = 'Alfred'
 // Alfred runs with any harness that can carry a coordinator, with its own
@@ -79,7 +80,7 @@ export function alfredFiles(c: AlfredContext, pmSection: string[]): Record<strin
     'wherdr is the web and phone interface of herdr: it lists the agents (Claude, Codex…) running in terminals on the user\'s machines, shows their conversations, and notifies when one needs the user.',
     `Its documentation, for this version (${c.version}), is in \`${c.docs}\`. Pages: ${c.docFiles.join(', ') || '(none found)'}.`,
     `Quote a file as inline code with its absolute path (\`${c.docs}/overview.md\`): the user's interface makes it a link.`, '',
-    ...docsRule(c.docs, '`wherdr alfred help`, and `wherdr pm help` for the board', { cmd: 'wherdr alfred ui open', places: 'one of these places' }),
+    ...docsRule(c.docs, '`wherdr alfred help`, and `wherdr pm help` for the board', { cmd: 'wherdr alfred ui open', places: 'one of these places' }, uiGuide('alfred', { pm: c.pm })),
     '## What you may do', '',
     '- Read the docs, files and settings, and run commands that only read, to answer.',
     '- Any settings change (wherdr, herdr, an agent\'s configuration): show the exact change first, then make it only after the user\'s yes.',
