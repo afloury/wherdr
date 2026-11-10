@@ -74,8 +74,27 @@ export interface Guards {
   contributorPrs?: typeof CONTRIBUTOR_PRS[number]
 }
 
-export interface Prefs { agent?: string, model?: string, reviewAgent?: string, reviewModel?: string }
-export const PREF_KEYS = ['agent', 'model', 'reviewAgent', 'reviewModel'] as const
+// reviewFallbackAgent and reviewFallbackModel (both, or none): the reviewer
+// started instead when the review agent's account is at its limit.
+export interface Prefs { agent?: string, model?: string, reviewAgent?: string, reviewModel?: string, reviewFallbackAgent?: string, reviewFallbackModel?: string }
+export const PREF_KEYS = ['agent', 'model', 'reviewAgent', 'reviewModel', 'reviewFallbackAgent', 'reviewFallbackModel'] as const
+
+// Agents the engine knows how to start with a pinned model and a first message.
+export const PROGRAMS = ['claude', 'codex'] as const
+// reviewModel: the worker's own model, in a new session.
+export const SAME_MODEL = 'same'
+export const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:[\]/-]{0,63}$/
+
+// A reviewer's agent and model (`field` asked for it): another model than the
+// worker's, or "same" with the worker's agent. Returns the reason it cannot run.
+export function reviewerCheck(worker: { program: string, model: string }, program: string, asked: string, field: 'reviewModel' | 'reviewFallbackModel'): { program: string, model: string } | { reason: string } {
+  const same = asked === SAME_MODEL, model = same ? worker.model : asked
+  if (!(PROGRAMS as readonly string[]).includes(program)) return { reason: `The engine cannot start "${program}": claude or codex` }
+  if (same && program !== worker.program) return { reason: `${field} "${SAME_MODEL}" needs the worker's agent (${worker.program})` }
+  if (!MODEL_RE.test(model)) return { reason: model ? `Invalid review model "${model}"` : `No review model set: add prefs.${field} to the template` }
+  if (!same && model === worker.model) return { reason: `The reviewer must use another model than the worker (${model}), or set ${field} to "${SAME_MODEL}"` }
+  return { program, model }
+}
 
 export interface TaskType {
   instructions?: string
@@ -239,8 +258,28 @@ export function validateTemplate(t: unknown): WorkflowError[] {
       if (id && seen.includes(id)) errs.push({ path: `${p}.id`, message: `step "${id}" appears twice` })
       if (id) seen.push(id)
     })
+    checkFallback(t as unknown as Template, name, shared, errs)
   }
   return errs
+}
+
+// A task type's reviewer fallback, as its levels set it: both prefs or none,
+// and the reviewer's rules against the worker of that type.
+function checkFallback(t: Template, name: string, shared: Record<string, unknown>, errs: WorkflowError[]) {
+  const tt = t.taskTypes[name]!
+  const steps = Array.isArray(tt.steps) ? tt.steps.map(s => (typeof s === 'string' ? shared[s] : s)) : []
+  if (!steps.some(s => isObj(s) && s.holder === 'reviewer')) return
+  const own = (k: keyof Prefs) => (isObj(tt.prefs) && isStr(tt.prefs[k]) ? tt.prefs[k] as string : '')
+  const pick = (k: keyof Prefs) => own(k) || (isObj(t.prefs) && isStr(t.prefs[k]) ? t.prefs[k] as string : '')
+  const at = (k: keyof Prefs) => (own(k) ? `taskTypes.${name}.prefs.${k}` : `prefs.${k}`)
+  const agent = pick('reviewFallbackAgent'), model = pick('reviewFallbackModel')
+  if (!agent && !model) return
+  const add = (path: string, message: string) => { if (!errs.some(e => e.path === path && e.message === message)) errs.push({ path, message }) }
+  if (!agent || !model) return add(at(agent ? 'reviewFallbackAgent' : 'reviewFallbackModel'), 'reviewFallbackAgent and reviewFallbackModel go together')
+  const worker = { program: pick('agent'), model: pick('model') }
+  if (!worker.program || !worker.model) return
+  const r = reviewerCheck(worker, agent, model, 'reviewFallbackModel')
+  if ('reason' in r) add(at(r.reason.startsWith('The engine') ? 'reviewFallbackAgent' : 'reviewFallbackModel'), `${r.reason} (task type ${name})`)
 }
 
 export function validateTaskInput(input: unknown): WorkflowError[] {
