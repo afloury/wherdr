@@ -19,6 +19,9 @@
     "url": "git+https://github.com/afloury/wherdr.git"
   },
   "bugs": "https://github.com/afloury/wherdr/issues",
+  "config": {
+    "branch": "v3"
+  },
   "bin": {
     "wherdr": "bin/wherdr.mjs"
   },

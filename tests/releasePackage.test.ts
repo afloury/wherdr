@@ -170,7 +170,7 @@ for (const scenario of [
   })
 }
 
-it('reports npm and Homebrew blockers separately and does not rewrite an already-current latest', async () => {
+it('reports npm and Homebrew blockers separately, ignores 3.x and does not rewrite an already-current latest', async () => {
   const request = async () => ({ ok: false, json: async () => ({}), text: async () => '' })
   const result = await readiness('1.3.3', request, 'example/wherdr')
   expect(result.ready).toBe(false)
@@ -180,7 +180,7 @@ it('reports npm and Homebrew blockers separately and does not rewrite an already
   const calls: string[] = []
   const run = (_cmd: string, args: string[]) => {
     calls.push(args.join(' '))
-    return JSON.stringify(args[1].endsWith('/latest') ? { tag_name: 'v1.3.3' } : [{ tag_name: 'v1.3.3' }])
+    return JSON.stringify(args[1].endsWith('/latest') ? { tag_name: 'v1.3.3' } : [{ tag_name: 'v3.0.0' }, { tag_name: 'v1.3.3' }])
   }
   const logs: string[] = []
   await promote({ repo: 'example/wherdr', request, run, log: (line: string) => logs.push(line) })

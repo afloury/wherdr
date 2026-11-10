@@ -127,4 +127,4 @@
 
 - [The wherdr command](docs/command.md): the 2.x npm and Homebrew packages and service.
 - [Migrate from a 1.x Docker install](docs/migrate-from-1.x-docker.md): Docker to the native 2.0 service.
-- [Releasing](docs/RELEASING.md): release process of the 2.x line.
+- [Releasing](docs/RELEASING.md): release process of 2.x (npm, Homebrew) and 3.x (GitHub release only), and the v2 → v3 transition checklist.

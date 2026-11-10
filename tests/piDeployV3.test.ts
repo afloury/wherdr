@@ -171,6 +171,22 @@ describe.skipIf(!hasCommands('bash', 'tar', 'sha256sum'))('pi-v3-package.sh', ()
   })
 })
 
+describe.skipIf(!hasCommands('bash'))('v3-builder.sh installed copy', () => {
+  // setup copies the script to $ROOT/v3-builder.sh, where no checkout is beside it.
+  it('the installed copy takes its branch from the unit, else from its clone', () => {
+    const root = path.join(tmp(), 'b')
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true })
+    fs.copyFileSync(BUILDER, path.join(root, 'v3-builder.sh'))
+    const status = (more: Record<string, string> = {}) => spawnSync('bash', [path.join(root, 'v3-builder.sh'), 'status'], {
+      encoding: 'utf8', env: { ...process.env, WHERDR_V3_BUILDER_DIR: root, WHERDR_V3_REPO: 'https://example.invalid/x.git', WHERDR_V3_BRANCH: '', ...more },
+    })
+    expect(status()).toMatchObject({ status: 2, stderr: expect.stringContaining('WHERDR_V3_BRANCH') })
+    fs.writeFileSync(path.join(root, 'src', 'package.json'), JSON.stringify({ config: { branch: 'main' } }))
+    expect(status().stdout).toMatch(/^origin\/main: /m)
+    expect(status({ WHERDR_V3_BRANCH: 'v3' }).stdout).toMatch(/^origin\/v3: /m)
+  })
+})
+
 describe.skipIf(!hasCommands('bash', 'git', 'tar', 'sha256sum', 'flock'))('v3-builder.sh', () => {
   it('builds a new commit of origin/v3 once and serves it at the top of www/', () => {
     const root = tmp()
