@@ -15,6 +15,8 @@ it('reads status lines, and leaves any other block as code', () => {
   expect(md('```wherdr\nstatus machine:studio\n```')).toContain('class="status-slot" data-status-kind="machine" data-status-arg="studio"')
   expect(md('```wherdr\nstatus cpu:x\n```')).toContain('<pre><code class="language-wherdr">')
   expect(md('```wherdr\nstatus machine:studio\n```', { plain: true })).not.toContain('status-slot')
+  // A `ui open` card kept in the reply (shared/uiOpen.ts).
+  expect(md('```wherdr\nopen #/board?project=WEB\n```')).toContain('class="open-slot" data-link="#/board?project=WEB"')
 })
 
 it('shows a machine and a quota from what the app reads, unavailable when gone', () => {

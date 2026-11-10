@@ -24,6 +24,8 @@ export default defineWebSocketHandler({
     if (c && m && m.type === 'viewing') {
       c.pane = PANE_RE.test(m.pane || '') ? m.pane : null
       c.visible = m.visible === true
+      if (m.device === 'phone' || m.device === 'computer') c.device = m.device
+      if (c.visible) c.activeAt = Date.now()
       notificationPresence.heartbeat(peer.id, c.pane, c.visible)
     }
   },

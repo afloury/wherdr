@@ -12,8 +12,43 @@ import type { Project } from './pm/project'
 // The coordinator's project: its fixed key, the key it shows, its former keys.
 export type OwnProject = Pick<Project, 'key'> & { label?: string, aliases?: string[] }
 
-// The event: the conversation it is for (pane id), the place, who opened it.
-export interface UiOpenEvent { type: 'ui-open', pane: string, link: string, by: string }
+// The event: the conversation it is for (pane id), the place, who opened it,
+// and how the app shows it (Settings panel on a computer, else a card).
+export type UiShow = 'card' | 'panel'
+export interface UiOpenEvent { type: 'ui-open', pane: string, link: string, by: string, show?: UiShow }
+
+// An open app as the server knows it (/ws/events `viewing`): the conversation
+// it shows, its kind, when the user last used it (ms).
+export type UiDevice = 'phone' | 'computer'
+export interface UiClient { pane: string | null, device?: UiDevice, activeAt?: number }
+// Used this recently: the user is on it (a turn may run a while after their message).
+export const UI_ACTIVE_MS = 15 * 60_000
+
+// The app the user is on: of those showing the conversation, the one used
+// last, if used within UI_ACTIVE_MS. Another app showing the same
+// conversation (a computer left open) gets nothing.
+export function uiTarget<C extends UiClient>(clients: C[], pane: string, now: number): C | null {
+  let best: C | null = null
+  for (const c of clients) {
+    if (c.pane !== pane || !c.activeAt || now - c.activeAt > UI_ACTIVE_MS) continue
+    if (!best || c.activeAt > best.activeAt!) best = c
+  }
+  return best
+}
+
+// A computer opens Settings in its side panel; anything else is a card.
+export function uiShow(device: UiDevice | undefined, link: string): UiShow {
+  return device === 'computer' && link.startsWith('#/settings?') ? 'panel' : 'card'
+}
+
+// The block an agent ends its reply with: the card, kept in the conversation
+// (utils/markdown.ts shows a ```wherdr `open` line as a card).
+export const uiBlock = (link: string) => `\`\`\`wherdr\nopen ${link}\n\`\`\``
+const OPEN_LINE = /^open\s+['"]?(#\/\S+?)['"]?$/
+export function parseOpenLine(line: string): string | null {
+  const m = OPEN_LINE.exec(line.trim())
+  return m ? uiLink(m[1]) : null
+}
 
 // `/settings?…` or `#/settings?…`, quoted or not (an unquoted `#` starts a
 // shell comment, so the leading `#` may be left out) → `#/settings?…`.
