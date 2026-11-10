@@ -139,6 +139,29 @@ describe('runAlfredCommand', () => {
     expect(r.projects.map(p => [p.key, p.project, p.tasks.length])).toEqual([['APP', 'APP', 2], ['GONE', null, 0], ['MYDOCS', null, 0], ['SITE', null, 1]])
   })
 
+  it('adds a note to the coordinator\'s memory.md after a yes only', async () => {
+    expect(parseAlfredCommand(['project', 'memory', 'WEB', '--propose'])).toEqual({ error: expect.stringContaining('no card') })
+    const execs: { argv: string[], input?: string }[] = []
+    const call = async (m: string, p: { argv: string[], input?: string }) => {
+      if (m !== 'machine.exec') return {}
+      execs.push(p)
+      return { code: 0, stdout: Buffer.from(p.argv[2] === 'printf %s "$HOME"' ? '/home/user' : '').toString('base64') }
+    }
+    const withCall = () => ({ ...deps(), call }) as unknown as Parameters<typeof runAlfredCommand>[0]
+    const memory = (input: string, ...more: string[]) => runAlfredCommand(withCall(), token, { argv: ['project', 'memory', 'WEB', ...more], input })
+    await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--apply')
+    const note = '- Goal from v2\'s autopilot: Ship it\n\n- Squash merges only\n'
+    // Shown first: nothing written (a no ends here).
+    expect(await memory(note)).toMatchObject({ dryRun: true, change: ['add to the end of the memory.md of WEB\'s coordinator, on this machine:', '- Goal from v2\'s autopilot: Ship it', '- Squash merges only'] })
+    expect(execs.filter(e => e.input)).toEqual([])
+    await expect(memory('\n \n')).rejects.toThrow('No lines to add')
+    // After the yes: appended to the coordinator's own memory.md.
+    expect(await memory(note, '--apply')).toMatchObject({ applied: true, result: { file: '/home/user/.wherdr/pm/coordinators/WEB/memory.md', added: 2 } })
+    const write = execs.find(e => e.input)!
+    expect(write.argv.slice(4)).toEqual(['/home/user/.wherdr/pm/coordinators/WEB/memory.md', expect.stringMatching(/^# Memory/)])
+    expect(Buffer.from(write.input!, 'base64').toString()).toBe('- Goal from v2\'s autopilot: Ship it\n- Squash merges only\n')
+  })
+
   it('shows the project\'s guards and changes them after its dry run', async () => {
     expect(parseAlfredCommand(['project', 'guards', 'WEB', '--merge-others', 'me'])).toEqual({ error: '--merge-protected and --merge-others are user or engine' })
     await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--template', 'common', '--apply')

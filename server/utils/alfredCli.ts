@@ -3,7 +3,7 @@
 // A change is only described unless the call says --apply; Alfred applies it
 // after the user's yes. Nothing here removes data.
 import path from 'node:path'
-import { CHANGES, SETTING_TARGETS, SETTING_VALUES, alfredCommandList, dryRun, parseAlfredCommand, workflowEditRefusal, type AlfredPlan } from '../../shared/pm/alfredCli'
+import { CHANGES, SETTING_TARGETS, SETTING_VALUES, alfredCommandList, dryRun, memoryLines, parseAlfredCommand, workflowEditRefusal, type AlfredPlan } from '../../shared/pm/alfredCli'
 import { GUARDED_PROGRAMS, MAIN, templateDiff, type CoordinatorAgent } from '../../shared/pm/coordinator'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges } from '../../shared/pm/templateText'
@@ -12,7 +12,7 @@ import { offeredAgents, readAgentOrder, readHiddenAgents } from '../../shared/ag
 import { allowedMachines, cleanProjectInput, cleanProjectUpdate, machinesOf } from '../../shared/pm/project'
 import { keyClash, projectOf as findProject, shownKey } from '../../shared/pm/projectKey'
 import { HerdrError } from './herdr'
-import { alfredTokenOk, coordinatorsView, noteTurn, startCoordinator, v2Projects, type CoordinatorUrls } from './pmCoordinator'
+import { alfredTokenOk, appendCoordinatorMemory, coordinatorsView, noteTurn, startCoordinator, v2Projects, type CoordinatorUrls } from './pmCoordinator'
 import type { V2Candidate } from './v2Board'
 import { sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
 import { lastWords } from './pmRead'
@@ -170,6 +170,13 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       await knownTemplate(cmd.template)
       if (!cmd.template && !p.from) return { unchanged: true, project: p.key, template: 'none' }
       return change({ change: [`project ${p.key} template: ${p.from?.template ?? 'none'} → ${cmd.template || 'none'}`] }, () => store.setTemplate(p.key, cmd.template))
+    }
+    case 'project memory': {
+      await needPm()
+      const p = projectOf(cmd.key)
+      const lines = memoryLines(input)
+      if ('error' in lines) throw new HerdrError('bad_input', lines.error)
+      return change({ change: [`add to the end of the memory.md of ${p.key}'s coordinator, on ${machineName(p.machine)}:`, ...lines], remote: remoteOf(p.machine) }, () => appendCoordinatorMemory(deps, p.key, lines))
     }
     case 'project workflow edit': {
       await needPm()
