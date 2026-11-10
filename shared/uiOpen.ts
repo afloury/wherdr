@@ -8,7 +8,7 @@ import { PROJECT_TABS, projectPlace as projectSheet, type ProjectTab } from './p
 import type { Turn } from './pm/coordinator'
 import { projectOf, shownKey, storedTaskId } from './pm/projectKey'
 import type { Project } from './pm/project'
-import { linkTarget, UI_TARGETS, uiTarget as settingTarget, uiTargetLink } from './uiTargets'
+import { linkTarget, projectTarget, UI_TARGETS, uiTarget as settingTarget, uiTargetLink } from './uiTargets'
 
 // The coordinator's project: its fixed key, the key it shows, its former keys.
 export type OwnProject = Pick<Project, 'key'> & { label?: string, aliases?: string[] }
@@ -68,13 +68,16 @@ export function uiLink(raw: unknown): string | null {
   return isAppLink(link) ? link : null
 }
 
-// `ui open '<link>'` or `ui open --target <id>` (the target's own link), in
-// both CLIs; bad: the command's usage error.
-export function uiOpenArgs(link: string | undefined, extra: string | undefined, target: string | undefined, bad: { error: string }): { name: 'ui open', link: string } | { error: string } {
-  if (extra || !link === (target === undefined)) return bad
+// `ui open '<link>'` or `ui open --target <id> [--project <KEY>]` (the
+// target's own link; a project's target needs its key), in both CLIs; bad:
+// the command's usage error.
+export function uiOpenArgs(link: string | undefined, extra: string | undefined, target: string | undefined, bad: { error: string }, project?: string): { name: 'ui open', link: string } | { error: string } {
+  if (extra || !link === (target === undefined) || (project !== undefined && !target)) return bad
   if (link) return { name: 'ui open', link }
   const id = settingTarget(target)
-  return id ? { name: 'ui open', link: uiTargetLink(id) } : { error: `Unknown target ${target}: ui targets lists them` }
+  if (!id) return { error: `Unknown target ${target}: ui targets lists them` }
+  if (projectTarget(id) !== (project !== undefined)) return { error: projectTarget(id) ? `${id} is on a project's sheet: add --project <KEY>` : '--project is for a project\'s target only' }
+  return { name: 'ui open', link: uiTargetLink(id, project) }
 }
 
 // A project coordinator's places: its own board, tasks and sheet, and the
