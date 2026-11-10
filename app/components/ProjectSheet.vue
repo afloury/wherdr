@@ -135,23 +135,28 @@ async function remove() {
 
       <div class="project-panel" role="tabpanel" :aria-labelledby="`project-tab-${tab}`" data-testid="project-panel">
         <form v-if="tab === 'general'" class="sheet-form" @submit.prevent="save">
-          <label class="field-label" for="pmName">{{ t('Name') }}</label>
-          <UInput id="pmName" v-model="form.name" size="xl" class="w-full" maxlength="80" data-testid="pm-name" />
-
-          <label class="field-label" for="pmKey">{{ tl('Key') }}</label>
-          <span class="pm-field">
-            <span class="pm-key-row">
-              <UInput id="pmKey" v-model="form.key" size="lg" class="pm-key mono" maxlength="10" autocomplete="off" data-testid="pm-key" @update:model-value="v => (form.key = String(v).toUpperCase())" />
-              <ProjectBadge :text="form.key || shownKey(p)" :color="form.color" />
+          <div class="pm-cols">
+            <span class="pm-col">
+              <label class="field-label" for="pmName">{{ t('Name') }}</label>
+              <UInput id="pmName" v-model="form.name" size="xl" class="w-full" maxlength="80" data-testid="pm-name" />
             </span>
-            <span class="pm-colors" role="radiogroup" :aria-label="tl('Color')" data-testid="pm-colors">
-              <button
-                v-for="c in PROJECT_COLORS" :key="c" type="button" role="radio" class="pm-color" :class="{ on: form.color === c }" :aria-checked="form.color === c" :aria-label="tl(c)" :title="tl(c)"
-                :style="{ '--key-c': projectColorVar(c) }" :data-color="c" @click="form.color = c"
-              ><i /></button>
+            <span class="pm-col">
+              <label class="field-label" for="pmKey">{{ tl('Key') }}</label>
+              <span class="pm-field">
+                <span class="pm-key-row">
+                  <UInput id="pmKey" v-model="form.key" size="lg" class="pm-key mono" maxlength="10" autocomplete="off" data-testid="pm-key" @update:model-value="v => (form.key = String(v).toUpperCase())" />
+                  <ProjectBadge :text="form.key || shownKey(p)" :color="form.color" />
+                </span>
+                <span class="pm-colors" role="radiogroup" :aria-label="tl('Color')" data-testid="pm-colors">
+                  <button
+                    v-for="c in PROJECT_COLORS" :key="c" type="button" role="radio" class="pm-color" :class="{ on: form.color === c }" :aria-checked="form.color === c" :aria-label="tl(c)" :title="tl(c)"
+                    :style="{ '--key-c': projectColorVar(c) }" :data-color="c" @click="form.color = c"
+                  ><i /></button>
+                </span>
+                <small class="muted">{{ tl('Task ids start with it. Every task, old ones too, shows the new key; links and commands with a former key still work.') }}</small>
+              </span>
             </span>
-            <small class="muted">{{ tl('Task ids start with it. Every task, old ones too, shows the new key; links and commands with a former key still work.') }}</small>
-          </span>
+          </div>
 
           <span class="field-label">{{ tl('Base branch') }}</span>
           <span class="pm-field">
@@ -170,17 +175,22 @@ async function remove() {
           </span>
 
           <template v-if="workflow">
-            <span class="field-label">{{ tl('Agents') }}</span>
-            <div class="pm-prefs">
-              <span class="muted">{{ tl('Worker') }}</span>
-              <USelect v-model="agent" :items="agentItems" size="lg" :aria-label="tl('Worker agent')" data-testid="pm-agent" />
-              <UInput v-model="form.model" size="lg" class="mono" :placeholder="tl('default model')" :aria-label="tl('Worker model')" maxlength="80" />
-              <span class="muted">{{ tl('Reviewer') }}</span>
-              <USelect v-model="reviewAgent" :items="agentItems" size="lg" :aria-label="tl('Reviewer agent')" />
-              <UInput v-model="form.reviewModel" size="lg" class="mono" :placeholder="tl('default model')" :aria-label="tl('Reviewer model')" maxlength="80" />
-              <span class="muted">{{ tl('Fallback') }}</span>
-              <USelect v-model="fallbackAgent" :items="fallbackItems" size="lg" :aria-label="tl('Reviewer fallback agent')" data-testid="pm-fallback-agent" />
-              <UInput v-model="form.reviewFallbackModel" size="lg" class="mono" :placeholder="tl('model, or same')" :aria-label="tl('Reviewer fallback model')" maxlength="80" />
+            <div class="pm-cols">
+              <span class="pm-col pm-agent">
+                <span class="field-label">{{ tl('Worker') }}</span>
+                <USelect v-model="agent" :items="agentItems" size="lg" class="w-full" :aria-label="tl('Worker agent')" data-testid="pm-agent" />
+                <UInput v-model="form.model" size="lg" class="w-full mono" :placeholder="tl('default model')" :aria-label="tl('Worker model')" maxlength="80" />
+              </span>
+              <span class="pm-col pm-agent">
+                <span class="field-label">{{ tl('Reviewer') }}</span>
+                <USelect v-model="reviewAgent" :items="agentItems" size="lg" class="w-full" :aria-label="tl('Reviewer agent')" />
+                <UInput v-model="form.reviewModel" size="lg" class="w-full mono" :placeholder="tl('default model')" :aria-label="tl('Reviewer model')" maxlength="80" />
+              </span>
+              <span class="pm-col pm-agent">
+                <span class="field-label">{{ tl('Fallback') }}</span>
+                <USelect v-model="fallbackAgent" :items="fallbackItems" size="lg" class="w-full" :aria-label="tl('Reviewer fallback agent')" data-testid="pm-fallback-agent" />
+                <UInput v-model="form.reviewFallbackModel" size="lg" class="w-full mono" :placeholder="tl('model, or same')" :aria-label="tl('Reviewer fallback model')" maxlength="80" />
+              </span>
             </div>
           </template>
           <small v-if="workflow" class="muted">{{ tl('Fallback: the reviewer started instead while the reviewer\'s account is out of quota. None: reviews wait for it.') }}</small>
@@ -235,10 +245,11 @@ async function remove() {
 </template>
 
 <style scoped>
-.project-sheet { display: grid; gap: 14px; }
+.project-sheet { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.project-panel { min-width: 0; }
 .project-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .pm-id { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
-.pm-field { display: grid; gap: 4px; }
+.pm-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .pm-base-pick { width: min(100%, 320px); }
 .pm-key { width: min(100%, 160px); }
 .pm-key-row { display: flex; align-items: center; gap: 10px; }
@@ -252,7 +263,13 @@ async function remove() {
 .pm-color:focus-visible { outline: 1px solid var(--accent); outline-offset: -4px; }
 .pm-path { color: var(--muted); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; overflow-wrap: anywhere; }
 .pm-later { margin-top: 18px; }
-.pm-prefs { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px 10px; }
+.sheet-form > .hw-cta { margin-top: 16px; }
+/* Two fields side by side where there is room (name and key, worker and
+   reviewer), one under the other on the phone. */
+.pm-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 0 20px; align-items: start; }
+.pm-col { display: grid; min-width: 0; }
+.pm-agent { gap: 8px; }
+.pm-agent .field-label { margin-bottom: 0; }
 .pm-part { margin-bottom: 12px; }
 .project-tab-badge { margin-left: 6px; }
 .pm-proposal { display: flex; align-items: center; gap: 10px; width: 100%; margin-bottom: 12px; padding: 12px 16px; text-align: left; color: var(--blocked); }

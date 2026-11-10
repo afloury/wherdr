@@ -293,6 +293,15 @@
    the home bar, no need to add the bottom safe area. */
 body.short-bottom { --safe-bottom: 0px; }
 
+/* Scrollbars in the app's style everywhere (docs/design.md): thin, in the
+   theme's line color, never the browser default. Bars hidden on purpose
+   (strips of chips, the key bar) keep `scrollbar-width: none`. */
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
 /* ---------- Headers ---------- */
 .top {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -1872,7 +1881,7 @@ body.kb .composer { padding-bottom: 8px; }
 /* Keep wrapped titles above the scrolling body when the sheet reaches its height limit. */
 .hw-sheet > [data-slot="header"] { padding: 4px 0 10px; min-height: 0; flex: none; border: 0; order: 1; display: flex; align-items: center; justify-content: space-between; }
 .hw-sheet > [data-slot="body"] { padding: 0; order: 2; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; scroll-padding-bottom: 16px; }
-/* A body that lays its content out on the sheet's height (a task's tabs). */
+/* A body whose content fills the sheet's height (a task's), still its one scroll. */
 .hw-sheet > [data-slot="body"]:has(> .task-sheet) { display: flex; flex-direction: column; }
 .hw-sheet-title { min-width: 0; font: 850 24px/1 var(--display); letter-spacing: -.035em; word-spacing: .06em; color: var(--text); overflow-wrap: anywhere; }
 .hw-sheet [data-slot="close"] { position: static; inset: auto; }
@@ -2830,8 +2839,11 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   }
   .hw-sheet.wide { width: 680px; }
   .hw-sheet.tall { height: auto; max-height: 86vh; }
-  /* A task's sheet: wider, and one height whatever its open tab (TaskSheet.vue). */
-  .hw-sheet:has(.task-sheet) { width: min(780px, 92vw); height: min(820px, 86vh); }
+  /* A task's sheet: wider, and one height whatever its open tab (TaskSheet.vue);
+     the sheet's body is its only scroll. */
+  .hw-sheet:has(.task-sheet) { width: min(920px, 92vw); height: min(820px, 86vh); }
+  /* A project's sheet: as wide, its height from its tab (ProjectSheet.vue). */
+  .hw-sheet:has(.project-sheet) { width: min(920px, 92vw); }
   /* New › Project: room for folder paths and the repository list (NewProjectForm.vue). */
   .hw-sheet:has(.coord-new) { width: min(760px, 92vw); }
   .hw-sheet.full { width: min(1100px, 92vw); height: 86vh; max-height: 86vh; padding-top: 20px; }

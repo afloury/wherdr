@@ -9,7 +9,7 @@
 // task at its merge step or archived with a PR (what it found said under the
 // buttons, with the PR and, for a PR closed unmerged, Archive), and Delete for
 // a task never started (confirmed). Those stay at the top; below, tabs (the app's
-// segmented style) for the rest, only the open one scrolling: Description (the
+// segmented style) for the rest, in the sheet's one scroll: Description (the
 // text in Markdown, the chat's safe renderer, no raw HTML; tags and links, the PR among them), Plan (each step with its
 // screenshots), History (the hand-offs between its agents and the user,
 // TaskHistory), Log (the raw lines).
@@ -208,8 +208,9 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 </template>
 
 <style scoped>
-/* The whole sheet's body (a flex column, main.css): the top stays, only the tab's panel scrolls. */
-.task-sheet { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; padding: 0 16px 16px; }
+/* One scroll, the sheet's body (a flex column, main.css): the sheet fills it
+   and grows with its tab, whose panel takes its natural height. */
+.task-sheet { display: flex; flex-direction: column; gap: 12px; flex: 1 0 auto; padding: 0 16px 16px; }
 .task-sheet-top { display: flex; flex-direction: column; gap: 10px; flex: none; }
 .task-sheet p { margin: 0; }
 .task-tabs { flex: none; }
@@ -219,7 +220,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-status.ok { color: var(--done); }
 .task-check { display: grid; gap: 4px; }
 .task-times { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-.task-panel { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; }
+.task-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .task-desc { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
 /* Headings shown small: a description is not a document. */
 .task-md { flex: none; overflow-wrap: anywhere; color: var(--text-2); }
