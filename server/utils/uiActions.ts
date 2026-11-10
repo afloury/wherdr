@@ -6,12 +6,14 @@ import { randomBytes } from 'node:crypto'
 import type { Turn } from '../../shared/pm/coordinator'
 import { shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, type Task } from '../../shared/pm/run'
-import { actionBlock, actionLabel, actionRefusal, actionStamp, cardNow, keepCards, outcomeText, type UiAction, type UiCard } from '../../shared/uiActions'
+import { actionBlock, actionLabel, actionRefusal, actionStamp, cardNow, keepCards, outcomeText, settingStamp, type SettingChange, type UiAction, type UiCard } from '../../shared/uiActions'
+import { MAIN } from '../../shared/pm/coordinator'
 import { HerdrError } from './herdr'
 import { userStep } from './pmBoard'
 import type { PmLaunchDeps } from './pmLaunch'
 import { resumeTask } from './pmStop'
 import type { PmStore } from './pmStore'
+import { patchSettings, readSettings } from './settings'
 
 async function stampOf(store: PmStore, kind: UiAction, task: Task | null) {
   if (!task) return { stamp: null, plan: [] }
@@ -38,6 +40,18 @@ export async function addAction(store: PmStore, o: { scope: string, turn: Turn, 
   }
 }
 
+// `wherdr alfred setting set <key> <value> --propose`: a card in Alfred's
+// reply; only the user's Apply changes the setting.
+export async function addSettingCard(store: PmStore, o: { turn: Turn, by: string, change: SettingChange, label: string }) {
+  if (o.turn !== 'user') throw new HerdrError('refused', 'setting set --propose is only for a turn that comes from the user, never in a wake')
+  const rec = await store.coordinator(MAIN)
+  if (!rec) throw new HerdrError('not_found', 'No Alfred record')
+  const now = Date.now()
+  const card: UiCard = { id: randomBytes(8).toString('hex'), by: o.by, at: now, kind: 'setting', task: '', shown: '', label: o.label, setting: o.change, stamp: settingStamp(o.change.key, o.change.before), state: 'open' }
+  await store.saveCoordinator({ ...rec, cards: keepCards(rec.cards ?? [], card, now) })
+  return { proposed: true, note: `Nothing changed: the user clicks Apply. End your reply with this block, after the sentence that explains it:\n${actionBlock(card.id)}` }
+}
+
 async function find(store: PmStore, id: unknown) {
   if (typeof id !== 'string') return null
   for (const rec of await store.coordinators()) {
@@ -48,11 +62,13 @@ async function find(store: PmStore, id: unknown) {
 }
 
 // The card as it stands now (stale once its task changed), or null.
-export async function readCard(store: PmStore, id: unknown): Promise<UiCard | null> {
+export async function readCard(store: PmStore, id: unknown, settingsFile?: string): Promise<UiCard | null> {
   const hit = await find(store, id)
   if (!hit) return null
+  const s = hit.card.setting
+  if (s) return cardNow(hit.card, settingStamp(s.key, (await readSettings(settingsFile))[s.key]), Date.now())
   const task = await store.task(hit.card.task)
-  const { stamp } = await stampOf(store, hit.card.kind, task)
+  const { stamp } = await stampOf(store, hit.card.kind as UiAction, task)
   const card = cardNow(hit.card, stamp, Date.now()), turn = task?.step?.yourTurn
   // Its step's action refused at an earlier click: still said after a reload.
   return card.state === 'open' && card.kind === 'step' && turn?.reason === 'action' ? { ...card, refused: turn.badge } : card
@@ -60,19 +76,30 @@ export async function readCard(store: PmStore, id: unknown): Promise<UiCard | nu
 
 // The user's click. A CLI token never clicks: only the app's own session.
 // Not open (done, stale): nothing runs, the card says why.
-export async function actOnCard(deps: PmLaunchDeps, id: unknown, authorization: unknown): Promise<UiCard> {
+// cancel: the user's Cancel, the card runs nothing more.
+export async function actOnCard(deps: PmLaunchDeps & { settingsFile?: string }, id: unknown, authorization: unknown, cancel = false): Promise<UiCard> {
   if (authorization) throw new HerdrError('forbidden', 'Only the user\'s click in wherdr runs an action, never a token')
-  const card = await readCard(deps.store, id)
+  const card = await readCard(deps.store, id, deps.settingsFile)
   if (!card) throw new HerdrError('not_found', 'Unknown action')
-  if (card.state !== 'open' || card.kind === 'open') return card
+  if (card.state !== 'open') return card
+  if (cancel) return save(deps.store, { ...card, state: 'dismissed', outcome: { text: 'Cancelled by you', at: Date.now() } })
+  const s = card.setting
+  if (s) {
+    await patchSettings({ [s.key]: s.after }, { file: deps.settingsFile })
+    return save(deps.store, { ...card, state: 'done', outcome: { text: 'Applied by you', at: Date.now() } })
+  }
+  if (card.kind === 'open') return card
   const task = card.kind === 'resume' ? await resumeTask(deps, card.task, 'continue', { who: 'user' }, 'user') : await userStep(deps, card.task)
   // The step's action refused (a merge on a PR in conflict, red checks): the
   // card stays open with its reason, as the task sheet shows it, for a retry.
   const turn = task.step?.yourTurn
   if (card.kind === 'step' && turn?.reason === 'action') return { ...card, refused: turn.badge }
   const same = card.kind === 'step' && (await stampOf(deps.store, 'step', task)).stamp === card.stamp
-  const done: UiCard = { ...card, state: 'done', outcome: { text: outcomeText(card, same ? task : undefined), at: Date.now() } }
-  const hit = await find(deps.store, card.id)
-  if (hit) await deps.store.saveCoordinator({ ...hit.rec, cards: hit.rec.cards!.map(c => (c.id === card.id ? done : c)) })
-  return done
+  return save(deps.store, { ...card, state: 'done', outcome: { text: outcomeText(card, same ? task : undefined), at: Date.now() } })
+}
+
+async function save(store: PmStore, card: UiCard) {
+  const hit = await find(store, card.id)
+  if (hit) await store.saveCoordinator({ ...hit.rec, cards: hit.rec.cards!.map(c => (c.id === card.id ? card : c)) })
+  return card
 }

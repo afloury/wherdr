@@ -62,7 +62,8 @@ the name (with a **Public** badge for a public repository), the key, the machine
 and the folder. *Add project* opens the setup window on a new project; *Open the
 board* goes to the board. A row opens the
 project's sheet, with five tabs: General, Workflow, Guards, Automations and
-Autopilot. Its ⋯ menu removes the project from wherdr, after a confirmation:
+Autopilot; on a computer it is a wide window, and its General fields pair up
+side by side (name and key, worker and reviewer). Its ⋯ menu removes the project from wherdr, after a confirmation:
 its folder, branches and task worktrees stay on the machine.
 
 ### General
@@ -589,7 +590,7 @@ waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
 *Open the agent* or *Open the reviewer*, *Stop*, *Delete…*). Step times start
 with this version: an older task shows only its total. Below, tabs: **Description** (the text rendered as Markdown, as in the chat but with no raw HTML; tags, links and the PR),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
-and screenshots), **History** and **Log**. A refused merge says why under its button.
+and screenshots), **History** and **Log**, all in the sheet's one scroll. A refused merge says why under its button.
 
 **History** reads the task as a conversation, oldest first: the worker's *Done*
 (its closing report on its last one), the reviewer's *Sent back* (the findings,
@@ -639,8 +640,8 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   minor), each in Markdown, folded to a few lines with *Show more* (the
   task's [summary](#task-sheet) above the worker's note), full
   width, one above the other (on a phone, *Worker* / *Reviewer* tabs above
-  one note); then its screenshots large (swipe between them, tap
-  one to zoom; each is labelled phone or desktop), then
+  one note); then its screenshots large (swipe between them on
+  the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop), then
   *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
   A step you end (*Deployed*, …) shows the same two notes under its badge.
   When the agent reworks the task after its review (new commits since the
@@ -671,7 +672,7 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   refused) has *Try again* at the top of the sheet, which runs it again.
 
 On a phone, the To do buttons (*Merge*, the step's button, *Open the PR*,
-*Start*, *Open the agent*) stay pinned at the bottom of the tab while its
+*Start*, *Open the agent*) stay pinned at the bottom of the sheet while its
 content scrolls, so they are always in reach above the home bar.
 
 ### Report a problem
