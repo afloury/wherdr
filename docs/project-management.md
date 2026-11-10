@@ -530,7 +530,15 @@ its agents were ended and started again.
 When wherdr hands the worker work of its own (a catch-up with the base branch,
 a CI fix), the task leaves *Your turn* and its card says *the agent is
 updating the PR*: its agents are never ended while wherdr waits for that work.
-The task is yours again once the worker pushes or says it is done. Before it
+The task is yours again once the worker pushes or says it is done. If the
+worker has ended when wherdr hands it that work, or ends before it pushes,
+wherdr starts it again in its worktree with the same message, once. When it
+cannot (its machine is offline or has no room, or the worker ended again), the
+card says why it waits instead, for example *Waits for its machine (offline)*
+or *Waits for its agent: it ended. The coordinator, or Stop then Resume,
+continues it*, and the project's coordinator is woken once with that reason
+(its autopilot on); with no coordinator to wake, the task goes to *Your turn*.
+Once the machine is back, wherdr starts the worker again by itself. Before it
 ends a task's agents, wherdr pushes the commits the branch has not pushed yet;
 if the push fails, the agents stay and the log says why.
 

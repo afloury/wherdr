@@ -66,8 +66,9 @@ export async function releaseIdle(deps: PmLaunchDeps, now = Date.now()) {
 const heldLogged = new Set<string>()
 // The released worker again, in its worktree, with a handover note; `now`:
 // what it is to do first (red CI, a conflict), when the step itself does not
-// say it. No room on its machine: not now, tried again on a later pass (undefined).
-export async function reviveWorker(deps: PmLaunchDeps, id: string, why: string, now?: string): Promise<Task | undefined> {
+// say it. No room on its machine: not now, tried again on a later pass (undefined;
+// onHold gets why).
+export async function reviveWorker(deps: PmLaunchDeps, id: string, why: string, now?: string, onHold?: (hold: string) => void): Promise<Task | undefined> {
   const { store } = deps
   const { task, plan } = await load(deps, id)
   const worker = (await store.runs()).filter(r => r.task === id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
@@ -76,6 +77,7 @@ export async function reviveWorker(deps: PmLaunchDeps, id: string, why: string, 
   const weight = reviveWeight(weightOf(t, task).weight, task.step && plan[task.step.at], task.step?.shots)
   const placed = await placeFor(deps, task, { weight })
   if ('hold' in placed) {
+    onHold?.(placed.hold)
     if (!heldLogged.has(id)) await store.logTask(task, 'engine', `the worker starts again once there is room (${why}): ${placed.hold}`)
     return void heldLogged.add(id)
   }
