@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // A project's sheet (Settings › Projects › a row): tabs, the one shown in the
 // URL (`tab=`). General: name, key and color, base branch, branch name, when done tasks are archived, repository visibility, the agents
-// its tasks start with (the workflow's prefs), where its workflow came from,
+// its tasks start with (the workflow's prefs), its worktree setup (the
+// workflow's `worktree`: files copied, folders shared, a setup command), where its workflow came from,
 // the machines its tasks may run on (ProjectMachines) and the home tab that
 // shows it (ProjectShownIn).
 // Workflow: ProjectWorkflow, its own entries first in the ⋯ menu. The ⋯ menu
@@ -17,7 +18,7 @@ import type { Project, TemplateInfo } from '#shared/pm/project'
 import { PROJECT_COLORS, shownKey } from '#shared/pm/projectKey'
 import { ARCHIVE_DAYS, archiveDays } from '#shared/pm/archive'
 import type { LogEntry } from '#shared/pm/templateText'
-import type { Prefs, Template } from '#shared/pm/workflow'
+import { SETUP_TIMEOUT, type Prefs, type Template, type WorktreeSetup } from '#shared/pm/workflow'
 import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
 import { workflowFlow } from '#shared/pm/flow'
 import type { RepoVisibility } from '#shared/pm/visibility'
@@ -41,9 +42,16 @@ async function load() {
   log.value = r.log
   ready.value = r.ready ?? {}
   fill(p.value, r.workflow?.prefs ?? {})
+  fillSetup(r.workflow?.worktree)
   loaded.value = true
 }
 const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', archiveAfter: String(archiveDays(x)), agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '' })
+// The worktree setup: paths one per line (or comma separated). Folders to
+// share: empty is node_modules (no `share`), noShare is none (`share: []`).
+const setup = reactive({ copy: '', share: '', noShare: false, lockfile: '', command: '', timeout: '' })
+const fillSetup = (w: WorktreeSetup = {}) => Object.assign(setup, { copy: (w.copy ?? []).join('\n'), share: (w.share ?? []).join('\n'), noShare: !!w.share && !w.share.length, lockfile: w.lockfile ?? '', command: w.command ?? '', timeout: w.timeout ?? '' })
+const paths = (v: string) => v.split(/[\n,]/).map(x => x.trim()).filter(Boolean)
+const setupBody = () => ({ copy: paths(setup.copy), share: setup.noShare ? [] : paths(setup.share).length ? paths(setup.share) : undefined, lockfile: setup.lockfile.trim(), command: setup.command.trim(), timeout: setup.timeout.trim() })
 onMounted(() => { load().catch((e) => { error.value = (e as Error).message }); loadCoordinators() })
 
 async function run(what: string, fn: () => Promise<unknown>) {
@@ -56,7 +64,7 @@ async function run(what: string, fn: () => Promise<unknown>) {
 }
 const save = () => run('save', async () => {
   const { name, key, color, base, branchName, archiveAfter, ...prefs } = form
-  const r = await api<{ project: Project }>('/api/pm/project-update', { key: p.value.key, name, base, branchName, archiveAfter: Number(archiveAfter), ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs } : {}) })
+  const r = await api<{ project: Project }>('/api/pm/project-update', { key: p.value.key, name, base, branchName, archiveAfter: Number(archiveAfter), ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}) })
   // The prop is refreshed only after `changed`: the form takes the saved
   // project, and the shared lists that show its key and color are read again.
   await load()
@@ -204,6 +212,36 @@ async function remove() {
             </div>
           </template>
           <small v-if="workflow" class="muted">{{ tl('Fallback: the reviewer started instead while the reviewer\'s account is out of quota. None: reviews wait for it.') }}</small>
+          <template v-if="workflow">
+            <span class="field-label pm-later">{{ tl('Worktree setup') }}</span>
+            <div class="pm-cols">
+              <span class="pm-col pm-agent">
+                <label class="field-label" for="pmCopy">{{ tl('Files to copy') }}</label>
+                <UTextarea id="pmCopy" v-model="setup.copy" :rows="2" autoresize size="lg" class="w-full mono" placeholder=".env" maxlength="4000" data-testid="pm-setup-copy" />
+              </span>
+              <span class="pm-col pm-agent">
+                <label class="field-label" for="pmShare">{{ tl('Folders to share') }}</label>
+                <UTextarea id="pmShare" v-model="setup.share" :rows="2" autoresize size="lg" class="w-full mono" placeholder="node_modules" maxlength="4000" :disabled="setup.noShare" data-testid="pm-setup-share" />
+                <label class="toggle-row">
+                  <span><b>{{ tl('Share no folder') }}</b><small>{{ tl('The setup command always runs') }}</small></span>
+                  <USwitch v-model="setup.noShare" color="success" size="xl" data-testid="pm-setup-no-share" />
+                </label>
+              </span>
+            </div>
+            <div class="pm-cols">
+              <span class="pm-col pm-agent">
+                <label class="field-label" for="pmCommand">{{ tl('Setup command') }}</label>
+                <UInput id="pmCommand" v-model="setup.command" size="lg" class="w-full mono" placeholder="npm ci --prefer-offline" maxlength="500" data-testid="pm-setup-command" />
+              </span>
+              <span class="pm-col pm-agent">
+                <label class="field-label" for="pmLock">{{ tl('Lockfile') }}</label>
+                <UInput id="pmLock" v-model="setup.lockfile" size="lg" class="w-full mono" placeholder="package-lock.json" maxlength="200" />
+                <label class="field-label" for="pmTimeout">{{ tl('Time limit') }}</label>
+                <UInput id="pmTimeout" v-model="setup.timeout" size="lg" class="w-full mono" :placeholder="SETUP_TIMEOUT" maxlength="4" />
+              </span>
+            </div>
+            <small class="muted">{{ tl('Before a task\'s first worker. Files to copy: ignored files taken from the project\'s clone (a tracked or missing one is skipped). Folders to share: taken from the clone while the lockfile is the same in both; otherwise the setup command runs, at most 10m. Folders to share empty: node_modules; Share no folder: none.') }}</small>
+          </template>
           <p v-else-if="loaded" class="muted settings-hint">{{ tl('No workflow yet: tasks cannot start until the project starts from a template.') }}</p>
           <UButton type="submit" size="xl" color="primary" variant="solid" class="hw-cta" :loading="busy === 'save'" :disabled="!loaded || busy !== ''" data-testid="pm-save">{{ tl('Save') }}</UButton>
 
