@@ -99,4 +99,5 @@ another machine). Off, the machine is *paused for this project*:
 - Tasks already running there go on and finish there; a task that started there goes back there
   (resume, retry, reviewer).
 - Its clone path, readiness and settings stay. On again, it takes work as before.
-- The coordinator's `autopilot show` lists it as *paused for this project*.
+- The coordinator's `autopilot show` lists it as *paused for this project*, and so does its card
+  in the project's Machines block (*Takes nothing now: paused for this project*).

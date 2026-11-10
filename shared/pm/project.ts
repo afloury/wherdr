@@ -4,7 +4,7 @@ import type { WorkflowError } from './workflow'
 import type { Task } from './run'
 import type { RepoVisibility } from './visibility'
 import { isProjectColor, type ProjectColor } from './projectKey'
-import { isStrategy, type Strategy } from './placement'
+import { PAUSED, isStrategy, type Strategy } from './placement'
 import { branchNameError } from './branchName'
 import { ARCHIVE_DAYS } from './archive'
 
@@ -57,7 +57,7 @@ export interface ProjectUpdate { name?: string, base?: string, key?: string, col
 // The machines a project's tasks may run on, its home machine first.
 export const allowedMachines = (p: Pick<Project, 'machine' | 'machines'>) => [p.machine, ...(p.machines ?? []).filter(m => m !== p.machine)]
 export const isPaused = (p: Pick<Project, 'paused'>, machine: string) => !!p.paused?.includes(machine)
-export const PAUSED = 'paused for this project'
+export { PAUSED }
 
 // A machine that some project allows, paused in every project that allows it (Settings › Machines).
 export function pausedEverywhere(projects: Pick<Project, 'machine' | 'machines' | 'paused'>[], machine: string) {

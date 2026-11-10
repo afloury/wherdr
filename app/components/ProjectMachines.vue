@@ -8,8 +8,12 @@
 // tasks spread over these machines (shared/pm/placement.ts), saved at once.
 // Each machine's switch: off, it is paused for the project (no new task goes
 // there, tasks already there go on, its clone stays), saved at once.
+// Live (read again every 10 s, /api/pm/project-machines): each machine's card
+// (MachineLoad), the strategy in a small picture, and the next to-do task with
+// where it would go, or why it waits.
 import { allowedMachines, isPaused, type Project } from '#shared/pm/project'
-import { STRATEGIES, STRATEGY_LABELS, type Strategy } from '#shared/pm/placement'
+import { STRATEGIES, STRATEGY_HINTS, STRATEGY_LABELS, type MachineNow, type Strategy } from '#shared/pm/placement'
+import type { Weight } from '#shared/pm/weight'
 
 const props = defineProps<{ project: Project, ready?: Record<string, string> }>()
 const emit = defineEmits<{ changed: [] }>()
@@ -20,6 +24,24 @@ const others = computed(() => allowedMachines(p.value).slice(1))
 const addable = computed(() => machines.value
   .filter(m => !m.session && (m.local || m.status === 'online') && !allowedMachines(p.value).includes(m.key))
   .map(m => ({ label: m.label, value: m.key })))
+
+interface Next { task: string, title: string, weight: Weight, on?: string, hold?: string, why?: string }
+const live = ref<{ machines: MachineNow[], next: Next | null } | null>(null)
+const nowOf = (k: string) => live.value?.machines.find(m => m.key === k)
+const loadLive = async () => {
+  if (document.hidden) return
+  try { live.value = await api(`/api/pm/project-machines?key=${encodeURIComponent(p.value.key)}`) }
+  catch {} // the block works without it
+}
+let timer: ReturnType<typeof setInterval> | undefined
+onMounted(() => { loadLive(); timer = setInterval(loadLive, 10_000) })
+onBeforeUnmount(() => clearInterval(timer))
+watch(() => p.value, loadLive) // a machine added, removed, paused or another strategy
+const nextText = (n: Next) => n.on
+  ? tl(`Next: ${n.task} (${n.weight}) would go to ${n.on}`) + (n.why ? ` · ${tl(`waits: ${n.why}`)}` : '')
+  : tl(`Next: ${n.task} (${n.weight}) waits: ${n.why ?? n.hold}`)
+// The strategy's picture: home then two machines (the last the largest), the tasks as squares (big: heavy).
+const PICTURE: Record<Strategy, number[][]> = { strongest: [[4, 4], [], [8]], balance: [[4], [4], [4]], home: [[4, 4, 4], [], []] }
 
 const form = reactive({ machine: '', clone: '' })
 const busy = ref('')
@@ -77,7 +99,7 @@ const remove = (k: string) => run(`rm:${k}`, async () => {
 </script>
 
 <template>
-  <div class="pm-machines" data-testid="pm-machines">
+  <div class="pm-machines" data-ui-target="project.machines" data-testid="pm-machines">
     <div class="pm-machine" data-testid="pm-machine-home">
       <span>{{ labelOf(p.machine) }} <small class="mono-label">{{ tl('Home') }}</small></span>
       <small class="pm-clone">{{ ltr(shortPath(p.path)) }}</small>
@@ -86,6 +108,7 @@ const remove = (k: string) => run(`rm:${k}`, async () => {
         <i class="pm-slot" /><i class="pm-slot" />
       </span>
       <small v-if="isPaused(p, p.machine)" class="pm-ready" data-testid="pm-machine-paused">{{ tl('Paused for this project: no new task starts here') }}</small>
+      <MachineLoad v-if="nowOf(p.machine)" :m="nowOf(p.machine)!" />
     </div>
     <div v-for="k in others" :key="k" class="pm-machine" data-testid="pm-machine">
       <span>{{ labelOf(k) }}</span>
@@ -97,6 +120,7 @@ const remove = (k: string) => run(`rm:${k}`, async () => {
       </span>
       <small v-if="isPaused(p, k)" class="pm-ready" data-testid="pm-machine-paused">{{ tl('Paused for this project: no new task starts here') }}</small>
       <small v-else class="pm-ready" :class="{ bad: status(k).bad }" data-testid="pm-machine-ready">{{ status(k).text }}</small>
+      <MachineLoad v-if="nowOf(k)" :m="nowOf(k)!" />
     </div>
     <form class="pm-machine-add" @submit.prevent="add">
       <USelect v-model="form.machine" :items="addable" size="lg" :placeholder="tl('Add a machine')" :aria-label="tl('Machine to add')" data-testid="pm-machine-pick" />
@@ -108,13 +132,31 @@ const remove = (k: string) => run(`rm:${k}`, async () => {
       <span>{{ tl('Placement') }}</span>
       <USelect v-model="strategy" :items="strategies" size="lg" :disabled="busy !== ''" :aria-label="tl('Placement strategy')" data-testid="pm-placement" />
     </label>
-    <small class="muted">{{ tl('Heavy to the strongest: light work at home, heavy work on the machine with most room. Balance the load: each task on the machine with most room left. Home first: other machines only once home is full.') }}</small>
+    <span class="pm-strategy">
+      <svg class="pm-picture" viewBox="0 0 54 22" aria-hidden="true">
+        <g v-for="(tasks, i) in PICTURE[strategy]" :key="i">
+          <rect :x="i * 18 + 0.5" :y="i === 2 ? 0.5 : 6.5" width="15" :height="i === 2 ? 21 : 15" fill="none" stroke="currentColor" />
+          <rect v-for="(size, j) in tasks" :key="j" :x="i * 18 + 2 + (j % 2) * 6" :y="20 - size - Math.floor(j / 2) * 6" :width="size" :height="size" class="pm-picture-task" />
+        </g>
+      </svg>
+      <small class="muted" data-testid="pm-strategy">{{ tl(STRATEGY_HINTS[strategy]) }}</small>
+    </span>
+    <p v-if="live" class="pm-next mono" :class="{ wait: !live.next?.on || live.next?.why }" data-testid="pm-next">
+      {{ live.next ? nextText(live.next) : tl('Next: no task to do') }}
+      <small v-if="live.next" class="muted">{{ live.next.title }}</small>
+    </p>
     <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
   </div>
 </template>
 
 <style scoped>
 .pm-machines { display: grid; gap: 8px; }
+.pm-machine + .pm-machine { padding-top: 10px; border-top: 1px solid var(--line-soft); }
+.pm-strategy { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pm-picture { flex: none; width: 54px; height: 22px; color: var(--line); }
+.pm-picture-task { fill: var(--working); }
+.pm-next { display: grid; gap: 2px; margin: 0; padding: 8px 10px; border: 1px solid var(--line); font-size: 13px; color: var(--green, var(--text)); overflow-wrap: anywhere; }
+.pm-next.wait { color: var(--ochre); }
 .pm-machine { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; }
 .pm-clone { color: var(--muted); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; overflow-wrap: anywhere; }
 .pm-machine-actions { display: flex; align-items: center; gap: 2px; }

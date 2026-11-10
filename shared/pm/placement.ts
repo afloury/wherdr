@@ -1,7 +1,7 @@
 // Where a task starts: the machine among its project's allowed ones where it
 // fits now, or a hold that names each machine's reason. Pure: the server reads
 // each machine (capacity, settings, agents at work, readiness, pace) and asks.
-import type { MachineCapacity } from './capacity'
+import type { MachineCapacity, Pressure } from './capacity'
 import { agentCap, memoryStrain, reserveOf, capacityParts, hoursLabel, hoursWait, type MemorySettings } from './memory'
 import { WEIGHTS, WEIGHT_DEFAULTS, type Weight } from './weight'
 
@@ -24,6 +24,12 @@ export interface Candidate {
 export const STRATEGIES = ['strongest', 'balance', 'home'] as const
 export type Strategy = typeof STRATEGIES[number]
 export const STRATEGY_LABELS: Record<Strategy, string> = { strongest: 'Heavy to the strongest', balance: 'Balance the load', home: 'Home first' }
+// One line each, under the picker and in the Machines view.
+export const STRATEGY_HINTS: Record<Strategy, string> = {
+  strongest: 'Light and standard work at home while it fits, heavy work on the machine with most room',
+  balance: 'Each task on the machine with the most memory and cores left after it',
+  home: 'Every task at home; the other machines only once home is full',
+}
 export const isStrategy = (s: unknown): s is Strategy => STRATEGIES.includes(s as Strategy)
 
 // best: where a start that must go (the user's) goes when nothing fits.
@@ -31,6 +37,8 @@ export const isStrategy = (s: unknown): s is Strategy => STRATEGIES.includes(s a
 // waiting cannot help: it goes to the best one, and this says why.
 export type Placement = { machine: string, anyway?: string } | { hold: string, best?: string }
 
+// A machine switched off for a project: no new task of it goes there.
+export const PAUSED = 'paused for this project'
 const HEAVY_LOAD = 0.8 // heavy work waits while the 1-minute load per core is over this
 const gb = (mb: number) => `${(mb / 1024).toFixed(1)} GB`
 const sum = (xs: Estimate[], k: keyof Estimate) => xs.reduce((n, x) => n + x[k], 0)
@@ -61,7 +69,7 @@ export function misfit(c: Candidate, weight: Weight, e: Estimate, now = new Date
   const agents = c.running.length
   // The user's cap, else one agent per 1.5 GB of RAM (as Settings › Machines shows it).
   const cap = agentCap(c.settings, m)
-  if (cap !== undefined && agents >= cap) return `${agents} agents (cap ${cap})`
+  if (cap !== undefined && agents >= cap) return `full: ${agents} agents (cap ${cap})`
   if (!m) return undefined
   // Idle (no agent of wherdr at work there): it takes one task its RAM can
   // hold, whatever it reads free; the reserve holds the second one and beyond.
@@ -131,7 +139,35 @@ export function placeTask(args: {
 // with their task's weight; unchecked: another machine than home whose
 // readiness for the project was not checked yet (it is before its first task);
 // paused: switched off for the project, it takes no new task of it.
-export type MachineView = Omit<Candidate, 'running'> & { home: boolean, running: (Estimate & { weight: Weight })[], unchecked?: boolean, paused?: boolean }
+export type MachineView = Omit<Candidate, 'running'> & { home: boolean, running: (Estimate & { weight: Weight, task?: string })[], unchecked?: boolean, paused?: boolean }
+
+// A machine's card in the project's Machines view: its state, its memory in MB
+// for the bar (its agents' estimates, the rest of what is used, free, the
+// reserve automatic starts leave), its agents, and the heaviest weight it takes
+// now. why: why it takes nothing, else why not the next heavier weight.
+export interface MachineNow {
+  key: string, label: string, home: boolean, state: 'online' | 'offline' | 'paused'
+  memory?: { total: number, agents: number, other: number, free: number, reserve: number }
+  cores?: number, load?: number, pressure?: Pressure, cap?: number, hours?: string, unchecked?: true
+  agents: { task?: string, weight: Weight }[]
+  takes?: Weight, why?: string
+}
+export function machineNow(c: MachineView, now = new Date()): MachineNow {
+  const m = c.capacity, cap = agentCap(c.settings, m)
+  const base = {
+    key: c.key, label: label(c), home: c.home, agents: c.running.map(r => ({ weight: r.weight, ...(r.task ? { task: r.task } : {}) })),
+    ...(cap !== undefined ? { cap } : {}), ...(c.settings.hours ? { hours: hoursLabel(c.settings.hours) } : {}), ...(c.unchecked ? { unchecked: true as const } : {}),
+  }
+  if (!c.online) return { ...base, state: c.paused ? 'paused' : 'offline', why: c.paused ? PAUSED : 'offline' }
+  const used = m ? m.total - m.available : 0, mine = Math.min(sum(c.running, 'mb'), used)
+  const reading = m ? { memory: { total: m.total, agents: mine, other: used - mine, free: m.available, reserve: reserveOf(c.settings, m) }, load: m.load1, ...(m.cores ? { cores: m.cores } : {}), ...(m.pressure ? { pressure: m.pressure } : {}) } : {}
+  if (c.paused) return { ...base, ...reading, state: 'paused', why: PAUSED }
+  const heaviest = WEIGHTS.slice().reverse()
+  const takes = heaviest.find(w => !misfit(c, w, WEIGHT_DEFAULTS[w], now))
+  const short = takes ? heaviest[heaviest.indexOf(takes) - 1] : 'light'
+  const why = short && misfit(c, short, WEIGHT_DEFAULTS[short], now)
+  return { ...base, ...reading, state: 'online', ...(takes ? { takes } : {}), ...(why ? { why: takes ? `${short}: ${why}` : why } : {}) }
+}
 
 // "machine-a (home): 9.1 GB free of 32.0 GB · 8 cores, load 2.1 · 2 of 21 agents
 // · running 1 heavy, 1 light · fits heavy": the heaviest weight it takes now,
@@ -139,7 +175,7 @@ export type MachineView = Omit<Candidate, 'running'> & { home: boolean, running:
 export function machineLine(c: MachineView): string {
   const name = `${c.label || 'this host'}${c.home ? ' (home)' : ''}`
   const hours = c.settings.hours ? [`available ${hoursLabel(c.settings.hours)}`] : []
-  if (c.paused) return `${name}: paused for this project${c.running.length ? ` · ${c.running.length} agents at work` : ''}`
+  if (c.paused) return `${name}: ${PAUSED}${c.running.length ? ` · ${c.running.length} agents at work` : ''}`
   if (!c.online) return [`${name}: offline`, ...hours].join(' · ')
   const count = WEIGHTS.slice().reverse().map(w => [w, c.running.filter(r => r.weight === w).length] as const).filter(([, n]) => n)
   const fits = WEIGHTS.slice().reverse().find(w => !misfit(c, w, WEIGHT_DEFAULTS[w]))

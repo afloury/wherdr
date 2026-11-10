@@ -138,6 +138,19 @@ its folder, branches and task worktrees stay on the machine.
   new tasks no longer start there, tasks already there stay. Its switch off pauses it
   for the project instead, its clone kept ([Pause a machine for a project](machines.md#pause-a-machine-for-a-project)). Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
+  Each machine's card shows, live (read again every 10 s), what the
+  coordinator's `autopilot show` sees: *Online*, *Offline* or *Paused*, its
+  available hours, its **memory** as a bar (its agents' estimates, the rest of
+  what is used, free, the reserve hatched at the end), cores and load (on macOS
+  the memory pressure), its agents at work with their task and weight, and
+  **what it takes now**: the heaviest weight that fits (*Takes standard now ·
+  heavy: …* says why not heavier), or *Takes nothing now* and why (*full: 4
+  agents (cap 4)*, *3.1 GB free, needs 3.4 GB with its reserve*, *paused for
+  this project*, *offline*). Under the placement picker, a small picture and one
+  line explain the strategy, and *Next* names the next to-do task and the
+  machine it would go to, or why it waits (no room anywhere, Keep the board busy
+  off, a limit). The board's header opens this block (its server icon: the
+  picked project's sheet, or Settings › Projects with several projects).
   **Placement** chooses how new tasks spread over these machines: *Heavy to the
   strongest* (the default: light and standard work at home when it fits, heavy
   work on the machine with most room), *Balance the load* (each task on the

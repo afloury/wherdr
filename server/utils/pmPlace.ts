@@ -3,13 +3,14 @@
 // then placeTask picks one or holds the start with each machine's reason.
 import { HerdrError } from './herdr'
 import { PAUSED, allowedMachines, isPaused, taskMachine, type Project } from '../../shared/pm/project'
-import { machineLine, placeTask, type Candidate, type Placement } from '../../shared/pm/placement'
+import { machineLine, machineNow, placeTask, type Candidate, type MachineView, type Placement } from '../../shared/pm/placement'
 import { DEFAULT_MEMORY } from '../../shared/pm/memory'
 import { weightOf, type Weight } from '../../shared/pm/weight'
 import { paceWait } from '../../shared/pm/pace'
 import type { PaceVerdict } from '../../shared/pm/pacing'
 import { taskPlan, type Task } from '../../shared/pm/run'
-import { holdsSlot, type SlotOf } from '../../shared/pm/autopilot'
+import { busyNext, busyQueue, holdsSlot, type SlotOf } from '../../shared/pm/autopilot'
+import { shownTaskId } from '../../shared/pm/projectKey'
 import type { PmStore } from './pmStore'
 import { atWork, machineCapacity, readMemorySettings } from './pmMemory'
 import { lastReadiness, readiness } from './pmReady'
@@ -78,20 +79,41 @@ export async function placeFor(deps: PmLaunchDeps, task: Task, { asked, waits = 
 export const goesTo = (placed: Placement) =>
   'machine' in placed ? { on: placed.machine } : { on: placed.best, short: placed.hold }
 
-// The project's allowed machines for `autopilot show`, one line each
-// (machineLine). Readiness is the last check's, never run from here; pace is
-// each machine's account, for a task of the workflow's first type (paceOf).
-export async function machineLines(deps: PmLaunchDeps, p: Project, now = Date.now()): Promise<string[]> {
+// The project's allowed machines now. Readiness is the last check's, never
+// run from here; pace is each machine's account, for a task of the workflow's
+// first type (paceOf).
+async function machineViews(deps: PmLaunchDeps, p: Project, now: number): Promise<MachineView[]> {
   const [settings, { waits }] = await Promise.all([readMemorySettings(), paceOf(deps.store, p, undefined, now).catch(() => ({ waits: {} as Record<string, string> }))])
   return Promise.all(allowedMachines(p).map(async (key) => {
     const m = deps.machines().find(x => x.key === key)
     const online = !!m && (m.local || m.status === 'online')
     const home = key === p.machine, ready = home ? '' : lastReadiness(p.key, key)
-    return machineLine({
+    return {
       key, label: m?.label ?? key, online, home, ...(isPaused(p, key) ? { paused: true } : waits[key] ? { wait: waits[key] } : ready ? { wait: `not ready (${ready})` } : {}), ...(ready === undefined ? { unchecked: true } : {}),
       settings: settings[key] ?? DEFAULT_MEMORY, capacity: online ? await machineCapacity(deps, key) : null, running: online ? await atWork(deps.store, key) : [],
-    })
+    }
   }))
+}
+
+// `autopilot show`: one line per allowed machine (machineLine).
+export const machineLines = async (deps: PmLaunchDeps, p: Project, now = Date.now()) => (await machineViews(deps, p, now)).map(v => machineLine(v))
+
+// The project sheet's Machines view: its strategy, each allowed machine's card
+// (machineNow), and the next to-do task with where it would go, or the hold;
+// why: what keeps Keep the board busy from starting it (busyNext).
+export async function machinesNow(deps: PmLaunchDeps, p: Project, now = Date.now()) {
+  const [views, projects, all] = await Promise.all([machineViews(deps, p, now), deps.store.projects(), deps.store.tasks()])
+  const tasks = all.filter(x => x.project === p.key), head = busyQueue(tasks)[0]
+  const shown = (id: string) => shownTaskId(projects, id)
+  const machines = views.map(v => machineNow({ ...v, running: v.running.map(r => ({ ...r, ...(r.task ? { task: shown(r.task) } : {}) })) }))
+  const strategy = p.placement ?? 'strongest'
+  if (!head) return { strategy, machines, next: null }
+  const weight = weightOf(await deps.store.workflow(p.key), head).weight
+  const placed = placeTask({ weight, estimate: (await projectEstimates(deps.store, p.key))[weight], home: p.machine, strategy, candidates: views.map(v => (v.paused ? { ...v, wait: PAUSED } : v)) })
+  const pace = await paceOf(deps.store, p, head, now).catch(() => undefined)
+  const n = busyNext((await deps.store.coordinator(p.key))?.autopilot, tasks, await deps.store.runs(), now, { pace: pace?.verdict, holds: await slotsOf(deps.store, [p]) })
+  const on = 'machine' in placed ? machines.find(m => m.key === placed.machine)?.label ?? placed.machine : undefined
+  return { strategy, machines, next: { task: shown(head.id), title: head.title, weight, ...(on !== undefined ? { on } : { hold: 'hold' in placed ? placed.hold : '' }), ...('why' in n ? { why: n.why } : {}) } }
 }
 
 // Which tasks of these projects take a tasks-at-once slot (holdsSlot), by their plan.
