@@ -379,25 +379,35 @@ under the autopilot's line and a link to the project's Workflow tab:
   conversation stopped (its terminal ended, for example when its machine
   restarted), *Resume the conversation* takes it up again with the agent that
   ran it, and *New conversation* starts a new one;
-- the autopilot: its state and next wake, a switch, a **goal**, how often it wakes (*Every*, *At*), its
-  limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's
-  machines have room for; both empty for a new project, while a project that
-  kept the older defaults (10 a day, 2 at once) keeps them, with the hint *Older
-  defaults: clear the fields for unlimited and Auto*; a task whose step
-  holds no agent, such as a PR or merge waiting for checks or the queue, or a
-  step of yours, takes no slot), the **Health check** interval (empty: every
-  3h; `off`: never; see [Who sends a wake](#who-sends-a-wake)), the routine
-  events it wakes on, all off by default since the engine handles them (an
-  autopilot saved earlier with the old default, *Task done* and *Task stuck*,
-  has them turned off once; turn them back on if you want them; *Task added*: by someone else than this
-  coordinator, such as you, another coordinator or an automation; *Task
-  done*, *Task stuck*, *Ready for you*) and *Look for new work* (scheduled wakes
-  even with nothing to do, with its own *New tasks / day*), and **Keep the
-  board busy** (see below). The form says *Unsaved changes* until you save;
-- its wakes and *Run now*: one line for the last wake (*Last wake 15:44*, its
-  reason, *handled* or how it ended), a highlighted line for each other wake not
-  handled (waiting, no answer, timed out, coordinator gone), and *History* folds
-  the full list, each wake with its id, created, delivered and acknowledged times.
+- the autopilot's state, a switch, today's counts and *Run now*;
+- **the day's timeline**: a 24 h bar with the autopilot's hours shaded, a mark
+  for each wake sent (filled), each wake skipped (hollow) and each task started,
+  *now* and the next wake (dashed); the worker's account
+  [pace](quotas.md#pace) as a gauge (the week used against its line or limit,
+  then *go* or what it waits for); then the same events listed, newest first:
+  *Next wake*, *Now*, each wake sent (*Scheduled*, *Health check*, *Step check*,
+  *Engine*, *Incident*, *Run now*: its first reason and *handled* or how it
+  ended, a wake not handled highlighted), each wake skipped and why (nothing to
+  do, the account ahead of its pace, nothing changed since the last wake…), each
+  task started; yesterday's below, in the same scroll;
+- the settings, below, in four groups the form saves together (*Unsaved
+  changes* until you save): **Goal**; **When it wakes**: *Every*, *At*, the
+  **Health check** interval (empty: every 3h; `off`: never; see
+  [Who sends a wake](#who-sends-a-wake)), the routine events it also wakes on,
+  all off by default since the engine handles them (*Task added*: by someone
+  else than this coordinator, such as you, another coordinator or an
+  automation; *Task done*, *Task stuck*, *Ready for you*; an autopilot saved
+  earlier with the old default, *Task done* and *Task stuck*, has them turned
+  off once), and *Look for new work* (scheduled wakes even with nothing to do,
+  with its own *New tasks / day*); **Limits**: *Tasks / day* (up to 1000,
+  empty for no daily limit), *At once* (empty is *Auto*, as many as the
+  project's machines have room for; both empty for a new project, while a
+  project that kept the older defaults, 10 a day and 2 at once, keeps them,
+  with the hint *Older defaults: clear the fields for unlimited and Auto*; a
+  task whose step holds no agent, such as a PR or merge waiting for checks or
+  the queue, or a step of yours, takes no slot) and **Keep the board busy**
+  (see below); **Hours**: *From* and *To*, local hours for automatic work
+  (*To* excluded; *22* to *6* spans midnight; empty: all day).
 
 Automatic work (the autopilot, automations) waits while an account is ahead of
 its [pace](quotas.md#pace) (a machine whose account waits is skipped) or no

@@ -64,40 +64,52 @@ it('with Tasks / day empty, has no daily limit: counts today alone and saves no 
   expect((await mount(view({ autopilot: { ...autopilot, events: [], perDay: null, atOnce: null } }))).find('[data-testid="autopilot-old-defaults"]').exists()).toBe(false)
 })
 
-it('shows the last wake on one line, handled, with its ids and times only in the history', async () => {
-  const b = await mount(view({ wakes: [wake('aaaaaaa1', { deliveredAt: 2, ackedAt: 3, endedAt: 3, ended: 'ack' }), wake('aaaaaaa0', { deliveredAt: 2, endedAt: 3, ended: 'merged' })] }))
-  const line = b.find('[data-testid="autopilot-last-wake"]')
-  expect(line.text()).toMatch(/^Last wake .+CO-1 \(Fix it\): done \(\+1\)handled$/)
-  expect(line.classes()).not.toContain('problem')
-  expect(line.text()).not.toContain('aaaaaaa1')
-  expect(b.findAll('[data-testid="autopilot-wake-problem"]')).toHaveLength(0)
-  expect(b.find('[data-testid="autopilot-history"]').attributes('open')).toBeUndefined()
-  expect(b.find('[data-testid="autopilot-history"] summary').text()).toBe('History (2)')
-})
+// Today at hh:mm (local), for the timeline.
+const at = (h: number, m = 0, days = 0) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d.getTime() }
 
-it('highlights the wakes not handled, lists them all in the history, and runs now', async () => {
-  const b = await mount()
-  // The last wake waits; an older one had no answer; delivered and acked ones are fine.
-  const line = b.find('[data-testid="autopilot-last-wake"]')
-  expect([line.classes('problem'), line.find('.ap-state').text()]).toEqual([true, 'waiting'])
-  const problems = b.findAll('[data-testid="autopilot-wake-problem"]')
-  expect(problems.map(p => [p.attributes('data-state'), p.find('.ap-state').text()])).toEqual([['unanswered', 'no answer']])
-  const rows = b.findAll('[data-testid="autopilot-wake"]')
-  expect(rows.map(r => r.attributes('data-state'))).toEqual(['pending', 'delivered', 'ack', 'unanswered'])
-  expect(rows.map(r => r.find('.ap-state').text())).toEqual(['Waiting', 'Delivered', 'Acked', 'No answer'])
-  expect(rows[0]!.text()).toContain('Delivered — · Acked —')
-  expect(rows[0]!.text()).toContain('CO-1 (Fix it): done (+1)')
-  expect(rows[3]!.text()).toContain('×2')
+it('shows the day: wakes sent and skipped with their reasons, the tasks started, the next wake and the pace', async () => {
+  const b = await mount(view({
+    autopilot: { ...autopilot, on: true, events: [...autopilot.events], hours: { from: 8, to: 20 } }, nextWake: at(23, 50),
+    wakes: [
+      wake('aaaaaaa2', { kind: 'health', reasons: ['CO-3 waits for you'], createdAt: at(0, 3), tries: 2, deliveredAt: 2, endedAt: 3, ended: 'unanswered' }),
+      wake('aaaaaaa1', { reasons: ['Scheduled wake (every 2h). Your goal: Ship 2.1.'], createdAt: at(0, 2), deliveredAt: 2, ackedAt: 3, endedAt: 3, ended: 'ack' }),
+    ],
+    skips: [{ at: at(0, 1), what: 'autopilot', why: 'Scheduled wake: the worker\'s account is ahead of its pace' }, { at: at(22, 0, -1), what: 'autopilot', why: 'Scheduled wake: nothing to do' }],
+    started: [{ task: 'CO-4', title: 'Add the export', at: at(0, 4) }],
+    pace: { account: 'claude:ab12 Pro', used: 41, limit: 54, label: 'line' },
+  }))
+  expect(b.find('[data-testid="autopilot-next-wake"]').text()).toMatch(/^Next wake (23:50|11:50)/)
+  const rows = b.findAll('[data-testid="autopilot-event"]').map(r => [r.attributes('data-kind'), r.find('.tl-what').text(), r.find('.tl-why').text(), r.find('.tl-state').exists() ? r.find('.tl-state').text() : ''])
+  expect(rows).toEqual([
+    ['started', 'Started', 'CO-4 Add the export', ''],
+    ['sent', 'Health check', 'CO-3 waits for you', 'no answer'],
+    ['sent', 'Scheduled', 'Scheduled wake (every 2h). Your goal: Ship 2.1.', 'handled'],
+    ['skipped', 'Skipped', 'the worker\'s account is ahead of its pace', ''],
+    ['skipped', 'Skipped', 'nothing to do', ''],
+  ])
+  expect(b.find('.tl-day').text()).toBe('Yesterday')
+  expect(b.findAll('[data-testid="autopilot-event"]')[1]!.classes()).toContain('problem')
+  expect(b.findAll('.tl-shade').map(s => s.attributes('style'))).toEqual(['left: 33.333333333333336%; width: 50%;'])
+  expect(b.find('[data-testid="autopilot-pace"] .tl-pace-text').text()).toBe('week 41% / line 54% · go')
   await b.find('[data-testid="autopilot-run-now"]').trigger('click')
   await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', runNow: true }]))
   await vi.waitFor(() => expect(b.text()).toContain('Queued: it goes as soon as the coordinator is idle.'))
+})
+
+it('saves the hours, and a pace that waits says what for', async () => {
+  const b = await mount(view({ pace: { account: 'codex', used: null, limit: null, label: 'line', wait: 'ahead of the target line until Fri 00:00' } }))
+  expect(b.find('[data-testid="autopilot-pace"] .tl-pace-text').text()).toBe('waits: ahead of the target line until Fri 00:00')
+  await b.find('input#ap-from-CO').setValue('22')
+  await b.find('input#ap-to-CO').setValue('6')
+  await b.find('[data-testid="autopilot-save"]').trigger('submit')
+  await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', autopilot: { ...autopilot, at: '', events: [...autopilot.events], hours: { from: 22, to: 6 } } }]))
 })
 
 it('cannot run a coordinator that is not started', async () => {
   const b = await mount(view({ terminal: undefined, wakes: [] }))
   expect(b.find('[data-testid="autopilot-run-now"]').attributes('disabled')).toBeDefined()
   expect(b.text()).toContain('Start the coordinator to wake it.')
-  expect(b.text()).toContain('No wake yet.')
+  expect(b.text()).toContain('Nothing yet today.')
 })
 
 it('shows Active, or Asleep with its last wake when there is nothing to do', async () => {

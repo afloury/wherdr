@@ -21,7 +21,7 @@ import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
 import { allowedMachines, machineNamed, taskMachine, type Project } from '../../shared/pm/project'
 import { projectOf, showIds, shownKey, shownTaskId } from '../../shared/pm/projectKey'
-import { taskPlan, waitOf, type Task } from '../../shared/pm/run'
+import { taskPlan, waitOf, type Run, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
 import { CREATE_SCRIPT, WRITE_SCRIPT, exec, startTask } from './pmLaunch'
@@ -39,7 +39,7 @@ import { handFix } from '../../shared/pm/release'
 import { DONE_CMD } from '../../shared/pm/advance'
 import { READ_LINES, lastWords } from './pmRead'
 import { resumeRefusal } from '../../shared/pm/stop'
-import { pacedStart, paceLine } from '../../shared/pm/pace'
+import { pacedStart, paceGauge, paceLine } from '../../shared/pm/pace'
 import { forgetMemory } from './pmMemory'
 import { projectEstimates } from './pmPeaks'
 import { goesTo, machineLines, paceOf, placeFor, slotsOf } from './pmPlace'
@@ -550,13 +550,22 @@ function asleepOf(ap: Autopilot, tasks: Task[], c: CoordinatorRecord | null | un
   return k === 'idle' || k === 'limit' ? { asleep: k } : {}
 }
 
+// The tasks whose first worker run started since `since`, oldest first.
+function startsSince(projects: Project[], tasks: Task[], runs: Run[], since: number) {
+  const first = new Map<string, number>()
+  for (const r of runs) if (r.role === 'worker') first.set(r.task, Math.min(first.get(r.task) ?? Infinity, r.startedAt))
+  return tasks.filter(t => (first.get(t.id) ?? 0) >= since).map(t => ({ task: shownTaskId(projects, t.id), title: t.title, at: first.get(t.id)! })).sort((a, b) => a.at - b.at)
+}
+
 // Each project's coordinator: who answers, the agent of its kept conversation, its pending change.
 export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[]> {
   if (!(await store.enabled())) return []
   const [tasks, runs, wakes, now] = [await store.tasks(), await store.runs(), await store.wakes(), Date.now()]
-  const holds = await slotsOf(store, await store.projects())
+  const projects = await store.projects(), holds = await slotsOf(store, projects)
+  // The timeline's start: yesterday's local midnight.
+  const since = new Date(now).setHours(-24, 0, 0, 0)
   // The main coordinator first; it has no autopilot (each project's coordinator runs its own).
-  return Promise.all([{ key: MAIN, name: await readAlfredName({}) }, ...await store.projects()].map(async (p) => {
+  return Promise.all([{ key: MAIN, name: await readAlfredName({}) }, ...projects].map(async (p) => {
     const c = await store.coordinator(p.key)
     const current = c?.proposal ? await store.workflow(p.key) : null
     const changes = c?.proposal ? c.proposal.changes ?? workflowChanges(current, c.proposal.template) : undefined
@@ -573,7 +582,9 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
             ...asleepOf(autopilot, mine, c, now), skippedToday: today(c?.skipped, now),
             ...(c?.woke?.at ? { wokeAt: c.woke.at } : {}),
             ...(next ? { nextWake: next } : {}),
-            wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
+            wakes: wakes.filter(w => w.coordinator === p.key && w.createdAt >= since).sort((a, b) => b.createdAt - a.createdAt).slice(0, 50),
+            skips: (c?.skips ?? []).filter(x => x.at >= since), started: startsSince(projects, mine, runs, since),
+            ...await projectPace(store, p.key, undefined, now).then(s => (s ? { pace: paceGauge(s, now) } : {}), () => ({})),
           }),
       project: p.key, name: p.name, ...('machine' in p ? { machines: allowedMachines(p) } : {}), ...(paused.length ? { paused } : {}), ...(busy.length ? { busy } : {}), ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...('from' in p && p.from ? { template: p.from.template } : {}),
       ...(c?.ran ? { ran: agentOf(c.ran) ?? FALLBACK } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
