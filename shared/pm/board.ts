@@ -55,6 +55,7 @@ export interface Card {
   report?: Report // a problem the user reported, open (report.ts)
   summary?: string // how it went, in a few lines (summary.ts)
   times?: Times // time per step, waits for the user, rounds, CI fixes (times.ts), once started
+  archived?: number // when it was archived: off the board, in the Done column's archived list (archive.ts)
 }
 
 // A machine a project allows, for "Start on…": unready, the last check's failures ('' ready, none never checked).
@@ -64,7 +65,8 @@ export interface BoardMachine { key: string, label: string, online: boolean, unr
 // machines: only for a project that allows more than its own, home first.
 export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string, weight?: string }[], machines?: BoardMachine[] }
 // GET /api/pm/board
-export interface Board { projects: BoardProject[], cards: Card[] }
+// archived: each project's count of archived tasks, left out of cards (GET /api/pm/archived lists them).
+export interface Board { projects: BoardProject[], cards: Card[], archived?: Record<string, number> }
 
 export const columnOf = (s: PlannedStep) => s.column || s.id
 
@@ -134,6 +136,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
     ...(task.after ? { after: afterIds(task) } : {}),
     ...(s?.started ? { times: timesOf(task, plan, runs, now) } : {}),
+    ...(task.archived ? { archived: task.archived } : {}),
   }
 }
 

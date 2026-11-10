@@ -12,14 +12,14 @@ import { ENGINES } from '~/utils/dictation/registry'
 import { DEFAULT_MAX_SESSION_DAYS, MAX_SESSION_DAYS, type MaxSessionDays } from '#shared/sessionLimit'
 import { APP_START_DEFAULT, readAppStart, writeAppStart, type AppStart } from '#shared/appStart'
 import { chatFilesLevel, type ChatFilesLevel } from '#shared/chatFiles'
-import { uiTarget, uiTargetName, type UiTargetId } from '#shared/uiTargets'
+import { projectTarget, uiTarget, uiTargetName, type UiTargetId } from '#shared/uiTargets'
 import { followElement, showHalo, waitForElement } from '~/utils/uiHalo'
 
 // panel: beside the conversation on a wide computer (utils/settingsPanel.ts);
 // the section lives in the conversation's URL, the full page stays one click away.
 const props = defineProps<{ panel?: boolean }>()
 const router = useRouter()
-// v3's own version (shared/v3Version.ts), also in /api/health.
+// The build's version (shared/v3Version.ts), also in /api/health.
 const appVersion = useRuntimeConfig().public.version
 // Sections: sidebar on a computer (one section shown), iOS Settings-style
 // list on the phone (a tap opens the section, Back returns to the list).
@@ -63,7 +63,11 @@ const body = ref<HTMLElement | null>(null)
 // ?section=pacing names one) is waited for, scrolled to, kept in place while
 // the groups above finish loading, and highlighted (utils/uiHalo.ts). Not
 // shown (a feature off): the section's note says so, highlighted instead.
-const target = computed(() => uiTarget(route.query.target) ?? uiTarget(alias.value?.target))
+// A project's target is the project sheet's (ProjectSheet.vue).
+const target = computed(() => {
+  const id = uiTarget(route.query.target) ?? uiTarget(alias.value?.target)
+  return id && !projectTarget(id) ? id : null
+})
 const pointed = ref<UiTargetId | null>(null)
 const missing = ref<UiTargetId | null>(null)
 const missingNote = ref<HTMLElement | null>(null)
@@ -621,7 +625,7 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'phone'" class="settings-section">
-          <PhoneSetup :active="activeSection === 'phone'" />
+          <PhoneSetup data-ui-target="phone.setup" :active="activeSection === 'phone'" />
           <div data-ui-target="phone.app-start" class="settings-group">
             <h3>{{ t('App start') }}</h3>
             <URadioGroup v-model="appStart" :items="appStartItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />

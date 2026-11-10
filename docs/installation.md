@@ -118,8 +118,11 @@ survives updates; delete it to free the space. Dictation through a cloud service
 
 ## Updating
 
-v3 has no update check, banner or one-tap update (Settings › About shows `v3 · herdr-core`). To
-update, in the checkout:
+Settings › About shows the version that runs, with the commit it was built from
+(`wherdr 3.0.0+1a2b3c4 · herdr-core`). Once a day wherdr checks GitHub for a newer 3.x release and
+the home screen shows a banner when there is one: never a 2.x release (v2 keeps its own updates),
+nor the next major version. `WHERDR_UPDATE_CHECK=off` turns the check off. There is no one-tap
+update: to update, in the checkout:
 
 ```sh
 git pull
