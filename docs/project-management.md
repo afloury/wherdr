@@ -148,8 +148,10 @@ its folder, branches and task worktrees stay on the machine.
   agents (cap 4)*, *3.1 GB free, needs 3.4 GB with its reserve*, *paused for
   this project*, *offline*). Under the placement picker, a small picture and one
   line explain the strategy, and *Next* names the next to-do task and the
-  machine it would go to, or why it waits (no room anywhere, Keep the board busy
-  off, a limit). The board's header opens this block (its server icon: the
+  machine it would go to, by the pace of that task's own account on each machine,
+  or why it waits (no room anywhere, Keep the board busy off, a limit, the task it
+  is chained after, held for room, another task's files). What a machine takes is
+  weighed with the project's learned estimates, as placement weighs it. The board's header opens this block (its server icon: the
   picked project's sheet, or Settings › Projects with several projects).
   **Placement** chooses how new tasks spread over these machines: *Heavy to the
   strongest* (the default: light and standard work at home when it fits, heavy

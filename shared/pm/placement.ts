@@ -152,7 +152,8 @@ export interface MachineNow {
   agents: { task?: string, weight: Weight }[]
   takes?: Weight, why?: string
 }
-export function machineNow(c: MachineView, now = new Date()): MachineNow {
+// estimates: the project's per weight (learned, else the defaults), as placement counts them.
+export function machineNow(c: MachineView, estimates: Record<Weight, Estimate> = WEIGHT_DEFAULTS, now = new Date()): MachineNow {
   const m = c.capacity, cap = agentCap(c.settings, m)
   const base = {
     key: c.key, label: label(c), home: c.home, agents: c.running.map(r => ({ weight: r.weight, ...(r.task ? { task: r.task } : {}) })),
@@ -163,26 +164,26 @@ export function machineNow(c: MachineView, now = new Date()): MachineNow {
   const reading = m ? { memory: { total: m.total, agents: mine, other: used - mine, free: m.available, reserve: reserveOf(c.settings, m) }, load: m.load1, ...(m.cores ? { cores: m.cores } : {}), ...(m.pressure ? { pressure: m.pressure } : {}) } : {}
   if (c.paused) return { ...base, ...reading, state: 'paused', why: PAUSED }
   const heaviest = WEIGHTS.slice().reverse()
-  const takes = heaviest.find(w => !misfit(c, w, WEIGHT_DEFAULTS[w], now))
+  const takes = heaviest.find(w => !misfit(c, w, estimates[w], now))
   const short = takes ? heaviest[heaviest.indexOf(takes) - 1] : 'light'
-  const why = short && misfit(c, short, WEIGHT_DEFAULTS[short], now)
+  const why = short && misfit(c, short, estimates[short], now)
   return { ...base, ...reading, state: 'online', ...(takes ? { takes } : {}), ...(why ? { why: takes ? `${short}: ${why}` : why } : {}) }
 }
 
 // "machine-a (home): 9.1 GB free of 32.0 GB · 8 cores, load 2.1 · 2 of 21 agents
 // · running 1 heavy, 1 light · fits heavy": the heaviest weight it takes now,
 // else why it takes nothing (full, not ready, paced).
-export function machineLine(c: MachineView): string {
+export function machineLine(c: MachineView, estimates: Record<Weight, Estimate> = WEIGHT_DEFAULTS): string {
   const name = `${c.label || 'this host'}${c.home ? ' (home)' : ''}`
   const hours = c.settings.hours ? [`available ${hoursLabel(c.settings.hours)}`] : []
   if (c.paused) return `${name}: ${PAUSED}${c.running.length ? ` · ${c.running.length} agents at work` : ''}`
   if (!c.online) return [`${name}: offline`, ...hours].join(' · ')
   const count = WEIGHTS.slice().reverse().map(w => [w, c.running.filter(r => r.weight === w).length] as const).filter(([, n]) => n)
-  const fits = WEIGHTS.slice().reverse().find(w => !misfit(c, w, WEIGHT_DEFAULTS[w]))
+  const fits = WEIGHTS.slice().reverse().find(w => !misfit(c, w, estimates[w]))
   return `${name}: ${[
     ...capacityParts(c.capacity, c.settings, c.running.length),
     ...hours,
     ...(count.length ? [`running ${count.map(([w, n]) => `${n} ${w}`).join(', ')}`] : []),
-    fits ? `fits ${fits}${c.unchecked ? ' (readiness checked before its first task)' : ''}` : `takes nothing now: ${misfit(c, 'light', WEIGHT_DEFAULTS.light)}`,
+    fits ? `fits ${fits}${c.unchecked ? ' (readiness checked before its first task)' : ''}` : `takes nothing now: ${misfit(c, 'light', estimates.light)}`,
   ].join(' · ')}`
 }
