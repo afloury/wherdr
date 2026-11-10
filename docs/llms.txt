@@ -36,6 +36,7 @@
 - [Security](docs/security.md#security): who may reach wherdr, the passkey lock and remote-shell risks.
 - [Network access](docs/security.md#network-access): which networks wherdr answers, and `WHERDR_TRUSTED_NETWORKS`.
 - [Configuration](docs/configuration.md#configuration): environment variables and the data folder.
+- [Settings beside the conversation](docs/configuration.md#configuration): on a computer window at least 1280 px wide, Settings opened from a conversation show as a side panel on the linked section; Escape closes it, Open full page keeps the full page; `&target=<id>` scrolls to one setting and outlines it for a few seconds.
 - [Settings beside the conversation](docs/configuration.md#configuration): on a computer window at least 1280 px wide, Settings opened from a conversation show as a side panel on the linked section, resizable from its left edge (drag, arrows, double-click for the default; width kept on the device); Escape closes it, Open full page keeps the full page.
 
 ## Agent list

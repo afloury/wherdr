@@ -12,6 +12,8 @@ import { ENGINES } from '~/utils/dictation/registry'
 import { DEFAULT_MAX_SESSION_DAYS, MAX_SESSION_DAYS, type MaxSessionDays } from '#shared/sessionLimit'
 import { APP_START_DEFAULT, readAppStart, writeAppStart, type AppStart } from '#shared/appStart'
 import { chatFilesLevel, type ChatFilesLevel } from '#shared/chatFiles'
+import { uiTarget, uiTargetName, type UiTargetId } from '#shared/uiTargets'
+import { followElement, showHalo, waitForElement } from '~/utils/uiHalo'
 
 // panel: beside the conversation on a wide computer (utils/settingsPanel.ts);
 // the section lives in the conversation's URL, the full page stays one click away.
@@ -53,34 +55,53 @@ const activeSection = computed<SettingsSection | null>(() => {
 // Conversation's tabs, the one shown in the URL (`&tab=dictation`).
 const convTab = computed(() => conversationTab(route.query.tab))
 const CONV_TAB_LABEL: Record<ConversationTab, string> = { 'display': 'Display', 'dictation': 'Dictation', 'read-aloud': 'Read aloud' }
-const openConvTab = (tab: ConversationTab) => router.replace({ query: { ...route.query, tab } })
+const openConvTab = (tab: ConversationTab) => router.replace({ query: { ...route.query, tab, target: undefined } })
 const activeLabel = computed(() => sections.value.find(s => s.id === activeSection.value)?.label || t('Settings'))
 const body = ref<HTMLElement | null>(null)
-// A new section (or Conversation tab) starts at the top; an alias (?section=pacing) scrolls to its
-// group, and keeps it in place while the groups above finish loading, until
-// the user scrolls or for 3 s.
+// A new section (or Conversation tab) starts at the top. A target
+// (`&target=appearance.theme`, shared/uiTargets.ts; an alias such as
+// ?section=pacing names one) is waited for, scrolled to, kept in place while
+// the groups above finish loading, and highlighted (utils/uiHalo.ts). Not
+// shown (a feature off): the section's note says so, highlighted instead.
+const target = computed(() => uiTarget(route.query.target) ?? uiTarget(alias.value?.target))
+const pointed = ref<UiTargetId | null>(null)
+const missing = ref<UiTargetId | null>(null)
+const missingNote = ref<HTMLElement | null>(null)
+const targetNote = computed(() => {
+  const id = pointed.value ?? missing.value
+  if (!id) return ''
+  const name = uiTargetName(id)
+  if (missing.value) return `${name} ${t('is not shown here.')}`
+  return openedBy.value ? `${openedBy.value} ${t('points to')} ${name}` : `${t('Pointing to')} ${name}`
+})
 let stopFollow = () => {}
-watch(() => `${route.query.section}|${route.query.section === 'conversation' ? convTab.value : ''}`, () => nextTick(() => {
+let endHalo = () => {}
+let pointing = 0
+// body: a direct load points once the column is mounted.
+watch(() => `${route.query.section}|${route.query.section === 'conversation' ? convTab.value : ''}|${target.value ?? ''}|${!!body.value}`, () => nextTick(async () => {
   stopFollow()
+  endHalo()
+  pointed.value = missing.value = null
   const b = body.value
   if (!b) return
   b.scrollTop = 0
-  const el = alias.value && document.getElementById(alias.value.anchor)
-  if (!el || typeof ResizeObserver === 'undefined') return
-  const place = () => { b.scrollTop += el.getBoundingClientRect().top - b.getBoundingClientRect().top }
-  place()
-  const ro = new ResizeObserver(place)
-  ro.observe(b.firstElementChild!)
-  const timer = setTimeout(() => stopFollow(), 3000)
-  stopFollow = () => {
-    ro.disconnect()
-    clearTimeout(timer)
-    for (const ev of ['wheel', 'touchstart', 'keydown']) b.removeEventListener(ev, stopFollow)
-    stopFollow = () => {}
+  const id = target.value
+  if (!id) return
+  const run = ++pointing
+  const el = await waitForElement(b, `[data-ui-target="${id}"]`)
+  if (run !== pointing) return
+  if (!el) {
+    missing.value = id
+    await nextTick()
+    if (missingNote.value) endHalo = showHalo(missingNote.value)
+    return
   }
-  for (const ev of ['wheel', 'touchstart', 'keydown']) b.addEventListener(ev, stopFollow, { passive: true })
+  pointed.value = id
+  el.setAttribute('aria-describedby', 'ui-target-note')
+  stopFollow = followElement(b, el)
+  endHalo = showHalo(el)
 }), { immediate: true })
-onBeforeUnmount(() => stopFollow())
+onBeforeUnmount(() => { pointing++; stopFollow(); endHalo() })
 function openSection(id: SettingsSection) {
   if (id === section.value) return
   const to = { path: props.panel ? route.path : '/settings', query: { section: id } }
@@ -94,7 +115,7 @@ const openedBy = computed(() => {
 })
 if (props.panel) onBeforeUnmount(() => { uiOpenedBy.value = null })
 function closePanel() {
-  const { section: _s, project: _p, tab: _t, review: _r, library: _l, group: _g, ...query } = route.query
+  const { section: _s, project: _p, tab: _t, review: _r, library: _l, group: _g, target: _x, ...query } = route.query
   router.replace({ query })
 }
 function openFullPage() {
@@ -376,9 +397,11 @@ onMounted(() => {
       <div v-show="activeSection" ref="body" class="settings-body">
         <div class="settings-column">
         <h2 class="settings-section-title">{{ activeLabel }}</h2>
+        <p v-if="missing" ref="missingNote" class="muted settings-hint ui-target-missing">{{ targetNote }}</p>
+        <p v-else id="ui-target-note" class="sr-only" role="status" aria-live="polite">{{ targetNote }}</p>
 
         <div v-show="activeSection === 'appearance'" class="settings-section">
-          <div class="settings-group">
+          <div data-ui-target="appearance.theme" class="settings-group">
             <h3>{{ t('Theme') }}</h3>
             <!-- Collapsed by default: the current theme shows, a tap expands the list. -->
             <button type="button" class="theme-opt theme-current" :aria-expanded="themesOpen" @click="themesOpen = !themesOpen">
@@ -410,7 +433,7 @@ onMounted(() => {
             <p class="muted settings-hint">{{ t('Also on omp’s running actions (border only). Frozen when the system asks for reduced motion. Follows you on every device.') }}</p>
           </div>
 
-          <div class="settings-group">
+          <div data-ui-target="appearance.home-screen" class="settings-group">
             <h3>{{ t('Home screen') }}</h3>
             <label class="settings-toggle">
               <span><b>{{ t('Compact list') }}</b><small>{{ t('Cards: one line in Compact, two in Normal with current activity. Follows you on every device.') }}</small></span>
@@ -435,7 +458,7 @@ onMounted(() => {
             <MachineBarSettings />
           </div>
 
-          <div class="settings-group">
+          <div data-ui-target="appearance.quotas" class="settings-group">
             <h3>{{ t('Quotas') }}</h3>
             <URadioGroup v-model="quotaMode" :items="quotaItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
             <p class="muted settings-hint">{{ t('The color always flags a nearly exhausted quota. Follows you on every device.') }}</p>
@@ -468,12 +491,12 @@ onMounted(() => {
             </button>
           </div>
           <div v-show="convTab === 'display'" id="conversation-panel-display" role="tabpanel" aria-labelledby="conversation-tab-display">
-            <div class="settings-group">
+            <div data-ui-target="conversation.default-pane" class="settings-group">
               <h3>{{ t('Default pane view') }}</h3>
               <URadioGroup v-model="defaultPane" :items="defaultPaneItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
               <p class="muted settings-hint">{{ t('What an agent pane opens on. A pane you switched to Terminal stays there. Follows you on every device.') }}</p>
             </div>
-            <div class="settings-group settings-typing">
+            <div data-ui-target="conversation.typewriter" class="settings-group settings-typing">
               <h3>{{ t('Typewriter') }}</h3>
               <URadioGroup v-model="typewriter" :items="typingItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" :disabled="reducedMotion" />
               <p class="muted settings-hint">{{ t(reducedMotion ? 'Off: the system asks for reduced motion.' : 'Only new replies are animated; history appears at once. Tap a reply while it types to show it in full. Follows you on every device.') }}</p>
@@ -483,7 +506,7 @@ onMounted(() => {
               </label>
               <TypingPreview v-if="activeSection === 'conversation' && convTab === 'display'" />
             </div>
-            <div class="settings-group">
+            <div data-ui-target="conversation.reply-style" class="settings-group">
               <h3>{{ tl('Reply style', 'Style de réponse') }}</h3>
               <p class="muted settings-lead">{{ tl('Each question an agent asks, and each point it lists, can be quoted in the field to answer them one by one. Choose how they offer it.', 'Chaque question d’un agent, et chaque point qu’il liste, peut être cité dans le champ pour y répondre un par un. Choisis comment ils le proposent.') }}</p>
               <URadioGroup v-model="replyStyleChoice" :items="replyStyleItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio reply-style-radio" />
@@ -497,7 +520,7 @@ onMounted(() => {
               <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
             </div>
           </div>
-          <div v-show="convTab === 'dictation'" id="conversation-panel-dictation" role="tabpanel" aria-labelledby="conversation-tab-dictation" class="settings-group" data-testid="dictation-settings">
+          <div v-show="convTab === 'dictation'" id="conversation-panel-dictation" role="tabpanel" aria-labelledby="conversation-tab-dictation" class="settings-group" data-testid="dictation-settings" data-ui-target="conversation.dictation">
             <h3>{{ tl('Dictation', 'Dictée') }}</h3>
             <p class="muted settings-lead">{{ tl('A mic next to +: hold it and talk, or tap it to start and again to stop. The text goes into the field; nothing is sent on its own.', 'Un micro à côté de + : maintiens-le et parle, ou touche-le pour démarrer puis encore pour arrêter. Le texte va dans le champ ; rien n’est envoyé tout seul.') }}</p>
             <URadioGroup v-model="dictationChoice" :items="dictationItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
@@ -506,7 +529,7 @@ onMounted(() => {
             <DictationRewriteSettings v-if="dictationChoice !== 'off'" />
             <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
           </div>
-          <div v-show="convTab === 'read-aloud'" id="conversation-panel-read-aloud" role="tabpanel" aria-labelledby="conversation-tab-read-aloud" class="settings-group" data-testid="read-aloud-group">
+          <div v-show="convTab === 'read-aloud'" id="conversation-panel-read-aloud" role="tabpanel" aria-labelledby="conversation-tab-read-aloud" class="settings-group" data-testid="read-aloud-group" data-ui-target="conversation.read-aloud">
             <h3>{{ tl('Read aloud', 'Lecture à voix haute') }}</h3>
             <p class="muted settings-lead">{{ tl('Play under each agent reply reads it aloud: the words only, with “code block” in place of code. One reply at a time; tap Stop to end it. On iPhone, iOS may stop reading when the screen locks or you leave the app.', 'Lire sous chaque réponse d’agent la lit à voix haute : les mots seulement, avec « bloc de code » à la place du code. Une réponse à la fois ; Arrêter y met fin. Sur iPhone, iOS peut arrêter la lecture quand l’écran se verrouille ou que tu quittes l’app.') }}</p>
             <ReadAloudSettings />
@@ -522,7 +545,7 @@ onMounted(() => {
               <USwitch v-model="shellsOn" color="success" size="xl" />
             </label>
           </div>
-          <div class="settings-group">
+          <div data-ui-target="terminal.text-size" class="settings-group">
             <h3>{{ t('Text') }}</h3>
             <div class="settings-stepper">
               <span>{{ t('Terminal text size') }}</span>
@@ -546,22 +569,22 @@ onMounted(() => {
               <USwitch v-model="smoothScrollingOn" color="success" size="xl" />
             </label>
           </div>
-          <div class="settings-group settings-renderer">
+          <div data-ui-target="terminal.rendering" class="settings-group settings-renderer">
             <h3>{{ t('Terminal rendering') }}</h3>
             <URadioGroup v-model="renderer" :items="rendererItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
             <p class="muted settings-hint">{{ t('Rendering is saved on this device.') }}</p>
             <p class="settings-renderer-status" role="status">{{ rendererStatus }}</p>
           </div>
-          <PhoneKeyOrderSettings />
+          <PhoneKeyOrderSettings data-ui-target="terminal.key-order" />
         </div>
 
         <div v-show="activeSection === 'agents'" class="settings-section">
           <OfferedAgentsSettings />
-          <div id="claude-quotas" class="settings-group">
+          <div data-ui-target="agents.claude-quotas" id="claude-quotas" class="settings-group">
             <h3>{{ tl('Claude quotas', 'Quotas Claude') }}</h3>
             <ClaudeQuotaSetup v-if="activeSection === 'agents'" />
           </div>
-          <PacingSettings id="settings-pace" :active="activeSection === 'agents'" />
+          <PacingSettings id="settings-pace" data-ui-target="agents.pace" :active="activeSection === 'agents'" />
         </div>
 
         <div v-show="activeSection === 'machines'" class="settings-section" data-testid="settings-machines">
@@ -569,7 +592,7 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'notifications'" class="settings-section">
-          <div class="settings-group" data-testid="notification-quiet">
+          <div class="settings-group" data-testid="notification-quiet" data-ui-target="notifications.do-not-disturb">
             <label class="settings-toggle quiet-toggle">
               <span><b><UIcon :name="quietOn ? 'i-lucide-bell-off' : 'i-lucide-bell'" />{{ tl('Do not disturb', 'Silence') }}</b><small>{{ tl('Turns off every notification, no exceptions: the rules below are ignored.', 'Coupe toutes les notifications, sans exception : les réglages ci-dessous sont ignorés.') }}</small></span>
               <USwitch v-model="quietOn" color="success" size="xl" />
@@ -582,7 +605,7 @@ onMounted(() => {
             <p class="muted notify-hint" :class="{ 'quiet-end': quietOn }">{{ quietEnd || tl('Notifications come back on by themselves at the end.', 'Retour automatique à la normale à la fin de la durée choisie.') }}</p>
           </div>
           <NotificationRules />
-          <div class="settings-group">
+          <div data-ui-target="notifications.device" class="settings-group">
             <h3>{{ tl('This device’s notifications', 'Notifications de cet appareil') }}</h3>
             <PushCard detailed />
             <PushDevices v-if="activeSection === 'notifications'" />
@@ -599,7 +622,7 @@ onMounted(() => {
 
         <div v-show="activeSection === 'phone'" class="settings-section">
           <PhoneSetup :active="activeSection === 'phone'" />
-          <div class="settings-group">
+          <div data-ui-target="phone.app-start" class="settings-group">
             <h3>{{ t('App start') }}</h3>
             <URadioGroup v-model="appStart" :items="appStartItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
             <p class="muted settings-hint">{{ t('On this device only.') }}</p>
@@ -623,7 +646,7 @@ onMounted(() => {
               <USwitch v-model="chatFilesProtected" color="success" size="xl" />
             </label>
           </div>
-          <div class="settings-group">
+          <div data-ui-target="security.passkey" class="settings-group">
             <h3>{{ tl('Passkey · optional', 'Passkey · facultative') }}</h3>
             <PasskeyCard />
           </div>

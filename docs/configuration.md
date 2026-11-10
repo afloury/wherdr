@@ -56,3 +56,10 @@ conversation keeps at least 480 px. With the edge focused, the left and right ar
 is kept on this device and comes back the next time the panel opens; places an agent opens beside
 its conversation use the same panel and width.
 
+A Settings link can also point at one setting with `&target=<id>` (for example
+`#/settings?section=conversation&tab=display&target=conversation.reply-style`): Settings
+opens the section and tab, scrolls to that setting and outlines it. The outline pulses twice
+and fades within 4 s, or goes at once on a click or a key press; with reduced motion it stays
+still and fades. A setting that is not shown (a feature off) gets a highlighted line saying so
+instead. The ids are internal for now (`shared/uiTargets.ts`) and may change.
+
