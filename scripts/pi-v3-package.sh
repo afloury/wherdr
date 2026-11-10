@@ -25,7 +25,7 @@ sha="${2:-$(git rev-parse HEAD 2>/dev/null || true)}"
 [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || die "not a full commit SHA: '$sha'"
 [ -f .output/server/index.mjs ] || die "no .output/server/index.mjs here: run npm run build first"
 # The Pi checks that /api/health answers this version (shared/v3Version.ts).
-grep -rqF "3.0.0-dev+${sha:0:7}" .output/server || die ".output was not built from ${sha:0:7} (its version differs): rebuild, or pass the built commit"
+grep -rqF "$(node -p 'require("./package.json").version')+${sha:0:7}" .output/server || die ".output was not built from ${sha:0:7} (its version differs): rebuild, or pass the built commit"
 
 # Nitro links some packages (.nitro/<name>@<version>): replaced by copies, as npm pack does.
 [ ! -d .output/server/node_modules/.nitro ] || node "$(dirname "$0")/pack-output.mjs" >/dev/null

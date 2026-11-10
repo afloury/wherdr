@@ -1,6 +1,6 @@
 {
   "name": "wherdr",
-  "version": "2.5.0",
+  "version": "3.0.0-dev",
   "license": "MIT",
   "type": "module",
   "description": "Unofficial mobile web client (PWA) for the coding agents of herdr-core (hc)",
@@ -19,6 +19,9 @@
     "url": "git+https://github.com/afloury/wherdr.git"
   },
   "bugs": "https://github.com/afloury/wherdr/issues",
+  "config": {
+    "branch": "v3"
+  },
   "bin": {
     "wherdr": "bin/wherdr.mjs"
   },

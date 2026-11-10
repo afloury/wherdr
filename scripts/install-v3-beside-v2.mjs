@@ -20,11 +20,14 @@ import { IGNORED_HP, defaultRun, describeV2, detectV2, runImport } from './v2-im
 
 export const EXIT = { ok: 0, usage: 2, missing: 3, conflict: 4, failed: 5, todo: 6 }
 const MANIFEST = 'install-manifest.json'
-// The repository this script comes from (package.json's repository field).
-const REPO = (() => {
-  try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).repository.url.replace(/^git\+/, '') }
-  catch { return '' }
+// The repository this script comes from and the branch v3 is installed from
+// (package.json's repository and config.branch, the one place that names it).
+const PKG = (() => {
+  try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')) }
+  catch { return {} }
 })()
+const REPO = PKG.repository?.url?.replace(/^git\+/, '') ?? ''
+const BRANCH = PKG.config?.branch
 const HELP = `Usage: install-v3-beside-v2.sh [--yes] [options]
 
 Without --yes, prints the plan and changes nothing (--dry-run says so explicitly).
@@ -36,7 +39,7 @@ Without --yes, prints the plan and changes nothing (--dry-run says so explicitly
   --port <n>            v3's local port (default 7684)
   --https-port <n>      tailscale serve HTTPS port (default: the first free one from 8104); --no-tailscale to skip
   --hc-session <s>      herdr-core session (default: default); --hc-bin <path>
-  --repo <url|path>     wherdr repository (default: package.json's repository); --branch <b> (v3)
+  --repo <url|path>     wherdr repository (default: package.json's repository); --branch <b> (${BRANCH})
   --skip-import         do not import from v2
   --auto-deploy <url>   never build here: install prebuilt v3 builds from <url> (scripts/v3-builder.sh
                         on another machine) and keep up with them: <name>-deploy.timer, every 3 min
@@ -44,7 +47,7 @@ Without --yes, prints the plan and changes nothing (--dry-run says so explicitly
   Nothing of herdr-projects is imported: Alfred sets up your v2 projects with you.`
 
 export function parseArgs(argv, home = os.homedir()) {
-  const o = { dir: path.join(home, 'wherdr-v3'), name: 'wherdr-v3', port: '7684', httpsPort: null, hcSession: 'default', repo: REPO, branch: 'v3' }
+  const o = { dir: path.join(home, 'wherdr-v3'), name: 'wherdr-v3', port: '7684', httpsPort: null, hcSession: 'default', repo: REPO, branch: BRANCH }
   const flags = { '--yes': 'yes', '--dry-run': 'dryRun', '--json': 'json', '--uninstall': 'uninstall', '--keep-data': 'keepData', '--no-tailscale': 'noTailscale', '--skip-import': 'skipImport', '--help': 'help', '-h': 'help' }
   const values = { '--dir': 'dir', '--name': 'name', '--port': 'port', '--https-port': 'httpsPort', '--hc-session': 'hcSession', '--hc-bin': 'hcBin', '--repo': 'repo', '--branch': 'branch', '--v2-dir': 'v2Dir', '--v2-unit': 'unit', '--herdr-projects': 'ignoredHp', '--herdr-bin': 'herdrBin', '--auto-deploy': 'deploySource' }
   for (let i = 0; i < argv.length; i++) {

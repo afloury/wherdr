@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { dryRun, parseAlfredCommand } from '../shared/pm/alfredCli'
-import { runAlfredCommand } from '../server/utils/alfredCli'
+import { applyProposedChange, runAlfredCommand } from '../server/utils/alfredCli'
 import { ALFRED_TOKEN_FILE, answerProposal, issueAlfredToken } from '../server/utils/pmCoordinator'
 import { MAIN } from '../shared/pm/coordinator'
 import { createPmStore } from '../server/utils/pmStore'
@@ -38,7 +38,9 @@ describe('parseAlfredCommand', () => {
     expect(parseAlfredCommand(['setting', 'set', 'theme', 'catppuccin-latte', '--propose'])).toEqual({ name: 'setting set', propose: true, key: 'theme', value: 'catppuccin-latte' })
     // Alfred never applies a setting itself.
     expect(parseAlfredCommand(['setting', 'set', 'theme', 'nord', '--apply'])).toEqual({ error: expect.stringContaining('--propose puts a card the user applies') })
-    expect(parseAlfredCommand(['projects', '--propose'])).toEqual({ error: '--propose is for setting set only' })
+    expect(parseAlfredCommand(['projects', '--propose'])).toEqual({ error: expect.stringContaining('--propose is for setting set and the changes') })
+    expect(parseAlfredCommand(['project', 'template', 'WEB', 'common', '--propose'])).toEqual({ name: 'project template', apply: false, propose: true, key: 'WEB', template: 'common' })
+    expect(parseAlfredCommand(['project', 'template', 'WEB', 'common', '--propose', '--apply'])).toEqual({ error: '--propose or --apply, not both' })
     expect(parseAlfredCommand(['project', 'machine', 'add', 'web', 'Mac', '--clone', '~/project'])).toEqual({ name: 'project machine', apply: false, key: 'WEB', action: 'add', machine: 'Mac', clone: '~/project' })
     expect(parseAlfredCommand(['project', 'machine', 'remove', 'WEB', 'mac', '--apply'])).toEqual({ name: 'project machine', apply: true, key: 'WEB', action: 'remove', machine: 'mac' })
     expect(parseAlfredCommand(['project', 'machine', 'add', 'WEB', 'mac'])).toEqual({ error: 'usage: wherdr alfred project machine add <KEY> <machine> --clone <folder> [--apply]' })
@@ -197,6 +199,25 @@ describe('runAlfredCommand', () => {
     await patchSettings({ replyStyle: 'text' }, { file: path.join(dir, 'settings.json') })
     expect(await act(back)).toMatchObject({ state: 'stale' })
     expect(await run('settings')).toMatchObject({ settings: { replyStyle: 'text' } })
+  })
+
+  it('proposes a project change as a card: the user\'s Apply makes it while its dry run still holds', async () => {
+    await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind: 'user', at: Date.now(), said: 'set up web' } })
+    await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--propose')
+    const add = (await store.coordinator(MAIN))!.cards![0]!
+    expect(add).toMatchObject({ kind: 'change', label: 'New project WEB', change: { argv: ['project', 'add', 'WEB', '--machine', '', '--path', '/src/web'], project: 'WEB', said: 'set up web' } })
+    expect(add.change).not.toHaveProperty('target')
+    expect(await store.projects()).toEqual([])
+    const act = (id: string) => actOnCard({ store, applyChange: (argv: string[], lines: string[]) => applyProposedChange(deps(), argv, lines) } as never, id, undefined)
+    expect(await act(add.id)).toMatchObject({ state: 'done', outcome: { text: 'Applied by you' } })
+    expect(await store.projects()).toMatchObject([{ key: 'WEB' }])
+    // Proposed over no template; the template changed before the click: nothing runs.
+    await run('project', 'template', 'WEB', 'common', '--propose')
+    const tpl = (await store.coordinator(MAIN))!.cards![0]!
+    expect(tpl).toMatchObject({ label: 'Project WEB › Workflow', change: { lines: ['project WEB template: none → common'], target: 'project.workflow' } })
+    await run('project', 'template', 'WEB', 'example:vibe', '--apply')
+    expect(await act(tpl.id)).toMatchObject({ state: 'stale' })
+    expect((await store.project('WEB'))!.from).toMatchObject({ template: 'vibe' })
   })
 
   it('starts a project coordinator with the user\'s first offered agent that can run it, no model', async () => {

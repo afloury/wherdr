@@ -594,6 +594,8 @@ it('an update notice only when the session started on another version, and only 
   expect(updateNotice({ version: '3.0.0', told: '3.1.0' }, '3.1.0')).toBeUndefined()
   expect(updateNotice({ version: '3.0.0', told: '3.1.0' }, '3.2.0')).toContain('updated to 3.2.0')
   expect(updateNotice({ version: '3.1.0' }, '3.1.0')).toBeUndefined()
+  // A new build of the same version (the commit is part of it).
+  expect(updateNotice({ version: '3.0.0-dev+aaaaaaa' }, '3.0.0-dev+bbbbbbb')).toContain('updated to 3.0.0-dev+bbbbbbb')
   // An agent with no coordinator session (a task's worker, or none recorded).
   expect(updateNotice(null, '3.1.0')).toBeUndefined()
   expect(updateNotice({}, '3.1.0')).toBeUndefined()
