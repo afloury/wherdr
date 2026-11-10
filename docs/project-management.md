@@ -341,7 +341,17 @@ weight that differs from the task type's.
 ### Who sends a wake
 
 A wake is a message wherdr sends the coordinator; its first line names who
-sends it, and the conversation shows a small label of that kind above it:
+sends it. The conversation shows it apart from your messages, as a compact
+muted row across the column: the kind as a small coloured tag, its first
+reason (*Scheduled wake*, *WHR-9: stuck: …*) and its time; a tap opens the
+full text and the coordinator's whole turn. Once that turn is over, the
+coordinator's last answer sits under the row, smaller and muted, two lines at
+most. Consecutive routine wakes (no incident, nothing changed: no file edit
+nor `wherdr pm` command beyond `ack`, `read`, `list`, `show`, `incidents`,
+`help`; an answer that asks nothing) fold into one row, *3 routine checks,
+08:00–11:00*, that opens on tap. An incident, or a wake whose answer asks you
+something, keeps its row (in its stronger colour); an answer that asks you
+stays a full reply, with its answer buttons:
 
 - **Autopilot**: the autopilot's scheduled wakes, what needs judgment (an
   agent's question that is not a permission request, the choice after N review
@@ -356,6 +366,7 @@ sends it, and the conversation shows a small label of that kind above it:
   tasks waiting for you, tasks stalled for over an hour, and machines idle
   while to-do tasks wait. When nothing is wrong the coordinator acks it with no
   further work; with nothing at all to report, no wake is sent.
+- **Incident**: [the incident wake](#the-incident-wake).
 
 Waking the coordinator costs a turn with its whole context, so with the
 autopilot on and its events left off, it wakes only for these: an agent's

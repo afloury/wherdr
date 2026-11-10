@@ -427,8 +427,8 @@ const NOTICE: Record<string, [string, string]> = {
 }
 
 const UPLOAD_RE = /\/\.cache\/herdr-web\/uploads\/\S+/g
-type Block =
-  | { k: 'day', key: string, label: string }
+// `in`: the folds (a wake, a run of routine wakes) that must be open for it to show.
+type Block = ({ k: 'day', key: string, label: string }
   | { k: 'who', key: string }
   | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null, wake: WakeKind | null }
   // `rid`: its code in the references to it (shared/reference.ts messageId).
@@ -443,6 +443,9 @@ type Block =
   | { k: 'ompRun', key: string, tool: ChatItem & { omp: OmpToolView } }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
   | { k: 'turn', key: string, text: string, copy: string | null, reply: string | null }
+  // A wake: one compact row, the coordinator's answer under it (see foldWakes).
+  | { k: 'wake', key: string, kind: WakeKind, head: string, text: string, time: string | null, at: string | null, answer: string | null, loud: boolean }
+  | { k: 'wakes', key: string, n: number, from: string | null, to: string | null }) & { in?: string[] }
 
 // Images of a transcript item (a user message, or what a tool returned),
 // re-read on demand from its line (ref = its position in the file).
@@ -671,8 +674,67 @@ const blocks = computed<Block[]>(() => {
     const last = out[out.length - 1]
     if (last && last.k === 'tools' && (working.value || blocked.value)) last.live = true
   }
-  return out
+  return foldWakes(out)
 })
+// Blocks inside a closed fold (a wake's turn, a run of routine wakes) stay hidden.
+const shownBlocks = computed(() => visibleBlocks.value.filter(b => !b.in || b.in.every(isOpen)))
+
+// A wake's first meaningful line: its first reason, else its head without the id.
+const WAKE_TAIL = /^(When you have handled this|In this wake you may)/
+function wakeLine(text: string): string {
+  const [head = '', ...rest] = text.split('\n')
+  return rest.map(l => l.trim()).find(l => l && !WAKE_TAIL.test(l)) || head.replace(/,? ?wake \S+.*$/, '').replace(/:$/, '')
+}
+// What the coordinator ran that changes something (`wherdr pm tell`, a file edit…).
+const READ_ONLY_PM = /\bwherdr pm (ack|help|incidents|list|read|show)\b/
+const changes = (it: ChatItem) => /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(it.name || '') || (/\bwherdr pm \w/.test(it.text) && !READ_ONLY_PM.test(it.text))
+// Its answer asks the user: a question line, or questions the reply bar offers.
+const asks = (b: Block & { k: 'assistant' }) => /\?\s*$/m.test(b.text) || replyTargets(b.html).questions.length > 0
+const plainLine = (text: string) => text.replace(/[*_`#>]+/g, '').replace(/\s+/g, ' ').trim()
+
+// A wake (shared/pm/wakes.ts) is not the user's: a compact row with its kind,
+// its first line and time; once its turn is over, the coordinator's last
+// answer sits under it in a lighter style and the rest of the turn opens on
+// tap. An answer that asks the user stays a full reply. Consecutive routine
+// wakes (not an incident, nothing changed, nothing asked) fold into one row.
+function foldWakes(out: Block[]): Block[] {
+  const res: Block[] = []
+  let run: (Block & { k: 'wake' })[] = []
+  let runAt = 0
+  const endRun = () => {
+    if (run.length > 1) {
+      const key = `r:${run[0]!.key}`
+      for (let j = runAt; j < res.length; j++) res[j]!.in = [key, ...(res[j]!.in || [])]
+      res.splice(runAt, 0, { k: 'wakes', key, n: run.length, from: run[0]!.time, to: run.at(-1)!.time })
+    }
+    run = []
+  }
+  for (let i = 0; i < out.length; i++) {
+    const b = out[i]!
+    if (b.k !== 'user' || !b.wake) { endRun(); res.push(b); continue }
+    let j = i + 1
+    while (j < out.length && out[j]!.k !== 'user' && out[j]!.k !== 'day') j++
+    const turn = out.slice(i + 1, j)
+    const last = turn.findLast(x => x.k === 'assistant')
+    const done = j < out.length || turn.some(x => x.k === 'turn')
+    const asked = !!last && asks(last)
+    const fold = done && !!last && !asked
+    const changed = turn.some(x => x.k === 'tools' && x.list.some(changes))
+    const routine = fold && b.wake !== 'incident' && !changed
+    if (!routine) endRun()
+    else if (!run.length) runAt = res.length
+    const w: Block & { k: 'wake' } = { k: 'wake', key: b.key, kind: b.wake, head: wakeLine(b.text), text: b.text, time: b.time, at: b.at, answer: fold && last ? plainLine(last.text) : null, loud: b.wake === 'incident' || asked }
+    if (routine) run.push(w)
+    res.push(w)
+    for (const x of turn) {
+      if (fold) x.in = [w.key]
+      res.push(x)
+    }
+    i = j - 1
+  }
+  endRun()
+  return res
+}
 
 // Command output: collapsed beyond a few lines.
 const SHELL_LINES = 12
@@ -1376,7 +1438,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             </div>
             <div v-else-if="chat.older.length" class="chat-note">{{ t('Start of conversation') }}</div>
 
-            <template v-for="b in (skeleton ? [] : visibleBlocks)" :key="b.key">
+            <template v-for="b in (skeleton ? [] : shownBlocks)" :key="b.key">
               <div v-if="b.k === 'day'" class="day-sep"><span>{{ b.label }}</span></div>
 
               <div v-else-if="b.k === 'who'" class="msg-who" :class="agent || ''">
@@ -1384,8 +1446,23 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               </div>
 
 
+              <button v-else-if="b.k === 'wakes'" type="button" class="wake-run" data-testid="wake-run" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
+                <UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="wake-chev" />
+                <span class="wake-head">{{ tl(`${b.n} routine checks`) }}</span>
+                <span v-if="b.from" class="wake-time">{{ b.from === b.to ? b.from : `${b.from}–${b.to}` }}</span>
+              </button>
+
+              <div v-else-if="b.k === 'wake'" class="wake" :class="{ loud: b.loud, open: isOpen(b.key) }" :data-kind="b.kind" :data-hit-key="b.key" data-testid="wake">
+                <button type="button" class="wake-row" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
+                  <span class="msg-wake" :data-kind="b.kind">{{ t(WAKE_LABEL[b.kind]) }}</span>
+                  <span class="wake-head">{{ b.head }}</span>
+                  <span v-if="b.time" class="wake-time" :title="b.at || undefined">{{ b.time }}</span>
+                </button>
+                <pre v-if="isOpen(b.key)" class="wake-text">{{ b.text }}</pre>
+                <p v-else-if="b.answer" class="wake-answer">{{ b.answer }}</p>
+              </div>
+
               <div v-else-if="b.k === 'user'" class="msg-user-wrap" :data-hit-key="b.key">
-                <span v-if="b.wake" class="msg-wake" :data-kind="b.wake" data-testid="msg-wake">{{ t(WAKE_LABEL[b.wake]) }}</span>
                 <button v-if="b.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(b.origin)">
                   <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ b.reply.time }}</span><span class="msg-quote-text">{{ b.reply.excerpt }}</span>
                 </button>
