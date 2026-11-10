@@ -2898,14 +2898,29 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 .msg-quote:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); border-left-color: var(--accent); }
 .msg-quote-time { flex: none; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; color: var(--dim); }
 .msg-quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* A wake's sender (Autopilot, Step check, Engine, Health check), above its bubble. */
+/* A wake: not the user's. One compact row across the column (kind tag, first
+   line, time), the coordinator's answer under it, smaller and muted. */
+.wake, .wake-run { display: flex; flex-direction: column; min-width: 0; margin-top: 6px; color: var(--muted); }
+.wake-row, .wake-run { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 28px; padding: 2px 0; text-align: left; cursor: pointer; }
+.wake-run { flex-direction: row; font: 500 10.5px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.wake-head { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.wake-run .wake-head { font-size: inherit; }
+.wake-time { flex: none; font: 400 10.5px/1 var(--mono); color: var(--dim); letter-spacing: .04em; }
+.wake-chev { flex: none; width: 13px; height: 13px; }
+.wake-row:hover .wake-head, .wake-run:hover, .wake-row:focus-visible .wake-head, .wake-run:focus-visible { color: var(--text-2); outline: none; }
+.wake-answer { padding-left: 10px; border-left: 1px solid var(--line); font-size: 12.5px; line-height: 1.45; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.wake-text { margin: 4px 0 2px; padding: 8px 10px; font: 400 12px/1.5 var(--mono); color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface); border: 1px solid var(--line-soft); }
+/* An incident, or a wake whose answer asks the user: its stronger colour. */
+.wake.loud .wake-head { color: var(--text); }
+.wake.loud .msg-wake { color: var(--wake, var(--accent)); border-color: var(--wake, var(--accent)); }
 .msg-wake {
-  align-self: flex-end; padding: 2px 6px; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  flex: none; padding: 1px 5px; font: 500 9.5px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase;
   color: var(--text-2); border: 1px solid var(--line); border-left: 2px solid var(--wake, var(--accent));
 }
 .msg-wake[data-kind="step"] { --wake: var(--working); }
 .msg-wake[data-kind="engine"] { --wake: var(--blocked); }
 .msg-wake[data-kind="health"] { --wake: var(--done); }
+.msg-wake[data-kind="incident"] { --wake: var(--danger); }
 /* Floating "Reply" button near a selected passage. */
 .sel-reply {
   position: fixed; z-index: 60; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
@@ -3101,6 +3116,20 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .q-trow { min-height: 40px; }
   .q-all { min-height: 36px; }
 }
+/* Choice buttons (a `choices` line of a `wherdr` block, utils/markdown.ts):
+   they wrap, never scroll; a tap sends the option. Once answered, or in an
+   older message, greyed with the answer given pressed. */
+.w-choices { display: flex; flex-wrap: wrap; gap: 6px; max-width: 620px; margin: .2em 0 .9em; }
+.q-choice {
+  min-height: 36px; max-width: 100%; padding: 6px 12px; font: inherit; font-size: 13px; line-height: 1.3; text-align: left;
+  overflow-wrap: anywhere; color: var(--text); background: none; border: 1px solid var(--line); border-left: 2px solid var(--accent);
+  border-radius: 0; cursor: pointer;
+}
+.q-choice:is(:hover, :focus-visible):not(:disabled) { border-color: var(--accent); background: var(--surface-2); outline: 0; }
+.q-choice:disabled { color: var(--dim); border-left-color: var(--line); cursor: default; }
+.q-choice:disabled[aria-pressed="true"] { color: var(--text-2); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.q-choice:disabled[aria-pressed="true"]::before { content: "✓ "; color: var(--accent); }
+@media (pointer: coarse) { .q-choice { min-height: 44px; } }
 /* Room for it under the last message, as long as that message asks something. */
 .chat-list.asking { padding-bottom: 36px; }
 .composer-ask-anchor { position: relative; height: 0; z-index: 3; }

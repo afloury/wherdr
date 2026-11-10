@@ -12,6 +12,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import type { UiCard } from '../../shared/uiActions'
 import { cleanProjectInput, isBranch, machinesOf, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
 import { defaultColor, keyClash, projectOf, renamed, showIds, shownKey, storedTaskId } from '../../shared/pm/projectKey'
 import type { RepoVisibility } from '../../shared/pm/visibility'
@@ -53,6 +54,7 @@ export interface CoordinatorRecord {
   lookAdded?: DayCount // tasks added that day in the turns of look-for-new-work wakes
   // version: wherdr's when this session started; told: the newer version it was told of.
   version?: string, told?: string
+  cards?: UiCard[] // the action buttons it put in its replies (shared/uiActions.ts), newest first
 }
 
 export interface AutomationsFile { automations: Automation[], seen?: Record<string, Mark> }
