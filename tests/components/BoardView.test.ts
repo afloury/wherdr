@@ -126,6 +126,15 @@ it('filters the board by tag, and the card\'s one-tap link is its PR', async () 
   expect(w.findAll('[data-testid="board-card"]').map(c => c.attributes('data-task'))).toEqual(['CO-1'])
 })
 
+it('a card shows its branch line only when it goes elsewhere than the project\'s working branch', async () => {
+  board.projects[1]!.base = 'v3'
+  board.cards[1] = { ...board.cards[1]!, branch: 'task/CO-1', pr: { base: 'develop' } }
+  board.cards[2] = { ...board.cards[2]!, branch: 'task/CO-2', pr: { base: 'v3' } }
+  const w = await mount()
+  expect(card(w, 'CO-1').findAll('[data-testid="branch-line"] code').map(x => x.text())).toEqual(['task/CO-1', 'develop'])
+  expect(card(w, 'CO-2').find('[data-testid="branch-line"]').exists()).toBe(false)
+})
+
 it('splits the task\'s sheet in tabs, Description first, one open at a time; the log holds the coordinator\'s choice', async () => {
   const w = await mount()
   await card(w, 'CO-1').trigger('click')

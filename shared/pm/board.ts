@@ -2,7 +2,7 @@
 // its current step; its live indicator is the herdr-core state of the agent
 // that holds that step (none for holder: none); anything waiting for the user
 // puts it in Your turn, whatever its step, with a badge saying what to do.
-import type { Holder } from './workflow'
+import { actionField, type Holder } from './workflow'
 import type { PlannedStep, StepState } from './steps'
 import type { Run, Task, WaitKind } from './run'
 import { notStarted, type Stopped } from './stop'
@@ -37,6 +37,8 @@ export interface Card {
   removable?: true // never started (no agent, worktree or branch): the user may remove it
   after?: string[] // tasks of the same project it starts after
   prNow?: string // its PR as the engine last read it (prNow)
+  branch?: string // its working branch, once an agent worked on it
+  pr?: { base: string, commits?: number } // its PR's base and commit count, as the engine last read them
   held?: string // waits for memory on its machine
   asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
   times?: Times // time per step, waits for the user, rounds, CI fixes (times.ts), once started
@@ -46,7 +48,8 @@ export interface Card {
 export interface BoardMachine { key: string, label: string, online: boolean, unready?: string }
 // types: the project's task types, each with its steps in one line ("work → review → merge").
 // machines: only for a project that allows more than its own, home first.
-export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string }[], machines?: BoardMachine[] }
+// base: the project's working branch, to tell a task that goes elsewhere.
+export interface BoardProject { base?: string, key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string }[], machines?: BoardMachine[] }
 // GET /api/pm/board
 export interface Board { projects: BoardProject[], cards: Card[] }
 
@@ -78,6 +81,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ? runs.filter(r => r.task === task.id && r.role === holder && r.state !== 'ended').sort((a, b) => b.startedAt - a.startedAt)[0]
     : undefined
   const stall = stallOf(task, plan, now)
+  const branch = runs.filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]?.branch
   const yourTurn = s?.yourTurn?.badge || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
     || (stall && now - stall.since >= HANDLE_AFTER_MS ? stallTurn(stall) : undefined)
   return {
@@ -87,6 +91,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(step ? { step: step.id } : {}),
     holder,
     ...(run?.terminal ? { terminal: run.terminal } : {}),
+    ...(branch ? { branch } : {}),
     ...(yourTurn ? { yourTurn } : {}),
     ...(stall ? { stall } : {}),
     ...(step?.ends === 'user' && started && !s?.done ? { userLabel: step.userLabel || 'Done' } : {}),
@@ -198,4 +203,20 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
   // The merge runs: it waits for the checks, then merges.
   if (s.acting && kind && MERGES.includes(kind)) return pr && pr !== 'ready to merge' && kind === 'github.merge' ? ofPr(pr) : { text: 'merging', tone: 'wait' }
   return pr ? ofPr(pr) : undefined
+}
+
+// Which branch a task's work goes into, for the branch line of its sheet and
+// card: its PR's base as the engine last read it, else the branch the next
+// step names (the PR's base, the branch it lands on), else the last one the
+// plan names, else the project's working branch. pending: its PR is still to open.
+export interface BranchLine { head: string, base: string, commits?: number, pending?: true }
+export function branchLine(c: Pick<Card, 'branch' | 'pr' | 'plan' | 'state'>, projectBase?: string): BranchLine | undefined {
+  if (!c.branch) return
+  if (c.pr) return { head: c.branch, base: c.pr.base, ...(c.pr.commits ? { commits: c.pr.commits } : {}) }
+  const target = (s: PlannedStep) => { const f = s.action && actionField(s.action.kind); return f ? s.action![f] : undefined }
+  const at = c.state?.started && !c.state.done ? c.state.at : c.plan.length
+  const step = c.plan.slice(at).find(target) ?? c.plan.slice(0, at).reverse().find(target)
+  const base = step ? target(step) : projectBase
+  if (!base) return
+  return { head: c.branch, base, ...(step?.action?.kind === 'github.pr' && c.plan.indexOf(step) >= at ? { pending: true as const } : {}) }
 }

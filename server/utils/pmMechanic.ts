@@ -9,7 +9,7 @@ import type { PlannedStep } from '../../shared/pm/steps'
 import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP } from './coreCreate'
 import { actionShell } from './pmActions'
-import { prSeen, stepAction } from './pmBoard'
+import { prBaseSeen, prSeen, stepAction } from './pmBoard'
 import { prNow, requiredChecks } from '../../shared/pm/board'
 import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
 import { coordinatorStartRefusal } from '../../shared/pm/autopilot'
@@ -145,7 +145,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
   for (let task of await store.tasks()) {
-    if (task.state === 'todo' || task.step?.done) { prSeen.delete(task.id); continue }
+    if (task.state === 'todo' || task.step?.done) { prSeen.delete(task.id); prBaseSeen.delete(task.id); continue }
     const p = projects.find(x => x.key === task.project)
     const t = p ? await store.workflow(p.key) : null
     if (!p || !t) continue
@@ -171,6 +171,8 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       const seen = prNow(facts.pr, requiredChecks(plan))
       if (seen) prSeen.set(task.id, seen)
       else prSeen.delete(task.id)
+      if (facts.pr && !facts.pr.stray) prBaseSeen.set(task.id, { base: facts.pr.baseRefName, ...(facts.pr.commits ? { commits: facts.pr.commits.length } : {}) })
+      else prBaseSeen.delete(task.id)
       const st = run.terminal ? await deps.call<{ status?: string | { state?: string } }>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null) : null
       const s = typeof st?.status === 'string' ? st.status : st?.status?.state
       facts.agentBusy = s === 'working' || s === 'blocked'

@@ -67,7 +67,7 @@ echo "\${cur#* }"`,
   // else its latest merged one, marked stray too: the step ends merged, saying
   // the task's commit is not in it.
   prInfo: `${IN} h=$(git rev-parse HEAD) || exit 1; echo "$h"
-j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup 2>&1) || { echo "$j"; exit 1; }
+j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup,commits -q 'map(.commits |= map({oid}))' 2>&1) || { echo "$j"; exit 1; }
 j=$(echo "$j" | tail -1)
 if [ "$j" = "[]" ]; then
   m=$(gh pr list --head "$1" --state merged --json url,baseRefName,headRefOid -q '.[] | .headRefOid+" "+(. + {merged: true} | tojson)' 2>&1) || { echo "$m"; exit 1; }
@@ -127,7 +127,8 @@ for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
 export interface Check { name?: string, context?: string, status?: string, conclusion?: string, state?: string }
 // merged: no PR open, this one of the branch is merged already and holds the
 // task's commit; stray: merged, but at a head without the task's commit.
-export interface PrInfo { url: string, baseRefName: string, headRefOid: string, statusCheckRollup?: Check[], merged?: boolean, stray?: boolean }
+// commits: the open PR's, for their count.
+export interface PrInfo { url: string, baseRefName: string, headRefOid: string, statusCheckRollup?: Check[], merged?: boolean, stray?: boolean, commits?: unknown[] }
 
 export const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
 // May the open PR be merged now? Its head must be the task's commit, every

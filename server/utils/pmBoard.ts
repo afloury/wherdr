@@ -28,7 +28,9 @@ async function templatesOf(store: PmStore) {
 // What the mechanic last read of each task's PR (prNow), for the cards' status
 // line. In memory: read again within a minute of a restart.
 export const prSeen = new Map<string, string>()
-const withPr = (c: Card): Card => (prSeen.has(c.id) ? { ...c, prNow: prSeen.get(c.id)! } : c)
+// Its base and commit count, for the branch line.
+export const prBaseSeen = new Map<string, NonNullable<Card['pr']>>()
+const withPr = (c: Card): Card => ({ ...c, ...(prSeen.has(c.id) ? { prNow: prSeen.get(c.id)! } : {}), ...(prBaseSeen.has(c.id) ? { pr: prBaseSeen.get(c.id)! } : {}) })
 
 const machinesOf = (p: Project, known: MachineInfo[]): BoardMachine[] | undefined => {
   const keys = allowedMachines(p)
@@ -46,7 +48,7 @@ export async function board(store: PmStore, known: MachineInfo[] = []): Promise<
     projects: projects.map((p) => {
       const t = templates.get(p.key), machines = machinesOf(p, known)
       const plans = t ? Object.keys(t.taskTypes).map(type => ({ id: type, steps: planSteps(t, { type }, p.base) })) : []
-      return { key: p.key, ...(p.label ? { label: p.label } : {}), ...(p.aliases ? { aliases: p.aliases } : {}), ...(p.color ? { color: p.color } : {}), name: p.name, columns: boardColumns(plans.map(x => x.steps)), types: plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → ') })), ...(machines ? { machines } : {}) }
+      return { key: p.key, ...(p.base ? { base: p.base } : {}), ...(p.label ? { label: p.label } : {}), ...(p.aliases ? { aliases: p.aliases } : {}), ...(p.color ? { color: p.color } : {}), name: p.name, columns: boardColumns(plans.map(x => x.steps)), types: plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → ') })), ...(machines ? { machines } : {}) }
     }),
     cards: tasks.map(task => withPr({ ...cardOf(task, planOf(templates.get(task.project) ?? null, task, projects.find(p => p.key === task.project)), runs), shown: shownTaskId(projects, task.id) })),
   }

@@ -10,7 +10,7 @@
 // segmented style) for the rest, only the open one scrolling: Description (the
 // text, tags and links, the PR among them), Plan (each step with its
 // screenshots), Log.
-import { canStart, canStop, cardStatus, linkLabel, type Card } from '#shared/pm/board'
+import { branchLine, canStart, canStop, cardStatus, linkLabel, type Card } from '#shared/pm/board'
 import type { Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
 import type { Task } from '#shared/pm/run'
@@ -19,7 +19,8 @@ import { timesText } from '#shared/pm/times'
 import type { Choice } from '#shared/pm/verdict'
 
 // stopping: opened from the card menu's Stop, the confirmation shown.
-const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean, waitsFor?: string[] }>()
+// projectBase: the project's working branch, where a task goes by default.
+const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean, waitsFor?: string[], projectBase?: string }>()
 const emit = defineEmits<{ closed: [], changed: [] }>()
 const open = ref(true)
 const busy = ref(false)
@@ -33,6 +34,9 @@ const rounds = (id: string) => props.card.state?.rounds[id] ?? 0
 const shots = (id: string) => props.card.state?.shots?.[id] ?? []
 // Where its PR and merge stand (the card's line), with the full time.
 const status = computed(() => { const s = cardStatus(props.card); return s && { ...s, text: s.at ? `${s.text} ${fmtDateTime(s.at)}` : s.text } })
+
+// Which branch merges into which, once it has a branch.
+const branch = computed(() => branchLine(props.card, props.projectBase))
 
 // Time per step, the waits for the user apart, review rounds and CI fixes, in one line.
 const times = computed(() => (props.card.times ? timesText(props.card.times) : ''))
@@ -88,6 +92,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
       <div class="task-sheet-top">
         <p class="mono-label">{{ card.shown }}<template v-if="card.step"> · {{ card.step }}</template></p>
         <p v-if="status" class="task-status" :class="status.tone" data-testid="task-status">{{ status.text }}</p>
+        <BranchLine v-if="branch" :line="branch" />
         <p v-if="times" class="task-times" data-testid="task-times">{{ times }}</p>
         <div class="task-sheet-actions">
           <UButton v-if="!todo && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ tl('Start', 'Lancer') }}</UButton>
