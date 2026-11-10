@@ -146,7 +146,6 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
         <p v-if="unknown(r)" class="pace-unknown" data-testid="pace-unknown">
           {{ tl('Quota unknown: task-count limits only', 'Quota inconnu : limites en tâches seulement') }}
         </p>
-        <p v-if="limitNote(r)" class="pace-unknown" data-testid="pace-credits">{{ limitNote(r) }}</p>
         <template v-else>
           <div v-if="r.week" class="pace-line">
             <span class="mono-label">{{ tl('Week', 'Semaine') }}</span>
@@ -165,6 +164,7 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
             <span class="pace-state" :class="{ wait: !r.verdict.go }" data-testid="pace-state">{{ state(r) }}</span>
           </p>
         </template>
+        <p v-if="limitNote(r)" class="pace-unknown" data-testid="pace-credits">{{ limitNote(r) }}</p>
 
         <template v-if="r.account && !unlimited(r)">
           <button type="button" class="pace-more mono-label" :aria-expanded="open === r.account.key" data-testid="pace-more" @click="open = open === r.account.key ? null : r.account.key">
