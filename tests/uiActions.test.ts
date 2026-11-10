@@ -94,7 +94,8 @@ describe('ui action: the click', () => {
     userStep.mockResolvedValueOnce(refused as never)
     expect(await actOnCard({ store: s } as never, id, undefined)).toMatchObject({ state: 'open', refused: 'Merge: the PR has conflicts' })
     expect(rec.cards![0]!.state).toBe('open')
-    userStep.mockResolvedValueOnce({ ...atMerge, queue: 2 } as never)
+    // The click approves the merge; the PR is not ready yet, so no queue place either.
+    userStep.mockResolvedValueOnce({ ...atMerge, step: { ...atMerge.step!, approved: { by: 'user', at: 1 } } } as never)
     expect(await actOnCard({ store: s } as never, id, undefined)).toMatchObject({ state: 'done', outcome: { text: 'Merge: approved by you, merges once ready' } })
   })
 

@@ -52,10 +52,13 @@ export function cardNow(card: UiCard, stampNow: string | null, now: number): UiC
   return stampNow !== card.stamp || now - card.at > UI_CARD_MS ? { ...card, state: 'stale' } : card
 }
 
-// after: the task the handler returned; an approved merge in the queue has not merged yet.
+// after: the task the handler returned, still on the step the card was for
+// (its stamp unchanged). A merge the click approved (or put in the queue) has
+// not merged yet: the engine merges it once the PR is ready (board.ts mergeWaits).
 export function outcomeText(card: Pick<UiCard, 'kind' | 'label'>, after?: Pick<Task, 'queue' | 'step'>): string {
   if (card.kind === 'resume') return 'Resumed by you'
-  return after?.queue && !after.step?.done ? `${card.label}: approved by you, merges once ready` : `${card.label}: done by you`
+  const waits = !!after?.step && !after.step.done && (!!after.step.approved || !!after.queue)
+  return waits ? `${card.label}: approved by you, merges once ready` : `${card.label}: done by you`
 }
 
 // The cards a coordinator keeps: the new one first, one per task and action

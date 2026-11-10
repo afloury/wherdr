@@ -70,7 +70,8 @@ export async function actOnCard(deps: PmLaunchDeps, id: unknown, authorization: 
   // card stays open with its reason, as the task sheet shows it, for a retry.
   const turn = task.step?.yourTurn
   if (card.kind === 'step' && turn?.reason === 'action') return { ...card, refused: turn.badge }
-  const done: UiCard = { ...card, state: 'done', outcome: { text: outcomeText(card, task), at: Date.now() } }
+  const same = card.kind === 'step' && (await stampOf(deps.store, 'step', task)).stamp === card.stamp
+  const done: UiCard = { ...card, state: 'done', outcome: { text: outcomeText(card, same ? task : undefined), at: Date.now() } }
   const hit = await find(deps.store, card.id)
   if (hit) await deps.store.saveCoordinator({ ...hit.rec, cards: hit.rec.cards!.map(c => (c.id === card.id ? done : c)) })
   return done
