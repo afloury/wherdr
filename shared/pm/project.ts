@@ -50,9 +50,9 @@ const BRANCH_RE = /^(?!.*\.\.)(?!.*@\{)(?!\/)(?!.*\/$)[A-Za-z0-9._/-]{1,100}$/
 
 export const isBranch = (b: string) => BRANCH_RE.test(b)
 // Any branch name git takes (git check-ref-format --branch), for a branch that
-// exists already, e.g. feature/c++: no control or space ~^:?*[\, no .., @{, //,
+// exists already, e.g. feature/c++, of any length: no control or space ~^:?*[\, no .., @{, //,
 // no part starting with . or ending in .lock, not @, not ending in / or .
-export const isGitBranch = (b: string) => b.length <= 200 && b !== '@' && !/[\x00-\x20\x7f~^:?*[\\]|\.\.|@\{|\/\/|^[-/]|[/.]$|(^|\/)\.|\.lock(\/|$)/.test(b)
+export const isGitBranch = (b: string) => b !== '' && b !== '@' && !/[\x00-\x20\x7f~^:?*[\\]|\.\.|@\{|\/\/|^[-/]|[/.]$|(^|\/)\.|\.lock(\/|$)/.test(b)
 export const isTemplateId = (id: unknown): id is string => typeof id === 'string' && ID_RE.test(id)
 
 const KEY_HINT = '2 to 10 letters or digits, starting with a letter'

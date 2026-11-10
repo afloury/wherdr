@@ -94,6 +94,10 @@ describe('import mapping', () => {
       { v2: 'APP-2', stage: 'progress', title: 'Add dark mode', description: '', branch: 'feature/c++', pr: 12, intro: 'From v2 APP-2. Continue from branch `feature/c++` / PR #12.' },
     ])
     expect(r.projects[3].tasks.map((t: { v2: string }) => t.v2)).toEqual(['site/1'])
+    // Any branch git takes is kept, however long; one git refuses is dropped.
+    const long = `feature/${'a'.repeat(193)}`
+    const one = (branch: string) => mapCandidates({ ...board, tasks: [{ repo: 'app', n: 3, stage: 'progress', branch }] }, [], exists).projects[0].tasks[0].branch
+    expect([one(long), one('a..b')]).toEqual([long, undefined])
   })
 
   it('carries the settings v3 reads, never over a v3 value', () => {
