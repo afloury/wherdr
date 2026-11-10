@@ -1,0 +1,1 @@
+{ "name": "Hello mic", "version": "1.0.0", "description": "Test plugin: a microphone button next to Send that inserts a fixed sample text (no audio).", "main": "index.js" }
