@@ -8,7 +8,7 @@ import { PROJECT_TABS, projectPlace as projectSheet, type ProjectTab } from './p
 import type { Turn } from './pm/coordinator'
 import { projectOf, shownKey, storedTaskId } from './pm/projectKey'
 import type { Project } from './pm/project'
-import { UI_TARGETS, uiTarget as settingTarget } from './uiTargets'
+import { linkTarget, UI_TARGETS, uiTarget as settingTarget, uiTargetLink } from './uiTargets'
 
 // The coordinator's project: its fixed key, the key it shows, its former keys.
 export type OwnProject = Pick<Project, 'key'> & { label?: string, aliases?: string[] }
@@ -68,6 +68,15 @@ export function uiLink(raw: unknown): string | null {
   return isAppLink(link) ? link : null
 }
 
+// `ui open '<link>'` or `ui open --target <id>` (the target's own link), in
+// both CLIs; bad: the command's usage error.
+export function uiOpenArgs(link: string | undefined, extra: string | undefined, target: string | undefined, bad: { error: string }): { name: 'ui open', link: string } | { error: string } {
+  if (extra || !link === (target === undefined)) return bad
+  if (link) return { name: 'ui open', link }
+  const id = settingTarget(target)
+  return id ? { name: 'ui open', link: uiTargetLink(id) } : { error: `Unknown target ${target}: ui targets lists them` }
+}
+
 // A project coordinator's places: its own board, tasks and sheet, and the
 // Settings sections that are not about projects. Everything else (another
 // project, every project, Home, Decisions) is Alfred's to open. A link may
@@ -91,6 +100,7 @@ function projectPlace(link: string, own: OwnProject): boolean {
 // (main) opens any place.
 export function uiOpenRefusal(link: string | null, turn: Turn, own: OwnProject, main: boolean): string | null {
   if (!link) return 'Not an in-app link: give one of the addresses of your links list, quoted (\'#/settings?section=phone\')'
+  if (linkTarget(link) === false) return 'Unknown target for this place: use ui open --target <id>, with an id that ui targets lists'
   if (turn !== 'user') return 'ui open is only for a turn that comes from the user, never in a wake'
   if (!main && !projectPlace(link, own)) return `Your token opens project ${shownKey(own)}'s places and the global settings only`
   return null

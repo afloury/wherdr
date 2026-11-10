@@ -5,6 +5,7 @@
 import type { Pane } from '../../shared/types'
 import type { Turn } from '../../shared/pm/coordinator'
 import { uiBlock, uiLink, uiOpenRefusal, uiShow, uiTarget, type UiClient, type UiOpenEvent } from '../../shared/uiOpen'
+import { linkTarget, UI_TARGETS, uiTargetList } from '../../shared/uiTargets'
 import { HerdrError } from './herdr'
 import type { PmStore } from './pmStore'
 
@@ -27,9 +28,14 @@ export async function openUi(deps: UiOpenDeps, o: { scope: string, main: boolean
   try { to.send(JSON.stringify(event)) }
   catch { throw new HerdrError('not_found', 'The wherdr the user is on just closed: give the user the link instead') }
   const where = show === 'panel' ? 'in the Settings panel beside your conversation' : 'as a card above the message field'
+  const target = linkTarget(link!)
+  const lit = target ? `, ${UI_TARGETS[target].label} highlighted${show === 'card' ? ' once the user taps the card' : ''}` : ''
   return {
     opened: link,
     'opened on': to.device ?? 'phone',
-    note: `Shown ${where} on the user's ${to.device ?? 'phone'}; the user closes it. Nothing was changed. End your reply with this block, so the card stays in the conversation:\n${uiBlock(link!)}`,
+    note: `Shown ${where}${lit} on the user's ${to.device ?? 'phone'}; the user closes it. Nothing was changed. End your reply with this block, so the card stays in the conversation:\n${uiBlock(link!)}`,
   }
 }
+
+// `ui targets`: the settings `ui open --target <id>` can highlight.
+export const uiTargetsList = () => ({ targets: uiTargetList(), note: 'Highlight one with ui open --target <id>, in a turn of the user' })
