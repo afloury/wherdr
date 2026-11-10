@@ -3,44 +3,46 @@
 // message that made it: titled 'Workflow change' with what a workflow is, what
 // changes in one line, the steps before and after drawn, who proposed it and the
 // user's request behind it (ProposalOrigin), Accept / Refuse and See all
-// changes (ProposalReview). Once answered: the outcome, by whom, when.
+// changes (ProposalReview). answer: an answered one instead (accepted, refused,
+// replaced): what it changed, the outcome, by whom, when.
 // canGoto, goto: in the conversation, the link back to that request.
-import type { CoordinatorView } from '#shared/pm/coordinator'
+import type { CoordinatorView, ProposalAnswer } from '#shared/pm/coordinator'
 import { changeHeadline } from '#shared/pm/workflowChanges'
 
-const props = defineProps<{ c: CoordinatorView, canGoto?: boolean }>()
+const props = defineProps<{ c: CoordinatorView, answer?: ProposalAnswer, canGoto?: boolean }>()
 const emit = defineEmits<{ goto: [] }>()
 const review = ref(false)
-const { busy, error, answer } = useProposalAnswer(() => props.c.project)
-const summary = computed(() => (props.c.proposal ? [changeHeadline(props.c.proposal.changes ?? { all: [], types: [] })].filter(Boolean) : props.c.answered?.summary ?? []))
+const { busy, error, answer: send } = useProposalAnswer(() => props.c.project)
+const pending = computed(() => (props.answer ? undefined : props.c.proposal))
+const summary = computed(() => (pending.value ? [changeHeadline(pending.value.changes ?? { all: [], types: [] })].filter(Boolean) : props.answer?.summary ?? []))
 const outcome = computed(() => {
-  const a = props.c.answered
+  const a = props.answer
   if (!a) return ''
-  const what = a.outcome === 'accepted' ? tl('Accepted') : a.outcome === 'refused' ? tl('Refused') : tl('Refused: the workflow changed since')
+  const what = ({ accepted: tl('Accepted'), refused: tl('Refused'), replaced: tl('Replaced') } as Record<string, string>)[a.outcome] ?? tl('Refused: the workflow changed since')
   return `${what} ${a.by === 'user' || !a.by ? tl('by you') : `${tl('by')} ${a.by}`} · ${fmtDateTime(a.at)}`
 })
 </script>
 
 <template>
-  <div class="proposal-card" :class="{ answered: !c.proposal }" data-testid="proposal-card">
+  <div class="proposal-card" :class="{ answered: !pending }" data-testid="proposal-card">
     <PartHead part="workflow" :title="tl('Workflow change')" />
     <p v-for="(l, i) in summary" :key="i" class="proposal-line" data-testid="proposal-headline">{{ l }}</p>
-    <template v-if="c.proposal?.flow">
-      <WorkflowDiagram :steps="c.proposal.flow.before" :label="tl(`Before · ${c.proposal.flow.type}`)" />
-      <WorkflowDiagram :steps="c.proposal.flow.after" :compare="c.proposal.flow.before" :label="tl(`After · ${c.proposal.flow.type}`)" />
+    <template v-if="pending?.flow">
+      <WorkflowDiagram :steps="pending.flow.before" :label="tl(`Before · ${pending.flow.type}`)" />
+      <WorkflowDiagram :steps="pending.flow.after" :compare="pending.flow.before" :label="tl(`After · ${pending.flow.type}`)" />
     </template>
-    <template v-if="c.proposal">
+    <template v-if="pending">
       <ProposalOrigin :c="c" :can-goto="canGoto" @goto="emit('goto')" />
       <div class="proposal-actions">
         <UButton color="neutral" variant="ghost" size="lg" data-testid="proposal-see" @click="review = true">{{ tl('See all changes') }}</UButton>
         <span class="proposal-gap" />
-        <UButton color="neutral" variant="outline" size="lg" :loading="busy === 'refuse'" :disabled="busy !== ''" data-testid="proposal-card-refuse" @click="answer(false)">{{ tl('Refuse') }}</UButton>
-        <UButton color="primary" size="lg" :loading="busy === 'accept'" :disabled="busy !== ''" data-testid="proposal-card-accept" @click="answer(true)">{{ tl('Accept') }}</UButton>
+        <UButton color="neutral" variant="outline" size="lg" :loading="busy === 'refuse'" :disabled="busy !== ''" data-testid="proposal-card-refuse" @click="send(false)">{{ tl('Refuse') }}</UButton>
+        <UButton color="primary" size="lg" :loading="busy === 'accept'" :disabled="busy !== ''" data-testid="proposal-card-accept" @click="send(true)">{{ tl('Accept') }}</UButton>
       </div>
       <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
       <ProposalReview v-model:open="review" :c="c" :can-goto="canGoto" @goto="review = false; emit('goto')" />
     </template>
-    <p v-else class="proposal-outcome" :class="c.answered?.outcome === 'accepted' ? 'ok' : 'no'" data-testid="proposal-outcome">{{ outcome }}</p>
+    <p v-else class="proposal-outcome" :class="answer?.outcome === 'accepted' ? 'ok' : 'no'" data-testid="proposal-outcome">{{ outcome }}</p>
   </div>
 </template>
 

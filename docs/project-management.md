@@ -261,13 +261,17 @@ diff. A proposal made before the workflow changed again is refused, and the
 review says so: ask the coordinator to propose again. The *Decisions* view links to this review. [Alfred](alfred.md) can propose
 a change too, on your request in its chat: you answer it in the same review.
 
-In the coordinator's conversation, a *Workflow change* card follows the message
-that made the proposal: what changes in one line, the steps of the first
+In the coordinator's conversation, a *Workflow change* card sits under the last
+reply of the turn that made the proposal (never a later one): what that
+proposal changes in one line (from the workflow it was made against, so a change
+made before it never shows; an added task type with its steps, PR target and
+who merges), the steps of the first
 changed task type before and after (the steps added or handed to someone else
 are outlined), who proposed it, your request with its
 time and *Go to message* (back to it in the conversation), *Accept*, *Refuse*
 and *See all changes* (the review). Once answered, the card shows the outcome, by whom and
-when.
+when; each proposal keeps its own card, one the coordinator replaced before you
+answered says *Replaced*.
 
 #### Reviewer fallback
 
