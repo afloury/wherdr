@@ -59,7 +59,10 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   later. With no app in use on the conversation, it gives you the link instead. Opening is all it
   does: it changes no setting. It works only in a turn that follows your message (never in an
   Autopilot wake), and a coordinator opens its own project's places and global Settings sections
-  only.
+  only. To show you where a setting is, the agent points at it (`wherdr alfred ui open --target
+  terminal.key-order`; `ui targets` lists the settings it can point at): on a wide computer the
+  side panel opens on its section and highlights it; on a phone the card names the setting with a
+  crosshair, and a tap opens the page and highlights it.
 - **Questions and permissions**: native questions, approvals and menus show their options; a tap
   answers. wherdr reads the screen again right before answering and refuses the answer if the
   question changed meanwhile. A free answer selects its option, waits for the field, then types
