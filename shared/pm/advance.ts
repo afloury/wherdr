@@ -3,7 +3,7 @@
 // step, and when a chained task starts or waits. Pure: server/utils/pmAdvance.ts
 // reads the terminals and files, and carries the result out.
 import type { Evidence } from './workflow'
-import { LABEL, type Run, type Task } from './run'
+import { LABEL, specText, type Run, type Task } from './run'
 import { parseFindings, reviewText, sendBackText } from './verdict'
 import { rereviewText } from './steps'
 import { publicReviewSection } from './visibility'
@@ -29,9 +29,9 @@ export const doneSection = (note: string) => [
 ]
 
 // The reviewer's instructions file: the task, what to review, how to answer.
-export function reviewFile(task: Pick<Task, 'id' | 'title' | 'description'>, run: Pick<Run, 'worktree' | 'branch'>, text: string, verdict: string, publicRepo = false) {
+export function reviewFile(task: Pick<Task, 'id' | 'title' | 'description' | 'specNotes'>, run: Pick<Run, 'worktree' | 'branch'>, text: string, verdict: string, publicRepo = false) {
   return [
-    `# Review of ${task.id}: ${task.title}`, '', task.description.trim() || '(no description)', '',
+    `# Review of ${task.id}: ${task.title}`, '', specText(task), '',
     `The work is on branch ${run.branch}, in ${run.worktree}. Its changes: \`git diff $(git config branch.${run.branch}.wherdrstart)..HEAD\`.`,
     'Read and run what you need, but change nothing: no edit, no commit, no push.', '',
     '## Instructions', '', text, '',

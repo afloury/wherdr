@@ -108,6 +108,16 @@ it('a visual merge is sent back with a note', async () => {
   w.unmount()
 })
 
+it('shows the spec changes under the description, newest last', async () => {
+  const specNotes = [{ at: 1, by: 'coordinator CO', text: 'Keep the light theme.' }, { at: 2, by: 'coordinator CO', text: 'No toggle.' }]
+  const w = await mountSuspended(TaskSheet, { props: { card: { ...card, yourTurn: undefined, description: 'A dark theme.', specNotes } }, global: { stubs } })
+  await w.get('[data-tab="description"]').trigger('click')
+  const html = w.get('[data-testid="task-panel"]').html()
+  expect(html.indexOf('task-description')).toBeLessThan(html.indexOf('task-spec-notes'))
+  expect(w.findAll('.task-spec-note').map(n => n.text().split(' ').slice(-2).join(' '))).toEqual(['light theme.', 'No toggle.'])
+  w.unmount()
+})
+
 it('renders the description as Markdown, with no raw HTML', async () => {
   const description = 'Intro with **bold** and `npm test`.\n\n- one\n- two\n\n<img src=x onerror="alert(1)"><script>alert(2)</script><b style="color:red">raw</b>'
   const w = await mountSuspended(TaskSheet, { props: { card: { ...card, yourTurn: undefined, description } }, global: { stubs } })

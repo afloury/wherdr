@@ -4,7 +4,7 @@
 // puts it in Your turn, whatever its step, with a badge saying what to do.
 import type { Holder } from './workflow'
 import { stepLabels, waitsToMerge, type PlannedStep, type StepState } from './steps'
-import type { Run, Task, WaitKind } from './run'
+import type { Run, SpecNote, Task, WaitKind } from './run'
 import { notStarted, type Stopped } from './stop'
 import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
 import { afterIds } from './advance'
@@ -28,6 +28,7 @@ export interface Card {
   project: string
   title: string
   description: string
+  specNotes?: SpecNote[] // spec changes after the description, newest last
   column: string // the step's column in its project's view
   phase: Phase // the column in the all-projects view
   step?: string // the current step's id, once started
@@ -105,6 +106,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     || (s?.agent?.waits && s.agent.told === 'user' && !s.done ? s.agent.waits : undefined)
   return {
     id: task.id, shown: task.id, project: task.project, title: task.title, description: task.description,
+    ...(task.specNotes?.length ? { specNotes: task.specNotes } : {}),
     column: plan.length ? columnOf((s?.done ? plan.at(-1) : step) ?? plan[0]!) : 'To do',
     phase: s?.done ? 'done' : started || running ? 'working' : 'todo',
     ...(step ? { step: step.id } : {}),
@@ -154,7 +156,7 @@ export function handleLabel(c: Pick<Card, 'stopped' | 'asks' | 'state' | 'stall'
 export function shownTexts(projects: Parameters<typeof showIds>[0], c: Card): Card {
   const show = <T>(v: T) => showIds(projects, v)
   return {
-    ...c, description: show(c.description), log: c.log.map(e => ({ ...e, text: show(e.text) })),
+    ...c, description: show(c.description), ...(c.specNotes ? { specNotes: c.specNotes.map(n => ({ ...n, text: show(n.text) })) } : {}), log: c.log.map(e => ({ ...e, text: show(e.text) })),
     ...(c.yourTurn ? { yourTurn: show(c.yourTurn) } : {}), ...(c.stall ? { stall: { ...c.stall, reason: show(c.stall.reason) } } : {}),
     ...(c.stopped ? { stopped: { ...c.stopped, why: show(c.stopped.why) } } : {}), ...(c.asks ? { asks: { ...c.asks, text: show(c.asks.text) } } : {}),
     ...(c.queueOut ? { queueOut: show(c.queueOut) } : {}), ...(c.held ? { held: show(c.held) } : {}), ...(c.summary ? { summary: show(c.summary) } : {}),

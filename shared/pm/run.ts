@@ -46,6 +46,7 @@ export interface Task {
   links?: { label: string, url: string }[] // the PR, the ticket…
   shotToken?: string // the agent's key for POST /api/pm/shot (never sent to the browser)
   log?: TaskLogEntry[] // who changed what, newest last
+  specNotes?: SpecNote[] // spec changes added after its description (task note, tell --spec), newest last
   marks?: Mark[] // when its step or turn changed, added by the store (times.ts)
   after?: string // tasks of the same project, comma-separated: this one starts once they are done
   stopped?: Stopped // who stopped it and why (stop.ts): it waits for the user
@@ -68,6 +69,18 @@ export interface Task {
 export const publicTask = ({ shotToken: _, ...t }: Task): Task => t
 
 export interface TaskLogEntry { at: number, by: string, text: string }
+export type SpecNote = TaskLogEntry
+
+// The rule the worker and the reviewer follow when the spec changed.
+export const SPEC_RULE = 'The latest note overrides the description where they disagree.'
+// The task's description, then its spec changes, newest last, as the worker's
+// and the reviewer's instructions give them.
+export function specText(task: Pick<Task, 'description' | 'specNotes'>) {
+  const notes = task.specNotes ?? []
+  return [task.description.trim() || '(no description)', ...(notes.length
+    ? ['', '## Spec changes', '', SPEC_RULE, '', ...notes.map(n => `- Spec change (${new Date(n.at).toISOString().slice(0, 10)}): ${n.text}`)]
+    : [])].join('\n')
+}
 
 export interface Run {
   id: string
@@ -217,7 +230,7 @@ export function instructionsText(p: Project, t: Template, task: Task, run: Pick<
   const parts = [t.instructions, t.taskTypes[task.type]?.instructions, step?.instructions].map(s => s?.trim()).filter(Boolean).map(s => fillBase(s!, taskBase(task, p)))
   const visual = shotStep(t, task.type)
   return [
-    `# ${task.id}: ${task.title}`, '', task.description.trim() || '(no description)', '',
+    `# ${task.id}: ${task.title}`, '', specText(task), '',
     '## Instructions', '', ...(parts.length ? parts : ['(none)']), '',
     ...(visual && shots ? shotsSection(visual, task, shots) : []),
     ...(isPublic(p) ? publicWorkerSection(leakCheck) : []),
