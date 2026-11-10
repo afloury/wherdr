@@ -19,7 +19,7 @@ import { followElement, showHalo, waitForElement } from '~/utils/uiHalo'
 // the section lives in the conversation's URL, the full page stays one click away.
 const props = defineProps<{ panel?: boolean }>()
 const router = useRouter()
-// v3's own version (shared/v3Version.ts), also in /api/health.
+// The build's version (shared/v3Version.ts), also in /api/health.
 const appVersion = useRuntimeConfig().public.version
 // Sections: sidebar on a computer (one section shown), iOS Settings-style
 // list on the phone (a tap opens the section, Back returns to the list).
