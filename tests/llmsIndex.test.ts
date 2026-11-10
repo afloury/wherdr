@@ -39,11 +39,14 @@ describe('docs/llms.txt', () => {
     expect(twice, `${twice.join(', ')} listed more than once: keep one line per entry`).toEqual([])
   })
 
-  it('merges two appended lines without a conflict', () => {
+  // As a catch-up: the branch (two) and the base (one) each add a line and change A.
+  it('merges both sides\' lines without a conflict, one line per entry', () => {
     const dir = mkdtempSync(join(tmpdir(), 'llms-union-'))
     try {
-      const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd: dir, stdio: 'pipe' })
+      const driver = `node ${root}scripts/llms-merge.mjs driver %O %A %B`
+      const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', `merge.llms-index.driver=${driver}`, ...args], { cwd: dir, stdio: 'pipe' })
       git('init', '-q', '-b', 'base')
+      execFileSync('node', [`${root}scripts/llms-merge.mjs`, 'install'], { cwd: dir })
       writeFileSync(join(dir, '.gitattributes'), readFileSync(`${root}.gitattributes`))
       const file = join(dir, 'docs/llms.txt')
       mkdirSync(join(dir, 'docs'))
@@ -52,11 +55,11 @@ describe('docs/llms.txt', () => {
       git('commit', '-qm', 'base')
       for (const [branch, line] of [['one', '- [B](docs/b.md): b.'], ['two', '- [C](docs/c.md): c.']]) {
         git('checkout', '-qb', branch!, 'base')
-        writeFileSync(file, `${readFileSync(file, 'utf8')}${line}\n`)
+        writeFileSync(file, `${readFileSync(file, 'utf8').replace(': a.', `: a, ${branch}.`)}${line}\n`)
         git('commit', '-qam', branch!)
       }
       git('merge', '-q', '--no-edit', 'one')
-      expect(readFileSync(file, 'utf8')).toBe('# Index\n\n- [A](docs/a.md): a.\n- [C](docs/c.md): c.\n- [B](docs/b.md): b.\n')
+      expect(readFileSync(file, 'utf8')).toBe('# Index\n\n- [A](docs/a.md): a, two.\n- [C](docs/c.md): c.\n- [B](docs/b.md): b.\n')
     }
     finally { rmSync(dir, { recursive: true, force: true }) }
   })

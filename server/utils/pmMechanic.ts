@@ -12,11 +12,11 @@ import { MAIN } from '../../shared/pm/coordinator'
 import { inMergeQueue, mergeOrder, ordinal, queueOut } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
 import { onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
-import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, taskPlan, trustKeys, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP } from './coreCreate'
 import { HerdrError } from './herdr'
 import { CoreError } from './core'
-import { actionShell } from './pmActions'
+import { actionShell, takeUpdate } from './pmActions'
 import { prSeen, stepAction } from './pmBoard'
 import { prNow, requiredChecks } from '../../shared/pm/board'
 import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
@@ -59,9 +59,10 @@ export async function syncWaits(deps: PmLaunchDeps) {
     const term = terminals.find(x => x.address === run.terminal)
     if (!term || term.state === 'finished' || term.status?.state || trusted.has(run.id)) continue
     const screen = String((await deps.call<{ text?: string }>('terminal.read', { terminal: run.terminal, lines: 30 }, 3000).catch(() => null))?.text || '')
-    if (!trustPrompt(screen, run.worktree)) continue
+    const keys = trustKeys(screen, run.worktree)
+    if (!keys) continue
     trusted.add(run.id)
-    await deps.call('terminal.keys', { terminal: run.terminal, keys: ['down', 'enter'] }, 10000).catch(() => {})
+    await deps.call('terminal.keys', { terminal: run.terminal, keys }, 10000).catch(() => {})
     const task = await store.task(run.task)
     if (task) await store.logTask(task, 'engine', `trusted the task's worktree for the ${run.role} (${run.worktree})`)
   }
@@ -477,6 +478,19 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
       }
       if (r.code === 0) return `caught up with ${move.base}`
       return catchUpGaveUp(task, f.head) ? `${lastLine(r.out)} (failed ${CATCH_UP_TRIES} times: wherdr stops updating this commit)` : lastLine(r.out)
+    }
+    case 'take-update': {
+      const at = await sh(SCRIPT.headOf, [run.worktree, f.pr!.headRefOid, f.pr!.baseRefName])
+      if (at.code !== 0 || lastLine(at.out) !== 'update') return 'the PR head is not a GitHub update: left as it is'
+      const u = await takeUpdate(sh, run.worktree, run.branch, f.guards, 'engine')
+      if (!u.ok && u.toAgent) return hand(`${u.error}. Merge origin/${run.branch} into your branch, resolve the conflicts, commit, then say you are done.`)
+      if (!u.ok) return u.error
+      // A merge step waiting for the user: recorded as a clean update with its base, the reviewed commit moving with it.
+      if (waitsToMerge(f.plan[task.step!.at]) && !task.step!.catchUp) {
+        await stepEvent(deps, task.id, f.plan, { kind: 'catch-up', base: f.pr!.baseRefName, head: f.head! })
+        await stepEvent(deps, task.id, f.plan, { kind: 'caught-up', head: u.head })
+      }
+      return `took GitHub's update of the PR in, fixed and pushed at ${u.head.slice(0, 7)}`
     }
     case 'rerun-ci': {
       const r = await sh(SCRIPT.rerun, [run.worktree, f.head!])
