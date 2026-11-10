@@ -34,8 +34,19 @@ const CLEAN = `[ -z "$(git status --porcelain)" ] || { echo "uncommitted changes
 // The files that change the interface, at any depth (app/components, pages…).
 const UI_FILES = ['components', 'assets', 'pages', 'layouts'].map(d => `':(glob)**/${d}/**'`).join(' ')
 export const SCRIPT = {
-  // Catch up with the target, then push the task branch onto it.
+  // Catch up with the target, then push the task branch onto it. A repository
+  // without origin lands locally: the clone's branch $t (made when missing)
+  // moves to the task's commit, unless a folder has it checked out.
   land: `${IN} ${CLEAN} t=$1
+if ! git remote get-url origin >/dev/null 2>&1; then
+  old=$(git rev-parse -q --verify "refs/heads/$t")
+  if [ -n "$old" ] && ! git merge -q --no-edit "$old" >/dev/null 2>&1; then
+    f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict in $f"; exit ${CODE.SEND_BACK}; fi
+  w=$(git worktree list --porcelain | awk -v b="branch refs/heads/$t" '/^worktree /{ p=substr($0, 10) } $0 == b { print p }')
+  [ -z "$w" ] || { echo "$t is checked out in $w: switch that folder to another branch, then try again"; exit 1; }
+  git update-ref "refs/heads/$t" HEAD "$old" || exit 1
+  git rev-parse HEAD; exit 0
+fi
 if git ls-remote -q --exit-code --heads origin "$t" >/dev/null; then
   git fetch -q origin "$t" 2>&1 || exit 1
   if ! git merge -q --no-edit "origin/$t" >/dev/null 2>&1; then
