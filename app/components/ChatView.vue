@@ -714,8 +714,17 @@ const blocks = computed<Block[]>(() => {
   }
   return foldWakes(out)
 })
-// Blocks inside a closed fold (a wake's turn, a run of routine wakes) stay hidden.
-const shownBlocks = computed(() => visibleBlocks.value.filter(b => !b.in || b.in.every(isOpen)))
+// Blocks inside a closed fold (a wake's turn, a run of routine wakes) stay
+// hidden, except while searching: search reads the text on screen.
+const searching = computed(() => searchOpen.value && search.q.trim().length >= 2)
+const shownBlocks = computed(() => (searching.value ? visibleBlocks.value : visibleBlocks.value.filter(b => !b.in || b.in.every(isOpen))))
+// Opens the folds around a block (a reply to show, a search result).
+async function openFolds(key: string) {
+  const b = blocks.value.find(x => x.key === key)
+  if (!b?.in?.length) return
+  b.in.forEach(k => setOpen(k, true))
+  await nextTick()
+}
 
 // A wake's first meaningful line: its first reason, else its head without the id.
 const WAKE_TAIL = /^(When you have handled this|In this wake you may)/
@@ -965,6 +974,7 @@ provide('gotoRef', (ref: Reference, el: HTMLElement) => {
 // Quote tapped: scrolls to the original message and highlights it.
 async function gotoOrigin(key: string | null) {
   if (key && !msgEl(key) && hiddenBlocks.value) await revealAll()
+  if (key && !msgEl(key)) await openFolds(key)
   const el = key ? msgEl(key) : null
   if (!el) return toast(t('Original message not found (further up the conversation?)'), true)
   el.scrollIntoView({ block: 'center', behavior: 'smooth' })
@@ -1324,6 +1334,8 @@ async function jumpToResult() {
     const prefix = String(route.query.prefix || '')
     const index = items.value.findIndex(i => i.role === role && i.ts === ts && i.text.startsWith(prefix))
     const key = index < 0 ? '' : itemKeys(items.value)[index]
+    if (key) await openFolds(key)
+    await nextTick()
     const target = [...(listEl.value?.querySelectorAll<HTMLElement>('[data-hit-key]') || [])].find(el => el.dataset.hitKey === key)
     applySearchMarks(false, target)
     if (target && !search.hits.length) target.scrollIntoView({ block: 'center' })
@@ -1496,7 +1508,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   <span class="wake-head">{{ b.head }}</span>
                   <span v-if="b.time" class="wake-time" :title="b.at || undefined">{{ b.time }}</span>
                 </button>
-                <pre v-if="isOpen(b.key)" class="wake-text">{{ b.text }}</pre>
+                <pre v-if="isOpen(b.key) || searching" class="wake-text">{{ b.text }}</pre>
                 <p v-else-if="b.answer" class="wake-answer">{{ b.answer }}</p>
               </div>
 

@@ -55,6 +55,15 @@ describe('wakes in a conversation', () => {
       expect(engine!.find('.wake-answer').exists()).toBe(false)
       expect(w.find('.chat').text()).toContain('Shall I retry it?')
 
+      // Search reads inside the folds: a reply hidden in the run is found.
+      expect(w.find('.chat').text()).not.toContain('All good.')
+      await w.setProps({ search: true })
+      await w.find('.search-bar input').setValue('all good')
+      await expect.poll(() => w.find('.search-count').text()).toBe('1/1')
+      expect(w.find('.chat').text()).toContain('All good.')
+      await w.setProps({ search: false })
+      await expect.poll(() => w.find('.chat').text()).not.toContain('All good.')
+
       // Tapping the run shows its wakes; tapping one shows its full text.
       await run.trigger('click')
       expect(w.findAll('[data-testid="wake"]')).toHaveLength(5)
