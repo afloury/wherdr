@@ -7,6 +7,7 @@
 import type { PaceRow } from '#shared/pm/pace'
 import { burning, type PaceMode, type PacePolicy, type PaceReason } from '#shared/pm/pacing'
 import { defaultAccountName } from '#shared/quotaAccount'
+import { creditsText } from '~/utils/quotas'
 
 const props = defineProps<{ active: boolean }>()
 const rows = ref<PaceRow[] | null>(null)
@@ -109,6 +110,13 @@ function state(r: PaceRow) {
   const until = v.until ? tl(` until ${when(v.until)}`, ` jusqu’à ${when(v.until)}`) : ''
   return tl(`Auto: waiting (${reasonText(v.reason)})`, `Auto : attend (${reasonText(v.reason)})`) + until
 }
+// Codex "limit reached" and the account's credits, under the bars.
+function limitNote(r: PaceRow) {
+  const credits = r.credits ? creditsText(r.credits) : ''
+  if (r.limit === 'credits') return tl(`Limit reached · work goes on with ${credits}`)
+  if (r.limit === 'expired') return tl(`Limit reset since the last reading${credits ? ` · ${credits}` : ''}`)
+  return credits ? tl(`Credits: ${credits}`) : ''
+}
 const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown)
 </script>
 
@@ -156,6 +164,7 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
             <span class="pace-state" :class="{ wait: !r.verdict.go }" data-testid="pace-state">{{ state(r) }}</span>
           </p>
         </template>
+        <p v-if="limitNote(r)" class="pace-unknown" data-testid="pace-credits">{{ limitNote(r) }}</p>
 
         <template v-if="r.account && !unlimited(r)">
           <button type="button" class="pace-more mono-label" :aria-expanded="open === r.account.key" data-testid="pace-more" @click="open = open === r.account.key ? null : r.account.key">
