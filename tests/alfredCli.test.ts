@@ -84,8 +84,9 @@ describe('runAlfredCommand', () => {
   const machines = [{ key: '', label: 'this', local: true, status: 'online' }, { key: 'mac', label: 'Mac', local: false, status: 'online' }]
   const checked: string[] = []
   let failCheck = false
+  let herdrProjects = ''
   const deps = () => ({
-    store, machines: () => machines, panes: () => [], urls: { local: 'http://127.0.0.1:7690' }, settingsFile: path.join(dir, 'settings.json'), dataDir: dir,
+    store, machines: () => machines, panes: () => [], urls: { local: 'http://127.0.0.1:7690' }, settingsFile: path.join(dir, 'settings.json'), dataDir: dir, herdrProjects,
     check: async (m: string, f: string) => { if (failCheck) throw new Error('path: a folder inside the home folder'); checked.push(`${m}:${f}`); return f },
   }) as unknown as Parameters<typeof runAlfredCommand>[0]
   const run = (...argv: string[]) => runAlfredCommand(deps(), token, { argv })
@@ -99,6 +100,7 @@ describe('runAlfredCommand', () => {
     token = (await fs.readFile(path.join(dir, ALFRED_TOKEN_FILE), 'utf8')).trim()
     checked.length = 0
     failCheck = false
+    herdrProjects = path.join(dir, 'no-herdr-projects')
   })
   afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 
@@ -125,13 +127,14 @@ describe('runAlfredCommand', () => {
     expect(await run('project', 'template', 'WEB', 'example:vibe', '--apply')).toMatchObject({ applied: true, change: ['project WEB template: common → example:vibe'] })
   })
 
-  it('lists the v2 projects the migration left for it, with the v3 project made from each', async () => {
+  it('lists the v2 projects read now from the herdr-projects board, with the v3 project made from each', async () => {
     expect(await run('v2')).toEqual({ fromV2: false })
-    const listed = [{ key: 'WEB', name: 'web', path: '/src/web', here: true, left: [], tasks: [] }, { key: 'API', name: 'api', path: '/src/api', here: false, left: ['merge.by'], tasks: [] }]
-    await fs.mkdir(path.join(dir, 'migration'))
-    await fs.writeFile(path.join(dir, 'migration/v2-projects.json'), JSON.stringify({ v: 1, projects: listed }))
-    await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--apply')
-    expect(await run('v2')).toMatchObject({ fromV2: true, report: path.join(dir, 'migration-report.md'), projects: [{ key: 'WEB', project: 'WEB' }, { key: 'API', here: false, project: null }] })
+    herdrProjects = path.resolve(__dirname, 'fixtures/v2-install/herdr-projects')
+    await run('project', 'add', 'APP', '--machine', '', '--path', '/home/user/code/app', '--apply')
+    const r = await run('v2') as { projects: { key: string, project: string | null, tasks: unknown[] }[] }
+    expect(r).toMatchObject({ fromV2: true, report: path.join(dir, 'migration-report.md') })
+    // APP keeps its own key; the others get free ones.
+    expect(r.projects.map(p => [p.key, p.project, p.tasks.length])).toEqual([['APP', 'APP', 2], ['GONE', null, 0], ['MYDOCS', null, 0], ['SITE', null, 1]])
   })
 
   it('shows the project\'s guards and changes them after its dry run', async () => {

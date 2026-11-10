@@ -12,7 +12,8 @@ import { offeredAgents, readAgentOrder, readHiddenAgents } from '../../shared/ag
 import { allowedMachines, cleanProjectInput, cleanProjectUpdate, machinesOf } from '../../shared/pm/project'
 import { keyClash, projectOf as findProject, shownKey } from '../../shared/pm/projectKey'
 import { HerdrError } from './herdr'
-import { alfredTokenOk, coordinatorsView, noteTurn, readV2Projects, startCoordinator, type CoordinatorUrls, type V2Candidate } from './pmCoordinator'
+import { alfredTokenOk, coordinatorsView, noteTurn, startCoordinator, v2Projects, type CoordinatorUrls } from './pmCoordinator'
+import type { V2Candidate } from './v2Board'
 import { sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
 import { lastWords } from './pmRead'
 import type { FolderCheck, PmStore } from './pmStore'
@@ -26,7 +27,7 @@ import { EXAMPLES } from '../../shared/pm/examples'
 import { DATA_DIR } from './env'
 import { openUi, uiTargetsList, type UiOpenDeps } from './uiOpen'
 
-type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string, dataDir?: string, clients?: UiOpenDeps['clients'] }
+type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string, dataDir?: string, herdrProjects?: string, clients?: UiOpenDeps['clients'] }
 
 // A turn the server saw start over an hour ago is not trusted any more (as a coordinator's).
 const TURN_MS = 3_600_000
@@ -90,14 +91,14 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
     }
     case 'templates': return { templates: (await store.overview()).templates, examples: EXAMPLES.map(e => ({ id: `example:${e.id}`, instructions: e.instructions, taskTypes: Object.keys(e.taskTypes), guards: e.guards })) }
     case 'v2': {
-      const candidates = await readV2Projects(deps.dataDir)
+      const candidates = await v2Projects(store, deps.herdrProjects)
       if (!candidates.length) return { fromV2: false }
       // The v3 project made from each: same folder (on any machine) or same name.
       const made = (c: V2Candidate) => projects.find(p => p.path === c.path || p.name === c.name)?.key ?? null
       return {
         fromV2: true, report: path.join(deps.dataDir ?? DATA_DIR, 'migration-report.md'),
         projects: candidates.map(c => ({ ...c, project: made(c) })),
-        note: 'Folders are those of the machine v2 ran on (this one). Add tasks again with wherdr pm task add once the project has a template',
+        note: 'Read now from the herdr-projects board of this machine (read only). Folders are those of the machine v2 ran on (this one). Add tasks again with wherdr pm task add once the project has a template',
       }
     }
     case 'machines': return { machines: machines.map(m => ({ key: m.key, label: m.label, local: m.local, status: m.status })) }

@@ -7,7 +7,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanProjectInput } from '../shared/pm/project'
-import { V2_PROJECTS, detectV2, mapCandidates, mapMachines, mapSettings, parseEnvFile, parseUnit, readBoard, remapMachineSettings, runImport, sshProblem, v3MachineKey } from '../scripts/v2-import.mjs'
+import { detectV2, keptDirs, mapMachines, mapSettings, parseArgs as importArgs, parseEnvFile, parseUnit, remapMachineSettings, runImport, sshProblem, v3MachineKey } from '../scripts/v2-import.mjs'
+import { mapCandidates, readBoard } from '../server/utils/v2Board'
 import { EXIT, buildCommand, buildTuning, deployUnits, hcTarget, hcUnit, main, parseArgs, pickHttpsPort, unitProtections, updateScript, v3Unit } from '../scripts/install-v3-beside-v2.mjs'
 
 const FIX = path.resolve(__dirname, 'fixtures/v2-install')
@@ -37,7 +38,7 @@ function fakeRun(over: Record<string, Res> = {}) {
   return { run, calls }
 }
 
-const v2Opts = { home: '/home/user', env: {}, unit: path.join(FIX, 'systemd/wherdr.service'), v2Dir: path.join(FIX, 'wherdr'), hpDir: path.join(FIX, 'herdr-projects') }
+const v2Opts = { home: '/home/user', env: {}, unit: path.join(FIX, 'systemd/wherdr.service'), v2Dir: path.join(FIX, 'wherdr') }
 
 function hashTree(dir: string): string {
   const h = createHash('sha256')
@@ -64,9 +65,9 @@ describe('v2 detection', () => {
     expect(parseEnvFile('# c\nexport PORT=7690\nX="a b"\n')).toEqual({ PORT: '7690', X: 'a b' })
   })
 
-  it('finds the service, data, port, board, machines and tailscale entry; the unit wins over wherdr.env', () => {
+  it('finds the service, data, port, machines and tailscale entry; the unit wins over wherdr.env', () => {
     const v = detectV2({ ...v2Opts, run: fakeRun().run })
-    expect(v).toMatchObject({ found: true, active: true, port: '7683', dataDir: '/home/user/wherdr/data', session: 'main', board: path.join(FIX, 'herdr-projects') })
+    expect(v).toMatchObject({ found: true, active: true, port: '7683', dataDir: '/home/user/wherdr/data', session: 'main' })
     expect(v.machines.map((m: { target: string }) => m.target)).toEqual(['user@laptop', 'vps']) // the disabled one is left out
     expect(v.tailscale.v2Https).toEqual(['8103'])
   })
@@ -79,7 +80,7 @@ describe('v2 detection', () => {
 })
 
 describe('import mapping', () => {
-  const board = readBoard(path.join(FIX, 'herdr-projects'))
+  const board = readBoard(path.join(FIX, 'herdr-projects'))!
   const exists = (p: string) => !p.endsWith('/gone')
 
   it('lists board repos as v3 project candidates, with a free key, base branch, settings to redo and open tasks', () => {
@@ -130,42 +131,43 @@ describe('import mapping', () => {
 })
 
 describe('runImport', () => {
-  it('lists v2 projects for Alfred without adding any, writes settings and the report, leaves v2 byte-identical, and is idempotent', () => {
+  it('imports no project and reads nothing of herdr-projects, writes settings and the report, leaves v2 byte-identical, and is idempotent', () => {
     const before = hashTree(FIX)
     const data = tmp()
     const repoRoot = tmp()
     for (const r of ['app', 'site']) fs.mkdirSync(path.join(repoRoot, r))
     const v2 = { ...detectV2({ ...v2Opts, run: fakeRun().run }), dataDir: path.join(FIX, 'wherdr/data') }
-    const exists = (p: string) => /\/code\/(app|site)$/.test(p)
     const { run, calls } = fakeRun()
-    const r = runImport({ v2, dataDir: data, run, exists, hcSession: 'test', hcReachable: true, now: 1000 })
+    const spies = (['readFileSync', 'existsSync', 'readdirSync', 'statSync'] as const).map(f => vi.spyOn(fs, f))
+    const r = runImport({ v2, dataDir: data, run, home: '/home/user', env: {}, appDir: '/home/user/wherdr-v3', hcSession: 'test', hcReachable: true, now: 1000 })
+    expect(spies.flatMap(s => s.mock.calls).filter(([f]) => String(f).includes('herdr-projects'))).toEqual([])
+    for (const s of spies) s.mockRestore()
 
-    expect(fs.existsSync(path.join(data, 'projects/projects.json'))).toBe(false)
-    expect(fs.existsSync(path.join(data, 'projects/tasks'))).toBe(false)
-    const listed = JSON.parse(fs.readFileSync(path.join(data, V2_PROJECTS), 'utf8')).projects
-    expect(listed.map((p: { key: string, here: boolean, tasks: unknown[] }) => [p.key, p.here, p.tasks.length])).toEqual([['APP', true, 2], ['GONE', false, 0], ['MYDOCS', false, 0], ['SITE', true, 1]])
-    expect(JSON.parse(fs.readFileSync(path.join(data, 'projects/pm.json'), 'utf8')).enabled).toBe(true)
+    expect(fs.existsSync(path.join(data, 'projects'))).toBe(false)
+    expect(fs.readdirSync(path.join(data, 'migration'))).toEqual(['imported.json'])
     const settings = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).settings
     expect(settings).toMatchObject({ theme: 'dark', typewriterSpeed: 'fast', showQuotas: '0' })
     // Group Perso: Laptop (added as laptop) is remapped, Build VPS (not added) dropped.
     expect(JSON.parse(settings.machineGroups)[0].machines).toEqual(['', v3MachineKey('laptop')])
     expect(fs.readFileSync(path.join(data, 'machine-label.txt'), 'utf8')).toBe('laptop\n')
+    // Recent folders: herdr-projects' folders, herdr-web's and v3's own are left out.
     expect(JSON.parse(fs.readFileSync(path.join(data, 'dirs.json'), 'utf8'))).toEqual({ dirs: ['/home/user/code/app'] })
+    expect(importArgs(['detect', '--herdr-projects', '/x'])).toEqual({ command: 'detect', notes: [expect.stringMatching(/^--herdr-projects is ignored/)] })
+    expect(keptDirs(['/srv/hp/main', '/opt/v2/x', '/opt/v2x', 'rel'], { home: '/home/user', env: { HERDR_PROJECTS_HOME: '/srv/hp' }, apps: ['/opt/v2'] })).toEqual(['/opt/v2x'])
     expect(fs.existsSync(path.join(data, 'auth.json'))).toBe(false)
     expect(calls).toContain('hc machine add user@laptop --name laptop --json')
     expect(r.machines.missing).toMatchObject([{ target: 'vps', reason: expect.stringMatching(/unreachable/), note: expect.stringMatching(/session was work/) }])
 
     const report = fs.readFileSync(path.join(data, 'migration-report.md'), 'utf8')
-    expect(report).toContain('| APP | app | /home/user/code/app | develop | 2 | merge.by, reviewer.agent |')
-    expect(report).toContain('| GONE | gone | /home/user/code/gone (not on this machine) |  | 0 |  |')
+    expect(report).toContain('Not imported: Alfred offers to set up your v2 projects')
     expect(report).toContain('Added laptop (v2 name Laptop → laptop), user@laptop')
     expect(report).toContain('**To do:** build-vps (v2 name Build VPS → build-vps), vps: unreachable')
     expect(report).toMatch(/\*\*Passkeys\*\*: not moved/)
     expect(report).toContain('- machineGroups, group Perso: Laptop (v2 23108ee8) → laptop')
     expect(report).toContain('- machineGroups, group Perso: Build VPS (v2 f27df2ea) dropped: no v3 machine was made from it')
 
-    const again = runImport({ v2, dataDir: data, run: fakeRun().run, exists, hcSession: 'test', hcReachable: true, now: 2000 })
-    expect(again.projects.candidates).toEqual(r.projects.candidates)
+    const again = runImport({ v2, dataDir: data, run: fakeRun().run, hcSession: 'test', hcReachable: true, now: 2000 })
+    expect(again.settings.files).toEqual([])
     expect(fs.readdirSync(path.join(data, 'migration')).filter(f => f.startsWith('report-'))).toHaveLength(1) // the first report is kept
     expect(hashTree(FIX)).toBe(before)
   })
@@ -173,7 +175,7 @@ describe('runImport', () => {
   it('never calls hc when its session is not running (hc would start one)', () => {
     const v2 = { ...detectV2({ ...v2Opts, run: fakeRun().run }), dataDir: path.join(FIX, 'wherdr/data') }
     const { run, calls } = fakeRun()
-    const r = runImport({ v2, dataDir: tmp(), run, exists: () => true, hcSession: 'none', env: { XDG_RUNTIME_DIR: tmp() } })
+    const r = runImport({ v2, dataDir: tmp(), run, hcSession: 'none', env: { XDG_RUNTIME_DIR: tmp() } })
     expect(calls.filter(c => c.startsWith('hc '))).toEqual([])
     expect(r.machines.missing.map((m: { reason: string }) => m.reason)).toEqual([expect.stringMatching(/session none is not running/), expect.stringMatching(/session none is not running/)])
   })
@@ -182,7 +184,7 @@ describe('runImport', () => {
     const v2 = { ...detectV2({ ...v2Opts, run: fakeRun().run }), dataDir: path.join(FIX, 'wherdr/data'), machines: [{ label: 'Beast', target: 'mac', session: 'default' }, { label: 'Pi', target: 'pi', session: 'default' }] }
     const { run, calls } = fakeRun({ 'ssh -o BatchMode=yes -o ConnectTimeout=8 mac': fail(1), 'ssh -o BatchMode=yes -o ConnectTimeout=8 pi': fail(127, 'zsh: command not found'), 'hc machine add pi': fail(1, 'hc: not found on pi') })
     const data = tmp()
-    const r = runImport({ v2, dataDir: data, run, exists: () => false, hcSession: 'test', hcReachable: true, now: 1000 })
+    const r = runImport({ v2, dataDir: data, run, hcSession: 'test', hcReachable: true, now: 1000 })
     expect(calls).toContain('hc machine add mac --name beast --json')
     expect(calls.find(c => c.startsWith('ssh ') && c.includes(' mac '))).toMatch(/\.local\/bin\/hc.*\/opt\/homebrew\/bin\/hc/)
     expect(r.machines.added).toMatchObject([{ name: 'beast', label: 'Beast' }])
@@ -190,7 +192,7 @@ describe('runImport', () => {
     const report = fs.readFileSync(path.join(data, 'migration-report.md'), 'utf8')
     expect(report).toContain('Added beast (v2 name Beast → beast), mac')
     expect(report).not.toMatch(/PATH/)
-    const dry = runImport({ v2, dataDir: tmp(), run: fakeRun({ 'ssh -o BatchMode=yes -o ConnectTimeout=8 mac': fail(1) }).run, exists: () => false, dryRun: true, hcReachable: true })
+    const dry = runImport({ v2, dataDir: tmp(), run: fakeRun({ 'ssh -o BatchMode=yes -o ConnectTimeout=8 mac': fail(1) }).run, dryRun: true, hcReachable: true })
     expect(dry.machines.added[0]).toMatchObject({ name: 'beast', planned: true, check: expect.stringMatching(/looks for it itself/) })
   })
 
@@ -198,8 +200,8 @@ describe('runImport', () => {
     const data = tmp()
     const v2 = { ...detectV2({ ...v2Opts, run: fakeRun().run }), dataDir: path.join(FIX, 'wherdr/data') }
     const { run, calls } = fakeRun()
-    const r = runImport({ v2, dataDir: data, run, exists: () => true, dryRun: true })
-    expect(r.projects.candidates.length).toBe(4)
+    const r = runImport({ v2, dataDir: data, run, dryRun: true })
+    expect(r.settings.files).toContain('dirs.json (this machine\'s recent folders)')
     expect(r.machines.added).toMatchObject([{ name: 'laptop', planned: true }])
     expect(calls.some(c => c.startsWith('hc machine add'))).toBe(false)
     expect(fs.readdirSync(data)).toEqual([])
@@ -264,7 +266,7 @@ describe('installer', () => {
     const home = tmp()
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     const { run, calls } = io(home)
-    const code = await main(['--json', '--port', '7699', '--https-port', '8105', ...['--v2-unit', v2Opts.unit, '--v2-dir', v2Opts.v2Dir, '--herdr-projects', v2Opts.hpDir]], { run, home, env: { XDG_RUNTIME_DIR: home } })
+    const code = await main(['--json', '--port', '7699', '--https-port', '8105', ...['--v2-unit', v2Opts.unit, '--v2-dir', v2Opts.v2Dir]], { run, home, env: { XDG_RUNTIME_DIR: home } })
     const out = JSON.parse(log.mock.calls.at(-1)![0])
     vi.spyOn(console, 'error').mockRestore()
     log.mockRestore()
@@ -329,7 +331,7 @@ describe('installer', () => {
       'tailscale status --json': ok(JSON.stringify({ Self: { DNSName: 'host-a.tail.ts.net.' } })),
       'git ls-remote': ok('0123456789abcdef0123456789abcdef01234567\trefs/heads/v3'),
     })
-    const code = await main(['--json', '--port', '7699', '--v2-unit', v2Opts.unit, '--v2-dir', v2Opts.v2Dir, '--herdr-projects', v2Opts.hpDir], { run, home, env: { XDG_RUNTIME_DIR: home }, heapLimit: 574 * 1048576 })
+    const code = await main(['--json', '--port', '7699', '--v2-unit', v2Opts.unit, '--v2-dir', v2Opts.v2Dir], { run, home, env: { XDG_RUNTIME_DIR: home }, heapLimit: 574 * 1048576 })
     const out = JSON.parse(log.mock.calls.at(-1)![0])
     vi.spyOn(console, 'error').mockRestore()
     log.mockRestore()

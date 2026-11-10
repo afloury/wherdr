@@ -21,9 +21,9 @@
 - [On-device dictation files](docs/installation.md#on-device-dictation-files): where the dictation models and read-aloud voices are fetched and kept.
 - [Updating](docs/installation.md#updating): update v3 by hand; there is no update banner.
 - [Install with an agent](docs/install-with-an-agent.md): ready-to-paste prompts for an agent that installs or updates wherdr.
-- [Migrate from v2](docs/migrate-from-v2.md): install v3 beside v2 and import its machines and settings; its projects are listed for Alfred.
+- [Migrate from v2](docs/migrate-from-v2.md): install v3 beside v2 and import its machines, settings and recent folders, nothing of herdr-projects; Alfred sets up its projects.
 - [What is imported](docs/migrate-from-v2.md#what-is-imported): what the v2 import brings over, and what to redo.
-- [Set up your v2 projects with Alfred](docs/migrate-from-v2.md#set-up-your-v2-projects-with-alfred): Alfred's first message offers to bring v2 projects over (machine, template, coordinator, open tasks).
+- [Set up your v2 projects with Alfred](docs/migrate-from-v2.md#set-up-your-v2-projects-with-alfred): Alfred's first message offers to bring v2 projects over, reading the herdr-projects board then (machine, template, coordinator, open tasks).
 - [Auto-deploy from a build machine](docs/migrate-from-v2.md#auto-deploy-from-a-build-machine): build elsewhere and deploy to the server.
 - [Fall back to v2](docs/migrate-from-v2.md#fall-back-to-v2): go back to v2, and [uninstall v3](docs/migrate-from-v2.md#uninstall-v3).
 - [Install as an app](docs/phone.md#install-it-as-an-app): add wherdr to a phone's home screen or a desktop browser.

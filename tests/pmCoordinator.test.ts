@@ -30,7 +30,7 @@ company.taskTypes.feature!.steps.splice(-2, 1, { id: 'deploy', column: 'Deploy',
 // The quota readings the pace reads; none by default (quota unknown).
 const quotas = vi.hoisted(() => ({ q: null as Quotas | null }))
 vi.mock('../server/utils/quotas', async orig => ({ ...(await orig<object>()), readQuotas: async () => quotas.q ?? { claude: null, codex: null } }))
-afterEach(() => { quotas.q = null })
+afterEach(() => { quotas.q = null; vi.unstubAllEnvs() })
 
 let dir = '', store: ReturnType<typeof createPmStore>, token = ''
 const deps = () => ({ store, machines: () => [] }) as unknown as CoreAdminDeps & { store: typeof store }
@@ -134,6 +134,8 @@ describe('the main coordinator (WHR-398)', () => {
       return { address: `host/t${runs.length}` }
     }
     const home = path.join(dir, 'alfred')
+    // No v2 board here, whatever this machine has: Alfred reads it live.
+    vi.stubEnv('HERDR_PROJECTS_HOME', path.join(dir, 'no-herdr-projects'))
     const d = { store, call, machines: () => [], alfredHome: home } as never
     const r = await startCoordinator(d, MAIN, { program: 'claude', model: 'sonnet' }, { local: 'http://127.0.0.1:7690' })
     // A program only: its own default model, no --model (the model given is ignored).
