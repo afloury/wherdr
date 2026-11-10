@@ -148,11 +148,12 @@ export const inputShown = (list: Pick<PendingMessage, 'raw' | 'inInput'>[], inpu
   Boolean(input) && list.some(q => q.inInput && fieldHolds(input, q.raw, true))
 
 // What a waiting message is waiting on (see waitingOn in ChatView.vue).
-export type WaitingOn = 'stopped' | 'question' | 'working' | 'sending'
+export type WaitingOn = 'stopped' | 'question' | 'working' | 'sending' | 'installing'
 export type PendingLabel =
   | { kind: 'read' }
   | { kind: 'sending' }
   | { kind: 'stopped' }
+  | { kind: 'installing' }
   | { kind: 'question' }
   | { kind: 'agent-queue', agent: string }
   | { kind: 'queued' }
@@ -166,6 +167,7 @@ export function pendingLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgen
   if (q.inInput) return { kind: 'input' }
   if (q.phase === 'sent' && !q.inAgentQueue) return { kind: 'read' }
   if (waitFor === 'stopped') return { kind: 'stopped' }
+  if (waitFor === 'installing') return { kind: 'installing' }
   if (waitFor === 'question') return { kind: 'question' }
   if (q.inAgentQueue) return { kind: 'agent-queue', agent: agent || '' }
   return waitFor === 'working' ? { kind: 'queued' } : { kind: 'sending' }
