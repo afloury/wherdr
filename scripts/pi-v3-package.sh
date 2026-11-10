@@ -3,8 +3,9 @@
 # <out-dir>, the folder the Pi reads (served on the tailnet, for example). Run it on the
 # machine that builds, never on the Pi.
 #   pi-v3-package.sh <out-dir> [<sha>]   (sha: the commit that was built, default HEAD)
-# <out-dir> gets wherdr-v3.tgz (.output + COMMIT), wherdr-v3.tgz.sha256 and COMMIT. COMMIT is
-# removed first and written last: when it is there, the archive is that commit's.
+# <out-dir> gets wherdr-v3.tgz (.output, this checkout's docs in .output/docs, and COMMIT),
+# wherdr-v3.tgz.sha256 and COMMIT. COMMIT is removed first and written last: when it is
+# there, the archive is that commit's.
 set -euo pipefail
 
 ASSET=wherdr-v3.tgz
@@ -32,6 +33,10 @@ grep -rqF "$(node -p 'require("./package.json").version')+${sha:0:7}" .output/se
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 cp -a .output "$tmp/.output"
+# The deploy replaces .output only: the docs travel inside it, so Alfred reads this build's
+# (server/utils/wherdrDocs.ts), not those of the Pi's first clone.
+mkdir -p "$tmp/.output/docs"
+cp docs/*.md docs/llms.txt "$tmp/.output/docs/" || die "no docs/*.md or docs/llms.txt here"
 printf '%s\n' "$sha" > "$tmp/COMMIT"
 bad="$(native_files "$tmp")"
 [ -z "$bad" ] || die "native code or links in the build (it would not run on the Pi):

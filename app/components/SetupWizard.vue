@@ -9,6 +9,7 @@ import type { PmOverview } from '#shared/pm/project'
 import type { RepoVisibility } from '#shared/pm/visibility'
 import type { Template } from '#shared/pm/workflow'
 import { EXAMPLES } from '#shared/pm/examples'
+import { needsRemote, type FolderProbe } from '#shared/pm/newProject'
 import { isCoordinatorProgram } from '#shared/pm/coordinator'
 import { SETUP_STEPS, setupDone, setupProject, setupResume, workflowLine, type SetupStepId } from '#shared/pm/setup'
 
@@ -67,6 +68,16 @@ watch(key, (k, old) => { if (old && k) run(async () => {}) })
 // 3. Its workflow: a copy of an example.
 const example = ref(EXAMPLES[0]!.id)
 const applyExample = () => run(() => api('/api/pm/project-apply', { key: key.value, template: `example:${example.value}` }))
+// A repository without origin (a git init folder): an example that pushes or
+// opens pull requests cannot finish a task there; vibe lands locally.
+const remote = ref<boolean>()
+watch(() => step.value === 'workflow' && p.value, async (x) => {
+  remote.value = undefined
+  if (!x) return
+  try { remote.value = (await api<FolderProbe>(`/api/pm/folder?machine=${encodeURIComponent(x.machine)}&path=${encodeURIComponent(x.path)}`)).remote }
+  catch {}
+})
+const needsOrigin = computed(() => remote.value === false && needsRemote(EXAMPLES.find(e => e.id === example.value)!))
 
 // 5. Its coordinator, started here; its autopilot, optional, under it.
 const agents = computed(() => offerCoordinators(undefined, key.value))
@@ -99,7 +110,7 @@ const TITLE: Record<SetupStepId, string> = {
 }
 const BODY: Record<SetupStepId, string> = {
   enable: 'Tasks then follow the workflow of their project. Off, nothing is changed.',
-  project: 'A git repository on one of your machines: each task gets its own worktree and pull request. wherdr checks whether it is public.',
+  project: 'A git repository on one of your machines: each task gets its own worktree. Pushes and pull requests need a remote (origin). wherdr checks whether it is public.',
   workflow: 'The steps a task goes through, and who does each one. The project gets its own copy, to change later in its Workflow tab.',
   guards: 'The branches no agent merges into on its own, and who merges. The workflow’s defaults are shown; Next keeps them.',
   coordinator: 'The agent you talk to about the project: it adds tasks and follows them on the board.',
@@ -145,6 +156,11 @@ const BODY: Record<SetupStepId, string> = {
               <b>{{ e.id }}</b><small class="mono">{{ workflowLine(e) }}</small>
             </button>
           </div>
+          <p v-if="needsOrigin" class="setup-warn" data-testid="setup-no-remote">
+            {{ tl(`This repository has no remote (origin): ${example} pushes or opens pull requests, so its tasks cannot finish. Add one with`) }}
+            <code>git remote add origin &lt;url&gt;</code>{{ tl(', or use vibe, which merges into a local branch.') }}
+            <UButton size="md" color="neutral" variant="outline" data-testid="setup-use-vibe" @click="example = 'vibe'">{{ tl('Use vibe') }}</UButton>
+          </p>
           <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-copy" :loading="busy" data-testid="setup-apply" @click="applyExample">{{ tl(`Use ${example}`) }}</UButton>
         </template>
       </template>
@@ -200,6 +216,7 @@ const BODY: Record<SetupStepId, string> = {
 .setup-progress i.done { background: var(--done); }
 .setup-progress i.here { box-shadow: inset 0 -2px 0 var(--accent); }
 .setup-ok { color: var(--text-2); }
+.setup-warn { display: grid; gap: 8px; justify-items: start; padding: 10px 12px; border-left: 2px solid var(--blocked); color: var(--text-2); }
 .setup-choices { display: grid; border: 1px solid var(--line); }
 .setup-choices button { display: grid; gap: 2px; min-height: 48px; padding: 10px 12px; text-align: left; color: var(--text-2); position: relative; }
 .setup-choices button + button { border-top: 1px solid var(--line); }
