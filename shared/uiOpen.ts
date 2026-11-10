@@ -95,7 +95,8 @@ export function uiOpenRefusal(link: string | null, turn: Turn, own: OwnProject, 
   return null
 }
 
-// What the card names: "Settings › Phone", "Task WHR-12", "Board › WHR".
+// What the card names: "Settings › Phone", "Task WHR-12", "Board › WHR › ui".
+// A chat's in-app link shows it too, after "Open" (utils/markdown.ts).
 export function uiPlaceLabel(link: string): string {
   const [path, qs = ''] = link.slice(1).split('?')
   const q = new URLSearchParams(qs)
@@ -108,7 +109,7 @@ export function uiPlaceLabel(link: string): string {
   }
   if (path === '/board') {
     const task = q.get('task'), project = q.get('project'), tag = q.get('tag')
-    return task ? `Task ${task}` : project ? `Board › ${project}` : tag ? `Board › ${tag}` : 'Board'
+    return task ? `Task ${task}` : ['Board', project, tag].filter(Boolean).join(' › ')
   }
   return path === '/decisions' ? 'Decisions' : path === '/' || !path ? 'Home' : path.slice(1)
 }

@@ -119,6 +119,7 @@ const counters = computed(() => props.c.limits
       <USwitch :model-value="ap.on" color="success" size="lg" :disabled="busy" :aria-label="tl('Autopilot', 'Autopilote')" data-testid="autopilot-on" @update:model-value="setOn" />
       <span class="mono-label" data-testid="autopilot-state" :data-asleep="ap.on && c.asleep ? '' : undefined">{{ tl('Autopilot', 'Autopilote') }} · {{ stateText }}</span>
       <span class="ap-count mono-label" data-testid="autopilot-counters">{{ counters }}</span>
+      <span v-if="c.nextWake" class="ap-next mono-label" data-testid="autopilot-next-wake">{{ tl(`Next wake ${when(c.nextWake)}`) }}</span>
     </div>
     <form class="ap-form" @submit.prevent="save()">
       <label class="field-label" :for="`ap-goal-${c.project}`">{{ tl('Goal', 'Objectif') }}</label>
@@ -217,6 +218,7 @@ const counters = computed(() => props.c.limits
 .ap { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
 .ap p { margin: 0; overflow-wrap: anywhere; }
 .ap-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ap-next { flex: 1 1 100%; color: var(--muted); }
 .ap-head > .mono-label:not(.ap-count) { color: var(--text); }
 .ap-count { flex: 1; color: var(--muted); white-space: nowrap; }
 .ap-look-note { align-self: end; }

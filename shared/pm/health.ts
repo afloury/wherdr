@@ -36,3 +36,11 @@ export function healthSummary(tasks: Task[], seen: Record<string, TaskStatus>, n
   ].filter(Boolean)
   return lines.length ? [...lines, HEALTH_ACK] : []
 }
+
+// Sent again with the same lines at most this often.
+export const HEALTH_REPEAT_MS = 12 * 3_600_000
+// The last check sent: its lines and when.
+export interface HealthSent { lines: string[], at: number }
+// A summary whose every line the last one sent already had, within 12 h: skipped.
+export const healthRepeats = (lines: string[], sent: HealthSent | undefined, now: number) =>
+  !!sent && now - sent.at < HEALTH_REPEAT_MS && lines.every(l => sent.lines.includes(l))

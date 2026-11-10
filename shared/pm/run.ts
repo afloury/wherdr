@@ -24,6 +24,7 @@ export interface Task {
   state: 'todo' | 'working' | 'waiting'
   waiting?: string // why it waits for the user
   waitKind?: 'question' | 'permission' | 'auth' // what it waits for
+  answered?: number // when a coordinator's tell answered its question; cleared once the agent's question is gone (no second wake: autopilot.ts)
   mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
   ci?: { head: string, red: boolean } // its PR's CI at the task's commit, as the engine last read it
   queue?: number // its place in its project's merge queue (mergeQueue.ts), 1: merging now

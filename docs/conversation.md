@@ -11,6 +11,11 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   timestamps, search and infinite scroll back to the first message. Reading a conversation never
   touches the terminal, so it never resizes it. A command the agent proposes (shell code block,
   or inline `! command`) can be copied without its prompt.
+- **Following new messages**: a new or growing reply (typed in as it arrives, or shown at once)
+  keeps the view at the bottom only if you were at the bottom. Scroll up (wheel, touch, keyboard
+  or scrollbar) and the view stays where you are until you scroll back to the bottom or tap the
+  **↓** button; content above that changes height (images, folding) does not move it. A
+  conversation still opens at its last message.
 - **SVG diagrams**: complete code fences labelled `svg` render as isolated, theme-aware images.
   **Source / Preview**, beside **Copy** in the card header, switches the same card between the
   diagram and its original markup; **Copy** always copies that markup. Click or use Enter/Space
@@ -31,7 +36,10 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   other line stays code; file documents never show cards.
 - **Links into wherdr**: an agent sending you somewhere in wherdr gives its in-app address, as a
   Markdown link (`[Phone](#/settings?section=phone)`) or as inline code that is only the address
-  (`` `#/board?task=KEY-12` ``). Either opens the place in the app, on a computer and a phone,
+  (`` `#/board?task=KEY-12` ``). Either shows as an action button with an icon and a readable
+  label instead of the address: the link's text, or the place's name for inline code (*Open
+  Settings › Projects › KEY › Guards*, *Open Task KEY-12*, *Open Board › KEY › ui*). A tap opens
+  the place in the app, on a computer and a phone,
   without reloading; Back returns to the conversation. Other links open in a new tab, other
   inline code stays plain. The addresses: `#/`, `#/decisions`, `#/board` (with `?project=KEY`,
   `?tag=TAG` or `?task=ID`), `#/settings?section=<section>`, a tab of Settings › Conversation
