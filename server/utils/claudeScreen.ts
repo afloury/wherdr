@@ -25,6 +25,8 @@ const SEND_NOW = /^ctrl\+enter to send now$/i
 const RUNNING = /^Running…(?:\s*\(([^)]*)\))?$/
 const MORE = /^\+(\d+) lines?(?:\s*\(([^)]*)\))?$/
 const BACKGROUND = /^\(ctrl\+b to run in background\)$/i
+// Claude's activity line while it works ("✻ Fermenting… (17s · ↓ 230 tokens)").
+const ACTIVITY = /^[*✢✳✶✻✽·] \S/
 
 // "1m 14s" → ms.
 export function elapsedMs(s: string | null | undefined): number | null {
@@ -52,15 +54,33 @@ export function parseClaudeScreen(text: string | null | undefined, now = Date.no
   // Input field frame: we only read what is above it.
   const rules: number[] = []
   for (let i = lines.length - 1; i >= 0 && rules.length < 2; i--) if (RULE_RE.test(lines[i]!)) rules.push(i)
-  const end = rules.length === 2 ? rules[1]! : lines.length
+  let end = rules.length === 2 ? rules[1]! : lines.length
 
   // Queue: block of "❯" lines (and their continuations, the "ctrl+enter" hint) right against the frame.
-  let top = end
-  for (let i = end - 1; i >= 0; i--) {
-    const l = lines[i]!
-    if (!l.trim() || /^ {2}\S/.test(l)) continue
-    if (!l.startsWith('❯ ')) break
-    top = i
+  const queueAbove = (from: number) => {
+    let at = from
+    for (let i = from - 1; i >= 0; i--) {
+      const l = lines[i]!
+      if (/^ {2}⎿/.test(l)) break
+      if (!l.trim() || /^ {2}\S/.test(l)) continue
+      if (!l.startsWith('❯ ')) break
+      at = i
+    }
+    return at
+  }
+  let top = queueAbove(end)
+  // Claude Code 2.1.3xx draws it above its activity line instead, ending with the hint:
+  //   ❯ a queued message
+  //     ctrl+enter to send now
+  //   ✻ Fermenting… (17s · ↓ 230 tokens)
+  //     ⎿  Tip: …
+  if (top === end) {
+    let i = end - 1
+    while (i >= 0 && (!lines[i]!.trim() || /^ {2}\S/.test(lines[i]!) || ACTIVITY.test(lines[i]!)) && !SEND_NOW.test(lines[i]!.trim())) i--
+    if (i >= 0 && SEND_NOW.test(lines[i]!.trim())) {
+      const at = queueAbove(i + 1)
+      if (at <= i && lines[at]!.startsWith('❯ ')) { top = at; end = i + 1 }
+    }
   }
   const queued: string[] = []
   for (let i = top; i < end;) {
@@ -108,32 +128,6 @@ export function parseClaudeScreen(text: string | null | undefined, now = Date.no
     }
   }
   return { shell, sent, queued, ...capability }
-}
-
-// Claude Code status next to the input field ("✔ Update installed ·
-// Restart to update"…), right-aligned in the last lines. Only
-// known statuses are kept: the rest of these lines (tips, shortcuts,
-// status bar) is not reliable.
-const NOTICES = [
-  /✔?\s*Update installed\s*·\s*Restart to update\b/,
-  /Update available!?\s*(?:·\s*)?Run[^\n]*?update\b/i,
-  /✗?\s*Auto-update failed\b(?:\s*·[^\n]*)?/,
-]
-export function parseClaudeNotice(text: string | null | undefined): string | null {
-  if (!text) return null
-  const lines = text.split('\n').map(l => l.replace(/\s+$/, ''))
-  while (lines.length && !lines[lines.length - 1]) lines.pop()
-  // Dernier cadre du champ de saisie : on regarde de 3 lignes au-dessus jusqu'au bas.
-  let rule = -1
-  for (let i = lines.length - 1; i >= 0 && rule < 0; i--) if (RULE_RE.test(lines[i]!)) rule = i
-  const from = Math.max(0, (rule < 0 ? lines.length : rule) - 8)
-  for (let i = lines.length - 1; i >= from; i--) {
-    for (const re of NOTICES) {
-      const m = re.exec(lines[i]!)
-      if (m) return m[0].trim().replace(/\s+/g, ' ')
-    }
-  }
-  return null
 }
 
 // Claude Code's next-message suggestion: grayed-out text (SGR 2) alone in
