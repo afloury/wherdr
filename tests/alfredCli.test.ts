@@ -10,6 +10,8 @@ import { runAlfredCommand } from '../server/utils/alfredCli'
 import { ALFRED_TOKEN_FILE, answerProposal, issueAlfredToken } from '../server/utils/pmCoordinator'
 import { MAIN } from '../shared/pm/coordinator'
 import { createPmStore } from '../server/utils/pmStore'
+import { actOnCard } from '../server/utils/uiActions'
+import { patchSettings } from '../server/utils/settings'
 import { cliTokenCall } from '../server/utils/network'
 import { common } from '../shared/pm/examples'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
@@ -33,7 +35,10 @@ describe('parseAlfredCommand', () => {
     expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'codex'])).toEqual({ name: 'coordinator start', apply: false, key: 'WEB', program: 'codex' })
     expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--resume', '--apply'])).toEqual({ name: 'coordinator start', apply: true, key: 'WEB', resume: true })
     expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--resume', '--program', 'codex'])).toEqual({ error: expect.stringContaining('no --program') })
-    expect(parseAlfredCommand(['setting', 'set', 'theme', 'catppuccin-latte', '--apply'])).toEqual({ name: 'setting set', apply: true, key: 'theme', value: 'catppuccin-latte' })
+    expect(parseAlfredCommand(['setting', 'set', 'theme', 'catppuccin-latte', '--propose'])).toEqual({ name: 'setting set', propose: true, key: 'theme', value: 'catppuccin-latte' })
+    // Alfred never applies a setting itself.
+    expect(parseAlfredCommand(['setting', 'set', 'theme', 'nord', '--apply'])).toEqual({ error: expect.stringContaining('--propose puts a card the user applies') })
+    expect(parseAlfredCommand(['projects', '--propose'])).toEqual({ error: '--propose is for setting set only' })
     expect(parseAlfredCommand(['project', 'machine', 'add', 'web', 'Mac', '--clone', '~/project'])).toEqual({ name: 'project machine', apply: false, key: 'WEB', action: 'add', machine: 'Mac', clone: '~/project' })
     expect(parseAlfredCommand(['project', 'machine', 'remove', 'WEB', 'mac', '--apply'])).toEqual({ name: 'project machine', apply: true, key: 'WEB', action: 'remove', machine: 'mac' })
     expect(parseAlfredCommand(['project', 'machine', 'add', 'WEB', 'mac'])).toEqual({ error: 'usage: wherdr alfred project machine add <KEY> <machine> --clone <folder> [--apply]' })
@@ -164,13 +169,31 @@ describe('runAlfredCommand', () => {
     await expect(run('project', 'add', 'OUT', '--machine', '', '--path', '/opt/x')).rejects.toThrow('path: a folder inside the home folder')
   })
 
-  it('changes a setting after its dry run', async () => {
-    expect(await run('setting', 'set', 'theme', 'nord')).toMatchObject({ dryRun: true, change: ['setting theme: (default) → "nord"'] })
-    expect(await run('settings')).toMatchObject({ settings: {}, values: { theme: expect.arrayContaining(['nord', 'catppuccin-latte']), showQuotas: ['1', '0'] } })
-    await run('setting', 'set', 'theme', 'nord', '--apply')
-    expect(await run('settings')).toMatchObject({ settings: { theme: 'nord' } })
-    expect(await run('setting', 'set', 'theme', 'nord')).toEqual({ unchanged: true, theme: 'nord' })
-    await expect(run('setting', 'set', 'theme', 'light', '--apply')).rejects.toThrow('light is not a value of theme')
+  it('proposes a setting as a card the user applies or cancels, only in the user\'s turn', async () => {
+    const turn = async (kind: 'user' | 'wake') => store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind, at: Date.now(), said: 'show questions as a list' } })
+    expect(await run('setting', 'set', 'replyStyle', 'list')).toMatchObject({ dryRun: true, change: ['setting replyStyle: (default) → "list"'] })
+    await turn('wake')
+    await expect(run('setting', 'set', 'replyStyle', 'list', '--propose')).rejects.toThrow('never in a wake')
+    await turn('user')
+    const out = await run('setting', 'set', 'replyStyle', 'list', '--propose') as { note: string }
+    const card = (await store.coordinator(MAIN))!.cards![0]!
+    expect(out.note).toContain(`action ${card.id}`)
+    expect(card).toMatchObject({ kind: 'setting', label: 'Conversation › Reply style', setting: { key: 'replyStyle', after: 'list', said: 'show questions as a list', target: 'conversation.reply-style' } })
+    expect(await run('settings')).toMatchObject({ settings: {} }) // nothing changed yet
+    const act = (id: string, cancel = false) => actOnCard({ store, settingsFile: path.join(dir, 'settings.json') } as never, id, undefined, cancel)
+    await expect(actOnCard({ store } as never, card.id, 'Bearer abc')).rejects.toThrow(/never a token/)
+    expect(await act(card.id)).toMatchObject({ state: 'done', outcome: { text: 'Applied by you' } })
+    expect(await run('settings')).toMatchObject({ settings: { replyStyle: 'list' } })
+    // A second proposal over the old value goes stale once the setting moved; a cancelled one runs nothing.
+    await run('setting', 'set', 'theme', 'nord', '--propose')
+    const theme = (await store.coordinator(MAIN))!.cards![0]!.id
+    expect(await act(theme, true)).toMatchObject({ state: 'dismissed' })
+    expect(await act(theme)).toMatchObject({ state: 'dismissed' })
+    await run('setting', 'set', 'replyStyle', 'icon', '--propose')
+    const back = (await store.coordinator(MAIN))!.cards![0]!.id
+    await patchSettings({ replyStyle: 'text' }, { file: path.join(dir, 'settings.json') })
+    expect(await act(back)).toMatchObject({ state: 'stale' })
+    expect(await run('settings')).toMatchObject({ settings: { replyStyle: 'text' } })
   })
 
   it('starts a project coordinator with the user\'s first offered agent that can run it, no model', async () => {

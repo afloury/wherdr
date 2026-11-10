@@ -77,6 +77,14 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   own project's tasks. A button lasts a day, and a new one for the same task and action replaces
   the older one. An agent's token cannot click (`/api/ui/act` refuses it); without a passkey,
   though, any program on this computer reaches the app's API, as the task sheet's buttons do.
+- **Setting changes Alfred proposes**: Alfred never changes a setting itself, even after a yes in
+  text. It proposes one (`wherdr alfred setting set <key> <value> --propose`) and its reply carries
+  a card: *Setting change proposed · by Alfred*, the setting (*Conversation › Reply style*), before
+  → after (*default → list*) and the message of yours it answers. *Show me* opens Settings on that
+  setting and highlights it; *Apply* changes it from your session (never a token); *Cancel* drops
+  it. The card then says *Applied by you · 14:02* or *Cancelled by you*. If the setting changed
+  since (in Settings, on another device), it says so and applies nothing. Only in a turn that
+  follows your message, never in a wake; a new proposal for the same setting replaces the older.
 - **Wakes**: in a coordinator's conversation, a wake (Autopilot, Health check, Engine, Incident,
   Step check) is a compact muted row, not one of your bubbles, with the coordinator's answer under
   it; routine runs fold into one row. See
