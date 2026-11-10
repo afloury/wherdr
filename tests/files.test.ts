@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { DOWNLOAD_BYTES, READ_SCRIPT, attachmentHeader, isPdf, isVideo, cleanRelative, listFiles, readFileBytes, readFilePreview, readWrittenBytes, readWrittenPreview } from '../server/utils/files'
+import { DOWNLOAD_BYTES, READ_SCRIPT, attachmentHeader, writtenTarget, isPdf, isVideo, cleanRelative, listFiles, readFileBytes, readFilePreview, readWrittenBytes, readWrittenPreview } from '../server/utils/files'
 import type { Machine } from '../server/utils/machines'
 import { samplePdf } from './e2e/samplePdf.mjs'
 
@@ -166,6 +166,7 @@ describe('files named in a conversation', () => {
     elsewhere = mkdtempSync(path.join(tmpdir(), 'wherdr-elsewhere-'))
     writeFileSync(path.join(elsewhere, 'other.txt'), 'nope\n')
     symlinkSync(path.join(elsewhere, 'other.txt'), path.join(base, 'leaves-home.txt'))
+    symlinkSync('/etc/hosts', path.join(base, 'to-etc'))
   })
 
   it('previews a path relative to the agent folder, under ~ or absolute, without its :line', async () => {
@@ -183,6 +184,25 @@ describe('files named in a conversation', () => {
     await expect(readWrittenBytes(home(), root, '~/leaves-home.txt')).rejects.toMatchObject({ code: 'outside' })
     await expect(readWrittenPreview(home(), root, '~/')).rejects.toMatchObject({ code: 'not_file' })
     await expect(readWrittenPreview(home(), root, 'src')).rejects.toMatchObject({ code: 'not_file' })
+  })
+
+  it('opens what the chosen level allows (Settings › Security)', async () => {
+    const all = { level: 'all', protected: false } as const
+    const temp = { level: 'temp', protected: false } as const
+    // Everything the user can read, outside home too, through a symlink as well.
+    expect(await readWrittenPreview(home(), root, path.join(elsewhere, 'other.txt'), all)).toMatchObject({ kind: 'text', text: 'nope\n' })
+    expect(await readWrittenBytes(home(), root, '~/leaves-home.txt', all)).toMatchObject({ body: Buffer.from('nope\n') })
+    expect(writtenTarget(home(), root, '/etc/hosts', all)).toMatchObject({ root: '/', rel: 'etc/hosts' })
+    // Home and the agents' temporary folders: an agent's scratchpad, not /etc.
+    const remote = { exec: null, home: '/home/user' } as unknown as Machine
+    expect(writtenTarget(remote, '/tmp/claude-1000/x', 'scratchpad/a.md', temp)).toMatchObject({ root: '/tmp', rel: 'claude-1000/x/scratchpad/a.md' })
+    expect(writtenTarget(remote, null, '/var/folders/ab/T/report.pdf', temp)).toMatchObject({ root: '/var/folders', rel: 'ab/T/report.pdf' })
+    expect(writtenTarget(remote, null, '~/a.md', temp)).toMatchObject({ root: '/home/user', rel: 'a.md' })
+    expect(() => writtenTarget(remote, null, '/etc/hosts', temp)).toThrow(expect.objectContaining({ code: 'outside_home' }))
+    // A symlink that leaves the allowed folders, resolved on the machine.
+    await expect(readWrittenPreview(home(), root, '~/to-etc', temp)).rejects.toMatchObject({ code: 'outside' })
+    // Home only: the default of these functions.
+    await expect(readWrittenPreview(home(), root, '~/to-etc')).rejects.toMatchObject({ code: 'outside' })
   })
 
   it('downloads whole files, binary and past the preview limit', async () => {

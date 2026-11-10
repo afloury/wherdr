@@ -1,0 +1,12 @@
+› Rename the config loader
+
+
+• Explored
+  └ Read config.ts
+
+■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/feedback` to report the issue.
+
+
+› Ask Codex to do anything
+
+  gpt-6 medium · 96% context left · ~/projects/demo-app
