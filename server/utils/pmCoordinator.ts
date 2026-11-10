@@ -6,7 +6,7 @@ import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
-import { MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
+import { MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, specChangeRefusal, specChangedText, specDiff, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type ProposalOutcome, type Turn } from '../../shared/pm/coordinator'
 import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
@@ -287,6 +287,10 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
     }
     case 'tell': {
       const task = await taskOf(cmd.task)
+      const specWhy = cmd.spec ? specChangeRefusal(turn) : undefined
+      if (specWhy) throw new HerdrError('refused', specWhy)
+      // --spec: the message is also a spec note, for the reviewer's next round.
+      const noted = (x: Task) => (cmd.spec ? store.logTask({ ...x, specNotes: [...(x.specNotes ?? []), { at: Date.now(), by, text: cmd.text }] }, by, `spec change: ${cmd.text.slice(0, 300)}`) : x)
       const holder = t && !task.step?.done ? currentStep(planOf(t, task, p), task.step ?? initialState())?.holder : undefined
       const { role, run, released } = tellTarget(await store.runs(), task.id, holder, cmd.to, !!cmd.fix)
       // A failed step action handed over with a fix: the worker reports it done, then the engine tries it again.
@@ -306,7 +310,7 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
         if (why) throw new HerdrError('refused', why)
         const started = await reviveWorker(deps, task.id, cmd.fix ? `a fix of the coordinator: ${cmd.reason}` : 'a message of the coordinator', said)
         if (started?.state !== 'working') throw new HerdrError('refused', 'The task\'s worker could not start again now (short on memory?): try again later')
-        const told = await handed(await store.logTask(fixed(started), by, `told the worker, started again${fixNote}: ${cmd.text.slice(0, 300)}`))
+        const told = await noted(await handed(await store.logTask(fixed(started), by, `told the worker, started again${fixNote}: ${cmd.text.slice(0, 300)}`)))
         return { task: t ? await noteBack(store, told, planOf(t, told, p), by, `the ${by} told the worker`) : told, sentTo: 'worker (started again with your message)' }
       }
       if (!run?.terminal) throw new HerdrError('not_found', `The task's ${role} is not running${cmd.to ? '' : ` (--to ${role === 'worker' ? 'reviewer' : 'worker'} picks the other agent)`}`)
@@ -315,7 +319,7 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
       const why = tellRefusal({ ...task, state: live ? 'waiting' : task.state, waitKind: live ?? task.waitKind }, wake, fix)
       if (why) throw new HerdrError('refused', why)
       await deps.call('terminal.send', { terminal: run.terminal, text: said }, 30000)
-      const saved = await handed(await store.logTask(fixed(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task), by, `told the ${role}${fixNote}: ${cmd.text.slice(0, 300)}`))
+      const saved = await noted(await handed(await store.logTask(fixed(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined } : task), by, `told the ${role}${fixNote}: ${cmd.text.slice(0, 300)}`)))
       return { task: t ? await noteBack(store, saved, planOf(t, saved, p), by, `the ${by} told the ${role}`) : saved, sentTo: role }
     }
     case 'read': {
@@ -357,6 +361,25 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
       const started = await startTask(deps, task.id, { by, ...(on !== undefined ? { on } : {}) })
       if (started.sameFiles) return { task: started, held: `${sameFilesText(started.sameFiles)}: it starts by itself once that task no longer touches them` }
       return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`), ...said }
+    }
+    case 'task edit': case 'task note': {
+      const why = specChangeRefusal(turn)
+      if (why) throw new HerdrError('refused', why)
+      const task = await taskOf(cmd.task), at = Date.now()
+      const next = cmd.name === 'task edit'
+        ? { ...task, title: cmd.title ?? task.title, description: cmd.description ?? task.description }
+        : { ...task, specNotes: [...(task.specNotes ?? []), { at, by, text: cmd.text }] }
+      const saved = cmd.name === 'task edit'
+        ? await store.logTask(next, by, `edited the spec (${cmd.reason}):\n${specDiff(task, next)}`)
+        : await store.logTask(next, by, `spec change: ${cmd.text.slice(0, 300)}`)
+      // Its running agents read it at once; the next ones get it in their instructions.
+      const what = cmd.name === 'task note' ? cmd.text
+        : [cmd.title !== undefined && `its title is now "${cmd.title}".`, cmd.description !== undefined && `its description is now:\n\n${cmd.description}`].filter(Boolean).join('\n')
+      const told: string[] = []
+      for (const r of (await store.runs()).filter(r => r.task === task.id && r.state !== 'ended' && r.terminal)) {
+        await deps.call('terminal.send', { terminal: r.terminal, text: showIds(projects, specChangedText(what)) }, 30000).then(() => told.push(r.role), () => {})
+      }
+      return { task: saved, told }
     }
     case 'task check': return checkOnGithub(deps, (await taskOf(cmd.task)).id, by)
     case 'task stop': {

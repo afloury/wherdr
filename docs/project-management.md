@@ -444,6 +444,27 @@ Keep the board busy starts to-do tasks in this order, the merge queue takes
 approved merges in it when several are ready at once, and `wherdr pm list`
 returns tasks in it.
 
+### Spec changes
+
+When you change your mind about a task while it runs, the coordinator records
+the change in the task's spec, so the reviewer reviews against what you want
+now, not the first description:
+
+- `wherdr pm task edit <task> [--title "<text>"] [--description "<text>"]
+  --reason "<one sentence>"` rewrites the title or the description. The
+  task's log keeps the reason and a short diff of the old and new text.
+- `wherdr pm task note <task> "<text>"` adds a dated spec change under the
+  description.
+- `wherdr pm tell <task> "<text>" --spec` tells the agent and records the same
+  text as a spec change.
+
+The worker's and the reviewer's instructions give the description, then every
+spec change, newest last, with the rule *the latest note overrides the
+description where they disagree*. A running agent of the task is told at once;
+the next ones read it from their step or review round. The task sheet's
+Description tab shows the spec changes under the description. The coordinator
+makes these changes only in a turn that comes from you, never in a wake.
+
 ### Tasks that touch the same files
 
 Tasks that change the same files do not run at the same time. At the start of
