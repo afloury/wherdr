@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// A `task <ID>` line of a `wherdr` block in a chat (utils/wherdrBlock.ts): the
+// A `task <ID>` line of a `wherdr` block in a chat (utils/markdown.ts): the
 // sidebar's task row, live from the board, so it shows where the task stands
 // now, whatever the message said. A tap opens the task's sheet over the chat.
 import { taskRow } from '#shared/pm/board'

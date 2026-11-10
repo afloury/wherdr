@@ -9,7 +9,7 @@
 // task at its merge step or archived with a PR (what it found said under the
 // buttons, with the PR and, for a PR closed unmerged, Archive), and Delete for
 // a task never started (confirmed). Those stay at the top; below, tabs (the app's
-// segmented style) for the rest, only the open one scrolling: Description (the
+// segmented style) for the rest, in the sheet's one scroll: Description (the
 // text in Markdown, the chat's safe renderer, no raw HTML; tags and links, the PR among them), Plan (each step with its
 // screenshots), History (the hand-offs between its agents and the user,
 // TaskHistory), Log (the raw lines).
@@ -17,7 +17,7 @@ import { canStart, canStop, cardStatus, linkLabel, mergeWaits, statusText, type 
 import { canCheckGithub, type GhCheck } from '#shared/pm/ghCheck'
 import type { Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
-import type { Task } from '#shared/pm/run'
+import { reviewSwitch, type Task } from '#shared/pm/run'
 import { shotMode } from '#shared/pm/shots'
 import { timesText } from '#shared/pm/times'
 import type { Choice } from '#shared/pm/verdict'
@@ -39,6 +39,9 @@ const rounds = (id: string) => props.card.state?.rounds[id] ?? 0
 const shots = (id: string) => props.card.state?.shots?.[id] ?? []
 // The sets a rework after the review replaced.
 const earlier = (id: string) => props.card.state?.earlierShots?.[id] ?? []
+// The fallback took the last review (the review agent out of quota): said on the review step it holds now or held last.
+const switched = computed(() => reviewSwitch(props.card.log))
+const switchAt = computed(() => props.card.plan.findLastIndex((s, i) => s.holder === 'reviewer' && (done.value || i <= at.value)))
 // Where its PR and merge stand (the card's line), with the full time and the approval's date.
 const status = computed(() => { const s = cardStatus(props.card); return s && { ...s, text: statusText(s, fmtDateTime, true) } })
 
@@ -181,6 +184,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
               <summary>{{ tl('Instructions', 'Consignes') }}</summary>
               <p class="task-desc">{{ s.text }}</p>
             </details>
+            <small v-if="switched && i === switchAt" class="muted" data-testid="review-switch">{{ switched }}</small>
             <small v-for="[k, v] in proofs(s.id)" :key="k" class="muted">{{ k }}: <a v-if="/^https?:\/\//.test(v)" :href="v" target="_blank" rel="noopener">{{ v }}</a><template v-else>{{ v }}</template></small>
             <TaskShots v-if="shots(s.id).length" :task="card.id" :shots="shots(s.id)" :mode="shotMode(s)" />
             <details v-if="earlier(s.id).length" data-testid="shots-earlier">
@@ -204,8 +208,9 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 </template>
 
 <style scoped>
-/* The whole sheet's body (a flex column, main.css): the top stays, only the tab's panel scrolls. */
-.task-sheet { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; padding: 0 16px 16px; }
+/* One scroll, the sheet's body (a flex column, main.css): the sheet fills it
+   and grows with its tab, whose panel takes its natural height. */
+.task-sheet { display: flex; flex-direction: column; gap: 12px; flex: 1 0 auto; padding: 0 16px 16px; }
 .task-sheet-top { display: flex; flex-direction: column; gap: 10px; flex: none; }
 .task-sheet p { margin: 0; }
 .task-tabs { flex: none; }
@@ -215,7 +220,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-status.ok { color: var(--done); }
 .task-check { display: grid; gap: 4px; }
 .task-times { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-.task-panel { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; }
+.task-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .task-desc { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
 /* Headings shown small: a description is not a document. */
 .task-md { flex: none; overflow-wrap: anywhere; color: var(--text-2); }

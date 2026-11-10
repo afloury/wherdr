@@ -62,7 +62,8 @@ the name (with a **Public** badge for a public repository), the key, the machine
 and the folder. *Add project* opens the setup window on a new project; *Open the
 board* goes to the board. A row opens the
 project's sheet, with five tabs: General, Workflow, Guards, Automations and
-Autopilot. Its ⋯ menu removes the project from wherdr, after a confirmation:
+Autopilot; on a computer it is a wide window, and its General fields pair up
+side by side (name and key, worker and reviewer). Its ⋯ menu removes the project from wherdr, after a confirmation:
 its folder, branches and task worktrees stay on the machine.
 
 ### General
@@ -91,7 +92,8 @@ its folder, branches and task worktrees stay on the machine.
   request link), wherdr follows that branch: its pushes, PR and merge checks
   use it, never the old one.
 - **Agents**: the worker and the reviewer its tasks start with, each with an
-  optional model (empty: the agent's default).
+  optional model (empty: the agent's default), and the reviewer's optional
+  **Fallback** (see [Reviewer fallback](#reviewer-fallback)).
 - **Repository**: public or private, as wherdr found it (*Check again*) or as
   you set it. A public repository gets the coordinator's public-repository rules.
 - **Based on**: the template the workflow was copied from and its version, for
@@ -216,6 +218,38 @@ are outlined), who proposed it, your request with its
 time and *Go to message* (back to it in the conversation), *Accept*, *Refuse*
 and *See all changes* (the review). Once answered, the card shows the outcome, by whom and
 when.
+
+#### Reviewer fallback
+
+The workflow's `prefs` (template, task type or task, the nearest wins) say
+which agents a task uses: `agent` and `model` for the worker, `reviewAgent`
+and `reviewModel` for the reviewer (another model than the worker's, or
+`"same"`: a fresh session of the worker's model, with the worker's agent).
+`reviewFallbackAgent` and `reviewFallbackModel`, always set together, name the
+reviewer to start instead when the review agent's account is out of quota on
+the task's machine. Any pair works, and nothing is picked for you:
+
+```json
+{ "agent": "claude", "model": "claude-opus-5-5",
+  "reviewAgent": "codex", "reviewModel": "gpt-6.1-sol",
+  "reviewFallbackAgent": "claude", "reviewFallbackModel": "same" }
+```
+
+or a Claude reviewer with a Codex fallback:
+`"reviewModel": "claude-sonnet-5-5", "reviewFallbackAgent": "codex", "reviewFallbackModel": "gpt-6.1-sol"`.
+The fallback follows the reviewer's rules; *Save* refuses one that breaks them,
+or one of the two prefs without the other.
+
+Before it starts a reviewer, wherdr reads the review agent's account (the
+reading of the home screen and pacing): at its limit and not yet reset, the
+fallback reviews instead. A reviewer that hits its limit during a review (an
+*account limit* [incident](#why-agents-are-gone)) is replaced at once by the
+fallback, which reviews from the start. Each switch is in the task's log
+(*review: Codex out of quota until 14:52, reviewed by claude claude-opus-5-5*)
+and on the review step of the task sheet's Plan. The next review uses the
+review agent again once its quota is back. Leave both out (as in the example
+templates) for no fallback: nothing changes, the review waits for the review
+agent.
 
 ### Guards
 
@@ -352,7 +386,18 @@ weight that differs from the task type's.
 ### Who sends a wake
 
 A wake is a message wherdr sends the coordinator; its first line names who
-sends it, and the conversation shows a small label of that kind above it:
+sends it. The conversation shows it apart from your messages, as a compact
+muted row across the column: the kind as a small coloured tag, its first
+reason (*Scheduled wake*, *WHR-9: stuck: …*) and its time; a tap opens the
+full text and the coordinator's whole turn. That turn ends at its own end,
+or at your next message or `!`/`/` command, which show as usual below it.
+Once that turn is over, the coordinator's last answer in it sits under the row, smaller and muted, two lines at
+most. Consecutive routine wakes (no incident, nothing changed: no file edit
+nor `wherdr pm` command beyond `ack`, `read`, `list`, `show`, `incidents`,
+`help`; an answer that asks nothing) fold into one row, *3 routine checks,
+08:00–11:00*, that opens on tap. An incident, or a wake whose answer asks you
+something, keeps its row (in its stronger colour); an answer that asks you
+stays a full reply, with its answer buttons:
 
 - **Autopilot**: the autopilot's scheduled wakes, what needs judgment (an
   agent's question that is not a permission request, the choice after N review
@@ -367,6 +412,7 @@ sends it, and the conversation shows a small label of that kind above it:
   tasks waiting for you, tasks stalled for over an hour, and machines idle
   while to-do tasks wait. When nothing is wrong the coordinator acks it with no
   further work; with nothing at all to report, no wake is sent.
+- **Incident**: [the incident wake](#the-incident-wake).
 
 Waking the coordinator costs a turn with its whole context, so with the
 autopilot on and its events left off, it wakes only for these: an agent's
@@ -545,7 +591,7 @@ waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
 *Open the agent* or *Open the reviewer*, *Stop*, *Delete…*). Step times start
 with this version: an older task shows only its total. Below, tabs: **Description** (the text rendered as Markdown, as in the chat but with no raw HTML; tags, links and the PR),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
-and screenshots), **History** and **Log**. A refused merge says why under its button.
+and screenshots), **History** and **Log**, all in the sheet's one scroll. A refused merge says why under its button.
 
 **History** reads the task as a conversation, oldest first: the worker's *Done*
 (its closing report on its last one), the reviewer's *Sent back* (the findings,
@@ -595,8 +641,8 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   minor), each in Markdown, folded to a few lines with *Show more* (the
   task's [summary](#task-sheet) above the worker's note), full
   width, one above the other (on a phone, *Worker* / *Reviewer* tabs above
-  one note); then its screenshots large (swipe between them, tap
-  one to zoom; each is labelled phone or desktop), then
+  one note); then its screenshots large (swipe between them on
+  the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop), then
   *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
   A step you end (*Deployed*, …) shows the same two notes under its badge.
   When the agent reworks the task after its review (new commits since the
@@ -627,7 +673,7 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   refused) has *Try again* at the top of the sheet, which runs it again.
 
 On a phone, the To do buttons (*Merge*, the step's button, *Open the PR*,
-*Start*, *Open the agent*) stay pinned at the bottom of the tab while its
+*Start*, *Open the agent*) stay pinned at the bottom of the sheet while its
 content scrolls, so they are always in reach above the home bar.
 
 ### Report a problem

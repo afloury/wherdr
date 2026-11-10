@@ -1,6 +1,6 @@
 // WHR-202: a `wherdr` block's `task <ID>` lines, and the row a task shows as.
 import { describe, expect, it } from 'vitest'
-import { parseWherdrBlock } from '../app/utils/wherdrBlock'
+import { parseWherdrBlock } from '../app/utils/markdown'
 import { taskRow, type Card } from '../shared/pm/board'
 
 describe('wherdr blocks', () => {

@@ -14,6 +14,8 @@ import { appRoute, isAppLink, linkedTask } from '#shared/appLinks'
 import type { StatusKind } from '#shared/statusBlock'
 import StatusCard from './StatusCard.vue'
 import UiOpenCard from './UiOpenCard.vue'
+import UiShowCard from './UiShowCard.vue'
+import ActionCard from './ActionCard.vue'
 import { h, render } from 'vue'
 
 // `cipher` must default to undefined, not false: Vue casts a missing Boolean
@@ -26,10 +28,10 @@ const el = ref<HTMLElement | null>(null)
 
 let plan: RevealPlan | null = null
 let raf = 0
-// Reveal the SVG card atomically so typing never rewrites its source or controls.
+// Reveal the SVG card and the choice buttons atomically so typing never rewrites their source or controls.
 const atomic = (n: RevealNode) => {
   const classes = (n as unknown as Element).classList
-  return Boolean(classes?.contains('code-head') || classes?.contains('svg-block') || classes?.contains('wherdr-block'))
+  return Boolean(classes?.contains('code-head') || classes?.contains('svg-block') || classes?.contains('w-choices') || classes?.contains('wherdr-block'))
 }
 const keep = (n: RevealNode) => /^T[DH]$/.test((n as unknown as Element).tagName || '')
 
@@ -217,6 +219,22 @@ function mountCards() {
   // An agent's `ui open` card, kept in its reply: no ×, it opens the place.
   for (const slot of el.value?.querySelectorAll<HTMLElement>('.open-slot') ?? []) {
     const card = h(UiOpenCard, { event: { type: 'ui-open', pane: '', link: slot.dataset.link ?? '', by: '' }, kept: true })
+    card.appContext = app
+    slot.textContent = ''
+    render(card, slot)
+    slots.push(slot)
+  }
+  // What an agent showed with `ui show`: a tap shows it again.
+  for (const slot of el.value?.querySelectorAll<HTMLElement>('.show-slot') ?? []) {
+    const card = h(UiShowCard, { event: { type: 'ui-show', pane: '', what: slot.dataset.what === 'shots' ? 'shots' : 'file', arg: slot.dataset.arg ?? '', by: '' }, kept: true })
+    card.appContext = app
+    slot.textContent = ''
+    render(card, slot)
+    slots.push(slot)
+  }
+  // An agent's `ui action` button: only the user's click runs it.
+  for (const slot of el.value?.querySelectorAll<HTMLElement>('.action-slot') ?? []) {
+    const card = h(ActionCard, { id: slot.dataset.action ?? '' })
     card.appContext = app
     slot.textContent = ''
     render(card, slot)

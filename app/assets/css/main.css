@@ -293,6 +293,15 @@
    the home bar, no need to add the bottom safe area. */
 body.short-bottom { --safe-bottom: 0px; }
 
+/* Scrollbars in the app's style everywhere (docs/design.md): thin, in the
+   theme's line color, never the browser default. Bars hidden on purpose
+   (strips of chips, the key bar) keep `scrollbar-width: none`. */
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
 /* ---------- Headers ---------- */
 .top {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -911,6 +920,12 @@ body.short-bottom { --safe-bottom: 0px; }
 .ui-open-place .iconify { flex: none; color: var(--accent); }
 .ui-open-x { display: grid; place-items: center; width: 44px; flex: none; border-left: 1px solid var(--line); color: var(--muted); cursor: pointer; }
 .ui-open-x:hover { color: var(--text); }
+/* The "questions unanswered" chip floats above the message field: room for it under the card. */
+.ui-open-card:has(+ .composer .composer-ask-anchor) { margin-bottom: 36px; }
+.ui-show-top { display: flex; align-items: stretch; flex: none; min-height: 56px; border-bottom: 1px solid var(--line); }
+.ui-show-head { display: flex; flex-direction: column; justify-content: center; gap: 3px; flex: 1; min-width: 0; padding: 8px 16px; }
+.ui-show-head h2 { font: 700 16px/1.2 var(--sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-show-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 
 /* ---------- Terminal ---------- */
 #termWrap { position: relative; flex: 1; min-height: 0; padding: 6px 4px 0 6px; background: var(--bg); }
@@ -1866,7 +1881,7 @@ body.kb .composer { padding-bottom: 8px; }
 /* Keep wrapped titles above the scrolling body when the sheet reaches its height limit. */
 .hw-sheet > [data-slot="header"] { padding: 4px 0 10px; min-height: 0; flex: none; border: 0; order: 1; display: flex; align-items: center; justify-content: space-between; }
 .hw-sheet > [data-slot="body"] { padding: 0; order: 2; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; scroll-padding-bottom: 16px; }
-/* A body that lays its content out on the sheet's height (a task's tabs). */
+/* A body whose content fills the sheet's height (a task's), still its one scroll. */
 .hw-sheet > [data-slot="body"]:has(> .task-sheet) { display: flex; flex-direction: column; }
 .hw-sheet-title { min-width: 0; font: 850 24px/1 var(--display); letter-spacing: -.035em; word-spacing: .06em; color: var(--text); overflow-wrap: anywhere; }
 .hw-sheet [data-slot="close"] { position: static; inset: auto; }
@@ -2640,6 +2655,9 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   #settings.settings-panel { left: auto; right: 0; width: var(--settings-panel); border-left: 1px solid var(--line); z-index: 4; }
   body:has(#settings.settings-panel) :is(#agent, #placeholder, #tabview) { right: var(--settings-panel); }
   .settings-panel .settings-top h2 { flex: 1; }
+  /* What an agent showed with `ui show` (UiShowPanel.vue): the same column, in place of Settings. */
+  #ui-show { position: fixed; top: 0; bottom: 0; right: 0; width: var(--settings-panel); display: flex; flex-direction: column; background: var(--bg); border-left: 1px solid var(--line); z-index: 4; }
+  body:has(#ui-show) :is(#agent, #placeholder, #tabview) { right: var(--settings-panel); }
   .settings-panel .settings-nav { width: 57px; padding: 16px 6px; }
   .settings-panel .settings-nav-item { justify-content: center; padding: 0; }
   .settings-panel .settings-nav-item span:not(.iconify) { display: none; }
@@ -2821,8 +2839,11 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   }
   .hw-sheet.wide { width: 680px; }
   .hw-sheet.tall { height: auto; max-height: 86vh; }
-  /* A task's sheet: wider, and one height whatever its open tab (TaskSheet.vue). */
-  .hw-sheet:has(.task-sheet) { width: min(780px, 92vw); height: min(820px, 86vh); }
+  /* A task's sheet: wider, and one height whatever its open tab (TaskSheet.vue);
+     the sheet's body is its only scroll. */
+  .hw-sheet:has(.task-sheet) { width: min(920px, 92vw); height: min(820px, 86vh); }
+  /* A project's sheet: as wide, its height from its tab (ProjectSheet.vue). */
+  .hw-sheet:has(.project-sheet) { width: min(920px, 92vw); }
   /* New › Project: room for folder paths and the repository list (NewProjectForm.vue). */
   .hw-sheet:has(.coord-new) { width: min(760px, 92vw); }
   .hw-sheet.full { width: min(1100px, 92vw); height: 86vh; max-height: 86vh; padding-top: 20px; }
@@ -2894,14 +2915,29 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 .msg-quote:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); border-left-color: var(--accent); }
 .msg-quote-time { flex: none; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; color: var(--dim); }
 .msg-quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* A wake's sender (Autopilot, Step check, Engine, Health check), above its bubble. */
+/* A wake: not the user's. One compact row across the column (kind tag, first
+   line, time), the coordinator's answer under it, smaller and muted. */
+.wake, .wake-run { display: flex; flex-direction: column; min-width: 0; margin-top: 6px; color: var(--muted); }
+.wake-row, .wake-run { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 28px; padding: 2px 0; text-align: left; cursor: pointer; }
+.wake-run { flex-direction: row; font: 500 10.5px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.wake-head { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.wake-run .wake-head { font-size: inherit; }
+.wake-time { flex: none; font: 400 10.5px/1 var(--mono); color: var(--dim); letter-spacing: .04em; }
+.wake-chev { flex: none; width: 13px; height: 13px; }
+.wake-row:hover .wake-head, .wake-run:hover, .wake-row:focus-visible .wake-head, .wake-run:focus-visible { color: var(--text-2); outline: none; }
+.wake-answer { padding-left: 10px; border-left: 1px solid var(--line); font-size: 12.5px; line-height: 1.45; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.wake-text { margin: 4px 0 2px; padding: 8px 10px; font: 400 12px/1.5 var(--mono); color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface); border: 1px solid var(--line-soft); }
+/* An incident, or a wake whose answer asks the user: its stronger colour. */
+.wake.loud .wake-head { color: var(--text); }
+.wake.loud .msg-wake { color: var(--wake, var(--accent)); border-color: var(--wake, var(--accent)); }
 .msg-wake {
-  align-self: flex-end; padding: 2px 6px; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  flex: none; padding: 1px 5px; font: 500 9.5px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase;
   color: var(--text-2); border: 1px solid var(--line); border-left: 2px solid var(--wake, var(--accent));
 }
 .msg-wake[data-kind="step"] { --wake: var(--working); }
 .msg-wake[data-kind="engine"] { --wake: var(--blocked); }
 .msg-wake[data-kind="health"] { --wake: var(--done); }
+.msg-wake[data-kind="incident"] { --wake: var(--danger); }
 /* Floating "Reply" button near a selected passage. */
 .sel-reply {
   position: fixed; z-index: 60; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
@@ -3097,6 +3133,20 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .q-trow { min-height: 40px; }
   .q-all { min-height: 36px; }
 }
+/* Choice buttons (a `choices` line of a `wherdr` block, utils/markdown.ts):
+   they wrap, never scroll; a tap sends the option. Once answered, or in an
+   older message, greyed with the answer given pressed. */
+.w-choices { display: flex; flex-wrap: wrap; gap: 6px; max-width: 620px; margin: .2em 0 .9em; }
+.q-choice {
+  min-height: 36px; max-width: 100%; padding: 6px 12px; font: inherit; font-size: 13px; line-height: 1.3; text-align: left;
+  overflow-wrap: anywhere; color: var(--text); background: none; border: 1px solid var(--line); border-left: 2px solid var(--accent);
+  border-radius: 0; cursor: pointer;
+}
+.q-choice:is(:hover, :focus-visible):not(:disabled) { border-color: var(--accent); background: var(--surface-2); outline: 0; }
+.q-choice:disabled { color: var(--dim); border-left-color: var(--line); cursor: default; }
+.q-choice:disabled[aria-pressed="true"] { color: var(--text-2); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.q-choice:disabled[aria-pressed="true"]::before { content: "✓ "; color: var(--accent); }
+@media (pointer: coarse) { .q-choice { min-height: 44px; } }
 /* Room for it under the last message, as long as that message asks something. */
 .chat-list.asking { padding-bottom: 36px; }
 .composer-ask-anchor { position: relative; height: 0; z-index: 3; }

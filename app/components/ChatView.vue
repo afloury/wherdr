@@ -19,7 +19,7 @@ import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
 import { findReplyOrigin, parseReply, type ReplyTarget } from '#shared/replyQuote'
-import { messageId, messageOf, messageRef, pointRef, type Reference } from '#shared/reference'
+import { messageId, messageOf, messageRef, pointRef, refLine, refsIn, sameRef, type Reference } from '#shared/reference'
 import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { WAKE_LABEL, wakeKindOf, type WakeKind } from '#shared/pm/wakes'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
@@ -32,7 +32,7 @@ const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 // A version of a reply replaced while the agent writes takes its question marks with it.
 onMdDropped(forgetReply)
 const route = useRoute()
-const emit = defineEmits<{ gotoTerm: [], restored: [], quote: [], answered: [caret: number], unanswered: [count: number], sent: [queued: QueuedMessage | null] }>()
+const emit = defineEmits<{ gotoTerm: [], restored: [], quote: [], answered: [caret: number], unanswered: [count: number], sent: [queued: QueuedMessage | null], choose: [text: string] }>()
 const searchOpen = defineModel<boolean>('search', { default: false })
 
 const box = ref<HTMLElement | null>(null)
@@ -465,15 +465,16 @@ const NOTICE: Record<string, [string, string]> = {
 }
 
 const UPLOAD_RE = /\/\.cache\/herdr-web\/uploads\/\S+/g
-type Block =
-  | { k: 'day', key: string, label: string }
+// `in`: the folds (a wake, a run of routine wakes) that must be open for it to show.
+type Block = ({ k: 'day', key: string, label: string }
   | { k: 'who', key: string }
   | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null, wake: WakeKind | null }
   // `rid`: its code in the references to it (shared/reference.ts messageId).
   | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean, ms?: number }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
-  | { k: 'system', key: string, text: string, full?: string }
+  // `cmd`: a local '/' command the user ran.
+  | { k: 'system', key: string, text: string, full?: string, cmd?: boolean }
   | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean, scheduled?: boolean }
   // The agent's turn failed (omp: usage limit, credit balance, stalled stream…).
   | { k: 'error', key: string, text: string, long: boolean }
@@ -481,6 +482,9 @@ type Block =
   | { k: 'ompRun', key: string, tool: ChatItem & { omp: OmpToolView } }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
   | { k: 'turn', key: string, text: string, copy: string | null, reply: string | null }
+  // A wake: one compact row, the coordinator's answer under it (see foldWakes).
+  | { k: 'wake', key: string, kind: WakeKind, head: string, text: string, time: string | null, at: string | null, answer: string | null, loud: boolean }
+  | { k: 'wakes', key: string, n: number, from: string | null, to: string | null }) & { in?: string[] }
 
 // Images of a transcript item (a user message, or what a tool returned),
 // re-read on demand from its line (ref = its position in the file).
@@ -697,7 +701,7 @@ const blocks = computed<Block[]>(() => {
       const full = it.role === 'cmd' ? [it.err, it.out].filter(Boolean).join('\n') : ''
       out.push({ k: 'system', key, text: effort
         ? tl(`Effort: ${effort[1]} (this session)`, `Effort : ${effort[1]} (cette session)`)
-        : it.role === 'system' ? t(it.text) : it.text, ...(full ? { full } : {}) })
+        : it.role === 'system' ? t(it.text) : it.text, ...(full ? { full } : {}), ...(it.role === 'cmd' ? { cmd: true } : {}) })
     }
   })
   flush()
@@ -709,8 +713,80 @@ const blocks = computed<Block[]>(() => {
     const last = out[out.length - 1]
     if (last && last.k === 'tools' && (working.value || blocked.value)) last.live = true
   }
-  return out
+  return foldWakes(out)
 })
+// Blocks inside a closed fold (a wake's turn, a run of routine wakes) stay
+// hidden, except while searching: search reads the text on screen.
+const searching = computed(() => searchOpen.value && search.q.trim().length >= 2)
+const shownBlocks = computed(() => (searching.value ? visibleBlocks.value : visibleBlocks.value.filter(b => !b.in || b.in.every(isOpen))))
+// Opens the folds around a block (a reply to show, a search result).
+async function openFolds(key: string) {
+  const b = blocks.value.find(x => x.key === key)
+  if (!b?.in?.length) return
+  b.in.forEach(k => setOpen(k, true))
+  await nextTick()
+}
+
+// A wake's first meaningful line: its first reason, else its head without the id.
+const WAKE_TAIL = /^(When you have handled this|In this wake you may)/
+function wakeLine(text: string): string {
+  const [head = '', ...rest] = text.split('\n')
+  return rest.map(l => l.trim()).find(l => l && !WAKE_TAIL.test(l)) || head.replace(/,? ?wake \S+.*$/, '').replace(/:$/, '')
+}
+// What the coordinator ran that changes something (`wherdr pm tell`, a file edit…).
+const READ_ONLY_PM = /\bwherdr pm (ack|help|incidents|list|read|show)\b/
+const changes = (it: ChatItem) => /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(it.name || '') || (/\bwherdr pm \w/.test(it.text) && !READ_ONLY_PM.test(it.text))
+// Its answer asks the user: a question line, or questions the reply bar offers.
+const asks = (b: Block & { k: 'assistant' }) => /\?\s*$/m.test(b.text) || replyTargets(b.html).questions.length > 0
+// A block the user started: it ends a wake's turn.
+const fromUser = (b: Block) => b.k === 'user' || b.k === 'shell' || b.k === 'ompRun' || (b.k === 'notice' && !!b.scheduled) || (b.k === 'system' && !!b.cmd)
+const plainLine = (text: string) => text.replace(/[*_`#>]+/g, '').replace(/\s+/g, ' ').trim()
+
+// A wake (shared/pm/wakes.ts) is not the user's: a compact row with its kind,
+// its first line and time; once its turn is over, the coordinator's last
+// answer sits under it in a lighter style and the rest of the turn opens on
+// tap. An answer that asks the user stays a full reply. Consecutive routine
+// wakes (not an incident, nothing changed, nothing asked) fold into one row.
+function foldWakes(out: Block[]): Block[] {
+  const res: Block[] = []
+  let run: (Block & { k: 'wake' })[] = []
+  let runAt = 0
+  const endRun = () => {
+    if (run.length > 1) {
+      const key = `r:${run[0]!.key}`
+      for (let j = runAt; j < res.length; j++) res[j]!.in = [key, ...(res[j]!.in || [])]
+      res.splice(runAt, 0, { k: 'wakes', key, n: run.length, from: run[0]!.time, to: run.at(-1)!.time })
+    }
+    run = []
+  }
+  for (let i = 0; i < out.length; i++) {
+    const b = out[i]!
+    if (b.k !== 'user' || !b.wake) { endRun(); res.push(b); continue }
+    // Its turn: up to its own end of turn, or to the first block that comes
+    // from the user (a message, a "!" or "/" command, a scheduled prompt).
+    let j = i + 1
+    while (j < out.length && !fromUser(out[j]!) && out[j]!.k !== 'day' && out[j - 1]!.k !== 'turn') j++
+    const turn = out.slice(i + 1, j)
+    const last = turn.findLast(x => x.k === 'assistant')
+    const done = j < out.length || turn.at(-1)?.k === 'turn'
+    const asked = !!last && asks(last)
+    const fold = done && !!last && !asked
+    const changed = turn.some(x => x.k === 'tools' && x.list.some(changes))
+    const routine = fold && b.wake !== 'incident' && !changed
+    if (!routine) endRun()
+    else if (!run.length) runAt = res.length
+    const w: Block & { k: 'wake' } = { k: 'wake', key: b.key, kind: b.wake, head: wakeLine(b.text), text: b.text, time: b.time, at: b.at, answer: fold && last ? plainLine(last.text) : null, loud: b.wake === 'incident' || asked }
+    if (routine) run.push(w)
+    res.push(w)
+    for (const x of turn) {
+      if (fold) x.in = [w.key]
+      res.push(x)
+    }
+    i = j - 1
+  }
+  endRun()
+  return res
+}
 
 // Command output: collapsed beyond a few lines.
 const SHELL_LINES = 12
@@ -798,12 +874,54 @@ function syncQuoted() {
     btn.setAttribute('aria-pressed', String(Boolean(ref) && tappedAnswer(answerOf(text, ref!) || '') === btn.dataset.a))
   }
   for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-all') || []) btn.setAttribute('aria-pressed', String(isQuoted(text, refOf(btn)!)))
+  syncChoices()
   for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-reply, .q-point, .q-tquote') || []) {
     const ref = refOf(btn)
     const on = Boolean(ref) && isQuoted(text, ref!)
     btn.classList.toggle('quoted', on)
     if (btn.dataset.n && !btn.classList.contains('q-tquote')) for (const span of wordsOf(btn)) span.classList.toggle('quoted', on)
   }
+}
+// `choices` buttons (utils/markdown.ts): a tap sends the option as the user's
+// reply, quoted to the question before them (or to the message). Only those
+// of the agent's last message are live, until a sent message answers them;
+// the others are greyed, the answer given pressed.
+function choiceRef(btn: HTMLElement): Reference | null {
+  const key = btn.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey
+  const b = key ? blocks.value.find(x => x.key === key) : null
+  if (!b || b.k !== 'assistant') return null
+  return btn.dataset.q ? pointRef(btn.dataset.q, b.time, b.rid) : messageRef(b.text.replace(/^```wherdr\n[\s\S]*?^```$/gm, ''), b.time, b.rid)
+}
+function sentAnswer(key: string, ref: Reference): string | null {
+  const at = blocks.value.findIndex(b => b.key === key)
+  for (const b of blocks.value.slice(at + 1)) {
+    if (b.k !== 'user') continue
+    const refs = refsIn(b.text)
+    const i = refs.findIndex(r => sameRef(r, ref))
+    if (i >= 0) return b.text.slice(refs[i]!.end, refs[i + 1]?.start ?? b.text.length).trim()
+  }
+  return null
+}
+function syncChoices() {
+  const last = blocks.value.findLast(b => b.k === 'assistant')?.key
+  for (const group of listEl.value?.querySelectorAll<HTMLElement>('.w-choices') || []) {
+    const key = group.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey || ''
+    const buttons = [...group.querySelectorAll<HTMLButtonElement>('.q-choice')]
+    const ref = buttons[0] ? choiceRef(buttons[0]) : null
+    const given = ref ? sentAnswer(key, ref)?.toLowerCase() ?? null : null
+    const live = key === last && given === null && !readOnly.value
+    group.classList.toggle('done', !live)
+    for (const b of buttons) {
+      b.disabled = !live
+      b.setAttribute('aria-pressed', String(given !== null && given === (b.dataset.a || '').toLowerCase()))
+    }
+  }
+}
+function choose(btn: HTMLButtonElement) {
+  const ref = choiceRef(btn)
+  if (!ref || btn.disabled || !btn.dataset.a) return
+  haptic()
+  emit('choose', `${refLine(ref)}\n${btn.dataset.a}`)
 }
 // The words of a question (`.q-text`) and its button share a number in their message.
 const wordsOf = (btn: HTMLElement) => btn.closest('.md-body')?.querySelectorAll<HTMLElement>(`.q-text[data-n="${btn.dataset.n}"]`) || []
@@ -903,6 +1021,7 @@ provide('gotoRef', (ref: Reference, el: HTMLElement) => {
 // Quote tapped: scrolls to the original message and highlights it.
 async function gotoOrigin(key: string | null) {
   if (key && !msgEl(key) && hiddenBlocks.value) await revealAll()
+  if (key && !msgEl(key)) await openFolds(key)
   const el = key ? msgEl(key) : null
   if (!el) return toast(t('Original message not found (further up the conversation?)'), true)
   el.scrollIntoView({ block: 'center', behavior: 'smooth' })
@@ -917,6 +1036,8 @@ const copyText = copyCode
 // their menu (event delegation, the HTML comes from v-html).
 function onListClick(e: MouseEvent) {
   const target = e.target as HTMLElement
+  const choice = target.closest?.('.q-choice') as HTMLButtonElement | null
+  if (choice) { e.preventDefault(); choose(choice); return }
   const ans = target.closest?.('.q-ans') as HTMLElement | null
   // `detail` counts the clicks of a pointer; 0 for a button pressed with the keyboard.
   const click = e.detail > 0
@@ -1262,6 +1383,8 @@ async function jumpToResult() {
     const prefix = String(route.query.prefix || '')
     const index = items.value.findIndex(i => i.role === role && i.ts === ts && i.text.startsWith(prefix))
     const key = index < 0 ? '' : itemKeys(items.value)[index]
+    if (key) await openFolds(key)
+    await nextTick()
     const target = [...(listEl.value?.querySelectorAll<HTMLElement>('[data-hit-key]') || [])].find(el => el.dataset.hitKey === key)
     applySearchMarks(false, target)
     if (target && !search.hits.length) target.scrollIntoView({ block: 'center' })
@@ -1414,7 +1537,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             </div>
             <div v-else-if="chat.older.length" class="chat-note">{{ t('Start of conversation') }}</div>
 
-            <template v-for="b in (skeleton ? [] : visibleBlocks)" :key="b.key">
+            <template v-for="b in (skeleton ? [] : shownBlocks)" :key="b.key">
               <div v-if="b.k === 'day'" class="day-sep"><span>{{ b.label }}</span></div>
 
               <div v-else-if="b.k === 'who'" class="msg-who" :class="agent || ''">
@@ -1422,8 +1545,23 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               </div>
 
 
+              <button v-else-if="b.k === 'wakes'" type="button" class="wake-run" data-testid="wake-run" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
+                <UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="wake-chev" />
+                <span class="wake-head">{{ tl(`${b.n} routine checks`) }}</span>
+                <span v-if="b.from" class="wake-time">{{ b.from === b.to ? b.from : `${b.from}–${b.to}` }}</span>
+              </button>
+
+              <div v-else-if="b.k === 'wake'" class="wake" :class="{ loud: b.loud, open: isOpen(b.key) }" :data-kind="b.kind" :data-hit-key="b.key" data-testid="wake">
+                <button type="button" class="wake-row" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
+                  <span class="msg-wake" :data-kind="b.kind">{{ t(WAKE_LABEL[b.kind]) }}</span>
+                  <span class="wake-head">{{ b.head }}</span>
+                  <span v-if="b.time" class="wake-time" :title="b.at || undefined">{{ b.time }}</span>
+                </button>
+                <pre v-if="isOpen(b.key) || searching" class="wake-text">{{ b.text }}</pre>
+                <p v-else-if="b.answer" class="wake-answer">{{ b.answer }}</p>
+              </div>
+
               <div v-else-if="b.k === 'user'" class="msg-user-wrap" :data-hit-key="b.key">
-                <span v-if="b.wake" class="msg-wake" :data-kind="b.wake" data-testid="msg-wake">{{ t(WAKE_LABEL[b.wake]) }}</span>
                 <button v-if="b.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(b.origin)">
                   <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ b.reply.time }}</span><span class="msg-quote-text">{{ b.reply.excerpt }}</span>
                 </button>

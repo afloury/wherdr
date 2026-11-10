@@ -31,9 +31,9 @@ Changing (show, then do):
 | `wherdr alfred project machine add <KEY> <machine> --clone <folder>` | lets the project's tasks run on another machine (its key or label), in its clone of the repository there; once applied, the machine's [readiness check](project-management.md#board) runs and its result is in the answer |
 | `wherdr alfred project machine remove <KEY> <machine>` | the project's tasks no longer start on that machine (tasks already there stay) |
 | `wherdr alfred coordinator start <KEY> [--program claude\|codex] [--resume]` | starts the project's coordinator with its harness's default model; without `--program`, the user's first offered agent that can run it (Settings › Agents) (a new conversation replaces a running one); `--resume` takes up its last conversation again, with the agent that ran it |
-| `wherdr alfred setting set <key> <value>` | changes a setting to one of the values `settings` lists for it (a theme id from the theme list, for instance); lists such as machine groups or hidden agents stay in Settings |
+| `wherdr alfred setting set <key> <value> [--propose]` | proposes a setting change, to one of the values `settings` lists for it (a theme id from the theme list, for instance): without `--propose` it is only shown; with it, Alfred's reply carries a [card you apply](conversation.md) (before → after, *Show me*, *Cancel*, *Apply*). Alfred never applies a setting itself, and only proposes one in a turn that follows your message; lists such as machine groups or hidden agents stay in Settings |
 
-A change without `--apply` changes nothing: it prints what it would do (`dryRun`, `change`) and
+A change without `--apply` (all but `setting set`, which is only proposed) changes nothing: it prints what it would do (`dryRun`, `change`) and
 the command that makes it. Alfred shows you those lines and runs that command, with `--apply`,
 only after your yes in the chat. When the answer names a `remote` machine (a project on another
 machine, its coordinator), Alfred makes the change only when you asked for it. No `wherdr alfred`
