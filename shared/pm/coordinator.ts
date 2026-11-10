@@ -96,7 +96,7 @@ export interface CoordinatorView {
 export type Turn = 'user' | 'wake' | 'none'
 
 export type Command =
-  | { name: 'help' } | { name: 'list' } | { name: 'plan' } | { name: 'template show' } | { name: 'autopilot show' }
+  | { name: 'help' } | { name: 'list', archived?: true } | { name: 'plan' } | { name: 'template show' } | { name: 'autopilot show' }
   | { name: 'automation list' } | { name: 'incidents', since?: number }
   | { name: 'show', task: string }
   | { name: 'template edit' } // the new template comes as the call's input (JSON)
@@ -127,7 +127,7 @@ export type Command =
 
 // One table for the parser, the skill and the role file.
 export const COMMANDS: { usage: string, does: string }[] = [
-  { usage: 'list', does: 'the project\'s tasks, their step and what waits for the user' },
+  { usage: 'list [--archived]', does: 'the project\'s tasks, their step and what waits for the user; archived tasks (done, off the board) only with --archived' },
   { usage: 'show <task>', does: 'one task, its weight, the machine it runs on, its plan and its log' },
   { usage: 'plan', does: 'the resolved plan of each task type' },
   { usage: 'template show', does: 'the project\'s own workflow (JSON), copied from a template when the project started' },
@@ -211,7 +211,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i] as string
     if (!a.startsWith('--')) { words.push(a); continue }
-    if (a === '--spec') { flags.spec = 'yes'; continue } // the one option without a value
+    if (a === '--spec' || a === '--archived') { flags[a.slice(2)] = 'yes'; continue } // the options without a value
     const v = argv[i + 1] as string | undefined
     if (v === undefined) return { error: `${a} needs a value` }
     flags[a.slice(2)] = v
@@ -221,7 +221,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files'], 'task start': ['on'], 'incidents': ['since'], 'ui open': ['target'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' ? w0 : verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files'], 'task start': ['on'], 'list': ['archived'], 'incidents': ['since'], 'ui open': ['target'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' || w0 === 'list' ? w0 : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (w0 === 'incidents') {
@@ -256,7 +256,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   if (verb === 'ui targets') return w2 ? usage(verb) : { name: verb }
   if (verb === 'ui show') return uiShowArgs(w2, w3 === undefined ? [] : [w3, ...rest], TASK_RE, usage(verb))
   if (verb === 'ui action') return isUiAction(w2) && w3 && TASK_RE.test(w3) && !rest.length ? { name: verb, action: w2, task: w3 } : usage(verb)
-  if (w0 === 'help' || w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0 }
+  if (w0 === 'help' || w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0, ...(w0 === 'list' && flags.archived ? { archived: true as const } : {}) }
   if (w0 === 'show') return w1 && TASK_RE.test(w1) && !w2 ? { name: 'show', task: w1 } : usage('show')
   if (verb === 'template show' || verb === 'template edit') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
   if (verb === 'task add') {

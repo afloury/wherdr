@@ -10,7 +10,7 @@ let timer: ReturnType<typeof setInterval> | undefined
 let stopTick: (() => void) | undefined
 const load = () => api<Board>('/api/pm/board').then((b) => { board.value = b }, () => {})
 
-// The card of a task, by any key its project had; undefined until the board is read, null when not on it.
+// The card of a task, by any key its project had, archived ones too; undefined until the board is read, null when unknown.
 export function useBoardCard(id: MaybeRefOrGetter<string>) {
   onMounted(() => {
     if (users++) return
@@ -23,10 +23,13 @@ export function useBoardCard(id: MaybeRefOrGetter<string>) {
     clearInterval(timer)
     stopTick?.()
   })
-  return computed<Card | null | undefined>(() => {
+  const found = computed<Card | null | undefined>(() => {
     const b = board.value
     if (!b) return undefined
     const want = storedTaskId(b.projects, toValue(id)) ?? toValue(id)
     return b.cards.find(c => c.id === want) ?? null
   })
+  // An archived task is not on the board: its card read on its own (null: unknown).
+  const archived = useArchivedCard(() => toValue(id), () => found.value === null)
+  return computed<Card | null | undefined>(() => (found.value === null ? archived.value : found.value))
 }

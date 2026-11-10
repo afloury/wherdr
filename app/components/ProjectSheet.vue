@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // A project's sheet (Settings › Projects › a row): tabs, the one shown in the
-// URL (`tab=`). General: name, key and color, base branch, branch name, repository visibility, the agents
+// URL (`tab=`). General: name, key and color, base branch, branch name, when done tasks are archived, repository visibility, the agents
 // its tasks start with (the workflow's prefs), its worktree setup (the
 // workflow's `worktree`: files copied, folders shared, a setup command), where its workflow came from,
 // the machines its tasks may run on (ProjectMachines) and the home tab that
@@ -16,6 +16,7 @@
 // other (PartHead); Workflow then draws its steps (WorkflowDiagram).
 import type { Project, TemplateInfo } from '#shared/pm/project'
 import { PROJECT_COLORS, shownKey } from '#shared/pm/projectKey'
+import { ARCHIVE_DAYS, archiveDays } from '#shared/pm/archive'
 import type { LogEntry } from '#shared/pm/templateText'
 import { SETUP_TIMEOUT, type Prefs, type Template, type WorktreeSetup } from '#shared/pm/workflow'
 import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
@@ -36,7 +37,7 @@ const ready = ref<Record<string, string>>({}) // each other machine's last readi
 const loaded = ref(false)
 const error = ref('')
 const busy = ref('')
-const form = reactive({ name: '', key: '', color: '', base: '', branchName: '', agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' })
+const form = reactive({ name: '', key: '', color: '', base: '', branchName: '', archiveAfter: '', agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' })
 async function load() {
   const r = await api<{ workflow: Template | null, log: LogEntry[], ready?: Record<string, string> }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
   workflow.value = r.workflow
@@ -46,7 +47,7 @@ async function load() {
   fillSetup(r.workflow?.worktree)
   loaded.value = true
 }
-const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '' })
+const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', archiveAfter: String(archiveDays(x)), agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '' })
 // The worktree setup: paths one per line (or comma separated). Folders to
 // share: empty is node_modules (no `share`), noShare is none (`share: []`).
 const setup = reactive({ copy: '', share: '', noShare: false, lockfile: '', command: '', timeout: '' })
@@ -64,8 +65,8 @@ async function run(what: string, fn: () => Promise<unknown>) {
   finally { busy.value = '' }
 }
 const save = () => run('save', async () => {
-  const { name, key, color, base, branchName, ...prefs } = form
-  const r = await api<{ project: Project }>('/api/pm/project-update', { key: p.value.key, name, base, branchName, ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}) })
+  const { name, key, color, base, branchName, archiveAfter, ...prefs } = form
+  const r = await api<{ project: Project }>('/api/pm/project-update', { key: p.value.key, name, base, branchName, archiveAfter: Number(archiveAfter), ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}) })
   // The prop is refreshed only after `changed`: the form takes the saved
   // project, and the shared lists that show its key and color are read again.
   await load()
@@ -74,6 +75,9 @@ const save = () => run('save', async () => {
   loadTaskAgents()
   toast(tl('Saved'))
 })
+
+// How long a done task stays in Done before it is archived.
+const archiveItems = ARCHIVE_DAYS.map(d => ({ label: d ? tl(`${d} day${d > 1 ? 's' : ''}`) : tl('Never'), value: String(d) }))
 
 // The working branch: a remote branch of the repo, or a name typed in.
 const branches = ref<string[] | null>(null)
@@ -195,6 +199,12 @@ async function remove() {
           <span class="pm-field">
             <UInput v-model="form.branchName" size="lg" class="pm-base-pick mono" placeholder="task/{id}" :aria-label="tl('Branch name')" maxlength="80" data-testid="pm-branch-name" />
             <small class="muted">{{ tl('Each new task\'s branch. Fields: {id}, {tag} (the card\'s ticket key, else the task id), {type} (bugfix or feature), {slug} (from the title). Example: {type}/{tag}-{slug}.') }}</small>
+          </span>
+
+          <span class="field-label">{{ tl('Archive done tasks after') }}</span>
+          <span class="pm-field">
+            <USelect v-model="form.archiveAfter" :items="archiveItems" size="lg" class="pm-base-pick" :aria-label="tl('Archive done tasks after')" data-testid="pm-archive-after" />
+            <small class="muted">{{ tl('A done task leaves the Done column after this time; the column\'s footer lists archived tasks. Its branch, PR and log stay.') }}</small>
           </span>
 
           <template v-if="workflow">
