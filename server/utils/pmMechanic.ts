@@ -31,6 +31,7 @@ import { advanceTick } from './pmAdvance'
 import { forgetMemory } from './pmMemory'
 import { samplePeaks } from './pmPeaks'
 import { releaseIdle, reviveWorker } from './pmRelease'
+import { watchAgents } from './pmWatchdog'
 import { startFileWaits, syncFiles } from './pmFiles'
 import { agentBack, agentWaits, fixWatch, handToAgent, handedWatch, MACHINE_OFFLINE, MACHINE_PAUSED, retriesAction, type WorkerNow } from '../../shared/pm/release'
 import { isPaused } from '../../shared/pm/project'
@@ -280,6 +281,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   await startFileWaits(deps).catch(() => {})
   await startNext(deps, now).catch(() => {})
   await samplePeaks(deps).catch(() => {})
+  await watchAgents(deps, (task, why) => wakeCoordinators(deps, task, why, now), now).catch(() => {})
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
   const seen: Seen[] = []

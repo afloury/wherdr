@@ -124,8 +124,8 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(s ? { state: s } : {}),
     ...(task.stopped ? { stopped: task.stopped } : {}),
     ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '' } } : {}),
-    // Waiting for the engine to resume it after an incident: shown as a wait, not the user's turn.
-    ...(task.held && task.state === 'todo' ? { held: task.held } : recovering(task) ? { held: task.held || task.waiting || 'Waiting' } : {}),
+    // Waiting for the engine to resume it after an incident, or for its agent to start again (watchdog.ts): shown as a wait, not the user's turn.
+    ...(task.held && (task.state === 'todo' || task.state === 'working') ? { held: task.held } : recovering(task) ? { held: task.held || task.waiting || 'Waiting' } : {}),
     ...(task.sameFiles && task.state === 'todo' ? { sameFiles: task.sameFiles } : {}),
     ...(task.report ? { report: task.report } : {}),
     ...(task.summary?.text ? { summary: task.summary.text } : {}),

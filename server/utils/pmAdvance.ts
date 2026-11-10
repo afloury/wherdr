@@ -167,7 +167,8 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
   if (!alive(worker)) {
     if (task.state === 'waiting') return
     const i = why.get(worker?.id ?? '')
-    if (!i) return void await waitFor(deps, id, 'The worker\'s agent is not running: start the task again to go on')
+    // Ended with no incident (on its own, or unread after a restart): the watchdog starts it again (pmWatchdog.ts).
+    if (!i) return void (worker && worker.state !== 'ended' && await deps.store.saveRun({ ...worker, state: 'ended', endedBy: 'exit' }))
     // An incident: its run ends, the engine resumes the task once the cause is gone (pmRecovery.ts).
     await deps.store.saveRun({ ...worker!, state: 'ended', endedBy: 'lost' })
     return void await interruptTask(deps, task, i)

@@ -828,6 +828,19 @@ commits need a review), wherdr starts the worker or the reviewer again in the
 same worktree, with a note on where the work stands. The task's log says when
 its agents were ended and started again.
 
+The same goes when you answer and the task moves on: a review decision (*pass*,
+say), *Send back*, *Try again* or a merge you confirm hands the next step to
+its worker or reviewer, which wherdr starts again at once. As a safety net,
+wherdr also watches every task under way: when the agent that holds its
+current step has not been running for 3 minutes (released, ended on its own,
+or gone in a wherdr restart), wherdr starts it again in its worktree, with a
+note on where the work stands, and the log says so. When it cannot, the card's
+status says why (*Waits for its machine (offline)*, *Waits for its machine
+(paused)*, no room on the machine), wherdr tries again every 3 minutes, and at
+the second failure the project's coordinator is woken once (its autopilot on).
+A start wherdr refuses (the agent's program missing, say) puts the task in
+*Your turn* with the reason.
+
 When wherdr hands the worker work of its own (a catch-up with the base branch,
 a CI fix), the task leaves *Your turn* and its card says *the agent is
 updating the PR*: its agents are never ended while wherdr waits for that work.
